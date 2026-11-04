@@ -54,6 +54,7 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
       } }) } })
   assert.equal(handle.agent.constructor.name, 'PiLoopAgent')
   assert.equal(host.ctx.tools.constructor.name, 'NativeTools')
+  assert.equal(host.ctx.jobs.constructor.name, 'NativeJobs')
   assert.equal(host.ctx.get('nativePiProvider').adapter.constructor.name, 'NativePiProvider')
   handle.agent.session.deriveMessages = () => { throw new Error('Legacy DSH context derivation must not serve model requests') }
   assert.equal(host.ctx.get('piAuthority').describe('wire-session').engine, 'pi-session-manager')

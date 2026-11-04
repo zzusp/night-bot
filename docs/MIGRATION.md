@@ -47,3 +47,9 @@
 `src/native-domain.js` 与 `src/native-state.js` 替换 active DSH storage/storage-json/storage-domain/default-model 服务。核心 store 与旧 v8 schema 的声明 helper 改用本地实现，其余领域源码继续保留。新模型保存接口不依赖 DSH config editor，HTTP 保存与重启已测。兼容服务名保留，实际实现与不支持的额外布局明确见 DSH-AUDIT；此变化不意味着会话、工具、权限或 provider 已脱离 DSH。生产直接依赖已与 108 个开发/历史测试依赖分开，但仍有 56 个生产直接 DSH 依赖。
 
 Pi 会话阶段同时修复旧服务在异步容量清理前提前移除跟踪 promise 的竞态；新 Pi lease 目录由 backend 自己管理，原安全目录扫描仍拒绝链接但不递归扫描这些会消失的临时目录。所有改动在 source-manifest 明确记录，目前五个核心模块存在有意差异。旧日志导入后保留 writer fence，并在下次租约核对旧历史指纹，发现旧软件改写时拒绝继续，防止分叉恢复。
+
+### 后台任务注册表阶段
+
+Host 和任务恢复测试已挂载本地 NativeJobs，jobs-local 仅保留开发差分测试依赖，生产直接DSH包降至54。注册表拥有会话归属访问栅栏、按owner限额、作用域控制器及订阅、UTF-8有界输出环/独立游标、首次终态与wait通知、取消及owner/service关闭排空。它是进程内视图，持久任务/进程收据仍由业务账本维护；不自行重新启动producer或重放工作。
+
+保留旧取消函数抛错时“记录强制失败、可能孤儿工作”的明确事实，不伪造进程已退出。真正process spawn/终端/进程树身份与范围观测、sandbox、后台工具表面仍依赖现有DSH后端，尚未迁移。Windows路径只保留兼容，未在本Linux环境真实验收。

@@ -101,3 +101,11 @@ Host 与任务测试均挂载 NativeTools，覆盖分层注册/限制、单调�
 仍保留 DSH scope/schema/event carriers、通用 LLM、进程/jobs/sandbox后端、附件/凭据及工厂等；生产直接DSH依赖仍55个。此阶段不能标记完整迁移。生产闭包检查221文件/101裸导入均已声明。远端403未重试。
 
 全新独立目录仅安装生产依赖（frozen-lockfile、ignore-scripts），wire/CLI/state/Pi authority/NativeTools/approval及公开工具差分48项重复验证通过，不叠加711项独立用例计数。
+
+## 本地后台任务注册表
+
+NativeJobs 已替换 Host 和任务恢复 fixture 的 jobs-local。8项注册表用例包含旧公开契约差分、UTF-8输出环、归属/作用域访问、限额、wait取消、最终pump读取、observer隔离、owner关闭实际排空及取消抛错的孤儿不确定性。
+
+本轮应用136、任务运行时142（约301秒）、路由47、领域388全部通过，containment 6通过/1 Windows跳过，共719项独立通过。全新仅生产依赖副本47项wire/state/authority/tools等及7项注册表定向测试通过，共54项重复验证；公开旧jobs-local差分仅在开发依赖环境执行。225个实际运行时文件逐字节与生产副本一致。最后只新增Host必要服务检查及wire构造类型断言，定向wire/注册表11项和生产wire3项复跑通过；未重跑整组142项。
+
+pnpm因仅调整依赖分组曾尝试自动重装而命中不可写默认缓存/无TTY保护；改用既定/tmp缓存和正常frozen安装成功，再直接执行node测试。未把这些启动失败当业务回归。54个生产直接DSH依赖和7个已替换active服务见runtime-audit.json；剩余进程后端仍存在，不能标记全迁移完成。远端403未重试，未创建PR/合并/部署。

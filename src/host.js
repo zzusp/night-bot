@@ -33,7 +33,7 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
       row('attachment-local', { dshHome: root }), row('launch-environment'), row('timeout'),
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
-      row('jobs-local'), row('tool-jobs'), row('subprocess-local'), row('sandbox-local'),
+      { name: new URL('./native-jobs.js', import.meta.url).href }, row('tool-jobs'), row('subprocess-local'), row('sandbox-local'),
       { name: pathToFileURL(policy).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
       row(shell + '-sandbox', { cwd: workspace }), row('user-approval', { policy: 'never' }),
       row('permission-presets', { defaultPreset: 'workspace-write', presets: {
@@ -53,6 +53,7 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
     await ctx.loader.await()
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
     if (!ctx.get('tools')) throw new Error('NIGHT_BOT_TOOL_RUNTIME_UNAVAILABLE')
+    if (!ctx.get('jobs')) throw new Error('NIGHT_BOT_JOB_RUNTIME_UNAVAILABLE')
     await ctx.plugin({ inject: ['agentPresets'], async *apply(child) {
       yield await child.agentPresets.register({ id: 'night-bot', plugins: [{ name: 'cordis:group', group: true,
         isolate: { fs: true, workingDirectory: true, shellEnv: true }, config: [

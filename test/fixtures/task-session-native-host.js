@@ -101,7 +101,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     row('agent'), row('session'), row('session-projection'),
     row('system-prompt', { includeRuntimeContext: false, includeHarnessIdentity: false }),
     row('llm'), { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
-    ...(options.promoteOnTimeout ? [row('jobs-local'), row('tool-jobs')] : []),
+    ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),
     row('subprocess-local'), row('sandbox-local'), policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),
     row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }), { name: pathToFileURL(resolve('src/pi-authority.js')).href }, { name: pathToFileURL(resolve('src/pi-session-persistence.js')).href, config: { root: join(root, 'legacy-sessions'), compression: 'none' } },

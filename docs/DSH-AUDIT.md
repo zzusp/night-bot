@@ -89,3 +89,11 @@ Host 和原生任务回归夹具均改为 `src/native-tools.js`，没有实例�
 执行前增加 Pi 日志意图提交屏障，提交失败或等待屏障时取消都不进入 wrapper/body；调用结果在转交下一步前提交，代码子调用开始与结果也提交。审计失败会停止新准入、排空已开始的效果和审计任务后返回失败，不把超时/未知效果当成功，不自动重放。二次审查覆盖重复 guard 的独立 disposer、隐藏工具拒绝不调用其 finalizer、无效政策决定失败关闭、原始 caller signal 不被 wrapper 替换、最终值身份与冻结、异常 getter 和代码审计失败排空。
 
 保留的 DSH 边界：通用 scope/event carrier 与部分 schema/工具定义/codegen helpers；FS/shell/skill/子代理工具实现；权限 preset、真实 sandbox、job/subprocess/worker provider；原 Agent/Session façade/factory/inbox 及 LLM/chunk 兼容协议。生产直接 DSH 依赖仍55，不以服务替换宣称清零。
+
+### 后台任务注册表阶段
+
+Host 和任务恢复测试已挂载本地 NativeJobs，jobs-local 仅保留开发差分测试依赖，生产直接DSH包降至54。注册表拥有会话归属访问栅栏、按owner限额、作用域控制器及订阅、UTF-8有界输出环/独立游标、首次终态与wait通知、取消及owner/service关闭排空。它是进程内视图，持久任务/进程收据仍由业务账本维护；不自行重新启动producer或重放工作。
+
+保留旧取消函数抛错时“记录强制失败、可能孤儿工作”的明确事实，不伪造进程已退出。真正process spawn/终端/进程树身份与范围观测、sandbox、后台工具表面仍依赖现有DSH后端，尚未迁移。Windows路径只保留兼容，未在本Linux环境真实验收。
+
+后续进程替换的实际边界（已核对当前包接口）：`resolveExecutable`、普通 `spawn`、`spawnTerminal`、`terminalEnvironment`；原后端维护 executable/environment 校验、凭据环境清理、control pipe、stdout/stderr有界收集及spill、Linux用户systemd scope/private bootstrap、Windows Job及PTY、进程身份/范围退出观测、正常关闭和同步host-exit收尾。`done`不是整个managed range静默的替代物，`terminate`后须等待`waitForExit`。未以普通`child_process.spawn`或Pi bash工具直接替代这些约束。当前真实进程恢复回归因此仍验证旧后端；不能算作新进程后端验收。

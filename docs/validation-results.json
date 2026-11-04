@@ -200,5 +200,35 @@
     },
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "nativeJobs": {
+    "date": "2026-11-04",
+    "ownPass": 136,
+    "nativeJobsContractTests": 8,
+    "routingPass": 47,
+    "domainPass": 388,
+    "runtime": {
+      "pass": 142,
+      "fail": 0,
+      "durationMs": 301161.879964
+    },
+    "containment": {
+      "pass": 6,
+      "fail": 0,
+      "windowsSkipped": 1,
+      "execution": "approved outside executor wrapper; application sandbox unchanged"
+    },
+    "productionOnlyRepeatedPass": 54,
+    "productionImportsChecked": {
+      "files": 222,
+      "literalBareImports": 104
+    },
+    "directRuntimeDshDependencies": 54,
+    "removedActiveDshServices": 7,
+    "remaining": "process and sandbox backends, generic LLM, credentials/attachments, registries/factory, skills/workspace",
+    "remotePush": "not retried; prior 403 denial stands",
+    "completeMigration": false,
+    "uniquePass": 719,
+    "productionRuntimeFilesCompared": 225
   }
 }

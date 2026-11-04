@@ -18,6 +18,7 @@
     "resident HTTP/DWS bridge",
     "SQLite task/operation/wake/notification ledger",
     "single-document JSON domains and model selection",
+    "owner-fenced native background job registry with scoped controllers/events, output ring and awaited teardown",
     "scoped NativeTools admission/dispatch/post-policy/output/audit pipeline",
     "native code transport with ordered nested dispatch, cancellation/drain and one-shot sandbox approval"
   ],
@@ -30,7 +31,7 @@
     "generic llm registry/middleware and GenerateOptions/chunk compatibility bridge; native provider no longer invokes dsh-llm-pi-ai",
     "durable credential record store, neutral authorization service, attachment storage/request-image policy helpers",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
-    "filesystem, shell, subprocess/jobs/sandbox/permission services",
+    "filesystem, shell, subprocess/sandbox/permission services",
     "skills, workspace registry, child-agent providers"
   ],
   "directRuntimeDshDependencies": [
@@ -80,10 +81,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-fs-sandbox",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-jobs-local",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -255,7 +252,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 109,
+  "developmentDependencyCount": 110,
   "activeLiteralDshPluginRows": [
     "agent",
     "agent-instructions",
@@ -265,7 +262,6 @@
     "credentials-local",
     "fs-observation-policy",
     "fs-sandbox",
-    "jobs-local",
     "launch-environment",
     "llm",
     "llm-retry",
@@ -308,6 +304,7 @@
     "agent-default-model/config-editor dependency -> durable native model selection",
     "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
     "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
+    "jobs-local -> src/native-jobs.js; process execution and durable task receipts remain separate",
     "tools runtime service -> src/native-tools.js + native-code-transport.js; schema/scope helpers and capability backends remain"
   ],
   "protocols": {
