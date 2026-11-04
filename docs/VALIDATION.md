@@ -161,3 +161,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 全新生产依赖frozen安装通过，实际Sharp codec不依赖安装脚本；重复156通过（129核心/实际图片wire +27凭据/目录/附件合同），249运行时文件及manifest/lock一致。旧backend差分依赖开发包，明确不选择到生产合同组。闭包246文件/142裸导入；200核心/3UI排除/6适配守恒。
 
 文件引用/路径/流和PNG/JPEG/WebP/GIF、16-bit、alpha、orientation/metadata、normalization、请求衍生字节/variant身份有旧新差分；源原件immutable、摘要/计数、拒绝损坏去重覆盖、canon base64/批次先验证、暂存清理、暂停read关闭、共享取消和链接边界有实际文件测试。真实Pi SDK本地请求证明衍生图预算与原件不变。codec在Linux真实执行；Windows/macOS原生平台未真实验收，真实供应商、DingTalk和业务外部系统仍未触发。证据evidence/native-attachments-*；52直接DSH依赖/18活动服务替换是部分迁移记录。远端403未重试。
+
+## 原生技能注册表阶段
+
+自有257（其中10注册表合同）、完整任务142（273833ms）、路由47通过；沿用未变业务领域388及目录隔离8通过/1Windows跳过，当前独立842通过。NativeSkills在默认Host和任务fixture挂载后跑完整回归；后加closed provider-factory guard经最终自有257/生产166验证，没有冒充重新跑完整142。
+
+全新生产依赖安装通过，重复166通过（139核心/registry+27本地凭据/目录/附件合同），250运行时文件及manifest/lock一致。闭包247文件/145裸导入。文件发现/watch仍是原provider，公开skill helper仍保留，不把注册表更换当作文件provider完成迁移。证据evidence/native-skills-*。52直接DSH依赖/19活动服务替换；远端403未重试，无PR/合并/部署。

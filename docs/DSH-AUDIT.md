@@ -20,7 +20,7 @@
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
 | 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
 | 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生 managed-process后端、NativeSandbox；DSH fs/shell/policy及Windows ACL库 | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
-| 技能、工作目录、指引发现、子代理、工作区注册 | NativeWorkingDirectory；其余DSH skill/filesystem、instructions、subagent/workspace | 工作目录已本地实现；保留FS权限能力；技能、资源加载与子代理等仍待迁移 |
+| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills registry、NativeWorkingDirectory；DSH filesystem skill provider/公开helper、instructions、subagent/workspace | 注册表与工作目录本地实现；保留FS权限能力；技能文件发现/watch、资源加载与子代理等仍待迁移 |
 | 凭据、授权与附件 | NativeCredentials、NativeAuthorization、NativeAttachments及分层环境；旧授权错误/附件类型与投影helpers | 默认Pi登录有attempt-scoped提交，附件blob/codec本地实现且保持v1/请求变体协议；通用helpers仍保留 |
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
@@ -151,3 +151,9 @@ NativeAttachments默认替换attachment-local。内容寻址v1路径、引用字
 Sharp 0.35.5延续原已锁定codec版本，原型/metadata解析、完整decode准入、8-bit sRGB单帧归一化、透明WebP/不透明JPEG质量阶梯与字节fallback、朝向/metadata清理、图像像素/尺寸/字节限额均保留。request-image-v6 descriptor和衍生图缓存/readonly原件句柄不变；共享请求最后waiter取消、transform并发限额、cache损坏重建与服务关闭排空由本地生命周期管理。流式read iterator在调用者暂停消费时仍可由关闭驱动底层return，防止悬挂文件句柄。
 
 图像/文件协议与算法保留MIT来源署名，见THIRD_PARTY/许可文件；不是Pi SDK实现的图像codec，也不把兼容协议字段复制当成功能证明。现有文件和所有支持图像格式、16位、透明、orientation、清洁pass-through、请求衍生字节及variant ID均与旧实现差分。实际Pi模型wire使用新后端，验证像素预算内衍生图发送且原件不变。旧backend仅开发差分依赖；通用附件type/admission及LLM projection helpers仍明确保留。
+
+## 原生技能注册表阶段
+
+NativeSkills拥有scope/provider/runtime注册、同层rank与注册顺序、近层完全覆盖、完整/不完整catalog、revision两次有界重试、cwd+scope identity有界cache、callback隔离和取消等待。options、候选对象、opaque locator和加载后的definition均保留readonly借用身份；不会为适配Pi而破坏provider按原候选定位资源的约定。注册失败/卸载会撤销原provider生命周期，名称被修改也不能泄漏原注册；卸载期间返回的迟到body不再准入。
+
+默认Host与原生任务fixture已挂载NativeSkills；10项合同含旧服务差分、rank/作用域、borrowed identity、partial/failure不cache、并发失效、cache容量、cancel、通知隔离与撤销竞态。生产仍保留dsh-skill的公开render/invocation helpers，以及原filesystem发现/watch/provider；本阶段不把注册表替换说成技能文件读取已经迁到Pi，也不通过移走helpers依赖伪装清零。

@@ -1,0 +1,35 @@
+✔ file writes preserve exact bytes, private modes, hard-link deduplication and zero-byte uploads (77.49205ms)
+✔ corrupt and missing file/image objects fail integrity checks and never get silently overwritten (46.502003ms)
+✔ batch admission and canonical base64 fail before any publication, with image limits intact (30.621773ms)
+✔ cancelled streamed writes drain their source and remove staging without publishing a receipt (6.621035ms)
+✔ closing an attachment service drains a paused stream iterator and rejects new storage operations (21.717784ms)
+✔ shared request cancellation preserves another waiter, refreshes corrupt cache, and keeps transformation identity (59.623813ms)
+✔ linked storage directories are rejected before creating anything outside the owned attachment root (5.045489ms)
+✔ a failed image batch waits for other admitted transforms and publishes no partial objects (12.859825ms)
+✔ compression concurrency is bounded and aborting every shared waiter prevents late cache publication (16.344866ms)
+✔ cache links cannot cause creation outside the owned home and a returned stream can be closed before consumption (28.591791ms)
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (16.599415ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (74.562893ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (34.649858ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (9.598236ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (34.861126ms)
+✔ legacy flat documents migrate once under writer admission and watcher follows external atomic changes (148.114568ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (56.836805ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (134.817929ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (28.854152ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (12.152258ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (45.112527ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (5.706837ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (30.853522ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (14.203266ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (9.297472ms)
+✔ directory validation retains caller attribution through the injected filesystem service (3.975646ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (12.495997ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1503.193021

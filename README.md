@@ -4,7 +4,7 @@
 
 基于 **pi-agent-core** 的无界面百部钉钉助手。Pi 驱动模型与工具迭代，保留原百部的消息、Topic、任务统筹/执行、恢复、权限、通知和交付账本。提供 HTTP API，不包含 Web 看板或设置页面。
 
-领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；新会话日志与上下文改由 Pi SessionManager v3 管理；模型 provider 已改由本地 NativePiProvider 调用 Pi Models；工具 registry、LLM/Agent 注册、Session/Projection 注册、策略、凭据存储、授权会话、工作目录及附件存储/图像衍生均已由应用本地服务接管；Session 内存数据 façade、通用消息/作用域/RPC helpers、部分工具和权限后端、附件投影helpers、技能及 workspace 等仍保留 DSH 兼容能力；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
+领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；新会话日志与上下文改由 Pi SessionManager v3 管理；模型 provider 已改由本地 NativePiProvider 调用 Pi Models；工具 registry、LLM/Agent 注册、Session/Projection 注册、策略、凭据存储、授权会话、工作目录、附件存储/图像衍生及技能注册表均已由应用本地服务接管；Session 内存数据 façade、通用消息/作用域/RPC helpers、部分工具和权限后端、附件投影helpers、技能及 workspace 等仍保留 DSH 兼容能力；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
 
 ## 运行
 

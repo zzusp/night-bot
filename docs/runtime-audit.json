@@ -16,6 +16,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeSkills scoped provider/runtime registration, rank/nearest-scope catalog selection, bounded revision caches, borrowed locators, cancellation and revocation fences",
     "NativeAttachments immutable v1 blobs and streamed aliases, strict refs/base64/integrity, Sharp normalization/request-image-v6 derivatives, bounded transforms and shared cancellation/drain",
     "NativeWorkingDirectory durable per-session cwd, original-project recovery, caller FS attribution, prompt resampling and cancellation/drain",
     "NativeAuthorization single-flight attempts, scope-bound Pi login commits, cancellation/admission gate and close/drain; old error identities remain explicit compatibility helpers",
@@ -45,7 +46,7 @@
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
-    "skills, workspace registry, child-agent providers"
+    "skill rendering/invocation helpers and filesystem discovery/watcher provider; workspace registry and child-agent providers"
   ],
   "directRuntimeDshDependencies": [
     {
@@ -267,7 +268,6 @@
     "permission-presets",
     "session-title",
     "shell-env",
-    "skill",
     "skill-filesystem",
     "subagent",
     "subagent-fork-in-process",
@@ -294,6 +294,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "skill registry -> src/native-skills.js; filesystem discovery/watcher and public rendering helpers still explicit dependencies",
     "attachment-local -> src/native-attachments.js + native-attachment storage/codec/errors; v1 and request-image-v6 protocol compatibility and MIT algorithm attribution retained",
     "working-directory -> src/native-working-directory.js; filesystem capability backend remains guarded and unchanged",
     "authorization -> src/native-authorization.js; attempt-scoped Pi login credentials and commit-phase cancellation fence",
