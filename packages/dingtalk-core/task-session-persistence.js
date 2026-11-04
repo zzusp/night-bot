@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { link, lstat, open, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import * as JsonlSessionPersistenceModule from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistenceModule from '../../src/pi-session-persistence.js'
 import { checkedTaskDirectory, taskDirectories, taskFilePath } from './session-workspaces.js'
 
 const JsonlSessionPersistence = JsonlSessionPersistenceModule.default ?? JsonlSessionPersistenceModule
@@ -36,6 +36,9 @@ async function checkedNativeLogRoot(directory, create = false) {
   async function inspect(path) {
     for (const entry of await readdir(path, { withFileTypes: true })) {
       if (entry.isSymbolicLink()) throw failure('TASK_DIRECTORY_OUTSIDE_ROOT')
+      // Pi owns transient lease directories. They can disappear during close;
+      // top-level links are still rejected, and Pi validates lease ownership.
+      if (entry.isDirectory() && /^[a-f0-9]{64}\.pi\.jsonl\.lock(?:\.reap)?$/.test(entry.name)) continue
       if (entry.isDirectory()) {
         const nested = join(path, entry.name)
         await checkedTaskDirectory(nested)

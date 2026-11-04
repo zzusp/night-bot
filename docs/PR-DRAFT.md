@@ -11,3 +11,6 @@
 单会话多工具调用当前串行进入原 Host 调度器；任务/执行并发和资源锁语义保留，吞吐差异见 MIGRATION。本 PR 应以草稿评审，待目标环境的沙箱与外部能力验收后再决定后续发布。
 
 后续已用应用原生 JSON 域替换四个 DSH active 服务挂载（含默认模型选择），修复无 config editor 时模型保存 no-op；额外验证模型通过 HTTP 保存并重启读回。生产仅安装依赖的副本也验证 CLI/wire/state 路径，但仍有 56 个生产直接 DSH 包，不宣称是去 DSH 完成品。
+
+
+后续迁移：新会话使用 Pi SessionManager v3 原生树日志和分支上下文；提交校验、独占写租约、旧 v4 导入/旧写锁保护及真实内容投影。主循环先 flush 再读取 Pi 上下文，禁用旧 deriveMessages 的 wire/tool 测试通过。provider 原生签名也保存在 Pi message 中，但 DSH provider seam、工具/权限/进程层仍待替换，PR 不可标记完整迁移。

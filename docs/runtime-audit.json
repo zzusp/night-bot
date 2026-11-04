@@ -4,7 +4,8 @@
   "standaloneFromDshLibraries": false,
   "piNative": [
     "agent-core.runAgentLoop iteration",
-    "Pi operational tool dispatch",
+    "Pi operational tool dispatch without placeholder input",
+    "Pi coding-agent SessionManager v3 journal and branch context authority",
     "Pi event-stream envelope; provider internally also uses Pi AI"
   ],
   "applicationNative": [
@@ -15,8 +16,9 @@
   "dshRemaining": [
     "Cordis agent factory/lifecycle compatibility fork",
     "agent and session registries",
-    "v4 session journal and persistent inbox",
-    "session projections, context assembly and provider replay",
+    "v4 event validators and persistent inbox compatibility facade",
+    "runtime prompt assembly and provider replay",
+    "legacy v4 import and writer fencing only",
     "llm request/chunk seam and llm-pi-ai provider",
     "credentials, authorization, attachments",
     "tools validation/guards/output/scheduler",
@@ -25,99 +27,11 @@
   ],
   "directRuntimeDshDependencies": [
     {
-      "name": "@deepseek-ai/dsh-launch-environment",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-sandbox-policy",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-shell",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-subprocess",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-util-values",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-agent",
       "version": "0.2.1-alpha.2"
     },
     {
       "name": "@deepseek-ai/dsh-agent-instructions",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-credentials-local",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-fs",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-permission-presets",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-scope",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-persistence",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-projection",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-working-directory",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-persistence-jsonl",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-title",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-subagent",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-system-prompt",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tools",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-user-approval",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-credentials",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-workspace",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -141,6 +55,18 @@
       "version": "0.2.1-alpha.2"
     },
     {
+      "name": "@deepseek-ai/dsh-credentials",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-credentials-local",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-fs",
+      "version": "0.2.1-alpha.2"
+    },
+    {
       "name": "@deepseek-ai/dsh-fs-observation-policy",
       "version": "0.2.1-alpha.2"
     },
@@ -153,11 +79,23 @@
       "version": "0.2.1-alpha.2"
     },
     {
+      "name": "@deepseek-ai/dsh-launch-environment",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-llm",
+      "version": "0.2.1-alpha.2"
+    },
+    {
       "name": "@deepseek-ai/dsh-llm-pi-ai",
       "version": "0.2.1-alpha.2"
     },
     {
       "name": "@deepseek-ai/dsh-llm-retry",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-permission-presets",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -169,7 +107,43 @@
       "version": "0.2.1-alpha.2"
     },
     {
+      "name": "@deepseek-ai/dsh-sandbox-policy",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-scope",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-persistence",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-projection",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-title",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-shell",
+      "version": "0.2.1-alpha.2"
+    },
+    {
       "name": "@deepseek-ai/dsh-shell-env",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-skill",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -177,7 +151,7 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-skill",
+      "name": "@deepseek-ai/dsh-subagent",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -189,7 +163,15 @@
       "version": "0.2.1-alpha.2"
     },
     {
+      "name": "@deepseek-ai/dsh-subprocess",
+      "version": "0.2.1-alpha.2"
+    },
+    {
       "name": "@deepseek-ai/dsh-subprocess-local",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-system-prompt",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -201,11 +183,11 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-tool-fs-search",
+      "name": "@deepseek-ai/dsh-tool-fs",
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-tool-fs",
+      "name": "@deepseek-ai/dsh-tool-fs-search",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -221,11 +203,11 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-tool-subagent-control",
+      "name": "@deepseek-ai/dsh-tool-subagent",
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-tool-subagent",
+      "name": "@deepseek-ai/dsh-tool-subagent-control",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -241,11 +223,31 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-web-fetch-http",
+      "name": "@deepseek-ai/dsh-tools",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-user-approval",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-util-values",
       "version": "0.2.1-alpha.2"
     },
     {
       "name": "@deepseek-ai/dsh-web",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-web-fetch-http",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-working-directory",
+      "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-workspace",
       "version": "0.2.1-alpha.2"
     }
   ],
@@ -267,7 +269,6 @@
     "permission-presets",
     "sandbox-local",
     "session",
-    "session-persistence-jsonl",
     "session-projection",
     "session-title",
     "shell-env",
@@ -302,7 +303,8 @@
   ],
   "nativeReplacements": [
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
-    "agent-default-model/config-editor dependency -> durable native model selection"
+    "agent-default-model/config-editor dependency -> durable native model selection",
+    "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains"
   ],
   "protocols": {
     "external": [
@@ -312,7 +314,7 @@
     "internalRemaining": [
       "Cordis service/events",
       "DSH Agent/Session interfaces",
-      "DSH session v4 JSONL",
+      "DSH v4 event facade; legacy v4 import only",
       "DSH LLM GenerateOptions/StreamChunk",
       "DSH tool schema/result/job receipts"
     ]

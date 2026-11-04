@@ -11,10 +11,10 @@
 | 范围 | 当前实际实现 | Pi 原生程度 / 待办 |
 |---|---|---|
 | 代理迭代及操作性工具调用 | `@mariozechner/pi-agent-core@0.73.1` 的 `runAgentLoop` | 真正使用 Pi 迭代；单会话工具串行，Host 仍执行工具调度 |
-| 模型上下文 | Host `session.deriveMessages()`、请求 header/surface、上下文退休及附件引用 | **仍为 DSH**；Pi 接收的操作性 transcript 中有占位输入，不能称 Pi 会话是权威上下文 |
+| 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。prompt 组装和 provider seam 仍待替换 |
 | 模型请求与流 | DSH `llm.prepareCall/GenerateOptions/StreamChunk` → `dsh-llm-pi-ai` → `@earendil-works/pi-ai@1.5.0`；再经本地桥转换成 Pi core 的事件流 | provider 内确实使用 pi-ai，但模型路由、凭据、多模态、replay 和错误处理仍依赖 DSH 适配器。与 core 使用两个 Pi 版本，必须单独验证跨版本边界 |
 | Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；DSH `agents/sessions/scope` | **兼容层**；不是 Pi SDK 的 `createAgentSession`/`SessionManager` |
-| 会话历史与恢复 | DSH v4 JSONL、session projection、request surface、task/session route writer | **仍为 DSH**，文件路径包含 `.dsh/sessions`；原会话、租约、工具回执、上下文退休的合同尚未迁到 Pi 的持久格式 |
+| 会话历史与恢复 | Pi v3 原生树日志、night.commit 校验链、单写租约；旧 v4 仅导入/写锁保护 | **本轮替换新日志**；原逻辑事件仍保留在 Pi 审计记录供旧 factory/恢复策略使用；不是已经移除 DSH 会话接口 |
 | 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；其中恢复读取的会话与原生 job 收据仍依赖 DSH，不能因此称整个恢复原生 |
 | 群与工作区 JSON 后端 | **本轮已替换为 `src/native-domain.js`** | Node 文件系统实现，兼容旧单文档 JSON；群业务模型及 workspace registry 本身仍有原业务/DSH 上层 |
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
@@ -31,7 +31,7 @@
 
 - 常驻进程是本应用的 Node 进程，DSH/Cordis/Pi 都作为库运行其中，没有另起 DSH daemon。
 - 应用会产生 Node SQLite/完整性检查 worker；执行时由 DSH subprocess/jobs 层创建并跟踪 bash/pwsh、业务命令或后台进程。DWS 开启时会调用配置的外部 DWS CLI；可选 Claude backend 使用其外部 CLI。未配置/未执行的外部浏览器和数据库能力不能列为已运行进程。
-- 对外沿用应用 HTTP JSON 与 DWS CLI JSON 合同。对内仍使用 Cordis service/events、DSH Agent/Session、v4 JSONL、LLM 请求/chunk、工具结果及 job receipts。
+- 对外沿用应用 HTTP JSON 与 DWS CLI JSON 合同。对内仍使用 Cordis service/events、DSH Agent/Session 审计兼容接口、Pi v3 日志及仅供导入的旧 v4、LLM 请求/chunk、工具结果及 job receipts。
 - 本轮去掉的 JSON storage 与 model selection 使用 Node 文件操作及应用自己的 schema/持久文件；`storageDomain`、`agentDefaultModel` 服务名称暂为兼容调用者保留，不表示仍调用同名 DSH 插件。`storage` 仅提供历史 cutover 检查所需的 backend-root 元数据。
 
 ## 本轮实际替换与行为验证
@@ -45,7 +45,7 @@
 
 ## 完整迁移尚需完成的验收门槛
 
-- 用 Pi 的真实会话上下文/持久机制替换当前 Host surface 与工厂；为旧 v4 日志提供明确的只读导入/恢复方案，保留原身份、租约、待消费反馈、授权来源、退役上下文和未知效果证据。不能同时让两个运行时成为权威写入者。
+- Pi 权威上下文/新持久格式已替换；继续移除旧 factory/Session 注册表、v4 事件校验依赖与 inbox 兼容接口。旧 v4 导入保留原事件与旧 writer fence；仅在隔离测试数据上验证，未迁移生产数据。不能同时让两个运行时成为权威写入者。
 - 直接建立 Pi provider/config/auth 与附件投影，移除 DSH LLM seam、反向 chunk 桥和两个 Pi 版本的并存。保持原 provider profile、reasoning、模型失败分类与多模态/replay 的合同；不能只支持一个 mock OpenAI 端点便宣称 provider 功能完整。
 - 建立独立工具 registry、参数验证、角色 guard、效果账与原命令/job 的不可重放收据。用应用管理的实际进程/输出/取消/排空取代 DSH jobs，同时保证超时不冒充退出、正常关闭不冒充业务成功、未知效果不自动重试。
 - 实现并在真实可用的 OS 沙箱上验证文件/进程约束、跨任务产物 root、权限 preset、授权修正及重启隔离。当前云机 `SANDBOX_UNAVAILABLE` 是实际验收阻塞，不能降低隔离通过测试。
@@ -53,3 +53,11 @@
 - 最终以生产依赖闭包中无 DSH、Pi 上下文真实承载业务输入、全部现行功能回归及目标环境验收为完成条件。仅 package.json 不含 DSH、源码复制、接口守恒或 mock 回归均不足。
 
 不需要让用户重新批准这些已授权的实现步骤。真正缺少的信息是生产实际启用的扩展/工具清单和脱敏配置；源仓库不足以确定工作区自定义技能、浏览器/数据库 provider 或任意 Cordis 插件是否属于必须保留的实际功能。不要索取密钥，也不要在没有清单时宣称“不漏全部生产扩展”。
+
+## Pi 权威会话阶段（进行中）
+
+- `src/pi-session-persistence.js` 使用实际 SDK SessionManager，落盘头是 Pi version 3。标准消息记录存真实 text/thinking/toolCall/image 内容，非模型审计事件使用 custom entry。退役上下文以 native branch/resetLeaf 表达；旧审计事件仍可追溯。模型输入读取 Pi 分支，旧 deriveMessages 被置为抛错的真实 wire 测试仍完成工具往返。
+- 每批 night.commit 记录事件数量、前一提交及内容校验；只接受完整提交，读检查不修复尾部，持写锁者可截掉未提交尾部。完整记录篡改拒绝且不改证据。首次日志先临时文件 fsync 再 no-clobber link，写/清理结果不确定则拒绝继续执行。
+- 只允许单写；Linux 租约核对 PID、boot ID、进程起始时间与 token，死进程可回收。未知 owner 元数据拒绝自动恢复。symlink/hardlink 日志和 symlink 祖先路径拒绝。恢复不执行工具，也不把未知效果判成功。
+- 原 `.dsh/sessions` 路径暂为业务路由边界保留，内部新文件是 `<sha256(id)>.pi.jsonl`。旧 v4 日志仅由兼容 importer 读取并保持旧 writer fence；不镜像新事件到 v4。原 v4 逻辑审计/validator 依赖仍在，Pi provider 原生签名与旧 replay 转换尚待后续替换。
+- 当前 SDK/core 为 0.73.1；provider 内部 pi-ai 为 1.5.0。完整迁移仍需统一版本、原生 provider、工具/权限/进程与技能等工作，不能以本阶段替代全部完成。

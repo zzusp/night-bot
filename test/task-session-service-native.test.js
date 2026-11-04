@@ -1564,7 +1564,7 @@ test('native shared resources queue without occupying task capacity and promote 
   } finally { gate.resolve() }
   await t.step(async () => h.service.whenIdle())
   assert.deepEqual(entered, ['holder', 'independent', 'waiter'])
-  assert.ok((await t.step(async () => h.query('task.list'))).every(task => task.status === 'completed'), JSON.stringify({ tasks: (await t.step(async () => h.query('task.list'))).map(item => ({ status: item.status, recovery: item.providerRecovery })), executions: (await t.step(async () => h.query('execution.list'))).map(item => ({ key: item.key, objective: item.input.objective, status: item.status, error: item.result?.payload.error })), errors: h.toolResults.filter(item => item.result.isError) }))
+  assert.ok((await t.step(async () => h.query('task.list'))).every(task => task.status === 'completed'), JSON.stringify({ tasks: await Promise.all((await t.step(async () => h.query('task.list'))).map(async item => ({ status: item.status, recovery: item.providerRecovery, taskId:item.taskId, decision:item.lastDecision, wakes:await h.query('wake.list',{taskId:item.taskId}) }))), alerts:h.service.listAlerts(), executions: (await t.step(async () => h.query('execution.list'))).map(item => ({ key: item.key, objective: item.input.objective, status: item.status, error: item.result?.payload.error })), errors: h.toolResults.filter(item => item.result.isError) }))
   for (const execution of (await t.step(async () => h.query('execution.list'))).filter(item => item.key === 'run')) {
     assert.equal(execution.resources.state, 'released')
     assert.equal(await t.step(async () => readFile(join(fixture.root, 'tasks', execution.taskId, 'resource-proof.txt'), 'utf8')), execution.input.objective)

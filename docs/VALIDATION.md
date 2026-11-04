@@ -61,3 +61,15 @@ DSH 依赖审计见 `DSH-AUDIT.md` 和 `runtime-audit.json`。本轮替换 activ
 新日志前缀为 `evidence/native-state-*`。JSON 域兼容原单文档格式，拒绝损坏、版本不符、重复进程内 writer 和符号链接；rename 后发生 I/O 不确定性时冻结 handle，避免旧内存继续覆盖磁盘。可选额外 per-record 插件布局未实现，明确报错，不能声称其已迁移。真正的 Pi 会话、工具/沙箱、凭据/附件、技能/子代理和 workspace 层仍待替换。
 
 远端 403 拒绝未获得新的相关授权/凭据证据，**本轮没有重试推送或另换账号/环境**，也没有创建 PR、合并或部署。原始 bundle 仍保留，后续本地提交单独打包。
+
+## Pi 权威会话阶段（本轮）
+
+新日志实际由 `@mariozechner/pi-coding-agent@0.73.1` SessionManager 构造，物理格式为 Pi v3；模型输入 flush 后读取其分支，不再从旧 `deriveMessages()` 取得。`pi-wire` 测试把旧方法设为抛错，真实本地 OpenAI SSE 和工具往返仍成功；CLI/HTTP 重启保存模型测试继续保留。新 `pi-session-authority` 核验分支退役/完整审计、完整提交与撕裂尾部、完整记录篡改拒绝、读句柄不释放写权、无记录初始化可回滚、旧 v4 导入及写锁、路径链接拒绝、真实多模态字节以及旧运行时在 Pi 两次租约间改日志时拒绝恢复。`pi-replay` 核验原生签名、响应身份和异常/外来 replay 降级。
+
+针对恢复与权限边界的二次代码审查发现并修复：打开失败须释放已取得的旧 writer fence；写入与清理错误必须共同保留且标记提交结果不确定；旧日志指纹不能只在首次导入验证；源 task log 递归扫描不得追入会在关闭时消失的 Pi 临时租约目录（仍拒绝目录项 symlink，由 Pi 校验 lease）；排空跟踪不能在异步释放容量前移除 promise。保留原容量/共享资源/恢复测试断言，权限纠正测试改为解码 Pi 原生 custom 审计事件并明确核对头版本3，不再假设旧物理日志格式。
+
+检查范围限制：当前并未把旧 DSH Session/factory/工具权限/provider 兼容层移除，旧 v4 导入仍调用隔离的旧 JSONL reader/writer-fence 服务；未在真实钉钉或生产日志上操作。OS sandbox 的四项环境失败仍是实际阻塞，未放宽权限以通过。远端 push 未重试，PR/合并/部署均未发生。
+
+恢复补充审查：旧图片日志导入在附件不可用时必须保留原日志、撤销 Pi authority 注册并释放两侧 writer fence；新增测试连续两次失败后仍可打开旧 writer，验证失败路径不会留下假活跃会话。native lease close 为幂等，清理失败仍保留原因。没有把这类失败当成工具已执行或可自动重试的证据。
+
+本阶段结果：`pnpm test` 36/36、`test:runtime` 142/142（约221秒）、`test:routing` 47/47、`test:domain` 388/388；containment 1通过/4环境失败/1 Windows跳过，独立通过合计614。重复定向排查不重复计数。全量运行时回归已验证四种容量组合、共享资源队列、真实进程恢复、正常关闭与崩溃恢复不重放，失败过的旧物理格式断言及目录扫描竞态均已修复后重跑。

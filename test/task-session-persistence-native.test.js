@@ -8,9 +8,10 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
+import { AgentLoop } from '../src/pi-loop.js'
+import * as PiAuthority from '../src/pi-authority.js'
 import { SessionStore, appendPluginRecord } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import JsonlSessionPersistence from '../src/pi-session-persistence.js'
 import { LlmRuntime, LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '@deepseek-ai/dsh-tools'
@@ -32,6 +33,7 @@ async function host(root) {
   new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
   new SystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
   new LlmRuntime(ctx); new ToolRuntime(ctx)
+  await ctx.plugin(PiAuthority)
   new JsonlSessionPersistence(ctx, { root: join(root, 'legacy-sessions'), compression: 'none' })
   // Install the native factory first. A scoped ctx replacement would NOT redirect this factory.
   await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })

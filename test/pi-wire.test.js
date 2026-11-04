@@ -49,10 +49,12 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
       parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: value.text }] }, execute: async args => args }) } })
   assert.equal(handle.agent.constructor.name, 'PiLoopAgent')
+  handle.agent.session.deriveMessages = () => { throw new Error('Legacy DSH context derivation must not serve model requests') }
+  assert.equal(host.ctx.get('piAuthority').describe('wire-session').engine, 'pi-session-manager')
   handle.agent.steer(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Echo wire-value using echo.' }] }))
   await handle.agent.whenIdle()
   const events = handle.agent.session.snapshotEvents()
-  assert.equal(events.findLast(e => e.type === 'turn/end').data.reason.kind, 'completed')
+  assert.equal(events.findLast(e => e.type === 'turn/end').data.reason.kind, 'completed', JSON.stringify(events.findLast(e => e.type === 'turn/end').data.reason))
   assert.equal(requests.length, 2)
   assert.ok(requests[0].tools.some(tool => tool.function.name === 'echo'))
   assert.ok(requests[1].messages.some(message => message.role === 'tool' && message.content.includes('wire-value')))

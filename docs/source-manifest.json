@@ -988,14 +988,14 @@
     {
       "source": "task-session-persistence.js",
       "sourceSha256": "780a47c4c047c63050c81f375f2f7efb55f327ea74f7a553f3ba239cf00df7f6",
-      "status": "retained",
-      "sha256": "780a47c4c047c63050c81f375f2f7efb55f327ea74f7a553f3ba239cf00df7f6"
+      "status": "adapted",
+      "sha256": "2eb452909d2a8e0464a9fdd06dea101cf832d10c228b3624be9dd423ba5ae848"
     },
     {
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
-      "status": "retained",
-      "sha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb"
+      "status": "adapted",
+      "sha256": "3eefd65b342c6b79700b92ca8ecf3bf7fd11e743f6b71096fb59beb621181c52"
     },
     {
       "source": "task-session.js",

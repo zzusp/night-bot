@@ -12,15 +12,15 @@ for (const forbidden of ['dsh-base','dsh-app-boot','dsh-agent-loop','dsh-storage
 const report = {
   status:'partial-migration-not-dsh-independent',
   standaloneProcess:true, standaloneFromDshLibraries:false,
-  piNative:['agent-core.runAgentLoop iteration','Pi operational tool dispatch','Pi event-stream envelope; provider internally also uses Pi AI'],
+  piNative:['agent-core.runAgentLoop iteration','Pi operational tool dispatch without placeholder input','Pi coding-agent SessionManager v3 journal and branch context authority','Pi event-stream envelope; provider internally also uses Pi AI'],
   applicationNative:['resident HTTP/DWS bridge','SQLite task/operation/wake/notification ledger','single-document JSON domains and model selection'],
-  dshRemaining:['Cordis agent factory/lifecycle compatibility fork','agent and session registries','v4 session journal and persistent inbox','session projections, context assembly and provider replay','llm request/chunk seam and llm-pi-ai provider','credentials, authorization, attachments','tools validation/guards/output/scheduler','filesystem, shell, subprocess/jobs/sandbox/permission services','skills, workspace registry, child-agent providers'],
+  dshRemaining:['Cordis agent factory/lifecycle compatibility fork','agent and session registries','v4 event validators and persistent inbox compatibility facade','runtime prompt assembly and provider replay','legacy v4 import and writer fencing only','llm request/chunk seam and llm-pi-ai provider','credentials, authorization, attachments','tools validation/guards/output/scheduler','filesystem, shell, subprocess/jobs/sandbox/permission services','skills, workspace registry, child-agent providers'],
   directRuntimeDshDependencies:runtimeDsh,
   developmentDependencyCount:Object.keys(manifest.devDependencies??{}).length,
   activeLiteralDshPluginRows:pluginRows,
   activeDynamicDshPluginRows:['bash-sandbox or pwsh-sandbox','tool-bash or tool-pwsh'],
-  nativeReplacements:['storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js','agent-default-model/config-editor dependency -> durable native model selection'],
-  protocols:{external:['original HTTP JSON routes','DWS CLI JSON'],internalRemaining:['Cordis service/events','DSH Agent/Session interfaces','DSH session v4 JSONL','DSH LLM GenerateOptions/StreamChunk','DSH tool schema/result/job receipts']},
+  nativeReplacements:['storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js','agent-default-model/config-editor dependency -> durable native model selection','new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains'],
+  protocols:{external:['original HTTP JSON routes','DWS CLI JSON'],internalRemaining:['Cordis service/events','DSH Agent/Session interfaces','DSH v4 event facade; legacy v4 import only','DSH LLM GenerateOptions/StreamChunk','DSH tool schema/result/job receipts']},
 }
 await writeFile('docs/runtime-audit.json',JSON.stringify(report,null,2)+'\n')
 console.log(JSON.stringify({status:report.status,directRuntimeDshDependencies:runtimeDsh.length,removedActiveDshServices:4,standaloneFromDshLibraries:false}))

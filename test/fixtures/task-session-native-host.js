@@ -104,7 +104,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     ...(options.promoteOnTimeout ? [row('jobs-local'), row('tool-jobs')] : []),
     row('subprocess-local'), row('sandbox-local'), policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),
-    row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }), row('session-persistence-jsonl', { root: join(root, 'legacy-sessions'), compression: 'none' }),
+    row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }), { name: pathToFileURL(resolve('src/pi-authority.js')).href }, { name: pathToFileURL(resolve('src/pi-session-persistence.js')).href, config: { root: join(root, 'legacy-sessions'), compression: 'none' } },
     { name: pathToFileURL(resolve('src/native-state.js')).href, config: { root: join(root, 'storage'), model: { provider: 'native-task-test', model: 'controlled' } } },
     row('workspace'), { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [row('skill')] : []),

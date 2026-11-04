@@ -4,7 +4,7 @@
 
 基于 **pi-agent-core** 的无界面百部钉钉助手。Pi 驱动模型与工具迭代，保留原百部的消息、Topic、任务统筹/执行、恢复、权限、通知和交付账本。提供 HTTP API，不包含 Web 看板或设置页面。
 
-这不是一套精简演示：领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；会话格式、模型路由、工具、权限和生命周期等仍使用 DSH/Cordis 兼容 Host；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
+这不是一套精简演示：领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；新会话日志与上下文改由 Pi SessionManager v3 管理；模型路由、工具、权限和生命周期等仍使用 DSH/Cordis 兼容 Host；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
 
 ## 运行
 

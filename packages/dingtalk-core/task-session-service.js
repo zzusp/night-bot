@@ -316,15 +316,17 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           && (pendingDialogue(task) || pendingTaskHumanReview(task, pending) || !taskHumanWait(task))
           && pending.some(item => item.state !== 'acked')
       }
-      map.delete(id)
+      // Keep the tracked promise visible through asynchronous slot cleanup.
+      // whenIdle must not return while a drained turn can still promote work.
       if (!closed && (map === inflightTasks || map === inflightExecutions)) {
         const taskId = map === inflightTasks ? id : (await query('execution.get', { executionId: id }).catch(() => null))?.taskId
-        if (taskId && !inflightTasks.has(taskId)) {
+        if (taskId && (map === inflightTasks || !inflightTasks.has(taskId))) {
           const task = await query('task.get', { taskId }).catch(() => null)
           const executions = await query('execution.list', { taskId }).catch(() => [])
           if (!task || task.drained && !executions.some(item => !item.drained || item.status === 'queued' && !item.providerRecovery?.nextAttemptAt && item.resources?.state !== 'waiting')) taskSlots.delete(taskId)
         }
       }
+      map.delete(id)
       if (again) void kickTask(id)
       if (!closed && (map === inflightTasks || map === inflightExecutions)) void schedulePending()
     })

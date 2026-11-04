@@ -6,7 +6,7 @@
 
 ## 运行边界
 
-`src/pi-loop.js` 使用 pi-agent-core 的 `runAgentLoop` 驱动迭代和工具调用。原 DSH AgentLoop 的工厂、持久 inbox、生命周期和会话投影保留为 MIT 兼容实现；原模型/工具 step 循环已替换。每一模型请求仍从 Host 的持久 surface 派生，避免 Pi 内存上下文变成另一套权限或业务账本。模型 wire adapter 使用原 `llm-pi-ai`（pi-ai），保留多模态、provider replay、凭据、模型选择和错误分类。版本由 pnpm lock 固定；当前代理循环固定为发布包 `@mariozechner/pi-agent-core@0.73.1`，其包名已被上游弃用，后续升级到 `@earendil-works` 应重新跑这些边界测试，不能只改导入名。
+`src/pi-loop.js` 使用 pi-agent-core 的 `runAgentLoop` 驱动迭代和工具调用。原 DSH AgentLoop 的工厂、持久 inbox、生命周期和会话投影保留为 MIT 兼容实现；原模型/工具 step 循环已替换。每一模型请求先持久化已准入事件，再从 Pi SessionManager 的权威分支读取实际内容；旧 DSH deriveMessages 不再为主循环提供模型上下文。任务权限和效果账本仍由应用维护。模型 wire adapter 使用原 `llm-pi-ai`（pi-ai），保留多模态、provider replay、凭据、模型选择和错误分类。版本由 pnpm lock 固定；当前代理循环固定为发布包 `@mariozechner/pi-agent-core@0.73.1`，其包名已被上游弃用，后续升级到 `@earendil-works` 应重新跑这些边界测试，不能只改导入名。
 
 Host 保持唯一参数/业务/权限校验和工具调度入口。Pi 的操作性工具声明不重复执行更严格的 JSON Schema 校验，实际发给模型的仍是 Host 原始精确 schema；这样可保留 Zod 默认值、未知/隐藏工具尝试的拒绝和审计。单会话内 Pi 工具调用串行进入原调度器；不同 Task/Execution 的并发、资源互斥与排队继续由原 Host 控制。这保留了工具能力与安全语义，但单次模型响应中多个并行安全工具的吞吐可能低于原循环。
 
@@ -35,7 +35,7 @@ Host 保持唯一参数/业务/权限校验和工具调度入口。Pi 的操作�
 ## 与源实现的有意差异
 
 - 没有前端或桌面；CLI/config 和原 HTTP 接口作为运维入口。
-- 代理循环由 Pi 驱动；持久会话格式/Host 仍兼容 DSH，并非去除全部 DSH 的重写。
+- 代理循环由 Pi 驱动；新持久会话为 Pi v3；旧事件/Host 接口、导入及 provider 兼容层仍依赖 DSH，并非去除全部 DSH 的重写。
 - 内部历史 backend 标签仍保留 `dsh`，实际运行是 PiLoopAgent；可选 `claude` 路径保留。
 - 群决策指引将同义的“不唤醒任务”改为“不唤醒已有任务”，对齐源测试的明确措辞；“已有任务受到相关事实影响时回流原 Owner”的规则保持原样。
 - 原生测试 Host 改挂 PiLoopAgent；人工协调恢复测试保留模拟的重试到期时钟，直到原执行实际恢复并排空，防止异步入场前将时钟倒退。原业务断言全部保留。
@@ -45,3 +45,5 @@ Host 保持唯一参数/业务/权限校验和工具调度入口。Pi 的操作�
 ## 后续替换记录
 
 `src/native-domain.js` 与 `src/native-state.js` 替换 active DSH storage/storage-json/storage-domain/default-model 服务。核心 store 与旧 v8 schema 的声明 helper 改用本地实现，其余领域源码继续保留。新模型保存接口不依赖 DSH config editor，HTTP 保存与重启已测。兼容服务名保留，实际实现与不支持的额外布局明确见 DSH-AUDIT；此变化不意味着会话、工具、权限或 provider 已脱离 DSH。生产直接依赖已与 108 个开发/历史测试依赖分开，但仍有 56 个生产直接 DSH 依赖。
+
+Pi 会话阶段同时修复旧服务在异步容量清理前提前移除跟踪 promise 的竞态；新 Pi lease 目录由 backend 自己管理，原安全目录扫描仍拒绝链接但不递归扫描这些会消失的临时目录。所有改动在 source-manifest 明确记录，目前五个核心模块存在有意差异。旧日志导入后保留 writer fence，并在下次租约核对旧历史指纹，发现旧软件改写时拒绝继续，防止分叉恢复。

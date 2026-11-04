@@ -1,7 +1,8 @@
 // Lifecycle compatibility fork of @deepseek-ai/dsh-agent-loop 0.2.1-alpha.2 (MIT).
 // Inference and tool iteration are owned by pi-agent-core; host events stay compatible.
+import { projectPiMessage } from "./pi-session-persistence.js";
 import { runAgentLoop } from "@mariozechner/pi-agent-core";
-import { toPiContext, fromPiAssistant, piFailureStream, piUsage, bridgeDshStream } from "./pi-messages.js";
+import { fromPiAssistant, piFailureStream, piUsage, bridgeDshStream } from "./pi-messages.js";
 import { Service } from "@deepseek-ai/cordis";
 import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
@@ -969,12 +970,12 @@ var PiLoopAgent = class {
 					const event = this.session.snapshotEvents().findLast(e => e.type === 'tool/result' && e.data.message?.toolCallId === id);
 					if (!event) throw new Error('pi_tool_result_not_journaled:' + id);
 					const message = event.data.message;
-					return { content: toPiContext({ messages: [message] }).messages.flatMap(m => m.content),
+					return { content: (await projectPiMessage(message, this.ctx, signal)).content,
 						details: { hostIsError: message.isError === true } };
 				}
 			}));
 			const tools = makeTools(decision.assembly);
-			const placeholder = { role: 'user', content: [{ type: 'text', text: '[host input]' }], timestamp: Date.now() };
+			const admittedPrompts = await Promise.all(decision.messages.map(message => projectPiMessage(message, this.ctx, signal)));
 			const first = { config: { provider: this.options.provider ?? 'host', model: this.options.model ?? 'host' } };
 
 			let firstCall = true;
@@ -1004,7 +1005,7 @@ var PiLoopAgent = class {
                     }
                     if (context !== undefined && !contextAdmitted) this.session.append('user/message', context, { surfaceOp: 'append' });
                     firstAttempt = false;
-					const request = this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, decision.startsRequestSeries === true, signal);
+					const request = await this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, decision.startsRequestSeries === true, signal);
 					tools.splice(0, tools.length, ...makeTools(assembly));
 					const live = new AssistantStreamAttempt(this.session.id, ++this.assistantAttemptCounter, () => ++this.assistantStreamRevision, turn, step,
                         frame => this.dispatch.emit('agent/assistant-stream', { frame }));
@@ -1023,12 +1024,12 @@ var PiLoopAgent = class {
                     }
 				} catch (error) { return piFailureStream(error, signal.aborted ? 'aborted' : 'error'); }
 			};
-			await runAgentLoop([placeholder], { systemPrompt: '', messages: [], tools }, {
+			await runAgentLoop(admittedPrompts, { systemPrompt: '', messages: [], tools }, {
 				model: { id: first.config.model, provider: first.config.provider, api: 'host', baseUrl: '', reasoning: false, input: ['text'], contextWindow: 128000, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }, convertToLlm: messages => messages,
 				toolExecution: 'sequential',
 				afterToolCall: ({ result }) => ({ isError: result.details?.hostIsError === true, terminate: concluded }),
 				shouldStopAfterTurn: () => rejected || concluded,
-				getSteeringMessages: async () => this.inbox.nextStep.length ? [placeholder] : [],
+				getSteeringMessages: async () => Promise.all(this.inbox.nextStep.map(message => projectPiMessage(message, this.ctx, signal))),
 			}, async event => {
 				if (event.type !== 'message_end' || event.message.role !== 'assistant' || rejected || signal.aborted) return;
 				const message = event.message;
@@ -1097,7 +1098,7 @@ var PiLoopAgent = class {
 		};
 	}
 	/** Log the resolved envelope and derive a frozen request from the admitted surface. */
-	buildRequest(config, preparedCall, tools, position, startsRequestSeries, signal) {
+	async buildRequest(config, preparedCall, tools, position, startsRequestSeries, signal) {
 		const { session } = this;
 		const surfaceGeneration = session.surface.contentGeneration;
 		const header = canonicalHeader({
@@ -1157,7 +1158,8 @@ var PiLoopAgent = class {
 		if (previousContext?.provider !== requestContext.provider || previousContext.model !== requestContext.model || previousContext.contextWindow !== requestContext.contextWindow || previousContext.systemPromptUpdate !== requestContext.systemPromptUpdate) session.append("request/context", requestContext);
 		signal.throwIfAborted();
 		deepFreeze(header);
-		const boundaryMessages = session.deriveMessages();
+		await this.loopCtx.sessions.flush(session);
+        const boundaryMessages = this.loopCtx.piAuthority.context(session.id).hostMessages;
 		for (const message of boundaryMessages) {
 			if (this.frozenMessages.has(message)) continue;
 			deepFreeze(message);
@@ -1433,7 +1435,9 @@ var AgentLoop = class extends Service {
 		"llm",
 		"tools",
 		"systemPrompt",
-		"sessionProjections"
+		"sessionProjections",
+        "piAuthority",
+        "sessionPersistence"
 	];
 	/** Runtime schema for declarative agents. */
 	static Config = z.object({

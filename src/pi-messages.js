@@ -11,12 +11,6 @@ export function fromPiAssistant(message) {
     ? { type: 'tool-call', id: block.id, name: block.name, arguments: JSON.stringify(block.arguments) }
     : block.type === 'thinking' ? { type: 'reasoning', text: block.thinking } : block)
 }
-// Pi's loop keeps its own operational transcript; the host's immutable surface remains
-// authoritative for model input, including attachment policy and provider replay state.
-export function toPiContext(request) {
-  return { messages: request.messages.map(message => ({ role: message.role === 'tool' ? 'toolResult' : 'user',
-    content: message.content.map(block => ({ type: 'text', text: block.type === 'text' ? block.text : '[host structured content]' })), timestamp: Date.now() })) }
-}
 export function piFailureStream(error, stopReason = 'error') {
   const stream = new AssistantMessageEventStream()
   const message = { role: 'assistant', content: [], api: 'host', provider: 'host', model: 'host', timestamp: Date.now(),

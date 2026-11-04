@@ -80,5 +80,47 @@
     "directRuntimeDshDependencies": 56,
     "remotePush": "not retried; prior 403 denial stands",
     "deployed": false
+  },
+  "piSessionAuthority": {
+    "date": "2026-11-04",
+    "groups": {
+      "own": {
+        "tests": 36,
+        "pass": 36,
+        "fail": 0,
+        "skipped": 0
+      },
+      "runtime": {
+        "tests": 142,
+        "pass": 142,
+        "fail": 0,
+        "skipped": 0
+      },
+      "routing": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "skipped": 0
+      },
+      "domain": {
+        "tests": 388,
+        "pass": 388,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "containment": {
+      "tests": 6,
+      "pass": 1,
+      "fail": 4,
+      "skipped": 1
+    },
+    "uniquePass": 614,
+    "environmentFailures": 4,
+    "platformSkipped": 1,
+    "directRuntimeDshDependencies": 56,
+    "legacyImport": "isolated test data only; old writer fence and history fingerprint retained",
+    "remotePush": "not retried; prior 403 denial stands",
+    "completeMigration": false
   }
 }
