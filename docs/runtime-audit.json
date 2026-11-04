@@ -5,16 +5,14 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0"
   },
-  "unmountedPreparation": [
-    "src/pi-provider-catalog.js: native model/profile catalog; Host provider still DSH"
-  ],
+  "unmountedPreparation": [],
   "standaloneProcess": true,
   "standaloneFromDshLibraries": false,
   "piNative": [
     "agent-core.runAgentLoop iteration",
     "Pi operational tool dispatch without placeholder input",
     "Pi coding-agent SessionManager v3 journal and branch context authority",
-    "Pi event-stream envelope; provider internally also uses Pi AI"
+    "NativePiProvider: Pi Models.streamSimple, native catalog/auth/retry/discovery/login/event handling"
   ],
   "applicationNative": [
     "resident HTTP/DWS bridge",
@@ -27,8 +25,8 @@
     "v4 event validators and persistent inbox compatibility facade",
     "runtime prompt assembly and provider replay",
     "legacy v4 import and writer fencing only",
-    "llm request/chunk seam and llm-pi-ai provider",
-    "credentials, authorization, attachments",
+    "generic llm registry/middleware and GenerateOptions/chunk compatibility bridge; native provider no longer invokes dsh-llm-pi-ai",
+    "durable credential record store, neutral authorization service, attachment storage/request-image policy helpers",
     "tools validation/guards/output/scheduler",
     "filesystem, shell, subprocess/jobs/sandbox/permission services",
     "skills, workspace registry, child-agent providers"
@@ -92,10 +90,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-llm-pi-ai",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -259,7 +253,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 108,
+  "developmentDependencyCount": 109,
   "activeLiteralDshPluginRows": [
     "agent",
     "agent-instructions",
@@ -272,7 +266,6 @@
     "jobs-local",
     "launch-environment",
     "llm",
-    "llm-pi-ai",
     "llm-retry",
     "permission-presets",
     "sandbox-local",
@@ -312,7 +305,8 @@
   "nativeReplacements": [
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
     "agent-default-model/config-editor dependency -> durable native model selection",
-    "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains"
+    "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
+    "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain"
   ],
   "protocols": {
     "external": [

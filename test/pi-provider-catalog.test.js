@@ -32,3 +32,7 @@ test('stored unavailable models remain diagnosable without deleting healthy rout
 for(const [label,patch]of Object.entries({duplicate:{models:[{id:'m'},{id:'m'}]},reasoning:{models:[{id:'m',reasoningEfforts:{high:null}}]},compat:{compat:{sendSessionAffinityHeaders:true}},wrongProtocol:{api:'azure-openai-responses'},unusedCompat:{api:'anthropic-messages',compat:{supportsDeveloperRole:true}},emptyInput:{defaultInput:[]},header:{headers:{'x-invalid':'line\nbreak'}},timeout:{streamIdleTimeoutMs:2147483648},oldRetry:{maxRetries:3}}))test('native provider refuses unsupported config: '+label,()=>{
  assert.throws(()=>resolvePiProfiles({gateway:{api:'openai-completions',baseURL:'https://invalid.example',models:[{id:'m'}],...patch}}),e=>e.code==='INVALID_CONFIG')
 })
+test('a duplicated stored model remains diagnostic and is excluded from the served catalog',()=>{
+ const profile=resolvePiProfiles({fixture:{api:'openai-completions',baseURL:'https://invalid.example',models:[{id:'duplicate'},{id:'duplicate'},{id:'healthy'}]}},{deferred:true}).get('fixture')
+ assert.ok(profile.modelErrors.has('duplicate'));assert.deepEqual(profile.models.map(m=>m.id),['healthy'])
+})

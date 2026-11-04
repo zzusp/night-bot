@@ -75,3 +75,15 @@ DSH 依赖审计见 `DSH-AUDIT.md` 和 `runtime-audit.json`。本轮替换 activ
 本阶段结果：`pnpm test` 36/36、`test:runtime` 142/142（约221秒）、`test:routing` 47/47、`test:domain` 388/388；containment 1通过/4环境失败/1 Windows跳过，独立通过合计614。重复定向排查不重复计数。全量运行时回归已验证四种容量组合、共享资源队列、真实进程恢复、正常关闭与崩溃恢复不重放，失败过的旧物理格式断言及目录扫描竞态均已修复后重跑。
 
 统一版本阶段：官方 @earendil-works core/SDK/pi-ai 1.5.0，`finishTurn` 正确保留结束/拒绝语义；本地49、运行时142、路由47均通过。新增13项原生 catalog 配置测试尚不表示 Host provider 已接管。上一0b7d6c2归档在独立克隆仅安装生产依赖后运行26项测试通过（重复验证，不与本地数量相加）。
+
+## 本地 Pi provider 阶段
+
+Host 已将旧 provider 插件替换为本地 `NativePiProvider`；旧 `dsh-llm-pi-ai` 仅留在开发依赖供历史/差分测试。实际调用 Pi Models.streamSimple，保留已有通用 LLM 中间件及审计协议，不声称这些剩余 DSH seam 已去除。生产 DSH 直接依赖55。
+
+- 本地测试99/99；包含旧 provider 的公开接口差分，41个 catalog provider、1592个模型的目录、推理/控制/上下文更新元数据，以及 prepared call 的默认值一致（不调用厂商接口）。
+- 实际本地 HTTP/SSE 验证 Completions、Responses 和 Anthropic Messages 的请求、鉴权头、文本、usage 和 replay；PiLoop 完整工具往返与 CLI/HTTP 保存后重启继续通过。新测试还核对 prepared call 固定一代 endpoint，后续请求采用新配置。
+- 凭据/OAuth refresh 排他、未挂载存储不假装保存、非法/缺失 key、登录设备码/提示/取消信号、动态 catalog 诊断、模型覆盖、工具声明、图像预算/逐出现次数卸载、text-only 和只读文件路径、流超时/中止/审计失败、quota/rate/context错误分类均有隔离测试。测试没有真实 OAuth 登录、钉钉外发或生产写入。
+- 运行时142/142（约223秒）、路由47/47。本阶段领域代码未变，领域388及 containment 1通过/4 OS环境失败/1 Windows跳过沿用此前单独记录，未混称新执行。
+- 对恢复错误分类作了二次审查，修正 quota 必须使用既有 `QUOTA` 分类、显式 context overflow 表述、重复存储模型的目录过滤、text-only adapter直调拒绝图片、以及 audit observer 抛错不能让 native stream 永久悬挂。
+
+真实厂商 OAuth、AWS/Vertex/Azure 环境、WebSocket 等外部后端尚未验证；静态 catalog/登录映射和本地协议验证不能代替它们。通用 LLM/chunk/附件策略兼容层、工具/权限/进程服务、工厂与 registry 仍待完整迁移；OS sandbox 与远端403阻塞仍在。

@@ -12,7 +12,7 @@
 |---|---|---|
 | 代理迭代及操作性工具调用 | `@earendil-works/pi-agent-core@1.5.0` 的 `runAgentLoop` | 真正使用 Pi 迭代；单会话工具串行，Host 仍执行工具调度 |
 | 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。prompt 组装和 provider seam 仍待替换 |
-| 模型请求与流 | DSH `llm.prepareCall/GenerateOptions/StreamChunk` → `dsh-llm-pi-ai` → `@earendil-works/pi-ai@1.5.0`；再经本地桥转换成 Pi core 的事件流 | provider 内确实使用 pi-ai，但模型路由、凭据、多模态、replay 和错误处理仍依赖 DSH 适配器。core、SDK 和 provider 现在均为 1.5.0；仍需去掉请求/chunk 反向兼容桥 |
+| 模型请求与流 | 本地 `NativePiProvider` → Pi Models.streamSimple 1.5.0；本地 catalog/auth/retry/login/discovery/context/events | **本轮移除旧 DSH provider 插件**；通用 DSH LLM registry/middleware、共享附件/工具历史投影 helpers 和 request/chunk 兼容桥仍在，尚非完全原生直连 |
 | Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；DSH `agents/sessions/scope` | **兼容层**；不是 Pi SDK 的 `createAgentSession`/`SessionManager` |
 | 会话历史与恢复 | Pi v3 原生树日志、night.commit 校验链、单写租约；旧 v4 仅导入/写锁保护 | **本轮替换新日志**；原逻辑事件仍保留在 Pi 审计记录供旧 factory/恢复策略使用；不是已经移除 DSH 会话接口 |
 | 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；其中恢复读取的会话与原生 job 收据仍依赖 DSH，不能因此称整个恢复原生 |
@@ -25,7 +25,7 @@
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
 
-完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **56 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
+完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **55 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
 
 ## 进程与协议
 
@@ -46,7 +46,7 @@
 ## 完整迁移尚需完成的验收门槛
 
 - Pi 权威上下文/新持久格式已替换；继续移除旧 factory/Session 注册表、v4 事件校验依赖与 inbox 兼容接口。旧 v4 导入保留原事件与旧 writer fence；仅在隔离测试数据上验证，未迁移生产数据。不能同时让两个运行时成为权威写入者。
-- 直接建立 Pi provider/config/auth 与附件投影，移除 DSH LLM seam 与反向 chunk 桥（Pi 版本已统一为1.5.0）。保持原 provider profile、reasoning、模型失败分类与多模态/replay 的合同；不能只支持一个 mock OpenAI 端点便宣称 provider 功能完整。
+- provider wire/config/auth/login/discovery 已由本地模块替代旧插件；继续移除通用 DSH LLM registry、request/chunk 桥与共享附件/工具历史 helpers。真实厂商 OAuth、AWS/Vertex/Azure、WebSocket 等外部环境尚未验收，不能把静态模型/协议回归当作所有真实后端验收。
 - 建立独立工具 registry、参数验证、角色 guard、效果账与原命令/job 的不可重放收据。用应用管理的实际进程/输出/取消/排空取代 DSH jobs，同时保证超时不冒充退出、正常关闭不冒充业务成功、未知效果不自动重试。
 - 实现并在真实可用的 OS 沙箱上验证文件/进程约束、跨任务产物 root、权限 preset、授权修正及重启隔离。当前云机 `SANDBOX_UNAVAILABLE` 是实际验收阻塞，不能降低隔离通过测试。
 - 将技能/指引发现、子代理和 workspace 行为迁入 Pi/应用自有实现；迁移既有持久数据并核对所有当前实际配置的扩展能力。
@@ -62,8 +62,16 @@
 - 原 `.dsh/sessions` 路径暂为业务路由边界保留，内部新文件是 `<sha256(id)>.pi.jsonl`。旧 v4 日志仅由兼容 importer 读取并保持旧 writer fence；不镜像新事件到 v4。原 v4 逻辑审计/validator 依赖仍在，Pi provider 原生签名与旧 replay 转换尚待后续替换。
 - SDK/core/provider 的 Pi 包现已统一为官方 @earendil-works 1.5.0。完整迁移仍需原生 provider、工具/权限/进程与技能等工作，不能以本阶段替代全部完成。
 
-## 统一 Pi 版本与下一步 provider 工作
+## 统一 Pi 版本检查点 01b033a（历史）
 
 core、coding-agent SDK 和 pi-ai 现均直接固定为 `@earendil-works` 1.5.0，provider 内部也是相同发布版本；pnpm 可因 peer 解析保留同版本的不同依赖实例，不声称单一模块实例。升级适配公开 finishTurn API，36项本地、142项运行时、47项路由及7项定向服务用例通过。
 
-`src/pi-provider-catalog.js` 是下一步独立 provider 的纯配置/模型模块，直接使用 Pi 公开 Models/provider APIs；13项测试核对所有已安装 chat catalog 的模型元数据、内置 auth 实现保留、端点、模型覆盖、推理映射、compat和错误。**该模块尚未接管 Host provider 请求**，当前实际请求仍由 DSH llm-pi-ai 处理，不能把模块存在说成 provider 已迁移。接下来须完成凭据/OAuth、request projection、图像预算/卸载、错误与流、发现/配置接口，逐个替换后再移除旧适配器。
+`src/pi-provider-catalog.js` 是下一步独立 provider 的纯配置/模型模块，直接使用 Pi 公开 Models/provider APIs；13项测试核对所有已安装 chat catalog 的模型元数据、内置 auth 实现保留、端点、模型覆盖、推理映射、compat和错误。**该检查点尚未接管 Host provider 请求**，当时实际请求仍由 DSH llm-pi-ai 处理，不能把模块存在说成 provider 已迁移。接下来须完成凭据/OAuth、request projection、图像预算/卸载、错误与流、发现/配置接口，逐个替换后再移除旧适配器。
+
+## 本地 Pi provider 阶段（当前）
+
+Host 已挂载 `src/native-pi-provider.js`，不再挂载旧 `dsh-llm-pi-ai`；旧包仅为历史/差分测试保留在 devDependencies。新增本地模块负责 catalog 与 profile（全部内置 chat provider 保留自身协议/auth 实现）、模型覆盖、推理等级、compat、策略默认值、凭据引用/OAuth record 映射、登录通知/问题、发现、实际请求和原生事件处理。旧 credential namespace `llm-pi-ai/<provider>` 只是持久兼容地址，并非仍运行旧插件。
+
+公开接口差分验证 41 个 provider/1592 个模型的目录、模型控制/推理/更新元数据及 prepared call 默认值，与原实现一致；不访问外部厂商。真实本地 HTTP/SSE 验证 Completions、Responses、Anthropic 三种显式协议，以及原 PiLoop 的完整工具往返和 CLI 重启。附件测试保留只读文件路径、不声称已读、请求图像尺寸/字节预算、逐出现次数卸载、模型 text-only 降级及禁止不支持角色；不静默丢图或扩大文件访问。凭据测试覆盖旧记录、OAuth refresh modify 排他、缺失/非法 key、写失败不冒充登录成功；没有使用真实密钥或登录真实账号。
+
+**剩余兼容边界明确保留：** provider 仍通过通用 DSH `LlmAdapter/llm` registry 接入，原有 middleware 继续执行；应用审计使用旧 chunk 类型，主循环的反向 chunk bridge 尚在；文件/图像/工具历史的一部分策略调用通用 DSH helpers。原生事件模块保留真实 Pi event，同时为既有审计生成单向观察记录，但当前 Host 路径依然经过兼容桥。凭据记录后端、授权服务及附件后端也仍是 DSH。这些不计作已去除，完整迁移仍未完成。

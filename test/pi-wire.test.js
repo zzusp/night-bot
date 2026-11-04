@@ -49,6 +49,7 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
       parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: value.text }] }, execute: async args => args }) } })
   assert.equal(handle.agent.constructor.name, 'PiLoopAgent')
+  assert.equal(host.ctx.get('nativePiProvider').adapter.constructor.name, 'NativePiProvider')
   handle.agent.session.deriveMessages = () => { throw new Error('Legacy DSH context derivation must not serve model requests') }
   assert.equal(host.ctx.get('piAuthority').describe('wire-session').engine, 'pi-session-manager')
   handle.agent.steer(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Echo wire-value using echo.' }] }))

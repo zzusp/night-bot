@@ -4,7 +4,7 @@
 
 基于 **pi-agent-core** 的无界面百部钉钉助手。Pi 驱动模型与工具迭代，保留原百部的消息、Topic、任务统筹/执行、恢复、权限、通知和交付账本。提供 HTTP API，不包含 Web 看板或设置页面。
 
-这不是一套精简演示：领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；新会话日志与上下文改由 Pi SessionManager v3 管理；模型路由、工具、权限和生命周期等仍使用 DSH/Cordis 兼容 Host；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
+领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；新会话日志与上下文改由 Pi SessionManager v3 管理；模型 provider 已改由本地 NativePiProvider 调用 Pi Models；通用模型注册/审计协议、工具、权限和生命周期等仍使用 DSH/Cordis 兼容 Host；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
 
 ## 运行
 
@@ -25,7 +25,7 @@ curl http://127.0.0.1:18998/health
 
 `/config/agent` 保存的默认模型选择持久化于 `stateDir/storage/night_model_selection.json`，重启后优先于初始 JSON 配置中的默认选择；provider 声明仍由启动配置提供。
 
-`providers` 使用原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为额外技能目录。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和原生子代理；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。
+`providers` 由本地 NativePiProvider 处理，兼容原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为额外技能目录。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和原生子代理；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。
 
 ## 验证
 

@@ -1,3 +1,4 @@
+import { resolvePiRetryPolicy } from './pi-provider-retry.js'
 import { builtinModels, builtinProviders, getBuiltinModels, getAllBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
@@ -57,6 +58,7 @@ function scalarProfile(provider,source) {
   if(!provider||!object(source))throw invalid(provider,'profile must be an object with a nonempty route')
   for(const key of ['provider','maxRetries','maxRetryDelayMs'])if(key in source)throw invalid(provider,`removed field ${key}`)
   for(const key of ['baseURL','displayName','apiKeyEnv'])if(source[key]!==undefined&&(typeof source[key]!=='string'||!source[key]))throw invalid(provider,`${key} must be nonempty string`)
+  if(source.apiKeyEnv!==undefined&&!/^[A-Za-z_][A-Za-z0-9_]*$/.test(source.apiKeyEnv))throw invalid(provider,'invalid credential reference')
   if(source.api!==undefined&&!protocols[source.api])throw invalid(provider,`unsupported explicit protocol ${source.api}`)
   if(source.headers!==undefined&&!object(source.headers))throw invalid(provider,'headers must be an object')
   for(const [key,value]of Object.entries(source.headers??{})){if(typeof value!=='string')throw invalid(provider,`header ${key} must be string`);try{new Headers([[key,value]])}catch{throw invalid(provider,`invalid header ${key}`)}}
@@ -71,6 +73,7 @@ function scalarProfile(provider,source) {
   for(const key of ['timeoutMs','websocketConnectTimeoutMs'])if(source[key]!==undefined&&(!Number.isSafeInteger(source[key])||source[key]<0))throw invalid(provider,`invalid ${key}`)
   if(source.thinkingBudgets!==undefined){if(!object(source.thinkingBudgets))throw invalid(provider,'thinkingBudgets must be object');for(const [level,value]of Object.entries(source.thinkingBudgets))if(!['minimal','low','medium','high'].includes(level)||!Number.isFinite(value))throw invalid(provider,`invalid thinkingBudgets.${level}`)}
   compatEntries(provider,source.compat)
+  result.retryPolicy=resolvePiRetryPolicy(source.retryPolicy)
   return result
 }
 function modelsFor(profile,{deferred}) {
@@ -88,6 +91,7 @@ function modelsFor(profile,{deferred}) {
   for(const entry of entries)try{
     if(!object(entry)||typeof entry.id!=='string'||!entry.id||seen.has(entry.id))throw invalid(provider,'invalid or duplicate model id')
     seen.add(entry.id)
+    if(entry.name!==undefined&&typeof entry.name!=='string')throw invalid(provider,`${entry.id}: name must be string`)
     const base=defaults.get(entry.id),api=profile.api??base?.api??shared,baseUrl=profile.baseURL??base?.baseUrl??baseProvider?.baseUrl
     if(api===undefined||baseUrl===undefined)throw invalid(provider,`${entry.id}: api and baseURL required`)
     const gate=gates.get(api)??[],compat=Object.fromEntries(compatEntries(provider,profile.compat).filter(([key])=>gate.includes(key)))
@@ -97,8 +101,9 @@ function modelsFor(profile,{deferred}) {
     if(entry.maxTokens!==undefined)caps.set(entry.id,entry.maxTokens)
     models.push(model)
   }catch(error){if(!deferred||error.code!=='INVALID_CONFIG')throw error;errors.set(entry?.id??'',error.message)}
-  for(const [key]of compatEntries(provider,profile.compat))if(!models.some(model=>gates.get(model.api)?.includes(key)))throw invalid(provider,`compat.${key} is unused by this route`)
-  return{models,modelErrors:errors,configuredMaxTokens:caps,baseProvider}
+  const serviceable=models.filter(model=>!errors.has(model.id))
+  for(const [key]of compatEntries(provider,profile.compat))if(!serviceable.some(model=>gates.get(model.api)?.includes(key)))throw invalid(provider,`compat.${key} is unused by this route`)
+  return{models:serviceable,modelErrors:errors,configuredMaxTokens:caps,baseProvider}
 }
 export function resolvePiProfiles(providers,{deferred=false}={}) {
   if(!object(providers))throw invalid('', 'providers must be a dictionary')

@@ -31,7 +31,7 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
       row('llm'), row('tools'), row('web'), row('llm-retry'), row('authorization'),
       row('credentials-local', { path: join(root, 'credentials.json'), watch: false }),
       row('attachment-local', { dshHome: root }), row('launch-environment'), row('timeout'),
-      row('llm-pi-ai', { providers: config.providers ?? {} }),
+      { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
       row('jobs-local'), row('tool-jobs'), row('subprocess-local'), row('sandbox-local'),
       { name: pathToFileURL(policy).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
