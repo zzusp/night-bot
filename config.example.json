@@ -1,0 +1,21 @@
+{
+  "stateDir": "/workspace/night-bot-state",
+  "workspaceDir": "/workspace/night-bot-work",
+  "shell": "bash",
+  "model": { "provider": "openai", "model": "gpt-4.1" },
+  "providers": { "openai": { "apiKeyEnv": "OPENAI_API_KEY" } },
+  "skillDirs": [],
+  "resident": {
+    "host": "127.0.0.1",
+    "port": 18998,
+    "groups": [],
+    "dws": { "enabled": false, "writesAuthorized": false },
+    "taskSessions": {
+      "instanceId": "night-bot-local",
+      "ownerActorId": "REPLACE_WITH_OWNER_ID",
+      "webActorId": "REPLACE_WITH_OWNER_ID",
+      "ingressEpoch": "2026-11-04T00:00:00Z",
+      "initialize": true
+    }
+  }
+}

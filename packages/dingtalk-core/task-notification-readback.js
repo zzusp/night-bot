@@ -1,0 +1,106 @@
+import { dwsIdempotencyKey, matchesOutbound } from './dws-adapter.js'
+import { notificationOpenTaskId } from './group-message.js'
+import { sameDeliveredText } from './group-message.js'
+import { messageTimestamp } from './dws-bridge.js'
+
+export async function readOperatorNotificationDelivery(adapter, notification) {
+  const payload = notification.payload, openTaskId = notificationOpenTaskId(notification.ack ?? notification.receipt)
+  const proof = openTaskId
+    ? await adapter.confirmSelfDelivery({ openTaskId, recipientUserId: payload.recipientUserId, text: payload.text })
+    : await adapter.findWorkflowApprovalNotice({ requestId: payload.humanRequestId, recipientUserId: payload.recipientUserId, text: payload.text })
+  return proof?.senderActorId ? proof : undefined
+}
+
+/** A successful original send receipt proves delivery; history matching still verifies content. */
+export function verifyTaskNotificationReadback(notification, observed, { acknowledgedMessageId, senderActorId, sendStatusConfirmed = false } = {}) {
+  const payload = notification.payload
+  const messageId = observed?.messageId
+  if (!messageId || observed.conversationId !== payload.conversationId) return undefined
+  if (acknowledgedMessageId && acknowledgedMessageId !== messageId) return undefined
+  const sentTime = messageTimestamp(observed.createTime)
+  // 精确 SUCCESS 回执绑定原发送任务与消息，只确认送达，不推断正文、引用或 @ 核验结果。
+  if (sendStatusConfirmed && acknowledgedMessageId === messageId) return {
+    messageId, conversationId: payload.conversationId, identity: 'send-receipt',
+    ...(Number.isFinite(sentTime) ? { sentAt: new Date(sentTime).toISOString() } : {}),
+    atOpenDingTalkIds: [], mentionVerification: 'unavailable', observedAt: new Date().toISOString(),
+  }
+  const quote = observed.quotedMessage
+  if (payload.sourceMessageId ? quote?.messageId !== payload.sourceMessageId || quote?.conversationId !== payload.conversationId
+    : quote != null) return undefined
+  const expected = payload.atOpenDingTalkIds ?? []
+  const actualAll = observed.atAll ?? observed.at?.atAll
+  if (payload.atAll ? actualAll !== true : actualAll === true) return undefined
+  // userId 与 openDingTalkId 不是同一身份类型，不能据前者宣称原生提及已核验。
+  const actual = observed.atOpenDingTalkIds ?? observed.at?.atOpenDingTalkIds
+    ?? (Array.isArray(observed.mentions) ? observed.mentions.map(item => item && typeof item === 'object' ? item.openDingTalkId : undefined) : undefined)
+  const exactReceipt = acknowledgedMessageId === messageId
+  const observedKey = observed.uuid ?? observed.idempotencyKey
+  // 新发送使用有界外部键；历史原始键只作为回读证据，不改变通知状态或授权重发。
+  const exactUuid = observedKey === notification.id || observedKey === dwsIdempotencyKey(notification.id)
+  const ownSender = senderActorId && (observed.senderOpenDingTalkId ?? observed.senderId) === senderActorId
+  if (senderActorId && !ownSender) return undefined
+  // DWS 查询不暴露原生 @ 元数据；只在 SUCCESS 的精确发送回执和发送者均核实时确认送达。
+  // 这不证明 @ 已核验；历史匹配仍须提供原生 @，显式错误的 @ 始终拒绝。
+  const unavailableMention = expected.length > 0 && actual === undefined
+  if (expected.length && (unavailableMention ? !(exactReceipt && sendStatusConfirmed && ownSender)
+    : !Array.isArray(actual) || expected.some(id => !actual.includes(id)) || actual.some(id => !expected.includes(id)))) return undefined
+  if (!exactReceipt && !exactUuid && !ownSender) return undefined
+  if (!sameDeliveredText(observed.text, payload.text, quote)) return undefined
+  return { messageId, conversationId: payload.conversationId, ...(quote ? { quoteMessageId: quote.messageId } : {}),
+    ...(Number.isFinite(sentTime) ? { sentAt: new Date(sentTime).toISOString() } : {}),
+    atOpenDingTalkIds: unavailableMention ? [] : [...expected], ...(payload.atAll ? { atAll: true } : {}), mentionVerification: unavailableMention ? 'unavailable' : 'verified',
+    identity: exactReceipt ? 'send-receipt' : exactUuid ? 'idempotency-key' : 'configured-sender', observedAt: new Date().toISOString() }
+}
+
+export async function readTaskNotificationDelivery(adapter, notification, { senderActorId } = {}) {
+  const ack = notification.ack ?? notification.receipt
+  let messageId = ack?.messageId ?? ack?.messageRef?.openMessageId ?? ack?.sendReceipt?.messageId ?? ack?.result?.messageId ?? ack?.result?.openMessageId
+  const openTaskId = notificationOpenTaskId(ack)
+  let sendStatusConfirmed = false
+  if (openTaskId) {
+    const status = await adapter.querySendStatus(openTaskId)
+    const conversationId = status.messageRef?.openConversationId ?? status.result?.openConversationId
+    if (status.result?.sendStatus !== 'SUCCESS' || conversationId !== notification.payload.conversationId) return undefined
+    const sentMessageId = status.messageRef?.openMessageId ?? status.result?.openMessageId
+    if (!sentMessageId || messageId && sentMessageId !== messageId) return undefined
+    messageId = sentMessageId
+    sendStatusConfirmed = true
+  }
+  const acknowledgedMessageId = messageId
+  if (!messageId) {
+    const outbound = { outboundId: notification.id, text: notification.payload.text,
+      replyToMessageId: notification.payload.sourceMessageId, replyToSenderOpenDingTalkId: notification.payload.actorId,
+      atOpenDingTalkIds: notification.payload.atOpenDingTalkIds ?? [], ...(notification.payload.atAll ? { atAll: true } : {}) }
+    const history = await adapter.readGroup(notification.payload.conversationId)
+    if (history.complete !== true || history.hasMore === true || !Array.isArray(history.messages) || history.failedCount > 0 || history.failures?.length) throw new Error('TASK_NOTIFICATION_INCOMPLETE_READBACK')
+    const exact = history.messages?.filter(message => matchesOutbound(message, outbound)) ?? []
+    if (exact.length > 1) throw new Error('TASK_NOTIFICATION_AMBIGUOUS_READBACK')
+    const found = exact[0] ?? await adapter.findOutboundMessage(notification.payload.conversationId, outbound)
+    messageId = found?.messageId
+    if (!messageId) return undefined
+  }
+  const observed = await adapter.readMessage(notification.payload.conversationId, messageId)
+  return verifyTaskNotificationReadback(notification, observed, { acknowledgedMessageId, senderActorId, sendStatusConfirmed })
+}
+
+/** Uses the existing DWS recall contract; complete private history is mandatory. */
+export async function recallOperatorNotification(adapter, notification) {
+  if (notification.kind !== 'question' || notification.payload.audience !== 'operator'
+    || notification.state !== 'delivered') throw new Error('TASK_NOTIFICATION_RECALL_SCOPE_INVALID')
+  const delivery = notification.receipt
+  if (!delivery?.messageId || !delivery.conversationId || !delivery.senderActorId)
+    throw new Error('TASK_NOTIFICATION_RECALL_DELIVERY_REQUIRED')
+  const range = { start: delivery.sentAt ?? notification.createdAt, end: new Date().toISOString() }
+  const find = async () => (await adapter.readConversation(delivery.conversationId, range)).find(item => item.messageId === delivery.messageId)
+  const current = await find()
+  if (current) {
+    if ((current.senderOpenDingTalkId ?? current.senderId) !== delivery.senderActorId
+      || current.conversationId && current.conversationId !== delivery.conversationId)
+      throw new Error('TASK_NOTIFICATION_RECALL_IDENTITY_MISMATCH')
+    const ack = await adapter.recallMessage(delivery.messageId)
+    if ((ack?.recallStatus ?? ack?.result?.recallStatus) !== 'SUCCESS') throw new Error('TASK_NOTIFICATION_RECALL_UNCONFIRMED')
+    if (await find()) throw new Error('TASK_NOTIFICATION_RECALL_PENDING')
+  }
+  return { messageId: delivery.messageId, conversationId: delivery.conversationId, recallStatus: 'SUCCESS',
+    observation: current ? 'recall-and-absence' : 'already-absent' }
+}

@@ -1,0 +1,10 @@
+node_modules/
+.night-bot/
+.env
+*.db
+*.db-shm
+*.db-wal
+*.log
+docs/tmp/
+.dsh/
+.artifact-*/

@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-04",
+  "node": "24.19.0",
+  "groups": {
+    "own": {
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "skipped": 0
+    },
+    "domain": {
+      "tests": 388,
+      "pass": 388,
+      "fail": 0,
+      "skipped": 0
+    },
+    "runtime": {
+      "tests": 142,
+      "pass": 142,
+      "fail": 0,
+      "skipped": 0
+    },
+    "routing": {
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 6,
+      "pass": 1,
+      "fail": 4,
+      "skipped": 1
+    }
+  },
+  "remotePush": "denied HTTP 403 (dry run only)",
+  "pullRequest": "not created: GitHub API Forbidden",
+  "deployed": false
+}

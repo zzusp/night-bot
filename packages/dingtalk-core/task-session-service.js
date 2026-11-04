@@ -1,0 +1,2157 @@
+import {createObserverAlertPages} from './observer-alert-pages.js'
+import {createObserverGroupPages} from './observer-group-pages.js'
+import {retiredSourceOwnership} from './coordination-retirement.js'
+import { deliverTaskNotification, recallTaskOperatorNotification, retryTaskNotification, taskNotificationRecovery } from './notification-delivery.js'
+import { inspectStoppedNativeOperation, inspectInvestigatedNativeFailure, inspectFailedNativeWebRead, inspectFailedNativeFileMutation, inspectFailedNativeJobRead, readNativeOperationContext, readExecutionProgress } from './dynamic-operation-readback.js'
+import { isNativeFilePrecondition, nativeFileError } from './dynamic-filesystem-scope.js'
+import { inspectIsolatedHostRestart, prepareRestartScopeProbe } from './dynamic-operation-readback.js'
+import { readMaintenanceDrainProof } from './native-maintenance-drain.js'
+import { referencesIsolatedPostgres } from './native-postgres-wrapper.js'
+import { hasRestartIsolation, operationBlocksRecovery, verifyRestartIsolation, readAuditedRestartDrain } from './native-restart-isolation.js'
+import { safeNotificationDetail } from './notification-delivery.js'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, open, readFile, lstat, link, unlink } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { openDynamicTaskStore, ingressTimestamp, pendingTaskHumanReview, taskHumanWait } from './dynamic-task-store.js'
+import { monitorEventLoopDelay } from 'node:perf_hooks'
+import { readExecutionResourceCatalog, createExecutionResourceCatalog } from './execution-resource-catalog.js'
+import { createTaskSessions, isTaskProviderTransient, taskSessionModelSelection } from './task-session.js'
+import { taskModelConfig, taskModelSelection } from './task-model-config.js'
+import { inspectSession } from './session-persistence.js'
+import { createStartupMetrics, createCloseObservation, observeClose } from './startup-metrics.js'
+import { createExecutionSessions } from './execution-session.js'
+import { createClaudeExecutionSessions, claudeExecutionLogPath } from './claude-execution-session.js'
+import { createTaskSessionObservability, createTaskObservationQueue } from './task-session-observability.js'
+import { activeFixedUnits, fixedTopicIds, fixedUnitRequestId, platformScheduleSessionId, platformScheduleOutboundId } from './fixed-topics.js'
+import { openTaskTopicCoordinator } from './task-topic-coordinator.js'
+import { resolveTaskArtifactScope } from './task-artifact-scope.js'
+import { buildReplyReviewCandidates } from './decision.js'
+import { resolveTopicMessages, topicSourceEntries, stableId, fingerprint, replyTopicForMessage, canonicalReplyTopic, topicDecisionCoversEntry } from './topic-model.js'
+import { createTopicFactHandler } from './topic-facts.js'
+import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from './task-message-projections.js'
+import { executionSessionTitle, taskWorkspace, taskExecutionWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, materializeExecutionDocument } from './session-workspaces.js'
+import { installTaskSessionPersistence, taskSessionLogRoot } from './task-session-persistence.js'
+import { prepareGroupNotification } from './group-notification.js'
+import { formatTaskGroupReply } from './group-reply-format.js'
+import { assertGroupReply } from './group-message.js'
+import { taskExecutionContext } from './execution-context.js'
+import { assertTaskContextSemantics, taskContextInputContract } from './task-input-contract.js'
+import { projectTaskTimeline, readTaskLifecycle, latestExecutionRoundTiming } from './task-execution-timeline.js'
+import { createTaskArtifactFiles } from './task-artifact-files.js'
+import { freezeTaskDeliveryFiles, withTaskFileNotifications } from './task-final-delivery.js'
+import { createNativeDwsObserver, nativeDwsCommands, nativeDwsObservation } from './native-dws-send.js'
+export { taskExecutionContext } from './execution-context.js'
+
+const hash = value => createHash('sha256').update(JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)).digest('hex')
+const fail = code => { throw Object.assign(new Error(code), { code }) }
+const clean = value => JSON.parse(JSON.stringify(value))
+const string = { type: 'string' }
+const texts = { type: 'array', items: string }
+// 后端属于执行身份；缺省的历史执行始终是 DSH，不跟随当前配置迁移。
+const executionBackend = execution => execution.definition?.executionBackend ?? 'dsh'
+export function executionProgressDue(execution, now = Date.now()) {
+  const last = Date.parse(execution.progressReview?.checkedAt ?? execution.updatedAt)
+  return execution.status === 'running' && !execution.drained && !execution.recovering && !execution.cancelRequested
+    && Number.isFinite(last) && now - last >= 10 * 60 * 1000
+}
+export const dynamicExecutionOutputSchema = { type: 'object', properties: {
+  status: { type: 'string', enum: ['completed','blocked','needs_input'] }, summary: { type: 'string' },
+  evidence: texts, limitations: texts, artifacts: texts, question: string,
+}, required: ['status','summary','evidence','limitations','artifacts'], additionalProperties: false }
+const drainDiagnostic = (error, depth = 0) => ({
+  code: String(error?.code ?? 'execution_drain_failed'), message: String(error?.message ?? error).slice(0, 2000),
+  ...(typeof error?.phase === 'string' ? { phase: error.phase } : {}),
+  ...(error?.cause && depth < 4 ? { cause: drainDiagnostic(error.cause, depth + 1) } : {}),
+})
+/** All model decisions pass through this Host boundary. No workflow catalog or staged plan exists here. */
+export async function openTaskSessionService({ ctx, config, legacy, residentStore, notifications, readMessage, readResource, readMentioned,
+  taskSessions: suppliedTaskSessions, executionSessions: suppliedExecutionSessions, claudeExecutionSessions: suppliedClaudeExecutionSessions,
+  store: suppliedStore, persistence: suppliedPersistence, startupObserver, closeObserver } = {}) {
+  const closeTrace = createCloseObservation(closeObserver)
+  const startup = createStartupMetrics(startupObserver)
+  if (!config?.dbPath || !config?.instanceId) fail('TASK_SESSION_CONFIGURATION_REQUIRED')
+  taskSessionModelSelection({}, config.model, config.provider)
+  taskModelConfig(config)
+  for (const value of [config.maxConcurrentExecutions, config.maxConcurrentTasks, legacy.getAgentConfig().maxConcurrentTasks]) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 50)) fail('TASK_SESSION_CONCURRENCY_INVALID')
+  }
+  const root = resolve(config.workspaceDir ?? residentStore.getTaskWorkspaceDir?.() ?? legacy.getAgentConfig().workspaceDir)
+  await mkdir(dirname(config.dbPath), { recursive: true })
+  const store = suppliedStore ?? await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId,
+    initialize: config.initialize === true, migrate: config.migrate === true, ingressEpoch: config.ingressEpoch, webActorId: config.webActorId,
+    resourceCatalog: await readExecutionResourceCatalog(root), startupObserver })
+  let persistence, resourceCatalog
+  try {
+    resourceCatalog = createExecutionResourceCatalog(await store.query({ kind: 'resource.catalog' }))
+    persistence = suppliedPersistence ?? await installTaskSessionPersistence(ctx, { root })
+  } catch (error) {
+    if (!suppliedStore) await store.close()
+    throw error
+  }
+  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files') })
+  notifications = withTaskFileNotifications(notifications, deliveryFiles)
+  const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
+  let nativeDws
+  const admissions = new Map(), admissionHolds = new Set()
+  const sourceProjections = new Set(), notificationSends = new Set(), notificationReadbacks = new Set()
+  const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
+  const pendingDialogue = task => task.dialogue?.some(item => !item.reply)
+  const taskLimit = () => legacy.getAgentConfig().maxConcurrentTasks ?? config.maxConcurrentTasks ?? 5
+  const executionLimit = () => config.maxConcurrentExecutions ?? taskLimit()
+  const reserveTask = taskId => taskSlots.has(taskId) || taskSlots.size < taskLimit() && (taskSlots.add(taskId), true)
+  const retryReady = id => {
+    const task = taskCache.get(id), recovery = task?.providerRecovery
+    if (recovery) return recovery.requirementRevision !== task.requirementRevision
+      || !!recovery.nextAttemptAt && Date.parse(recovery.nextAttemptAt) <= Date.now()
+    return (failures.get(id)?.retryAfter ?? 0) <= Date.now()
+  }
+  let closed = false, recovering, scheduling, scheduleRequested = false, providerRetryTimer
+  let notificationScan, notificationScanRequested = false, notificationTransportRetryAt = 0
+  let sourceProcessingRevision = 0
+  let observerGroupPage
+  const sourceHeldNotifications = new Map()
+  const query = (kind, args = {}) => store.query({ kind, ...args })
+  async function* executionIndex() {
+    let after = 0
+    do {
+      const page = await query('execution.index', { after, limit: 100 })
+      yield* page.items
+      after = page.nextAfter
+    } while (after !== null)
+  }
+  if (residentStore.retireIndependentCoordination)
+    await residentStore.retireIndependentCoordination(await query('coordination.retirement'))
+  const taskCache = new Map(), operationCache = new Map(), notificationCache = new Map(), executionCache = new Map()
+  const documentTails = new Map()
+  function publishExecutionDocument(executionId) {
+    const previous = documentTails.get(executionId) ?? Promise.resolve()
+    // 前次失败已经回报调用者；允许下一次从权威账本重建当前轮，不沿用失败快照。
+    const pending = previous.catch(() => {}).then(async () => {
+      const execution = await query('execution.get', { executionId })
+      const document = await materializeExecutionDocument(root, execution)
+      failures.delete(`execution-document:${executionId}`)
+      return { execution, document }
+    }).catch(error => {
+      const id = `execution-document:${executionId}`
+      failures.set(id, { id, code: error.code ?? error.message, at: new Date().toISOString() })
+      throw error
+    })
+    documentTails.set(executionId, pending)
+    pending.finally(() => { if (documentTails.get(executionId) === pending) documentTails.delete(executionId) }).catch(() => {})
+    return pending
+  }
+  async function refreshExecutionDocument(executionId) { return (await publishExecutionDocument(executionId)).document }
+  async function documentedExecution(executionId) {
+    const { execution, document } = await publishExecutionDocument(executionId)
+    return { ...execution, document }
+  }
+  const refreshTasks = async () => { taskCache.clear(); for (const task of await query('task.list')) taskCache.set(task.taskId, topicTaskView(task)) }
+  function topicTaskView(task) { return { ...task, state: task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' || task.drained ? 'waiting' : 'running', inputVersion: task.requirementRevision, runSequence: task.runSequence ?? 1, topicRefs: task.topicRefs ?? [], appliedOperations: task.appliedOperations ?? [], acceptanceCriteria: task.requirements ?? [], taskPromptRefs: [] } }
+  const command = async (kind, args, id) => {
+    if (kind === 'execution.continue' || kind === 'execution.retry-provider') await refreshExecutionDocument(args.executionId ?? args.binding.executionId)
+    let clarification = kind === 'notification.prepare' && args.kind === 'routing-clarification' ? args.payload : undefined
+    if (kind === 'notification.start') {
+      const notification = notificationCache.get(args.notificationId) ?? await query('notification.get', { notificationId: args.notificationId })
+      if (notification?.kind === 'routing-clarification') clarification = notification.payload
+    }
+    const commit = () => store.command({ id: id ?? `${kind}:${randomUUID()}`, kind, args: clean(args) })
+    // 发送许可与待判版本在同一群锁内线性化；缓存/出箱投影必须留在锁外。
+    let receipt
+    if (clarification) {
+      const p = clarification, fact = p.fact
+      receipt = await residentStore.withRoutingHold({ groupId: p.conversationId, messageId: p.sourceMessageId,
+        messageVersion: p.sourceVersion, epoch: residentStore.getGroup(p.conversationId)?.messages.find(message => message.messageId === p.sourceMessageId)?.routingHold?.epoch, commit: () => {
+          assertRoutingClarification(p, args.notificationId)
+          if (kind === 'notification.start') args = { ...args, routingHold: { messageVersion: fact.messageVersion, epoch: fact.epoch, reviewFingerprint: fact.reviewFingerprint } }
+          return commit()
+        } }).catch(error => {
+          if (kind === 'notification.start' && ['topic_routing_hold_stale', 'routing_clarification_stale'].includes(error.code ?? error.message))
+            throw Object.assign(error, { code: 'DYNAMIC_NOTIFICATION_SOURCE_PENDING' })
+          throw error
+        })
+    } else receipt = await commit()
+    observerGroupPage?.sourceChanged(receipt.result?.source ?? args.source)
+    // 幂等收据保存的是当时快照；通知当前态须独立回读，不能用旧 prepared 覆盖已送达缓存。
+    if (receipt.replayed && receipt.result?.notification)
+      receipt.result.notification = await query('notification.get', { notificationId: receipt.result.notification.id })
+    if (receipt.result?.execution) executionCache.set(receipt.result.execution.executionId,
+      await query('execution.get', { executionId: receipt.result.execution.executionId }))
+    if (kind.startsWith('execution.') && (receipt.result?.execution || ['execution.peerMessage', 'execution.feedbackConsumed'].includes(kind))) {
+      // 账本提交后不能因阅读视图失败丢失 claim/result 回执；保留可见告警。
+      // 文档读取和轮次切换仍严格失败，不能用旧文档冒充当前；执行路径可正常排空。
+      try { await refreshExecutionDocument(receipt.result?.execution?.executionId ?? args.executionId ?? args.binding.executionId) }
+      catch (error) { ctx.logger?.warn?.(`execution document: ${error.code ?? error.message}`) }
+    }
+    if (receipt.result?.operation) operationCache.set(receipt.result.operation.id ?? receipt.result.operation.operationId, receipt.result.operation)
+    // 人工结清是复合事务，只返回任务；从账本刷新其中已结清的操作，避免残留 unknown 告警。
+    if (kind === 'task.human.resolve-failures') for (const resolution of args.resolutions) {
+      const operation = await query('operation.get', { operationId: resolution.operationId })
+      operationCache.set(operation.id ?? operation.operationId, operation)
+    }
+    if (receipt.result?.notification) {
+      const previous=notificationCache.get(receipt.result.notification.id), notification=receipt.result.notification
+      notificationCache.set(notification.id,notification)
+      nativeDws?.notificationChanged(notification)
+      if(observerGroupPage)for(const item of [previous,notification].filter(Boolean))
+        for(const value of [item.receipt,item.ack])observerGroupPage.sourceChanged({groupId:item.payload?.conversationId,messageId:receiptMessageId(value)})
+    }
+    if (receipt.result?.notification) await projectTaskNotification({ residentStore, notification: receipt.result.notification })
+    if (receipt.result?.task) taskCache.set(receipt.result.task.taskId, topicTaskView(receipt.result.task))
+    for (const fact of receipt.topicFacts ?? receipt.result?.topicFacts ?? []) {
+      if (fact.state === 'unbound') failures.set(`topic-fact:${fact.id}`, { id: fact.taskId, code: 'TOPIC_FACT_REPLY_BINDING_MISSING' })
+      else if (fact.state === 'pending' && !closed) void kickGroup(fact.groupId, true).catch(error => {
+        failures.set(`topic-fact:${fact.id}`, { id: fact.taskId, code: error.code ?? error.message })
+      })
+    }
+    // 原效果终态可能晚于会话退出；释放后直接提升持久队列，不等待恢复定时器。
+    if (['execution.drained', 'execution.cancel', 'task.control', 'task.revise', 'task.reopen'].includes(kind)
+      || kind.startsWith('operation.') && ['succeeded', 'failed', 'cancelled'].includes(receipt.result?.operation?.state)) void schedulePending()
+    // 持久通知已可发送，无需等待协调规划、其他群恢复或下个轮询周期。
+    if (kind === 'source.processingCompleted' && !receipt.replayed) sourceProcessingRevision++
+    if (!closed && (receipt.result?.notification?.state === 'prepared'
+      || kind === 'source.processingCompleted' && !receipt.replayed)) void deliverNotifications().catch(error => {
+      ctx.logger?.warn?.(`notification scan: ${error.code ?? error.message}`)
+    })
+    return receipt
+  }
+  await startup.measure('task-service.cache', async () => {
+    await refreshTasks()
+    for (const item of await query('operation.list')) operationCache.set(item.id ?? item.operationId, item)
+    for (const item of await query('notification.list')) notificationCache.set(item.id, item)
+    for (const item of await query('execution.list')) executionCache.set(item.executionId, item)
+  })
+  nativeDws = createNativeDwsObserver({ operations: operationCache, residentStore, notificationCache,
+    querySendStatus: notifications?.querySendStatus, warn: error => ctx.logger?.warn?.(`native DWS receipt: ${error.code ?? error.message}`) })
+  await nativeDws.recover()
+  // 仅为启动时已停住的技术等待补一次唤醒；同一实现重启不能反复驱动模型。
+  const runtimeRevision = hash(await Promise.all(['task-session-service.js', 'task-session.js', 'execution-session.js', 'claude-execution-session.js', 'dynamic-native-job.js', 'dynamic-operation-readback.js']
+    .map(file => readFile(new URL(file, import.meta.url), 'utf8'))))
+  const recoveryCandidates = [...taskCache.values()].filter(task => !task.archivedAt && task.status === 'active' && task.control === 'active'
+    && task.drained && !task.lastDecision?.question && (task.lastDecision?.action === 'blocked'
+      && task.lastDecision.limitations?.includes('TASK_SESSION_NO_SUBMISSION')
+      || task.lastDecision?.action === 'wait'
+      && [...operationCache.values()].some(operation => operation.taskId === task.taskId && operation.state === 'unknown')))
+  const receiptMessageId = value => value?.messageId ?? value?.messageRef?.openMessageId ?? value?.sendReceipt?.messageId ?? value?.result?.messageId ?? value?.result?.openMessageId
+  const isOwnNotification = message => {
+    if (!message.messageId) return false
+    // Account, the generic DWS flag, quote and body do not identify this plugin's send.
+    // Reuse both durable outbound projections and current exact send acknowledgements.
+    if (residentStore?.getGroup(message.groupId)?.outbox.some(item => item.deliveredMessageId === message.messageId)) return true
+    return [...notificationCache.values()].some(item => item.payload?.conversationId === message.groupId
+      && [receiptMessageId(item.receipt), receiptMessageId(item.ack)].includes(message.messageId))
+  }
+  const observation = createTaskSessionObservability({ store: residentStore, listTasks: () => [...taskCache.values()], resolveSessionIdentity: sessionId => {
+    const task = [...taskCache.values()].find(item => item.sessionId === sessionId && item.sessionBound)
+    if (task) return { taskId: task.taskId, groupId: task.groupId, role: 'owner' }
+    const execution = [...executionCache.values()].find(item => item.sessionId === sessionId && item.sessionBound)
+    if (execution) return { taskId: execution.taskId, groupId: taskCache.get(execution.taskId)?.groupId, role: 'execution' }
+    return null
+  } })
+  const observationQueue = createTaskObservationQueue({
+    observe: (session, event) => observation.observe(session, event),
+    onError: error => failures.set('observability', { id: 'observability', code: error.code ?? error.message }),
+    ...(closeTrace ? { onProgress: queued => closeTrace.sample('service.observation-progress', () => ({ queued })) } : {}),
+  })
+  const stopObservation = ctx.on?.('session/event', (session, event) => { observationQueue.enqueue(session, event) })
+  residentStore?.setTaskSessionReader?.({ getTask: id => taskCache.get(id), listTasks: () => [...taskCache.values()],
+    hasAppliedOperation: async operationId => !!await query('receipt.get', { id: `topic-operation:${operationId}` }),
+    isTaskQuiescent: taskId => [...executionCache.values()].filter(item => item.taskId === taskId).every(item => item.drained && !item.recovering) })
+  const models = () => { const { provider, model, reasoningEffort } = legacy.getAgentConfig(); return { provider, model, ...(reasoningEffort ? { reasoningEffort } : {}) } }
+  const currentTask = async binding => {
+    const task = await query('task.get', { taskId: binding.taskId })
+    return !!task && !task.archivedAt && !task.recovering && !task.drained && task.status === 'active' && task.control === 'active' && task.sessionId === binding.sessionId
+      && task.leaseEpoch === binding.leaseEpoch && task.requirementRevision === binding.requirementRevision && task.controlRevision === binding.controlRevision
+      && (task.contextRevision ?? 0) === (binding.contextRevision ?? 0)
+  }
+  const taskSessions = suppliedTaskSessions ?? createTaskSessions({ ctx, isCurrent: currentTask, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action),
+    getWorkspaceDir: ({ binding }) => taskWorkspace(root, binding.taskId), registerPersistence: value => persistence.register(value) })
+  const dshExecutionSessions = suppliedExecutionSessions ?? createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
+    isCurrent: binding => query('execution.current', { binding }),
+    isRecoveryCurrent: binding => query('execution.recovery-current', { binding }),
+    getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
+    readRestartDrainProof: args => readAuditedRestartDrain({ ctx, query, ...args }),
+    readMaintenanceDrainProof: async args => readMaintenanceDrainProof({ workspace: root, ...args, operations: await query('operation.list', { taskId: args.binding.taskId }) }),
+  })
+  const claudeExecutionSessions = suppliedClaudeExecutionSessions ?? createClaudeExecutionSessions({ ctx,
+    isCurrent: binding => query('execution.current', { binding }),
+    getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
+  })
+  const executionDriver = executionId => {
+    const execution = executionCache.get(executionId)
+    if (!execution) fail('TASK_EXECUTION_NOT_FOUND')
+    const backend = executionBackend(execution)
+    if (!['dsh', 'claude-code'].includes(backend)) fail('TASK_EXECUTION_BACKEND_INVALID')
+    return backend === 'claude-code' ? claudeExecutionSessions : dshExecutionSessions
+  }
+  const executionSessions = {
+    run: args => executionDriver(args.binding.executionId).run(args),
+    cancel: id => executionDriver(id).cancel(id),
+    feedback: id => executionDriver(id).feedback(id),
+    assertDrained: binding => executionDriver(binding.executionId).assertDrained(binding),
+    recoverDrained: args => executionDriver(args.binding.executionId).recoverDrained(args),
+    confirmDrained: binding => executionDriver(binding.executionId).confirmDrained?.(binding),
+    close: () => Promise.all([dshExecutionSessions.close(), claudeExecutionSessions.close()]),
+  }
+  const track = (map, id, action) => {
+    if (map.has(id)) return map.get(id)
+    const previousFailure = failures.get(id)
+    const promise = Promise.resolve().then(action).then(async value => {
+      const settled = map !== inflightTasks || (await query('task.get', { taskId: id }))?.drained
+      if (settled && failures.get(id) === previousFailure) failures.delete(id)
+      return value
+    }).catch(error => {
+      const recovery = taskCache.get(id)?.providerRecovery
+      failures.set(id, { id, code: error.code ?? error.message, at: new Date().toISOString(),
+        ...(recovery ? { retryAfter: recovery.nextAttemptAt ? Date.parse(recovery.nextAttemptAt) : null, suspended: recovery.suspended }
+          : { retryAfter: Date.now() + Math.max(100, config.retryIntervalMs ?? 5000) }) })
+      ctx.logger?.warn?.(`task-session ${id}: ${error.code ?? error.message}`)
+      throw error
+    }).finally(async () => {
+      let again = false
+      if (!closed && map === inflightTasks) {
+        const pending = await query('wake.list', { taskId: id }).catch(() => [])
+        const task = await query('task.get', { taskId: id }).catch(() => null)
+        again = !task?.archivedAt && task?.status === 'active' && task.control === 'active' && task.drained
+          && retryReady(id)
+          && (pendingDialogue(task) || pendingTaskHumanReview(task, pending) || !taskHumanWait(task))
+          && pending.some(item => item.state !== 'acked')
+      }
+      map.delete(id)
+      if (!closed && (map === inflightTasks || map === inflightExecutions)) {
+        const taskId = map === inflightTasks ? id : (await query('execution.get', { executionId: id }).catch(() => null))?.taskId
+        if (taskId && !inflightTasks.has(taskId)) {
+          const task = await query('task.get', { taskId }).catch(() => null)
+          const executions = await query('execution.list', { taskId }).catch(() => [])
+          if (!task || task.drained && !executions.some(item => !item.drained || item.status === 'queued' && !item.providerRecovery?.nextAttemptAt && item.resources?.state !== 'waiting')) taskSlots.delete(taskId)
+        }
+      }
+      if (again) void kickTask(id)
+      if (!closed && (map === inflightTasks || map === inflightExecutions)) void schedulePending()
+    })
+    map.set(id, promise)
+    promise.catch(() => {})
+    return promise
+  }
+  async function verifyProviderTerminal(execution, binding = undefined) {
+    binding ??= await query('execution.binding', { executionId: execution.executionId })
+    executionSessions.assertDrained(binding)
+    // CLI 有独立日志与终态，不允许拿不存在的原生 turn/end 证明可重试。
+    if (executionBackend(execution) !== 'dsh') fail('CLAUDE_PROVIDER_RECOVERY_UNSUPPORTED')
+    const jobs = ctx.get?.('jobs')
+    if (jobs?.list?.(execution.sessionId).some(job => ['running','stopping'].includes(job.status))) fail('DYNAMIC_JOB_DRAIN_UNPROVEN')
+    const stored = await inspectSession(ctx.sessionPersistence, execution.sessionId)
+    const end = stored.events.findLast(event => event.type === 'turn/end')
+    const input = stored.events.findLast(event => event.type === 'user/message' && event.data.source?.executionSession)
+    if (end?.seq !== execution.providerRecovery.terminal.endSeq || end.data.reason?.kind !== 'error'
+      || hash(end.data.reason.error) !== hash(execution.result.payload.error.providerError)
+      || input?.data.source.executionSession.inputVersion !== binding.inputVersion
+      || input.data.source.executionSession.inputDigest !== binding.inputDigest
+      || input.data.source.executionSession.leaseEpoch !== binding.leaseEpoch || end.seq <= input.seq) fail('DYNAMIC_PROVIDER_TERMINAL_EVIDENCE_CHANGED')
+    return binding
+  }
+  function armProviderRetry() {
+    clearTimeout(providerRetryTimer)
+    if (closed) return
+    const now = Date.now(), due = [...executionCache.values()].filter(execution => ['queued','failed'].includes(execution.status)
+      && (execution.providerRecovery?.nextAttemptAt || execution.providerRecovery?.nextReviewAt) && !execution.cancelRequested)
+      .map(execution => Date.parse(execution.providerRecovery.nextAttemptAt ?? execution.providerRecovery.nextReviewAt))
+      .concat([...taskCache.values()].filter(task => !task.archivedAt && task.status === 'active' && task.control === 'active' && task.providerRecovery?.nextAttemptAt)
+        .map(task => Date.parse(task.providerRecovery.nextAttemptAt))).filter(at => at > now)
+    if (due.length) {
+      providerRetryTimer = setTimeout(() => { void schedulePending() }, Math.min(...due) - now)
+      providerRetryTimer.unref()
+    }
+  }
+  function schedulePending() {
+    if (closed) return Promise.resolve()
+    scheduleRequested = true
+    if (scheduling) return scheduling
+    scheduling = (async () => {
+      while (scheduleRequested && !closed) {
+        scheduleRequested = false
+        for await (const execution of executionIndex()) {
+          if (closed) return
+          if (admissionHolds.has(execution.taskId)) continue
+          const review = execution.status === 'failed' && execution.providerRecovery?.nextReviewAt
+          if (!(review || execution.status === 'queued' && execution.providerRecovery?.nextAttemptAt) || !execution.drained || execution.recovering
+            || Date.parse(review || execution.providerRecovery.nextAttemptAt) > Date.now()) continue
+          const task = await requireTask(execution.taskId)
+          if (task.archivedAt || task.status !== 'active' || task.control !== 'active' || taskHumanWait(task, execution.executionId)
+            || !review && execution.requirementRevision !== task.requirementRevision || execution.controlRevision !== task.controlRevision
+            || execution.cancelRequested) continue
+          if ((await query('wake.list', { taskId: task.taskId })).some(item => item.kind === 'human.responded' && item.state !== 'acked')) continue
+          let binding
+          try {
+            binding = await query('execution.binding', { executionId: execution.executionId })
+            await verifyProviderTerminal(await query('execution.get', { executionId: execution.executionId }), binding)
+            await command(review ? 'execution.review-provider' : 'execution.retry-provider', { binding },
+              `provider-${review ? 'review' : 'retry'}:${execution.executionId}:${execution.inputVersion}${review ? ':' + execution.providerRecovery.nextReviewAt : ''}`)
+            failures.delete(execution.executionId)
+          } catch (error) {
+            failures.set(execution.executionId, { id: execution.executionId, code: error.code ?? error.message, at: new Date().toISOString() })
+            if (binding) {
+              try { await command('execution.provider-recovery-blocked', { binding, code: error.code ?? error.message }, `provider-recovery-blocked:${execution.executionId}:${execution.inputVersion}`) }
+              catch (recordError) { failures.set(execution.executionId, { id: execution.executionId, code: 'DYNAMIC_PROVIDER_RECOVERY_RECORD_FAILED',
+                cause: error.code ?? error.message, recordError: recordError.code ?? recordError.message, at: new Date().toISOString() }) }
+            }
+          }
+        }
+        // SQLite is the durable queue. A freed slot promotes existing work immediately,
+        // without depending on a periodic recovery tick or manufacturing another wake.
+        for (const task of await query('task.list')) {
+          if (closed) return
+          if (task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
+          const pending = await query('wake.list', { taskId: task.taskId })
+          if (!pendingDialogue(task) && !pendingTaskHumanReview(task, pending) && taskHumanWait(task)) continue
+          if (!taskSlots.has(task.taskId) && taskSlots.size >= taskLimit()) continue
+          if (pending.some(item => item.state !== 'acked')) void kickTask(task.taskId)
+        }
+        for await (const execution of executionIndex()) {
+          if (closed || inflightExecutions.size >= executionLimit()) break
+          if (admissionHolds.has(execution.taskId) || execution.providerRecovery?.nextAttemptAt || !retryReady(execution.executionId) || inflightExecutions.has(execution.executionId) || !execution.drained || execution.recovering || execution.status !== 'queued' || execution.cancelRequested) continue
+          if (!taskSlots.has(execution.taskId) && taskSlots.size >= taskLimit()) continue
+          if ((await query('execution.get', { executionId: execution.executionId }))?.resources?.state === 'waiting') continue
+          void kickExecution(execution.executionId)
+        }
+      }
+    })().catch(error => { failures.set('scheduler', { id: 'scheduler', code: error.code ?? error.message }) })
+      .finally(() => { scheduling = undefined; armProviderRetry() })
+    return scheduling
+  }
+  async function attachWorkspace(sessionId, cwd, title) {
+    const registry = ctx.get?.('workspaceRegistry') ?? ctx.workspaceRegistry
+    if (!registry) { if (!suppliedTaskSessions && !suppliedExecutionSessions) fail('TASK_WORKSPACE_REGISTRY_REQUIRED'); return }
+    await registry.sessionKnown(sessionId)
+    const workspace = await registry.resolveByPath(cwd) ?? await registry.create(cwd, title)
+    // A registry initialized before task-specific persistence may have retained the
+    // durable slot without its header index. Rebind that same slot via public APIs.
+    if (!workspace.sessionIds.includes(sessionId)) await workspace.detachSession(sessionId)
+    await workspace.attachSession(sessionId)
+    if (title?.trim() && workspace.title !== title.trim()) await workspace.setTitle(title.trim())
+  }
+  const sourceFor = async task => {
+    const id = task.metadata?.authorizationSourceId
+    if (id) return query('source.get', { sourceId: id })
+    const sources = await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))
+    return sources.find(source => source?.actorId === task.ownerActorId)
+  }
+  function bindingsForSources(sources) {
+    const bindings = new Map()
+    for (const source of sources) {
+      if (source.channel === 'web' || source.channel === 'internal') continue
+      const group = residentStore.getGroup(source.groupId)
+      const current = group?.messages.find(item => item.messageId === source.messageId)
+      const message = current?.messageVersion === source.version ? current : current?.facts?.find(item => item.messageVersion === source.version)
+      const topicId = message && replyTopicForMessage(group, message)
+      if (!topicId) continue
+      const key = JSON.stringify([source.groupId, topicId])
+      const entry = bindings.get(key) ?? { groupId: source.groupId, topicId, sourceIds: [] }
+      entry.sourceIds.push(source.sourceId); bindings.set(key, entry)
+    }
+    return [...bindings.values()]
+  }
+  async function taskReplyBindings(task) {
+    if (task.replyBindings?.length) return task.replyBindings.flatMap(binding => {
+      const topicId = canonicalReplyTopic(residentStore.getGroup(binding.groupId), binding.topicId)
+      return topicId ? [{ ...binding, topicId }] : []
+    })
+    // Historical fallback is the recorded authorization source, not all topicRefs.
+    const source = await sourceFor(task)
+    return source ? bindingsForSources([source]) : []
+  }
+  const requireTask = async taskId => (await query('task.get', { taskId })) ?? fail('TASK_SESSION_NOT_FOUND')
+  const taskTopicRefs = (task, titles = new Map()) => (task.topicRefs ?? []).map(ref => {
+    const groupId = ref.groupId || task.sourceGroupId || task.groupId
+    const key = JSON.stringify([groupId, ref.topicId])
+    // The resident already owns these topics; project only names for the selected task page.
+    if (!titles.has(key)) titles.set(key, residentStore.getTopic(groupId, ref.topicId)?.title)
+    return { ...ref, title: titles.get(key) || ref.title || null }
+  })
+  const taskDTO = async task => {
+    const { dialogue: _dialogue, ...publicTask } = task
+    const executions = await query('execution.list', { taskId: task.taskId })
+    const pendingWake = !task.lastDecision && (await query('wake.list', { taskId: task.taskId })).some(wake => wake.state !== 'acked')
+    const state = taskBoardState(task, executions, pendingWake)
+    return { ...publicTask, state, contextInputContract: taskContextInputContract,
+    topicRefs: taskTopicRefs(task), executionCount: executions.length,
+    executionSessions: [...new Map(executions.map(execution => [execution.sessionId || execution.executionId, {
+      executionId: execution.executionId, sessionId: execution.sessionId, executionBackend: executionBackend(execution), title: executionSessionTitle(execution), status: execution.status, createdAt: execution.createdAt,
+      runTiming: execution.runTiming ?? null,
+      latestRoundTiming: latestExecutionRoundTiming(execution),
+      drained: execution.drained, recovering: execution.recovering === true,
+    }])).values()].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.executionId.localeCompare(b.executionId)), waitingReason: state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
+    controlState: task.control, inputVersion: task.requirementRevision, result: task.completion?.result ?? task.lastDecision ?? null,
+    session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running', workspaceDir: await taskWorkspace(root, task.taskId), logPath: taskSessionLogRoot(root, task.taskId) },
+    legacyReadonly: false }
+  }
+  async function taskDetail(taskId) {
+    const task = await query('task.get', { taskId })
+    if (!task) return null
+    const wakes = await query('wake.list', { taskId })
+    const lifecycle = await readTaskLifecycle(task, wakes, id => query('receipt.get', { id }))
+    return { ...await taskDTO(task), executions: (await taskExecutions(taskId)).executions,
+      timeline: projectTaskTimeline(task, await query('execution.list', { taskId }), wakes, lifecycle),
+      blockers: await query('task.blockers', { taskId }), notifications: await query('notification.list', { taskId }),
+      }
+  }
+  async function taskExecutions(taskId, { offset = 0, limit = 50, revision, summary = false } = {}) {
+    const page = await query('observer.page', { collection: 'executions', taskId, offset, limit, revision, summary })
+    if (summary) return { ...page, items: undefined, executions: page.items.map(execution => ({
+      executionId: execution.executionId, sessionId: execution.sessionId, title: executionSessionTitle(execution),
+      executionBackend: executionBackend(execution), status: execution.status, drained: execution.drained,
+      recovering: execution.recovering === true, createdAt: execution.createdAt,
+      runTiming: execution.runTiming ?? null, latestRoundTiming: latestExecutionRoundTiming(execution),
+    })) }
+    const executions = await Promise.all(page.items.map(async execution => ({ ...execution, title: executionSessionTitle(execution), objective: execution.prompt,
+      executionBackend: executionBackend(execution),
+      document: { path: taskFilePath(root, taskId, 'outputs', execution.executionId, `round-${execution.inputVersion}.md`), inputVersion: execution.inputVersion },
+      workspaceDir: dirname(taskFilePath(root, taskId, 'work')), workingDirectory: dirname(taskFilePath(root, taskId, 'work')),
+      logPath: executionBackend(execution) === 'claude-code' ? claudeExecutionLogPath(dirname(taskFilePath(root, taskId, 'work')), execution.executionId) : taskSessionLogRoot(root, taskId),
+      result: execution.result?.payload?.output ?? execution.result?.payload?.error ?? null })))
+    return { ...page, items: undefined, executions }
+  }
+  async function materializeSource(taskId, source) {
+    const directories = await taskDirectories(root, taskId, { create: true })
+    const target = join(directories.materials, `source-${hash(source.sourceId).slice(0, 32)}.json`)
+    const readSnapshot = async () => {
+      await checkedTaskDirectory(directories.materials)
+      const info = await lstat(target)
+      if (!info.isFile() || info.isSymbolicLink()) fail('TASK_MATERIAL_PATH_INVALID')
+      let material
+      try { material = JSON.parse(await readFile(target, 'utf8')) } catch { fail('TASK_MATERIAL_SNAPSHOT_INVALID') }
+      if (!material || material.sourceId !== source.sourceId || material.path !== target || material.taskId !== undefined && material.taskId !== taskId
+        || material.version !== undefined && material.version !== source.version || material.actorId !== source.actorId || material.messageId !== source.messageId || material.text !== source.text
+        || hash(material.quote ?? null) !== hash(source.quote ?? null) || !Array.isArray(material.resources)
+        || material.resources.length !== (source.resources ?? []).length) fail('TASK_MATERIAL_SOURCE_MISMATCH')
+      for (const [index, resource] of material.resources.entries()) {
+        if (!resource || !source.resources.some(item => stableTaskResourceIdentity([resource.resource]) === stableTaskResourceIdentity([item]))) fail('TASK_MATERIAL_SOURCE_MISMATCH')
+        if (resource.status === 'unavailable') {
+          if (resource.path !== undefined || resource.value !== undefined) fail('TASK_MATERIAL_SNAPSHOT_INVALID')
+          continue
+        }
+        if (resource.status !== 'read' || resource.complete !== true || typeof resource.path !== 'string'
+          || dirname(resource.path) !== directories.materials || !/^[a-f0-9]{64}$/.test(resource.sha256 ?? '')
+          || !Number.isSafeInteger(resource.bytes) || resource.bytes < 0 || resource.bytes > 8 * 1024 * 1024) fail('TASK_MATERIAL_PATH_INVALID')
+        let bytes
+        try {
+          const entry = await lstat(resource.path)
+          if (!entry.isFile() || entry.isSymbolicLink()) fail('TASK_MATERIAL_PATH_INVALID')
+          bytes = await readFile(resource.path)
+        } catch (error) { if (error.code === 'ENOENT') fail('TASK_MATERIAL_CONTENT_MISSING'); throw error }
+        if (bytes.length !== resource.bytes || createHash('sha256').update(bytes).digest('hex') !== resource.sha256
+          || typeof resource.value?.text === 'string' && !bytes.equals(Buffer.from(resource.value.text, 'utf8'))
+          || resource.value?.image && resource.value.image.path !== resource.path) fail('TASK_MATERIAL_CONTENT_CHANGED')
+      }
+      await checkedTaskDirectory(directories.materials)
+      if (typeof source.text === 'string' && Buffer.byteLength(source.text) >= 512) {
+        const textPath = target.replace(/\.json$/, '.txt')
+        await publish(textPath, Buffer.from(source.text, 'utf8'))
+        return { ...material, version: source.version, textPath }
+      }
+      return material
+    }
+    const publish = async (path, bytes) => {
+      await checkedTaskDirectory(directories.materials)
+      const temporary = join(directories.materials, `.pending-${randomUUID()}`)
+      const handle = await open(temporary, 'wx', 0o600)
+      try { await handle.writeFile(bytes); await handle.sync() } finally { await handle.close() }
+      try {
+        await checkedTaskDirectory(directories.materials)
+        await link(temporary, path).catch(error => { if (error.code !== 'EEXIST') throw error })
+      } finally { await unlink(temporary) }
+      const info = await lstat(path)
+      if (!info.isFile() || info.isSymbolicLink()) fail('TASK_MATERIAL_PATH_INVALID')
+      if (!(await readFile(path)).equals(bytes)) fail('TASK_MATERIAL_CONTENT_CHANGED')
+    }
+    try {
+      return await readSnapshot()
+    } catch (error) { if (error.code !== 'ENOENT') throw error }
+    const resources = []
+    for (const resource of source.resources ?? []) {
+      if (!readResource) { resources.push({ resource, status: 'unavailable', reason: 'resource_reader_not_configured' }); continue }
+      try {
+        const value = await readResource(source.groupId, source.messageId, resource)
+        const text = typeof value?.text === 'string'
+        const image = value?.image?.data instanceof Uint8Array && value.image.data.byteLength > 0
+        if (!value || value.complete === false || value.hasMore === true || value.failures?.length || value.mediaUnavailable?.length || !text && !image) fail('RESOURCE_READ_INCOMPLETE')
+        const bytes = text ? Buffer.from(value.text, 'utf8') : Buffer.from(value.image.data)
+        if (bytes.length > 8 * 1024 * 1024) fail('RESOURCE_READ_TOO_LARGE')
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        const extension = text ? '.txt' : ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }[value.image.mediaType] ?? '.bin')
+        const path = join(directories.materials, `resource-${hash([source.sourceId, resource]).slice(0, 16)}-${sha256.slice(0, 16)}${extension}`)
+        await publish(path, bytes)
+        resources.push({ resource, status: 'read', complete: true, path, bytes: bytes.length, sha256,
+          value: text ? clean(value) : { image: { mediaType: value.image.mediaType, name: value.image.name, path, bytes: bytes.length, sha256 } } })
+      }
+      catch (error) { resources.push({ resource, status: 'unavailable', reason: error.code ?? 'RESOURCE_READ_FAILED' }) }
+    }
+    const material = clean({ taskId, sourceId: source.sourceId, version: source.version, actorId: source.actorId, messageId: source.messageId,
+      text: source.text, quote: source.quote, resources, path: target })
+    await publish(target, Buffer.from(JSON.stringify(material)))
+    return readSnapshot()
+  }
+  async function cancelLiveTask(taskId, oldTask, oldExecutions) {
+    const list = await query('execution.list', { taskId })
+    await Promise.all([taskSessions.cancel(taskId), ...list.filter(item => !item.drained).map(item => executionSessions.cancel(item.executionId))])
+    await Promise.allSettled([oldTask, ...list.map(item => oldExecutions.get(item.executionId))].filter(Boolean))
+  }
+  function admitTask(taskId, action) {
+    const previous = admissions.get(taskId) ?? Promise.resolve()
+    const pending = previous.catch(() => {}).then(async () => {
+      admissionHolds.add(taskId)
+      const oldTask = inflightTasks.get(taskId), oldExecutions = new Map(inflightExecutions)
+      try { return await action(oldTask, oldExecutions) }
+      finally {
+        admissionHolds.delete(taskId)
+        if (!closed) void schedulePending()
+      }
+    })
+    admissions.set(taskId, pending)
+    pending.finally(() => { if (admissions.get(taskId) === pending) admissions.delete(taskId) }).catch(() => {})
+    return pending
+  }
+  async function recordMessageStage(request, stage) {
+    try {
+      const group = residentStore.getGroup(request.groupId)
+      const refs = request.sourceSnapshot ? [request.sourceSnapshot] : request.messages
+        ?? (request.topicId && request.revision ? resolveTopicMessages(group, request.topicId, request.revision) : [])
+      if (!refs.length) return
+      const sources = await query('source.list', { groupId: request.groupId })
+      const matched = sources.filter(source => refs.some(ref => ref.messageId === source.messageId
+        && (ref.messageVersion ?? ref.version) === source.version))
+      for (const source of matched) await command('source.stage', { sourceId: source.sourceId,
+        stage: { ...stage, shared: matched.length > 1 } })
+    } catch (error) {
+      failures.set(`timing:${stage.requestId}`, { id: `timing:${stage.requestId}`, code: error.code ?? error.message })
+      ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
+    }
+  }
+  const sameProcessingRefs = (source, refs) => hash((source.activeUnitRefs ?? source.processingCompleted?.activeUnitRefs ?? []).map(ref => [ref.unitId, ref.unitRevision]).sort())
+    === hash(refs.map(ref => [ref.unitId, ref.unitRevision]).sort()) && (source.activeUnitRefs !== undefined || source.processingCompleted !== undefined)
+  async function projectSource(source) {
+    if (source.channel === 'web' || !residentStore) return
+    const group = residentStore.getGroup(source.groupId)
+    const message = group?.messages.find(item => item.messageId === source.messageId)
+    if (!message || message.routingStatus !== 'routed') return
+    const coordinated = (residentStore.listSourceDispatchOwnership?.(source.groupId, { messageId: source.messageId, messageVersion: source.version }) ?? [])
+      .filter(r => r.dispatchOwner === 'coordination' && r.sourceSnapshot.messageId === source.messageId && r.sourceSnapshot.messageVersion === source.version)
+    if (source.version < message.messageVersion) {
+      if (!source.routed || source.processingPending) await command('source.routed', { sourceId: source.sourceId,
+        receipt: source.routed ? source.routeReceipt : [{ supersededByVersion: message.messageVersion }],
+        supersededByVersion: message.messageVersion }, `source-superseded:${source.sourceId}:${message.messageVersion}`)
+      return
+    }
+    if (source.version !== message.messageVersion) return
+    const retiredUnits = coordinated.filter(owner => owner.retirement?.kind === 'feature-removed' && owner.settled)
+      .filter(owner => message.activeUnitRefs?.some(ref => ref.unitId === owner.unitId && ref.unitRevision === owner.unitRevision))
+      .map(({ unitId, unitRevision }) => ({ unitId, unitRevision }))
+    const isRetired = entry => retiredUnits.some(ref => ref.unitId === entry.unitId && ref.unitRevision === entry.unitRevision)
+    const entriesFor = topic => topicSourceEntries(group, topic, topic.revision, source.messageId, source.version)
+    const refs = residentStore.listTopics(source.groupId).filter(topic => entriesFor(topic).length)
+    const legacyComplete = !activeFixedUnits(message).length && refs.every(topic =>
+      entriesFor(topic).filter(entry => !isRetired(entry)).every(entry =>
+        topic.processedRevision >= entry.revision && topic.decisions.some(record => record.status === 'completed' && topicDecisionCoversEntry(record, entry))))
+    if (Array.isArray(message.activeUnitRefs)) {
+      if (!sameProcessingRefs(source, message.activeUnitRefs) || source.processingCompleted && !legacyComplete
+        || retiredUnits.some(ref => !source.coordinationRetirement?.units.some(old => old.unitId === ref.unitId && old.unitRevision === ref.unitRevision)))
+        source = (await command('source.processingStarted', { sourceId: source.sourceId, messageVersion: source.version,
+          activeUnitRefs: message.activeUnitRefs, legacyPending: !legacyComplete, retiredCoordinationUnits: retiredUnits })).result.source
+      const units = message.activeUnitRefs.map(ref => {
+        const unit = message.units?.find(item => item.unitId === ref.unitId && item.unitRevision === ref.unitRevision)
+        return unit && { ...ref, processingComplete: legacyComplete, dispatchOwner: residentStore.getSourceDispatchOwnership?.(source.groupId, ref.unitId, ref.unitRevision)?.dispatchOwner ?? unit.dispatchOwner ?? 'legacy-topic' }
+      })
+      // route/units 是 Host 的持久事实；账本再次校验全部协调单元的决定，而非等待业务 settled。
+      if (!source.processingCompleted && legacyComplete && units.every(Boolean)) {
+        try { await command('source.processingCompleted', { sourceId: source.sourceId, messageVersion: source.version,
+          routingRevision: group.routingRevision, activeUnitRefs: message.activeUnitRefs, units }) }
+        catch (error) { if (error.code !== 'DYNAMIC_SOURCE_PROCESSING_INCOMPLETE') throw error }
+      }
+    }
+    if (coordinated.some(r => !r.settled && !source.coordinationRetirement?.units.some(ref => ref.unitId === r.unitId && ref.unitRevision === r.unitRevision))) return
+    if (source.routed || !legacyComplete) return
+    await command('source.routed', { sourceId: source.sourceId, receipt: [...refs.map(topic => ({ topicId: topic.topicId, revision: topic.revision })),
+      ...coordinated.map(r => ({ reservationId: r.reservationId, generation: r.generation, coordinationId: r.coordinationId }))] }, `topic-routed:${source.sourceId}`)
+  }
+  async function applyTopicAction(groupId, action, operation, record) {
+    if (action.kind === 'task-proposal' || await query('receipt.get', { id: `topic-operation:${operation.operationId}` })) return
+    const request = { groupId, messages: action.topicRefs.flatMap(ref => resolveTopicMessages(residentStore.getGroup(groupId), ref.topicId, ref.revision)) }
+    const stage = { spanId: `host:${operation.operationId}:${randomUUID()}`, stage: 'host', requestId: record.decisionId,
+      attempt: operation.attempt ?? 0, startedAt: new Date().toISOString(), completedAt: null }
+    await recordMessageStage(request, stage)
+    const measure = async (phase, work) => {
+      const span = { ...stage, spanId: `host:${operation.operationId}:${phase}:${randomUUID()}`, phase, startedAt: new Date().toISOString(), completedAt: null }
+      await recordMessageStage(request, span)
+      try { return await work() }
+      finally { await recordMessageStage(request, { ...span, completedAt: new Date().toISOString() }) }
+    }
+    try { return await applyTopicActionBody(groupId, action, operation, record, measure) }
+    finally { await recordMessageStage(request, { ...stage, completedAt: new Date().toISOString() }) }
+  }
+  async function applyTopicActionBody(groupId, action, operation, record, measure) {
+    if (action.kind === 'task-proposal') return
+    // Also guard durable actions accepted by older schemas before any cancellation.
+    if (action.kind === 'task-context') assertTaskContextSemantics(action)
+    // 固定话题历史可能保留早期通知回声；它们仅是上下文，不是准入的用户来源。
+    const topicSources = [...new Map(action.topicRefs.flatMap(ref => resolveTopicMessages(residentStore.getGroup(groupId), ref.topicId, ref.revision))
+      .filter(message => !isOwnNotification({ ...message, groupId })).map(message => [message.messageId, message])).values()]
+    const available = await query('source.list', { groupId })
+    const sources = []
+    for (const message of topicSources) {
+      let source = available.find(source => source.messageId === message.messageId && source.version === message.messageVersion)
+      if (!source) {
+        const admitted = available.filter(source => source.messageId === message.messageId && source.version < message.messageVersion).sort((a, b) => b.version - a.version)[0]
+        if (!admitted) fail('TASK_TOPIC_SOURCE_VERSION_MISSING')
+        const sourceId = `im:${hash([groupId, message.messageId, message.messageVersion])}`
+        const receipt = await command('source.captureRevision', { sourceId, groupId, messageId: message.messageId, version: message.messageVersion,
+          actorId: message.senderOpenDingTalkId ?? admitted.actorId, senderName: message.senderName ?? admitted.senderName,
+          text: message._sourceMessageText ?? message.text, quote: message.quotedMessage ?? null,
+          resources: message.resourceRefs ?? message.imageRefs ?? [], timestamp: message.occurredAt,
+          admissionSourceId: admitted.sourceId }, `topic-source:${sourceId}`)
+        source = receipt.result.source
+      }
+      sources.push(source)
+    }
+    const actionUnits = action.topicRefs.flatMap(ref => resolveTopicMessages(residentStore.getGroup(groupId), ref.topicId, ref.revision))
+      .filter(message => (action.basisUnitRefs ?? record.decision.basisUnitRefs).some(ref => ref.unitId === message.unitId && ref.unitRevision === message.unitRevision))
+    const basis = sources.filter(source => actionUnits.some(message => message.messageId === source.messageId))
+    const existingTask = action.kind === 'new-task' ? null : await requireTask(operation.taskId)
+    if (existingTask?.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
+    // 群续办按本次真实来源接纳；最初发起人身份不代表后续交办的唯一作者。
+    const source = basis.findLast(item => item.groupId === groupId && item.actorId
+      && (item.channel === 'web' ? item.actorId === config.webActorId : item.channel !== 'internal')
+      && (action.kind !== 'task-cancel' || [existingTask?.ownerActorId, config.ownerActorId].includes(item.actorId)))
+    if (!source) fail('TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED')
+    if (existingTask && existingTask.groupId !== source.groupId) fail('TASK_SESSION_SOURCE_FORBIDDEN')
+    const refs = action.topicRefs
+    const replyBindings = bindingsForSources(basis)
+    const id = `topic-operation:${operation.operationId}`
+    if (await query('receipt.get', { id })) return
+    return admitTask(operation.taskId, async (oldTask, oldExecutions) => {
+    let task
+    if (action.kind === 'new-task') {
+      const receipt = await measure('task-commit', () => command('task.create', { taskId: operation.taskId, groupId, ownerActorId: source.actorId,
+        sourceRefs: sources.map(item => item.sourceId), topicRefs: refs, replyBindings, operationId: operation.operationId,
+        title: action.title, objective: action.objective, request: sources.map(item => item.text).join('\n\n'),
+        requirements: action.acceptanceCriteria ?? [], metadata: { channel: source.channel ?? 'im', authorizationSourceId: source.sourceId } }, id))
+      task = receipt.result.task
+    } else {
+      task = await requireTask(operation.taskId)
+      if (action.kind === 'task-context' && action.progressImpact === 'preserve' && action.title !== undefined && action.title !== task.title) fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
+      const topicRefs = [...new Map([...(task.topicRefs ?? []), ...refs].map(ref => [ref.topicId, ref])).values()]
+      const args = { taskId: task.taskId, expectedRequirementRevision: action.inputVersion, expectedControlRevision: task.controlRevision,
+        topicRefs, ...(replyBindings.length ? { replyBindings } : {}), operationId: operation.operationId }
+      const changesRequirements = action.authorizationChange === 'changed' || action.progressImpact === 'replan' || action.impactEvidence !== undefined
+        || action.objective !== undefined || action.acceptanceCriteria !== undefined || action.stageTasks !== undefined
+      const supplement = action.kind === 'task-context' && action.progressImpact === 'preserve' && action.authorizationChange !== 'changed'
+        && !changesRequirements && (action.title === undefined || action.title === task.title)
+      const receipt = await measure('task-commit', () => action.kind === 'task-cancel'
+        ? command('task.control', { ...args, control: 'cancelled', reason: action.reason }, id)
+        : supplement
+        ? command('task.supplement', { ...args, messageId: id, text: action.context ?? source.text,
+          request: `${task.request}\n\n[话题补充]\n${action.context ?? source.text}`,
+          sourceRefs: [...new Set([...task.sourceRefs, ...sources.map(item => item.sourceId)])] }, id)
+        : command(action.kind === 'task-reopen' ? 'task.reopen' : 'task.revise', { ...args,
+          request: `${task.request}\n\n[话题补充]\n${action.context ?? source.text}`,
+          sourceRefs: [...new Set([...task.sourceRefs, ...sources.map(item => item.sourceId)])],
+          ...(action.title ? { title: action.title } : {}), ...(action.objective ? { objective: action.objective } : {}),
+          ...(action.acceptanceCriteria ? { requirements: action.acceptanceCriteria } : {}) }, id))
+      task = receipt.result.task
+      if (!supplement) await measure('old-drain', () => cancelLiveTask(task.taskId, oldTask, oldExecutions))
+      if (supplement && !task.humanRequests?.some(request => request.status === 'waiting-reply'))
+        for (const execution of await query('execution.list', { taskId: task.taskId })) await executionSessions.feedback(execution.executionId)
+    }
+    await measure('materialize', async () => { for (const item of sources) await materializeSource(task.taskId, item) })
+    })
+  }
+  async function topicReplyInternalIds(args) {
+    const group = residentStore.getGroup(args.groupId)
+    const refs = args.topicRefs ?? (args.topicId ? [{ topicId: args.topicId, revision: args.revision }] : [])
+    const messageIds = new Set([args.replyToMessageId, ...(args.decision?.basisMessageIds ?? [])].filter(Boolean))
+    for (const ref of refs) for (const message of resolveTopicMessages(group, ref.topicId, ref.revision)) messageIds.add(message.messageId)
+    const messages = (group?.messages ?? []).filter(message => messageIds.has(message.messageId))
+    const taskIds = [...new Set([...(args.taskIds ?? []), ...(args.decision?.actions ?? []).map(action => action.taskId)].filter(Boolean))]
+    const tasks = (await Promise.all(taskIds.map(taskId => query('task.get', { taskId })))).filter(Boolean)
+    return [args.groupId, args.decisionId, args.outboundId, args.sourceMessageId, args.replyToSenderOpenDingTalkId,
+      ...(args.atOpenDingTalkIds ?? []), ...refs.map(ref => ref.topicId), ...taskIds,
+      ...messages.flatMap(message => [message.messageId, `im:${hash([args.groupId, message.messageId, message.messageVersion])}`,
+        message.senderOpenDingTalkId, message.actorId, ...(message.units ?? []).map(unit => unit.unitId)]),
+      ...(await Promise.all(tasks.map(task => replyInternalIds(task)))).flat()].filter(Boolean)
+  }
+  const topicFacts = createTopicFactHandler({ residentStore, query,
+    commit: (kind, args, id) => store.command({ id, kind, args: clean(args) }),
+    signature: () => legacy.getAgentConfig().replySignature,
+    observe: metrics => ctx.emit?.('dingtalk/topic-fact-context', metrics),
+    onNotification: async notification => {
+      notificationCache.set(notification.id, notification)
+      await projectTaskNotification({ residentStore, notification })
+      if (!closed) void deliverNotifications()
+    } })
+  const sameRefs = (left, right) => hash((left ?? []).map(({ topicId, revision }) => [topicId, revision]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))) === hash((right ?? []).map(({ topicId, revision }) => [topicId, revision]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
+  const sameIds = (left, right) => hash([...(left ?? [])].sort()) === hash([...(right ?? [])].sort())
+  function fixedReplyFact(args) {
+    const message = residentStore.getGroup(args.groupId)?.messages.find(item => item.messageId === (args.sourceRef?.messageId ?? args.replyToMessageId) && item.messageVersion === args.sourceVersion)
+    const ref = args.matterUnitRefs?.length === 1 && args.matterUnitRefs[0]
+    const unit = message?.units?.find(item => item.unitId === ref?.unitId && item.unitRevision === ref?.unitRevision && item.fixedTopic === args.fixedTopic)
+    const requestId = unit && fixedUnitRequestId(args.groupId, message, unit)
+    const scheduled = args.outboundId === platformScheduleOutboundId(requestId)
+    if (!fixedTopicIds.includes(args.fixedTopic) || !unit || args.topicRefs?.length || args.taskIds?.length
+      || !message.activeUnitRefs?.some(item => item.unitId === unit.unitId && item.unitRevision === unit.unitRevision)
+      || (args.sourceRef ? args.sourceRef.actorId !== message.senderOpenDingTalkId || args.sourceRef.messageVersion !== message.messageVersion
+        : args.replyToSenderOpenDingTalkId !== message.senderOpenDingTalkId)
+      || !scheduled && args.outboundId !== requestId) fail('fixed_topic_reply_source_invalid')
+    const fact = { fixedTopic: unit.fixedTopic, unitId: unit.unitId, unitRevision: unit.unitRevision }
+    if (scheduled) {
+      const binding = residentStore.getPlatformSchedule(platformScheduleSessionId(requestId))
+      if (unit.fixedTopic !== 'agent-platform' || binding?.requestId !== requestId || !binding.scheduleId
+        || binding.groupId !== args.groupId || binding.messageId !== message.messageId || binding.messageVersion !== message.messageVersion
+        || binding.unitId !== unit.unitId || binding.unitRevision !== unit.unitRevision || Date.parse(binding.at) > Date.now()) fail('fixed_topic_reply_source_invalid')
+      fact.scheduleId = binding.scheduleId; fact.scheduledAt = binding.at
+    }
+    return fact
+  }
+  const frozenReply = async ({ groupId, topicRefs, decisionId, outboundId, taskIds, resultFingerprint, taskInputVersion, taskRunSequence, fixedTopic, sourceVersion, matterUnitRefs, sourceRef, replyToMessageId, replyToSenderOpenDingTalkId }) => {
+    const fact = fixedTopic ? fixedReplyFact({ groupId, topicRefs, outboundId, taskIds, fixedTopic, sourceVersion, matterUnitRefs, sourceRef, replyToMessageId, replyToSenderOpenDingTalkId }) : null
+    const outbound = residentStore.getGroup(groupId)?.outbox.find(item => item.outboundId === outboundId)
+    const notification = (await query('notification.list')).find(item => item.id === outboundId)
+    const payload = notification?.payload
+    if (notification && (notification.kind !== (fact ? 'fixed-topic-reply' : 'topic-reply') || payload?.conversationId !== groupId || !sameRefs(payload?.topicRefs, topicRefs)
+      || fact && (hash(payload.fact) !== hash(fact) || payload.sourceVersion !== sourceVersion || payload.sourceMessageId !== replyToMessageId || payload.actorId !== replyToSenderOpenDingTalkId || hash(payload.sourceRef ?? null) !== hash(sourceRef ?? null))
+      || taskIds !== undefined && !sameIds(payload?.taskIds, taskIds)
+      || Object.hasOwn(payload, 'replyToMessageId') && payload.replyToMessageId !== payload.sourceMessageId
+      || Object.hasOwn(payload, 'replyToSenderOpenDingTalkId') && payload.replyToSenderOpenDingTalkId !== payload.actorId)) fail('group_reply_frozen_identity_conflict')
+    if (outbound && (!sameRefs(outbound.topicRefs, topicRefs)
+      || fact && (outbound.replyToMessageId !== replyToMessageId || outbound.replyToSenderOpenDingTalkId !== replyToSenderOpenDingTalkId || hash(outbound.matterUnitRefs ?? []) !== hash(matterUnitRefs) || hash(outbound.sourceRef ?? null) !== hash(sourceRef ?? null))
+      || decisionId && outbound.decisionId !== decisionId && !(notification && !outbound.decisionId && outbound.sourceMessageId === `task-notification:${outboundId}`)
+      || !decisionId && outbound.decisionId
+      || taskIds !== undefined && !sameIds(outbound.taskIds, taskIds)
+      || resultFingerprint !== undefined && outbound.resultFingerprint !== undefined && outbound.resultFingerprint !== resultFingerprint
+      || taskInputVersion !== undefined && outbound.taskInputVersion !== undefined && outbound.taskInputVersion !== taskInputVersion
+      || taskRunSequence !== undefined && outbound.taskRunSequence !== undefined && outbound.taskRunSequence !== taskRunSequence)) fail('group_reply_frozen_identity_conflict')
+    const frozen = payload && { text: payload.text, replyToMessageId: payload.sourceMessageId, replyToSenderOpenDingTalkId: payload.actorId, atOpenDingTalkIds: payload.atOpenDingTalkIds ?? [], ...(payload.atAll ? { atAll: true } : {}),
+      ...(payload.sourceRef ? { sourceRef: payload.sourceRef } : {}), artifactFiles: payload.artifactFiles ?? [] }
+    if (outbound && frozen && (outbound.text !== frozen.text || outbound.replyToMessageId !== frozen.replyToMessageId || outbound.replyToSenderOpenDingTalkId !== frozen.replyToSenderOpenDingTalkId || hash(outbound.atOpenDingTalkIds ?? []) !== hash(frozen.atOpenDingTalkIds) || !!outbound.atAll !== !!frozen.atAll
+      || hash(outbound.artifactFiles ?? []) !== hash(frozen.artifactFiles))) fail('group_reply_frozen_identity_conflict')
+    return { outbound, notification, frozen: outbound ?? frozen }
+  }
+  function assertRoutingClarification(payload, outboundId) {
+    const group = residentStore.getGroup(payload.conversationId)
+    const message = group?.messages.find(item => item.messageId === payload.sourceMessageId)
+    const hold = message?.routingHold, draft = hold?.clarification, fact = payload.fact
+    if (!message || message.routingStatus !== 'needs-context' || message.messageVersion !== payload.sourceVersion
+      || hold.messageVersion !== fact.messageVersion || !draft || draft.epoch !== fact.epoch
+      || message.senderOpenDingTalkId !== payload.actorId || ['web', 'internal'].includes(message.sourceKind)
+      || message.messageAiSendFlag === 'DWS' || isOwnNotification({ ...message, groupId: group.groupId })
+      || draft.question !== fact.question || draft.assignmentQuote !== fact.assignmentQuote || draft.reviewFingerprint !== fact.reviewFingerprint
+      || fact.agentDirected !== true || draft.replyReview?.kind !== 'substantive' || draft.replyReview.replaceOutboundIds?.length)
+      fail('routing_clarification_stale')
+    const quoteAt = message.text.indexOf(draft.assignmentQuote)
+    if (quoteAt < 0 || message.text.indexOf(draft.assignmentQuote, quoteAt + 1) >= 0) fail('routing_clarification_stale')
+    const reviewMessages = (draft.reviewMessageIds ?? []).map(id => group.messages.find(item => item.messageId === id)).filter(Boolean)
+    if (!reviewMessages.length || reviewMessages.length !== draft.reviewMessageIds.length
+      || draft.reviewMessageVersions?.length !== reviewMessages.length
+      || reviewMessages.some(message => !draft.reviewMessageVersions.some(ref => ref.messageId === message.messageId && ref.messageVersion === message.messageVersion)))
+      fail('routing_clarification_stale')
+    const candidates = buildReplyReviewCandidates({ group: { ...group, outbox: group.outbox.filter(item => item.outboundId !== outboundId) },
+      tasks: residentStore.listTasks().filter(task => task.groupId === group.groupId && !task.archivedAt), currentMessages: reviewMessages })
+    if (fingerprint(candidates) !== draft.reviewFingerprint) fail('routing_clarification_stale')
+    return message
+  }
+  async function prepareRoutingClarifications(groupId) {
+    for (const message of residentStore.getGroup(groupId)?.messages ?? []) {
+      const hold = message.routingHold, draft = hold?.clarification
+      if (closed || message.routingStatus !== 'needs-context' || !draft) continue
+      const outboundId = stableId('routing-clarification', JSON.stringify([groupId, message.messageId, message.messageVersion, draft.epoch]))
+      // 已准备、已发送或未知效果只恢复原账，不能换正文或创建第二个发送身份。
+      if (notificationCache.has(outboundId)) continue
+      if (!message.senderOpenDingTalkId || ['web', 'internal'].includes(message.sourceKind) || message.messageAiSendFlag === 'DWS'
+        || isOwnNotification({ ...message, groupId })) continue
+      const names = legacy.getAgentConfig().agentNames ?? []
+      const namedRecipient = names.filter(name => typeof name === 'string' && name.trim()).some(name =>
+        new RegExp(`^\\s*@?${RegExp.escape(name.trim())}(?:[\\s，,：:]+)`, 'u').test(message.text))
+      const directed = namedRecipient || /^\s*cc\s*:/iu.test(message.text) || message.mentionedAgent === true
+        || message.mentionedAgent === undefined && readMentioned && await readMentioned(groupId, message)
+      if (!directed) continue
+      const fact = { messageVersion: message.messageVersion, epoch: draft.epoch, question: draft.question,
+        assignmentQuote: draft.assignmentQuote, reviewFingerprint: draft.reviewFingerprint, agentDirected: true }
+      const sourceId = `im:${hash([groupId, message.messageId, message.messageVersion])}`
+      const source = await query('source.get', { sourceId })
+      if (!source || source.actorId !== message.senderOpenDingTalkId || source.channel !== 'im') continue
+      const sourceRef = { messageId: message.messageId, messageVersion: message.messageVersion, actorId: message.senderOpenDingTalkId }
+      const payload = { conversationId: groupId, sourceId, sourceVersion: message.messageVersion, sourceMessageId: message.messageId,
+        actorId: message.senderOpenDingTalkId, replyToMessageId: message.messageId, replyToSenderOpenDingTalkId: message.senderOpenDingTalkId,
+        atOpenDingTalkIds: [message.senderOpenDingTalkId], topicRefs: [], taskIds: [], sourceRef, replyKind: 'substantive', fact }
+      try {
+        const previous = residentStore.getGroup(groupId).outbox.find(item => item.outboundId === outboundId)
+        const reply = previous ?? prepareGroupNotification({ groupId, text: draft.question, sourceText: message.text,
+          replyToMessageId: message.messageId, replyToSenderOpenDingTalkId: message.senderOpenDingTalkId,
+          atOpenDingTalkIds: payload.atOpenDingTalkIds, includeSignature: false,
+          internalIds: [groupId, message.messageId, sourceId, message.senderOpenDingTalkId, outboundId] })
+        payload.text = reply.text
+        assertRoutingClarification(payload, outboundId)
+        const saved = await residentStore.appendOutbox({ ...payload, groupId, outboundId, sourceMessageId: `task-notification:${outboundId}`,
+          matterSourceMessageIds: [message.messageId], matterUnitRefs: [], text: reply.text,
+          preflight: () => { assertRoutingClarification(payload, outboundId) } })
+        if (saved?.status) continue
+        await command('notification.prepare', { notificationId: outboundId, taskId: null, requirementRevision: 1,
+          kind: 'routing-clarification', payload }, `prepare-notification:${outboundId}`)
+        failures.delete(outboundId)
+      } catch (error) {
+        // 失败保留可见诊断和原待判；不回退成已处理，也不机械重问。
+        failures.set(outboundId, { id: outboundId, code: error.code ?? error.message })
+      }
+    }
+  }
+  const topicCoordinator = await openTaskTopicCoordinator({ ctx, store: residentStore, legacy, root, models, applyAction: applyTopicAction, taskFacts: topicFacts,
+    // 独立协调已移除；保留普通 Topic 路由和事实回复。
+    onStage: recordMessageStage, readMentioned,
+    readArchivedTask: async taskId => {
+      const task = await query('task.get', { taskId })
+      return task?.archivedAt ? topicTaskView(task) : undefined
+    },
+    readPlatformTasks: async groupId => {
+      const tasks = await query('task.list', { groupId, archived: 'all' })
+      const executions = await query('execution.list')
+      return tasks.filter(task => task.groupId === groupId).map(task => ({ taskId: task.taskId, groupId, title: task.title,
+        state: taskBoardState(task, executions.filter(execution => execution.taskId === task.taskId)),
+        completedAt: task.completion?.at ?? null, archivedAt: task.archivedAt ?? null }))
+    },
+    onInputSettled: groupId => {
+      if (closed) return
+      // Topic 首次完成后立即结算来源；不能等待整个群队列、业务执行或通知回读排空。
+      const work = Promise.resolve().then(async () => {
+        for (const source of await query('source.list', { groupId })) if (!source.routed || source.processingPending) await projectSource(source)
+        failures.delete(`source-projection:${groupId}`)
+      }).catch(error => failures.set(`source-projection:${groupId}`, { id: groupId, code: error.code ?? error.message }))
+      sourceProjections.add(work)
+      void work.finally(() => sourceProjections.delete(work))
+    },
+    onRouted: async (groupId, messageIds) => {
+      const group = residentStore.getGroup(groupId)
+      for (const source of await query('source.list', { groupId })) {
+        const message = group?.messages.find(item => item.messageId === source.messageId && item.messageVersion === source.version)
+        if (messageIds.includes(source.messageId) && Array.isArray(message?.activeUnitRefs) && !sameProcessingRefs(source, message.activeUnitRefs)) await command('source.processingStarted', { sourceId: source.sourceId,
+          messageVersion: source.version, activeUnitRefs: message.activeUnitRefs })
+      }
+      await prepareRoutingClarifications(groupId)
+    },
+    quotedReminderContext: async () => null,
+    // 在接纳业务决定前拒绝泄漏正文，让原模型修改后重提，不能先创建任务再卡在外发。
+    validateReply: async args => assertGroupReply(args.decision.reply, await topicReplyInternalIds(args)),
+    readFrozenReply: async args => (await frozenReply(args)).frozen,
+    appendOutbox: async args => {
+      const { outbound: previous, notification: prepared, frozen } = await frozenReply(args)
+      if (prepared) {
+        const group = previous ? residentStore.getGroup(args.groupId) : await residentStore.appendOutbox({ ...args, ...frozen })
+        void deliverNotifications()
+        return group
+      }
+      const replySource = residentStore.getGroup(args.groupId)?.messages.find(message => message.messageId === args.replyToMessageId)
+      const sourceText = replySource?.text
+      if (previous?.status === 'sent' || previous?.status === 'superseded') return residentStore.getGroup(args.groupId)
+      // The resident outbox can survive a crash before notification.prepare.
+      const reply = previous ? { text: previous.text, replyToMessageId: previous.replyToMessageId, replyToSenderOpenDingTalkId: previous.replyToSenderOpenDingTalkId,
+        atOpenDingTalkIds: previous.atOpenDingTalkIds ?? [], atAll: previous.atAll, artifactFiles: previous.artifactFiles ?? [] }
+        : prepareGroupNotification({ ...args, sourceText, signature: legacy.getAgentConfig().replySignature,
+          includeSignature: args.replyKind === 'substantive', internalIds: await topicReplyInternalIds(args) })
+      args = { ...args, ...reply }
+      if (args.artifactFiles?.length) {
+        const platformSource = args.artifactFiles[0].artifact.platformSource
+        if (!args.fixedTopic || !args.sourceRef || platformSource?.requestId !== args.outboundId
+          || platformSource.groupId !== args.groupId || platformSource.messageId !== args.sourceRef.messageId
+          || platformSource.messageVersion !== args.sourceVersion || platformSource.unitId !== args.matterUnitRefs[0]?.unitId
+          || platformSource.unitRevision !== args.matterUnitRefs[0]?.unitRevision) fail('fixed_topic_reply_artifact_invalid')
+        await deliveryFiles.validateManifest(args.artifactFiles.map(file => file.artifact), { platformSource })
+      }
+      const group = await residentStore.appendOutbox(args)
+      const notificationId = args.outboundId
+      const frozenSource = residentStore.getGroup(args.groupId)?.messages.find(message => message.messageId === args.replyToMessageId)
+      const kind = args.fixedTopic ? 'fixed-topic-reply' : 'topic-reply'
+      const fact = args.fixedTopic ? fixedReplyFact(args) : { topicRefs: args.topicRefs }
+      await command('notification.prepare', { notificationId, taskId: args.taskIds?.[0] ?? null, requirementRevision: 1, kind,
+        payload: { text: args.text, topicRefs: args.topicRefs, replyTopicId: args.topicRefs?.[0]?.topicId, taskIds: args.taskIds, replyKind: args.replyKind, conversationId: args.groupId, sourceMessageId: args.replyToMessageId, ...(frozenSource ? { sourceVersion: frozenSource.messageVersion } : {}), actorId: args.replyToSenderOpenDingTalkId,
+          ...(args.fixedTopic ? { sourceId: `im:${hash([args.groupId, args.sourceRef?.messageId ?? args.replyToMessageId, args.sourceVersion])}`,
+            ...(args.sourceRef ? { sourceRef: args.sourceRef } : {}), sourceVersion: args.sourceVersion } : {}),
+          replyToMessageId: args.replyToMessageId, replyToSenderOpenDingTalkId: args.replyToSenderOpenDingTalkId, atOpenDingTalkIds: args.atOpenDingTalkIds ?? [], ...(args.atAll ? { atAll: true } : {}),
+          ...(args.artifactFiles?.length ? { artifactFiles: args.artifactFiles } : {}), fact, kind } }, `prepare-notification:${notificationId}`)
+      void deliverNotifications()
+      return group
+    },
+    onError: async (groupId, error) => {
+      failures.set(groupId, { id: groupId, code: error.code ?? error.message })
+      for (const message of residentStore.getGroup(groupId)?.messages ?? []) if (message.agentDeliveryStatus !== 'delivered' && message.agentDeliveryStatus !== 'skipped')
+        await residentStore.markMessageAgentDelivery({ groupId, messageId: message.messageId, status: 'decision-failed', error: error.code ?? error.message })
+    } })
+  // 暂停期间不装配独立协调服务，也不消费事件、扫描日程或派发历史安排。
+  const rerouteGroups = new Map()
+  function kickGroup(groupId, factsOnly = false) {
+    if (closed) return Promise.resolve()
+    // 正在处理旧来源时的新入站必须续跑一轮，不能等恢复定时器才解除发送暂缓。
+    if (inflightGroups.has(groupId)) { rerouteGroups.set(groupId, (rerouteGroups.get(groupId) ?? true) && factsOnly); return inflightGroups.get(groupId) }
+    return track(inflightGroups, groupId, async () => {
+      if (!factsOnly) await refreshTasks()
+      await topicCoordinator.schedule(groupId)
+      await topicCoordinator.whenIdle()
+      if (!factsOnly) for (const source of await query('source.list', { groupId })) await projectSource(source)
+      if (!(residentStore.getGroup(groupId)?.messages ?? []).some(message => ['failed','decision-failed','decision-commit-failed'].includes(message.agentDeliveryStatus))) {
+        failures.delete(groupId)
+      }
+    }).finally(() => {
+      if (!rerouteGroups.has(groupId)) return
+      const nextFactsOnly = rerouteGroups.get(groupId)
+      rerouteGroups.delete(groupId)
+      if (!closed) void kickGroup(groupId, nextFactsOnly)
+    })
+  }
+  async function ingest(message) {
+    const receivedAt = new Date().toISOString()
+    const loopDelay = monitorEventLoopDelay({ resolution: 10 })
+    loopDelay.enable()
+    const phases = []
+    try {
+    if (closed) fail('TASK_SESSION_CLOSED')
+    // 订阅身份读取权威群记录，不为接入校验展开并过滤展示消息历史。
+    if (!residentStore.getGroup(message.groupId)) fail('group_not_subscribed')
+    const actorId = message.senderOpenDingTalkId ?? message.actorId
+    if (!actorId) fail('TASK_SESSION_AUTHENTICATED_SOURCE_REQUIRED')
+    if (!isOwnNotification(message)) await nativeDws.beforeIngress(message.groupId)
+    if (isOwnNotification(message)) {
+      return { accepted: false, processing: 'ignored', reason: 'own-notification' }
+    }
+    const sourceId = `im:${hash([message.groupId, message.messageId, message.messageVersion ?? 1])}`
+    // DWS rawOccurredAt is explicit even when absent: never admit its display-time fallback.
+    const rawTime = Object.hasOwn(message, 'rawOccurredAt') ? message.rawOccurredAt : message.occurredAt ?? message.timestamp
+    // Only the documented DWS local datetime format is Beijing time; ambiguous dates stay invalid.
+    const envelopeTime = typeof rawTime === 'string' && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/u.test(rawTime)
+      ? rawTime.replace(' ', 'T') + '+08:00' : rawTime
+    const actualTime = ingressTimestamp(envelopeTime)
+    const sourceReadStartedAt = new Date().toISOString()
+    const original = await query('source.get', { sourceId })
+    if (!original) {
+      const priorAdmission = await query('receipt.get', { id: `source:${sourceId}` })
+      if (priorAdmission?.result?.ignored) return { accepted: false, sourceId, processing: 'quarantined', reason: priorAdmission.result.reason }
+    }
+    phases.push({ phase: 'source-read', startedAt: sourceReadStartedAt, completedAt: new Date().toISOString() })
+    if (original && (original.actorId !== actorId || original.text !== (message.text ?? ''))) fail('DYNAMIC_SOURCE_CONFLICT')
+    const rawSource = { sourceId, groupId: message.groupId, messageId: message.messageId,
+      version: message.messageVersion ?? 1, actorId, senderName: message.senderName ?? '', text: message.text ?? '',
+      quote: message.quotedMessage ?? null, resources: message.resourceRefs ?? message.imageRefs ?? [], timestamp: actualTime ?? '' }
+    if (!original && config.ingressEpoch && (!actualTime || Date.parse(actualTime) < Date.parse(config.ingressEpoch))) {
+      const stored = await command('source.record', rawSource, `source:${sourceId}`)
+      return { accepted: false, sourceId, processing: 'quarantined', reason: stored.result.reason }
+    }
+    // Reuse the existing message model's enrichment/version boundary before recording
+    // immutable task-session sources. Replayed transport projections can enrich a quote.
+    await ingestTaskResidentMessage({ ctx, residentStore, message: { ...message, occurredAt: message.occurredAt ?? actualTime }, readResource,
+      onPhase: phase => phases.push(phase) })
+    const projected = residentStore.getGroup(message.groupId).messages.find(item => item.messageId === message.messageId)
+    const version = projected.messageVersion
+    const currentSourceId = `im:${hash([message.groupId, message.messageId, version])}`
+    const previous = await query('source.get', { sourceId: currentSourceId })
+    if (previous && (previous.actorId !== actorId || previous.text !== projected.text)) fail('DYNAMIC_SOURCE_CONFLICT')
+    const args = previous ? { sourceId: previous.sourceId, groupId: previous.groupId, messageId: previous.messageId,
+      version: previous.version, actorId: previous.actorId, senderName: previous.senderName, text: previous.text,
+      quote: previous.quote, resources: previous.resources, timestamp: previous.timestamp }
+      : { ...rawSource, sourceId: currentSourceId, version, senderName: projected.senderName ?? '', text: projected.text,
+        quote: projected.quotedMessage ?? null, resources: projected.resourceRefs ?? projected.imageRefs ?? [], timestamp: ingressTimestamp(projected.occurredAt) ?? actualTime ?? '', receivedAt }
+    const sourceRecordStartedAt = new Date().toISOString()
+    let stored = previous ? { result: { source: previous } } : await command('source.record', args, `source:${currentSourceId}`)
+    if (previous) {
+      const resources = mergeTaskResources(previous.resources, projected.resourceRefs ?? projected.imageRefs ?? previous.resources)
+      if (hash(resources) !== hash(previous.resources)) stored = await command('source.enrich', { sourceId: currentSourceId, resources }, `enrich:${currentSourceId}:${hash(resources)}`)
+    }
+    phases.push({ phase: 'source-record', startedAt: sourceRecordStartedAt, completedAt: new Date().toISOString() })
+    if (stored.result.ignored) return { accepted: false, sourceId: currentSourceId, processing: 'quarantined', reason: stored.result.reason }
+    if (!previous) {
+      const completedAt = new Date().toISOString()
+      const loopDelayMetadata = loopDelay.count > 0 ? { loopDelayMs: loopDelay.max / 1e6 } : {}
+      // The exact source is already known; timing must not re-read every group source per phase.
+      const spans = [{ spanId: `ingress:${currentSourceId}`, stage: 'ingress', requestId: currentSourceId, attempt: 0, startedAt: receivedAt, completedAt, ...loopDelayMetadata },
+        ...phases.map((phase, index) => ({ ...phase, spanId: `ingress:${currentSourceId}:${index}`, stage: 'ingress', requestId: currentSourceId, attempt: 0 }))]
+      try {
+        for (const stage of spans) await command('source.stage', { sourceId: currentSourceId, stage })
+      } catch (error) {
+        failures.set(`timing:${currentSourceId}`, { id: `timing:${currentSourceId}`, code: error.code ?? error.message })
+        ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
+      }
+    }
+    void kickGroup(message.groupId)
+    return { accepted: true, sourceId: currentSourceId, processing: stored.result.source.routed ? 'routed' : 'pending' }
+    } finally { loopDelay.disable() }
+  }
+
+  async function verifyTaskRestartIsolations(taskId) {
+    for (const operation of await query('operation.list', { taskId })) if (operation.recoverySettlement && !await verifyRestartIsolation(ctx, operation)) fail('DYNAMIC_ISOLATION_FENCE_UNVERIFIED')
+  }
+
+  async function nativeOperation(event) {
+    const { binding, callId, toolName, arguments: args } = event
+    const dwsCommands = nativeDwsCommands(toolName, args)
+    const readOnly = event.effectClass === 'read' || event.effectClass === 'pure'
+    if (readOnly && !dwsCommands.some(item => item.kind === 'status')) return { readOnly: true }
+    if (event.phase === 'started') {
+      await verifyTaskRestartIsolations(binding.taskId)
+      if (typeof args.command === 'string') for (const operation of await query('operation.list')) {
+        const scope = operation.recoverySettlement?.proof?.isolation?.provenance?.scope
+        if (hasRestartIsolation(operation) && scope?.kind === 'local-postgres'
+          && referencesIsolatedPostgres(args.command, scope, join(root, 'tasks', binding.taskId))) fail('DYNAMIC_ISOLATED_SOURCE_REUSE_FORBIDDEN')
+      }
+    }
+    const key = `native:${binding.executionId}:${binding.inputVersion ?? 1}:${binding.leaseEpoch}:${callId}`
+    const operationId = `operation-${hash(key).slice(0, 40)}`
+    if (event.phase === 'job') {
+      await command('operation.job', { binding, operationId, job: event.job }, `job:${key}:${hash(event.job)}`)
+      return { operationId }
+    }
+    if (event.phase === 'started') {
+      await command('operation.prepare', { binding, operationId, key, definition: { toolName, argumentsDigest: hash(args), ...(['pwsh', 'bash'].includes(toolName) ? { commandDigest: hash(args.command) } : {}), effectClass: event.effectClass ?? 'unknown',
+        ...(dwsCommands.length ? { nativeDwsCommands: dwsCommands } : {}),
+        ...(['job_output', 'job_list'].includes(toolName) ? { nativeJobRead: false } : {}) },
+        authorizationRef: `task:${binding.taskId}:requirement:${binding.requirementRevision}`, resourceKeys: [] }, `prepare:${key}`)
+      const receipt = await command('operation.start', { binding, operationId }, `start:${key}`)
+      if (!receipt.dispatchEligible) fail(receipt.result.operation.state === 'unknown' ? 'DYNAMIC_OPERATION_UNRESOLVED' : 'DYNAMIC_OPERATION_ALREADY_DISPATCHED')
+      nativeDws.start(operationId, dwsCommands)
+      return { operationId }
+    }
+    // A background launch acknowledgement does not prove a terminal process result.
+    if (event.jobReceipt && ['running', 'stopping'].includes(event.jobReceipt.status)) return { operationId, running: true }
+    const error = nativeFileError(toolName, args, event.result, event.result?.error?.info ?? event.result?.error)
+    const noEffect = readOnly && (event.cancelled || event.result?.isError === true)
+      || !event.cancelled && event.result?.isError === true && isNativeFilePrecondition(toolName, error)
+    const state = noEffect ? 'failed' : event.cancelled || event.result?.isError ? 'unknown' : event.jobReceipt && event.jobReceipt.status !== 'completed' ? 'failed' : 'succeeded'
+    try {
+      const receipt = await command('operation.settle', { binding, operationId, state,
+        result: { callId, toolName, isError: event.result?.isError === true, resultDigest: hash(event.result?.content ?? event.result ?? null),
+          ...nativeDwsObservation(event, dwsCommands),
+          ...(error?.code ? { errorCode: error.code } : {}), ...(noEffect ? { noEffect: true } : {}),
+          ...(event.cancelled ? { cancelled: true } : {}), ...(event.jobReceipt ? { jobReceipt: event.jobReceipt } : {}) } }, `settle:${key}`)
+      try { await nativeDws.observe(receipt.result.operation) }
+      catch (cause) { ctx.logger?.warn?.(`native DWS receipt: ${cause.code ?? cause.message}`) }
+    } finally { nativeDws.finish(operationId) }
+    return { operationId }
+  }
+  function kickExecution(executionId) {
+    if (closed || admissionHolds.has(executionCache.get(executionId)?.taskId) || !retryReady(executionId) || !inflightExecutions.has(executionId) && inflightExecutions.size >= executionLimit()) return Promise.resolve()
+    return track(inflightExecutions, executionId, async () => {
+      const candidate = await query('execution.get', { executionId })
+      if (!candidate || candidate.status !== 'queued' || candidate.providerRecovery?.nextAttemptAt || !candidate.drained || candidate.cancelRequested || candidate.resources?.state === 'waiting' || !reserveTask(candidate.taskId)) return
+      if ((await requireTask(candidate.taskId)).archivedAt) return
+      await verifyTaskRestartIsolations(candidate.taskId)
+      if (admissionHolds.has(candidate.taskId)) return
+      let claimed
+      try { claimed = await command('execution.claim', { executionId }) }
+      catch (error) {
+        // 预读后另一执行可能先获得资源；这是排队，不是执行失败。
+        if (['DYNAMIC_RESOURCE_BUSY', 'DYNAMIC_COORDINATION_WAITING', 'DYNAMIC_COORDINATION_COVERAGE_STALE', 'DYNAMIC_COORDINATION_FROZEN'].includes(error.code)) return
+        throw error
+      }
+      const { binding, execution } = claimed.result
+      let drained = true
+      let stageSequence = 0
+      const stageReports = new Map()
+      try {
+        const artifactScope = await resolveTaskArtifactScope({ root, task: await requireTask(binding.taskId), query })
+        if (artifactScope && executionBackend(execution) !== 'dsh') fail('TASK_ARTIFACT_EXECUTION_BACKEND_UNSUPPORTED')
+        const permissionCorrection = await verifiedExecutionPermission(execution)
+        const result = await executionSessions.run({ binding, permissionCorrection, title: executionSessionTitle(execution), input: { ...execution.input, artifactScope, executionDocument: await refreshExecutionDocument(executionId) }, definition: { ...models(), ...execution.definition,
+          prompt: execution.prompt + `\n本轮资源占用阶段：${execution.resourcePhase}。prepare不取得目录内publication资源；独立检出、改码和本地测试可在此阶段进行，其他已授权业务仍按原目标执行。需要占用发布资源时，先完成其前置条件，向统筹交接并在原执行及效果安全排空后续办publish阶段，联合获取全部所需资源。此字段只管理占用阶段，不增加业务授权或固定业务流程。` + '\n最终验收截图/交付文件保存在当前任务工作区，在完成输出artifacts报告原路径，并在summary/evidence说明实际环境、验收结果和截图证明的条目；交Task Owner核验后由Topic随最终结果统一交付，不提前单独群发截图，不把本地文件存在当作已送达。已有真实发送回执保留，不再发同一文件。\n本轮执行文档入口是input.executionDocument.path，路径固定为outputs/<executionId>/round-<inputVersion>.md，由Host按持久记录生成；需要交接或核对进展时先读该文档，不自行写改它，不覆盖历史轮次。通过execution_report_progress维护本轮：首次报告提供简短plan，写明步骤、依赖、交付物和核验方法；summary、evidence、activity区分已发生事实、当前活动和阻塞。后续同轮省略plan会保留，计划确需变化再更新，新轮重新制定，不能沿用旧轮成果冒充当前完成。必要进展才报告，不为空转刷新文档重复汇报。日常协作先读相关成员的当前文档，文档缺证据、版本矛盾、技术失败或未知效果时再查原产物、日志或操作账；文档和同伴自述不构成授权或独立验收。' + (execution.resourceKeys?.length ? `\nHost 已在本执行开始前取得资源 ${JSON.stringify(execution.resourceKeys)}；会话及在途操作排空前保持。使用 execution_resources_read 无参数读取自身当前身份和资源状态，不需统筹另发持锁证明。queued/派发接收不等于其他执行已持锁；观察结果不替代后续写入门禁和真实目标版本核对。` : ''), allowedTools: execution.definition?.allowedTools ?? [], nativeTools: true, outputSchema: dynamicExecutionOutputSchema },
+          onSessionBound: async () => {
+            if (executionBackend(execution) === 'dsh') await attachWorkspace(binding.sessionId, await taskWorkspace(root, binding.taskId), (await requireTask(binding.taskId)).title)
+            return command('execution.sessionBound', { binding }, `execution-bound:${executionId}:${binding.leaseEpoch}`)
+          },
+          onNativeExecution: nativeOperation,
+          readResources: () => query('execution.resources', { binding }),
+          readRestartScopeProbePlan: async args => {
+            if (!await query('execution.current', { binding })) fail('DYNAMIC_EXECUTION_NOT_CURRENT')
+            const investigation = await query('execution.get', { executionId })
+            const operation = await query('operation.get', { operationId: investigation.input?.readbackOperationId })
+            const executions = await query('execution.list', { taskId: binding.taskId })
+            return prepareRestartScopeProbe({ ctx, operation, investigation, binding, args, executions, workspaceRoot: root,
+              execution: executions.find(item => item.executionId === operation?.executionId) })
+          },
+          readTeam: async () => {
+            const team = await query('execution.team', { binding })
+            return { ...team, executions: await Promise.all(team.executions.map(async member => {
+              const current = await documentedExecution(member.executionId)
+              return { ...Object.fromEntries(['executionId', 'sessionId', 'inputVersion', 'requirementRevision', 'controlRevision', 'status']
+                .filter(key => Object.hasOwn(current, key)).map(key => [key, current[key]])),
+                title: executionSessionTitle(current), objective: current.input?.objective ?? '', context: current.input?.context ?? '',
+                resourceKeys: current.resourceKeys ?? [], resourcePhase: current.resourcePhase, result: current.result ?? null, stageProgress: current.stageProgress ?? null, document: current.document }
+            })) }
+          },
+          sendMessage: async args => {
+            if (!await query('execution.current', { binding })) fail('DYNAMIC_EXECUTION_NOT_CURRENT')
+            const receipt = await command('execution.peerMessage', { binding, ...args }, `peer-message:${executionId}:${binding.inputVersion}:${binding.leaseEpoch}:${hash(args.key)}`)
+            if (!receipt.result.received) return receipt.result
+            await executionSessions.feedback(args.executionId)
+            const target = await query('execution.get', { executionId: args.executionId })
+            const feedback = target.feedback.find(item => item.id === receipt.result.feedback.id)
+            return { received: true, executionId: target.executionId, sessionId: target.sessionId, messageId: feedback.id,
+              inputVersion: feedback.inputVersion, consumed: !!feedback.consumedAt, ...(feedback.sequence === undefined ? {} : { sequence: feedback.sequence }) }
+          },
+          readFeedback: async () => ((await query('execution.get', { executionId })).feedback ?? []).filter(item => item.requirementRevision === binding.requirementRevision && item.controlRevision === binding.controlRevision
+            && (!item.sourceExecutionId || item.inputVersion === binding.inputVersion)),
+          onFeedbackConsumed: proof => command('execution.feedbackConsumed', { binding, ...proof }, `feedback-consumed:${executionId}:${proof.messageId}`),
+          onProgress: async ({ summary, evidence, reportId, activity, plan }) => {
+            if (typeof reportId !== 'string' || !reportId.trim() || reportId.length > 2000) fail('EXECUTION_PROGRESS_REPORT_ID_INVALID')
+            if (!await query('execution.current', { binding })) fail('DYNAMIC_EXECUTION_NOT_CURRENT')
+            if (!stageReports.has(reportId)) stageReports.set(reportId, ++stageSequence)
+            const receipt = await command('execution.progressReported', { binding, summary, evidence, ...(activity === undefined ? {} : { activity }), ...(plan === undefined ? {} : { plan }), sequence: stageReports.get(reportId) },
+              `execution-stage:${executionId}:${binding.inputVersion}:${binding.leaseEpoch}:${hash(reportId)}`)
+            if (!receipt.replayed) void kickTask(binding.taskId)
+            return { recorded: true, sequence: receipt.result.execution.stageProgress.sequence, document: await refreshExecutionDocument(executionId) }
+          },
+          ...(execution.providerRecovery?.activeInputVersion === execution.inputVersion ? { recoveryContext: { kind: 'provider-recovery', attempt: execution.providerRecovery.attempts,
+            failure: execution.results.at(-1)?.payload.error,
+            instruction: '模型服务暂态失败后的同会话恢复。沿原小目标继续，保留原工具结果；不得重放成功操作或未知效果。原生终态与排空已核验，这不是新的业务授权。' } } : {}),
+          onResult: (output, proof) => command('execution.result', { binding, output, feedbackVersion: proof?.feedbackVersion ?? 0 }, `execution-result:${executionId}:${binding.inputVersion ?? 1}`) })
+        if (result.status !== 'submitted') await command('execution.result', { binding, error: { ...result.failure, code: result.reason ?? result.status } }, `execution-result:${executionId}:${binding.inputVersion ?? 1}`)
+      } catch (error) {
+        drained = error.executionDrained !== false
+        // The native submission raced newer feedback. Keep the same execution queued
+        // after drain; its persisted tool results remain authoritative on resume.
+        if (drained && error.code === 'DYNAMIC_EXECUTION_FEEDBACK_PENDING') return
+        if (drained) {
+          try { await command('execution.result', { binding, error: { code: error.code ?? error.message, message: String(error.message), phase: error.phase ?? 'runtime' } }, `execution-result:${executionId}:${binding.inputVersion ?? 1}`) }
+          catch (recordError) { throw Object.assign(new AggregateError([error, recordError], 'DYNAMIC_EXECUTION_FAILURE_RECORD_FAILED'), { code: 'DYNAMIC_EXECUTION_FAILURE_RECORD_FAILED' }) }
+        } else if (error.code === 'execution_session_drain_failed') {
+          await command('execution.drainFailed', { binding, error: drainDiagnostic(error) }, `execution-drain-failed:${executionId}:${binding.leaseEpoch}`)
+        }
+        throw error
+      } finally {
+        if (drained) await command('execution.drained', { binding }, `execution-drained:${executionId}:${binding.leaseEpoch}`)
+        if (!closed) void kickTask(binding.taskId)
+      }
+    })
+  }
+  function kickTask(taskId) {
+    if (closed || admissionHolds.has(taskId) || !retryReady(taskId) || !reserveTask(taskId)) return Promise.resolve()
+    return track(inflightTasks, taskId, async () => {
+      let task = await requireTask(taskId)
+      if (task.archivedAt || task.status !== 'active' || task.control !== 'active') { taskSlots.delete(taskId); return }
+      if (!task.drained) return
+      const pending = await query('wake.list', { taskId })
+      const reviewPending = pendingTaskHumanReview(task, pending)
+      if (!pendingDialogue(task) && !reviewPending && taskHumanWait(task)) { taskSlots.delete(taskId); return }
+      if (!pending.some(item => item.state !== 'acked') || admissionHolds.has(taskId)) return
+      const claimed = await command('task.claim', { taskId, ...(pendingDialogue(task) ? { dialogue: true } : reviewPending ? { humanReview: true } : {}) })
+      const { binding, wakeIds, wakes, humanReview } = claimed.result
+      task = claimed.result.task
+      const dialogueMessage = wakes.find(item => item.kind === 'task.dialogue')?.payload.messageId
+      const dialogue = dialogueMessage ? { ...task.dialogue.find(item => item.id === dialogueMessage),
+        history: task.dialogue.filter(item => item.reply && item.id !== dialogueMessage).slice(-20) } : null
+      let drained = true, submitted = false
+      try {
+        const sources = (await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
+        const materials = await Promise.all(sources.map(source => materializeSource(taskId, source)))
+        const operations = await query('operation.list', { taskId })
+        const executions = await Promise.all((await query('execution.list', { taskId })).map(execution => documentedExecution(execution.executionId)))
+        const runResult = await taskSessions.run({ binding, input: { task, artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: _body, ...resource }) => resource) })), wakes, executions,
+          operations,
+          operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
+          blockers: await query('task.blockers', { taskId }) }, ...taskModelSelection(models(), legacy.getAgentConfig().taskSessionModel ?? config), agentPreset: legacy.getAgentConfig().agentPreset,
+          groupResponsibility: residentStore.getGroup(task.groupId)?.responsibility ?? '',
+          readDecisions: (args, current) => query('task.decisions', { ...args, taskId: current.taskId }),
+          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root, taskId), task.title); return command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`) },
+          delegate: async args => {
+            if (humanReview) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
+            if (dialogue && (args.feedback !== true || !args.executionId)) fail('TASK_DIALOGUE_FEEDBACK_ONLY')
+            if (args.readbackOperationId) {
+              const operation = await query('operation.get', { operationId: args.readbackOperationId })
+              if (args.readOnly !== true || operation?.taskId !== taskId) fail('TASK_OPERATION_SCOPE_MISMATCH')
+            }
+            if (args.skillNames !== undefined && (!Array.isArray(args.skillNames)
+              || args.skillNames.some(name => typeof name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))
+              || new Set(args.skillNames).size !== args.skillNames.length)) fail('TASK_SKILL_NAMES_INVALID')
+            if (args.resourceKeys !== undefined && (!Array.isArray(args.resourceKeys)
+              || args.resourceKeys.some(key => typeof key !== 'string' || !key.trim()))) fail('DYNAMIC_ARGUMENT_INVALID', 'resourceKeys')
+            if (args.resourceKeys !== undefined) args = { ...args, resourceKeys: resourceCatalog.keys(args.resourceKeys) }
+            if (args.resourcePhase !== undefined && !['prepare', 'publish'].includes(args.resourcePhase)) fail('DYNAMIC_RESOURCE_PHASE_INVALID')
+            const dispatchId = `${args.executionId ? 'continue' : 'delegate'}:${taskId}:${binding.requirementRevision}:${args.key}`
+            if (args.feedback === true && (!args.executionId || args.readOnly || args.readbackOperationId || args.skillNames?.length || args.resourceKeys?.length || args.resourcePhase !== undefined)) fail('TASK_EXECUTION_FEEDBACK_ARGUMENT_INVALID')
+            const prior = await query('receipt.get', { id: dispatchId })
+            if (prior) {
+              if (prior.result.feedback) {
+                if (args.feedback !== true || prior.result.feedback.text !== JSON.stringify({ objective: args.objective, context: args.context ?? '' })
+                  || prior.result.execution.executionId !== args.executionId) fail('DYNAMIC_DISPATCH_KEY_CONFLICT')
+                await executionSessions.feedback(args.executionId)
+                const execution = await query('execution.get', { executionId: args.executionId })
+                const feedback = execution.feedback.find(item => item.id === dispatchId)
+                return { executionId: execution.executionId, sessionId: execution.sessionId, received: true, consumed: !!feedback.consumedAt, feedback }
+              }
+              if (args.feedback === true) fail('DYNAMIC_DISPATCH_KEY_CONFLICT')
+              if (prior.result.execution.input.objective !== args.objective || (args.executionId && prior.result.execution.executionId !== args.executionId)
+                || (prior.result.execution.input.recoveryReadOnly === true) !== (args.readOnly === true)
+                || (prior.result.execution.input.readbackOperationId ?? null) !== (args.readbackOperationId ?? null)
+                || hash(prior.result.execution.input.skillNames ?? []) !== hash(args.skillNames ?? [])
+                || hash(resourceCatalog.keys(prior.result.execution.resourceKeys)) !== hash(args.resourceKeys ?? (args.executionId ? resourceCatalog.keys(prior.result.execution.resourceKeys) : []))
+                || resourceCatalog.executionPhase(prior.result.execution) !== (args.resourcePhase ?? (args.executionId || prior.result.execution.resourcePhase === undefined ? resourceCatalog.executionPhase(prior.result.execution) : 'prepare'))) fail('DYNAMIC_DISPATCH_KEY_CONFLICT')
+              const current = await query('execution.get', { executionId: prior.result.execution.executionId })
+              return { executionId: current.executionId, status: current.status, sessionId: current.sessionId, resourcePhase: current.resourcePhase, resources: current.resources }
+            }
+            if (args.resourceKeys !== undefined) resourceCatalog.keys(args.resourceKeys, true)
+            let existingTitle
+            if (args.executionId) {
+              const original = await query('execution.get', { executionId: args.executionId })
+              if (original?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
+              if (args.feedback === true) {
+                const receipt = await command('execution.feedback', { binding, executionId: args.executionId,
+                  messageId: dispatchId, text: JSON.stringify({ objective: args.objective, context: args.context ?? '' }) }, dispatchId)
+                await executionSessions.feedback(args.executionId)
+                return { executionId: args.executionId, sessionId: original.sessionId, feedback: receipt.result.feedback,
+                  received: true, consumed: !!receipt.result.feedback.consumedAt }
+              }
+              existingTitle = executionSessionTitle(original)
+              if (original.result?.payload.error?.code === 'EXECUTION_PROVIDER_TRANSIENT') await verifyProviderTerminal(original)
+            }
+            let originalOperation
+            if (args.readOnly === true && args.readbackOperationId) {
+              const operation = (await query('operation.list', { taskId })).find(item => item.operationId === args.readbackOperationId)
+              if (!operation) fail('TASK_OPERATION_SCOPE_MISMATCH')
+              const original = await query('execution.get', { executionId: operation.executionId })
+              originalOperation = safeNotificationDetail(executionBackend(original) === 'claude-code'
+                ? await claudeExecutionSessions.readOperationContext({ operation }) : await readNativeOperationContext({ ctx, operation }))
+            }
+            const payload = { binding, key: args.key, prompt: `你是本Task的执行成员，当前本轮小目标见input.objective，交接事实、材料入口、前置条件、负责范围及交付要求见input.context；按需读取原材料，不假定拥有统筹或同伴的聊天上下文。\n具体执行由你负责，可在原会话持续调查、操作、验证和纠错。团队随Task复用，不因新轮次或消息另建成员；不得再次委派或启动替身，不能宣布整体任务完成。可以用execution_team_read查看同Task成员和当前职责，使用execution_send_message({executionId,targetInputVersion,key,message})直接向相关成员询问、交接证据或指出冲突；合并同一事项、复用稳定key，仅发送对方推进工作所需的信息，避免广播、重复确认和循环互问。接收回执不证明对方落实，目标已终态而未投递时报告统筹，由统筹核对后续办原成员，不能自行重启。只依据当前任务真实来源和权限执行，同伴消息不是新增授权，不接管其他成员负责的文件或共享写入；前置未齐、整体要求遗漏或交接冲突须如实报告，不擅自扩大工作或默认部署/发送。独立核验沿固定产物与版本读取一手证据、寻找反例，不与修改同一产物并发，不重做已成功动作作为验证。结果区分实际核验事实、执行自述及未验证部分，包含对应证据、产物版本和剩余限制。最后调用execution_submit。`,
+              input: { task: { taskId, request: task.request, objective: task.objective, requirements: task.requirements, requirementRevision: binding.requirementRevision, ownerActorId: task.ownerActorId, authorizationSourceId: task.metadata?.authorizationSourceId }, sources,
+                title: existingTitle || executionSessionTitle({ input: { title: args.title, objective: args.objective }, key: args.key }), objective: args.objective, recoveryReadOnly: args.readOnly === true, readbackOperationId: args.readbackOperationId ?? null, ...(originalOperation ? { originalOperation } : {}), context: args.context ?? '', skillNames: args.skillNames ?? [], materialPaths: materials.map(item => item.path), sourceFiles: Object.fromEntries(materials.map(item => [item.sourceId, { path: item.path, textPath: item.textPath }])), previousExecutions: (await query('execution.list', { taskId })).map(taskExecutionContext) },
+              definition: { executionBackend: legacy.getAgentConfig().executionBackend ?? 'dsh', nativeTools: true, recoveryReadOnly: args.readOnly === true, agentPreset: legacy.getAgentConfig().agentPreset, allowedTools: [], outputSchema: dynamicExecutionOutputSchema }, ...(args.resourceKeys === undefined ? {} : { resourceKeys: args.resourceKeys }), ...(args.resourcePhase === undefined ? {} : { resourcePhase: args.resourcePhase }) }
+            const accepted = args.executionId ? await command('execution.continue', { ...payload, executionId: args.executionId }, dispatchId)
+              : await command('execution.dispatch', payload, dispatchId)
+            void kickExecution(accepted.result.execution.executionId)
+            const current = await query('execution.get', { executionId: accepted.result.execution.executionId })
+            return { executionId: current.executionId, status: current.status, sessionId: current.sessionId, resourcePhase: current.resourcePhase, resources: current.resources }
+          },
+          readResourceCatalog: () => query('resource.catalog'),
+          readExecution: async executionId => { const execution = await query('execution.get', { executionId }); if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH'); return documentedExecution(executionId) },
+          readProgress: async executionId => {
+            const execution = await query('execution.get', { executionId })
+            if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
+            const current = await documentedExecution(executionId)
+            let observation
+            try { observation = executionBackend(execution) === 'claude-code'
+              ? await claudeExecutionSessions.readProgress({ execution }) : await readExecutionProgress({ ctx, execution }) }
+            catch (error) { observation = { readError: error.code ?? 'EXECUTION_PROGRESS_LOG_UNREADABLE', limitations: ['实际动作读取失败，不得据执行自述确认方向正常。'] } }
+            return { available: true, executionId, sessionId: current.sessionId, status: current.status, drained: current.drained,
+              document: current.document, observation, ...(current.progressReview ? { progressReview: current.progressReview } : {}) }
+          },
+          reconcileOperation: async operationId => {
+            if (humanReview) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
+            const operation = (await query('operation.list', { taskId })).find(item => item.operationId === operationId)
+            if (!operation) fail('TASK_OPERATION_SCOPE_MISMATCH')
+            if (operation.state !== 'unknown') return { operation }
+            const original = await query('execution.get', { executionId: operation.executionId })
+            if (executionBackend(original) === 'claude-code') return { operation, unresolved: true,
+              reason: 'CLAUDE_OPERATION_READBACK_REQUIRED', originalOperation: safeNotificationDetail(await claudeExecutionSessions.readOperationContext({ operation })),
+              nextAction: '原 Claude Code 操作效果未知。按原调用和实际产物只读调查，保留 unknown；本版本不支持将 CLI 日志转换为 DSH 原生自动对账证明，不得重放原操作或换后端重试。' }
+            try {
+              const jobs = ctx.get?.('jobs')
+              if (!original.drained || original.recovering || ctx.agents.get(original.sessionId) || ctx.sessions.get(original.sessionId)
+                || !jobs?.list || jobs.list(original.sessionId).some(job => ['running','stopping'].includes(job.status))) fail('DYNAMIC_OPERATION_EVIDENCE_INSUFFICIENT')
+              return (await command('operation.reconcile-job', { binding, operationId }, `reconcile-job:${operationId}:${hash(operation.job ?? null)}`)).result
+            }
+            catch (error) {
+              if (error.code !== 'DYNAMIC_OPERATION_EVIDENCE_INSUFFICIENT') throw error
+              const executions = await query('execution.list', { taskId })
+              const jobReadProof = await inspectFailedNativeJobRead({ ctx, operation,
+                execution: executions.find(item => item.executionId === operation.executionId) })
+              if (jobReadProof) return (await command('operation.reconcile-job-read', { binding, operationId, proof: jobReadProof }, `reconcile-job-read:${operationId}:${hash(jobReadProof)}`)).result
+              const fileProof = await inspectFailedNativeFileMutation({ ctx, operation,
+                execution: executions.find(item => item.executionId === operation.executionId) })
+              if (fileProof) return (await command('operation.reconcile-file-precondition', { binding, operationId, proof: fileProof }, `reconcile-file-precondition:${operationId}:${hash(fileProof)}`)).result
+              const readProof = await inspectFailedNativeWebRead({ ctx, operation,
+                execution: executions.find(item => item.executionId === operation.executionId) })
+              if (readProof) return (await command('operation.reconcile-web-read', { binding, operationId, proof: readProof }, `reconcile-web-read:${operationId}:${hash(readProof)}`)).result
+              const proof = await inspectStoppedNativeOperation({ ctx, operation, executions,
+                execution: executions.find(item => item.executionId === operation.executionId) })
+              if (proof) return (await command('operation.reconcile-stopped', { binding, operationId, proof }, `reconcile-stopped:${operationId}:${hash(proof)}`)).result
+              return { operation, unresolved: true, reason: error.code,
+                nextAction: 'Use task_delegate with readOnly=true and readbackOperationId=this operationId to associate an investigation with the original operation. The configured native tools remain available. Inspect actual effects without replay, then call task_operation_reconcile again. Verified Host stop/drain plus real observations may close only as failed with partial effects, never success.' }
+            }
+          },
+          cancelExecution: async ({ executionId, reason }) => {
+            if (humanReview) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
+            if (dialogue) fail('TASK_DIALOGUE_CANNOT_CANCEL')
+            const execution = await query('execution.get', { executionId }); if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
+            await command('execution.cancel', { binding, executionId, reason })
+            await executionSessions.cancel(executionId)
+            return { executionId, cancellationRequested: true }
+          },
+          resolveHuman: async args => {
+            if (!humanReview) fail('DYNAMIC_HUMAN_REVIEW_NOT_PENDING')
+            return (await command('task.human.resolve', { binding, ...args },
+              `human-review:${taskId}:${humanReview.requestId}:${binding.leaseEpoch}`)).result
+          },
+          submit: async decision => {
+            if (decision.question?.trim() && decision.audience === undefined) decision = { ...decision, audience: 'topic' }
+            if (decision.question?.trim() && decision.executionIds) for (const id of decision.executionIds) {
+              const execution = await query('execution.get', { executionId: id })
+              if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
+              // Cancel joins the native turn; join its existing ledger finalizer too.
+              if (execution.cancelRequested && !execution.drained) await inflightExecutions.get(id)
+            }
+            if (humanReview && (decision.action !== 'wait' || decision.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
+            if (decision.replySourceId !== undefined && (!humanReview || decision.action !== 'wait' || !humanReview.sourceIds.includes(decision.replySourceId))) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
+            const publicInternalIds = decision.question?.trim() && decision.audience !== 'requester' || dialogue ? await replyInternalIds(task, sources) : []
+            if (decision.question?.trim() && decision.audience !== 'requester') {
+              // 人工问题和已尝试事项会外发；evidence 保留在内部账本，不拿调试 ID 当用户操作入口。
+              for (const text of [task.title, decision.question, ...(decision.attemptedActions ?? [])]) assertGroupReply(text, publicInternalIds)
+            }
+            if (dialogue) assertGroupReply(decision.summary, publicInternalIds)
+            if (dialogue) {
+              if (decision.action !== 'wait' || decision.question?.trim()) fail('TASK_DIALOGUE_REPLY_ONLY')
+              await command('task.dialogue.reply', { binding, messageId: dialogue.id, reply: decision.summary, decision }, `dialogue-reply:${taskId}:${dialogue.id}`)
+              submitted = true
+              return { accepted: true, replied: true }
+            }
+            if (decision.action === 'complete') {
+              if (decision.deliveryFiles?.length && (!notifications?.sendFile || !notifications?.readbackFile)) fail('TASK_DELIVERY_FILE_TRANSPORT_UNAVAILABLE')
+              const artifactFiles = await freezeTaskDeliveryFiles({ selected: decision.deliveryFiles, task,
+                executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root, taskId), files: deliveryFiles })
+              await command('task.complete', { binding, summary: decision.summary, result: artifactFiles.length ? { ...decision, artifactFiles } : decision, topicFacts: true,
+                replyBindings: await taskReplyBindings(task) }, `complete:${taskId}:${binding.requirementRevision}`)
+            } else {
+              let humanReply, replyBindings = await taskReplyBindings(task)
+              if (decision.question?.trim() && decision.audience === 'topic' && !replyBindings.length) fail('TASK_COORDINATION_TOPIC_REQUIRED')
+              if (decision.replySourceId) {
+                const source = sources.find(item => item.sourceId === decision.replySourceId)
+                if (!source) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
+                replyBindings = bindingsForSources([source])
+                humanReply = { requestId: humanReview.requestId, sourceId: source.sourceId }
+              }
+              await command('task.wait', { binding, ...decision, topicFacts: true, replyBindings, ...(humanReply ? { humanReply } : {}), ...(decision.question?.trim() ? { humanRequest: {
+                requestId: `human-${hash([taskId, binding.requirementRevision, binding.controlRevision, binding.leaseEpoch])}`,
+                reason: decision.summary, audience: decision.audience ?? 'operator', ...(decision.executionIds ? { executionIds: decision.executionIds } : {}), attemptedActions: decision.attemptedActions ?? [] } } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
+              if (decision.question?.trim()) {
+                const current = await requireTask(taskId)
+                await queueHumanRequest(current, current.humanRequests.findLast(request => request.status === 'waiting-reply'))
+              }
+            }
+            submitted = true
+            return { accepted: true }
+          } })
+        if (!submitted && runResult.status === 'no_submission') {
+          // 补充输入会在安全步骤使旧回合停止；旧绑定不能写技术阻塞，排空后由原唤醒接续最新版本。
+          if (!await currentTask(binding)) return
+          // 复核未提交判断时保留候选唤醒，用既有有界退避恢复，不能把技术失败当成已审阅。
+          if (humanReview && !runResult.reason) throw Object.assign(new Error('TASK_SESSION_NO_SUBMISSION'), { code: 'TASK_SESSION_NO_SUBMISSION', phase: 'decision' })
+          if (dialogue) fail('TASK_DIALOGUE_NO_REPLY')
+          failures.set(taskId, { id: taskId, code: runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION' })
+          await command('task.wait', { binding, action: 'blocked', summary: '任务会话本轮未能提交有效决定，原任务和执行结果已保留。',
+            limitations: [runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION'], ...(humanReview ? { reviewFailureCode: runResult.reason } : {}) }, `task-technical-block:${taskId}:${binding.leaseEpoch}`)
+          submitted = !humanReview
+        }
+        if (submitted) await command('wake.ack', { binding, wakeIds }, `wake-ack:${taskId}:${binding.leaseEpoch}`)
+      } catch (error) {
+        drained = error.taskSessionDrained !== false
+        if (drained && ['TASK_SESSION_PROVIDER_TRANSIENT', 'TASK_SESSION_NO_SUBMISSION'].includes(error.code)) await command('task.provider-failure', { binding,
+          failure: { code: error.code, phase: error.phase, providerError: error.providerError } }, `task-provider-failure:${taskId}:${binding.leaseEpoch}`)
+        throw error
+      }
+      finally {
+        if (drained) await command('task.drained', { binding }, `task-drained:${taskId}:${binding.leaseEpoch}`)
+        if (!closed) void deliverNotifications()
+        // Slot release and queued-work promotion happen after the tracked turn drains.
+      }
+    })
+  }
+  async function replyInternalIds(task, knownSources) {
+    const [executions, operations, current] = await Promise.all([
+      query('execution.list', { taskId: task.taskId }), query('operation.list', { taskId: task.taskId }), query('task.get', { taskId: task.taskId }),
+    ])
+    const sourceIds = new Set([...task.sourceRefs, ...(current?.sourceRefs ?? [])])
+    // 复用本轮已读来源；恢复出口也只读取本任务绑定项，不扫描所有历史消息。
+    const sources = knownSources ?? (await Promise.all([...sourceIds].map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
+    return [task.taskId, task.sessionId, task.groupId, task.ownerActorId, config.operatorUserId, ...sourceIds,
+      ...sources.flatMap(source => [source.messageId, source.actorId]),
+      ...(current?.humanRequests ?? task.humanRequests ?? []).map(item => item.requestId),
+      ...executions.flatMap(item => [item.executionId, item.sessionId]), ...operations.map(item => item.operationId)].filter(Boolean)
+  }
+  async function queueReply(task, source, decision, id, kind, humanRequest) {
+    if (!source || source.channel === 'web' || source.sourceId.startsWith('web:')) return
+    if ((await query('notification.list')).some(item => item.id === id)) {
+      void deliverNotifications()
+      return
+    }
+    const reply = formatTaskGroupReply({ source: { groupId: source.groupId, messageId: source.messageId,
+      senderOpenDingTalkId: source.actorId, senderName: source.senderName, text: source.text }, summary: decision.summary,
+      evidence: decision.evidence, limitations: decision.limitations,
+      signature: legacy.getAgentConfig().replySignature, internalIds: await replyInternalIds(task) })
+    await command('notification.prepare', { notificationId: id, taskId: task.taskId, requirementRevision: task.requirementRevision,
+      kind, payload: { ...reply, conversationId: source.groupId, sourceMessageId: source.messageId, actorId: source.actorId,
+        sourceId: source.sourceId, sourceVersion: source.version,
+        ...(humanRequest ? { audience: humanRequest.audience, humanRequestId: humanRequest.requestId } : {}), fact: { taskId: task.taskId }, kind } }, `prepare-notification:${id}`)
+    void deliverNotifications()
+  }
+  async function queueHumanRequest(task, request) {
+    if (!request) return
+    if (request.topicFactIds?.length) return
+    if (request.audience === 'topic') return // 归属 Topic 负责选择联系人与原群回复，绝不退回默认私聊。
+    if (request.audience === 'requester') {
+      const source = await sourceFor(task)
+      return queueReply(task, source, { summary: request.question, evidence: [], limitations: [] },
+        `question:${task.taskId}:${request.requestId}`, 'question', request)
+    }
+    if (!config.operatorUserId) return // 未配置/登录时仍保留Web人工介入，不能转发给需求提出人。
+    const notificationId = `operator-request:${request.requestId}`
+    const text = ['【需要协助处理】', `事项：${task.title}`,
+      request.question, ...(request.attemptedActions?.length ? ['已尝试：', ...request.attemptedActions] : []),
+      '请在人工介入页答复，或引用本消息回复处理结果。'].join('\n\n')
+    assertGroupReply(text, [request.requestId, notificationId, ...await replyInternalIds(task)])
+    await command('notification.prepare', { notificationId, taskId: task.taskId, requirementRevision: request.requirementRevision,
+      kind: 'question', payload: { text, audience: 'operator', humanRequestId: request.requestId,
+        recipientUserId: config.operatorUserId, fact: { taskId: task.taskId }, kind: 'question' } }, `prepare-notification:${notificationId}`)
+    void deliverNotifications()
+  }
+  function deliverNotifications(attempted = new Set()) {
+    if (closed) return Promise.resolve()
+    notificationScanRequested = true
+    if (notificationScan) return notificationScan
+    notificationScan = (async () => {
+      do {
+        notificationScanRequested = false
+        await scanNotifications(attempted)
+      } while (!closed && notificationScanRequested)
+    })().finally(() => { notificationScan = undefined })
+    return notificationScan
+  }
+  function continueNotificationDelivery(pending, attempted) {
+    // 同一轮每条最多尝试一次，拒发、未知和限流仍由原恢复/退避条件控制。
+    void pending.catch(() => {}).then(() => { if (!closed) return deliverNotifications(attempted) }).catch(error => {
+      ctx.logger?.warn?.(`notification drain: ${error.code ?? error.message}`)
+    })
+  }
+  const notificationRecoveryError = (code, statusCode = 409) => Object.assign(new Error(code), { code, statusCode })
+  const notificationStage = (current, stage) => current.payload.conversationId && Number.isSafeInteger(current.payload.sourceVersion)
+    ? recordMessageStage({ groupId: current.payload.conversationId,
+      messages: [{ messageId: current.payload.sourceRef?.messageId ?? current.payload.sourceMessageId, messageVersion: current.payload.sourceVersion }] }, stage) : undefined
+  async function notificationDeliveryGate(notification) {
+    if (notification.kind === 'coordination' || notification.state === 'superseded') return false
+    if (notification.kind === 'routing-clarification' && ['prepared', 'failed'].includes(notification.state)) {
+      try { assertRoutingClarification(notification.payload, notification.id) }
+      catch (error) {
+        failures.set(notification.id, { id: notification.id, code: error.code ?? error.message })
+        return false
+      }
+    }
+    if (notification.kind === 'fixed-topic-reply' && ['prepared', 'failed'].includes(notification.state)) {
+      const parent = notification.payload.artifact ? await query('notification.get', { notificationId: notification.payload.deliveryId }) : notification
+      const p = parent?.payload
+      try {
+        if (!p || parent.kind !== 'fixed-topic-reply') fail('fixed_topic_reply_source_invalid')
+        await frozenReply({ groupId: p.conversationId, outboundId: parent.id, topicRefs: p.topicRefs, taskIds: p.taskIds,
+          fixedTopic: p.fact.fixedTopic, sourceVersion: p.sourceVersion, sourceRef: p.sourceRef, matterUnitRefs: [{ unitId: p.fact.unitId, unitRevision: p.fact.unitRevision }],
+          replyToMessageId: p.sourceMessageId, replyToSenderOpenDingTalkId: p.actorId })
+        if (['fixed_topic_reply_source_invalid', 'group_reply_frozen_identity_conflict'].includes(failures.get(notification.id)?.code)) failures.delete(notification.id)
+      } catch (error) {
+        failures.set(notification.id, { id: notification.id, code: error.code ?? error.message })
+        return false
+      }
+    }
+    if (notification.payload.afterNotificationId) {
+      const previous = notificationCache.get(notification.payload.afterNotificationId)
+        ?? await query('notification.get', { notificationId: notification.payload.afterNotificationId })
+      if (previous?.state !== 'delivered') return false
+    }
+    if (notification.state === 'prepared' || notification.state === 'failed' && notification.deliveryError?.knownNotSent === true && notification.deliveryError?.retryable === true) {
+      const owners = residentStore.listGroups().flatMap(group => group.topics.flatMap(topic => topic.decisions.filter(record => record.outboundId === notification.id).map(record => ({ group, topic, record }))))
+      if (owners.length) {
+        try {
+          if (owners.length !== 1 || notification.payload.conversationId !== owners[0].group.groupId) fail('group_reply_frozen_identity_conflict')
+          const { group, topic, record } = owners[0]
+          await frozenReply({ groupId: group.groupId, topicRefs: [{ topicId: topic.topicId, revision: record.revision }], decisionId: record.decisionId, outboundId: notification.id, taskIds: record.operations.map(operation => operation.taskId).filter(Boolean) })
+          if (failures.get(notification.id)?.code === 'group_reply_frozen_identity_conflict') failures.delete(notification.id)
+        } catch (error) {
+          if (error.code !== 'group_reply_frozen_identity_conflict') throw error
+          failures.set(notification.id, { id: notification.id, code: error.code })
+          return false
+        }
+      }
+    }
+    const previousOutbound = residentStore?.getGroup(notification.payload.conversationId)?.outbox.find(item => item.outboundId === notification.id)
+    if (notification.state === 'failed' && notification.deliveryError?.knownNotSent === true && notification.deliveryError?.retryable === true) {
+      let reason, taskIds = previousOutbound?.taskIds ?? []
+      if (previousOutbound?.supersededByOutboundId || previousOutbound?.status === 'superseded' || previousOutbound?.recallStatus) reason = 'superseded'
+      else if ((notification.payload.replyKind ?? previousOutbound?.replyKind) === 'confirmation') {
+        const linked = await Promise.all(taskIds.map(taskId => query('task.get', { taskId })))
+        if (!taskIds.length || !previousOutbound?.decisionId || linked.some(task => !task || !task.appliedOperations?.some(id => id.startsWith(`${previousOutbound.decisionId}:action:`)))) reason = 'confirmation-reassessment-required'
+        else if (linked.every(task => task.status !== 'active' || task.control === 'cancelled')) reason = 'task-terminal'
+      } else if (!(notification.payload.replyKind ?? previousOutbound?.replyKind)) reason = 'confirmation-reassessment-required'
+      if (reason) {
+        const retired = await command('notification.retireUnsent', { notificationId: notification.id, reason, taskIds,
+          evidenceRef: `unsent-intent:${previousOutbound?.decisionId ?? notification.id}:${reason}` })
+        await projectTaskNotification({ residentStore, notification: retired.result.notification })
+        return false
+      }
+    }
+    const blocked = ['prepared', 'failed'].includes(notification.state)
+      && (previousOutbound?.supersededByOutboundId || previousOutbound?.status === 'superseded' || previousOutbound?.recallStatus)
+    if (blocked) await projectTaskNotification({ residentStore, notification })
+    return !blocked
+  }
+  async function scanNotifications(attempted) {
+    for (let notification of await query('notification.list')) {
+      if (closed) return
+      // 历史协调通知保持原账，不发送、不刷新、不自动重试。
+      if (notification.kind === 'coordination') { await projectTaskNotification({ residentStore, notification }); continue }
+      // 只释放被新来源暂缓的尝试；未知发送和限流的本轮去重不受影响。
+      if (sourceHeldNotifications.has(notification.id) && sourceHeldNotifications.get(notification.id) < sourceProcessingRevision) {
+        attempted?.delete(notification.id)
+      }
+      if (notification.state === 'superseded') { await projectTaskNotification({ residentStore, notification }); continue }
+      if (notifications?.recall && notification.kind === 'question' && notification.payload.audience === 'operator'
+        && notification.state === 'delivered' && notification.recall?.state !== 'recalled'
+        && !(Date.parse(notification.recall?.nextAttemptAt ?? '') > Date.now())
+        && retryReady(notification.id) && !inflightNotifications.has(notification.id) && !attempted?.has(notification.id)) {
+        const task = await query('task.get', { taskId: notification.taskId })
+        const request = task?.humanRequests?.find(item => item.requestId === notification.payload.humanRequestId)
+        if (request?.status === 'answered' && request.replyChannel === 'web') {
+          attempted?.add(notification.id)
+          continueNotificationDelivery(track(inflightNotifications, notification.id, () => recallTaskOperatorNotification({ notification, notifications, command })), attempted)
+        }
+      }
+
+      if (!await notificationDeliveryGate(notification)) continue
+      await projectTaskNotification({ residentStore, notification })
+      // 投影的 await 期间原投递可能已完成；使用命令更新的当前态，不能再按旧 starting 快照回读。
+      notification = notificationCache.get(notification.id) ?? notification
+      if (notification.state === 'delivered' && failures.get(notification.id)?.code === 'TASK_NOTIFICATION_INCOMPLETE_READBACK')
+        failures.delete(notification.id)
+      const readbackOnly = ['unknown', 'starting'].includes(notification.state)
+      if (notification.state === 'delivered' || notification.state === 'failed' && !(notification.deliveryError?.knownNotSent && notification.deliveryError?.retryable)
+        || (readbackOnly ? notificationReadbacks.size > 0 : notificationSends.size > 0 || Date.now() < notificationTransportRetryAt) || !retryReady(notification.id) || Date.parse(notification.nextAttemptAt ?? '') > Date.now() || inflightNotifications.has(notification.id) || attempted?.has(notification.id)) continue
+      attempted?.add(notification.id)
+      if (readbackOnly) notificationReadbacks.add(notification.id)
+      else notificationSends.add(notification.id)
+      continueNotificationDelivery(track(inflightNotifications, notification.id, async () => {
+        const processingRevision = sourceProcessingRevision
+        try {
+          const result = await deliverTaskNotification({ notification, notifications, command,
+            onStage: notificationStage, deferReadback: true })
+          if (result?.acknowledged) attempted?.delete(notification.id)
+          if (result?.sourcePending) sourceHeldNotifications.set(notification.id, processingRevision)
+          else sourceHeldNotifications.delete(notification.id)
+        }
+        catch (error) {
+          if (error.notificationPhase === 'send' && (error.serverErrorCode === 'RATE_LIMIT_ERROR' || error.code === 'RATE_LIMIT_ERROR' || error.knownNotSent === true)) notificationTransportRetryAt = Math.max(notificationTransportRetryAt, Date.parse(error.notificationRetryAt) || Date.now() + 60000)
+          throw error
+        } finally { notificationSends.delete(notification.id); notificationReadbacks.delete(notification.id) }
+      }), attempted)
+    }
+  }
+  async function recover() {
+    if (closed) return { failures: [] }
+    if (recovering) return recovering
+    return recovering = (async () => {
+      // A process restart cannot prove detached external operations stopped. Recover only native handles known absent;
+      // unfinished operation rows remain unknown and fence execution until explicit readback reconciliation.
+      const pending = await query('recovery.pending')
+      for (const task of pending.tasks) if (task.recovering && !ctx.agents.get(task.sessionId) && !ctx.sessions.get(task.sessionId))
+        await command('task.drained', { binding: await query('task.binding', { taskId: task.taskId }) })
+      for (const group of pending.groups ?? []) if (group.recovering && !ctx.agents.get(group.sessionId) && !ctx.sessions.get(group.sessionId))
+        await command('group.drained', { binding: { kind: 'group-session', groupId: group.groupId, sessionId: group.sessionId, leaseEpoch: group.leaseEpoch, sessionBound: group.sessionBound } })
+      for (const execution of pending.executions) if (execution.recovering && !inflightExecutions.has(execution.executionId)) {
+        // Physical native-session drain is independent of effect certainty. The
+        // operation fence stays unknown; recoverDrained validates real history
+        // and absence of live handles before permitting any readonly continuation.
+        const binding = await query('execution.binding', { executionId: execution.executionId })
+        try {
+          const jobs = ctx.get?.('jobs')
+          if (jobs?.list?.(execution.sessionId).some(job => ['running','stopping'].includes(job.status))) fail('DYNAMIC_JOB_DRAIN_UNPROVEN')
+          const drainProof = await executionSessions.recoverDrained({ binding, input: execution.input, drainFailure: execution.drainFailure })
+          await command('execution.drained', { binding, ...(drainProof?.isolationAuditRefs ? { isolationAuditRefs: drainProof.isolationAuditRefs } : {}) }, `recovered-drained:${execution.executionId}:${binding.leaseEpoch}`)
+          executionSessions.confirmDrained(binding)
+          failures.delete(execution.executionId)
+        } catch (error) { failures.set(execution.executionId, { id: execution.executionId, code: error.code ?? error.message }) }
+      }
+      await refreshTasks()
+      for (const task of taskCache.values()) if (!task.archivedAt && task.status === 'active' && task.control === 'active')
+        for (const request of task.humanRequests ?? []) if (request.status === 'waiting-reply') await queueHumanRequest(task, request)
+      for (const candidate of recoveryCandidates) {
+        const task = await query('task.get', { taskId: candidate.taskId })
+        if (task.archivedAt || task.status !== 'active' || task.control !== 'active' || !task.drained
+          || task.lastDecision.question || task.requirementRevision !== candidate.requirementRevision || task.controlRevision !== candidate.controlRevision) continue
+        const executions = await query('execution.list', { taskId: task.taskId })
+        if (executions.some(execution => !execution.drained || execution.recovering || ['queued', 'running'].includes(execution.status))) continue
+        if (task.lastDecision.action === 'blocked' && task.lastDecision.limitations?.includes('TASK_SESSION_NO_SUBMISSION')) {
+          await persistence.register({ taskId: task.taskId, sessionId: task.sessionId, cwd: await taskWorkspace(root, task.taskId) })
+          const { events } = await inspectSession(ctx.sessionPersistence, task.sessionId)
+          if (!events.some(event => event.type === 'plugin:dingtalk/task-session' && event.data.taskId === task.taskId && event.data.sessionId === task.sessionId)) continue
+          const input = events.findLast(event => event.type === 'user/message' && event.data.source?.taskSession?.leaseEpoch === task.leaseEpoch)
+          const end = events.findLast(event => event.type === 'turn/end')
+          if (input && end?.seq > input.seq && end.data.reason?.kind === 'error' && isTaskProviderTransient(end.data.reason.error))
+            await command('task.wake', { taskId: task.taskId, kind: 'provider.recovered', payload: {
+              instruction: '上轮模型服务临时故障，未产生统筹决定。沿原任务、原执行结果继续，不重放已完成或未知效果。' } },
+            `provider-recovery:${task.taskId}:${task.requirementRevision}:${task.controlRevision}:${task.leaseEpoch}`)
+          continue
+        }
+        if (task.lastDecision.action !== 'wait') continue
+        if (!(await query('operation.list', { taskId: task.taskId })).some(operation => operation.state === 'unknown')) continue
+        await command('task.wake', { taskId: task.taskId, kind: 'runtime.updated', payload: { runtimeRevision,
+          instruction: '运行实现已更新。先调用 task_operation_reconcile；证据不足时用 readOnly=true 和 readbackOperationId 委派原效果只读核验，再对账。此前只读核查若失败，可用executionId续原只读会话，依据Host新增的originalOperation原生材料和原生工具核对实际文件及原始效果。保留 unknown 保护，不能重放原操作。' } },
+        `runtime-recovery:${task.taskId}:${task.requirementRevision}:${task.controlRevision}:${runtimeRevision}`)
+      }
+      for (const task of await query('task.list')) if (task.sessionBound) {
+        const cwd = await taskWorkspace(root, task.taskId)
+        await persistence.register({ taskId: task.taskId, sessionId: task.sessionId, cwd })
+        await attachWorkspace(task.sessionId, cwd, task.title)
+      }
+      for await (const execution of executionIndex()) if (execution.sessionBound && executionBackend(execution) === 'dsh') {
+        const cwd = await taskWorkspace(root, execution.taskId)
+        await persistence.register({ taskId: execution.taskId, sessionId: execution.sessionId, cwd })
+        await attachWorkspace(execution.sessionId, cwd, (await requireTask(execution.taskId)).title)
+      }
+      const factFailures = await topicFacts.recover()
+      for (const key of failures.keys()) if (key.startsWith('topic-fact-projection:')) failures.delete(key)
+      for (const failure of factFailures) failures.set(`topic-fact-projection:${failure.id}`, failure)
+      await topicCoordinator.recover()
+      for (const group of residentStore.listGroups()) await prepareRoutingClarifications(group.groupId)
+      for (const source of await query('source.list')) {
+        await projectSource(source)
+        const current = await query('source.get', { sourceId: source.sourceId })
+        if (!current.routed || current.processingPending) void kickGroup(source.groupId)
+      }
+      for await (const candidate of executionIndex()) {
+        if (!executionProgressDue(candidate)) continue
+        const execution = await query('execution.get', { executionId: candidate.executionId })
+        const task = await query('task.get', { taskId: execution.taskId })
+        if (!task || task.archivedAt || task.status !== 'active' || task.control !== 'active' || !executionProgressDue(execution)) continue
+        let observation
+        try { observation = executionBackend(execution) === 'claude-code'
+          ? await claudeExecutionSessions.readProgress({ execution }) : await readExecutionProgress({ ctx, execution }) }
+        catch (error) { observation = { lastSequence: execution.progressReview?.lastSequence ?? -1, lastActivityAt: null,
+          newEventCount: 0, changed: false, readError: error.code ?? 'EXECUTION_PROGRESS_LOG_UNREADABLE' } }
+        try {
+          const { lastSequence, lastActivityAt, newEventCount, changed, readError } = observation
+          await command('execution.progressReviewed', { executionId: execution.executionId, inputVersion: execution.inputVersion,
+            leaseEpoch: execution.leaseEpoch, inputDigest: execution.inputDigest,
+            observation: { lastSequence, lastActivityAt, newEventCount, changed, ...(readError ? { readError } : {}) } },
+          `execution-progress:${execution.executionId}:${execution.inputVersion}:${execution.leaseEpoch}:${execution.progressReview?.checkedAt ?? execution.updatedAt}`)
+        } catch (error) {
+          if (!['DYNAMIC_EXECUTION_LEASE_STALE', 'DYNAMIC_EXECUTION_NOT_CURRENT'].includes(error.code)) throw error
+        }
+      }
+      for (const task of await query('task.list')) void kickTask(task.taskId)
+      for await (const execution of executionIndex()) if (execution.drained && execution.status === 'queued') void kickExecution(execution.executionId)
+      void schedulePending()
+      await deliverNotifications()
+      return { failures: [...failures.values()], recovery: pending }
+    })().finally(() => { recovering = undefined })
+  }
+  async function webTopicAction(args, task, kind) {
+    if (kind === 'task-context') assertTaskContextSemantics(args)
+    if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+    if (!args.requestId) fail('TASK_SESSION_REQUEST_ID_REQUIRED')
+    const groupId = task?.groupId ?? args.groupId
+    if (!groupId || !residentStore.getGroup(groupId)) fail('group_not_subscribed')
+    const sourceId = `web:${hash([config.webActorId, groupId, args.requestId])}`
+    const previous = await query('source.get', { sourceId })
+    const identity = { args: clean(args), kind, taskId: task?.taskId ?? null }
+    if (previous && hash(previous.requestIdentity?.request) !== hash(identity)) fail('DYNAMIC_COMMAND_ID_CONFLICT')
+    const previousTopic = residentStore.listTopics(groupId).find(topic => topic.decisions.some(item => item.decisionId === stableId('decision', `${groupId}:${args.requestId}`)))
+    const previousRecord = previousTopic?.decisions.find(item => item.decisionId === stableId('decision', `${groupId}:${args.requestId}`))
+    if (previousRecord?.status === 'completed') return requireTask(previousRecord.operations[0].taskId)
+    if (!previous && task && (args.expectedRequirementRevision !== undefined && args.expectedRequirementRevision !== task.requirementRevision
+      || args.expectedControlRevision !== undefined && args.expectedControlRevision !== task.controlRevision)) fail('DYNAMIC_TASK_REVISION_STALE')
+    if (kind === 'task-reopen' && args.maintenanceEvidence) {
+      if (task.archivedAt || task.status !== 'cancelled' || task.control !== 'cancelled' || !task.drained || task.recovering) fail('DYNAMIC_TASK_NOT_QUIESCENT')
+      const executions = await query('execution.list', { taskId: task.taskId })
+      for (const execution of executions.filter(item => !item.drained)) {
+        if (!execution.recovering || !execution.cancelRequested || !execution.drainFailure || executionBackend(execution) !== 'dsh'
+          || inflightExecutions.has(execution.executionId)) fail('DYNAMIC_TASK_NOT_QUIESCENT')
+        const binding = await query('execution.binding', { executionId: execution.executionId })
+        const proof = await executionSessions.recoverDrained({ binding, input: execution.input, drainFailure: execution.drainFailure, maintenanceEvidence: args.maintenanceEvidence })
+        if (!proof?.maintenanceDrainAudit) fail('DYNAMIC_EXECUTION_MAINTENANCE_UNPROVEN')
+        await command('execution.drained', { binding, maintenanceDrainAudit: proof.maintenanceDrainAudit }, `maintenance-drained:${execution.executionId}:${binding.leaseEpoch}:${args.maintenanceEvidence.expectedProposalDigest}`)
+        executionSessions.confirmDrained(binding)
+        failures.delete(execution.executionId)
+      }
+    }
+    const text = args.context?.trim() || args.objective || args.reason || ''
+    const messageId = stableId('web', `${groupId}:${args.requestId}`)
+    await refreshTasks()
+    const inheritedRefs = task ? [...new Map((task.topicRefs ?? []).map(ref => {
+      const original = residentStore.getTopic(groupId, ref.topicId)
+      const current = original?.mergedInto ? residentStore.getTopic(groupId, original.mergedInto) : original
+      if (!current) fail('TASK_TOPIC_SOURCE_MISSING')
+      return [current.topicId, { topicId: current.topicId, revision: current.revision }]
+    })).values()] : []
+    const action = previous?.requestIdentity?.action ?? { kind, topicRefs: args.topicRefs ?? inheritedRefs,
+      ...(kind === 'task-context' ? { progressImpact: args.progressImpact, authorizationChange: args.authorizationChange,
+        impactEvidence: args.impactEvidence, objective: args.objective, title: args.title, acceptanceCriteria: args.acceptanceCriteria, stageTasks: args.stageTasks } : {}),
+      ...(task ? { taskId: task.taskId, inputVersion: args.expectedRequirementRevision ?? args.inputVersion ?? task.requirementRevision, runSequence: task.runSequence ?? 1,
+        ...(kind === 'task-cancel' ? { reason: text } : { context: text }) } : { title: args.title || (args.objective ?? text).slice(0, 80), objective: args.objective ?? text, acceptanceCriteria: args.acceptanceCriteria ?? [text] }) }
+    await command('source.record', { sourceId, groupId, messageId, actorId: config.webActorId, text, timestamp: '', channel: 'web',
+      requestIdentity: { request: identity, action } }, `source:${sourceId}`)
+    const persistedAction = (await query('source.get', { sourceId })).requestIdentity.action
+    const accepted = previous && previousRecord
+      ? { status: 'duplicate', topicId: previousTopic.topicId, record: previousRecord }
+      : await residentStore.submitWebTaskInput({ groupId, requestId: args.requestId, text, action: persistedAction, topicRefs: persistedAction.topicRefs })
+    if (!['accepted','duplicate'].includes(accepted.status)) fail(`TASK_TOPIC_WEB_${accepted.status}`)
+    await topicCoordinator.applyAccepted(groupId, accepted.topicId, accepted.record.decisionId)
+    const current = residentStore.getTopic(groupId, accepted.topicId).decisions.find(item => item.decisionId === accepted.record.decisionId)
+    if (current.status !== 'completed') fail(current.error ?? 'TASK_TOPIC_WEB_DECISION_FAILED')
+    await command('source.routed', { sourceId, receipt: [{ topicId: accepted.topicId, revision: current.revision }] }, `topic-routed:${sourceId}`)
+    return requireTask(current.operations[0].taskId)
+  }
+  async function listHumanRequests(options) {
+    const page=options?await query('observer.page',{collection:'authorizations',...options}):null
+    const notices=page?page.items.map(task=>task.observerNotice).filter(Boolean):await query('notification.list')
+    const result=(page?page.items:await query('task.list')).flatMap(task => (task.humanRequests ?? []).map(request => ({ ...request, audience: request.audience ?? 'operator',
+      taskSessionRequest: true, taskId: task.taskId, groupId: task.groupId, objective: task.objective,
+      notification: (() => { const notice = notices.find(item => item.taskId === task.taskId && item.payload.humanRequestId === request.requestId && item.payload.audience === 'operator')
+        return notice ? { notificationId: notice.id, state: notice.state, recall: notice.recall ?? null, delivery: notice.state === 'delivered' ? notice.receipt : null } : undefined })(),
+      waitingReason: request.question, evidence: request.evidence ?? [], attemptedActions: request.attemptedActions ?? [],
+      decidedAt: request.answeredAt, decision: request.status === 'answered' ? 'answered' : undefined,
+      decisionSource: request.status === 'answered' ? request.replyChannel : undefined })))
+    return page?{...page,items:result}:result
+  }
+  async function verifiedExecutionPermission(execution) {
+    const correction = execution.permissionCorrection
+    if (!correction) return undefined
+    const task = await requireTask(execution.taskId), source = await query('source.get', { sourceId: correction.sourceId })
+    const { sourceId, recordedAt, ...accepted } = correction
+    if (executionBackend(execution) !== 'dsh' || correction.executionId !== execution.executionId
+      || !Number.isSafeInteger(correction.expectedInputVersion) || correction.expectedInputVersion < 1 || correction.expectedInputVersion > execution.inputVersion
+      || correction.requirementRevision !== task.requirementRevision || correction.controlRevision !== task.controlRevision
+      || !['read-only', 'workspace-write', 'danger-full-access'].includes(correction.mode) || !recordedAt
+      || source?.channel !== 'web' || source.actorId !== config.webActorId
+      || correction.actorId !== source.actorId || source.groupId !== task.groupId || !task.sourceRefs.includes(sourceId)
+      || !task.humanRequests?.some(request => request.requestId === source.requestIdentity?.humanRequestId
+        && request.status === 'answered' && request.audience === 'operator' && request.sourceId === sourceId && request.actorId === correction.actorId)
+      || hash(source.requestIdentity?.executionPermissionCorrection ?? null) !== hash(accepted)) fail('TASK_EXECUTION_PERMISSION_CORRECTION_SOURCE_INVALID')
+    return structuredClone(correction)
+  }
+  async function respondHumanRequest(args) {
+    if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+    if (!args.requestId?.trim() || !args.reply?.trim()) fail('TASK_HUMAN_REPLY_REQUIRED')
+    const task = await requireTask(args.taskId)
+    const sourceId = `web-human:${hash([config.webActorId, task.taskId, args.humanRequestId, args.requestId])}`
+    const receiptId = `human-reply:${sourceId}`
+    const prior = await query('receipt.get', { id: receiptId })
+    const request = task.humanRequests?.find(request => request.requestId === args.humanRequestId)
+    if (!request) fail('DYNAMIC_NOT_FOUND')
+    if (!prior && (request.status !== 'waiting-reply' || args.expectedRequirementRevision !== task.requirementRevision
+      || args.expectedControlRevision !== task.controlRevision)) fail('DYNAMIC_HUMAN_REQUEST_STALE')
+    if (prior) {
+      const originalSource = await query('source.get', { sourceId })
+      if (originalSource?.text !== args.reply || hash(originalSource.requestIdentity?.nativeFailureResolutions ?? []) !== hash(args.nativeFailureResolutions ?? [])
+        || hash(originalSource.requestIdentity?.nativeRestartResolutions ?? []) !== hash(args.nativeRestartResolutions ?? [])
+        || hash(originalSource.requestIdentity?.artifactScopeCorrectionRequest ?? null) !== hash(args.artifactScopeCorrection ?? null)
+        || hash(originalSource.requestIdentity?.executionPermissionCorrectionRequest ?? null) !== hash(args.executionPermissionCorrection ?? null)) fail('DYNAMIC_COMMAND_ID_CONFLICT')
+      if (!args.checkOnly) return taskDTO(prior.result.task)
+    }
+    let executionPermissionCorrection
+    if (args.executionPermissionCorrection) {
+      const correction = args.executionPermissionCorrection
+      const execution = await query('execution.get', { executionId: correction.executionId })
+      if (request.audience !== 'operator'
+        || execution?.taskId !== task.taskId || execution.inputVersion !== correction.expectedInputVersion
+        || !execution.drained || execution.recovering || !['succeeded', 'failed', 'cancelled', 'stale'].includes(execution.status)
+        || executionBackend(execution) !== 'dsh' || !['read-only', 'workspace-write', 'danger-full-access'].includes(correction.mode)
+        || !correction.reason?.trim() || (await query('operation.list', { taskId: task.taskId })).some(operation => operation.executionId === execution.executionId && !['succeeded', 'failed', 'cancelled'].includes(operation.state))) fail('TASK_EXECUTION_PERMISSION_CORRECTION_SCOPE')
+      executionPermissionCorrection = { ...correction, reason: correction.reason.trim(), actorId: config.webActorId,
+        requirementRevision: task.requirementRevision, controlRevision: task.controlRevision }
+    }
+    let artifactScopeCorrection
+    if (args.artifactScopeCorrection) {
+      const correction = args.artifactScopeCorrection
+      const state = await query('coordination.get', { coordinationId: correction.coordinationId })
+      if (request.audience !== 'operator' || config.webActorId !== task.ownerActorId
+        || state.coordination.groupId !== task.groupId || state.coordination.revision !== correction.expectedRevision
+        || state.coordination.state !== 'active' || !correction.reason?.trim()) fail('TASK_ARTIFACT_CORRECTION_SCOPE')
+      const members = state.members.filter(member => !member.observation && member.control !== 'cancelled'
+        && !['cancelled', 'superseded', 'template'].includes(member.state))
+      if (!members.some(member => member.taskId === task.taskId)) fail('TASK_ARTIFACT_CORRECTION_SCOPE')
+      for (const member of members) {
+        const sibling = await requireTask(member.taskId)
+        if (sibling.ownerActorId !== task.ownerActorId || sibling.groupId !== task.groupId) fail('TASK_ARTIFACT_CORRECTION_SCOPE')
+      }
+      artifactScopeCorrection = { coordinationId: correction.coordinationId, revision: correction.expectedRevision,
+        artifactRoot: taskFilePath(root, correction.coordinationId, 'outputs'), reason: correction.reason.trim(), actorId: config.webActorId }
+    }
+    const resolutions = args.nativeFailureResolutions ?? []
+    const restartResolutions = args.nativeRestartResolutions ?? []
+    const allResolutions = [...resolutions, ...restartResolutions]
+    if (allResolutions.length > 8 || new Set(allResolutions.map(item => item.operationId)).size !== allResolutions.length) fail('DYNAMIC_ARGUMENT_INVALID')
+    if (allResolutions.length && request.audience !== 'operator') fail('TASK_OPERATION_OPERATOR_REQUIRED')
+    const proofs = [], requiredScopeProbes = []
+    for (const resolution of resolutions) {
+      const operation = await query('operation.get', { operationId: resolution.operationId })
+      if (operation?.taskId !== task.taskId) fail('TASK_OPERATION_SCOPE_MISMATCH')
+      if (operation.state === 'failed' && operation.result.operatorSourceId === sourceId
+        && hash(operation.result.previousObservation) === resolution.expectedOperationDigest) continue
+      if (hash(operation) !== resolution.expectedOperationDigest) fail('DYNAMIC_OPERATION_SCOPE_STALE')
+      const executions = await query('execution.list', { taskId: task.taskId })
+      if (executionBackend(executions.find(item => item.executionId === operation.executionId)) === 'claude-code') fail('CLAUDE_OPERATION_READBACK_REQUIRED')
+      const proof = await inspectInvestigatedNativeFailure({ ctx, operation, executions,
+        execution: executions.find(item => item.executionId === operation.executionId) })
+      if (!proof) fail('DYNAMIC_OPERATION_EVIDENCE_INSUFFICIENT')
+      proofs.push({ operationId: operation.operationId, proof })
+    }
+    for (const resolution of restartResolutions) {
+      const operation = await query('operation.get', { operationId: resolution.operationId })
+      if (operation?.taskId !== task.taskId) fail('TASK_OPERATION_SCOPE_MISMATCH')
+      if (hasRestartIsolation(operation) && operation.recoverySettlement.operatorSourceId === sourceId
+        && operation.recoverySettlement.proof.operationDigest === resolution.expectedOperationDigest) continue
+      if (hash(operation) !== resolution.expectedOperationDigest) fail('DYNAMIC_OPERATION_SCOPE_STALE')
+      const executions = await query('execution.list', { taskId: task.taskId })
+      const execution = executions.find(item => item.executionId === operation.executionId)
+      if (executionBackend(execution) !== 'dsh') fail('CLAUDE_OPERATION_READBACK_REQUIRED')
+      if (resolution.scopeEvidence && (!resolution.scopeEvidence.probeExecutionId || !resolution.scopeEvidence.probeCallId)) {
+        if (!args.checkOnly) fail('DYNAMIC_SCOPE_ISOLATION_PROBE_REQUIRED')
+        const plan = await inspectIsolatedHostRestart({ ctx, operation, execution, executions, scopeEvidence: resolution.scopeEvidence, planOnly: true, workspaceRoot: root })
+        if (!plan) fail('DYNAMIC_SCOPE_ISOLATION_UNSUPPORTED')
+        requiredScopeProbes.push({ operationId: operation.operationId, readbackOperationId: operation.operationId,
+          command: plan.probe.command, scriptDigest: plan.probe.scriptDigest, scope: plan.probe.spec.scope,
+          managedCall: { name: 'execution_restart_scope_probe', arguments: { expectedOperationDigest: resolution.expectedOperationDigest,
+            expectedScriptDigest: plan.probe.scriptDigest, scopeEvidence: Object.fromEntries(['hostPid', 'hostLogPath', 'hostLogSha256',
+              'producerScopeReviewed', 'localEffectsOnlyConfirmed', 'excludeOriginalSourcesConfirmed', 'hostExit', 'postgresWrapper'].filter(key => resolution.scopeEvidence[key] !== undefined).map(key => [key, resolution.scopeEvidence[key]])) } } })
+        continue
+      }
+      if (!resolution.scopeEvidence && !ctx.get?.('nativeJobRecovery')) fail('DYNAMIC_SCOPED_ISOLATION_EVIDENCE_REQUIRED')
+      const proof = await inspectIsolatedHostRestart({ ctx, operation, execution, executions, scopeEvidence: resolution.scopeEvidence, workspaceRoot: root })
+      if (!proof) fail('DYNAMIC_OPERATION_EVIDENCE_INSUFFICIENT')
+      if (!args.checkOnly && resolution.expectedIsolationDigest !== hash(proof.isolation)) fail('DYNAMIC_ISOLATION_EVIDENCE_STALE')
+      proofs.push({ operationId: operation.operationId, proof })
+    }
+    if (args.checkOnly) return { checkOnly: true, writes: 0, taskId: task.taskId, ready: requiredScopeProbes.length === 0, requiredScopeProbes,
+      ...(executionPermissionCorrection ? { executionPermissionCorrection } : {}),
+      ...(artifactScopeCorrection ? { artifactScopeCorrection } : {}),
+      resolutions: proofs.filter(({ proof }) => proof.kind !== 'native-host-restart-isolated').map(({ operationId, proof }) => ({ operationId, operationDigest: proof.operationDigest,
+        resultSequence: proof.resultSequence, turnEndSequence: proof.turnEndSequence,
+        investigationCount: new Set(proof.observations.map(item => item.executionId)).size,
+        outcome: 'failed', partialEffectsPossible: true })),
+      restartResolutions: proofs.filter(({ proof }) => proof.kind === 'native-host-restart-isolated').map(({ operationId, proof }) => ({ operationId,
+        operationDigest: proof.operationDigest, isolationDigest: hash(proof.isolation), outcome: 'unknown', partialEffectsPossible: true, noReplay: true,
+        unblocksRecovery: true, isolationReceiptId: proof.isolation.receiptId })) }
+    const source = { sourceId, groupId: task.groupId, messageId: sourceId, actorId: config.webActorId,
+      text: args.reply, timestamp: '', channel: 'web',
+      ...(allResolutions.length || artifactScopeCorrection || executionPermissionCorrection ? { requestIdentity: { humanRequestId: args.humanRequestId,
+        ...(executionPermissionCorrection ? { executionPermissionCorrectionRequest: args.executionPermissionCorrection, executionPermissionCorrection } : {}),
+        ...(resolutions.length ? { nativeFailureResolutions: resolutions } : {}),
+        ...(restartResolutions.length ? { nativeRestartResolutions: restartResolutions } : {}),
+        ...(artifactScopeCorrection ? { artifactScopeCorrectionRequest: args.artifactScopeCorrection, artifactScopeCorrection } : {}) } } : {}) }
+    const response = { taskId: task.taskId, requestId: args.humanRequestId, sourceId,
+      ...(executionPermissionCorrection ? { executionPermissionCorrection } : {}),
+      expectedRequirementRevision: args.expectedRequirementRevision, expectedControlRevision: args.expectedControlRevision,
+      ...(artifactScopeCorrection ? { artifactScopeCorrection } : {}) }
+    let result
+    if (allResolutions.length) result = await command('task.human.resolve-failures', { ...response, source, resolutions: proofs }, receiptId)
+    else if (executionPermissionCorrection) result = await command('task.human.respond', { ...response, source }, receiptId)
+    else {
+      await command('source.record', source, `source:${sourceId}`)
+      result = await command('task.human.respond', response, receiptId)
+      await command('source.routed', { sourceId, receipt: [{ taskId: task.taskId, humanRequestId: args.humanRequestId }] }, `human-source-routed:${sourceId}`)
+    }
+    void deliverNotifications().catch(error => {
+      ctx.logger?.warn?.(`task-session recall scan ${task.taskId}: ${error.code ?? error.message}`)
+    })
+    void kickTask(task.taskId)
+    return taskDTO(result.result.task)
+  }
+  async function respondPrivateHumanReply(message) {
+    if (!message.messageId || !message.text?.trim() || !message.quotedMessage?.messageId) fail('TASK_HUMAN_REPLY_REQUIRED')
+    const requests = await listHumanRequests()
+    const request = requests.find(item => item.audience === 'operator' && item.notification?.delivery?.messageId === message.quotedMessage.messageId)
+    if (!request) fail('TASK_HUMAN_PRIVATE_REQUEST_NOT_FOUND')
+    const delivery = request.notification.delivery
+    if (delivery.conversationId !== message.groupId || delivery.senderActorId !== message.senderOpenDingTalkId) fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
+    const sourceId = `private-human:${hash([request.requestId, message.groupId, message.messageId])}`, receiptId = `human-reply:${sourceId}`
+    const task = await requireTask(request.taskId), prior = await query('receipt.get', { id: receiptId })
+    if (!prior && (request.status !== 'waiting-reply' || request.requirementRevision !== task.requirementRevision
+      || request.controlRevision !== task.controlRevision)) fail('DYNAMIC_HUMAN_REQUEST_STALE')
+    await command('source.record', { sourceId, groupId: task.groupId, messageId: message.messageId,
+      actorId: message.senderOpenDingTalkId, text: message.text, timestamp: message.occurredAt, channel: 'private',
+      quote: { messageId: delivery.messageId, conversationId: delivery.conversationId } }, `source:${sourceId}`)
+    if (prior) return taskDTO(task)
+    const result = await command('task.human.respond', { taskId: task.taskId, requestId: request.requestId, notificationId: request.notification.notificationId,
+      sourceId, expectedRequirementRevision: request.requirementRevision, expectedControlRevision: request.controlRevision }, receiptId)
+    await command('source.routed', { sourceId, receipt: [{ taskId: task.taskId, humanRequestId: request.requestId }] }, `human-source-routed:${sourceId}`)
+    if (!prior) void kickTask(task.taskId)
+    return taskDTO(result.result.task)
+  }
+  let stopInboxProjection
+  try {
+   observerGroupPage=createObserverGroupPages({
+    indexPath:config.dbPath+'.observer-inbox.sqlite',
+    readGroup:groupId=>residentStore.getGroup(groupId),readRequests:groupId=>topicCoordinator.messageProcessingRequests(groupId),
+    readTask:taskId=>taskCache.get(taskId),isOwnNotification,
+    readSources:async(groupId,messages)=>(await query('observer.message-list-contexts',{groupId,messages,messageIds:messages.map(item=>item.messageId)})).sources
+  })
+   stopInboxProjection=residentStore.onGroupCommitted?.(observerGroupPage.update)
+   for(const group of residentStore.listGroups())observerGroupPage.update({group})
+   await observerGroupPage.ready()
+  }catch(error){
+    closed=true
+    clearTimeout(providerRetryTimer)
+    stopInboxProjection?.();stopObservation?.()
+    await observationQueue.close()
+    await Promise.allSettled([topicCoordinator.close(),taskSessions.close(),executionSessions.close(),persistence.close(),observerGroupPage?.close()])
+    if(!suppliedStore)await store.close()
+    throw error
+  }
+
+  const observerAlerts=createObserverAlertPages({failures,tasks:taskCache,operations:operationCache,notifications:notificationCache,groups:()=>residentStore.listGroups()})
+
+  return {
+    async retryNotification({ groupId, notificationId, expectedToken }) {
+      const notification = typeof notificationId === 'string' && notificationId
+        ? await query('notification.get', { notificationId }) : null
+      if (!groupId || !residentStore.getGroup(groupId) || !notification || notification.payload.audience === 'operator'
+        || notification.payload.conversationId !== groupId) throw notificationRecoveryError('TASK_NOTIFICATION_NOT_FOUND', 404)
+      if (notification.kind === 'coordination') throw notificationRecoveryError('INDEPENDENT_COORDINATION_RETIRED')
+      if (inflightNotifications.has(notificationId)) throw notificationRecoveryError('TASK_NOTIFICATION_RECOVERY_IN_PROGRESS')
+      if (taskNotificationRecovery(notification).expectedToken !== expectedToken) throw notificationRecoveryError('DYNAMIC_NOTIFICATION_RECOVERY_STALE')
+      const pending = Promise.resolve().then(async () => {
+        if (!await notificationDeliveryGate(notification)) throw notificationRecoveryError('TASK_NOTIFICATION_RECOVERY_FORBIDDEN')
+        const processingRevision = sourceProcessingRevision
+        const result = await retryTaskNotification({ notification, expectedToken, notifications, command, onStage: notificationStage })
+        if (result?.sourcePending) sourceHeldNotifications.set(notificationId, processingRevision)
+        else sourceHeldNotifications.delete(notificationId)
+        failures.delete(notificationId)
+        return { groupId, notificationId, ...result }
+      })
+      // Expected CAS/gate refusals are not transport failures; effect diagnostics remain durable.
+      const settled = pending.finally(() => inflightNotifications.delete(notificationId))
+      inflightNotifications.set(notificationId, settled)
+      continueNotificationDelivery(settled, new Set([notificationId]))
+      return settled
+    },
+    observerGroupPage,
+    listObserverGroups:()=>residentStore.listGroups().map(({groupId,name,responsibility,residentSessionId})=>({groupId,name,responsibility,residentSessionId})),
+    listAuthorizationRequests: listHumanRequests, respondHumanRequest, respondPrivateHumanReply,
+    store, ingest, recover, taskDetail, taskExecutions, isOwnNotification,
+    async taskIdentity(taskId) { return await query('task.get', { taskId }) ? { taskId, legacyReadonly: false } : null },
+    messageProcessingRequests: groupId => topicCoordinator.messageProcessingRequests(groupId),
+    async messageProcessingSources(groupId) {
+      const [sources, notifications] = await Promise.all([
+        query('source.list', { groupId }), query('notification.list', { groupId }),
+      ])
+      return messageProcessingSources(retiredSourceOwnership(sources, residentStore.getGroup(groupId)?.sourceDispatchOwnership, groupId), notifications, groupId)
+    },
+    async updateMessageRoutingHold(args) {
+      if (closed || !residentStore.getGroup(args.groupId)) fail('MESSAGE_RETRY_UNAVAILABLE')
+      const message = await residentStore.updateRoutingHold(args)
+      void kickGroup(args.groupId).catch(error => ctx.logger?.warn?.(`routing hold recovery: ${error.code ?? error.message}`))
+      return { groupId: args.groupId, messageId: args.messageId, status: args.resume ? 'resumed' : 'scope-updated', epoch: message.routingEpoch }
+    },
+    async retryMessageProcessing(args) {
+      const { groupId, messageId, phase, requestId } = args
+      if (closed || !residentStore.getGroup(groupId)) fail('MESSAGE_RETRY_UNAVAILABLE')
+      const key = JSON.stringify([groupId, messageId])
+      if (messageRecoveryFlights.has(key)) fail('MESSAGE_RETRY_IN_PROGRESS')
+      messageRecoveryFlights.add(key)
+      try {
+        if (phase === 'host') await topicCoordinator.retryMessageHost(args)
+        else if (phase === 'routing' || phase === 'decision') {
+          const request = topicCoordinator.messageProcessingRequests(groupId).find(item => item.requestId === requestId)
+          if (!request || Boolean(request.topicId) !== (phase === 'decision')) fail('MESSAGE_RETRY_STALE')
+          await topicCoordinator.retryMessageRequest(args)
+        } else fail('MESSAGE_RETRY_STALE')
+        void kickGroup(groupId)
+        return { groupId, messageId, requestId, status: 'attempted' }
+      } finally { messageRecoveryFlights.delete(key) }
+    },
+
+    listActivities: observation.listActivities, listTaskTimings: observation.listTaskTimings, listPerformance: observation.listPerformance, getActivityAuditStatus: observation.getActivityAuditStatus,
+    listAlerts:observerAlerts.all, listAlertPage:observerAlerts.page,
+    listTopics: groupId => residentStore.listTopics(groupId), getTopic: (groupId, topicId) => residentStore.getTopic(groupId, topicId),
+    getTopicContext: args => residentStore.getTopicContext(args),
+    async retryMessage({ groupId, messageId }) {
+      if (!residentStore.getGroup(groupId)) fail('group_not_subscribed')
+      const sources = (await query('source.list', { groupId })).filter(source => source.messageId === messageId)
+      if (!sources.length) {
+        const message = residentStore.getGroup(groupId)?.messages.find(item => item.messageId === messageId)
+        if (!message) fail('TASK_SESSION_SOURCE_NOT_FOUND')
+        const actorId = message.senderOpenDingTalkId ?? message.actorId
+        if (!actorId) fail('TASK_SESSION_AUTHENTICATED_SOURCE_REQUIRED')
+        if (isOwnNotification({ ...message, groupId })) fail('TASK_SESSION_OWN_NOTIFICATION')
+        const sourceId = `im:${hash([groupId, messageId, message.messageVersion ?? 1])}`
+        await command('source.acceptHistory', { sourceId, groupId, messageId, version: message.messageVersion ?? 1,
+          actorId, senderName: message.senderName ?? '', text: message.text ?? '', quote: message.quotedMessage ?? null,
+          resources: message.resourceRefs ?? message.imageRefs ?? [], timestamp: message.occurredAt,
+          authorizationRef: `message-retry:${groupId}:${messageId}:${message.messageVersion ?? 1}` }, `retry-source:${sourceId}`)
+      }
+      // Recover a partially accepted explicit retry without changing any message facts.
+      await residentStore.retryBackgroundMessageRouting({ groupId, messageId })
+      // Never clear an unknown-effect fence or repeat an already applied topic action.
+      await topicCoordinator.retryMessage(groupId, messageId)
+      await kickGroup(groupId)
+      await recover()
+      return { groupId, messageId, recoveryRequested: true }
+    },
+    isGroup: groupId => !!residentStore.getGroup(groupId),
+    async archiveTask({ taskId }) {
+      const task = await requireTask(taskId)
+      if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+      const result = await command('task.archive', { taskId: task.taskId, actorId: config.webActorId })
+      return taskDTO(result.result.task)
+    },
+    async boardTasks(options) {
+      if (!options) return Promise.all((await query('task.list')).map(taskDTO))
+      const page = await query('observer.page', { collection: 'tasks', ...options })
+      if (options.summary) return page
+      const titles = new Map()
+      return { ...page, items: page.items.map(task => ({ ...task, topicRefs: taskTopicRefs(task, titles), inputVersion: task.requirementRevision,
+        controlState: task.control, waitingReason: task.state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
+        result: task.completion?.result ?? task.lastDecision ?? null, legacyReadonly: false,
+        ...(task.archivedAt ? {} : { session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running',
+          workspaceDir: dirname(taskFilePath(root, task.taskId, 'work')), logPath: taskSessionLogRoot(root, task.taskId) } }) })) }
+    },
+    async taskDecisions(taskId, options = {}) { await requireTask(taskId); return query('task.decisions', { ...options, taskId }) },
+    async reconcileWebTaskTopics(args) {
+      if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+      await refreshTasks()
+      for (const item of await query('execution.list')) executionCache.set(item.executionId, item)
+      return residentStore.reconcileWebTaskTopics(args)
+    },
+    async createTask(args) { return taskDTO(await webTopicAction(args, null, 'new-task')) },
+    async appendTaskContext(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-context')) },
+    async reopenTask(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-reopen')) },
+    async taskDialogue(taskId) {
+      const task = await requireTask(taskId)
+      return { taskId, sessionId: task.sessionId, messages: task.dialogue ?? [],
+        writable: !!config.webActorId && !task.archivedAt && task.status === 'active' && task.control === 'active',
+        error: failures.get(taskId)?.code ?? null }
+    },
+    async sendTaskDialogue({ taskId, requestId, text }) {
+      if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+      const receipt = await command('task.dialogue.add', { taskId, requestId, text, actorId: config.webActorId }, `dialogue:${taskId}:${requestId}`)
+      // The durable wake survives a closed tab, a lost response and Host restart.
+      void kickTask(taskId).catch(() => {})
+      return receipt.result.message
+    },
+    async cancelTask(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-cancel')) },
+    hasPendingTopicFacts: groupId => query('topic.fact.unsettled', { groupId }),
+    async whenIdle() {
+      const notificationAttempts = new Set()
+      await schedulePending()
+      await deliverNotifications(notificationAttempts)
+      do {
+        await Promise.allSettled([scheduling, notificationScan, ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean))
+        await schedulePending()
+        await deliverNotifications(notificationAttempts)
+      } while (scheduling || notificationScan || sourceProjections.size || [inflightTasks,inflightExecutions,inflightGroups,inflightNotifications].some(map => map.size))
+    },
+    async close() {
+      closed = true
+      nativeDws.close()
+      clearTimeout(providerRetryTimer)
+      stopObservation?.()
+      const counts = () => ({ observationPending: observationQueue.pending, tasks: inflightTasks.size, executions: inflightExecutions.size, groups: inflightGroups.size,
+        notifications: inflightNotifications.size, sourceProjections: sourceProjections.size,
+        scheduling: !!scheduling, recovering: !!recovering, notificationScan: !!notificationScan })
+      await observeClose(closeTrace, 'service.observation-tail', () => observationQueue.close(), counts)
+      await observeClose(closeTrace, 'service.topic.close', () => topicCoordinator.close(), counts)
+      await Promise.all([
+        observeClose(closeTrace, 'service.owner.close', () => taskSessions.close(), counts),
+        observeClose(closeTrace, 'service.execution.close', () => executionSessions.close(), counts),
+      ])
+      await observeClose(closeTrace, 'service.inflight-settled', () => Promise.allSettled([scheduling, recovering, notificationScan, ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean)), counts)
+      await observeClose(closeTrace, 'service.persistence.close', () => persistence.close(), counts)
+      stopInboxProjection?.()
+      await observeClose(closeTrace, 'service.observer-page.close', () => observerGroupPage.close(), counts)
+      if (!suppliedStore) await observeClose(closeTrace, 'service.store.close', () => store.close(), counts)
+    },
+  }
+}

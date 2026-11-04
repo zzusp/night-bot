@@ -1,0 +1,27 @@
+✖ official execution artifact binding makes native FS and shell share one root and reject outside writes (347.31606ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":332,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 663.575876
+
+✖ failing tests:
+
+test at test/task-artifact-scope-native.test.js:144:1
+✖ official execution artifact binding makes native FS and shell share one root and reject outside writes (347.31606ms)
+  AssertionError [ERR_ASSERTION]: [{"name":"bash","sessionId":"execution-session-task-a","result":{"isError":true,"error":{"message":"sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.","info":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"content":[{"type":"text","text":"Error: sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access."}]}},{"name":"bash","sessionId":"execution-session-task-a","result":{"isError":true,"error":{"message":"sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.","info":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"content":[{"type":"text","text":"Error: sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access."}]}}]
+      at file:///workspace/source-current/test/task-artifact-scope-native.test.js:185:14 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple',
+    lifecyclePhase: 'business'
+  }

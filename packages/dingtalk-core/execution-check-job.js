@@ -1,0 +1,406 @@
+import { assertCandidateWorktree, withCandidateWorkspaceUse } from './execution-candidate.js'
+import { createHash } from 'node:crypto'
+import { spawn as nativeSpawn, execFile } from 'node:child_process'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { appendFileSync, lstatSync, openSync, fsyncSync, closeSync, createWriteStream, readFileSync } from 'node:fs'
+import { acceptanceProcessTree } from './execution-local-acceptance.js'
+import { checkedTaskDirectory } from './session-workspaces.js'
+import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { join, dirname, isAbsolute } from 'node:path'
+import { executionDigest, executionError } from './execution-artifacts.js'
+
+// 生命周期位于适配器外层；历史 check.run 的源码摘要保持不变。
+const verificationLifecycle = new AsyncLocalStorage()
+export async function withVerificationProcessJournal({ path, binding }, execute) {
+  await checkedTaskDirectory(dirname(path), true)
+  try { const entry=lstatSync(path);if(!entry.isFile()||entry.isSymbolicLink())throw executionError('VERIFY_PROCESS_JOURNAL_INVALID') } catch(error) {if(error.code!=='ENOENT')throw error}
+  let failure
+  const record = event => {
+    try {
+      appendFileSync(path, JSON.stringify({ binding, ...event, at: new Date().toISOString() }) + '\n')
+      const fd = openSync(path, 'a'); try { fsyncSync(fd) } finally { closeSync(fd) }
+    } catch (error) { failure ??= Object.assign(executionError('VERIFY_PROCESS_JOURNAL_FAILED',error.message),{executionDrained:false}) }
+  }
+  record({ phase: 'entered' })
+  if(failure)throw failure
+  try { return await verificationLifecycle.run({ record, assertRecorded(){if(failure)throw failure} }, execute) }
+  finally { if(failure)throw failure }
+}
+function spawn(executable, args, options) {
+  const lifecycle = verificationLifecycle.getStore()
+  if (!lifecycle) return nativeSpawn(executable, args, options)
+  const launchedAt = Date.now(), commandDigest = executionDigest({ executable, args, cwd: options.cwd })
+  lifecycle.record({ phase: 'launching', launchedAt, commandDigest, directory: options.cwd })
+  lifecycle.assertRecorded()
+  const child = nativeSpawn(executable, args, options)
+  lifecycle.record({ phase: 'started', launchedAt, commandDigest, pid: child.pid ?? null })
+  child.once('error', error => lifecycle.record({ phase: 'spawn-error', launchedAt, commandDigest, code: error.code }))
+  child.once('close', (exitCode, signal) => lifecycle.record({ phase: 'closed', launchedAt, commandDigest, pid: child.pid ?? null, exitCode, signal }))
+  return child
+}
+
+export async function verificationProcessSnapshot() {
+  if (process.platform !== 'win32') throw executionError('VERIFY_PROCESS_INSPECTION_UNSUPPORTED')
+  const launchedAt=Date.now()
+  return new Promise((resolve, reject) => { const inspection=execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "$ErrorActionPreference='Stop'; ConvertTo-Json -InputObject @(Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{pid=[int]$_.ProcessId;parent=[int]$_.ParentProcessId;name=$_.Name;born=$(if($_.CreationDate){([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds()}else{$null});executable=$_.ExecutablePath;command=$_.CommandLine} }) -Compress"],
+    { windowsHide: true, maxBuffer: 4 * 1024 * 1024, timeout: 20000 }, (error, stdout) => {
+      if (error) return reject(executionError('VERIFY_PROCESS_INSPECTION_FAILED'))
+      try { const rows=JSON.parse(stdout),own=new Set(acceptanceProcessTree(rows,inspection.pid,launchedAt).map(row=>row.pid));resolve(rows.filter(row=>!own.has(row.pid))) } catch { reject(executionError('VERIFY_PROCESS_INSPECTION_FAILED')) }
+    }) })
+}
+
+export function inspectVerificationProcessJournal(records, binding, processes) {
+  const exact = records.filter(record => executionDigest(record.binding) === executionDigest(binding))
+  if (!exact.length) return { drained: false, reason: 'missing-process-journal', processes: [] }
+  const pending = exact.filter(record => record.phase === 'launching' && !exact.some(other => other.phase === 'started' && other.launchedAt === record.launchedAt && other.commandDigest === record.commandDigest))
+  if (pending.length) return { drained: false, reason: 'launch-identity-unconfirmed', processes: [] }
+  if(exact.some(record=>record.phase==='started'&&!record.pid&&!exact.some(other=>['closed','spawn-error'].includes(other.phase)&&other.launchedAt===record.launchedAt&&other.commandDigest===record.commandDigest)))return {drained:false,reason:'launch-identity-unconfirmed',processes:[]}
+  const alive = new Map()
+  for (const start of exact.filter(record => record.phase === 'started' && record.pid)) {
+    const closed = exact.find(record => record.phase === 'closed' && record.launchedAt === start.launchedAt && record.commandDigest === start.commandDigest)
+    for (const row of acceptanceProcessTree(processes, start.pid, start.launchedAt, closed ? Date.parse(closed.at) : Infinity)) alive.set(row.pid, row)
+  }
+  return { drained: alive.size === 0, reason: alive.size ? 'check-process-still-alive' : 'native-processes-absent', processes: [...alive.values()] }
+}
+
+export function historicalVerificationProcesses({ processes, commands, root, claimedAt, hostPid=process.pid }) {
+  const normalize=value=>String(value??'').replaceAll('\\','/').toLowerCase(),born=Date.parse(claimedAt)
+  if(!Number.isFinite(born)||!Array.isArray(processes)||!commands.length)throw executionError('VERIFY_PROCESS_INSPECTION_FAILED')
+  const possibleNames=new Set(commands.map(command=>normalize(command.executable).split('/').at(-1)))
+  return processes.filter(row=>row.pid!==hostPid&&row.pid>4&&(row.born===null||row.born>=born)&&(
+    ((!Number.isSafeInteger(row.born)||!row.command||!row.executable)&&possibleNames.has(normalize(row.name??row.executable).split('/').at(-1)))
+    || normalize(row.command).includes(normalize(root))
+    || commands.some(command=>normalize(row.executable)===normalize(command.executable))
+    || /(?:^|[\s"\\/])(?:yarn|vue-cli-service|webpack|mvn|surefire)(?:[\s".]|$)/i.test(row.command)))
+    .map(({pid,parent,born})=>({pid,parent,born}))
+}
+
+/** 只解释已保存的执行记录，不把检查器内部名称当作业务结论。 */
+export function describeVerificationChecks(verification) {
+  return (verification?.checks ?? []).map((check, index) => {
+    let log
+    try { log = JSON.parse(check.log) } catch { /* 自定义检查器可能只保存纯文本。 */ }
+    const steps = (Array.isArray(log?.steps) ? log.steps : []).map((step, stepIndex) => {
+      const args = Array.isArray(step.args) ? step.args : []
+      const skippedTests = args.some(arg => /^-D(?:skipTests|maven\.test\.skip)(?:=true)?$/.test(arg))
+      const title = args.includes('package') ? 'Java 项目打包'
+        : args.includes('install') || args.includes('ci') ? '安装项目依赖'
+          : args.includes('build') ? '构建项目'
+            : args.includes('test') ? '执行项目测试' : `执行配置检查 ${stepIndex + 1}`
+      return { title: skippedTests ? `${title}（跳过测试）` : title, passed: step.exitCode === 0 && !step.reason, elapsedMs: step.elapsedMs,
+        ...(skippedTests ? { limitation: '此命令跳过了测试，不能作为测试通过的证据' } : {}) }
+    })
+    return { title: steps.length ? steps.map(step => step.title).join('、') : `配置检查 ${index + 1}`,
+      passed: check.passed === true, steps,
+      limitation: steps.length ? '以上仅代表已执行命令的结果；业务验收须有对应验证记录' : '历史记录没有检查内容说明，无法确定验证范围' }
+  })
+}
+
+const encodeOutput = bytes => {
+  const value = bytes.toString('utf8')
+  // 可读文本JSON比base64更大时使用base64，保留原始字节并限制编码膨胀。
+  const encoded = bytes.toString('base64')
+  return Buffer.from(value, 'utf8').equals(bytes) && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value) && Buffer.byteLength(JSON.stringify(value)) <= encoded.length + 2
+    ? { value, encoding: 'utf8' } : { value: encoded, encoding: 'base64' }
+}
+
+// Stream to a sibling directory, outside the candidate command's working tree.
+function captureFullLog(stream, path) {
+  const file = createWriteStream(path, { flags: 'wx' }), hash = createHash('sha256')
+  let bytes = 0, tail = Buffer.alloc(0), error
+  stream.on('data', chunk => { bytes += chunk.length; hash.update(chunk); tail = Buffer.concat([tail, chunk]).subarray(-2048) })
+  const finished = new Promise(resolve => {
+    file.once('error', cause => { error = cause.code ?? 'LOG_WRITE_FAILED'; stream.unpipe(file); resolve() })
+    file.once('finish', resolve)
+  })
+  stream.pipe(file)
+  return async () => { await finished; const encoded = encodeOutput(tail); return { path, bytes, sha256: hash.digest('hex'), tail: encoded.value, tailEncoding: encoded.encoding, error: error ?? null } }
+}
+
+/** 固定Host检查命令；只把冻结候选物化到独立目录，不运行模型提供的argv。 */
+export function createVerificationJobCheck(config) { return verificationJobCheckV2(config) }
+
+function verificationJobCheckV2({ id, version, root, executable, args, steps, ...unsupported }, captureResult = false) {
+  if (steps !== undefined && (executable !== undefined || args !== undefined)) throw executionError('VERIFY_JOB_CONFIG_INVALID')
+  const commands = structuredClone(steps ?? [{ executable, args }])
+  if (![id, version].every(value => typeof value === 'string' && value) || !isAbsolute(root ?? '') || !Array.isArray(commands) || !commands.length
+    || commands.some(command => typeof command.executable !== 'string' || !command.executable || !Array.isArray(command.args) || command.args.some(value => typeof value !== 'string')
+      || command.timeoutMs !== undefined)
+    || unsupported.timeoutMs !== undefined) throw executionError('VERIFY_JOB_CONFIG_INVALID')
+  return { id, version, configurationDigest: executionDigest({ id, version, root, commands, captureResult, logVersion: 2 }), async run(snapshot, { signal, bindingScope } = {}) {
+    signal?.throwIfAborted()
+    await mkdir(root, { recursive: true })
+    const directory = await mkdtemp(join(root, 'verify-'))
+    for (const file of snapshot.files) {
+      signal?.throwIfAborted()
+      const path = join(directory, file.path)
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, await snapshot.readFile(file.path), { flag: 'wx', mode: file.mode === '100755' ? 0o755 : 0o644 })
+    }
+    const logDirectory = await mkdtemp(join(root, 'verify-logs-'))
+    const startedAt = new Date().toISOString(), start = Date.now()
+    const results = []; let outputBytes = 0, resultOutput
+    for (const command of commands) {
+      signal?.throwIfAborted()
+      const stepStart = Date.now(), stepStartedAt = new Date(stepStart).toISOString()
+      const result = await new Promise((resolve, reject) => {
+      const child = spawn(command.executable, command.args, { cwd: directory, env: { ...process.env, ...(bindingScope ? { DSH_VERIFICATION_SCOPE: JSON.stringify(bindingScope) } : {}) }, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] })
+      const stdoutLog = captureFullLog(child.stdout, join(logDirectory, `step-${results.length + 1}.stdout.log`)), stderrLog = captureFullLog(child.stderr, join(logDirectory, `step-${results.length + 1}.stderr.log`))
+      const stdout = [], stderr = [], completeStdout = []
+      let bytes = 0, reason = null, terminationError = null, killPromise = Promise.resolve(), drainTimer
+      const unconfirmed = () => {
+        const error = executionError('VERIFY_JOB_DRAIN_UNCONFIRMED', terminationError ?? 'Process tree did not close after termination')
+        error.executionDrained = false
+        reject(error)
+      }
+      const stop = value => {
+        if (reason) return
+        reason = value
+        drainTimer = setTimeout(unconfirmed, 15000)
+        killPromise = new Promise(done => {
+          if (process.platform === 'win32' && child.pid) execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 }, error => { if (error) terminationError = String(error.message); done() })
+          else { try { process.kill(-child.pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') terminationError = String(error.message) } done() }
+        })
+      }
+      const onAbort = () => stop('cancelled')
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (signal?.aborted) onAbort()
+      for (const [stream, out] of [[child.stdout, true], [child.stderr, false]]) stream.on('data', chunk => {
+        bytes += chunk.length
+        // 末步业务 JSON 独立完整采集；诊断截断不影响实际值核验。
+        if (captureResult && command === commands.at(-1) && out) completeStdout.push(chunk)
+        const retained = stdout.reduce((n, value) => n + value.length, 0) + stderr.reduce((n, value) => n + value.length, 0)
+        const available = Math.max(0, 32768 - outputBytes - retained)
+        if (available) { if (out) stdout.push(chunk.subarray(0, available)); else stderr.push(chunk.subarray(0, available)) }
+      })
+      let spawnError
+      child.once('error', error => { spawnError = error })
+      child.once('close', async (exitCode, exitSignal) => {
+        signal?.removeEventListener('abort', onAbort); await killPromise; clearTimeout(drainTimer)
+        if (terminationError) return unconfirmed()
+        const fullLogs = { stdout: await stdoutLog(), stderr: await stderrLog() }
+        if (spawnError) return reject(spawnError)
+        if (Object.values(fullLogs).some(log => log.error)) reason ??= 'log-write-failed'
+        const out = Buffer.concat(stdout), err = Buffer.concat(stderr), encodedOut = encodeOutput(out), encodedErr = encodeOutput(err)
+        if (captureResult && command === commands.at(-1)) resultOutput = Buffer.concat(completeStdout).toString('utf8')
+        resolve({ fullLogs, exitCode, signal: exitSignal, reason, terminationError, stdout: encodedOut.value, stdoutEncoding: encodedOut.encoding, stderr: encodedErr.value, stderrEncoding: encodedErr.encoding, outputBytes: out.length + err.length, observedOutputBytes: bytes, outputTruncated: bytes > out.length + err.length })
+      })
+      })
+      results.push({ ...command, ...result, startedAt: stepStartedAt, elapsedMs: Date.now() - stepStart }); outputBytes += result.outputBytes
+      if (result.exitCode !== 0 || result.reason !== null) break
+    }
+    const result = results.at(-1)
+    return { passed: results.length === commands.length && results.every(result => result.exitCode === 0 && result.reason === null),
+      log: JSON.stringify({ candidateDigest: snapshot.candidateDigest, directory, logDirectory, exitCode: result.exitCode, reason: result.reason, startedAt, elapsedMs: Date.now() - start, steps: results }), ...(captureResult ? { resultOutput } : {}) }
+  } }
+}
+
+export function createLegacyVerificationJobCheck(config) { return verificationJobCheck(config) }
+
+function verificationJobCheck({ id, version, root, executable, args, steps, ...unsupported }, captureResult = false) {
+  if (steps !== undefined && (executable !== undefined || args !== undefined)) throw executionError('VERIFY_JOB_CONFIG_INVALID')
+  const commands = structuredClone(steps ?? [{ executable, args }])
+  if (![id, version].every(value => typeof value === 'string' && value) || !isAbsolute(root ?? '') || !Array.isArray(commands) || !commands.length
+    || commands.some(command => typeof command.executable !== 'string' || !command.executable || !Array.isArray(command.args) || command.args.some(value => typeof value !== 'string')
+      || command.timeoutMs !== undefined)
+    || unsupported.timeoutMs !== undefined) throw executionError('VERIFY_JOB_CONFIG_INVALID')
+  return { id, version, configurationDigest: executionDigest({ id, version, root, commands, captureResult }), async run(snapshot, { signal } = {}) {
+    signal?.throwIfAborted()
+    await mkdir(root, { recursive: true })
+    const directory = await mkdtemp(join(root, 'verify-'))
+    for (const file of snapshot.files) {
+      signal?.throwIfAborted()
+      const path = join(directory, file.path)
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, await snapshot.readFile(file.path), { flag: 'wx', mode: file.mode === '100755' ? 0o755 : 0o644 })
+    }
+    const startedAt = new Date().toISOString(), start = Date.now()
+    const results = []; let outputBytes = 0, resultOutput
+    for (const command of commands) {
+      signal?.throwIfAborted()
+      const stepStart = Date.now(), stepStartedAt = new Date(stepStart).toISOString()
+      const result = await new Promise((resolve, reject) => {
+      const child = spawn(command.executable, command.args, { cwd: directory, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] })
+      const stdout = [], stderr = [], completeStdout = []
+      let bytes = 0, reason = null, terminationError = null, killPromise = Promise.resolve(), drainTimer
+      const unconfirmed = () => {
+        const error = executionError('VERIFY_JOB_DRAIN_UNCONFIRMED', terminationError ?? 'Process tree did not close after termination')
+        error.executionDrained = false
+        reject(error)
+      }
+      const stop = value => {
+        if (reason) return
+        reason = value
+        drainTimer = setTimeout(unconfirmed, 15000)
+        killPromise = new Promise(done => {
+          if (process.platform === 'win32' && child.pid) execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 }, error => { if (error) terminationError = String(error.message); done() })
+          else { try { process.kill(-child.pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') terminationError = String(error.message) } done() }
+        })
+      }
+      const onAbort = () => stop('cancelled')
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (signal?.aborted) onAbort()
+      for (const [stream, out] of [[child.stdout, true], [child.stderr, false]]) stream.on('data', chunk => {
+        bytes += chunk.length
+        // 末步业务 JSON 独立完整采集；诊断截断不影响实际值核验。
+        if (captureResult && command === commands.at(-1) && out) completeStdout.push(chunk)
+        const retained = stdout.reduce((n, value) => n + value.length, 0) + stderr.reduce((n, value) => n + value.length, 0)
+        const available = Math.max(0, 32768 - outputBytes - retained)
+        if (available) { if (out) stdout.push(chunk.subarray(0, available)); else stderr.push(chunk.subarray(0, available)) }
+      })
+      child.once('error', error => { clearTimeout(drainTimer); signal?.removeEventListener('abort', onAbort); reject(error) })
+      child.once('close', async (exitCode, exitSignal) => {
+        signal?.removeEventListener('abort', onAbort); await killPromise; clearTimeout(drainTimer)
+        if (terminationError) return unconfirmed()
+        const out = Buffer.concat(stdout), err = Buffer.concat(stderr), encodedOut = encodeOutput(out), encodedErr = encodeOutput(err)
+        if (captureResult && command === commands.at(-1)) resultOutput = Buffer.concat(completeStdout).toString('utf8')
+        resolve({ exitCode, signal: exitSignal, reason, terminationError, stdout: encodedOut.value, stdoutEncoding: encodedOut.encoding, stderr: encodedErr.value, stderrEncoding: encodedErr.encoding, outputBytes: out.length + err.length, observedOutputBytes: bytes, outputTruncated: bytes > out.length + err.length })
+      })
+      })
+      results.push({ ...command, ...result, startedAt: stepStartedAt, elapsedMs: Date.now() - stepStart }); outputBytes += result.outputBytes
+      if (result.exitCode !== 0 || result.reason !== null) break
+    }
+    const result = results.at(-1)
+    return { passed: results.length === commands.length && results.every(result => result.exitCode === 0 && result.reason === null),
+      log: JSON.stringify({ candidateDigest: snapshot.candidateDigest, directory, exitCode: result.exitCode, reason: result.reason, startedAt, elapsedMs: Date.now() - start, steps: results }), ...(captureResult ? { resultOutput } : {}) }
+  } }
+}
+
+/** Host 固定验收项；命令退出成功且实际值匹配预期才通过。 */
+export function createBusinessAcceptanceCheck({ criterion, expected, ...config }) {
+  if (![criterion, expected].every(value => typeof value === 'string' && value.trim())) throw executionError('ENGINEERING_ACCEPTANCE_CONFIG_INVALID')
+  const check = verificationJobCheckV2(config, true)
+  return { ...check, configurationDigest: executionDigest({ command: check.configurationDigest, implementation: check.run.toString(), criterion, expected }), async run(snapshot, context) {
+    const result = await check.run(snapshot, context), log = JSON.parse(result.log)
+    let actual = null
+    try {
+      const parsed = JSON.parse(result.resultOutput)
+      if (typeof parsed.actual === 'string') actual = parsed.actual
+    } catch { /* 无结构化实际值时验收不通过。 */ }
+    const passed = result.passed && actual !== null && actual === expected
+    log.acceptance = { criterion, expected, actual, passed }
+    return { passed, log: JSON.stringify(log) }
+  } }
+}
+
+export function createLegacyBusinessAcceptanceCheck({ criterion, expected, ...config }) {
+  if (![criterion, expected].every(value => typeof value === 'string' && value.trim())) throw executionError('ENGINEERING_ACCEPTANCE_CONFIG_INVALID')
+  const check = verificationJobCheck(config, true)
+  return { ...check, configurationDigest: executionDigest({ command: check.configurationDigest, implementation: check.run.toString(), criterion, expected }), async run(snapshot, context) {
+    const result = await check.run(snapshot, context), log = JSON.parse(result.log)
+    let actual = null
+    try {
+      const parsed = JSON.parse(result.resultOutput)
+      if (typeof parsed.actual === 'string') actual = parsed.actual
+    } catch { /* 无结构化实际值时验收不通过。 */ }
+    const passed = result.passed && actual !== null && actual === expected
+    log.acceptance = { criterion, expected, actual, passed }
+    return { passed, log: JSON.stringify(log) }
+  } }
+}
+
+export function createWorktreeVerificationJobCheck(config){return verificationWorktreeJob(config)}
+function verificationWorktreeJob({ id, version, root, executable, args, steps, generatedDirectories = [], ...unsupported }, captureResult = false) {
+  if (steps !== undefined && (executable !== undefined || args !== undefined)) throw executionError('VERIFY_JOB_CONFIG_INVALID')
+  const commands = structuredClone(steps ?? [{ executable, args }])
+  if (![id, version].every(value => typeof value === 'string' && value) || !isAbsolute(root ?? '') || !Array.isArray(commands) || !commands.length
+    || commands.some(command => typeof command.executable !== 'string' || !command.executable || !Array.isArray(command.args) || command.args.some(value => typeof value !== 'string')
+      || command.timeoutMs !== undefined)
+    || unsupported.timeoutMs !== undefined) throw executionError('VERIFY_JOB_CONFIG_INVALID')
+  const nativeJobPath=fileURLToPath(new URL('./execution-verification-job.ps1',import.meta.url))
+  const nativeJobDigest=createHash('sha256').update(readFileSync(nativeJobPath)).digest('hex')
+  return { id, version, configurationDigest: executionDigest({ id, version, root, commands, captureResult, logVersion: 2, sourceMode: 'task-worktree', generatedDirectories, nativeJobDigest }), async run(snapshot, { signal, bindingScope } = {}) {
+    return withCandidateWorkspaceUse(snapshot.candidate.repository,async()=>{
+    signal?.throwIfAborted()
+    await assertCandidateWorktree(snapshot.candidate,{signal,generatedDirectories})
+    await mkdir(root, { recursive: true })
+    const directory = snapshot.candidate.repository
+    const logDirectory = await mkdtemp(join(root, 'verify-logs-'))
+    const startedAt = new Date().toISOString(), start = Date.now()
+    const results = []; let outputBytes = 0, resultOutput
+    for (const command of commands) {
+      signal?.throwIfAborted()
+      const stepStart = Date.now(), stepStartedAt = new Date(stepStart).toISOString()
+      const result = await new Promise((resolve, reject) => {
+      const drainReceiptPath=join(logDirectory,`step-${results.length + 1}.drained.json`)
+      const nativeJob=process.platform==='win32'
+      const launchExecutable=nativeJob?'powershell.exe':command.executable
+      const launchArgs=nativeJob?['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',nativeJobPath,drainReceiptPath]:command.args
+      const child = spawn(launchExecutable, launchArgs, { cwd: directory, env: { ...process.env, ...(bindingScope ? { DSH_VERIFICATION_SCOPE: JSON.stringify(bindingScope) } : {}) }, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: [nativeJob?'pipe':'ignore', 'pipe', 'pipe'] })
+      if(nativeJob){child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({...command,directory}))}
+      const stdoutLog = captureFullLog(child.stdout, join(logDirectory, `step-${results.length + 1}.stdout.log`)), stderrLog = captureFullLog(child.stderr, join(logDirectory, `step-${results.length + 1}.stderr.log`))
+      const stdout = [], stderr = [], completeStdout = []
+      let bytes = 0, reason = null, terminationError = null, killPromise = Promise.resolve(), drainTimer
+      const unconfirmed = () => {
+        const error = executionError('VERIFY_JOB_DRAIN_UNCONFIRMED', terminationError ?? 'Process tree did not close after termination')
+        error.executionDrained = false
+        reject(error)
+      }
+      const stop = value => {
+        if (reason) return
+        reason = value
+        drainTimer = setTimeout(unconfirmed, 15000)
+        killPromise = new Promise(done => {
+          if (process.platform === 'win32' && child.pid) execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 }, error => { if (error) terminationError = String(error.message); done() })
+          else { try { process.kill(-child.pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') terminationError = String(error.message) } done() }
+        })
+      }
+      const onAbort = () => stop('cancelled')
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (signal?.aborted) onAbort()
+      for (const [stream, out] of [[child.stdout, true], [child.stderr, false]]) stream.on('data', chunk => {
+        bytes += chunk.length
+        // Capture the final business JSON independently of the retained log tail.
+        if (captureResult && command === commands.at(-1) && out) completeStdout.push(chunk)
+        const retained = stdout.reduce((n, value) => n + value.length, 0) + stderr.reduce((n, value) => n + value.length, 0)
+        const available = Math.max(0, 32768 - outputBytes - retained)
+        if (available) { if (out) stdout.push(chunk.subarray(0, available)); else stderr.push(chunk.subarray(0, available)) }
+      })
+      let spawnError
+      child.once('error', error => { spawnError = error })
+      child.once('close', async (exitCode, exitSignal) => {
+        signal?.removeEventListener('abort', onAbort); await killPromise; clearTimeout(drainTimer)
+        if (terminationError) return unconfirmed()
+        if(nativeJob && !spawnError){
+          let drain
+          try{drain=JSON.parse((await readFile(drainReceiptPath,'utf8')).replace(/^\uFEFF/,''))}catch{return unconfirmed()}
+          if(drain.executionDrained!==true||drain.exitCode!==exitCode)return unconfirmed()
+        }else if(!nativeJob && child.pid){
+          try{process.kill(-child.pid,0);return unconfirmed()}catch(error){if(error.code!=='ESRCH')return unconfirmed()}
+        }
+        const fullLogs = { stdout: await stdoutLog(), stderr: await stderrLog() }
+        if (spawnError) return reject(spawnError)
+        if (Object.values(fullLogs).some(log => log.error)) reason ??= 'log-write-failed'
+        const out = Buffer.concat(stdout), err = Buffer.concat(stderr), encodedOut = encodeOutput(out), encodedErr = encodeOutput(err)
+        if (captureResult && command === commands.at(-1)) resultOutput = Buffer.concat(completeStdout).toString('utf8')
+        resolve({ fullLogs, exitCode, signal: exitSignal, reason, terminationError, stdout: encodedOut.value, stdoutEncoding: encodedOut.encoding, stderr: encodedErr.value, stderrEncoding: encodedErr.encoding, outputBytes: out.length + err.length, observedOutputBytes: bytes, outputTruncated: bytes > out.length + err.length })
+      })
+      })
+      results.push({ ...command, ...result, startedAt: stepStartedAt, elapsedMs: Date.now() - stepStart }); outputBytes += result.outputBytes
+      if (result.exitCode !== 0 || result.reason !== null) break
+    }
+    const result = results.at(-1)
+    let sourceFailure=null
+    try{await assertCandidateWorktree(snapshot.candidate,{signal,generatedDirectories})}catch(error){signal?.throwIfAborted();sourceFailure=error.code??'CANDIDATE_WORKTREE_CHANGED'}
+    return { passed: sourceFailure===null && results.length === commands.length && results.every(result => result.exitCode === 0 && result.reason === null),
+      log: JSON.stringify({ candidateDigest: snapshot.candidateDigest, directory, sourceMode: 'task-worktree', sourceFailure, logDirectory, exitCode: result.exitCode, reason: result.reason, startedAt, elapsedMs: Date.now() - start, steps: results }), ...(captureResult ? { resultOutput } : {}) }
+    },{signal})
+  } }
+}
+
+export function createWorktreeBusinessAcceptanceCheck({ criterion, expected, ...config }) {
+  if (![criterion, expected].every(value => typeof value === 'string' && value.trim())) throw executionError('ENGINEERING_ACCEPTANCE_CONFIG_INVALID')
+  const check = verificationWorktreeJob(config, true)
+  return { ...check, configurationDigest: executionDigest({ command: check.configurationDigest, implementation: check.run.toString(), criterion, expected }), async run(snapshot, context) {
+    const result = await check.run(snapshot, context), log = JSON.parse(result.log)
+    let actual = null
+    try {
+      const parsed = JSON.parse(result.resultOutput)
+      if (typeof parsed.actual === 'string') actual = parsed.actual
+    } catch { /* No actual value means acceptance fails. */ }
+    const passed = result.passed && actual !== null && actual === expected
+    log.acceptance = { criterion, expected, actual, passed }
+    return { passed, log: JSON.stringify(log) }
+  } }
+}
