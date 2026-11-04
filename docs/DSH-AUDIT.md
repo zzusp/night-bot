@@ -20,7 +20,7 @@
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
 | 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
 | 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生managed-process、NativeSandbox/NativePolicy、NativeApproval/NativePermissionPresets；旧FS/shell capability adapters及Windows ACL | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
-| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills/NativeSkillFilesystem、NativeWorkingDirectory、NativeWorkspace、NativeSubagentProviders；MIT派生watcher；旧instructions/子代理continuation manager与公开helpers | Pi header解析与本地能力检查读取/失效；watcher非从零重写，指引、子代理continuation manager/preset及通用helpers仍待迁移 |
+| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills/NativeSkillFilesystem、NativeWorkingDirectory、NativeWorkspace、NativeSubagentProviders、NativeAgentInstructions/NativeAgentPresets；MIT派生watcher/document/Loader算法；子代理continuation manager与公开helpers | Pi header解析与本地能力检查读取/失效；watcher/document/Loader算法非从零重写；Pi权威指引与preset选择已本地拥有，子代理continuation manager及通用helpers仍待迁移 |
 | 凭据、授权与附件 | NativeCredentials、NativeAuthorization、NativeAttachments及分层环境；旧授权错误/附件类型与投影helpers | 默认Pi登录有attempt-scoped提交，附件blob/codec本地实现且保持v1/请求变体协议；通用helpers仍保留 |
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
@@ -49,7 +49,7 @@
 - NativeLlm拓扑与Pi provider/config/auth已本地拥有；仍有旧request/chunk、共享消息/附件/工具历史投影和RPC数据面。真实vendor OAuth、云服务、WebSocket等外部环境没有验收。
 - NativeTools/NativeJobs及durable intent/result栅栏已实现；旧FS/shell/tool后端、schema/codegen/scope helpers与可选PTC worker仍待迁移。保留unknown效果不重放和“取消不冒充退出”。
 - 原生sandbox/有来源的进程后端及本地审批/权限预设已挂载；最新真实kernel containment为8通过/1 Windows专属跳过。旧文件/命令能力wrapper与Windows ACL库还在；继续替换时不能降低隔离。
-- 技能发现/注册/刷新、工作目录、workspace及spawn/fork provider已本地拥有；agent instructions发现、子代理continuation manager、preset registry和公开helpers仍需处理。核对所有实际启用的扩展配置。
+- 技能发现/注册/刷新、工作目录、workspace及spawn/fork provider已本地拥有；指引及preset registry现由本地控制器拥有；子代理continuation manager和公开helpers仍需处理。核对所有实际启用的扩展配置。
 - 最终仍要求生产依赖闭包无DSH、Pi真实承载业务上下文、全部现行功能回归和目标环境验收。仅源码存在/复制、依赖分类、接口守恒或mock回归都不等于完成。
 
 不需要让用户重新批准这些已授权的实现步骤。真正缺少的信息是生产实际启用的扩展/工具清单和脱敏配置；源仓库不足以确定工作区自定义技能、浏览器/数据库 provider 或任意 Cordis 插件是否属于必须保留的实际功能。不要索取密钥，也不要在没有清单时宣称“不漏全部生产扩展”。
@@ -231,3 +231,7 @@ NativeShellEnvironment替换preset内shell-env服务。DSH_HOME/SHELL/SESSION_ID
 ### Instruction controller ownership
 
 The active `agent-instructions` row is replaced with the isolated application-owned `native-agent-instructions.js`; its historical message source kind remains wire-compatible. Pi committed context is the only durable visible-instruction authority. Source-derived document algorithms are attributed in THIRD_PARTY.md; compatibility forks are not described as new algorithms. The old package is development-only for differential tests. Direct production DSH dependencies: 43; active services replaced: 29. Remaining preset registration, subagent continuation/lifecycle and FS/shell execution dependencies are explicit.
+
+### Preset registry and preflight ownership
+
+Active preset generations and compatibility admission now live in `native-agent-presets.js`/`native-profile-preflight.js`. Original error/RPC/message/Scope data contracts remain explicit libraries. The old registry package is development-only for differential validation; app-boot remains forbidden as a direct runtime dependency. The standalone process still uses retained DSH helpers/backends: 42 direct DSH production dependencies, 30 active services replaced, not a completed migration.

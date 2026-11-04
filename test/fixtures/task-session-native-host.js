@@ -16,7 +16,7 @@ export function loadNativeTestProfile(path) {
     const Context = profile('@deepseek-ai/cordis').Context
     const Loader = profile('@deepseek-ai/cordis-plugin-loader').default
     const LlmAdapter = native('@deepseek-ai/dsh-llm').LlmAdapter
-    for (const name of ['agent-preset-registry', 'workspace', 'fs-local', 'tool-fs', 'tool-' + nativeShell, nativeShell + '-local', 'subprocess-local']) native.resolve('@deepseek-ai/dsh-' + name)
+    for (const name of ['workspace', 'fs-local', 'tool-fs', 'tool-' + nativeShell, nativeShell + '-local', 'subprocess-local']) native.resolve('@deepseek-ai/dsh-' + name)
     return { profile, native, Context, Loader, LlmAdapter, available: true }
   } catch (error) {
     return { available: false, reason: 'Full native profile required: ' + path + '; ' + error.message.split('\n')[0] }
@@ -75,7 +75,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
   ctx.baseUrl = pathToFileURL(join(root, 'cordis.yml')).href
   await ctx.plugin(Loader)
   signal?.throwIfAborted()
-  ctx.loader.builtins.group = createRequire(profile.resolve('@deepseek-ai/dsh-agent-preset-registry'))('@deepseek-ai/cordis-plugin-group').default
+  ctx.loader.builtins.group = profile('@deepseek-ai/cordis-plugin-group').default
   const artifactPolicyEntry = options.artifactPolicyEntry ?? process.env.DSH_ARTIFACT_POLICY_MODULE
   const policyRow = { name: artifactPolicyEntry ? pathToFileURL(resolve(artifactPolicyEntry)).href : new URL('../../src/native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: root } }
   await ctx.loader.root.update([
@@ -89,7 +89,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     { name: pathToFileURL(resolve('src/native-state.js')).href, config: { root: join(root, 'storage'), model: { provider: 'native-task-test', model: 'controlled' } } },
     { name: new URL('../../src/native-workspace.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [{ name: new URL('../../src/native-skills.js', import.meta.url).href }] : []),
-    row('agent-preset-registry', { default: 'native-test' }),
+    { name: new URL('../../src/native-agent-presets.js', import.meta.url).href, config: { default: 'native-test' } },
     ...(options.resident ? [{ name: new URL('../../src/native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } }, { name: new URL('../../src/native-attachments.js', import.meta.url).href, config: { dshHome: join(root, 'attachment-home') } }] : []),
   ])
   signal?.throwIfAborted()

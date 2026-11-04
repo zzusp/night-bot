@@ -243,3 +243,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own354/354、完整runtime142/142（271945.803893ms）、routing47/47（36330.030087ms）通过。真实kernel containment九项通过、一项Windows专属跳过（15174.067728ms）；domain388未改动沿用，共940独立通过。六项合同包含旧loader/renderer差分、legacy surface访问即抛错、变更/删除、嵌套执行token、capability拒绝及关闭排空；真实Pi wire验证两个global root、项目baseline、真正read后的nested发现、外部修改、删除和cwd replacement。
 
 全新`/tmp/night-bot-agent-instructions-production`production frozen ignore-scripts安装成功，227核心/wire+38合同=265项复测通过；本阶段未声称独立生产kernel重跑。263运行文件及manifest/lock逐字一致，静态260 JS/171字面bare imports通过。最初误在开发目录执行production裁剪，导致主测试缺少开发包且runtime/routing未启动；这些结果全部作废，恢复完整frozen依赖后重跑所有受影响组，最终证据仅引用重跑日志。证据`evidence/native-agent-instructions-*.txt`。43直接生产DSH依赖/29活动服务替换；仍非完整迁移，远端403未重试。
+
+## 原生 preset 注册表验证
+
+最终own364/364、完整runtime142/142（276320.298322ms）、routing47/47（26412.217702ms）通过。真实kernel containment九项通过、一项Windows专属跳过（13194.834498ms）；domain388未改动沿用，共950独立通过。六项registry合同/真实Pi wires及四项preflight合同验证保留旧generation/lease、精确parent继承、不可变声明、目录/RPC元数据、根服务泄漏与缺依赖/导入失败、Pi持久选择、首次turn后锁定、等待中启动竞态、失败实例封闭及新实例resume。兼容预检保留精确ABI/exemption、patched Include、循环/不可读Include诊断；不在预检中评估插件代码。
+
+全新`/tmp/night-bot-native-presets-production`production frozen ignore-scripts安装成功，234核心/wire+38合同=272项复测通过。265运行文件及manifest/lock逐字一致，静态262 JS/183字面bare imports通过。证据`evidence/native-presets-*.txt`。42直接生产DSH依赖/30活动服务替换，source-derived算法明确MIT归属。仍非完整迁移；后续审查发现默认Host缺少旧manager冷恢复所需sessionQuery，尚未把该功能列为完整覆盖。远端403未重试。

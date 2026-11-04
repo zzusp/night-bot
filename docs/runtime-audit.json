@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeAgentPresets owns versioned definitions, retained generations, scoped leases, exact parent revision binding and Loader isolation audits; local profile compatibility preflight preserves legacy v4 peer ABI checks without app-boot import; selection is Pi-committed and concurrent-start rechecked",
     "NativeAgentInstructions Pi-authoritative baseline/change/removal context with capability-aware discovery, inherited-root provenance, bounded source/render budgets, execution-token nested touches and cancellation/drain; document algorithms are explicit MIT source-derived code",
     "NativeShellEnvironment trusted legacy-named per-execution facts, immutable declared key ownership, caller profile attribution, inherited-home provenance and owner-scoped disposal; actual Pi/bash kernel wire strips ambient spoofed authority",
     "NativeApproval borrowed scope-bound one-call decisions with durable Pi asked/decided admission, revocation/cancel fences and commit drain; NativePermissionPresets canonical knobs, seeded pinning and gated current-only Auto; terminal driver commit before idle and live-instance message fencing on failure",
@@ -62,10 +63,6 @@
   "directRuntimeDshDependencies": [
     {
       "name": "@deepseek-ai/dsh-agent",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-agent-preset-registry",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -235,7 +232,6 @@
   ],
   "developmentDependencyCount": 120,
   "activeLiteralDshPluginRows": [
-    "agent-preset-registry",
     "fs-observation-policy",
     "fs-sandbox",
     "session-title",
@@ -258,6 +254,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "agent-preset-registry -> src/native-agent-presets.js + native-profile-preflight.js; explicit source-derived generation/preflight algorithms, Pi selection admission and failure fencing",
     "agent-instructions -> src/native-agent-instructions.js; Pi hostMessages are the only visible-history authority, source-derived document algorithms explicitly attributed",
     "shell-env -> src/native-shell-env.js; DSH_ script protocol retained; actual shell executor/tool wrappers remain explicit libraries",
     "user-approval/permission-presets -> src/native-approval.js + src/native-permission-presets.js; durable one-call decisions and canonical permission facts, generic FS/shell wrappers still retained",

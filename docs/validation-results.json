@@ -773,5 +773,38 @@
     "initialInvalidation": "first full runs invalidated by mistakenly pruning development dependencies in development directory; restored frozen dependencies, isolated production install, reran all affected groups; only final logs counted",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeAgentPresets": {
+    "date": "2026-11-04",
+    "ownPass": 364,
+    "presetContractsAndPiWires": 6,
+    "compatibilityPreflightContracts": 4,
+    "runtimePass": 142,
+    "runtimeDurationMs": 276320.298322,
+    "routingPass": 47,
+    "routingDurationMs": 26412.217702,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from prior verified checkpoint",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 13194.834498,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 950,
+    "productionOnlyRepeatedPass": 272,
+    "productionScope": "234 core/wire +38 native contracts; development-only legacy differentials excluded",
+    "runtimeFilesCompared": 265,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 262,
+    "literalBareImports": 183,
+    "directRuntimeDshDependencies": 42,
+    "removedActiveDshServices": 30,
+    "legacyCompatibilityAbi": "0.2.1-alpha.2; retained v4 helper ABI, not the Pi/app version",
+    "selectionFences": "exact live identity and blank recheck after lookup, Pi committed event proof, concurrent pre-step wait, failed commit fences exact live object; resumed new instance can recover",
+    "sourceDerivedAlgorithms": "MIT generation/scope/Loader/inventory/profile preflight explicitly attributed",
+    "remainingChildBoundary": "continuation manager and default-host missing sessionQuery/cold discovery identified; implementation underway in separate local working copy",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }
