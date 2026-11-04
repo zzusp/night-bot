@@ -174,5 +174,31 @@
     "routingPassFromProviderStage": 47,
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "nativeTools": {
+    "date": "2026-11-04",
+    "groups": {
+      "own": 128,
+      "runtime": 142,
+      "routing": 47,
+      "domain": 388,
+      "containmentPass": 6,
+      "containmentWindowsSkipped": 1
+    },
+    "uniquePass": 711,
+    "productionImportsChecked": {
+      "files": 221,
+      "literalBareImports": 101
+    },
+    "directRuntimeDshDependencies": 55,
+    "removedActiveDshServices": 6,
+    "runtimeDurationMs": 272164,
+    "productionOnly": {
+      "repeatedPass": 48,
+      "install": "fresh frozen-lockfile --prod --ignore-scripts",
+      "scope": "wire/CLI/state/Pi authority/tools/approval and public tool parity; no development direct roots"
+    },
+    "remotePush": "not retried; prior 403 denial stands",
+    "completeMigration": false
   }
 }

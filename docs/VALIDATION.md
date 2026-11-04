@@ -91,3 +91,13 @@ Host 已将旧 provider 插件替换为本地 `NativePiProvider`；旧 `dsh-llm-
 沙箱阻塞复核：经执行器批准的只读 `bwrap --ro-bind / / --unshare-user -- true` 探测在外层包装之外退出0；同样批准范围内运行原 `pnpm test:containment`，5通过、0失败、1 Windows跳过（约6秒）。之前4失败来自外层包装只读 uid_map，而非应用或云机内核。没有改沙箱/权限/测试断言。
 
 生产安装修复复核：首次 fresh `--prod` 验证发现 provider context 引用了仅开发依赖的 attachment 尺寸 helper。已改为本地 `pi-provider-image.js`（横/竖/极端比例与预算差分），并加入 provider 未挂载则启动失败的真实 Host 测试；新增脚本检查218个运行时文件的92处字面量 bare imports，防止开发依赖掩盖生产缺项。最终本地101/101；只安装生产依赖的隔离副本74/74（重复验证，不相加）。离线安装曾因 typebox 镜像元数据缺失失败，随后正常 registry 安装成功，未绕过权限或改变锁定版本。
+
+## 本地工具执行链替换
+
+Host 与任务测试均挂载 NativeTools，覆盖分层注册/限制、单调权限、审计、输出约束、取消排空及可选 PTC 并行/顺序提交。工具调用意图在副作用前 flush 到 Pi 日志，结果在交给下一轮模型前持久化；flush 失败禁止 dispatch。PTC 退出会排空已开始的执行与审计，拒绝未开始的工作，不自动重放。
+
+本轮应用测试128、任务运行时142、路由47、领域388全部通过；containment在获准的执行器外层执行6通过/1 Windows跳过，共711项独立通过。实际 Node PTC worker验证工作目录写入、嵌套文件工具RPC、外部路径拒绝和空继承环境。回归运行时约272秒，较上阶段约223秒增加，反映新增持久化屏障成本；未做吞吐基准。最后的纯渲染与异常getter改动由定向测试及128项应用组覆盖，未冒充再次运行完整任务组。
+
+仍保留 DSH scope/schema/event carriers、通用 LLM、进程/jobs/sandbox后端、附件/凭据及工厂等；生产直接DSH依赖仍55个。此阶段不能标记完整迁移。生产闭包检查221文件/101裸导入均已声明。远端403未重试。
+
+全新独立目录仅安装生产依赖（frozen-lockfile、ignore-scripts），wire/CLI/state/Pi authority/NativeTools/approval及公开工具差分48项重复验证通过，不叠加711项独立用例计数。

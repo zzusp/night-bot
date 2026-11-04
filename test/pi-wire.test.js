@@ -47,8 +47,13 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
   const handle = await host.ctx.agents.create({ sessionId: 'wire-session', agentOptions: { provider: 'fixture', model: 'fixture-model' },
     meta: { cwd: join(root, 'work') }, setup: async c => { c.tools.register({ name: 'echo', description: 'Echo exact text',
       parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
-      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: value.text }] }, execute: async args => args }) } })
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: value.text }] }, execute: async args => {
+        const reader = await host.ctx.sessionPersistence.open('wire-session', 'read')
+        try { assert.ok((await reader.read()).events.some(event => event.type === 'tool/call' && event.data.callId === 'fixture-call'), 'tool intent must be committed before effects') } finally { await reader.close() }
+        return args
+      } }) } })
   assert.equal(handle.agent.constructor.name, 'PiLoopAgent')
+  assert.equal(host.ctx.tools.constructor.name, 'NativeTools')
   assert.equal(host.ctx.get('nativePiProvider').adapter.constructor.name, 'NativePiProvider')
   handle.agent.session.deriveMessages = () => { throw new Error('Legacy DSH context derivation must not serve model requests') }
   assert.equal(host.ctx.get('piAuthority').describe('wire-session').engine, 'pi-session-manager')

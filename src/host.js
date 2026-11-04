@@ -28,7 +28,7 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
     const rows = [
       row('agent'), row('session'), row('session-projection'), row('system-prompt', { includeHarnessIdentity: false }),
-      row('llm'), row('tools'), row('web'), row('llm-retry'), row('authorization'),
+      row('llm'), { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), row('authorization'),
       row('credentials-local', { path: join(root, 'credentials.json'), watch: false }),
       row('attachment-local', { dshHome: root }), row('launch-environment'), row('timeout'),
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
@@ -52,6 +52,7 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
+    if (!ctx.get('tools')) throw new Error('NIGHT_BOT_TOOL_RUNTIME_UNAVAILABLE')
     await ctx.plugin({ inject: ['agentPresets'], async *apply(child) {
       yield await child.agentPresets.register({ id: 'night-bot', plugins: [{ name: 'cordis:group', group: true,
         isolate: { fs: true, workingDirectory: true, shellEnv: true }, config: [

@@ -18,7 +18,7 @@
 | 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；其中恢复读取的会话与原生 job 收据仍依赖 DSH，不能因此称整个恢复原生 |
 | 群与工作区 JSON 后端 | **本轮已替换为 `src/native-domain.js`** | Node 文件系统实现，兼容旧单文档 JSON；群业务模型及 workspace registry 本身仍有原业务/DSH 上层 |
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
-| 工具 schema、guard、角色隔离、审计、输出、调度 | DSH `tools` 及原业务注册逻辑 | **仍为 DSH**；Pi 工具 wrapper 最终调用原 Host scheduler；未重建独立工具权限引擎 |
+| 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
 | 文件与终端、作业与进程回执、沙箱、权限 preset | DSH fs/shell/subprocess/jobs/sandbox/policy | **仍为 DSH**；Pi core 不提供这些安全合同。不能用普通 `child_process` 或关闭沙箱直接替代 |
 | 技能、工作目录、指引发现、子代理、工作区注册 | DSH skill/filesystem、workingDirectory、instructions、subagent/workspace | **仍为 DSH**；未迁到 Pi coding-agent 资源加载与扩展模型 |
 | 凭据、授权与附件 | DSH credentials/authorization/attachments；宿主环境变量 | **仍为 DSH**；新增模型选择文件不包含密钥，不替代这些安全设施 |
@@ -79,3 +79,13 @@ Host 已挂载 `src/native-pi-provider.js`，不再挂载旧 `dsh-llm-pi-ai`；�
 ## 沙箱验证更正
 
 只读 namespace probe 经执行器的批准路径在外层包装之外执行，退出0；随后原 containment 6项原样运行，5通过、1 Windows专属跳过。此前4项失败的原因是执行器包装使嵌套 uid_map 只读，并非云机内核不支持沙箱。没有修改应用权限 preset、沙箱实现、测试断言或真实业务授权。普通包装内运行仍应在沙箱不可用时拒绝执行；启动实际服务需要宿主提供真实可用的隔离运行条件。远端403仍未重试。
+
+## 应用工具执行管线阶段（当前）
+
+Host 和原生任务回归夹具均改为 `src/native-tools.js`，没有实例化旧 DSH ToolRuntime。应用拥有分层 registry、继承限制交集、自己的提交工具豁免、单调 guard、审批 gate、caller/wrapper 取消融合、准备/分发/有序后处理、输出验证与内容投影、最终只读审计。PiLoop 仍驱动调用，模型端保留原精确 schema 与工具自身参数 parser/defaults。
+
+`native-code-transport.js` 保留 TypeScript/Python runtime 协议、保留名 run_code、代码模式下直接调用其他能力的拒绝、SDK 声明、嵌套能力过滤、安全并发/独占屏障、按提交顺序的结果审计、图片/上下文转交、独立目录/超时/沙箱参数与一轮审批。实际代码 worker 后端仍是可选的 DSH PTC runtime；本轮不把它或 OS/process 服务算作已替换。模型/任务工具的具体 FS/bash/job/skill 等定义仍由现存后端提供。
+
+执行前增加 Pi 日志意图提交屏障，提交失败或等待屏障时取消都不进入 wrapper/body；调用结果在转交下一步前提交，代码子调用开始与结果也提交。审计失败会停止新准入、排空已开始的效果和审计任务后返回失败，不把超时/未知效果当成功，不自动重放。二次审查覆盖重复 guard 的独立 disposer、隐藏工具拒绝不调用其 finalizer、无效政策决定失败关闭、原始 caller signal 不被 wrapper 替换、最终值身份与冻结、异常 getter 和代码审计失败排空。
+
+保留的 DSH 边界：通用 scope/event carrier 与部分 schema/工具定义/codegen helpers；FS/shell/skill/子代理工具实现；权限 preset、真实 sandbox、job/subprocess/worker provider；原 Agent/Session façade/factory/inbox 及 LLM/chunk 兼容协议。生产直接 DSH 依赖仍55，不以服务替换宣称清零。

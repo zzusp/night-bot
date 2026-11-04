@@ -574,6 +574,7 @@ async function runGroup(ctx, turn, step, group, mode, signal, acceptContext) {
 			const call = group[committed];
 			const result = slot.needsPost ? await ctx.tools[TOOL_RUNTIME_SCHEDULER].finalize(slot.exec, slot.result) : ctx.tools[TOOL_RUNTIME_SCHEDULER].finish(slot.exec, slot.result);
 			appendToolResult(session, turn, step, call.block, result, callSeqs[committed]);
+            await ctx.sessions.flush(session);
 			for (const context of result.additionalContexts ?? []) acceptContext(context);
 			concluded ||= result.concludesTurn === true;
 			committed++;

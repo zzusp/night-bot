@@ -100,7 +100,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
   await ctx.loader.root.update([
     row('agent'), row('session'), row('session-projection'),
     row('system-prompt', { includeRuntimeContext: false, includeHarnessIdentity: false }),
-    row('llm'), row('tools'), row('user-approval', { policy: 'never' }),
+    row('llm'), { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
     ...(options.promoteOnTimeout ? [row('jobs-local'), row('tool-jobs')] : []),
     row('subprocess-local'), row('sandbox-local'), policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),

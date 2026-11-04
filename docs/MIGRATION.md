@@ -8,7 +8,7 @@
 
 `src/pi-loop.js` 使用 pi-agent-core 的 `runAgentLoop` 驱动迭代和工具调用。原 DSH AgentLoop 的工厂、持久 inbox、生命周期和会话投影保留为 MIT 兼容实现；原模型/工具 step 循环已替换。每一模型请求先持久化已准入事件，再从 Pi SessionManager 的权威分支读取实际内容；旧 DSH deriveMessages 不再为主循环提供模型上下文。任务权限和效果账本仍由应用维护。模型 wire adapter 已替换为本地 `native-pi-provider.js`，直接使用 Pi Models；保留多模态、provider replay、凭据、模型选择和错误分类。通用 DSH LLM middleware/GenerateOptions/chunk 兼容桥及附件策略 helpers 仍待替换。版本由 pnpm lock 固定；当前代理循环固定为发布包 `@earendil-works/pi-agent-core@1.5.0`，本轮已从已弃用的 @mariozechner 0.73.1 升级并完成对应回归；停止条件使用1.5.0公开的 finishTurn 合同。
 
-Host 保持唯一参数/业务/权限校验和工具调度入口。Pi 的操作性工具声明不重复执行更严格的 JSON Schema 校验，实际发给模型的仍是 Host 原始精确 schema；这样可保留 Zod 默认值、未知/隐藏工具尝试的拒绝和审计。单会话内 Pi 工具调用串行进入原调度器；不同 Task/Execution 的并发、资源互斥与排队继续由原 Host 控制。这保留了工具能力与安全语义，但单次模型响应中多个并行安全工具的吞吐可能低于原循环。
+应用 NativeTools 保持统一工具准入、业务/权限 guard 和调度入口；具体工具仍保留自己的参数校验/defaults。Pi 的操作性工具声明不重复执行更严格的 JSON Schema 校验，实际发给模型的仍是原始精确 schema；这样可保留 Zod 默认值、未知/隐藏工具尝试的拒绝和审计。单会话内 Pi 工具调用串行进入应用执行管线；不同 Task/Execution 的并发、资源互斥与排队继续由原 Host 控制。这保留了工具能力与安全语义，但单次模型响应中多个并行安全工具的吞吐可能低于原循环。
 
 `src/host.js` 组合无界面 Host，`bin/night-bot.js` 加载可信 JSON 配置并启动原 resident HTTP/DWS 服务。`packages/dingtalk-core/` 保留领域实现，`packages/dingtalk-dsh-assistant` 为供原测试保持导入路径的本地符号链接。未安装源 Web observer 应用，删除核心包的 `client.js`、`web-client.js`、前端 stub `index.js` 和 Cordis Web patch；保留 observer 命名的后台投影和 HTTP JSON 接口，因为任务、审计和交付依赖它们。没有启动遥测或原 DSH Web/桌面程序。
 

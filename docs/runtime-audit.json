@@ -17,7 +17,9 @@
   "applicationNative": [
     "resident HTTP/DWS bridge",
     "SQLite task/operation/wake/notification ledger",
-    "single-document JSON domains and model selection"
+    "single-document JSON domains and model selection",
+    "scoped NativeTools admission/dispatch/post-policy/output/audit pipeline",
+    "native code transport with ordered nested dispatch, cancellation/drain and one-shot sandbox approval"
   ],
   "dshRemaining": [
     "Cordis agent factory/lifecycle compatibility fork",
@@ -27,7 +29,7 @@
     "legacy v4 import and writer fencing only",
     "generic llm registry/middleware and GenerateOptions/chunk compatibility bridge; native provider no longer invokes dsh-llm-pi-ai",
     "durable credential record store, neutral authorization service, attachment storage/request-image policy helpers",
-    "tools validation/guards/output/scheduler",
+    "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem, shell, subprocess/jobs/sandbox/permission services",
     "skills, workspace registry, child-agent providers"
   ],
@@ -291,7 +293,6 @@
     "tool-todo",
     "tool-web",
     "tool-working-directory",
-    "tools",
     "user-approval",
     "web",
     "web-fetch-http",
@@ -306,7 +307,8 @@
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
     "agent-default-model/config-editor dependency -> durable native model selection",
     "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
-    "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain"
+    "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
+    "tools runtime service -> src/native-tools.js + native-code-transport.js; schema/scope helpers and capability backends remain"
   ],
   "protocols": {
     "external": [
