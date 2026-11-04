@@ -129,3 +129,11 @@ NativeCredentials已取代活动credentials-local：严格v1 YAML refs/records�
 跨进程使用原PID-newline/hash takeover协议，真实旧进程与新进程并发grant更新通过。新实现保持open inode校验，拒绝丢失写锁后的提交/释放，未知或活PID锁不偷取；写temp0600并fsync、rename。关闭拒绝排队刷新、排空已开始的轮换，不自动重放回调。Pi CredentialStore的signal在入场和mutator前检查，已开始轮换保留排空语义。Watcher追踪真实原子替换与删除。Host增加credentials/authorization必需服务检查，损坏文件不能静默退回ambient auth。
 
 旧credentials-local仅开发差分依赖；通用credential类型资源、授权会话、附件、skills/workspace和部分工具/权限等仍保留。测试数与证据见VALIDATION/validation-results.json；不以这次服务替换宣称完整迁移。远端403未重试。
+
+## 原生授权会话阶段
+
+NativeAuthorization替代活动authorization服务，拥有flow注册/独立metadata、单key尝试、取消/decline、入场与durable commit栅栏、flow退出封口、注销和关闭排空、contained通知。Pi仍负责具体provider登录；registerPiLoginFlows向每次Pi Models实例提供attempt-scoped凭据入口，等待存储锁时可取消，真正mutator入场后完成持久写入。经seam/attempt-scoped Pi入口的已取消/失败尝试不能晚写覆盖新登录，no-op mutate不算提交。实际Pi Models登录及相同凭据再次登录均经过真实本地YAML存储验证。
+
+通过ALS归属检查，另一个请求对同key的写入不能冒充本次登录成功；可信旧flow直接写store仍保留同调用链提交观察。授权flow注销自身/关闭自身服务排除自等待，其他已开始提交仍排空。错误类型身份继续复用旧authorization helper以兼容既有interaction插件；未把此依赖移到dev伪装清零。生产直接DSH依赖仍54，活动服务替换16。附件、skills/workspace、子代理、FS/shell/permission wrappers及Session facade等仍待迁移。
+
+兼容边界：可信自定义flow若绕过session.commit/session.credentials而直接使用全局store，其副作用仍由该插件负责遵守signal；本地注册表不宣称能撤销插件直接持有的全局写能力。默认Pi登录已全部使用attempt-scoped入口。

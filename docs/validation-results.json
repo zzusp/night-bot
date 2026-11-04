@@ -353,5 +353,34 @@
     "removedActiveDshServices": 15,
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeAuthorization": {
+    "date": "2026-11-04",
+    "ownPass": 225,
+    "ownAuthorizationContracts": 17,
+    "runtimePass": 142,
+    "runtimeDurationMs": 274331.575344,
+    "runtimeScope": "full task regression after default Host authorization mount; task fixture does not itself mount authorization; late authorization isolation and self-close changes covered by final own225 and production138",
+    "routingPass": 47,
+    "routingSource": "credential checkpoint unchanged routing behavior",
+    "domainPass": 388,
+    "domainSource": "credential checkpoint unchanged business modules",
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "source": "unchanged confinement backend from session/policy checkpoint"
+    },
+    "uniquePass": 810,
+    "productionOnlyRepeatedPass": 138,
+    "productionScope": "128 core/login/authorization plus10 native credential contracts",
+    "runtimeFilesCompared": 244,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 241,
+    "literalBareImports": 136,
+    "directRuntimeDshDependencies": 54,
+    "removedActiveDshServices": 16,
+    "authorizationCompatibility": "error type helpers retained; trusted custom direct-global-store flows must honor signal; default Pi flows use guarded per-attempt credential store",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

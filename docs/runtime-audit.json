@@ -16,6 +16,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeAuthorization single-flight attempts, scope-bound Pi login commits, cancellation/admission gate and close/drain; old error identities remain explicit compatibility helpers",
     "NativeCredentials layered reference and durable record store, comment-preserving strict YAML, legacy-interoperable cross-process refresh lock, watcher snapshots and contained notifications",
     "resident HTTP/DWS bridge",
     "NativeSessions publication/liveness/flush/fork registry over explicit legacy audit facade",
@@ -39,7 +40,7 @@
     "runtime prompt assembly and provider replay",
     "legacy v4 import and writer fencing only",
     "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
-    "neutral authorization service, attachment storage/request-image policy helpers",
+    "authorization error identities only (active authorization attempts local), attachment storage/request-image policy helpers",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
     "skills, workspace registry, child-agent providers"
@@ -267,7 +268,6 @@
     "agent-instructions",
     "agent-preset-registry",
     "attachment-local",
-    "authorization",
     "fs-observation-policy",
     "fs-sandbox",
     "llm-retry",
@@ -302,6 +302,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "authorization -> src/native-authorization.js; attempt-scoped Pi login credentials and commit-phase cancellation fence",
     "credentials-local -> src/native-credentials.js + credential-file.js; legacy document/lock protocol retained for interoperability",
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
     "agent-default-model/config-editor dependency -> durable native model selection",

@@ -29,6 +29,7 @@ export function piAuthentication({getCredentials=()=>undefined,getEnvironment=na
     async fileExists(path){if(fileExists)return fileExists(path);const expanded=path==='~'||path.startsWith('~/')?resolve(homedir(),path.slice(1).replace(/^\//,'')):path;try{await access(expanded);return true}catch{return false}},
   }
   return{credentials,authContext,
+    forAuthorization(session){return session.credentials?piAuthentication({getCredentials:()=>session.credentials,getEnvironment,fileExists}):this},
     async resolveApiKey(profile){
       if(profile.apiKeyEnv===undefined)return undefined
       if(!reference(profile.apiKeyEnv))throw failure('INVALID_CONFIG','Invalid credential reference')

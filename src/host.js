@@ -23,7 +23,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
     const rows = [
       { name: new URL('./native-agents.js', import.meta.url).href }, { name: new URL('./native-sessions.js', import.meta.url).href }, { name: new URL('./native-projections.js', import.meta.url).href }, row('system-prompt', { includeHarnessIdentity: false }),
-      { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), row('authorization'),
+      { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), { name: new URL('./native-authorization.js', import.meta.url).href },
       { name: new URL('./native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } },
       row('attachment-local', { dshHome: root }), row('timeout'),
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },

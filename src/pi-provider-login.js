@@ -17,14 +17,14 @@ export function piLoginNotice(event) {
 export function piLoginPrompt(prompt) {
   return{...(prompt.signal?{signal:prompt.signal}:{}),kind:prompt.type==='select'?'select':prompt.type==='secret'?'secret':'text',message:prompt.message,...prompt.type==='select'?{options:prompt.options}:prompt.placeholder===undefined?{}:{placeholder:prompt.placeholder}}
 }
-export function registerPiLoginFlows(ctx,authentication,{providers=builtinProviders(),makeModels=()=>builtinModels(authentication)}={}) {
+export function registerPiLoginFlows(ctx,authentication,{providers=builtinProviders(),makeModels=auth=>builtinModels(auth)}={}) {
   for(const provider of providers){
     if(!/^[a-z][a-z0-9-]*$/.test(provider.id))continue
     if(getBuiltinModels(provider.id).length===0&&getAllBuiltinModels(provider.id).length>0)continue
     const methods=piLoginMethods(provider);if(!methods.length)continue
     ctx.authorization.registerFlow({key:'llm-pi-ai/'+provider.id,label:provider.name,methods,
       async run(session){
-        const models=makeModels();models.setProvider(provider)
+        const scoped=authentication.forAuthorization?.(session)??authentication;const models=makeModels(scoped);models.setProvider(provider)
         await models.login(provider.id,session.method==='oauth'?'oauth':'api_key',{signal:session.signal,notify:event=>session.notify(piLoginNotice(event)),prompt:prompt=>session.prompt(piLoginPrompt(prompt))})
       },
     })
