@@ -1,0 +1,15 @@
+✔ native retry preserves the legacy bounded chain, budget, policy key and event protocol (26.80862ms)
+✔ retry schedule and started records must both flush before the retry decision (24.906823ms)
+✔ failed or non-Pi journal admission cannot schedule another model attempt (5.287844ms)
+✔ cancelled backoff and owner close drain scheduled writes without a started retry (2.902057ms)
+✔ always policy honors downstream retry, contains failures and uses bounded local delay for oversized Retry-After (4.297401ms)
+✔ unrelated policies/providers have separate budgets and permanent errors defer downstream (8.713341ms)
+✔ a downstream recovery handler may close its owner without awaiting its own request (2.624563ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 219.626657

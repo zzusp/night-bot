@@ -588,5 +588,36 @@
     "identity": "default Host identity still disabled; standalone enabled optional identity now names Pi",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeLlmRetry": {
+    "date": "2026-11-04",
+    "ownPass": 312,
+    "retryContracts": 7,
+    "actualPiRetryAfterCompletedToolWire": 1,
+    "runtimePass": 142,
+    "runtimeSource": "unchanged task fixture does not mount llm-retry; full final native-system-prompt checkpoint carried, no claim of rerun",
+    "runtimeDurationMs": 257019.419773,
+    "routingPass": 47,
+    "routingSource": "unchanged task fixture from native-system-prompt checkpoint",
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules",
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "source": "unchanged confinement backend from directory checkpoint"
+    },
+    "uniquePass": 897,
+    "productionOnlyRepeatedPass": 229,
+    "productionScope": "191 core/retry/operator/config/wire +38 native credential/directory/attachment/filesystem contracts; explicit skip of development-only old retry differential",
+    "runtimeFilesCompared": 258,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 255,
+    "literalBareImports": 158,
+    "directRuntimeDshDependencies": 49,
+    "removedActiveDshServices": 23,
+    "helperOnlyTimeoutRowRemovedWithoutServiceCredit": true,
+    "retryAdmission": "locally scheduled retry requires Pi committed event count through scheduling and started records; downstream-provided decisions retain own protocol",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

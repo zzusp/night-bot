@@ -195,3 +195,13 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own304/304、完整runtime142/142（257019.419773ms）、routing47/47通过；未改动domain388和containment8通过/1 Windows跳过沿用，共889独立通过。六项新增合同涵盖旧服务差分、scope覆盖、tool rest/hidden-known顺序与schema副本、complete authority、required context准入和独立suppressor生命周期。实际Pi wire断言NativeSystemPrompt构造器；正文刷新和工作目录重采样复测通过。
 
 全新`/tmp/night-bot-system-prompt-production`production frozen ignore-scripts安装成功，184+38=222项通过；257运行文件及manifest/lock逐字一致，静态254 JS/157字面bare imports通过。证据`evidence/native-system-prompt-*.txt`。旧公开render/interpolation及scope helpers仍保留，51生产DSH直接依赖/22活动服务替换，不以此宣称完整迁移。远端403未重试。
+
+## 原生模型请求重试验证
+
+最终own312/312通过；新增7个retry合同与1真实Pi wire，工具成功→模型503→重试成功，全程工具/收据仅一次，并在第三次HTTP到达前从Pi reader核对retry/started持久记录。两个flush栅栏、失败或非Pi日志、取消/关闭排空、self-close、normal/always/downstream预算语义有合同证据。
+
+任务fixture本来不挂载llm-retry，本阶段未改它；runtime142（257019.419773ms）和routing47明确沿用提示组装阶段最终整组，不声称本阶段重跑。domain388及原containment8通过/1 Windows跳过未改动也沿用。合计897独立通过。
+
+全新`/tmp/night-bot-llm-retry-production`production frozen ignore-scripts安装成功；显式排除只在开发存在的旧retry差分后，191+38=229项通过，258运行文件及manifest/lock逐字一致，静态255 JS/158字面bare imports通过。首次负向name筛选未正确排除开发差分，产生缺旧包的一项失败；改用Node实际支持的`--test-skip-pattern`重跑后全通过，未把初次失败计作通过。证据`evidence/native-llm-retry-*.txt`。
+
+原timeout行仅为函数库空挂载，移除不计活动服务替换；它及旧retry根依赖移到开发，传递helper依赖仍可能保留。49直接生产DSH依赖/23活动服务替换仍为部分迁移。没有远端重试、PR、合并或真实业务副作用。

@@ -145,3 +145,11 @@ NativeWorkspace取代活动workspace注册表：v2全局顺序/账户、canonica
 NativeSystemPrompt取代活动system-prompt服务，拥有scope层section/context/variable/tool注册、有限order检查、同名近层覆盖、确定性section/tool顺序、隐藏但已知tool名字与rest marker、schema副本和组装waterfall。complete section在middleware后保持权威；上下文抑制只作用于可选事实。请求准入refreshContext重采样已注册事实，补回被waterfall移除的required事实，不重新运行section/tool/variable provider或waterfall。
 
 默认Host仍关闭可选harness identity；单独服务启用该项时文案改为Pi，其他排序常量及准入算法保留MIT来源。旧包公开renderPrompt/renderContextSnapshot等渲染helper和通用scope集合仍为明确依赖；没有构造/委托旧SystemPrompt服务，也不把共享helper称为Pi SDK能力。六项合同包括旧服务差分和完整prompt/required-context准入，实际Pi wire断言默认构造器为NativeSystemPrompt，技能正文刷新及工作目录重采样继续回归。
+
+## 原生模型请求重试阶段
+
+NativeLlmRetry替换活动llm-retry，拥有每provider/policy预算、durable retryId链、step/turn重置、normal/always语义、Retry-After上限、指数jitter退避、downstream重试优先和关闭取消/排空。本地安排的scheduled和started记录均经真实Session flush，并核对Pi authority已提交event水位，才允许返回retry；没有Pi writer或flush失败不能再次请求。取消中的已入场写入排空，不因authority随后卸载而声称可以继续；downstream回调关闭自身排除自等待。
+
+真实Pi wire为工具执行成功→后续模型503→模型重试成功；第三次HTTP到达前从Pi持久reader读到两条retry记录，工具及收据仍仅一次。七项合同包括旧实现差分、两个flush栅栏、失败/cancel、自关闭、policy/provider独立预算和always/downstream优先。该变化不重放工具/业务，不把模型请求重试当未知业务操作恢复。always模式接受downstream自己的retry决定时，不伪造本地retry-chain记录；整体模型准入仍由PiLoop日志栅栏负责。
+
+原timeout行经源码核对仅导出函数、没有apply/default插件，移除这条空挂载，不计活动服务替换；其与旧llm-retry直接依赖移至开发，仍可被其他旧wrapper作为传递helper使用。生产直接DSH依赖49/活动服务替换23，仍需迁移公共helpers、子代理、preset、FS/shell/权限和v4 Session facade；不是完整去DSH。

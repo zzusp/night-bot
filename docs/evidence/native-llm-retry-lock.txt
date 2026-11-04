@@ -1,0 +1,11 @@
+✓ Lockfile passes supply-chain policies (verified 49m ago)
+Done in 597ms using pnpm v11.25.0
+
+   ╭──────────────────────────────────────────────────────────────────────╮
+   │                                                                      │
+   │                 Update available! 11.25.0 → 12.16.1.                 │
+   │                 Changelog: https://pnpm.io/v/12.16.1                 │
+   │   To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -   │
+   │                                                                      │
+   ╰──────────────────────────────────────────────────────────────────────╯
+

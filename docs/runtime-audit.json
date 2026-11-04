@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeLlmRetry durable Pi-anchored retry chains/budgets, Retry-After/backoff, downstream precedence and cancellation/drain; scheduling and started events flush before readmission",
     "NativeSystemPrompt scoped prompt/variable/context/tool assembly, complete-section authority and required runtime fact resampling; public render/scope helpers remain explicit",
     "Standalone operator auth/reference CLI over native credential/authorization services and actual Pi login; no resident/DWS startup, secret-safe input and metadata-only output; default live credential watcher",
     "NativeWorkspace durable ordered accounts, canonical immutable-cwd membership, header-only bootstrap and pending mutation recovery; archive/pin/activity/stop plus nonvisual archived-subagent model admission",
@@ -107,10 +108,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-llm-retry",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-permission-presets",
       "version": "0.2.1-alpha.2"
     },
@@ -180,10 +177,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-system-prompt",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-timeout",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -259,20 +252,18 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 112,
+  "developmentDependencyCount": 114,
   "activeLiteralDshPluginRows": [
     "agent-instructions",
     "agent-preset-registry",
     "fs-observation-policy",
     "fs-sandbox",
-    "llm-retry",
     "permission-presets",
     "session-title",
     "shell-env",
     "subagent",
     "subagent-fork-in-process",
     "subagent-spawn-in-process",
-    "timeout",
     "tool-",
     "tool-fs",
     "tool-fs-search",
@@ -292,6 +283,8 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "llm-retry -> src/native-llm-retry.js; Pi journal admission checks and bounded/unbounded recovery, no completed-tool replay",
+    "helper-only timeout row removed; not counted as an active service replacement",
     "system-prompt -> src/native-system-prompt.js; ordered scoped assembly and admission refresh; old public render/scope helpers remain",
     "workspace -> src/native-workspace.js; durable NativeDomain accounts and nonvisual archived-session admission; old public error identities retained",
     "skill-filesystem -> src/native-skill-filesystem.js; Pi parser plus retained ACL/legacy roots; native-skill-watcher.js is an explicit MIT platform source fork",
