@@ -2,9 +2,14 @@
 
 Use Node.js 24+ and pnpm. Install with `pnpm install --frozen-lockfile`.
 Read `docs/MIGRATION.md` and `docs/VALIDATION.md` before changing runtime boundaries.
-The Pi loop owns inference/tool iteration. The retained Host owns authorization,
-side-effect receipts, session format, cancellation/drain and recovery. Do not bypass
-Host tool dispatch or relax sandbox checks to make a test pass.
+Pi core owns inference/tool iteration; Pi SessionManager owns durable history and
+model context. The application owns authorization and side-effect receipts. Retained
+Host tool/permission/process interfaces still require migration: preserve their
+guards, audit, cancellation/drain and no-replay contracts when replacing them.
+Do not bypass dispatch policy or relax sandbox checks to make a test pass.
+The cloud executor wrapper makes nested UID maps read-only; containment tests may
+run with approved executor sandbox escalation so their own bubblewrap works. This
+is not permission to disable the application sandbox.
 Preserve existing target files and never copy credentials or live business data.
 Tests use isolated directories, scripted/local model endpoints and fake DingTalk.
 Do not send real messages, deploy, merge, or trigger CI without explicit authorization.

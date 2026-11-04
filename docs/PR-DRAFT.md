@@ -16,3 +16,5 @@
 后续迁移：新会话使用 Pi SessionManager v3 原生树日志和分支上下文；提交校验、独占写租约、旧 v4 导入/旧写锁保护及真实内容投影。主循环先 flush 再读取 Pi 上下文，禁用旧 deriveMessages 的 wire/tool 测试通过。provider 原生签名也保存在 Pi message 中，但 DSH provider seam、工具/权限/进程层仍待替换，PR 不可标记完整迁移。
 
 本地 provider 后续替换：Host 不再挂载 DSH llm-pi-ai，直接由本地 NativePiProvider 使用 Pi Models。公开接口差分覆盖41个 provider/1592模型，三种显式协议有本地HTTP/SSE验证；本地99/运行时142/路由47通过。通用 LLM middleware/chunk桥、共享附件策略、工具/权限/进程/工厂仍保留，不能标记完整迁移。
+
+生产闭包修复后本地101通过、仅生产依赖74重复验证通过；containment 经批准在外层执行器包装之外原样执行5通过/1 Windows跳过，证实先前4失败来自嵌套uid_map只读，不是应用隔离失效。未降低沙箱权限。

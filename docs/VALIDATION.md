@@ -86,4 +86,8 @@ Host 已将旧 provider 插件替换为本地 `NativePiProvider`；旧 `dsh-llm-
 - 运行时142/142（约223秒）、路由47/47。本阶段领域代码未变，领域388及 containment 1通过/4 OS环境失败/1 Windows跳过沿用此前单独记录，未混称新执行。
 - 对恢复错误分类作了二次审查，修正 quota 必须使用既有 `QUOTA` 分类、显式 context overflow 表述、重复存储模型的目录过滤、text-only adapter直调拒绝图片、以及 audit observer 抛错不能让 native stream 永久悬挂。
 
-真实厂商 OAuth、AWS/Vertex/Azure 环境、WebSocket 等外部后端尚未验证；静态 catalog/登录映射和本地协议验证不能代替它们。通用 LLM/chunk/附件策略兼容层、工具/权限/进程服务、工厂与 registry 仍待完整迁移；OS sandbox 与远端403阻塞仍在。
+真实厂商 OAuth、AWS/Vertex/Azure 环境、WebSocket 等外部后端尚未验证；静态 catalog/登录映射和本地协议验证不能代替它们。通用 LLM/chunk/附件策略兼容层、工具/权限/进程服务、工厂与 registry 仍待完整迁移；当时 OS sandbox 检查仍未通过，后续复核见下；远端403未重试。
+
+沙箱阻塞复核：经执行器批准的只读 `bwrap --ro-bind / / --unshare-user -- true` 探测在外层包装之外退出0；同样批准范围内运行原 `pnpm test:containment`，5通过、0失败、1 Windows跳过（约6秒）。之前4失败来自外层包装只读 uid_map，而非应用或云机内核。没有改沙箱/权限/测试断言。
+
+生产安装修复复核：首次 fresh `--prod` 验证发现 provider context 引用了仅开发依赖的 attachment 尺寸 helper。已改为本地 `pi-provider-image.js`（横/竖/极端比例与预算差分），并加入 provider 未挂载则启动失败的真实 Host 测试；新增脚本检查218个运行时文件的92处字面量 bare imports，防止开发依赖掩盖生产缺项。最终本地101/101；只安装生产依赖的隔离副本74/74（重复验证，不相加）。离线安装曾因 typebox 镜像元数据缺失失败，随后正常 registry 安装成功，未绕过权限或改变锁定版本。

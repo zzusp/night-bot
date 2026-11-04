@@ -48,7 +48,7 @@
 - Pi 权威上下文/新持久格式已替换；继续移除旧 factory/Session 注册表、v4 事件校验依赖与 inbox 兼容接口。旧 v4 导入保留原事件与旧 writer fence；仅在隔离测试数据上验证，未迁移生产数据。不能同时让两个运行时成为权威写入者。
 - provider wire/config/auth/login/discovery 已由本地模块替代旧插件；继续移除通用 DSH LLM registry、request/chunk 桥与共享附件/工具历史 helpers。真实厂商 OAuth、AWS/Vertex/Azure、WebSocket 等外部环境尚未验收，不能把静态模型/协议回归当作所有真实后端验收。
 - 建立独立工具 registry、参数验证、角色 guard、效果账与原命令/job 的不可重放收据。用应用管理的实际进程/输出/取消/排空取代 DSH jobs，同时保证超时不冒充退出、正常关闭不冒充业务成功、未知效果不自动重试。
-- 实现并在真实可用的 OS 沙箱上验证文件/进程约束、跨任务产物 root、权限 preset、授权修正及重启隔离。当前云机 `SANDBOX_UNAVAILABLE` 是实际验收阻塞，不能降低隔离通过测试。
+- 实现并在真实可用的 OS 沙箱上验证文件/进程约束、跨任务产物 root、权限 preset、授权修正及重启隔离。嵌套执行器会使 UID map 只读；获准在外层包装之外运行测试后，云机自身 bubblewrap 可用，containment 5通过/1 Windows跳过。不能降低应用隔离通过测试。
 - 将技能/指引发现、子代理和 workspace 行为迁入 Pi/应用自有实现；迁移既有持久数据并核对所有当前实际配置的扩展能力。
 - 最终以生产依赖闭包中无 DSH、Pi 上下文真实承载业务输入、全部现行功能回归及目标环境验收为完成条件。仅 package.json 不含 DSH、源码复制、接口守恒或 mock 回归均不足。
 
@@ -75,3 +75,7 @@ Host 已挂载 `src/native-pi-provider.js`，不再挂载旧 `dsh-llm-pi-ai`；�
 公开接口差分验证 41 个 provider/1592 个模型的目录、模型控制/推理/更新元数据及 prepared call 默认值，与原实现一致；不访问外部厂商。真实本地 HTTP/SSE 验证 Completions、Responses、Anthropic 三种显式协议，以及原 PiLoop 的完整工具往返和 CLI 重启。附件测试保留只读文件路径、不声称已读、请求图像尺寸/字节预算、逐出现次数卸载、模型 text-only 降级及禁止不支持角色；不静默丢图或扩大文件访问。凭据测试覆盖旧记录、OAuth refresh modify 排他、缺失/非法 key、写失败不冒充登录成功；没有使用真实密钥或登录真实账号。
 
 **剩余兼容边界明确保留：** provider 仍通过通用 DSH `LlmAdapter/llm` registry 接入，原有 middleware 继续执行；应用审计使用旧 chunk 类型，主循环的反向 chunk bridge 尚在；文件/图像/工具历史的一部分策略调用通用 DSH helpers。原生事件模块保留真实 Pi event，同时为既有审计生成单向观察记录，但当前 Host 路径依然经过兼容桥。凭据记录后端、授权服务及附件后端也仍是 DSH。这些不计作已去除，完整迁移仍未完成。
+
+## 沙箱验证更正
+
+只读 namespace probe 经执行器的批准路径在外层包装之外执行，退出0；随后原 containment 6项原样运行，5通过、1 Windows专属跳过。此前4项失败的原因是执行器包装使嵌套 uid_map 只读，并非云机内核不支持沙箱。没有修改应用权限 preset、沙箱实现、测试断言或真实业务授权。普通包装内运行仍应在沙箱不可用时拒绝执行；启动实际服务需要宿主提供真实可用的隔离运行条件。远端403仍未重试。

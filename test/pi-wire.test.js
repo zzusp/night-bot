@@ -100,3 +100,7 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
   assert.equal(restored?.model, 'second', output)
   child.kill('SIGTERM'); const [restartedCode] = await exited; assert.equal(restartedCode, 0, output)
 })
+test('headless Host refuses startup when the required native provider failed to mount',async t=>{
+ const root=await mkdtemp('/tmp/night-pi-provider-startup-');t.after(()=>rm(root,{recursive:true,force:true}))
+ await assert.rejects(createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',streamIdleTimeoutMs:0,models:[{id:'m'}]}}}),/NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE/)
+})

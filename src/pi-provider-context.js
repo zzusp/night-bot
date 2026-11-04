@@ -1,5 +1,5 @@
 import { LlmError, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, offloadedImageText, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
-import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
+import { piRequestImageDimensions } from './pi-provider-image.js'
 import { projectPiMessage } from './pi-session-persistence.js'
 const tool=({name,description,parameters})=>({name,description,parameters})
 const fail=(message,code='UNSUPPORTED_CONTENT',details)=>{throw new LlmError(message,code,details)}
@@ -25,7 +25,7 @@ export async function piProviderContext(request,{profile,model,ctx,alreadyProjec
   for(const message of rest)for(const block of message.content)if(block.type==='image'&&!block.offloaded)imageRefs.set(block.attachment.attachmentId,block.attachment)
   if(imageRefs.size&&!attachments)fail('Durable attachments are required for image input')
   await Promise.all([...imageRefs].map(async([id,ref])=>{
-    const dimensions=requestImageDimensions(ref.width,ref.height,profile.requestImagePixelBudget)
+    const dimensions=piRequestImageDimensions(ref.width,ref.height,profile.requestImagePixelBudget)
     versions.set(id,await attachments.readImageRequest(ref,{...dimensions,maxBytes:profile.requestImageMaxBytes},request.signal))
   }))
   if(imageRefs.size){

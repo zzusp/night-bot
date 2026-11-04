@@ -153,5 +153,26 @@
     "domainAndContainment": "unchanged; see previous separate results",
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "productionClosureFix": {
+    "date": "2026-11-04",
+    "ownPass": 101,
+    "productionOnlyRepeatedPass": 74,
+    "productionImportsChecked": {
+      "files": 218,
+      "literalBareImports": 92
+    },
+    "containment": {
+      "tests": 6,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 1,
+      "execution": "approved outside executor wrapper; application bubblewrap unchanged"
+    },
+    "priorSandboxFailureCause": "outer executor wrapper read-only uid_map; cloud kernel probe succeeded",
+    "runtimePassFromProviderStage": 142,
+    "routingPassFromProviderStage": 47,
+    "remotePush": "not retried; prior 403 denial stands",
+    "completeMigration": false
   }
 }
