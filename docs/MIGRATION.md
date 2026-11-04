@@ -133,3 +133,9 @@ NativeWorkspace取代活动workspace注册表：v2全局顺序/账户、canonica
 补回一个原先藏在UI session controller中的非可视化要求：agent/pre-step拒绝归档会话及其subagent祖先链，独立fork不继承归档。真实Pi wire证明归档父/子没有模型请求、fork仍可运行、取消归档后恢复；仅查询已live或已索引header，未知cold祖先保持原直接parent归档fallback，没有声称验证所有未加载谱系。归档先持久化再请求停止，不把发出cancel冒充进程已经退出，也不重放业务。
 
 17个合同覆盖旧服务差分、故障恢复、header读取失败、异步观察一致性、owner关闭/自关闭和祖先判定，另有1个真实Pi wire。51个直接生产DSH依赖、21个活动服务替换仍是部分迁移：workspace错误身份、公共skill helpers、子代理provider、FS/shell/权限及v4 Session facade继续明确保留。远端403未重试。
+
+## 无界面 operator 授权入口
+
+`bin/night-bot-auth.js`只组合本地凭据/授权服务和真实Pi login flows，不启动resident、DWS或agent。支持list、login/provider/method、logout及describe/set/unset环境变量引用；状态仅metadata，密钥输入不经argv或输出。终端readline关闭恢复raw mode，空闲/secret阶段静音，管道答案有界队列可提前到达；EOF、select错误和取消明确失败，不挂住或保存未准入输入。SDK/vendor异常正文不直接输出。
+
+补回默认credentials watcher，独立operator进程写入/删除在运行Host同步，真实Pi wire已验证下一次请求使用新值；显式credentialsWatch:false仍允许禁用。引用set/unset支持signal在真实writer锁前取消，已入场提交按原语义排空。该入口补齐运维设置的一部分；不宣称Pi vendor OAuth/所有旧Host编辑器或全部可视化控制功能已经验收。

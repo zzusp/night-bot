@@ -45,3 +45,18 @@ pnpm test:containment    # 需要宿主真实 shell 沙箱的产物边界验证
 NativeSandbox与本地managed-process后端已接管活动服务；进程后端为明确保留MIT来源的代码派生实现，Windows ACL等仍保留。完整边界与验证见docs/DSH-AUDIT.md、docs/VALIDATION.md；尚未完成去DSH。
 
 启动环境按继承进程 > 托管凭据 > 项目.env > 用户home.env解析密钥；托管凭据保存在`stateDir/credentials.json`（兼容YAML v1内容，文件名沿用历史）。继承密钥只读；dotenv fallback可由托管存储覆盖。仓库dotenv不能设置代理或SDK代码入口。凭据文件需POSIX owner-only权限，损坏文件使Host启动失败；刷新与写入通过兼容旧版本的跨进程锁串行，不将托管密钥写入process.env。
+
+无需启动业务服务即可管理登录和密钥：
+
+```sh
+node bin/night-bot-auth.js /absolute/config.json list
+node bin/night-bot-auth.js /absolute/config.json login openai api-key
+node bin/night-bot-auth.js /absolute/config.json set-ref MODEL_API_KEY
+node bin/night-bot-auth.js /absolute/config.json describe-ref MODEL_API_KEY
+node bin/night-bot-auth.js /absolute/config.json unset-ref MODEL_API_KEY
+node bin/night-bot-auth.js /absolute/config.json logout openai
+```
+
+`list`仅显示Pi登录方式和凭据配置状态；自定义provider的`apiKeyEnv`使用`set-ref`。密钥从隐藏终端提示或stdin的一行读取，不支持把值放在命令参数中。OAuth按Pi提示完成，OpenAI目前只提供API-key登录；未配置设备身份时不伪造OAuth入口。EOF/取消不会保存尚未提交的输入，已经开始的持久提交会排空。CLI错误不输出vendor异常正文。
+
+默认`credentialsWatch:true`使运行中的Host同步独立CLI写入和删除；设为false后需要重启Host读入外部更改。继承环境中的非空密钥仍为只读，注销provider记录不会删除继承环境或另设的`apiKeyEnv`引用。此CLI不创建agent、业务账本或DWS连接。

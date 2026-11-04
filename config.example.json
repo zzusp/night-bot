@@ -6,6 +6,7 @@
   "providers": { "openai": { "apiKeyEnv": "OPENAI_API_KEY" } },
   "skillDirs": [],
   "skillWatch": true,
+  "credentialsWatch": true,
   "resident": {
     "host": "127.0.0.1",
     "port": 18998,

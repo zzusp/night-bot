@@ -1,0 +1,40 @@
+✔ configuration rejects relative state (184.471189ms)
+✔ configuration rejects same workspace (4.531252ms)
+✔ configuration rejects nested state (6.594396ms)
+✔ configuration rejects missing model (2.186799ms)
+✔ configuration rejects missing provider (2.241673ms)
+✔ configuration rejects public API (1.951765ms)
+✔ configuration rejects inconsistent DWS flags (2.333482ms)
+✔ configuration rejects inline key (2.890462ms)
+✔ configuration rejects invalid credential watcher (1.787467ms)
+✔ configuration rejects fake production model (2.069473ms)
+✔ configuration keeps disabled transport and provider env reference (3.850775ms)
+✔ credential format matches legacy valid documents and flat migration preserves comments (21.678373ms)
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (3.230695ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (46.76928ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (35.038514ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (24.436074ms)
+✔ native and legacy processes share one writer lock for serialized grant refresh (288.803759ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (31.919917ms)
+✔ legacy flat documents migrate once under writer admission and watcher follows external atomic changes (139.75269ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (25.618423ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (124.439395ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (18.328989ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (16.921375ms)
+✔ reference edits cancelled while waiting for the durable lock never mutate the store (5.161364ms)
+✔ standalone operator writes and deletes refresh the running Host before its next real Pi request (2836.023808ms)
+✔ operator credentials expose metadata only and preserve managed reference changes without opening business state (91.99421ms)
+✔ operator login invokes actual Pi API-key flow and logout removes its durable record (41.836923ms)
+✔ operator rejects extra secret argv, invalid references and inherited overwrite before reading input (11.052607ms)
+✔ operator input buffers piped answers, preserves selection values and rejects EOF without hanging (4.12869ms)
+✔ operator terminal hides secret keystrokes including early input and restores raw mode (2.852664ms)
+✔ operator prompt cancellation wakes pending input and leaves no credential mutation (9.64169ms)
+✔ standalone auth CLI stores piped secrets, describes/unsets them and never starts resident/DWS (1253.080189ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2986.070754

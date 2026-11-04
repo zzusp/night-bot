@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "Standalone operator auth/reference CLI over native credential/authorization services and actual Pi login; no resident/DWS startup, secret-safe input and metadata-only output; default live credential watcher",
     "NativeWorkspace durable ordered accounts, canonical immutable-cwd membership, header-only bootstrap and pending mutation recovery; archive/pin/activity/stop plus nonvisual archived-subagent model admission",
     "NativeSkillFilesystem capability-checked roots/discovery/body reads with Pi frontmatter parser and explicit rare legacy-delimiter fallback; source-derived bounded OS watcher backend",
     "NativeSkills scoped provider/runtime registration, rank/nearest-scope catalog selection, bounded revision caches, borrowed locators, cancellation and revocation fences",

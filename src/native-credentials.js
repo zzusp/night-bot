@@ -52,8 +52,8 @@ export default class NativeCredentials extends Service {
  async resolve(ref){credentialRef(ref);const v=this.inherited(ref);if(v!==undefined)return{value:v,source:'env'};if(this.snapshot.refs.has(ref))return{value:this.snapshot.refs.get(ref),source:'file'};const e=this.fallback(ref);if(e)return{value:e.value,source:e.source}}
  async describe(ref){const e=await this.resolve(ref);return e?{configured:true,source:e.source,writable:e.source!=='env'}:{configured:false,writable:true}}
  assertWritable(ref){credentialRef(ref);if(this.inherited(ref)!==undefined)throw new Error('Credential reference is read-only in launching environment')}
- async set(ref,value){this.assertWritable(ref);nonempty(value);return this.edit('refs',ref,()=>value)}
- async unset(ref){this.assertWritable(ref);return this.edit('refs',ref,()=>undefined)}
+ async set(ref,value,options){this.assertWritable(ref);nonempty(value);return this.edit('refs',ref,()=>value,false,options)}
+ async unset(ref,options){this.assertWritable(ref);return this.edit('refs',ref,()=>undefined,false,options)}
  async readRecord(key){credentialKey(key);return structuredClone(this.snapshot.records.get(key))}
  async describeRecord(key){const r=await this.readRecord(key);return r?{configured:true,kind:r.kind,writable:true}:{configured:false,writable:true}}
  async listRecords(){return[...this.snapshot.records].map(([key,r])=>({key,kind:r.kind}))}

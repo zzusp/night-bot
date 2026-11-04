@@ -183,3 +183,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 全新`/tmp/night-bot-workspace-production`使用production frozen install显式ignore-scripts后复测159+37=196项通过，253运行文件及manifest/lock逐字一致；静态250 JS文件/152字面bare imports通过。首次未指定ignore-scripts的安装因pnpm拒绝未批准build scripts返回非零，未把该次安装当成功；没有批准或运行额外脚本，验证使用保留的预构建运行依赖。证据见`evidence/native-workspace-*.txt`。
 
 生产DSH直接依赖51，活动服务替换21，仍非完整迁移。工作区旧包仅保留公开错误身份；权限/FS/shell/子代理及Session facade等仍待替换。没有真实业务调用、远端重试、PR或合并。
+
+## 无界面授权与凭据刷新验证
+
+最终own298/298、完整runtime142/142（261246.609146ms）、routing47/47通过；未改动domain388与原containment8通过/1 Windows跳过沿用，共883独立通过。新7项operator合同、1真实Pi外部写入wire、1引用锁前取消合同及配置校验验证隐藏输入/终端恢复、提前管道答案、EOF、取消、readonly引用、真实Pi API-key登录与注销、metadata-only输出，独立CLI进程不创建workspace/业务账本/agent或DWS连接。
+
+全新`/tmp/night-bot-operator-auth-production`production frozen ignore-scripts安装成功，178+38=216项复测通过；256运行文件及manifest/lock逐字相同，静态253 JS/154字面bare imports通过。证据`evidence/operator-auth-*.txt`。真实vendor OAuth、外部业务系统未验收，不能以fake API-key登录证明真实账号已接通。51生产DSH直接依赖/21活动服务替换保持；尚未完成全迁移。远端403未重试。
