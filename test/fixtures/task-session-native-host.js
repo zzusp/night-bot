@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { join, resolve, dirname } from 'node:path'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { artifactPolicySource } from '../../scripts/sandbox-artifact-policy.mjs'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { openResidentStore } from '../../packages/dingtalk-dsh-assistant/store.js'
 import { openTaskSessionService } from '../../packages/dingtalk-dsh-assistant/task-session-service.js'
@@ -78,27 +76,10 @@ export async function nativeTaskHost(root, decide, options = {}) {
   await ctx.plugin(Loader)
   signal?.throwIfAborted()
   ctx.loader.builtins.group = createRequire(profile.resolve('@deepseek-ai/dsh-agent-preset-registry'))('@deepseek-ai/cordis-plugin-group').default
-  let artifactPolicyEntry = options.artifactPolicyEntry ?? process.env.DSH_ARTIFACT_POLICY_MODULE
-  if (!artifactPolicyEntry) {
-    const installed = native.resolve('@deepseek-ai/dsh-sandbox-policy')
-    const original = await readFile(installed)
-    signal?.throwIfAborted()
-    if (original.includes('bindArtifactRoot(session, value)')) artifactPolicyEntry = installed
-    else {
-      artifactPolicyEntry = join(root, '.native-policy', 'index.mjs')
-      let patched = artifactPolicySource(original)
-      const policyRequire = createRequire(installed)
-      for (const dependency of ['@deepseek-ai/cordis', 'zod', '@deepseek-ai/schemastery'])
-        patched = patched.replace(`from "${dependency}"`, `from "${pathToFileURL(policyRequire.resolve(dependency)).href}"`)
-      await mkdir(dirname(artifactPolicyEntry), { recursive: true })
-      signal?.throwIfAborted()
-      await writeFile(artifactPolicyEntry, patched)
-      signal?.throwIfAborted()
-    }
-  }
-  const policyRow = { name: pathToFileURL(resolve(artifactPolicyEntry)).href, config: { mode: 'workspace-write', workspaceRoot: root } }
+  const artifactPolicyEntry = options.artifactPolicyEntry ?? process.env.DSH_ARTIFACT_POLICY_MODULE
+  const policyRow = { name: artifactPolicyEntry ? pathToFileURL(resolve(artifactPolicyEntry)).href : new URL('../../src/native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: root } }
   await ctx.loader.root.update([
-    { name: new URL('../../src/native-agents.js', import.meta.url).href }, row('session'), row('session-projection'),
+    { name: new URL('../../src/native-agents.js', import.meta.url).href }, { name: new URL('../../src/native-sessions.js', import.meta.url).href }, { name: new URL('../../src/native-projections.js', import.meta.url).href },
     row('system-prompt', { includeRuntimeContext: false, includeHarnessIdentity: false }),
     { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
     ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),

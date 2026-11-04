@@ -5,9 +5,7 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0"
   },
-  "unmountedPreparation": [
-    "NativeProjections fold registry: unit tested, not yet mounted"
-  ],
+  "unmountedPreparation": [],
   "standaloneProcess": true,
   "standaloneFromDshLibraries": false,
   "piNative": [
@@ -19,6 +17,10 @@
   ],
   "applicationNative": [
     "resident HTTP/DWS bridge",
+    "NativeSessions publication/liveness/flush/fork registry over explicit legacy audit facade",
+    "NativeProjections live/cold/checkpoint folds with journal-end anchoring and observer isolation",
+    "NativePolicy durable modes and immutable trusted artifact-root binding; no boot-time legacy policy code generation",
+    "native layered launch snapshot/bootstrap guards and dotenv credential provenance; legacy proxy transport utility retained",
     "NativeLlm topology, exact-model validation, one-shot prepared-call binding, policy dispatch and RPC facade",
     "NativeAgents live ownership, ordered publication, factory delegation and initiator drain; fused native agent event helpers",
     "SQLite task/operation/wake/notification ledger",
@@ -31,7 +33,7 @@
   ],
   "dshRemaining": [
     "Cordis agent factory/lifecycle compatibility fork",
-    "session registry, session projection registry and in-memory v4 compatibility view; agent registry now local",
+    "pinned in-memory v4 Session data facade and publication compatibility hook; Session/Projection registries now local",
     "v4 event validators and persistent inbox compatibility facade",
     "runtime prompt assembly and provider replay",
     "legacy v4 import and writer fencing only",
@@ -272,11 +274,8 @@
     "credentials-local",
     "fs-observation-policy",
     "fs-sandbox",
-    "launch-environment",
     "llm-retry",
     "permission-presets",
-    "session",
-    "session-projection",
     "session-title",
     "shell-env",
     "skill",
@@ -311,6 +310,9 @@
     "agent-default-model/config-editor dependency -> durable native model selection",
     "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
     "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
+    "session/session-projection services -> src/native-sessions.js + native-projections.js; legacy Session data facade retained explicitly",
+    "generated sandbox-policy patch -> src/native-policy.js; identical standing/one-shot/artifact boundary contract",
+    "non-plugin launch-environment row -> explicit native bootstrap snapshot; not counted as an active service replacement",
     "llm runtime service -> src/native-llm.js; public message/projection helpers and RPC carrier remain",
     "agent runtime service -> src/native-agents.js and native-agent-context.js; Pi-loop factory and session compatibility view remain",
     "sandbox-local -> src/native-sandbox.js; native Linux/macOS profile/selection with Windows ACL capability library remaining",

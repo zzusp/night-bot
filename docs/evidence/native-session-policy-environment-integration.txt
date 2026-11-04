@@ -1,0 +1,15 @@
+✔ real Pi requests use writable dotenv fallback then adopt the managed credential on the next call (1445.300005ms)
+✔ native environment snapshot preserves source ordering and immutable launch-time values (2.032986ms)
+✔ native dotenv layers preserve credential precedence without materializing secrets in embedding mode (16.531103ms)
+✔ dotenv bootstrap guards reject repository proxy and home CA changes before applying either layer (6.735884ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1445.259925ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (3012.859947ms)
+✔ headless Host refuses startup when the required native provider failed to mount (43.500409ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4645.717374

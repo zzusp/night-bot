@@ -1,40 +1,35 @@
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import {loadNativeEnvironment} from './native-environment.js'
 import { createRequire } from 'node:module'
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactPolicySource } from '../scripts/sandbox-artifact-policy.mjs'
 
 const require = createRequire(import.meta.url)
 const row = (name, config) => ({ name: pathToFileURL(require.resolve('@deepseek-ai/dsh-' + name)).href,
   ...(config ? { config } : {}) })
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
-export async function createHost(config, { extraPlugins = [] } = {}) {
+export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot } = {}) {
   const root = resolve(config.stateDir), workspace = resolve(config.workspaceDir)
   await mkdir(root, { recursive: true }); await mkdir(workspace, { recursive: true })
   const ctx = new Context()
   try {
+    ctx.provide('launchEnvironment',environmentSnapshot ?? await loadNativeEnvironment({...environmentOptions,materialize:false,warn:message=>ctx.logger.warn(message)}))
     ctx.baseUrl = pathToFileURL(join(root, 'cordis.yml')).href
     await ctx.plugin(Loader)
     ctx.loader.builtins.group = require('@deepseek-ai/cordis-plugin-group').default
-    const original = require.resolve('@deepseek-ai/dsh-sandbox-policy')
-    let code = artifactPolicySource(await readFile(original))
-    const policyRequire = createRequire(original)
-    for (const dependency of ['@deepseek-ai/cordis', 'zod', '@deepseek-ai/schemastery'])
-      code = code.replace(`from "${dependency}"`, `from "${pathToFileURL(policyRequire.resolve(dependency)).href}"`)
-    const policy = join(root, 'artifact-policy.mjs'); await writeFile(policy, code, { mode: 0o600 })
     const shell = config.shell ?? (process.platform === 'win32' ? 'pwsh' : 'bash')
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
     const rows = [
-      { name: new URL('./native-agents.js', import.meta.url).href }, row('session'), row('session-projection'), row('system-prompt', { includeHarnessIdentity: false }),
+      { name: new URL('./native-agents.js', import.meta.url).href }, { name: new URL('./native-sessions.js', import.meta.url).href }, { name: new URL('./native-projections.js', import.meta.url).href }, row('system-prompt', { includeHarnessIdentity: false }),
       { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), row('authorization'),
       row('credentials-local', { path: join(root, 'credentials.json'), watch: false }),
-      row('attachment-local', { dshHome: root }), row('launch-environment'), row('timeout'),
+      row('attachment-local', { dshHome: root }), row('timeout'),
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
       { name: new URL('./native-jobs.js', import.meta.url).href }, row('tool-jobs'), { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
-      { name: pathToFileURL(policy).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
+      { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
       row(shell + '-sandbox', { cwd: workspace }), row('user-approval', { policy: 'never' }),
       row('permission-presets', { defaultPreset: 'workspace-write', presets: {
         'read-only': { sandbox: 'read-only', approval: 'never' },

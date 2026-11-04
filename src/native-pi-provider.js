@@ -1,6 +1,6 @@
 import z from '@deepseek-ai/schemastery'
 import {  LlmError, attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+import { launchEnvironmentOf } from './native-environment.js'
 import { builtinProviders,getBuiltinModels,getAllBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { resolvePiProfiles,configuredPiModels,thinkingLevels } from './pi-provider-catalog.js'
 import { piAuthentication } from './pi-provider-auth.js'

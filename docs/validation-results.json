@@ -301,5 +301,32 @@
     "remaining": "session/projection runtime and v4 facade; scope and legacy message/projection helpers; RPC carrier; permission/filesystem/shell wrappers; Windows ACL; credentials/attachments; skills/workspace/subagents",
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "nativeSessionsPolicyEnvironment": {
+    "date": "2026-11-04",
+    "ownPass": 195,
+    "runtimePass": 142,
+    "runtimeDurationMs": 273197.322881,
+    "runtimeScope": "NativeSessions/NativeProjections/NativePolicy mounted; subsequent core helper handoff covered by 31 repeated cases; environment startup covered by actual wire/CLI tests",
+    "routingPass": 47,
+    "domainPass": 388,
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "fail": 0,
+      "execution": "approved outside executor wrapper; application confinement unchanged"
+    },
+    "uniquePass": 780,
+    "productionOnlyRepeatedPass": 116,
+    "runtimeFilesCompared": 241,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 238,
+    "literalBareImports": 130,
+    "adaptedCoreModules": 6,
+    "removedActiveDshServices": 14,
+    "directRuntimeDshDependencies": 55,
+    "remaining": "pinned v4 Session facade/publication hook, generic scope/message/projection helpers, RPC, credentials, attachments, skills/workspace/subagents, permission and filesystem/shell wrappers, Windows ACL",
+    "remotePush": "not retried; prior 403 denial stands",
+    "completeMigration": false
   }
 }

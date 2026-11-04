@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { loadConfig } from '../src/config.js'
-import { createHost } from '../src/host.js'
-import { apply as applyResident } from '../packages/dingtalk-core/resident.js'
+import {loadNativeEnvironment} from '../src/native-environment.js'
 import { join } from 'node:path'
 
 const path = process.argv[2]
@@ -9,11 +8,16 @@ if (!path || process.argv.includes('--help')) {
   console.log('Usage: node bin/night-bot.js /absolute/path/config.json\nSee config.example.json and README.md. HTTP API binds to loopback; no visual frontend.')
   process.exitCode = path ? 0 : 2
 } else {
-  let host, stopping
-  const close = () => stopping ??= host?.close()
+  let host, stopping, releaseProxy
+  const close = () => stopping ??= (async () => { const errors=[];try{await host?.close()}catch(error){errors.push(error)}try{await releaseProxy?.()}catch(error){errors.push(error)}if(errors.length===1)throw errors[0];if(errors.length)throw new AggregateError(errors,'Night Bot shutdown failed') })()
   try {
     const config = await loadConfig(path)
-    host = await createHost(config)
+    const environmentSnapshot = await loadNativeEnvironment({materialize:true,warn:message=>console.error(message)})
+    const {installProxyFromEnvironment} = await import('@deepseek-ai/dsh-http-proxy')
+    releaseProxy = await installProxyFromEnvironment(environmentSnapshot,message=>console.error(message))
+    const {createHost} = await import('../src/host.js')
+    const {apply:applyResident} = await import('../packages/dingtalk-core/resident.js')
+    host = await createHost(config, { environmentSnapshot })
     const resident = config.resident ?? {}
     const taskSessions = { ...config.model, ...resident.taskSessions, workspaceDir: config.workspaceDir,
       dbPath: join(config.stateDir, 'tasks.sqlite') }

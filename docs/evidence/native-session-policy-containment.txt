@@ -1,0 +1,35 @@
+✔ native kernel sandbox enforces read-only within and outside workspace (118.772556ms)
+✔ native kernel sandbox enforces workspace-write within and outside workspace (103.074941ms)
+(node:35276) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ native code transport uses a real isolated Node RPC worker and enforces workspace writes (2138.3581ms)
+﹣ 受信原生完整模式允许原临时Git工作树及MSYS，默认模式保留产物边界 (1.258678ms) # SKIP
+✔ 原生Host已授权完整模式在恢复绑定时保留，原生逐次模式与只读模式均不改历史身份 (594.268763ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":423,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":129,"aborted":false}
+ℹ Permission recovery phases: [{"phase":"begin","elapsedMs":0},{"phase":"host-ready","elapsedMs":423},{"phase":"created","elapsedMs":479},{"phase":"disposed","elapsedMs":506},{"phase":"resumed","elapsedMs":544},{"phase":"readback","elapsedMs":551}]
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":41,"aborted":false}
+✔ official execution artifact binding makes native FS and shell share one root and reject outside writes (939.744057ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":928,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (1985.403637ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1963,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":21,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (2577.457061ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2555,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":21,"aborted":false}
+✔ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (1564.803238ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1547,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 11706.690274

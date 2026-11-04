@@ -67,3 +67,13 @@ NativeLlm拥有provider拓扑、目录/发现、精确模型元数据验证、�
 NativeAgents拥有精确实例父子归属、同步入册/串行创建通知/幂等卸载、factory调用者上下文、ALS initiator原Promise身份、关闭拒绝新入场并排空原调用链、自发关闭排除自身等待。native-agent-context融合事件subject与scope，payload不能替换agent。保留旧类型标识/Agent helper依赖用于既有RPC及子代理兼容；不是为了降低计数而移除这些生产类型资源。当前直接DSH依赖55个、已替换11个活动服务。
 
 仍有DSH session registry/projection服务、v4内存审计facade、scope/消息/附件投影helpers、Typert载体、权限/文件/shell wrapper、Windows ACL、凭据/附件、skills/workspace/子代理等。NativeProjections只有原型与5项单元测试，本阶段尚未挂载。不得因文件存在就把它列为已迁移。
+
+### 本地Session/Projection与策略、启动环境
+
+NativeProjections已挂载：增量水位、同版本引用计数、snapshot/checkpoint/cold restore/hydrate与日志末尾锚点均在本地实现；截断或缺口拒绝缓存冒充当前状态。checkpoint为分离副本；字典键不会继承伪造原型数据；订阅独立、观察者错误不阻止其他fold推进。
+
+NativeSessions拥有入册/创建/卸载、精确Session实例flush、全部listener排空后抛首个失败、fork边界与声明周期。**仍使用锁定版本的DSH Session内存数据facade**及其publicationEntry/commit兼容钩子，未复制成“全新Pi Session”冒充独立。跨Native store/旧store已有owner拒绝，后加冲突owner在append前失败；卸载在创建或append发布结束后才发生，sealed facade仍安全释放所有权并可重新attach。持久上下文与提交链仍由真实Pi SessionManager拥有。
+
+NativePolicy不再生成/加载旧策略补丁。站立mode、一次性批准优先级、不可变cwd、artifact owner/root绑定、每次resolve检查所有祖先/链接保持；核心execution-session的mode写入改走本地helper，成为第6个明确适配的核心模块。旧setter依赖仍为其他未迁移wrapper保留，没通过移除依赖声明伪装完成。
+
+环境审查确认旧launch-environment包只有helper而不是可挂载插件，原先单独列row并未加载dotenv。现CLI在应用模块前验证/加载继承env > 项目.env > 用户home.env，并保留层来源；只补未设置值，仓库不能设置proxy/代码路径，home不能更改CA。CLI复用既有proxy transport工具并在关闭时恢复，嵌入式createHost只提供隔离snapshot、不修改process.env或全局transport。模型实际调用证明可写dotenv fallback后，下一请求采用managed credential；没有将file值误记为只读继承env。SDK bootstrap目录/更新入口与Native Bot保留名字同样只能来自继承层。

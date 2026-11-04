@@ -125,3 +125,11 @@ pnpm因仅调整依赖分组曾尝试自动重装而命中不可写默认缓存/
 独立仅生产依赖副本99项重复验证通过，238个运行时文件与最终manifest/lock逐字节一致；235个JS文件/125个裸引用全部声明。Agent类型/helper生产包为兼容既有RPC/子代理类型资源明确保留，故依赖数仍55；不把依赖分组变化冒充运行时迁移。NativeLlm的元数据/一次性call/热切换绑定/RPC标记与原实现公开契约差分通过，middleware拒绝与迭代清理错误仍按原边界传播。
 
 NativeAgents验证创建期间卸载的顺序、失败回滚、相同id不同父实例隔离、ALS原Promise身份/排空/重入关闭、单工厂所有权、原id卸载以及事件scope/subject不可伪造。没有替换v4审计facade、Session/Projection服务及剩余权限/外部能力，也未做真实供应商或钉钉操作。远端403未重试。
+
+## Session、Projection、策略与启动环境阶段
+
+NativeSessions、NativeProjections、NativePolicy 均已挂载。自有测试195通过、完整任务运行时142通过、路由47通过、领域388通过、真实隔离8通过且Windows1跳过，共780通过。完整运行时是在策略挂载后执行；随后核心mode helper切换另跑31项相关回归，启动环境再以真实CLI与本地模型wire验证。未把子集测试冒充再次运行完整142项。
+
+独立生产依赖副本重复验证116项（103核心/6沙箱/7后台任务），不叠加独立用例数。运行时代码241文件与副本一致；静态闭包检查238文件/130裸导入。保留200个核心模块，排除3个UI模块，6个核心模块明确适配。日志见evidence/native-session-policy-*，机器结果见validation-results.json。
+
+SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存facade及publicationEntry兼容hook，未宣称完整去DSH。凭据、附件、部分工具/权限与skills/workspace等仍待替换。GitHub403拒绝未重试，未创建远端PR或合并。

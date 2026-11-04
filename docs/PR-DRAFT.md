@@ -11,3 +11,11 @@ NativeTools在副作用前持久化调用意图，提交结果后再推进模型
 NativeSandbox已替换profile/选择/探测/错误元数据；managed-process后端移为保留MIT来源的本地代码派生实现，运行时合同/runner/Windows FFI在本地。最新739独立通过/1 Windows跳过、生产副本71重复通过；包含4项未挂载的原生事件捕获原型测试。仍有54个生产直接DSH依赖，Windows ACL等仍在；不得将源代码复制或这些测试数当作完整迁移证据。
 
 NativeLlm与NativeAgents现已挂载，NativePiProvider不再继承LlmAdapter；正常Pi事件不再从chunks重建，middleware变更仍有权控制输出且不重发请求。最新763独立通过/1 Windows跳过、生产副本99重复通过；含5项未挂载projection原型测试。仍55个生产直接DSH依赖，Agent类型资源为RPC/子代理兼容明确保留；完整去DSH仍未完成。
+
+## Session、Projection、策略与启动环境阶段
+
+NativeSessions、NativeProjections、NativePolicy 均已挂载。自有测试195通过、完整任务运行时142通过、路由47通过、领域388通过、真实隔离8通过且Windows1跳过，共780通过。完整运行时是在策略挂载后执行；随后核心mode helper切换另跑31项相关回归，启动环境再以真实CLI与本地模型wire验证。未把子集测试冒充再次运行完整142项。
+
+独立生产依赖副本重复验证116项（103核心/6沙箱/7后台任务），不叠加独立用例数。运行时代码241文件与副本一致；静态闭包检查238文件/130裸导入。保留200个核心模块，排除3个UI模块，6个核心模块明确适配。日志见evidence/native-session-policy-*，机器结果见validation-results.json。
+
+SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存facade及publicationEntry兼容hook，未宣称完整去DSH。凭据、附件、部分工具/权限与skills/workspace等仍待替换。GitHub403拒绝未重试，未创建远端PR或合并。
