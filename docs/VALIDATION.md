@@ -167,3 +167,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 自有257（其中10注册表合同）、完整任务142（273833ms）、路由47通过；沿用未变业务领域388及目录隔离8通过/1Windows跳过，当前独立842通过。NativeSkills在默认Host和任务fixture挂载后跑完整回归；后加closed provider-factory guard经最终自有257/生产166验证，没有冒充重新跑完整142。
 
 全新生产依赖安装通过，重复166通过（139核心/registry+27本地凭据/目录/附件合同），250运行时文件及manifest/lock一致。闭包247文件/145裸导入。文件发现/watch仍是原provider，公开skill helper仍保留，不把注册表更换当作文件provider完成迁移。证据evidence/native-skills-*。52直接DSH依赖/19活动服务替换；远端403未重试，无PR/合并/部署。
+
+## 原生技能文件与监听阶段
+
+最终自有270、完整任务142（266347ms）、路由47通过；领域388与隔离8通过/1Windows跳过沿用未改模块的前阶段证据，独立855通过。全部运行时代码，包括registry卸载撤销与默认watch:true修复，均在最终完整142执行前完成。另一次早期142不冒充最终结果。
+
+全新生产依赖frozen安装通过，重复178通过（141核心/registry/真实正文刷新wire+37本地合同），252运行时文件及manifest/lock一致。闭包249文件/149裸导入；200核心/3UI排除/6适配守恒。watcher派生文件与manifest hash一致，MIT notice保留。
+
+11文件provider合同、11registry合同、真实Host外部metadata更新及真实Pi正文单独变更/提示/显式重读/旧审计提供证据。旧provider差分不选择到生产合同组。watcher在Linux执行，Windows/macOS实机未验收。51直接DSH依赖/20活动替换仍是部分迁移；无真实供应商或DingTalk副作用，403未重试。日志evidence/native-skill-filesystem-*。

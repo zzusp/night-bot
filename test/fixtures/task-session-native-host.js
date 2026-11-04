@@ -102,7 +102,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
       row(options.fsSandbox ? 'fs-sandbox' : 'fs-local', { cwd: root }), { name: new URL('../../src/native-working-directory.js', import.meta.url).href, config: { defaultDirectory: root } },
       row('shell-env'), row('tool-fs'), row('tool-' + nativeShell, { enableRunInBackground: options.promoteOnTimeout === true, promoteOnTimeout: options.promoteOnTimeout === true }),
       ...(options.fsObservationPolicy ? [row('fs-observation-policy')] : []),
-      ...(options.skillDirs ? [row('skill-filesystem', { includeDefaultRoots: false, customSkillDirs: options.skillDirs, watch: false }), row('tool-skill')] : []),
+      ...(options.skillDirs ? [{ name: new URL('../../src/native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: false, customSkillDirs: options.skillDirs, watch: false } }, row('tool-skill')] : []),
     ] }] })
   } })
   signal?.throwIfAborted()

@@ -60,7 +60,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
           row('shell-env'), row('tool-fs'), row('tool-fs-search', { sampleOverCapGlobResults: false }), row('fs-observation-policy'),
           row('tool-' + shell, { enableRunInBackground: true, promoteOnTimeout: true }),
-          row('skill-filesystem', { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: false }), row('tool-skill'),
+          { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, row('tool-skill'),
           row('agent-instructions', { maxBytes: 65536 }), row('tool-working-directory'),
           row('tool-subagent', { provider: 'spawn' }),
           row('tool-todo', { allowParallelInProgress: true }), row('tool-web'), row('web-fetch-http'),

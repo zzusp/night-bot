@@ -9,6 +9,7 @@
   "standaloneProcess": true,
   "standaloneFromDshLibraries": false,
   "piNative": [
+    "Pi coding-agent parseFrontmatter for ordinary skill headers, explicit legacy delimiter fallback; capability-aware discovery remains application-owned",
     "agent-core.runAgentLoop iteration",
     "Pi operational tool dispatch without placeholder input",
     "Pi coding-agent SessionManager v3 journal and branch context authority",
@@ -16,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeSkillFilesystem capability-checked roots/discovery/body reads with Pi frontmatter parser and explicit rare legacy-delimiter fallback; source-derived bounded OS watcher backend",
     "NativeSkills scoped provider/runtime registration, rank/nearest-scope catalog selection, bounded revision caches, borrowed locators, cancellation and revocation fences",
     "NativeAttachments immutable v1 blobs and streamed aliases, strict refs/base64/integrity, Sharp normalization/request-image-v6 derivatives, bounded transforms and shared cancellation/drain",
     "NativeWorkingDirectory durable per-session cwd, original-project recovery, caller FS attribution, prompt resampling and cancellation/drain",
@@ -46,7 +48,7 @@
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
-    "skill rendering/invocation helpers and filesystem discovery/watcher provider; workspace registry and child-agent providers"
+    "skill rendering/invocation helpers; workspace registry and child-agent providers"
   ],
   "directRuntimeDshDependencies": [
     {
@@ -158,10 +160,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-skill-filesystem",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-subagent",
       "version": "0.2.1-alpha.2"
     },
@@ -258,7 +256,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 111,
+  "developmentDependencyCount": 112,
   "activeLiteralDshPluginRows": [
     "agent-instructions",
     "agent-preset-registry",
@@ -268,7 +266,6 @@
     "permission-presets",
     "session-title",
     "shell-env",
-    "skill-filesystem",
     "subagent",
     "subagent-fork-in-process",
     "subagent-spawn-in-process",
@@ -294,7 +291,8 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
-    "skill registry -> src/native-skills.js; filesystem discovery/watcher and public rendering helpers still explicit dependencies",
+    "skill-filesystem -> src/native-skill-filesystem.js; Pi parser plus retained ACL/legacy roots; native-skill-watcher.js is an explicit MIT platform source fork",
+    "skill registry -> src/native-skills.js; filesystem discovery is now local; public rendering helpers remain explicit dependencies",
     "attachment-local -> src/native-attachments.js + native-attachment storage/codec/errors; v1 and request-image-v6 protocol compatibility and MIT algorithm attribution retained",
     "working-directory -> src/native-working-directory.js; filesystem capability backend remains guarded and unchanged",
     "authorization -> src/native-authorization.js; attempt-scoped Pi login credentials and commit-phase cancellation fence",

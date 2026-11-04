@@ -12,6 +12,7 @@ export async function loadConfig(path) {
   if (inside(config.stateDir, config.workspaceDir) || inside(config.workspaceDir, config.stateDir)) throw new Error('NIGHT_BOT_STATE_MUST_BE_SEPARATE_FROM_WORKSPACE')
   if (!config.model?.provider || !config.model?.model) throw new Error('NIGHT_BOT_MODEL_REQUIRED')
   if (!config.providers?.[config.model.provider]) throw new Error('NIGHT_BOT_PROVIDER_PROFILE_REQUIRED')
+  if (config.skillWatch !== undefined && typeof config.skillWatch !== 'boolean') throw new Error('NIGHT_BOT_SKILL_WATCH_INVALID')
   const resident = config.resident ?? {}
   if (resident.fakeModel) throw new Error('NIGHT_BOT_FAKE_MODEL_IS_TEST_ONLY')
   if (resident.host && !['127.0.0.1','::1','localhost'].includes(resident.host)) throw new Error('NIGHT_BOT_HTTP_REQUIRES_LOOPBACK')

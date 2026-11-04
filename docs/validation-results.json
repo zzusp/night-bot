@@ -469,5 +469,37 @@
     "remainingSkillBoundary": "filesystem roots, file reads/watch provider and public rendering/invocation helpers still DSH; registry owns catalog/cache/selection only",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeSkillFilesystem": {
+    "date": "2026-11-04",
+    "ownPass": 270,
+    "filesystemContracts": 11,
+    "registryContracts": 11,
+    "actualPiBodyOnlyRefreshWire": 1,
+    "runtimePass": 142,
+    "runtimeDurationMs": 266347.661038,
+    "precedingRuntimePassBeforeRegistryLifecycleFix": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from attachment checkpoint",
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "source": "unchanged confinement backend from directory checkpoint"
+    },
+    "uniquePass": 855,
+    "productionOnlyRepeatedPass": 178,
+    "productionScope": "141 core/registry/refresh wire +37 native credential/directory/attachment/filesystem contracts; legacy backend differential explicitly excluded",
+    "runtimeFilesCompared": 252,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 249,
+    "literalBareImports": 149,
+    "directRuntimeDshDependencies": 51,
+    "removedActiveDshServices": 20,
+    "watcher": "explicit MIT source fork with bounded changing-root admission; not from-scratch",
+    "skillHeaderParser": "Pi parser for ordinary header; explicit rare legacy-delimiter fallback",
+    "defaultHostSkillWatch": true,
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

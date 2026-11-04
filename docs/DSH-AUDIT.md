@@ -20,12 +20,12 @@
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
 | 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
 | 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生 managed-process后端、NativeSandbox；DSH fs/shell/policy及Windows ACL库 | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
-| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills registry、NativeWorkingDirectory；DSH filesystem skill provider/公开helper、instructions、subagent/workspace | 注册表与工作目录本地实现；保留FS权限能力；技能文件发现/watch、资源加载与子代理等仍待迁移 |
+| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills/NativeSkillFilesystem、NativeWorkingDirectory；MIT派生watcher；DSH公开skill helper、instructions、subagent/workspace | Pi header解析与本地能力检查读取/失效；watcher非从零重写，指引、子代理/workspace与通用helpers仍待迁移 |
 | 凭据、授权与附件 | NativeCredentials、NativeAuthorization、NativeAttachments及分层环境；旧授权错误/附件类型与投影helpers | 默认Pi登录有attempt-scoped提交，附件blob/codec本地实现且保持v1/请求变体协议；通用helpers仍保留 |
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
 
-完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **52 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
+完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **51 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
 
 ## 进程与协议
 
@@ -157,3 +157,13 @@ Sharp 0.35.5延续原已锁定codec版本，原型/metadata解析、完整decode
 NativeSkills拥有scope/provider/runtime注册、同层rank与注册顺序、近层完全覆盖、完整/不完整catalog、revision两次有界重试、cwd+scope identity有界cache、callback隔离和取消等待。options、候选对象、opaque locator和加载后的definition均保留readonly借用身份；不会为适配Pi而破坏provider按原候选定位资源的约定。注册失败/卸载会撤销原provider生命周期，名称被修改也不能泄漏原注册；卸载期间返回的迟到body不再准入。
 
 默认Host与原生任务fixture已挂载NativeSkills；10项合同含旧服务差分、rank/作用域、borrowed identity、partial/failure不cache、并发失效、cache容量、cancel、通知隔离与撤销竞态。生产仍保留dsh-skill的公开render/invocation helpers，以及原filesystem发现/watch/provider；本阶段不把注册表替换说成技能文件读取已经迁到Pi，也不通过移走helpers依赖伪装清零。
+
+## 原生技能文件 provider 与默认监听阶段
+
+NativeSkillFilesystem取代活动skill-filesystem。项目.dsh/.agents、自定义、用户与bundled根的优先级、平面文件与目录bundle、metadata/whenToUse/调用开关、正文CRLF与已有version hash语义保留。目录列举与正文读取经ctx.fs能力，只有原先明确trustedHost的bundled根保持宿主读取；权限错误不回退，不把I/O失败当空catalog。普通header由Pi coding-agent.parseFrontmatter解析，合法`---prefix`映射key引发SDK提前截断的少见情况走明确YAML兼容分支。
+
+OS watcher保留明确MIT源码派生后端，见skill-watcher-fork-manifest及许可；局部imports/总诊断、反复路径转换最多8次为显式适配。缺失根只监听下一层入口，完整根depth1，项目owner有界、失败返回incomplete可读catalog、重开与关闭排空保留；这不宣称watcher从零重写。
+
+修正此前headless固定watch:false导致外部编辑不触发正文复核的缺口：默认skillWatch:true，允许显式false。真实Host外部更新metadata可见；实际Pi SDK四次wire请求证明只改正文也在下步得到提示、不会自动注入新正文，显式重读才采用新版本且保留旧审计。注册表单独卸载会撤销外部owner注册的provider lifecycle，避免遗留watcher。11文件provider合同、1实际刷新wire及11注册表合同覆盖读取/失效/撤销边界。
+
+原skill-filesystem仅开发差分依赖。公开skill render/invocation helpers、FS/shell/permission wrappers、workspace/子代理、Session facade等仍在；51直接DSH依赖/20活动服务替换是部分迁移记录。后续还需核对无可视化的operator auth/config入口，不能因内部service可调用就把所有原Host设置功能视作已交付。
