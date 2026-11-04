@@ -139,3 +139,9 @@ NativeWorkspace取代活动workspace注册表：v2全局顺序/账户、canonica
 `bin/night-bot-auth.js`只组合本地凭据/授权服务和真实Pi login flows，不启动resident、DWS或agent。支持list、login/provider/method、logout及describe/set/unset环境变量引用；状态仅metadata，密钥输入不经argv或输出。终端readline关闭恢复raw mode，空闲/secret阶段静音，管道答案有界队列可提前到达；EOF、select错误和取消明确失败，不挂住或保存未准入输入。SDK/vendor异常正文不直接输出。
 
 补回默认credentials watcher，独立operator进程写入/删除在运行Host同步，真实Pi wire已验证下一次请求使用新值；显式credentialsWatch:false仍允许禁用。引用set/unset支持signal在真实writer锁前取消，已入场提交按原语义排空。该入口补齐运维设置的一部分；不宣称Pi vendor OAuth/所有旧Host编辑器或全部可视化控制功能已经验收。
+
+## 原生提示注册与组装阶段
+
+NativeSystemPrompt取代活动system-prompt服务，拥有scope层section/context/variable/tool注册、有限order检查、同名近层覆盖、确定性section/tool顺序、隐藏但已知tool名字与rest marker、schema副本和组装waterfall。complete section在middleware后保持权威；上下文抑制只作用于可选事实。请求准入refreshContext重采样已注册事实，补回被waterfall移除的required事实，不重新运行section/tool/variable provider或waterfall。
+
+默认Host仍关闭可选harness identity；单独服务启用该项时文案改为Pi，其他排序常量及准入算法保留MIT来源。旧包公开renderPrompt/renderContextSnapshot等渲染helper和通用scope集合仍为明确依赖；没有构造/委托旧SystemPrompt服务，也不把共享helper称为Pi SDK能力。六项合同包括旧服务差分和完整prompt/required-context准入，实际Pi wire断言默认构造器为NativeSystemPrompt，技能正文刷新及工作目录重采样继续回归。

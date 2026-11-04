@@ -189,3 +189,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own298/298、完整runtime142/142（261246.609146ms）、routing47/47通过；未改动domain388与原containment8通过/1 Windows跳过沿用，共883独立通过。新7项operator合同、1真实Pi外部写入wire、1引用锁前取消合同及配置校验验证隐藏输入/终端恢复、提前管道答案、EOF、取消、readonly引用、真实Pi API-key登录与注销、metadata-only输出，独立CLI进程不创建workspace/业务账本/agent或DWS连接。
 
 全新`/tmp/night-bot-operator-auth-production`production frozen ignore-scripts安装成功，178+38=216项复测通过；256运行文件及manifest/lock逐字相同，静态253 JS/154字面bare imports通过。证据`evidence/operator-auth-*.txt`。真实vendor OAuth、外部业务系统未验收，不能以fake API-key登录证明真实账号已接通。51生产DSH直接依赖/21活动服务替换保持；尚未完成全迁移。远端403未重试。
+
+## 原生提示组装验证
+
+最终own304/304、完整runtime142/142（257019.419773ms）、routing47/47通过；未改动domain388和containment8通过/1 Windows跳过沿用，共889独立通过。六项新增合同涵盖旧服务差分、scope覆盖、tool rest/hidden-known顺序与schema副本、complete authority、required context准入和独立suppressor生命周期。实际Pi wire断言NativeSystemPrompt构造器；正文刷新和工作目录重采样复测通过。
+
+全新`/tmp/night-bot-system-prompt-production`production frozen ignore-scripts安装成功，184+38=222项通过；257运行文件及manifest/lock逐字一致，静态254 JS/157字面bare imports通过。证据`evidence/native-system-prompt-*.txt`。旧公开render/interpolation及scope helpers仍保留，51生产DSH直接依赖/22活动服务替换，不以此宣称完整迁移。远端403未重试。

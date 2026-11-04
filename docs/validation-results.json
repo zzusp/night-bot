@@ -560,5 +560,33 @@
     "businessStartupForAuth": false,
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeSystemPrompt": {
+    "date": "2026-11-04",
+    "ownPass": 304,
+    "promptContracts": 6,
+    "runtimePass": 142,
+    "runtimeDurationMs": 257019.419773,
+    "routingPass": 47,
+    "domainPass": 388,
+    "domainSource": "unchanged from prior checkpoint",
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "source": "unchanged confinement backend from directory checkpoint"
+    },
+    "uniquePass": 889,
+    "productionOnlyRepeatedPass": 222,
+    "productionScope": "184 core/prompt/operator/config/wire +38 native credential/directory/attachment/filesystem contracts; prior legacy differentials excluded",
+    "runtimeFilesCompared": 257,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 254,
+    "literalBareImports": 157,
+    "directRuntimeDshDependencies": 51,
+    "removedActiveDshServices": 22,
+    "remainingPromptBoundary": "public render/interpolation helpers and shared scope collections; no old SystemPrompt service",
+    "identity": "default Host identity still disabled; standalone enabled optional identity now names Pi",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

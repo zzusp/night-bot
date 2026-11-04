@@ -53,6 +53,7 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
         return args
       } }) } })
   assert.equal(handle.agent.constructor.name, 'PiLoopAgent')
+  assert.equal(host.ctx.systemPrompt.constructor.name, 'NativeSystemPrompt')
   assert.equal(host.ctx.tools.constructor.name, 'NativeTools')
   assert.equal(host.ctx.llm.constructor.name, 'NativeLlm')
   assert.equal(host.ctx.agents.constructor.name, 'NativeAgents')

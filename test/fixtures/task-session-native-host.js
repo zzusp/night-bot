@@ -80,7 +80,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
   const policyRow = { name: artifactPolicyEntry ? pathToFileURL(resolve(artifactPolicyEntry)).href : new URL('../../src/native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: root } }
   await ctx.loader.root.update([
     { name: new URL('../../src/native-agents.js', import.meta.url).href }, { name: new URL('../../src/native-sessions.js', import.meta.url).href }, { name: new URL('../../src/native-projections.js', import.meta.url).href },
-    row('system-prompt', { includeRuntimeContext: false, includeHarnessIdentity: false }),
+    { name: new URL('../../src/native-system-prompt.js', import.meta.url).href, config: { includeRuntimeContext: false, includeHarnessIdentity: false } },
     { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
     ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),
     { name: new URL('../../src/process/index.js', import.meta.url).href }, { name: new URL('../../src/native-sandbox.js', import.meta.url).href }, policyRow, row(nativeShell + '-sandbox', { cwd: root }),

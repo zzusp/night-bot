@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeSystemPrompt scoped prompt/variable/context/tool assembly, complete-section authority and required runtime fact resampling; public render/scope helpers remain explicit",
     "Standalone operator auth/reference CLI over native credential/authorization services and actual Pi login; no resident/DWS startup, secret-safe input and metadata-only output; default live credential watcher",
     "NativeWorkspace durable ordered accounts, canonical immutable-cwd membership, header-only bootstrap and pending mutation recovery; archive/pin/activity/stop plus nonvisual archived-subagent model admission",
     "NativeSkillFilesystem capability-checked roots/discovery/body reads with Pi frontmatter parser and explicit rare legacy-delimiter fallback; source-derived bounded OS watcher backend",
@@ -44,7 +45,7 @@
     "Cordis agent factory/lifecycle compatibility fork",
     "pinned in-memory v4 Session data facade and publication compatibility hook; Session/Projection registries now local",
     "v4 event validators and persistent inbox compatibility facade",
-    "runtime prompt assembly and provider replay",
+    "public prompt rendering/scope helpers and provider replay (active prompt registry/assembly local)",
     "legacy v4 import and writer fencing only",
     "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
@@ -271,7 +272,6 @@
     "subagent",
     "subagent-fork-in-process",
     "subagent-spawn-in-process",
-    "system-prompt",
     "timeout",
     "tool-",
     "tool-fs",
@@ -292,6 +292,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "system-prompt -> src/native-system-prompt.js; ordered scoped assembly and admission refresh; old public render/scope helpers remain",
     "workspace -> src/native-workspace.js; durable NativeDomain accounts and nonvisual archived-session admission; old public error identities retained",
     "skill-filesystem -> src/native-skill-filesystem.js; Pi parser plus retained ACL/legacy roots; native-skill-watcher.js is an explicit MIT platform source fork",
     "skill registry -> src/native-skills.js; filesystem discovery is now local; public rendering helpers remain explicit dependencies",
