@@ -1,0 +1,55 @@
+{
+  "kind": "explicit-source-derived-platform-backend-not-from-scratch",
+  "license": "MIT Copyright (c) 2026 DeepSeek",
+  "adaptations": [
+    "local Cordis service and lazy loading contracts",
+    "shared proxy overlay explicitly retained",
+    "local runner path, JavaScript distribution only; no tsx or packaged-DSH bootstrap",
+    "local Windows FFI source fork",
+    "legacy control markers preserved for existing workers"
+  ],
+  "files": [
+    {
+      "path": "src/process/index.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/index.js",
+      "sourceSha256": "20c29aded30123bb9b4ec5cf9df64bf3f2f26fb60cd6f48ad67b31b6e56c5ce3",
+      "adaptedSha256": "5da229501aab0ba7e1d3eaf3da55d59460f7c9fe29e3229592b068f44d2bdb67"
+    },
+    {
+      "path": "src/process/runner.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/runner.js",
+      "sourceSha256": "4e21528dfdb3e92bdce2340945dc4dcb202e4a4af0bbeb8b97585f67735d30c1",
+      "adaptedSha256": "723b513f51f6980c3d920d5b5fa1f53800fae55a3cbb3b1b8dbd5a557bb4a2a3"
+    },
+    {
+      "path": "src/process/runner-launch-B2zsQ1Dz.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/runner-launch-B2zsQ1Dz.js",
+      "sourceSha256": "6df08adc4a27f278878a5f4cde8b551b51e647b922ac7d6591fd62d272ced153",
+      "adaptedSha256": "82805c4bc3f975ff6b8d2db4ec4b2f216b26eb6b4292751670de344960939a77"
+    },
+    {
+      "path": "src/process/output.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/output.js",
+      "sourceSha256": "4f77ef6da608d36df168c99177e9b527e7145df1418845eba567635e64a4c2a3",
+      "adaptedSha256": "1557cbbf8c2204f17fd8d7f7af7d31862924bee82ac07ec31631965cc9277003"
+    },
+    {
+      "path": "src/process/control.js",
+      "sourcePackage": "dsh-subprocess@0.2.1-alpha.2",
+      "sourceFile": "lib/control.js",
+      "sourceSha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+      "adaptedSha256": "923be45a0d625cb4da7beb2713f4e80a96ab092180c100be72c17546cbf201bc"
+    },
+    {
+      "path": "src/process/win32.js",
+      "sourcePackage": "dsh-win32-process@0.2.1-alpha.2",
+      "sourceFile": "lib/index.js",
+      "sourceSha256": "622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9",
+      "adaptedSha256": "8c9166f720b9002035167be149e3a2ee6291f4ab5da5879496361006dd779ff4"
+    }
+  ]
+}

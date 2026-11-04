@@ -41,3 +41,5 @@ pnpm test:containment    # 需要宿主真实 shell 沙箱的产物边界验证
 功能覆盖与迁移边界见 [MIGRATION](docs/MIGRATION.md)，实际结果及未验证部分见 [VALIDATION](docs/VALIDATION.md)。所有验证均不向真实钉钉发送消息，不代表已部署或已完成真实模型语义验收。
 
 后台任务注册表已由 NativeJobs 接管（会话归属、作用域控制器/订阅、输出环、wait/kill及关闭排空）；生产直接DSH依赖54个，进程与沙箱后端仍在迁移中。
+
+NativeSandbox与本地managed-process后端已接管活动服务；进程后端为明确保留MIT来源的代码派生实现，Windows ACL等仍保留。完整边界与验证见docs/DSH-AUDIT.md、docs/VALIDATION.md；尚未完成去DSH。

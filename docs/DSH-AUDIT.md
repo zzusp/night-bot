@@ -13,24 +13,24 @@
 | 代理迭代及操作性工具调用 | `@earendil-works/pi-agent-core@1.5.0` 的 `runAgentLoop` | 真正使用 Pi 迭代；单会话工具串行，Host 仍执行工具调度 |
 | 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。prompt 组装和 provider seam 仍待替换 |
 | 模型请求与流 | 本地 `NativePiProvider` → Pi Models.streamSimple 1.5.0；本地 catalog/auth/retry/login/discovery/context/events | **本轮移除旧 DSH provider 插件**；通用 DSH LLM registry/middleware、共享附件/工具历史投影 helpers 和 request/chunk 兼容桥仍在，尚非完全原生直连 |
-| Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；DSH `agents/sessions/scope` | **兼容层**；不是 Pi SDK 的 `createAgentSession`/`SessionManager` |
+| Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；DSH `agents/sessions/scope` | **兼容层**；不是 Pi SDK 的 `createAgentSession`；持久化另由真实 SessionManager 接管 |
 | 会话历史与恢复 | Pi v3 原生树日志、night.commit 校验链、单写租约；旧 v4 仅导入/写锁保护 | **本轮替换新日志**；原逻辑事件仍保留在 Pi 审计记录供旧 factory/恢复策略使用；不是已经移除 DSH 会话接口 |
-| 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；其中恢复读取的会话与原生 job 收据仍依赖 DSH，不能因此称整个恢复原生 |
+| 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；Pi会话恢复和本地NativeJobs已接管，DSH事件兼容面仍在，不能因此称整个恢复原生 |
 | 群与工作区 JSON 后端 | **本轮已替换为 `src/native-domain.js`** | Node 文件系统实现，兼容旧单文档 JSON；群业务模型及 workspace registry 本身仍有原业务/DSH 上层 |
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
 | 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
-| 文件与终端、作业与进程回执、沙箱、权限 preset | DSH fs/shell/subprocess/jobs/sandbox/policy | **仍为 DSH**；Pi core 不提供这些安全合同。不能用普通 `child_process` 或关闭沙箱直接替代 |
+| 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生 managed-process后端、NativeSandbox；DSH fs/shell/policy及Windows ACL库 | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
 | 技能、工作目录、指引发现、子代理、工作区注册 | DSH skill/filesystem、workingDirectory、instructions、subagent/workspace | **仍为 DSH**；未迁到 Pi coding-agent 资源加载与扩展模型 |
 | 凭据、授权与附件 | DSH credentials/authorization/attachments；宿主环境变量 | **仍为 DSH**；新增模型选择文件不包含密钥，不替代这些安全设施 |
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
 
-完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **55 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
+完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **54 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
 
 ## 进程与协议
 
 - 常驻进程是本应用的 Node 进程，DSH/Cordis/Pi 都作为库运行其中，没有另起 DSH daemon。
-- 应用会产生 Node SQLite/完整性检查 worker；执行时由 DSH subprocess/jobs 层创建并跟踪 bash/pwsh、业务命令或后台进程。DWS 开启时会调用配置的外部 DWS CLI；可选 Claude backend 使用其外部 CLI。未配置/未执行的外部浏览器和数据库能力不能列为已运行进程。
+- 应用会产生 Node SQLite/完整性检查 worker；执行时由本地managed-process/NativeJobs层创建并跟踪 bash/pwsh、业务命令或后台进程。DWS 开启时会调用配置的外部 DWS CLI；可选 Claude backend 使用其外部 CLI。未配置/未执行的外部浏览器和数据库能力不能列为已运行进程。
 - 对外沿用应用 HTTP JSON 与 DWS CLI JSON 合同。对内仍使用 Cordis service/events、DSH Agent/Session 审计兼容接口、Pi v3 日志及仅供导入的旧 v4、LLM 请求/chunk、工具结果及 job receipts。
 - 本轮去掉的 JSON storage 与 model selection 使用 Node 文件操作及应用自己的 schema/持久文件；`storageDomain`、`agentDefaultModel` 服务名称暂为兼容调用者保留，不表示仍调用同名 DSH 插件。`storage` 仅提供历史 cutover 检查所需的 backend-root 元数据。
 
@@ -97,3 +97,9 @@ Host 和任务恢复测试已挂载本地 NativeJobs，jobs-local 仅保留开�
 保留旧取消函数抛错时“记录强制失败、可能孤儿工作”的明确事实，不伪造进程已退出。真正process spawn/终端/进程树身份与范围观测、sandbox、后台工具表面仍依赖现有DSH后端，尚未迁移。Windows路径只保留兼容，未在本Linux环境真实验收。
 
 后续进程替换的实际边界（已核对当前包接口）：`resolveExecutable`、普通 `spawn`、`spawnTerminal`、`terminalEnvironment`；原后端维护 executable/environment 校验、凭据环境清理、control pipe、stdout/stderr有界收集及spill、Linux用户systemd scope/private bootstrap、Windows Job及PTY、进程身份/范围退出观测、正常关闭和同步host-exit收尾。`done`不是整个managed range静默的替代物，`terminate`后须等待`waitForExit`。未以普通`child_process.spawn`或Pi bash工具直接替代这些约束。当前真实进程恢复回归因此仍验证旧后端；不能算作新进程后端验收。
+
+### 沙箱与进程阶段
+
+NativeSandbox替换sandbox-local服务，拥有Linux bwrap/Landlock与macOS Seatbelt profile、平台链选择、受限探测缓存、错误归因元数据与调用前取消检查。Windows ACL能力库仍明确保留；standing workspace grant与每session随机temp能力的复用、失败清理/关闭回收契约经过模拟验证，未把Linux测试冒充Windows实机验收。新增真实内核测试分别验证read-only/workspace-write工作目录内外写入结果。
+
+进程服务改挂本地`src/process/index.js`，操作系统后端是明确保留MIT来源的代码派生实现，非从零重写；见process-fork-manifest.json与THIRD_PARTY.md。原进程树/Windows Job、PTY、范围退出观测、输出尾部与spill、控制管道、取消/关闭行为保留；契约、lazy loading、runner定位与Windows FFI代码为本地模块。代理仍由Pi迭代，平台进程代码不伪装为Pi SDK功能。旧工具后端仍使用同名服务接口，generic proxy overlay及Windows ACL库等仍是DSH依赖。**复制源码本身不计为完成去DSH迁移**；后续仍需迁移通用LLM、工厂/registry、附件/凭据、skills/workspace与FS/shell/policy。

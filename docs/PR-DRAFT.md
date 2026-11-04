@@ -7,3 +7,5 @@ NativeTools在副作用前持久化调用意图，提交结果后再推进模型
 本轮711项独立测试通过，1项Windows专属跳过；含真实本地三种模型协议、CLI重启、任务恢复及获准在外层执行器之外执行的原有应用沙箱。无真实钉钉、供应商模型或业务系统验收。完整证据与历史阶段限制见VALIDATION.md和validation-results.json。此前GitHub推送dry-run被403拒绝，未重试、未创建远端PR、未合并或部署。
 
 后台任务注册表后续已由 NativeJobs 接管，保留owner/作用域访问、限额、输出游标、终态通知与取消排空。最新719项独立通过/1 Windows跳过，纯生产依赖54项重复验证；生产直接DSH包54个。进程与沙箱后端仍保留，PR仍属未完成迁移草稿。
+
+NativeSandbox已替换profile/选择/探测/错误元数据；managed-process后端移为保留MIT来源的本地代码派生实现，运行时合同/runner/Windows FFI在本地。最新739独立通过/1 Windows跳过、生产副本71重复通过；包含4项未挂载的原生事件捕获原型测试。仍有54个生产直接DSH依赖，Windows ACL等仍在；不得将源代码复制或这些测试数当作完整迁移证据。

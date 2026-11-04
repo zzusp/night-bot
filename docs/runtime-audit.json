@@ -5,7 +5,9 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0"
   },
-  "unmountedPreparation": [],
+  "unmountedPreparation": [
+    "Pi native event capture prototype: unit tested, not mounted"
+  ],
   "standaloneProcess": true,
   "standaloneFromDshLibraries": false,
   "piNative": [
@@ -18,6 +20,8 @@
     "resident HTTP/DWS bridge",
     "SQLite task/operation/wake/notification ledger",
     "single-document JSON domains and model selection",
+    "native kernel sandbox profile/selection and error metadata (Windows ACL dependency explicit)",
+    "source-derived local managed-process backend with local runner/service/FFI contracts; source fork is not counted as a from-scratch rewrite",
     "owner-fenced native background job registry with scoped controllers/events, output ring and awaited teardown",
     "scoped NativeTools admission/dispatch/post-policy/output/audit pipeline",
     "native code transport with ordered nested dispatch, cancellation/drain and one-shot sandbox approval"
@@ -31,7 +35,7 @@
     "generic llm registry/middleware and GenerateOptions/chunk compatibility bridge; native provider no longer invokes dsh-llm-pi-ai",
     "durable credential record store, neutral authorization service, attachment storage/request-image policy helpers",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
-    "filesystem, shell, subprocess/sandbox/permission services",
+    "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
     "skills, workspace registry, child-agent providers"
   ],
   "directRuntimeDshDependencies": [
@@ -84,6 +88,10 @@
       "version": "0.2.1-alpha.2"
     },
     {
+      "name": "@deepseek-ai/dsh-http-proxy",
+      "version": "0.2.1-alpha.2"
+    },
+    {
       "name": "@deepseek-ai/dsh-launch-environment",
       "version": "0.2.1-alpha.2"
     },
@@ -104,11 +112,11 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-sandbox-local",
+      "name": "@deepseek-ai/dsh-sandbox-policy",
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-sandbox-policy",
+      "name": "@deepseek-ai/dsh-sandbox-windows-acl",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -165,10 +173,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-subprocess",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-subprocess-local",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -252,7 +256,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 110,
+  "developmentDependencyCount": 109,
   "activeLiteralDshPluginRows": [
     "agent",
     "agent-instructions",
@@ -266,7 +270,6 @@
     "llm",
     "llm-retry",
     "permission-presets",
-    "sandbox-local",
     "session",
     "session-projection",
     "session-title",
@@ -276,7 +279,6 @@
     "subagent",
     "subagent-fork-in-process",
     "subagent-spawn-in-process",
-    "subprocess-local",
     "system-prompt",
     "timeout",
     "tool-",
@@ -304,6 +306,8 @@
     "agent-default-model/config-editor dependency -> durable native model selection",
     "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
     "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
+    "sandbox-local -> src/native-sandbox.js; native Linux/macOS profile/selection with Windows ACL capability library remaining",
+    "subprocess-local -> source-derived src/process backend; local contracts/bootstrap/output/FFI, shared proxy overlay remains",
     "jobs-local -> src/native-jobs.js; process execution and durable task receipts remain separate",
     "tools runtime service -> src/native-tools.js + native-code-transport.js; schema/scope helpers and capability backends remain"
   ],

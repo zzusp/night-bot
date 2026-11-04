@@ -2,13 +2,13 @@ import {readFile,readdir} from 'node:fs/promises'
 import {builtinModules} from 'node:module'
 const manifest=JSON.parse(await readFile('package.json','utf8')),builtins=new Set(builtinModules.map(name=>name.replace(/^node:/,'')))
 let files=0,imports=0
-for(const directory of ['src','bin','packages/dingtalk-core'])for(const file of await readdir(directory)){
-  if(!file.endsWith('.js'))continue
+async function* runtimeFiles(directory){for(const entry of await readdir(directory,{withFileTypes:true})){const path=directory+'/'+entry.name;if(entry.isDirectory())yield* runtimeFiles(path);else if(entry.isFile()&&entry.name.endsWith('.js'))yield path}}
+for(const directory of ['src','bin','packages/dingtalk-core'])for await(const path of runtimeFiles(directory)){
   files++
-  const path=directory+'/'+file,source=await readFile(path,'utf8')
+  const source=await readFile(path,'utf8')
   // A bounded literal-import guard; dynamic plugin rows are audited separately.
   // Skip quoted code templates/interpolations which are not bare package names.
-  for(const [,specifier]of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*)['"]([^'"\r\n]+)['"]/g)){
+  for(const [,specifier]of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bcreateLazyRequire\s*\(\s*|\bimport\.meta\.resolve\s*\(\s*)['"]([^'"\r\n]+)['"]/g)){
     if(specifier.startsWith('.')||specifier.startsWith('node:')||builtins.has(specifier))continue
     if(!/^(?:@[\w-]+\/[\w.-]+|[\w.-]+)(?:\/[\w./-]+)?$/.test(specifier))continue
     const packageName=specifier.startsWith('@')?specifier.split('/').slice(0,2).join('/'):specifier.split('/')[0]

@@ -109,3 +109,11 @@ NativeJobs 已替换 Host 和任务恢复 fixture 的 jobs-local。8项注册表
 本轮应用136、任务运行时142（约301秒）、路由47、领域388全部通过，containment 6通过/1 Windows跳过，共719项独立通过。全新仅生产依赖副本47项wire/state/authority/tools等及7项注册表定向测试通过，共54项重复验证；公开旧jobs-local差分仅在开发依赖环境执行。225个实际运行时文件逐字节与生产副本一致。最后只新增Host必要服务检查及wire构造类型断言，定向wire/注册表11项和生产wire3项复跑通过；未重跑整组142项。
 
 pnpm因仅调整依赖分组曾尝试自动重装而命中不可写默认缓存/无TTY保护；改用既定/tmp缓存和正常frozen安装成功，再直接执行node测试。未把这些启动失败当业务回归。54个生产直接DSH依赖和7个已替换active服务见runtime-audit.json；剩余进程后端仍存在，不能标记全迁移完成。远端403未重试，未创建PR/合并/部署。
+
+## 本地沙箱与进程后端
+
+新NativeSandbox下原142项运行时回归先通过；接入本地源代码派生managed-process后，再次完整运行142项通过（约300秒）。最新应用154、路由47、领域388全通过，containment 8通过/1 Windows跳过，共739项独立通过；其中4项是尚未接入主循环的原生事件捕获原型单元测试，不能据此声称LLM桥已移除。
+
+真实内核测试覆盖read-only/workspace-write的目录内外写入；真实process测试覆盖argv/取消、bounded output/spill/独立读游标、Linux私有0600请求一次性消费与execve精确环境、PTY输出与整会话关闭，以及直接命令退出后仍有后代、只有terminate并观测范围排空才能宣告退出。当前云机可能选择原先允许的fallback进程树管理；未把它宣称为用户systemd scope或Windows Job实机验证。
+
+全新仅生产依赖副本71项重复验证通过，234个运行时文件逐字节一致。生产导入检查现递归扫描src子目录并检查literal lazy loads，共231个JS文件/118个裸引用，全部声明。进程平台实现保留原MIT来源、哈希与明确适配记录；不是复制代码就算完全去DSH。Windows ACL仍是生产依赖，真实Windows/macOS、外部供应商和真实钉钉均未验收。远端403未重试。

@@ -53,3 +53,9 @@ Pi 会话阶段同时修复旧服务在异步容量清理前提前移除跟踪 p
 Host 和任务恢复测试已挂载本地 NativeJobs，jobs-local 仅保留开发差分测试依赖，生产直接DSH包降至54。注册表拥有会话归属访问栅栏、按owner限额、作用域控制器及订阅、UTF-8有界输出环/独立游标、首次终态与wait通知、取消及owner/service关闭排空。它是进程内视图，持久任务/进程收据仍由业务账本维护；不自行重新启动producer或重放工作。
 
 保留旧取消函数抛错时“记录强制失败、可能孤儿工作”的明确事实，不伪造进程已退出。真正process spawn/终端/进程树身份与范围观测、sandbox、后台工具表面仍依赖现有DSH后端，尚未迁移。Windows路径只保留兼容，未在本Linux环境真实验收。
+
+### 沙箱与进程阶段
+
+NativeSandbox替换sandbox-local服务，拥有Linux bwrap/Landlock与macOS Seatbelt profile、平台链选择、受限探测缓存、错误归因元数据与调用前取消检查。Windows ACL能力库仍明确保留；standing workspace grant与每session随机temp能力的复用、失败清理/关闭回收契约经过模拟验证，未把Linux测试冒充Windows实机验收。新增真实内核测试分别验证read-only/workspace-write工作目录内外写入结果。
+
+进程服务改挂本地`src/process/index.js`，操作系统后端是明确保留MIT来源的代码派生实现，非从零重写；见process-fork-manifest.json与THIRD_PARTY.md。原进程树/Windows Job、PTY、范围退出观测、输出尾部与spill、控制管道、取消/关闭行为保留；契约、lazy loading、runner定位与Windows FFI代码为本地模块。代理仍由Pi迭代，平台进程代码不伪装为Pi SDK功能。旧工具后端仍使用同名服务接口，generic proxy overlay及Windows ACL库等仍是DSH依赖。**复制源码本身不计为完成去DSH迁移**；后续仍需迁移通用LLM、工厂/registry、附件/凭据、skills/workspace与FS/shell/policy。
