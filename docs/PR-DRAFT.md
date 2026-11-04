@@ -1,21 +1,11 @@
 # Migrate headless DingTalk execution to Pi (in progress)
 
-迁移中草稿，尚未完成完整去DSH。Pi 1.5.0负责模型迭代、Models请求与SessionManager持久分支上下文；本地状态域和NativeTools负责配置、权限/审计执行链。保留消息、Topic、任务统筹执行、恢复、通知、文件交付与HTTP接口，排除3个可视化入口。200核心模块保留，5个明确适配，逐文件映射见source-manifest.json。
+Pi 1.5.0 now owns model/tool iteration and SessionManager durable branch context. The application owns model routing, live-agent and tool registries, background jobs, sandbox policy, Session/Projection registries, layered environment and durable credentials. Messages, Topic routing, coordination/execution, recovery, notifications, permissions, file delivery and HTTP routes retain the source behavior; three UI entries are excluded. Coverage maps preserve 200 core modules with six explicit adaptations.
 
-NativeTools在副作用前持久化调用意图，提交结果后再推进模型，保留取消排空、单调权限、PTC顺序审计及恢复不重放。通用LLM桥、DSH scope/schema、进程/jobs/sandbox后端、附件/凭据和工厂仍在，不能视为完整Pi原生实现。
+Tool side effects require durable intent before dispatch and durable results before the next model step. Recovery preserves unknown-outcome fences and never replays completed actions. Genuine Pi event streams retain signatures; transformed middleware output uses an explicit compatibility path without redispatch. Local process code is an attributed MIT source fork, not a from-scratch rewrite.
 
-本轮711项独立测试通过，1项Windows专属跳过；含真实本地三种模型协议、CLI重启、任务恢复及获准在外层执行器之外执行的原有应用沙箱。无真实钉钉、供应商模型或业务系统验收。完整证据与历史阶段限制见VALIDATION.md和validation-results.json。此前GitHub推送dry-run被403拒绝，未重试、未创建远端PR、未合并或部署。
+This remains an incomplete migration: the pinned v4 Session in-memory facade/publication hook, generic scope/message/RPC helpers, authorization sessions, attachments, filesystem/shell and permission wrappers, Windows ACL, skills/workspace and child-agent services remain. There are54 direct production DSH dependencies and15 removed active services; dependency counts do not establish functional completion.
 
-后台任务注册表后续已由 NativeJobs 接管，保留owner/作用域访问、限额、输出游标、终态通知与取消排空。最新719项独立通过/1 Windows跳过，纯生产依赖54项重复验证；生产直接DSH包54个。进程与沙箱后端仍保留，PR仍属未完成迁移草稿。
+Validation:793 independent passes/one Windows-only skip, including208 own,142 runtime,47 routing,388 domain and8 previously verified unchanged containment cases. Fresh production-only installation repeats118 cases, with243 runtime files and manifest/lock identical. Late credential confirmation/cancellation fixes have final own and production regression evidence. No real DingTalk, vendor OAuth/models or production business acceptance. See VALIDATION.md and validation-results.json for stage-specific evidence.
 
-NativeSandbox已替换profile/选择/探测/错误元数据；managed-process后端移为保留MIT来源的本地代码派生实现，运行时合同/runner/Windows FFI在本地。最新739独立通过/1 Windows跳过、生产副本71重复通过；包含4项未挂载的原生事件捕获原型测试。仍有54个生产直接DSH依赖，Windows ACL等仍在；不得将源代码复制或这些测试数当作完整迁移证据。
-
-NativeLlm与NativeAgents现已挂载，NativePiProvider不再继承LlmAdapter；正常Pi事件不再从chunks重建，middleware变更仍有权控制输出且不重发请求。最新763独立通过/1 Windows跳过、生产副本99重复通过；含5项未挂载projection原型测试。仍55个生产直接DSH依赖，Agent类型资源为RPC/子代理兼容明确保留；完整去DSH仍未完成。
-
-## Session、Projection、策略与启动环境阶段
-
-NativeSessions、NativeProjections、NativePolicy 均已挂载。自有测试195通过、完整任务运行时142通过、路由47通过、领域388通过、真实隔离8通过且Windows1跳过，共780通过。完整运行时是在策略挂载后执行；随后核心mode helper切换另跑31项相关回归，启动环境再以真实CLI与本地模型wire验证。未把子集测试冒充再次运行完整142项。
-
-独立生产依赖副本重复验证116项（103核心/6沙箱/7后台任务），不叠加独立用例数。运行时代码241文件与副本一致；静态闭包检查238文件/130裸导入。保留200个核心模块，排除3个UI模块，6个核心模块明确适配。日志见evidence/native-session-policy-*，机器结果见validation-results.json。
-
-SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存facade及publicationEntry兼容hook，未宣称完整去DSH。凭据、附件、部分工具/权限与skills/workspace等仍待替换。GitHub403拒绝未重试，未创建远端PR或合并。
+The GitHub push dry-run was denied with HTTP403. No retry, remote branch/PR, merge, deployment or business message occurred. This file is the local reviewable PR draft.

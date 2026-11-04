@@ -133,3 +133,11 @@ NativeSessions、NativeProjections、NativePolicy 均已挂载。自有测试195
 独立生产依赖副本重复验证116项（103核心/6沙箱/7后台任务），不叠加独立用例数。运行时代码241文件与副本一致；静态闭包检查238文件/130裸导入。保留200个核心模块，排除3个UI模块，6个核心模块明确适配。日志见evidence/native-session-policy-*，机器结果见validation-results.json。
 
 SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存facade及publicationEntry兼容hook，未宣称完整去DSH。凭据、附件、部分工具/权限与skills/workspace等仍待替换。GitHub403拒绝未重试，未创建远端PR或合并。
+
+## 原生凭据阶段
+
+自有208、任务运行时142、路由47、领域388全部通过；加上上一阶段未更改隔离后端的8通过/1 Windows跳过，当前独立793通过。完整runtime274389ms在挂载NativeCredentials后执行；后续相同值提交确认与Pi auth取消检查以自有208/生产118最终复测覆盖，没有把小组冒充再次完整runtime。
+
+全新生产依赖副本frozen安装通过，243运行时文件及manifest/lock逐字节一致；重复118通过（108核心+10本地凭据合同），不叠加独立数。旧credentials-local仅开发依赖，两个旧后端差分测试明确不在生产合同组选取范围，未以缺模块失败充作通过。静态闭包240文件/134裸导入；200核心/3UI排除/6适配守恒。
+
+证据evidence/native-credentials-*。真实旧进程/新进程交叉锁、原子文件替换和删除、死PID恢复、未知锁拒绝、inode替换围栏、关闭排空、Pi入场取消、注释与0600、错误不回显秘密、损坏credential启动拒绝均有定点测试。授权会话服务本阶段仍保留；没有真实OAuth、供应商、钉钉或业务操作。远端403未重试，未提交远端PR、合并或部署。

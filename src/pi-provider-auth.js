@@ -19,10 +19,10 @@ export function piAuthentication({getCredentials=()=>undefined,getEnvironment=na
   const writable=()=>{const store=getCredentials();if(!store)throw failure('NO_CREDENTIAL_STORE','No durable credential store is mounted');return store}
   const key=id=>'llm-pi-ai/'+id
   const credentials={
-    async read(id){if(!recordId(id))return undefined;return fromRecord(await getCredentials()?.readRecord(key(id)))},
-    async list(){const records=await getCredentials()?.listRecords()??[];return records.filter(entry=>entry.key.startsWith('llm-pi-ai/')&&recordId(entry.key.slice(10))).map(entry=>({providerId:entry.key.slice(10),type:entry.kind==='api-key'?'api_key':'oauth'}))},
-    async modify(id,mutate){if(!recordId(id))throw failure('UNSTORABLE_PROVIDER_ID','Provider id cannot address a durable credential record');return fromRecord(await writable().modifyRecord(key(id),async record=>{const next=await mutate(fromRecord(record));return next===undefined?undefined:toRecord(next)}))},
-    async delete(id){if(recordId(id))await writable().deleteRecord(key(id))},
+    async read(id,options){options?.signal?.throwIfAborted();if(!recordId(id))return undefined;return fromRecord(await getCredentials()?.readRecord(key(id)))},
+    async list(options){options?.signal?.throwIfAborted();const records=await getCredentials()?.listRecords()??[];return records.filter(entry=>entry.key.startsWith('llm-pi-ai/')&&recordId(entry.key.slice(10))).map(entry=>({providerId:entry.key.slice(10),type:entry.kind==='api-key'?'api_key':'oauth'}))},
+    async modify(id,mutate,options){options?.signal?.throwIfAborted();if(!recordId(id))throw failure('UNSTORABLE_PROVIDER_ID','Provider id cannot address a durable credential record');return fromRecord(await writable().modifyRecord(key(id),async record=>{options?.signal?.throwIfAborted();const next=await mutate(fromRecord(record));return next===undefined?undefined:toRecord(next)},options))},
+    async delete(id,options){options?.signal?.throwIfAborted();if(recordId(id))await writable().deleteRecord(key(id),options)},
   }
   const authContext={
     async env(name){if(reference(name)){const hit=await getCredentials()?.resolve(name);if(hit!==undefined)return hit.value}return getEnvironment(name)},

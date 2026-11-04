@@ -77,3 +77,11 @@ NativeSessions拥有入册/创建/卸载、精确Session实例flush、全部list
 NativePolicy不再生成/加载旧策略补丁。站立mode、一次性批准优先级、不可变cwd、artifact owner/root绑定、每次resolve检查所有祖先/链接保持；核心execution-session的mode写入改走本地helper，成为第6个明确适配的核心模块。旧setter依赖仍为其他未迁移wrapper保留，没通过移除依赖声明伪装完成。
 
 环境审查确认旧launch-environment包只有helper而不是可挂载插件，原先单独列row并未加载dotenv。现CLI在应用模块前验证/加载继承env > 项目.env > 用户home.env，并保留层来源；只补未设置值，仓库不能设置proxy/代码路径，home不能更改CA。CLI复用既有proxy transport工具并在关闭时恢复，嵌入式createHost只提供隔离snapshot、不修改process.env或全局transport。模型实际调用证明可写dotenv fallback后，下一请求采用managed credential；没有将file值误记为只读继承env。SDK bootstrap目录/更新入口与Native Bot保留名字同样只能来自继承层。
+
+## 原生凭据服务阶段
+
+NativeCredentials已取代活动credentials-local：严格v1 YAML refs/records解析、原flat格式受控迁移、注释保留、只读继承环境/托管存储/dotenv层级、metadata-only通知、watcher整份快照替换及损坏reload保持最后好版本。未知字段、重复键、非JSON grant和非owner-only文件拒绝；错误不回显凭据值。返回值和mutator输入隔离，回调返回undefined不修改缓存。显式相同值提交仍发布确认，兼容授权流程。
+
+跨进程使用原PID-newline/hash takeover协议，真实旧进程与新进程并发grant更新通过。新实现保持open inode校验，拒绝丢失写锁后的提交/释放，未知或活PID锁不偷取；写temp0600并fsync、rename。关闭拒绝排队刷新、排空已开始的轮换，不自动重放回调。Pi CredentialStore的signal在入场和mutator前检查，已开始轮换保留排空语义。Watcher追踪真实原子替换与删除。Host增加credentials/authorization必需服务检查，损坏文件不能静默退回ambient auth。
+
+旧credentials-local仅开发差分依赖；通用credential类型资源、授权会话、附件、skills/workspace和部分工具/权限等仍保留。测试数与证据见VALIDATION/validation-results.json；不以这次服务替换宣称完整迁移。远端403未重试。

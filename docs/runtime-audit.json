@@ -16,6 +16,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeCredentials layered reference and durable record store, comment-preserving strict YAML, legacy-interoperable cross-process refresh lock, watcher snapshots and contained notifications",
     "resident HTTP/DWS bridge",
     "NativeSessions publication/liveness/flush/fork registry over explicit legacy audit facade",
     "NativeProjections live/cold/checkpoint folds with journal-end anchoring and observer isolation",
@@ -38,7 +39,7 @@
     "runtime prompt assembly and provider replay",
     "legacy v4 import and writer fencing only",
     "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
-    "durable credential record store, neutral authorization service, attachment storage/request-image policy helpers",
+    "neutral authorization service, attachment storage/request-image policy helpers",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
     "skills, workspace registry, child-agent providers"
@@ -74,10 +75,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-credentials",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-credentials-local",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -265,13 +262,12 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 108,
+  "developmentDependencyCount": 109,
   "activeLiteralDshPluginRows": [
     "agent-instructions",
     "agent-preset-registry",
     "attachment-local",
     "authorization",
-    "credentials-local",
     "fs-observation-policy",
     "fs-sandbox",
     "llm-retry",
@@ -306,6 +302,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "credentials-local -> src/native-credentials.js + credential-file.js; legacy document/lock protocol retained for interoperability",
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
     "agent-default-model/config-editor dependency -> durable native model selection",
     "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",

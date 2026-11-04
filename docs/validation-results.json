@@ -328,5 +328,30 @@
     "remaining": "pinned v4 Session facade/publication hook, generic scope/message/projection helpers, RPC, credentials, attachments, skills/workspace/subagents, permission and filesystem/shell wrappers, Windows ACL",
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "nativeCredentials": {
+    "date": "2026-11-04",
+    "ownPass": 208,
+    "runtimePass": 142,
+    "runtimeDurationMs": 274389.300151,
+    "runtimeScope": "NativeCredentials mounted; late identical-write confirmation and Pi auth cancellation changes covered by final own208 and production118",
+    "routingPass": 47,
+    "domainPass": 388,
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "source": "preceding unchanged sandbox backend checkpoint; not rerun for credential service change"
+    },
+    "uniquePass": 793,
+    "productionOnlyRepeatedPass": 118,
+    "productionRepeatedScope": "108 core + 10 native credential contracts; two old-backend differential tests intentionally excluded because development dependency is absent",
+    "runtimeFilesCompared": 243,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 240,
+    "literalBareImports": 134,
+    "directRuntimeDshDependencies": 54,
+    "removedActiveDshServices": 15,
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

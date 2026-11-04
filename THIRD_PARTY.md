@@ -17,3 +17,5 @@ DSH service/loading dependencies; Windows process FFI remains a separate library
 `src/process/control.js` derives from `@deepseek-ai/dsh-subprocess@0.2.1-alpha.2`, Copyright (c) 2026 DeepSeek, under the same MIT terms. The legacy control marker is retained for unmodified worker interoperability.
 
 `src/process/win32.js` derives from `@deepseek-ai/dsh-win32-process@0.2.1-alpha.2`, Copyright (c) 2026 DeepSeek, under the same MIT terms. It retains the Job/token/pipe FFI implementation with local lazy loading. Windows runtime validation remains outstanding on Linux.
+
+Credential storage compatibility: `src/native-credentials.js` implements the existing v1 YAML/reference/record format; `src/credential-file.js` retains the PID-newline and hash-named takeover protocol of MIT @deepseek-ai/dsh-atomic-write for mixed-version refresh safety. Application-owned implementation adds inode ownership fencing, fsync and guarded close/drain. These protocols are not Pi SDK services; this is not a claim of full DSH independence. Existing DSH MIT notices remain in licenses/.

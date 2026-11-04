@@ -90,7 +90,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     row('workspace'), { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [row('skill')] : []),
     row('agent-preset-registry', { default: 'native-test' }),
-    ...(options.resident ? [row('credentials-local', { path: join(root, 'credentials.json'), watch: false }), row('attachment-local', { dshHome: join(root, 'attachment-home') })] : []),
+    ...(options.resident ? [{ name: new URL('../../src/native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } }, row('attachment-local', { dshHome: join(root, 'attachment-home') })] : []),
   ])
   signal?.throwIfAborted()
   await ctx.loader.await()
