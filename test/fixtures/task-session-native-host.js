@@ -105,12 +105,11 @@ export async function nativeTaskHost(root, decide, options = {}) {
     row('subprocess-local'), row('sandbox-local'), policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),
     row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }), row('session-persistence-jsonl', { root: join(root, 'legacy-sessions'), compression: 'none' }),
-    row('storage'), row('storage-json', { root: join(root, 'storage') }), row('storage-domain', { backend: 'json' }),
+    { name: pathToFileURL(resolve('src/native-state.js')).href, config: { root: join(root, 'storage'), model: { provider: 'native-task-test', model: 'controlled' } } },
     row('workspace'), { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [row('skill')] : []),
     row('agent-preset-registry', { default: 'native-test' }),
-    ...(options.resident ? [row('credentials-local', { path: join(root, 'credentials.json'), watch: false }), row('attachment-local', { dshHome: join(root, 'attachment-home') }),
-      row('agent-default-model', { provider: 'native-task-test', model: 'controlled' })] : []),
+    ...(options.resident ? [row('credentials-local', { path: join(root, 'credentials.json'), watch: false }), row('attachment-local', { dshHome: join(root, 'attachment-home') })] : []),
   ])
   signal?.throwIfAborted()
   await ctx.loader.await()

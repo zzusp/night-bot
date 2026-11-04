@@ -1,5 +1,7 @@
 # 迁移范围
 
+**迁移尚未完成。** 真正 Pi 原生部分、DSH 剩余功能/进程/协议/存储和下一步门槛见 [DSH-AUDIT](DSH-AUDIT.md)。
+
 源：`HiQ-AI/dingtalk-dsh-assistant`，主干 `93e431a`（#341）。目标既有初始 README 与 MIT LICENSE；保留 LICENSE，更新 README。没有复制源仓库 `.git`、`.env`、个人 profile、凭据、数据库、真实消息或历史验收产物。
 
 ## 运行边界
@@ -39,3 +41,7 @@ Host 保持唯一参数/业务/权限校验和工具调度入口。Pi 的操作�
 - 原生测试 Host 改挂 PiLoopAgent；人工协调恢复测试保留模拟的重试到期时钟，直到原执行实际恢复并排空，防止异步入场前将时钟倒退。原业务断言全部保留。
 - API 只允许 loopback 启动；未加入远程鉴权系统或可视化。
 - 未部署、未合并，未迁移任何生产数据；旧部署脚本仅为源实现参考和测试依赖，不能作为 Night Bot 部署入口。
+
+## 后续替换记录
+
+`src/native-domain.js` 与 `src/native-state.js` 替换 active DSH storage/storage-json/storage-domain/default-model 服务。核心 store 与旧 v8 schema 的声明 helper 改用本地实现，其余领域源码继续保留。新模型保存接口不依赖 DSH config editor，HTTP 保存与重启已测。兼容服务名保留，实际实现与不支持的额外布局明确见 DSH-AUDIT；此变化不意味着会话、工具、权限或 provider 已脱离 DSH。生产直接依赖已与 108 个开发/历史测试依赖分开，但仍有 56 个生产直接 DSH 依赖。

@@ -1,39 +1,84 @@
 {
-  "date": "2026-11-04",
-  "node": "24.19.0",
-  "groups": {
-    "own": {
-      "tests": 12,
-      "pass": 12,
-      "fail": 0,
-      "skipped": 0
+  "baseline": {
+    "date": "2026-11-04",
+    "node": "24.19.0",
+    "groups": {
+      "own": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "skipped": 0
+      },
+      "domain": {
+        "tests": 388,
+        "pass": 388,
+        "fail": 0,
+        "skipped": 0
+      },
+      "runtime": {
+        "tests": 142,
+        "pass": 142,
+        "fail": 0,
+        "skipped": 0
+      },
+      "routing": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "skipped": 0
+      },
+      "containment": {
+        "tests": 6,
+        "pass": 1,
+        "fail": 4,
+        "skipped": 1
+      }
     },
-    "domain": {
-      "tests": 388,
-      "pass": 388,
-      "fail": 0,
-      "skipped": 0
-    },
-    "runtime": {
-      "tests": 142,
-      "pass": 142,
-      "fail": 0,
-      "skipped": 0
-    },
-    "routing": {
-      "tests": 47,
-      "pass": 47,
-      "fail": 0,
-      "skipped": 0
-    },
-    "containment": {
-      "tests": 6,
-      "pass": 1,
-      "fail": 4,
-      "skipped": 1
-    }
+    "remotePush": "denied HTTP 403 (dry run only)",
+    "pullRequest": "not created: GitHub API Forbidden",
+    "deployed": false,
+    "baselineCommit": "b16ac5397ab1884dc22ec6d08c8c5b4349709632"
   },
-  "remotePush": "denied HTTP 403 (dry run only)",
-  "pullRequest": "not created: GitHub API Forbidden",
-  "deployed": false
+  "nativeStateReplacement": {
+    "status": "partial-migration-not-dsh-independent",
+    "groups": {
+      "own": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "skipped": 0
+      },
+      "runtime": {
+        "tests": 142,
+        "pass": 142,
+        "fail": 0,
+        "skipped": 0
+      },
+      "routing": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "skipped": 0
+      },
+      "domain": {
+        "tests": 388,
+        "pass": 388,
+        "fail": 0,
+        "skipped": 0
+      },
+      "containment": {
+        "tests": 6,
+        "pass": 1,
+        "fail": 4,
+        "skipped": 1
+      }
+    },
+    "uniquePass": 598,
+    "environmentFailures": 4,
+    "platformSkipped": 1,
+    "productionOnlyRepeatedTests": 10,
+    "directRuntimeDshDependencies": 56,
+    "remotePush": "not retried; prior 403 denial stands",
+    "deployed": false
+  }
 }

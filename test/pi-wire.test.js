@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createServer, get } from 'node:http'
+import { createServer, get, request } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -13,6 +13,14 @@ const jsonGet = url => new Promise((resolve, reject) => get(url, response => {
     try { resolve(JSON.parse(body)) } catch (error) { reject(error) }
   })
 }).on('error', reject))
+
+const jsonPut = (url, value) => new Promise((resolve, reject) => {
+  const body = JSON.stringify(value), req = request(url, { method: 'PUT', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, response => {
+    let text = ''; response.on('data', chunk => { text += chunk }); response.on('end', () => {
+      try { resolve({ status: response.statusCode, body: JSON.parse(text) }) } catch (error) { reject(error) }
+    })
+  }); req.on('error', reject); req.end(body)
+})
 
 test('Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up', { timeout: 20000 }, async t => {
   const root = await mkdtemp('/tmp/night-pi-wire-'), requests = []
@@ -57,12 +65,12 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
   const root = await mkdtemp('/tmp/night-pi-cli-')
   const portServer = createServer(); await new Promise(r => portServer.listen(0, '127.0.0.1', r))
   const port = portServer.address().port; await new Promise(r => portServer.close(r))
-  const config = { stateDir: join(root, 'state'), workspaceDir: join(root, 'work'), model: { provider: 'openai', model: 'gpt-4.1' }, providers: { openai: { apiKeyEnv: 'NIGHT_BOT_UNUSED_KEY' } },
+  const config = { stateDir: join(root, 'state'), workspaceDir: join(root, 'work'), model: { provider: 'fixture', model: 'first' }, providers: { fixture: { api: 'openai-completions', baseURL: 'http://127.0.0.1:1/v1', models: [{ id: 'first' }, { id: 'second' }] } },
     resident: { port, dws: { enabled: false, writesAuthorized: false }, taskSessions: { instanceId: 'cli-fixture', ownerActorId: 'fixture-owner', webActorId: 'fixture-owner', ingressEpoch: '2026-11-04T00:00:00Z', initialize: true } } }
   const path = join(root, 'config.json'); await writeFile(path, JSON.stringify(config))
-  const child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe'] })
+  let child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe'] })
   let output = ''; child.stdout.on('data', b => { output += b }); child.stderr.on('data', b => { output += b })
-  const exited = once(child, 'exit')
+  let exited = once(child, 'exit')
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); await exited; await rm(root, { recursive: true, force: true }) })
   let health
   const deadline = Date.now() + 12000
@@ -73,6 +81,19 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
   }
   assert.equal(health?.status, 'ok', output)
   assert.equal(health.transport, 'fake-dws')
+  const saved = await jsonPut(`http://127.0.0.1:${port}/config/agent`, { provider: 'fixture', model: 'second' })
+  assert.equal(saved.status, 200, JSON.stringify(saved.body)); assert.equal(saved.body.model, 'second')
   child.kill('SIGTERM'); const [code] = await exited
   assert.equal(code, 0, output)
+  child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe'] })
+  child.stdout.on('data', b => { output += b }); child.stderr.on('data', b => { output += b }); exited = once(child, 'exit')
+  let restored
+  const restartDeadline = Date.now() + 10000
+  while (Date.now() < restartDeadline) {
+    if (child.exitCode !== null) assert.fail('Restart exited: ' + output)
+    try { restored = await jsonGet(`http://127.0.0.1:${port}/state/agent-config`); break } catch {}
+    await new Promise(r => setTimeout(r, 50))
+  }
+  assert.equal(restored?.model, 'second', output)
+  child.kill('SIGTERM'); const [restartedCode] = await exited; assert.equal(restartedCode, 0, output)
 })

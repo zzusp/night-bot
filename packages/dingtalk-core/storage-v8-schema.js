@@ -1,5 +1,5 @@
 // v8 离线归档契约，冻结于 83fc504。仅供历史迁移，禁止运行时导入；不引用可变业务 schema。
-import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
+import { defineDomain, domainTable } from '../../src/native-domain.js'
 import { z } from 'zod'
 export const topicRefSchema = z.object({ topicId: z.string().min(1), revision: z.number().int().positive() }).strict()
 export const unitRefSchema = z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive() }).strict()

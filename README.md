@@ -1,8 +1,10 @@
 # Night Bot
 
+**当前为迁移中实现，尚未完成去 DSH 的 Pi 原生重写。** 详细边界见 [DSH 依赖审计](docs/DSH-AUDIT.md)。
+
 基于 **pi-agent-core** 的无界面百部钉钉助手。Pi 驱动模型与工具迭代，保留原百部的消息、Topic、任务统筹/执行、恢复、权限、通知和交付账本。提供 HTTP API，不包含 Web 看板或设置页面。
 
-这不是一套精简演示：领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。为保护既有行为，当前仍使用 DSH/Cordis 的存储、会话格式、工具、权限和生命周期服务作为兼容 Host；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
+这不是一套精简演示：领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；会话格式、模型路由、工具、权限和生命周期等仍使用 DSH/Cordis 兼容 Host；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
 
 ## 运行
 
@@ -21,11 +23,14 @@ curl http://127.0.0.1:18998/health
 
 默认 DWS 关闭且外发未授权。实际启用需同时配置 `resident.dws.enabled`、`writesAuthorized`、`profile` 和 `groups`，以及真实 `ownerActorId`、`webActorId`；这些开关不会替代任务自身的业务授权。保留原工具的权限 preset 与业务授权规则。HTTP 仅监听 loopback；需要远程访问时使用经过鉴权的运维通道。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
 
+`/config/agent` 保存的默认模型选择持久化于 `stateDir/storage/night_model_selection.json`，重启后优先于初始 JSON 配置中的默认选择；provider 声明仍由启动配置提供。
+
 `providers` 使用原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为额外技能目录。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和原生子代理；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。
 
 ## 验证
 
 ```sh
+pnpm audit:runtime       # DSH/Pi 依赖和服务边界审计（当前明确为部分迁移）
 pnpm test                # 本地协议、CLI、配置与文件守恒检查
 pnpm test:domain         # 消息、路由领域、通知、交付和排期逻辑
 pnpm test:runtime        # Pi 下的原生会话/任务/恢复/权限/技能回归
