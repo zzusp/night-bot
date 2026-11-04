@@ -39,14 +39,14 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }),
       { name: new URL('./pi-authority.js', import.meta.url).href },
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
-      { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
-      row('subagent'), { name: new URL('./native-subagent-providers.js', import.meta.url).href }, row('tool-subagent-control'), { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
+      { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
+      { name: new URL('./native-subagents.js', import.meta.url).href }, { name: new URL('./native-subagent-providers.js', import.meta.url).href }, row('tool-subagent-control'), { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
       { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       ...(config.plugins ?? []), ...extraPlugins,
     ]
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
-    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','approval','permissionPresets'])
+    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')

@@ -79,7 +79,8 @@
     "yaml": "2.9.1",
     "zod": "^4.0.0",
     "@deepseek-ai/cordis-plugin-include": "1.0.10-alpha.1",
-    "semver": "7.8.6"
+    "semver": "7.8.6",
+    "@deepseek-ai/dsh-session-format-catalog": "0.2.1-alpha.2"
   },
   "packageManager": "pnpm@11.25.0",
   "devDependencies": {
@@ -151,7 +152,6 @@
     "@deepseek-ai/dsh-schedule": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session-checkpoint-policy": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session-format": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-session-format-catalog": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session-format-v0-to-v1": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session-format-v1-to-v2": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session-format-v2-to-v3": "0.2.1-alpha.2",

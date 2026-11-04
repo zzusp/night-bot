@@ -17,12 +17,14 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeSubagents owns provider registry, activation pools/lineage/control/cold reconstruction/structured result and descendant drain via Pi-backed local Agents; initial parent catalog/inbox and terminal results require Pi commit proof; canonical error identities and control tool helpers remain explicit",
+    "NativeSessionQuery restores missing default-host cold observation/discovery, live-preferred snapshots/revision cache and read-only audit/presentation operations with owner cancellation/drain; legacy event facade/catalog helpers remain explicit",
     "NativeAgentPresets owns versioned definitions, retained generations, scoped leases, exact parent revision binding and Loader isolation audits; local profile compatibility preflight preserves legacy v4 peer ABI checks without app-boot import; selection is Pi-committed and concurrent-start rechecked",
     "NativeAgentInstructions Pi-authoritative baseline/change/removal context with capability-aware discovery, inherited-root provenance, bounded source/render budgets, execution-token nested touches and cancellation/drain; document algorithms are explicit MIT source-derived code",
     "NativeShellEnvironment trusted legacy-named per-execution facts, immutable declared key ownership, caller profile attribution, inherited-home provenance and owner-scoped disposal; actual Pi/bash kernel wire strips ambient spoofed authority",
     "NativeApproval borrowed scope-bound one-call decisions with durable Pi asked/decided admission, revocation/cancel fences and commit drain; NativePermissionPresets canonical knobs, seeded pinning and gated current-only Auto; terminal driver commit before idle and live-instance message fencing on failure",
     "One-shot Pi operational batch adapters over the retained bounded safe/exclusive application scheduler, ordered durable results, live reclassification, cancellation/drain and completion fences",
-    "Local spawn/fork provider declarations and balanced completed-turn seed preparation; actual Pi child wire preserves preset inheritance/context separation; continuation manager remains explicit DSH dependency",
+    "Local spawn/fork provider declarations and balanced completed-turn seed preparation; actual Pi child wire preserves preset inheritance/context separation; continuation manager is now NativeSubagents; canonical errors/control helpers remain explicit",
     "NativeLlmRetry durable Pi-anchored retry chains/budgets, Retry-After/backoff, downstream precedence and cancellation/drain; scheduling and started events flush before readmission",
     "NativeSystemPrompt scoped prompt/variable/context/tool assembly, complete-section authority and required runtime fact resampling; public render/scope helpers remain explicit",
     "Standalone operator auth/reference CLI over native credential/authorization services and actual Pi login; no resident/DWS startup, secret-safe input and metadata-only output; default live credential watcher",
@@ -49,6 +51,7 @@
     "native code transport with ordered nested dispatch, cancellation/drain and one-shot sandbox approval"
   ],
   "dshRemaining": [
+    "Session-title service and event-format/catalog presentation helpers; query/observation controller now application-owned",
     "Cordis agent factory/lifecycle compatibility fork",
     "pinned in-memory v4 Session data facade and publication compatibility hook; Session/Projection registries now local",
     "v4 event validators and persistent inbox compatibility facade",
@@ -58,7 +61,7 @@
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and capability policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
-    "skill rendering/invocation helpers; workspace error identities only (registry local) and child-agent continuation manager/helpers (local provider declarations now native)"
+    "skill rendering/invocation helpers; workspace error identities only (registry local) and canonical child-agent errors and control/tool helpers; continuation manager and local provider declarations are now application-owned"
   ],
   "directRuntimeDshDependencies": [
     {
@@ -228,14 +231,17 @@
     {
       "name": "@deepseek-ai/dsh-workspace",
       "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format-catalog",
+      "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 120,
+  "developmentDependencyCount": 119,
   "activeLiteralDshPluginRows": [
     "fs-observation-policy",
     "fs-sandbox",
     "session-title",
-    "subagent",
     "tool-",
     "tool-fs",
     "tool-fs-search",
@@ -254,11 +260,12 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "subagent -> src/native-subagents.js with Pi admission/terminal gates; native-session-query.js restores an absent required service, not counted as an old active service replacement",
     "agent-preset-registry -> src/native-agent-presets.js + native-profile-preflight.js; explicit source-derived generation/preflight algorithms, Pi selection admission and failure fencing",
     "agent-instructions -> src/native-agent-instructions.js; Pi hostMessages are the only visible-history authority, source-derived document algorithms explicitly attributed",
     "shell-env -> src/native-shell-env.js; DSH_ script protocol retained; actual shell executor/tool wrappers remain explicit libraries",
     "user-approval/permission-presets -> src/native-approval.js + src/native-permission-presets.js; durable one-call decisions and canonical permission facts, generic FS/shell wrappers still retained",
-    "subagent-spawn-in-process/subagent-fork-in-process -> src/native-subagent-providers.js; child manager/lifecycle still retained explicitly",
+    "subagent-spawn-in-process/subagent-fork-in-process -> src/native-subagent-providers.js; manager/lifecycle now native-subagents.js; canonical error/control helpers remain",
     "llm-retry -> src/native-llm-retry.js; Pi journal admission checks and bounded/unbounded recovery, no completed-tool replay",
     "helper-only timeout row removed; not counted as an active service replacement",
     "system-prompt -> src/native-system-prompt.js; ordered scoped assembly and admission refresh; old public render/scope helpers remain",

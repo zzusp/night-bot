@@ -249,3 +249,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own364/364、完整runtime142/142（276320.298322ms）、routing47/47（26412.217702ms）通过。真实kernel containment九项通过、一项Windows专属跳过（13194.834498ms）；domain388未改动沿用，共950独立通过。六项registry合同/真实Pi wires及四项preflight合同验证保留旧generation/lease、精确parent继承、不可变声明、目录/RPC元数据、根服务泄漏与缺依赖/导入失败、Pi持久选择、首次turn后锁定、等待中启动竞态、失败实例封闭及新实例resume。兼容预检保留精确ABI/exemption、patched Include、循环/不可读Include诊断；不在预检中评估插件代码。
 
 全新`/tmp/night-bot-native-presets-production`production frozen ignore-scripts安装成功，234核心/wire+38合同=272项复测通过。265运行文件及manifest/lock逐字一致，静态262 JS/183字面bare imports通过。证据`evidence/native-presets-*.txt`。42直接生产DSH依赖/30活动服务替换，source-derived算法明确MIT归属。仍非完整迁移；后续审查发现默认Host缺少旧manager冷恢复所需sessionQuery，尚未把该功能列为完整覆盖。远端403未重试。
+
+## 原生子代理 manager / cold query 验证
+
+最终own384/384、runtime142/142（273832.191419ms）、routing47/47（23866.063919ms）通过。任务夹具组合未改动；新默认Host manager/query的直接行为由11项实际Pi child-control wires覆盖，不能把142任务回归当作完整generic child功能验收。真实kernel containment九项通过、一项Windows专属跳过（15906.450825ms）；domain388未改动沿用，共970独立通过。另有6个query合同、3个旧helper差分，涵盖冷读revision/handle关闭、source冲突、取消/关闭排空及self-close。
+
+真实wires验证cold continuation不重调provider/不重放已完成工具、目录/递归未知与不可用分支、父会话完成通知、结构化纠错、人工文本和有效/无效图片、request/time-zone归属、容量forest隔离、interrupt ack与工具退出分离、scoped forest drain、startup/terminal Pi commit失败及实际Host shutdown。人工图片错误从旧AttachmentError身份切换为本地错误及当前附件服务的封闭代码识别，保留attachment-invalid；图片正文进入真实Pi wire。测试最初误把父通知HTTP算入child重复请求，已按子内容/图片识别并显式验证通知，未禁用通知。外部provider仅fake run协议，非真实后端验收。
+
+全新`/tmp/night-bot-native-subagents-production`production frozen ignore-scripts安装成功，250实质核心/wire+38合同=288项复测通过。首次筛选把全部排除的helper文件作为Node空harness计入1项；最终移除该文件重跑，不给空harness通过计数。269运行文件及manifest/lock逐字一致，静态266 JS/201字面bare imports通过。证据`evidence/native-subagents-*.txt`。43直接DSH生产依赖（新声明一个read-only格式helper）、31个活动服务替换；此前缺失query已恢复，但仍非完整迁移。远端403未重试。
