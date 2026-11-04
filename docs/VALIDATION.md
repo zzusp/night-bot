@@ -175,3 +175,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 全新生产依赖frozen安装通过，重复178通过（141核心/registry/真实正文刷新wire+37本地合同），252运行时文件及manifest/lock一致。闭包249文件/149裸导入；200核心/3UI排除/6适配守恒。watcher派生文件与manifest hash一致，MIT notice保留。
 
 11文件provider合同、11registry合同、真实Host外部metadata更新及真实Pi正文单独变更/提示/显式重读/旧审计提供证据。旧provider差分不选择到生产合同组。watcher在Linux执行，Windows/macOS实机未验收。51直接DSH依赖/20活动替换仍是部分迁移；无真实供应商或DingTalk副作用，403未重试。日志evidence/native-skill-filesystem-*。
+
+## 原生工作区验证
+
+最终own288/288、完整runtime142/142（270105.91513ms）、routing47/47均通过。沿用未改动domain388及工作目录阶段真实containment8通过/1 Windows跳过，共873个独立通过。新17项workspace合同与1实际Pi wire包含旧服务差分、canonical成员、header-only恢复、pending marker/回滚、观察一致性、关闭排空与归档祖先拦截。
+
+全新`/tmp/night-bot-workspace-production`使用production frozen install显式ignore-scripts后复测159+37=196项通过，253运行文件及manifest/lock逐字一致；静态250 JS文件/152字面bare imports通过。首次未指定ignore-scripts的安装因pnpm拒绝未批准build scripts返回非零，未把该次安装当成功；没有批准或运行额外脚本，验证使用保留的预构建运行依赖。证据见`evidence/native-workspace-*.txt`。
+
+生产DSH直接依赖51，活动服务替换21，仍非完整迁移。工作区旧包仅保留公开错误身份；权限/FS/shell/子代理及Session facade等仍待替换。没有真实业务调用、远端重试、PR或合并。

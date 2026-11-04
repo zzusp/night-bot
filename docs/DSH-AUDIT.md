@@ -167,3 +167,13 @@ OS watcher保留明确MIT源码派生后端，见skill-watcher-fork-manifest及�
 修正此前headless固定watch:false导致外部编辑不触发正文复核的缺口：默认skillWatch:true，允许显式false。真实Host外部更新metadata可见；实际Pi SDK四次wire请求证明只改正文也在下步得到提示、不会自动注入新正文，显式重读才采用新版本且保留旧审计。注册表单独卸载会撤销外部owner注册的provider lifecycle，避免遗留watcher。11文件provider合同、1实际刷新wire及11注册表合同覆盖读取/失效/撤销边界。
 
 原skill-filesystem仅开发差分依赖。公开skill render/invocation helpers、FS/shell/permission wrappers、workspace/子代理、Session facade等仍在；51直接DSH依赖/20活动服务替换是部分迁移记录。后续还需核对无可视化的operator auth/config入口，不能因内部service可调用就把所有原Host设置功能视作已交付。
+
+## 原生工作区阶段
+
+NativeWorkspace取代活动workspace注册表：v2全局顺序/账户、canonical目录与不可变Session cwd成员校验、header-only历史引导、默认目录首次初始化与删除tombstone、排序/标题/移除、归档/置顶、活动检查和stop事件保持。Pi SessionManager持久服务提供header，注册表不读取模型/事件正文；原workspace包仅保留五种公开错误身份供既有调用者兼容，没有构造旧注册表。
+
+创建和删除采用明确pending marker，只有匹配标记的单行可恢复；未知孤儿或重复账户拒绝启动，不推测修复。持久提交后才发布实体/order，失败回滚；共享域关闭先排空已入场的复合变更。原调用者scope销毁不使长期workspace实体失效；显式合法重绑定会清理旧的失效原始账户，避免下次启动出现重复owner。
+
+补回一个原先藏在UI session controller中的非可视化要求：agent/pre-step拒绝归档会话及其subagent祖先链，独立fork不继承归档。真实Pi wire证明归档父/子没有模型请求、fork仍可运行、取消归档后恢复；仅查询已live或已索引header，未知cold祖先保持原直接parent归档fallback，没有声称验证所有未加载谱系。归档先持久化再请求停止，不把发出cancel冒充进程已经退出，也不重放业务。
+
+17个合同覆盖旧服务差分、故障恢复、header读取失败、异步观察一致性、owner关闭/自关闭和祖先判定，另有1个真实Pi wire。51个直接生产DSH依赖、21个活动服务替换仍是部分迁移：workspace错误身份、公共skill helpers、子代理provider、FS/shell/权限及v4 Session facade继续明确保留。远端403未重试。

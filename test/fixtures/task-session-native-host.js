@@ -87,7 +87,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),
     row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }), { name: pathToFileURL(resolve('src/pi-authority.js')).href }, { name: pathToFileURL(resolve('src/pi-session-persistence.js')).href, config: { root: join(root, 'legacy-sessions'), compression: 'none' } },
     { name: pathToFileURL(resolve('src/native-state.js')).href, config: { root: join(root, 'storage'), model: { provider: 'native-task-test', model: 'controlled' } } },
-    row('workspace'), { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
+    { name: new URL('../../src/native-workspace.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [{ name: new URL('../../src/native-skills.js', import.meta.url).href }] : []),
     row('agent-preset-registry', { default: 'native-test' }),
     ...(options.resident ? [{ name: new URL('../../src/native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } }, { name: new URL('../../src/native-attachments.js', import.meta.url).href, config: { dshHome: join(root, 'attachment-home') } }] : []),
