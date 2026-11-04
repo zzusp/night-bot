@@ -10,7 +10,7 @@
 
 | 范围 | 当前实际实现 | Pi 原生程度 / 待办 |
 |---|---|---|
-| 代理迭代及操作性工具调用 | `@earendil-works/pi-agent-core@1.5.0` 的 `runAgentLoop` | 真正使用 Pi 迭代；单会话工具串行，Host 仍执行工具调度 |
+| 代理迭代及操作性工具调用 | `@earendil-works/pi-agent-core@1.5.0` 的 `runAgentLoop` | 真正使用Pi迭代/parallel批次准备；应用调度拥有有界安全池、独占屏障和有序收据 |
 | 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。prompt 组装和 provider seam 仍待替换 |
 | 模型请求与流 | 本地独立类 `NativePiProvider` → Pi Models.streamSimple 1.5.0；本地 catalog/auth/retry/login/discovery/context/events、原生事件捕获 | **本轮移除旧 DSH provider 插件**；NativeLlm拥有拓扑/调用准备和middleware准入；正常请求保留真实Pi事件，legacy/经修改/超出事件缓存上限的流明确回退兼容编码且不重发。旧消息、附件/工具历史投影helpers与请求格式仍在，尚非完全去DSH |
 | Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；NativeAgents live registry/ALS；NativeSessions/NativeProjections registries；DSH Session facade/scope兼容 | **兼容层**；不是 Pi SDK 的 `createAgentSession`；持久化另由真实 SessionManager 接管 |
@@ -205,3 +205,9 @@ NativeLlmRetry替换活动llm-retry，拥有每provider/policy预算、durable r
 两个旧provider差分和一个借用事件身份/独立数组合同通过。实际Pi wire在父会话第二轮仍等待模型时启动spawn/fork：两child均为PiLoopAgent，各自Pi SessionManager日志且继承night-bot preset；spawn没有父内容，fork有已完成轮次但没有正在等待的轮次。该实验只证明实际构造/上下文边界，不冒充全部续办、冷恢复、工具限制和外部provider验收。
 
 旧两provider根依赖移至开发差分；47直接生产DSH依赖、25活动服务替换仍为部分迁移。旧子代理continuation manager、preset、FS/shell/权限、公开helpers和v4 Session facade继续保留。远端403不重试。
+
+## 工具批次并发行为补齐
+
+核对锁定Pi 1.5安装包的toolExecution接口后，移除此前强制串行适配。Pi准备完整批次并触发操作性adapters；这些adapters共享唯一批次promise，由本地保留的MIT调度器执行一次，保持NativeTools准入/审计、maxParallelToolCalls上限、live isConcurrencySafe重分类、独占屏障与model顺序结果。每个SDK调用仅领取自己的已提交结果，不再次派发工具。当前协议路径中的异常重复call id保留无效果/ToolNotStarted可纠正收据基线，不宣称支持该无效provider输出；结果投影在释放adapter前按序完成，失败不留下未等待的兄弟工作。
+
+配置新增可选正整数maxParallelToolCalls，默认4。五项真实Pi wire覆盖异常重复id无效果恢复基线、cap=2、乱序完成但model顺序持久结果、独占屏障/运行时重分类、拒绝与隐藏工具零效果、取消后禁止补位并排空已启动工作、一个concluding工具在全部兄弟收据完成后结束本轮。不是绕过SDK循环，也不让SDK无约束并发绕过应用guard；其权限/调度边界继续由应用拥有。

@@ -213,3 +213,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 任务fixture保留自己的显式provider挂载，本阶段未改，runtime142（257019.419773ms）/routing47沿用提示组装阶段最终整组，不声称重跑。domain388及containment8通过/1 Windows跳过也未改动；合计901独立通过。
 
 全新`/tmp/night-bot-subagent-providers-production`production frozen ignore-scripts安装成功，193+38=231项通过；显式排除开发差分，259运行文件及manifest/lock逐字一致，静态256 JS/159字面bare imports通过。证据`evidence/native-subagent-providers-*.txt`。47直接生产DSH依赖/25活动服务替换，仍为部分迁移。远端403未重试。
+
+## 工具并发行为补齐验证
+
+最终own322/322、完整runtime142/142（254585.98239ms）、routing47/47（23196.666915ms）通过。真实kernel containment重新运行8通过/1 Windows专属跳过（11904.77414ms）；依据AGENTS许可只将测试执行移出外层executor，应用自身bubblewrap/权限策略保持。未改动domain388沿用，共907独立通过。
+
+五项实际Pi批次wire验证cap=2、乱序完成但model顺序收据、每个body前持久intent、静态/动态独占屏障、拒绝与隐藏工具零效果、取消不补位且等started body退出、一个concluding工具等全部兄弟收据后结束。异常重复id协议路径不执行body，保留ToolNotStarted可纠正收据；隔离旧串行driver基线同样通过，不宣称支持该无效vendor输出。最初测试把scope自己注册的submission工具当作可限制的继承能力，实际guard正确拒绝测试配置；改为root注册/agent限制后通过，未更改或放宽guard。
+
+全新`/tmp/night-bot-parallel-batch-production`production frozen ignore-scripts安装成功，199+38=237项通过；259运行文件及manifest/lock逐字一致，静态256 JS/159字面bare imports通过。证据`evidence/parallel-batch-*.txt`。47直接生产DSH依赖/25活动服务替换保持，旧continuation manager/preset/FS/shell/权限等仍在；仍非完整迁移。远端403不重试。

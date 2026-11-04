@@ -648,5 +648,36 @@
     "remainingChildBoundary": "continuation manager, lifecycle/control/persistence/catalog/permissions helpers explicitly remain DSH; not a complete subagent runtime replacement",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "parallelToolBatches": {
+    "date": "2026-11-04",
+    "ownPass": 322,
+    "actualPiBatchWireContracts": 5,
+    "runtimePass": 142,
+    "runtimeDurationMs": 254585.98239,
+    "routingPass": 47,
+    "routingDurationMs": 23196.666915,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from prior verified checkpoint",
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "durationMs": 11904.77414,
+      "source": "fresh real kernel run using AGENTS-authorized outer executor escalation; application sandbox remains enforced"
+    },
+    "uniquePass": 907,
+    "productionOnlyRepeatedPass": 237,
+    "productionScope": "199 core/parallel/provider/retry/operator/config/wire +38 native contracts; legacy development differentials explicitly excluded",
+    "runtimeFilesCompared": 259,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 256,
+    "literalBareImports": 159,
+    "directRuntimeDshDependencies": 47,
+    "removedActiveDshServices": 25,
+    "parallelism": "Pi1.5 parallel preparation and adapter triggers; one shared application batch owns bounded safe pools, live exclusive reclassification and ordered durable results",
+    "maxParallelToolCallsDefault": 4,
+    "malformedRepeatedIds": "old serial baseline and new parallel path both retain zero effects and conservative ToolNotStarted correction; no claim of supporting invalid provider output",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

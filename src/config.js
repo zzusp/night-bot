@@ -14,6 +14,7 @@ export async function loadConfig(path) {
   if (!config.providers?.[config.model.provider]) throw new Error('NIGHT_BOT_PROVIDER_PROFILE_REQUIRED')
   if (config.skillWatch !== undefined && typeof config.skillWatch !== 'boolean') throw new Error('NIGHT_BOT_SKILL_WATCH_INVALID')
   if (config.credentialsWatch !== undefined && typeof config.credentialsWatch !== 'boolean') throw new Error('NIGHT_BOT_CREDENTIALS_WATCH_INVALID')
+  if (config.maxParallelToolCalls !== undefined && (!Number.isSafeInteger(config.maxParallelToolCalls) || config.maxParallelToolCalls < 1)) throw new Error('NIGHT_BOT_MAX_PARALLEL_TOOL_CALLS_INVALID')
   const resident = config.resident ?? {}
   if (resident.fakeModel) throw new Error('NIGHT_BOT_FAKE_MODEL_IS_TEST_ONLY')
   if (resident.host && !['127.0.0.1','::1','localhost'].includes(resident.host)) throw new Error('NIGHT_BOT_HTTP_REQUIRES_LOOPBACK')

@@ -41,7 +41,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
       { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
       row('subagent'), { name: new URL('./native-subagent-providers.js', import.meta.url).href }, row('tool-subagent-control'), row('agent-preset-registry', { default: 'night-bot' }),
-      { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: 4 } },
+      { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       ...(config.plugins ?? []), ...extraPlugins,
     ]
     await ctx.loader.root.update(rows)

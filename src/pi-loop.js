@@ -961,21 +961,46 @@ var PiLoopAgent = class {
 			let decision = await this.preStep('next-turn', { turn, step: phase.step + 1 });
 			if (decision.kind === 'reject') { reason = { kind: 'blocked' }; return false; }
 			if (!decision.messages.length) return false;
-			const makeTools = assembly => assembly.tools.map(tool => ({
-				name: tool.name, label: tool.name, description: tool.description ?? '', parameters: {}, // Host validates the exact declared schema, including Zod defaults.
-				execute: async (id, args) => {
-					const original = this.session.snapshotEvents().findLast(e => e.type === 'assistant/message')?.data.message.content.find(b => b.type === 'tool-call' && b.id === id);
-                    const block = original ?? { type: 'tool-call', id, name: tool.name, arguments: JSON.stringify(args) };
-					const result = await executeToolCalls(this.loopCtx, turn, phase.step, [block], signal,
-						context => this.inbox.append('next-step', context));
-					concluded ||= result.concluded;
-					const event = this.session.snapshotEvents().findLast(e => e.type === 'tool/result' && e.data.message?.toolCallId === id);
-					if (!event) throw new Error('pi_tool_result_not_journaled:' + id);
-					const message = event.data.message;
-					return { content: (await projectPiMessage(message, this.ctx, signal)).content,
-						details: { hostIsError: message.isError === true } };
-				}
-			}));
+            // Pi prepares the batch and triggers its operational adapters. One
+            // application scheduler then owns bounded safe pools/exclusive
+            // barriers, ordered audit commits and cancellation/drain for it.
+            let toolBatch;
+            const makeTools = assembly => assembly.tools.map(tool => ({
+                name: tool.name, label: tool.name, description: tool.description ?? '', parameters: {}, // Host validates exact schemas/defaults.
+                execute: async id => {
+                    const batch = toolBatch;
+                    if (!batch || batch.step !== phase.step || !batch.blocks.some(b => b.id === id && b.name === tool.name))
+                        throw new Error('pi_tool_batch_not_admitted:' + id);
+                    const ticket = batch.delivered.get(id) ?? 0;
+                    batch.delivered.set(id, ticket + 1);
+                    const results = await (batch.promise ??= (async () => {
+                        const start = this.session.seq;
+                        const outcome = await executeToolCalls(this.loopCtx, turn, batch.step, batch.blocks, signal,
+                            context => this.inbox.append('next-step', context));
+                        concluded ||= outcome.concluded;
+                        const recorded = new Map(), projected = new Map();
+                        for (const event of this.session.snapshotEvents(start)) if (event.type === 'tool/result') {
+                            const message = event.data.message;
+                            if (!recorded.has(message.toolCallId)) recorded.set(message.toolCallId, []);
+                            recorded.get(message.toolCallId).push(message);
+                        }
+                        // Materialize in model order before releasing any adapter:
+                        // projection failures cannot leave sibling work unawaited.
+                        for (const block of batch.blocks) {
+                            const message = recorded.get(block.id)?.shift();
+                            if (!message) throw new Error('pi_tool_result_not_journaled:' + block.id);
+                            const result = { content: (await projectPiMessage(message, this.ctx, signal)).content,
+                                details: { hostIsError: message.isError === true } };
+                            if (!projected.has(block.id)) projected.set(block.id, []);
+                            projected.get(block.id).push(result);
+                        }
+                        return projected;
+                    })());
+                    const result = results.get(id)?.[ticket];
+                    if (!result) throw new Error('pi_tool_result_not_journaled:' + id);
+                    return result;
+                }
+            }));
 			const tools = makeTools(decision.assembly);
 			const admittedPrompts = await Promise.all(decision.messages.map(message => projectPiMessage(message, this.ctx, signal)));
 			const first = { config: { provider: this.options.provider ?? 'host', model: this.options.model ?? 'host' } };
@@ -1029,7 +1054,7 @@ var PiLoopAgent = class {
 			};
 			await runAgentLoop(admittedPrompts, { systemPrompt: '', messages: [], tools }, {
 				model: { id: first.config.model, provider: first.config.provider, api: 'host', baseUrl: '', reasoning: false, input: ['text'], contextWindow: 128000, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }, convertToLlm: messages => messages,
-				toolExecution: 'sequential',
+				toolExecution: 'parallel',
 				afterToolCall: ({ result }) => ({ isError: result.details?.hostIsError === true, terminate: concluded }),
 				finishTurn: async () => rejected || concluded ? { action: 'end' } : undefined,
 				getSteeringMessages: async () => Promise.all(this.inbox.nextStep.map(message => projectPiMessage(message, this.ctx, signal))),
@@ -1044,6 +1069,12 @@ var PiLoopAgent = class {
 					message: message._hostMessage ?? createAssistantMessage({ source: { provider: message.provider, model: message.model }, content: fromPiAssistant(message) }),
                     ...(message._hostUsage ? { usage: message._hostUsage } : {}), ...(message._hostStream ? { stream: message._hostStream } : {}) }, { surfaceOp: 'append' }).seq;
                 if (message._hostLive) message._hostLive.settle('assistant/message', record); else record();
+                const originals = this.session.snapshotEvents().findLast(e => e.type === 'assistant/message').data.message.content.filter(b => b.type === 'tool-call');
+                toolBatch = { step: phase.step, delivered: new Map(), blocks: message.content.filter(b => b.type === 'toolCall').map((block, index) => {
+                    const exact = originals[index];
+                    return exact?.id === block.id && exact.name === block.name ? exact : originals.find(b => b.id === block.id && b.name === block.name)
+                        ?? { type: 'tool-call', id: block.id, name: block.name, arguments: JSON.stringify(block.arguments) };
+                }) };
                 // Attempted hidden/unknown tools must reach the Host guard and audit too.
                 for (const block of message.content.filter(b => b.type === 'toolCall')) if (!tools.some(t => t.name === block.name))
                     tools.push(...makeTools({ tools: [{ name: block.name }] }));

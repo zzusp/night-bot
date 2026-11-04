@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "One-shot Pi operational batch adapters over the retained bounded safe/exclusive application scheduler, ordered durable results, live reclassification, cancellation/drain and completion fences",
     "Local spawn/fork provider declarations and balanced completed-turn seed preparation; actual Pi child wire preserves preset inheritance/context separation; continuation manager remains explicit DSH dependency",
     "NativeLlmRetry durable Pi-anchored retry chains/budgets, Retry-After/backoff, downstream precedence and cancellation/drain; scheduling and started events flush before readmission",
     "NativeSystemPrompt scoped prompt/variable/context/tool assembly, complete-section authority and required runtime fact resampling; public render/scope helpers remain explicit",

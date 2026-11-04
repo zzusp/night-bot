@@ -8,7 +8,7 @@
 
 `src/pi-loop.js` 使用 pi-agent-core 的 `runAgentLoop` 驱动迭代和工具调用。Agent/Session/Projection注册、默认模型、LLM和工具调度已由本地服务接管；持久inbox、AgentLoop适配及v4内存Session facade仍保留MIT兼容实现。原模型/工具step循环已替换。每一模型请求先持久化已准入事件，再从 Pi SessionManager 的权威分支读取实际内容；旧 DSH deriveMessages 不再为主循环提供模型上下文。任务权限和效果账本仍由应用维护。模型 wire adapter 已替换为本地 `native-pi-provider.js`，直接使用 Pi Models；保留多模态、provider replay、凭据、模型选择和错误分类。LLM middleware准入归本地NativeLlm；GenerateOptions/chunk兼容协议、通用消息及附件策略helpers仍保留。版本由 pnpm lock 固定；当前代理循环固定为发布包 `@earendil-works/pi-agent-core@1.5.0`，本轮已从已弃用的 @mariozechner 0.73.1 升级并完成对应回归；停止条件使用1.5.0公开的 finishTurn 合同。
 
-应用 NativeTools 保持统一工具准入、业务/权限 guard 和调度入口；具体工具仍保留自己的参数校验/defaults。Pi 的操作性工具声明不重复执行更严格的 JSON Schema 校验，实际发给模型的仍是原始精确 schema；这样可保留 Zod 默认值、未知/隐藏工具尝试的拒绝和审计。单会话内 Pi 工具调用串行进入应用执行管线；不同 Task/Execution 的并发、资源互斥与排队继续由原 Host 控制。这保留了工具能力与安全语义，但单次模型响应中多个并行安全工具的吞吐可能低于原循环。
+应用 NativeTools 保持统一工具准入、业务/权限 guard 和调度入口；具体工具仍保留自己的参数校验/defaults。Pi 的操作性工具声明不重复执行更严格的 JSON Schema 校验，实际发给模型的仍是原始精确 schema；这样可保留 Zod 默认值、未知/隐藏工具尝试的拒绝和审计。Pi 1.5以parallel模式准备工具批次；操作性adapter共享一次应用调度，保留maxParallelToolCalls安全并发池、动态独占屏障、model顺序收据和取消排空。不同Task/Execution的并发、资源互斥与排队继续由应用控制；没有再强制整批串行。
 
 `src/host.js` 组合无界面 Host，`bin/night-bot.js` 加载可信 JSON 配置并启动原 resident HTTP/DWS 服务。`packages/dingtalk-core/` 保留领域实现，`packages/dingtalk-dsh-assistant` 为供原测试保持导入路径的本地符号链接。未安装源 Web observer 应用，删除核心包的 `client.js`、`web-client.js`、前端 stub `index.js` 和 Cordis Web patch；保留 observer 命名的后台投影和 HTTP JSON 接口，因为任务、审计和交付依赖它们。没有启动遥测或原 DSH Web/桌面程序。
 
@@ -161,3 +161,9 @@ NativeLlmRetry替换活动llm-retry，拥有每provider/policy预算、durable r
 两个旧provider差分和一个借用事件身份/独立数组合同通过。实际Pi wire在父会话第二轮仍等待模型时启动spawn/fork：两child均为PiLoopAgent，各自Pi SessionManager日志且继承night-bot preset；spawn没有父内容，fork有已完成轮次但没有正在等待的轮次。该实验只证明实际构造/上下文边界，不冒充全部续办、冷恢复、工具限制和外部provider验收。
 
 旧两provider根依赖移至开发差分；47直接生产DSH依赖、25活动服务替换仍为部分迁移。旧子代理continuation manager、preset、FS/shell/权限、公开helpers和v4 Session facade继续保留。远端403不重试。
+
+## 工具批次并发行为补齐
+
+核对锁定Pi 1.5安装包的toolExecution接口后，移除此前强制串行适配。Pi准备完整批次并触发操作性adapters；这些adapters共享唯一批次promise，由本地保留的MIT调度器执行一次，保持NativeTools准入/审计、maxParallelToolCalls上限、live isConcurrencySafe重分类、独占屏障与model顺序结果。每个SDK调用仅领取自己的已提交结果，不再次派发工具。当前协议路径中的异常重复call id保留无效果/ToolNotStarted可纠正收据基线，不宣称支持该无效provider输出；结果投影在释放adapter前按序完成，失败不留下未等待的兄弟工作。
+
+配置新增可选正整数maxParallelToolCalls，默认4。五项真实Pi wire覆盖异常重复id无效果恢复基线、cap=2、乱序完成但model顺序持久结果、独占屏障/运行时重分类、拒绝与隐藏工具零效果、取消后禁止补位并排空已启动工作、一个concluding工具在全部兄弟收据完成后结束本轮。不是绕过SDK循环，也不让SDK无约束并发绕过应用guard；其权限/调度边界继续由应用拥有。
