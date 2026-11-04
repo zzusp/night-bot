@@ -679,5 +679,37 @@
     "malformedRepeatedIds": "old serial baseline and new parallel path both retain zero effects and conservative ToolNotStarted correction; no claim of supporting invalid provider output",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeApprovalAndPresets": {
+    "date": "2026-11-04",
+    "ownPass": 341,
+    "approvalContracts": 10,
+    "permissionPresetContracts": 6,
+    "actualPiApprovalAndTerminalWire": 3,
+    "runtimePass": 142,
+    "runtimeDurationMs": 268793.216627,
+    "routingPass": 47,
+    "routingDurationMs": 25347.880652,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from prior verified checkpoint",
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "durationMs": 14037.094362,
+      "source": "fresh AGENTS-authorized real kernel run; application isolation retained"
+    },
+    "uniquePass": 926,
+    "productionOnlyRepeatedPass": 254,
+    "productionScope": "216 core/approval/preset/terminal/parallel/provider/operator/wire +38 native contracts; legacy development differentials excluded",
+    "runtimeFilesCompared": 261,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 258,
+    "literalBareImports": 166,
+    "directRuntimeDshDependencies": 45,
+    "removedActiveDshServices": 27,
+    "terminalFence": "idle waits for final flush settlement and Pi committed-event proof; failure emits PI_TURN_COMMIT_FAILED and rejects future messages/automatic wake on this instance",
+    "remainingPermissionBoundary": "generic filesystem/shell capability adapters and external Auto reviewer integration remain; current-only Auto metadata is not real reviewer acceptance",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeApproval borrowed scope-bound one-call decisions with durable Pi asked/decided admission, revocation/cancel fences and commit drain; NativePermissionPresets canonical knobs, seeded pinning and gated current-only Auto; terminal driver commit before idle and live-instance message fencing on failure",
     "One-shot Pi operational batch adapters over the retained bounded safe/exclusive application scheduler, ordered durable results, live reclassification, cancellation/drain and completion fences",
     "Local spawn/fork provider declarations and balanced completed-turn seed preparation; actual Pi child wire preserves preset inheritance/context separation; continuation manager remains explicit DSH dependency",
     "NativeLlmRetry durable Pi-anchored retry chains/budgets, Retry-After/backoff, downstream precedence and cancellation/drain; scheduling and started events flush before readmission",
@@ -53,7 +54,7 @@
     "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
-    "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
+    "filesystem/shell wrappers and capability policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
     "skill rendering/invocation helpers; workspace error identities only (registry local) and child-agent continuation manager/helpers (local provider declarations now native)"
   ],
   "directRuntimeDshDependencies": [
@@ -107,10 +108,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-permission-presets",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -226,10 +223,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-user-approval",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-util-values",
       "version": "0.2.1-alpha.2"
     },
@@ -246,13 +239,12 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 116,
+  "developmentDependencyCount": 118,
   "activeLiteralDshPluginRows": [
     "agent-instructions",
     "agent-preset-registry",
     "fs-observation-policy",
     "fs-sandbox",
-    "permission-presets",
     "session-title",
     "shell-env",
     "subagent",
@@ -266,7 +258,6 @@
     "tool-todo",
     "tool-web",
     "tool-working-directory",
-    "user-approval",
     "web",
     "web-fetch-http"
   ],
@@ -275,6 +266,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "user-approval/permission-presets -> src/native-approval.js + src/native-permission-presets.js; durable one-call decisions and canonical permission facts, generic FS/shell wrappers still retained",
     "subagent-spawn-in-process/subagent-fork-in-process -> src/native-subagent-providers.js; child manager/lifecycle still retained explicitly",
     "llm-retry -> src/native-llm-retry.js; Pi journal admission checks and bounded/unbounded recovery, no completed-tool replay",
     "helper-only timeout row removed; not counted as an active service replacement",

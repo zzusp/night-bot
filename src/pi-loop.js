@@ -4,7 +4,7 @@ import { projectPiMessage } from "./pi-session-persistence.js";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import { fromPiAssistant, piFailureStream, piUsage } from "./pi-messages.js";
 import {nativeExecutionStream} from "./pi-native-stream.js";
-import { Service } from "@deepseek-ai/cordis";
+import { Service, symbols } from "@deepseek-ai/cordis";
 import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
@@ -777,6 +777,8 @@ var PiLoopAgent = class {
 	frozenMessages = /* @__PURE__ */ new WeakSet();
 	constructor(loopCtx, id, options, session) {
 		this.loopCtx = loopCtx;
+        this.sessionStore = loopCtx.sessions[symbols.original] ?? loopCtx.sessions;
+        this.piJournalAuthority = loopCtx.piAuthority;
 		this.id = id;
 		this.options = options;
 		this.session = session;
@@ -805,6 +807,7 @@ var PiLoopAgent = class {
 		if (status !== previousStatus) this.dispatch.emit("agent/status", { status });
 	}
 	send(message, target, wakeup) {
+        if (this.persistenceFailure) throw this.persistenceFailure;
 		const wakingAfterAbort = wakeup && this.phase.kind !== "idle" && this.phase.abort.signal.aborted;
 		const resolvedTarget = wakingAfterAbort ? "next-turn" : target;
 		this.inbox.splice(resolvedTarget, Infinity, 0, [message]);
@@ -859,6 +862,7 @@ var PiLoopAgent = class {
 	*   the inbox insertion so a reentrant cancel cannot reclassify it.
 	*/
 	wakeDriver(wakeAfterAbort = false) {
+        if (this.persistenceFailure) return;
 		if (this.phase.kind !== "idle") {
 			if (abortedCancelCause(this.phase.abort.signal)?.kind !== "disposed" && (this.phase.kind === "maintenance" || wakeAfterAbort)) this.phase.wakeRequested = true;
 			return;
@@ -1087,7 +1091,22 @@ var PiLoopAgent = class {
 			const cause = abortedCancelCause(signal);
 			reason = cause ? { kind: 'aborted', reason: cause } : { kind: 'error', error: error instanceof LlmError ? error.failure : { code: 'PI_LOOP_ERROR', message: errorChain(error) } };
 			this.throwError(error);
-		} finally { try { closeStep(); this.session.append('turn/end', { turn, reason }); } finally { stopRecovery() } }
+        } finally {
+            try {
+                closeStep(); this.session.append('turn/end', { turn, reason });
+                // Idle must wait for final assistant/boundary records, too.
+                // Keep the store's ownership context through loop-only unload.
+                const through = this.session.seq;
+                if (!await this.sessionStore.flush(this.session)) throw new Error('PI_TERMINAL_JOURNAL_UNAVAILABLE');
+                const proof = this.piJournalAuthority.describe(this.id);
+                if (proof?.engine !== 'pi-session-manager' || !Number.isSafeInteger(proof.events) || proof.events < through)
+                    throw new Error('PI_TERMINAL_JOURNAL_UNAVAILABLE');
+            } catch (error) {
+                this.persistenceFailure = Object.assign(new Error('PI_TURN_COMMIT_FAILED', { cause: error }), { code: 'PI_TURN_COMMIT_FAILED' });
+                try { this.dispatch.emit('agent/error', { turn, step: phase.step, error: this.persistenceFailure }); } catch {}
+                throw this.persistenceFailure;
+            } finally { stopRecovery(); }
+        }
 		if (!this.inbox.hasPending || rejected) return false;
 		phase.abort = new AbortController(); phase.wakeRequested = false; phase.step = 0;
 		return true;

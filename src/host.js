@@ -30,12 +30,12 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
       { name: new URL('./native-jobs.js', import.meta.url).href }, row('tool-jobs'), { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
       { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
-      row(shell + '-sandbox', { cwd: workspace }), row('user-approval', { policy: 'never' }),
-      row('permission-presets', { defaultPreset: 'workspace-write', presets: {
+      row(shell + '-sandbox', { cwd: workspace }), { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'never' } },
+      { name: new URL('./native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: {
         'read-only': { sandbox: 'read-only', approval: 'never' },
         'workspace-write': { sandbox: 'workspace-write', approval: 'never' },
         'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' },
-      } }),
+      } } },
       row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }),
       { name: new URL('./pi-authority.js', import.meta.url).href },
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
@@ -46,7 +46,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     ]
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
-    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders'])
+    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')

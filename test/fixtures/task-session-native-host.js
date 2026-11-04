@@ -81,10 +81,10 @@ export async function nativeTaskHost(root, decide, options = {}) {
   await ctx.loader.root.update([
     { name: new URL('../../src/native-agents.js', import.meta.url).href }, { name: new URL('../../src/native-sessions.js', import.meta.url).href }, { name: new URL('../../src/native-projections.js', import.meta.url).href },
     { name: new URL('../../src/native-system-prompt.js', import.meta.url).href, config: { includeRuntimeContext: false, includeHarnessIdentity: false } },
-    { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
+    { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, { name: new URL('../../src/native-approval.js', import.meta.url).href, config: { policy: 'never' } },
     ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),
     { name: new URL('../../src/process/index.js', import.meta.url).href }, { name: new URL('../../src/native-sandbox.js', import.meta.url).href }, policyRow, row(nativeShell + '-sandbox', { cwd: root }),
-    row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),
+    { name: new URL('../../src/native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } } },
     row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }), { name: pathToFileURL(resolve('src/pi-authority.js')).href }, { name: pathToFileURL(resolve('src/pi-session-persistence.js')).href, config: { root: join(root, 'legacy-sessions'), compression: 'none' } },
     { name: pathToFileURL(resolve('src/native-state.js')).href, config: { root: join(root, 'storage'), model: { provider: 'native-task-test', model: 'controlled' } } },
     { name: new URL('../../src/native-workspace.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },

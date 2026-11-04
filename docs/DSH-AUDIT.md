@@ -11,21 +11,21 @@
 | 范围 | 当前实际实现 | Pi 原生程度 / 待办 |
 |---|---|---|
 | 代理迭代及操作性工具调用 | `@earendil-works/pi-agent-core@1.5.0` 的 `runAgentLoop` | 真正使用Pi迭代/parallel批次准备；应用调度拥有有界安全池、独占屏障和有序收据 |
-| 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。prompt 组装和 provider seam 仍待替换 |
+| 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。NativeSystemPrompt组装与NativeLlm调用准备已本地拥有；旧请求/chunk数据面及共享helpers仍待替换 |
 | 模型请求与流 | 本地独立类 `NativePiProvider` → Pi Models.streamSimple 1.5.0；本地 catalog/auth/retry/login/discovery/context/events、原生事件捕获 | **本轮移除旧 DSH provider 插件**；NativeLlm拥有拓扑/调用准备和middleware准入；正常请求保留真实Pi事件，legacy/经修改/超出事件缓存上限的流明确回退兼容编码且不重发。旧消息、附件/工具历史投影helpers与请求格式仍在，尚非完全去DSH |
 | Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；NativeAgents live registry/ALS；NativeSessions/NativeProjections registries；DSH Session facade/scope兼容 | **兼容层**；不是 Pi SDK 的 `createAgentSession`；持久化另由真实 SessionManager 接管 |
 | 会话历史与恢复 | Pi v3 原生树日志、night.commit 校验链、单写租约；旧 v4 仅导入/写锁保护 | **本轮替换新日志**；原逻辑事件仍保留在 Pi 审计记录供旧 factory/恢复策略使用；不是已经移除旧 Session 数据 facade/审计接口 |
 | 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；Pi会话恢复和本地NativeJobs已接管，DSH事件兼容面仍在，不能因此称整个恢复原生 |
-| 群与工作区 JSON 后端 | **本轮已替换为 `src/native-domain.js`** | Node 文件系统实现，兼容旧单文档 JSON；群业务模型及 workspace registry 本身仍有原业务/DSH 上层 |
+| 群与工作区 JSON 后端 | **本轮已替换为 `src/native-domain.js`** | Node 文件系统实现，兼容旧单文档 JSON；群业务模型保留；工作区注册/归档/成员已由NativeWorkspace拥有 |
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
 | 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
-| 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生 managed-process后端、NativeSandbox；DSH fs/shell/policy及Windows ACL库 | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
-| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills/NativeSkillFilesystem、NativeWorkingDirectory；MIT派生watcher；DSH公开skill helper、instructions、subagent/workspace | Pi header解析与本地能力检查读取/失效；watcher非从零重写，指引、子代理/workspace与通用helpers仍待迁移 |
+| 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生managed-process、NativeSandbox/NativePolicy、NativeApproval/NativePermissionPresets；旧FS/shell capability adapters及Windows ACL | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
+| 技能、工作目录、指引发现、子代理、工作区注册 | NativeSkills/NativeSkillFilesystem、NativeWorkingDirectory、NativeWorkspace、NativeSubagentProviders；MIT派生watcher；旧instructions/子代理continuation manager与公开helpers | Pi header解析与本地能力检查读取/失效；watcher非从零重写，指引、子代理continuation manager/preset及通用helpers仍待迁移 |
 | 凭据、授权与附件 | NativeCredentials、NativeAuthorization、NativeAttachments及分层环境；旧授权错误/附件类型与投影helpers | 默认Pi登录有attempt-scoped提交，附件blob/codec本地实现且保持v1/请求变体协议；通用helpers仍保留 |
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
 
-完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **51 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
+完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **45 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
 
 ## 进程与协议
 
@@ -36,7 +36,7 @@
 
 ## 本轮实际替换与行为验证
 
-1. 停止挂载 DSH `storage`、`storage-json`、`storage-domain` 三个运行时插件。原 JSON 格式、单写入链、持久化后更新内存、事件顺序、schema 读入校验及 close/drain 改由本地 Node 实现。业务库和旧 v8 schema 的声明 helper 也改为本地实现。工作区注册上层仍是 DSH。
+1. 停止挂载 DSH `storage`、`storage-json`、`storage-domain` 三个运行时插件。原 JSON 格式、单写入链、持久化后更新内存、事件顺序、schema 读入校验及 close/drain 改由本地 Node 实现。业务库和旧 v8 schema 的声明 helper 也改为本地实现。该阶段工作区注册上层仍是DSH；后续已由NativeWorkspace替换。
 2. 停止挂载 DSH `agent-default-model` 插件。原无界面 Host 没有 config editor，原插件的 `saveSelection` 因此是 no-op，HTTP 保存会在读回时失败；新服务持久写入 `storage/night_model_selection.json`。真实 CLI/HTTP 测试执行 PUT `/config/agent`，关闭并重启同一实例，再 GET `/state/agent-config` 核对保存值。
 3. 新存储保留失败的确定性：rename 前失败不改变内存和文件；rename 后失败标记 `NATIVE_DOMAIN_COMMIT_UNCERTAIN`、阻止继续读取旧快照或写入，须关闭并从磁盘证据重开。observer 失败不反向拒绝已提交写入。覆盖原 JSON 导入、并发更新、重复 handle、版本/损坏拒绝、close/drain、符号链接拒绝和重启读回。
 4. 当前本地后端明确只实现现有群/workspace/settings 使用的 authoritative single-document 布局；不声称是所有 DSH storage 插件的通用替代。额外插件若需要 per-record/backup-and-skip 布局会明确报错，不能悄悄降级或丢记录。这类未提供的外部插件配置需要逐个盘点。
@@ -45,12 +45,12 @@
 
 ## 完整迁移尚需完成的验收门槛
 
-- Pi 权威上下文/新持久格式已替换；继续移除旧 factory/Session 注册表、v4 事件校验依赖与 inbox 兼容接口。旧 v4 导入保留原事件与旧 writer fence；仅在隔离测试数据上验证，未迁移生产数据。不能同时让两个运行时成为权威写入者。
-- provider wire/config/auth/login/discovery 已由本地模块替代旧插件；继续移除通用 DSH LLM registry、request/chunk 桥与共享附件/工具历史 helpers。真实厂商 OAuth、AWS/Vertex/Azure、WebSocket 等外部环境尚未验收，不能把静态模型/协议回归当作所有真实后端验收。
-- 建立独立工具 registry、参数验证、角色 guard、效果账与原命令/job 的不可重放收据。用应用管理的实际进程/输出/取消/排空取代 DSH jobs，同时保证超时不冒充退出、正常关闭不冒充业务成功、未知效果不自动重试。
-- 实现并在真实可用的 OS 沙箱上验证文件/进程约束、跨任务产物 root、权限 preset、授权修正及重启隔离。嵌套执行器会使 UID map 只读；获准在外层包装之外运行测试后，云机自身 bubblewrap 可用，containment 5通过/1 Windows跳过。不能降低应用隔离通过测试。
-- 将技能/指引发现、子代理和 workspace 行为迁入 Pi/应用自有实现；迁移既有持久数据并核对所有当前实际配置的扩展能力。
-- 最终以生产依赖闭包中无 DSH、Pi 上下文真实承载业务输入、全部现行功能回归及目标环境验收为完成条件。仅 package.json 不含 DSH、源码复制、接口守恒或 mock 回归均不足。
+- Pi权威上下文/日志、NativeSession/Projection注册已替换；继续处理保留的factory生命周期、持久inbox、v4内存facade/事件验证。旧v4导入及writer fence仍要保持，不能出现两个权威写入者。
+- NativeLlm拓扑与Pi provider/config/auth已本地拥有；仍有旧request/chunk、共享消息/附件/工具历史投影和RPC数据面。真实vendor OAuth、云服务、WebSocket等外部环境没有验收。
+- NativeTools/NativeJobs及durable intent/result栅栏已实现；旧FS/shell/tool后端、schema/codegen/scope helpers与可选PTC worker仍待迁移。保留unknown效果不重放和“取消不冒充退出”。
+- 原生sandbox/有来源的进程后端及本地审批/权限预设已挂载；最新真实kernel containment为8通过/1 Windows专属跳过。旧文件/命令能力wrapper与Windows ACL库还在；继续替换时不能降低隔离。
+- 技能发现/注册/刷新、工作目录、workspace及spawn/fork provider已本地拥有；agent instructions发现、子代理continuation manager、preset registry和公开helpers仍需处理。核对所有实际启用的扩展配置。
+- 最终仍要求生产依赖闭包无DSH、Pi真实承载业务上下文、全部现行功能回归和目标环境验收。仅源码存在/复制、依赖分类、接口守恒或mock回归都不等于完成。
 
 不需要让用户重新批准这些已授权的实现步骤。真正缺少的信息是生产实际启用的扩展/工具清单和脱敏配置；源仓库不足以确定工作区自定义技能、浏览器/数据库 provider 或任意 Cordis 插件是否属于必须保留的实际功能。不要索取密钥，也不要在没有清单时宣称“不漏全部生产扩展”。
 
@@ -211,3 +211,11 @@ NativeLlmRetry替换活动llm-retry，拥有每provider/policy预算、durable r
 核对锁定Pi 1.5安装包的toolExecution接口后，移除此前强制串行适配。Pi准备完整批次并触发操作性adapters；这些adapters共享唯一批次promise，由本地保留的MIT调度器执行一次，保持NativeTools准入/审计、maxParallelToolCalls上限、live isConcurrencySafe重分类、独占屏障与model顺序结果。每个SDK调用仅领取自己的已提交结果，不再次派发工具。当前协议路径中的异常重复call id保留无效果/ToolNotStarted可纠正收据基线，不宣称支持该无效provider输出；结果投影在释放adapter前按序完成，失败不留下未等待的兄弟工作。
 
 配置新增可选正整数maxParallelToolCalls，默认4。五项真实Pi wire覆盖异常重复id无效果恢复基线、cap=2、乱序完成但model顺序持久结果、独占屏障/运行时重分类、拒绝与隐藏工具零效果、取消后禁止补位并排空已启动工作、一个concluding工具在全部兄弟收据完成后结束本轮。不是绕过SDK循环，也不让SDK无约束并发绕过应用guard；其权限/调度边界继续由应用拥有。
+
+## 原生审批与权限预设阶段
+
+NativeApproval替代user-approval。保留readonly同进程request/agent/signal身份、actor scope、ask/never、单次allowed-once与完整失败词汇、policy override/模型通知、open-turn前置条件。asked刷入Pi日志后才调用answerer，decided刷盘后才返回；无writer/flush失败拒绝产生未记录grant。等待中策略改never不能采用迟到allow，服务关闭封口未决定请求，已准入decision提交排空。只有审批服务owner卸载时仍借用存活的原Session store完成取消审计，不通过已销毁的调用scope访问服务。可信answerer未响应取消时，其迟到结果被封口；不声称能撤销插件自己持有的副作用能力。
+
+NativePermissionPresets替代permission-presets，保留canonical knob事件、同bundle选择优先、custom派生、动态未来默认值、fresh/seeded/partial pin、固定且仅当前会话的Auto、commands/RPC/catalog及无veto通知。没有confined executor时拒绝。Auto admission必须同步且registration在回调后仍有效，防止回调撤销自身后写宽权限；原型继承名字不能当配置条目。外部Auto reviewer不是默认Host的一部分，未把Math/API合同冒充真实reviewer验收。
+
+真实Pi两轮工具调用证明asked在答复前、allowed decided在body前持久化，grant不延续到后续操作，缺少answerer零效果；取消中的审计先于turn/end关闭。该测试发现此前driver只在下次request/handle.close才刷新最终step/turn边界：现idle前等待最终flush并核对Pi committed event水位。失败发agent/error并fence该实例的后续消息入场/自动wake，不能沿不确定终态继续模型或工具；owner重新建立实例仍需通过既有日志校验与业务收据栅栏。idle是活动完成状态，flush失败通过错误通道报告，不能把它当成功持久化。
