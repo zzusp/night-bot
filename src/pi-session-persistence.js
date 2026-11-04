@@ -1,7 +1,7 @@
 import { restorePiReplay } from './pi-replay.js'
 import LegacyJsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { Service, Context } from '@deepseek-ai/cordis'
-import { SessionManager } from '@mariozechner/pi-coding-agent'
+import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { mkdir, readFile, writeFile, open, stat, readdir, truncate, rm, lstat, link, unlink } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'

@@ -10,9 +10,9 @@
 
 | 范围 | 当前实际实现 | Pi 原生程度 / 待办 |
 |---|---|---|
-| 代理迭代及操作性工具调用 | `@mariozechner/pi-agent-core@0.73.1` 的 `runAgentLoop` | 真正使用 Pi 迭代；单会话工具串行，Host 仍执行工具调度 |
+| 代理迭代及操作性工具调用 | `@earendil-works/pi-agent-core@1.5.0` 的 `runAgentLoop` | 真正使用 Pi 迭代；单会话工具串行，Host 仍执行工具调度 |
 | 模型上下文 | Pi `SessionManager.buildSessionContext()` 的实际分支与消息内容；转回旧 provider 输入结构 | **本轮替换权威上下文**；请求强制 flush 后读取 Pi；禁止旧 deriveMessages 的真实 wire 测试通过。prompt 组装和 provider seam 仍待替换 |
-| 模型请求与流 | DSH `llm.prepareCall/GenerateOptions/StreamChunk` → `dsh-llm-pi-ai` → `@earendil-works/pi-ai@1.5.0`；再经本地桥转换成 Pi core 的事件流 | provider 内确实使用 pi-ai，但模型路由、凭据、多模态、replay 和错误处理仍依赖 DSH 适配器。与 core 使用两个 Pi 版本，必须单独验证跨版本边界 |
+| 模型请求与流 | DSH `llm.prepareCall/GenerateOptions/StreamChunk` → `dsh-llm-pi-ai` → `@earendil-works/pi-ai@1.5.0`；再经本地桥转换成 Pi core 的事件流 | provider 内确实使用 pi-ai，但模型路由、凭据、多模态、replay 和错误处理仍依赖 DSH 适配器。core、SDK 和 provider 现在均为 1.5.0；仍需去掉请求/chunk 反向兼容桥 |
 | Agent 工厂及生命周期 | 本地 `src/pi-loop.js` 中从 DSH MIT 实现保留的工厂、maintenance、注册、取消/排空及持久 inbox；DSH `agents/sessions/scope` | **兼容层**；不是 Pi SDK 的 `createAgentSession`/`SessionManager` |
 | 会话历史与恢复 | Pi v3 原生树日志、night.commit 校验链、单写租约；旧 v4 仅导入/写锁保护 | **本轮替换新日志**；原逻辑事件仍保留在 Pi 审计记录供旧 factory/恢复策略使用；不是已经移除 DSH 会话接口 |
 | 任务、操作、唤醒、资源、通知主账本 | 应用的 `dynamic-task-store.js` 等，使用 `node:sqlite` | 应用原生存储；其中恢复读取的会话与原生 job 收据仍依赖 DSH，不能因此称整个恢复原生 |
@@ -46,7 +46,7 @@
 ## 完整迁移尚需完成的验收门槛
 
 - Pi 权威上下文/新持久格式已替换；继续移除旧 factory/Session 注册表、v4 事件校验依赖与 inbox 兼容接口。旧 v4 导入保留原事件与旧 writer fence；仅在隔离测试数据上验证，未迁移生产数据。不能同时让两个运行时成为权威写入者。
-- 直接建立 Pi provider/config/auth 与附件投影，移除 DSH LLM seam、反向 chunk 桥和两个 Pi 版本的并存。保持原 provider profile、reasoning、模型失败分类与多模态/replay 的合同；不能只支持一个 mock OpenAI 端点便宣称 provider 功能完整。
+- 直接建立 Pi provider/config/auth 与附件投影，移除 DSH LLM seam 与反向 chunk 桥（Pi 版本已统一为1.5.0）。保持原 provider profile、reasoning、模型失败分类与多模态/replay 的合同；不能只支持一个 mock OpenAI 端点便宣称 provider 功能完整。
 - 建立独立工具 registry、参数验证、角色 guard、效果账与原命令/job 的不可重放收据。用应用管理的实际进程/输出/取消/排空取代 DSH jobs，同时保证超时不冒充退出、正常关闭不冒充业务成功、未知效果不自动重试。
 - 实现并在真实可用的 OS 沙箱上验证文件/进程约束、跨任务产物 root、权限 preset、授权修正及重启隔离。当前云机 `SANDBOX_UNAVAILABLE` 是实际验收阻塞，不能降低隔离通过测试。
 - 将技能/指引发现、子代理和 workspace 行为迁入 Pi/应用自有实现；迁移既有持久数据并核对所有当前实际配置的扩展能力。
@@ -60,4 +60,10 @@
 - 每批 night.commit 记录事件数量、前一提交及内容校验；只接受完整提交，读检查不修复尾部，持写锁者可截掉未提交尾部。完整记录篡改拒绝且不改证据。首次日志先临时文件 fsync 再 no-clobber link，写/清理结果不确定则拒绝继续执行。
 - 只允许单写；Linux 租约核对 PID、boot ID、进程起始时间与 token，死进程可回收。未知 owner 元数据拒绝自动恢复。symlink/hardlink 日志和 symlink 祖先路径拒绝。恢复不执行工具，也不把未知效果判成功。
 - 原 `.dsh/sessions` 路径暂为业务路由边界保留，内部新文件是 `<sha256(id)>.pi.jsonl`。旧 v4 日志仅由兼容 importer 读取并保持旧 writer fence；不镜像新事件到 v4。原 v4 逻辑审计/validator 依赖仍在，Pi provider 原生签名与旧 replay 转换尚待后续替换。
-- 当前 SDK/core 为 0.73.1；provider 内部 pi-ai 为 1.5.0。完整迁移仍需统一版本、原生 provider、工具/权限/进程与技能等工作，不能以本阶段替代全部完成。
+- SDK/core/provider 的 Pi 包现已统一为官方 @earendil-works 1.5.0。完整迁移仍需原生 provider、工具/权限/进程与技能等工作，不能以本阶段替代全部完成。
+
+## 统一 Pi 版本与下一步 provider 工作
+
+core、coding-agent SDK 和 pi-ai 现均直接固定为 `@earendil-works` 1.5.0，provider 内部也是相同发布版本；pnpm 可因 peer 解析保留同版本的不同依赖实例，不声称单一模块实例。升级适配公开 finishTurn API，36项本地、142项运行时、47项路由及7项定向服务用例通过。
+
+`src/pi-provider-catalog.js` 是下一步独立 provider 的纯配置/模型模块，直接使用 Pi 公开 Models/provider APIs；13项测试核对所有已安装 chat catalog 的模型元数据、内置 auth 实现保留、端点、模型覆盖、推理映射、compat和错误。**该模块尚未接管 Host provider 请求**，当前实际请求仍由 DSH llm-pi-ai 处理，不能把模块存在说成 provider 已迁移。接下来须完成凭据/OAuth、request projection、图像预算/卸载、错误与流、发现/配置接口，逐个替换后再移除旧适配器。

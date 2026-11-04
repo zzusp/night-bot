@@ -122,5 +122,15 @@
     "legacyImport": "isolated test data only; old writer fence and history fingerprint retained",
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "piUnifiedVersion": {
+    "version": "@earendil-works 1.5.0",
+    "ownPass": 49,
+    "runtimePass": 142,
+    "routingPass": 47,
+    "nativeCatalogPreparationTests": 13,
+    "previousCheckpointProductionOnlyRepeatedTests": 26,
+    "providerRequestStillDsh": true,
+    "remotePush": "not retried"
   }
 }

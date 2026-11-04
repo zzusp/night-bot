@@ -1,5 +1,5 @@
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
-import { AssistantMessageEventStream } from '@mariozechner/pi-ai'
+import { AssistantMessageEventStream } from '@earendil-works/pi-ai'
 
 const parseArgs = raw => { try { return JSON.parse(raw || '{}') } catch { return raw } }
 const emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,

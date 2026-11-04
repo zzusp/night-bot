@@ -11,6 +11,8 @@ for (const forbidden of ['dsh-base','dsh-app-boot','dsh-agent-loop','dsh-storage
 }
 const report = {
   status:'partial-migration-not-dsh-independent',
+  piVersions:Object.fromEntries(Object.entries(manifest.dependencies).filter(([name])=>name.startsWith('@earendil-works/pi-'))),
+  unmountedPreparation:['src/pi-provider-catalog.js: native model/profile catalog; Host provider still DSH'],
   standaloneProcess:true, standaloneFromDshLibraries:false,
   piNative:['agent-core.runAgentLoop iteration','Pi operational tool dispatch without placeholder input','Pi coding-agent SessionManager v3 journal and branch context authority','Pi event-stream envelope; provider internally also uses Pi AI'],
   applicationNative:['resident HTTP/DWS bridge','SQLite task/operation/wake/notification ledger','single-document JSON domains and model selection'],

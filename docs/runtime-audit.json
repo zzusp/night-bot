@@ -1,5 +1,13 @@
 {
   "status": "partial-migration-not-dsh-independent",
+  "piVersions": {
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0"
+  },
+  "unmountedPreparation": [
+    "src/pi-provider-catalog.js: native model/profile catalog; Host provider still DSH"
+  ],
   "standaloneProcess": true,
   "standaloneFromDshLibraries": false,
   "piNative": [

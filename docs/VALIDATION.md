@@ -73,3 +73,5 @@ DSH 依赖审计见 `DSH-AUDIT.md` 和 `runtime-audit.json`。本轮替换 activ
 恢复补充审查：旧图片日志导入在附件不可用时必须保留原日志、撤销 Pi authority 注册并释放两侧 writer fence；新增测试连续两次失败后仍可打开旧 writer，验证失败路径不会留下假活跃会话。native lease close 为幂等，清理失败仍保留原因。没有把这类失败当成工具已执行或可自动重试的证据。
 
 本阶段结果：`pnpm test` 36/36、`test:runtime` 142/142（约221秒）、`test:routing` 47/47、`test:domain` 388/388；containment 1通过/4环境失败/1 Windows跳过，独立通过合计614。重复定向排查不重复计数。全量运行时回归已验证四种容量组合、共享资源队列、真实进程恢复、正常关闭与崩溃恢复不重放，失败过的旧物理格式断言及目录扫描竞态均已修复后重跑。
+
+统一版本阶段：官方 @earendil-works core/SDK/pi-ai 1.5.0，`finishTurn` 正确保留结束/拒绝语义；本地49、运行时142、路由47均通过。新增13项原生 catalog 配置测试尚不表示 Host provider 已接管。上一0b7d6c2归档在独立克隆仅安装生产依赖后运行26项测试通过（重复验证，不与本地数量相加）。

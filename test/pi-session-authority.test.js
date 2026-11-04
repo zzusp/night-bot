@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SessionStore } from '@deepseek-ai/dsh-session'
 import { createUserMessage, createDeveloperMessage } from '@deepseek-ai/dsh-llm'
 import LegacyPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { SessionManager } from '@mariozechner/pi-coding-agent'
+import { SessionManager } from '@earendil-works/pi-coding-agent'
 import PiPersistence from '../src/pi-session-persistence.js'
 import * as Authority from '../src/pi-authority.js'
 const user = text => createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})

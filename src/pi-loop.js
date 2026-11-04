@@ -1,7 +1,7 @@
 // Lifecycle compatibility fork of @deepseek-ai/dsh-agent-loop 0.2.1-alpha.2 (MIT).
 // Inference and tool iteration are owned by pi-agent-core; host events stay compatible.
 import { projectPiMessage } from "./pi-session-persistence.js";
-import { runAgentLoop } from "@mariozechner/pi-agent-core";
+import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import { fromPiAssistant, piFailureStream, piUsage, bridgeDshStream } from "./pi-messages.js";
 import { Service } from "@deepseek-ai/cordis";
 import { randomUUID } from "node:crypto";
@@ -1028,7 +1028,7 @@ var PiLoopAgent = class {
 				model: { id: first.config.model, provider: first.config.provider, api: 'host', baseUrl: '', reasoning: false, input: ['text'], contextWindow: 128000, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }, convertToLlm: messages => messages,
 				toolExecution: 'sequential',
 				afterToolCall: ({ result }) => ({ isError: result.details?.hostIsError === true, terminate: concluded }),
-				shouldStopAfterTurn: () => rejected || concluded,
+				finishTurn: async () => rejected || concluded ? { action: 'end' } : undefined,
 				getSteeringMessages: async () => Promise.all(this.inbox.nextStep.map(message => projectPiMessage(message, this.ctx, signal))),
 			}, async event => {
 				if (event.type !== 'message_end' || event.message.role !== 'assistant' || rejected || signal.aborted) return;
