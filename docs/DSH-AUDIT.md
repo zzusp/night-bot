@@ -197,3 +197,11 @@ NativeLlmRetry替换活动llm-retry，拥有每provider/policy预算、durable r
 真实Pi wire为工具执行成功→后续模型503→模型重试成功；第三次HTTP到达前从Pi持久reader读到两条retry记录，工具及收据仍仅一次。七项合同包括旧实现差分、两个flush栅栏、失败/cancel、自关闭、policy/provider独立预算和always/downstream优先。该变化不重放工具/业务，不把模型请求重试当未知业务操作恢复。always模式接受downstream自己的retry决定时，不伪造本地retry-chain记录；整体模型准入仍由PiLoop日志栅栏负责。
 
 原timeout行经源码核对仅导出函数、没有apply/default插件，移除这条空挂载，不计活动服务替换；其与旧llm-retry直接依赖移至开发，仍可被其他旧wrapper作为传递helper使用。生产直接DSH依赖49/活动服务替换23，仍需迁移公共helpers、子代理、preset、FS/shell/权限和v4 Session facade；不是完整去DSH。
+
+## 本地 spawn/fork 子代理 provider 阶段
+
+默认Host改挂NativeSubagentProviders：本地创建能力声明、spawn不读父历史、fork只取最后turn/end及以前的平衡prefix由应用实现；保留参数覆盖、结构化输出、深度、工具过滤和persona能力声明。真正child创建/续办/排空及权限委派仍由明确保留的旧subagent manager负责，不把provider替换称为完整子代理迁移。
+
+两个旧provider差分和一个借用事件身份/独立数组合同通过。实际Pi wire在父会话第二轮仍等待模型时启动spawn/fork：两child均为PiLoopAgent，各自Pi SessionManager日志且继承night-bot preset；spawn没有父内容，fork有已完成轮次但没有正在等待的轮次。该实验只证明实际构造/上下文边界，不冒充全部续办、冷恢复、工具限制和外部provider验收。
+
+旧两provider根依赖移至开发差分；47直接生产DSH依赖、25活动服务替换仍为部分迁移。旧子代理continuation manager、preset、FS/shell/权限、公开helpers和v4 Session facade继续保留。远端403不重试。

@@ -205,3 +205,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 全新`/tmp/night-bot-llm-retry-production`production frozen ignore-scripts安装成功；显式排除只在开发存在的旧retry差分后，191+38=229项通过，258运行文件及manifest/lock逐字一致，静态255 JS/158字面bare imports通过。首次负向name筛选未正确排除开发差分，产生缺旧包的一项失败；改用Node实际支持的`--test-skip-pattern`重跑后全通过，未把初次失败计作通过。证据`evidence/native-llm-retry-*.txt`。
 
 原timeout行仅为函数库空挂载，移除不计活动服务替换；它及旧retry根依赖移到开发，传递helper依赖仍可能保留。49直接生产DSH依赖/23活动服务替换仍为部分迁移。没有远端重试、PR、合并或真实业务副作用。
+
+## 本地子代理 provider 验证
+
+最终own316/316通过。新增3个provider合同包含spawn/fork旧实现差分及借用事件身份/独立数组；实际Pi wire在父会话第二轮等待响应期间创建两child，验证PiLoopAgent、各自Pi authority、night-bot preset继承、spawn无父内容、fork仅包含已完成轮次。两child都自然完成并排空。该实验不验证全部continuation manager或外部provider；旧manager仍明确保留。
+
+任务fixture保留自己的显式provider挂载，本阶段未改，runtime142（257019.419773ms）/routing47沿用提示组装阶段最终整组，不声称重跑。domain388及containment8通过/1 Windows跳过也未改动；合计901独立通过。
+
+全新`/tmp/night-bot-subagent-providers-production`production frozen ignore-scripts安装成功，193+38=231项通过；显式排除开发差分，259运行文件及manifest/lock逐字一致，静态256 JS/159字面bare imports通过。证据`evidence/native-subagent-providers-*.txt`。47直接生产DSH依赖/25活动服务替换，仍为部分迁移。远端403未重试。

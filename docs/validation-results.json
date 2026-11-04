@@ -619,5 +619,34 @@
     "retryAdmission": "locally scheduled retry requires Pi committed event count through scheduling and started records; downstream-provided decisions retain own protocol",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeSubagentProviders": {
+    "date": "2026-11-04",
+    "ownPass": 316,
+    "providerContracts": 3,
+    "actualPiParentBusySpawnForkWire": 1,
+    "runtimePass": 142,
+    "runtimeSource": "unchanged task fixture uses its explicit legacy providers; native-system-prompt final whole group carried, not rerun here",
+    "runtimeDurationMs": 257019.419773,
+    "routingPass": 47,
+    "routingSource": "unchanged task fixture from native-system-prompt checkpoint",
+    "domainPass": 388,
+    "containment": {
+      "pass": 8,
+      "windowsSkipped": 1,
+      "source": "unchanged confinement backend from directory checkpoint"
+    },
+    "uniquePass": 901,
+    "productionOnlyRepeatedPass": 231,
+    "productionScope": "193 core/provider/retry/operator/config/wire +38 native contracts; development-only legacy provider/retry differentials excluded",
+    "runtimeFilesCompared": 259,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 256,
+    "literalBareImports": 159,
+    "directRuntimeDshDependencies": 47,
+    "removedActiveDshServices": 25,
+    "remainingChildBoundary": "continuation manager, lifecycle/control/persistence/catalog/permissions helpers explicitly remain DSH; not a complete subagent runtime replacement",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

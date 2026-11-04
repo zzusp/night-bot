@@ -1,0 +1,12 @@
+✔ native spawn provider retains local start capabilities and completed-turn seed contract (3.661369ms)
+✔ native fork provider retains local start capabilities and completed-turn seed contract (1.683468ms)
+✔ spawn never reads parent history and fork preserves exact immutable event identities with a detached prefix array (0.310598ms)
+✔ native spawn and fork providers create actual Pi children with isolated or completed parent context (1662.825145ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1811.393704
