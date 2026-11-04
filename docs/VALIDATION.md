@@ -153,3 +153,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 自有233（其中8目录合同）、完整任务142（273494ms）、路由47、真实隔离8通过/1Windows跳过；领域388沿用未改业务模块的凭据阶段证据。当前独立818通过。目录服务在root/preset/原生任务fixture均挂载后执行回归；随后增加required-service启动检查，以最终11项目录/wire/CLI测试覆盖。
 
 全新生产依赖副本frozen安装通过，重复145通过（128核心+17凭据/目录合同），245运行时文件及manifest/lock一致。旧后端差分测试依赖开发包，明确不选择到生产合同组。闭包242文件/140裸导入；200核心/3UI排除/6适配守恒。证据evidence/native-directory-*。没有真实业务、外发或远端写入，403未重试。
+
+## 原生附件阶段
+
+自有247（含13附件合同与1实际Pi image wire）、完整任务142（278189ms）、领域388、路由47通过。隔离沿用未变的目录阶段8通过/1Windows跳过，当前独立832通过。所有当前运行时代码均在上述回归前已挂载，随后只新增审查断言与文档。
+
+全新生产依赖frozen安装通过，实际Sharp codec不依赖安装脚本；重复156通过（129核心/实际图片wire +27凭据/目录/附件合同），249运行时文件及manifest/lock一致。旧backend差分依赖开发包，明确不选择到生产合同组。闭包246文件/142裸导入；200核心/3UI排除/6适配守恒。
+
+文件引用/路径/流和PNG/JPEG/WebP/GIF、16-bit、alpha、orientation/metadata、normalization、请求衍生字节/variant身份有旧新差分；源原件immutable、摘要/计数、拒绝损坏去重覆盖、canon base64/批次先验证、暂存清理、暂停read关闭、共享取消和链接边界有实际文件测试。真实Pi SDK本地请求证明衍生图预算与原件不变。codec在Linux真实执行；Windows/macOS原生平台未真实验收，真实供应商、DingTalk和业务外部系统仍未触发。证据evidence/native-attachments-*；52直接DSH依赖/18活动服务替换是部分迁移记录。远端403未重试。

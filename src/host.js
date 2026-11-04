@@ -25,7 +25,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-agents.js', import.meta.url).href }, { name: new URL('./native-sessions.js', import.meta.url).href }, { name: new URL('./native-projections.js', import.meta.url).href }, row('system-prompt', { includeHarnessIdentity: false }),
       { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), { name: new URL('./native-authorization.js', import.meta.url).href },
       { name: new URL('./native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } },
-      row('attachment-local', { dshHome: root }), row('timeout'),
+      { name: new URL('./native-attachments.js', import.meta.url).href, config: { dshHome: root } }, row('timeout'),
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
       { name: new URL('./native-jobs.js', import.meta.url).href }, row('tool-jobs'), { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
@@ -46,7 +46,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     ]
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
-    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory'])
+    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')

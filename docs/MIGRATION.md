@@ -99,3 +99,11 @@ NativeAuthorization替代活动authorization服务，拥有flow注册/独立meta
 NativeWorkingDirectory同时替换root与agent preset中的working-directory服务。它通过已注入FS能力解析/检查目录，保留调用者归属，不直接读取宿主文件系统绕过wrapper； cwd变更不修改原始Session header或沙箱root。每Session串行、取消/owner关闭后禁止append、服务关闭排空、缺失当前目录回退原项目、默认cwd首次落日志、commit后通知错误不撤销状态均保留。模型context在downstream assembly之后重采样，防止沿用旧目录。
 
 源working-directory已移为开发差分依赖；FS/shell/permission能力后端、skills及workspace/subagent等仍未迁移。基础验证为8项合同（含旧服务差分、调用者归属与prompt重采样）、真实CLI/wire、完整任务及真实内核隔离回归，具体结果见VALIDATION和机器证据。生产直接DSH依赖53，已替换17个活动服务；这些计数不代表完整功能迁移。
+
+## 原生附件后端阶段
+
+NativeAttachments默认替换attachment-local。内容寻址v1路径、引用字段、跨平台清理文件名/UTF-8字节上限、原件流式写入与backpressure、0600 staging/fsync/hard-link publication/0400对象、去重时校验、读取时摘要/byte-count验证均由本地实现拥有。取消和失败清理暂存，不返回部分批次引用；内容对象已发布但后续失败时可以保留无引用对象，绝不把这种结果自动重做业务交付。内部目录链接在创建子项前拒绝。
+
+Sharp 0.35.5延续原已锁定codec版本，原型/metadata解析、完整decode准入、8-bit sRGB单帧归一化、透明WebP/不透明JPEG质量阶梯与字节fallback、朝向/metadata清理、图像像素/尺寸/字节限额均保留。request-image-v6 descriptor和衍生图缓存/readonly原件句柄不变；共享请求最后waiter取消、transform并发限额、cache损坏重建与服务关闭排空由本地生命周期管理。流式read iterator在调用者暂停消费时仍可由关闭驱动底层return，防止悬挂文件句柄。
+
+图像/文件协议与算法保留MIT来源署名，见THIRD_PARTY/许可文件；不是Pi SDK实现的图像codec，也不把兼容协议字段复制当成功能证明。现有文件和所有支持图像格式、16位、透明、orientation、清洁pass-through、请求衍生字节及variant ID均与旧实现差分。实际Pi模型wire使用新后端，验证像素预算内衍生图发送且原件不变。旧backend仅开发差分依赖；通用附件type/admission及LLM projection helpers仍明确保留。

@@ -16,6 +16,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeAttachments immutable v1 blobs and streamed aliases, strict refs/base64/integrity, Sharp normalization/request-image-v6 derivatives, bounded transforms and shared cancellation/drain",
     "NativeWorkingDirectory durable per-session cwd, original-project recovery, caller FS attribution, prompt resampling and cancellation/drain",
     "NativeAuthorization single-flight attempts, scope-bound Pi login commits, cancellation/admission gate and close/drain; old error identities remain explicit compatibility helpers",
     "NativeCredentials layered reference and durable record store, comment-preserving strict YAML, legacy-interoperable cross-process refresh lock, watcher snapshots and contained notifications",
@@ -41,7 +42,7 @@
     "runtime prompt assembly and provider replay",
     "legacy v4 import and writer fencing only",
     "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
-    "authorization error identities only (active authorization attempts local), attachment storage/request-image policy helpers",
+    "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
     "skills, workspace registry, child-agent providers"
@@ -57,10 +58,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-agent-preset-registry",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-attachment-local",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -260,11 +257,10 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 110,
+  "developmentDependencyCount": 111,
   "activeLiteralDshPluginRows": [
     "agent-instructions",
     "agent-preset-registry",
-    "attachment-local",
     "fs-observation-policy",
     "fs-sandbox",
     "llm-retry",
@@ -298,6 +294,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "attachment-local -> src/native-attachments.js + native-attachment storage/codec/errors; v1 and request-image-v6 protocol compatibility and MIT algorithm attribution retained",
     "working-directory -> src/native-working-directory.js; filesystem capability backend remains guarded and unchanged",
     "authorization -> src/native-authorization.js; attempt-scoped Pi login credentials and commit-phase cancellation fence",
     "credentials-local -> src/native-credentials.js + credential-file.js; legacy document/lock protocol retained for interoperability",
