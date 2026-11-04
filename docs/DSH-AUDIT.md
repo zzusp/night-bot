@@ -227,3 +227,7 @@ NativeShellEnvironment替换preset内shell-env服务。DSH_HOME/SHELL/SESSION_ID
 声明/name/key owner在注册时固定，metadata原对象后来变更不能增加保留字段、借改名遗留旧注册或冲掉新owner；异常/未声明/非字符串/async resolver明确失败，不返回部分env，拒绝的原生Promise也被接管避免未处理拒绝。生命周期关闭清空registry并拒绝后续收集/注册。合法动态值仍由原resolver按execution计算。
 
 六项合同含旧实现差分和权限元数据反冒充。新增真实Pi→bash→应用内核沙箱wire，用临时假ambient DSH_SESSION_ID/EXTRA/UNDECLARED证明真实命令只收到可信session/home/扩展值，未声明ambient项被剥离；此测试在AGENTS允许的外层executor之外运行，未关闭应用sandbox，且不打印真实env或token。原shell executor及命令工具仍是DSH依赖，未把本注册表称为整个shell迁移。
+
+### Instruction controller ownership
+
+The active `agent-instructions` row is replaced with the isolated application-owned `native-agent-instructions.js`; its historical message source kind remains wire-compatible. Pi committed context is the only durable visible-instruction authority. Source-derived document algorithms are attributed in THIRD_PARTY.md; compatibility forks are not described as new algorithms. The old package is development-only for differential tests. Direct production DSH dependencies: 43; active services replaced: 29. Remaining preset registration, subagent continuation/lifecycle and FS/shell execution dependencies are explicit.

@@ -237,3 +237,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own347/347、完整runtime142/142（269070.236306ms）、routing47/47（24063.696693ms）通过。真实kernel containment九项通过、一项Windows专属跳过（13900.908611ms）；domain388未改动沿用，共933独立通过。六项合同覆盖旧实现差分、原子注册、不可变权限声明、调用者scope、异步resolver拒绝与生命周期。实际Pi→Bash→应用沙箱验证可信session/home/扩展事实注入且ambient DSH authority被剔除，未关闭应用隔离。
 
 全新`/tmp/night-bot-shell-env-production`production frozen ignore-scripts安装成功，221核心+38合同+1真实沙箱wire=260项复测通过。262运行文件及manifest/lock逐字一致，静态259 JS/168字面bare imports通过。证据`evidence/native-shell-env-*.txt`。44直接生产DSH依赖/28活动服务替换；FS/shell工具与capability后端、指引、preset注册表和子代理续办管理器等仍待迁移。远端403未重试，未创建PR或合并。
+
+## 原生指引上下文验证
+
+最终own354/354、完整runtime142/142（271945.803893ms）、routing47/47（36330.030087ms）通过。真实kernel containment九项通过、一项Windows专属跳过（15174.067728ms）；domain388未改动沿用，共940独立通过。六项合同包含旧loader/renderer差分、legacy surface访问即抛错、变更/删除、嵌套执行token、capability拒绝及关闭排空；真实Pi wire验证两个global root、项目baseline、真正read后的nested发现、外部修改、删除和cwd replacement。
+
+全新`/tmp/night-bot-agent-instructions-production`production frozen ignore-scripts安装成功，227核心/wire+38合同=265项复测通过；本阶段未声称独立生产kernel重跑。263运行文件及manifest/lock逐字一致，静态260 JS/171字面bare imports通过。最初误在开发目录执行production裁剪，导致主测试缺少开发包且runtime/routing未启动；这些结果全部作废，恢复完整frozen依赖后重跑所有受影响组，最终证据仅引用重跑日志。证据`evidence/native-agent-instructions-*.txt`。43直接生产DSH依赖/29活动服务替换；仍非完整迁移，远端403未重试。

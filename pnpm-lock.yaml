@@ -20,9 +20,6 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(3dc6930769662420cb44e109694f1822)
-      '@deepseek-ai/dsh-agent-instructions':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(332d37c9f6851cc64236fb15619b7f55)
       '@deepseek-ai/dsh-agent-preset-registry':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(5667b4da76449b3643fdfdc7933a06c5)
@@ -207,6 +204,9 @@ importers:
       '@deepseek-ai/dsh-agent-default-model':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(7908ee01f9c058963aafea6031721439)
+      '@deepseek-ai/dsh-agent-instructions':
+        specifier: 0.2.1-alpha.2
+        version: 0.2.1-alpha.2(332d37c9f6851cc64236fb15619b7f55)
       '@deepseek-ai/dsh-agent-loop':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(eeface68462a792ce4ab2c933ee215e8)

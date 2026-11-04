@@ -56,12 +56,12 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!ctx.get('subprocess')) throw new Error('NIGHT_BOT_SUBPROCESS_UNAVAILABLE')
     await ctx.plugin({ inject: ['agentPresets'], async *apply(child) {
       yield await child.agentPresets.register({ id: 'night-bot', plugins: [{ name: 'cordis:group', group: true,
-        isolate: { fs: true, workingDirectory: true, shellEnv: true }, config: [
+        isolate: { fs: true, workingDirectory: true, shellEnv: true, nativeAgentInstructions: true }, config: [
           row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
           { name: new URL('./native-shell-env.js', import.meta.url).href }, row('tool-fs'), row('tool-fs-search', { sampleOverCapGlobResults: false }), row('fs-observation-policy'),
           row('tool-' + shell, { enableRunInBackground: true, promoteOnTimeout: true }),
           { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, row('tool-skill'),
-          row('agent-instructions', { maxBytes: 65536 }), row('tool-working-directory'),
+          { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, row('tool-working-directory'),
           row('tool-subagent', { provider: 'spawn' }),
           row('tool-todo', { allowParallelInProgress: true }), row('tool-web'), row('web-fetch-http'),
         ] }] })
