@@ -100,7 +100,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     yield await child.agentPresets.register({ id: 'native-test', plugins: [{ name: 'cordis:group', group: true,
       isolate: { fs: true, workingDirectory: true, shellEnv: true }, config: [
       row(options.fsSandbox ? 'fs-sandbox' : 'fs-local', { cwd: root }), { name: new URL('../../src/native-working-directory.js', import.meta.url).href, config: { defaultDirectory: root } },
-      row('shell-env'), row('tool-fs'), row('tool-' + nativeShell, { enableRunInBackground: options.promoteOnTimeout === true, promoteOnTimeout: options.promoteOnTimeout === true }),
+      { name: new URL('../../src/native-shell-env.js', import.meta.url).href }, row('tool-fs'), row('tool-' + nativeShell, { enableRunInBackground: options.promoteOnTimeout === true, promoteOnTimeout: options.promoteOnTimeout === true }),
       ...(options.fsObservationPolicy ? [row('fs-observation-policy')] : []),
       ...(options.skillDirs ? [{ name: new URL('../../src/native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: false, customSkillDirs: options.skillDirs, watch: false } }, row('tool-skill')] : []),
     ] }] })

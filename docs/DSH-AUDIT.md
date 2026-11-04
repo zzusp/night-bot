@@ -25,7 +25,7 @@
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
 
-完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **45 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
+完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **44 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
 
 ## 进程与协议
 
@@ -219,3 +219,11 @@ NativeApproval替代user-approval。保留readonly同进程request/agent/signal�
 NativePermissionPresets替代permission-presets，保留canonical knob事件、同bundle选择优先、custom派生、动态未来默认值、fresh/seeded/partial pin、固定且仅当前会话的Auto、commands/RPC/catalog及无veto通知。没有confined executor时拒绝。Auto admission必须同步且registration在回调后仍有效，防止回调撤销自身后写宽权限；原型继承名字不能当配置条目。外部Auto reviewer不是默认Host的一部分，未把Math/API合同冒充真实reviewer验收。
 
 真实Pi两轮工具调用证明asked在答复前、allowed decided在body前持久化，grant不延续到后续操作，缺少answerer零效果；取消中的审计先于turn/end关闭。该测试发现此前driver只在下次request/handle.close才刷新最终step/turn边界：现idle前等待最终flush并核对Pi committed event水位。失败发agent/error并fence该实例的后续消息入场/自动wake，不能沿不确定终态继续模型或工具；owner重新建立实例仍需通过既有日志校验与业务收据栅栏。idle是活动完成状态，flush失败通过错误通道报告，不能把它当成功持久化。
+
+## 原生 shell 环境事实注册表阶段
+
+NativeShellEnvironment替换preset内shell-env服务。DSH_HOME/SHELL/SESSION_ID/PROFILE/PROFILE_DIR及DSH_*扩展键作为现行脚本协议保留，不用改名掩盖兼容面。每次collect重新解析trusted contributors，保持同进程execution/method receiver身份、caller profile scope、确定性顺序和冻结快照；list只返回声明，不执行resolver。home取显式配置/继承launch snapshot/旧默认目录，不修改process.env。
+
+声明/name/key owner在注册时固定，metadata原对象后来变更不能增加保留字段、借改名遗留旧注册或冲掉新owner；异常/未声明/非字符串/async resolver明确失败，不返回部分env，拒绝的原生Promise也被接管避免未处理拒绝。生命周期关闭清空registry并拒绝后续收集/注册。合法动态值仍由原resolver按execution计算。
+
+六项合同含旧实现差分和权限元数据反冒充。新增真实Pi→bash→应用内核沙箱wire，用临时假ambient DSH_SESSION_ID/EXTRA/UNDECLARED证明真实命令只收到可信session/home/扩展值，未声明ambient项被剥离；此测试在AGENTS允许的外层executor之外运行，未关闭应用sandbox，且不打印真实env或token。原shell executor及命令工具仍是DSH依赖，未把本注册表称为整个shell迁移。

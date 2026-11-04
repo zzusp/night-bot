@@ -711,5 +711,35 @@
     "remainingPermissionBoundary": "generic filesystem/shell capability adapters and external Auto reviewer integration remain; current-only Auto metadata is not real reviewer acceptance",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeShellEnvironment": {
+    "date": "2026-11-04",
+    "ownPass": 347,
+    "shellContracts": 6,
+    "actualPiKernelWire": 1,
+    "runtimePass": 142,
+    "runtimeDurationMs": 269070.236306,
+    "routingPass": 47,
+    "routingDurationMs": 24063.696693,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from prior verified checkpoint",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 13900.908611,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 933,
+    "productionOnlyRepeatedPass": 260,
+    "productionScope": "221 core +38 native contracts +1 real Pi native shell kernel wire; development-only legacy differentials excluded",
+    "runtimeFilesCompared": 262,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 259,
+    "literalBareImports": 168,
+    "directRuntimeDshDependencies": 44,
+    "removedActiveDshServices": 28,
+    "remainingShellBoundary": "filesystem/shell tool and capability backends remain; trusted shell facts ownership alone is not complete shell migration",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

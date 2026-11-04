@@ -231,3 +231,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 取消wire初次发现Pi driver未刷新最终turn/end，修复后最终日志在idle可读；终态flush失败经agent/error报告并封闭该实例，不能把idle误当成功持久化。普通取消及权限拒绝仍保持闭合日志和零未授权效果。没有测试真正外部Auto reviewer或业务账号。
 
 全新`/tmp/night-bot-approval-presets-production`production frozen ignore-scripts安装成功，216+38=254项通过；261运行文件及manifest/lock逐字一致，静态258 JS/166字面bare imports通过。证据`evidence/native-approval-presets-*.txt`。45直接生产DSH依赖/27活动服务替换，仍非完整迁移；远端403未重试。
+
+## 原生 Shell 环境事实验证
+
+最终own347/347、完整runtime142/142（269070.236306ms）、routing47/47（24063.696693ms）通过。真实kernel containment九项通过、一项Windows专属跳过（13900.908611ms）；domain388未改动沿用，共933独立通过。六项合同覆盖旧实现差分、原子注册、不可变权限声明、调用者scope、异步resolver拒绝与生命周期。实际Pi→Bash→应用沙箱验证可信session/home/扩展事实注入且ambient DSH authority被剔除，未关闭应用隔离。
+
+全新`/tmp/night-bot-shell-env-production`production frozen ignore-scripts安装成功，221核心+38合同+1真实沙箱wire=260项复测通过。262运行文件及manifest/lock逐字一致，静态259 JS/168字面bare imports通过。证据`evidence/native-shell-env-*.txt`。44直接生产DSH依赖/28活动服务替换；FS/shell工具与capability后端、指引、preset注册表和子代理续办管理器等仍待迁移。远端403未重试，未创建PR或合并。
