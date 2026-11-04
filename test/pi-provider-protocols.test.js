@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {createServer} from 'node:http'
 import {NativePiProvider} from '../src/native-pi-provider.js'
 import {resolvePiProfiles} from '../src/pi-provider-catalog.js'
+import {nativeExecutionStream} from '../src/pi-native-stream.js'
+import {createLiveAttempt} from './fixtures/pi-live-attempt.js'
 import {piAuthentication} from '../src/pi-provider-auth.js'
 for(const api of ['anthropic-messages','openai-responses'])test('native provider uses real local '+api+' protocol with auth, usage and replay',async t=>{
  let received
@@ -17,7 +19,7 @@ for(const api of ['anthropic-messages','openai-responses'])test('native provider
   res.end()
  });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
  const profiles=resolvePiProfiles({fixture:{api,baseURL:`http://127.0.0.1:${server.address().port}/v1`,apiKeyEnv:'FIXTURE_KEY',headers:{'x-profile':'retained'},models:[{id:'m',maxTokens:256}]}}),auth=piAuthentication({getEnvironment:name=>name==='FIXTURE_KEY'?'isolated-fixture-key':undefined}),adapter=new NativePiProvider({get:()=>undefined},()=>profiles,auth)
- const chunks=[];for await(const chunk of adapter.stream({provider:'fixture',model:'m',messages:[{role:'user',source:{kind:'user'},content:[{type:'text',text:'ACTUAL_INPUT'}]}]}))chunks.push(chunk)
+ const request={provider:'fixture',model:'m',messages:[{role:'user',source:{kind:'user'},content:[{type:'text',text:'ACTUAL_INPUT'}]}]},chunks=[];const output=nativeExecutionStream(()=>(async function*(){for await(const chunk of adapter.stream(request)){chunks.push(chunk);yield chunk}})(),request,createLiveAttempt());const native=await output.result();assert.equal(native._hostNative,true);assert.equal(native.api,api);assert.equal(native.content[0].text,'NATIVE_PROTOCOL')
  assert.equal(chunks.at(-1).reason.kind,'stop',JSON.stringify(chunks.at(-1)));assert.ok(chunks.some(c=>c.type==='text-delta'&&c.text==='NATIVE_PROTOCOL'));assert.equal(chunks.at(-1).replayState.response.api,api);assert.equal(chunks.find(c=>c.type==='usage').usage.outputTokens,3);assert.equal(received.headers['x-profile'],'retained');assert.ok(received.headers['user-agent']);assert.ok(JSON.stringify(received.body).includes('ACTUAL_INPUT'));assert.equal(api==='anthropic-messages'?received.headers['x-api-key']:received.headers.authorization,api==='anthropic-messages'?'isolated-fixture-key':'Bearer isolated-fixture-key')
 })
 test('a direct native adapter call cannot send images to a text-only model or bypass a missing credential',async()=>{

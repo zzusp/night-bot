@@ -98,9 +98,9 @@ export async function nativeTaskHost(root, decide, options = {}) {
   }
   const policyRow = { name: pathToFileURL(resolve(artifactPolicyEntry)).href, config: { mode: 'workspace-write', workspaceRoot: root } }
   await ctx.loader.root.update([
-    row('agent'), row('session'), row('session-projection'),
+    { name: new URL('../../src/native-agents.js', import.meta.url).href }, row('session'), row('session-projection'),
     row('system-prompt', { includeRuntimeContext: false, includeHarnessIdentity: false }),
-    row('llm'), { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
+    { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, row('user-approval', { policy: 'never' }),
     ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),
     { name: new URL('../../src/process/index.js', import.meta.url).href }, { name: new URL('../../src/native-sandbox.js', import.meta.url).href }, policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     row('permission-presets', { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } }),

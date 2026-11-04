@@ -1,10 +1,11 @@
 import z from '@deepseek-ai/schemastery'
-import { LlmAdapter, LlmError, attributionHeaders } from '@deepseek-ai/dsh-llm'
+import {  LlmError, attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { builtinProviders,getBuiltinModels,getAllBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { resolvePiProfiles,configuredPiModels,thinkingLevels } from './pi-provider-catalog.js'
 import { piAuthentication } from './pi-provider-auth.js'
 import { observePiEvents } from './pi-provider-events.js'
+import {nativePiEventSink} from './pi-native-stream.js'
 import { piProviderContext } from './pi-provider-context.js'
 import { discoverPiModels } from './pi-provider-discovery.js'
 import { registerPiLoginFlows } from './pi-provider-login.js'
@@ -25,8 +26,8 @@ export function piConversationUpdates(model) {
  * LLM registry. That registry's middleware and application policy stay active;
  * this module never invokes the former dsh-llm-pi-ai adapter.
  */
-export class NativePiProvider extends LlmAdapter {
-  constructor(ctx,profiles,authentication){super();this.ctx=ctx;this.profiles=profiles;this.authentication=authentication}
+export class NativePiProvider {
+  constructor(ctx,profiles,authentication){this.ctx=ctx;this.profiles=profiles;this.authentication=authentication}
   current(){const profiles=this.profiles();if(this.snapshot?.profiles!==profiles)this.snapshot={profiles,models:configuredPiModels(profiles,this.authentication)};return this.snapshot}
   profile(snapshot,id){const profile=snapshot.profiles.get(id);if(!profile)throw new LlmError('Provider route is not registered','NO_ADAPTER');return profile}
   model(snapshot,provider,id){const profile=this.profile(snapshot,provider),error=profile.modelErrors.get(id)??profile.catalogError;if(error)throw new LlmError(error,'INVALID_CONFIG');const model=snapshot.models.getModel(provider,id);if(!model)throw new LlmError('Unknown configured model '+provider+'/'+id,'UNKNOWN_MODEL');return model}
@@ -35,12 +36,14 @@ export class NativePiProvider extends LlmAdapter {
     return{provider,id,name:model.name,inputModalities:[...model.input],context:{contextWindow:model.contextWindow},...max===undefined?{}:{defaultMaxTokens:max},...model.reasoning?{reasoning:{efforts:supported.map(id=>({id,name:id[0].toUpperCase()+id.slice(1)})),...effort===undefined?{}:{defaultEffort:effort}}}:{},...piConversationUpdates(model)}
   }
   providerInfo(provider){return{id:provider,name:this.current().profiles.get(provider)?.displayName??provider}}
+  imageRequestPricing(){}
   providerRetryPolicy(provider){return this.current().profiles.get(provider)?.retryPolicy}
   async listModels(provider){const snapshot=this.current();this.profile(snapshot,provider);return snapshot.models.getModels(provider).map(m=>({provider,id:m.id,name:m.name,inputModalities:[...m.input]}))}
   async resolveModel(provider,id){return this.info(this.current(),provider,id)}
   async prepareCall(provider,id){const snapshot=this.current();return{model:this.info(snapshot,provider,id),stream:request=>this.streamSnapshot(request,snapshot)}}
   stream(request){return this.streamSnapshot(request,this.current())}
   async *streamSnapshot(request,snapshot){
+    const publish=nativePiEventSink()
     const consumer=new AbortController(),signal=request.signal?AbortSignal.any([request.signal,consumer.signal]):consumer.signal
     try{
       if(request.stop!==undefined)throw new LlmError('Stop sequences are unsupported by this provider','UNSUPPORTED_OPTION')
@@ -54,8 +57,8 @@ export class NativePiProvider extends LlmAdapter {
       const knobs=Object.fromEntries(['thinkingBudgets','cacheRetention','transport','timeoutMs','websocketConnectTimeoutMs'].filter(key=>profile[key]!==undefined).map(key=>[key,profile[key]]))
       const upstream=snapshot.models.streamSimple(model,context,{...knobs,...apiKey===undefined?{}:{apiKey},...effort===undefined||effort==='off'?{}:{reasoning:effort},...request.temperature===undefined?{}:{temperature:request.temperature},...request.maxTokens===undefined?{}:{maxTokens:request.maxTokens},...request.sessionId===undefined?{}:{sessionId:String(request.sessionId)},headers:Object.fromEntries(headers),signal,maxRetries:0})
       const chunks=[]
-      const observed=observePiEvents(upstream,{provider:request.provider,model:request.model,contextWindow:model.contextWindow,signal,idleTimeoutMs:profile.streamIdleTimeoutMs,onChunk:chunk=>chunks.push(chunk),onCancel:()=>consumer.abort('Pi request stream settled')})
-      for await(const _event of observed)while(chunks.length)yield chunks.shift()
+      const observed=observePiEvents(upstream,{provider:request.provider,model:request.model,contextWindow:model.contextWindow,signal,idleTimeoutMs:profile.streamIdleTimeoutMs,onChunk:chunk=>{publish.chunk(chunk);chunks.push(chunk)},onCancel:()=>consumer.abort('Pi request stream settled')})
+      for await(const event of observed){publish(event);while(chunks.length)yield chunks.shift()}
       while(chunks.length)yield chunks.shift()
     }catch(error){throw nativeError(error)}finally{consumer.abort('Pi request consumer stopped')}
   }

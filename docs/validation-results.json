@@ -261,5 +261,45 @@
     "managedRangeTests": "real PTY, Linux private exec bootstrap, command exit with live descendants, terminate then real quiescence",
     "remotePush": "not retried; prior 403 denial stands",
     "completeMigration": false
+  },
+  "nativeLlmAndAgents": {
+    "date": "2026-11-04",
+    "ownPass": 178,
+    "includesUnmountedProjectionPrototypeTests": 5,
+    "runtimePass": 142,
+    "runtimeDurationMs": 276679.716104,
+    "precedingNativeEventRuntimePass": 142,
+    "precedingNativeLlmRuntimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "containment": {
+      "pass": 8,
+      "fail": 0,
+      "windowsSkipped": 1,
+      "execution": "approved outside outer executor; application confinement unchanged"
+    },
+    "uniquePass": 763,
+    "productionOnlyRepeatedPass": 99,
+    "runtimeFilesCompared": 238,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 235,
+    "literalBareImports": 125,
+    "actualLocalProtocols": [
+      "openai-completions",
+      "openai-responses",
+      "anthropic-messages"
+    ],
+    "directRuntimeDshDependencies": 55,
+    "removedActiveDshServices": 11,
+    "legacyAgentTypeDependency": "deliberately retained for existing RPC/subagent type/helper compatibility",
+    "nativeEventFallbacks": [
+      "middleware output modification including deltas",
+      "legacy adapter",
+      "nested native invocations",
+      "bounded 4096-event retention overflow"
+    ],
+    "remaining": "session/projection runtime and v4 facade; scope and legacy message/projection helpers; RPC carrier; permission/filesystem/shell wrappers; Windows ACL; credentials/attachments; skills/workspace/subagents",
+    "remotePush": "not retried; prior 403 denial stands",
+    "completeMigration": false
   }
 }

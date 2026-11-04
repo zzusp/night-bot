@@ -6,7 +6,7 @@
     "@earendil-works/pi-coding-agent": "1.5.0"
   },
   "unmountedPreparation": [
-    "Pi native event capture prototype: unit tested, not mounted"
+    "NativeProjections fold registry: unit tested, not yet mounted"
   ],
   "standaloneProcess": true,
   "standaloneFromDshLibraries": false,
@@ -14,10 +14,13 @@
     "agent-core.runAgentLoop iteration",
     "Pi operational tool dispatch without placeholder input",
     "Pi coding-agent SessionManager v3 journal and branch context authority",
-    "NativePiProvider: Pi Models.streamSimple, native catalog/auth/retry/discovery/login/event handling"
+    "NativePiProvider: Pi Models.streamSimple, native catalog/auth/retry/discovery/login/event handling",
+    "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
     "resident HTTP/DWS bridge",
+    "NativeLlm topology, exact-model validation, one-shot prepared-call binding, policy dispatch and RPC facade",
+    "NativeAgents live ownership, ordered publication, factory delegation and initiator drain; fused native agent event helpers",
     "SQLite task/operation/wake/notification ledger",
     "single-document JSON domains and model selection",
     "native kernel sandbox profile/selection and error metadata (Windows ACL dependency explicit)",
@@ -28,11 +31,11 @@
   ],
   "dshRemaining": [
     "Cordis agent factory/lifecycle compatibility fork",
-    "agent and session registries",
+    "session registry, session projection registry and in-memory v4 compatibility view; agent registry now local",
     "v4 event validators and persistent inbox compatibility facade",
     "runtime prompt assembly and provider replay",
     "legacy v4 import and writer fencing only",
-    "generic llm registry/middleware and GenerateOptions/chunk compatibility bridge; native provider no longer invokes dsh-llm-pi-ai",
+    "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
     "durable credential record store, neutral authorization service, attachment storage/request-image policy helpers",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
     "filesystem/shell wrappers and sandbox/permission policy services; Windows ACL capability backend; shared proxy overlay",
@@ -232,6 +235,10 @@
       "version": "0.2.1-alpha.2"
     },
     {
+      "name": "@deepseek-ai/dsh-typert-protocol",
+      "version": "0.2.1-alpha.2"
+    },
+    {
       "name": "@deepseek-ai/dsh-user-approval",
       "version": "0.2.1-alpha.2"
     },
@@ -256,9 +263,8 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 109,
+  "developmentDependencyCount": 108,
   "activeLiteralDshPluginRows": [
-    "agent",
     "agent-instructions",
     "agent-preset-registry",
     "attachment-local",
@@ -267,7 +273,6 @@
     "fs-observation-policy",
     "fs-sandbox",
     "launch-environment",
-    "llm",
     "llm-retry",
     "permission-presets",
     "session",
@@ -306,6 +311,8 @@
     "agent-default-model/config-editor dependency -> durable native model selection",
     "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
     "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
+    "llm runtime service -> src/native-llm.js; public message/projection helpers and RPC carrier remain",
+    "agent runtime service -> src/native-agents.js and native-agent-context.js; Pi-loop factory and session compatibility view remain",
     "sandbox-local -> src/native-sandbox.js; native Linux/macOS profile/selection with Windows ACL capability library remaining",
     "subprocess-local -> source-derived src/process backend; local contracts/bootstrap/output/FFI, shared proxy overlay remains",
     "jobs-local -> src/native-jobs.js; process execution and durable task receipts remain separate",

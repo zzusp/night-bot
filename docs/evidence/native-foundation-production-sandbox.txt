@@ -1,0 +1,14 @@
+✔ native sandbox probes in preference order once and retains partial enforcement (6.450108ms)
+✔ native sandbox unavailable verdict is cached and cannot dispatch unconfined argv (3.079053ms)
+✔ native sandbox validates custom runners, exact argv, cancellation and policy before grants (4.727069ms)
+✔ native sandbox owns isolated metadata snapshots and read-only profiles (2.796718ms)
+✔ Windows capability contract keeps workspace grant shared and session temp grants isolated (3.616024ms)
+✔ Windows temp capability failure cleans private directory before propagating (1.14061ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133.637124

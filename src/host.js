@@ -27,8 +27,8 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
     const shell = config.shell ?? (process.platform === 'win32' ? 'pwsh' : 'bash')
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
     const rows = [
-      row('agent'), row('session'), row('session-projection'), row('system-prompt', { includeHarnessIdentity: false }),
-      row('llm'), { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), row('authorization'),
+      { name: new URL('./native-agents.js', import.meta.url).href }, row('session'), row('session-projection'), row('system-prompt', { includeHarnessIdentity: false }),
+      { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, row('web'), row('llm-retry'), row('authorization'),
       row('credentials-local', { path: join(root, 'credentials.json'), watch: false }),
       row('attachment-local', { dshHome: root }), row('launch-environment'), row('timeout'),
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
@@ -51,6 +51,9 @@ export async function createHost(config, { extraPlugins = [] } = {}) {
     ]
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
+    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence'])
+      if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
+    if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
     if (!ctx.get('tools')) throw new Error('NIGHT_BOT_TOOL_RUNTIME_UNAVAILABLE')
     if (!ctx.get('jobs')) throw new Error('NIGHT_BOT_JOB_RUNTIME_UNAVAILABLE')

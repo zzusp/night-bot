@@ -59,3 +59,11 @@ Host 和任务恢复测试已挂载本地 NativeJobs，jobs-local 仅保留开�
 NativeSandbox替换sandbox-local服务，拥有Linux bwrap/Landlock与macOS Seatbelt profile、平台链选择、受限探测缓存、错误归因元数据与调用前取消检查。Windows ACL能力库仍明确保留；standing workspace grant与每session随机temp能力的复用、失败清理/关闭回收契约经过模拟验证，未把Linux测试冒充Windows实机验收。新增真实内核测试分别验证read-only/workspace-write工作目录内外写入结果。
 
 进程服务改挂本地`src/process/index.js`，操作系统后端是明确保留MIT来源的代码派生实现，非从零重写；见process-fork-manifest.json与THIRD_PARTY.md。原进程树/Windows Job、PTY、范围退出观测、输出尾部与spill、控制管道、取消/关闭行为保留；契约、lazy loading、runner定位与Windows FFI代码为本地模块。代理仍由Pi迭代，平台进程代码不伪装为Pi SDK功能。旧工具后端仍使用同名服务接口，generic proxy overlay及Windows ACL库等仍是DSH依赖。**复制源码本身不计为完成去DSH迁移**；后续仍需迁移通用LLM、工厂/registry、附件/凭据、skills/workspace与FS/shell/policy。
+
+### 本地LLM与Agent运行时注册
+
+NativeLlm拥有provider拓扑、目录/发现、精确模型元数据验证、默认值、绑定单代配置的一次性prepared call、middleware派发、文件/图片/工具历史投影准入与错误边界；保留现有RPC方法标记。NativePiProvider为独立类，不再继承旧LlmAdapter。正常模型响应保留Pi的真实api/responseId、thinking/text/tool签名和流事件；chunks仅作单向审计。原始与middleware准入审计流逐条快照并计算有界指纹，任何修改（包括只修改delta、终态文本不变）都回到兼容编码，绝不重发请求。多嵌套native调用或4096事件缓存上限也走明确兼容路径，最终内容和副作用不丢失；文本被修改后丢弃旧opaque replay签名。
+
+NativeAgents拥有精确实例父子归属、同步入册/串行创建通知/幂等卸载、factory调用者上下文、ALS initiator原Promise身份、关闭拒绝新入场并排空原调用链、自发关闭排除自身等待。native-agent-context融合事件subject与scope，payload不能替换agent。保留旧类型标识/Agent helper依赖用于既有RPC及子代理兼容；不是为了降低计数而移除这些生产类型资源。当前直接DSH依赖55个、已替换11个活动服务。
+
+仍有DSH session registry/projection服务、v4内存审计facade、scope/消息/附件投影helpers、Typert载体、权限/文件/shell wrapper、Windows ACL、凭据/附件、skills/workspace/子代理等。NativeProjections只有原型与5项单元测试，本阶段尚未挂载。不得因文件存在就把它列为已迁移。

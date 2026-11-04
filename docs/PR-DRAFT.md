@@ -9,3 +9,5 @@ NativeTools在副作用前持久化调用意图，提交结果后再推进模型
 后台任务注册表后续已由 NativeJobs 接管，保留owner/作用域访问、限额、输出游标、终态通知与取消排空。最新719项独立通过/1 Windows跳过，纯生产依赖54项重复验证；生产直接DSH包54个。进程与沙箱后端仍保留，PR仍属未完成迁移草稿。
 
 NativeSandbox已替换profile/选择/探测/错误元数据；managed-process后端移为保留MIT来源的本地代码派生实现，运行时合同/runner/Windows FFI在本地。最新739独立通过/1 Windows跳过、生产副本71重复通过；包含4项未挂载的原生事件捕获原型测试。仍有54个生产直接DSH依赖，Windows ACL等仍在；不得将源代码复制或这些测试数当作完整迁移证据。
+
+NativeLlm与NativeAgents现已挂载，NativePiProvider不再继承LlmAdapter；正常Pi事件不再从chunks重建，middleware变更仍有权控制输出且不重发请求。最新763独立通过/1 Windows跳过、生产副本99重复通过；含5项未挂载projection原型测试。仍55个生产直接DSH依赖，Agent类型资源为RPC/子代理兼容明确保留；完整去DSH仍未完成。

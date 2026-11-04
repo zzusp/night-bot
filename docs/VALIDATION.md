@@ -117,3 +117,11 @@ pnpm因仅调整依赖分组曾尝试自动重装而命中不可写默认缓存/
 真实内核测试覆盖read-only/workspace-write的目录内外写入；真实process测试覆盖argv/取消、bounded output/spill/独立读游标、Linux私有0600请求一次性消费与execve精确环境、PTY输出与整会话关闭，以及直接命令退出后仍有后代、只有terminate并观测范围排空才能宣告退出。当前云机可能选择原先允许的fallback进程树管理；未把它宣称为用户systemd scope或Windows Job实机验证。
 
 全新仅生产依赖副本71项重复验证通过，234个运行时文件逐字节一致。生产导入检查现递归扫描src子目录并检查literal lazy loads，共231个JS文件/118个裸引用，全部声明。进程平台实现保留原MIT来源、哈希与明确适配记录；不是复制代码就算完全去DSH。Windows ACL仍是生产依赖，真实Windows/macOS、外部供应商和真实钉钉均未验收。远端403未重试。
+
+## 本地LLM与Agent registry、原生Pi事件
+
+最新应用178项通过（含5项尚未挂载NativeProjections原型测试）、任务运行时142项通过（约277秒）、路由47、领域388通过、containment 8通过/1 Windows跳过，共763独立通过。先前原生事件切换142、NativeLlm切换142、NativeAgents切换142分别通过；审查修复“middleware只改delta仍须拥有输出控制”后再次完整运行最新142项，并保留三种本地真实协议与wire断言`pi-native`。没有将前序重复回归叠加计数。
+
+独立仅生产依赖副本99项重复验证通过，238个运行时文件与最终manifest/lock逐字节一致；235个JS文件/125个裸引用全部声明。Agent类型/helper生产包为兼容既有RPC/子代理类型资源明确保留，故依赖数仍55；不把依赖分组变化冒充运行时迁移。NativeLlm的元数据/一次性call/热切换绑定/RPC标记与原实现公开契约差分通过，middleware拒绝与迭代清理错误仍按原边界传播。
+
+NativeAgents验证创建期间卸载的顺序、失败回滚、相同id不同父实例隔离、ALS原Promise身份/排空/重入关闭、单工厂所有权、原id卸载以及事件scope/subject不可伪造。没有替换v4审计facade、Session/Projection服务及剩余权限/外部能力，也未做真实供应商或钉钉操作。远端403未重试。

@@ -1,0 +1,15 @@
+✔ native jobs enforce controller admission, limits and startup rollback (8.492058ms)
+✔ native jobs pump final source bytes, retain spill and contain observers (3.141878ms)
+✔ native jobs wait abort detaches without cancelling producer (5.482679ms)
+✔ owned job ids enforce session access and owner disposal drains production (4.35615ms)
+✔ job starts fail closed without reachable controller (1.364558ms)
+✔ scoped controllers and subscriptions serve only their owner composition (3.234939ms)
+✔ throwing teardown cancellation reports orphan uncertainty and never replays producer (3.346577ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 94.926335

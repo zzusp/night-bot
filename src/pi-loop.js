@@ -2,7 +2,8 @@
 // Inference and tool iteration are owned by pi-agent-core; host events stay compatible.
 import { projectPiMessage } from "./pi-session-persistence.js";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
-import { fromPiAssistant, piFailureStream, piUsage, bridgeDshStream } from "./pi-messages.js";
+import { fromPiAssistant, piFailureStream, piUsage } from "./pi-messages.js";
+import {nativeExecutionStream} from "./pi-native-stream.js";
 import { Service } from "@deepseek-ai/cordis";
 import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
@@ -11,7 +12,7 @@ import { brandString } from "@deepseek-ai/dsh-brand";
 import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, LlmError, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from "@deepseek-ai/dsh-llm";
 import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "@deepseek-ai/dsh-session";
 import { SessionPersistenceNotFoundError } from "@deepseek-ai/dsh-session-persistence";
-import { agentEvents, assembleContextFor } from "@deepseek-ai/dsh-agent";
+import { agentEvents, assembleContextFor } from "./native-agent-context.js";
 import { assertNever, deepFreeze } from "@deepseek-ai/dsh-util-values";
 import { createScope } from "@deepseek-ai/dsh-scope";
 import { joinContextSections, renderContextSections, renderPrompt } from "@deepseek-ai/dsh-system-prompt";
@@ -1010,8 +1011,9 @@ var PiLoopAgent = class {
 					tools.splice(0, tools.length, ...makeTools(assembly));
 					const live = new AssistantStreamAttempt(this.session.id, ++this.assistantAttemptCounter, () => ++this.assistantStreamRevision, turn, step,
                         frame => this.dispatch.emit('agent/assistant-stream', { frame }));
-                    const response = bridgeDshStream(preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request), request, live);
+                    const response = nativeExecutionStream(() => preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request), request, live);
                     const output = await response.result();
+                    this.providerStreamProtocol = output._hostNative ? "pi-native" : "compatibility";
                     if (output.stopReason === 'error' || output.stopReason === 'aborted') {
                         live.settle('assistant/attempt', () => this.session.append('assistant/attempt', { turn, step, stream: live.stream }).seq);
                         output._hostLive = undefined;

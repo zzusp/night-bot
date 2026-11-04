@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto'
+import {snapshotJsonValue} from '@deepseek-ai/dsh-util-values'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isDeepStrictEqual} from 'node:util'
 import {AssistantMessageEventStream} from '@earendil-works/pi-ai'
@@ -10,25 +12,34 @@ const usageEqual=(message,audit)=>audit&&['inputTokens','outputTokens','cacheRea
 /** Each provider invocation owns a distinct token. Nested model invocations or
  * transformed legacy output force compatibility handling; they cannot borrow
  * another invocation's native terminal message. */
-export function nativePiEventSink(){const capture=captures.getStore(),token=Symbol('native Pi invocation');return event=>{if(capture?.active){capture.tokens.add(token);capture.events.push(event)}}}
+const snapshotChunk=chunk=>{const value=snapshotJsonValue(chunk);if(value===undefined)throw new TypeError('Pi audit chunk must be lossless JSON');return value}
+function fingerprint(hash,chunk){const text=JSON.stringify(chunk);hash.update(String(Buffer.byteLength(text))+':');hash.update(text)}
+export function nativePiEventSink(){
+ const capture=captures.getStore(),token=Symbol('native Pi invocation')
+ const sink=event=>{if(capture?.active){if(capture.tokens.size<2)capture.tokens.add(token);capture.last=event;if(capture.overflow||capture.events.length>=4096){capture.overflow=true;capture.events.length=0}else capture.events.push(event)}}
+ sink.chunk=chunk=>{if(capture?.active)fingerprint(capture.nativeHash,snapshotChunk(chunk))}
+ return sink
+}
+
 /** Keep generic policy/middleware admission while preserving Pi's actual event
  * protocol as execution output whenever the admitted audit semantics agree.
  * Legacy or output-transforming plugins retain the explicit compatibility path.
  */
 export function nativeExecutionStream(sourceFactory,request,live){
- const output=new AssistantMessageEventStream(),capture={active:true,tokens:new Set(),events:[]}
+ const output=new AssistantMessageEventStream(),capture={active:true,tokens:new Set(),events:[],nativeHash:createHash('sha256'),admittedHash:createHash('sha256')}
  void captures.run(capture,async()=>{
   try{
    // Buffer the admitted stream once. A fallback replays immutable in-memory
    // observations only; it never makes a second provider request or tool call.
    request.signal?.throwIfAborted()
    live.start()
-   for await(const chunk of sourceFactory()){request.signal?.throwIfAborted();live.push(chunk)}
+   for await(const chunk of sourceFactory()){request.signal?.throwIfAborted();const admitted=snapshotChunk(chunk);fingerprint(capture.admittedHash,admitted);live.push(admitted)}
    capture.active=false
-   const terminal=capture.events.at(-1),message=terminal?.type==='done'?terminal.message:terminal?.type==='error'?terminal.error:undefined
+   const terminal=capture.last,message=terminal?.type==='done'?terminal.message:terminal?.type==='error'?terminal.error:undefined
    // Feed the same audit once, before any terminal can advance the agent loop.
    const finish=live.finish,reason=message?.stopReason==='length'?'max-tokens':message?.stopReason==='toolUse'?'tool-calls':message?.stopReason
-   const matches=capture.tokens.size===1&&message&&isDeepStrictEqual(semantic(message),live.blocks())&&usageEqual(message,live.usage)&&isDeepStrictEqual(capturePiReplay(message,request.model),live.replayState)&&reason===finish.kind&&(!['error','aborted'].includes(reason)||message._hostFailure?.code===finish.failure?.code)
+   const auditUnchanged=capture.nativeHash.digest('hex')===capture.admittedHash.digest('hex')
+   const matches=auditUnchanged&&!capture.overflow&&capture.tokens.size===1&&message&&isDeepStrictEqual(semantic(message),live.blocks())&&usageEqual(message,live.usage)&&isDeepStrictEqual(capturePiReplay(message,request.model),live.replayState)&&reason===finish.kind&&(!['error','aborted'].includes(reason)||message._hostFailure?.code===finish.failure?.code)
    if(matches){
     // Metadata is an audit view. The content, signatures, response identity and
     // operational events retain Pi's native structures.
