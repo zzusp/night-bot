@@ -6,7 +6,7 @@
 
 ## 运行边界
 
-`src/pi-loop.js` 使用 pi-agent-core 的 `runAgentLoop` 驱动迭代和工具调用。原 DSH AgentLoop 的工厂、持久 inbox、生命周期和会话投影保留为 MIT 兼容实现；原模型/工具 step 循环已替换。每一模型请求先持久化已准入事件，再从 Pi SessionManager 的权威分支读取实际内容；旧 DSH deriveMessages 不再为主循环提供模型上下文。任务权限和效果账本仍由应用维护。模型 wire adapter 已替换为本地 `native-pi-provider.js`，直接使用 Pi Models；保留多模态、provider replay、凭据、模型选择和错误分类。通用 DSH LLM middleware/GenerateOptions/chunk 兼容桥及附件策略 helpers 仍待替换。版本由 pnpm lock 固定；当前代理循环固定为发布包 `@earendil-works/pi-agent-core@1.5.0`，本轮已从已弃用的 @mariozechner 0.73.1 升级并完成对应回归；停止条件使用1.5.0公开的 finishTurn 合同。
+`src/pi-loop.js` 使用 pi-agent-core 的 `runAgentLoop` 驱动迭代和工具调用。Agent/Session/Projection注册、默认模型、LLM和工具调度已由本地服务接管；持久inbox、AgentLoop适配及v4内存Session facade仍保留MIT兼容实现。原模型/工具step循环已替换。每一模型请求先持久化已准入事件，再从 Pi SessionManager 的权威分支读取实际内容；旧 DSH deriveMessages 不再为主循环提供模型上下文。任务权限和效果账本仍由应用维护。模型 wire adapter 已替换为本地 `native-pi-provider.js`，直接使用 Pi Models；保留多模态、provider replay、凭据、模型选择和错误分类。LLM middleware准入归本地NativeLlm；GenerateOptions/chunk兼容协议、通用消息及附件策略helpers仍保留。版本由 pnpm lock 固定；当前代理循环固定为发布包 `@earendil-works/pi-agent-core@1.5.0`，本轮已从已弃用的 @mariozechner 0.73.1 升级并完成对应回归；停止条件使用1.5.0公开的 finishTurn 合同。
 
 应用 NativeTools 保持统一工具准入、业务/权限 guard 和调度入口；具体工具仍保留自己的参数校验/defaults。Pi 的操作性工具声明不重复执行更严格的 JSON Schema 校验，实际发给模型的仍是原始精确 schema；这样可保留 Zod 默认值、未知/隐藏工具尝试的拒绝和审计。单会话内 Pi 工具调用串行进入应用执行管线；不同 Task/Execution 的并发、资源互斥与排队继续由原 Host 控制。这保留了工具能力与安全语义，但单次模型响应中多个并行安全工具的吞吐可能低于原循环。
 
@@ -93,3 +93,9 @@ NativeAuthorization替代活动authorization服务，拥有flow注册/独立meta
 通过ALS归属检查，另一个请求对同key的写入不能冒充本次登录成功；可信旧flow直接写store仍保留同调用链提交观察。授权flow注销自身/关闭自身服务排除自等待，其他已开始提交仍排空。错误类型身份继续复用旧authorization helper以兼容既有interaction插件；未把此依赖移到dev伪装清零。生产直接DSH依赖仍54，活动服务替换16。附件、skills/workspace、子代理、FS/shell/permission wrappers及Session facade等仍待迁移。
 
 兼容边界：可信自定义flow若绕过session.commit/session.credentials而直接使用全局store，其副作用仍由该插件负责遵守signal；本地注册表不宣称能撤销插件直接持有的全局写能力。默认Pi登录已全部使用attempt-scoped入口。
+
+## 原生工作目录阶段
+
+NativeWorkingDirectory同时替换root与agent preset中的working-directory服务。它通过已注入FS能力解析/检查目录，保留调用者归属，不直接读取宿主文件系统绕过wrapper； cwd变更不修改原始Session header或沙箱root。每Session串行、取消/owner关闭后禁止append、服务关闭排空、缺失当前目录回退原项目、默认cwd首次落日志、commit后通知错误不撤销状态均保留。模型context在downstream assembly之后重采样，防止沿用旧目录。
+
+源working-directory已移为开发差分依赖；FS/shell/permission能力后端、skills及workspace/subagent等仍未迁移。基础验证为8项合同（含旧服务差分、调用者归属与prompt重采样）、真实CLI/wire、完整任务及真实内核隔离回归，具体结果见VALIDATION和机器证据。生产直接DSH依赖53，已替换17个活动服务；这些计数不代表完整功能迁移。

@@ -147,3 +147,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 自有225（其中17授权合同）、完整任务142（274331ms）通过；保留此前未改动领域388、路由47、隔离8通过/1Windows跳过证据，当前独立810通过。任务fixture不挂载authorization，本轮完整142是任务无回归证据；真实授权验收来自17合同、实际Pi Models登录和真实Host/CLI/wire。后加ALS提交观察归属和reentrant close改动经过最终自有225/生产138验证，未冒充另一次完整142。
 
 全新生产依赖frozen安装通过，重复138通过（128核心/登录/授权，10本地凭据合同），244运行时文件及manifest/lock一致。静态闭包241文件/136裸导入。原生授权的差分、取消、close/drain、自注销、不误认其他writer和实际Pi SDK登录均经过验证。没有真实供应商OAuth或DingTalk副作用。日志evidence/native-authorization-*；仍为部分迁移，远端403未重试。
+
+## 原生工作目录阶段
+
+自有233（其中8目录合同）、完整任务142（273494ms）、路由47、真实隔离8通过/1Windows跳过；领域388沿用未改业务模块的凭据阶段证据。当前独立818通过。目录服务在root/preset/原生任务fixture均挂载后执行回归；随后增加required-service启动检查，以最终11项目录/wire/CLI测试覆盖。
+
+全新生产依赖副本frozen安装通过，重复145通过（128核心+17凭据/目录合同），245运行时文件及manifest/lock一致。旧后端差分测试依赖开发包，明确不选择到生产合同组。闭包242文件/140裸导入；200核心/3UI排除/6适配守恒。证据evidence/native-directory-*。没有真实业务、外发或远端写入，403未重试。

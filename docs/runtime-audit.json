@@ -16,6 +16,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeWorkingDirectory durable per-session cwd, original-project recovery, caller FS attribution, prompt resampling and cancellation/drain",
     "NativeAuthorization single-flight attempts, scope-bound Pi login commits, cancellation/admission gate and close/drain; old error identities remain explicit compatibility helpers",
     "NativeCredentials layered reference and durable record store, comment-preserving strict YAML, legacy-interoperable cross-process refresh lock, watcher snapshots and contained notifications",
     "resident HTTP/DWS bridge",
@@ -255,15 +256,11 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-working-directory",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-workspace",
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 109,
+  "developmentDependencyCount": 110,
   "activeLiteralDshPluginRows": [
     "agent-instructions",
     "agent-preset-registry",
@@ -294,7 +291,6 @@
     "user-approval",
     "web",
     "web-fetch-http",
-    "working-directory",
     "workspace"
   ],
   "activeDynamicDshPluginRows": [
@@ -302,6 +298,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "working-directory -> src/native-working-directory.js; filesystem capability backend remains guarded and unchanged",
     "authorization -> src/native-authorization.js; attempt-scoped Pi login credentials and commit-phase cancellation fence",
     "credentials-local -> src/native-credentials.js + credential-file.js; legacy document/lock protocol retained for interoperability",
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",

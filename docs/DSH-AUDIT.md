@@ -20,12 +20,12 @@
 | 默认模型选择及持久保存 | **本轮已替换为 `src/native-state.js`** | 应用原生，保存后重启读回，不依赖 DSH 配置编辑器 |
 | 工具 registry、guard、角色隔离、审计、输出、调度 | 应用 `NativeTools` + `native-code-transport`，Pi 驱动调用 | **本轮替换活动 tools 服务与执行管线**；scope carrier、schema/defineTool/codegen helpers、FS/shell 工具后端仍有 DSH，未声称所有权限与进程能力已迁移 |
 | 文件与终端、作业与进程回执、沙箱、权限 preset | NativeJobs、本地源代码派生 managed-process后端、NativeSandbox；DSH fs/shell/policy及Windows ACL库 | 进程源代码fork明确保留来源与行为，不计为完全重写；通用工具/权限/平台依赖仍待替换，未用裸spawn降低隔离 |
-| 技能、工作目录、指引发现、子代理、工作区注册 | DSH skill/filesystem、workingDirectory、instructions、subagent/workspace | **仍为 DSH**；未迁到 Pi coding-agent 资源加载与扩展模型 |
-| 凭据、授权与附件 | DSH credentials/authorization/attachments；宿主环境变量 | **仍为 DSH**；新增模型选择文件不包含密钥，不替代这些安全设施 |
+| 技能、工作目录、指引发现、子代理、工作区注册 | NativeWorkingDirectory；其余DSH skill/filesystem、instructions、subagent/workspace | 工作目录已本地实现；保留FS权限能力；技能、资源加载与子代理等仍待迁移 |
+| 凭据、授权与附件 | NativeCredentials、NativeAuthorization、分层环境；DSH attachment实现和授权错误类型helpers | 默认Pi登录使用attempt-scoped持久提交；附件及通用类型helper仍待迁移 |
 | HTTP 与 DWS | 应用的 Node HTTP server、DWS CLI JSON bridge | 应用原生入口；路由调用的任务/会话能力仍可能依赖 DSH |
 | 历史工作流与可选外部能力 | 保留旧源码和扩展入口 | **源码存在不等于当前已挂载或验收**。不能用 200 文件守恒证明所有工作流、浏览器/数据库插件或 Claude 都实际可用 |
 
-完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **54 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
+完整生产直接依赖和实际 Host 插件行见 `runtime-audit.json`。本轮将开发/历史测试依赖与生产直接依赖区分，但仍有 **53 个 DSH 生产直接依赖**；传递依赖还会包含其他 DSH 包。它们没有因为不单独启动 DSH 进程而消失。
 
 ## 进程与协议
 
@@ -137,3 +137,9 @@ NativeAuthorization替代活动authorization服务，拥有flow注册/独立meta
 通过ALS归属检查，另一个请求对同key的写入不能冒充本次登录成功；可信旧flow直接写store仍保留同调用链提交观察。授权flow注销自身/关闭自身服务排除自等待，其他已开始提交仍排空。错误类型身份继续复用旧authorization helper以兼容既有interaction插件；未把此依赖移到dev伪装清零。生产直接DSH依赖仍54，活动服务替换16。附件、skills/workspace、子代理、FS/shell/permission wrappers及Session facade等仍待迁移。
 
 兼容边界：可信自定义flow若绕过session.commit/session.credentials而直接使用全局store，其副作用仍由该插件负责遵守signal；本地注册表不宣称能撤销插件直接持有的全局写能力。默认Pi登录已全部使用attempt-scoped入口。
+
+## 原生工作目录阶段
+
+NativeWorkingDirectory同时替换root与agent preset中的working-directory服务。它通过已注入FS能力解析/检查目录，保留调用者归属，不直接读取宿主文件系统绕过wrapper； cwd变更不修改原始Session header或沙箱root。每Session串行、取消/owner关闭后禁止append、服务关闭排空、缺失当前目录回退原项目、默认cwd首次落日志、commit后通知错误不撤销状态均保留。模型context在downstream assembly之后重采样，防止沿用旧目录。
+
+源working-directory已移为开发差分依赖；FS/shell/permission能力后端、skills及workspace/subagent等仍未迁移。基础验证为8项合同（含旧服务差分、调用者归属与prompt重采样）、真实CLI/wire、完整任务及真实内核隔离回归，具体结果见VALIDATION和机器证据。生产直接DSH依赖53，已替换17个活动服务；这些计数不代表完整功能迁移。
