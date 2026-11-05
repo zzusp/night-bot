@@ -1,6 +1,7 @@
 # Official Pi default runtime checkpoint
 
-Checkpoint: `4568d3f` (following official file/tool wiring at `1cc6ebf`).
+Checkpoint: `ae2b5bd` (production task boundary at `4568d3f`, following official
+file/tool wiring at `1cc6ebf`; clean dependency installation at `d766965`).
 This is not a completed removal of all DSH-derived code.
 No push, deployment or main merge has been performed.
 
@@ -13,7 +14,7 @@ with independent ownership, privacy, archive and drain safeguards preserved.
 
 ## Verified integration
 
-- Final stable `pnpm test`: 1173 passed, zero failures/cancellations; all
+- Final post-install stable `pnpm test`: 1174 passed, zero failures/cancellations; all
   source/import guards passed (421 runtime modules, zero external DSH imports).
 - `pnpm test:domain`: 391 passed. `pnpm test:routing`: 47 passed.
 - Current effect reconciliation core/real Host recovery: 44 passed.
@@ -30,8 +31,10 @@ with independent ownership, privacy, archive and drain safeguards preserved.
 - Official names, default Host binding, pinning/cold recovery and metadata drain:
   14 passed. Automatic naming defaults off; explicit opt-in sends approved labels
   only, with no main conversation or tool bodies.
-- Frozen installation previously passed: 621 entries; direct DSH development
-  declarations remain 36, production declarations and external runtime imports 0.
+- Clean standard frozen installation passed after explicit pnpm 11 build policy.
+  Four direct DSH development declarations were removed; 32 remain (six local
+  aliases, 26 registry packages). Transitive development packages remain through
+  dsh-base. Production declarations and external runtime imports remain zero.
 
 Counts overlap. pi-default-checkpoint-evidence.json records source checkpoints,
 summary files and full-log hashes; older entries retain their own checkpoint
@@ -48,14 +51,16 @@ original tool/arguments. Prepared SQL holds and native receipt/SQL projection
 crash windows are tested with zero recovery model/effect dispatches.
 See EFFECT-RECONCILIATION.md for the exact operator flow and proof limits.
 
-## Remaining migration and failed checks
+## Runtime contracts and remaining migration
 
-The last complete runtime diagnostic was 32 passed, 123 failed, using old
-PiLoop/Owner/delegation fixtures. Follow/model, human, jobs, skills, progress and
-provider cohorts have since moved to actual official Single sessions. The service
-cohort is still being finalized, so no whole-runtime passing result is claimed.
-See RUNTIME-SERVICE-CONTRACT-MIGRATION.md for retained contracts and explicit
-retirement of cancelled structures.
+The final complete runtime group passed 161 tests, zero failures, cancellations
+or skips, using NIGHT_BOT_TEST_CONCURRENCY=2 and approved outer execution mode
+while application bubblewrap remained enabled. Follow/model, human, jobs, skills,
+progress, provider, persistence, service and live-supplement contracts use actual
+official Single sessions. The service cohort retains 45 contracts. Empty human
+review now proves a durable hold and a new real-source continuation, rather than
+restoring the removed Host backoff loop. See RUNTIME-SERVICE-CONTRACT-MIGRATION.md
+for the exact mapping and explicit retirement of cancelled structures.
 
 Default file tools now mount public Pi read/write/edit and an independently
 bounded read_window through the actual NativeTools registry. Exact capability
@@ -74,5 +79,9 @@ authenticated sources are not globally deduplicated.
 
 Some legacy source aliases, manager modules and test copies remain. Their DSH
 notices stay until all corresponding retained code and copies are removed.
+The child-provider source and two dedicated test copies were verified absent;
+only its dedicated historical notice was removed. The distinct retained manager
+notice remains. Pure comparisons remain among the development dependencies;
+removing four root entries does not claim removal of that remaining code.
 Portable non-Linux process privacy fails closed; Windows kernel isolation and
 real external provider/vendor effects have not been newly validated here.

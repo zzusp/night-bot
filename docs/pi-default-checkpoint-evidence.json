@@ -1,14 +1,14 @@
 {
-  "checkpoint": "4568d3f",
+  "checkpoint": "ae2b5bd",
   "complete": false,
   "resultsOverlap": true,
   "evidence": [
     {
       "name": "default",
       "target": "docs/evidence/pi-current-default-summary.txt",
-      "sourceCheckpoint": "4568d3f",
-      "logSha256": "33cf84036c7f99b4f7f7ee252474f5a1200a2c8dadd1186c1a8fc972b06e8564",
-      "note": "Final stable source; 1173 tests and all source/import guards."
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "9b257c3ed583139bfd35e14ce959de10d28778ea9582b441703a976059138dfc",
+      "note": "Final stable full default run after clean frozen installation, four dependency retirements and independent control-tool contracts."
     },
     {
       "name": "domain",
@@ -81,6 +81,34 @@
       "sourceCheckpoint": "4568d3f",
       "logSha256": "d1ef150606ffeaf21252bc20383810c6948ce00e3f99884a27fed3821988bbb6",
       "note": "2 real SDK intentional-repeat/duplicate/cold/unknown-effect counterexamples."
+    },
+    {
+      "name": "runtime",
+      "target": "docs/evidence/pi-current-runtime-summary.txt",
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "045daed160355d0f39ea68f5f35b97cf1058d536118855bbfd80eac706d52f92",
+      "note": "Full runtime group, concurrency 2; approved outer execution; application bwrap retained."
+    },
+    {
+      "name": "cold-install-smoke",
+      "target": "docs/evidence/pi-current-cold-install-smoke-summary.txt",
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "3156f774f7985eb85c1f0700421d27ed075c84585a5ebfb9e991464b4c2126d1",
+      "note": "Fresh node_modules: actual official Host and cancelled architecture refusal."
+    },
+    {
+      "name": "independent-control-tools",
+      "target": "docs/evidence/pi-current-independent-control-tools-summary.txt",
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "c818b875ef738445981cd10622f81d65567127144017c8e6aa52d5e8cf2e4a96",
+      "note": "Independent contracts and actual official SDK after retiring table-driven package comparisons."
+    },
+    {
+      "name": "frozen-install",
+      "target": "docs/evidence/pi-current-frozen-install-summary.txt",
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "26495c4a4ab1e27eab11382cfddeb4aa5e3ee73120358fe7d2ef5d9c2c14a527",
+      "note": "Standard frozen install after explicit native-build allow/deny policy; supply-chain checks enabled."
     }
   ]
 }
