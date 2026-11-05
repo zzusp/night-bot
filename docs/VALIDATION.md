@@ -303,3 +303,13 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own458/458（24798.27982ms），新增7合同及2实际Pi wire通过。验证旧后端差分、CRLF/字节窗口/二进制拒绝、FIFO CAS仅一方成功、POSIX mode保留、真实watch与显式close、staging 0700/0600和取消后旧字节不变/暂存清理、只读及workspace外symlink拒绝、owner观察隔离与卸载清空。真实Pi七步验证unseen edit拒绝、read、外部修改后stale edit拒绝、重读、edit及新建write的六份收据；另验证read-only无授权写入/不擅自escalate。初次测试对原后端CRLF返回、umask创建mode、公开二进制错误码及workspace-write允许/tmp作了错误假设；依据固定源行为修正测试，未改或弱化guard。
 
 真实kernel九通过/一Windows跳过（14650.772878ms），仅执行器按AGENTS升级，应用隔离保持。全新/tmp/night-bot-filesystem-production frozen production ignore-scripts安装，314实质核心/wire+38合同=352复测通过；285运行文件及manifest/lock逐字一致，静态282 JS/246字面bare imports通过。runtime142/routing47/domain388对应夹具未改动沿用d78b96e证据，不声称重跑；共1044独立通过。证据evidence/native-filesystem-*.txt。34直接DSH依赖/43活动组件替换；路径policy仍保留源实现已声明TOCTOU限制，非kernel代码隔离替代。403未重试。
+
+## 原生文件/图片/搜索工具与完整结果存储验证
+
+最终own468/468（34749.119749ms）、完整runtime142/142（279576.583687ms）、routing47/47（31850.046544ms）通过；domain388未改动沿用。真实kernel九通过、一Windows专属跳过（22115.634056ms），应用隔离未关闭；共1054独立通过。新增3文件/搜索合同、4spill合同及3实际Pi wire；12项定向组包含既有两FS policy wires。
+
+实际打包ripgrep验证glob/grep、空格路径和invalid regex；schema/argv/解析/UTF-8 preview保留旧协议，--no-config及plain argv不经过shell，raw output丢失时不解析partial结果。图片wire发现条件子上下文没有声明fs注入，补齐attachments/tools/fs/workingDirectory后，真实图片字节进入Pi，PNG误标JPEG走原生附件错误纠正提示。先前仅成功构造工具不能当图片验收。
+
+补回默认Host缺失spillStore；真实Pi grep251条保留内联250条，完整私有结果保存且read取回第251条。验证安全编码、0600文件/0700目录、会话symlink替换拒绝、active-root-only清理不影响其他旧根、同步写入和关闭排空/拒绝后续请求。初次symlink测试暴露旧存储写路径只做编码而跟随已替换session目录，本地实现增加root/session检查；保留普通可信路径祖先并发替换TOCTOU限制，不声称内核安全。新增服务是修复缺失，未计移除旧活动组件。
+
+全新/tmp/night-bot-file-tools-production frozen production ignore-scripts安装，322实质核心/wire+38合同=360复测通过；288运行文件及manifest/lock逐字一致，静态285 JS/258字面bare imports通过。证据evidence/native-file-tools-*.txt。33直接DSH依赖/45活动组件替换；Shell wrapper/tool和v4 Session/inbox等辅助依赖仍明确保留，仍非完整迁移。403未重试，未推送/创建PR/合并/部署。

@@ -73,3 +73,9 @@ Trusted shell facts: `src/native-shell-env.js` preserves the MIT @deepseek-ai/ds
 `src/native-tool-jobs.js` and `src/native-output-retention.js` preserve MIT job control/notice/rendering and bounded retention algorithms from `@deepseek-ai/dsh-tool-jobs`/`dsh-output-retention@0.2.1-alpha.2`, explicitly attributed compatibility forks; see matching licenses.
 
 `src/native-fs-local.js`, `native-fs-sandbox.js` and `native-fs-observation-policy.js` preserve MIT filesystem IO/atomic/CAS/watch/Windows-DACL/containment and observation-gate algorithms from matching `@deepseek-ai/dsh-* @0.2.1-alpha.2` packages. These are explicitly attributed compatibility forks, not original security algorithms; canonical FsError/service/type helpers and sandbox writableRoots remain explicit libraries.
+
+`src/native-tool-fs.js` and `native-tool-fs-search.js` preserve MIT file/image model bindings, rendering and argv-only ripgrep bounded search/retention algorithms from matching `@deepseek-ai/dsh-* @0.2.1-alpha.2` packages; see matching licenses. Native attachment errors replace the old identity check. Generic schema, FsError, language hints and sandbox approval helpers remain.
+
+`src/native-spill.js` preserves MIT private spill IO, encoding and sweep algorithms from `dsh-spill-local`/minimal `dsh-spill` service definition@0.2.1-alpha.2; app admission/drain and cleanup scope are explicit adaptations. See matching licenses. External diff9.0.0 and @vscode/ripgrep1.18.0 licenses are included.
+
+NativeSpill additionally rejects substituted root/session symlinks, applies private directory modes, syncs admitted file writes and awaits them on owner shutdown. Active-root-only cleanup is an intentional application policy; inherited arbitrary ancestor-replacement TOCTOU is not claimed eliminated. Native file image registration explicitly injects its required scoped capabilities rather than relying on inherited injection metadata.

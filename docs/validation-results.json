@@ -1047,5 +1047,41 @@
     "platformLimit": "actual Linux only; Windows ACL algorithms retained, Windows-only containment skipped",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeFileSearchAndSpill": {
+    "date": "2026-11-05",
+    "ownPass": 468,
+    "ownDurationMs": 34749.119749,
+    "newFileContracts": 3,
+    "newSpillContracts": 4,
+    "newActualPiWireCases": 3,
+    "runtimePass": 142,
+    "runtimeDurationMs": 279576.583687,
+    "routingPass": 47,
+    "routingDurationMs": 31850.046544,
+    "domainPass": 388,
+    "domainSource": "unchanged verified domain modules",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 22115.634056,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 1054,
+    "productionOnlyRepeatedPass": 360,
+    "productionScope": "322 meaningful core/wires plus38 contracts; development-only file/search and spill differentials excluded",
+    "runtimeFilesCompared": 288,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 285,
+    "literalBareImports": 258,
+    "directRuntimeDshDependencies": 33,
+    "removedActiveDshServices": 45,
+    "restoredMissingSpillStore": true,
+    "imageRepair": "conditional subcontext explicitly injects attachments/tools/fs/workingDirectory; native AttachmentError/service taxonomy recognized",
+    "realSearch": "actual packaged ripgrep1.18.0, safe argv/no-config, regex failure and251match complete-result storage/read-back verified",
+    "spillLifetime": "closed admission and awaited admitted write sync/close; active-root-only age cleanup, safe encoded names/private directories and root/session symlink rejection; path ancestor race is not claimed eliminated",
+    "sourceDerivedAlgorithms": "MIT file/image schemas/format/CAS and ripgrep parsing/format/retention plus spill IO/sweep algorithms explicitly attributed",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

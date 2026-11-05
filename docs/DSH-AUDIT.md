@@ -267,3 +267,7 @@ Active tool-jobs now uses attributed local control/notice/format and retention a
 ### Filesystem backend and observation gate
 
 Active filesystem backend and observation listeners now use attributed local IO/CAS/containment/watch algorithms, over the retained abstract FileSystem/canonical errors and sandbox writableRoots helper. Two formerly active rows replaced; direct DSH production dependencies34 (one newly explicit sandbox helper), active replacements43. FS model/search tools and shell backends remain. Real Linux containment rerun passed; no Windows acceptance claim.
+
+### File/image/search tool ownership and spill repair
+
+Active tool-fs/tool-fs-search now use attributed local bindings, native deadline/retention and packaged ripgrep1.18.0. NativeSpillStore repairs missing full-result storage with active-root-only cleanup and admitted-write drain. Native image registration repairs explicit scoped capability injection and native error identity recognition. The missing spill service earns no removal credit. Direct DSH production dependencies33 (one newly explicit language-hint helper); active components replaced45. Remaining active dynamic rows are Shell sandbox wrappers/tools; v4 Session/inbox facade, canonical service/error/type/schema/message/scope/RPC/format/policy helpers, Windows ACL/proxy/optional-worker boundaries remain.

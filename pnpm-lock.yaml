@@ -98,12 +98,6 @@ importers:
       '@deepseek-ai/dsh-tool-bash':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(4393a64135f75c363d5fb0f46e629b1c)
-      '@deepseek-ai/dsh-tool-fs':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(bf65a053ed7a090883f03a613769832b)
-      '@deepseek-ai/dsh-tool-fs-search':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(a4b4b91fd062203db0459d64511fbccb)
       '@deepseek-ai/dsh-tool-pwsh':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(4393a64135f75c363d5fb0f46e629b1c)
@@ -111,6 +105,9 @@ importers:
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(7dae165423b610802c67ae1eb268e109)
       '@deepseek-ai/dsh-typert-protocol':
+        specifier: 0.2.1-alpha.2
+        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
+      '@deepseek-ai/dsh-util-code-language':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
       '@deepseek-ai/dsh-util-values':
@@ -140,9 +137,15 @@ importers:
       '@joplin/turndown-plugin-gfm':
         specifier: 1.0.68
         version: 1.0.68
+      '@vscode/ripgrep':
+        specifier: 1.18.0
+        version: 1.18.0
       chokidar:
         specifier: 4.0.3
         version: 4.0.3
+      diff:
+        specifier: 9.0.0
+        version: 9.0.0
       exceljs:
         specifier: 4.4.0
         version: 4.4.0
@@ -474,6 +477,12 @@ importers:
       '@deepseek-ai/dsh-tool-call-timeout-policy':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-timeout@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-tools@0.2.1-alpha.2(7dae165423b610802c67ae1eb268e109))
+      '@deepseek-ai/dsh-tool-fs':
+        specifier: 0.2.1-alpha.2
+        version: 0.2.1-alpha.2(bf65a053ed7a090883f03a613769832b)
+      '@deepseek-ai/dsh-tool-fs-search':
+        specifier: 0.2.1-alpha.2
+        version: 0.2.1-alpha.2(a4b4b91fd062203db0459d64511fbccb)
       '@deepseek-ai/dsh-tool-goal':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(3a55d397a06900f346753db70d5853d6)
@@ -519,9 +528,6 @@ importers:
       '@deepseek-ai/dsh-user-questions':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-agent@0.2.1-alpha.2(3dc6930769662420cb44e109694f1822))(@deepseek-ai/dsh-llm@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-scope@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-session-projection@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-session@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-scope@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))))(@deepseek-ai/dsh-session@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-scope@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))(@deepseek-ai/dsh-typert-protocol@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))
-      '@deepseek-ai/dsh-util-code-language':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
       '@deepseek-ai/dsh-util-crypto':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)

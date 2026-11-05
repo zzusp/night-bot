@@ -45,8 +45,6 @@
     "@deepseek-ai/dsh-subprocess": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-bash": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-tool-fs": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-tool-fs-search": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-pwsh": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tools": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.1-alpha.2",
@@ -74,7 +72,10 @@
     "ipaddr.js": "2.5.0",
     "turndown": "7.2.4",
     "@joplin/turndown-plugin-gfm": "1.0.68",
-    "@deepseek-ai/dsh-sandbox": "0.2.1-alpha.2"
+    "@deepseek-ai/dsh-sandbox": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-util-code-language": "0.2.1-alpha.2",
+    "diff": "9.0.0",
+    "@vscode/ripgrep": "1.18.0"
   },
   "packageManager": "pnpm@11.25.0",
   "devDependencies": {
@@ -180,7 +181,6 @@
     "@deepseek-ai/dsh-typert-registry": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-user-approval": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-user-questions": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-util-code-language": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-util-crypto": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-util-time": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-util-workspace-path": "0.2.1-alpha.2",
@@ -205,6 +205,8 @@
     "@deepseek-ai/dsh-tool-skill": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-jobs": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-fs-sandbox": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-fs-observation-policy": "0.2.1-alpha.2"
+    "@deepseek-ai/dsh-fs-observation-policy": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-tool-fs": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-tool-fs-search": "0.2.1-alpha.2"
   }
 }

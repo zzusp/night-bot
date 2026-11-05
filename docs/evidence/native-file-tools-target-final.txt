@@ -1,0 +1,20 @@
+✔ actual Pi native glob and grep run packaged ripgrep and preserve safe literal argv and match receipts (1649.553832ms)
+✔ actual Pi native image reader retains image bytes and native attachment mismatch guidance (239.633082ms)
+✔ actual Pi capped grep persists the complete private result and read retrieves omitted matches (253.422703ms)
+✔ actual Pi native filesystem preserves observation CAS, stale refusal and durable mutation receipts (1811.438389ms)
+✔ actual Pi native filesystem read-only policy rejects a new file without granting escalation (196.544043ms)
+✔ native file schemas and search argv/parse/render contracts match retained source (17.449893ms)
+✔ native search launches packaged binary with no-config and plain argv and rejects partial raw output (2.503666ms)
+✔ native search rejects malformed or cancelled work before dispatch and preserves invalid-pattern taxonomy (0.5438ms)
+✔ native private spill storage and safe encodings preserve source protocol (19.9406ms)
+✔ native spill session paths are traversal-safe and reject a symlinked session directory (7.97502ms)
+✔ native spill cleanup covers only active app root and leaves unrelated prior roots intact (10.22241ms)
+✔ native spill close drains admitted real file writes and rejects future admission (6.022775ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2319.631511
