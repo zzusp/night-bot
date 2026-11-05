@@ -14,7 +14,7 @@ test('observed settlement maps admitted text/reasoning/tools to Pi without consu
 test('application observation errors settle once as Pi errors and cannot dispatch their partial tools',async()=>{
  let calls=0;const live=createLiveAttempt(),stream=nativeExecutionStream(async function*(){calls++;yield{type:'block-end',index:0,block:{type:'tool-call',id:'x',name:'write',arguments:'{}'}};yield{type:'finish',reason:{kind:'error',failure:{code:'POLICY',message:'blocked'}}}},request,live),events=[]
  for await(const event of stream)events.push(event)
- const result=await stream.result();assert.equal(result.stopReason,'error');assert.equal(result._hostFailure.code,'POLICY');assert.deepEqual(result.content,[]);assert.deepEqual(events.map(event=>event.type),['error']);assert.equal(calls,1);assert.equal(live.starts,1);assert.equal(live.count,2);assert.equal(result._hostLive,live)
+ const result=await stream.result();assert.equal(result.stopReason,'error');assert.equal(result._hostFailure.code,'POLICY');assert.deepEqual(result.content,[]);assert.deepEqual(events.map(event=>event.type),['error']);assert.equal(calls,1);assert.equal(live.count,2);assert.equal(result._hostLive,live)
 })
 test('provider rejection produces one failed Pi terminal without entering an additional stream',async()=>{
  let calls=0;const stream=nativeExecutionStream(()=>{calls++;throw Error('fixture failure')},request,createLiveAttempt()),events=[]

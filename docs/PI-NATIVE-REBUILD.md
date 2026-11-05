@@ -1,3 +1,23 @@
+# Retired assistant-frame lifecycle removed (2026-11-05)
+
+Runtime inventory found no consumer of the old assistant-stream publisher. Removed
+its framing class, attempt/revision counters, start/settle/abandon/interruption
+methods and start callback requirement. Pi message completion now directly appends
+the same assistant audit records. The final Pi journal flush/authority check and
+pre-tool commit gates remain. A frozen one-way observation exposes audit/content
+facts, no frame publication or commit receipt API. Existing Night Bot compact audit
+and backup codecs remain attributed and unchanged; this is not their rewrite.
+
+Validation: **655 default**, **142 runtime**, **390 domain**, **47 routing** pass;
+focused **22 overlap** pass; Linux containment **20 pass / 1 Windows skip** with
+bubblewrap enabled. Runtime completed in ~321s. Real Pi read continuation checks
+one tool result, two persisted assistant steps and actual file bytes in the next
+request, with no obsolete frames. Tests also cover detached audit snapshots,
+max-token tool suppression/replay alignment, retry, cold recovery and task archives.
+Source/import/Pi-license/fork-hash/diff guards pass and reject reintroduced old
+frame/stream bridge definitions. **47 DSH direct dev declarations remain**; no
+package changes. Evidence: `docs/pi-native-attempt-observation-validation.json`.
+
 # Direct Pi settlement of admitted output (2026-11-05)
 
 Removed the general DSH stream bridge, shadow live observer and empty second

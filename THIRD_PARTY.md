@@ -2,7 +2,7 @@
 
 - 仓库既有 `LICENSE`（MIT）原样保留。
 - `packages/dingtalk-core`、原有 `test`（不含 `pi-*`）、上游 `scripts` 移植自用户指定的百部插件项目 `HiQ-AI/dingtalk-dsh-assistant`，提交 `93e431a2a76938d32aefc070b093fcfb65691c70`。源项目声明 `UNLICENSED`；移植不将其自动改授 MIT。核心 package 及本仓库 package 保守地保留 `UNLICENSED`，且 `private: true`，不执行 npm 发布。
-- `src/pi-loop.js` 的生命周期、持久 inbox、工厂和会话适配代码基于 `@deepseek-ai/dsh-agent-loop@0.2.1-alpha.2`，版权 DeepSeek，MIT 许可原文见 `licenses/deepseek-agent-loop-MIT.txt`。原模型/工具 step 循环已替换为 pi-agent-core 驱动。
+- `src/pi-loop.js` 的生命周期、持久 inbox、工厂和会话适配代码基于 `@deepseek-ai/dsh-agent-loop@0.2.1-alpha.2`，版权 DeepSeek，MIT 许可原文见 `licenses/deepseek-agent-loop-MIT.txt`。原模型/工具 step 循环已替换为 pi-agent-core 驱动。 无运行时消费者的 assistant-stream 帧发布器、attempt/revision 编号和提交回调外壳已移除；Pi 终态直接进入原有会话追加与刷盘门禁。单向 audit observer 仍使用有归属说明的 Night Bot 自有历史编解码器，并不声称这些编解码算法已独立重写。
 - Pi 三个固定 `1.5.0` SDK 包声明 MIT，但安装包未附许可证正文；已从上游 `v1.5.0` 对应提交核对并保存在 `licenses/pi-1.5.0-MIT.txt`，版本、来源提交及哈希见 `docs/pi-license-source.json`。其余 Host 外部依赖的许可证随依赖包保留；版本和完整性由 `pnpm-lock.yaml` 固定。明确复制的 MIT 源码及适配边界另列于下。
 
 `src/native-schedule-protocol.js` and the management contracts in

@@ -32,7 +32,6 @@ export function nativeExecutionStream(sourceFactory,request,live){
    // Buffer the admitted stream once. A fallback replays immutable in-memory
    // observations only; it never makes a second provider request or tool call.
    request.signal?.throwIfAborted()
-   live.start()
    for await(const chunk of sourceFactory()){request.signal?.throwIfAborted();const admitted=snapshotChunk(chunk);fingerprint(capture.admittedHash,admitted);live.push(admitted)}
    capture.active=false
    const terminal=capture.last,message=terminal?.type==='done'?terminal.message:terminal?.type==='error'?terminal.error:undefined

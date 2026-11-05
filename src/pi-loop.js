@@ -1,3 +1,4 @@
+import {createAttemptObservation} from './runtime/attempt-observation.js';
 // Lifecycle compatibility fork of @deepseek-ai/dsh-agent-loop 0.2.1-alpha.2 (MIT).
 // Inference and tool iteration are owned by pi-agent-core; host events stay compatible.
 import { projectPiMessage } from "./pi-session-persistence.js";
@@ -10,7 +11,7 @@ import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
 
 import { LlmError } from './native-llm-protocol.js';
-import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
+import { createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
 
 import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "./native-session-protocol.js";
 import { SessionPersistenceNotFoundError } from "./native-persistence-protocol.js";
@@ -357,128 +358,6 @@ var RuntimeContextProjection = class {
 	}
 };
 //#endregion
-//#region lib/types/assistant-stream.js
-/** Process-local assistant attempt framing and durable stream accumulation. */
-/** Folds one model attempt into one compact stream plus ordered transient frames. */
-var AssistantStreamAttempt = class {
-	nextRevision;
-	turn;
-	step;
-	emit;
-	accumulator = new AssistantStreamAccumulator();
-	assembler = new BlockAssembler();
-	index = 0;
-	terminal = false;
-	/** Attempt identity unique within this Agent lifecycle. */
-	attemptId;
-	/** Whether this started attempt has emitted its terminal frame. */
-	get ended() {
-		return this.terminal;
-	}
-	/**
-	* @param sessionId - identity embedded only in the Agent-lifecycle-local attempt id.
-	* @param attempt - attached-Session-local attempt counter.
-	* @param nextRevision - allocates the next emitted frame revision.
-	* @param turn - durable turn owning the request.
-	* @param step - durable step owning the request.
-	* @param emit - agent-scoped notification publisher.
-	*/
-	constructor(sessionId, attempt, nextRevision, turn, step, emit) {
-		this.nextRevision = nextRevision;
-		this.turn = turn;
-		this.step = step;
-		this.emit = emit;
-		this.attemptId = LlmAttemptId(`${sessionId}:${attempt}`);
-	}
-	/** Publish the opening marker before the first delivered chunk. */
-	start() {
-		this.emit({
-			type: "start",
-			attemptId: this.attemptId,
-			revision: this.nextRevision(),
-			turn: this.turn,
-			step: this.step
-		});
-	}
-	/** Snapshot one chunk once, then feed durable compaction, assembly, and live publication. */
-	push(chunk) {
-		const timed = this.accumulator.push({
-			time: Date.now(),
-			chunk
-		});
-		this.assembler.push(timed.chunk);
-		this.emit({
-			type: "chunk",
-			attemptId: this.attemptId,
-			revision: this.nextRevision(),
-			index: this.index++,
-			time: timed.time,
-			chunk: timed.chunk
-		});
-	}
-	/**
-	* Publish terminal settlement after the matching durable event commits.
-	* @param eventType - durable settlement type.
-	* @param append - synchronous durable append returning its committed seq.
-	*/
-	settle(eventType, append) {
-		let seq;
-		try {
-			seq = append();
-		} catch (error) {
-			this.abandon();
-			throw error;
-		}
-		this.terminal = true;
-		this.emit({
-			type: "end",
-			attemptId: this.attemptId,
-			revision: this.nextRevision(),
-			index: this.index,
-			outcome: {
-				kind: "committed",
-				eventType,
-				seq
-			}
-		});
-	}
-	/** Publish abandonment when no durable attempt event can be committed. */
-	abandon() {
-		this.terminal = true;
-		this.emit({
-			type: "end",
-			attemptId: this.attemptId,
-			revision: this.nextRevision(),
-			index: this.index,
-			outcome: { kind: "abandoned" }
-		});
-	}
-	/** Exact compact stream for the final durable event. */
-	get stream() {
-		return [...this.accumulator.snapshot()];
-	}
-	/** Canonical completed-message blocks from the same chunks. */
-	blocks() {
-		return this.assembler.blocks();
-	}
-	/** Safe visible prefix when cancellation interrupts the attempt. */
-	interruptedBlocks() {
-		return this.assembler.interruptedBlocks();
-	}
-	/** Latest adapter-reported usage in the stream. */
-	get usage() {
-		return this.assembler.usage;
-	}
-	/** Terminal reason, defaulting to stop when the stream omitted one. */
-	get finish() {
-		return this.assembler.finish;
-	}
-	/** Replay state carried by the terminal finish record. */
-	get replayState() {
-		return this.assembler.replayState;
-	}
-};
-//#endregion
 //#region lib/types/tool-calls.js
 /**
 * Schedules one assistant step's tool calls. Exclusive calls form barriers;
@@ -771,9 +650,6 @@ var PiLoopAgent = class {
 	/** Surface generation at attachment or the preceding built request. */
 	requestSurfaceGeneration;
 	runtimeContext;
-	/** Process-local revision of assistant frames for this attached Session. */
-	assistantStreamRevision = 0;
-	assistantAttemptCounter = 0;
 	systemPrompt;
 	/** Identities fully frozen by this loop; weak references do not retain replaced history. */
 	frozenMessages = /* @__PURE__ */ new WeakSet();
@@ -1040,13 +916,12 @@ var PiLoopAgent = class {
                     firstAttempt = false;
 					const request = await this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, decision.startsRequestSeries === true, signal);
 					tools.splice(0, tools.length, ...makeTools(assembly));
-					const live = new AssistantStreamAttempt(this.session.id, ++this.assistantAttemptCounter, () => ++this.assistantStreamRevision, turn, step,
-                        frame => this.dispatch.emit('agent/assistant-stream', { frame }));
+					const live = createAttemptObservation();
                     const response = nativeExecutionStream(() => preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request), request, live);
                     const output = await response.result();
                     this.providerStreamProtocol = output._hostNative ? "pi-native" : "compatibility";
                     if (output.stopReason === 'error' || output.stopReason === 'aborted') {
-                        live.settle('assistant/attempt', () => this.session.append('assistant/attempt', { turn, step, stream: live.stream }).seq);
+                        this.session.append('assistant/attempt', { turn, step, stream: live.stream });
                         output._hostLive = undefined;
                         signal.throwIfAborted();
                         const action = await this.dispatch.waterfall('agent/request-error', { turn, step, provider: request.provider,
@@ -1068,13 +943,13 @@ var PiLoopAgent = class {
 				if (event.type !== 'message_end' || event.message.role !== 'assistant' || rejected || signal.aborted) return;
 				const message = event.message;
 				if (message.stopReason === 'error' || message.stopReason === 'aborted') {
-                    message._hostLive?.settle('assistant/attempt', () => this.session.append('assistant/attempt', { turn, step: phase.step, stream: message._hostLive.stream }).seq);
+                    if(message._hostLive)this.session.append('assistant/attempt', { turn, step: phase.step, stream: message._hostLive.stream });
                     throw new LlmError(message.errorMessage ?? 'pi_provider_error', message._hostFailure?.code ?? 'PI_PROVIDER_ERROR', message._hostFailure);
                 }
 				const record = () => this.session.append('assistant/message', { turn, step: phase.step,
 					message: message._hostMessage ?? createAssistantMessage({ source: { provider: message.provider, model: message.model }, content: fromPiAssistant(message) }),
                     ...(message._hostUsage ? { usage: message._hostUsage } : {}), ...(message._hostStream ? { stream: message._hostStream } : {}) }, { surfaceOp: 'append' }).seq;
-                if (message._hostLive) message._hostLive.settle('assistant/message', record); else record();
+                record();
                 const originals = this.session.snapshotEvents().findLast(e => e.type === 'assistant/message').data.message.content.filter(b => b.type === 'tool-call');
                 toolBatch = { step: phase.step, delivered: new Map(), blocks: message.content.filter(b => b.type === 'toolCall').map((block, index) => {
                     const exact = originals[index];

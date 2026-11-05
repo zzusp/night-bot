@@ -1,0 +1,79 @@
+{
+  "base": "cbc9308",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 22,
+      "pass": 22,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 655,
+      "pass": 655,
+      "fail": 0,
+      "skipped": 0
+    },
+    "runtime": {
+      "tests": 142,
+      "pass": 142,
+      "fail": 0,
+      "skipped": 0
+    },
+    "domain": {
+      "tests": 390,
+      "pass": 390,
+      "fail": 0,
+      "skipped": 0
+    },
+    "routing": {
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    }
+  },
+  "remainingDirectDshDevDependencies": 47,
+  "removed": "Unused AssistantStreamAttempt framing class, agent/assistant-stream publication, attempt/revision counters, start/settle/abandon/interrupted framing methods and stream start callback requirement",
+  "consumerInventory": "Runtime source/package scan finds only the former producer, no consumer; default product has no retired web event transport",
+  "replacement": "Frozen one-way application observation with no publication or commit API. Pi message_end directly appends existing assistant records; terminal Pi flush authority remains unchanged.",
+  "preserved": "Night Bot compact audit encoding/old backup decoding, cancellation/failure audit, tool results before model continuation, private invocation token capture, Pi history authority and no-replay recovery. Live codec implementations remain attributed.",
+  "runtimeDurationSeconds": 320.697,
+  "limits": "Underlying message/session/assistant stream codecs and other lifecycle/inbox/tool scheduling forks still remain; no claim of independently rewritten codecs or Windows acceptance. No dependency/lock changes.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-focused.txt",
+      "sha256": "82f6566a2953a2bd321f204beb2c6e9ed94d5ea0f207dcb87882ab3a1699d8a3"
+    },
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-default.txt",
+      "sha256": "dde084209b1d10fd0bb69adaeda1e2ad2bc7eadd9e7390a9b3599f72c9edf6a0"
+    },
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-runtime.txt",
+      "sha256": "962c249ddcbfca30ec05cc25987c1ce3a7b0a50180e81c0af7c29cae230b94a1"
+    },
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-domain.txt",
+      "sha256": "8c0df25457acf4897f14835ab361e21cf691cc46a99908bceaa72141ad1bd4f5"
+    },
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-routing.txt",
+      "sha256": "c515e3718250ecf6881ed535e9b2b3f082f4581ce535c926c4e43635ed58128f"
+    },
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-containment.txt",
+      "sha256": "9321d047d838099fc1b3d14f956aae74a476a8396a21c8c6639ed8e468f8e27d"
+    },
+    {
+      "path": "docs/evidence/pi-native-attempt-observation-checks.txt",
+      "sha256": "a3b9a8d253df89dd7902c32611c3ec948299e069b86a54e4c0d701f1e811d63e"
+    }
+  ]
+}

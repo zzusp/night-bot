@@ -22,6 +22,7 @@ async function walk(directory){for(const entry of await readdir(directory,{withF
  files++;const text=await readFile(path,'utf8')
  if(/(?:\bfrom\s*|\bimport\s*\(\s*|\bcreateLazyRequire\s*\(\s*|\bimport\.meta\.resolve\s*\(\s*|\brequire\s*\(\s*)['"]@deepseek-ai\/dsh-[^'"]+['"]/.test(text))throw new Error('External SDK runtime import: '+path)
  if(/\b(?:var|class)\s+(?:LlmRuntime|ToolRuntime|SessionStore)\b/.test(text))throw new Error('Legacy runtime orchestrator definition: '+path)
+ if(/\bagent\/assistant-stream\b|\b(?:var|class)\s+AssistantStreamAttempt\b|\bfunction\s+bridgeDshStream\b/.test(text))throw new Error('Retired assistant-frame/stream bridge ABI reintroduced: '+path)
  for(const [,specifier]of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*)['"](\.{1,2}\/[^'"\r\n]+)['"]/g))await access(resolve(dirname(path),specifier))
 }}}
 for(const directory of ['src','bin','packages/dingtalk-core','packages/scope-compat','packages/capability-compat'])await walk(directory)
