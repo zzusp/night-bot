@@ -186,8 +186,8 @@ test('real HTTP/service/ledger check is zero-write; reply is digest-bound/idempo
 })
 
 for (const wrapped of [false, true]) test('formal check/probe/reply preserves unknown and original arguments: ' + (wrapped ? 'PG wrapper' : 'direct launch'), { skip: wrapped && process.platform !== 'win32' ? 'Windows task workspace required' : false }, async t => {
- const f = await fixture(t, undefined, wrapped), oldHome = process.env.DSH_HOME; process.env.DSH_HOME = 'D:\\host'
- t.after(() => { if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome })
+ const f = await fixture(t, undefined, wrapped), oldHome = process.env.NIGHT_BOT_RUNTIME_ROOT; process.env.NIGHT_BOT_RUNTIME_ROOT = 'D:\\host'
+ t.after(() => { if (oldHome === undefined) delete process.env.NIGHT_BOT_RUNTIME_ROOT; else process.env.NIGHT_BOT_RUNTIME_ROOT = oldHome })
  const get = f.facts.ctx.get; f.facts.ctx.get = name => name === 'nativeJobRecovery' ? undefined : get(name)
  f.body.nativeRestartResolutions[0].scopeEvidence = { hostPid: 96580, hostLogPath: 'D:\\approved\\host.oom.log', hostLogSha256: 'a'.repeat(64),
   producerScopeReviewed: true, localEffectsOnlyConfirmed: true, excludeOriginalSourcesConfirmed: true }

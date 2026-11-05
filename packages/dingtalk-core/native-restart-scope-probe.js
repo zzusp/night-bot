@@ -1,15 +1,78 @@
 import { win32 } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { isolationDigest as hash } from './native-restart-isolation.js'
 import { inspectSession, executionInputFor } from './session-persistence.js'
 import { postgresWrapperScope, postgresWrapperSchema, postgresWrapperInspection } from './native-postgres-wrapper.js'
 
 // These are the reviewed, deployed rc.2 Windows Job owner implementations, not an
 // inference that every shell provider has the same containment semantics.
-const providerFiles = [
+const legacyProviderFiles = [
  ['dsh-subprocess-local/lib/runner.js', '4e21528dfdb3e92bdce2340945dc4dcb202e4a4af0bbeb8b97585f67735d30c1'],
  ['dsh-subprocess-local/lib/runner-launch-B2zsQ1Dz.js', '6df08adc4a27f278878a5f4cde8b551b51e647b922ac7d6591fd62d272ced153'],
  ['dsh-win32-process/lib/index.js', '622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9'],
 ]
+
+// Reviewed native Job/runner source identities. Both checkout line endings are
+// pinned explicitly; never hash arbitrary deployed code and bless it at runtime.
+export const nativeRestartProviderFiles = Object.freeze([
+  {
+    "path": "src/process/contracts.js",
+    "sha256": "df013ab125a069307862fdc56cd46a5ebaba99c55f0abff07a4cae85575bf080",
+    "sha256CRLF": "47f0378fc49c10ddda2cbfd131a2ad2bd6ff05d0450d506e4c84649b3f0601a1"
+  },
+  {
+    "path": "src/process/control.js",
+    "sha256": "923be45a0d625cb4da7beb2713f4e80a96ab092180c100be72c17546cbf201bc",
+    "sha256CRLF": "d11cadac0cb4fb96089529446a44b1a813b0f7341f5f43d36fb0d8cc1abf7ac6"
+  },
+  {
+    "path": "src/process/index.js",
+    "sha256": "5da229501aab0ba7e1d3eaf3da55d59460f7c9fe29e3229592b068f44d2bdb67",
+    "sha256CRLF": "54db87ea0ace7a5f6b2d11a890b26bc94d400ce6a087cc3cf388d71c3a01da7b"
+  },
+  {
+    "path": "src/process/output.js",
+    "sha256": "1557cbbf8c2204f17fd8d7f7af7d31862924bee82ac07ec31631965cc9277003",
+    "sha256CRLF": "f7f7d2003832c0c6a9ffc6e793302c6719d3057a8e22079b8a03d09fb6adede0"
+  },
+  {
+    "path": "src/process/runner-launch-B2zsQ1Dz.js",
+    "sha256": "82805c4bc3f975ff6b8d2db4ec4b2f216b26eb6b4292751670de344960939a77",
+    "sha256CRLF": "9f8bceb6843261ec01659a02614e042285e0a2b125967c5eeca24af540cb1ad5"
+  },
+  {
+    "path": "src/process/runner.js",
+    "sha256": "723b513f51f6980c3d920d5b5fa1f53800fae55a3cbb3b1b8dbd5a557bb4a2a3",
+    "sha256CRLF": "6b9f3285d46c3fd795cf388f3e6b3800c10446e3d8ce274a1b70a9225c1572e5"
+  },
+  {
+    "path": "src/process/win32.js",
+    "sha256": "8c9166f720b9002035167be149e3a2ee6291f4ab5da5879496361006dd779ff4",
+    "sha256CRLF": "cc2101c660c57ad54e6104135dd667892fbe7d9c83cbb44a044c90a0a01d11b3"
+  },
+  {
+    "path": "src/legacy-v4/dsh-win32-process/lib/index.js",
+    "sha256": "034c397a6da2d41904d156a5e3e520b6fc2e95b26643c7e4dd0ad83c3790bd23",
+    "sha256CRLF": "239d8c7607a062c5c5bd6175072a349898e5a5e8518ff83df7cdcf72959f3c41"
+  },
+  {
+    "path": "src/legacy-v4/dsh-subprocess/lib/control.js",
+    "sha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+    "sha256CRLF": "9646167f3aa40b5ca717eff8d0635b482d9a62606161878aeca007b89044db18"
+  },
+  {
+    "path": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js",
+    "sha256": "67b71b8988583451a8c21451f06960f5266d3d27d133276aa74cd7096a612246",
+    "sha256CRLF": "b0584b10516d213b22b58c64034a7c40d6f71bcd98c2614187d93d58702645ae"
+  },
+  {
+    "path": "src/legacy-v4/dsh-sandbox-windows-acl/lib/types-Cl_DXjhk.js",
+    "sha256": "d42375a720d7f628a93cde5cd4a8964f3d75cd1d2fcd589d379d210883e91ee4",
+    "sha256CRLF": "bdb7b217029b3ce1457b4dd166905049fad25389d14e44b15249c32389e42482"
+  }
+].map(Object.freeze))
+const nativeRuntimeRoot = fileURLToPath(new URL('../..', import.meta.url))
+
 const safePath = value => typeof value === 'string' && win32.isAbsolute(value) && !/[\r\n'";&|<>`$]/u.test(value)
 const shellPath = '[A-Za-z]:\\\\[^\\s;\'"&|<>`$]+'
 
@@ -59,9 +122,11 @@ function Get-RestartRelatedProducer($Processes, $Spec, $WindowStart, $WindowEnd,
 }
 `
 
-export function restartScopeProbePlan({ command, binding, evidence, workspaceRoot, dshHome = process.env.DSH_HOME }) {
+export function restartScopeProbePlan({ command, binding, evidence, workspaceRoot, dshHome, runtimeRoot = process.env.NIGHT_BOT_RUNTIME_ROOT ?? nativeRuntimeRoot }) {
+ const legacy = dshHome !== undefined
+ const providerRoot = legacy ? safePath(dshHome) ? win32.join(dshHome, 'profiles', 'web', 'node_modules', '@deepseek-ai') : undefined : runtimeRoot
  const scope = evidence?.postgresWrapper ? postgresWrapperScope(command, evidence.postgresWrapper, binding, workspaceRoot) : localRestartScope(command)
- if (!scope || !safePath(dshHome) || !safePath(evidence?.hostLogPath) || !/^[a-f0-9]{64}$/u.test(evidence.hostLogSha256 ?? '')
+ if (!scope || !safePath(providerRoot) || !safePath(evidence?.hostLogPath) || !/^[a-f0-9]{64}$/u.test(evidence.hostLogSha256 ?? '')
   || !Number.isSafeInteger(evidence.hostPid) || evidence.hostPid < 1
   || evidence.producerScopeReviewed !== true || evidence.localEffectsOnlyConfirmed !== true || evidence.excludeOriginalSourcesConfirmed !== true) return null
  const hostExit = evidence.hostExit
@@ -70,7 +135,7 @@ export function restartScopeProbePlan({ command, binding, evidence, workspaceRoo
   || typeof hostExit.observedAt !== 'string' || !Number.isFinite(Date.parse(hostExit.observedAt)) || Date.parse(hostExit.observedAt) < binding.startedAt || Date.parse(hostExit.observedAt) > Date.now()
   || typeof hostExit.evidenceRef !== 'string' || !hostExit.evidenceRef.trim() || hostExit.evidenceRef.length > 2000)) return null
  const spec = { schema: hostExit ? 'native-restart-scope-v2' : 'native-restart-scope-v1', ...(hostExit ? { hostExit } : {}), binding, scope, hostPid: evidence.hostPid, hostLogPath: evidence.hostLogPath,
-  hostLogSha256: evidence.hostLogSha256, managedProviderRoot: win32.join(dshHome, 'profiles', 'web', 'node_modules', '@deepseek-ai'), providerFiles: providerFiles.map(([path, sha256]) => ({ path: win32.join(dshHome, 'profiles', 'web', 'node_modules', '@deepseek-ai', path), sha256 })) }
+  hostLogSha256: evidence.hostLogSha256, managedProviderKind: legacy ? 'legacy-dsh' : 'night-bot-pi', managedProviderRoot: providerRoot, providerFiles: legacy ? legacyProviderFiles.map(([path, sha256]) => ({ path: win32.join(providerRoot, path), sha256 })) : nativeRestartProviderFiles.map(file => ({ ...file, path: win32.join(providerRoot, file.path) })) }
  const encoded = Buffer.from(JSON.stringify(spec)).toString('base64')
  const probe = `$ErrorActionPreference = 'Stop'
 ${restartProducerFilter}${pgWrapper ? '\n' + postgresWrapperInspection : ''}
@@ -83,8 +148,10 @@ $fatalText = [IO.File]::ReadAllText($s.hostLogPath)
 $fatal = $logHash -eq $s.hostLogSha256 -and $fatalText.Contains('FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory') -and $fatalText.Contains('[' + $s.hostPid + ':')
 $providerOk = $true
 foreach ($f in $s.providerFiles) {
+ $allowedHashes = @($f.sha256)
+ if ($null -ne $f.sha256CRLF) { $allowedHashes += $f.sha256CRLF }
  $i = Get-Item -LiteralPath $f.path -ErrorAction Stop
- if ($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $i.LastWriteTimeUtc -gt [DateTimeOffset]::FromUnixTimeMilliseconds($s.binding.startedAt).UtcDateTime -or (Get-FileHash -LiteralPath $f.path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() -ne $f.sha256) { $providerOk = $false }
+ if ($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $i.LastWriteTimeUtc -gt [DateTimeOffset]::FromUnixTimeMilliseconds($s.binding.startedAt).UtcDateTime -or $allowedHashes -notcontains (Get-FileHash -LiteralPath $f.path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()) { $providerOk = $false }
 }
 $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
 $hostCount = @($all | Where-Object { $_.ProcessId -eq $s.hostPid }).Count

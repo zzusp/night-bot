@@ -4,9 +4,12 @@ Use Node.js 24+ and pnpm. Install with `pnpm install --frozen-lockfile`.
 Read `docs/MIGRATION.md` and `docs/VALIDATION.md` before changing runtime boundaries.
 Pi core owns inference/tool iteration; Pi SessionManager owns durable history and
 model context. The application owns authorization and side-effect receipts. Local LLM routing, live-agent ownership and tool execution are application-owned.
-Retained session facades, permission/filesystem wrappers, platform ACL,
-credentials/attachments, skills and workspace interfaces still require migration: preserve their
-guards, audit, cancellation/drain and no-replay contracts when replacing them.
+Production dependency graphs must contain no external registry DSH packages.
+Local attributed audit/event/format/ACL compatibility is intentional; Pi remains
+current context/history and inference authority. Preserve its guards, audit,
+cancellation/drain, ownership and no-replay contracts. Historical namespace
+aliases and pnpm-workspace.yaml are part of the runtime artifact. Run the native
+source/hash/import guard after changing compatibility code.
 Do not bypass dispatch policy or relax sandbox checks to make a test pass.
 The cloud executor wrapper makes nested UID maps read-only; containment tests may
 run with approved executor sandbox escalation so their own bubblewrap works. This

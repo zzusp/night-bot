@@ -579,8 +579,9 @@
     {
       "source": "native-restart-scope-probe.js",
       "sourceSha256": "6b5c5f8a750a595e40d933e2d5fa834c2df8d003d763993a8803142d41e6a86f",
-      "status": "retained",
-      "sha256": "6b5c5f8a750a595e40d933e2d5fa834c2df8d003d763993a8803142d41e6a86f"
+      "status": "adapted",
+      "sha256": "9efe28797b59c92d8f4c3adadd012b1c8a4c7ebd6319eaa9e257a71bf2489e5a",
+      "adaptation": "Native restart probe binds native provider paths and reviewed LF/CRLF hashes; explicit legacy layout retained."
     },
     {
       "source": "node-output-readout.js",

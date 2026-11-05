@@ -22,7 +22,7 @@ function probeFixture(command, acknowledged, hostExit, postgresWrapper) {
  if (hostExit) scopeEvidence.hostExit = hostExit
  if (postgresWrapper) scopeEvidence.postgresWrapper = postgresWrapper
  const workspaceRoot = 'D:\\agent'
- const plan = restartScopeProbePlan({ command, binding: isolationBinding(f.operation, 'original-call'), evidence: scopeEvidence, dshHome: 'D:\\host', workspaceRoot })
+ const plan = restartScopeProbePlan({ command, binding: isolationBinding(f.operation, 'original-call'), evidence: scopeEvidence, runtimeRoot: 'D:\\host', workspaceRoot })
  assert.ok(plan)
  const readInput = f.reads[1]
  const observation = { schema: plan.spec.schema, specDigest: plan.specDigest, observedAt: '2026-10-27T08:31:00Z', hostFatalTime: '2026-10-27T07:32:20Z',
@@ -48,7 +48,7 @@ const wrapperEvidence = { scriptSha256: createHash('sha256').update(wrapperScrip
  pgBin: 'D:\\soft\\PostgreSQL\\16\\bin', port: 25428, ownerText: 'synthetic-task-owner' }
 
 test('wrapper isolation binds the original command and task; identity and arbitrary pwsh remain unsupported', async () => {
- const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = 'D:\\host'
+ const oldHome = process.env.NIGHT_BOT_RUNTIME_ROOT; process.env.NIGHT_BOT_RUNTIME_ROOT = 'D:\\host'
  try {
   const f = probeFixture(wrapperCommand, true, { observedAt: '2026-10-27T07:32:20Z', evidenceRef: 'original-host-exit' }, wrapperEvidence)
   for (const list of [f.original, f.reads]) {
@@ -83,7 +83,7 @@ test('wrapper isolation binds the original command and task; identity and arbitr
   assert.equal(resolve(wrapperCommand, { ...wrapperEvidence, historicalEvidenceRef: '' }), null)
   f.reads.push({ seq: 101, type: 'agent/inbox/spliced', data: { inserted: [{ role: 'user', source: { executionSession: { ...f.readback, inputVersion: 50 } } }] } })
   assert.equal(await inspectIsolatedHostRestart(f), null, 'new mismatched binding cannot fall back to old input')
- } finally { if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome }
+ } finally { if (oldHome === undefined) delete process.env.NIGHT_BOT_RUNTIME_ROOT; else process.env.NIGHT_BOT_RUNTIME_ROOT = oldHome }
 })
 
 test('actual PowerShell AST verifies serve preamble without executing database identity or prepare', t => {
@@ -151,7 +151,7 @@ test('only the two bounded local launch recipes are supported; arbitrary shell e
 })
 
 test('observed non-OOM Host exit preserves unknown effects and requires full bounded isolation', async () => {
- const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = 'D:\\host'
+ const oldHome = process.env.NIGHT_BOT_RUNTIME_ROOT; process.env.NIGHT_BOT_RUNTIME_ROOT = 'D:\\host'
  try {
   const hostExit = { observedAt: '2026-10-27T07:32:20Z', evidenceRef: 'retained-launcher-process-observation' }
   const f = probeFixture(pg, true, hostExit)
@@ -185,7 +185,7 @@ test('observed non-OOM Host exit preserves unknown effects and requires full bou
    { observedAt: '2026-10-27T07:32:20Z', evidenceRef: ' ' }]) {
    assert.equal(restartScopeProbePlan({ command: pg, binding: f.plan.spec.binding, evidence: { ...f.scopeEvidence, hostExit } }), null)
   }
- } finally { if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome }
+ } finally { if (oldHome === undefined) delete process.env.NIGHT_BOT_RUNTIME_ROOT; else process.env.NIGHT_BOT_RUNTIME_ROOT = oldHome }
 })
 
 test('actual PowerShell preserves observed-exit milliseconds and timezone through JSON decoding', { skip: spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).error ? 'PowerShell required' : false }, () => {
@@ -201,7 +201,7 @@ test('actual PowerShell preserves observed-exit milliseconds and timezone throug
 })
 
 for (const [command, acknowledged] of [[pg, true], [maven, false]]) test(`existing native probe proves bounded isolation without a new service: ${acknowledged ? 'PG' : 'Maven'}`, async () => {
- const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = 'D:\\host'
+ const oldHome = process.env.NIGHT_BOT_RUNTIME_ROOT; process.env.NIGHT_BOT_RUNTIME_ROOT = 'D:\\host'
  try {
   const f = probeFixture(command, acknowledged)
   const plan = await inspectIsolatedHostRestart({ ...f, planOnly: true })
@@ -214,7 +214,7 @@ for (const [command, acknowledged] of [[pg, true], [maven, false]]) test(`existi
    operatorSourceId: 'operator', humanRequestId: 'human', proof }
   assert.equal(await verifyRestartIsolation(f.ctx, f.operation), true)
   assert.equal(f.operation.state, 'unknown'); assert.equal(f.operation.job.status, 'running'); assert.equal(f.operation.result, null)
- } finally { if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome }
+ } finally { if (oldHome === undefined) delete process.env.NIGHT_BOT_RUNTIME_ROOT; else process.env.NIGHT_BOT_RUNTIME_ROOT = oldHome }
 })
 
 for (const [name, alter] of Object.entries({
@@ -234,13 +234,13 @@ for (const [name, alter] of Object.entries({
  'foreign probe': f => { f.scopeEvidence.probeExecutionId = 'foreign' },
  'no reviewed scope': f => { f.scopeEvidence.localEffectsOnlyConfirmed = false },
 })) test(`scoped probe rejects ${name}`, async () => {
- const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = 'D:\\host'
+ const oldHome = process.env.NIGHT_BOT_RUNTIME_ROOT; process.env.NIGHT_BOT_RUNTIME_ROOT = 'D:\\host'
  try { const f = probeFixture(pg, true); alter(f); f.updateOutput(); assert.equal(await inspectIsolatedHostRestart(f), null) }
- finally { if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome }
+ finally { if (oldHome === undefined) delete process.env.NIGHT_BOT_RUNTIME_ROOT; else process.env.NIGHT_BOT_RUNTIME_ROOT = oldHome }
 })
 
 test('managed plan is rebuilt from original native evidence and bound to the current investigation', async () => {
- const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = 'D:\\host'
+ const oldHome = process.env.NIGHT_BOT_RUNTIME_ROOT; process.env.NIGHT_BOT_RUNTIME_ROOT = 'D:\\host'
  try {
   const f = probeFixture(maven, false)
   const investigation = { ...f.readback, executionId: 'current-investigation', sessionId: 'current-session', status: 'running', drained: false }
@@ -255,7 +255,7 @@ test('managed plan is rebuilt from original native evidence and bound to the cur
    { args: { ...args, expectedOperationDigest: 'f'.repeat(64) } },
    { args: { ...args, expectedScriptDigest: isolationDigest({ command: f.plan.command.trimEnd() }) } },
   ]) assert.equal(await prepareRestartScopeProbe({ ...request, ...changes }), null)
- } finally { if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome }
+ } finally { if (oldHome === undefined) delete process.env.NIGHT_BOT_RUNTIME_ROOT; else process.env.NIGHT_BOT_RUNTIME_ROOT = oldHome }
 })
 
 

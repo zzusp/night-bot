@@ -1,10 +1,10 @@
 # Night Bot
 
-**当前为迁移中实现，尚未完成去 DSH 的 Pi 原生重写。** 详细边界见 [DSH 依赖审计](docs/DSH-AUDIT.md)。
+基于 Pi 的无界面百部钉钉助手。Pi agent-core 负责模型/工具迭代，Pi SessionManager 负责当前会话历史与模型上下文；消息、Topic、任务统筹/执行、恢复、权限、通知和交付继续由应用维护。提供原 HTTP/DWS 接口，不包含可视化界面。
 
-基于 **pi-agent-core** 的无界面百部钉钉助手。Pi 驱动模型与工具迭代，保留原百部的消息、Topic、任务统筹/执行、恢复、权限、通知和交付账本。提供 HTTP API，不包含 Web 看板或设置页面。
+生产依赖图已没有外部 `@deepseek-ai/dsh-*` 包。服务、工具、权限、进程、凭据、附件、技能和 workspace 均为仓库内实现。为保留数据和插件接口，明确保留本地 MIT 派生的事件 façade、历史 v0–v4 格式/导入以及 Windows ACL 支撑代码；这些兼容协议不承担推理或当前历史权威。旧包名兼容入口在 `packages/capability-compat` 和 workspace 配置中公开记录，不能只复制 `src` 部署。
 
-领域实现取自 `HiQ-AI/dingtalk-dsh-assistant` 的 `93e431a`（含 #341）。群/workspace JSON 后端与默认模型选择已改为应用自有 Node 实现；新会话日志与上下文改由 Pi SessionManager v3 管理；模型 provider 已改由本地 NativePiProvider 调用 Pi Models；工具 registry、LLM/Agent 注册、Session/Projection 注册、策略、凭据存储、授权会话、工作目录、附件存储/图像衍生、技能注册表及技能文件发现/读取均已由应用本地服务接管；Session 内存数据 façade、通用消息/作用域/RPC helpers、部分工具和权限后端、附件投影/技能渲染helpers及 workspace 等仍保留 DSH 兼容能力；**尚未完全移除 DSH 依赖**。原生执行路径实际由 Pi 循环运行，内部 `executionBackend: dsh` 为兼容历史数据保留，不能据此判断当前推理引擎。
+源领域代码固定于 `HiQ-AI/dingtalk-dsh-assistant@93e431a`：200 个模块保留，3 个 UI 模块排除，所有适配均记录原始及目标哈希。历史数据库的 `executionBackend: dsh` 标签继续兼容，实际默认执行为 Pi。
 
 ## 运行
 
@@ -30,35 +30,19 @@ curl http://127.0.0.1:18998/health
 ## 验证
 
 ```sh
-pnpm audit:runtime       # DSH/Pi 依赖和服务边界审计（当前明确为部分迁移）
-pnpm test                # 本地协议、CLI、配置与文件守恒检查
-pnpm test:domain         # 消息、路由领域、通知、交付和排期逻辑
-pnpm test:runtime        # Pi 下的原生会话/任务/恢复/权限/技能回归
-pnpm test:routing        # Pi 下的 Topic、澄清、挂起与通知重试
-pnpm test:containment    # 需要宿主真实 shell 沙箱的产物边界验证
+pnpm install --frozen-lockfile
+pnpm test
+pnpm test:domain
+pnpm test:runtime
+pnpm test:routing
+pnpm test:containment
+pnpm audit:runtime
 ```
 
-功能覆盖与迁移边界见 [MIGRATION](docs/MIGRATION.md)，实际结果及未验证部分见 [VALIDATION](docs/VALIDATION.md)。所有验证均不向真实钉钉发送消息，不代表已部署或已完成真实模型语义验收。
+`pnpm check` 检查源文件/HTTP 路由守恒、生产依赖声明、本地兼容源码哈希，以及没有外部 SDK 导入或旧模型/工具/SessionStore 编排器。真实隔离测试需要宿主内核支持，不能通过关闭应用沙箱使测试通过。
 
-后台任务注册表已由 NativeJobs 接管（会话归属、作用域控制器/订阅、输出环、wait/kill及关闭排空）；生产直接DSH依赖54个，进程与沙箱后端仍在迁移中。
+验证与证据见 [VALIDATION](docs/VALIDATION.md)，功能映射见 [MIGRATION](docs/MIGRATION.md)，当前架构见 [RUNTIME](docs/RUNTIME.md)，来源与许可见 [THIRD_PARTY](THIRD_PARTY.md)。
 
-NativeSandbox与本地managed-process后端已接管活动服务；进程后端为明确保留MIT来源的代码派生实现，Windows ACL等仍保留。完整边界与验证见docs/DSH-AUDIT.md、docs/VALIDATION.md；尚未完成去DSH。
+真实 DWS/模型厂商/业务系统及 Windows/macOS 内核仍需在对应部署环境验收；可选 Claude CLI 和额外浏览器、数据库、搜索插件需要实际安装与授权。原部署和验收脚本保留为源实现参考，不能直接作为 Night Bot 的部署入口。没有迁移生产数据或执行真实外发、合并、部署。
 
-启动环境按继承进程 > 托管凭据 > 项目.env > 用户home.env解析密钥；托管凭据保存在`stateDir/credentials.json`（兼容YAML v1内容，文件名沿用历史）。继承密钥只读；dotenv fallback可由托管存储覆盖。仓库dotenv不能设置代理或SDK代码入口。凭据文件需POSIX owner-only权限，损坏文件使Host启动失败；刷新与写入通过兼容旧版本的跨进程锁串行，不将托管密钥写入process.env。
-
-无需启动业务服务即可管理登录和密钥：
-
-```sh
-node bin/night-bot-auth.js /absolute/config.json list
-node bin/night-bot-auth.js /absolute/config.json login openai api-key
-node bin/night-bot-auth.js /absolute/config.json set-ref MODEL_API_KEY
-node bin/night-bot-auth.js /absolute/config.json describe-ref MODEL_API_KEY
-node bin/night-bot-auth.js /absolute/config.json unset-ref MODEL_API_KEY
-node bin/night-bot-auth.js /absolute/config.json logout openai
-```
-
-`list`仅显示Pi登录方式和凭据配置状态；自定义provider的`apiKeyEnv`使用`set-ref`。密钥从隐藏终端提示或stdin的一行读取，不支持把值放在命令参数中。OAuth按Pi提示完成，OpenAI目前只提供API-key登录；未配置设备身份时不伪造OAuth入口。EOF/取消不会保存尚未提交的输入，已经开始的持久提交会排空。CLI错误不输出vendor异常正文。
-
-默认`credentialsWatch:true`使运行中的Host同步独立CLI写入和删除；设为false后需要重启Host读入外部更改。继承环境中的非空密钥仍为只读，注销provider记录不会删除继承环境或另设的`apiKeyEnv`引用。此CLI不创建agent、业务账本或DWS连接。
-
-`maxParallelToolCalls`配置每轮工具安全池的上限（正整数，默认4）。只有工具明确声明并发安全时才进入并发池；独占工具及运行时变更的分类保留屏障。取消会停止补位并排空已开始的工作，收据按模型调用顺序持久化。
+Windows 重启恢复探针默认固定本仓库进程/ACL 代码的已审阅哈希；迁移部署位置时可由受信任宿主设置 `NIGHT_BOT_RUNTIME_ROOT`，不会将未知 provider 代码视为已验证。现有存活进程、写入者、端口、时间和完整证据检查继续保留。

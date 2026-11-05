@@ -1,15 +1,31 @@
-Pi headless DingTalk assistant migration (in progress)
+Pi headless DingTalk assistant on native runtime
 
-Run the existing DingTalk assistant on Pi while preserving message/topic routing, task ownership/delegation, durable recovery, permissions, tools and delivery. Pi agent-core owns inference/tool iteration; Pi SessionManager owns checksummed single-writer history and model context. Original HTTP/DWS protocols and200 source core modules remain;3 UI modules are excluded and24 adaptations have original/target hashes recorded.
+Run the existing assistant on Pi without its visual interface. Pi agent-core owns
+inference/tool iteration; Pi SessionManager owns checksummed single-writer current
+history and model context. Preserve message/topic routing, owner/delegation,
+recovery, permissions, tools, notifications, artifacts and delivery ledgers.
 
-Application-owned services cover provider/auth/credential binding; agent/session/projection lifetimes; jobs/process/confinement; bounded tool concurrency and approval policy; attachments, skills/workspaces/CWD; prompts/instructions; preset generations, child lifecycle/cold query and title; Web/HTTP, timeout and complete-result spill storage. Concrete model tools and local filesystem/search/shell backends are migrated. Cancellation drains started effects, terminal commit uncertainty fences the instance, and recovery does not redispatch completed effects.
+All default runtime owners and49 active components are local. Production direct
+and transitive DSH dependencies are zero. MIT-derived local audit/inbox/event,
+v0-v4 format/import and Windows ACL protocols remain explicitly attributed;
+historical package names map to native implementations. They do not provide a
+second inference/history authority. The old bundled verifier is replaced by an
+isolated ESM worker sharing owned validation. Native restart probes bind reviewed
+native provider paths/hashes while retaining strict isolation/refusal conditions.
 
-Canonical model/tool/child errors, abstract adapter, schema validation and TS/Python SDK rendering are local; historical execution namespaces point to native owners. Legacy Runtime classes remain only in independent test references. Native scheduler/request identity is shared across aliases. Default model attribution identifies Night Bot.
+Source93e431a:200 modules retained,3 UI modules excluded,25 adaptations with pinned
+original/target hashes. Original HTTP/DWS contracts and compatibility export
+vocabulary remain; independent old references and release-generated golden bytes
+support the behavior checks. Cancellation drains effects, uncertain terminal
+commit fences the instance, and recovery does not redispatch completed effects.
 
-Immutable message/projection/assistant-stream protocols and exact-object Pi request markers are local. Scope and Web/authorization/workspace/title error identity are unified through explicit historical SDK namespace aliases to application-owned implementations. Filesystem/sandbox abstract capability protocols, canonical errors and skill rendering/invocation helpers are local; historical skill/projection namespaces map to native owners. Original public exports, independent constructor/registry behavior and a real legacy HTTP provider's shared error identity are tested. MIT-derived algorithms and compatibility namespaces are explicitly attributed; aliases receive no additional active-service replacement credit.
+Validation:1180 unique passes (1113 primary +67 disjoint supplemental);7 platform
+skips across those groups. Fresh offline/frozen production repeats405 cases,
+including3 real kernel wires.407 runtime files and manifests/lock/workspace match;
+full production SDK package graph and runtime SDK imports are zero. Source,
+route, declaration, compatibility hash and old-orchestrator guards pass.
 
-All external registry DSH runtime dependencies are removed, including the transitive production graph. Explicit MIT-derived local compatibility remains for the audit/publication/inbox facade, released v0-v4 formats/import IO and Windows ACL; it is not a second model/history authority. The bundled legacy verifier is replaced by an isolated ESM worker using the shared owned verifier. A functionality review still needs to update the Windows restart-scope probe from old deployed provider paths before final migration completion is claimed.49 active DSH components have been replaced; no default Host DSH plugin rows remain. Counts are inventory, not completion proof. Source acceptance/deployment scripts and optional Claude/backend/platform integrations still need separate review; no real vendor/DingTalk/Windows/macOS acceptance is claimed.
-
-Validation:523 own +142 runtime +47 routing +388 domain +11 real Linux confinement =1111 unique passes, with one Windows-only skip. Fresh production-only frozen install repeats362 core +38 contracts +3 kernel =403 cases;407 runtime files and manifests/lock/workspace configuration are byte-identical. Source/import guards pass. See VALIDATION.md, validation-results.json and evidence logs.
-
-Remote push previously returned403 permission denied and was not retried or bypassed. No PR, merge, deployment, CI or real business writes have been performed.
+Actual DWS/vendor/business, Windows/macOS kernel and optional external CLI/plugin
+acceptance remain separate environment-dependent work. No production data or real
+business writes were used. Remote GitHub403 was not retried or bypassed; no PR,
+merge, deployment or CI has been performed. See VALIDATION.md and RUNTIME.md.

@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node bin/night-bot.js",
     "test": "node --test test/pi-*.test.js && pnpm check",
-    "check": "node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs",
+    "check": "node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs",
     "test:runtime": "node scripts/test-pi.mjs runtime",
     "test:routing": "node scripts/test-pi.mjs routing",
     "test:domain": "node scripts/test-pi.mjs domain",

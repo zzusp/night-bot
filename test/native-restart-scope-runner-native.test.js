@@ -23,7 +23,7 @@ const skip = process.platform !== 'win32' ? 'Windows native pwsh required' : fal
 
 // 全部保留物均为新建夹具；运行的只是生产只读探针，不启动 PostgreSQL / Maven，不读取历史业务账本。
 async function fixturePlan(root, observedExit = false, wrapper = false) {
- const startedAt = Date.now() - 60000, dshHome = join(root, 'synthetic-host')
+ const startedAt = Date.now() - 60000, runtimeRoot = join(root, 'synthetic-native-host')
  const script = join(root, 'tasks', 'probe-task', 'work', 'run-postgres.ps1')
  const source = wrapper ? join(dirname(script), 'postgres', 'data') : join(root, 'retained-source'), hostLogPath = join(root, 'host.oom.log')
  await mkdir(source, { recursive: true })
@@ -43,15 +43,14 @@ async function fixturePlan(root, observedExit = false, wrapper = false) {
  }
  const binding = { operationId: 'original-operation', operationDigest: 'a'.repeat(64), taskId: 'probe-task', executionId: 'original',
   sessionId: 'original-session', jobId: 'original-job', startedAt, callId: 'original-call', argumentsDigest: 'b'.repeat(64) }
- const plan = restartScopeProbePlan({ command: wrapper ? `pwsh -NoProfile -File "${script}" -Action serve` : `& D:\\fixture\\postgres.exe -D ${source} -h 127.0.0.1 -p 25429`, binding, evidence: scopeEvidence, dshHome, workspaceRoot: root })
+ const plan = restartScopeProbePlan({ command: wrapper ? `pwsh -NoProfile -File "${script}" -Action serve` : `& D:\\fixture\\postgres.exe -D ${source} -h 127.0.0.1 -p 25429`, binding, evidence: scopeEvidence, runtimeRoot, workspaceRoot: root })
  assert.ok(plan)
  assert.ok(nativeProfile.available, nativeProfile.reason)
  const { native } = nativeProfile
  for (const file of plan.spec.providerFiles) {
-  const parts = file.path.slice(join(dshHome, 'profiles', 'web', 'node_modules').length + 1).split(/[\\/]/u)
-  const manifest = native.resolve(parts.splice(0, 2).join('/') + '/package.json')
-  const bytes = await readFile(join(dirname(manifest), ...parts))
-  assert.equal(digest(bytes), file.sha256, 'Fixture must use the currently reviewed provider bytes')
+  const relative = file.path.slice(runtimeRoot.length + 1).replaceAll('\\', '/')
+  const bytes = await readFile(new URL('../' + relative, import.meta.url))
+  assert.ok([file.sha256, file.sha256CRLF].includes(digest(bytes)), 'Fixture must use the currently reviewed native provider bytes')
   await mkdir(dirname(file.path), { recursive: true }); await writeFile(file.path, bytes)
   await utimes(file.path, new Date(startedAt - 10000), new Date(startedAt - 10000))
  }

@@ -5,7 +5,8 @@
     "fixture": "test/fixtures/legacy-fs-interface.mjs",
     "fixtureSha256": "5ce99567248fdc13e7f7cccd8bc53152b75533bd723d0a9c9f2843c349f59be2",
     "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
   },
   {
     "package": "@deepseek-ai/dsh-skill",
@@ -13,7 +14,8 @@
     "fixture": "test/fixtures/legacy-skill-interface.mjs",
     "fixtureSha256": "ba2f8034704060d99fe205061ff468bf95d6daaa15c2e0e571540bbb747465ab",
     "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
   },
   {
     "package": "@deepseek-ai/dsh-sandbox",
@@ -21,14 +23,16 @@
     "fixture": "test/fixtures/legacy-sandbox-interface.mjs",
     "fixtureSha256": "5d44e608bcdf2aa71891c4c0ae36236fcf462b677d1f5a704a6b8cc64d849eea",
     "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
   },
   {
     "package": "@deepseek-ai/dsh-session-projection",
     "originalSha256": "7dc2b212819baf4fc292751054d30b97afcbdee0a4733230abf92c6722e6550c",
     "fixture": "test/fixtures/legacy-session-projection-interface.mjs",
-    "fixtureSha256": "7dc2b212819baf4fc292751054d30b97afcbdee0a4733230abf92c6722e6550c",
+    "fixtureSha256": "29714f94327acbfd9289d84e5c65cf87a033fb6bcf515aafb5899d37b6df402e",
     "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
   }
 ]

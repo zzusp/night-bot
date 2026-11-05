@@ -1,3 +1,35 @@
+# Final native runtime validation (2026-11-05)
+
+Primary groups:525 own +142 runtime +47 routing +388 domain +11 real Linux
+containment =1113 unique passes. Disjoint supplemental files add39 context/session
+compatibility and28 core restart-probe passes =1180 unique passes overall. The
+restart target run's2 pi cases are already included and not counted again.
+One containment Windows case and6 supplemental platform cases are skipped.
+
+A fresh offline/frozen production-only install repeats364 core +38 contracts +3
+real kernel =405 meaningful cases. Its full dependency graph contains zero
+registry DSH packages.407 runtime files and package/lock/workspace configuration
+are byte-identical. Source200 retained/3 UI excluded/25 explicit adaptations;
+348 JS files/164 bare imports;0 external SDK runtime imports/0 old orchestrator
+definitions;15 compatibility-source hashes and the owned worker verify.
+
+Native restart probes now bind native managed-process/ACL source paths, reviewed
+LF/CRLF hashes and the exact evidence digest. The explicit old layout remains
+available without changing live-process/writer/listener/time/evidence refusal.
+Linux PowerShell syntax/read-only probe portions and formal HTTP/drain cases
+pass; actual Windows ACL/managed-job kernel and macOS remain unaccepted here.
+
+Initial pnpm run wrapping hit the cloud's inaccessible default cache SQLite
+location. An explicit task cache/store refresh corrected it; all check scripts
+passed. No application permission, containment or dependency guard was relaxed.
+
+No real DWS/vendor/business writes, deployment, merge or CI occurred. Previous
+GitHub push403 was not retried. Parent-reported new-environment download policy
+was not bypassed. Code completion and external acceptance are separate claims.
+
+Final logs: `evidence/native-final-*`; structured counts: validation-results.json.
+Earlier checkpoints and their limitations follow as history.
+
 # 实际验证
 
 **本页前半部分是 `b16ac53` 的基线记录。当前替换后的结果见末尾“原生状态服务替换后的验证”；不能沿用基线测试数充作当前代码的证据。**
