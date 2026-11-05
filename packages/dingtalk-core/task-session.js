@@ -1,4 +1,4 @@
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../../src/native-message-protocol.js';
 import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { renameTaskSession } from './session-workspaces.js'
 import { inspectSession } from './session-persistence.js'

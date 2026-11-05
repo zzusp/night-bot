@@ -1,6 +1,6 @@
 // 请求会话只管理模型运行句柄；业务版本、授权与提交仍由 Topic coordinator 持有。
 import { createHash, randomUUID } from 'node:crypto'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../../src/native-message-protocol.js';
 import { createTaskReportStepGate } from './task-report-step-gate.js'
 
 export function createCoordinationStepGate(entry, isCurrent) {

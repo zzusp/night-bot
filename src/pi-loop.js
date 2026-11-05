@@ -9,7 +9,9 @@ import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
 import { brandString } from "./native-brand.js";
-import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, LlmError, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from "@deepseek-ai/dsh-llm";
+import { LlmError } from '@deepseek-ai/dsh-llm';
+import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
+
 import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "@deepseek-ai/dsh-session";
 import { SessionPersistenceNotFoundError } from "@deepseek-ai/dsh-session-persistence";
 import { agentEvents, assembleContextFor } from "./native-agent-context.js";

@@ -9,7 +9,9 @@ import { canonicalClientTimeZone } from "./native-time-zone.js";
 import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
 import { AttachmentError } from "./native-attachment-errors.js";
 import { z as z$1 } from "zod";
-import { HarnessError, ReasoningEffortId, boundContextSummary, contentHasImage, createUserMessage, errorChain, joinAssistantStreamText } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from '@deepseek-ai/dsh-llm';
+import { ReasoningEffortId, boundContextSummary, contentHasImage, createUserMessage, errorChain, joinAssistantStreamText } from './native-message-protocol.js';
+
 import { randomUUID } from "node:crypto";
 import { foldConsumedWork } from "./native-consumed-work.js";
 import { isAbsolute, resolve } from "node:path";

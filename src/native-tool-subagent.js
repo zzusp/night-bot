@@ -4,7 +4,8 @@ import { scopeChainOf, scopeOf } from "./native-scope.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { SessionSeq } from "@deepseek-ai/dsh-session";
 import { assertSubagentMaxDepth, parentAgentOptionsForDelegation } from "./native-subagents.js";
-import { ReasoningEffortId } from "@deepseek-ai/dsh-llm";
+import { ReasoningEffortId } from './native-message-protocol.js';
+
 import { z as z$1 } from "zod";
 z.object({
 	provider: z.string().min(1).required(),

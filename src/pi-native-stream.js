@@ -4,7 +4,7 @@ import {AsyncLocalStorage} from 'node:async_hooks'
 import {isDeepStrictEqual} from 'node:util'
 import {AssistantMessageEventStream} from '@earendil-works/pi-ai'
 import {piFailureStream,bridgeDshStream} from './pi-messages.js'
-import {createAssistantMessage} from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage } from './native-message-protocol.js';
 import {capturePiReplay} from './pi-provider-events.js'
 const captures=new AsyncLocalStorage()
 const semantic=message=>message.content.map(block=>block.type==='toolCall'?{type:'tool-call',id:block.id,name:block.name,arguments:JSON.stringify(block.arguments)}:block.type==='thinking'?{type:'reasoning',text:block.thinking}:{type:'text',text:block.text})

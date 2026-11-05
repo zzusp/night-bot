@@ -9,7 +9,7 @@ import { setSandboxMode } from '../../src/native-policy.js'
 import { isAbsolute, dirname, basename, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { installSessionSkillRefresh } from './session-skill-refresh.js'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../../src/native-message-protocol.js';
 import { retireHostContext } from './host-context.js'
 import { createModelContentIndex, executionModelInput, modelHostMessage, modelHostInput } from './model-context.js'
 import { classifyExecutionProviderFailure } from './execution-provider-failure.js'

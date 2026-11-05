@@ -2,7 +2,7 @@ import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {z as schema} from 'zod'
 import {isAbsolute} from 'node:path'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from './native-message-protocol.js';
 /** Session-local directory state. Filesystem resolution remains behind the
  * existing filesystem capability; changing cwd never changes a sandbox grant. */
 export default class NativeWorkingDirectory extends Service {

@@ -1,4 +1,4 @@
-import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage } from './native-message-protocol.js';
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai'
 
 const parseArgs = raw => { try { return JSON.parse(raw || '{}') } catch { return raw } }

@@ -1,6 +1,7 @@
 // MIT source-derived job model controls/notice/retention protocol; see licenses/dsh-tool-jobs-MIT.txt. NativeJobs owns producers and lifetimes.
 import z from "@deepseek-ai/schemastery";
-import { boundContextSummary, createUserMessage } from "@deepseek-ai/dsh-llm";
+import { boundContextSummary, createUserMessage } from './native-message-protocol.js';
+
 import { TextRetainer } from "./native-output-retention.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 // Job ids are validated at the model and registry boundaries; the old brand was identity-only.

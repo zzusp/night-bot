@@ -1,5 +1,5 @@
 import { inspectSession, inboxHasPending } from './session-persistence.js'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../../src/native-message-protocol.js';
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { groupReplyInstructions } from './group-message.js'
 import { createHash } from 'node:crypto'

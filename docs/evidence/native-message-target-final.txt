@@ -1,0 +1,12 @@
+✔ local immutable message construction preserves role, source and detached content (3.096989ms)
+✔ native loop request ownership is exact-object and cannot be copied or borrowed from legacy markers (0.200572ms)
+✔ local assistant stream assembly retains malformed-delta tolerance and finish facts (1.285969ms)
+✔ compact assistant streams round-trip original timed chunks and reject corrupt durable records (2.946753ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 145.948974

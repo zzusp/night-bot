@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-
+import { createUserMessage } from '../../src/native-message-protocol.js';
 const observationKind = 'dingtalk-skill-read'
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const skillDigest = value => digest([value.provider, value.resourceBase, value.content])

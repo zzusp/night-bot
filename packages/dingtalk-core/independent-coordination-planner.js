@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../../src/native-message-protocol.js';
 import { toToolJsonSchema, toToolObjectJsonSchema } from './tool-schema.js'
 import { randomUUID } from 'node:crypto'
 import { normalizeCoordinationInstant } from './coordination-time.js'

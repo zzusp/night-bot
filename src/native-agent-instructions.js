@@ -4,7 +4,8 @@ import { isDeepStrictEqual } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { homedir } from "node:os";
 import { launchEnvironmentOf, resolveLegacyHome } from "./native-environment.js";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { createUserMessage } from './native-message-protocol.js';
+
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import z from "@deepseek-ai/schemastery";
 // Historical labels and root precedence are a compatibility protocol.

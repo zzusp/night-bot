@@ -375,3 +375,17 @@ roots and runner failure attribution. Public SandboxUnavailableError identity is
 reexported unchanged. Inventory remains16 direct DSH dependencies/49 active
 replacements; helper extraction is not another service replacement. Evidence:
 `evidence/native-sandbox-protocol-*.txt`.
+
+Native message and stream protocol (2026-11-05):506 own +142 runtime +47 routing
++388 domain +11 real containment =1094 unique passes, one Windows-only skip.
+347 core +38 contracts +3 kernel =388 production repetitions in the existing
+frozen installation (dependency graph unchanged);310 runtime files identical.
+Bounded import guard305 JS/216 bare imports; source accounting200 retained/3 UI
+excluded/17 explicitly adapted. New source changes are message-constructor imports,
+with original source hashes retained. Tests independently compare the original
+SDK construction/assembly/compaction algorithms, including Unicode and original
+timestamps, corruption rejection, detached immutable values and exact-object
+request markers. Actual Pi wire/title/child/restore tests pass with local markers.
+No legacy LlmRuntime is copied or delegated to; canonical errors, abstract adapter
+and attribution helpers remain external.16 direct dependencies/49 active service
+replacements unchanged. Evidence: `evidence/native-message-*.txt`.

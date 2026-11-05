@@ -4,7 +4,8 @@ import {SessionTitleInvalidError} from "@deepseek-ai/dsh-session-title";
 import { Service } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
-import { isAgentLoopRequest } from "@deepseek-ai/dsh-llm";
+import { isAgentLoopRequest } from './native-message-protocol.js';
+
 import { assertNever, deepFreeze } from "./native-values.js";
 import { SessionSeq } from "@deepseek-ai/dsh-session";
 //#region lib/types/normalize.js

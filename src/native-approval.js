@@ -2,7 +2,7 @@ import {Service,symbols} from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {randomUUID} from 'node:crypto'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from './native-message-protocol.js';
 import {scopeTarget} from './native-scope.js'
 export const APPROVAL_POLICIES=Object.freeze(['ask','never'])
 const outcomes=new Set(['allowed-once','rejected','cancelled','unavailable'])

@@ -2,7 +2,7 @@ import { executionDigest, executionError } from './execution-artifacts.js'
 import { lstat, open, realpath } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../../src/native-message-protocol.js';
 import { z } from 'zod'
 
 /** 只允许 Host 预先列出的工作区文件；读取后重新打开核验，拒绝符号链接逃逸。 */

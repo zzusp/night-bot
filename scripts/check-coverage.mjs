@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { resolve, dirname } from 'node:path'
 const manifest = JSON.parse(await readFile('docs/source-manifest.json','utf8'))
 const excluded = new Set(['client.js','web-client.js','index.js'])
-const adapted = new Set(['task-topic-coordinator.js','store.js','storage-v8-schema.js','task-session-persistence.js','task-session-service.js','execution-session.js','workflow-configuration.js'])
+const adapted = new Set(["coordination-sessions.js", "execution-session.js", "group-coordinator-session.js", "host-context.js", "independent-coordination-planner.js", "model-context.js", "session-skill-refresh.js", "status-query.js", "storage-v8-schema.js", "store.js", "task-general-workflow.js", "task-owner-session.js", "task-session-persistence.js", "task-session-service.js", "task-session.js", "task-topic-coordinator.js", "workflow-configuration.js"])
 const adaptedCount = adapted.size
 let retained = 0
 for (const entry of manifest.files) {

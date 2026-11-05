@@ -1,5 +1,4 @@
-import { createDeveloperMessage } from '@deepseek-ai/dsh-llm'
-
+import { createDeveloperMessage } from '../../src/native-message-protocol.js';
 // alpha.2 derives no model message from an empty developer node. Replace only
 // the Host-owned node: tool evidence and the append-only original stay intact.
 // Call from agent/request: JSONL replay requires an open turn and step, and the

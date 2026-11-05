@@ -1,4 +1,5 @@
-import { LlmError, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, offloadedImageText, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@deepseek-ai/dsh-llm';
+import { projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, offloadedImageText, requestImageHandleText, requiredImageOffload } from './native-message-protocol.js';
 import { piRequestImageDimensions } from './pi-provider-image.js'
 import { projectPiMessage } from './pi-session-persistence.js'
 const tool=({name,description,parameters})=>({name,description,parameters})

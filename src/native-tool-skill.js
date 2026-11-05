@@ -2,7 +2,8 @@
 import { createHash } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { createUserMessage } from './native-message-protocol.js';
+
 import "@deepseek-ai/cordis";
 import "node:path";
 import { escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent } from "@deepseek-ai/dsh-skill";

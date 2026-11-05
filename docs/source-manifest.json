@@ -113,8 +113,9 @@
     {
       "source": "coordination-sessions.js",
       "sourceSha256": "c5ce357fd79c143f78a23746baad3f9f02e8faa32ad86b9246170128e4d5a27f",
-      "status": "retained",
-      "sha256": "c5ce357fd79c143f78a23746baad3f9f02e8faa32ad86b9246170128e4d5a27f"
+      "status": "adapted",
+      "sha256": "bc1de2389ce9b54273ba47d0cc5089ed76b0844632574eb49e31cb367c1951e1",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "coordination-summary.js",
@@ -329,8 +330,9 @@
     {
       "source": "execution-session.js",
       "sourceSha256": "1648fe1e0dcbf2fc7a2112d46dd55cb19acc11bebda3b65e536673656da70c2c",
-      "status": "retained",
-      "sha256": "bbcf820c926c8dea8e91fc0b3c930829a1ba2e108632735c99c2a6bfa0ea33c9"
+      "status": "adapted",
+      "sha256": "75623e17687ebababcef659098cb05835e54db8caf11106bdef475e4cc2b369f",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "execution-store-worker.js",
@@ -437,8 +439,9 @@
     {
       "source": "group-coordinator-session.js",
       "sourceSha256": "36b5f8dc5cf35d8c614a9eb32663ebe9e2604fa451b5de61785a44090e15191c",
-      "status": "retained",
-      "sha256": "36b5f8dc5cf35d8c614a9eb32663ebe9e2604fa451b5de61785a44090e15191c"
+      "status": "adapted",
+      "sha256": "66cc157bd23558aa011c01aff38abc11cb3221ec3a205df7ab9c35d8b075d024",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "group-message.js",
@@ -467,8 +470,9 @@
     {
       "source": "host-context.js",
       "sourceSha256": "75143b8476a3668d5c1d807d54b6045bda5876194ecd48ff2b8e033d533e5396",
-      "status": "retained",
-      "sha256": "75143b8476a3668d5c1d807d54b6045bda5876194ecd48ff2b8e033d533e5396"
+      "status": "adapted",
+      "sha256": "3944fbefa65848cd9ef5a74491d7652c7c1bbce15fb9c4e640b8f24d16cfff76",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "http.js",
@@ -479,8 +483,9 @@
     {
       "source": "independent-coordination-planner.js",
       "sourceSha256": "942fef9a843914bd9db5f9f9618c7211d806c856951d91fcaf15cb3ff0ab9101",
-      "status": "retained",
-      "sha256": "942fef9a843914bd9db5f9f9618c7211d806c856951d91fcaf15cb3ff0ab9101"
+      "status": "adapted",
+      "sha256": "0fdc4619357e03942cd9d6ac034855e1eae600912aa85bd43bd894acbb63a8cf",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "independent-coordination-service.js",
@@ -538,8 +543,9 @@
     {
       "source": "model-context.js",
       "sourceSha256": "fb7275812c81b863eab6f838bc548a2a1bc65a52f7f61f96140118093dc5a752",
-      "status": "retained",
-      "sha256": "fb7275812c81b863eab6f838bc548a2a1bc65a52f7f61f96140118093dc5a752"
+      "status": "adapted",
+      "sha256": "d876d4c82500bcaec47938bc471a16e4a38322b1196e2c25190639cda9d4892d",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "native-dws-send.js",
@@ -730,8 +736,9 @@
     {
       "source": "session-skill-refresh.js",
       "sourceSha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32",
-      "status": "retained",
-      "sha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32"
+      "status": "adapted",
+      "sha256": "7c7f99764f2032c26511264363e3ff9d2210c0bce0969ff7c1d393e4baecbb31",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "session-workspaces.js",
@@ -748,8 +755,9 @@
     {
       "source": "status-query.js",
       "sourceSha256": "b7384065220e82de54d6876d0989b0dc377467affa1f655bfd84acce932272b1",
-      "status": "retained",
-      "sha256": "b7384065220e82de54d6876d0989b0dc377467affa1f655bfd84acce932272b1"
+      "status": "adapted",
+      "sha256": "1f8188bbeb2e0634ec4253eb7960b943ae6e6f8d0fc608f855d19e7b020eeb8b",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "storage-v8-schema.js",
@@ -832,8 +840,9 @@
     {
       "source": "task-general-workflow.js",
       "sourceSha256": "a374e489ac67d5d7615687bdf6eb22c866dd5708381a86ed81998e9ba3ab81d8",
-      "status": "retained",
-      "sha256": "a374e489ac67d5d7615687bdf6eb22c866dd5708381a86ed81998e9ba3ab81d8"
+      "status": "adapted",
+      "sha256": "cae56cf9394357f005d61aa515a8b570e41bb151dd0480f51426aca9b686799e",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "task-group-file-delivery.js",
@@ -898,8 +907,9 @@
     {
       "source": "task-owner-session.js",
       "sourceSha256": "c718a2fcf4ee87fc90a418fc583c036535b39042eb5846521ffefc8a6258964e",
-      "status": "retained",
-      "sha256": "c718a2fcf4ee87fc90a418fc583c036535b39042eb5846521ffefc8a6258964e"
+      "status": "adapted",
+      "sha256": "567070425bfb73e6305ad774c67ce4ac0b8ca4ea13f0a61be883b4ae6c18e884",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "task-owner-store.js",
@@ -1000,8 +1010,9 @@
     {
       "source": "task-session.js",
       "sourceSha256": "afa52ceb8277de93442096ddfe4d7bca6690eab0bd7d6d3dc7f93fa05119c163",
-      "status": "retained",
-      "sha256": "afa52ceb8277de93442096ddfe4d7bca6690eab0bd7d6d3dc7f93fa05119c163"
+      "status": "adapted",
+      "sha256": "2c0a4f0781e7bf453ce1d429c53b19a283af013f3fa0103fdbd13b0d828ce63f",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
       "source": "task-source-instructions.js",

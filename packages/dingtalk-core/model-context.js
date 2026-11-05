@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, lstatSync, readFileSync, writeFileSync, realpathSync, openSync, fsyncSync, closeSync } from 'node:fs'
 import { join, resolve, parse } from 'node:path'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-
+import { createUserMessage } from '../../src/native-message-protocol.js';
 const deferred = Symbol('deferred model content')
 const digest = json => 'sha256:' + createHash('sha256').update(json).digest('hex')
 const ordered = value => value && typeof value === 'object' && !Array.isArray(value)

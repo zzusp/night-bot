@@ -1275,5 +1275,29 @@
     "removedActiveDshServices": 49,
     "publicErrorIdentity": "SandboxUnavailableError reexports retained SDK identity; abstract provider not copied or mounted",
     "completeMigration": false
+  },
+  "nativeMessageProtocol": {
+    "date": "2026-11-05",
+    "ownPass": 506,
+    "ownDurationMs": 43662.595303,
+    "runtimePass": 142,
+    "runtimeDurationMs": 304606.567867,
+    "routingPass": 47,
+    "domainPass": 388,
+    "containmentPass": 11,
+    "windowsSkipped": 1,
+    "uniquePass": 1094,
+    "productionOnlyRepeatedPass": 388,
+    "productionScope": "347 core +38 contracts +3 real kernel wires; existing frozen production install, unchanged dependency graph",
+    "runtimeFilesCompared": 310,
+    "productionImportFiles": 305,
+    "literalBareImports": 216,
+    "directRuntimeDshDependencies": 16,
+    "removedActiveDshServices": 49,
+    "retainedCoreModules": 200,
+    "excludedUiModules": 3,
+    "explicitCoreAdaptations": 17,
+    "remaining": "canonical errors, provider attribution and adapter interface remain external; no service removal credit",
+    "completeMigration": false
   }
 }
