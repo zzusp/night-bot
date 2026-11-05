@@ -40,7 +40,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./pi-authority.js', import.meta.url).href },
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
       { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
-      { name: new URL('./native-subagents.js', import.meta.url).href }, { name: new URL('./native-subagent-providers.js', import.meta.url).href }, row('tool-subagent-control'), { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
+      { name: new URL('./native-subagents.js', import.meta.url).href }, { name: new URL('./native-subagent-providers.js', import.meta.url).href }, { name: new URL('./native-tool-subagent-control.js', import.meta.url).href }, { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
       { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       ...(config.plugins ?? []), ...extraPlugins,
     ]
@@ -61,9 +61,9 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           { name: new URL('./native-shell-env.js', import.meta.url).href }, row('tool-fs'), row('tool-fs-search', { sampleOverCapGlobResults: false }), row('fs-observation-policy'),
           row('tool-' + shell, { enableRunInBackground: true, promoteOnTimeout: true }),
           { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, row('tool-skill'),
-          { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, row('tool-working-directory'),
-          row('tool-subagent', { provider: 'spawn' }),
-          row('tool-todo', { allowParallelInProgress: true }), { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },
+          { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },
+          { name: new URL('./native-tool-subagent.js', import.meta.url).href, config: { provider: 'spawn' } },
+          { name: new URL('./native-tool-todo.js', import.meta.url).href, config: { allowParallelInProgress: true } }, { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },
         ] }] })
     } })
     const preset = await ctx.agentPresets.resolve('night-bot')

@@ -943,5 +943,29 @@
     "sourceDerivedAlgorithms": "MIT tool-web schemas/validation/render/format explicitly attributed",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeControlToolBindings": {
+    "date": "2026-11-05",
+    "ownPass": 436,
+    "ownDurationMs": 21194.439809,
+    "newContractCases": 4,
+    "newActualPiWireCases": 3,
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain/real-kernel9pass1WindowsSkip unchanged from d78b96e; no rerun claimed",
+    "uniquePass": 1022,
+    "productionOnlyRepeatedPass": 334,
+    "productionScope": "296 meaningful core/wires plus38 contracts; development-only schema differential omitted",
+    "runtimeFilesCompared": 279,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 276,
+    "literalBareImports": 232,
+    "directRuntimeDshDependencies": 37,
+    "removedActiveDshServices": 39,
+    "sourceDerivedAlgorithms": "MIT tool todo/directory/delegation/control compatibility bindings; lifecycle native and Pi-owned",
+    "interruptAbsentContract": "accepted no-op for target absent from manager resident activation map; existing guarded live descendants unaffected",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

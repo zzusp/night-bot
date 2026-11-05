@@ -279,3 +279,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 实际Pi wire证明timeout发出取消后仍等待已开始且忽略取消的body退出，持久化一份超时收据后才继续模型，不重放effect；search配置budget同样作用于provider。祖先和本地timer具有相同公开错误码时用reason身份保持归属。协作超时不代表进程已经终止；后端仍负责自身排空。
 
 全新/tmp/night-bot-web-tools-production frozen production ignore-scripts安装成功，290实质核心/wire+38合同=328复测通过；275运行文件及manifest/lock逐字一致，静态272 JS/220字面bare imports通过。证据evidence/native-web-tools-*.txt。41直接DSH依赖/35活动组件替换；补回此前未挂载的timeout策略不计旧组件替换。仍非完整迁移，远端403未重试。
+
+## 原生目录、待办与子代理工具绑定验证
+
+最终own436/436（21194.439809ms）通过；新增4合同和3实际Pi wire。验证完整todo替换/重复与并行状态拒绝/turn reset、目录精确caller与signal、稳定adjacent marker、cold send一次续办、外来send拒绝、absent interrupt接受无操作，以及模型实际delegation创建Pi child、父目录持久记录和return guidance。18项定向回归（含既有11 manager wires）通过。初次测试误用同步throws检查async defineTool、无inject属性访问和把parent参数中的marker算成child请求；修正测试后最终通过，未放宽运行时。
+
+全新/tmp/night-bot-control-tools-production frozen production ignore-scripts安装，296实质核心/wire+38合同=334复测通过；279运行文件及manifest/lock逐字一致，静态276 JS/232字面bare imports通过。runtime142/routing47/domain388及真实kernel9通过1 Windows跳过因夹具与对应运行边界未改动沿用d78b96e证据，不声称本阶段重跑；独立覆盖共1022通过。证据evidence/native-control-tools-*.txt。37直接DSH依赖/39活动组件替换，仍未完成全迁移；403未重试。

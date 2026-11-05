@@ -59,3 +59,11 @@ Trusted shell facts: `src/native-shell-env.js` preserves the MIT @deepseek-ai/ds
 ## Web tools and cooperative declaration timeouts
 
 `native-tool-web.js` retains explicitly MIT source-derived schema/validation, query merging, bounded HTML-to-markdown, untrusted-output labels and presentation metadata from `dsh-tool-web@0.2.1-alpha.2`; this remains backend metadata, not a recreated UI. `native-tool-timeout.js` preserves the `dsh-tool-call-timeout-policy` structured result/cooperative await protocol, with local reason-identity ownership for nested same-code deadlines. Notices: `licenses/dsh-{tool-web,tool-call-timeout-policy}-MIT.txt`. Markdown dependencies `turndown@7.2.4` and `@joplin/turndown-plugin-gfm@1.0.68` retain their MIT notices under `licenses/`. Generic defineTool/schema helpers remain explicit libraries.
+
+`src/native-tool-working-directory.js` preserves MIT model-facing schemas/validation/projection and presentation algorithms from `@deepseek-ai/dsh-tool-working-directory@0.2.1-alpha.2`; see `licenses/dsh-tool-working-directory-MIT.txt`. This compatibility fork is not described as an original algorithm.
+
+`src/native-tool-todo.js` preserves MIT model-facing schemas/validation/projection and presentation algorithms from `@deepseek-ai/dsh-tool-todo@0.2.1-alpha.2`; see `licenses/dsh-tool-todo-MIT.txt`. This compatibility fork is not described as an original algorithm.
+
+`src/native-tool-subagent-control.js` preserves MIT model-facing schemas/validation/projection and presentation algorithms from `@deepseek-ai/dsh-tool-subagent-control@0.2.1-alpha.2`; see `licenses/dsh-tool-subagent-control-MIT.txt`. This compatibility fork is not described as an original algorithm.
+
+`src/native-tool-subagent.js` preserves MIT model-facing schemas/validation/projection and presentation algorithms from `@deepseek-ai/dsh-tool-subagent@0.2.1-alpha.2`; see `licenses/dsh-tool-subagent-MIT.txt`. This compatibility fork is not described as an original algorithm.

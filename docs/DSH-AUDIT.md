@@ -251,3 +251,7 @@ Active registry and anonymous HTTP backend are local `native-web.js`/`native-htt
 ### Web model bindings and restored timeout policy
 
 NativeToolWeb owns the former active tool-web plugin, with explicit MIT algorithm attribution and retained generic defineTool/schema helpers. NativeToolTimeout restores previously absent generic declaration enforcement; no replacement credit for that repair. Direct DSH production dependencies:41; active components replaced:35. Session/inbox facade, generic capability/helper libraries and remaining FS/shell/job/skill/child tool rows still require migration.
+
+### Native control tool bindings
+
+Four former active tool rows now use explicitly MIT-attributed local modules. Canonical errors and generic schema/scope/message helpers remain; this is compatibility ownership, not a claim of novel algorithms or complete migration. Direct DSH production dependencies37; active components replaced39. Remaining skill/job/FS/shell tools and capability backends are explicit.

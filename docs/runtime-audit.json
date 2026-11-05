@@ -193,22 +193,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-tool-subagent",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tool-subagent-control",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tool-todo",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tool-working-directory",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-tools",
       "version": "0.2.1-alpha.2"
     },
@@ -233,7 +217,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 121,
+  "developmentDependencyCount": 125,
   "activeLiteralDshPluginRows": [
     "fs-observation-policy",
     "fs-sandbox",
@@ -241,17 +225,14 @@
     "tool-fs",
     "tool-fs-search",
     "tool-jobs",
-    "tool-skill",
-    "tool-subagent",
-    "tool-subagent-control",
-    "tool-todo",
-    "tool-working-directory"
+    "tool-skill"
   ],
   "activeDynamicDshPluginRows": [
     "bash-sandbox or pwsh-sandbox",
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "tool-working-directory/tool-todo/tool-subagent-control/tool-subagent -> attributed local model bindings over native lifecycles; generic schema/scope/message helpers remain",
     "tool-web -> src/native-tool-web.js; restored native-tool-timeout.js policy was absent and earns no replacement credit",
     "web/web-fetch-http -> src/native-web.js + native-http-fetch.js + native-deadline.js; public canonical WebError and proxy overlay retained, global HTTP ownership avoids retained-preset duplicate registration",
     "session-title -> src/native-session-title.js; public error identity remains canonical, query fold is local",
