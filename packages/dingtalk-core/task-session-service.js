@@ -1,3 +1,4 @@
+import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions,disabledExecutionSessions} from '../../src/tasks/single-session.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
@@ -91,7 +92,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (!suppliedStore) await store.close()
     throw error
   }
-  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files') })
+  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),...(singleExecution?{getTaskDirectories:taskId=>taskDirectories(root,taskId)}:{}) })
   const originalNotifications=notifications
   if(singleExecution)notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('send',notification):originalNotifications.send(notification),readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
@@ -110,14 +111,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       || !!recovery.nextAttemptAt && Date.parse(recovery.nextAttemptAt) <= Date.now()
     return (failures.get(id)?.retryAfter ?? 0) <= Date.now()
   }
-  let closed = false, recovering, scheduling, scheduleRequested = false, providerRetryTimer
+  let closed = false, closingService, recovering, scheduling, scheduleRequested = false, providerRetryTimer
   let notificationScan, notificationScanRequested = false, notificationTransportRetryAt = 0
   let sourceProcessingRevision = 0
   let observerGroupPage
   const sourceHeldNotifications = new Map()
   const query = (kind, args = {}) => store.query({ kind, ...args })
   if(singleExecution&&(await query('execution.list')).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
-  const stopReflection=ctx.get?.('reflection')?.attachStore(store,{ownerActorId:config.ownerActorId,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
+  const archives=singleExecution?new TaskArchives({paths:ctx.get('runtimePaths'),store,routes:ctx.get('taskSessionRoutes'),onSuccess:taskId=>failures.delete('task-archive:'+taskId),onFailure:(taskId,error)=>{failures.set('task-archive:'+taskId,{id:taskId,code:error.code??'TASK_ARCHIVE_CAPTURE_FAILED'});ctx.logger?.warn?.('task archive '+taskId+': '+(error.code??'TASK_ARCHIVE_CAPTURE_FAILED'))}}):undefined
+  const reflection=ctx.get?.('reflection')
+  const stopReflection=reflection?.attachStore(store,{ownerActorId:config.ownerActorId,onReview:archives?(taskId,report)=>archives.recordReview(taskId,report):undefined,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
   async function* executionIndex() {
     let after = 0
     do {
@@ -177,6 +180,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           throw error
         })
     } else receipt = await commit()
+    if(archives){const taskId=receipt.result?.task?.taskId??receipt.result?.operation?.taskId??receipt.result?.notification?.taskId??args.binding?.taskId??args.taskId;if(taskId){const current=await query('task.get',{taskId});if(current)try{await archives.register(current);archives.schedule(taskId)}catch(error){archives.errors.set(taskId,error.code??'TASK_ARCHIVE_NOT_READY');archives.onFailure(taskId,error);receipt.archiveMaintenance={pending:true,taskId,code:error.code??'TASK_ARCHIVE_NOT_READY'}}}}
     if(receipt.completionEvent)ctx.get?.('reflection')?.scan()
     observerGroupPage?.sourceChanged(receipt.result?.source ?? args.source)
     // 幂等收据保存的是当时快照；通知当前态须独立回读，不能用旧 prepared 覆盖已送达缓存。
@@ -273,7 +277,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       && (task.contextRevision ?? 0) === (binding.contextRevision ?? 0)
   }
   const taskSessions = suppliedTaskSessions ?? (singleExecution?createSingleTaskSessions:createTaskSessions)({ ctx, isCurrent: currentTask, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action),
-    getWorkspaceDir: ({ binding }) => taskWorkspace(root, binding.taskId), registerPersistence: value => persistence.register(value) })
+    getWorkspaceDir: async ({ binding }) => {if(archives)await archives.register(await query('task.get',{taskId:binding.taskId}));return taskWorkspace(root, binding.taskId)}, registerPersistence: value => persistence.register(value) })
   const dshExecutionSessions = suppliedExecutionSessions ?? (singleExecution?disabledExecutionSessions():createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
     isCurrent: binding => query('execution.current', { binding }),
     isRecoveryCurrent: binding => query('execution.recovery-current', { binding }),
@@ -1540,6 +1544,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     ? recordMessageStage({ groupId: current.payload.conversationId,
       messages: [{ messageId: current.payload.sourceRef?.messageId ?? current.payload.sourceMessageId, messageVersion: current.payload.sourceVersion }] }, stage) : undefined
   async function notificationDeliveryGate(notification) {
+    if(notification.archiveRestoreHold)return false
     if(singleExecution&&notification.id.startsWith('triage-')){const outbound=residentStore.getGroup(notification.payload.conversationId)?.outbox.find(row=>row.outboundId===notification.id),ref=outbound?.sourceRef,current=ref&&residentStore.getGroup(notification.payload.conversationId)?.messages.find(row=>row.messageId===ref.messageId);return !!outbound&&outbound.text.startsWith('初步判断，尚待结合话题进一步核实：')&&(['unknown','starting'].includes(notification.state)||current?.messageVersion===ref?.messageVersion&&current?.senderOpenDingTalkId===ref?.actorId)}
     if (notification.kind === 'coordination' || notification.state === 'superseded') return false
     if (notification.kind === 'routing-clarification' && ['prepared', 'failed'].includes(notification.state)) {
@@ -1660,6 +1665,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed) return { failures: [] }
     if (recovering) return recovering
     return recovering = (async () => {
+      if(archives)for(const taskId of archives.errors.keys())archives.schedule(taskId)
       // A process restart cannot prove detached external operations stopped. Recover only native handles known absent;
       // unfinished operation rows remain unknown and fence execution until explicit readback reconciliation.
       const pending = await query('recovery.pending')
@@ -2019,7 +2025,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return {...response,channelType:e.type,conversationId:e.conversationId}
   }
   const detachIngress=singleExecution?ctx.get('channels').attachIngress(unifiedIngress):undefined
-  return {
+  const api = {
     async retryNotification({ groupId, notificationId, expectedToken }) {
       const notification = typeof notificationId === 'string' && notificationId
         ? await query('notification.get', { notificationId }) : null
@@ -2046,6 +2052,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     observerGroupPage,
     listObserverGroups:()=>residentStore.listGroups().map(({groupId,name,responsibility,residentSessionId})=>({groupId,name,responsibility,residentSessionId})),
     listAuthorizationRequests: listHumanRequests, respondHumanRequest, respondPrivateHumanReply,
+    taskArchiveStatus:taskId=>({pending:archives?.tails.has(taskId)??false,error:archives?.errors.get(taskId)??null}),
     store, ingest:singleExecution?unifiedIngress:ingest, recover, taskDetail, taskExecutions, isOwnNotification,
     async taskIdentity(taskId) { return await query('task.get', { taskId }) ? { taskId, legacyReadonly: false } : null },
     messageProcessingRequests: groupId => topicCoordinator.messageProcessingRequests(groupId),
@@ -2122,7 +2129,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         controlState: task.control, waitingReason: task.state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
         result: task.completion?.result ?? task.lastDecision ?? null, legacyReadonly: false,
         ...(task.archivedAt ? {} : { session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running',
-          workspaceDir: dirname(taskFilePath(root, task.taskId, 'work')), logPath: taskSessionLogRoot(root, task.taskId) } }) })) }
+          workspaceDir: dirname(taskFilePath(root, task.taskId, 'work')), logPath: singleExecution?ctx.sessionPersistence.path(task.sessionId):taskSessionLogRoot(root, task.taskId) } }) })) }
     },
     async taskDecisions(taskId, options = {}) { await requireTask(taskId); return query('task.decisions', { ...options, taskId }) },
     async reconcileWebTaskTopics(args) {
@@ -2174,13 +2181,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         await schedulePending()
         await deliverNotifications(notificationAttempts)
       } while (scheduling || notificationScan || sourceProjections.size || [inflightTasks,inflightExecutions,inflightGroups,inflightNotifications].some(map => map.size))
+      await archives?.idle()
     },
-    async close() {
-      if(closed)return
+    close() {return closingService??=(async()=>{
       closed = true
       stopReflection?.()
       detachIngress?.()
-      await ctx.get?.('reflection')?.whenIdle()
+      await reflection?.whenIdle()
       nativeDws.close()
       clearTimeout(providerRetryTimer)
       stopObservation?.()
@@ -2197,7 +2204,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await observeClose(closeTrace, 'service.persistence.close', () => persistence.close(), counts)
       stopInboxProjection?.()
       await observeClose(closeTrace, 'service.observer-page.close', () => observerGroupPage.close(), counts)
+      if(archives){await archives.idle();if(store.healthy){for(const task of await query('task.list',{archived:'all'}))try{await archives.seal(task.taskId)}catch(error){archives.errors.set(task.taskId,error.code??error.message);archives.onFailure(task.taskId,error)}}}
       if (!suppliedStore) await observeClose(closeTrace, 'service.store.close', () => store.close(), counts)
-    },
+    })()},
   }
+  if(archives)ctx.effect(()=>()=>api.close(),'portable task archive shutdown')
+  return api
 }

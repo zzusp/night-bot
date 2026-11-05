@@ -18,8 +18,10 @@ resumed by the ordinary conversation/reminder controller.
 
 Task workspaces are `data/workspaces/tasks/<task-id>/`, with materials, work,
 outputs and temporary task-local material separated inside that owner directory.
-Raw Pi journals live in `data/state/sessions`, outside model filesystem access;
-new portable tasks do not install the old workspace `.dsh` journal router.
+Task Pi journals live under the task `sessions/` directory, outside model file
+access; ordinary conversations remain in `data/state/sessions`. New portable tasks
+do not install the old workspace `.dsh` journal router. Task model writes are
+confined to `work/` and `tmp/`; frozen delivery bytes/descriptors live in `outputs/`.
 File/process fences expose only the current task/conversation workspace, not other
 users' workspaces. Linux system dependencies stay read-only. The generic task API
 and the model cannot choose an external business directory.
@@ -48,3 +50,6 @@ digest, and validates task/version ownership before preparing channel delivery.
 Later edits do not change the frozen artifact. Selection is not a transport receipt;
 actual upload/readback belongs to the optional channel. Local tests exercise the
 real single-session completion and reject unreported files and path/link escapes.
+
+The task directory is independently sealed/backed up through [TASK-ARCHIVE](TASK-ARCHIVE.md).
+SQLite stays authoritative; restore is paused and cannot authorize effect replay.

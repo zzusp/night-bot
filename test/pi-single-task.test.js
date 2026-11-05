@@ -16,15 +16,15 @@ test('one task directly writes an artifact, cold resumes the same session, denie
   const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){reviews++;return {text:'{"lessons":[]}'}}
     if(!body.tools?.some(t=>t.function.name==='task_result'))return
-    if(phase==='write'){phase='pause';return {tool:'write',args:{file_path:'proof.txt',content:'single-session-proof'}}}
+    if(phase==='write'){phase='pause';return {tool:'write',args:{file_path:'work/proof.txt',content:'single-session-proof'}}}
     if(phase==='pause')return {text:'temporary provider interruption before final submission'}
-    if(!replay){replay=true;return {tool:'write',args:{file_path:'proof.txt',content:'single-session-proof'}}}
-    return {...result,args:{decision:{...result.args.decision,artifacts:["proof.txt"],deliveryFiles:[{path:"proof.txt",caption:"isolated proof"}]}}}
+    if(!replay){replay=true;return {tool:'write',args:{file_path:'work/proof.txt',content:'single-session-proof'}}}
+    return {...result,args:{decision:{...result.args.decision,artifacts:["work/proof.txt"],deliveryFiles:[{path:"work/proof.txt",caption:"isolated proof"}]}}}
   })
   let h=await serviceFor(f);t.after(()=>h.close())
   const task=await h.service.createTask({requestId:'direct-write',objective:'Create a local proof and read it back'})
   const interrupted=await until(async()=>{const taskNow=await h.store.query({kind:'task.get',taskId:task.taskId});return taskNow.drained&&taskNow.providerRecovery&&taskNow})
-  assert.equal(await readFile(join(task.session.workspaceDir,'proof.txt'),'utf8'),'single-session-proof')
+  assert.equal(await readFile(join(task.session.workspaceDir,'work/proof.txt'),'utf8'),'single-session-proof')
   const sessionId=interrupted.sessionId;await h.close();await f.close();phase='finish';await f.boot();h=await serviceFor(f,false)
   await new Promise(r=>setTimeout(r,Math.max(0,Date.parse(interrupted.providerRecovery.nextAttemptAt)-Date.now()+20)));await h.service.recover()
   const completed=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained&&row})
@@ -39,7 +39,7 @@ test('one task directly writes an artifact, cold resumes the same session, denie
   const resume=await f.host.ctx.sessionController.resolveAgent(sessionId);assert.match(resume.error?.message??'',/TASK_OWNED/)
   await h.close();await f.close();const backup=join(f.root,'backups','single');await backupData(f.config,backup)
   const relocated=await mkdtemp('/tmp/night-single-restored-');t.after(()=>rm(relocated,{recursive:true,force:true}));const nextConfig={...f.config,installRoot:relocated};await restoreData(nextConfig,backup)
-  const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
+  const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
 test('single task cancellation aborts the active turn, drains it and never creates a replacement execution',{timeout:15000},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers()

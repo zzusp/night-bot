@@ -1,0 +1,17 @@
+✔ default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections (3851.748686ms)
+✔ sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun (777.572867ms)
+✔ task-required attachment bytes are local and independently restored without the original attachment store (834.157415ms)
+✔ a committed restore marker blocks startup, can be finalized idempotently, and does not resume work (773.280912ms)
+✔ default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact (481.305113ms)
+✔ explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals (533.198054ms)
+✔ restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation (485.083612ms)
+✔ an archive filesystem failure after a committed completion reports maintenance without reversing task state (394.478671ms)
+✔ task index restoration preserves decision chronology independently of command-id lexical order (50.075517ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9534.005819

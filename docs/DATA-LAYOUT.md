@@ -24,7 +24,7 @@ a home directory.
       credentials.json                # credential values; private separate backup
       .env                            # optional environment values
     state/
-      sessions/                       # checksummed Pi journals + legacy readers
+      sessions/                       # ordinary/triage Pi journals + legacy readers
       storage/                        # native domains, schedules, workspace/model state
       tasks.sqlite                    # tasks, operations, notification ledger
       spills/                         # retained tool/process output, recovery evidence
@@ -32,7 +32,7 @@ a home directory.
     memory/                           # scoped Markdown facts, candidates, trusted grants
       v1/<kind>/<scope-hash>/evolution/ # task reviews and scoped learned skills
     attachments/v1/                   # original content-addressed files/images
-    workspaces/                       # task sources, outputs, execution directories
+    workspaces/                       # tasks/<id> complete task archives; conversations
     cache/attachments/                # rebuildable image variants
     logs/service.log                  # diagnostic output of managed launcher
     temp/                             # managed process/Node temporary files
@@ -53,11 +53,12 @@ Windows paths) and remain historical references, not Night Bot upgrade entrypoin
 
 | Purpose | Standard location |
 |---|---|
-| Sessions, native domains, schedules, task SQLite | `data/state` |
+| Ordinary sessions, native domains, schedules, task SQLite | `data/state` |
+| Task sessions, sources, frozen outputs, reviews and task snapshot | `data/workspaces/tasks/<taskId>` |
 | Task materials, artifacts, execution cwd | `data/workspaces` |
 | Credential values and optional environment | `data/secrets` |
 | Attachment originals / derived cache | `data/attachments/v1` / `data/cache/attachments` |
-| Retained full process/tool output | `data/state/spills` |
+| Retained full process/tool output | task `materials/runtime-evidence`; ordinary sessions use `data/state/spills` |
 | Markdown memory, grants, reviews, learned skills | `data/memory` |
 | Owned skills and instructions | `data/config/{skills,agents,harness}` |
 | Managed log / transient files | `data/logs` / `data/temp` |
@@ -204,3 +205,10 @@ A vendor CLI may ignore environment conventions; real login/store behavior still
 requires integration acceptance. Other trusted extensions must declare their paths.
 The default snapshot excludes the entire vault; only explicit `--include-secrets`
 includes it. Snapshots still contain private chats, memory and business artifacts.
+
+## Complete task archives
+
+[TASK-ARCHIVE](TASK-ARCHIVE.md) defines the task subdirectories, runtime-authority
+boundary and offline backup/restore/rebuild/repair commands. General installation
+backups remain separate. An interrupted task restore/index publication blocks Host
+startup and installation snapshots until its explicit recovery command resolves it.

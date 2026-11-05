@@ -7,7 +7,7 @@ const taskSegment = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-
 
 /** 只由受信任务身份计算路径，标题及消息文本不参与目录命名。 */
 export function taskFilePath(root, logicalTaskId, area, ...segments) {
-  if (!isAbsolute(root ?? '') || !taskSegment(logicalTaskId) || !['materials', 'work', 'tmp', 'outputs'].includes(area)
+  if (!isAbsolute(root ?? '') || !taskSegment(logicalTaskId) || !['materials', 'work', 'tmp', 'outputs', 'sessions', 'reviews'].includes(area)
     || segments.some(value => !taskSegment(value))) throw new Error('TASK_DIRECTORY_INVALID')
   return join(resolve(root), 'tasks', logicalTaskId, area, ...segments)
 }
@@ -37,7 +37,7 @@ export async function taskDirectories(workspaceRoot, logicalTaskId) {
   const work = taskFilePath(workspaceRoot, logicalTaskId, 'work')
   const tmp = taskFilePath(workspaceRoot, logicalTaskId, 'tmp')
   const outputs = taskFilePath(workspaceRoot, logicalTaskId, 'outputs')
-  for (const path of [materials, work, tmp, outputs]) await checkedTaskDirectory(path, true)
+  for (const path of [materials, work, tmp, outputs,taskFilePath(workspaceRoot, logicalTaskId, 'sessions'),taskFilePath(workspaceRoot, logicalTaskId, 'reviews')]) await checkedTaskDirectory(path, true)
   return { logicalTaskId, root: dirname(work), materials, work, tmp, outputs }
 }
 

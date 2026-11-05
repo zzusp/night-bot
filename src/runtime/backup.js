@@ -33,7 +33,7 @@ export async function backupData(config,destination,{includeSecrets=false}={}){
   await prepareRuntimePaths(paths)
   const release=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0}),stage=destination+'.staging-'+randomUUID()
   try{
-    if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')
+    if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')
     if(await lstat(destination).catch(e=>{if(e.code!=='ENOENT')throw e}))throw failure('NIGHT_BACKUP_DESTINATION_EXISTS')
     await privateDirectory(stage)
     const records=[],excluded=[]
@@ -73,7 +73,7 @@ export async function restoreData(config,backup){
   await prepareRuntimePaths(paths);const release=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0}),stage=join(paths.runtime,'.restore-'+randomUUID()),moved=[]
   let markerWritten=false
   try{
-    if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')
+    if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')
     const roots=['state','memory','workspaces','attachments','config/skills','config/agents','config/harness',...manifest.includesSecrets?['secrets']:[]]
     for(const name of roots)if(await hasData(join(paths.data,name)))throw failure('NIGHT_RESTORE_REQUIRES_EMPTY_DATA')
     await privateDirectory(stage)

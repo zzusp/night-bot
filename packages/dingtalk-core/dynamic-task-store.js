@@ -1,3 +1,4 @@
+import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
@@ -533,6 +534,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     const stamp = now()
     if (kind.startsWith('coordination.') || kind.startsWith('task.coordination.')) fail('INDEPENDENT_COORDINATION_RETIRED')
+    if(kind==='task.archive.reviewed'){
+      const task=get('dynamic_tasks',a.taskId);if(!task.archiveRestore?.reviewRequired||!task.drained)fail('TASK_ARCHIVE_REVIEW_NOT_REQUIRED')
+      if(!webActorId||a.actorId!==webActorId||!['effects','scope','dependencies'].every(key=>a.checks?.[key]===true))fail('TASK_ARCHIVE_OPERATOR_REVIEW_REQUIRED')
+      task.archiveRestore={...task.archiveRestore,reviewRequired:false,reviewedBy:a.actorId,reviewedAt:stamp,reviewNote:text(a.note,'note')};saveTask(task);return changed({task})
+    }
     if (kind === 'task.create') {
       if (a.coordinationHold) fail('INDEPENDENT_COORDINATION_RETIRED')
       const taskId = text(a.taskId, 'taskId')
@@ -715,6 +721,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       return changed({ task })
     }
     if (kind === 'task.claim') {
+      if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
       if (!task.drained) fail('DYNAMIC_TASK_BUSY')
@@ -1649,6 +1656,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if (kind === 'notification.start' || kind === 'notification.receipt' || kind === 'notification.delivered' || kind === 'notification.reconcile') {
       const notification = get('dynamic_notifications', a.notificationId)
       if (kind === 'notification.start') {
+      if(get('dynamic_notifications',a.notificationId).archiveRestoreHold)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
         if (notification.state !== 'prepared') return changed({ notification })
         if (notification.payload.afterNotificationId
           && get('dynamic_notifications', notification.payload.afterNotificationId, true)?.state !== 'delivered')
@@ -1857,6 +1865,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
   return Object.freeze({
     info: Object.freeze({ dbPath, instanceId, version: VERSION, ingressEpoch: boundIngressEpoch }),
     get healthy() { return !closed && healthy },
+    async exportTaskArchive(taskId){if(closed)fail('DYNAMIC_STORE_CLOSED');return clone(transaction(()=>exportTaskLedger(db,taskId)))},
+    async importTaskArchive(snapshot){if(closed)fail('DYNAMIC_STORE_CLOSED');return clone(transaction(()=>importTaskLedger(db,snapshot)))},
     async maintain() { fail('INDEPENDENT_COORDINATION_RETIRED') },
     async command(command) {
       record(command); const id = text(command.id, 'id'), kind = text(command.kind, 'kind'), args = record(command.args ?? {})
@@ -1921,7 +1931,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (closed) fail('DYNAMIC_STORE_CLOSED')
       record(q)
       let value
-      if (q.kind.startsWith('topic.fact.')) return clone(topicFacts.query(q))
+      if (q.kind.startsWith('topic.fact.')) {const result=clone(topicFacts.query(q));return Array.isArray(result)?result.filter(item=>!item?.archiveRestoreHold):result}
       if(q.kind==='observer.work-metadata')return observerWorkMetadata(db,q)
       if(q.kind==='observer.revision')return `${incarnation}:${db.prepare('SELECT total_changes() n').get().n}`
       if(['observer.group-version','observer.group-metadata','observer.message-contexts','observer.message-list-contexts'].includes(q.kind))return observerGroupQuery(db,q)
@@ -2021,7 +2031,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       else if (q.kind === 'resource.list') value = db.prepare('SELECT resource_key AS resourceKey,holder FROM dynamic_resource_locks ORDER BY resource_key').all()
       else if (q.kind === 'resource.catalog') value = resourceCatalog.snapshot
       else if (q.kind === 'source.get') value = get('dynamic_sources', q.sourceId, true)
-      else if (q.kind === 'source.list') value = all('dynamic_sources', q.groupId ? "WHERE json_extract(body,'$.groupId')=?" : '', q.groupId ? [q.groupId] : []).filter(item => (!q.groupId || item.groupId === q.groupId) && (!q.unrouted || !item.routed) && (!q.status || (q.status === 'routed' ? !!item.routed : !item.routed)))
+      else if (q.kind === 'source.list') value = all('dynamic_sources', q.groupId ? "WHERE json_extract(body,'$.groupId')=?" : '', q.groupId ? [q.groupId] : []).filter(item => !item.archiveRestoreHold && (!q.groupId || item.groupId === q.groupId) && (!q.unrouted || !item.routed) && (!q.status || (q.status === 'routed' ? !!item.routed : !item.routed)))
       else if (q.kind === 'group.get') value = get('dynamic_groups', q.groupId, true)
       else if (q.kind === 'group.list') value = all('dynamic_groups')
       else if (q.kind === 'receipt.get') { const row = readReceiptRow(db, q.id); value = row ? JSON.parse(row.body) : null }
