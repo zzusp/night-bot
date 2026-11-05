@@ -229,3 +229,7 @@ NativeToolTimeout repairs an absent default-host capability: declared ToolDefini
 ## Native control tool bindings
 
 Attributed MIT local bindings now replace tool-working-directory, tool-todo, tool-subagent and tool-subagent-control. They retain whole-list todo validation/projection-v2/turn reset, exact caller directory authority, scoped provider reconciliation/route preflight/depth/progress, durable child admission and stable adjacent-message marker. Model schemas and presentation metadata remain protocol data, not a recreated UI. Native services and Pi own execution/history. Interrupting an absent resident activation remains an accepted no-op; foreign send and live descendant authorization keep their guards.
+
+## Native skill model binding and Pi catalog authority
+
+NativeToolSkill replaces the active model-facing loader/catalog/user-gesture binding with attributed MIT validation/rendering/presentation algorithms. Full skills still pass through native registry and capability-aware filesystem. Visible catalog digest now comes exclusively from Pi committed hostMessages; Session.surface is never consulted by this tool. A legacy audit-only scan answers whether any catalog was ever published, allowing an empty replacement after pruning/removal, and never supplies model-visible content. Malformed catalog seeds are skipped; writer absence fails rather than falling back. Exact tool-registration visibility, invocation permissions, complete discovery gates and direct-user-only slash gestures remain.

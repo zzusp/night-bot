@@ -60,7 +60,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
           { name: new URL('./native-shell-env.js', import.meta.url).href }, row('tool-fs'), row('tool-fs-search', { sampleOverCapGlobResults: false }), row('fs-observation-policy'),
           row('tool-' + shell, { enableRunInBackground: true, promoteOnTimeout: true }),
-          { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, row('tool-skill'),
+          { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, { name: new URL('./native-tool-skill.js', import.meta.url).href },
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },
           { name: new URL('./native-tool-subagent.js', import.meta.url).href, config: { provider: 'spawn' } },
           { name: new URL('./native-tool-todo.js', import.meta.url).href, config: { allowParallelInProgress: true } }, { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },

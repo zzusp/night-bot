@@ -255,3 +255,7 @@ NativeToolWeb owns the former active tool-web plugin, with explicit MIT algorith
 ### Native control tool bindings
 
 Four former active tool rows now use explicitly MIT-attributed local modules. Canonical errors and generic schema/scope/message helpers remain; this is compatibility ownership, not a claim of novel algorithms or complete migration. Direct DSH production dependencies37; active components replaced39. Remaining skill/job/FS/shell tools and capability backends are explicit.
+
+### Skill model binding
+
+Active tool-skill now uses attributed local algorithms. Catalog visibility authority is Pi hostMessages; the retained Session audit scan only records historical publication. Generic public skill render/invocation helpers remain explicit. Direct DSH production dependencies36; active components replaced40. Job/FS/shell tools, capability backends and v4 Session/inbox helpers remain.

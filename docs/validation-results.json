@@ -967,5 +967,29 @@
     "interruptAbsentContract": "accepted no-op for target absent from manager resident activation map; existing guarded live descendants unaffected",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeSkillTool": {
+    "date": "2026-11-05",
+    "ownPass": 442,
+    "ownDurationMs": 21525.140975,
+    "newContracts": 5,
+    "newActualPiWireCases": 1,
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain/kernel9pass1WindowsSkip unchanged from d78b96e; no rerun claimed",
+    "uniquePass": 1028,
+    "productionOnlyRepeatedPass": 339,
+    "productionScope": "301 meaningful core/wires plus38 contracts; development-only source differential omitted",
+    "runtimeFilesCompared": 280,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 277,
+    "literalBareImports": 236,
+    "directRuntimeDshDependencies": 36,
+    "removedActiveDshServices": 40,
+    "visibleAuthority": "Pi committed hostMessages only; legacy audit scan answers historical publication boolean, never visibility",
+    "sourceDerivedAlgorithms": "MIT schema/catalog/invocation/presentation algorithms explicitly attributed",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

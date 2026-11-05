@@ -285,3 +285,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own436/436（21194.439809ms）通过；新增4合同和3实际Pi wire。验证完整todo替换/重复与并行状态拒绝/turn reset、目录精确caller与signal、稳定adjacent marker、cold send一次续办、外来send拒绝、absent interrupt接受无操作，以及模型实际delegation创建Pi child、父目录持久记录和return guidance。18项定向回归（含既有11 manager wires）通过。初次测试误用同步throws检查async defineTool、无inject属性访问和把parent参数中的marker算成child请求；修正测试后最终通过，未放宽运行时。
 
 全新/tmp/night-bot-control-tools-production frozen production ignore-scripts安装，296实质核心/wire+38合同=334复测通过；279运行文件及manifest/lock逐字一致，静态276 JS/232字面bare imports通过。runtime142/routing47/domain388及真实kernel9通过1 Windows跳过因夹具与对应运行边界未改动沿用d78b96e证据，不声称本阶段重跑；独立覆盖共1022通过。证据evidence/native-control-tools-*.txt。37直接DSH依赖/39活动组件替换，仍未完成全迁移；403未重试。
+
+## 原生技能工具与 Pi 目录可见性验证
+
+最终own442/442（21525.140975ms）通过，新增5合同及1实际Pi wire。旧schema/输出差分、Session.surface访问即抛错、Pi目录重复抑制/变更/清空、malformed seed/writer缺失、精确registration shadow、invocation禁止/incomplete snapshot、直接user手势去重与scope均通过。实际Pi三轮证明summary不偷加载body、/wire-skill注入正文且无重复catalog/无tool effect、移除后空replacement。既有OS watcher body变更与显式重读wire也在7项定向组通过。
+
+全新/tmp/night-bot-skill-tool-production frozen production ignore-scripts安装，301实质核心/wire+38合同=339复测通过；280运行文件及manifest/lock逐字一致，静态277 JS/236字面bare imports通过。runtime142/routing47/domain388/kernel9通过1 Windows跳过因对应边界未改动沿用d78b96e证据，不声称重跑；共1028独立通过。证据evidence/native-skill-tool-*.txt。36直接DSH依赖/40活动组件替换，仍未完成迁移；403未重试。
