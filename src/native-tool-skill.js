@@ -6,7 +6,7 @@ import { createUserMessage } from './native-message-protocol.js';
 
 import "@deepseek-ai/cordis";
 import "node:path";
-import { escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent } from "@deepseek-ai/dsh-skill";
+import { escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent } from "./native-skill-protocol.js";
 //#region ../../util/brand/src/index.ts
 /**
 * Apply a compile-time number brand without changing the value.

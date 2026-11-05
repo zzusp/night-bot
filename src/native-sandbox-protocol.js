@@ -1,4 +1,6 @@
-// MIT source-derived sandbox escalation/root/diagnostic protocol; see licenses/dsh-sandbox-MIT.txt. Canonical public error identity remains external.
+import {Service} from '@deepseek-ai/cordis';
+import {HarnessError} from '@deepseek-ai/dsh-llm';
+// MIT source-derived sandbox escalation/root/diagnostic protocol; see licenses/dsh-sandbox-MIT.txt. Canonical public error and abstract capability base are now local.
 import { assertNever } from "./native-values.js";
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -249,4 +251,30 @@ function matchesSignature(exitCode, stderr, signatures) {
 //#endregion
 
 export { ESCALATION_TARGETS, WIDER_MODES, approveEscalation, canonicalPath, classifyRunnerFailure, escalationHintMarker, isRunnerSpawnFailure, matchesSignature, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs, writableRoots };
-export { SandboxUnavailableError } from "@deepseek-ai/dsh-sandbox";
+
+const SANDBOX_UNAVAILABLE = "SANDBOX_UNAVAILABLE";
+/**
+* Thrown when {@link SandboxProvider.confine} cannot enforce the requested
+* mode. Carries {@link SANDBOX_UNAVAILABLE} through the structured error
+* channel.
+*/
+var SandboxUnavailableError = class extends HarnessError {
+	constructor(mode, detail) {
+		super(`sandbox mode "${mode}" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.` + (detail === void 0 ? "" : ` Runner failure: ${detail}`), SANDBOX_UNAVAILABLE);
+		this.name = "SandboxUnavailableError";
+	}
+};
+/**
+* Abstract process-sandbox service. {@link confine} must return enforcing argv
+* or fail closed at wrap or runner-execution time; silent unconfined passthrough
+* is forbidden. Functional probes arbitrate multi-runner chains and may be
+* skipped for a sole candidate, whose own refusal remains the fail-closed end.
+*/
+var SandboxProvider = class extends Service {
+	/* v8 ignore next -- abstract service construction is covered through concrete provider packages. */
+	constructor(ctx) {
+		super(ctx, "sandbox");
+	}
+};
+
+export { SANDBOX_UNAVAILABLE, SandboxUnavailableError, SandboxProvider, SandboxProvider as default };

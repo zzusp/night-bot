@@ -403,3 +403,15 @@ explicit local aliases; an actual legacy HTTP provider throws the same WebError
 constructor as the app before any network call.12 external direct DSH dependencies
 remain,49 active replacements; no additional service credit for aliases. Source
 accounting200/3/17 unchanged. Evidence: `evidence/native-capability-errors-*.txt`.
+
+Filesystem/sandbox/skill/projection interface migration:513 own +142 runtime +47
+routing +388 domain +11 real containment =1101 unique passes, one Windows skip.
+Fresh production frozen install repeats352 core +38 contracts +3 kernel =393;
+337 runtime files and manifests/lock/workspace are byte-identical. Guard316 JS/
+211 bare imports; source accounting200/3/17 unchanged. Independent original
+helpers/base/registry references retain their algorithms; public namespace export
+vocabulary and actual SDK backend peer error constructors are verified. Production
+Host checks the native skill alias via the retained ACL peer when development
+root links are absent; private SDK Scope checks now apply to session/tools/
+subagent, with skills directly importing native Scope.8 external direct DSH
+packages remain,49 active replacements. Evidence: `evidence/native-interface-*`.

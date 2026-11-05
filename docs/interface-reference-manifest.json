@@ -1,0 +1,30 @@
+[
+  {
+    "package": "@deepseek-ai/dsh-fs",
+    "originalSha256": "b165659f1eff0607222a7fe761bc56bae03fec8337c2e25affd064a3047dacb9",
+    "fixture": "test/fixtures/legacy-fs-interface.mjs",
+    "fixtureSha256": "b165659f1eff0607222a7fe761bc56bae03fec8337c2e25affd064a3047dacb9",
+    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent"
+  },
+  {
+    "package": "@deepseek-ai/dsh-skill",
+    "originalSha256": "4b88621be4e7ff09b05c175fc6dcb67e77a22e5c5570e3aa603338b2937ea791",
+    "fixture": "test/fixtures/legacy-skill-interface.mjs",
+    "fixtureSha256": "ba2f8034704060d99fe205061ff468bf95d6daaa15c2e0e571540bbb747465ab",
+    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent"
+  },
+  {
+    "package": "@deepseek-ai/dsh-sandbox",
+    "originalSha256": "b56373befbfcfe281c17c8892e9a4b2cdcb96851290b3ed0ff56b08915e2f743",
+    "fixture": "test/fixtures/legacy-sandbox-interface.mjs",
+    "fixtureSha256": "28f4f7555c06139ce0a337f6fb83f808ff4309380460560704bd7f85258f83a9",
+    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent"
+  },
+  {
+    "package": "@deepseek-ai/dsh-session-projection",
+    "originalSha256": "7dc2b212819baf4fc292751054d30b97afcbdee0a4733230abf92c6722e6550c",
+    "fixture": "test/fixtures/legacy-session-projection-interface.mjs",
+    "fixtureSha256": "7dc2b212819baf4fc292751054d30b97afcbdee0a4733230abf92c6722e6550c",
+    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent"
+  }
+]

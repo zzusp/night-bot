@@ -1,6 +1,6 @@
 // MIT source-derived canonical path containment and per-call policy fence; see licenses/dsh-fs-sandbox-MIT.txt. Canonical public errors remain compatible.
 import { LocalFileSystem } from "./native-fs-local.js";
-import { FsError } from "@deepseek-ai/dsh-fs";
+import { FsError } from "./native-fs-protocol.js";
 import { writableRoots } from "./native-sandbox-protocol.js";
 import { stat } from "node:fs/promises";
 import { dirname, sep } from "node:path";

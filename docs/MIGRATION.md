@@ -1,4 +1,6 @@
-Current checkpoint (2026-11-05):12 direct external DSH dependencies remain; scope and four capability namespaces are explicit local aliases. Nine capability error constructors and full public export vocabulary are application-owned; independent original reference algorithms and trusted SDK HTTP error identity are verified.49 active component replacements; migration remains incomplete. See runtime-audit.json and VALIDATION.md.
+Interface checkpoint: filesystem/sandbox capability bases and shared errors, skill rendering/invocation helpers and skill/projection namespace owners are local. Nine transparent historical namespace aliases receive no extra active-service replacement credit. Three remaining SDK Scope peers share the native graph; native skill authority is checked via its actual ACL peer in production.
+
+Current checkpoint (2026-11-05):8 direct external DSH dependencies remain; scope and four capability namespaces are explicit local aliases. Nine capability error constructors and full public export vocabulary are application-owned; independent original reference algorithms and trusted SDK HTTP error identity are verified.49 active component replacements; migration remains incomplete. See runtime-audit.json and VALIDATION.md.
 
 # 迁移范围
 

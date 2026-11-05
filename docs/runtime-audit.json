@@ -30,6 +30,30 @@
       "target": "link:./packages/capability-compat/session-title",
       "authority": "src/native-session-title.js + native-capability-errors.js",
       "reason": "same canonical errors and native owner for trusted SDK consumers; no additional service removal credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-fs",
+      "target": "link:./packages/capability-compat/fs",
+      "authority": "src/native-fs-protocol.js",
+      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-sandbox",
+      "target": "link:./packages/capability-compat/sandbox",
+      "authority": "src/native-sandbox-protocol.js",
+      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-skill",
+      "target": "link:./packages/capability-compat/skill",
+      "authority": "src/native-skills.js + native-skill-protocol.js",
+      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-session-projection",
+      "target": "link:./packages/capability-compat/session-projection",
+      "authority": "src/native-projections.js",
+      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
     }
   ],
   "piVersions": {
@@ -49,6 +73,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "Native filesystem/sandbox abstract capability and canonical error protocols, skill rendering/invocation helpers, and native skill/projection namespace owners; no old runtime class copied, no additional active component credit",
     "Native Web/authorization/workspace/title public error vocabulary with explicit SDK namespace aliases to the existing native owners; independent source reference constructors and full public export vocabulary verified",
     "Native message construction/projection/assistant-stream assembly and exact-object Pi loop markers; no legacy LlmRuntime class copied; canonical error and attribution helpers still external",
     "Native strict prompt/context renderer and RPC metadata/structural error/owned-value/service binding protocol with stable descriptors and Symbol.for interoperability; native credential owner and workflow scope/id key protocol no longer need the SDK interface declaration; no service-removal credit",
@@ -108,10 +133,6 @@
   ],
   "directRuntimeDshDependencies": [
     {
-      "name": "@deepseek-ai/dsh-fs",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-llm",
       "version": "0.2.1-alpha.2"
     },
@@ -132,14 +153,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-session-projection",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-skill",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-subagent",
       "version": "0.2.1-alpha.2"
     },
@@ -150,13 +163,9 @@
     {
       "name": "@deepseek-ai/dsh-session-format-catalog",
       "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-sandbox",
-      "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 150,
+  "developmentDependencyCount": 154,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [

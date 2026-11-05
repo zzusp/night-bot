@@ -1,0 +1,43 @@
+✔ native local filesystem atomic text and stale guards preserve retained backend contracts (37.78912ms)
+✔ native local filesystem serializes competing CAS writes and preserves destination mode (5.33067ms)
+✔ native local filesystem handles byte windows, binary refusal and pre-abort without mutation (4.517994ms)
+✔ native filesystem policy rechecks canonical symlinks and denies read-only mutation (7.038432ms)
+✔ native observation gate isolates owner state, absence and version guards and clears on unload (0.664933ms)
+✔ native atomic filesystem abort after staging preserves old bytes and removes private staging files (4.955725ms)
+✔ native filesystem watcher observes actual changes and explicit close drains its backend (11.580305ms)
+✔ native projection live, checkpoint, cold-read and hydration contracts match the original (16.505714ms)
+✔ native projections reject truncated or gapped tails instead of treating stale rows as authority (3.782866ms)
+✔ native projections detach checkpoint values and require matching registration versions (4.183289ms)
+✔ projection observers are independent, failure-contained and cannot prevent later registrations advancing (6.961038ms)
+✔ projection dictionary keys cannot modify object prototypes or inherit forged checkpoints (1.892875ms)
+✔ sandbox protocol retains independent algorithms and canonical public error identity (1.747095ms)
+✔ sandbox escalation performs exactly one approval and never widens on non-grants (1.242765ms)
+✔ runner diagnostics demand executable-specific evidence and ignore informational success (0.821389ms)
+✔ native sandbox public wraps match platform profiles and structured failure metadata (35.620314ms)
+✔ native sandbox probes in preference order once and retains partial enforcement (1.683239ms)
+✔ native sandbox unavailable verdict is cached and cannot dispatch unconfined argv (2.887715ms)
+✔ native sandbox validates custom runners, exact argv, cancellation and policy before grants (4.611857ms)
+✔ native sandbox owns isolated metadata snapshots and read-only profiles (1.546532ms)
+✔ Windows capability contract keeps workspace grant shared and session temp grants isolated (3.579048ms)
+✔ Windows temp capability failure cleans private directory before propagating (1.13417ms)
+✔ Scope algorithms agree with independent original private-state implementation (11.189476ms)
+✔ every retained SDK Scope peer shares the application authority (5.659005ms)
+✔ native skill catalogs preserve ranked provider precedence and nearest-scope shadowing (13.382304ms)
+✔ runtime duplicates are first-wins and duplicate disposal cannot remove the winner (2.328132ms)
+✔ skill lookup options, candidates and opaque locators are passed through by identity (2.215746ms)
+✔ incomplete discovery and provider failures are not cached and invalid catalog shapes fail loudly (2.216754ms)
+✔ provider invalidation retries one changed revision and reports repeated instability without caching (1.687144ms)
+✔ cache is bounded by cwd and scope identity; cancelled cache hits and uncooperative loads reject (8.478728ms)
+✔ stale names invalidate only the selected live provider and observer failures remain contained (1.891042ms)
+✔ provider lifecycle is aborted on duplicate/failure/disposal and original registration identity cannot leak (1.662107ms)
+✔ unregistered providers cannot publish a late loaded body and registry close cancels discovery (2.511979ms)
+✔ closed skill registries reject registration before executing a provider factory (1.072287ms)
+✔ unloading only the registry aborts borrowed provider lifecycles registered in another owner scope (2.873954ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1157.214223

@@ -1331,5 +1331,32 @@
     "initialFinding": "independent title fixture has its own constructor; differential now asserts each implementation against its own class, preserving strict prototype checks",
     "completeMigration": false,
     "remotePush": "not retried; prior403 denied"
+  },
+  "nativeCapabilityInterfaceProtocols": {
+    "date": "2026-11-05",
+    "ownPass": 513,
+    "runtimePass": 142,
+    "runtimeDurationMs": 271458.518492,
+    "routingPass": 47,
+    "domainPass": 388,
+    "containmentPass": 11,
+    "windowsSkipped": 1,
+    "uniquePass": 1101,
+    "productionOnlyRepeatedPass": 393,
+    "productionScope": "fresh frozen prod ignore-scripts install;352 core +38 contracts +3 real kernel",
+    "runtimeFilesCompared": 337,
+    "productionImportFiles": 316,
+    "literalBareImports": 211,
+    "directRuntimeDshDependencies": 8,
+    "removedActiveDshServices": 49,
+    "newNamespaces": [
+      "fs",
+      "sandbox",
+      "skill",
+      "session-projection"
+    ],
+    "scopeAdmission": "legacy session/tools/subagent peers checked; native skill alias checked through root or retained ACL peer; native owner imports canonical Scope directly",
+    "referenceProof": "independent original registry/base/helper sources; support imports only adapted and hashes recorded",
+    "completeMigration": false
   }
 }

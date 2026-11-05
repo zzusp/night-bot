@@ -1,5 +1,5 @@
 // MIT source-derived owner-isolated observation/intent gate; see licenses/dsh-fs-observation-policy-MIT.txt.
-import { FsError } from "@deepseek-ai/dsh-fs";
+import { FsError } from "./native-fs-protocol.js";
 //#region lib/types/index.js
 /**
 * Event-only filesystem observation policy; it registers no service. A weak owner/target map

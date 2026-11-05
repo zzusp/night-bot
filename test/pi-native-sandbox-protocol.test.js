@@ -2,13 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {tmpdir} from 'node:os'
 import * as native from '../src/native-sandbox-protocol.js'
-import * as original from '@deepseek-ai/dsh-sandbox'
+import * as original from './fixtures/legacy-sandbox-interface.mjs'
+import * as canonical from '../packages/capability-compat/sandbox/index.js'
 
 // The SDK is retained only for its public error class; exported helper references
 // must differ, so this differential cannot accidentally compare an alias to itself.
 test('sandbox protocol retains independent algorithms and canonical public error identity',()=>{
  assert.notEqual(native.approveEscalation,original.approveEscalation)
- assert.equal(native.SandboxUnavailableError,original.SandboxUnavailableError)
+ assert.notEqual(native.SandboxUnavailableError,original.SandboxUnavailableError)
+ assert.equal(native.SandboxUnavailableError,canonical.SandboxUnavailableError)
  for(const api of [native,original]) {
   assert.throws(()=>api.validateEscalationArgs('workspace-write',undefined))
   assert.throws(()=>api.validateEscalationArgs(undefined,'why'))

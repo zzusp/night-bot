@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import {z} from 'zod'
-import OldProjections from '@deepseek-ai/dsh-session-projection'
+import OldProjections from './fixtures/legacy-session-projection-interface.mjs'
 import NativeProjections from '../src/native-projections.js'
 const def=(key='count')=>({key,stateVersion:1,stateSchema:z.number(),init:()=>0,apply:(state,event)=>event.type==='count'?state+event.data:state,wire:{viewSchema:z.number(),view:value=>value}})
 function fixture(t,Impl=NativeProjections){const ctx=new Context();ctx.logger={warn(){}};new Impl(ctx);t.after(()=>ctx.fiber.dispose());return ctx}

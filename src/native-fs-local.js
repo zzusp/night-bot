@@ -5,7 +5,7 @@ import { watch } from "chokidar";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep, toNamespacedPath } from "node:path";
 import { pathToFileURL } from "node:url";
 import z from "@deepseek-ai/schemastery";
-import { FileSystem, FsError, FsTargetKey, FsVersion } from "@deepseek-ai/dsh-fs";
+import { FileSystem, FsError, FsTargetKey, FsVersion } from "./native-fs-protocol.js";
 import { randomUUID } from "node:crypto";
 import { createReadStream, realpath } from "node:fs";
 import { chmod, link, lstat, mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";

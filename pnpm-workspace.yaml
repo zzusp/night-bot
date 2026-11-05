@@ -4,3 +4,7 @@ overrides:
   "@deepseek-ai/dsh-authorization": "link:./packages/capability-compat/authorization"
   "@deepseek-ai/dsh-workspace": "link:./packages/capability-compat/workspace"
   "@deepseek-ai/dsh-session-title": "link:./packages/capability-compat/session-title"
+  "@deepseek-ai/dsh-fs": "link:./packages/capability-compat/fs"
+  "@deepseek-ai/dsh-skill": "link:./packages/capability-compat/skill"
+  "@deepseek-ai/dsh-sandbox": "link:./packages/capability-compat/sandbox"
+  "@deepseek-ai/dsh-session-projection": "link:./packages/capability-compat/session-projection"
