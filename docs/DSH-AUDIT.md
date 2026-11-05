@@ -1,3 +1,5 @@
+Current checkpoint (2026-11-05):12 direct external DSH dependencies remain; scope and four capability namespaces are explicit local aliases. Nine capability error constructors and full public export vocabulary are application-owned; independent original reference algorithms and trusted SDK HTTP error identity are verified.49 active component replacements; migration remains incomplete. See runtime-audit.json and VALIDATION.md.
+
 # DSH 依赖审计与独立运行边界
 
 ## 结论与目标

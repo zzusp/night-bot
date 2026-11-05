@@ -2,7 +2,7 @@ import {Service} from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isPromise} from 'node:util/types'
-import {WebError} from '@deepseek-ai/dsh-web'
+import {WebError} from './native-capability-errors.js'
 import {launchEnvironmentOf} from './native-environment.js'
 export {WebError}
 const aborted=signal=>new WebError('web operation aborted','WEB_ABORTED',{cause:signal.reason})

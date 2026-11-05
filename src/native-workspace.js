@@ -7,7 +7,7 @@ import {z} from 'zod'
 import {defineDomain,domainTable} from './native-domain.js'
 // Preserve public error identities for existing RPC and trusted plugins. The
 // registry/data mutations below never construct or delegate to the old service.
-import {WorkspaceActiveSessionError,WorkspaceArchivedSessionPinError,WorkspaceMoveInvalidError,WorkspaceOrderInvalidError,WorkspaceUnknownSessionError} from '@deepseek-ai/dsh-workspace'
+import {WorkspaceActiveSessionError,WorkspaceArchivedSessionPinError,WorkspaceMoveInvalidError,WorkspaceOrderInvalidError,WorkspaceUnknownSessionError} from './native-capability-errors.js'
 export {WorkspaceActiveSessionError,WorkspaceArchivedSessionPinError,WorkspaceMoveInvalidError,WorkspaceOrderInvalidError,WorkspaceUnknownSessionError}
 const same=(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i])
 const unchanged=Symbol('workspace unchanged')

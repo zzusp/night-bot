@@ -1,0 +1,11 @@
+✔ canonical capability errors preserve independent original names, codes, facts and causes (75.769406ms)
+✔ historical namespaces expose the native owners, shared constructors and complete public export vocabulary (34.719502ms)
+✔ development SDK peer resolves the same canonical web error before a real legacy provider call (5.623753ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 203.846153

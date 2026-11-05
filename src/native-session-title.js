@@ -1,6 +1,6 @@
 // MIT source-derived title normalization/fold/cadence protocol; see licenses/dsh-session-title-MIT.txt.
 import {AsyncLocalStorage} from "node:async_hooks";
-import {SessionTitleInvalidError} from "@deepseek-ai/dsh-session-title";
+import {SessionTitleInvalidError} from "./native-capability-errors.js";
 import { Service } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";

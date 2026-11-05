@@ -389,3 +389,17 @@ request markers. Actual Pi wire/title/child/restore tests pass with local marker
 No legacy LlmRuntime is copied or delegated to; canonical errors, abstract adapter
 and attribution helpers remain external.16 direct dependencies/49 active service
 replacements unchanged. Evidence: `evidence/native-message-*.txt`.
+
+Canonical capability errors and trusted namespace compatibility (2026-11-05):509
+own +142 runtime +47 routing +388 domain +11 real Linux confinement =1097 unique
+passes, one Windows-only skip. Fresh production frozen ignore-scripts install
+repeats349 core +38 contracts +3 kernel =390;323 runtime files and manifests/
+lock/workspace configuration are byte-identical. Guard310 JS/213 bare imports.
+Four independent original service references retain their original error classes;
+the title comparison was corrected to check each implementation against its own
+constructor after a strict-prototype assertion caught that separation. No assertion
+was weakened to name-only. All original public exports remain available through
+explicit local aliases; an actual legacy HTTP provider throws the same WebError
+constructor as the app before any network call.12 external direct DSH dependencies
+remain,49 active replacements; no additional service credit for aliases. Source
+accounting200/3/17 unchanged. Evidence: `evidence/native-capability-errors-*.txt`.

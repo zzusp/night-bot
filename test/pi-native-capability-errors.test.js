@@ -1,0 +1,38 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {createRequire} from 'node:module'
+import {pathToFileURL} from 'node:url'
+import * as errors from '../src/native-capability-errors.js'
+const packages=['web','authorization','workspace','session-title']
+const samples={WebError:['fixture','WEB_ABORTED',{cause:new Error('cause')}],AuthorizationError:['fixture','ABORTED',{cause:new Error('cause')}],AuthorizationDeclinedError:[],WorkspaceMoveInvalidError:['fixture'],WorkspaceUnknownSessionError:['session','archive'],WorkspaceActiveSessionError:['session',[{kind:'tool'}]],WorkspaceArchivedSessionPinError:['session'],WorkspaceOrderInvalidError:['workspace'],SessionTitleInvalidError:['fixture']}
+test('canonical capability errors preserve independent original names, codes, facts and causes',async()=>{
+ for(const pkg of packages){
+  const original=await import('./fixtures/legacy-'+pkg+'-interface.mjs')
+  for(const [name,Old] of Object.entries(original).filter(([name])=>name.endsWith('Error'))){
+   const New=errors[name],args=samples[name];assert.notEqual(New,Old)
+   const old=new Old(...args),native=new New(...args)
+   assert.equal(native.name,old.name);assert.equal(native.message,old.message)
+   assert.deepEqual(Object.keys(native),Object.keys(old))
+   for(const key of Object.keys(old))assert.deepEqual(native[key],old[key])
+   assert.equal(native.cause,old.cause)
+   if(name==='AuthorizationDeclinedError')assert.equal(native instanceof errors.AuthorizationError,true)
+  }
+ }
+})
+test('historical namespaces expose the native owners, shared constructors and complete public export vocabulary',async()=>{
+ for(const pkg of packages){
+  const alias=await import('../packages/capability-compat/'+pkg+'/index.js')
+  const native=await import('../src/native-'+pkg+'.js')
+  const original=await import('./fixtures/legacy-'+pkg+'-interface.mjs')
+  assert.equal(alias.default,native.default)
+  for(const name of Object.keys(original))assert.ok(name in alias,pkg+': '+name)
+  for(const name of Object.keys(original).filter(n=>n.endsWith('Error')))assert.equal(alias[name],errors[name])
+ }
+})
+test('development SDK peer resolves the same canonical web error before a real legacy provider call',async()=>{
+ const root=createRequire(import.meta.url),peer=createRequire(root.resolve('@deepseek-ai/dsh-web-fetch-http'))
+ const api=await import(pathToFileURL(peer.resolve('@deepseek-ai/dsh-web')))
+ assert.equal(api.WebError,errors.WebError)
+ const {HttpFetchProvider}=await import('@deepseek-ai/dsh-web-fetch-http')
+ await assert.rejects(new HttpFetchProvider({maxResponseBytes:1024,timeoutMs:1000,maxRedirects:1}).fetch({url:'file:///fixture'}),errors.WebError)
+})

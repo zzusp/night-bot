@@ -1299,5 +1299,37 @@
     "explicitCoreAdaptations": 17,
     "remaining": "canonical errors, provider attribution and adapter interface remain external; no service removal credit",
     "completeMigration": false
+  },
+  "nativeCapabilityErrorAuthority": {
+    "date": "2026-11-05",
+    "ownPass": 509,
+    "ownDurationMs": 25553.104718,
+    "runtimePass": 142,
+    "runtimeDurationMs": 274863.186305,
+    "routingPass": 47,
+    "domainPass": 388,
+    "containmentPass": 11,
+    "windowsSkipped": 1,
+    "uniquePass": 1097,
+    "productionOnlyRepeatedPass": 390,
+    "productionScope": "fresh frozen prod ignore-scripts install;349 core +38 contracts +3 real kernel",
+    "runtimeFilesCompared": 323,
+    "productionImportFiles": 310,
+    "literalBareImports": 213,
+    "directRuntimeDshDependencies": 12,
+    "removedActiveDshServices": 49,
+    "compatibilityAliases": [
+      "scope",
+      "web",
+      "authorization",
+      "workspace",
+      "session-title"
+    ],
+    "newErrorConstructors": 9,
+    "compatibilityProof": "all original public names exported; SDK namespace constructors equal app constructors; real legacy HTTP provider throws shared WebError without network",
+    "referenceProof": "four independently captured original service/constructor bodies; only already-verified values/brands/domain support imports adapted; hashes recorded",
+    "initialFinding": "independent title fixture has its own constructor; differential now asserts each implementation against its own class, preserving strict prototype checks",
+    "completeMigration": false,
+    "remotePush": "not retried; prior403 denied"
   }
 }

@@ -1,3 +1,5 @@
+Current checkpoint (2026-11-05):12 direct external DSH dependencies remain; scope and four capability namespaces are explicit local aliases. Nine capability error constructors and full public export vocabulary are application-owned; independent original reference algorithms and trusted SDK HTTP error identity are verified.49 active component replacements; migration remains incomplete. See runtime-audit.json and VALIDATION.md.
+
 # 迁移范围
 
 **迁移尚未完成。** 真正 Pi 原生部分、DSH 剩余功能/进程/协议/存储和下一步门槛见 [DSH-AUDIT](DSH-AUDIT.md)。

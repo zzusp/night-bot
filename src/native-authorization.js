@@ -1,7 +1,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {Service} from '@deepseek-ai/cordis'
 // Error identities remain interoperable with trusted existing interaction plugins.
-import {AuthorizationError,AuthorizationDeclinedError} from '@deepseek-ai/dsh-authorization'
+import {AuthorizationError,AuthorizationDeclinedError} from './native-capability-errors.js'
 import {credentialKey} from './native-credentials.js'
 export {AuthorizationError,AuthorizationDeclinedError}
 const failure=(code,message)=>new AuthorizationError(message,code)

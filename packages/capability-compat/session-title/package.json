@@ -1,0 +1,12 @@
+{
+  "name": "@night-bot/session-title-compat",
+  "version": "0.2.1-alpha.2",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  }
+}

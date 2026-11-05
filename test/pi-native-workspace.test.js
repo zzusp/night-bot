@@ -4,7 +4,7 @@ import {Context} from '@deepseek-ai/cordis'
 import {mkdtemp,mkdir,readFile,writeFile,rm,symlink,stat} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import OldWorkspace from '@deepseek-ai/dsh-workspace'
+import OldWorkspace from './fixtures/legacy-workspace-interface.mjs'
 import NativeWorkspace,{fullyQualifiedWorkspacePath,underArchivedSession} from '../src/native-workspace.js'
 import {openNativeDomains} from '../src/native-domain.js'
 const gate=()=>Promise.withResolvers()
