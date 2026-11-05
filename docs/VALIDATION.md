@@ -9,8 +9,12 @@
 
 ## Clean installation policy
 
-The four unused direct DSH development entries were removed after a 1049-module
-AST import/require/resolve audit and a dynamic-name review. This leaves 32 direct
+Four direct DSH development entries were removed following a 1049-module
+AST import/require/resolve audit. The audit initially missed a table-driven
+dynamic import in the todo/working-directory differential test; clean-install
+verification found it, and that comparison was replaced with independent
+contract assertions rather than restoring the two development packages. The
+subagent/tool-subagent entries had no remaining direct call. This leaves 32 direct
 entries (six local compatibility aliases and 26 registry packages); dsh-base
 still brings transitive packages. Runtime source and its required attribution
 were not removed by deleting dependency declarations.

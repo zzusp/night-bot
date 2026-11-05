@@ -34,6 +34,10 @@ Any later change must identify the actual committed call (`callEntryId/callId`),
 its admitted source (`packetId/inputEntryId`) and a trusted replay/continuation
 relationship. A model-provided replacement identity is insufficient. Existing
 operator no-replay commitments must not be weakened during that change.
+The existing reconciled-effect fence also blocks matching tool/arguments in later
+contexts. Distinguishing a newly authorized independent action from the original
+closed effect remains part of that identity work; it is not claimed as solved by
+the successful-effect/new-source counterexample.
 
 An owner spanning several admitted inputs emits one scope-limited drain proof
 covering exact original intent identities. It does not fabricate multiple owner
