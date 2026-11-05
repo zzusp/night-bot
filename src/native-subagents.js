@@ -3,7 +3,7 @@
 import {symbols} from '@deepseek-ai/cordis';
 import {SubagentError,SubagentDepthError} from '@deepseek-ai/dsh-subagent';
 import z from "@deepseek-ai/schemastery";
-import { scopeTarget } from "@deepseek-ai/dsh-scope";
+import { scopeTarget } from "./native-scope.js";
 import { ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 import { canonicalClientTimeZone } from "./native-time-zone.js";
 import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";

@@ -1,0 +1,9 @@
+{
+  "sourcePackage": "@deepseek-ai/dsh-scope",
+  "sourceVersion": "0.2.1-alpha.2",
+  "sourceSha256": "2829df71d76e08941457d4dd173eac60783e55354921137c8b75e8b5c0d2ecca",
+  "implementation": "src/native-scope.js",
+  "originalFixture": "test/fixtures/legacy-scope.mjs",
+  "compatibilityAlias": "@deepseek-ai/dsh-scope -> link:./packages/scope-compat -> src/native-scope.js",
+  "reason": "Private Context tag and WeakMaps must have one authority across app and retained SDK helper consumers; alias is transparent compatibility, not extra service replacement."
+}

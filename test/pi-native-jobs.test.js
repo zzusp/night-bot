@@ -1,7 +1,7 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import NativeJobs from '../src/native-jobs.js'
 const deferred=()=>{let resolve;return{promise:new Promise(r=>resolve=r),resolve:v=>resolve(v)}}
 async function fixture(t,Impl=NativeJobs,config={}){const ctx=new Context();ctx.logger={warn(){}};new Impl(ctx,{maxConcurrentJobsPerOwner:2,retainBytes:8,settledRetainBytes:3,pumpPollMs:2,...config});t.after(()=>ctx.fiber.dispose());ctx.jobs.attachController('test');return ctx}

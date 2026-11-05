@@ -346,3 +346,20 @@ Import guard发现核心workflow仍需双参数credentialKey，新增本地纯pr
 独立/tmp/night-bot-prompt-rpc-production frozen production ignore-scripts安装，338实质核心/wire+38合同+3真实kernel wire=379复测通过；303运行文件及manifest/lock逐字一致。静态300 JS/251字面bare imports通过；源账200保留、3 UI排除、7显式适配，relative imports/HTTP routes闭合。证据为evidence/native-prompt-rpc-*.txt。17直接DSH依赖/49活动组件替换，仍非DSH独立；403未重试。
 
 文档汇总脚本语法错误导致证据未随00f10d1代码提交；随后追加文档提交，运行代码未改变，以上均引用已完成的最终验证日志。
+
+Native Scope authority (2026-11-05): 499 own +142 runtime +47 routing +388 domain
++11 real Linux containment =1087 aggregate unique passes; one Windows-only skip.
+The 41-case dynamic execution file and 27 targeted Scope/CWD/workspace cases were
+also rerun after test imports changed and are not added again. Independent
+original-source fixture SHA-256 matches the source manifest; private graph/event/
+store behavior agrees. All four retained SDK Scope peers share application
+function identity. Fresh production frozen ignore-scripts install passes340 core
++38 contracts +3 real kernel wires =381 repetitions. Two initially missed test
+only dynamic imports failed in production; both were corrected and their full
+production groups rerun successfully. No failed run counts as passing.
+308 runtime files and package.json/pnpm-lock.yaml/pnpm-workspace.yaml are
+byte-identical; bounded static guard scans303 JS files/240 bare imports. Source
+coverage remains200 retained/3 UI excluded/7 explicit adaptations; audit16 direct
+DSH dependencies/49 active replacements/explicit local Scope compatibility alias.
+See evidence/native-scope-*.txt. Migration remains incomplete; no real vendor,
+DingTalk, Windows or macOS acceptance and no remote writes were performed.

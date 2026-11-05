@@ -1,4 +1,4 @@
-import {scopeTarget} from '@deepseek-ai/dsh-scope'
+import {scopeTarget} from './native-scope.js'
 export const agentCarrier=agent=>scopeTarget(agent,agent)
 export const assembleContextFor=(agent,signal)=>({agent,scope:agent,...signal===undefined?{}:{signal}})
 /** The subject and scope are inseparable. Payload fields cannot replace agent. */

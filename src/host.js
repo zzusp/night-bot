@@ -1,3 +1,4 @@
+import {assertNativeScopeAuthority} from './native-scope-guard.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import {loadNativeEnvironment} from './native-environment.js'
@@ -9,6 +10,7 @@ import { pathToFileURL } from 'node:url'
 const require = createRequire(import.meta.url)
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
 export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot } = {}) {
+  assertNativeScopeAuthority()
   const root = resolve(config.stateDir), workspace = resolve(config.workspaceDir)
   await mkdir(root, { recursive: true }); await mkdir(workspace, { recursive: true })
   const ctx = new Context()

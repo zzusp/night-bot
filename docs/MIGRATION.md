@@ -274,3 +274,13 @@ An authenticated local CONNECT fixture verifies the actual dispatcher (without a
 PiLoop rendering now uses local attributed strict interpolation helpers. Native RPC services share versioned method descriptors, structural RemoteError discrimination, invocation-owned cleanup and service binding. Historical descriptor strings and Symbol.for markers remain compatible; bidirectional reads against the original protocol prove interoperability. Private scope state was not duplicated.
 
 Production import validation found that workflow configuration still used SDK credentialKey(scope,id). NativeCredentialProtocol preserves this exact two-argument builder, distinct from NativeCredentials' one-argument stored-address validator. Only the core import changes, recorded as the seventh explicit adaptation; persisted document/run addresses remain unchanged. A NativeCredentials close/reopen test verifies redacted metadata and frozen old-run secret revisions after rotation.
+
+Scope authority migration (2026-11-05): `src/native-scope.js` owns the private
+context tag, parent graph and event carriers. `pnpm-workspace.yaml` explicitly
+aliases the historical SDK peer name to `packages/scope-compat`, which reexports
+that one implementation. This is a compatibility namespace, not another replaced
+active service. Host startup checks resolution for retained session/tools/skill/
+subagent consumers before opening state. A separately captured original source
+fixture checks graph/cycle/rebind/carrier/store semantics independently. The
+production deployment must retain the workspace override and linked package.
+Remaining direct DSH dependencies: 16; standalone-from-DSH remains false.

@@ -14,7 +14,7 @@ import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, can
 import { SessionPersistenceNotFoundError } from "@deepseek-ai/dsh-session-persistence";
 import { agentEvents, assembleContextFor } from "./native-agent-context.js";
 import { assertNever, deepFreeze } from "./native-values.js";
-import { createScope } from "@deepseek-ai/dsh-scope";
+import { createScope } from "./native-scope.js";
 import { joinContextSections, renderContextSections, renderPrompt } from "./native-prompt-render.js";
 import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER } from "@deepseek-ai/dsh-tools";
 //#region lib/types/inbox.js

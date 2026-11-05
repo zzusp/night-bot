@@ -1,6 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import {scopeOf,scopeChainOf} from '@deepseek-ai/dsh-scope'
+import {scopeOf,scopeChainOf} from './native-scope.js'
 const namePattern=/^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const layer=()=>({providers:new Map(),runtime:new Map()})
 const text=e=>{try{return String(e)}catch{return'[unrenderable thrown value]'}}

@@ -1,5 +1,13 @@
 {
   "status": "partial-migration-not-dsh-independent",
+  "compatibilityAliases": [
+    {
+      "requested": "@deepseek-ai/dsh-scope",
+      "target": "link:./packages/scope-compat",
+      "authority": "src/native-scope.js",
+      "reason": "one private scope graph across retained SDK peers; not an additional active service replacement"
+    }
+  ],
   "piVersions": {
     "@earendil-works/pi-agent-core": "1.5.0",
     "@earendil-works/pi-ai": "1.5.0",
@@ -90,10 +98,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-scope",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-session",
       "version": "0.2.1-alpha.2"
     },
@@ -142,7 +146,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 145,
+  "developmentDependencyCount": 146,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [

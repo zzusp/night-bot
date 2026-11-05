@@ -1,0 +1,65 @@
+✓ Lockfile passes supply-chain policies (verified 4m ago)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +426
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+   ╭──────────────────────────────────────────────────────────────────────╮
+   │                                                                      │
+   │                 Update available! 11.25.0 → 12.16.1.                 │
+   │                 Changelog: https://pnpm.io/v/12.16.1                 │
+   │   To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -   │
+   │                                                                      │
+   ╰──────────────────────────────────────────────────────────────────────╯
+
+Packages are hard linked from the content-addressable store to the virtual store.
+  Content-addressable store is at: /tmp/pnpm-store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 426, reused 423, downloaded 0, added 426, done
+
+dependencies:
++ @deepseek-ai/cordis 4.0.5-alpha.1
++ @deepseek-ai/cordis-plugin-group 1.0.5-alpha.1
++ @deepseek-ai/cordis-plugin-include 1.0.10-alpha.1
++ @deepseek-ai/cordis-plugin-loader 1.0.6-alpha.1
++ @deepseek-ai/dsh-authorization 0.2.1-alpha.2
++ @deepseek-ai/dsh-fs 0.2.1-alpha.2
++ @deepseek-ai/dsh-llm 0.2.1-alpha.2
++ @deepseek-ai/dsh-sandbox 0.2.1-alpha.2
++ @deepseek-ai/dsh-sandbox-windows-acl 0.2.1-alpha.2
++ @deepseek-ai/dsh-session 0.2.1-alpha.2
++ @deepseek-ai/dsh-session-format-catalog 0.2.1-alpha.2
++ @deepseek-ai/dsh-session-persistence 0.2.1-alpha.2
++ @deepseek-ai/dsh-session-persistence-jsonl 0.2.1-alpha.2
++ @deepseek-ai/dsh-session-projection 0.2.1-alpha.2
++ @deepseek-ai/dsh-session-title 0.2.1-alpha.2
++ @deepseek-ai/dsh-skill 0.2.1-alpha.2
++ @deepseek-ai/dsh-subagent 0.2.1-alpha.2
++ @deepseek-ai/dsh-tools 0.2.1-alpha.2
++ @deepseek-ai/dsh-web 0.2.1-alpha.2
++ @deepseek-ai/dsh-workspace 0.2.1-alpha.2
++ @deepseek-ai/node-addon-system 0.1.2
++ @deepseek-ai/schemastery 3.18.5-alpha.1
++ @earendil-works/pi-agent-core 1.5.0
++ @earendil-works/pi-ai 1.5.0
++ @earendil-works/pi-coding-agent 1.5.0
++ @joplin/turndown-plugin-gfm 1.0.68
++ @vscode/ripgrep 1.18.0
++ chokidar 4.0.3
++ diff 9.0.0
++ exceljs 4.4.0
++ ipaddr.js 2.5.0
++ js-yaml 4.1.1
++ koffi 3.1.1
++ node-pty 1.2.0-beta.15
++ pg 8.23.1
++ semver 7.8.6
++ sharp 0.35.5
++ turndown 7.2.4
++ undici 7.16.0
++ yaml 2.9.1
++ zod 4.6.7
+
+devDependencies: skipped
+
+Done in 1.1s using pnpm v11.25.0

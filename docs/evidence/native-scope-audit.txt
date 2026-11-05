@@ -1,0 +1,1 @@
+{"status":"partial-migration-not-dsh-independent","directRuntimeDshDependencies":16,"removedActiveDshServices":49,"standaloneFromDshLibraries":false}

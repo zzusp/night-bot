@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import OldSkills from '@deepseek-ai/dsh-skill'
 import NativeSkills from '../src/native-skills.js'
 const policy={modelInvocable:true,userInvocable:true},gate=()=>Promise.withResolvers()

@@ -1,6 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import {AnonymousEntries,NamedEntries,ScopedLayers,scopeTarget} from '@deepseek-ai/dsh-scope'
+import {AnonymousEntries,NamedEntries,ScopedLayers,scopeTarget} from './native-scope.js'
 // Application-owned assembly preserving the MIT dsh-system-prompt ordering,
 // interpolation and request-admission contracts. Shared scope helpers remain.
 const SECTION_ORDERS = {

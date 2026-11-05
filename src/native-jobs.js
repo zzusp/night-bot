@@ -1,6 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import {scopeOf,scopeChainOf} from '@deepseek-ai/dsh-scope'
+import {scopeOf,scopeChainOf} from './native-scope.js'
 const terminal=job=>!['running','stopping'].includes(job.status)
 const defaults={maxConcurrentJobsPerOwner:10,retainBytes:262144,settledRetainBytes:16384,pumpPollMs:150}
 /** Application-owned ephemeral job registry. Durable process receipts remain in

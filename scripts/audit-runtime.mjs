@@ -9,8 +9,12 @@ for (const removed of ['bash-sandbox','pwsh-sandbox','tool-bash','tool-pwsh','to
 for (const forbidden of ['dsh-system-prompt','dsh-typert-protocol','dsh-credentials','dsh-http-proxy','dsh-util-code-language','dsh-launch-environment','dsh-sandbox-policy','dsh-subprocess','dsh-agent','dsh-util-values','dsh-brand','dsh-shell','dsh-bash-local','dsh-pwsh-local','dsh-bash-sandbox','dsh-pwsh-sandbox','dsh-tool-bash','dsh-tool-pwsh','dsh-tool-fs','dsh-tool-fs-search','dsh-fs-local','dsh-fs-sandbox','dsh-fs-observation-policy','dsh-tool-jobs','dsh-tool-skill','dsh-tool-working-directory','dsh-tool-todo','dsh-tool-subagent-control','dsh-tool-subagent','dsh-tool-web','dsh-tool-call-timeout-policy','dsh-web-fetch-http','dsh-session-query','dsh-agent-preset-registry','dsh-agent-instructions','dsh-base','dsh-app-boot','dsh-shell-env','dsh-user-approval','dsh-permission-presets','dsh-subagent-spawn-in-process','dsh-subagent-fork-in-process','dsh-llm-retry','dsh-timeout','dsh-agent-loop','dsh-storage','dsh-storage-json','dsh-storage-domain','dsh-agent-default-model','dsh-llm-pi-ai','dsh-jobs-local','dsh-sandbox-local','dsh-subprocess-local','dsh-credentials-local','dsh-working-directory','dsh-attachment-local','dsh-skill-filesystem']) {
   if (manifest.dependencies['@deepseek-ai/'+forbidden]) throw new Error('Development/removed service is a production direct dependency: '+forbidden)
 }
+const scopeWorkspace = await readFile('pnpm-workspace.yaml','utf8')
+if(!scopeWorkspace.includes('"@deepseek-ai/dsh-scope": "link:./packages/scope-compat"'))throw new Error('Canonical Scope compatibility override missing')
+if(manifest.dependencies['@deepseek-ai/dsh-scope'])throw new Error('Canonical Scope must not use the registry production implementation')
 const report = {
   status:'partial-migration-not-dsh-independent',
+  compatibilityAliases:[{requested:'@deepseek-ai/dsh-scope',target:'link:./packages/scope-compat',authority:'src/native-scope.js',reason:'one private scope graph across retained SDK peers; not an additional active service replacement'}],
   piVersions:Object.fromEntries(Object.entries(manifest.dependencies).filter(([name])=>name.startsWith('@earendil-works/pi-'))),
   unmountedPreparation:[],
   standaloneProcess:true, standaloneFromDshLibraries:false,

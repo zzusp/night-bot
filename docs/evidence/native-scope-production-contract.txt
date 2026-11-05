@@ -1,0 +1,64 @@
+✔ file writes preserve exact bytes, private modes, hard-link deduplication and zero-byte uploads (262.172765ms)
+✔ corrupt and missing file/image objects fail integrity checks and never get silently overwritten (141.661712ms)
+✔ batch admission and canonical base64 fail before any publication, with image limits intact (66.405299ms)
+✔ cancelled streamed writes drain their source and remove staging without publishing a receipt (19.945261ms)
+✔ closing an attachment service drains a paused stream iterator and rejects new storage operations (43.676351ms)
+✔ shared request cancellation preserves another waiter, refreshes corrupt cache, and keeps transformation identity (123.552454ms)
+✔ linked storage directories are rejected before creating anything outside the owned attachment root (17.285911ms)
+✔ a failed image batch waits for other admitted transforms and publishes no partial objects (12.001304ms)
+✔ compression concurrency is bounded and aborting every shared waiter prevents late cache publication (31.893255ms)
+✔ cache links cannot cause creation outside the owned home and a returned stream can be closed before consumption (69.246502ms)
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (23.684479ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (112.057668ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (85.350873ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (48.116449ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (38.79338ms)
+✔ legacy flat documents migrate once under writer admission and watcher follows external atomic changes (169.611242ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (36.541799ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (168.80749ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (58.918121ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (73.798927ms)
+✔ reference edits cancelled while waiting for the durable lock never mutate the store (18.109614ms)
+✔ Pi parser preserves strict legacy framing, CRLF body, invocation spellings and ambiguous delimiter fallback (18.574394ms)
+✔ skill discovery and body reload obey the filesystem service; only declared bundled roots use trusted host reads (53.510056ms)
+✔ nontext or invalid files are ignored and filesystem I/O failures are never downgraded into an empty catalog (10.154911ms)
+✔ first-party write/edit observations invalidate caches synchronously even when OS watching is disabled (9.399752ms)
+✔ missing skill roots become live without broad ancestor recursion and watchers drain on disposal (58.288642ms)
+✔ a physical root replacement is rewatched and project watcher ownership stays bounded (125.787524ms)
+✔ symlink skill bundles load through the same filesystem policy and disposed providers reject further reads (5.381904ms)
+✔ default headless Host observes external skill edits through its scoped native provider (1221.538573ms)
+✔ watcher startup failure keeps readable candidates explicitly incomplete and later healthy discovery can recover (8.365562ms)
+✔ cancellation after filesystem resolution prevents subsequent catalog or body reads (4.042254ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (31.641796ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (3.530693ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (26.48381ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (5.350527ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (2.614953ms)
+✖ directory validation retains caller attribution through the injected filesystem service (2.272396ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (2.438787ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 37
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3275.732557
+
+✖ failing tests:
+
+test at test/pi-native-working-directory.test.js:17:1
+✖ directory validation retains caller attribution through the injected filesystem service (2.272396ms)
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@deepseek-ai/dsh-scope' imported from /tmp/night-bot-scope-production/test/pi-native-working-directory.test.js
+      at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)
+      at packageResolve (node:internal/modules/esm/resolve:768:81)
+      at moduleResolve (node:internal/modules/esm/resolve:859:18)
+      at defaultResolve (node:internal/modules/esm/resolve:992:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:701:20)
+      at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:721:38)
+      at ModuleLoader.resolveSync (node:internal/modules/esm/loader:759:56)
+      at #resolve (node:internal/modules/esm/loader:683:17)
+      at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:603:35)
+      at node:internal/modules/esm/loader:632:32 {
+    code: 'ERR_MODULE_NOT_FOUND'
+  }

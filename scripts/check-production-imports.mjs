@@ -3,7 +3,7 @@ import {builtinModules} from 'node:module'
 const manifest=JSON.parse(await readFile('package.json','utf8')),builtins=new Set(builtinModules.map(name=>name.replace(/^node:/,'')))
 let files=0,imports=0
 async function* runtimeFiles(directory){for(const entry of await readdir(directory,{withFileTypes:true})){const path=directory+'/'+entry.name;if(entry.isDirectory())yield* runtimeFiles(path);else if(entry.isFile()&&entry.name.endsWith('.js'))yield path}}
-for(const directory of ['src','bin','packages/dingtalk-core'])for await(const path of runtimeFiles(directory)){
+for(const directory of ['src','bin','packages/dingtalk-core','packages/scope-compat'])for await(const path of runtimeFiles(directory)){
   files++
   const source=await readFile(path,'utf8')
   // A bounded literal-import guard; dynamic plugin rows are audited separately.

@@ -1,7 +1,7 @@
 import {Service,getTraceable,symbols} from '@deepseek-ai/cordis'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isPromise} from 'node:util/types'
-import {scopeTarget} from '@deepseek-ai/dsh-scope'
+import {scopeTarget} from './native-scope.js'
 /** Live Pi-agent ownership and causal attribution. Attribution never grants
  * authority; callers must validate identity and resolve the exact live agent. */
 export default class NativeAgents extends Service{

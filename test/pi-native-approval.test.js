@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import NativeApproval,{setApprovalPolicy} from '../src/native-approval.js'
 import NativeSessions from '../src/native-sessions.js'
 const gate=()=>Promise.withResolvers()

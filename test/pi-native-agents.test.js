@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import NativeAgents from '../src/native-agents.js'
 const deferred=()=>{let resolve;return{promise:new Promise(r=>resolve=r),resolve:v=>resolve(v)}}
 function fixture(t,Impl=NativeAgents){const ctx=new Context();ctx.logger={warn(){}};new Impl(ctx);t.after(()=>ctx.fiber.dispose());return ctx}

@@ -273,7 +273,7 @@ test('continuation preserves native history while new input and requirement revi
 })
 
 async function nativePreset(h, options = {}) {
-  const { createScope, bindScopeParent, scopeOf } = await import('@deepseek-ai/dsh-scope')
+  const { createScope, bindScopeParent, scopeOf } = await import('../src/native-scope.js')
   const { z } = await import('zod')
   const standing = createScope(h.ctx, { preset: 'dynamic-native-fixture' })
   standing.ctx.systemPrompt.section({ name: 'fixture:workspace-rules', order: 10, text: 'DYNAMIC_PRESET_WORKSPACE_RULES: preserve authorized constraints.' })

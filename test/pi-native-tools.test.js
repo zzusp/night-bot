@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import {TOOL_RUNTIME_SCHEDULER} from '@deepseek-ai/dsh-tools'
 import NativeTools from '../src/native-tools.js'
 const tool=(name,execute=async args=>args)=>({name,description:name,parameters:{type:'object',additionalProperties:true},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute})

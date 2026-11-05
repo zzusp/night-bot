@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context,symbols} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import NativeWeb from '../src/native-web.js'
 import {createLaunchEnvironmentSnapshot} from '../src/native-environment.js'
 async function fixture(t,Impl=NativeWeb,config={}){const ctx=new Context();ctx.provide('launchEnvironment',createLaunchEnvironmentSnapshot([{source:'process',values:{}}]));const owner=ctx.plugin(Impl,config);await owner;const web=ctx.web[symbols.original]??ctx.web;t.after(()=>ctx.fiber.dispose());return{ctx,owner,web}}

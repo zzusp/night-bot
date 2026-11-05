@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context,symbols} from '@deepseek-ai/cordis'
-import {createScope,scopeOf} from '@deepseek-ai/dsh-scope'
+import {createScope,scopeOf} from '../src/native-scope.js'
 import {createLaunchEnvironmentSnapshot} from '../src/native-environment.js'
 import NativeShell from '../src/native-shell-env.js'
 function fixture(t,Impl=NativeShell,options={}){const {environment}=options,home=Object.hasOwn(options,'home')?options.home:'/fixture/home';const ctx=new Context();if(environment)ctx.provide('launchEnvironment',environment);new Impl(ctx,{dshHome:home});t.after(()=>ctx.fiber.dispose());return{ctx,registry:ctx.shellEnv}}

@@ -3,7 +3,7 @@ import schema from '@deepseek-ai/schemastery'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {randomUUID} from 'node:crypto'
 import {createUserMessage} from '@deepseek-ai/dsh-llm'
-import {scopeTarget} from '@deepseek-ai/dsh-scope'
+import {scopeTarget} from './native-scope.js'
 export const APPROVAL_POLICIES=Object.freeze(['ask','never'])
 const outcomes=new Set(['allowed-once','rejected','cancelled','unavailable'])
 const neverText='Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`).'

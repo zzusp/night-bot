@@ -2,7 +2,7 @@
 import {AsyncLocalStorage} from "node:async_hooks";
 import z from "@deepseek-ai/schemastery";
 import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
-import { bindScopeParent, createScope, scopeOf, scopeParentOf } from "@deepseek-ai/dsh-scope";
+import { bindScopeParent, createScope, scopeOf, scopeParentOf } from "./native-scope.js";
 import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
 import { dump } from "js-yaml";
 import { z as z$1 } from "zod";

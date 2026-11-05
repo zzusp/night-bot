@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {createScope} from '@deepseek-ai/dsh-scope'
+import {createScope} from '../src/native-scope.js'
 import {renderPrompt,renderContextSnapshot} from '../src/native-prompt-render.js'
 import NativePrompt from '../src/native-system-prompt.js'
 function fixture(t,Impl=NativePrompt,config={}){const ctx=new Context();t.after(()=>ctx.fiber.dispose());new Impl(ctx,{includeHarnessIdentity:false,...config});return ctx}
