@@ -1,3 +1,22 @@
+# Owned file/job tool contracts without original test packages (2026-11-05)
+
+Replaced original-module equality tests with explicit file input schemas, literal
+argv/path boundaries, UTF-8 preview vectors and public job state/output/privacy/
+cancellation contracts. Existing actual Pi file/job wire, complete grep spill
+readback and sandbox checks remain. Removed the three exact root dev declarations
+and lock importer blocks for tool-fs, tool-fs-search and tool-jobs. Package/snapshot
+bytes and overrides remain unchanged; Acorn parsed **931** files with zero retired
+module imports. Tool implementations are unchanged and retain their notices.
+**44 direct DSH dev declarations remain**; transitive test peers can still use the
+original packages, so this is not full removal of the old development graph.
+
+Standard frozen install with the supported task store passes all **630** supply-
+chain checks in **8.3s**, followed by **655 default pass** with original root links
+removed by pnpm. Focused **12 overlap** pass; Linux containment **20 pass / 1
+Windows skip**, application bubblewrap enabled. Source/import/Pi-license/fork-hash/
+diff guards pass. No network/policy changes. Evidence:
+`docs/pi-native-owned-tool-contracts-validation.json`.
+
 # Retired assistant-frame lifecycle removed (2026-11-05)
 
 Runtime inventory found no consumer of the old assistant-stream publisher. Removed

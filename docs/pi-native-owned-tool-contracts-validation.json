@@ -1,0 +1,71 @@
+{
+  "base": "7e57e58",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 655,
+      "pass": 655,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    }
+  },
+  "removedRootDevDeclarations": [
+    "@deepseek-ai/dsh-tool-fs",
+    "@deepseek-ai/dsh-tool-fs-search",
+    "@deepseek-ai/dsh-tool-jobs"
+  ],
+  "remainingDirectDshDevDependencies": 44,
+  "replacementTests": "Explicit required file tool inputs; literal glob/regexp/path argv including shell metacharacters and option-like paths; known UTF8 preview vectors; job output/log/owner privacy, typed cancellation, foreign empty list and rendered output contracts. Existing real Pi grep/read/job wire and sandbox checks remain.",
+  "sourceChanges": "Only test assembly, manifest/importer retirement and source guard; tool implementations unchanged and notices retained",
+  "inventory": {
+    "parsedFiles": 931,
+    "retiredModuleImports": 0,
+    "packageSnapshotBytes": "unchanged"
+  },
+  "installation": {
+    "command": "pnpm install --frozen-lockfile --store-dir /tmp/night-bot-pnpm-store",
+    "exitCode": 0,
+    "durationSeconds": 8.3,
+    "supplyChainEntries": 630,
+    "followupDefaultPass": 655
+  },
+  "limits": "Original packages may remain transitively for other development peers; this is root declaration retirement, not complete source or transitive test graph removal. Windows containment skipped on Linux.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-owned-tool-contracts-focused.txt",
+      "sha256": "7efb8e61feb0b639f14561e928e836b8528b3b97a6442e5a7b5c4ce2157d4a4c"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-tool-contracts-default.txt",
+      "sha256": "3a90a3f97bf8949e48a05c023e3150a11db82adb2fe6eb2d5739dc9be33554e1"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-tool-contracts-containment.txt",
+      "sha256": "deda905c8c23c64576359e563576c99958baeaaf400bcc999b80d2da42a517d6"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-tool-contracts-checks.txt",
+      "sha256": "c2eaebbefb3f59c97d1a5b1d5a44881ee5d9e1f7e7bf7c027208d70456eb9610"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-tool-contracts-inventory.txt",
+      "sha256": "4695c9ddf11a2f9b016728a8ed2a8ba3a15e52ca846caf4998a5417606c88e4d"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-tool-contracts-install.txt",
+      "sha256": "2a74be5a9c44bd6e4ea519756c31391c26324e628bc8d51fd38afc9c1190b9dd"
+    }
+  ]
+}

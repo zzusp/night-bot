@@ -1,0 +1,20 @@
+✔ actual Pi native glob and grep run packaged ripgrep and preserve safe literal argv and match receipts (1840.326444ms)
+✔ actual Pi native image reader retains image bytes and native attachment mismatch guidance (311.938836ms)
+✔ actual Pi capped grep persists the complete private result and read retrieves omitted matches (296.83863ms)
+✔ actual Pi native job output consumes delta and final result once and suppresses an awaited completion wake (1820.866805ms)
+✔ actual Pi job kill acknowledges before producer exit and preserves foreign-owner read guard (248.534761ms)
+✔ actual Pi native job completion wakes an idle owner with one durable bounded notice (226.5557ms)
+✔ file tool schemas and search argv preserve literal paths and independent UTF-8 preview limits (5.43284ms)
+✔ native search launches packaged binary with no-config and plain argv and rejects partial raw output (2.382965ms)
+✔ native search rejects malformed or cancelled work before dispatch and preserves invalid-pattern taxonomy (0.455603ms)
+✔ job model contracts expose public state, bounded output and typed cancellation without producer identity (6.467937ms)
+✔ native job controls clamp waits, preserve caller signal and hide producer logs and ownership (1.93319ms)
+✔ native job notices preserve wake budgets, user resets, truncation and awaited/killed suppression (2.790546ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2668.623948

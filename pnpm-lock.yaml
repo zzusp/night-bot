@@ -197,15 +197,6 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat)
-      '@deepseek-ai/dsh-tool-fs':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-attachment@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-brand@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))(@deepseek-ai/dsh-fs@packages+capability-compat+fs)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-sandbox-policy@0.2.1-alpha.2(e55c3ebba1d60781b484a2256de76a51))(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)(@deepseek-ai/dsh-session@packages+capability-compat+session)(@deepseek-ai/dsh-system-prompt@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat))(@deepseek-ai/dsh-tools@packages+capability-compat+tools)(@deepseek-ai/dsh-user-approval@0.2.1-alpha.2(9bae0bc41493dd466c50a931f1363b23))(@deepseek-ai/dsh-working-directory@0.2.1-alpha.2(6ad6c2c44cf0d7d68a201e5435e7fb50))
-      '@deepseek-ai/dsh-tool-fs-search':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(a2e86d4cd10bfe732b798060b56b553d)
-      '@deepseek-ai/dsh-tool-jobs':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(d8b95a6a827c0a2ec749f6405aa3e924)
       '@deepseek-ai/dsh-tool-schedule':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-schedule@0.2.1-alpha.2(f9a971e144306daa7f9c9b47ebab42d2))(@deepseek-ai/dsh-subagent@packages+capability-compat+subagent)(@deepseek-ai/dsh-tools@packages+capability-compat+tools)
