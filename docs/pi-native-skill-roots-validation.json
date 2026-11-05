@@ -1,0 +1,52 @@
+{
+  "base": "594fc649e9a7d0f534a2affb06f130b760ca01cc",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 629,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 11,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "nativeTaskSkillsAndService": {
+    "pass": 58,
+    "fail": 0,
+    "skip": 0
+  },
+  "remainingDirectDshDevDependencies": 78,
+  "removedImplicitSkillRoots": [
+    "project .dsh/skills",
+    "user DSH_HOME/skills",
+    "DSH_AGENTS_HOME",
+    "DSH_BUNDLED_SKILL_DIR"
+  ],
+  "preserved": "Standard .agents roots, explicit custom/bundled roots, installation-owned configured roots, scoped reads, body bytes, invalidation, watcher lifecycle and cancellation",
+  "notices": "Skill watcher remains source-derived; keep dsh-skill-filesystem notice",
+  "remaining": "Instruction discovery, shell environment and environment home resolution still contain separate DSH root contracts; not changed or claimed removed here",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-skill-roots-default.txt",
+      "sha256": "3acf3e07724542db4f0aeb6007cb1f5f029d387b5d16288c2b4800b5f9c95442"
+    },
+    {
+      "path": "docs/evidence/pi-native-skill-roots-focused.txt",
+      "sha256": "2514af7771bfa3ac012c1c30603eed80b737f020bc92d25f3ae451071208a3b5"
+    },
+    {
+      "path": "docs/evidence/pi-native-skill-roots-runtime.txt",
+      "sha256": "521609fd28a9a63025ebb13fa6fe4a781c26a61b04f7eb2df28048088a601e12"
+    },
+    {
+      "path": "docs/evidence/pi-native-skill-roots-checks.txt",
+      "sha256": "23a6e4677d1b2bfb237b8036fd7bd40bef0e9ba261011996576ace341e24355c"
+    },
+    {
+      "path": "docs/evidence/pi-native-skill-roots-frozen.txt",
+      "sha256": "a80a939f4889c5655fa7a6a5a74fd4f42532bfc3dc5957e402d00a9e3a2af1c8"
+    }
+  ]
+}

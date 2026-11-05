@@ -1,3 +1,25 @@
+# Skill roots cleanup (2026-11-05)
+
+Skill discovery no longer reads implicit project/user `.dsh/skills` or roots from
+`DSH_HOME`, `DSH_AGENTS_HOME`, `DSH_BUNDLED_SKILL_DIR`. It no longer imports the
+legacy home resolver. Standard `.agents` and explicitly configured custom/bundled
+roots remain; portable Host retains its installation-owned configured skill
+folders. Existing Night Bot skill bytes and backup paths are preserved. No
+external DSH files are migrated, rewritten or deleted. Scoped reads, bounded
+watching, invalidation and cancellation remain enforced. The watcher source fork
+still needs its notice. Its differential-only direct package is removed:
+**78 direct DSH dev dependencies remain**.
+
+Validation: **629 default pass**, focused **11** overlap default, native task
+skills/service **58 pass**. Tests verify ignored DSH environment roots, unchanged
+old file bytes, explicit precedence/invocation metadata and existing watcher/
+permission behavior. Frozen install (`--ignore-scripts`) and source/import/Pi
+license/diff checks pass. See [skill roots evidence](pi-native-skill-roots-validation.json).
+Instruction discovery, shell environment and general environment home resolution
+still have separate DSH root contracts and remain subsequent work.
+
+---
+
 # Tool comparison cleanup (2026-11-05)
 
 The 3,712-line differential ToolRuntime fixture and unused content-tool fixture
