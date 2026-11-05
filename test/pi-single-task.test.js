@@ -11,7 +11,7 @@ import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store
 async function until(fn){for(let n=0;n<500;n++){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,20))}throw Error('single task timeout')}
 async function serviceFor(f,initialize=true){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'single-test',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize});const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external notifications')},readback:async()=>{throw Error('no external notifications')}}});return {service,store,async close(){await service.close();await store.close()}}}
 const result={tool:'task_result',args:{decision:{action:'complete',summary:'Read back local result',evidence:['local file evidence'],limitations:[]}}}
-test('one task directly writes an artifact, cold resumes the same session, denies replay and completes then reflects',{timeout:20000},async t=>{
+test('one task preserves its effect through a held missing result and explicit cold continuation, then completes and reflects',{timeout:20000},async t=>{
   let phase='write',replay=false,reviews=0
   const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){reviews++;return {text:'{"lessons":[]}'}}
@@ -23,10 +23,15 @@ test('one task directly writes an artifact, cold resumes the same session, denie
   })
   let h=await serviceFor(f);t.after(()=>h.close())
   const task=await h.service.createTask({requestId:'direct-write',objective:'Create a local proof and read it back'})
-  const interrupted=await until(async()=>{const taskNow=await h.store.query({kind:'task.get',taskId:task.taskId});return taskNow.drained&&taskNow.providerRecovery&&taskNow})
+  const interrupted=await until(async()=>{const taskNow=await h.store.query({kind:'task.get',taskId:task.taskId});return taskNow.drained&&taskNow.lastDecision?.limitations?.includes('TASK_SESSION_NO_SUBMISSION')&&taskNow})
   assert.equal(await readFile(join(task.session.workspaceDir,'work/proof.txt'),'utf8'),'single-session-proof')
   const sessionId=interrupted.sessionId;await h.close();await f.close();phase='finish';await f.boot();h=await serviceFor(f,false)
-  await new Promise(r=>setTimeout(r,Math.max(0,Date.parse(interrupted.providerRecovery.nextAttemptAt)-Date.now()+20)));await h.service.recover()
+  const heldCalls=f.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(f.requests.length,heldCalls,'cold recovery cannot restart the exhausted/unfinished turn')
+  assert.equal(interrupted.providerRecovery??null,null)
+  // An explicit trusted Host continuation retains the original authorization
+  // revisions. It is not an automatic provider retry or a fabricated user reply.
+  await h.store.command({id:'explicit-host-continuation',kind:'task.wake',args:{taskId:task.taskId,kind:'operator.continue',payload:{requestId:'explicit-continuation'}}})
+  await h.service.recover()
   const completed=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained&&row})
   assert.equal(completed.completion.result.artifactFiles.length,1);assert.equal(completed.completion.result.artifactFiles[0].artifact.fileName,'proof.txt');
   assert.equal(completed.sessionId,sessionId);assert.equal((await h.store.query({kind:'execution.list'})).length,0)

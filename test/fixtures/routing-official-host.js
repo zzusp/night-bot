@@ -1,6 +1,6 @@
-import {convertToLlm} from '@earendil-works/pi-coding-agent'
+import {convertToLlm,estimateTokens} from '@earendil-works/pi-coding-agent'
 import {createHost} from '../../src/host.js'
-import {createAssistantMessageEventStream,getCurrentTools,normalizeContext} from '@earendil-works/pi-ai'
+import {createAssistantMessageEventStream,getCurrentTools,getCurrentSystemPrompt,normalizeContext} from '@earendil-works/pi-ai'
 import {openResidentStore} from '../../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../../packages/dingtalk-core/task-session-service.js'
 import {registerNativeCleanup,nativeLifecycleSignal} from './native-lifecycle.js'
@@ -28,6 +28,12 @@ export async function nativeTaskHost(root,decide,options={}){
     if(process.env.NIGHT_BOT_TEST_DEBUG)for(const message of request.messages.filter(message=>message.role==='toolResult'&&message.isError).slice(-1))console.error('ROUTING_SDK_TOOL_ERROR',JSON.stringify(message))
     try{
      signal?.throwIfAborted();callOptions.signal?.throwIfAborted()
+     const compaction=request.tools.length===0&&getCurrentSystemPrompt(normalizeContext(context).messages).startsWith('You are a context summarization assistant.')
+     if(compaction){
+      if(typeof options.compactionSummary!=='string'||!options.compactionSummary.trim())throw Error('Official compaction fixture requires an explicit summary response')
+      auxiliaryRequests.push(structuredClone({...request,purpose:'compaction'}))
+      result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:[{type:'text',text:options.compactionSummary}],usage,timestamp:Date.now(),stopReason:'stop'}
+     }else{
      let input;try{input=latestInput(request)}catch(error){if(!error.contextReads)throw error}
      const auxiliary=input?.requestId?.startsWith('coord-summary-')===true
      ;(auxiliary?auxiliaryRequests:requests).push(structuredClone(request))
@@ -40,13 +46,18 @@ export async function nativeTaskHost(root,decide,options={}){
       const accepted=new Set(request.messages.filter(message=>message.role==='toolResult'&&!message.isError&&message.toolName==='group_topic_initial_reply').map(message=>message.toolCallId))
       const acknowledged=request.messages.filter(message=>message.role==='assistant').flatMap(message=>message.content??[]).some(part=>part.type==='toolCall'&&accepted.has(part.id)&&part.name==='group_topic_initial_reply'&&input.messages?.every(message=>part.arguments.silent?.some(source=>source.messageId===message.messageId&&source.messageVersion===message.messageVersion)))
       if(unread)calls=[{name:'group_topic_route_context_get',args:unread.metadataReadCall.arguments}]
-      else if(request.tools.some(tool=>tool.name==='group_topic_initial_reply')&&!acknowledged)calls=[{name:'group_topic_initial_reply',args:{requestId:input.requestId,replies:[],silent:input.messages.map(message=>({messageId:message.messageId,messageVersion:message.messageVersion,reason:'This scenario tests routing and later business replies.'}))}}]
+      else if(Array.isArray(input.messages)&&request.tools.some(tool=>tool.name==='group_topic_initial_reply')&&!acknowledged)calls=[{name:'group_topic_initial_reply',args:{requestId:input.requestId,replies:[],silent:input.messages.map(message=>({messageId:message.messageId,messageVersion:message.messageVersion,reason:'This scenario tests routing and later business replies.'}))}}]
       else calls=auxiliary?topicTaskCalls(request):await decide(request,h)
       callOptions.signal?.throwIfAborted()
      }
      const failure=options.providerError?.(request)
      result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:failure?[]:calls.map(call=>({type:'toolCall',id:'routing-call-'+(++sequence),name:call.name,arguments:call.args})),usage,timestamp:Date.now(),stopReason:failure?'error':calls.length?'toolUse':'stop',...failure?{errorMessage:failure.message??String(failure)}:{}}
+     }
     }catch(error){if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('ROUTING_MODEL_ERROR',error);result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:[],usage,timestamp:Date.now(),stopReason:callOptions.signal?.aborted?'aborted':'error',errorMessage:error.stack??error.message}}
+    if(options.estimateUsage===true){
+     const input=context.messages.reduce((total,message)=>total+estimateTokens(message),0)
+     result.usage={...usage,input,totalTokens:input+usage.output}
+    }
     if(['error','aborted'].includes(result.stopReason))stream.push({type:'error',reason:result.stopReason,error:result});else stream.push({type:'done',reason:result.stopReason,message:result})
     stream.end(result)
    });return stream

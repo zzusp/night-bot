@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { loadConfig } from '../src/config.js'
 const valid = () => ({stateDir:'/tmp/night-state',workspaceDir:'/tmp/night-work',model:{provider:'fixture',model:'fixture'},providers:{fixture:{apiKeyEnv:'FIXTURE_KEY'}}})
 for (const [name,mutate,code] of [
+  ['removed split backend',c=>{c.resident={taskSessions:{executionBackend:'claude-code'}}},'TASK_EXECUTION_BACKEND_UNSUPPORTED'],
+  ['removed DSH backend',c=>{c.executionBackend='dsh'},'TASK_EXECUTION_BACKEND_UNSUPPORTED'],
   ['relative state',c=>{c.stateDir='state'},'ABSOLUTE_PATH_REQUIRED'],
   ['same workspace',c=>{c.workspaceDir=c.stateDir},'STATE_MUST_BE_SEPARATE'],
   ['nested state',c=>{c.stateDir=c.workspaceDir+'/state'},'STATE_MUST_BE_SEPARATE'],

@@ -1,12 +1,14 @@
+import {taskToolInputOrigin,unresolvedTaskInputOrigins} from './input-origin.js'
 import {groupReplyScopeInstructions} from '../../packages/dingtalk-core/group-message.js'
 import {preflightPiFileMutation,isPiFileObservationalTool} from '../pi-file-tool-registration.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {taskAuditKinds,validateTaskIdentity} from './session-audit.js'
-import {effectReconciliationAuditKinds,ownerDrainedReceipt,taskEffectScopeDigest} from './effect-reconciliation.js'
+import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectScopeDigest} from './effect-reconciliation.js'
 const fail=code=>Object.assign(new Error(code),{code})
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
+const taskInputSnapshot=value=>{if(value===undefined)return;const {liveSupplements,...task}=value;return task}
 const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))
 const key=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceiptKinds,...effectReconciliationAuditKinds,
@@ -41,12 +43,12 @@ function effectState(receipts){
 }
 /** One task owns one official AgentSession. These receipts are business effect
  * and admission facts; Pi alone owns messages, queue delivery and model context. */
-export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffectScope,withPersistenceWriter=(_binding,action)=>action()}){
+export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent,getWorkspaceDir,readEffectScope,withPersistenceWriter=(_binding,action)=>action()}){
   const active=new Map();let closed=false
-  async function run({binding,input,provider,model,reasoningEffort,onSessionBound,resolveHuman,submit}){
+  async function run({binding,input,provider,model,reasoningEffort,groupResponsibility,onSessionBound,onSupplementAdmitted,resolveHuman,submit}){
     if(closed||active.has(binding.taskId))throw fail('TASK_SESSION_BUSY')
-    const entry={abort:new AbortController(),done:Promise.withResolvers(),submitted:false};active.set(binding.taskId,entry)
-    const current=()=>!closed&&!entry.abort.signal.aborted&&isCurrent(binding)
+    const entry={abort:new AbortController(),done:Promise.withResolvers(),submitted:false,binding,pending:new Map(),readOnly:!!(input.humanReview||input.dialogue)};active.set(binding.taskId,entry)
+    const current=()=>!closed&&!entry.abort.signal.aborted&&isOwnerCurrent(binding)
     const readOnly=!!(input.humanReview||input.dialogue)
     try{
       const cwd=await getWorkspaceDir({binding});let stored
@@ -61,16 +63,39 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
       entry.effectUncertain=uncertain
       if(unresolvedNativeJobReceipts(stored?.audit??[],binding.sessionId).length)return {status:'no_submission',reason:'TASK_JOB_UNCERTAIN_NO_REPLAY'}
       if(uncertain())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}
-      const source={kind:'task-input',taskSession:structuredClone(binding)},content=[{type:'text',text:JSON.stringify({task:input.task,sources:input.sources,materials:input.materials,dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers})}]
+      // SQL processing stages are Host diagnostics, not user text or authority.
+      // Keep them in their store/materials rather than copying an ever-growing
+      // telemetry graph into every new business input packet.
+      const sources=Array.isArray(input.sources)?input.sources.map(({stages,...source})=>source):input.sources
+      const source={kind:'task-input',taskSession:structuredClone(binding)},content=[{type:'text',text:JSON.stringify({task:taskInputSnapshot(input.task),sources,materials:input.materials,dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers})}]
       const packet={id:'task-input:'+fingerprint({taskId:binding.taskId,sessionId:binding.sessionId,requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,leaseEpoch:binding.leaseEpoch}),source,content}
+      const packets=new Map([[packet.id,packet]])
+      entry.packets=packets
+      const syncAdmissions=actor=>{const operation=(entry.admissionTail??Promise.resolve()).then(async()=>{if(entry.admissionFailure)throw entry.admissionFailure;for(const [id,item]of entry.pending){
+        const admitted=(await actor.receipts.read()).filter(row=>row.domain==='admission'&&row.kind==='admitted'&&row.payload.id===id)
+        if(!admitted.length)continue
+        if(admitted.length!==1||admitted[0].version!==1)throw fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
+        const entries=actor.piSession.sessionManager.getEntries().filter(row=>row.type==='custom_message'&&row.customType==='night.business-input'&&row.details?.packetId===id)
+        if(entries.length!==1||admitted[0].payload.entryId!==entries[0].id||!isDeepStrictEqual(entries[0].details,{packetId:id,source:item.packet.source})||!isDeepStrictEqual(entries[0].content,item.packet.content))throw fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
+        if(typeof onSupplementAdmitted!=='function')throw fail('TASK_LIVE_SUPPLEMENT_UNAVAILABLE')
+        await onSupplementAdmitted({messageId:item.messageId,packetId:id,entryId:entries[0].id,binding:item.binding})
+        entry.pending.delete(id)
+      }});entry.admissionTail=operation.catch(cause=>{entry.admissionFailure??=cause});return operation}
+      entry.syncAdmissions=syncAdmissions
       let executionRegistry,observationalDefinitions
       const isObservational=exec=>observationalDefinitions?.get(exec.name)!==undefined&&observationalDefinitions.get(exec.name)===executionRegistry.get(exec.name,exec.agent)
       const setup=async(agentCtx,actor)=>{
         await ctx.get('agentPresets').mount(agentCtx,'night-bot-task')
         const tools=agentCtx.get('tools'),systemPrompt=agentCtx.get('systemPrompt');executionRegistry=tools
-        const denied=tools.schemas(actor).map(tool=>tool.name).filter(name=>/^(?:subagent|task_delegate|task_execution|agent_create|schedule_create|schedule_update)/.test(name))
-        if(denied.length)tools.restrict({deny:denied})
+        const forbidden=/^(?:subagent|task_delegate|task_execution|agent_create|schedule_create|schedule_update|group_)/
+        const inherited=tools.view(actor).restrictableNames
+        const allowed=tools.schemas(actor).map(tool=>tool.name).filter(name=>name!=='run_code'&&inherited.has(name)&&!forbidden.test(name))
+        // The execution role cannot inherit coordinator tools published later.
+        // Same-named replacements still face the exact-definition effect gate.
+        tools.restrict({allow:allowed})
+        tools.guard(exec=>forbidden.test(exec.name)?'TASK_TOOL_ROLE_FORBIDDEN':undefined)
         systemPrompt.section({name:'task:single-execution',order:0,text:instructions})
+        if(typeof groupResponsibility==='string'&&groupResponsibility.trim())systemPrompt.section({name:'task:group-responsibility',order:1,text:'Configured group responsibility: '+groupResponsibility})
         systemPrompt.section({name:'task:reply-scope',order:1,text:groupReplyScopeInstructions})
         if(input.humanReview)systemPrompt.section({name:'task:human-review',order:1,text:'本轮只读核对人工业务答复。读取原待答问题、候选来源的完整原文和引用，核对真实作者的业务角色、权限、对应事项和全部限制；模型摘要与推断不是授权。事实追问使用 task_result(wait, replySourceId)，以 summary/evidence/limitations 记录事实，保持原问题待答，不为回复事实追问解除实施限制。只有真实来源已回答同一问题、角色与条件证据齐备时，才用 task_human_resolve 记录原答复；SQL再次核验来源及版本。解除成功后本轮仍保持只读并以无新问题的 wait 结束，由下一普通轮在原有授权范围继续。不得在本轮执行写入、命令、记忆写入、委派、扩大目标或完成任务。'})
         if(input.dialogue)systemPrompt.section({name:'task:dialogue',order:1,text:'本轮仅只读回答当前任务对话。以 task_result 的 wait 和 summary 给出基于已有证据的答复，不执行外部效果，不创建新问题，不完成或扩大原任务。'})
@@ -81,7 +106,8 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
           if(isObservational(exec))return next()
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
           await preflightPiFileMutation(exec,tools.get(exec.name,actor))
-          const effectKey=fingerprint({requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,name:exec.name,args:exec.arguments})
+          const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
+          const effectKey=origin.key
           if(intents.has(effectKey)||[...intents.values()].some(value=>value.reconciled&&value.name===exec.name&&value.argumentsDigest===fingerprint(exec.arguments)))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
           const intent={key:effectKey,name:exec.name,callId:exec.callId}
           actor.receipts.append({version:1,domain:'task',kind:'effect-intent',payload:intent});intents.set(effectKey,{...intent,settled:false});await actor.receipts.commit()
@@ -100,7 +126,10 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
           return resolveHuman(args,binding)
         }})
         tools.register({name:'task_result',description:'Commit this single task execution result, or wait for a specific missing input. This concludes the turn.',parameters:{type:'object',required:['decision'],additionalProperties:false,properties:{decision:{type:'object',properties:{action:{type:'string',enum:['complete','wait','blocked']},summary:{type:'string'},evidence:{type:'array',items:{type:'string'}},limitations:{type:'array',items:{type:'string'}},artifacts:{type:'array',items:{type:'string'}},deliveryFiles:{type:'array',items:{type:'object',properties:{path:{type:'string'},caption:{type:'string'}},required:['path'],additionalProperties:false}},question:{type:'string'},audience:{type:'string',enum:['topic','operator','requester']},replySourceId:{type:'string',minLength:1,description:'Only humanReview: the current candidate source for a factual follow-up; wait with read evidence, keep the original question pending.'},attemptedActions:{type:'array',items:{type:'string'}}},required:['action','summary','evidence','limitations'],additionalProperties:false}}},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute({decision},exec){
+          await syncAdmissions(actor)
           if(!await current())throw fail('TASK_SESSION_STALE')
+          const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
+          if(!await isCurrent({...binding,contextRevision:origin.binding.contextRevision}))throw fail('TASK_CONTEXT_NOT_CONSUMED')
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
           if(!decision.summary.trim())throw fail('TASK_SESSION_DECISION_INVALID')
           if(input.humanReview&&(decision.action!=='wait'||decision.question?.trim()))throw fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
@@ -119,8 +148,8 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
       }
       const options={agentOptions:{provider,model,...reasoningEffort?{reasoningEffort}:{}},setup,signal:entry.abort.signal,auditKinds:singleTaskAuditKinds,readOnly,
         initialReceipts:stored?[]:[{version:1,domain:'task',kind:'identity',payload:{taskId:binding.taskId,sessionId:binding.sessionId}}],
-        authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packet),
-        beforeRequest:async actor=>{if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
+        authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packets.get(candidate.id)),
+        beforeRequest:async actor=>{await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
           // A later same-named registration is not the read-only capability
           // captured for this execution. It needs ordinary effect admission.
           for(const name of ['read','read_image','read_window'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}
@@ -131,7 +160,9 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
           if(typeof readEffectScope!=='function'||proof?.modelIdle!==true||proof?.toolsIdle!==true||proof?.processes!==0||proof?.jobs!==0||proof?.scope!=='registered-owned-provider-ranges')throw fail('TASK_EFFECT_DRAIN_UNPROVEN')
           await actor.receipts.commit()
           const stored=await ctx.sessionPersistence.readNative(binding.sessionId,{requireComplete:true}),scope=await readEffectScope(binding,stored)
-          actor.receipts.append(await ownerDrainedReceipt({binding:Object.fromEntries(['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(name=>[name,binding[name]??0])),scopeDigest:taskEffectScopeDigest(scope),cutEntryId:actor.piSession.sessionManager.getLeafId()},async()=>({issuer:'night-owned-provider-drain-v1',scope:proof.scope,ownerId:actor.id,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle,processes:proof.processes,jobs:proof.jobs,observedAt:new Date().toISOString(),evidenceDigest:fingerprint({phase,proof:{scope:proof.scope,processes:proof.processes,jobs:proof.jobs,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle},binding})})))
+          const inputs=unresolvedTaskInputOrigins(actor.piSession.sessionManager,intents,binding),identity={binding:Object.fromEntries(['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(name=>[name,binding[name]??0])),scopeDigest:taskEffectScopeDigest(scope),cutEntryId:actor.piSession.sessionManager.getLeafId()}
+          const differentOrigin=inputs.some(item=>!isDeepStrictEqual(item.originBinding,identity.binding))
+          actor.receipts.append(await (differentOrigin?ownerDrainedInputsReceipt:ownerDrainedReceipt)({...identity,...differentOrigin?{inputs}:{}},async()=>({issuer:'night-owned-provider-drain-v1',scope:proof.scope,ownerId:actor.id,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle,processes:proof.processes,jobs:proof.jobs,observedAt:new Date().toISOString(),evidenceDigest:fingerprint({phase,proof:{scope:proof.scope,processes:proof.processes,jobs:proof.jobs,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle},binding})})))
           await actor.receipts.commit()
         },
       }
@@ -142,7 +173,10 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
       await entry.handle.agent.input.deliver(packet.id,{deliverAs:'followUp'})
       await entry.handle.agent.whenIdle()
       if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
-      if(!entry.submitted&&await current())throw Object.assign(fail('TASK_SESSION_NO_SUBMISSION'),{phase:'decision'})
+      if(!entry.submitted&&await current()){
+        const native=entry.handle.agent.piSession.messages.findLast(message=>message.role==='assistant')
+        throw Object.assign(fail(native?.stopReason==='error'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION'),{phase:'decision',...native?.stopReason?{nativeAssistantStopReason:native.stopReason}:{}})
+      }
       return {status:entry.submitted?'submitted':'cancelled'}
     }catch(cause){
       entry.outcomeError=cause
@@ -152,7 +186,8 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
       if(!await current())return {status:'cancelled',reason:'TASK_BINDING_SUPERSEDED',failure:{code:typeof cause.code==='string'?cause.code:cause.name}}
       throw cause
     }finally{
-      let idleOutcome;const drainErrors=[]
+      entry.finishing=true
+      let idleOutcome,admissionOutcome;const drainErrors=[]
       if(!entry.handle&&entry.outcomeError?.cleanupFailure)drainErrors.push(entry.outcomeError.cleanupFailure)
       try{
         if(entry.handle){
@@ -160,6 +195,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
           // request policy reports a rejection. Preserve that outcome, but do
           // not let it skip the actual producer drain and writer release.
           try{await entry.handle.agent.whenIdle()}catch(cause){idleOutcome=cause}
+          try{await entry.syncAdmissions?.(entry.handle.agent)}catch(cause){admissionOutcome=cause}
           try{await entry.handle.agent.receipts.commit()}catch(cause){drainErrors.push(cause)}
           try{await entry.handle.dispose()}catch(cause){drainErrors.push(cause)}
         }
@@ -169,6 +205,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
         entry.done.resolve()
       }
       if(entry.drainError)throw entry.drainError
+      if(admissionOutcome)throw admissionOutcome
       if(idleOutcome&&!entry.outcomeError)throw idleOutcome
     }
   }
@@ -180,6 +217,24 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
     if(entry.drainError)throw entry.drainError
     if(error)throw error
   }
-  return {run,cancel,async close(){closed=true;await Promise.all([...active.keys()].map(cancel))}}
+  function liveBinding(taskId){const entry=active.get(taskId);return entry?.handle&&!entry.readOnly&&!entry.submitted&&!entry.finishing&&!entry.abort.signal.aborted?structuredClone(entry.binding):undefined}
+  async function supplement({task,sources,materials}){
+    const entry=active.get(task.taskId);if(!liveBinding(task.taskId))return {delivered:false}
+    if(!await isOwnerCurrent(entry.binding))throw fail('TASK_LIVE_SUPPLEMENT_STALE')
+    for(const row of task.liveSupplements??[]){
+      if(row.leaseEpoch!==entry.binding.leaseEpoch||row.state!=='pending'||entry.pending.has('task-supplement:'+row.wakeId))continue
+      const nextBinding={...structuredClone(entry.binding),contextRevision:row.contextRevision}
+      const source={kind:'task-input',taskSession:structuredClone(nextBinding)}
+      if(!Array.isArray(row.sourceSnapshots))throw fail('TASK_LIVE_SUPPLEMENT_SOURCE_REQUIRED')
+      const selected=row.sourceSnapshots.map(({stages,...item})=>item)
+      const packet={id:'task-supplement:'+row.wakeId,source,content:[{type:'text',text:JSON.stringify({task:{...taskInputSnapshot(task),request:row.request,contextRevision:row.contextRevision,sourceRefs:row.sourceRefs},sources:selected,materials:materials.map(({resources,...item})=>({...item,resources:resources.map(({value,...resource})=>resource)})),supplement:{messageId:row.messageId,contextRevision:row.contextRevision}})}]}
+      entry.packets.set(packet.id,packet);entry.pending.set(packet.id,{packet,binding:nextBinding,messageId:row.messageId})
+      await entry.handle.agent.input.enqueue(packet)
+      await entry.handle.agent.input.deliver(packet.id,{deliverAs:'steer'})
+      await entry.syncAdmissions(entry.handle.agent)
+    }
+    return {delivered:true}
+  }
+  return {run,cancel,liveBinding,supplement,async close(){closed=true;await Promise.all([...active.keys()].map(cancel))}}
 }
 export const disabledExecutionSessions=()=>({run:async()=>{throw fail('TASK_SPLIT_EXECUTION_REMOVED')},cancel:async()=>{},feedback:async()=>{throw fail('TASK_SPLIT_EXECUTION_REMOVED')},close:async()=>{}})

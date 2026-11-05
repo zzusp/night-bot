@@ -202,7 +202,7 @@
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
       "status": "adapted",
-      "sha256": "5d28a9eaf50ee324577ad0f15cdeb75bc031341982c8a3243c35b8aa3490dfda",
+      "sha256": "0fd86a440eb7e5583d0ae1618b3df4cca150c2c5052aa1befef76e2ab444e394",
       "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay."
     },
     {
@@ -1031,8 +1031,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "31d24b1a88683acfe334ca16071d6220531c54fb9ce47c4781166d37608dc8b3",
-      "adaptation": "Official single execution with trusted effect reconciliation and projection-only crash recovery; public factual reply summaries reject internal identifiers before durable topic facts."
+      "sha256": "80178cc179b5ecc1b9ad7fabdc89193e3ecca812f9bb90528fefa42c58ed762d",
+      "adaptation": "Official single-task authority with persisted initial context/authenticated source refs, binding-aware Topic facts, private public summaries, explicit removed-backend rejection and crash-safe effect reconciliation."
     },
     {
       "source": "task-session.js",

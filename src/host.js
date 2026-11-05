@@ -1,3 +1,4 @@
+import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {prepareProfileEntries} from './native-profile-preflight.js'
 import {taskSessionRoutes} from './tasks/session-routes.js'
 import {channelPluginRows} from './channels/loader.js'
@@ -17,6 +18,7 @@ import {createPrivacy,installProcessPrivacy} from './memory/privacy.js'
 const require = createRequire(import.meta.url)
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
 export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false } = {}) {
+  assertPiTaskBackendConfiguration(config)
   assertNativeScopeAuthority()
   const paths=runtimePaths(config)
   await prepareRuntimePaths(paths)

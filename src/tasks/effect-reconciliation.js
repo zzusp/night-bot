@@ -17,6 +17,11 @@ const scopeSchema=z.strictObject({taskId:text,sessionId:text,taskRoot:absolute,w
 const proofSchema=z.strictObject({issuer:z.literal('night-owned-provider-drain-v1'),scope:z.literal('registered-owned-provider-ranges'),ownerId:text,modelIdle:z.literal(true),toolsIdle:z.literal(true),processes:z.literal(0),jobs:z.literal(0),observedAt:timestamp,evidenceDigest:hex})
 const drainIdentitySchema=z.strictObject({binding:bindingSchema,scopeDigest:hex,cutEntryId:text})
 const drainSchema=drainIdentitySchema.extend({proof:proofSchema})
+const coveredIntentSchema=z.strictObject({intentEntryId:text,intentDigest:hex,originBinding:bindingSchema})
+const inputsDrainSchema=drainIdentitySchema.extend({version:z.literal(1),inputs:z.array(coveredIntentSchema).min(1).max(128),proof:proofSchema}).superRefine((value,ctx)=>{
+ if(new Set(value.inputs.map(item=>item.intentEntryId)).size!==value.inputs.length)ctx.addIssue({code:'custom',message:'Duplicate covered intent'})
+ for(const item of value.inputs)if(['taskId','sessionId','requirementRevision','controlRevision','leaseEpoch'].some(key=>item.originBinding[key]!==value.binding[key])||item.originBinding.contextRevision>value.binding.contextRevision)ctx.addIssue({code:'custom',message:'Covered intent belongs to another owner authority'})
+})
 const evidenceRefSchema=z.strictObject({path:z.string().regex(/^materials\/runtime-evidence\/effects\/[a-f0-9]{64}\.json$/),sha256:hex})
 const evidenceRefsSchema=z.array(evidenceRefSchema).min(1).max(8).refine(values=>new Set(values.map(value=>value.path)).size===values.length)
 const outcome='closed-with-possible-partial-effects'
@@ -27,6 +32,7 @@ const intentSchema=z.strictObject({key:hex,name:text,callId:text})
 const resultSchema=z.strictObject({key:hex,isError:z.boolean()})
 export const effectReconciliationAuditKinds=Object.freeze({
  'task/owner-drained':value=>drainSchema.safeParse(value).success,
+ 'task/owner-drained-inputs':value=>inputsDrainSchema.safeParse(value).success,
  'task/effect-reconciled':value=>receiptSchema.safeParse(value).success,
 })
 export const taskEffectDigest=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
@@ -47,6 +53,35 @@ export async function ownerDrainedReceipt(value,observeDrain){
  const identity=drainIdentitySchema.parse(value)
  if(typeof observeDrain!=='function')throw new TypeError('An awaited Host-owned drain observer is required; zero counts from JSON are not a capability')
  return {version:1,domain:'task',kind:'owner-drained',payload:drainSchema.parse({...identity,proof:await observeDrain()})}
+}
+
+
+/** One actual owner join can cover effects admitted from several preserve
+ * inputs. Every covered intent is independently checked by the offline reader. */
+export async function ownerDrainedInputsReceipt(value,observeDrain){
+ if(typeof observeDrain!=='function')throw new TypeError('An awaited Host-owned drain observer is required')
+ return {version:1,domain:'task',kind:'owner-drained-inputs',payload:inputsDrainSchema.parse({...value,version:1,proof:await observeDrain()})}
+}
+function inputOrigin(branch,task,currentBinding){
+ const input=branch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details?.source?.kind==='task-input')
+ assert(input&&Object.keys(input.details).length===2&&typeof input.details.packetId==='string','TASK_EFFECT_ORIGIN_INPUT_REQUIRED')
+ const originBinding=taskEffectBinding(input.details.source.taskSession)
+ assert(originBinding.taskId===task.taskId&&originBinding.sessionId===task.sessionId&&originBinding.leaseEpoch<=currentBinding.leaseEpoch,'TASK_EFFECT_ORIGIN_BINDING_MISMATCH')
+ const queue=branch.filter(entry=>audit(entry)?.domain==='admission').map(entry=>entry.data)
+ const packet=queue.find(receipt=>receipt.kind==='enqueued'&&receipt.payload.id===input.details.packetId)
+ assert(packet?.version===1&&admissionAuditKinds['admission/enqueued'](packet.payload)&&isDeepStrictEqual(packet.payload.source,input.details.source)&&isDeepStrictEqual(packet.payload.content,input.content)
+  &&queue.some(receipt=>receipt.version===1&&receipt.kind==='admitted'&&admissionAuditKinds['admission/admitted'](receipt.payload)&&receipt.payload.id===packet.payload.id&&receipt.payload.entryId===input.id),'TASK_EFFECT_ADMISSION_REQUIRED')
+ return {input,packet,originBinding}
+}
+function intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId){
+ const target=entries.find(entry=>entry.id===intentEntryId),intent=audit(target??{})
+ assert(intent?.version===1&&intent.domain==='task'&&intent.kind==='effect-intent'&&intentSchema.safeParse(intent.payload).success,'TASK_EFFECT_INTENT_INVALID')
+ assert(receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-intent'&&entry.data.payload.key===intent.payload.key).length===1,'TASK_EFFECT_INTENT_AMBIGUOUS')
+ const branch=manager.getBranch(target.id),candidates=branch.flatMap(entry=>entry.type==='message'&&entry.message.role==='assistant'?entry.message.content.filter(block=>block.type==='toolCall'&&block.id===intent.payload.callId&&block.name===intent.payload.name).map(block=>({entry,block})):[])
+ assert(candidates.length===1,'TASK_EFFECT_CALL_AMBIGUOUS')
+ const call=candidates[0],source=inputOrigin(manager.getBranch(call.entry.id),task,currentBinding)
+ assert(taskEffectDigest({requirementRevision:source.originBinding.requirementRevision,contextRevision:source.originBinding.contextRevision,controlRevision:source.originBinding.controlRevision,name:intent.payload.name,args:call.block.arguments})===intent.payload.key,'TASK_EFFECT_ARGUMENTS_MISMATCH')
+ return {target,intent,call,...source}
 }
 
 async function safeEvidence(root,ref,signal){
@@ -101,29 +136,25 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
   assert(scope.taskId===taskId&&scope.sessionId===task.sessionId&&resolve(scope.taskRoot)===scope.taskRoot&&scope.taskRoot===stored.header.cwd&&inside(scope.taskRoot,scope.workingDirectory)&&scope.ownerActorId===task.ownerActorId&&scope.groupId===(task.groupId??null),'TASK_EFFECT_SCOPE_MISMATCH')
   const entries=stored.entries,receipts=entries.filter(entry=>audit(entry)),identities=receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='identity')
   assert(identities.length===1&&identities[0].data.version===1&&validateTaskIdentity(identities[0].data.payload)&&identities[0].data.payload.taskId===taskId&&identities[0].data.payload.sessionId===task.sessionId,'TASK_EFFECT_IDENTITY_MISMATCH')
-  const target=entries.find(entry=>entry.id===intentEntryId),intent=audit(target??{})
-  assert(intent?.version===1&&intent.domain==='task'&&intent.kind==='effect-intent'&&intentSchema.safeParse(intent.payload).success,'TASK_EFFECT_INTENT_INVALID')
-  assert(receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-intent'&&entry.data.payload.key===intent.payload.key).length===1,'TASK_EFFECT_INTENT_AMBIGUOUS')
+  const manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(entries))
+  const {target,intent,call,input,packet,originBinding}=intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId)
   for(const entry of receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-result')){
    assert(resultSchema.safeParse(entry.data.payload).success,'TASK_EFFECT_RESULT_INVALID')
    assert(!(entry.data.payload.key===intent.payload.key&&entry.data.payload.isError===false),'TASK_EFFECT_ALREADY_SETTLED')
   }
   assert(!receipts.some(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled'&&entry.data.payload.intentEntryId===intentEntryId),'TASK_EFFECT_ALREADY_RECONCILED')
-  const manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(entries)),branch=manager.getBranch(target.id)
-  const candidates=branch.flatMap(entry=>entry.type==='message'&&entry.message.role==='assistant'?entry.message.content.filter(block=>block.type==='toolCall'&&block.id===intent.payload.callId&&block.name===intent.payload.name).map(block=>({entry,block})):[])
-  assert(candidates.length===1,'TASK_EFFECT_CALL_AMBIGUOUS')
-  const call=candidates[0],callBranch=manager.getBranch(call.entry.id),input=callBranch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details?.source?.kind==='task-input')
-  assert(input&&Object.keys(input.details).length===2&&typeof input.details.packetId==='string','TASK_EFFECT_ORIGIN_INPUT_REQUIRED')
-  const originBinding=taskEffectBinding(input.details.source.taskSession)
-  assert(originBinding.taskId===taskId&&originBinding.sessionId===task.sessionId&&originBinding.leaseEpoch<=currentBinding.leaseEpoch,'TASK_EFFECT_ORIGIN_BINDING_MISMATCH')
-  const queue=callBranch.filter(entry=>audit(entry)?.domain==='admission').map(entry=>entry.data)
-  const packet=queue.find(receipt=>receipt.kind==='enqueued'&&receipt.payload.id===input.details.packetId)
-  assert(packet?.version===1&&admissionAuditKinds['admission/enqueued'](packet.payload)&&isDeepStrictEqual(packet.payload.source,input.details.source)&&isDeepStrictEqual(packet.payload.content,input.content)
-   &&queue.some(receipt=>receipt.version===1&&receipt.kind==='admitted'&&admissionAuditKinds['admission/admitted'](receipt.payload)&&receipt.payload.id===packet.payload.id&&receipt.payload.entryId===input.id),'TASK_EFFECT_ADMISSION_REQUIRED')
-  assert(taskEffectDigest({requirementRevision:originBinding.requirementRevision,contextRevision:originBinding.contextRevision,controlRevision:originBinding.controlRevision,name:intent.payload.name,args:call.block.arguments})===intent.payload.key,'TASK_EFFECT_ARGUMENTS_MISMATCH')
-  const drains=receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='owner-drained')
-  assert(drains.every(entry=>entry.data.version===1&&drainSchema.safeParse(entry.data.payload).success),'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
-  const drain=drains.findLast(entry=>isDeepStrictEqual(entry.data.payload.binding,originBinding))
+  const drains=receipts.filter(entry=>entry.data.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(entry.data.kind))
+  assert(drains.every(entry=>entry.data.version===1&&(entry.data.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(entry.data.payload).success),'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
+  const drain=drains.findLast(entry=>entry.data.kind==='owner-drained'?isDeepStrictEqual(entry.data.payload.binding,originBinding):entry.data.payload.inputs.some(item=>item.intentEntryId===intentEntryId&&item.intentDigest===taskEffectDigest(target)&&isDeepStrictEqual(item.originBinding,originBinding)))
+  if(drain?.data.kind==='owner-drained-inputs'){
+   const branch=manager.getBranch(drain.id),owner=inputOrigin(branch,task,currentBinding)
+   assert(isDeepStrictEqual(owner.originBinding,drain.data.payload.binding),'TASK_EFFECT_DRAIN_OWNER_INPUT_MISMATCH')
+   for(const covered of drain.data.payload.inputs){
+    const checked=intentOrigin(entries,receipts,manager,task,currentBinding,covered.intentEntryId)
+    assert(taskEffectDigest(checked.target)===covered.intentDigest&&isDeepStrictEqual(checked.originBinding,covered.originBinding),'TASK_EFFECT_DRAIN_INPUT_MISMATCH')
+    assert(branch.some(entry=>entry.id===covered.intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+   }
+  }
   assert(drain&&drain.data.payload.scopeDigest===scopeDigest&&drain.parentId===drain.data.payload.cutEntryId&&drain.data.payload.proof.ownerId===task.sessionId,'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED')
   assert(manager.getBranch(drain.id).some(entry=>entry.id===intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
   assert(manager.getBranch(entries.at(-1).id).some(entry=>entry.id===drain.id),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')

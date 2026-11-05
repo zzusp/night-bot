@@ -1,3 +1,4 @@
+import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {validatePiFileSourceConfig} from './runtime/pi-file-tool-config.js'
 import { readFile } from 'node:fs/promises'
 import { resolve, isAbsolute, relative, sep } from 'node:path'
@@ -6,6 +7,7 @@ import {runtimePaths} from './runtime/paths.js'
 export async function loadConfig(path) {
   const config = JSON.parse(await readFile(path, 'utf8'))
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('NIGHT_BOT_CONFIG_INVALID')
+  assertPiTaskBackendConfiguration(config)
   const paths=runtimePaths(config,path)
   if(paths.mode==='portable')Object.assign(config,{installRoot:paths.installRoot,dataDir:paths.data,stateDir:paths.state,workspaceDir:paths.workspaces})
   for (const key of ['stateDir','workspaceDir']) {

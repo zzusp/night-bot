@@ -71,6 +71,14 @@ const canonical = value => {
 const digest = value => createHash('sha256').update(canonical(value)).digest('hex')
 const clone = value => JSON.parse(JSON.stringify(value))
 const changed = result => ({ result, dispatchEligible: false })
+function taskBusinessFailure(value){
+  record(value)
+  if(Object.keys(value).some(key=>!['code','phase','stopReason'].includes(key))||!['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY','TASK_PI_HOST_RETRY_DISABLED'].includes(value.code)
+    ||value.phase!==undefined&&typeof value.phase!=='string'||value.stopReason!==undefined&&!['pending','stop','length','toolUse','error','aborted','deferred'].includes(value.stopReason))fail('DYNAMIC_ARGUMENT_INVALID')
+  return clone(value)
+}
+const hasUnknownTaskEffect=task=>task.lastDecision?.limitations?.some(code=>['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code))
+function clearDisabledTaskRetry(task){if(task.drained&&!task.recovering&&!hasUnknownTaskEffect(task)&&task.providerRecovery?.hostRetryDisabled){task.providerRecovery=null;task.technicalFailure=null}}
 // Host-owned active intervals only. Never reconstruct legacy/restarted intervals.
 function stopExecutionTiming(execution, stamp) {
   const segment = execution.timeline?.segments.at(-1)
@@ -581,21 +589,28 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') fail('DYNAMIC_TASK_NOT_ACTIVE')
       if (!message || message.length > 10000 || id.length > 200) fail('DYNAMIC_ARGUMENT_INVALID')
       const entry = { id, text: message, actorId: a.actorId, receivedAt: stamp, reply: null }
+      clearDisabledTaskRetry(task)
       ;(task.dialogue ??= []).push(entry)
       saveTask(task)
       wake(task.taskId, 'task.dialogue', { messageId: id }, `dialogue:${task.taskId}:${id}`)
       return changed({ task, message: entry })
     }
-    if (kind === 'task.dialogue.reply') {
+    if (kind === 'task.dialogue.reply' || kind === 'task.dialogue.failed') {
       const task = currentTask(a.binding)
       const message = task.dialogue?.find(item => item.id === a.messageId)
       const claimed = wakes(task.taskId).some(item => item.kind === 'task.dialogue' && item.payload.messageId === a.messageId
         && item.state === 'claimed' && item.leaseEpoch === a.binding.leaseEpoch)
       if (!message || !claimed) fail('DYNAMIC_WAKE_CLAIM_STALE')
+      if(message.replyError)fail('DYNAMIC_COMMAND_ID_CONFLICT')
+      if(kind==='task.dialogue.failed'){
+        if(message.reply)fail('DYNAMIC_COMMAND_ID_CONFLICT')
+        message.replyError=taskBusinessFailure(a.failure);message.replyFailedAt=stamp;task.providerRecovery=null
+      }else{
       const reply = text(a.reply, 'reply').trim()
       if (!reply || reply.length > 20000) fail('DYNAMIC_ARGUMENT_INVALID')
       if (message.reply && message.reply !== reply) fail('DYNAMIC_COMMAND_ID_CONFLICT')
       message.reply = reply; message.repliedAt ??= stamp
+      }
       for (const item of wakes(task.taskId)) if (item.kind === 'task.dialogue' && item.payload.messageId === a.messageId
         && item.leaseEpoch === a.binding.leaseEpoch) { item.state = 'acked'; item.ackedAt = stamp; put('dynamic_wakes', item) }
       saveTask(task)
@@ -609,13 +624,23 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if (prior.text !== message) fail('DYNAMIC_FEEDBACK_ID_CONFLICT')
         return changed({ task })
       }
+      clearDisabledTaskRetry(task)
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') fail('DYNAMIC_TASK_NOT_ACTIVE')
       if (a.expectedRequirementRevision !== task.requirementRevision || a.expectedControlRevision !== task.controlRevision) fail('DYNAMIC_TASK_REVISION_STALE')
       const request = task.humanRequests?.findLast(item => item.status === 'waiting-reply' && ['requester', 'topic'].includes(item.audience))
       const reviewSources = request ? (a.sourceRefs ?? []).filter(id => !(task.sourceRefs ?? []).includes(id)).map(id => get('dynamic_sources', id))
         .filter(source => source.groupId === task.groupId && source.channel === 'im'
           && Date.parse(source.timestamp) >= Date.parse(request.createdAt) && Date.parse(source.timestamp) <= Date.parse(stamp)) : []
-      task.contextRevision = (task.contextRevision ?? 0) + 1
+      const previousContextRevision=task.contextRevision??0
+      if(a.liveBinding!==undefined){
+        currentTask(a.liveBinding,{current:false})
+        if(a.liveBinding.requirementRevision!==task.requirementRevision||a.liveBinding.controlRevision!==task.controlRevision)fail('TASK_LIVE_SUPPLEMENT_STALE')
+        let revision=a.liveBinding.contextRevision??0
+        for(const row of task.liveSupplements??[])if(row.leaseEpoch===task.leaseEpoch&&row.fromContextRevision===revision&&row.requirementRevision===task.requirementRevision&&row.controlRevision===task.controlRevision)revision=row.contextRevision
+        if(revision!==previousContextRevision)fail('TASK_LIVE_SUPPLEMENT_STALE')
+        if(task.humanReviewLease===task.leaseEpoch||taskHumanWait(task)||wakes(task.taskId).some(item=>item.state==='claimed'&&item.leaseEpoch===task.leaseEpoch&&item.kind==='task.dialogue'))fail('TASK_LIVE_SUPPLEMENT_FORBIDDEN')
+      }
+      task.contextRevision = previousContextRevision + 1
       for (const field of ['request', 'sourceRefs', 'topicRefs']) if (a[field] !== undefined) task[field] = clone(a[field])
       if (a.replyBindings !== undefined) task.replyBindings = topicFacts.bindings(task, a.replyBindings)
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), a.operationId])]
@@ -627,9 +652,29 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           controlRevision: task.controlRevision, inputVersion: execution.inputVersion, receivedAt: stamp, consumedAt: null })
         put('dynamic_executions', execution)
       }
+      const supplementWakeId=`wake:${commandId}`
+      if(a.liveBinding!==undefined)(task.liveSupplements??=[]).push({messageId,wakeId:supplementWakeId,fromContextRevision:previousContextRevision,contextRevision:task.contextRevision,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,sourceRefs:clone(task.sourceRefs??[]),sourceSnapshots:(task.sourceRefs??[]).map(id=>{const {stages,...source}=get('dynamic_sources',id);return clone(source)}),request:task.request,state:'pending'})
       saveTask(task); wake(task.taskId, kind, { messageId, contextRevision: task.contextRevision,
-        ...(reviewSources.length ? { humanRequestId: request.requestId, sourceIds: reviewSources.map(source => source.sourceId) } : {}) }, `wake:${commandId}`)
+        ...(reviewSources.length ? { humanRequestId: request.requestId, sourceIds: reviewSources.map(source => source.sourceId) } : {}) }, supplementWakeId)
       return changed({ task })
+    }
+    if(kind==='task.supplement.admitted'){
+      const task=currentTask(a.binding,{current:false})
+      if(a.binding.requirementRevision!==task.requirementRevision||a.binding.controlRevision!==task.controlRevision)fail('TASK_LIVE_SUPPLEMENT_STALE')
+      const row=task.liveSupplements?.find(item=>item.messageId===a.messageId&&item.leaseEpoch===task.leaseEpoch)
+      if(!row||row.contextRevision!==(a.binding.contextRevision??0)||row.requirementRevision!==a.binding.requirementRevision||row.controlRevision!==a.binding.controlRevision)fail('TASK_LIVE_SUPPLEMENT_STALE')
+      const entryId=text(a.entryId,'entryId'),packetId=text(a.packetId,'packetId')
+      if(row.state==='admitted'){
+        if(row.entryId!==entryId||row.packetId!==packetId)fail('TASK_LIVE_SUPPLEMENT_CONFLICT')
+        return changed({task})
+      }
+      const earlier=(task.liveSupplements??[]).filter(item=>item.leaseEpoch===task.leaseEpoch&&item.contextRevision<row.contextRevision)
+      if(earlier.some(item=>item.state!=='admitted'))fail('TASK_LIVE_SUPPLEMENT_ORDER')
+      const item=get('dynamic_wakes',row.wakeId)
+      if(item.taskId!==task.taskId||item.state!=='pending'||item.kind!=='task.supplement'||item.payload.messageId!==row.messageId||item.payload.contextRevision!==row.contextRevision)fail('DYNAMIC_WAKE_CLAIM_STALE')
+      item.state='acked';item.leaseEpoch=task.leaseEpoch;item.claimedAt=stamp;item.ackedAt=stamp;put('dynamic_wakes',item)
+      Object.assign(row,{state:'admitted',entryId,packetId,admittedAt:stamp});task.claimContextRevision=row.contextRevision
+      saveTask(task);return changed({task})
     }
     if (kind === 'execution.peerMessage') {
       const source = boundExecution(a.binding), task = assertScope(a.binding)
@@ -690,6 +735,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const task = get('dynamic_tasks', a.taskId)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
+      if(kind!=='task.control'||a.control==='active')clearDisabledTaskRetry(task)
       if (kind === 'task.revise' || kind === 'task.reopen') {
         if (a.expectedRequirementRevision !== undefined && a.expectedRequirementRevision !== task.requirementRevision
           || a.expectedControlRevision !== undefined && a.expectedControlRevision !== task.controlRevision) fail('DYNAMIC_TASK_REVISION_STALE')
@@ -774,7 +820,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       let pending = wakes(task.taskId).filter(item => item.state !== 'acked')
       // Dialogue uses the same owner/lease queue, one message per turn. Ordinary
       // execution wakes remain pending so a conversation cannot consume their work.
-      if (a.dialogue === true) pending = pending.filter(item => item.kind === 'task.dialogue').slice(0, 1)
+      if (a.dialogue === true) pending = pending.filter(item => item.kind === 'task.dialogue'&&task.dialogue?.some(message=>message.id===item.payload.messageId&&!message.reply&&!message.replyError)).slice(0, 1)
       else if (humanReview) pending = pending.filter(item => humanReview.wakeIds.includes(item.id))
       else pending = pending.filter(item => item.kind !== 'task.dialogue')
       if (!pending.length && !a.force) fail('DYNAMIC_TASK_NO_WAKE')
@@ -892,8 +938,32 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       task.lastDecision = { action: a.action ?? 'wait', summary: text(a.summary, 'summary'), decision: a.decision ?? null, question: a.question ?? a.decision?.question ?? null,
         evidence: a.evidence ?? [], limitations: a.limitations ?? [], ...(a.humanReply ? { replySourceId: a.humanReply.sourceId } : {}),
         requirementRevision: task.requirementRevision, controlRevision: task.controlRevision, at: stamp }
+      if(a.technicalFailure!==undefined){task.technicalFailure=taskBusinessFailure(a.technicalFailure);task.lastDecision.technicalFailure=task.technicalFailure;task.providerRecovery=null}
+      else if(a.reviewFailureCode===undefined&&Object.hasOwn(task,'technicalFailure'))task.technicalFailure=null
       if (a.reviewFailureCode === undefined) task.providerRecovery = null
       saveTask(task); return changed({ task, ...(notification ? { notification } : {}) })
+    }
+    if(kind==='task.provider-retry-disabled'){
+      const task=get('dynamic_tasks',text(a.taskId,'taskId'))
+      if(!task.providerRecovery||task.providerRecovery.hostRetryDisabled)return changed({task})
+      task.providerRecovery={...task.providerRecovery,nextAttemptAt:null,suspended:true,hostRetryDisabled:true}
+      task.technicalFailure={code:'TASK_PI_HOST_RETRY_DISABLED',phase:'recovery'}
+      const claimed=wakes(task.taskId).filter(item=>item.state==='claimed'&&item.leaseEpoch===task.leaseEpoch)
+      const review=claimed.filter(item=>item.payload?.humanRequestId)
+      const request=task.humanRequests?.find(item=>item.requestId===review[0]?.payload.humanRequestId)
+      if(request&&task.humanReviewLease===task.leaseEpoch){
+        ;(request.reviewFailures??=[]).push({code:'TASK_PI_HOST_RETRY_DISABLED',contextRevision:task.contextRevision??0,leaseEpoch:task.leaseEpoch,recordedAt:stamp,sourceIds:[...new Set(review.flatMap(item=>item.payload.sourceIds??[]))],wakeIds:review.map(item=>item.id)})
+      }
+      for(const item of claimed){
+        if(review.includes(item)&&request&&task.humanReviewLease===task.leaseEpoch)continue
+        if(item.kind==='task.dialogue'){
+          const message=task.dialogue?.find(message=>message.id===item.payload.messageId)
+          if(message&&!message.reply&&!message.replyError){message.replyError={code:'TASK_PI_HOST_RETRY_DISABLED',phase:'recovery'};message.replyFailedAt=stamp}
+        }
+        item.state='acked';item.ackedAt=stamp;put('dynamic_wakes',item)
+      }
+      if(task.status==='active'&&!hasUnknownTaskEffect(task)&&!claimed.some(item=>item.kind==='task.dialogue'))task.lastDecision={action:'wait',summary:'旧版任务自动重试已停止；原任务和输入已保留，等待新的明确输入。',question:null,evidence:[],limitations:['TASK_PI_HOST_RETRY_DISABLED'],technicalFailure:task.technicalFailure}
+      saveTask(task);return changed({task})
     }
     if (kind === 'task.provider-failure') {
       const task = currentTask(a.binding, { active: false, current: false, allowHumanReview: true })
@@ -982,6 +1052,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       const reply = text(source.text, 'reply')
       request.status = 'answered'; request.reply = reply; request.sourceId = source.sourceId; request.actorId = source.actorId; request.answeredAt = stamp
+      clearDisabledTaskRetry(task)
       request.replyChannel = source.channel === 'web' ? 'web' : privateReply ? 'private' : 'dingtalk'
       task.sourceRefs = [...new Set([...task.sourceRefs, source.sourceId])]; task.lastDecision = null
       if (a.topicRefs !== undefined) task.topicRefs = clone(array(a.topicRefs))
@@ -994,7 +1065,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if (kind === 'task.complete') {
       const task = currentTask(a.binding)
       if (task.humanRequests?.some(item => item.status === 'waiting-reply')) fail('DYNAMIC_HUMAN_RESPONSE_REQUIRED')
-      if (task.dialogue?.some(item => !item.reply)) fail('DYNAMIC_TASK_DIALOGUE_PENDING')
+      if (task.dialogue?.some(item => !item.reply&&!item.replyError)) fail('DYNAMIC_TASK_DIALOGUE_PENDING')
+      if(Object.hasOwn(task,'technicalFailure'))task.technicalFailure=null
       if (execs(task.taskId).some(execution => (execution.feedback ?? []).some(item => !item.consumedAt && currentFeedback(execution, item)
         && item.requirementRevision === task.requirementRevision && item.controlRevision === task.controlRevision))) fail('DYNAMIC_EXECUTION_FEEDBACK_PENDING')
       assertClear(task.taskId)

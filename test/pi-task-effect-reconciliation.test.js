@@ -9,7 +9,7 @@ import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {singleTaskAuditKinds} from '../src/tasks/single-session.js'
 import {admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
-import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity} from '../src/tasks/effect-reconciliation.js'
+import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity} from '../src/tasks/effect-reconciliation.js'
 
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 // The records below are deliberately injected Host attestations. These tests
@@ -19,7 +19,7 @@ async function fixture(t,{mutate=async()=>{},withDrain=true}={}){
  const root=await mkdtemp('/tmp/night-effect-reconcile-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),bindings={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1}
  const task={...bindings,status:'active',control:'active',drained:true,recovering:false,ownerActorId:'owner',groupId:'group'},scope={taskId:'task',sessionId:'session',taskRoot:root,workingDirectory:root,ownerActorId:'owner',groupId:'group',channelDigest:taskEffectDigest({channel:'fixture'}),authorizationDigest:taskEffectDigest({mode:'workspace-write',memory:'fixture-group'})}
- const state={task,scope,live:false,operators:new Map()},auditKinds={...singleTaskAuditKinds,...admissionAuditKinds,...effectReconciliationAuditKinds}
+ const state={task,scope,live:false,operators:new Map()},auditKinds={...singleTaskAuditKinds,...admissionAuditKinds,...effectReconciliationAuditKinds,'directory/changed':()=>true}
  // Malformed payload tests require a permissive fixture writer so the real
  // independent reader, rather than the producer's schema, must reject them.
  const writer=await backend.createNative(ctx.sessions.prepare('session',{meta:{cwd:root}}).header,{auditKinds:Object.fromEntries(Object.keys(auditKinds).map(name=>[name,()=>true]))})
@@ -128,4 +128,49 @@ test('prepare rechecks current task and committed cut after asynchronous evidenc
 test('strict journal decoding rejects an uncommitted physical tail without repairing it',async t=>{
  const f=await fixture(t);await appendFile(f.path,'{"torn":');const bytes=await readFile(f.path)
  await assert.rejects(f.inspect(),{code:'PI_SESSION_UNCOMMITTED_TAIL'});assert.deepEqual(await readFile(f.path),bytes)
+})
+
+async function coveredFixture(t,{alter=value=>{},second=false,after=()=>{}}={}){
+ return fixture(t,{withDrain:false,mutate:async f=>{
+  const ownerBinding={...f.bindings,contextRevision:1};f.state.task.contextRevision=1
+  const packet={id:'preserve-input',source:{kind:'task-input',taskSession:ownerBinding},content:[{type:'text',text:'Additional facts only; original authority and work remain valid.'}]}
+  f.receipt('enqueued',packet,'admission')
+  const id=f.writer.manager.appendCustomMessageEntry('night.business-input',packet.content,false,{packetId:packet.id,source:packet.source})
+  f.receipt('admitted',{id:packet.id,entryId:id},'admission')
+  const targets=[{id:f.intentEntryId,binding:f.bindings}]
+  if(second){
+   const args={path:'work/second.txt',content:'another uncertain effect'},callId='call-two'
+   f.writer.manager.appendMessage({...f.assistant,content:[{type:'toolCall',id:callId,name:'write',arguments:args}]})
+   const id=f.receipt('effect-intent',{key:taskEffectDigest({requirementRevision:1,controlRevision:1,contextRevision:1,name:'write',args}),name:'write',callId})
+   f.writer.manager.appendMessage({role:'toolResult',toolCallId:callId,toolName:'write',isError:true,content:[{type:'text',text:'uncertain'}],timestamp:2})
+   f.secondIntentEntryId=id;targets.push({id,binding:ownerBinding})
+  }
+  const value=await ownerDrainedInputsReceipt({binding:ownerBinding,scopeDigest:taskEffectScopeDigest(f.state.scope),cutEntryId:f.writer.manager.getLeafId(),inputs:targets.map(item=>({intentEntryId:item.id,intentDigest:taskEffectDigest(f.writer.manager.getEntries().find(entry=>entry.id===item.id)),originBinding:item.binding}))},async()=>({issuer:'night-owned-provider-drain-v1',scope:'registered-owned-provider-ranges',ownerId:'session',modelIdle:true,toolsIdle:true,processes:0,jobs:0,observedAt:new Date().toISOString(),evidenceDigest:taskEffectDigest({fixture:'one actual owner range'})}))
+  alter(value,f);f.ownerDrainEntryId=f.writer.appendAudit(value);await after(f)
+ }})
+}
+test('one coverage receipt retains exact effect origins across authorized preserve inputs',async t=>{
+ const f=await coveredFixture(t,{second:true}),first=await f.inspect(),other=await f.core.inspect({taskId:'task',intentEntryId:f.secondIntentEntryId})
+ assert.equal(first.originBinding.contextRevision,0);assert.equal(other.originBinding.contextRevision,1);assert.equal(first.currentBinding.contextRevision,1)
+ assert.equal(first.ownerDrainEntryId,other.ownerDrainEntryId)
+ const proposalValue=await proposal(f),prepared=await f.core.prepare(proposalValue.request)
+ assert.equal(prepared.payload.originBinding.contextRevision,0);assert.equal(prepared.payload.ownerDrainEntryId,f.ownerDrainEntryId)
+})
+for(const [name,alter]of [
+ ['wrong intent digest',value=>{value.payload.inputs[0].intentDigest='0'.repeat(64)}],
+ ['wrong origin revision',value=>{value.payload.inputs[0].originBinding={...value.payload.inputs[0].originBinding,contextRevision:1}}],
+ ['foreign owner lease',value=>{value.payload.inputs[0].originBinding={...value.payload.inputs[0].originBinding,leaseEpoch:2}}],
+ ['future context',value=>{value.payload.inputs[0].originBinding={...value.payload.inputs[0].originBinding,contextRevision:2}}],
+ ['duplicate covered intent',value=>{value.payload.inputs.push(structuredClone(value.payload.inputs[0]))}],
+ ['unadmitted owner input',value=>{value.payload.binding={...value.payload.binding,contextRevision:2}}],
+])test('covered drain rejects '+name,async t=>{const f=await coveredFixture(t,{alter});await assert.rejects(f.inspect())})
+test('covered drain cannot cover a non-intent entry or a changed committed branch',async t=>{
+ const invalid=await coveredFixture(t,{alter:(value,f)=>{value.payload.inputs.push({intentEntryId:f.callEntryId,intentDigest:taskEffectDigest(f.writer.manager.getEntries().find(e=>e.id===f.callEntryId)),originBinding:f.bindings})}})
+ await assert.rejects(invalid.inspect(),{code:'TASK_EFFECT_INTENT_INVALID'})
+ const branch=await coveredFixture(t,{after:f=>f.writer.manager.branch(f.inputEntryId)})
+ await assert.rejects(branch.inspect(),{code:'TASK_EFFECT_DRAIN_BRANCH_MISMATCH'})
+})
+test('covered drain still rejects any later business write after its attested cut',async t=>{
+ const f=await coveredFixture(t,{after:f=>f.receipt('changed',{cwd:f.root,recovered:false},'directory')})
+ await assert.rejects(f.inspect(),{code:'TASK_EFFECT_DRAIN_CUT_CHANGED'})
 })
