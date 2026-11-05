@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto'
 import { resolve, dirname } from 'node:path'
 const manifest = JSON.parse(await readFile('docs/source-manifest.json','utf8'))
 const excluded = new Set(['client.js','web-client.js','index.js'])
-const adapted = new Set(['task-topic-coordinator.js','store.js','storage-v8-schema.js','task-session-persistence.js','task-session-service.js','execution-session.js'])
+const adapted = new Set(['task-topic-coordinator.js','store.js','storage-v8-schema.js','task-session-persistence.js','task-session-service.js','execution-session.js','workflow-configuration.js'])
+const adaptedCount = adapted.size
 let retained = 0
 for (const entry of manifest.files) {
   const path = resolve('packages/dingtalk-core', entry.source)
@@ -30,4 +31,4 @@ const http = await readFile('packages/dingtalk-core/http.js','utf8')
 for (const [, route] of routes.matchAll(/^- `([^`]+)`/gm)) if (!http.includes("'" + route + "'")) throw new Error('HTTP route missing: ' + route)
 const loop = await readFile('src/pi-loop.js','utf8')
 if (!loop.includes("await runAgentLoop(")) throw new Error('Pi loop is not wired')
-console.log(JSON.stringify({source: manifest.sourceCommit, retainedModules: retained, excludedUiModules: 3, explicitlyAdaptedModules: 6, relativeImports: 'closed', httpRoutes: 'retained'}))
+console.log(JSON.stringify({source: manifest.sourceCommit, retainedModules: retained, excludedUiModules: 3, explicitlyAdaptedModules: adaptedCount, relativeImports: 'closed', httpRoutes: 'retained'}))

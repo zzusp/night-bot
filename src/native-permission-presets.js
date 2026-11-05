@@ -1,6 +1,6 @@
 import schema from '@deepseek-ai/schemastery'
 import {z} from 'zod'
-import {Remote,TypertRemoteService} from '@deepseek-ai/dsh-typert-protocol'
+import {Remote,TypertRemoteService} from './native-typert-protocol.js'
 import {SANDBOX_MODES,setSandboxMode} from './native-policy.js'
 import {APPROVAL_POLICIES,setApprovalPolicy} from './native-approval.js'
 export const CUSTOM_PRESET='custom',AUTO_PRESET='auto'

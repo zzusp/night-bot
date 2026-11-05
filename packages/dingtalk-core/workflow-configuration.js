@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { credentialKey } from '@deepseek-ai/dsh-credentials'
+import { credentialKey } from '../../src/native-credential-protocol.js'
 import { z } from 'zod'
 
 const owner = 'dingtalk-dsh-assistant'

@@ -1,4 +1,4 @@
-import {TypertRemoteService,Remote,RemoteError} from '@deepseek-ai/dsh-typert-protocol'
+import {TypertRemoteService,Remote,RemoteError} from './native-typert-protocol.js'
 import {deepFreeze} from './native-values.js'
 import {LlmError,HarnessError,callConfigEquals,freezeMessage,fileHandleText,contentHasFile,contentHasImage,projectFilesToText,projectImagesForTextModel,projectToolUpdates} from '@deepseek-ai/dsh-llm'
 import {resolvePiRetryPolicy} from './pi-provider-retry.js'

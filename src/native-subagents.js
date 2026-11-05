@@ -6,7 +6,7 @@ import z from "@deepseek-ai/schemastery";
 import { scopeTarget } from "@deepseek-ai/dsh-scope";
 import { ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 import { canonicalClientTimeZone } from "./native-time-zone.js";
-import { Remote, RemoteError, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
 import { AttachmentError } from "./native-attachment-errors.js";
 import { z as z$1 } from "zod";
 import { HarnessError, ReasoningEffortId, boundContextSummary, contentHasImage, createUserMessage, errorChain, joinAssistantStreamText } from "@deepseek-ai/dsh-llm";

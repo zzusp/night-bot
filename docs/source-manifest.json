@@ -1119,8 +1119,9 @@
     {
       "source": "workflow-configuration.js",
       "sourceSha256": "3de6b9a38ac87b32e52741e482f5bdcf6d6170d925e1181f1deb2b8e380c13a2",
-      "status": "retained",
-      "sha256": "3de6b9a38ac87b32e52741e482f5bdcf6d6170d925e1181f1deb2b8e380c13a2"
+      "status": "adapted",
+      "sha256": "b093861c61a4d1c5c50e7e56c62bcea7be8558fdb16476cdaa537bcd29200b09",
+      "adaptation": "Route the two-argument scope/id credential builder to the local protocol; all stored key strings and workflow behavior retained."
     },
     {
       "source": "workflow-cutover.js",

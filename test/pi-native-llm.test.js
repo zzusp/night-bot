@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import OldLlm,{LlmAdapter,createAssistantMessage,createUserMessage,LlmError} from '@deepseek-ai/dsh-llm'
-import {remoteMethods} from '@deepseek-ai/dsh-typert-protocol'
+import {remoteMethods} from '../src/native-typert-protocol.js'
 import NativeLlm from '../src/native-llm.js'
 function fixture(t,Impl=NativeLlm){const ctx=new Context();ctx.logger={warn(){}};new Impl(ctx);t.after(()=>ctx.fiber.dispose());return ctx}
 const adapter=(label='one')=>new class extends LlmAdapter{resolveModel(provider,id){return Promise.resolve({provider,id,name:label,context:{contextWindow:1000},defaultMaxTokens:32,reasoning:{efforts:[{id:'off',name:'Off'},{id:'low',name:'Low'}],defaultEffort:'low'}})}async *stream(request){yield{type:'block-end',index:0,block:{type:'text',text:label}};yield{type:'finish',reason:{kind:'stop'}}}}

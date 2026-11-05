@@ -1,7 +1,7 @@
 // MIT source-derived preset generation, scope and Loader audit algorithms; see THIRD_PARTY.md.
 import {AsyncLocalStorage} from "node:async_hooks";
 import z from "@deepseek-ai/schemastery";
-import { Remote, RemoteError, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
 import { bindScopeParent, createScope, scopeOf, scopeParentOf } from "@deepseek-ai/dsh-scope";
 import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
 import { dump } from "js-yaml";
