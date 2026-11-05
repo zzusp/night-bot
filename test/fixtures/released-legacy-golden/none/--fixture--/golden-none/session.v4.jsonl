@@ -1,2 +1,0 @@
-{"type":"session","version":4,"id":"golden-none","createdAt":1,"cwd":"/fixture","isSeeded":false,"delegationDepth":0}
-{"type":"user/message","seq":0,"time":1793848916761,"data":{"source":{"kind":"user"},"content":[{"type":"text","text":"ORIGINAL_LEGACY_GOLDEN_NO_REPLAY"}],"role":"user","id":"655ce589-85bc-4797-a4d8-757c963b36cb"},"surfaceOp":"append"}

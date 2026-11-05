@@ -1,3 +1,13 @@
+# Pi native rebuild removal stage (2026-11-05)
+
+Current removal-stage validation: 584 default Pi tests passed; 278 retained
+historical adapter tests passed, one live-model case skipped. Source/import and
+retired-code guards pass; frozen install with scripts disabled passes. This does
+not establish full DSH independence: 149 direct DSH development dependencies and
+source-derived runtime protocols/backends remain. See [PI-NATIVE-REBUILD.md](PI-NATIVE-REBUILD.md)
+and [evidence manifest](pi-native-rebuild-validation.json). Older entries below
+are prior-stage evidence, not results for this change. No push/merge/deploy/CI.
+
 # Portable personal-assistant kit acceptance (2026-11-05)
 
 Current application changes add the installation data layout, scoped Markdown

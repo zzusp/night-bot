@@ -1,5 +1,5 @@
 // MIT source-derived compatibility preflight; no dsh-app-boot runtime import.
-// Legacy DSH peers describe the retained v4 ABI, independently of the Pi SDK/app version.
+// Manifest/include resolution retains attributed source; DSH ABI admission is removed.
 import {createRequire,isBuiltin} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {existsSync,readFileSync,realpathSync} from 'node:fs'
@@ -7,138 +7,22 @@ import {dirname,extname,isAbsolute,join} from 'node:path'
 import {load} from 'js-yaml'
 import {ModuleLoader} from '@deepseek-ai/cordis-plugin-loader'
 import {entryListSchema,applyEntryPatches} from '@deepseek-ai/cordis-plugin-include'
-import semver,{parse} from 'semver'
-export const LEGACY_PEER_ABI_VERSION='0.2.1-alpha.2'
-export const getDshRuntimeVersion=()=>LEGACY_PEER_ABI_VERSION
-
-function objectOf$1(value, field) {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${field} must be an object`);
-	return value;
+// DSH plugins have no ABI in Night Bot. Reject them before module evaluation;
+// a profile compatibility.json cannot turn an unsupported ABI into support.
+export function evaluatePluginCompatibility(manifest) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new TypeError('Plugin manifest must be an object')
+  if (!Object.hasOwn(manifest, 'peerDependencies')) return
+  const dependencies = manifest.peerDependencies
+  if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) throw new TypeError('Plugin peerDependencies must be an object')
+  const peers = {}
+  for (const [name, range] of Object.entries(dependencies)) {
+    if (typeof range !== 'string') throw new TypeError('Plugin peer dependency range must be a string')
+    if (name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-')) peers[name] = range
+  }
+  if (Object.keys(peers).length) return {name:manifest.name, version:manifest.version, peers}
 }
-function runtimeVersionOf(value) {
-	if (typeof value !== "string" || semver.valid(value) === null) throw new Error(`Invalid dsh runtime version: ${JSON.stringify(value)}; expected a semantic version`);
-	return value;
-}
-function identityField(manifest, field) {
-	const value = Object.hasOwn(manifest, field) ? manifest[field] : void 0;
-	if (typeof value !== "string" || value.trim() === "") throw new Error(`Plugin manifest ${field} must be a non-empty string when dsh peers are incompatible`);
-	return value;
-}
-
-function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion = getDshRuntimeVersion()) {
-	runtimeVersionOf(runtimeVersion);
-	const fields = objectOf$1(manifest, "Plugin manifest");
-	if (!Object.hasOwn(fields, "peerDependencies")) return void 0;
-	const dependencies = objectOf$1(fields.peerDependencies, "Plugin manifest peerDependencies");
-	const peers = {};
-	for (const [name, range] of Object.entries(dependencies)) {
-		if (typeof range !== "string") throw new Error(`Plugin manifest peerDependencies[${JSON.stringify(name)}] must be a string`);
-		if (name !== "@deepseek-ai/dsh" && !name.startsWith("@deepseek-ai/dsh-")) continue;
-		const requirement = [
-			"workspace:^",
-			"workspace:~",
-			"workspace:*"
-		].includes(range) ? runtimeVersion : range;
-		if (requirement.trim() === "" || !semver.satisfies(runtimeVersion, requirement, { includePrerelease: true })) peers[name] = range;
-	}
-	if (Object.keys(peers).length === 0) return void 0;
-	const name = identityField(fields, "name");
-	const version = identityField(fields, "version");
-	const key = `${name}@${version}`;
-	return {
-		name,
-		version,
-		runtimeVersion,
-		peers,
-		exempted: (Object.hasOwn(exemptions, key) ? exemptions[key] : void 0)?.includes(runtimeVersion) === true
-	};
-}
-/**
-* Describe incompatible peers, their risk, and the exact-version remedy.
-* Surfaces with their own grant mechanism or locale render the structured result themselves.
-* @param issue - incompatible plugin/runtime result, including exempted mismatches.
-* @returns an English diagnostic for logs and stderr.
-*/
-function pluginCompatibilityWarning(issue) {
-	const key = `${issue.name}@${issue.version}`;
-	return `Plugin ${key} is incompatible with dsh ${issue.runtimeVersion}: peerDependencies ${JSON.stringify(issue.peers)}. Running it may cause crashes or data loss. Update the plugin or install a plugin version compatible with this dsh runtime. To accept this risk explicitly, grant the exact-version exemption for ${key} on dsh ${issue.runtimeVersion} with \`dsh plugin allow-version\` or the plugin manager, then retry the installation or restart dsh. Exact-version exemption: ${issue.exempted ? "active" : "not active"}.`;
-}
-
-const PROFILE_COMPATIBILITY_FILENAME = "compatibility.json";
-/** Published and scoped npm package names, as npm accepts them in a manifest dependency key. */
-const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
-/** Whether a decoded record accepts only exact DSH versions. */
-function isVersionList(value) {
-	return Array.isArray(value) && value.every((version) => typeof version === "string" && isExactPluginVersion(version));
-}
-/** Test whether an exemption names a canonical exact SemVer, including build metadata.
-* @param value Version supplied by a manifest or user.
-* @returns False for ranges, prefixes, whitespace, and malformed versions.
-*/
-function isExactPluginVersion(value) {
-	const parsed = parse(value);
-	return parsed !== null && value === `${parsed.version}${parsed.build.length === 0 ? "" : `+${parsed.build.join(".")}`}`;
-}
-/** Validate one explicit exemption without granting it.
-* @param packageVersion Exact npm package-name@version, never an installation spec or range.
-* @param runtimeVersion Exact DSH version, including prerelease and build metadata.
-* @throws When either identity is not canonical.
-*/
-function validatePluginVersionExemption(packageVersion, runtimeVersion) {
-	const separator = packageVersion.lastIndexOf("@");
-	if (separator <= 0 || !PACKAGE_NAME.test(packageVersion.slice(0, separator)) || !isExactPluginVersion(packageVersion.slice(separator + 1)) || !isExactPluginVersion(runtimeVersion)) throw new Error("Version exemptions require an exact npm package-name@version and an exact DSH runtime version");
-}
-/** Read the profile's independent compatibility file without loading plugins.
-* A missing file authorizes nothing. An unreadable or unparsable file authorizes nothing and is
-* reported instead of failing, so a bad file can never make the profile unusable; rejected records
-* are skipped while the remaining valid ones still apply.
-* @param profileDir Absolute profile directory.
-* @returns Accepted exemptions plus every problem found; no manifest fallback is used.
-*/
-function readProfileCompatibility(profileDir) {
-	const filename = join(profileDir, PROFILE_COMPATIBILITY_FILENAME);
-	const unreadable = (reason) => ({
-		exemptions: {},
-		warnings: [`${filename} ${reason}; treating the profile as having no exemptions`],
-		rewritable: false
-	});
-	let text;
-	try {
-		text = readFileSync(filename, "utf8");
-	} catch (error) {
-		if (error.code === "ENOENT") return {
-			exemptions: {},
-			warnings: [],
-			rewritable: true
-		};
-		return unreadable(`cannot be read (${String(error)})`);
-	}
-	let value;
-	try {
-		value = JSON.parse(text);
-	} catch (error) {
-		return unreadable(`is not valid JSON (${String(error)})`);
-	}
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return unreadable("must map exact package@version keys to DSH version lists");
-	const exemptions = {};
-	const warnings = [];
-	for (const [key, versions] of Object.entries(value)) {
-		const separator = key.lastIndexOf("@");
-		if (separator <= 0 || !PACKAGE_NAME.test(key.slice(0, separator)) || !isExactPluginVersion(key.slice(separator + 1))) {
-			warnings.push(`${filename}: ${JSON.stringify(key)} is not an exact package-name@version key; the record is ignored`);
-			continue;
-		}
-		if (!isVersionList(versions)) {
-			warnings.push(`${filename}: ${key} must contain a list of exact DSH versions; the record is ignored`);
-			continue;
-		}
-		exemptions[key] = versions;
-	}
-	return {
-		exemptions,
-		warnings,
-		rewritable: warnings.length === 0
-	};
+export function pluginCompatibilityWarning(issue) {
+  return `Plugin ${issue.name ?? '(unnamed)'} declares unsupported DSH peers ${JSON.stringify(issue.peers)}. Night Bot uses Pi and does not implement the DSH plugin ABI.`
 }
 
 function barePackageName(request) {
@@ -202,18 +86,18 @@ function manifestOf(ctx, name, parentURL) {
 		dir = parent;
 	}
 }
-/** Prepare profile or preset rows before the owning DSH caller passes them to Loader.
+/** Prepare profile or preset rows before the owning application passes them to Loader.
 * Only a compatibility conflict denies a row: an entry whose manifest cannot be resolved keeps
 * the Loader's own import failure. A denied ordinary row gains `disabled`; a native Include that
 * reaches a denied plugin is denied as a whole, because its file is never rewritten.
-* @param ctx Context carrying launcher-owned profile facts; non-profile contexts retain their rows.
+* @param ctx Context carrying launcher-owned profile facts; all contexts reject DSH ABI dependencies.
 * @param entries Complete effective entry list, after patch composition.
 * @param parentURL Resolution base of the tree that will import these rows.
-* @param binName Diagnostic prefix for a denied row; defaults to `dsh`.
-* @returns Detached rows with incompatible entries denied; reads the profile compatibility file once.
+* @param binName Diagnostic prefix for a denied row; defaults to `night-bot`.
+* @returns Detached rows with incompatible entries denied; does not load historical compatibility exemptions.
 * @throws For malformed compatibility permissions or a profile composition without a resolution base.
 */
-function prepareProfileEntries(ctx, entries, parentURL, binName = "dsh") {
+function prepareProfileEntries(ctx, entries, parentURL, binName = "night-bot") {
 	return preflight(ctx, entries, parentURL, (row, reason) => {
 		const label = typeof row.id === "string" ? `row ${JSON.stringify(row.id)}` : row.name;
 		process.stderr.write(`${binName}: disabling profile plugin ${label}: ${reason}\n`);
@@ -221,22 +105,16 @@ function prepareProfileEntries(ctx, entries, parentURL, binName = "dsh") {
 }
 function preflight(ctx, entries, parentURL, report) {
 	const rows = structuredClone(entries);
-	const profile = ctx.get("profileContext");
-	if (profile === void 0) return {
-		rows,
-		blocked: false
-	};
 	if (parentURL === void 0) throw new Error("Profile compatibility preflight requires a resolution base");
-	const { exemptions, warnings } = readProfileCompatibility(profile.dir);
-	for (const warning of warnings) process.stderr.write(`${warning}\n`);
+
 	const includes = /* @__PURE__ */ new Set();
 	/** Only a compatibility conflict denies a row; every other failure keeps the Loader's own diagnosis. */
 	const denial = (row, base) => {
 		try {
 			const manifest = manifestOf(ctx, row.name, base);
 			if (manifest === void 0) return void 0;
-			const issue = evaluatePluginCompatibility(manifest, exemptions);
-			return issue === void 0 || issue.exempted ? void 0 : pluginCompatibilityWarning(issue);
+			const issue = evaluatePluginCompatibility(manifest);
+			return issue === void 0 ? void 0 : pluginCompatibilityWarning(issue);
 		} catch (error) {
 			return `its declared peer dependencies cannot be validated: ${error instanceof Error ? error.message : String(error)}`;
 		}
@@ -298,4 +176,4 @@ function preflight(ctx, entries, parentURL, report) {
 	};
 }
 
-export {evaluatePluginCompatibility,pluginCompatibilityWarning,readProfileCompatibility,prepareProfileEntries}
+export {prepareProfileEntries}

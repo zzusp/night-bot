@@ -1,6 +1,5 @@
 import { restorePiReplay } from './pi-replay.js'
-import LegacyJsonlPersistence from './legacy-v4/dsh-session-persistence-jsonl/lib/index.js'
-import { Service, Context } from '@deepseek-ai/cordis'
+import { Service } from '@deepseek-ai/cordis'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { mkdir, readFile, writeFile, open, stat, readdir, truncate, rm, lstat, link, unlink } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
@@ -95,11 +94,12 @@ async function load(path,id,codec) {
   if(!header||!committed.length)throw fail('PI_SESSION_COMMIT_REQUIRED')
   const metadata=committed.find(e=>e.type==='custom'&&e.customType==='night.header')?.data
   if(!metadata||metadata.header.id!==id)throw fail('PI_SESSION_IDENTITY_MISMATCH')
+  if(metadata.importedFrom!==undefined)throw fail('PI_SESSION_IMPORT_UNSUPPORTED')
   const events=committed.map(logicalEvent).filter(Boolean).map(event=>codec?.readEvent(event)??event)
   const logicalHeader=codec?.readHeader(metadata.header)??metadata.header
   if(events.some((e,i)=>e.seq!==i)||committed.at(-1).data.eventCount!==events.length)throw fail('PI_SESSION_EVENT_SEQUENCE_INVALID')
   validateStoredEvents(logicalHeader,events,{kind:'pi-jsonl',path})
-  return {header:logicalHeader,inheritedEventCount:metadata.inheritedEventCount,importedFrom:metadata.importedFrom,legacyEventHash:metadata.legacyEventHash,events,entries:committed,piHeader:header,committedBytes,totalBytes:bytes.length}
+  return {header:logicalHeader,inheritedEventCount:metadata.inheritedEventCount,events,entries:committed,piHeader:header,committedBytes,totalBytes:bytes.length}
 }
 async function piContent(content,ctx,signal) {
   const result=[]
@@ -165,14 +165,14 @@ export default class PiSessionPersistence extends Service {
   static inject=['piAuthority']
   identity=Symbol('native-pi-session-persistence')
   constructor(ctx,config) {
-    super(ctx,'sessionPersistence');this.config={...config,root:resolve(config.root)};this.legacyContext=undefined;this.closed=false;this.handles=new Set();this.writers=new Map()
+    super(ctx,'sessionPersistence');this.config={...config,root:resolve(config.root)};this.closed=false;this.handles=new Set();this.writers=new Map()
     ctx.on('session/event',(session,event)=>{
       const handle=this.writers.get(session.id)
       if(handle)handle.enqueue(event)
     })
     ctx.on('session/flush',session=>this.writers.get(session.id)?.flush())
     ctx.on('session/disposed',session=>this.writers.get(session.id)?.close().catch(error=>ctx.logger.warn(error.message)))
-    ctx.effect(()=>async()=>{this.closed=true;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);await this.legacyLoading?.catch(()=>{});if(this.legacyContext)await this.legacyContext.fiber.dispose();if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
+    ctx.effect(()=>async()=>{this.closed=true;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
   }
   async checkedRoot(create=false) {
     const paths=[];let cursor=this.config.root
@@ -190,28 +190,6 @@ export default class PiSessionPersistence extends Service {
     if(!info){if(allowMissing)return;throw new SessionPersistenceNotFoundError(id)}
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1)throw fail('PI_SESSION_PATH_UNSAFE')
   }
-  async legacy() {
-    if(!await this.checkedRoot(false))return undefined
-    if(this.legacyLoading)return this.legacyLoading
-    if(this.legacyContext)return this.legacyContext.get('sessionPersistence')
-    const entries=await readdir(this.config.root,{withFileTypes:true}).catch(e=>{if(e.code==='ENOENT')return [];throw e})
-    if(!entries.some(entry=>entry.isDirectory()&&!entry.name.endsWith('.lock')&&!entry.name.endsWith('.reap')))return undefined
-    return this.legacyLoading=(async()=>{const context=new Context();try{await context.plugin(LegacyJsonlPersistence,{root:this.config.root,compression:this.config.compression??'none'});this.legacyContext=context;return context.get('sessionPersistence')}catch(error){await context.fiber.dispose();throw error}})().finally(()=>{this.legacyLoading=undefined})
-  }
-  async importedHandle(id,access,lease,options) {
-    const legacy=await this.legacy(),snapshot=await legacy?.stat(id,options)
-    if(!snapshot)throw new SessionPersistenceNotFoundError(id)
-    if(access==='read')return legacy.open(id,'read',options)
-    const fence=await legacy.open(id,'write',options)
-    let handle
-    try {
-      const {events}=await fence.read(),header=fence.header
-      const manager=SessionManager.inMemory(header.cwd);manager.newSession({id:header.id})
-      manager.appendCustomEntry('night.header',{header,inheritedEventCount:fence.inheritedEventCount,importedFrom:'dsh-jsonl',legacyRevision:snapshot.revision,legacyEventHash:digest(JSON.stringify({header,events}))})
-      handle=await this.makeHandle({path:this.path(id),header,inheritedEventCount:fence.inheritedEventCount,manager,events:[],lease,legacyFence:fence,storedEntries:0,newFile:true})
-      await handle.append(events);await handle.flush();return handle
-    }catch(error){try{await(handle?handle.close():fence.close())}catch(cleanup){throw new AggregateError([error,cleanup],'Pi legacy import failed',{cause:error})}throw error}
-  }
   path(id){if(typeof id!=='string'||!id)throw fail('PI_SESSION_ID_INVALID');return join(this.config.root,digest(id)+'.pi.jsonl')}
   async create(header,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');header=materializeCreateHeader(header)
@@ -220,7 +198,6 @@ export default class PiSessionPersistence extends Service {
     const path=this.path(header.id),lease=await acquire(path,header.id)
     try {
       try{await stat(path);throw new SessionAlreadyExistsError(header.id)}catch(e){if(e.code!=='ENOENT')throw e}
-      if(await(await this.legacy())?.stat(header.id,options))throw new SessionAlreadyExistsError(header.id)
       const manager=SessionManager.inMemory(header.cwd);manager.newSession({id:header.id})
       manager.appendCustomEntry('night.header',{header:this.ctx.get('portablePaths')?.header(header)??header,inheritedEventCount:options.inheritedEventCount??0})
       const handle=await this.makeHandle({path,header,inheritedEventCount:options.inheritedEventCount??0,manager,events:[],lease,storedEntries:0,newFile:true})
@@ -233,26 +210,17 @@ export default class PiSessionPersistence extends Service {
     const live=this.writers.get(id)
     if(access==='read'&&live)return live.reader()
     const path=this.path(id),lease=access==='write'?await acquire(path,id):undefined
-    let legacyFence
     try {
-      let data
-      try{data=await load(path,id,this.ctx.get('portablePaths'))}catch(error){if(error.name==='SessionPersistenceNotFoundError')return await this.importedHandle(id,access,lease,options);throw error}
-      const legacyBackend=access==='write'&&data.importedFrom?await this.legacy():undefined
-      legacyFence=legacyBackend&&await legacyBackend.stat(id,options)?await legacyBackend.open(id,'write',options):undefined
-      if(data.importedFrom){
-        if(!legacyFence)throw fail('PI_LEGACY_SOURCE_MISSING')
-        const original=await legacyFence.read()
-        if(!data.legacyEventHash||digest(JSON.stringify({header:legacyFence.header,events:original.events}))!==data.legacyEventHash)throw fail('PI_LEGACY_SOURCE_DIVERGED')
-      }
+      const data=await load(path,id,this.ctx.get('portablePaths'))
       let manager
       if(access==='write') {
         if(data.totalBytes!==data.committedBytes)await truncate(path,data.committedBytes)
         manager=SessionManager.inMemory(data.header.cwd);manager.setSessionFile(path)
       }
-      return await this.makeHandle({...data,path,access,lease,legacyFence,manager,storedEntries:data.entries.length,newFile:false})
-    }catch(error){const errors=[error];for(const close of [()=>legacyFence?.close(),()=>lease?.close()])try{await close()}catch(cleanup){errors.push(cleanup)};if(errors.length>1)throw new AggregateError(errors,'Pi session open failed',{cause:error});throw error}
+      return await this.makeHandle({...data,path,access,lease,manager,storedEntries:data.entries.length,newFile:false})
+    }catch(error){const errors=[error];for(const close of [()=>lease?.close()])try{await close()}catch(cleanup){errors.push(cleanup)};if(errors.length>1)throw new AggregateError(errors,'Pi session open failed',{cause:error});throw error}
   }
-  async makeHandle({path,header,inheritedEventCount,manager,events,entries,lease,legacyFence,access='write',storedEntries,newFile}) {
+  async makeHandle({path,header,inheritedEventCount,manager,events,entries,lease,access='write',storedEntries,newFile}) {
     const backend=this,id=header.id,pending=[]
     let chain=Promise.resolve(),closed=false,closing,poisoned,unregister
     const assertOpen=operation=>{if(closed)throw new SessionHandleClosedError(id,operation);if(poisoned)throw poisoned}
@@ -347,7 +315,7 @@ export default class PiSessionPersistence extends Service {
           }catch(error){errors.push(error)}
           closed=true;backend.handles.delete(handle)
           if(access==='write'&&backend.writers.get(id)===handle){backend.writers.delete(id);unregister?.()}
-          for(const release of [()=>legacyFence?.close(),()=>lease?.close()])try{await release()}catch(error){errors.push(error)}
+          for(const release of [()=>lease?.close()])try{await release()}catch(error){errors.push(error)}
           if(errors.length)throw new AggregateError(errors,'Pi session close failed',{cause:errors[0]})
         })()
       },
@@ -362,7 +330,7 @@ export default class PiSessionPersistence extends Service {
     }
     this.handles.add(handle);return handle
   }
-  async stat(id,options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedFile(id,true);if(this.writers.has(id))return this.writers.get(id).snapshot();try{const data=await load(this.path(id),id,this.ctx.get('portablePaths'));return{header:clean(data.header),eventCount:data.events.length,revision:digest(JSON.stringify(data.entries.at(-1))),sizeBytes:data.committedBytes,formatStatus:'current'}}catch(error){if(error.name==='SessionPersistenceNotFoundError')return (await this.legacy())?.stat(id,options);throw error}}
-  async list(options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true);const result=[];for(const name of await readdir(this.config.root)){if(!name.endsWith('.pi.jsonl'))continue;const path=join(this.config.root,name);const info=await lstat(path);if(!info.isFile()||info.isSymbolicLink())throw fail('PI_SESSION_PATH_UNSAFE');const bytes=await readFile(path,'utf8');const header=JSON.parse(bytes.split('\n')[0]);if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH');const item=await this.stat(header.id,options);if(item)result.push(item)}const ids=new Set(result.map(item=>item.header.id));for(const writer of this.writers.values())if(!ids.has(writer.id)){result.push(writer.snapshot());ids.add(writer.id)}for(const item of await(await this.legacy())?.list(options)??[])if(!ids.has(item.header.id))result.push(item);return result}
+  async stat(id,options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedFile(id,true);if(this.writers.has(id))return this.writers.get(id).snapshot();try{const data=await load(this.path(id),id,this.ctx.get('portablePaths'));return{header:clean(data.header),eventCount:data.events.length,revision:digest(JSON.stringify(data.entries.at(-1))),sizeBytes:data.committedBytes,formatStatus:'current'}}catch(error){if(error.name==='SessionPersistenceNotFoundError')return undefined;throw error}}
+  async list(options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true);const result=[];for(const name of await readdir(this.config.root)){if(!name.endsWith('.pi.jsonl'))continue;const path=join(this.config.root,name);const info=await lstat(path);if(!info.isFile()||info.isSymbolicLink())throw fail('PI_SESSION_PATH_UNSAFE');const bytes=await readFile(path,'utf8');const header=JSON.parse(bytes.split('\n')[0]);if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH');const item=await this.stat(header.id,options);if(item)result.push(item)}const ids=new Set(result.map(item=>item.header.id));for(const writer of this.writers.values())if(!ids.has(writer.id)){result.push(writer.snapshot());ids.add(writer.id)}return result}
   async flush(){if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');const results=await Promise.allSettled([...this.writers.values()].map(handle=>handle.flush()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence flush failed')}
 }

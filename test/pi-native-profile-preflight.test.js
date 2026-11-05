@@ -1,21 +1,43 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises'
+import {mkdtemp,mkdir,writeFile,rm,readFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {pathToFileURL} from 'node:url'
-import {evaluatePluginCompatibility,readProfileCompatibility,prepareProfileEntries,LEGACY_PEER_ABI_VERSION} from '../src/native-profile-preflight.js'
+import {evaluatePluginCompatibility,prepareProfileEntries} from '../src/native-profile-preflight.js'
 const fresh=async t=>{const root=await mkdtemp(join(tmpdir(),'night-preflight-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
-test('native compatibility preflight retains legacy peer ABI and exact-version exemption math',async()=>{
- const old=await import('@deepseek-ai/dsh-app-boot');assert.equal(LEGACY_PEER_ABI_VERSION,old.getDshRuntimeVersion());for(const range of ['^0.2.1-alpha.1','^999.0.0','workspace:^','workspace:~','workspace:*','latest','', '>=0.1.0']){const manifest={name:'fixture',version:'1.0.0',peerDependencies:{'@deepseek-ai/dsh':range,'@deepseek-ai/dsh-tools':range,unrelated:'^999.0.0'}};for(const exemptions of [{},{'fixture@1.0.0':[LEGACY_PEER_ABI_VERSION]},{'fixture@1.0.0':['0.2.1']}])assert.deepEqual(evaluatePluginCompatibility(manifest,exemptions),old.evaluatePluginCompatibility(manifest,exemptions))}for(const manifest of [{peerDependencies:null},{peerDependencies:{other:12}},{peerDependencies:{'@deepseek-ai/dsh':'^999'}}])assert.throws(()=>evaluatePluginCompatibility(manifest));assert.equal(evaluatePluginCompatibility(Object.create({peerDependencies:{'@deepseek-ai/dsh':'^999'}})),undefined)
+test('every DSH peer is unsupported, regardless of matching historical version or wildcard',()=>{
+ for(const name of ['@deepseek-ai/dsh','@deepseek-ai/dsh-tools'])for(const range of ['*','0.2.1-alpha.2','workspace:*','^999'])assert.deepEqual(evaluatePluginCompatibility({name:'fixture',peerDependencies:{[name]:range}}).peers,{[name]:range})
+ assert.equal(evaluatePluginCompatibility({peerDependencies:{'@earendil-works/pi-agent-core':'1.5.0'}}),undefined)
+ for(const peerDependencies of [null,[],{x:12}])assert.throws(()=>evaluatePluginCompatibility({peerDependencies}))
+ assert.equal(evaluatePluginCompatibility(Object.create({peerDependencies:{'@deepseek-ai/dsh':'*'}})),undefined)
 })
-test('native compatibility permissions preserve malformed-record rejection without granting inherited or ranged exceptions',async t=>{
- const old=await import('@deepseek-ai/dsh-app-boot'),root=await fresh(t);for(const text of [undefined,'{','[]',JSON.stringify({'fixture@1.0.0':[LEGACY_PEER_ABI_VERSION],'fixture@^1.0.0':[LEGACY_PEER_ABI_VERSION],'@scope/fixture@1.0.0':['^0.2.1']})]){if(text===undefined)await rm(join(root,'compatibility.json'),{force:true});else await writeFile(join(root,'compatibility.json'),text);assert.deepEqual(readProfileCompatibility(root),old.readProfileCompatibility(root))}
+test('DSH plugin code is never evaluated and historical exemptions do not authorize its ABI',async t=>{
+ const root=await fresh(t);await mkdir(join(root,'plugin'))
+ await writeFile(join(root,'plugin/package.json'),JSON.stringify({name:'fixture',version:'1.0.0',peerDependencies:{'@deepseek-ai/dsh':'*'}}))
+ await writeFile(join(root,'plugin/index.js'),'throw new Error("plugin must not evaluate")')
+ await writeFile(join(root,'compatibility.json'),JSON.stringify({'fixture@1.0.0':['0.2.1-alpha.2']}))
+ const name=pathToFileURL(join(root,'plugin/index.js')).href,base=pathToFileURL(join(root,'root.yml')).href,ctx={get:name=>name==='profileContext'?{dir:root}:undefined,logger:{warn(){}}},rows=[{name}]
+ const result=prepareProfileEntries(ctx,rows,base)
+ assert.equal(result[0].disabled,true);assert.equal(prepareProfileEntries({get:()=>undefined,logger:{warn(){}}},rows,base)[0].disabled,true);assert.equal(rows[0].disabled,undefined)
+ assert.equal(await readFile(join(root,'plugin/index.js'),'utf8'),'throw new Error("plugin must not evaluate")')
+ assert.equal(prepareProfileEntries(ctx,[{name:'cordis:group',group:true,config:rows}],base)[0].config[0].disabled,true)
+ await writeFile(join(root,'nested.json'),JSON.stringify(rows))
+ assert.equal(prepareProfileEntries(ctx,[{name:'cordis:include',config:{path:'nested.json'}}],base)[0].disabled,true)
+ await writeFile(join(root,'nested.json'),JSON.stringify([{id:'target',name:'cordis:group',group:true,config:[]}]))
+ assert.equal(prepareProfileEntries(ctx,[{name:'cordis:include',config:{path:'nested.json',patches:[{id:'target',insert:rows}]}}],base)[0].disabled,true)
 })
-test('profile preflight blocks incompatible local manifests and patched nested includes before importing plugin code',async t=>{
- const root=await fresh(t);await mkdir(join(root,'plugin'));await writeFile(join(root,'plugin/package.json'),JSON.stringify({name:'fixture-plugin',version:'1.0.0',peerDependencies:{'@deepseek-ai/dsh':'^999.0.0'}}));await writeFile(join(root,'plugin/index.js'),'throw new Error("plugin code must never evaluate during preflight")');const plugin=pathToFileURL(join(root,'plugin/index.js')).href,base=pathToFileURL(join(root,'root.yml')).href,ctx={get:n=>n==='profileContext'?{dir:root}:undefined,logger:{warn(){}}};const rows=[{id:'bad',name:plugin},{name:'cordis:group',group:true,config:[{name:plugin}]}];const detached=prepareProfileEntries({get:()=>undefined},rows,undefined);detached[0].disabled=true;assert.equal(rows[0].disabled,undefined);const denied=prepareProfileEntries(ctx,rows,base,'night-bot');assert.equal(denied[0].disabled,true);assert.equal(denied[1].config[0].disabled,true);assert.equal(rows[0].disabled,undefined);await writeFile(join(root,'nested.json'),JSON.stringify([{id:'plugin',name:'cordis:group',group:true,config:[]}]))
- const include=[{name:'cordis:include',config:{path:'nested.json',patches:[{id:'plugin',insert:[{name:plugin}]}]}}];assert.equal(prepareProfileEntries(ctx,include,base,'night-bot')[0].disabled,true);await writeFile(join(root,'compatibility.json'),JSON.stringify({'fixture-plugin@1.0.0':[LEGACY_PEER_ABI_VERSION]}));assert.equal(prepareProfileEntries(ctx,rows,base,'night-bot')[0].disabled,undefined);assert.equal(prepareProfileEntries(ctx,include,base,'night-bot')[0].disabled,undefined);await writeFile(join(root,'compatibility.json'),JSON.stringify({'fixture-plugin@1.0.0':['0.2.1']}));assert.equal(prepareProfileEntries(ctx,rows,base,'night-bot')[0].disabled,true);await assert.rejects(import(plugin),/must never evaluate/)
+test('ordinary trusted application plugins and detached profile rows remain available',async t=>{
+ const root=await fresh(t);await mkdir(join(root,'plugin'))
+ await writeFile(join(root,'plugin/package.json'),JSON.stringify({name:'fixture',version:'1.0.0'}));await writeFile(join(root,'plugin/index.js'),'export default {}')
+ const rows=[{name:pathToFileURL(join(root,'plugin/index.js')).href}],ctx={get:name=>name==='profileContext'?{dir:root}:undefined,logger:{warn(){}}},base=pathToFileURL(join(root,'root.yml')).href
+ assert.deepEqual(prepareProfileEntries(ctx,rows,base),rows)
+ const detached=prepareProfileEntries({get:()=>undefined,logger:{warn(){}}},rows,base);detached[0].disabled=true;assert.equal(rows[0].disabled,undefined)
 })
-test('unreadable includes retain Loader diagnostics and recursive includes terminate without rewriting files',async t=>{
- const root=await fresh(t),base=pathToFileURL(join(root,'root.yml')).href,ctx={get:n=>n==='profileContext'?{dir:root}:undefined,logger:{warn(){}}};const rows=[{name:'cordis:include',config:{path:'missing.yml'}}];assert.deepEqual(prepareProfileEntries(ctx,rows,base),rows);await writeFile(join(root,'loop.json'),JSON.stringify([{name:'cordis:include',config:{path:'loop.json'}}]));assert.equal(prepareProfileEntries(ctx,[{name:'cordis:include',config:{path:'loop.json'}}],base)[0].disabled,undefined);assert.throws(()=>prepareProfileEntries(ctx,[],undefined),/resolution base/)
+test('unreadable and recursive includes preserve loader diagnostics without rewriting files',async t=>{
+ const root=await fresh(t),base=pathToFileURL(join(root,'root.yml')).href,ctx={get:name=>name==='profileContext'?{dir:root}:undefined,logger:{warn(){}}}
+ const rows=[{name:'cordis:include',config:{path:'missing.yml'}}];assert.deepEqual(prepareProfileEntries(ctx,rows,base),rows)
+ await writeFile(join(root,'loop.json'),JSON.stringify([{name:'cordis:include',config:{path:'loop.json'}}]))
+ assert.equal(prepareProfileEntries(ctx,[{name:'cordis:include',config:{path:'loop.json'}}],base)[0].disabled,undefined)
+ assert.throws(()=>prepareProfileEntries(ctx,[],undefined),/resolution base/)
 })

@@ -1,7 +1,8 @@
 // MIT source-derived read-only query/cold observation algorithms; see licenses/dsh-session-query-MIT.txt.
 // Storage uses native Pi persistence. Legacy event surfaces here are presentation/audit compatibility, never Pi model-request authority.
 import {AsyncLocalStorage} from "node:async_hooks";
-import { currentSessionMessageProjections } from "./legacy-v4/dsh-session-format-catalog/lib/types/message-projections.js";
+import {imageOffloadProjection} from "./legacy-v4/dsh-compaction-image-offload/lib/types/projection.js";
+const currentSessionMessageProjections = [imageOffloadProjection];
 import { Service } from "@deepseek-ai/cordis";
 import { Session, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent } from "./native-session-protocol.js";
 import { foldSessionTitle } from "./native-session-title.js";

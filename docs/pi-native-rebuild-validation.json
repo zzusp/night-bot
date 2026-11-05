@@ -1,0 +1,42 @@
+{
+  "base": "47a59ae318bf50ec85caa3b0af0ecd9a9a9841d6",
+  "completeDshIndependence": false,
+  "piVersions": {
+    "agent-core": "1.5.0",
+    "ai": "1.5.0",
+    "coding-agent": "1.5.0"
+  },
+  "tests": [
+    {
+      "command": "node --test test/pi-*.test.js",
+      "passed": 584,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "node --test --test-concurrency=1 test/dynamic-execution-session-native.test.js test/execution-runtime-native.test.js test/execution-session-native.test.js test/execution-session-installed-cold-fix.test.js test/group-coordinator-session-native.test.js test/message-agent-controller.test.js test/workflow-managed-query-native.test.js test/task-session-real-model-isolated.test.js",
+      "passed": 278,
+      "failed": 0,
+      "skipped": 1,
+      "skipReason": "Live configured vendor model not provided"
+    }
+  ],
+  "remainingDirectDshDevDependencies": 149,
+  "directDshProductionDependencies": 0,
+  "frozenInstall": "passed --ignore-scripts; no native build acceptance claimed",
+  "kernelTests": "not rerun; no sandbox/process implementation changed",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-rebuild-default-tests.txt",
+      "sha256": "88608e4485fe00e2c90fe905b45aaf4feff96c673ab92355ef6a8c4cab9dd5d9"
+    },
+    {
+      "path": "docs/evidence/pi-native-rebuild-historical-tests.txt",
+      "sha256": "3f0cb11bee4a5b3c46b98d45cc4be18fc2c864d8dc217d9e0dc681a83a25a70d"
+    },
+    {
+      "path": "docs/evidence/pi-native-rebuild-checks.txt",
+      "sha256": "3ce01ac787229ac1045801728d15e7e6e2f01158b7fe9edcd82f0b199fb9cdf3"
+    }
+  ]
+}

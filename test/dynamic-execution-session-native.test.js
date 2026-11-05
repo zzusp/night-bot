@@ -16,7 +16,7 @@ import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
 import { LlmRuntime, LlmAdapter, createUserMessage } from '../packages/capability-compat/llm/index.js'
 import { SessionStore } from '../packages/capability-compat/session/index.js'
-import JsonlSessionPersistence from '../packages/capability-compat/session-persistence-jsonl/index.js'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
@@ -144,7 +144,7 @@ test('自身资源查询不能被原生注册接口同名覆盖，仍调用 Host
       // 原生注册接口不允许覆盖已有内部工具；拒绝后仍使用 Host 绑定查询。
       const agent = h.handles.find(item => item.session.id === dynamic().sessionId)
       assert.throws(() => agent.ctx.tools.register({ name: 'execution_resources_read', description: '同名副作用反例', parameters: { type: 'object' }, output,
-        execute() { writes++; return {} } }), /already registered/)
+        execute() { writes++; return {} } }), /Duplicate tool|already registered/)
       return { name: 'execution_resources_read', args: {} }
     }
     return dynamicSubmit('done')

@@ -1,3 +1,5 @@
+> 当前重构进度见 [PI-NATIVE-REBUILD.md](PI-NATIVE-REBUILD.md)。DSH 历史数据导入、v0–v4 转换器和插件 ABI 豁免已移除。下文兼容保留记录是上一阶段的架构说明，不能据此认定本次已彻底移除 DSH 派生代码。
+
 # Pi 非可视化迁移
 
 本地实现已完成默认运行路径迁移；没有外部 DSH 生产依赖，包括传递依赖。
@@ -31,9 +33,8 @@ Pi agent-core1.5.0 负责推理/工具迭代，Pi SessionManager 负责当前历
 
 ## 明确保留的兼容与差异
 
-- 本地 v4 数据/audit/publication/inbox façade 和 v0–v4 编解码/导入保留原有
-  语义；当前历史写入、分支和模型上下文以 Pi 为权威。
-- 旧包名和 RPC/type-symbol 字符串用于兼容可信插件。命名空间公开指向本地
+- 本地 v4 audit/publication/inbox façade 暂时保留；v0–v4 编解码/导入已删除。当前历史写入、分支和模型上下文以 Pi 为权威。
+- 旧包名和 RPC/type-symbol 字符串仍有内部调用；声明 DSH peer 的插件已禁止入场，旧 compatibility.json 豁免不再生效。命名空间公开指向本地
   owner/protocol，不增加活动服务替换计数，也不冒充原创算法。
 - 原大型 verifier bundle 已替换为共享本地验证函数的隔离 ESM worker。
 - Windows ACL 支撑代码保留来源和约束；重启恢复探针默认绑定 Native provider

@@ -1,11 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, appendFile, writeFile, symlink, readdir } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, appendFile, writeFile, symlink, readdir, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SessionStore } from '../packages/capability-compat/session/index.js'
 import { createUserMessage, createDeveloperMessage } from '../packages/capability-compat/llm/index.js'
-import LegacyPersistence from './fixtures/legacy-jsonl-reference/lib/index.js'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import PiPersistence from '../src/pi-session-persistence.js'
 import * as Authority from '../src/pi-authority.js'
@@ -13,10 +12,10 @@ const user = text => createUserMessage({source:{kind:'user'},content:[{type:'tex
 async function fixture(t) {
   const root=await mkdtemp('/tmp/night-pi-authority-'),contexts=[]
   t.after(async()=>{const failures=[];for(const ctx of contexts.reverse())try{await ctx.fiber.dispose()}catch(e){failures.push(e)}await rm(root,{recursive:true,force:true});if(failures.length)throw new AggregateError(failures,'fixture close')})
-  const host=async({legacy=false}={})=>{
+  const host=async()=>{
     const ctx=new Context();contexts.push(ctx);new SessionStore(ctx)
-    if(!legacy)await ctx.plugin(Authority)
-    const backend=new (legacy?LegacyPersistence:PiPersistence)(ctx,{root:join(root,'sessions'),compression:'none'})
+    await ctx.plugin(Authority)
+    const backend=new PiPersistence(ctx,{root:join(root,'sessions'),compression:'none'})
     return{ctx,backend,session:id=>ctx.sessions.prepare(id,{meta:{cwd:root}})}
   }
   return{root,host}
@@ -69,17 +68,7 @@ test('unpublished creation can be rolled back without leaving an empty durable i
   assert.equal(await h.backend.stat('unpublished'),undefined)
   assert.deepEqual(await readdir(join(f.root,'sessions')),[])
 })
-test('legacy import preserves source events, fences the old writer, and resumes from Pi without replay',async t=>{
-  const f=await fixture(t),legacy=await f.host({legacy:true}),original=legacy.session('legacy-session')
-  original.append('user/message',user('LEGACY_EVIDENCE_NO_REPLAY'),{surfaceOp:'append'})
-  const old=await legacy.backend.create(original.header);await old.append(original.snapshotEvents());await old.flush();await old.close()
-  const h=await f.host(),read=await h.backend.open('legacy-session','read');assert.deepEqual((await read.read()).events,original.snapshotEvents());await read.close()
-  const imported=await h.backend.open('legacy-session','write')
-  await assert.rejects(legacy.backend.open('legacy-session','write'),{name:'SessionAlreadyOwnedError'})
-  assert.equal(h.ctx.get('piAuthority').describe('legacy-session').engine,'pi-session-manager')
-  assert.deepEqual((await imported.read()).events,original.snapshotEvents());await imported.close()
-  const resumed=await h.backend.open('legacy-session','write');assert.deepEqual((await resumed.read()).events,original.snapshotEvents());await resumed.close()
-})
+
 test('global Pi journal refuses symbolic file targets before reads or writes',async t=>{
   const f=await fixture(t),h=await f.host(),session=h.session('linked')
   await h.backend.checkedRoot(true);const outside=join(f.root,'outside.jsonl');await writeFile(outside,'unchanged')
@@ -97,25 +86,37 @@ test('Pi projection carries actual multimodal bytes and structured operational c
   assert.deepEqual(native.content,[{type:'text',text:'ACTUAL_USER_INPUT'},{type:'image',data:bytes.toString('base64'),mimeType:'image/png'}])
   assert.ok(!JSON.stringify(native).includes('[host'))
 })
-test('a legacy writer changing imported history between Pi leases blocks resume without rewriting Pi evidence',async t=>{
-  const f=await fixture(t),old=await f.host({legacy:true}),session=old.session('legacy-divergence')
-  session.append('user/message',user('ORIGINAL'),{surfaceOp:'append'})
-  const initial=await old.backend.create(session.header);await initial.append(session.snapshotEvents());await initial.close()
-  const native=await f.host(),imported=await native.backend.open(session.id,'write')
-  const path=native.ctx.get('piAuthority').describe(session.id).path;await imported.close();const before=await readFile(path,'utf8')
-  const oldWriter=await old.backend.open(session.id,'write')
-  const extra=session.append('user/message',user('CHANGED_BY_OLD_RUNTIME'),{surfaceOp:'append'});await oldWriter.append([extra]);await oldWriter.close()
-  await assert.rejects(native.backend.open(session.id,'write'),e=>e.code==='PI_LEGACY_SOURCE_DIVERGED')
-  assert.equal(await readFile(path,'utf8'),before)
-  const released=await old.backend.open(session.id,'write');await released.close()
+
+
+
+test('DSH directory histories are neither discovered nor imported and remain untouched',async t=>{
+  const f=await fixture(t),h=await f.host(),id='old-session'
+  const directory=join(f.root,'sessions',id);await mkdir(directory,{recursive:true})
+  const path=join(directory,'0.jsonl'),bytes='{"type":"session","version":4,"id":"old-session"}\n'
+  await writeFile(path,bytes)
+  assert.deepEqual(await h.backend.list(),[])
+  assert.equal(await h.backend.stat(id),undefined)
+  for(const access of ['read','write','write'])await assert.rejects(h.backend.open(id,access),{name:'SessionPersistenceNotFoundError'})
+  assert.equal(await readFile(path,'utf8'),bytes)
+  assert.deepEqual(await readdir(join(f.root,'sessions')),[id])
+  const session=h.session(id);session.append('user/message',user('NEW_PI_HISTORY'),{surfaceOp:'append'})
+  const writer=await h.backend.create(session.header);await writer.append(session.snapshotEvents());await writer.close()
+  assert.equal((await h.backend.list()).length,1)
+  assert.equal(await readFile(path,'utf8'),bytes)
 })
-test('failed legacy image import releases native authority and both writer fences',async t=>{
-  const f=await fixture(t),old=await f.host({legacy:true}),session=old.session('failed-image-import')
-  const message={...user('image'),content:[{type:'image',attachment:{id:'missing-image'}}]}
-  session.append('user/message',message,{surfaceOp:'append'})
-  const initial=await old.backend.create(session.header);await initial.append(session.snapshotEvents());await initial.close()
-  const native=await f.host()
-  for(let attempt=0;attempt<2;attempt++)await assert.rejects(native.backend.open(session.id,'write'),e=>e.code==='PI_SESSION_ATTACHMENT_PROVIDER_REQUIRED')
-  assert.equal(native.ctx.get('piAuthority').describe(session.id),undefined)
-  const released=await old.backend.open(session.id,'write');await released.close()
+
+test('former DSH-imported Pi snapshots are refused without reopening the source or modifying evidence',async t=>{
+  const {createHash}=await import('node:crypto')
+  const f=await fixture(t),h=await f.host(),session=h.session('retired-import')
+  await h.backend.checkedRoot(true)
+  const manager=SessionManager.inMemory(f.root);manager.newSession({id:session.id})
+  manager.appendCustomEntry('night.header',{header:session.header,inheritedEventCount:0,importedFrom:'dsh-jsonl'})
+  const header=manager.getHeader(),records=manager.getEntries()
+  const entriesHash=createHash('sha256').update(JSON.stringify(header)+'\n'+records.map(e=>JSON.stringify(e)).join('\n')).digest('hex')
+  manager.appendCustomEntry('night.commit',{eventCount:0,previousCommit:null,entriesHash})
+  const bytes=[header,...manager.getEntries()].map(e=>JSON.stringify(e)).join('\n')+'\n',path=h.backend.path(session.id)
+  await writeFile(path,bytes)
+  for(const access of ['read','write','write'])await assert.rejects(h.backend.open(session.id,access),{code:'PI_SESSION_IMPORT_UNSUPPORTED'})
+  assert.equal(await readFile(path,'utf8'),bytes)
+  assert.deepEqual(await readdir(join(f.root,'sessions')),[path.split('/').at(-1)])
 })

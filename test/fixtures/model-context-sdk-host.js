@@ -6,7 +6,7 @@ import { SessionStore } from '../../packages/capability-compat/session/index.js'
 import { LlmRuntime, LlmAdapter } from '../../packages/capability-compat/llm/index.js'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '../../packages/capability-compat/tools/index.js'
-import JsonlSessionPersistence from '../../packages/capability-compat/session-persistence-jsonl/index.js'
+import JsonlSessionPersistence from '../@deepseek-ai/dsh-session-persistence-jsonl'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import { createRequire } from 'node:module'
 const { SessionProjectionRegistry } = createRequire(import.meta.resolve('@deepseek-ai/dsh-agent-loop'))('@deepseek-ai/dsh-session-projection')
