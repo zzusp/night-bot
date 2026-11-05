@@ -21,6 +21,7 @@ export default class NativeSessionController extends Service {
     return structuredClone(header)
   }
   assertOrdinary(header) {
+    if(header.agentPreset==='night-bot-task')throw new Error('NIGHT_SESSION_TASK_OWNED')
     if(header.origin==='subagent'||(header.delegationDepth??0)>0)throw new Error('NIGHT_SESSION_SUBAGENT_OWNED')
     if(this.ctx.workspaceRegistry.archivedSessionIds.includes(header.id))throw new Error('NIGHT_SESSION_ARCHIVED')
     if(!header.cwd)throw new Error('NIGHT_SESSION_CWD_REQUIRED')

@@ -34,6 +34,8 @@ const RESERVED_PATH_SEGMENTS = new Set([
 	".."
 ]);
 const Config = z.object({
+    dshHome: z.string(),
+    agentsHome: z.string(),
 	projectRootMarkers: z.array(z.string()).default([...DEFAULT_PROJECT_ROOT_MARKERS]),
 	maxBytes: z.number().required(),
 	maxSourceBytes: z.number().step(1).min(1).default(DEFAULT_MAX_SOURCE_BYTES),
@@ -582,10 +584,11 @@ async function existsAsMarker(path, fileSystem, signal) {
 * @returns the discovered project root, or `cwd` when no marker exists.
 * @throws the original marker metadata error or cancellation reason when a probe is unavailable.
 */
-async function findProjectRoot(cwd, markers, fileSystem, signal) {
+async function findProjectRoot(cwd, markers, fileSystem, signal, boundary) {
 	let current = resolve(cwd);
 	for (;;) {
 		for (const marker of markers) if (await existsAsMarker(join(current, marker), fileSystem, signal)) return current;
+		if(boundary&&current===resolve(boundary))return current;
 		const parent = dirname(current);
 		if (parent === current) return resolve(cwd);
 		current = parent;
@@ -1223,7 +1226,7 @@ function filePathFromExecution(exec) {
 }
 function apply(ctx, config) {
 	const inherited=launchEnvironmentOf(ctx), env={DSH_HOME:inherited.getFrom('DSH_HOME',['process'])?.value,DSH_AGENTS_HOME:inherited.getFrom('DSH_AGENTS_HOME',['process'])?.value};
-	const resolved = {...resolveConfig(config),dshHome:resolveDshHome(undefined,env),agentsHome:resolveAgentsHome(undefined,env)};
+	const resolved = {...resolveConfig(config),dshHome:resolveDshHome(config.dshHome,env),agentsHome:resolveAgentsHome(config.agentsHome,env)};
 	const authority=ctx.piAuthority, active=new Set(), calls=new AsyncLocalStorage();
 	ctx.provide('nativeAgentInstructions',Object.freeze({owner:name,contextAuthority:'pi-session-manager'}));
 	function track(operation){const record={};active.add(record);let result;try{result=calls.run(record,operation)}catch(error){active.delete(record);throw error}record.done=Promise.resolve(result).finally(()=>active.delete(record));return record.done}
@@ -1250,7 +1253,7 @@ function apply(ctx, config) {
 		let desiredBaseline = false;
 		const authorityMessages = [...visible(agent),...claimed];
 		const cwd = await ctx.workingDirectory.ensure(agent, signal);
-		const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal);
+		const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal,ctx.get('runtimePaths')?.mode==='portable'?ctx.get('runtimePaths').workspaces:undefined);
 		const identity = workspaceBaselineIdentity(resolved, cwd, projectRoot);
 		if (touchedPaths.length === 0 && pending.length > 0 && baselinePreparations.get(agent.session)?.identity === identity) return pending[0];
 		const visibleBaseline = visibleBaselineSource(agent, authorityMessages);

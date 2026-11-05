@@ -1,0 +1,74 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {readFile,mkdtemp,rm} from 'node:fs/promises'
+import {createHost} from '../src/host.js'
+import {backupData,restoreData} from '../src/runtime/backup.js'
+import {join} from 'node:path'
+import {memoryHost} from './fixtures/memory-host.js'
+import {openResidentStore} from '../packages/dingtalk-core/store.js'
+import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
+import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
+async function until(fn){for(let n=0;n<500;n++){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,20))}throw Error('single task timeout')}
+async function serviceFor(f,initialize=true){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'single-test',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize});const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external notifications')},readback:async()=>{throw Error('no external notifications')}}});return {service,store,async close(){await service.close();await store.close()}}}
+const result={tool:'task_result',args:{decision:{action:'complete',summary:'Read back local result',evidence:['local file evidence'],limitations:[]}}}
+test('one task directly writes an artifact, cold resumes the same session, denies replay and completes then reflects',{timeout:20000},async t=>{
+  let phase='write',replay=false,reviews=0
+  const f=await memoryHost(t,body=>{
+    if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){reviews++;return {text:'{"lessons":[]}'}}
+    if(!body.tools?.some(t=>t.function.name==='task_result'))return
+    if(phase==='write'){phase='pause';return {tool:'write',args:{file_path:'proof.txt',content:'single-session-proof'}}}
+    if(phase==='pause')return {text:'temporary provider interruption before final submission'}
+    if(!replay){replay=true;return {tool:'write',args:{file_path:'proof.txt',content:'single-session-proof'}}}
+    return {...result,args:{decision:{...result.args.decision,artifacts:["proof.txt"],deliveryFiles:[{path:"proof.txt",caption:"isolated proof"}]}}}
+  })
+  let h=await serviceFor(f);t.after(()=>h.close())
+  const task=await h.service.createTask({requestId:'direct-write',objective:'Create a local proof and read it back'})
+  const interrupted=await until(async()=>{const taskNow=await h.store.query({kind:'task.get',taskId:task.taskId});return taskNow.drained&&taskNow.providerRecovery&&taskNow})
+  assert.equal(await readFile(join(task.session.workspaceDir,'proof.txt'),'utf8'),'single-session-proof')
+  const sessionId=interrupted.sessionId;await h.close();await f.close();phase='finish';await f.boot();h=await serviceFor(f,false)
+  await new Promise(r=>setTimeout(r,Math.max(0,Date.parse(interrupted.providerRecovery.nextAttemptAt)-Date.now()+20)));await h.service.recover()
+  const completed=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained&&row})
+  assert.equal(completed.completion.result.artifactFiles.length,1);assert.equal(completed.completion.result.artifactFiles[0].artifact.fileName,'proof.txt');
+  assert.equal(completed.sessionId,sessionId);assert.equal((await h.store.query({kind:'execution.list'})).length,0)
+  assert.match(JSON.stringify(f.requests),/TASK_EFFECT_ALREADY_ATTEMPTED/)
+  assert.equal((await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,1)
+  for(const body of f.requests)assert.ok(!body.tools?.some(t=>/^(subagent|task_delegate)/.test(t.function.name)))
+  const read=await f.host.ctx.sessionPersistence.open(sessionId,'read');let events;try{events=(await read.read()).events}finally{await read.close()}
+  assert.equal(events.filter(e=>e.type==='plugin:night/task-effect-intent').length,1);assert.equal(events.filter(e=>e.type==='plugin:night/task-effect-result').length,1)
+  await f.host.ctx.reflection.whenIdle();assert.equal(reviews,1)
+  const resume=await f.host.ctx.sessionController.resolveAgent(sessionId);assert.match(resume.error?.message??'',/TASK_OWNED/)
+  await h.close();await f.close();const backup=join(f.root,'backups','single');await backupData(f.config,backup)
+  const relocated=await mkdtemp('/tmp/night-single-restored-');t.after(()=>rm(relocated,{recursive:true,force:true}));const nextConfig={...f.config,installRoot:relocated};await restoreData(nextConfig,backup)
+  const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
+})
+test('single task cancellation aborts the active turn, drains it and never creates a replacement execution',{timeout:15000},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers()
+  const f=await memoryHost(t,async body=>{if(body.tools?.some(t=>t.function.name==='task_result')){entered.resolve();await release.promise;return result}})
+  const h=await serviceFor(f);t.after(()=>h.close())
+  const task=await h.service.createTask({requestId:'cancel-live',objective:'Wait for the local fixture'})
+  await entered.promise;const cancelling=h.service.cancelTask({taskId:task.taskId,requestId:'cancel-1'});release.resolve();await cancelling
+  const row=await h.store.query({kind:'task.get',taskId:task.taskId});assert.equal(row.status,'cancelled');assert.equal(row.drained,true)
+  await h.service.recover();assert.equal((await h.store.query({kind:'execution.list'})).length,0);assert.equal((await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,1)
+})
+
+test('chat and chat-room task creation binds the correct memory scope without creating a coordinator',{timeout:15000},async t=>{
+  const f=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:'{"lessons":[]}'}:body.tools?.some(t=>t.function.name==='task_result')?result:undefined),h=await serviceFor(f);t.after(()=>h.close())
+  for(const type of ['chat','chat-room']){
+    const task=await h.service.createTask({requestId:'scope-'+type,objective:'Return the literal word verified',channel:{type,channelId:'local-adapter',conversationId:'conversation',senderId:'person',messageId:'request-'+type,text:'Return the literal word verified'}})
+    const row=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained&&row})
+    const binding=f.host.ctx.memory.bindings.get(row.sessionId);assert.equal(!!binding.groupId,type==='chat-room');assert.equal(row.metadata.channelType,type);assert.equal(row.metadata.senderId,'person')
+    assert.equal((await h.store.query({kind:'execution.list',taskId:row.taskId})).length,0)
+  }
+  assert.equal((await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,2)
+})
+
+test('single-task delivery freezes only explicitly reported workspace files and rejects escapes',async t=>{
+  const {mkdir,writeFile,symlink}=await import('node:fs/promises'),{freezeSingleTaskFiles}=await import('../src/tasks/delivery.js'),{createTaskArtifactFiles}=await import('../packages/dingtalk-core/task-artifact-files.js')
+  const root=await mkdtemp('/tmp/night-single-files-');t.after(()=>rm(root,{recursive:true,force:true}));const directory=join(root,'task');await mkdir(directory)
+  await writeFile(join(directory,'proof.txt'),'immutable proof');await writeFile(join(root,'outside.txt'),'outside');await symlink(join(root,'outside.txt'),join(directory,'alias.txt'))
+  const files=createTaskArtifactFiles({root:join(root,'managed')}),task={taskId:'single-files',sessionId:'sole-session',requirementRevision:1},base={task,directory,files}
+  await assert.rejects(freezeSingleTaskFiles({...base,reported:[],selected:[{path:'proof.txt'}]}),/NOT_REPORTED/)
+  await assert.rejects(freezeSingleTaskFiles({...base,reported:['../outside.txt'],selected:[{path:'../outside.txt'}]}),/OUTSIDE_TASK/)
+  await assert.rejects(freezeSingleTaskFiles({...base,reported:['alias.txt'],selected:[{path:'alias.txt'}]}),/SCOPE_DENIED/)
+  const [frozen]=await freezeSingleTaskFiles({...base,reported:['proof.txt'],selected:[{path:'proof.txt'}]});await writeFile(join(directory,'proof.txt'),'changed later');assert.equal(await readFile((await files.resolve(frozen.artifact)).path,'utf8'),'immutable proof')
+})

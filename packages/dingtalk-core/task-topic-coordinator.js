@@ -39,6 +39,9 @@ export function taskIndexPage(tasks, offset, limit, query = '') {
 }
 
 export function registerTopicRoleInstructions(agentCtx, { role, request, store }) {
+  if(agentCtx.get('channels')?.groupContext(request.groupId)?.type==='chat')agentCtx.systemPrompt.section({name:'channel:chat-semantics',order:141,text:'这是单人私聊chat，原消息来自当前认证的对话者，不要求群@或多人负责人判断；回复引用对应原消息，不@其他人、不使用群体广播。仍保留不确定的初诊与后续Topic处理边界。'})
+  if(request.firstTierFeedback)agentCtx.systemPrompt.section({name:'triage:preliminary',order:140,text:'一级初诊负责依据当前批次与Topic摘要作不确定的初步反馈，调用group_topic_initial_reply，分话题且逐条引用对应原消息；不是结论、不是执行结果。同批次追加用同一会话steer，最多15条。已有初步反馈不得再发。二级继续Topic路由和任务处理，不能把初步反馈当成完成证据。'})
+  if(role==='decision'&&agentCtx.get('runtimePaths')?.mode==='portable')agentCtx.systemPrompt.section({name:'triage:second-tier',order:140,text:'一级已负责逐话题引用原消息的初步反馈。二级继续结合Topic处理路由、任务和后续实质回复，不重复接收确认；初步判断不是结论、不是业务执行或完成证据。'})
   if (role !== 'route') agentCtx.systemPrompt.section({ name: 'dingtalk-group-reply', order: 119, text: `${groupReplyInstructions}\n${groupNotificationInstructions}` })
   agentCtx.systemPrompt.section({ name: 'dingtalk-reply-ownership', order: 130, text:
     request.trigger === 'task-facts'
@@ -125,7 +128,7 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
     create: async entry => {
       const { request, role, sessionId } = entry
       const agentPreset = legacy.getAgentConfig().agentPreset
-      const handle = await ctx.agents.create({ sessionId, seed: [{ type: 'plugin:dingtalk/coordination', seq: 0, time: Date.now(), ignorable: true, data: { groupId: request.groupId, requestId: request.requestId, role } }],
+      const creation={ sessionId, seed: [{ type: 'plugin:dingtalk/coordination', seq: 0, time: Date.now(), ignorable: true, data: { groupId: request.groupId, requestId: request.requestId, role } }],
         meta: { cwd: await sessionWorkspace(root, role), origin: 'subagent', delegationDepth: 1, agentPreset },
         agentOptions: typeof models === 'function' ? models() : models,
         setup: async agentCtx => {
@@ -153,7 +156,10 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
           agentCtx.tools.restrict({ allow: [...allowed].filter(name => agentCtx.tools.get(name)) })
           agentCtx.tools.guard(execution => allowed.has(execution.name) ? undefined : 'coordination_tool_outside_role')
           registerTopicRoleInstructions(agentCtx, { role, request, store })
-        } })
+        } }
+      const prior=request.firstTierFeedback&&await ctx.sessionPersistence.stat(sessionId)
+      const {sessionId:_id,seed:_seed,meta:_meta,...resumption}=creation
+      const handle=prior?await ctx.agents.resume({...resumption,resumeSessionId:sessionId}):await ctx.agents.create(creation)
       handles.add(handle)
       const dispose = handle.dispose.bind(handle)
       handle.dispose = async () => { try { await dispose() } finally { handles.delete(handle) } }
@@ -207,7 +213,7 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
     }
     return normalized
   }
-  topics = createTopicCoordinator({ store, workflowPromptsEnabled: false, fixedTopicsEnabled: !!fixedTopics, quotedReminderContext, onInputSettled, taskFacts, readArchivedTask, readFrozenReply,
+  topics = createTopicCoordinator({channelContext:groupId=>ctx.get?.('channels')?.groupContext(groupId),firstTierFeedback:ctx.get?.('runtimePaths')?.mode==='portable', store, workflowPromptsEnabled: false, fixedTopicsEnabled: !!fixedTopics, quotedReminderContext, onInputSettled, taskFacts, readArchivedTask, readFrozenReply,
     getAgent: (groupId, request) => request ? sessions.get(groupId, request) : !closed && store.getGroup(groupId) ? presence : undefined,
     dispatchRequest: (request, message) => {
       const work = sessions.dispatch(request, message)

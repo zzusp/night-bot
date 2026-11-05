@@ -1,6 +1,5 @@
 {
-  "stateDir": "/workspace/night-bot-state",
-  "workspaceDir": "/workspace/night-bot-work",
+  "dataDir": "data",
   "shell": "bash",
   "model": { "provider": "openai", "model": "gpt-4.1" },
   "providers": { "openai": { "apiKeyEnv": "OPENAI_API_KEY" } },
@@ -8,16 +7,18 @@
   "maxParallelToolCalls": 4,
   "skillWatch": true,
   "credentialsWatch": true,
+  "channelPlugins": [],
+  "memory": { "background": true, "bindings": {} },
   "resident": {
     "host": "127.0.0.1",
     "port": 18998,
     "groups": [],
-    "dws": { "enabled": false, "writesAuthorized": false },
     "taskSessions": {
       "instanceId": "night-bot-local",
+      "reasoningMode": "inherit",
       "ownerActorId": "REPLACE_WITH_OWNER_ID",
       "webActorId": "REPLACE_WITH_OWNER_ID",
-      "ingressEpoch": "2026-11-04T00:00:00Z",
+      "ingressEpoch": "SET_CURRENT_UTC_TIMESTAMP",
       "initialize": true
     }
   }

@@ -1,0 +1,31 @@
+✓ Lockfile passes supply-chain policies (verified 3h ago)
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+   ╭──────────────────────────────────────────╮
+   │                                          │
+   │   Update available! 11.25.0 → 12.16.1.   │
+   │   Changelog: https://pnpm.io/v/12.16.1   │
+   │     To update, run: pnpm self-update     │
+   │                                          │
+   ╰──────────────────────────────────────────╯
+
+
+devDependencies: skipped
+
+.../node_modules/node-pty install$ node scripts/prebuild.js || node-gyp rebuild
+.../.pnpm/koffi@3.1.1/node_modules/koffi install$ node ./cnoke.cjs -P . -D src/koffi --prebuild --release
+.../node_modules/protobufjs postinstall$ node scripts/postinstall
+.../node_modules/node-pty install: > Checking prebuilds...
+.../node_modules/node-pty install: Done
+.../node_modules/node-pty postinstall$ node scripts/post-install.js
+.../node_modules/node-pty postinstall: > Cleaning release folder...
+.../node_modules/node-pty postinstall: > Moving conpty.dll...
+.../node_modules/node-pty postinstall:   SKIPPED (not Windows)
+.../node_modules/protobufjs postinstall: Done
+.../node_modules/node-pty postinstall: Done
+.../node_modules/@google/genai preinstall$ echo 'preinstall: no-op'
+.../node_modules/@google/genai preinstall: preinstall: no-op
+.../node_modules/@google/genai preinstall: Done
+.../.pnpm/koffi@3.1.1/node_modules/koffi install: Done
+Done in 2.6s using pnpm v11.25.0

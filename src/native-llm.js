@@ -82,6 +82,7 @@ export default class NativeLlm extends TypertRemoteService{
   try{while(true){let item;try{item=await iterator.next()}catch(error){ended=true;yield this.failure(error,options.signal);return}if(item.done){ended=true;return}yield item.value}}finally{if(!ended){const close=iterator.return?.bind(iterator);if(close)await close()}}
  }
  stream(options){return this.streamWith(options)}
- streamWith(options,prepared){return this.ctx.waterfall(this,'llm/stream',options,()=>this.adapterStream(options,prepared))}
+ async *memoryStream(options,prepared){const memory=this.ctx.get('memory');const request=memory?await memory.filterRequest(options):options;yield* this.adapterStream(request,prepared)}
+ streamWith(options,prepared){return this.ctx.waterfall(this,'llm/stream',options,()=>this.ctx.get('memory')?this.memoryStream(options,prepared):this.adapterStream(options,prepared))}
 }
 for(const [name,alias]of [['listProviders'],['listConfigurableProviders'],['remoteDiscoverModels','discoverModels']]){const context={name,kind:'method',static:false,private:false,addInitializer:fn=>initializers.push(fn)};if(alias)Remote(alias)(NativeLlm.prototype[name],context);else Remote(NativeLlm.prototype[name],context)}

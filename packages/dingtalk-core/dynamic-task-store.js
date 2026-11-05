@@ -1506,9 +1506,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'notification.prepare') {
       if (a.kind === 'coordination') fail('INDEPENDENT_COORDINATION_RETIRED')
-      const task = ['topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
-      if (!['question','status','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
+      const task = ['triage-reply','topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
+      if (!['question','status','triage-reply','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
       integer(a.requirementRevision, 'requirementRevision')
+      if(a.kind==='triage-reply'){
+        const p=record(a.payload),ref=record(p.sourceRef),lesson=record(p.triage),source=get('dynamic_sources',text(p.sourceId,'sourceId'))
+        if(a.taskId||p.taskIds?.length||p.topicRefs?.length||p.artifactFiles?.length||p.atAll||p.replyKind!=='confirmation'||!p.text.startsWith('初步判断，尚待结合话题进一步核实：')||source.groupId!==p.conversationId||source.messageId!==ref.messageId||source.version!==ref.messageVersion||source.actorId!==ref.actorId||p.sourceMessageId!==ref.messageId||p.actorId!==ref.actorId||p.replyToMessageId!==ref.messageId||p.replyToSenderOpenDingTalkId!==ref.actorId||typeof lesson.quote!=='string'||!lesson.quote||source.text.split(lesson.quote).length!==2||id!=='triage-'+digest([source.groupId,source.messageId,source.version,text(lesson.topicKey,'topicKey')]))fail('DYNAMIC_TRIAGE_SOURCE_INVALID')
+      }
       if (a.kind === 'topic-reply' && (!Array.isArray(a.payload?.fact?.topicRefs) || !a.payload.fact.topicRefs.length)) fail('DYNAMIC_ARGUMENT_INVALID', 'topicRefs')
       if (a.kind === 'fixed-topic-reply') {
         const p = record(a.payload), fact = record(p.fact), source = get('dynamic_sources', text(p.sourceId, 'sourceId'))
@@ -1650,6 +1654,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           && get('dynamic_notifications', notification.payload.afterNotificationId, true)?.state !== 'delivered')
           return { result: { notification }, dispatchEligible: false }
         if (notification.kind === 'coordination') fail('INDEPENDENT_COORDINATION_RETIRED')
+        if(notification.kind==='triage-reply'){const p=notification.payload,source=get('dynamic_sources',p.sourceId);if(source.version!==p.sourceRef.messageVersion||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TRIAGE_SOURCE_STALE')}
         if (notification.kind === 'topic-reply' && notification.payload.humanRequests?.some(ref => {
           const task = get('dynamic_tasks', ref.taskId, true)
           const request = task?.humanRequests?.find(item => item.requestId === ref.requestId)
@@ -1660,7 +1665,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           put('dynamic_notifications', notification)
           return changed({ notification, topicFacts: topicFacts.requeueUnsent(notification) })
         }
-        const task = ['topic-reply','fixed-topic-reply','routing-clarification','coordination'].includes(notification.kind) ? null : get('dynamic_tasks', notification.taskId)
+        const task = ['triage-reply','topic-reply','fixed-topic-reply','routing-clarification','coordination'].includes(notification.kind) ? null : get('dynamic_tasks', notification.taskId)
         const request = notification.kind === 'question' && task.humanRequests?.find(item => item.requestId === notification.payload.humanRequestId)
         if (notification.kind === 'question' && (notification.requirementRevision !== task.requirementRevision || task.status !== 'active' || task.control !== 'active'
           || !request || request.status !== 'waiting-reply' || request.requirementRevision !== task.requirementRevision

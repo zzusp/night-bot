@@ -26,7 +26,7 @@ async function fixture(t,decide=()=>undefined){
     res.end('data: [DONE]\n\n')
   })
   await new Promise(r=>server.listen(0,'127.0.0.1',r))
-  const config={stateDir:join(root,'state'),workspaceDir:join(root,'work'),skillWatch:false,credentialsWatch:false,
+  const config={installRoot:root,dataDir:'data',stateDir:join(root,'data','state'),workspaceDir:join(root,'data','workspaces'),skillWatch:false,credentialsWatch:false,
     model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:`http://127.0.0.1:${server.address().port}/v1`,apiKeyEnv:'NIGHT_SCHEDULE_TEST_KEY',models:['m','second'].map(id=>({id,input:['text'],contextWindow:32000,maxTokens:1024}))}}}
   process.env.NIGHT_SCHEDULE_TEST_KEY='local-fixture-only'
   const boot=async(options)=>{host=await createHost(config,options);host.ctx.on('agent/error',e=>errors.push(e.error));return host}

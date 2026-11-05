@@ -1,3 +1,71 @@
+# Portable personal-assistant kit acceptance (2026-11-05)
+
+Current application changes add the installation data layout, scoped Markdown
+memory and task retrospectives, one execution session per task, typed `chat` /
+`chat-room` ingress, first-tier tentative feedback and an optional DWS channel
+plugin. The standard CLI now composes the channel-neutral application; it does not
+construct the old DWS resident or require a DWS executable/account.
+
+The full primary suites passed **590 own +142 runtime +47 routing +388 domain
++17 Linux containment =1184 distinct cases**, zero failures. One Windows-only
+containment case is skipped. Historical runtime/domain contracts still exercise
+retained reference APIs (including old execution-team APIs); they do not mean that
+the portable kit creates those sessions. Portable Host/Pi/SQLite tests separately
+prove the new default composition and single-session task behavior. After the full
+run, a final custom-skill path fence was added; its affected layout/skill regression
+repeated **11 cases**, all passing. These repeats are not added to the total.
+
+The isolated production-only frozen install successfully built its known native
+lifecycle dependencies. Build permission was scoped to that copy, with no root
+lockfile/dependency/policy changes. Its actual production Host/Pi/SQLite/CLI repeats
+**68 cases**, all passing. **439 runtime/config files** match this tree byte for
+byte; the installed graph has zero registry DSH runtime dependencies. Source guards
+verify200 retained modules/3 UI exclusions/29 recorded adaptations;376 runtime JS
+files/175 declared bare imports;0 external SDK imports/0 old orchestrator definitions.
+
+Key new evidence uses actual Pi HTTP requests to loopback scripted model endpoints,
+not replacement task/memory/scheduler services:
+
+- Markdown explicit remember/correct/forget, temporary preference refusal, literal
+  retrieval, candidate extraction, concurrent writers, scoped grants, restart and
+  derived-skill revocation. Model interpretation remains a judgment, not a fact.
+- Durable completed-task review, valid evidence references, invalid-output failure
+  isolation, replay deduplication and scoped skill creation without a two-task gate.
+- One direct task session, local write/result, cold continuation, exact-effect replay
+  refusal, cancellation/drain, personal/room scope and frozen reported-file delivery.
+- Active first-tier arrivals steer the original session;15 messages admitted and16th
+  queued; separately quoted Topic replies precede a deliberately held second tier.
+  Cold continuation and lost send acknowledgment use readback without another send.
+  Fixture timing demonstrates ordering, not real vendor latency.
+- Private vault/environment loading, POSIX ownership/mode/link checks, actual model
+  process/file privacy, three permission modes, own spill recovery and foreign-spill
+  refusal. No sandbox check was disabled. Executor escalation was used only so the
+  application's own nested Linux namespace runner could execute.
+- A-to-B installation restore: Pi history/cwd, task workspace/artifacts, schedules,
+  attachments and memory remain usable. Backup is offline, hash-checked, excludes
+  secrets/cache/log/temp by default, and interrupted restores block startup.
+- Disabled DWS does not register/probe anything. The optional plugin preserves
+  authenticated sender, timestamp and source quote, and scopes its account paths.
+  Standard application startup/task completion succeeds without any channel.
+
+Unverified: real DWS login/subscriptions/reconnect/upload/download/operator routing,
+live vendor-model judgment, business systems, Windows/macOS equivalent privacy and
+long-running load. External-effect uncertainty deliberately stops replay and needs
+operator readback; there is no general automatic reconciliation API. Secret detection
+in arbitrary prose and semantic correctness of model reviews/replies are not
+program guarantees. Logs/temp have explicit offline cleanup instructions, not an
+automatic eviction policy. Direct raw CLI invocation retains the caller's OS temp;
+the managed launcher scopes it. Trusted extensions retain service-account authority.
+
+No old plugin-data import was introduced; this is a new project. Runtime data,
+credentials and business artifacts are Git ignored. No real messages, deployment,
+merge or new remote push was performed for this change. Only a local commit is
+requested. No applicable repository `.agents/skills` skill was present.
+
+Evidence and per-log digests: [portable-assistant-validation.json](portable-assistant-validation.json),
+`evidence/portable-assistant-*`. Older checkpoints below are historical, not current
+remote-write status or additional non-overlapping test counts.
+
 # Default Host schedule acceptance (2026-11-05)
 
 The default durable scheduler, ordinary cold-session controller and four model

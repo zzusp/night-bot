@@ -117,8 +117,8 @@
       "source": "coordination-sessions.js",
       "sourceSha256": "c5ce357fd79c143f78a23746baad3f9f02e8faa32ad86b9246170128e4d5a27f",
       "status": "adapted",
-      "sha256": "bc1de2389ce9b54273ba47d0cc5089ed76b0844632574eb49e31cb367c1951e1",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "d01a142822cedc904cc50687af1178c800bbc5fef662b351450f3035efa2745f",
+      "adaptation": "Portable triage uses stable durable session identity and immediate steer for appended same-batch input while preserving group fairness for other roles."
     },
     {
       "source": "coordination-summary.js",
@@ -165,8 +165,9 @@
     {
       "source": "dws-runner.js",
       "sourceSha256": "2a829208680e3e07fae01f2b05509fd6372641bc0d095204e40177033142e3b8",
-      "status": "retained",
-      "sha256": "2a829208680e3e07fae01f2b05509fd6372641bc0d095204e40177033142e3b8"
+      "status": "adapted",
+      "sha256": "b4671c153cee3c77b349b092ce582d2c5e81c524332a77711d69ce1258344b69",
+      "adaptation": "Optional channel plugin supplies an explicit private environment to CLI run/subscription children; default runner behavior remains intact for attributed reference contracts."
     },
     {
       "source": "dynamic-filesystem-scope.js",
@@ -195,8 +196,9 @@
     {
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
-      "status": "retained",
-      "sha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c"
+      "status": "adapted",
+      "sha256": "8844b2ba10987a07e0530c0faa1c4e695d06710f0a5d0d90e4e80667219cf2e0",
+      "adaptation": "Durable triage-reply notification kind validates source identity/version/quote and deterministic delivery key without masquerading as final Topic/task results."
     },
     {
       "source": "engineering-output-contract.js",
@@ -776,8 +778,9 @@
     {
       "source": "store.js",
       "sourceSha256": "642f453d7baf48c065c8f504028a59e5052d027487b6433d916ab87c522bcfe2",
-      "status": "retained",
-      "sha256": "69660e28f3e0572d30f534d174bde639020280b565ba203fe78baba9005f89ec"
+      "status": "adapted",
+      "sha256": "0ab0bcc9524e6756b77630a871a4c7a1d21eca0130be8c95a0495b7e56c5c18b",
+      "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains."
     },
     {
       "source": "task-actions.js",
@@ -1013,7 +1016,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "3eefd65b342c6b79700b92ca8ecf3bf7fd11e743f6b71096fb59beb621181c52"
+      "sha256": "1c477bd82b072b6249fc8f3af27b2af3d7ade771de8189fff4a49f92ab5ac0e0",
+      "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests."
     },
     {
       "source": "task-session.js",
@@ -1049,8 +1053,9 @@
     {
       "source": "task-topic-coordinator.js",
       "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
-      "status": "retained",
-      "sha256": "cdc8d5f21b4d58d72a45a2d2ecb1cf28f7d5f0016343e1c5f809d6a8fa9715e1"
+      "status": "adapted",
+      "sha256": "19fa8379a7a33c3dded9734b52ff46d49ed983f19a26acddb9979dfe0b2634d1",
+      "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions."
     },
     {
       "source": "task-uat-pr-merge.js",
@@ -1104,8 +1109,9 @@
     {
       "source": "topic-runtime.js",
       "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
-      "status": "retained",
-      "sha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1"
+      "status": "adapted",
+      "sha256": "2261d1573cba16d866aa64d2a185ac0bf4e6ea8cf7ecf9963ad6be767ef7dc4e",
+      "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing."
     },
     {
       "source": "uat-acceptance-policy.js",

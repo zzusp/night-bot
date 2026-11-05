@@ -25,7 +25,7 @@ export function defineDomain(spec) {
  * Only the active authoritative single-document domains are supported. Unknown
  * layouts fail explicitly; this is not an untested generic storage replacement.
  */
-export async function openNativeDomains({ root, onChange = () => {}, onObserverError = () => {}, beforeCommit, afterRename } = {}) {
+export async function openNativeDomains({ root, onChange = () => {}, onObserverError = () => {}, beforeCommit, afterRename, pathCodec } = {}) {
   root = resolve(root); await mkdir(root, { recursive: true, mode: 0o700 }); root = await realpath(root)
   const domains = new Map(), opening = new Set(), flights = new Set()
   let facilityClosed = false
@@ -45,6 +45,7 @@ export async function openNativeDomains({ root, onChange = () => {}, onObserverE
         if (error.code !== 'ENOENT') throw new DomainError('invalid-record', 'Domain document cannot be read', { cause: error })
         document = { unit: { name: spec.name, version: spec.version }, global: null, tables: {} }
       }
+      document = pathCodec?.domain(spec.name,document,true)??document
       if (!record(document) || document.unit?.name !== spec.name || !record(document.tables)) throw new DomainError('invalid-record', 'Malformed domain document')
       if (document.unit.version !== spec.version) throw new DomainError('version-mismatch', 'Domain version mismatch: ' + spec.name)
       const tables = new Map()
@@ -71,7 +72,7 @@ export async function openNativeDomains({ root, onChange = () => {}, onObserverE
         if (change.table === '') nextGlobal = change.value
         else if (change.operation === 'deleted') delete nextTables[change.table][change.key]
         else Object.defineProperty(nextTables[change.table], change.key, { value: change.value, enumerable: true, writable: true, configurable: true })
-        const bytes = JSON.stringify({ unit: { name: spec.name, version: spec.version }, global: nextGlobal, tables: nextTables }, null, 2) + '\n'
+        const bytes = JSON.stringify(pathCodec?.domain(spec.name,{ unit: { name: spec.name, version: spec.version }, global: nextGlobal, tables: nextTables },false)??{ unit: { name: spec.name, version: spec.version }, global: nextGlobal, tables: nextTables }, null, 2) + '\n'
         const temporary = join(root, '.' + spec.name + '-' + randomUUID())
         let handle, renamed = false, primary
         try {

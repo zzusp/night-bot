@@ -52,3 +52,18 @@ Default Host startup now checks every mandatory service read by the retained cor
 `nativeJobRecovery` remains an optional trusted isolation authority: its absence
 refuses that special proof path; it is not permission to fabricate process proof.
 All other optional provider integrations retain their own explicit admission.
+
+## Current portable application composition
+
+The supported CLI starts `src/application.js` with channel-neutral resource and
+notification interfaces. `src/channels/service.js` owns authenticated `chat` and
+`chat-room` namespaces; optional `channelPlugins` register vendor capabilities.
+DWS is loaded only by `src/channels/plugins/dingtalk-dws.js` when enabled. The
+historical DWS resident remains attributed reference code, not the CLI entry.
+
+The installation layout, scoped Markdown memory, durable task retrospectives,
+single task execution session and first-tier tentative feedback are documented in
+[DATA-LAYOUT](DATA-LAYOUT.md), [MEMORY](MEMORY.md), [SELF-EVOLUTION](SELF-EVOLUTION.md),
+[SINGLE-TASK](SINGLE-TASK.md) and [CHANNELS](CHANNELS.md). Reference-domain tests still
+cover historical API contracts; current default wiring has separate portable Host
+and real local Pi-protocol tests. Neither test category proves live vendor access.

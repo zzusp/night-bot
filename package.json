@@ -8,14 +8,15 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node bin/night-bot.js",
+    "start": "node bin/night-bot-run.js",
     "test": "node --test test/pi-*.test.js && pnpm check",
     "check": "node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs",
     "test:runtime": "node scripts/test-pi.mjs runtime",
     "test:routing": "node scripts/test-pi.mjs routing",
     "test:domain": "node scripts/test-pi.mjs domain",
     "test:containment": "node scripts/test-pi.mjs containment",
-    "audit:runtime": "node scripts/audit-runtime.mjs"
+    "audit:runtime": "node scripts/audit-runtime.mjs",
+    "init:assistant": "node bin/night-bot-init.js"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.5-alpha.1",

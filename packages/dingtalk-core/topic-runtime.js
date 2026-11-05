@@ -1,3 +1,4 @@
+import {TRIAGE_BATCH_LIMIT,triageState,appendTriagePacket,createTriageFeedback,feedbackParameters} from '../../src/channels/triage.js'
 import { acceptanceCriteriaSchema } from './task-input-contract.js'
 import { randomUUID } from 'node:crypto'
 import { coordinationRole, coordinationTools } from './coordination-sessions.js'
@@ -220,7 +221,7 @@ export function projectTopicContext(context) {
 }
 
 // 请求是可丢弃的模型输入；已经接受的业务意图只以 Store 中的 decision 为准。
-export function createTopicCoordinator({ store, getAgent, assertSession, dispatchRequest, waitRequestIdle, onRequestFinished, serializeTasks, applyAction, appendOutbox, readFrozenReply, reviewCandidates, validateReplyReview, cancelTask, onError, isClosing, onDecisionRequest, onInputSettled, checkStartupRecovery, quotedReminderContext, taskFacts, readArchivedTask, workflowPromptsEnabled = true, fixedTopicsEnabled = false, retryDelayMs = 30_000, maxRequestAttempts = 3 }) {
+export function createTopicCoordinator({ store, getAgent, assertSession, dispatchRequest, waitRequestIdle, onRequestFinished, serializeTasks, applyAction, appendOutbox, readFrozenReply, reviewCandidates, validateReplyReview, cancelTask, onError, isClosing, onDecisionRequest, onInputSettled, checkStartupRecovery, quotedReminderContext, taskFacts, readArchivedTask, workflowPromptsEnabled = true, fixedTopicsEnabled = false, retryDelayMs = 30_000, maxRequestAttempts = 3, firstTierFeedback = false,channelContext=()=>undefined }) {
   const routes = new Map(), decisions = new Map(), replies = new Map(), reviews = new Map(), titleMigrations = new Map(), summaryMigrations = new Map()
   const collections = [routes, decisions, replies, reviews, titleMigrations, summaryMigrations]
   const isCurrentRequest = request => collections.some(collection => collection.get(request.requestId) === request)
@@ -233,6 +234,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
   const activeToolCalls = new Set()
   const decisionPersistenceFaults = new Set()
   const decisionSubmitters = new Map()
+  const rescheduleGroups=new Set()
   const scheduled = new Map(), applying = new Map(), timers = new Set(), retries = new Map(), retryTimers = new Map(), groupsBeingChanged = new Map()
   let closed = false
   const live = () => !closed && !isClosing()
@@ -370,7 +372,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     if (!agent) throw new Error(`resident_not_active:${groupId}`)
     if (!request) { agent.steer(textMessage(text, images)); return agent }
     request.text = text; request.images = images
-    const messageId = `message-${request.requestId}${request.roundUpdate ? `-revision-${request.revision}` : ''}`
+    const messageId = `message-${request.requestId}${request.roundUpdate ? `-revision-${request.revision??request.appendGeneration}` : ''}`
     request.messageId = messageId
     const state = store.getCoordinationRequest?.(groupId, request.requestId)
     if (state?.status === 'exhausted') { request.exhausted = true; return agent }
@@ -475,7 +477,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     for (const [id, request] of decisions) {
       if (request.groupId !== groupId || request.topicId !== topic.topicId) continue
       if ((request.versionRequestId ?? request.requestId) === requestId) { request.dispatch?.(); return request }
-      if (request.trigger !== 'task-facts' && !request.exhausted && request.revision < topic.revision) {
+      if (!firstTierFeedback&&request.trigger !== 'task-facts' && !request.exhausted && request.revision < topic.revision) {
         continuing = request
         requestId = request.requestId
         break
@@ -601,10 +603,12 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     request.dispatch()
     return request
   }
-  async function createRouteRequest(groupId, messages, reason) {
+  async function createRouteRequest(groupId, messages, reason, recovery) {
+    if(firstTierFeedback&&messages.length>TRIAGE_BATCH_LIMIT)throw new Error('triage_batch_limit')
     const group = store.getGroup(groupId)
     messages = structuredClone(messages.map(({ facts, ...message }) => message))
     const request = { requestId: requestIdentity('route', { groupId, routingRevision: group.routingRevision, contract: fingerprint(topicRouteSubmissionJsonSchema), messages: messages.map(({ messageId, messageVersion, routingEpoch }) => ({ messageId, messageVersion, epoch: routingEpoch ?? 0 })), reason }), groupId, routingRevision: group.routingRevision, messages, readOffsets: new Map(), ...(reason ? { reason } : {}) }
+    if(firstTierFeedback){if(recovery)request.requestId=recovery.requestId;Object.assign(request,{firstTierFeedback:true,sessionId:recovery?.state.triageBatch.sessionId??'session-triage-'+fingerprint([groupId,request.requestId]).slice(0,32),roundUpdate:!!recovery,appendGeneration:recovery?(recovery.state.triageBatch.appendGeneration??0)+1:0,startedAt:recovery?.state.triageBatch.startedAt??Date.now(),feedbackRefs:recovery?.state.triageBatch.feedbackRefs??[],firstReplyAt:recovery?.state.triageBatch.firstReplyAt});await store.updateCoordinationRequest?.(groupId,request.requestId,{status:'pending',triageBatch:triageState(request)})}
     routes.set(request.requestId, request)
     try {
     // 仅复用已送达通知的精确来源关联；这只是缩小首屏，不替模型判定本次是否订正。
@@ -670,7 +674,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     })
     const visibleMessages = messages.map((message, index) => ({ ...metadata[index], text: '',
       ...(message.text.length ? { textOffset: 0, textTotal: message.text.length, textHasMore: true } : {}) }))
-    const envelope = { ...peopleContext, ...(fixedTopicsEnabled ? { fixedTopics: FIXED_TOPICS } : {}), requestId: request.requestId, messages: visibleMessages, recentMessages, totalMessages: messages.length, hasMoreMessages: false, topics, relatedTopics, recalledTopics, recallQueries,
+    const envelope = { ...channelContext(groupId)?{channel:(({type,channelId,conversationId})=>({type,channelId,conversationId}))(channelContext(groupId))}:{},...peopleContext, ...(fixedTopicsEnabled ? { fixedTopics: FIXED_TOPICS } : {}), requestId: request.requestId, messages: visibleMessages, recentMessages, totalMessages: messages.length, hasMoreMessages: false, topics, relatedTopics, recalledTopics, recallQueries,
       ...(inlineCandidates ? { clarificationReviewCandidates: request.clarificationReviewCandidates } : { clarificationReviewCandidateCount: request.clarificationReviewCandidates.length, clarificationReviewReadCall: { name: 'group_topic_route_context_get', arguments: { requestId: request.requestId, section: 'clarificationReviewCandidates', offset: 0 } } }),
       totalRelatedTopics: allRelatedTopics.length, hasMoreRelatedTopics: relatedTopics.length < allRelatedTopics.length, nextRelatedTopicOffset: relatedTopics.length, totalTopics: allTopics.length, hasMoreTopics: topics.length < allTopics.length, nextTopicOffset: topics.length, ...(reason ? { reason } : {}) }
     if (quotedReminders.size) envelope.quotedReminderGuide = 'quotedReminder 是 Host 按原生引用和已送达回执核验的原提醒，仅为关联背景，不代表本条消息必然订正。只改变原提醒的事项可交 coordination；新增或混合事项仍逐项判断，必要时用 group_topic_list 省略 requestId 查询完整话题目录。首屏省略目录不表示没有旧话题，不得自动把同人新要求归入旧提醒。'
@@ -701,7 +705,9 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     }
     envelope.hasMoreMessages = visibleMessages.some(message => message.textHasMore)
     request.seenTopicVersions = new Map([...topics, ...relatedTopics, ...recalledTopics].map(item => [item.topicId, item.revision]))
-    const agent = send(groupId, `[GROUP_TOPIC_ROUTE]\n无法根据来源安全确定事项归属时，该消息单独提交 deferred:{reason}，不提交 units、ignoredRefs 或 topics；仅原文明确向助手交办且必须请人补充时可附 clarification:{question,assignmentQuote,replyReview}，assignmentQuote 必须唯一匹配原文，replyReview 必须按 clarificationReviewCandidates 完整审阅且 kind=substantive、不替换旧通知；如果给出 clarificationReviewReadCall，须沿 nextOffset 读完全部候选后才能提交澄清；普通同事讨论不得主动追问。\n${fixedTopicsEnabled ? fixedTopicInstructions + '\n' : ''}Topic 请求：${JSON.stringify(envelope)}\n消息包含 metadataReadCall 时必须沿 nextOffset 读完冻结元数据后再提交；目录按 group_topic_list 相同顺序分页，nextTopicOffset 是下一页 offset；relatedTopics 是引用及关联任务命中的首包，recallSources 说明来源；recalledTopics 是有限词面候选，matchedQueries 不是同一事项的证明。必要时使用 group_topic_list 的 queries 多词检索，比较业务目标后决定复用或新建，每个 Topic target 必填 reason；新建且已见候选时 candidateComparisons 至少填写一个已见 topicId、revision 和排除理由，不得猜造候选；hasMoreRelatedTopics 时必须用 group_topic_list 携带本 requestId 和 nextRelatedTopicOffset 继续读取全部关系。无法判断旧事项归属时先检索或分页读取目录，不能因首包无候选直接新建。先判断当前消息是否涉及具体事项或任务。日常寒暄、随口聊天、没有具体事项对象的情绪表达或泛泛感谢，不新建 Topic，也不为了归档闲聊强行关联已有 Topic；将这些原文放入 ignoredRefs 并说明“日常闲聊，无具体事项”，纯闲聊提交 units=[]。消息混有闲聊和具体事项时，仅将事项拆为 units，闲聊部分放入 ignoredRefs，完整覆盖原文。明确涉及具体问题、需求、调查、执行、结果、验收或后续跟进时，按共同业务事项和目标聚合Topic，不逐功能点拆分。同次交办、共享上下文且适合整体交付的多个需求项保持在同一Topic；不能仅因可独立验收、补充或实现就拆开。结合本批原文、引用、候选的目标/需求摘要判断；需要消解“这个也是”等承接时再按现有readCall读取相关近期原文，不读取全执行历史。在符合本群职责的业务事项内优先复用同一事项的已有Topic，后续截图、验收和交付要求沿原事项补充。${fixedTopicsEnabled ? '话题归属与助手动作分开判断：职责内具体事项无论交给谁处理，都保留在对应业务 Topic；他人负责、状态通知或同事信息引用不是转入职责外话题或丢弃原文的理由。是否需要本助手动作或回复由 Topic Decision 再判断，不把归属或状态通知当成新授权。' : '不要用是否出现“任务”等关键词或是否要求助手执行判断事项：群成员讨论具体问题也可形成话题；“谢谢，那个问题修好了”、引用任务后的“收到”“继续”等需结合引用和上下文归入原事项，不能当作闲聊丢掉。'}同一页面或截图只是上下文线索，不是强制合并边界；确有不同业务目标或独立交付约定时可分Topic，共同领域也不能替代目标判断。先定事项归属再划分units；同一事项的多个需求项可用一个unit完整引用，也可按来源需要保留多个unit归同一Topic。每个 unit 提供稳定 unitKey、简短 summary、能在当前消息原文中唯一定位的 sourceRefs.quote、共享约束 contextRefs 和 topics，并由 effectOwner 指定唯一动作主归属；contextRefs.quote 也只能引用当前消息 text 中唯一出现的片段，quotedMessage 是单独提供的背景，不要把被引用消息的正文填入 contextRefs。其余非空原文必须放入 ignoredRefs 并说明原因。纯背景不得冒充事项；需要查询历史资料时不得把资料来源 Topic 加入归属，可以检索资料后只处理当前请求。通过 group_topic_route_submit 一次完整提交本批消息；不执行任务、不回复群聊。${reason ? `这是归属复核：${reason}` : ''}`, messages.flatMap((message) => message.imageRefs ?? []), request)
+    request.envelope=envelope
+    if(firstTierFeedback)envelope.initialFeedback={tool:'group_topic_initial_reply',instruction:'一级初诊负责不确定的初步反馈；不是结论、不是已执行或已完成。按实际Topic分别回复，每条引用对应原消息的唯一quote；覆盖全部消息，需静默的逐条说明理由。二级继续结合Topic路由和处理任务，不重复接收确认。',batchLimit:15}
+    const agent = send(groupId, `[GROUP_TOPIC_ROUTE]\n无法根据来源安全确定事项归属时，该消息单独提交 deferred:{reason}，不提交 units、ignoredRefs 或 topics；仅原文明确向助手交办且必须请人补充时可附 clarification:{question,assignmentQuote,replyReview}，assignmentQuote 必须唯一匹配原文，replyReview 必须按 clarificationReviewCandidates 完整审阅且 kind=substantive、不替换旧通知；如果给出 clarificationReviewReadCall，须沿 nextOffset 读完全部候选后才能提交澄清；普通同事讨论不得主动追问。\n${fixedTopicsEnabled ? fixedTopicInstructions + '\n' : ''}Topic 请求：${JSON.stringify(envelope)}\n消息包含 metadataReadCall 时必须沿 nextOffset 读完冻结元数据后再提交；目录按 group_topic_list 相同顺序分页，nextTopicOffset 是下一页 offset；relatedTopics 是引用及关联任务命中的首包，recallSources 说明来源；recalledTopics 是有限词面候选，matchedQueries 不是同一事项的证明。必要时使用 group_topic_list 的 queries 多词检索，比较业务目标后决定复用或新建，每个 Topic target 必填 reason；新建且已见候选时 candidateComparisons 至少填写一个已见 topicId、revision 和排除理由，不得猜造候选；hasMoreRelatedTopics 时必须用 group_topic_list 携带本 requestId 和 nextRelatedTopicOffset 继续读取全部关系。无法判断旧事项归属时先检索或分页读取目录，不能因首包无候选直接新建。先判断当前消息是否涉及具体事项或任务。日常寒暄、随口聊天、没有具体事项对象的情绪表达或泛泛感谢，不新建 Topic，也不为了归档闲聊强行关联已有 Topic；将这些原文放入 ignoredRefs 并说明“日常闲聊，无具体事项”，纯闲聊提交 units=[]。消息混有闲聊和具体事项时，仅将事项拆为 units，闲聊部分放入 ignoredRefs，完整覆盖原文。明确涉及具体问题、需求、调查、执行、结果、验收或后续跟进时，按共同业务事项和目标聚合Topic，不逐功能点拆分。同次交办、共享上下文且适合整体交付的多个需求项保持在同一Topic；不能仅因可独立验收、补充或实现就拆开。结合本批原文、引用、候选的目标/需求摘要判断；需要消解“这个也是”等承接时再按现有readCall读取相关近期原文，不读取全执行历史。在符合本群职责的业务事项内优先复用同一事项的已有Topic，后续截图、验收和交付要求沿原事项补充。${fixedTopicsEnabled ? '话题归属与助手动作分开判断：职责内具体事项无论交给谁处理，都保留在对应业务 Topic；他人负责、状态通知或同事信息引用不是转入职责外话题或丢弃原文的理由。是否需要本助手动作或回复由 Topic Decision 再判断，不把归属或状态通知当成新授权。' : '不要用是否出现“任务”等关键词或是否要求助手执行判断事项：群成员讨论具体问题也可形成话题；“谢谢，那个问题修好了”、引用任务后的“收到”“继续”等需结合引用和上下文归入原事项，不能当作闲聊丢掉。'}同一页面或截图只是上下文线索，不是强制合并边界；确有不同业务目标或独立交付约定时可分Topic，共同领域也不能替代目标判断。先定事项归属再划分units；同一事项的多个需求项可用一个unit完整引用，也可按来源需要保留多个unit归同一Topic。每个 unit 提供稳定 unitKey、简短 summary、能在当前消息原文中唯一定位的 sourceRefs.quote、共享约束 contextRefs 和 topics，并由 effectOwner 指定唯一动作主归属；contextRefs.quote 也只能引用当前消息 text 中唯一出现的片段，quotedMessage 是单独提供的背景，不要把被引用消息的正文填入 contextRefs。其余非空原文必须放入 ignoredRefs 并说明原因。纯背景不得冒充事项；需要查询历史资料时不得把资料来源 Topic 加入归属，可以检索资料后只处理当前请求。通过 group_topic_route_submit 一次完整提交本批消息；${firstTierFeedback?'先通过group_topic_initial_reply提交分话题、不确定的初步反馈（或逐条静默原因）；一级不执行任务，不给最终结论。':'不执行任务、不回复群聊。'}${reason ? `这是归属复核：${reason}` : ''}`, messages.flatMap((message) => message.imageRefs ?? []), request)
     monitor(agent, request, routes)
     return envelope
     } catch (error) {
@@ -732,12 +738,15 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     const pending = pendingInput(groupId)
     const routable = routableInput(groupId)
     for (const [id, request] of routes) {
-      if (request.groupId === groupId && request.exhausted && !sameVersions(request.messages, routable)) routes.delete(id)
+      if (!firstTierFeedback&&request.groupId === groupId && request.exhausted && !sameVersions(request.messages, routable)) routes.delete(id)
     }
+    if(firstTierFeedback){const request=[...routes.values()].find(item=>item.groupId===groupId&&!item.exhausted&&!item.sealed);if(request){const text=appendTriagePacket(request,routable);if(text){await store.updateCoordinationRequest?.(groupId,request.requestId,{status:'pending',triageBatch:triageState(request)});request.appendIngress=true;try{send(groupId,text,[],request)}finally{request.appendIngress=false}}}}
     if (routable.length && ![...routes.values()].some((request) => request.groupId === groupId)) {
       const recovery = routable.find(message => message.routingRecoveryMessageId && routable.some(item => item.messageId === message.routingRecoveryMessageId))
       const requiredIds = new Set(recovery ? [recovery.messageId, recovery.routingRecoveryMessageId] : [])
-      await createRouteRequest(groupId, boundedItems(routable, 40_000, 50, message => requiredIds.has(message.messageId)))
+      const saved=firstTierFeedback&&Object.entries(group.coordinationRequests??{}).find(([,state])=>state.status==='pending'&&state.triageBatch&&!state.triageBatch.sealed&&state.triageBatch.messages.every(ref=>routable.some(m=>m.messageId===ref.messageId&&m.messageVersion===ref.messageVersion)))
+      const batch=saved?saved[1].triageBatch.messages.map(ref=>routable.find(m=>m.messageId===ref.messageId)):boundedItems(routable,40_000,firstTierFeedback?TRIAGE_BATCH_LIMIT:50,message=>requiredIds.has(message.messageId))
+      await createRouteRequest(groupId,batch,undefined,saved?{requestId:saved[0],state:saved[1]}:undefined)
     }
     const metadataMigrationPending = [...summaryMigrations.values(), ...titleMigrations.values()].some((request) => request.groupId === groupId)
     if (!metadataMigrationPending) {
@@ -809,8 +818,8 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
   }
   function schedule(groupId) {
     if (!live()) return Promise.resolve([])
-    if (scheduled.has(groupId)) return scheduled.get(groupId)
-    const promise = Promise.resolve().then(() => wake(groupId)).catch((error) => { onError(groupId, error); return [] }).finally(() => scheduled.delete(groupId))
+    if (scheduled.has(groupId)){if(firstTierFeedback)rescheduleGroups.add(groupId);return scheduled.get(groupId)}
+    const promise = Promise.resolve().then(() => wake(groupId)).catch((error) => { onError(groupId, error); return [] }).finally(() => {scheduled.delete(groupId);if(rescheduleGroups.delete(groupId)&&live())void schedule(groupId)})
     scheduled.set(groupId, promise)
     return promise
   }
@@ -977,7 +986,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
       type: 'object', additionalProperties: false,
       properties: { messageIds: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } }, required: ['messageIds', 'reason'],
     }, (input) => {
-      const { messageIds, reason } = z.strictObject({ messageIds: z.array(z.string().min(1)).min(1).max(50), reason: z.string().trim().min(1) }).parse(input)
+      const { messageIds, reason } = z.strictObject({ messageIds: z.array(z.string().min(1)).min(1).max(firstTierFeedback?15:50), reason: z.string().trim().min(1) }).parse(input)
       if (new Set(messageIds).size !== messageIds.length) throw new Error('topic_route_review_duplicate')
       const group = store.getGroup(groupId)
       const messages = messageIds.map((id) => {
@@ -987,6 +996,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
       })
       return createRouteRequest(groupId, messages, reason)
     })
+    if(firstTierFeedback)tool('group_topic_initial_reply','Submit tentative first-tier replies split by actual topic and exact original-message quote, or an explicit silent disposition per source. Never claim completion.',feedbackParameters,args=>createTriageFeedback({store,appendOutbox,persist:(request,patch)=>store.updateCoordinationRequest?.(groupId,request.requestId,patch)})(routes.get(args.requestId),args))
     tool('group_topic_route_context_get', '连续读取冻结路由原文或澄清审阅候选；按 nextOffset 续读。', {
       type: 'object', additionalProperties: false, properties: { requestId: { type: 'string' }, messageId: { type: 'string' }, section: { type: 'string', enum: ['clarificationReviewCandidates', 'messageMetadata'] }, offset: { type: 'integer' } }, required: ['requestId', 'offset'],
     }, ({ requestId, messageId, section, offset }) => {
@@ -1034,6 +1044,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
           : { status: 'request-unavailable', nextAction: 'wait-for-current-request' }
       }
       if (!fixedTopicsEnabled && args.routes.some(route => route.units?.some(unit => unit.fixedTopic))) throw new Error('fixed_topic_routes_unavailable')
+      if(firstTierFeedback&&request.messages.some(m=>!request.feedbackRefs?.includes(m.messageId)))throw new Error('triage_initial_feedback_required')
       if (!sameVersions(request.messages, args.routes)) throw new Error('topic_route_batch_incomplete')
       if ([...request.metadataPages.values()].some(page => page.offset < page.text.length)) throw new Error('topic_route_metadata_unread')
       if (request.messages.some((message) => (request.readOffsets.get(message.messageId) ?? 0) < message.text.length)) throw new Error('topic_route_source_unread')
@@ -1063,6 +1074,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
       })
       let result
       try {
+        request.sealed=true
         result = await store.routeMessages({ groupId, routeId: request.requestId, routingRevision: request.routingRevision, expectedRoutingEpochs: request.messages.map(message => ({ messageId: message.messageId, messageVersion: message.messageVersion, epoch: message.routingEpoch ?? 0 })),
           preflight: needsReview ? () => { if (fingerprint(reviewCandidates(groupId, request.messages, [])) !== fingerprint(candidates)) throw new Error('topic_routing_stale') } : undefined, audit, routes: submittedRoutes })
       } catch (error) {
@@ -1073,6 +1085,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
         return { status: 'stale', reason: error.message === 'topic_routing_stale' ? 'routing-context-changed' : 'message-version-changed', ...(current ? { currentRequest: { requestId: current.requestId, routingRevision: current.routingRevision } } : {}), nextAction: 'use-current-request' }
       }
       if (result.status !== 'routed' && result.status !== 'duplicate') { routes.delete(args.requestId); await schedule(groupId); return result }
+      if(firstTierFeedback)await store.updateCoordinationRequest?.(groupId,args.requestId,{status:'completed',triageBatch:triageState(request)})
       routes.delete(args.requestId)
       await schedule(groupId)
       resumePausedDecisionMonitors(groupId)
@@ -1763,7 +1776,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     async close() {
       closed = true
       for (const timer of timers) clearTimeout(timer)
-      timers.clear(); retryTimers.clear(); retries.clear()
+      timers.clear(); retryTimers.clear(); retries.clear();rescheduleGroups.clear()
       await Promise.allSettled([...activeToolCalls])
       for (const request of [...reviews.values(), ...replies.values()]) request.reject(new Error('resident_runtime_closed'))
       for (const collection of collections) for (const request of collection.values()) retire(request)

@@ -1,9 +1,11 @@
 import {Context} from '@deepseek-ai/cordis'
-import {join} from 'node:path'
+import {join,dirname} from 'node:path'
 import NativeCredentials from './native-credentials.js'
 import NativeAuthorization from './native-authorization.js'
 import {piAuthentication} from './pi-provider-auth.js'
 import {registerPiLoginFlows} from './pi-provider-login.js'
+import {runtimePaths,prepareSecrets} from './runtime/paths.js'
+import {privateDirectory} from './runtime/files.js'
 
 export class OperatorAuthError extends Error {
  constructor(code){super(code);this.code=code}
@@ -20,8 +22,10 @@ export async function runAuthCommand(config,args,{environmentSnapshot,interactio
  if(command.endsWith('-ref'))reference(target);else if(target!==undefined)providerKey(target)
  const ctx=new Context()
  try{
+  const paths=runtimePaths(config);await prepareSecrets(paths)
+  await privateDirectory(dirname(paths.credentials))
   ctx.provide('launchEnvironment',environmentSnapshot)
-  await ctx.plugin(NativeCredentials,{path:join(config.stateDir,'credentials.json'),watch:false})
+  await ctx.plugin(NativeCredentials,{path:paths.credentials,watch:false})
   await ctx.plugin(NativeAuthorization)
   const authentication=piAuthentication({getCredentials:()=>ctx.credentials,getEnvironment:name=>environmentSnapshot.get(name)?.value})
   registerFlows(ctx,authentication)

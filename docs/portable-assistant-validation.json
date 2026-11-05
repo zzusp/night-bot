@@ -1,0 +1,102 @@
+{
+  "date": "2026-11-05",
+  "baseline": "16a5b2fa32cb17f8a2c6561c3bb28680d55fac63",
+  "environment": "Linux Node 24.19.0; local Pi HTTP fixtures; no external accounts or business writes",
+  "primaryDistinctPasses": 1184,
+  "finalChange": "After the full own suite, custom-skill directory roots were fenced to the installation. Affected layout/skill tests and production core were repeated; repeats are not added to primaryDistinctPasses.",
+  "checks": {
+    "own": {
+      "evidence": "docs/evidence/portable-assistant-own.txt",
+      "sha256": "24de9782ddfdcb16af784f0289a69a30ab564a178a3c63e7e04049877f5d30ce",
+      "counts": {
+        "tests": 590,
+        "pass": 590,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "runtime": {
+      "evidence": "docs/evidence/portable-assistant-runtime.txt",
+      "sha256": "8b88eaa1cb40597866e0f33ab0a65c6cdf1ff0f467a97eff4a68850f0d88351f",
+      "counts": {
+        "tests": 142,
+        "pass": 142,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "routing": {
+      "evidence": "docs/evidence/portable-assistant-routing.txt",
+      "sha256": "fa9785e410af2936db0949eefd76dfcd786ce5ab567af7164a3037ba86556df1",
+      "counts": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "domain": {
+      "evidence": "docs/evidence/portable-assistant-domain.txt",
+      "sha256": "2b790d57b284eb0fc281de3c9be39b975a48d9d21345489aab1dd79bf1a2ae55",
+      "counts": {
+        "tests": 388,
+        "pass": 388,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "containment": {
+      "evidence": "docs/evidence/portable-assistant-containment.txt",
+      "sha256": "995fb0cb2226d7acb9b3c4b36b5fe13e04c2544351b18de9857aab79736fbcf3",
+      "counts": {
+        "tests": 18,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1
+      }
+    },
+    "final-skill-boundary": {
+      "evidence": "docs/evidence/portable-assistant-final-skill-boundary.txt",
+      "sha256": "ad6db1b6aff2ca2d2c483f336552d457c460fc27b6d2eff6ab62478d19990a8c",
+      "counts": {
+        "tests": 11,
+        "pass": 11,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "production-core": {
+      "evidence": "docs/evidence/portable-assistant-production-core.txt",
+      "sha256": "10f39009ae2b16b4b154753a99a58a11c5116579e62f0d1b83cc1c8f69f6cc4a",
+      "counts": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "guards": {
+      "evidence": "docs/evidence/portable-assistant-guards.txt",
+      "sha256": "bdd7f5d00efce19ce6e70ed16c5f708f88ec227c61e1562c97803f67a914b232"
+    },
+    "production-install": {
+      "evidence": "docs/evidence/portable-assistant-production-install.txt",
+      "sha256": "057f8dee7f08cbf9811f2fb3ecd93e8b959cb4a0209932ab112d6bafa3a08080"
+    },
+    "production-audit": {
+      "evidence": "docs/evidence/portable-assistant-production-audit.txt",
+      "sha256": "468bf5b8d053fc2bf352cac0b911a1357b50123d789f4f312c1f2ce46643d749"
+    },
+    "production-equality": {
+      "evidence": "docs/evidence/portable-assistant-production-equality.txt",
+      "sha256": "04ad2cb8de51769cd1c9cc6940ed863f33aa8f087737eb966f8abd3a5e3e567d"
+    }
+  }
+}

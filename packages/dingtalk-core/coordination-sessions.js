@@ -25,7 +25,7 @@ export const coordinationRole = request => request.kind && ['checkpoint', 'compl
 
 export function coordinationTools(role) {
   const reads = ['read', 'glob', 'grep', 'skill', 'group_task_context_get', 'group_task_list', 'group_topic_list', 'group_topic_context_get', 'group_message_get', 'group_resource_get']
-  const submits = role === 'route' ? ['group_topic_route_context_get', 'group_topic_route_submit', 'group_topic_title_submit', 'group_topic_summary_submit']
+  const submits = role === 'route' ? ['group_topic_initial_reply','group_topic_route_context_get', 'group_topic_route_submit', 'group_topic_title_submit', 'group_topic_summary_submit']
     : role === 'decision' ? ['group_decision_context_get', 'group_task_prompt_get', 'group_decision_submit', 'group_reply_review_get', 'group_topic_route_review']
       : ['group_reply_review_get', 'group_task_review_context_get', 'group_task_prompt_get', 'group_reply_submit', 'group_task_review_submit']
   return [...reads, ...submits]
@@ -45,7 +45,7 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     if (entry && !entry.active) { await entry.disposal; entry = entries.get(key) }
     if (entry) return entry.ready
     const suffix = createHash('sha256').update(key).digest('hex').slice(0, 24)
-    entry = { request, role: coordinationRole(request), sessionId: `session-coordination-${suffix}-${randomUUID().slice(0, 8)}`, active: true }
+    entry = { request, role: coordinationRole(request), sessionId: request.firstTierFeedback?request.sessionId:`session-coordination-${suffix}-${randomUUID().slice(0, 8)}`, active: true }
     entries.set(key, entry)
     entry.ready = (async () => {
       try {
@@ -101,6 +101,7 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     entry.disposal = disposal
   }
   function dispatch(request, message) {
+    const liveEntry=entries.get(keyOf(request));if(request.appendIngress&&liveEntry?.active&&liveEntry.handle&&active.get(request.groupId)===liveEntry){liveEntry.handle.agent.steer(message);return Promise.resolve(liveEntry.handle.agent)}
     const queuedAt = Date.now()
     let resolve, reject
     const delivered = new Promise((yes, no) => { resolve = yes; reject = no })

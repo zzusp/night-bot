@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {loadConfig} from '../src/config.js'
 import {loadNativeEnvironment} from '../src/native-environment.js'
+import {runtimePaths,prepareSecrets,environmentPaths} from '../src/runtime/paths.js'
 
 const [path,...args]=process.argv.slice(2)
 if(!path||path==='--help'||args.includes('--help')){
@@ -11,7 +12,8 @@ if(!path||path==='--help'||args.includes('--help')){
  for(const signal of ['SIGINT','SIGTERM'])process.once(signal,abort)
  try{
   const config=await loadConfig(path)
-  const environmentSnapshot=await loadNativeEnvironment({materialize:true,warn:message=>console.error(message)})
+  await prepareSecrets(runtimePaths(config))
+  const environmentSnapshot=await loadNativeEnvironment({...environmentPaths(config,path),materialize:true,warn:message=>console.error(message)})
   const {installProxyFromEnvironment}=await import('../src/native-http-proxy.js')
   releaseProxy=await installProxyFromEnvironment(environmentSnapshot,message=>console.error(message))
   const {createOperatorInteraction}=await import('../src/operator-terminal.js')

@@ -12,11 +12,11 @@ function lineReader(stream, onLine) {
   stream.on('end', () => { if (buffer !== '') onLine(buffer) })
 }
 
-export function createNodeDwsRunner({ executable = 'dws', cwd = process.cwd(), runTimeoutMs = 30_000 } = {}) {
+export function createNodeDwsRunner({ executable = 'dws', cwd = process.cwd(), runTimeoutMs = 30_000,env } = {}) {
   return {
     cwd,
     spawn(args, hooks = {}) {
-      const child = spawn(executable, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+      const child = spawn(executable, args, { cwd,...env?{env}:{}, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
       lineReader(child.stdout, hooks.onStdoutLine ?? (() => undefined))
       lineReader(child.stderr, hooks.onStderrLine ?? (() => undefined))
       const done = new Promise((resolve, reject) => {

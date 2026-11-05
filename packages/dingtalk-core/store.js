@@ -87,6 +87,7 @@ const inboundSchema = z.object({
   agentDecisionAttemptCount: z.number().int().nonnegative().optional(), agentDecisionRetryAt: z.string().min(1).optional(),
 })
 const outboundSchema = z.object({
+  triage:z.object({topicKey:z.string(),quote:z.string()}).optional(),
   replyTopicId: z.string().optional(), coveredEventIds: z.array(z.string()).optional(),
   topicRefs: z.array(topicRefSchema).optional(), decisionId: z.string().optional(), resultFingerprint: z.string().min(1).optional(),
   outboundId: z.string().min(1), sourceMessageId: z.string().min(1), text: z.string(), status: z.enum(['pending', 'sent', 'superseded']),
@@ -150,7 +151,7 @@ const groupSchema = z.object({
   personAliases: personAliasesSchema.optional(),
   fixedTopics: z.array(z.object({ topicId: z.enum(fixedTopicIds), title: z.string().min(1), fixed: z.literal(true), createdAt: z.string().min(1) })).optional(),
   sourceDispatchOwnership: z.array(sourceDispatchSchema).default([]),
-  coordinationRequests: z.record(z.string(), z.object({ attempt: z.number().int().nonnegative().default(0), resumeEpoch: z.number().int().nonnegative().default(0), updatedAt: z.string().optional(), nextRetryAt: z.string().optional(), status: z.enum(['pending', 'exhausted', 'completed', 'superseded']), messageId: z.string().optional(), lastError: z.string().optional(), failurePhase: z.enum(['startup', 'dispatch']).optional(), failureCode: z.string().optional(), startupAttempt: z.number().int().nonnegative().optional(), supersededBy: z.string().optional(), supersedeReason: z.string().optional() })).default({}),
+  coordinationRequests: z.record(z.string(), z.object({ triageBatch:z.object({messages:z.array(z.object({messageId:z.string(),messageVersion:z.number().int(),epoch:z.number().int()})).max(15),sessionId:z.string(),appendGeneration:z.number().int(),feedbackRefs:z.array(z.string()).optional(),startedAt:z.number(),firstReplyAt:z.number().optional(),sealed:z.boolean()}).optional(), attempt: z.number().int().nonnegative().default(0), resumeEpoch: z.number().int().nonnegative().default(0), updatedAt: z.string().optional(), nextRetryAt: z.string().optional(), status: z.enum(['pending', 'exhausted', 'completed', 'superseded']), messageId: z.string().optional(), lastError: z.string().optional(), failurePhase: z.enum(['startup', 'dispatch']).optional(), failureCode: z.string().optional(), startupAttempt: z.number().int().nonnegative().optional(), supersededBy: z.string().optional(), supersedeReason: z.string().optional() })).default({}),
   groupId: z.string().min(1), name: z.string().optional(), timezone: z.string().optional(), responsibility: z.string(), residentSessionId: z.string().min(1), residentAgentPreset: z.string().min(1).optional(), nextSequence: z.number().int().positive(),
   messages: z.array(inboundSchema), outbox: z.array(outboundSchema),
   routingRevision: z.number().int().nonnegative(), topics: z.array(topicSchema), routeHistory: z.array(z.record(z.string(), z.unknown())), taskReservations: z.array(z.record(z.string(), z.unknown())),

@@ -1,0 +1,19 @@
+✔ portable defaults live below install root while explicit legacy paths remain unchanged (12.240605ms)
+✔ real default Host, auth credential path, attachment cache and memory use the portable layout (1987.615247ms)
+✔ offline backups exclude credentials/env/cache/logs, sanitize config, relocate controlled data and refuse corrupt bytes (98.378562ms)
+✔ unified layout never silently falls back when a data directory is a symlink or unwritable file (14.48995ms)
+✔ an interrupted restore blocks startup and new snapshots instead of accepting partial state (25.06449ms)
+✔ managed launcher writes logs/tmp under data and starts the real loopback service (2355.728641ms)
+✔ new Night Bot data restores A to B: continued Pi history, workspace, scheduled task, attachment and Markdown memory (3223.667265ms)
+✔ initializer creates unique private generic configuration, honors install layout and never overwrites it (199.066482ms)
+✔ credential values and environment files are confined to the separate private secrets directory (7.860121ms)
+✔ external body-only skill edits notify the next real Pi request and require an explicit reread (2526.76295ms)
+✔ actual Pi skill catalogs deduplicate committed visibility, honor direct gestures and publish empty replacement after removal (2341.654731ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8093.485229

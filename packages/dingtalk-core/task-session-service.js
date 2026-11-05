@@ -1,3 +1,5 @@
+import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
+import {createSingleTaskSessions,disabledExecutionSessions} from '../../src/tasks/single-session.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
 import {createObserverGroupPages} from './observer-group-pages.js'
 import {retiredSourceOwnership} from './coordination-retirement.js'
@@ -39,7 +41,6 @@ import { assertTaskContextSemantics, taskContextInputContract } from './task-inp
 import { projectTaskTimeline, readTaskLifecycle, latestExecutionRoundTiming } from './task-execution-timeline.js'
 import { createTaskArtifactFiles } from './task-artifact-files.js'
 import { freezeTaskDeliveryFiles, withTaskFileNotifications } from './task-final-delivery.js'
-import { createNativeDwsObserver, nativeDwsCommands, nativeDwsObservation } from './native-dws-send.js'
 export { taskExecutionContext } from './execution-context.js'
 
 const hash = value => createHash('sha256').update(JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)).digest('hex')
@@ -75,6 +76,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   for (const value of [config.maxConcurrentExecutions, config.maxConcurrentTasks, legacy.getAgentConfig().maxConcurrentTasks]) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 50)) fail('TASK_SESSION_CONCURRENCY_INVALID')
   }
+  const singleExecution=ctx.get?.('runtimePaths')?.mode==='portable'
+  const referenceChannel=singleExecution?undefined:await import('./native-dws-send.js')
   const root = resolve(config.workspaceDir ?? residentStore.getTaskWorkspaceDir?.() ?? legacy.getAgentConfig().workspaceDir)
   await mkdir(dirname(config.dbPath), { recursive: true })
   const store = suppliedStore ?? await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId,
@@ -83,12 +86,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   let persistence, resourceCatalog
   try {
     resourceCatalog = createExecutionResourceCatalog(await store.query({ kind: 'resource.catalog' }))
-    persistence = suppliedPersistence ?? await installTaskSessionPersistence(ctx, { root })
+    persistence = suppliedPersistence ?? (singleExecution?{register:async()=>{},runOwned:(_binding,action)=>action(),close:async()=>{}}:await installTaskSessionPersistence(ctx, { root }))
   } catch (error) {
     if (!suppliedStore) await store.close()
     throw error
   }
   const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files') })
+  const originalNotifications=notifications
+  if(singleExecution)notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('send',notification):originalNotifications.send(notification),readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws
@@ -111,6 +116,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   let observerGroupPage
   const sourceHeldNotifications = new Map()
   const query = (kind, args = {}) => store.query({ kind, ...args })
+  if(singleExecution&&(await query('execution.list')).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
+  const stopReflection=ctx.get?.('reflection')?.attachStore(store,{ownerActorId:config.ownerActorId,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
   async function* executionIndex() {
     let after = 0
     do {
@@ -170,6 +177,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           throw error
         })
     } else receipt = await commit()
+    if(receipt.completionEvent)ctx.get?.('reflection')?.scan()
     observerGroupPage?.sourceChanged(receipt.result?.source ?? args.source)
     // 幂等收据保存的是当时快照；通知当前态须独立回读，不能用旧 prepared 覆盖已送达缓存。
     if (receipt.replayed && receipt.result?.notification)
@@ -220,8 +228,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for (const item of await query('notification.list')) notificationCache.set(item.id, item)
     for (const item of await query('execution.list')) executionCache.set(item.executionId, item)
   })
-  nativeDws = createNativeDwsObserver({ operations: operationCache, residentStore, notificationCache,
-    querySendStatus: notifications?.querySendStatus, warn: error => ctx.logger?.warn?.(`native DWS receipt: ${error.code ?? error.message}`) })
+  const dwsObserverOptions={ operations: operationCache, residentStore, notificationCache,
+    querySendStatus: notifications?.querySendStatus, warn: error => ctx.logger?.warn?.(`channel receipt: ${error.code ?? error.message}`) }
+  nativeDws=singleExecution?ctx.get('channels').createOperationObserver(dwsObserverOptions):referenceChannel.createNativeDwsObserver(dwsObserverOptions)
   await nativeDws.recover()
   // 仅为启动时已停住的技术等待补一次唤醒；同一实现重启不能反复驱动模型。
   const runtimeRevision = hash(await Promise.all(['task-session-service.js', 'task-session.js', 'execution-session.js', 'claude-execution-session.js', 'dynamic-native-job.js', 'dynamic-operation-readback.js']
@@ -263,19 +272,19 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       && task.leaseEpoch === binding.leaseEpoch && task.requirementRevision === binding.requirementRevision && task.controlRevision === binding.controlRevision
       && (task.contextRevision ?? 0) === (binding.contextRevision ?? 0)
   }
-  const taskSessions = suppliedTaskSessions ?? createTaskSessions({ ctx, isCurrent: currentTask, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action),
+  const taskSessions = suppliedTaskSessions ?? (singleExecution?createSingleTaskSessions:createTaskSessions)({ ctx, isCurrent: currentTask, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action),
     getWorkspaceDir: ({ binding }) => taskWorkspace(root, binding.taskId), registerPersistence: value => persistence.register(value) })
-  const dshExecutionSessions = suppliedExecutionSessions ?? createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
+  const dshExecutionSessions = suppliedExecutionSessions ?? (singleExecution?disabledExecutionSessions():createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
     isCurrent: binding => query('execution.current', { binding }),
     isRecoveryCurrent: binding => query('execution.recovery-current', { binding }),
     getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
     readRestartDrainProof: args => readAuditedRestartDrain({ ctx, query, ...args }),
     readMaintenanceDrainProof: async args => readMaintenanceDrainProof({ workspace: root, ...args, operations: await query('operation.list', { taskId: args.binding.taskId }) }),
-  })
-  const claudeExecutionSessions = suppliedClaudeExecutionSessions ?? createClaudeExecutionSessions({ ctx,
+  }))
+  const claudeExecutionSessions = suppliedClaudeExecutionSessions ?? (singleExecution?disabledExecutionSessions():createClaudeExecutionSessions({ ctx,
     isCurrent: binding => query('execution.current', { binding }),
     getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
-  })
+  }))
   const executionDriver = executionId => {
     const execution = executionCache.get(executionId)
     if (!execution) fail('TASK_EXECUTION_NOT_FOUND')
@@ -474,6 +483,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const executions = await query('execution.list', { taskId: task.taskId })
     const pendingWake = !task.lastDecision && (await query('wake.list', { taskId: task.taskId })).some(wake => wake.state !== 'acked')
     const state = taskBoardState(task, executions, pendingWake)
+    if(singleExecution)return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.drained?'idle':'running',workspaceDir:await taskWorkspace(root,task.taskId),logPath:ctx.sessionPersistence.path(task.sessionId)}}
     return { ...publicTask, state, contextInputContract: taskContextInputContract,
     topicRefs: taskTopicRefs(task), executionCount: executions.length,
     executionSessions: [...new Map(executions.map(execution => [execution.sessionId || execution.executionId, {
@@ -734,7 +744,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const receipt = await measure('task-commit', () => command('task.create', { taskId: operation.taskId, groupId, ownerActorId: source.actorId,
         sourceRefs: sources.map(item => item.sourceId), topicRefs: refs, replyBindings, operationId: operation.operationId,
         title: action.title, objective: action.objective, request: sources.map(item => item.text).join('\n\n'),
-        requirements: action.acceptanceCriteria ?? [], metadata: { channel: source.channel ?? 'im', authorizationSourceId: source.sourceId } }, id))
+        requirements: action.acceptanceCriteria ?? [], metadata: { channel: source.channel ?? 'im', authorizationSourceId: source.sourceId,...ctx.get?.('channels')?.groupContext(groupId)?{channelType:ctx.get('channels').groupContext(groupId).type,memoryGroupId:ctx.get('channels').groupContext(groupId).memoryGroupId}:{} } }, id))
       task = receipt.result.task
     } else {
       task = await requireTask(operation.taskId)
@@ -811,12 +821,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     return fact
   }
-  const frozenReply = async ({ groupId, topicRefs, decisionId, outboundId, taskIds, resultFingerprint, taskInputVersion, taskRunSequence, fixedTopic, sourceVersion, matterUnitRefs, sourceRef, replyToMessageId, replyToSenderOpenDingTalkId }) => {
-    const fact = fixedTopic ? fixedReplyFact({ groupId, topicRefs, outboundId, taskIds, fixedTopic, sourceVersion, matterUnitRefs, sourceRef, replyToMessageId, replyToSenderOpenDingTalkId }) : null
+  const frozenReply = async ({ groupId, topicRefs, decisionId, outboundId, taskIds, resultFingerprint, taskInputVersion, taskRunSequence, fixedTopic, sourceVersion, matterUnitRefs, sourceRef, triage, replyToMessageId, replyToSenderOpenDingTalkId }) => {
+    const fact = fixedTopic ? fixedReplyFact({ groupId, topicRefs, outboundId, taskIds, fixedTopic, sourceVersion, matterUnitRefs, sourceRef, triage, replyToMessageId, replyToSenderOpenDingTalkId }) : null
     const outbound = residentStore.getGroup(groupId)?.outbox.find(item => item.outboundId === outboundId)
     const notification = (await query('notification.list')).find(item => item.id === outboundId)
     const payload = notification?.payload
-    if (notification && (notification.kind !== (fact ? 'fixed-topic-reply' : 'topic-reply') || payload?.conversationId !== groupId || !sameRefs(payload?.topicRefs, topicRefs)
+    if (notification && (notification.kind !== (fact ? 'fixed-topic-reply' : triage||outbound?.triage?'triage-reply':'topic-reply') || payload?.conversationId !== groupId || !sameRefs(payload?.topicRefs, topicRefs)
       || fact && (hash(payload.fact) !== hash(fact) || payload.sourceVersion !== sourceVersion || payload.sourceMessageId !== replyToMessageId || payload.actorId !== replyToSenderOpenDingTalkId || hash(payload.sourceRef ?? null) !== hash(sourceRef ?? null))
       || taskIds !== undefined && !sameIds(payload?.taskIds, taskIds)
       || Object.hasOwn(payload, 'replyToMessageId') && payload.replyToMessageId !== payload.sourceMessageId
@@ -938,7 +948,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     },
     quotedReminderContext: async () => null,
     // 在接纳业务决定前拒绝泄漏正文，让原模型修改后重提，不能先创建任务再卡在外发。
-    validateReply: async args => assertGroupReply(args.decision.reply, await topicReplyInternalIds(args)),
+    validateReply: async args => {if(singleExecution&&args.decision.reply&&args.decision.replyReview?.kind==='confirmation'&&residentStore.getGroup(args.groupId)?.outbox.some(row=>row.outboundId.startsWith('triage-')&&row.matterSourceMessageIds?.some(id=>args.decision.basisMessageIds?.includes(id))))fail('TRIAGE_CONFIRMATION_ALREADY_HANDLED');return assertGroupReply(args.decision.reply,await topicReplyInternalIds(args))},
     readFrozenReply: async args => (await frozenReply(args)).frozen,
     appendOutbox: async args => {
       const { outbound: previous, notification: prepared, frozen } = await frozenReply(args)
@@ -967,10 +977,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const group = await residentStore.appendOutbox(args)
       const notificationId = args.outboundId
       const frozenSource = residentStore.getGroup(args.groupId)?.messages.find(message => message.messageId === args.replyToMessageId)
-      const kind = args.fixedTopic ? 'fixed-topic-reply' : 'topic-reply'
-      const fact = args.fixedTopic ? fixedReplyFact(args) : { topicRefs: args.topicRefs }
+      const kind = args.fixedTopic ? 'fixed-topic-reply' : args.triage?'triage-reply':'topic-reply'
+      const fact = args.fixedTopic ? fixedReplyFact(args) : args.triage?{triage:args.triage}:{topicRefs:args.topicRefs}
       await command('notification.prepare', { notificationId, taskId: args.taskIds?.[0] ?? null, requirementRevision: 1, kind,
-        payload: { text: args.text, topicRefs: args.topicRefs, replyTopicId: args.topicRefs?.[0]?.topicId, taskIds: args.taskIds, replyKind: args.replyKind, conversationId: args.groupId, sourceMessageId: args.replyToMessageId, ...(frozenSource ? { sourceVersion: frozenSource.messageVersion } : {}), actorId: args.replyToSenderOpenDingTalkId,
+        payload: { ...args.triage?{sourceRef:args.sourceRef,sourceId:'im:'+hash([args.groupId,args.sourceRef.messageId,args.sourceRef.messageVersion]),triage:args.triage}:{},text: args.text, topicRefs: args.topicRefs, replyTopicId: args.topicRefs?.[0]?.topicId, taskIds: args.taskIds, replyKind: args.replyKind, conversationId: args.groupId, sourceMessageId: args.replyToMessageId, ...(frozenSource ? { sourceVersion: frozenSource.messageVersion } : {}), actorId: args.replyToSenderOpenDingTalkId,
           ...(args.fixedTopic ? { sourceId: `im:${hash([args.groupId, args.sourceRef?.messageId ?? args.replyToMessageId, args.sourceVersion])}`,
             ...(args.sourceRef ? { sourceRef: args.sourceRef } : {}), sourceVersion: args.sourceVersion } : {}),
           replyToMessageId: args.replyToMessageId, replyToSenderOpenDingTalkId: args.replyToSenderOpenDingTalkId, atOpenDingTalkIds: args.atOpenDingTalkIds ?? [], ...(args.atAll ? { atAll: true } : {}),
@@ -988,7 +998,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   function kickGroup(groupId, factsOnly = false) {
     if (closed) return Promise.resolve()
     // 正在处理旧来源时的新入站必须续跑一轮，不能等恢复定时器才解除发送暂缓。
-    if (inflightGroups.has(groupId)) { rerouteGroups.set(groupId, (rerouteGroups.get(groupId) ?? true) && factsOnly); return inflightGroups.get(groupId) }
+    if (inflightGroups.has(groupId)) { if(singleExecution)void topicCoordinator.schedule(groupId);rerouteGroups.set(groupId, (rerouteGroups.get(groupId) ?? true) && factsOnly); return inflightGroups.get(groupId) }
     return track(inflightGroups, groupId, async () => {
       if (!factsOnly) await refreshTasks()
       await topicCoordinator.schedule(groupId)
@@ -1087,7 +1097,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
 
   async function nativeOperation(event) {
     const { binding, callId, toolName, arguments: args } = event
-    const dwsCommands = nativeDwsCommands(toolName, args)
+    const dwsCommands = singleExecution?ctx.get('channels').operationCommands(toolName,args):referenceChannel.nativeDwsCommands(toolName,args)
     const readOnly = event.effectClass === 'read' || event.effectClass === 'pure'
     if (readOnly && !dwsCommands.some(item => item.kind === 'status')) return { readOnly: true }
     if (event.phase === 'started') {
@@ -1123,7 +1133,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     try {
       const receipt = await command('operation.settle', { binding, operationId, state,
         result: { callId, toolName, isError: event.result?.isError === true, resultDigest: hash(event.result?.content ?? event.result ?? null),
-          ...nativeDwsObservation(event, dwsCommands),
+          ...(singleExecution?ctx.get('channels').operationObservation(event,dwsCommands):referenceChannel.nativeDwsObservation(event,dwsCommands)),
           ...(error?.code ? { errorCode: error.code } : {}), ...(noEffect ? { noEffect: true } : {}),
           ...(event.cancelled ? { cancelled: true } : {}), ...(event.jobReceipt ? { jobReceipt: event.jobReceipt } : {}) } }, `settle:${key}`)
       try { await nativeDws.observe(receipt.result.operation) }
@@ -1154,6 +1164,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const artifactScope = await resolveTaskArtifactScope({ root, task: await requireTask(binding.taskId), query })
         if (artifactScope && executionBackend(execution) !== 'dsh') fail('TASK_ARTIFACT_EXECUTION_BACKEND_UNSUPPORTED')
         const permissionCorrection = await verifiedExecutionPermission(execution)
+        const taskForMemory=await requireTask(binding.taskId)
+        await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:taskForMemory.ownerActorId??config.ownerActorId,...taskForMemory.groupId?{groupId:taskForMemory.groupId,groupWrite:true}:{}})
         const result = await executionSessions.run({ binding, permissionCorrection, title: executionSessionTitle(execution), input: { ...execution.input, artifactScope, executionDocument: await refreshExecutionDocument(executionId) }, definition: { ...models(), ...execution.definition,
           prompt: execution.prompt + `\n本轮资源占用阶段：${execution.resourcePhase}。prepare不取得目录内publication资源；独立检出、改码和本地测试可在此阶段进行，其他已授权业务仍按原目标执行。需要占用发布资源时，先完成其前置条件，向统筹交接并在原执行及效果安全排空后续办publish阶段，联合获取全部所需资源。此字段只管理占用阶段，不增加业务授权或固定业务流程。` + '\n最终验收截图/交付文件保存在当前任务工作区，在完成输出artifacts报告原路径，并在summary/evidence说明实际环境、验收结果和截图证明的条目；交Task Owner核验后由Topic随最终结果统一交付，不提前单独群发截图，不把本地文件存在当作已送达。已有真实发送回执保留，不再发同一文件。\n本轮执行文档入口是input.executionDocument.path，路径固定为outputs/<executionId>/round-<inputVersion>.md，由Host按持久记录生成；需要交接或核对进展时先读该文档，不自行写改它，不覆盖历史轮次。通过execution_report_progress维护本轮：首次报告提供简短plan，写明步骤、依赖、交付物和核验方法；summary、evidence、activity区分已发生事实、当前活动和阻塞。后续同轮省略plan会保留，计划确需变化再更新，新轮重新制定，不能沿用旧轮成果冒充当前完成。必要进展才报告，不为空转刷新文档重复汇报。日常协作先读相关成员的当前文档，文档缺证据、版本矛盾、技术失败或未知效果时再查原产物、日志或操作账；文档和同伴自述不构成授权或独立验收。' + (execution.resourceKeys?.length ? `\nHost 已在本执行开始前取得资源 ${JSON.stringify(execution.resourceKeys)}；会话及在途操作排空前保持。使用 execution_resources_read 无参数读取自身当前身份和资源状态，不需统筹另发持锁证明。queued/派发接收不等于其他执行已持锁；观察结果不替代后续写入门禁和真实目标版本核对。` : ''), allowedTools: execution.definition?.allowedTools ?? [], nativeTools: true, outputSchema: dynamicExecutionOutputSchema },
           onSessionBound: async () => {
@@ -1247,6 +1259,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const materials = await Promise.all(sources.map(source => materializeSource(taskId, source)))
         const operations = await query('operation.list', { taskId })
         const executions = await Promise.all((await query('execution.list', { taskId })).map(execution => documentedExecution(execution.executionId)))
+        await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:task.ownerActorId??config.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}})
         const runResult = await taskSessions.run({ binding, input: { task, artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: _body, ...resource }) => resource) })), wakes, executions,
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
@@ -1407,7 +1420,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             }
             if (decision.action === 'complete') {
               if (decision.deliveryFiles?.length && (!notifications?.sendFile || !notifications?.readbackFile)) fail('TASK_DELIVERY_FILE_TRANSPORT_UNAVAILABLE')
-              const artifactFiles = await freezeTaskDeliveryFiles({ selected: decision.deliveryFiles, task,
+              const artifactFiles = await (singleExecution?freezeSingleTaskFiles:freezeTaskDeliveryFiles)({ reported:decision.artifacts,selected: decision.deliveryFiles, task,
                 executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root, taskId), files: deliveryFiles })
               await command('task.complete', { binding, summary: decision.summary, result: artifactFiles.length ? { ...decision, artifactFiles } : decision, topicFacts: true,
                 replyBindings: await taskReplyBindings(task) }, `complete:${taskId}:${binding.requirementRevision}`)
@@ -1527,6 +1540,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     ? recordMessageStage({ groupId: current.payload.conversationId,
       messages: [{ messageId: current.payload.sourceRef?.messageId ?? current.payload.sourceMessageId, messageVersion: current.payload.sourceVersion }] }, stage) : undefined
   async function notificationDeliveryGate(notification) {
+    if(singleExecution&&notification.id.startsWith('triage-')){const outbound=residentStore.getGroup(notification.payload.conversationId)?.outbox.find(row=>row.outboundId===notification.id),ref=outbound?.sourceRef,current=ref&&residentStore.getGroup(notification.payload.conversationId)?.messages.find(row=>row.messageId===ref.messageId);return !!outbound&&outbound.text.startsWith('初步判断，尚待结合话题进一步核实：')&&(['unknown','starting'].includes(notification.state)||current?.messageVersion===ref?.messageVersion&&current?.senderOpenDingTalkId===ref?.actorId)}
     if (notification.kind === 'coordination' || notification.state === 'superseded') return false
     if (notification.kind === 'routing-clarification' && ['prepared', 'failed'].includes(notification.state)) {
       try { assertRoutingClarification(notification.payload, notification.id) }
@@ -1619,6 +1633,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (notification.state === 'delivered' && failures.get(notification.id)?.code === 'TASK_NOTIFICATION_INCOMPLETE_READBACK')
         failures.delete(notification.id)
       const readbackOnly = ['unknown', 'starting'].includes(notification.state)
+      if(singleExecution&&!ctx.get('channels').canDeliver(notification)){failures.set(notification.id,{id:notification.id,code:'CHANNEL_TRANSPORT_UNAVAILABLE'});continue}
       if (notification.state === 'delivered' || notification.state === 'failed' && !(notification.deliveryError?.knownNotSent && notification.deliveryError?.retryable)
         || (readbackOnly ? notificationReadbacks.size > 0 : notificationSends.size > 0 || Date.now() < notificationTransportRetryAt) || !retryReady(notification.id) || Date.parse(notification.nextAttemptAt ?? '') > Date.now() || inflightNotifications.has(notification.id) || attempted?.has(notification.id)) continue
       attempted?.add(notification.id)
@@ -1641,6 +1656,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
   }
   async function recover() {
+    ctx.get?.('reflection')?.scan()
     if (closed) return { failures: [] }
     if (recovering) return recovering
     return recovering = (async () => {
@@ -1995,6 +2011,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
 
   const observerAlerts=createObserverAlertPages({failures,tasks:taskCache,operations:operationCache,notifications:notificationCache,groups:()=>residentStore.listGroups()})
 
+  const unifiedIngress=async input=>{
+    if(!['chat','chat-room'].includes(input?.type))return ingest(input)
+    const channel=await ctx.get('channels').registerConversation(input),e=channel.envelope
+    if(!residentStore.getGroup(channel.sessionId))await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationId,responsibility:'Respect authenticated channel participants and the current user request.'})
+    const response=await ingest({groupId:channel.sessionId,messageId:e.messageId,senderOpenDingTalkId:channel.principal,senderName:e.senderId,text:e.text,...e.resourceRefs?{resourceRefs:e.resourceRefs}:{},...e.quotedMessage?{quotedMessage:{messageId:e.quotedMessage.messageId,text:e.quotedMessage.text??'',...e.quotedMessage.senderId?{senderOpenDingTalkId:ctx.get('channels').identity({...e,senderId:e.quotedMessage.senderId}).principal}:{}}}:{},sourceKind:'dingtalk',occurredAt:ctx.get('channels').groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt,timestamp:ctx.get('channels').groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt})
+    return {...response,channelType:e.type,conversationId:e.conversationId}
+  }
+  const detachIngress=singleExecution?ctx.get('channels').attachIngress(unifiedIngress):undefined
   return {
     async retryNotification({ groupId, notificationId, expectedToken }) {
       const notification = typeof notificationId === 'string' && notificationId
@@ -2022,7 +2046,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     observerGroupPage,
     listObserverGroups:()=>residentStore.listGroups().map(({groupId,name,responsibility,residentSessionId})=>({groupId,name,responsibility,residentSessionId})),
     listAuthorizationRequests: listHumanRequests, respondHumanRequest, respondPrivateHumanReply,
-    store, ingest, recover, taskDetail, taskExecutions, isOwnNotification,
+    store, ingest:singleExecution?unifiedIngress:ingest, recover, taskDetail, taskExecutions, isOwnNotification,
     async taskIdentity(taskId) { return await query('task.get', { taskId }) ? { taskId, legacyReadonly: false } : null },
     messageProcessingRequests: groupId => topicCoordinator.messageProcessingRequests(groupId),
     async messageProcessingSources(groupId) {
@@ -2107,7 +2131,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       for (const item of await query('execution.list')) executionCache.set(item.executionId, item)
       return residentStore.reconcileWebTaskTopics(args)
     },
-    async createTask(args) { return taskDTO(await webTopicAction(args, null, 'new-task')) },
+    async createTask(args) {
+      if(!singleExecution)return taskDTO(await webTopicAction(args,null,'new-task'))
+      if(!args.requestId||!args.objective?.trim())fail('TASK_SESSION_REQUEST_ID_REQUIRED')
+      const channel=args.channel?ctx.get('channels').identity(args.channel):undefined
+      const actorId=channel?.principal??config.webActorId
+      if(!actorId)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+      const id='single-task:'+hash([actorId,channel?.sessionId??args.groupId??'personal',args.requestId])
+      const receipt=await command('task.create',{taskId:'task-'+hash(id).slice(0,32),request:args.objective,objective:args.objective,title:args.title??args.objective.slice(0,80),requirements:args.acceptanceCriteria??[],ownerActorId:actorId,...channel?.binding.groupId?{groupId:channel.binding.groupId}:args.groupId?{groupId:args.groupId}:{},metadata:channel?{channelType:channel.envelope.type,channelId:channel.envelope.channelId,conversationId:channel.envelope.conversationId,senderId:channel.envelope.senderId}:{}},id)
+      void kickTask(receipt.result.task.taskId);return taskDTO(receipt.result.task)
+    },
     async appendTaskContext(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-context')) },
     async reopenTask(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-reopen')) },
     async taskDialogue(taskId) {
@@ -2123,7 +2156,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       void kickTask(taskId).catch(() => {})
       return receipt.result.message
     },
-    async cancelTask(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-cancel')) },
+    async cancelTask(args) {
+      if(!singleExecution)return taskDTO(await webTopicAction(args,await requireTask(args.taskId),'task-cancel'))
+      if(!args.requestId)fail('TASK_SESSION_REQUEST_ID_REQUIRED')
+      const task=await requireTask(args.taskId)
+      if(args.channel&&ctx.get('channels').identity(args.channel).principal!==task.ownerActorId)fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
+      await command('task.control',{taskId:task.taskId,control:'cancelled',expectedControlRevision:args.expectedControlRevision??task.controlRevision},'single-cancel:'+hash([task.taskId,args.requestId]))
+      await cancelLiveTask(task.taskId,inflightTasks.get(task.taskId),inflightExecutions);return taskDTO(await requireTask(task.taskId))
+    },
     hasPendingTopicFacts: groupId => query('topic.fact.unsettled', { groupId }),
     async whenIdle() {
       const notificationAttempts = new Set()
@@ -2136,7 +2176,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       } while (scheduling || notificationScan || sourceProjections.size || [inflightTasks,inflightExecutions,inflightGroups,inflightNotifications].some(map => map.size))
     },
     async close() {
+      if(closed)return
       closed = true
+      stopReflection?.()
+      detachIngress?.()
+      await ctx.get?.('reflection')?.whenIdle()
       nativeDws.close()
       clearTimeout(providerRetryTimer)
       stopObservation?.()

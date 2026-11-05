@@ -8,3 +8,7 @@ node_modules/
 docs/tmp/
 .dsh/
 .artifact-*/
+/data/
+/config.json
+
+/backups/

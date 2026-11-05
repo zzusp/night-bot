@@ -10,7 +10,7 @@ export async function openNativeModelSelection(facility, initialModel) {
 }
 export const name = 'night-native-state'
 export async function apply(ctx, config) {
-  const facility = await openNativeDomains({ root: config.root, onChange: change => ctx.emit('domain/changed', change), onObserverError: error => ctx.logger.warn(error.message) })
+  const facility = await openNativeDomains({ root: config.root, pathCodec:ctx.get('portablePaths'), onChange: change => ctx.emit('domain/changed', change), onObserverError: error => ctx.logger.warn(error.message) })
   try {
     const model = await openNativeModelSelection(facility, config.model)
     ctx.provide('storageDomain', facility)

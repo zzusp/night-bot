@@ -83,7 +83,7 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
   const root = await mkdtemp('/tmp/night-pi-cli-')
   const portServer = createServer(); await new Promise(r => portServer.listen(0, '127.0.0.1', r))
   const port = portServer.address().port; await new Promise(r => portServer.close(r))
-  const config = { stateDir: join(root, 'state'), workspaceDir: join(root, 'work'), model: { provider: 'fixture', model: 'first' }, providers: { fixture: { api: 'openai-completions', baseURL: 'http://127.0.0.1:1/v1', models: [{ id: 'first' }, { id: 'second' }] } },
+  const config = {installRoot:root,dataDir:'data',stateDir:join(root,'data','state'),workspaceDir:join(root,'data','workspaces'),model:{provider:'fixture',model:'first'}, providers: { fixture: { api: 'openai-completions', baseURL: 'http://127.0.0.1:1/v1', models: [{ id: 'first' }, { id: 'second' }] } },
     resident: { port, dws: { enabled: false, writesAuthorized: false }, taskSessions: { instanceId: 'cli-fixture', ownerActorId: 'fixture-owner', webActorId: 'fixture-owner', ingressEpoch: '2026-11-04T00:00:00Z', initialize: true } } }
   const path = join(root, 'config.json'); await writeFile(path, JSON.stringify(config))
   let child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe'] })
@@ -98,7 +98,7 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
     await new Promise(r => setTimeout(r, 50))
   }
   assert.equal(health?.status, 'ok', output)
-  assert.equal(health.transport, 'fake-dws')
+  assert.equal(health.transport,'channels')
   const saved = await jsonPut(`http://127.0.0.1:${port}/config/agent`, { provider: 'fixture', model: 'second' })
   assert.equal(saved.status, 200, JSON.stringify(saved.body)); assert.equal(saved.body.model, 'second')
   child.kill('SIGTERM'); const [code] = await exited
