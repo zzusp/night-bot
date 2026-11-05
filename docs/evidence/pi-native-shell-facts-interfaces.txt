@@ -1,0 +1,23 @@
+✔ trusted facts retain deterministic metadata and session identity without a home/profile ABI (19.159635ms)
+✔ invalid or overlapping declarations fail atomically without reserving earlier keys (4.014279ms)
+✔ mutable declarations cannot gain reserved authority or leak their original name/key registration (2.055321ms)
+✔ resolver failures and undeclared/non-string/async output cannot publish a partial environment (2.775181ms)
+✔ contributor lifetimes are scoped and no profile or ambient home is consulted (8.481997ms)
+✔ launch-home metadata is ignored and listing never executes a resolver (1.871475ms)
+✔ ordinary managed children cannot inherit ambient application or retired execution namespaces (1.228712ms)
+✔ shell tools pass exact execution facts, working directory and cancellation to the executor (11.141103ms)
+✔ native shell tools reject disabled background and unadvertised escalation before execution (3.484054ms)
+✔ native bash and pwsh local execution preserve argv environment output and exit contracts (29.570544ms)
+✔ native shell preparation timeout waits for admitted preparation exit and never spawns late argv (17.100628ms)
+✔ native shell same-code ancestor deadline keeps caller identity even after owned timer fires (68.362312ms)
+✔ native shell foreground timeout waits for provider close before final result (7.895037ms)
+✔ native shell provider creation failure settles done and preserves one infrastructure rejection without retry (2.291045ms)
+✔ execution fact names and trailing-only exit markers have explicit bounded contracts (0.428823ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 225.46222

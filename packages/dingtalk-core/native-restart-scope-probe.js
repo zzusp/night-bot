@@ -18,8 +18,8 @@ const legacyProviderFiles = [
 export const nativeRestartProviderFiles = Object.freeze([
   {
     "path": "src/process/contracts.js",
-    "sha256": "df013ab125a069307862fdc56cd46a5ebaba99c55f0abff07a4cae85575bf080",
-    "sha256CRLF": "47f0378fc49c10ddda2cbfd131a2ad2bd6ff05d0450d506e4c84649b3f0601a1"
+    "sha256": "2c3deb502db3abe91c40ffea9e204495771de2564aabe505d68eaf12b29b1b78",
+    "sha256CRLF": "7a08201ebd1b0fd420a18789befb20f9de8a3ccae460b2e624f520a57ed1e947"
   },
   {
     "path": "src/process/control.js",

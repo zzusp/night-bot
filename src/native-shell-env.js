@@ -1,15 +1,14 @@
 import {isPromise} from 'node:util/types'
 import {Service} from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
-import {launchEnvironmentOf,resolveLegacyHome} from './native-environment.js'
-export const PREFIX='DSH_'
-const reserved=new Set(['DSH_HOME','DSH_SHELL','DSH_SESSION_ID','DSH_PROFILE','DSH_PROFILE_DIR'])
+export const PREFIX='NIGHT_BOT_'
+const reserved=new Set(['NIGHT_BOT_SHELL','NIGHT_BOT_SESSION_ID'])
 const valid=key=>key.startsWith(PREFIX)&&/^[A-Z][A-Z0-9_]*$/.test(key.slice(PREFIX.length))
-/** Application-owned trusted per-execution environment facts. Legacy DSH_ names
- * remain the shell adapter/script protocol; ambient values are not authority. */
+/** Trusted execution metadata only. No global home or plugin-profile ABI is
+ * exported to model processes; ambient values never own execution identity. */
 export default class NativeShellEnvironment extends Service {
- static Config=schema.object({dshHome:schema.string()})
- constructor(ctx,config={}){super(ctx,'shellEnv');this.contributors=new Map();this.owners=new Map();this.closed=false;this.dshHome=resolveLegacyHome(config.dshHome,{DSH_HOME:launchEnvironmentOf(ctx).getFrom('DSH_HOME',['process'])?.value});ctx.effect(()=>()=>{this.closed=true;this.contributors.clear();this.owners.clear()},'native shell environment teardown')}
+ static Config=schema.object({})
+ constructor(ctx,config={}){super(ctx,'shellEnv');this.contributors=new Map();this.owners=new Map();this.closed=false;if(Object.keys(config).length)throw new Error('Shell facts do not accept home/profile configuration');ctx.effect(()=>()=>{this.closed=true;this.contributors.clear();this.owners.clear()},'native shell environment teardown')}
  assertOpen(){if(this.closed)throw new Error('Shell environment registry disposed')}
  register(contributor){
   this.assertOpen();const name=contributor.name
@@ -21,9 +20,8 @@ export default class NativeShellEnvironment extends Service {
   return()=>void dispose()
  }
  collect(execution){
-  this.assertOpen();const values={DSH_HOME:this.dshHome,DSH_SHELL:'1'}
-  if(execution.agent!==undefined)values.DSH_SESSION_ID=execution.agent.session.header.id
-  const profile=this.ctx.get('profileContext');if(profile!==undefined){if(typeof profile.name!=='string'||typeof profile.dir!=='string')throw new Error('Invalid shell profile context');values.DSH_PROFILE=profile.name;values.DSH_PROFILE_DIR=profile.dir}
+  this.assertOpen();const values={NIGHT_BOT_SHELL:'1'}
+  if(execution.agent!==undefined)values.NIGHT_BOT_SESSION_ID=execution.agent.session.header.id
   for(const record of [...this.contributors.values()].sort((a,b)=>a.name.localeCompare(b.name))){const resolver=record.source.resolve;if(typeof resolver!=='function')throw new Error('Shell environment resolver unavailable');const resolved=Reflect.apply(resolver,record.source,[execution]);if(isPromise(resolved)){void Promise.prototype.then.call(resolved,()=>{},()=>{});throw new Error('Shell environment resolver must return a synchronous record')}if(!resolved||typeof resolved!=='object'||typeof resolved.then==='function')throw new Error('Shell environment resolver must return a synchronous record');for(const [key,value]of Object.entries(resolved)){if(!record.declarations.has(key))throw new Error('Undeclared shell environment key '+key);if(typeof value!=='string')throw new Error('Non-string shell environment value for '+key);values[key]=value}}
   this.assertOpen();return Object.freeze(Object.fromEntries(Object.entries(values).sort(([a],[b])=>a.localeCompare(b))))
  }

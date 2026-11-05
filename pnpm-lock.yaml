@@ -230,12 +230,6 @@ importers:
       '@deepseek-ai/dsh-session-title':
         specifier: link:packages/capability-compat/session-title
         version: link:packages/capability-compat/session-title
-      '@deepseek-ai/dsh-shell':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)(@deepseek-ai/dsh-subprocess@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-http-proxy@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))
-      '@deepseek-ai/dsh-shell-env':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(cf22b0138bf0a800867751df6585d311)
       '@deepseek-ai/dsh-skill':
         specifier: link:packages/capability-compat/skill
         version: link:packages/capability-compat/skill
@@ -269,9 +263,6 @@ importers:
       '@deepseek-ai/dsh-timeout':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
-      '@deepseek-ai/dsh-tool-bash':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(9282341015b8803ebc4d90b7ceb985fa)
       '@deepseek-ai/dsh-tool-call-timeout-policy':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-timeout@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-tools@packages+capability-compat+tools)
@@ -284,9 +275,6 @@ importers:
       '@deepseek-ai/dsh-tool-jobs':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(d8b95a6a827c0a2ec749f6405aa3e924)
-      '@deepseek-ai/dsh-tool-pwsh':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(9282341015b8803ebc4d90b7ceb985fa)
       '@deepseek-ai/dsh-tool-schedule':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-schedule@0.2.1-alpha.2(f9a971e144306daa7f9c9b47ebab42d2))(@deepseek-ai/dsh-subagent@packages+capability-compat+subagent)(@deepseek-ai/dsh-tools@packages+capability-compat+tools)

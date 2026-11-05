@@ -185,7 +185,7 @@ var PwshLocalExecutor = class NativePwshLocalExecutor extends ShellExecutor {
 			...request.signal ? { signal: request.signal } : {},
 			...request.stdin !== void 0 ? { stdin: request.stdin } : {},
 			...request.env !== void 0 ? { env: request.env } : {},
-			...request.dshEnv !== void 0 ? { dshEnv: request.dshEnv } : {},
+			...request.executionEnv !== void 0 ? { executionEnv: request.executionEnv } : {},
 			sandboxPolicy: request.sandboxPolicy
 		};
 	}
@@ -224,7 +224,7 @@ var PwshLocalExecutor = class NativePwshLocalExecutor extends ShellExecutor {
 			env: {
 				...ENV_OVERRIDES,
 				...spec.env,
-				...spec.dshEnv
+				...spec.executionEnv
 			}
 		};
 	}

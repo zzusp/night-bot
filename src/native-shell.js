@@ -1,7 +1,7 @@
 // MIT source-derived shell capability/render protocol; see licenses/dsh-shell-MIT.txt.
 import { Service } from "@deepseek-ai/cordis";
-// Stable historical script/environment protocol, independent of runtime ownership.
-const DSH_ENV_PREFIX = "DSH_";
+// Execution facts belong to the application rather than a plugin/home ABI.
+import {PREFIX as ENV_FACT_PREFIX} from "./native-shell-env.js";
 //#region lib/types/render.js
 /**
 * Shared rendering helpers for the shell tools (`dsh-tool-bash`,
@@ -94,4 +94,4 @@ var ShellExecutor = class NativeShellExecutor extends Service {
 	get sandboxMode() {}
 };
 //#endregion
-export { DSH_ENV_PREFIX, ShellExecutor, ShellExecutor as default, parseExitStatus };
+export { ENV_FACT_PREFIX, ShellExecutor, ShellExecutor as default, parseExitStatus };

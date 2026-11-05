@@ -1,0 +1,73 @@
+{
+  "base": "4387113",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 631,
+    "fail": 0,
+    "skip": 0
+  },
+  "interfaces": {
+    "pass": 15,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "jobs": {
+    "pass": 18,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "restartFingerprint": {
+    "pass": 11,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "linuxContainment": {
+    "pass": 20,
+    "fail": 0,
+    "skip": 1,
+    "skipReason": "Windows-only platform case"
+  },
+  "remainingDirectDshDevDependencies": 73,
+  "frozenInstall": {
+    "status": "pending",
+    "reason": "npm registry metadata and attestation requests return HTTP 503; package manager is retrying",
+    "verification": "Source/import/license guards ran directly and passed; this does not replace external package verification"
+  },
+  "removedContract": "DSH home/profile shell facts, DSH_* contributor namespace, dshEnv request field and four differential-only direct development declarations",
+  "preserved": "Exact live tool/session ownership, durable job admission/terminal receipts, cancellation/drain, native sandbox and portable privacy; arbitrary extension values remain filtered in portable processes",
+  "notices": "Retained registry, shell executor/tool and process algorithms stay attributed; no corresponding notices removed",
+  "windows": "Source changes and fingerprint bindings implemented; actual Windows process/ACL acceptance remains unverified",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-shell-facts-default.txt",
+      "sha256": "c3dfe69adb33f0b5e22c2e09d88d51a807ddcbf59f3e5dcce2551a770ba28d0a"
+    },
+    {
+      "path": "docs/evidence/pi-native-shell-facts-interfaces.txt",
+      "sha256": "25cf6003c25597be0421e5d5199669db6888a822f91c8dc06cf9a60fd0f65e93"
+    },
+    {
+      "path": "docs/evidence/pi-native-shell-facts-jobs.txt",
+      "sha256": "f829bf1baaf4563b46f0f3668795f8e3bafd655b83fbdd15abc5fc86aca4f0bc"
+    },
+    {
+      "path": "docs/evidence/pi-native-shell-facts-proof.txt",
+      "sha256": "51b56da7f3d76c991d38c8dbe184e81c89429723f087153121769607a82475f9"
+    },
+    {
+      "path": "docs/evidence/pi-native-shell-facts-kernel.txt",
+      "sha256": "b3b821da5c0b4080a4cdcd93032cc2d2ae33fc33e1b6e0673efddaf8688c4843"
+    },
+    {
+      "path": "docs/evidence/pi-native-shell-facts-checks.txt",
+      "sha256": "78c9d49f386ab4fa10c1cde881d12e8cd5dbcd4a9de6cbf60b4842e5b1836d1b"
+    },
+    {
+      "path": "docs/evidence/pi-native-shell-facts-install-pending.txt",
+      "sha256": "5429586faab8af986abcaaa4e749dbc68763657ae812abbca73d9a7399e3bbc3"
+    }
+  ]
+}

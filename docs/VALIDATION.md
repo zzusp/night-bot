@@ -1,3 +1,32 @@
+# Execution facts cleanup (2026-11-05)
+
+Shell metadata now publishes only `NIGHT_BOT_SHELL` and `NIGHT_BOT_SESSION_ID`
+as built-ins, with `NIGHT_BOT_` declared extensions. DSH home/profile facts,
+launch-home resolution and plugin-profile coupling are removed from the registry.
+Bash/PowerShell pass `executionEnv` rather than a DSH-specific request field.
+Ambient application and DSH namespaces are scrubbed from ordinary child inheritance.
+Portable privacy admits standard facts only when explicitly supplied; arbitrary
+extensions stay filtered. Facts are metadata, never job/session authorization.
+Managed process cancellation, job receipts and sandbox enforcement are unchanged.
+Four comparison-only direct dependency declarations are removed: **73 DSH dev
+packages remain**. Retained shell/registry/process source attribution stays.
+
+Validation: **631 default pass**, interface **15**, job **18**, fingerprint **11**
+overlap default. Actual Linux containment **20 pass / 1 Windows-only skip**,
+including both portable/explicit-root execution facts, background jobs, privacy
+and code-worker confinement. An initial full run caught the process-contract
+fingerprint change; reviewed the stronger ambient namespace scrub and pinned the
+exact updated LF/CRLF source bytes, then repeated the full suite successfully.
+Source/import/Pi-license/diff checks pass. Actual Windows acceptance remains open.
+
+Frozen install is **pending**, not passed: npm registry metadata/attestation
+requests return HTTP 503 and the package manager is retrying. Independent source
+checks do not substitute for that verification. See [execution facts evidence](pi-native-shell-facts-validation.json).
+No push or deployment. General storage/environment default paths and the explicit
+legacy restart-provider branch remain subsequent work.
+
+---
+
 # Instruction roots cleanup (2026-11-05)
 
 Instruction discovery now uses explicit `instructionHome`, standard/explicit
