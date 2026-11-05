@@ -1,5 +1,5 @@
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-bash-sandbox-MIT.txt. Application process/sandbox/jobs/policy services own effects.
-import { SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature, matchesSignature as matchesSignature$1 } from "@deepseek-ai/dsh-sandbox";
+import { SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature, matchesSignature as matchesSignature$1 } from "./native-sandbox-protocol.js";
 import { LocalBashExecutor } from "./native-bash-local.js";
 //#region lib/types/helpers.js
 /**

@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { TOOL_ABORTED, defineTool } from "@deepseek-ai/dsh-tools";
 import { HarnessError } from "@deepseek-ai/dsh-llm";
-import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "@deepseek-ai/dsh-sandbox";
+import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "./native-sandbox-protocol.js";
 import { parseExitStatus } from "./native-shell.js";
 //#region lib/types/background.js
 /**

@@ -1,0 +1,11 @@
+✔ sandbox protocol retains independent algorithms and canonical public error identity (1.469667ms)
+✔ sandbox escalation performs exactly one approval and never widens on non-grants (0.954149ms)
+✔ runner diagnostics demand executable-specific evidence and ignore informational success (0.721398ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 70.529004

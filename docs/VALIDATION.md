@@ -363,3 +363,15 @@ coverage remains200 retained/3 UI excluded/7 explicit adaptations; audit16 direc
 DSH dependencies/49 active replacements/explicit local Scope compatibility alias.
 See evidence/native-scope-*.txt. Migration remains incomplete; no real vendor,
 DingTalk, Windows or macOS acceptance and no remote writes were performed.
+
+Sandbox protocol extraction follow-up:502 own tests,41 targeted native execution
+regressions and11 real Linux containment tests pass (one Windows skip). Existing
+production frozen installation repeats343 core +3 kernel cases;309 runtime files
+are byte-identical. This stage changes no dependencies; the preceding full142
+runtime/47 routing/388 domain and38 production-contract baseline is explicitly
+carried forward, not described as freshly rerun. Independent retained SDK helper
+comparisons cover approval ordering/outcomes, narrow/equal/wider modes, writable
+roots and runner failure attribution. Public SandboxUnavailableError identity is
+reexported unchanged. Inventory remains16 direct DSH dependencies/49 active
+replacements; helper extraction is not another service replacement. Evidence:
+`evidence/native-sandbox-protocol-*.txt`.

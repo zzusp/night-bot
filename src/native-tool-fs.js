@@ -7,7 +7,7 @@ import { structuredPatch } from "diff";
 import { basename, extname } from "node:path";
 import { AttachmentError } from "./native-attachment-errors.js";
 const AttachmentId = value => value;
-import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "@deepseek-ai/dsh-sandbox";
+import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "./native-sandbox-protocol.js";
 //#region lib/types/read-render.js
 /**
 * Pure read presentation: turn provider-decoded text into a bounded, line-numbered window and

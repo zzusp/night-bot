@@ -1252,5 +1252,28 @@
     "completeMigration": false,
     "standaloneFromDshLibraries": false,
     "remotePush": "not retried; prior403 denied"
+  },
+  "nativeSandboxProtocol": {
+    "date": "2026-11-05",
+    "ownPass": 502,
+    "ownDurationMs": 32083.094343,
+    "targetedRuntimePass": 41,
+    "fullRuntimeBaselinePass": 142,
+    "fullRuntimeBaseline": "same turn Scope checkpoint; not rerun in full after pure helper extraction",
+    "routingBaselinePass": 47,
+    "domainBaselinePass": 388,
+    "containmentPass": 11,
+    "windowsSkipped": 1,
+    "productionCorePass": 343,
+    "productionKernelPass": 3,
+    "productionContractsBaselinePass": 38,
+    "productionRepeatedThisStage": 346,
+    "runtimeFilesCompared": 309,
+    "productionImportFiles": 304,
+    "literalBareImports": 235,
+    "directRuntimeDshDependencies": 16,
+    "removedActiveDshServices": 49,
+    "publicErrorIdentity": "SandboxUnavailableError reexports retained SDK identity; abstract provider not copied or mounted",
+    "completeMigration": false
   }
 }

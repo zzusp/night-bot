@@ -1,5 +1,5 @@
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-pwsh-sandbox-MIT.txt. Application process/sandbox/jobs/policy services own effects.
-import { SandboxUnavailableError } from "@deepseek-ai/dsh-sandbox";
+import { SandboxUnavailableError } from "./native-sandbox-protocol.js";
 import { PwshLocalExecutor } from "./native-pwsh-local.js";
 import { accessSync, constants, statSync } from "node:fs";
 //#region lib/types/helpers.js

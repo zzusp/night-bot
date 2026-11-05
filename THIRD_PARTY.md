@@ -93,3 +93,5 @@ Native Bash/Pwsh executors explicitly adapt cancellation: admitted confinement p
 `native-credential-protocol.js` preserves MIT dsh-credentials scope/id/reference grammar and primitive branding helpers. Core workflow configuration retains exactly the existing stored addresses; its source hash and explicit adaptation are recorded.
 
 `src/native-scope.js` retains MIT scoped stores/parent graph/event carrier algorithms from dsh-scope@0.2.1-alpha.2; test/fixtures/legacy-scope.mjs preserves the original source as an independent reference. The private compatibility package only re-exports the same local implementation for retained SDK peer names, preventing duplicate authority stores. Historical helper ABI version is not a Pi/app version. See licenses/dsh-scope-MIT.txt and docs/scope-compat-manifest.json.
+
+`src/native-sandbox-protocol.js` derives escalation, root and diagnostic algorithms from MIT `@deepseek-ai/dsh-sandbox@0.2.1-alpha.2` (license: `licenses/dsh-sandbox-MIT.txt`). Its public SandboxUnavailableError identity remains explicitly external; no abstract legacy provider is mounted or copied.
