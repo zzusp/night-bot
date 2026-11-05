@@ -41,6 +41,65 @@ source-derived runtime protocols/backends remain. See [PI-NATIVE-REBUILD.md](PI-
 and [evidence manifest](pi-native-rebuild-validation.json). Older entries below
 are prior-stage evidence, not results for this change. No push/merge/deploy/CI.
 
+# Complete task archive acceptance (2026-11-05)
+
+Baseline:47a59ae. Portable tasks now retain their transactional task snapshot,
+materials and original attachment copies, editable work, frozen delivery files,
+Pi execution session, own review/destination records and disposable tmp beneath
+one task directory. SQLite stays runtime authority; archives are never command
+inputs during ordinary startup. See [TASK-ARCHIVE](TASK-ARCHIVE.md).
+
+Primary groups passed **599 own +142 runtime +47 routing +388 domain +19 Linux
+containment =1195 distinct cases**, zero failures. One Windows-only containment
+case is skipped. The final portable snapshot-maintenance/chronology changes were
+followed by a full own-suite repeat and production repeat. The final paginated
+API session-path correction repeated all9 task-archive cases and all55 production
+cases. Reference groups still
+exercise retained historical APIs; they do not imply the portable kit creates old
+Owner/team sessions. Repeated focused cases are not counted again.
+
+In the isolated, unchanged frozen production-only dependency installation,
+current sources pass **55 cases**. **443 runtime/config files** match this tree
+byte-for-byte; production graph audit finds zero external registry DSH packages.
+No dependency or lockfile changes were required. Source guards:200 retained,
+3 UI exclusions,31 explicit adaptations;380 JS files and175 declared bare imports;
+zero external SDK imports/old orchestrator definitions; compatibility hashes verify.
+
+New default-composition tests cover concurrent independent tasks, real native file
+writes and frozen artifact descriptors, local Pi journal routing/commit validation,
+review destinations, a real offline CLI check, exclusive/concurrent restore,
+A-to-B restoration without shared attachment/memory stores, immutable originals,
+corrupt bytes and link refusal, explicit lost-index reconstruction, paired index/
+initialization-marker crash recovery, repeat recovery, operator acknowledgment and
+explicit reopening in the same session without rewriting old effects or repeating
+old reviews. Restored source messages, Topic facts and notifications cannot re-enter
+live routing/send preparation. A filesystem fault in task.json proves completion
+remains committed and archive maintenance retries after repair. Decision chronology
+is preserved independently of command-ID lexical order.
+
+Real Linux kernel tests enforce absolute-path and symlink/task boundaries, private
+journals, Host-owned metadata/frozen output, task-local temp and capped-grep output
+recovery inside the task archive. Namespace checks were not disabled; executor
+escalation only allowed the project's own nested sandbox to run. File tools also
+refuse forged output while permitting legitimate work artifacts. Startup does not
+silently shadow existing central Night Bot task journals; explicit offline packing
+validates owned single-task Pi bytes. No legacy plugin data import was added.
+
+Task archives are offline exports of drained regular-file trees. They do not move
+live processes, infer absent external-resource bytes, rebuild shared channel/Topic
+runtime, restore whole shared memory/skill catalogs or reconcile unknown external
+effects. Archived shared destination references can be absent in the new install.
+Restore is paused and old deliveries remain held; operator attestation does not
+prove business facts. Trusted plugin code is outside the model tool/process fence.
+Archives contain private task/audit data even though the global credential vault is
+not included. Windows/macOS equivalent process privacy and real vendor/channel
+integration remain unverified.
+
+Evidence/digests: [task-archive-validation.json](task-archive-validation.json) and
+`evidence/task-archive-*`. No push, merge, deployment or real external message was
+performed in this change. The separately reported channel commit c423629 is not
+merged here. Earlier checkpoints below describe their own versions and evidence.
+
 # Portable personal-assistant kit acceptance (2026-11-05)
 
 Current application changes add the installation data layout, scoped Markdown

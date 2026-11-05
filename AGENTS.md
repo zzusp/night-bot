@@ -62,3 +62,14 @@ Tests use isolated directories, scripted/local model endpoints and fake DingTalk
 Do not send real messages, deploy, merge, or trigger CI without explicit authorization.
 Use `pnpm test`, `pnpm test:runtime`, `pnpm test:routing`, and `pnpm test:containment`
 as appropriate. Report skipped/blocked checks separately from passing checks.
+
+Each portable task directory is a complete task archive: task.json is a derived
+transactional ledger snapshot, with materials (including required attachment
+copies and retained output), editable work, frozen outputs/descriptors, task Pi
+sessions, task-only reviews/destination references and disposable tmp. SQLite
+remains runtime authority. Never replay JSON snapshots as commands or copy whole
+shared memory/skill scopes. Require offline seals for portable backup, verify
+source/session/artifact identity and hashes, and restore with held effects,
+operator review and no automatic delivery. Task model tools/processes may write
+only work and tmp; metadata, materials, outputs, sessions and reviews are Host-owned.
+Do not claim cwd isolates trusted arbitrary plugins. See docs/TASK-ARCHIVE.md.

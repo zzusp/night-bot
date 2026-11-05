@@ -70,12 +70,13 @@ async function acquire(path,id) {
  * Only batches terminated by night.commit are authoritative. A write owner may
  * truncate an uncommitted physical tail; read handles never modify the file.
  */
-async function load(path,id,codec) {
+async function load(path,id,codec,requireComplete=false) {
   const bytes=await readFile(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
-  const result=decodePiJournal(bytes,id,{codec})
+  const result=decodePiJournal(bytes,id,{codec,requireComplete})
   validateStoredEvents(result.header,result.events,{kind:'pi-jsonl',path})
   return result
 }
+export async function validatePiArchiveSession(path,id){return load(path,id,undefined,true)}
 async function piContent(content,ctx,signal) {
   const result=[]
   for(const block of content) {
@@ -140,7 +141,7 @@ export default class PiSessionPersistence extends Service {
   static inject=['piAuthority']
   identity=Symbol('native-pi-session-persistence')
   constructor(ctx,config) {
-    super(ctx,'sessionPersistence');this.config={...config,root:resolve(config.root)};this.closed=false;this.handles=new Set();this.writers=new Map()
+    super(ctx,'sessionPersistence');this.taskRoutes=ctx.get('taskSessionRoutes');this.config={...config,root:resolve(config.root)};this.closed=false;this.handles=new Set();this.writers=new Map()
     ctx.on('session/event',(session,event)=>{
       const handle=this.writers.get(session.id)
       if(handle)handle.enqueue(event)
@@ -149,8 +150,8 @@ export default class PiSessionPersistence extends Service {
     ctx.on('session/disposed',session=>this.writers.get(session.id)?.close().catch(error=>ctx.logger.warn(error.message)))
     ctx.effect(()=>async()=>{this.closed=true;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
   }
-  async checkedRoot(create=false) {
-    const paths=[];let cursor=this.config.root
+  async checkedRoot(create=false,root=this.config.root) {
+    const paths=[];let cursor=root
     while(dirname(cursor)!==cursor){paths.unshift(cursor);cursor=dirname(cursor)}
     for(const path of paths){
       let info=await lstat(path).catch(error=>{if(error.code==='ENOENT')return;throw error})
@@ -160,15 +161,15 @@ export default class PiSessionPersistence extends Service {
     return true
   }
   async checkedFile(id,allowMissing=false) {
-    if(!await this.checkedRoot(false)){if(allowMissing)return;throw new SessionPersistenceNotFoundError(id)}
+    if(!await this.checkedRoot(false,dirname(this.path(id)))){if(allowMissing)return;throw new SessionPersistenceNotFoundError(id)}
     const path=this.path(id),info=await lstat(path).catch(error=>{if(error.code==='ENOENT')return;throw error})
     if(!info){if(allowMissing)return;throw new SessionPersistenceNotFoundError(id)}
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1)throw fail('PI_SESSION_PATH_UNSAFE')
   }
-  path(id){return join(this.config.root,piJournalFilename(id))}
+  path(id){const filename=piJournalFilename(id);return this.taskRoutes?.get(id)??join(this.config.root,filename)}
   async create(header,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');header=materializeCreateHeader(header)
-    await this.checkedRoot(true)
+    await this.checkedRoot(true,dirname(this.path(header.id)))
     await this.checkedFile(header.id,true)
     const path=this.path(header.id),lease=await acquire(path,header.id)
     try {
@@ -180,7 +181,7 @@ export default class PiSessionPersistence extends Service {
     }catch(error){await lease.close();throw error}
   }
   async open(id,access,options={}) {
-    options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true)
+    options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true,dirname(this.path(id)))
     await this.checkedFile(id,true)
     const live=this.writers.get(id)
     if(access==='read'&&live)return live.reader()
@@ -221,7 +222,7 @@ export default class PiSessionPersistence extends Service {
       else {const projected=await projectPiMessage(message,backend.ctx);if(projected.role==='toolResult'){const call=manager.getEntries().findLast(e=>e.type==='message'&&e.message.role==='assistant'&&e.message.content.some(b=>b.type==='toolCall'&&b.id===projected.toolCallId))?.message.content.find(b=>b.type==='toolCall'&&b.id===projected.toolCallId);if(call)projected.toolName=call.name}if(event.data.usage){const u=event.data.usage;projected.usage={...zeroUsage(),input:u.inputTokens,output:u.outputTokens,cacheRead:u.cacheReadTokens??0,cacheWrite:u.cacheWriteTokens??0,totalTokens:u.totalTokens??u.inputTokens+u.outputTokens}}projected.night={event,copy,contentHash:digest(JSON.stringify(projected.content))};manager.appendMessage(projected)}
     }
     async function commit(batch=[]) {
-      assertOpen('append');await backend.checkedFile(id,newFile);await lease.check();if(!batch.length&&!newFile)return
+      assertOpen('append');if(backend.path(id)!==path)throw fail('PI_SESSION_ROUTE_CHANGED');await backend.checkedFile(id,newFile);await lease.check();if(!batch.length&&!newFile)return
       const copied=materializeAppendBatch(batch)
       if(copied.some((e,i)=>e.seq!==events.length+i))throw fail('PI_SESSION_EVENT_SEQUENCE_INVALID')
       const combined=[...events,...copied]
@@ -238,11 +239,11 @@ export default class PiSessionPersistence extends Service {
       manager.appendCustomEntry('night.commit',{eventCount:combined.length,previousCommit:entries?.at(-1)?.id??null,entriesHash:digest((newFile?JSON.stringify(manager.getHeader())+'\n':'')+preceding.map(e=>JSON.stringify(e)).join('\n'))})
       const all=manager.getEntries(),suffix=all.slice(storedEntries)
       const bytes=(newFile?JSON.stringify(manager.getHeader())+'\n':'')+suffix.map(e=>JSON.stringify(e)).join('\n')+'\n'
-      let file,writeFailure;const temporary=newFile?join(backend.config.root,'.pending-pi-'+randomUUID()):undefined
+      let file,writeFailure;const temporary=newFile?join(dirname(path),'.pending-pi-'+randomUUID()):undefined
       try {
         file=await open(temporary??path,newFile?'wx':'a',0o600);await file.writeFile(bytes);await file.sync();await file.close();file=undefined
         if(temporary){await link(temporary,path);await unlink(temporary)}
-        if(newFile&&process.platform!=='win32'){const directory=await open(backend.config.root,'r');try{await directory.sync()}finally{await directory.close()}}
+        if(newFile&&process.platform!=='win32'){const directory=await open(dirname(path),'r');try{await directory.sync()}finally{await directory.close()}}
         await lease.check()
       }catch(error){writeFailure=error}
       finally{
@@ -306,6 +307,6 @@ export default class PiSessionPersistence extends Service {
     this.handles.add(handle);return handle
   }
   async stat(id,options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedFile(id,true);if(this.writers.has(id))return this.writers.get(id).snapshot();try{const data=await load(this.path(id),id,this.ctx.get('portablePaths'));return{header:clean(data.header),eventCount:data.events.length,revision:digest(JSON.stringify(data.entries.at(-1))),sizeBytes:data.committedBytes,formatStatus:'current'}}catch(error){if(error.name==='SessionPersistenceNotFoundError')return undefined;throw error}}
-  async list(options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true);const result=[];for(const name of await readdir(this.config.root)){if(!name.endsWith('.pi.jsonl'))continue;const path=join(this.config.root,name);const info=await lstat(path);if(!info.isFile()||info.isSymbolicLink())throw fail('PI_SESSION_PATH_UNSAFE');const bytes=await readFile(path,'utf8');const header=JSON.parse(bytes.split('\n')[0]);if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH');const item=await this.stat(header.id,options);if(item)result.push(item)}const ids=new Set(result.map(item=>item.header.id));for(const writer of this.writers.values())if(!ids.has(writer.id)){result.push(writer.snapshot());ids.add(writer.id)}return result}
+  async list(options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true);const result=[];for(const name of await readdir(this.config.root)){if(!name.endsWith('.pi.jsonl'))continue;const path=join(this.config.root,name);const info=await lstat(path);if(!info.isFile()||info.isSymbolicLink())throw fail('PI_SESSION_PATH_UNSAFE');const bytes=await readFile(path,'utf8');const header=JSON.parse(bytes.split('\n')[0]);if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH');const item=await this.stat(header.id,options);if(item)result.push(item)}for(const id of this.taskRoutes?.keys()??[]){const item=await this.stat(id,options);if(item)result.push(item)}const ids=new Set(result.map(item=>item.header.id));for(const writer of this.writers.values())if(!ids.has(writer.id)){result.push(writer.snapshot());ids.add(writer.id)}return result}
   async flush(){if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');const results=await Promise.allSettled([...this.writers.values()].map(handle=>handle.flush()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence flush failed')}
 }

@@ -1,0 +1,115 @@
+{
+  "date": "2026-11-05",
+  "baseline": "47a59ae318bf50ec85caa3b0af0ecd9a9a9841d6",
+  "environment": "Linux Node24; actual default Host/Pi/SQLite with loopback model fixtures; containment uses unchanged namespace sandbox under approved executor escalation",
+  "primaryDistinctPasses": 1195,
+  "checks": {
+    "own": {
+      "evidence": "docs/evidence/task-archive-own.txt",
+      "sha256": "3ae09c507b19c729a16ba2f892e73ba87d1e1bca4426d4468e81b5d29ca36b4d",
+      "counts": {
+        "tests": 599,
+        "pass": 599,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "runtime": {
+      "evidence": "docs/evidence/task-archive-runtime.txt",
+      "sha256": "cfdab5b9a62e01c7beaca0d62568248e669c2944d3d6bf80003a5705083fe813",
+      "counts": {
+        "tests": 142,
+        "pass": 142,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "routing": {
+      "evidence": "docs/evidence/task-archive-routing.txt",
+      "sha256": "3b63045256315a1c68241aa32438dea65139e58d2e2a77958d69400327c56887",
+      "counts": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "domain": {
+      "evidence": "docs/evidence/task-archive-domain.txt",
+      "sha256": "e01eabd1ee3634ec5c0280efdd72ef2091000f156204b29fa7c93967f8fc0991",
+      "counts": {
+        "tests": 388,
+        "pass": 388,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "containment": {
+      "evidence": "docs/evidence/task-archive-containment.txt",
+      "sha256": "33d816a93944cbbe8192f74cd3ed6cffa5526477c104fd8a0d9bde18cdb56a09",
+      "counts": {
+        "tests": 20,
+        "pass": 19,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1
+      }
+    },
+    "focused": {
+      "evidence": "docs/evidence/task-archive-focused.txt",
+      "sha256": "86008cb5bd7dd35a201cacb045b162509383bb25ddfb2ffbbac8772b8e46bd62",
+      "counts": {
+        "tests": 13,
+        "pass": 13,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "final-api-paths": {
+      "evidence": "docs/evidence/task-archive-final-api-paths.txt",
+      "sha256": "78c34dbbb0ed6d3060fa9da538eeb796707eaf283bca7975f41629fc0ce510a3",
+      "counts": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "production": {
+      "evidence": "docs/evidence/task-archive-production.txt",
+      "sha256": "482baab6091550cb23591c269417e063ed259187343767a9ff2c07e5d4297628",
+      "counts": {
+        "tests": 55,
+        "pass": 55,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "production-audit": {
+      "evidence": "docs/evidence/task-archive-production-audit.txt",
+      "sha256": "468bf5b8d053fc2bf352cac0b911a1357b50123d789f4f312c1f2ce46643d749"
+    },
+    "production-equality": {
+      "evidence": "docs/evidence/task-archive-production-equality.txt",
+      "sha256": "e05e977cdd97f9dfc9f538925804a47c6c64c202011b164a48704e4332b2f58e"
+    },
+    "guards": {
+      "evidence": "docs/evidence/task-archive-guards.txt",
+      "sha256": "32483b1979bfc6c81932109f0ca1538934b154c1a6c9e9f5d99050ca399437d1"
+    }
+  },
+  "limits": [
+    "Offline drained regular-file archives only; links/hardlinks/special files refused",
+    "Restore paused, historical sources/Topic facts/deliveries held; operator review does not establish external-effect safety",
+    "Shared channel/Topic runtime and whole shared memory/skill collections are not rebuilt",
+    "Windows/macOS equivalent process privacy and live external integrations unverified"
+  ],
+  "finalVerification": "Portable snapshot failure/chronology changes were followed by full own and production repeats. The final paginated API session-path correction then repeated all nine task-archive tests and all55 production-core tests. Reference/runtime and containment groups passed for their affected behavior; repeats are not added to primaryDistinctPasses."
+}

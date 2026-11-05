@@ -83,26 +83,26 @@ export function topicFactLedger({ db, get, put }) {
       (SELECT json_group_array(substr(value,1,200)) FROM (SELECT value FROM json_each(dynamic_topic_facts.body,'$.result.limitations') LIMIT 4)) limitations,
       CASE WHEN json_extract(body,'$.result.audience')='operator' THEN NULL ELSE substr(json_extract(body,'$.result.question'),1,800) END question
       FROM dynamic_topic_facts
-      WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.topicId')=? AND json_extract(body,'$.state')='pending'
+      WHERE coalesce(json_extract(body,'$.archiveRestoreHold'),0)=0 AND json_extract(body,'$.groupId')=? AND json_extract(body,'$.topicId')=? AND json_extract(body,'$.state')='pending'
         AND coalesce(json_extract(body,'$.audienceKey'),'')=(SELECT coalesce(json_extract(body,'$.audienceKey'),'')
-          FROM dynamic_topic_facts WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.topicId')=?
+          FROM dynamic_topic_facts WHERE coalesce(json_extract(body,'$.archiveRestoreHold'),0)=0 AND json_extract(body,'$.groupId')=? AND json_extract(body,'$.topicId')=?
           AND json_extract(body,'$.state')='pending' ORDER BY rowid LIMIT 1)
       ORDER BY rowid LIMIT 4`).all(q.groupId, q.topicId, q.groupId, q.topicId).map(({ sourceIds, summary, audience, artifactFiles, evidence, limitations, question, ...row }) => ({ ...row,
         sourceIds: JSON.parse(sourceIds).reverse(), result: { summary, audience, artifactFiles: JSON.parse(artifactFiles ?? '[]'), evidence: JSON.parse(evidence), limitations: JSON.parse(limitations), question } }))
     if (q.kind === 'topic.fact.groups') return db.prepare(`SELECT DISTINCT json_extract(body,'$.groupId') groupId
-      FROM dynamic_topic_facts WHERE json_extract(body,'$.state')='pending'`).all().map(row => row.groupId)
+      FROM dynamic_topic_facts WHERE coalesce(json_extract(body,'$.archiveRestoreHold'),0)=0 AND json_extract(body,'$.state')='pending'`).all().map(row => row.groupId)
     if (q.kind === 'topic.fact.unsettled') return !!db.prepare(`SELECT 1 FROM dynamic_topic_facts
-      WHERE json_extract(body,'$.groupId')=? AND (json_extract(body,'$.state')='pending' OR
+      WHERE coalesce(json_extract(body,'$.archiveRestoreHold'),0)=0 AND json_extract(body,'$.groupId')=? AND (json_extract(body,'$.state')='pending' OR
         (json_extract(body,'$.state')='accepted' AND json_type(body,'$.decision')='object' AND json_type(body,'$.projectedAt') IS NULL)) LIMIT 1`).get(q.groupId)
     if (q.kind === 'topic.fact.projections') return db.prepare(`SELECT id, rowid sequence, json_extract(body,'$.decision') decision FROM dynamic_topic_facts
-      WHERE json_extract(body,'$.state')='accepted' AND json_type(body,'$.decision')='object'
+      WHERE coalesce(json_extract(body,'$.archiveRestoreHold'),0)=0 AND json_extract(body,'$.state')='accepted' AND json_type(body,'$.decision')='object'
       AND json_type(body,'$.projectedAt') IS NULL AND rowid>? ORDER BY rowid LIMIT 32`).all(q.afterSequence ?? 0)
       .map(row => ({ id: row.id, sequence: row.sequence, decision: JSON.parse(row.decision) }))
     if (q.kind === 'topic.fact.get') return get('dynamic_topic_facts', q.factId)
     if (q.kind === 'topic.fact.tasks') {
       if (!Array.isArray(q.taskIds) || q.taskIds.length > 8) fail('TOPIC_FACT_PAGE_INVALID')
-      return db.prepare(`WITH task_rows AS (SELECT id,body,rowid sequence FROM dynamic_tasks
-        UNION ALL SELECT id,body,sequence FROM dynamic_archived_tasks)
+      return db.prepare(`WITH task_rows AS (SELECT id,body,rowid sequence FROM dynamic_tasks WHERE coalesce(json_extract(body,'$.archiveRestore.reviewRequired'),0)=0
+        UNION ALL SELECT id,body,sequence FROM dynamic_archived_tasks WHERE coalesce(json_extract(body,'$.archiveRestore.reviewRequired'),0)=0)
         SELECT id taskId, substr(json_extract(body,'$.title'),1,200) title,
         json_extract(body,'$.status') status, json_extract(body,'$.control') control,
         json_extract(body,'$.archivedAt') archivedAt,
@@ -129,7 +129,7 @@ export function topicFactLedger({ db, get, put }) {
         FROM dynamic_sources WHERE id IN (SELECT value FROM json_each(?)) LIMIT 32`).all(JSON.stringify(q.sourceIds))
     }
     if (q.kind === 'topic.fact.reply-source') return db.prepare(`SELECT id sourceId FROM dynamic_sources
-      WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?
+      WHERE coalesce(json_extract(body,'$.archiveRestoreHold'),0)=0 AND json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?
         AND json_extract(body,'$.actorId')=? AND json_extract(body,'$.version')=?
         AND json_extract(body,'$.channel') NOT IN ('internal','web') LIMIT 1`)
       .get(q.groupId, q.messageId, q.actorId, q.version) ?? null
@@ -149,7 +149,7 @@ export function topicFactLedger({ db, get, put }) {
     if (kind === 'topic.fact.accept') {
       if (!Array.isArray(a.factIds) || !a.factIds.length || a.factIds.length > 8 || new Set(a.factIds).size !== a.factIds.length) fail('TOPIC_FACT_PAGE_INVALID')
       const facts = a.factIds.map(id => get('dynamic_topic_facts', id))
-      if (facts.some(f => !f || f.state !== 'pending' || f.groupId !== a.groupId || f.topicId !== a.topicId)) fail('TOPIC_FACT_STALE')
+      if (facts.some(f => !f || f.archiveRestoreHold || f.state !== 'pending' || f.groupId !== a.groupId || f.topicId !== a.topicId)) fail('TOPIC_FACT_STALE')
       // Recheck ledger snapshots inside the same SQLite transaction as the intent.
       if (a.taskSnapshot !== hash(query({ kind: 'topic.fact.tasks', taskIds: a.taskIds, groupId: a.groupId, topicId: a.topicId }))
         || a.replySnapshot !== replyFingerprint(query({ kind: 'topic.fact.replies', groupId: a.groupId, topicId: a.topicId }))) return { status: 'topic-stale' }

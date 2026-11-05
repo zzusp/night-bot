@@ -86,3 +86,8 @@ Back up `data/memory` together with stopped `data/state`, workspaces, attachment
 originals and configuration through the layout-aware snapshot tool. Secrets are
 excluded by default. No vector database, graph store, plugin historical-data import,
 real business deployment or automatic external notification is involved.
+
+Each task also retains its own review report and scoped destination identifiers
+in task `reviews/`. Archive restore preserves those records without importing
+shared memory/skill collections or automatically re-running the old review.
+See [TASK-ARCHIVE](TASK-ARCHIVE.md).

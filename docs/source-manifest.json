@@ -198,7 +198,7 @@
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
       "status": "adapted",
-      "sha256": "8844b2ba10987a07e0530c0faa1c4e695d06710f0a5d0d90e4e80667219cf2e0",
+      "sha256": "6d90edcd3d14f4859efdfc7880d60a33bfdf840fd0f5e1775513b8297a9090a4",
       "adaptation": "Durable triage-reply notification kind validates source identity/version/quote and deterministic delivery key without masquerading as final Topic/task results."
     },
     {
@@ -565,7 +565,7 @@
       "source": "native-maintenance-drain.js",
       "sourceSha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b",
       "status": "adapted",
-      "sha256": "e972a9c2b468e697a1efe7d76c5b2270d5762e7adcf5f57cb31a7a72087a03d6",
+      "sha256": "3421e15a5796656828a64972a27991b85e7de0e89c8572de180bb31e332945b5",
       "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof."
     },
     {
@@ -755,8 +755,9 @@
     {
       "source": "session-workspaces.js",
       "sourceSha256": "cf6f05f3d1101bd056b39f51dc5c23f7fb8b92f9fe9897895c11270bcd18fbc2",
-      "status": "retained",
-      "sha256": "cf6f05f3d1101bd056b39f51dc5c23f7fb8b92f9fe9897895c11270bcd18fbc2"
+      "status": "adapted",
+      "sha256": "156d397936960edc922bb93bddd6984de18bf820762f70f9794036e59d236f6c",
+      "adaptation": "Task archive includes Host-owned sessions and reviews alongside materials/work/tmp/outputs; trusted task identity and physical path checks remain in force."
     },
     {
       "source": "startup-metrics.js",
@@ -1018,8 +1019,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "c4de8f3baa552e8e906d4233d45322855d242e2a74aabef3e47fdd3983e38033",
-      "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests."
+      "sha256": "f8de50220529ed22749b991d829887c4021d397e41f368a744586d7ede64cf47",
+      "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests. Integrated per-task archive lifecycle and explicit portable maintenance path codec."
     },
     {
       "source": "task-session.js",
@@ -1099,8 +1100,9 @@
     {
       "source": "topic-facts.js",
       "sourceSha256": "724a4d11f9d73979d5f88503cfc11a6445f337cb070c05fdde25186161a4c907",
-      "status": "retained",
-      "sha256": "724a4d11f9d73979d5f88503cfc11a6445f337cb070c05fdde25186161a4c907"
+      "status": "adapted",
+      "sha256": "5679969a2369de4915108f17c374e230ab76b863e4016da4ce15f5c58d017001",
+      "adaptation": "Restored historical Topic facts are held out of pending/group/projection queries and acceptance until separate reconciliation; unreviewed restored tasks do not enter live Topic context."
     },
     {
       "source": "topic-model.js",

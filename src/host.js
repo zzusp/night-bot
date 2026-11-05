@@ -1,4 +1,5 @@
 import {prepareProfileEntries} from './native-profile-preflight.js'
+import {taskSessionRoutes} from './tasks/session-routes.js'
 import {assertNativeScopeAuthority} from './native-scope-guard.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -26,9 +27,10 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
   const ctx = new Context()
   let releaseData,closing
   try {
-    if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
+    if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
     ctx.provide('runtimePaths',paths)
     ctx.provide('portablePaths',portablePaths(paths))
+    const taskRoutes=await taskSessionRoutes(paths);ctx.provide('taskSessionRoutes',taskRoutes)
     const privacy=await createPrivacy(paths);ctx.provide('memoryPrivacy',privacy)
     ctx.provide('launchEnvironment',environmentSnapshot ?? await loadNativeEnvironment({...environmentPaths(config),...environmentOptions,materialize:false,warn:message=>ctx.logger.warn(message)}))
     ctx.baseUrl = pathToFileURL(join(root, 'cordis.yml')).href

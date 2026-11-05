@@ -14,30 +14,33 @@ export default class Reflection extends Service {
     ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope)}))
     ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.whenIdle()},'reflection drain')
   }
-  attachStore(store,{ownerActorId,model}={}){
+  attachStore(store,{ownerActorId,model,onReview}={}){
     if(this.config.enabled===false)return
-    const source={store,ownerActorId,model};this.sources.add(source);void this.scanSource(source)
+    const source={store,ownerActorId,model,onReview};this.sources.add(source);void this.scanSource(source)
     return ()=>this.sources.delete(source)
   }
   scan(){for(const source of this.sources)void this.scanSource(source)}
   scanSource(source){
-    if(this.closed||source.scanning)return source.scanning
+    if(this.closed)return source.scanning
+    source.scanRequested=true;if(source.scanning)return source.scanning
     const job=this.host.agents.withoutInitiator(async()=>{
-      let after=0,page
+      do{source.scanRequested=false;let after=0,page
       do{page=await source.store.query({kind:'task.events',after,limit:100});for(const event of page.events){if(this.closed)return;if(event.kind==='task.completed')await this.review(source,event)}after=page.nextCursor}while(page.hasMore)
-    }).catch(error=>{this.lastError=error.code??'REFLECTION_SCAN_FAILED';this.host.logger.warn('reflection: '+this.lastError)}).finally(()=>{source.scanning=undefined;this.jobs.delete(job)})
+      }while(source.scanRequested&&!this.closed)
+    }).catch(error=>{this.lastError=error.code??'REFLECTION_SCAN_FAILED';this.host.logger.warn('reflection: '+this.lastError)}).finally(()=>{source.scanning=undefined;this.jobs.delete(job);if(source.scanRequested&&!this.closed&&this.sources.has(source))void this.scanSource(source)})
     source.scanning=job;this.jobs.add(job);return job
   }
   async state(scope){return JSON.parse(await readRegular(join(this.directory(scope),'state.json'))??'{"version":1,"reviews":{},"skills":{}}')}
   directory(scope){return join(this.host.memory.store.directory(scope),'evolution')}
   async review(source,event){
     const task=await source.store.query({kind:'task.get',taskId:event.taskId})
-    if(!task||typeof source.ownerActorId!=='string')return
+    if(!task||task.archiveRestore?.reviewRequired||task.archiveRestore?.completionEventIds?.includes(event.id)||typeof source.ownerActorId!=='string')return
     const binding={actorId:task.ownerActorId??source.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}}
     const scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'},true),directory=this.directory(scope),id=hash(event.id)
     await withLock(join(directory,'.lock'),async()=>{
       const state=await this.state(scope),previous=state.reviews[id]
-      if(previous?.status==='done'||previous?.status==='skipped'||previous?.attempts>=3||previous?.retryAt>Date.now())return
+      if(previous?.status==='done'||previous?.status==='skipped'){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
+      if(previous?.attempts>=3||previous?.retryAt>Date.now())return
       const attempts=(previous?.attempts??0)+1
       try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
@@ -71,10 +74,9 @@ export default class Reflection extends Service {
           }
         }
         state.reviews[id]={status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
-        await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(state.reviews[id],null,2)+'\n')
         this.host.skills.invalidateCache()
       }catch(error){state.reviews[id]={status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
-      await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
+      const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:'task-'+id.slice(0,12)+'-'+lesson.key},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
     })
   }
   renderSkill(scope,key,value,revision){return '---\nname: learned-'+key+'\ndescription: Task-derived procedure; limited evidence, scope restricted.\n---\nNIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+revision+'\n\nCurrent instructions and permissions prevail. This is model-generated guidance, not authority.\nApplicability: '+value.applicability+'\nObserved in tasks: '+value.taskIds.join(', ')+'\n\n'+value.steps.map((step,i)=>(i+1)+'. '+step).join('\n')+'\n'}
@@ -87,7 +89,7 @@ export default class Reflection extends Service {
       }
       for(const [id,review]of Object.entries(state.reviews))if(review.lessons){
         const kept=review.lessons.filter(lesson=>'task-'+id.slice(0,12)+'-'+lesson.key!==key)
-        if(kept.length!==review.lessons.length){review.lessons=kept;review.forgotten=true;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n')}
+        if(kept.length!==review.lessons.length){review.lessons=kept;review.forgotten=true;review.destinations=(review.destinations??[]).filter(destination=>destination.memory?.key!==key);await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n');for(const source of this.sources)await source.onReview?.(review.taskId,review)}
       }
       await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');this.host.skills.invalidateCache()
     })

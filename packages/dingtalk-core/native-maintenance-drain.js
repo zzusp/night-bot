@@ -5,41 +5,44 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import {decodePiJournal,piJournalFilename} from '../../src/runtime/pi-journal.js'
 import {taskSessionLogRoot} from './task-session-persistence.js'
+import {taskFilePath} from './session-workspaces.js'
 import { isolationDigest as hash } from './native-restart-isolation.js'
 
 const fail = reason => { throw Object.assign(new Error('DYNAMIC_MAINTENANCE_' + reason), { code: 'DYNAMIC_MAINTENANCE_' + reason }) }
 const time = value => typeof value === 'string' ? Date.parse(value) : NaN
 const bindingKeys = ['taskId', 'executionId', 'sessionId', 'requirementRevision', 'controlRevision', 'inputVersion', 'inputDigest', 'leaseEpoch']
 
-/** Read one exact Pi journal without directory discovery, migration or repair.
- * Both the freezer and recovery compare the full committed physical bytes.
- * A remaining writer or uncertain file identity is not a quiescence proof.
+function checkDirectories(directory){
+ let current=resolve(directory)
+ for(;;){const info=lstatSync(current);if(!info.isDirectory()||info.isSymbolicLink())throw Error('DEPLOY_LOG_REPARSE_POINT');const parent=dirname(current);if(parent===current)break;current=parent}
+}
+function readStableBytes(path){
+ checkDirectories(dirname(path));const before=lstatSync(path)
+ if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1)throw Error('DEPLOY_LOG_REPARSE_POINT')
+ const fd=openSync(path,constants.O_RDONLY|(constants.O_NOFOLLOW??0))
+ try{
+  const opened=fstatSync(fd)
+  if(opened.dev!==before.dev||opened.ino!==before.ino||!opened.isFile()||opened.nlink!==1)throw Error('DEPLOY_NATIVE_LOG_IDENTITY')
+  const bytes=readFileSync(fd),after=fstatSync(fd),named=lstatSync(path)
+  if(after.size!==opened.size||after.mtimeMs!==opened.mtimeMs||after.ctimeMs!==opened.ctimeMs||bytes.length!==opened.size
+   ||named.dev!==opened.dev||named.ino!==opened.ino||named.nlink!==1||named.isSymbolicLink()
+   ||named.size!==opened.size||named.mtimeMs!==opened.mtimeMs||named.ctimeMs!==opened.ctimeMs)throw Error('DEPLOY_NATIVE_LOG_CHANGED')
+  checkDirectories(dirname(path));return bytes
+ }finally{closeSync(fd)}
+}
+/** Read one exact Pi journal without discovery, migration or repair. A task's
+ * own identity marker selects its archive path. Older Night Bot Pi layouts use
+ * the task router's path; no DSH event format or directory importer is involved.
  */
-export function readNativeHistory(workspace, row, {pathCodec}={}) {
-  const directory=taskSessionLogRoot(workspace,row.taskId)
-  const path=join(directory,piJournalFilename(row.sessionId))
-  const checkDirectories=()=>{let current=resolve(directory)
-  for (;;) {
-    const info=lstatSync(current)
-    if (!info.isDirectory()||info.isSymbolicLink()) throw Error('DEPLOY_LOG_REPARSE_POINT')
-    const parent=dirname(current);if(parent===current)break;current=parent
-  }}
-  checkDirectories()
-  const before=lstatSync(path)
-  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1)throw Error('DEPLOY_LOG_REPARSE_POINT')
-  const fd=openSync(path,constants.O_RDONLY|(constants.O_NOFOLLOW??0))
-  try {
-    const opened=fstatSync(fd)
-    if(opened.dev!==before.dev||opened.ino!==before.ino||!opened.isFile()||opened.nlink!==1)throw Error('DEPLOY_NATIVE_LOG_IDENTITY')
-    const bytes=readFileSync(fd),after=fstatSync(fd),named=lstatSync(path)
-    if(after.size!==opened.size||after.mtimeMs!==opened.mtimeMs||after.ctimeMs!==opened.ctimeMs||bytes.length!==opened.size
-      ||named.dev!==opened.dev||named.ino!==opened.ino||named.nlink!==1||named.isSymbolicLink()
-      ||named.size!==opened.size||named.mtimeMs!==opened.mtimeMs||named.ctimeMs!==opened.ctimeMs)throw Error('DEPLOY_NATIVE_LOG_CHANGED')
-    checkDirectories()
-    const decoded=decodePiJournal(bytes,row.sessionId,{requireComplete:true,codec:pathCodec})
-    if(!pathCodec&&(decoded.header.portableCwd!==undefined||decoded.events.some(event=>event.type==='working-directory/change'&&event.data?.portableCwd!==undefined)))throw Error('PI_SESSION_PATH_CODEC_REQUIRED')
-    return {header:decoded.header,events:decoded.events,digest:hash({text:bytes.toString('utf8')}),path,format:'pi-jsonl-v3'}
-  } finally {closeSync(fd)}
+export function readNativeHistory(workspace,row,{pathCodec}={}){
+ const taskRoot=dirname(taskFilePath(workspace,row.taskId,'work'));let owner
+ try{owner=JSON.parse(readStableBytes(join(taskRoot,'.task-session.json')).toString('utf8'))}catch(error){if(error.code!=='ENOENT')throw error}
+ if(owner!==undefined&&(owner?.version!==1||owner.taskId!==row.taskId||owner.sessionId!==row.sessionId))throw Error('DEPLOY_NATIVE_LOG_IDENTITY')
+ const directory=owner?taskFilePath(workspace,row.taskId,'sessions'):taskSessionLogRoot(workspace,row.taskId)
+ const path=join(directory,piJournalFilename(row.sessionId)),bytes=readStableBytes(path)
+ const decoded=decodePiJournal(bytes,row.sessionId,{requireComplete:true,codec:pathCodec})
+ if(!pathCodec&&(decoded.header.portableCwd!==undefined||decoded.events.some(event=>event.type==='working-directory/change'&&event.data?.portableCwd!==undefined)))throw Error('PI_SESSION_PATH_CODEC_REQUIRED')
+ return{header:decoded.header,events:decoded.events,digest:hash({text:bytes.toString('utf8')}),path,format:'pi-jsonl-v3'}
 }
 
 async function currentProcesses(identities) {
