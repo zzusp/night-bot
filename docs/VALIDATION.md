@@ -1,3 +1,54 @@
+# Default Host schedule acceptance (2026-11-05)
+
+The default durable scheduler, ordinary cold-session controller and four model
+schedule tools are now wired to native storage and Pi. This closes the real
+`platform_native_schedule_unavailable` gap in the previously pushed `0c2e864`.
+Calendar/record/update contracts retain explicit MIT attribution; no registry DSH
+runtime package has been added. The platform bridge also avoids an extra recovery
+input while the original acknowledged reminder remains queued.
+
+Current primary groups: **545 own +142 runtime +47 routing +388 domain +11 Linux
+containment =1133 unique passes**, zero failures. One Windows containment case is
+skipped. The domain group includes channel-adapter contracts; it does not claim
+live channel acceptance. The earlier 272-case channel-independent domain subset
+passed before this fix; it is not added again to the total.
+
+A fresh frozen production-only install, with dependency install scripts explicitly
+allowed only in its isolated copy, repeats all **20 default schedule cases**.
+415 runtime/configuration files match this tree byte-for-byte; the installed graph
+contains zero external registry DSH packages. Source guard:200 retained/3 UI
+excluded/26 recorded adaptations;353 JS files/169 declared bare imports; no old
+model/tool/history orchestrator or SDK runtime import is reintroduced.
+
+The new cases use the actual default Host, real Pi wire requests to a loopback
+fixture, native file writes and separate CLI processes. They cover: due-time
+execution; model-created reminders; cold/overdue restore; restart without duplicate
+file effects; durable inbox/receipt/wakeup commit gaps; a busy driver racing the
+receipt; explicit cancellation during that race; partially committed recurring
+batches; recurring coalescing; six timing selectors, DST gaps/overlaps and cron;
+exact-session ownership, optimistic edits, archive and delegated-session refusal;
+preserved read-only permissions and session model; the retained platform bridge
+with original and superseded source bindings. The fixture replaces external model
+responses and channel delivery only, not scheduler/controller/Pi/persistence/tools.
+
+A service inventory of retained core lookups is now checked against the real
+Host. `nativeJobRecovery` is an intentionally optional trusted isolation authority;
+its missing proof path refuses admission. It is not a hidden default dependency
+or a reason to loosen unknown-effect reconciliation. Arbitrary optional plugins
+still require their own integration acceptance.
+
+DWS and other channels are independent integration scopes, not prerequisites for
+this Linux core acceptance. Real vendor model judgment, live business systems,
+production data migration/long-running load and Windows/macOS kernel behavior are
+unverified here. No real messages/business writes, production deployment, merge
+or CI were performed. Containment uses the AGENTS.md-approved executor escalation
+so its own bubblewrap can run; application sandbox policy was not disabled.
+
+Evidence: `evidence/schedule-final-*`, `evidence/schedule-production-wire.txt`, and
+`evidence/schedule-core-regression.json`. Source provenance and adapted hash guards:
+`schedule-source-manifest.json`. The records below are earlier checkpoints, not
+current remote-write or acceptance status.
+
 # Final native runtime validation (2026-11-05)
 
 Primary groups:525 own +142 runtime +47 routing +388 domain +11 real Linux

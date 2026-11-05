@@ -5,6 +5,16 @@
 - `src/pi-loop.js` 的生命周期、持久 inbox、工厂和会话适配代码基于 `@deepseek-ai/dsh-agent-loop@0.2.1-alpha.2`，版权 DeepSeek，MIT 许可原文见 `licenses/deepseek-agent-loop-MIT.txt`。原模型/工具 step 循环已替换为 pi-agent-core 驱动。
 - Pi 与 Host 外部依赖的许可证随各依赖包保留；版本和完整性由 `pnpm-lock.yaml` 固定。明确复制的MIT源码及适配边界另列于下。
 
+`src/native-schedule-protocol.js` and the management contracts in
+`src/native-schedule.js` derive from `@deepseek-ai/dsh-schedule@0.2.1-alpha.2`;
+`src/native-tool-schedule.js` derives from `@deepseek-ai/dsh-tool-schedule` at the
+same version, Copyright (c) 2026 DeepSeek (MIT). Original notices are in
+`licenses/dsh-{tool-schedule,schedule}-MIT.txt`; source and adapted hashes are in
+`docs/schedule-source-manifest.json`. Calendar/record/history/schema algorithms
+are attributed compatibility code, not a DSH runtime base. The active scheduler
+and ordinary-session controller are local implementations over Pi and native
+storage. Temporal is a generic calendar dependency, pinned separately in the lock.
+
 ## Local managed-process backend
 
 `src/process/{index,runner,runner-launch-B2zsQ1Dz,output}.js` derive from

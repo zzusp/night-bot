@@ -15,4 +15,6 @@ for(const directory of ['src','bin','packages/dingtalk-core','packages/scope-com
 const legacy=JSON.parse(await readFile('docs/legacy-runtime-source-manifest.json','utf8'))
 for(const entry of legacy.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded legacy/platform source change: '+entry.target)
 if(digest(await readFile(legacy.worker.target))!==legacy.worker.sha256)throw new Error('Unrecorded verifier worker change')
+const schedule=JSON.parse(await readFile('docs/schedule-source-manifest.json','utf8'))
+for(const entry of schedule.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded schedule source adaptation: '+entry.target)
 console.log(JSON.stringify({runtimeJsFiles:files,externalSdkImports:0,legacyOrchestratorDefinitions:0,legacySourceFilesVerified:legacy.files.length,worker:'owned-isolated-esm'}))

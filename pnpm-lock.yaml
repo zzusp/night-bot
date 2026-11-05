@@ -57,6 +57,9 @@ importers:
       '@joplin/turndown-plugin-gfm':
         specifier: 1.0.68
         version: 1.0.68
+      '@js-temporal/polyfill':
+        specifier: 0.5.1
+        version: 0.5.1
       '@vscode/ripgrep':
         specifier: 1.18.0
         version: 1.18.0

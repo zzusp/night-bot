@@ -42,7 +42,8 @@
     "turndown": "7.2.4",
     "@joplin/turndown-plugin-gfm": "1.0.68",
     "diff": "9.0.0",
-    "@vscode/ripgrep": "1.18.0"
+    "@vscode/ripgrep": "1.18.0",
+    "@js-temporal/polyfill": "0.5.1"
   },
   "packageManager": "pnpm@11.25.0",
   "devDependencies": {

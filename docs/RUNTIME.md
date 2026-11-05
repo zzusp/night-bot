@@ -35,3 +35,20 @@ Functional mapping and acceptance limits are in MIGRATION.md and VALIDATION.md.
 Real DWS/vendor/business, Windows/macOS kernel and optional Claude/browser/plugin
 integrations require their own installed, authorized environment. No current
 result claims that external acceptance has occurred.
+
+NativeSchedule is a default Host service, with local NativeSessionController for
+ordinary cold-session activation and four session-bound model tools. Calendar,
+record and update algorithms retain explicit MIT provenance; no registry DSH
+service or remote controller is loaded. Pi retains history and inference authority.
+An occurrence enters a durable Pi inbox before its schedule receipt, and the model
+wakes only after both commits. Stable message identities and frozen recurrence
+metadata recover partial batch commits without reenqueuing a completed effect.
+Shutdown preserves unclaimed reminder input; explicit cancellation still clears it.
+The CLI starts timers after Resident has mounted source/permission/delivery gates.
+Receipts acknowledge inbox delivery, not model/business completion. Unknown tool
+effects continue to require the existing reconciliation evidence rather than replay.
+
+Default Host startup now checks every mandatory service read by the retained core.
+`nativeJobRecovery` remains an optional trusted isolation authority: its absence
+refuses that special proof path; it is not permission to fabricate process proof.
+All other optional provider integrations retain their own explicit admission.

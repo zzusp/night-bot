@@ -1452,5 +1452,56 @@
     "externalFeatureAcceptanceComplete": false,
     "remoteWrite": "previous GitHub403 denied; no retry, PR, merge, deployment or real business writes",
     "handoffNetwork": "parent reports new environment download blocked; no workaround attempted"
+  },
+  "defaultScheduleWiring": {
+    "date": "2026-11-05",
+    "sourceBaseline": "93e431a2a76938d32aefc070b093fcfb65691c70",
+    "previousTarget": "0c2e864fec00ec820c7b4ba9d8faa020daa273be",
+    "groups": {
+      "own": {
+        "tests": 545,
+        "pass": 545,
+        "fail": 0,
+        "skipped": 0
+      },
+      "runtime": {
+        "tests": 142,
+        "pass": 142,
+        "fail": 0,
+        "skipped": 0
+      },
+      "routing": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "skipped": 0
+      },
+      "domain": {
+        "tests": 388,
+        "pass": 388,
+        "fail": 0,
+        "skipped": 0
+      },
+      "containment": {
+        "tests": 12,
+        "pass": 11,
+        "fail": 0,
+        "skipped": 1
+      }
+    },
+    "primaryUniquePass": 1133,
+    "productionScheduleRepeatedPass": 20,
+    "productionRuntimeAndManifestFilesCompared": 415,
+    "productionRuntimeMismatches": [],
+    "productionRegistryDshPackages": [],
+    "runtimeTreeSha256": "61121a5100ca7d6f399d0739bde8ba5a0a0b78673138dd60dba1c86836181127",
+    "retainedModules": 200,
+    "excludedUiModules": 3,
+    "explicitCoreAdaptations": 26,
+    "requiredCapabilityAudit": "All mandatory literal core service lookups checked on real default Host; scheduler and controller required at startup; sessionTitle/fs/sandboxPolicy also asserted.",
+    "optionalCapabilityAudit": {
+      "nativeJobRecovery": "Optional trusted process-isolation proof authority; absence refuses unsupported recovery rather than fabricating evidence."
+    },
+    "validationBoundary": "Isolated Linux, real Pi and local HTTP model protocol, native file/PTY/FFI/kernel paths; channel/business providers and Windows/macOS separate. No production deployment, migration, merge or CI."
   }
 }

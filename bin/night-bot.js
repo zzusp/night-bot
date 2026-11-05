@@ -17,13 +17,14 @@ if (!path || process.argv.includes('--help')) {
     releaseProxy = await installProxyFromEnvironment(environmentSnapshot,message=>console.error(message))
     const {createHost} = await import('../src/host.js')
     const {apply:applyResident} = await import('../packages/dingtalk-core/resident.js')
-    host = await createHost(config, { environmentSnapshot })
+    host = await createHost(config, { environmentSnapshot, deferScheduledDelivery: true })
     const resident = config.resident ?? {}
     const taskSessions = { ...config.model, ...resident.taskSessions, workspaceDir: config.workspaceDir,
       dbPath: join(config.stateDir, 'tasks.sqlite') }
     await host.ctx.plugin({ inject: ['storage','storageDomain','credentials','agents','agentDefaultModel','agentPresets','permissionPresets','agentLoop','sessions','sessionPersistence','sessionProjections','workspaceRegistry','tools','llm','systemPrompt','attachments'],
       apply: ctx => applyResident(ctx, { ...resident, agentPreset: 'night-bot', agentWorkspaceDir: config.workspaceDir,
         taskSessions, dws: { enabled: false, writesAuthorized: false, ...resident.dws } }) })
+    host.ctx.schedule.start()
     for (const signal of ['SIGINT','SIGTERM']) process.once(signal, () => { close().catch(error => { console.error(error.message); process.exitCode = 1 }) })
   } catch (error) {
     console.error(error.message)

@@ -1656,7 +1656,10 @@ var AgentLoop = class extends Service {
 				if (machine === void 0) await machineReady.promise;
 				/* v8 ignore next -- setup failure untracks this disposer before resolving without a machine. */
 				if (machine !== void 0) {
-					machine.cancel({ kind: "disposed" });
+					// Host shutdown must retain an acknowledged, unclaimed reminder.
+					// Explicit user cancellation still clears the inbox normally.
+					const keepInbox = [...machine.inbox.nextTurn, ...machine.inbox.nextStep].some(message => message.source?.kind === 'schedule');
+					machine.cancel({ kind: "disposed" }, { keepInbox });
 					await machine.whenIdle();
 				}
 			} catch (error) {

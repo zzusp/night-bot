@@ -1,0 +1,55 @@
+import {Service} from '@deepseek-ai/cordis'
+import {foldRequestHeader} from './native-session-protocol.js'
+
+/** Host-only ordinary-session activation. Delegated sessions remain owned by
+ * NativeSubagents; inspecting a binding never creates or resumes an agent. */
+export default class NativeSessionController extends Service {
+  static inject = ['agents','sessions','sessionPersistence','sessionQuery','agentPresets','agentDefaultModel','permissionPresets','workspaceRegistry']
+  constructor(ctx) {
+    super(ctx,'sessionController')
+    this.pending=new Map();this.handles=new Map();this.closing=false
+    ctx.effect(()=>async()=>{
+      this.closing=true
+      await Promise.allSettled([...this.pending.values()])
+      await Promise.all([...this.handles.values()].map(handle=>handle.dispose()))
+    })
+  }
+  async header(id) {
+    if(typeof id!=='string'||!id.trim())throw new Error('NIGHT_SESSION_ID_INVALID')
+    const header=this.ctx.sessions.get(id)?.header??(await this.ctx.sessionPersistence.stat(id))?.header
+    if(!header)throw new Error('NIGHT_SESSION_NOT_FOUND')
+    return structuredClone(header)
+  }
+  assertOrdinary(header) {
+    if(header.origin==='subagent'||(header.delegationDepth??0)>0)throw new Error('NIGHT_SESSION_SUBAGENT_OWNED')
+    if(this.ctx.workspaceRegistry.archivedSessionIds.includes(header.id))throw new Error('NIGHT_SESSION_ARCHIVED')
+    if(!header.cwd)throw new Error('NIGHT_SESSION_CWD_REQUIRED')
+  }
+  async resolveAgent(id) {
+    if(this.closing)return {error:new Error('NIGHT_SESSION_CONTROLLER_CLOSED')}
+    let pending=this.pending.get(id)
+    if(!pending){
+      pending=this.ctx.agents.withoutInitiator(async()=>{
+        this.assertOrdinary(await this.header(id))
+        const live=this.ctx.agents.get(id)
+        if(live)return {agent:live}
+        const observation=await this.ctx.sessionQuery.observeSession(id)
+        try{
+          this.assertOrdinary(observation.header)
+          const preset=observation.projections?.values.agentPreset??observation.header.agentPreset
+          const persisted=foldRequestHeader(observation.events)?.config
+          const model=persisted??this.ctx.agentDefaultModel.currentSelection()
+          const handle=await this.ctx.agents.resume({resumeSessionId:id,agentOptions:model,
+            setup:async(agentCtx,agent)=>{
+              await agentCtx.get('agentPresets').mount(agentCtx,preset)
+              // Persisted permission events remain authoritative on cold resume.
+            }})
+          this.handles.set(id,handle)
+          return {agent:handle.agent}
+        }finally{await observation[Symbol.asyncDispose]?.();observation[Symbol.dispose]?.()}
+      }).catch(error=>({error})).finally(()=>this.pending.delete(id))
+      this.pending.set(id,pending)
+    }
+    return pending
+  }
+}

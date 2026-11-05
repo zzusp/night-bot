@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url'
 
 const require = createRequire(import.meta.url)
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
-export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot } = {}) {
+export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false } = {}) {
   assertNativeScopeAuthority()
   const root = resolve(config.stateDir), workspace = resolve(config.workspaceDir)
   await mkdir(root, { recursive: true }); await mkdir(workspace, { recursive: true })
@@ -42,11 +42,13 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, { name: new URL('./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
       { name: new URL('./native-subagents.js', import.meta.url).href }, { name: new URL('./native-subagent-providers.js', import.meta.url).href }, { name: new URL('./native-tool-subagent-control.js', import.meta.url).href }, { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
       { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
+      { name: new URL('./native-session-controller.js', import.meta.url).href },
+      { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
       ...(config.plugins ?? []), ...extraPlugins,
     ]
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
-    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
+    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','sessionController','schedule','sessionTitle','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
@@ -64,10 +66,12 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },
           { name: new URL('./native-tool-subagent.js', import.meta.url).href, config: { provider: 'spawn' } },
           { name: new URL('./native-tool-todo.js', import.meta.url).href, config: { allowParallelInProgress: true } }, { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },
+          { name: new URL('./native-tool-schedule.js', import.meta.url).href },
         ] }] })
     } })
     const preset = await ctx.agentPresets.resolve('night-bot')
     if (preset.broken) throw new Error('NIGHT_BOT_PRESET_BROKEN:' + JSON.stringify(preset.broken))
+    if (!deferScheduledDelivery) ctx.schedule.start()
     return { ctx, close: () => ctx.fiber.dispose() }
   } catch (error) { await ctx.fiber.dispose(); throw error }
 }

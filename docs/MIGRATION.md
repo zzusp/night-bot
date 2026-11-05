@@ -6,7 +6,7 @@ Pi agent-core1.5.0 负责推理/工具迭代，Pi SessionManager 负责当前历
 历史接口；旧事件/格式兼容不再构成独立执行或上下文底座。
 
 源固定于 HiQ-AI/dingtalk-dsh-assistant@93e431a，200 个模块保留、3 个 UI
-模块排除、25 个适配记录原始/目标哈希。文件与路由守恒不是外部业务验收证明。
+模块排除、26 个适配记录原始/目标哈希。文件与路由守恒不是外部业务验收证明。
 
 ## 功能与迁移映射
 
@@ -21,7 +21,7 @@ Pi agent-core1.5.0 负责推理/工具迭代，Pi SessionManager 负责当前历
 | 未知操作阻断、执行原生收据、进程输出与退出独立核对 | dynamic-process/filesystem-scope、native-job、operation-readback | job-recovery-native、service-native |
 | 通知冻结、发送/回读/撤回、避免重复发送、通知与业务完成分离 | notification-delivery、native-dws-send、task-notification-readback | notification-retry-native、dws-*、service-native |
 | 文件/截图产物、独占目录、跨轮保留、最终附件交付与部分发送恢复 | task-artifact-*、task-final-delivery、session-workspaces | artifact-*、final-delivery、service-native；shell 隔离验证见 VALIDATION |
-| 持久排期、触发、固定事项、协调退休兼容、审计/性能/告警 | platform-schedule、coordination-*、performance、HTTP projections | coordination-schedule-revisions、现有领域测试；真实排期外部交付未验收 |
+| 持久排期、触发、固定事项、协调退休兼容、审计/性能/告警 | native-schedule、native-session-controller、platform-schedule、coordination-* | pi-schedule-wire：真实默认 Host/CLI、原桥接、到期文件写入、重启/提交间隙、防重、取消/归档、权限/模型、周期合并/DST；外部渠道交付单独验收 |
 | 业务工作流、Git/PR/UAT/发布、Bytebase/Postgres、源文件证据 | workflow-*、execution-*、task-*-workflow | 保留原实现和测试；本次没有接入真实业务系统、合并或部署 |
 | Claude 可选执行后端 | claude-execution-session | 保留兼容实现；未安装/登录 Claude CLI，未验收 |
 | CLI/后台配置、模型 provider、群职责、技能/插件扩展、HTTP 控制与人工答复 | config.js、host.js、resident/http、task-resident-runtime | pi-wire、pi-config、HTTP 路由守恒 |

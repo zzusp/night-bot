@@ -706,8 +706,9 @@
     {
       "source": "platform-schedule.js",
       "sourceSha256": "2e3da4accc1654b8eff117b3df8db8cdfab5d88f1df53c86f27ad1d345f400ac",
-      "status": "retained",
-      "sha256": "2e3da4accc1654b8eff117b3df8db8cdfab5d88f1df53c86f27ad1d345f400ac"
+      "status": "adapted",
+      "sha256": "13489b4fc82558ca6a5c79042aa7f3426cfacec6b9b97fa46d68149c9f08793f",
+      "adaptation": "Keep the native scheduler-owned pending inbox delivery; do not enqueue a second platform recovery input between receipt commit and wake."
     },
     {
       "source": "resident.js",

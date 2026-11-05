@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "package": "@deepseek-ai/dsh-schedule",
+      "version": "0.2.1-alpha.2",
+      "sha256": "022b9f191b6ca0f4b0f26625afc49f375933068a42712c0a75e94e439d7e6d0e",
+      "retained": "calendar,record,history,update and management contracts; remote decorators excluded; native runtime and session controller replace activation"
+    },
+    {
+      "package": "@deepseek-ai/dsh-tool-schedule",
+      "version": "0.2.1-alpha.2",
+      "sha256": "155a440f73ef1c52873bf9c088779d6c63d46ddbdd028472b233f83ab66f14cf",
+      "retained": "tool schemas and caller guards, imports point to local owners"
+    }
+  ],
+  "files": [
+    {
+      "target": "src/native-schedule-protocol.js",
+      "sha256": "0e0831bc56d2d887f6af1f4a75258f6f214f552eb0aae86d7b879f6ad3a44c67"
+    },
+    {
+      "target": "src/native-schedule.js",
+      "sha256": "5be7f7db0667da24b25fa0dd80d97a707af822643fb23fdb2228d45e010e4b0e"
+    },
+    {
+      "target": "src/native-tool-schedule.js",
+      "sha256": "747d8a5d7d3104b211e6321c28dbc7d548f8894519de948f027d1ee818022b3f"
+    }
+  ]
+}

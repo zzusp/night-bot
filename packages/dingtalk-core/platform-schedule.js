@@ -103,6 +103,10 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         if (closed) return
         await mount(result.agent); await result.agent.whenIdle()
         if (closed || store.getPlatformSchedule(record.sessionId).outcome) continue
+        // Native Schedule owns waking its durably queued original message.
+        // A receipt precedes wakeup; do not add a second recovery input in that gap.
+        const inbox = result.agent.inbox
+        if (inbox && [...inbox.nextTurn, ...inbox.nextStep].some(message => message.id === record.lastDelivery.messageId)) continue
         recovered.add(record.id)
         result.agent.followup({ id: `${record.id}-platform-recovery`, role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text',
           text: `[SCHEDULE REMINDER]\n原生定时已在 ${record.lastDelivery.deliveredAt} 投入本会话，平台工具现已就绪。沿原事项补报或判断过期，只通过 platform_reply_submit 结清；不要创建新的 schedule。` }] })
