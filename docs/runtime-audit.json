@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeWeb owns deterministic provider selection, inherited selector snapshots, fixed registration identities and owner/provider cancellation/drain; NativeHttpFetchProvider owns anonymous HTTP with source-derived public-DNS/NAT64/pinned transport/proxy/redirect/body limits; one Host provider across retained presets",
     "NativeSessionTitle owns normalized/fallback/user-pinned and versioned provider title metadata, main-request cadence, immutable registration/input snapshots and nested cancellation/drain; canonical public input-error identity retained",
     "NativeSubagents owns provider registry, activation pools/lineage/control/cold reconstruction/structured result and descendant drain via Pi-backed local Agents; initial parent catalog/inbox and terminal results require Pi commit proof; canonical error identities and control tool helpers remain explicit",
     "NativeSessionQuery restores missing default-host cold observation/discovery, live-preferred snapshots/revision cache and read-only audit/presentation operations with owner cancellation/drain; legacy event facade/catalog helpers remain explicit",
@@ -52,6 +53,7 @@
     "native code transport with ordered nested dispatch, cancellation/drain and one-shot sandbox approval"
   ],
   "dshRemaining": [
+    "Canonical WebError and model-facing web tool schema/render/presentation helpers; active registry and HTTP backend now local",
     "Session-title public input-error identity and event-format/catalog presentation helpers; active title/query controllers now application-owned",
     "Cordis agent factory/lifecycle compatibility fork",
     "pinned in-memory v4 Session data facade and publication compatibility hook; Session/Projection registries now local",
@@ -226,10 +228,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-web-fetch-http",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-workspace",
       "version": "0.2.1-alpha.2"
     },
@@ -238,7 +236,7 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 119,
+  "developmentDependencyCount": 120,
   "activeLiteralDshPluginRows": [
     "fs-observation-policy",
     "fs-sandbox",
@@ -251,15 +249,14 @@
     "tool-subagent-control",
     "tool-todo",
     "tool-web",
-    "tool-working-directory",
-    "web",
-    "web-fetch-http"
+    "tool-working-directory"
   ],
   "activeDynamicDshPluginRows": [
     "bash-sandbox or pwsh-sandbox",
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "web/web-fetch-http -> src/native-web.js + native-http-fetch.js + native-deadline.js; public canonical WebError and proxy overlay retained, global HTTP ownership avoids retained-preset duplicate registration",
     "session-title -> src/native-session-title.js; public error identity remains canonical, query fold is local",
     "subagent -> src/native-subagents.js with Pi admission/terminal gates; native-session-query.js restores an absent required service, not counted as an old active service replacement",
     "agent-preset-registry -> src/native-agent-presets.js + native-profile-preflight.js; explicit source-derived generation/preflight algorithms, Pi selection admission and failure fencing",

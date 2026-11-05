@@ -877,5 +877,42 @@
     "durabilityBoundary": "sync rename appends metadata; NativeSessions/Pi flush remains durable acceptance boundary",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeWebAndHttp": {
+    "date": "2026-11-05",
+    "ownPass": 417,
+    "webRegistryContracts": 8,
+    "httpPolicyTransportContracts": 10,
+    "actualPiWebAndRetainedPresetWires": 2,
+    "newConfigContracts": 5,
+    "runtimePass": 142,
+    "runtimeDurationMs": 259708.737601,
+    "routingPass": 47,
+    "routingDurationMs": 22725.408041,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from prior verified checkpoint",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 9843.013237,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 1003,
+    "productionOnlyRepeatedPass": 317,
+    "productionScope": "279 core/wire +38 native contracts; legacy reference cases excluded",
+    "runtimeFilesCompared": 273,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 270,
+    "literalBareImports": 215,
+    "directRuntimeDshDependencies": 42,
+    "removedActiveDshServices": 34,
+    "publicPolicy": "no private-network request option; all default direct hops validate and pin public answers; proxy routing preserves installed policy; same-origin redirects and resource/response caps retained",
+    "realTransportEvidence": "fixed lookup connects a local socket under an otherwise unresolved fixture origin using an explicitly supplied low-level fixture pin; public provider still rejects loopback",
+    "presetOwnership": "one Host HTTP provider across retained night-bot generations; tool scope restrictions preserved",
+    "dnsCancellationLimit": "OS lookup may finish unused; guarded late resolution cannot dispatch HTTP after caller cancellation",
+    "remainingTimeoutGap": "generic ToolDefinition.timeoutMs cooperative policy absent from default Host; backend HTTP timeout works, restoration planned",
+    "externalAcceptance": "no real vendor search/public Internet acceptance; provider/response fixtures and real local pinned connector only",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

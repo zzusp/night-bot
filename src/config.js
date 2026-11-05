@@ -15,6 +15,11 @@ export async function loadConfig(path) {
   if (config.skillWatch !== undefined && typeof config.skillWatch !== 'boolean') throw new Error('NIGHT_BOT_SKILL_WATCH_INVALID')
   if (config.credentialsWatch !== undefined && typeof config.credentialsWatch !== 'boolean') throw new Error('NIGHT_BOT_CREDENTIALS_WATCH_INVALID')
   if (config.maxParallelToolCalls !== undefined && (!Number.isSafeInteger(config.maxParallelToolCalls) || config.maxParallelToolCalls < 1)) throw new Error('NIGHT_BOT_MAX_PARALLEL_TOOL_CALLS_INVALID')
+  for(const key of ['web','webFetch'])if(config[key]!==undefined&&(!config[key]||typeof config[key]!=='object'||Array.isArray(config[key])))throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)
+  for(const key of ['searchProvider','fetchProvider'])if(config.web?.[key]!==undefined&&typeof config.web[key]!=='string')throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)
+  for(const key of ['maxResponseBytes','maxBodyChars','timeoutMs'])if(config.webFetch?.[key]!==undefined&&(!Number.isFinite(config.webFetch[key])||config.webFetch[key]<=0||key==='timeoutMs'&&config.webFetch[key]>2147483647))throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)
+  if(config.webFetch?.maxRedirects!==undefined&&(!Number.isInteger(config.webFetch.maxRedirects)||config.webFetch.maxRedirects<0))throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:maxRedirects')
+  if(config.webFetch?.userAgent!==undefined&&typeof config.webFetch.userAgent!=='string')throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:userAgent')
   const resident = config.resident ?? {}
   if (resident.fakeModel) throw new Error('NIGHT_BOT_FAKE_MODEL_IS_TEST_ONLY')
   if (resident.host && !['127.0.0.1','::1','localhost'].includes(resident.host)) throw new Error('NIGHT_BOT_HTTP_REQUIRES_LOOPBACK')

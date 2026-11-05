@@ -51,3 +51,7 @@ Trusted shell facts: `src/native-shell-env.js` preserves the MIT @deepseek-ai/ds
 ## Session title protocol
 
 `src/native-session-title.js` retains the pinned `dsh-session-title@0.2.1-alpha.2` MIT normalization/fold/cadence and provider-result protocol, with application-owned registration snapshots and nested self-disposal-safe cancellation/drain. The canonical public SessionTitleInvalidError identity remains imported for existing wire adapters, so the old package remains an explicit production helper while its service is not mounted. NativeSessionQuery imports the local fold. See `licenses/dsh-session-title-MIT.txt`.
+
+## Web capability and HTTP transport
+
+`native-web.js` owns selection/registration and lifetime while preserving the MIT `dsh-web` selection/cap protocol and canonical WebError identity for existing tools. `native-http-fetch.js` retains explicitly MIT source-derived public-address/NAT64 resolution, pinned connector, proxy, redirect, MIME/charset and bounded-response algorithms from `dsh-web-fetch-http`; NativeDeadline retains its MIT signal/timer protocol from `dsh-timeout`. Low-level connector injection/exports are internal testing seams, not a public-request private-network option. Source notices: `licenses/dsh-{web,web-fetch-http,timeout}-MIT.txt`. `ipaddr.js@2.5.0` remains a declared parser dependency with `licenses/ipaddr-js-MIT.txt`. Existing proxy policy stays in the retained shared overlay.

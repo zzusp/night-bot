@@ -243,3 +243,7 @@ Active preset generations and compatibility admission now live in `native-agent-
 ### Session title ownership
 
 Active title metadata/cadence now lives in `native-session-title.js`; query folding imports it locally. The old package remains only for its canonical public invalid-input error identity and other externally retained helpers; its service is not mounted. Direct DSH production dependencies remain 43; active component replacements are 32. This does not remove the remaining Session/inbox facade, generic scope/message/RPC/format/tool helpers or FS/shell/worker backends.
+
+### Web ownership and retained boundaries
+
+Active registry and anonymous HTTP backend are local `native-web.js`/`native-http-fetch.js`. The latter and `native-deadline.js` are attributed MIT compatibility algorithms; fixed DNS lookup is exercised by a real local socket fixture while the public provider's private-address policy stays enforced. The old HTTP package is development-only; canonical WebError and generic web tool definitions/presentation plus proxy overlay remain. Direct DSH production dependencies: 42; active components replaced: 34. Generic tool timeout policy is an identified absent default-host capability pending restoration.

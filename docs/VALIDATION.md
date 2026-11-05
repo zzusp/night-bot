@@ -263,3 +263,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own392/392、完整runtime142/142（266058.478842ms）、routing47/47（24867.636413ms）通过；任务夹具已切换NativeSessionTitle。真实kernel containment九项通过、一项Windows专属跳过（11203.299369ms）；domain388未改动沿用，共978独立通过。七项合同含旧normalizer/lifecycle差分、pin/late-result、声明与来源seq验证、provider卸载排空、self-unregister/owner self-close；实际Pi wire证明只有一个request/header的两轮自动标题、固定后不覆盖、显式刷新与持久cold read。
 
 全新`/tmp/night-bot-session-title-production`production frozen ignore-scripts安装成功，256核心/wire+38合同=294项复测通过；270运行文件及manifest/lock逐字一致，静态267 JS/207字面bare imports通过。证据`evidence/native-session-title-*.txt`。原生控制器仍保留canonical公开错误身份，43直接生产DSH依赖/32活动组件替换；不是完整迁移。同步rename保留append语义，未冒充同步fsync。远端403未重试。
+
+## 原生 Web registry / HTTP 后端验证
+
+最终own417/417、runtime142/142（259708.737601ms）、routing47/47（22725.408041ms）通过。真实kernel containment九项通过、一项Windows专属跳过（9843.013237ms）；domain388未改动沿用，共1003独立通过。新增8 registry合同、10 HTTP合同、2实际Pi/preset wires、5配置合同；包含旧协议差分、Scope卸载排空/自关闭、DNS/NAT64/private拒绝、固定lookup真实本地socket、逐跳重校验/关闭、响应/MIME/charset预算、代理委托、timeout/abort及late resolver禁止后续HTTP。低层connector使用显式本地fixture pin，不改变public provider私网拒绝。
+
+真实Pi web_fetch/search证明意图在provider/transport前持久化、private请求无transport、结果/错误收据及不可信内容标记保留；旧工具默认不输出provider answer，HTML的markdown转义按原行为保留。旧/new night-bot preset并存验证HTTP为Host单例，避免全局重复注册。未对真实搜索vendor/外网服务验收。
+
+全新`/tmp/night-bot-web-production`production frozen ignore-scripts安装成功，279核心/wire+38合同=317项复测通过；273运行文件及manifest/lock逐字一致，静态270 JS/215字面bare imports通过。证据`evidence/native-web-*.txt`。42直接生产DSH依赖/34活动组件替换，仍有generic tool timeout缺口及FS/shell/工具等后续工作；不是完整迁移。远端403未重试。
