@@ -4,9 +4,8 @@ import * as llm from '../src/native-llm-protocol.js'
 import * as tools from '../src/native-tool-protocol.js'
 import NativeTools from '../src/native-tools.js'
 import NativeLlm from '../src/native-llm.js'
-import NativeSubagents from '../src/native-subagents.js'
 test('internal execution entrypoints resolve owned services and the application scheduler capability',async()=>{
- for(const [name,Owner] of [['llm',NativeLlm],['tools',NativeTools],['subagent',NativeSubagents]]){
+ for(const [name,Owner] of [['llm',NativeLlm],['tools',NativeTools]]){
   const alias=await import('../packages/capability-compat/'+name+'/index.js')
   assert.equal(alias.default,Owner)
  }

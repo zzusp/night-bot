@@ -11,6 +11,8 @@ for(const path of ['src/native-chunked-list.js','test/fixtures/legacy-subagent-i
  try{await access(path)}catch(error){if(error.code==='ENOENT')continue;throw error}
  throw new Error('Retired comparison source reintroduced: '+path)
 }
+const retiredSubagents=JSON.parse(await readFile('docs/retired-subagent-source-manifest.json','utf8'))
+for(const entry of retiredSubagents.files){try{await access(entry.target)}catch(error){if(error.code==='ENOENT')continue;throw error}throw new Error('Cancelled subagent source reintroduced: '+entry.target)}
 const piLicense=JSON.parse(await readFile('docs/pi-license-source.json','utf8'))
 if(digest(await readFile(piLicense.localLicense))!==piLicense.sha256)throw new Error('Pinned Pi license text changed')
 for(const name of ['pi-agent-core','pi-ai','pi-coding-agent','pi-schema','pi-codemode']){

@@ -21,10 +21,6 @@
         "binding": "{ SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent }"
       },
       {
-        "file": "src/native-tool-subagent.js",
-        "binding": "{ SessionSeq }"
-      },
-      {
         "file": "src/native-sessions.js",
         "binding": "{Session,SessionId,SessionForkError,buildForkSeed}"
       },
@@ -57,10 +53,6 @@
       {
         "file": "src/native-tools.js",
         "binding": "{HarnessError}"
-      },
-      {
-        "file": "src/native-tool-subagent.js",
-        "binding": "{ ReasoningEffortId }"
       },
       {
         "file": "src/native-tool-skill.js",
@@ -173,10 +165,6 @@
     ],
     "@deepseek-ai/dsh-tools": [
       {
-        "file": "src/native-tool-subagent-control.js",
-        "binding": "{ defineTool }"
-      },
-      {
         "file": "src/native-subagents.js",
         "binding": "{ ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue }"
       },
@@ -195,10 +183,6 @@
       {
         "file": "src/native-tools.js",
         "binding": "{assertSupportedJsonSchema,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy}"
-      },
-      {
-        "file": "src/native-tool-subagent.js",
-        "binding": "{ defineTool }"
       },
       {
         "file": "src/native-tool-skill.js",

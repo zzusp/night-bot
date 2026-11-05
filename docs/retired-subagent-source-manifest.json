@@ -1,0 +1,37 @@
+{
+  "status": "product-subagent-architecture-cancelled",
+  "reason": "User cancelled subagent architecture; no replacement claimed. Default services and tools are absent.",
+  "files": [
+    {
+      "target": "src/native-tool-subagent.js",
+      "priorLocalSha256": "5f03786728fd38ab69602704978f3c2b523f01093caf333b0624373c18fb3b2e",
+      "sourcePackage": "@deepseek-ai/dsh-tool-subagent",
+      "sourceVersion": "0.2.1-alpha.2",
+      "license": "MIT",
+      "retainedNotice": "licenses/dsh-tool-subagent-MIT.txt"
+    },
+    {
+      "target": "src/native-tool-subagent-control.js",
+      "priorLocalSha256": "c25d9f966b41e61233cb8642b74b560ea5e6ea7f8bbd770a2d6436d8a1467604",
+      "sourcePackage": "@deepseek-ai/dsh-tool-subagent-control",
+      "sourceVersion": "0.2.1-alpha.2",
+      "license": "MIT",
+      "retainedNotice": "licenses/dsh-tool-subagent-control-MIT.txt"
+    },
+    {
+      "target": "src/native-subagent-providers.js",
+      "priorLocalSha256": "aa9336f144a2f7519fb2e3c24b11c0edd19c600df00ac52ff90a832c987fd6f5",
+      "sourcePackage": "@deepseek-ai/dsh-subagent-{spawn,fork}-in-process",
+      "sourceVersion": "0.2.1-alpha.2",
+      "license": "MIT",
+      "retainedNotice": "licenses/dsh-subagent-providers-MIT.txt"
+    }
+  ],
+  "remainingReferences": [
+    "packages/dingtalk-core/runtime.js:8 imports snapshotSubagentDescriptor; :290 writes the legacy descriptor",
+    "packages/capability-compat/subagent/index.js retains manager namespace export",
+    "src/native-subagents.js still uses native-subagent-errors.js and runtime/child-catalog.js"
+  ],
+  "acceptance": "test/pi-retired-subagent-tools.test.js",
+  "safetyMapping": "docs/SUBAGENT-RETIREMENT.md"
+}
