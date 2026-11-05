@@ -1008,7 +1008,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed) return Promise.resolve()
     // 正在处理旧来源时的新入站必须续跑一轮，不能等恢复定时器才解除发送暂缓。
     if (inflightGroups.has(groupId)) { if(singleExecution)void topicCoordinator.schedule(groupId);rerouteGroups.set(groupId, (rerouteGroups.get(groupId) ?? true) && factsOnly); return inflightGroups.get(groupId) }
-    return track(inflightGroups, groupId, async () => {
+    const work=track(inflightGroups, groupId, async () => {
       if (!factsOnly) await refreshTasks()
       await topicCoordinator.schedule(groupId)
       await topicCoordinator.whenIdle()
@@ -1016,12 +1016,17 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (!(residentStore.getGroup(groupId)?.messages ?? []).some(message => ['failed','decision-failed','decision-commit-failed'].includes(message.agentDeliveryStatus))) {
         failures.delete(groupId)
       }
-    }).finally(() => {
+    })
+    const reschedule=() => {
       if (!rerouteGroups.has(groupId)) return
       const nextFactsOnly = rerouteGroups.get(groupId)
       rerouteGroups.delete(groupId)
       if (!closed) void kickGroup(groupId, nextFactsOnly)
-    })
+    }
+    // Observe cleanup independently; returning a rejected finally-derived
+    // promise here left fire-and-forget ingress work unhandled on shutdown.
+    void work.then(reschedule,reschedule).catch(error=>ctx.logger?.warn?.('Group reschedule failed: '+error.message))
+    return work
   }
   async function ingest(message) {
     const receivedAt = new Date().toISOString()

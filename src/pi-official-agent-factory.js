@@ -1,3 +1,4 @@
+import {installSessionSkillRefresh,skillObservationAuditKinds} from '../packages/dingtalk-core/session-skill-refresh.js'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isDeepStrictEqual} from 'node:util'
 import {createScope,scopeTarget} from './native-scope.js'
@@ -68,11 +69,13 @@ export class OfficialAgentFactory {
   const authorize=options.authorizeInput??ports.authorizeInput,drainBusiness=ports.drainBusiness
   if(typeof authorize!=='function'||typeof drainBusiness!=='function'||typeof ports.resolveResources!=='function')throw fail('PI_OFFICIAL_FACTORY_CAPABILITIES_REQUIRED')
   for(const key of ['history','messages','events','seed'])if(Object.hasOwn(options,key))throw fail('PI_OFFICIAL_FACTORY_HISTORY_UNSUPPORTED')
+  if(options.parentAgent&&(ownerCtx.agents.get(options.parentAgent.id)!==options.parentAgent||!options.parentAgent.piSession||options.parentAgent.lifecycle?.isLive()!==true||options.parentAgent.lifecycle.signal.aborted))throw fail('PI_OFFICIAL_PARENT_NOT_LIVE')
   const id=mode==='resume'?(options.resumeSessionId??options.sessionId):options.sessionId
   if(typeof id!=='string'||!id)throw fail('PI_OFFICIAL_FACTORY_ID_REQUIRED')
-  const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,ports.auditKinds,options.auditKinds)
-  const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...options.meta,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
-  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[]
+  const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,ports.auditKinds,options.auditKinds)
+  const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
+  const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
+  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[]
   const cancellationError=fail('PI_OFFICIAL_ACTOR_NOT_LIVE')
   const lifecycle=new AbortController(),deliveryContext=new AsyncLocalStorage(),pending=new Set()
   const requestGuards=new Set()
@@ -108,6 +111,7 @@ export class OfficialAgentFactory {
      await ports.mount?.(actor.ctx,actor,options)
      await options.setup?.(actor.ctx,actor)
      await ownerCtx.serial(scopeTarget(actor,actor),'night/agent-prepare',{agent:actor,signal:options.signal})
+     await ports.validatePreparedActor?.(actor,{options,mode})
     },
     resolveResources:async()=>{
      const resources=await ports.resolveResources({actor,options,header:store.header,store,ownerCtx,mode})
@@ -123,13 +127,14 @@ export class OfficialAgentFactory {
      await options.beforeRequest?.(actor)
      for(const guard of requestGuards)await guard({actor,signal:lifecycle.signal})
     },
-    beforeStoreClose:async()=>{if(published)await drain('dispose');await admission.close()},
+    beforeStoreClose:async()=>{await skillRefresh?.close();if(published)await drain('dispose');await admission.close()},
    })
    actor.options=deepFreeze({...actor.options,...bundle.session.model?{provider:bundle.session.model.provider,model:bundle.session.model.id}:{},reasoningEffort:bundle.session.thinkingLevel})
    Object.defineProperty(actor,'status',{enumerable:true,get:()=>bundle.session.isStreaming?'running':'idle'})
    unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,isLive:live})
    unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live})
    options.signal.throwIfAborted();await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true
+   skillRefresh=await installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal})
    await bundle.bridge.refreshResources();await bundle.bridge.resourceLoader.reload()
    observer=bindPiAgentObservation({actor,emit:(owner,record)=>owner.ctx.emit(scopeTarget(owner,owner),'night/agent-observation',owner,record),onError:()=>ownerCtx.logger.warn('Native agent observation could not be recorded')})
    let settled

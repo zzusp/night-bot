@@ -757,7 +757,7 @@
       "source": "session-skill-refresh.js",
       "sourceSha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32",
       "status": "adapted",
-      "sha256": "7c7f99764f2032c26511264363e3ff9d2210c0bce0969ff7c1d393e4baecbb31",
+      "sha256": "e5f973ee38032eefe236bd58a8aa7d189afb905de787dd0cc2ccf12f2a53cf47",
       "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
     },
     {
@@ -1029,7 +1029,7 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "2ab5cbc6db28fe91169e7a82b3afae3dc2dca81ed2e66924318291c351722a86",
+      "sha256": "1a45852ec624a57386ee16aad514d68d79510f91b41f1bec556cc8b35c3ea491",
       "adaptation": "Preserve business task behavior and native single-task recovery while isolating legacy event inspection to the split driver."
     },
     {

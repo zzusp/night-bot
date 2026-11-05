@@ -17,11 +17,21 @@ export function apply(ctx,config={}){
   resolveResources,
   drainBusiness:createOfficialBusinessDrain(ctx,ownership),
   async authorizeInput(packet,actor){const schedule=ctx.get('schedule');return typeof schedule?.authorizeInput==='function'&&await schedule.authorizeInput(packet,actor)===true},
+  createMetadata(meta={}){
+   return {...meta,agentPreset:meta.agentPreset??ctx.get('agentPresets').defaultId}
+  },
   async mount(actorCtx,actor,options){
-   // A business setup can mount its task/coordinator preset. Plain ordinary
-   // sessions use their persisted preset before resources are captured.
-   if(!options.setup)await actorCtx.get('agentPresets').mount(actorCtx,actor.metadata.agentPreset??'night-bot')
+   const presets=actorCtx.get('agentPresets'),wanted=actor.metadata.agentPreset
+   if(options.parentAgent){
+    const inherited=presets.composeFrom(actorCtx,options.parentAgent.ctx)
+    if(inherited!==wanted)throw Object.assign(new Error('Declared preset differs from inherited parent composition'),{code:'NATIVE_PRESET_HEADER_MISMATCH'})
+   }else await presets.mount(actorCtx,wanted)
    await actorCtx.get('permissionPresets').pinInitialPermission(actor)
+  },
+  validatePreparedActor(actor){
+   const presets=actor.ctx.get('agentPresets')
+   if(presets.composedPreset(actor.ctx)!==actor.metadata.agentPreset)throw Object.assign(new Error('Declared preset differs from the mounted startup composition'),{code:'NATIVE_PRESET_HEADER_MISMATCH'})
+   presets.seal(actor)
   },
  })
  ctx.provide('officialAgentFactory',factory)

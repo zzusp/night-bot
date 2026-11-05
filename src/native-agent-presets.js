@@ -1,4 +1,5 @@
 // MIT source-derived preset generation, scope and Loader audit algorithms; see THIRD_PARTY.md.
+import {AgentSession} from '@earendil-works/pi-coding-agent';
 import {AsyncLocalStorage} from "node:async_hooks";
 import z from "@deepseek-ai/schemastery";
 import {ControlError} from './runtime/control-error.js'
@@ -359,6 +360,8 @@ generations = /* @__PURE__ */ new Map();
 bindings = /* @__PURE__ */ new WeakMap();
 switches = /* @__PURE__ */ new Map();
 commitFailures=new WeakMap();
+sealedCompositions=new WeakMap();
+inheritedCompositions=new WeakMap();
 closing=false;
 selectionCalls=new AsyncLocalStorage();
 constructor(ctx, config) {
@@ -467,9 +470,13 @@ async collect(generation) {
 	await generation.scope.dispose();
 }
 generationFor(ctx) {
-	const key = scopeOf(ctx);
-	const parent = key === void 0 ? void 0 : scopeParentOf(key);
-	return parent === void 0 ? void 0 : this.generations.get(parent);
+ const key=ctx===undefined?undefined:scopeOf(ctx);
+ if(key===undefined)return;
+ const binding=this.bindings.get(key);if(binding)return binding.generation;
+ for(let parent=scopeParentOf(key);parent!==undefined;parent=scopeParentOf(parent)){
+  const generation=this.generations.get(parent)??this.bindings.get(parent)?.generation;
+  if(generation)return generation;
+ }
 }
 /** Inspect retained revisions, or the exact revision an Agent joined.
 * @param ctx - optional Agent context; omission includes all retained revisions.
@@ -570,12 +577,30 @@ async retain(id) {
 		return generation;
 	}
 }
+/** Freeze the exact startup composition before the official SDK captures tools.
+ * Header identity is checked by the application factory; no Session is minted. */
+seal(actor) {
+ const key=scopeOf(actor?.ctx),generation=this.generationFor(actor?.ctx);
+ if(!actor||key!==actor||actor.lifecycle?.isLive()!==true||!generation)throw new Error('NATIVE_PRESET_ACTOR_UNBOUND');
+ const previous=this.sealedCompositions.get(actor);
+ if(previous&&previous!==generation)throw new Error('NATIVE_PRESET_COMPOSITION_CHANGED');
+ this.sealedCompositions.set(actor,generation);
+}
+assertMutableBinding(ctx,generation) {
+ const actor=scopeOf(ctx),current=this.generationFor(ctx);
+ const captured=actor&&this.sealedCompositions.get(actor),inherited=actor&&this.inheritedCompositions.get(actor);
+ if(inherited&&inherited!==generation)throw new ControlError('agent-preset/locked','A child retains its exact parent preset revision',{sessionId:actor?.id});
+ const published=actor&&typeof actor.id==='string'&&this.owner.agents.get(actor.id)===actor;
+ if((captured||published||actor?.piSession instanceof AgentSession)&&current!==generation)throw new ControlError('agent-preset/locked','Official SDK composition is immutable; choose a preset when creating a new session',{sessionId:actor?.id,agentPreset:generation.mount.presetId});
+}
 async bind(ctx, generation) {
+	this.assertMutableBinding(ctx,generation);
 	const key = scopeOf(ctx);
 	if (key === void 0) throw new Error("Agent preset binding requires a scoped context");
 	const binding = this.bindings.get(key);
 	if (binding?.generation === generation) return;
 	if (binding !== void 0) {
+		if(!binding.parent)throw new ControlError('agent-preset/locked','An inherited routing scope retains its exact parent composition');
 		binding.parent.rebind(generation.key);
 		const old = binding.generation;
 		generation.users++;
@@ -585,17 +610,17 @@ async bind(ctx, generation) {
 	} else this.join(ctx, key, generation);
 }
 join(ctx, key, generation) {
-	const binding = {
-		parent: bindScopeParent(key, generation.key),
-		generation
-	};
-	generation.users++;
-	this.bindings.set(key, binding);
-	ctx.effect(() => async () => {
-		this.bindings.delete(key);
-		binding.generation.users--;
-		await this.collect(binding.generation);
-	}, "agent-preset.binding");
+ const existingParent=scopeParentOf(key);
+ // A real child already has its parent's routing ancestry. Borrow that link
+ // only when it reaches the exact retained generation; own a separate lease.
+ const inherited=existingParent===undefined?undefined:this.generationFor(ctx);
+ if(existingParent!==undefined&&inherited!==generation)throw new ControlError('agent-preset/locked','Parent routing scope has a different preset composition');
+ const binding={parent:existingParent===undefined?bindScopeParent(key,generation.key):undefined,generation};
+ generation.users++;this.bindings.set(key,binding);
+ if(existingParent!==undefined)this.inheritedCompositions.set(key,generation);
+ try{
+  ctx.effect(()=>async()=>{this.bindings.delete(key);binding.generation.users--;await this.collect(binding.generation)},'agent-preset.binding');
+ }catch(error){this.bindings.delete(key);this.inheritedCompositions.delete(key);generation.users--;throw error}
 }
 /** Bind an unpublished Agent to the current preset revision.
 * @param ctx Agent context from its setup callback.
@@ -626,8 +651,10 @@ composeFrom(ctx, parent) {
 	}
 	const key = scopeOf(ctx);
 	if (key === void 0) throw new Error("Child preset binding requires a scope");
-	if (this.bindings.has(key)) throw new Error("Child already joined a preset");
+	if(this.bindings.has(key)){if(this.bindings.get(key).generation===generation)return generation.mount.presetId;throw new Error("Child already joined a different preset");}
+	this.assertMutableBinding(ctx,generation);
 	this.join(ctx, key, generation);
+	this.inheritedCompositions.set(key,generation);
 	return generation.mount.presetId;
 }
 /** Read the preset a live Agent uses.
@@ -666,6 +693,7 @@ async recompose(ctx, id, validate) {
 * @returns Committed preset identity.
 */
 async select(agent, agentPreset) {
+	if(agent?.piSession instanceof AgentSession||this.sealedCompositions.has(agent))throw new ControlError('agent-preset/locked','Official SDK presets are selected during session creation',{sessionId:agent.id,agentPreset});
 	const turn = (this.switches.get(agent.id) ?? Promise.resolve()).then(() => this.selectionCalls.run(agent.id,async () => {
 		const assertBlank=()=>{if(this.owner.agents.get(agent.id)!==agent)throw new Error('NATIVE_PRESET_LIVE_AGENT_REQUIRED');if(this.closing)throw new Error('NATIVE_PRESET_REGISTRY_CLOSED');if(this.commitFailures.has(agent))throw this.commitFailures.get(agent);const boundary=this.owner.sessionProjections.stateOf(agent.session,'turnBoundary');if(boundary===undefined)throw new Error('NATIVE_PRESET_TURN_PROJECTION_REQUIRED');if(boundary.openTurnStartSeq!==null||boundary.lastTurn>0)throw new ControlError('agent-preset/locked','This session has already started',{sessionId:agent.id,agentPreset})};
 		assertBlank();
