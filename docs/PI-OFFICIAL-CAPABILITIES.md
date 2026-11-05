@@ -80,6 +80,38 @@ Node worker/Python presentation have different capabilities. This inventory does
 not authorize replacing or expanding those runtimes or treating their differences
 as a blocker for official session adoption.
 
+## Direct AgentSession assembly checkpoint
+
+`src/runtime/pi-official-session.js` now assembles the public AgentSession,
+ModelRuntime, native SessionManager store, official resource loader and actual
+custom tools. It is an integration seam, **not the default application factory**.
+The real integration test executes a tool, commits its receipt, cold-reads and
+reopens the session without model/effect replay. Native store tests separately
+cover fsync/prefix/lease rules. Controlled commit-barrier tests establish that
+the awaited public agent subscriber runs after SDK append and before effects.
+
+The prompt wrapper returns the original typed policy failure after the official
+extension runner aborts: extension exceptions alone are swallowed by Pi. Real
+signed-memory tests verify zero provider dispatch and unchanged native signatures.
+Forgetting the fact succeeds; subsequent inference through the affected signed
+context remains blocked. Whole-turn exclusion and paired tool-result omission
+remain explicit alternatives, never an automatic loss of history.
+
+Night business ports are bound to actor object identities for approval, cwd and
+sandbox state; equal IDs and arbitrary options do not grant capabilities. Native
+task archives preserve original Pi bytes and typed task identity. Legacy event
+inspection and maintenance proof cannot interpret native receipts yet and reject
+explicitly. Native read paths return official projections and business audit,
+without manufacturing an empty legacy events array.
+
+Remaining default-switch work includes durable task/schedule admission and
+effect reconciliation, all business consumers, tool supplemental packets,
+background memory extraction, and explicit old Night-to-native upgrade. Settings
+must be supplied explicitly: the legacy unlimited/custom-code retry policy is
+not claimed identical to public SDK retry settings. No DSH notice is removed at
+this checkpoint. See `pi-official-session-integration-validation.json` for results
+and the distinction between targeted and complete regression runs.
+
 ## Official source
 
 - [Session manager, v1.5.0](https://github.com/earendil-works/pi/blob/v1.5.0/packages/coding-agent/src/core/session-manager.ts)

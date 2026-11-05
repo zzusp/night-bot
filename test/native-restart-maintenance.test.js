@@ -24,6 +24,7 @@ test('retained maintenance audit binds the native input, feedback, terminal hist
  const audit = await maintenanceEvidenceFixture(root, binding, encoded), operations = [f.operation]
  const args = { workspace: root, binding, events: f.original, calls: f.original.filter(event => event.type === 'tool/call'), operations, evidence: audit.evidence, observeProcesses: async () => [] }
  const before = JSON.stringify(operations)
+ await assert.rejects(readMaintenanceDrainProof({...args,history:()=>({format:'pi-native-v1'})}),{code:'DYNAMIC_MAINTENANCE_NATIVE_DRAIN_RECEIPTS_REQUIRED'})
  const proof = await readMaintenanceDrainProof(args)
  assert.equal(proof.noReplay, true); assert.equal(proof.partialEffectsPossible, true); assert.equal(proof.capturedProcessCount, 2)
  assert.equal(proof.pendingOperations[0].operationDigest, hash(f.operation)); assert.equal(JSON.stringify(operations), before)
@@ -63,6 +64,7 @@ function fixture(acknowledged = false) {
 }
 for (const acknowledged of [false, true]) test('maintenance preserves original ledger and history: ' + acknowledged, () => {
  const f = fixture(acknowledged), before = JSON.stringify(f.tables), log = JSON.stringify(f.original)
+ assert.throws(()=>inspectRetainedRestart({...f.args,history:()=>({format:'pi-native-v1'})}),{code:'DEPLOY_NATIVE_DRAIN_RECEIPTS_REQUIRED'})
  const first = inspectRetainedRestart(f.args), second = inspectRetainedRestart(f.args)
  assert.equal(first.writes, 0); assert.equal(first.retained[0].historicalOutcome, 'unknown')
  assert.deepEqual(first.preservedSessionIds, ['original-session'])

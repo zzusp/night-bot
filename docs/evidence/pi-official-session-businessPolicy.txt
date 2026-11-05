@@ -1,0 +1,36 @@
+✔ native policy preserves default/session/one-shot precedence and durable mode events (21.873459ms)
+✔ native policy precedence and durable events match the legacy service (26.920691ms)
+✔ native policy binds one durable artifact root without mutating immutable session cwd (13.538538ms)
+✔ native policy rechecks artifact ancestors and rejects a replaced root link at every resolution (6.365579ms)
+✔ native policy validates modes, root layout and missing identity before recording permissions (4.798588ms)
+✔ native directory preserves legacy canonical changes, model notices and original-project recovery (35.261822ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (5.240771ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (8.793531ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (3.745328ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (3.700421ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (3.051537ms)
+✔ directory validation retains caller attribution through the injected filesystem service (4.156415ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (4.241472ms)
+✔ actual officialSections includes required cwd and sandbox business text without Session facade (20.678979ms)
+✔ equal ids and options cannot inherit private official business capabilities (6.452729ms)
+✔ directory waits for durable append before notices or return and failures leave old state (9.625318ms)
+✔ official directory recovery uses immutable initial directory and scoped filesystem rejection is preserved (4.618028ms)
+✔ artifact business binding awaits durable policy and rechecks real filesystem links and immutable origin (19.077947ms)
+✔ sandbox append failure does not announce a committed mode or artifact binding (4.078558ms)
+✔ actual official AgentSession owns sections, resources, history and updates without Session facade (232.476665ms)
+✔ context policy sees official sourceEntry only and does not grant injected metadata provenance (103.1137ms)
+✔ skill bridge requires complete catalog and explicit authorized host path (0.958087ms)
+✔ prompt business adapter refuses legacy dynamic Session dependencies and accepts explicit actor callbacks (5.854972ms)
+✔ official context policy rejection aborts before provider dispatch rather than trusting swallowed hook exception (146.337927ms)
+✔ official before_agent_start rejection never dispatches a policy-less request (192.639479ms)
+✔ real official hooks run immediate memory commands only from admitted authenticated packets and explicit write grant (682.469424ms)
+✔ real official signed memory revocation stops with typed conflict and zero provider dispatch (337.1934ms)
+✔ official authorized instruction resources preserve current files and reject budget truncation (7.844586ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2754.150873

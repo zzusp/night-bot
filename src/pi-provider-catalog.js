@@ -115,16 +115,18 @@ export function resolvePiProfiles(providers,{deferred=false}={}) {
   }
   return result
 }
+/** A provider definition, not a second model registry. Both runtime forms use
+ * the same validated profile and official protocol implementation. */
+export function configuredPiProvider(profile) {
+  const base=profile.baseProvider,api=profile.api===undefined?undefined:protocols[profile.api]()
+  const keyAuth={name:profile.displayName,resolve:async({credential})=>({auth:credential?.key===undefined?{}:{apiKey:credential.key},source:profile.displayName})}
+  const auth=base?{...base.auth,...profile.apiKeyEnv&&!base.auth.apiKey?{apiKey:keyAuth}:{}}:{apiKey:keyAuth}
+  const implementation=api??base
+  if(!implementation)throw invalid(profile.provider,'no protocol implementation')
+  return {id:profile.provider,name:profile.displayName,baseUrl:profile.baseURL??base?.baseUrl,auth,getModels:()=>profile.models,stream:(...args)=>implementation.stream(...args),streamSimple:(...args)=>implementation.streamSimple(...args)}
+}
 export function configuredPiModels(profiles,options) {
   const collection=builtinModels(options);collection.clearProviders()
-  for(const profile of profiles.values()){
-    if(profile.catalogError)continue
-    const base=profile.baseProvider,api=profile.api===undefined?undefined:protocols[profile.api]()
-    const keyAuth={name:profile.displayName,resolve:async({credential})=>({auth:credential?.key===undefined?{}:{apiKey:credential.key},source:profile.displayName})}
-    const auth=base?{...base.auth,...profile.apiKeyEnv&&!base.auth.apiKey?{apiKey:keyAuth}:{}}:{apiKey:keyAuth}
-    const implementation=api??base
-    if(!implementation)throw invalid(profile.provider,'no protocol implementation')
-    collection.setProvider({id:profile.provider,name:profile.displayName,baseUrl:profile.baseURL??base?.baseUrl,auth,getModels:()=>profile.models,stream:(...args)=>implementation.stream(...args),streamSimple:(...args)=>implementation.streamSimple(...args)})
-  }
+  for(const profile of profiles.values())if(!profile.catalogError)collection.setProvider(configuredPiProvider(profile))
   return collection
 }

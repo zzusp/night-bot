@@ -36,7 +36,9 @@ export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, 
       || !execution || execution.taskId !== operation.taskId || !binding || binding.sessionId !== execution.sessionId
       || operation.job.owner !== execution.sessionId || !execution.sessionBound || execution.cancelRequested !== true
       || !execution.drained && !execution.recovering || execution.definition?.executionBackend === 'claude-code') fail()
-    const stored = history(workspace, execution,{pathCodec}), events = stored.events
+    const stored = history(workspace, execution,{pathCodec})
+    if(stored.format==='pi-native-v1')throw Object.assign(new Error('DEPLOY_NATIVE_DRAIN_RECEIPTS_REQUIRED'),{code:'DEPLOY_NATIVE_DRAIN_RECEIPTS_REQUIRED'})
+    const events = stored.events
     if (!events.some(event => event.type === 'plugin:dingtalk/execution-session'
       && event.data.identity?.taskId === operation.taskId && event.data.identity.executionId === execution.executionId
       && event.data.identity.sessionId === execution.sessionId)) fail()
@@ -141,7 +143,9 @@ export function inspectDrainFailureMaintenance({ db, workspace, proposal, ownerP
     const response = item.cancelResponse
     if (![400, 500].includes(response?.statusCode) || !validTime(response.observedAt)
       || !/execution_(?:process|session)_drain_failed/u.test(JSON.stringify(response.body))) fail('CANCEL_RECEIPT')
-    const stored = history(workspace, execution,{pathCodec}), events = stored.events
+    const stored = history(workspace, execution,{pathCodec})
+    if(stored.format==='pi-native-v1')throw Object.assign(new Error('DEPLOY_NATIVE_DRAIN_RECEIPTS_REQUIRED'),{code:'DEPLOY_NATIVE_DRAIN_RECEIPTS_REQUIRED'})
+    const events = stored.events
     const identity = events.filter(event => event.type === 'plugin:dingtalk/execution-session')
     if (identity.length !== 1 || !['taskId', 'executionId', 'sessionId'].every(key => identity[0].data?.identity?.[key] === execution[key])) fail('SESSION_IDENTITY')
     const inputs = events.flatMap(event => event.type === 'user/message' ? [{ seq: event.seq, source: event.data?.source }]

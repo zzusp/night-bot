@@ -1,0 +1,12 @@
+✔ official assistant append must pass the durability barrier before a tool effect starts (63.680403ms)
+✔ uncertain commit fences subsequent official requests and effects without rewriting history (33.059017ms)
+✔ official close retains the body lease until cancellation and the real body have drained (35.476566ms)
+✔ real official components execute, commit, cold-read and reopen with no Host session facade (127.458621ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 966.814385

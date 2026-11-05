@@ -569,8 +569,8 @@
       "source": "native-maintenance-drain.js",
       "sourceSha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b",
       "status": "adapted",
-      "sha256": "3421e15a5796656828a64972a27991b85e7de0e89c8572de180bb31e332945b5",
-      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof."
+      "sha256": "9d505378abee528fe1fe841fa8e45e86a9ce56bd42be3809fd06631414d51b12",
+      "adaptation": "Read strict native committed Pi projections; require explicit native business drain receipts instead of inferring quiescence from messages."
     },
     {
       "source": "native-postgres-wrapper.js",
@@ -747,8 +747,9 @@
     {
       "source": "session-persistence.js",
       "sourceSha256": "b3697ffb1d9572e30e1e5b8aba9938d7f6a9359a1f2bf8727e6128697173313a",
-      "status": "retained",
-      "sha256": "b3697ffb1d9572e30e1e5b8aba9938d7f6a9359a1f2bf8727e6128697173313a"
+      "status": "adapted",
+      "sha256": "0cc7f4c67c6cd75c29c86653da00d382fcfda0efad97f255ea3650bc52502098",
+      "adaptation": "Refuse native sessions at the legacy event inspection boundary; native callers use explicit readNative."
     },
     {
       "source": "session-skill-refresh.js",
@@ -1019,7 +1020,8 @@
       "source": "task-session-persistence.js",
       "sourceSha256": "780a47c4c047c63050c81f375f2f7efb55f327ea74f7a553f3ba239cf00df7f6",
       "status": "adapted",
-      "sha256": "2eb452909d2a8e0464a9fdd06dea101cf832d10c228b3624be9dd423ba5ae848"
+      "sha256": "d46184cd630d83ad596cb7574cb38afe04b2197ddcefeeb569d6e07d04279c04",
+      "adaptation": "Route native create/open/read through existing task binding, cwd and writer scope checks."
     },
     {
       "source": "task-session-service.js",

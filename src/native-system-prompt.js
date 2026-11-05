@@ -1,5 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import {compileTemplate} from './runtime/prompt-template.js'
 import {AnonymousEntries,NamedEntries,ScopedLayers,scopeTarget} from './native-scope.js'
 // Application-owned assembly preserving the MIT dsh-system-prompt ordering,
 // interpolation and request-admission contracts. Shared scope helpers remain.
@@ -60,6 +61,26 @@ export default class NativeSystemPrompt extends Service {
  getSectionOrder(name){return SECTION_ORDERS[name]}
  getContextOrder(name){return CONTEXT_ORDERS[name]}
  suppressed(scope){return !this.layers.global.runtimeContextSuppressors.isEmpty()||this.layers.chainLayers(scope).some(l=>!l.runtimeContextSuppressors.isEmpty())}
+ /** Official Pi business contributions only. Dynamic legacy callbacks must opt
+  * into the actor contract; evaluating them with a fake Session is forbidden. */
+ async officialSections(actor){
+  const scope=actor,variables={},context={actor,scope}
+  const problem=name=>Object.assign(new Error(`Official prompt adapter required: ${name}`),{code:'PI_OFFICIAL_PROMPT_ADAPTER_REQUIRED',contribution:name})
+  for(const l of [this.layers.global,...this.layers.chainLayers(scope)])for(const [name,provider]of l.variables.entries()){
+   if(typeof provider.official!=='function')throw problem(name)
+   variables[name]=await provider.official(context)
+  }
+  const definitions=[...this.layers.merge(scope,l=>l.sections).values(),...this.layers.merge(scope,l=>l.contexts).values()].filter(c=>!this.suppressed(scope)||c.required===true||!this.layers.merge(scope,l=>l.contexts).has(c.name)).sort((a,b)=>a.order-b.order||lexical(a.name,b.name))
+  if(definitions.some(c=>c.complete))throw problem('complete prompt')
+  const sections={}
+  for(const entry of definitions){
+   const value=entry.officialText?await entry.officialText(context):typeof entry.text==='function'?(()=>{throw problem(entry.name)})():entry.text
+   if(typeof value!=='string')throw problem(entry.name)
+   const text=entry.interpolate===false?value:compileTemplate(value,{kind:'section',name:entry.name})(variables)
+   if(text)sections['night_'+Buffer.from(entry.name).toString('hex')]=text
+  }
+  return sections
+ }
  async assemble(context={}){
   const {scope}=context,chain=this.layers.chainLayers(scope),suppressed=this.suppressed(scope),variables={}
   for(const l of [this.layers.global,...chain])for(const [name,provider]of l.variables.entries())variables[name]=provider(context)

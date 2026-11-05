@@ -1,6 +1,6 @@
 import {temporary} from './format.js'
 
-export const messageText=message=>(message.content??[]).filter(part=>part.type==='text').map(part=>part.text).join('\n')
+export const messageText=message=>typeof message.content==='string'?message.content:(message.content??[]).filter(part=>part.type==='text').map(part=>part.text).join('\n')
 export const human=message=>message?.role==='user'&&message.source?.kind==='user'
 /** Unambiguous commands execute before inference. Flexible natural language is
  * handled by the same guarded model tools; a summary is never implicit consent. */

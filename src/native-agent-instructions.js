@@ -1464,3 +1464,13 @@ function apply(ctx, config) {
 }
 //#endregion
 export { Config, apply, discoverBaselineInstructionFiles, inject, loadBaselineInstructions, name, renderAgentInstructions };
+
+/** Authorized file-source bridge for Pi ResourceLoader. No surface publication,
+ * inbox reconciliation or historical instruction fold is involved. Budgeted
+ * truncation needs an explicit source policy; never pass unbounded originals. */
+export async function officialInstructionFiles(options,fileSystem){
+ const loaded=await loadBaselineInstructionSet(options,fileSystem)
+ if(!loaded)return []
+ if(loaded.rendered.omitted.length||loaded.rendered.truncated.length)throw Object.assign(new Error('Instruction resources exceed the authorized complete-file budget'),{code:'PI_OFFICIAL_INSTRUCTION_BUDGET_EXCEEDED'})
+ return loaded.included.map(file=>({path:file.absolutePath,content:file.content}))
+}

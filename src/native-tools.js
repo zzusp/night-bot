@@ -122,7 +122,7 @@ export default class NativeTools extends Service {
  async ask(exec,gate){
   const approval=this.ctx.get('approval')
   if(!approval||!exec.agent)return{kind:'deny',reason:gate.reason??`tool "${exec.name}" requires approval (not yet supported)`}
-  const outcome=await approval.request({agent:exec.agent,toolName:exec.name,callId:exec.callId,...gate.reason?{reason:gate.reason}:{},...gate.displayReason?{displayReason:gate.displayReason}:{},signal:exec.signal})
+  const outcome=await approval.request({agent:exec.agent,toolName:exec.name,callId:exec.callId,...gate.reason?{reason:gate.reason}:{},...gate.displayReason?{displayReason:gate.displayReason}:{},signal:exec.signal,...this.states.get(exec)?.businessAudit?{businessAudit:this.states.get(exec).businessAudit}:{}})
   if(outcome==='allowed-once')return{kind:'allow'}
   if(!['rejected','cancelled','unavailable'].includes(outcome))throw new Error('Unknown approval outcome')
   return{kind:'deny',approvalCancelled:outcome==='cancelled',reason:outcome==='rejected'?`the user rejected tool "${exec.name}"`:outcome==='cancelled'?`approval for tool "${exec.name}" was cancelled`:`tool "${exec.name}" requires approval, but no approval channel is available`}
@@ -135,7 +135,7 @@ export default class NativeTools extends Service {
   return Object.freeze({callId:identity.callId,rootCallId:identity.rootCallId,name:identity.name,owner:identity.agent?.id})
  }
  async prepare(input){
-  const state={callerSignal:input.signal,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
+  const state={callerSignal:input.signal,businessAudit:input.businessAudit,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
   const exec={token:Symbol('night.tool.execution'),callId:input.callId,rootCallId:input.rootCallId??input.callId,name:input.name,signal:input.signal,...input.agent===undefined?{}:{agent:input.agent},...input.parent===undefined?{}:{parent:input.parent},...input.schema===undefined?{}:{schema:input.schema},deferContext:context=>state.deferred.push(context),concludeTurn:()=>{state.concluded=true}}
   const collapsed=this.modeFor(input.agent)==='ptc'&&input.parent===undefined&&input.name!=='run_code'
   state.finalizer=collapsed&&!input.signal.aborted?undefined:definition?.finalizeContent?.bind(definition);state.projector=collapsed?undefined:definition?.projectContent?.bind(definition);this.states.set(exec,state)
@@ -171,8 +171,8 @@ export default class NativeTools extends Service {
   try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.started=true;const result=this.success(exec,definition,await definition.execute(exec.arguments,exec));return signal.aborted?aborted(true,result):result}catch(error){return failure(error)}finally{fused.close();exec.signal=wrapper}
  }
  normalize(exec,result){if(this.canonical.get(result)===exec.token)return result;if(result.isError)return this.mark(exec,{isError:true,error:result.error,content:result.content,...result.meta===undefined?{}:{meta:result.meta},...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}});const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);return this.mark(exec,{...this.success(exec,definition,result.value),...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}})}
- async flushSession(agent){const sessions=this.ctx.get('sessions');if(agent&&sessions)await sessions.flush(agent.session)}
- async dispatch(exec){try{await this.flushSession(exec.agent);const state=this.states.get(exec);if(state.callerSignal.aborted)return{kind:'post-result',result:aborted(false)};const raw=await this.ctx.waterfall(scopeTarget(this,exec.agent),'tools/execute',exec,()=>this.body(exec));let result=this.normalize(exec,raw);if(state.deferred.length)result=this.mark(exec,{...result,additionalContexts:[...state.deferred,...result.additionalContexts??[]]});if(state.callerSignal.aborted&&!result.isError)result=aborted(state.started,result);return{kind:'post-result',result}}catch(error){return{kind:'final-result',result:failure(error)}}}
+ async flushSession(agent,businessAudit){if(businessAudit){if(typeof businessAudit.isLive!=='function'||!businessAudit.isLive())throw new Error('Business tool actor is not live');await businessAudit.flush();if(!businessAudit.isLive())throw new Error('Business tool actor is not live');return}const sessions=this.ctx.get('sessions');if(agent&&sessions)await sessions.flush(agent.session)}
+ async dispatch(exec){try{await this.flushSession(exec.agent,this.states.get(exec)?.businessAudit);const state=this.states.get(exec);if(state.callerSignal.aborted)return{kind:'post-result',result:aborted(false)};const raw=await this.ctx.waterfall(scopeTarget(this,exec.agent),'tools/execute',exec,()=>this.body(exec));let result=this.normalize(exec,raw);if(state.deferred.length)result=this.mark(exec,{...result,additionalContexts:[...state.deferred,...result.additionalContexts??[]]});if(state.callerSignal.aborted&&!result.isError)result=aborted(state.started,result);return{kind:'post-result',result}}catch(error){return{kind:'final-result',result:failure(error)}}}
  async finalize(exec,candidate){
   try{
    const state=this.states.get(exec),project=state.projector;state.projector=undefined

@@ -9,7 +9,7 @@ const JsonlSessionPersistence = JsonlSessionPersistenceModule.default ?? JsonlSe
 const writerScope = new AsyncLocalStorage()
 const installations = new Map()
 const installing = new Map()
-const methods = ['create', 'open', 'stat', 'list', 'flush']
+const methods = ['create', 'open', 'createNative', 'openNative', 'readNative', 'stat', 'list', 'flush']
 const failure = code => Object.assign(new Error(code), { code })
 const within = (parent, child) => {
   const path = relative(parent, child)
@@ -265,6 +265,35 @@ async function install(ctx, { root, compression } = {}) {
         throw failure('TASK_SESSION_CWD_MISMATCH')
       }
       return handle
+    },
+    async createNative(header, options) {
+      assertOpen(); options?.signal?.throwIfAborted()
+      const route=await routeFor(header.id)
+      if(!route){
+        if(header.cwd&&within(join(root,'tasks'),resolve(header.cwd)))throw failure('TASK_SESSION_BINDING_REQUIRED')
+        return legacy.createNative(header,options)
+      }
+      if(header.cwd!==route.cwd)throw failure('TASK_SESSION_CWD_MISMATCH')
+      assertWriter(route);await legacyConflict(header.id)
+      return (await backendFor(route.taskId)).createNative(header,options)
+    },
+    async openNative(id, options) {
+      assertOpen();options?.signal?.throwIfAborted()
+      const route=await routeFor(id)
+      if(!route)return legacy.openNative(id,options)
+      assertWriter(route);await legacyConflict(id)
+      const handle=await (await backendFor(route.taskId)).openNative(id,options)
+      if(handle.header.cwd!==route.cwd){await handle.close();throw failure('TASK_SESSION_CWD_MISMATCH')}
+      return handle
+    },
+    async readNative(id, options) {
+      assertOpen();options?.signal?.throwIfAborted()
+      const route=await routeFor(id)
+      if(!route)return legacy.readNative(id,options)
+      await legacyConflict(id)
+      const data=await (await backendFor(route.taskId)).readNative(id,options)
+      if(data.header.cwd!==route.cwd)throw failure('TASK_SESSION_CWD_MISMATCH')
+      return data
     },
     async stat(id, options) {
       assertOpen(); options?.signal?.throwIfAborted()

@@ -14,18 +14,10 @@ export default class NativeMemory extends Service {
   static inject=['agents','sessions','systemPrompt','llm','runtimePaths']
   constructor(ctx,config={}){
     super(ctx,'memory');if(!config||typeof config!=='object'||Array.isArray(config)||config.background!==undefined&&typeof config.background!=='boolean'||config.bindings!==undefined&&(!config.bindings||typeof config.bindings!=='object'||Array.isArray(config.bindings)))throw failure('MEMORY_CONFIG_INVALID');this.host=ctx;this.root=ctx.runtimePaths.memory;this.store=new MarkdownMemoryStore(this.root);this.config=config;this.notices=new Map()
-    this.contexts=new WeakMap();this.bindings=new Map();this.bindingReady=this.loadBindings();this.background=new Set();this.scheduled=new WeakSet();this.closed=false;this.abort=new AbortController()
+    this.officialActors=new WeakMap();this.contexts=new WeakMap();this.bindings=new Map();this.bindingReady=this.loadBindings();this.background=new Set();this.scheduled=new WeakSet();this.closed=false;this.abort=new AbortController()
     ctx.systemPrompt.context({name:'memory:index',order:135,required:true,text:({agent})=>this.contexts.get(agent)?.prompt??''})
     ctx.on('agent/pre-step',async({agent,messages,turn},next)=>{
-      if(this.closed)return next()
-      const binding=await this.binding(agent);if(!binding){if(messages.some(m=>human(m)&&(authorizes(messageText(m),'remember')||authorizes(messageText(m),'forget'))))this.contexts.set(agent,{prompt:POLICY+'\nImmediate command failed: MEMORY_SESSION_UNBOUND. No memory was saved; authenticated channel binding is required.'});return next()}
-      const prior=this.contexts.get(agent),incoming=messages.filter(human)
-      const state={binding,turn,messages:prior?.turn===turn?[...new Map([...prior.messages,...incoming].map(m=>[m.id,m])).values()]:incoming,prompt:POLICY};this.contexts.set(agent,state)
-      const results=[]
-      for(const message of incoming){const command=parseCommand(messageText(message));if(command)try{results.push(await this.mutate(agent,{...command,sourceMessageId:message.id,sourceQuote:command.text??command.key}))}catch(error){results.push({ok:false,code:error.code??'MEMORY_OPERATION_FAILED',...error.committed?{committed:error.committed}:{}})}}
-      const indices=[]
-      for(const {selector,scope}of readableScopes(binding))indices.push({scope:selector,...await this.store.index(scope)})
-      state.prompt=POLICY+'\nShort topic index (no fact bodies): '+JSON.stringify(indices)+'\nImmediate command results: '+JSON.stringify(results)+'\nMaintenance status: '+(this.notices.get(agent.session.id)??'ok')
+      await this.prepareRun(agent,messages,turn)
       return next()
     })
     ctx.on('agent/status',({agent,status})=>{if(status==='idle')this.queueCandidates(agent)})
@@ -33,8 +25,32 @@ export default class NativeMemory extends Service {
     // replaced for new model requests, including inherited child context.
     ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await Promise.allSettled([...this.background]);await this.store.close()})
   }
-  async filterRequest(options){
-      const agent=this.host.agents.currentInitiator(),binding=agent&&await this.binding(agent),cache=new Map()
+  actorId(agent){return this.officialActors.has(agent)?agent.id:agent.session.id}
+  /** Explicit official actor port. Admission supplies authenticated business
+   * packets, never model messages; no history reconstruction occurs here. */
+  official({authorizeWrite,isLive=()=>true}={}){
+    const register=actor=>{if(!actor?.piSession||actor.session||!isLive(actor))throw failure('MEMORY_AGENT_NOT_LIVE');this.officialActors.set(actor,{authorizeWrite,isLive})}
+    return {
+      beforeRun:async(actor,ctx)=>{register(actor);const admitted=await actor.admission?.current?.();if(!admitted||!Array.isArray(admitted.messages)||admitted.id===undefined)throw failure('MEMORY_ADMISSION_REQUIRED');await this.prepareRun(actor,admitted.messages.map(packet=>({...packet,role:'user'})),admitted.id)},
+      prompt:actor=>this.contexts.get(actor)?.prompt??POLICY,
+      filter:async(actor,request)=>{register(actor);return this.filterRequest(request,actor)},
+      settled:async(actor,event)=>{if(event.outcome==='completed'&&!event.aborted){const state=this.contexts.get(actor);if(state)state.officialCompleted=true;this.queueCandidates(actor)}}
+    }
+  }
+  async prepareRun(agent,messages,turn){
+      if(this.closed)return
+      const binding=await this.binding(agent);if(!binding){if(messages.some(m=>human(m)&&(authorizes(messageText(m),'remember')||authorizes(messageText(m),'forget'))))this.contexts.set(agent,{prompt:POLICY+'\nImmediate command failed: MEMORY_SESSION_UNBOUND. No memory was saved; authenticated channel binding is required.'});return}
+      const prior=this.contexts.get(agent),incoming=messages.filter(human)
+      const state={binding,turn,messages:prior?.turn===turn?[...new Map([...prior.messages,...incoming].map(m=>[m.id,m])).values()]:incoming,prompt:POLICY};this.contexts.set(agent,state)
+      const results=[]
+      for(const message of incoming){const command=parseCommand(messageText(message));if(command)try{results.push(await this.mutate(agent,{...command,sourceMessageId:message.id,sourceQuote:command.text??command.key}))}catch(error){results.push({ok:false,code:error.code??'MEMORY_OPERATION_FAILED',...error.committed?{committed:error.committed}:{}})}}
+      const indices=[]
+      for(const {selector,scope}of readableScopes(binding))indices.push({scope:selector,...await this.store.index(scope)})
+      state.prompt=POLICY+'\nShort topic index (no fact bodies): '+JSON.stringify(indices)+'\nImmediate command results: '+JSON.stringify(results)+'\nMaintenance status: '+(this.notices.get(this.actorId(agent))??'ok')
+      return
+  }
+  async filterRequest(options,officialActor){
+      const agent=officialActor??this.host.agents.currentInitiator(),binding=agent&&await this.binding(agent),cache=new Map()
       const native=!!piRequestContext(options),messages=[]
       for(const message of options.messages??[]){
         let changed=false
@@ -85,19 +101,19 @@ export default class NativeMemory extends Service {
     this.host.get('skills')?.invalidateCache()
     if(agent)this.contexts.delete(agent)
   }
-  async binding(agent){await this.bindingReady;if(this.host.agents.get(agent.id)!==agent)throw failure('MEMORY_AGENT_NOT_LIVE');return this.bindings.get(agent.session.id)}
+  async binding(agent){await this.bindingReady;const official=this.officialActors.get(agent);if(official?!official.isLive(agent):this.host.agents.get(agent.id)!==agent)throw failure('MEMORY_AGENT_NOT_LIVE');return this.bindings.get(this.actorId(agent))}
   async scope(agent,selector,write=false){const binding=await this.binding(agent);if(!binding)throw failure('MEMORY_SESSION_UNBOUND');return memoryScope(binding,{...selector,scope:selector?.scope??(binding.groupId?'group':'personal')},write)}
   async read(agent,args){const scope=await this.scope(agent,args),result=await this.store.read(scope,args);return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
   async search(agent,args){const scope=await this.scope(agent,args),result=await this.store.search(scope,args);return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
-  async status(agent){const binding=await this.binding(agent);return {bound:!!binding,backgroundPending:this.scheduled.has(agent),maintenanceCode:this.notices.get(agent.session.id)??null,reflectionCode:this.host.get('reflection')?.lastError??null}}
+  async status(agent){const binding=await this.binding(agent);return {bound:!!binding,backgroundPending:this.scheduled.has(agent),maintenanceCode:this.notices.get(this.actorId(agent))??null,reflectionCode:this.host.get('reflection')?.lastError??null}}
   async mutate(agent,args){
     if(!await this.binding(agent))throw failure('MEMORY_SESSION_UNBOUND')
-    const permissions=agent.ctx.get('permissionPresets')
-    if(permissions?.current(agent.session)==='read-only'||permissions?.permissionState(agent.session).sandbox==='read-only')throw failure('MEMORY_READ_ONLY')
+    const official=this.officialActors.get(agent),permissions=official?undefined:agent.ctx.get('permissionPresets')
+    if(official?await official.authorizeWrite?.(agent,args)!==true:permissions?.current(agent.session)==='read-only'||permissions?.permissionState(agent.session).sandbox==='read-only')throw failure('MEMORY_READ_ONLY')
     const state=this.contexts.get(agent),message=state?.messages.find(m=>m.id===args.sourceMessageId)
     if(!message||!authorizes(messageText(message),args.action??'remember'))throw failure('MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED')
     if(!args.sourceQuote||!messageText(message).includes(args.sourceQuote))throw failure('MEMORY_SOURCE_QUOTE_REQUIRED')
-    const scope=await this.scope(agent,args,true);if(message.source?.principal&&message.source?.channelMessageKey)scope.actor=hash(message.source.principal);const source={sessionId:agent.session.id,messageId:message.id,quoteSha256:hash(args.sourceQuote),observedAt:new Date().toISOString()}
+    const scope=await this.scope(agent,args,true);if(message.source?.principal&&message.source?.channelMessageKey)scope.actor=hash(message.source.principal);const source={sessionId:this.actorId(agent),messageId:message.id,quoteSha256:hash(args.sourceQuote),observedAt:new Date().toISOString()}
     if(args.action==='forget'){
       const prior=await this.store.read(scope,args)
       if(!messageText(message).includes(args.key)&&!prior.entries.some(e=>args.sourceQuote.length>=2&&e.text.includes(args.sourceQuote)))throw failure('MEMORY_TARGET_QUOTE_REQUIRED')
@@ -118,14 +134,17 @@ export default class NativeMemory extends Service {
   queueCandidates(agent){
     if(this.closed||this.config.background===false||this.scheduled.has(agent)||this.background.size>=4)return
     const state=this.contexts.get(agent)
-    if(!state?.binding||!state.messages.length||agent.session.snapshotEvents().findLast(e=>e.type==='turn/end')?.data.reason.kind!=='completed')return
+    if(!state?.binding||!state.messages.length||(this.officialActors.has(agent)?!state.officialCompleted:agent.session.snapshotEvents().findLast(e=>e.type==='turn/end')?.data.reason.kind!=='completed'))return
+    // Candidate extraction still uses the business extraction service. Until an
+    // official model-runtime extractor is supplied, do not borrow legacy options.
+    if(this.officialActors.has(agent)){this.notices.set(agent.id,'MEMORY_OFFICIAL_EXTRACTION_UNAVAILABLE');return}
     const permissions=agent.ctx.get('permissionPresets')
     if(permissions?.current(agent.session)==='read-only'||permissions?.permissionState(agent.session).sandbox==='read-only')return
     try{memoryScope(state.binding,{scope:state.binding.groupId?'group':'personal'},true)}catch{return}
     const messages=state.messages.filter(m=>!authorizes(messageText(m),'remember')&&!authorizes(messageText(m),'forget')&&!temporary(messageText(m)))
     if(!messages.length)return
     this.scheduled.add(agent)
-    const work=this.host.agents.withoutInitiator(()=>this.extract(agent,state,messages)).catch(error=>{this.notices.set(agent.session.id,error.code??'MEMORY_EXTRACTION_FAILED');this.host.logger.warn('memory: '+(error.code??'MEMORY_EXTRACTION_FAILED'))}).finally(()=>{this.scheduled.delete(agent);this.background.delete(work)})
+    const work=this.host.agents.withoutInitiator(()=>this.extract(agent,state,messages)).catch(error=>{this.notices.set(this.actorId(agent),error.code??'MEMORY_EXTRACTION_FAILED');this.host.logger.warn('memory: '+(error.code??'MEMORY_EXTRACTION_FAILED'))}).finally(()=>{this.scheduled.delete(agent);this.background.delete(work)})
     this.background.add(work)
   }
   async extract(agent,state,messages){
@@ -143,7 +162,7 @@ export default class NativeMemory extends Service {
       const source=input.find(m=>m.messageId===candidate.messageId)
       if(!source||typeof candidate.quote!=='string'||!source.text.includes(candidate.quote)||temporary(candidate.quote))throw failure('MEMORY_EXTRACTION_INVALID')
       const sourceScope=source.principal?{...scope,actor:hash(source.principal)}:scope
-      const result=await this.store.remember(sourceScope,{topic:candidate.topic,key:candidate.key,text:checkedText(candidate.quote),source:{sessionId:agent.session.id,messageId:source.messageId,quoteSha256:hash(candidate.quote)},candidate:true,scopeRevision:revision})
+      const result=await this.store.remember(sourceScope,{topic:candidate.topic,key:candidate.key,text:checkedText(candidate.quote),source:{sessionId:this.actorId(agent),messageId:source.messageId,quoteSha256:hash(candidate.quote)},candidate:true,scopeRevision:revision})
       if(result.ok&&!result.duplicate)revision++
     }
   }

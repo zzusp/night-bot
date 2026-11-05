@@ -1,3 +1,4 @@
+import {OfficialPiModelRuntime} from './pi-official-model-runtime.js'
 import {piRequestContext} from './runtime/pi-request-context.js'
 import z from '@deepseek-ai/schemastery'
 import {  LlmError, attributionHeaders } from './native-llm-protocol.js'
@@ -72,7 +73,7 @@ export function apply(ctx,config){
   const current=()=>{const raw=config.providers.get();if(raw!==last){profiles=resolvePiProfiles(raw,{deferred:true});last=raw}return profiles}
   current()
   const adapter=new NativePiProvider(ctx,current,authentication)
-  ctx.provide('nativePiProvider',{adapter,profiles:current})
+  ctx.provide('nativePiProvider',{adapter,profiles:current,official:new OfficialPiModelRuntime(ctx,current,authentication)})
   ctx.inject(['authorization'],child=>registerPiLoginFlows(child,authentication))
   const catalog=builtinProviders().filter(p=>getBuiltinModels(p.id).length||!getAllBuiltinModels(p.id).length)
   let registration,directory,previousFacts

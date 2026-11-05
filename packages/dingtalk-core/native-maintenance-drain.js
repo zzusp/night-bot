@@ -1,3 +1,4 @@
+import {buildSessionProjection,convertToLlm} from '@earendil-works/pi-coding-agent'
 import {JOB_REGISTERED,JOB_SETTLED} from '../../src/runtime/job-ledger.js'
 import {readFileSync, lstatSync, openSync, fstatSync, closeSync, constants} from 'node:fs'
 import {join,isAbsolute,dirname,resolve} from 'node:path'
@@ -41,7 +42,11 @@ export function readNativeHistory(workspace,row,{pathCodec}={}){
  const directory=owner?taskFilePath(workspace,row.taskId,'sessions'):taskSessionLogRoot(workspace,row.taskId)
  const path=join(directory,piJournalFilename(row.sessionId)),bytes=readStableBytes(path)
  const decoded=decodePiJournal(bytes,row.sessionId,{requireComplete:true,codec:pathCodec})
- if(!pathCodec&&(decoded.header.portableCwd!==undefined||decoded.events.some(event=>event.type==='working-directory/change'&&event.data?.portableCwd!==undefined)))throw Error('PI_SESSION_PATH_CODEC_REQUIRED')
+ if(!pathCodec&&(decoded.header.portableCwd!==undefined||decoded.events?.some(event=>event.type==='working-directory/change'&&event.data?.portableCwd!==undefined)))throw Error('PI_SESSION_PATH_CODEC_REQUIRED')
+ if(decoded.format==='pi-native-v1'){
+  const projection=buildSessionProjection(decoded.entries,decoded.entries.at(-1)?.id??null);convertToLlm(projection.messages)
+  return {header:decoded.header,audit:decoded.audit,context:{engine:'pi-session-manager',projection,piMessages:projection.messages},digest:hash({text:bytes.toString('utf8')}),path,format:decoded.format}
+ }
  return{header:decoded.header,events:decoded.events,digest:hash({text:bytes.toString('utf8')}),path,format:'pi-jsonl-v3'}
 }
 
@@ -105,6 +110,7 @@ export async function readMaintenanceDrainProof({ workspace, binding, events, ev
   if (hash(pre.maintenance) !== hash(post.maintenance) || hash(post.maintenance) !== hash(cutover.maintenance)) fail('CUTOVER_UNPROVEN')
   let stored
   try{stored=history(workspace,binding,{pathCodec})}catch(cause){throw Object.assign(new Error('DYNAMIC_MAINTENANCE_NATIVE_HISTORY_CHANGED',{cause}),{code:'DYNAMIC_MAINTENANCE_NATIVE_HISTORY_CHANGED'})}
+  if(stored.format==='pi-native-v1')fail('NATIVE_DRAIN_RECEIPTS_REQUIRED')
   if(stored.header?.id!==binding.sessionId||stored.format!=='pi-jsonl-v3'
     ||stored.digest!==frozen.nativeLogDigest||hash(stored.events)!==hash(events))fail('NATIVE_HISTORY_CHANGED')
   const inputs = events.flatMap(event => event.type === 'user/message' ? [{ seq: event.seq, source: event.data?.source }]

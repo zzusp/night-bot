@@ -1123,3 +1123,20 @@ function invokedSkillNames(messages) {
 }
 //#endregion
 export { Config, apply, inject, name, catalogHistory };
+
+/** Current business catalog -> official filesystem resources. The caller must
+ * authorize a real host file path; sandbox display paths and runtime providers
+ * must never become implicit filesystem authority. Pi owns skill presentation
+ * and invocation; this does not inspect prior skill messages/publications. */
+export async function officialSkillResources(snapshot,{resolveFilePath}={}){
+ if(!snapshot?.complete)throw Object.assign(new Error('Complete scoped skill snapshot required'),{code:'PI_OFFICIAL_SKILL_SNAPSHOT_REQUIRED'})
+ const resources=[]
+ for(const skill of snapshot.skills){
+  if(!isModelInvocable(skill)&&!isUserInvocable(skill))continue
+  const filePath=await resolveFilePath?.(skill)
+  if(typeof filePath!=='string'||!filePath.startsWith('/'))throw Object.assign(new Error('Authorized host skill file mapping required: '+skill.name),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
+  const baseDir=filePath.slice(0,filePath.lastIndexOf('/'))||'/'
+  resources.push({name:skill.name,description:skill.description??'',filePath,baseDir,sourceInfo:{path:filePath,source:'night-authorized',scope:'temporary',origin:'top-level',baseDir},disableModelInvocation:!isModelInvocable(skill)})
+ }
+ return resources
+}

@@ -1,6 +1,10 @@
 // Read-only handles do not claim the resident Agent's write ownership.
 // Always close them, including when validation or storage reads fail.
 export async function inspectSession(persistence, sessionId, options) {
+  const metadata = await persistence.stat(sessionId, options)
+  if (metadata?.format === 'pi-native-v1') {
+    throw Object.assign(new Error('SESSION_NATIVE_AUDIT_REQUIRED'), { code: 'SESSION_NATIVE_AUDIT_REQUIRED', format: metadata.format })
+  }
   const handle = await persistence.open(sessionId, 'read', options)
   try {
     const { events } = await handle.read(undefined, undefined, options)
