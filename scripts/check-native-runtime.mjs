@@ -11,6 +11,12 @@ for(const path of ['src/native-chunked-list.js','test/fixtures/legacy-subagent-i
  try{await access(path)}catch(error){if(error.code==='ENOENT')continue;throw error}
  throw new Error('Retired comparison source reintroduced: '+path)
 }
+const piLicense=JSON.parse(await readFile('docs/pi-license-source.json','utf8'))
+if(digest(await readFile(piLicense.localLicense))!==piLicense.sha256)throw new Error('Pinned Pi license text changed')
+for(const name of ['pi-agent-core','pi-ai','pi-coding-agent']){
+ const dependency='@earendil-works/'+name,source=piLicense.packages.find(row=>row.name===dependency)
+ if(!source||source.version!==manifest.dependencies[dependency])throw new Error('Pi dependency/license provenance mismatch: '+dependency)
+}
 let files=0
 async function walk(directory){for(const entry of await readdir(directory,{withFileTypes:true})){const path=directory+'/'+entry.name;if(entry.isDirectory())await walk(path);else if(entry.isFile()&&/\.(?:js|cjs|mjs)$/.test(path)){
  files++;const text=await readFile(path,'utf8')
