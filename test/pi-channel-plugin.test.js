@@ -54,7 +54,7 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   const streams=new Map(),calls=[]
   const runner={
     async run(args){calls.push(args);return {exitCode:0,stdout:JSON.stringify(args.includes('+messages-query-send-status')?{result:{sendStatus:'SUCCESS',openConversationId:'private',openMessageId:'sent-private'}}:(args.includes('+messages-send')||args.includes('+messages-reply'))?{sendReceipt:{openTaskId:'send-task'}}:{messages:[],complete:true}),stderr:''}},
-    spawn(args,callbacks){const done=Promise.withResolvers(),kind=args[args.indexOf('--kind')+1];streams.set(kind,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}},
+    spawn(args,callbacks){const done=Promise.withResolvers(),kind=args.includes('user_im_message_receive_o2o')?'private:'+args[args.indexOf('--open-dingtalk-id')+1]:args[args.indexOf('--kind')+1];streams.set(kind,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}},
   }
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture',writesAuthorized:true,groups:['room'],directChats:true,directPeers:['peer'],assistantActorId:'self'},{runner})})
   await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,{...f.config,resident:{port:0,taskSessions:{instanceId:'bridge',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:'2026-01-01T00:00:00Z'}}})})
@@ -63,7 +63,9 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   const event={conversation_id:'room',message_id:'bridge-message',content:'source body',sender_open_dingtalk_id:'peer',event_time:Date.now(),is_in_at_list:true,at_open_dingtalk_ids:['self'],message_ai_send_flag:'DWS',quoted_message:{message_id:'quoted',sender_open_dingtalk_id:'original-author',content:'original body',create_time:'2026-11-05 10:00:00'}}
   const input={type:'chat-room',channelId:'dingtalk-dws',conversationId:'room',senderId:'peer',messageId:'bridge-message',text:'source body'},groupId=channels.identity(input).sessionId
   const until=async predicate=>{for(let i=0;i<200;i++){const value=predicate();if(value)return value;await new Promise(r=>setTimeout(r,10))}throw Error('bridge projection timeout')}
-  await until(()=>streams.has('group')&&streams.has('all-direct'))
+  await until(()=>streams.has('group')&&streams.has('private:peer'))
+  streams.get('group').onStdoutLine(JSON.stringify({...event,conversation_id:'foreign-room',message_id:'foreign-room-message'}))
+  await new Promise(r=>setTimeout(r,20));assert.ok(![...channels.contexts.values()].some(context=>context.conversationId==='foreign-room'))
   streams.get('group').onStdoutLine(JSON.stringify(event))
   const message=await until(()=>app.store.getGroup(groupId)?.messages.find(m=>m.messageId==='bridge-message'))
   assert.equal(message.sourceKind,'channel');assert.equal(message.channelType,'chat-room');assert.equal(message.channelId,'dingtalk-dws');assert.equal(message.automated,true);assert.equal(message.mentionedAgent,true)
@@ -71,7 +73,10 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   assert.equal(message.quotedMessage.senderOpenDingTalkId,channels.identity({...input,senderId:'original-author'}).principal)
   assert.deepEqual(message.mentions,[channels.identity({...input,senderId:'self'}).principal])
   streams.get('group').onStdoutLine(JSON.stringify(event));await new Promise(r=>setTimeout(r,40));assert.equal(app.store.getGroup(groupId).messages.length,1)
-  streams.get('all-direct').onStdoutLine(JSON.stringify({...event,conversation_id:'private',message_id:'private-message'}))
+  streams.get('private:peer').onStdoutLine(JSON.stringify({...event,sender_open_dingtalk_id:'outsider',conversation_id:'foreign-private',message_id:'foreign-message'}))
+  await new Promise(r=>setTimeout(r,25));assert.ok(![...channels.contexts.values()].some(context=>context.conversationId==='foreign-private'))
+  assert.ok([...streams.keys()].every(key=>key!=='all-direct'))
+  streams.get('private:peer').onStdoutLine(JSON.stringify({...event,conversation_id:'private',message_id:'private-message'}))
   const directId=channels.identity({...input,type:'chat',conversationId:'private',messageId:'private-message'}).sessionId
   await until(()=>app.store.getGroup(directId)?.messages.length)
   assert.notEqual(directId,groupId)
@@ -156,4 +161,18 @@ test('system-account plugins use the existing CLI context and describe shared lo
   assert.ok(!(await readdir(f.host.ctx.runtimePaths.secrets)).some(name=>name.startsWith('dingtalk-dws')))
   await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
   assert.equal(channels.transports.size,2)
+})
+
+test('group-only DWS never subscribes to private messages or polls private history',async t=>{
+  const f=await memoryHost(t),commands=[],streams=[]
+  const runner={async run(args){commands.push(args);return {exitCode:0,stdout:'{"messages":[],"complete":true}',stderr:''}},spawn(args,hooks){streams.push(args);const done=Promise.withResolvers();queueMicrotask(()=>hooks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}}}
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture',groups:['only-room'],directPeers:['not-enabled'],operatorPeers:['also-not-enabled']},{runner})})
+  let privateQueries=0
+  await f.host.ctx.parallel('night/ready',{runtime:{getGroup:()=>({messages:[],outbox:[]}),listAuthorizationRequests(){privateQueries++;return []}},tasks:{}})
+  await new Promise(r=>setTimeout(r,25))
+  assert.equal(streams.length,1);assert.ok(streams[0].includes('group'));assert.ok(streams[0].includes('only-room'))
+  assert.equal(privateQueries,0)
+  assert.ok(streams.every(args=>!args.includes('all-direct')&&!args.includes('user_im_message_receive_o2o')))
+  assert.equal(f.host.ctx.channels.plugins.get('dingtalk-dws').health.humanReplies.state,'disabled')
+  assert.deepEqual(f.host.ctx.channels.transports.get('dingtalk-dws').capabilities.privateSubscription,{scope:'explicit-peers',peerCount:0})
 })

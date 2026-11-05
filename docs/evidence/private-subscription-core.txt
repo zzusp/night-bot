@@ -1,0 +1,43 @@
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (2523.590066ms)
+✔ optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data (747.436965ms)
+✔ standard application composition exposes channel-neutral health and single task creation with no channel installed (506.001933ms)
+✔ discovered third-party plugins load only enabled instances and release transports on host close (384.832482ms)
+✔ real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata (428.492435ms)
+✔ manifest validation rejects duplicate types, escaped entries and duplicate enabled channel identities (174.192245ms)
+✔ generic message readers use neutral identities and enforce conversation scope (135.859924ms)
+✔ multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization (352.674868ms)
+✔ DWS private credentials use supported roots; Windows defaults to the protected current-user login (1.213482ms)
+✔ system-account plugins use the existing CLI context and describe shared login without creating a private vault (199.523944ms)
+✔ group-only DWS never subscribes to private messages or polls private history (200.297075ms)
+✔ chat and chat-room preserve sender identity, isolate context/memory and deduplicate across cold restart (5262.949142ms)
+✔ configuration rejects relative state (27.244313ms)
+✔ configuration rejects same workspace (2.658614ms)
+✔ configuration rejects nested state (3.236586ms)
+✔ configuration rejects missing model (3.429999ms)
+✔ configuration rejects missing provider (3.133696ms)
+✔ configuration rejects public API (3.919243ms)
+✔ configuration rejects inconsistent DWS flags (5.56385ms)
+✔ configuration rejects inline key (7.531701ms)
+✔ configuration rejects invalid tool parallelism (5.478126ms)
+✔ configuration rejects invalid credential watcher (7.72265ms)
+✔ configuration rejects invalid web provider selector (3.026329ms)
+✔ configuration rejects invalid web registry config (1.272582ms)
+✔ configuration rejects invalid web timeout (1.858876ms)
+✔ configuration rejects invalid redirect limit (2.208695ms)
+✔ configuration rejects invalid web tool enablement (1.849582ms)
+✔ configuration rejects invalid web search query cap (1.951622ms)
+✔ configuration rejects invalid web tool deadline (2.911606ms)
+✔ configuration rejects fake production model (2.925497ms)
+✔ configuration keeps disabled transport and provider env reference (3.512669ms)
+✔ configuration preserves explicit native web selection and anonymous HTTP limits (5.283086ms)
+✔ real Pi first-tier steers arrivals into the same 15-message batch; 16 queues, topic replies quote exact sources before second-tier ends (5503.525654ms)
+ℹ {"firstTierSendBeforeSecondTierMs":805,"batchSizes":[15,1],"delivered":16}
+✔ cold recovery keeps the same triage session; an uncertain private-chat send is read back and never sent again (5788.958817ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13656.089015

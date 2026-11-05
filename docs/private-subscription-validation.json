@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-05",
+  "baseline": "29dc881b15cdea5a8968760bee88313aee3a936c",
+  "behavior": {
+    "default": "privatePeerIds empty; no private subscription, polling or authorization-recall history reads",
+    "groupScope": "explicit group subscription conversation ID must match incoming event",
+    "direct": "directChats true requires explicit directPeers; only these peers get server-scoped o2o subscriptions",
+    "operator": "operatorNotifications true requires operatorPeers; operator polling and replies stay scoped",
+    "subscriptionCommand": "dws event consume user_im_message_receive_o2o --open-dingtalk-id PEER --flatten --format ndjson",
+    "allDirect": "not used; no broad collection fallback",
+    "rejection": "non-allowlisted or unauthenticated private sender discarded before normalization, health mutation and ingestion"
+  },
+  "sourceEvidence": {
+    "repository": "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
+    "tag": "v1.0.63",
+    "commit": "4cd5d05393a8748e89d9265eb9f7ec85745a0331",
+    "files": [
+      "internal/event/personal/registry.go",
+      "internal/app/event_command.go"
+    ]
+  },
+  "checks": {
+    "domain": {
+      "passed": 390,
+      "failed": 0,
+      "command": "node scripts/test-pi.mjs domain"
+    },
+    "channelConfigTriage": {
+      "passed": 34,
+      "failed": 0,
+      "command": "node --test test/pi-channel-plugin.test.js test/pi-channels.test.js test/pi-config.test.js test/pi-triage.test.js"
+    },
+    "guards": "source manifest, production imports, native runtime, git diff --check passed"
+  },
+  "evidence": [
+    {
+      "path": "docs/evidence/private-subscription-domain.txt",
+      "sha256": "bf1b01f56dbabe4999b64184e536c80690ea3c5b83912f25f69d8128c4f5a0a6"
+    },
+    {
+      "path": "docs/evidence/private-subscription-core.txt",
+      "sha256": "fcc65081d0491569feca56f791d8f1b27e39c1300e4ec63420bc8e4fb079be67"
+    }
+  ],
+  "licenseReadOnlyAudit": {
+    "noticeFiles": 73,
+    "dshRelatedNotices": 68,
+    "directProductionRegistryDshDependencies": 0,
+    "productionLockGraphPackages": 414,
+    "transitiveProductionRegistryDshPackages": 0,
+    "unresolvedLockGraphKeys": 0,
+    "basis": [
+      "THIRD_PARTY.md",
+      "licenses/*MIT.txt",
+      "src/pi-loop.js header",
+      "src/native-message-protocol.js header",
+      "src/native-session-protocol.js header",
+      "docs/legacy-runtime-source-manifest.json",
+      "docs/schedule-source-manifest.json",
+      "package.json",
+      "pnpm-workspace.yaml",
+      "pnpm-lock.yaml"
+    ],
+    "finding": "Removed runtime/registry dependencies do not remove retained source-derived MIT notice requirements. Historical compatibility names and test/dev references remain. No licenses changed or removed. THIRD_PARTY.md contains some historical external-dependency wording that should be updated separately."
+  },
+  "limitations": [
+    "No live CLI/account, Baibu connection, messages, deployment, push, merge or CI.",
+    "Official per-peer o2o CLI interface verified in source; actual installed CLI/version and target-system subscriptions remain live acceptance.",
+    "Shared Windows system login policy from previous commit remains unchanged."
+  ]
+}

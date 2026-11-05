@@ -17,6 +17,8 @@ export async function apply(ctx,config={},dependencies={}){
   if(config.enabled!==true)return
   if(typeof config.profile!=='string'||!config.profile.trim())throw failure('DWS_PLUGIN_PROFILE_REQUIRED')
   if(config.directChats===true&&(!Array.isArray(config.directPeers)||!config.directPeers.length||config.directPeers.some(id=>typeof id!=='string'||!id)||!config.assistantActorId))throw failure('DWS_DIRECT_PEERS_AND_SELF_REQUIRED')
+  if(config.operatorNotifications===true&&(!Array.isArray(config.operatorPeers)||!config.operatorPeers.length||config.operatorPeers.some(id=>typeof id!=='string'||!id)))throw failure('DWS_OPERATOR_PEERS_REQUIRED')
+  const privatePeers=[...new Set([...(config.directChats===true?config.directPeers:[]),...(config.operatorNotifications===true?config.operatorPeers:[])])]
   const channelId=config.channelId??'dingtalk-dws',namespace=channelId==='dingtalk-dws'?'dingtalk-dws':'dingtalk-dws-'+hash(channelId)
   const paths=ctx.runtimePaths,privateHome=join(paths.secrets,namespace),workspace=join(paths.workspaces,'channels',namespace),cache=join(paths.cache,namespace)
   const accountPolicy=dwsAccountPolicy(config.accountMode)
@@ -33,7 +35,7 @@ export async function apply(ctx,config={},dependencies={}){
     sendFile:(_notification,file)=>createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner:runnerFor(file.directory)}).sendGroupFile({groupId:_notification.payload.conversationId,fileName:file.fileName,idempotencyKey:_notification.id}),
     readbackFile:notification=>readTaskFileDelivery(adapter,notification),querySendStatus:id=>adapter.querySendStatus(id),recall:notification=>recallOperatorNotification(adapter,notification)}
   const unregister=ctx.channels.registerTransport(channelId,{canSend:()=>config.writesAuthorized===true,
-    capabilities:{account:accountPolicy,conversationTypes:config.directChats===true?['chat','chat-room']:['chat-room'],files:['chat-room'],quotedReplies:config.directChats===true?['chat','chat-room']:['chat-room']},
+    capabilities:{account:accountPolicy,privateSubscription:{scope:'explicit-peers',peerCount:privatePeers.length},conversationTypes:config.directChats===true?['chat','chat-room']:['chat-room'],files:['chat-room'],quotedReplies:config.directChats===true?['chat','chat-room']:['chat-room']},
     send:(envelope,notification)=>envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:envelope.senderId,text:envelope.text,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:envelope.senderId}):notifications.send(typed(notification,envelope)),
     readback:async(envelope,notification)=>{
       if(envelope.type!=='chat')return notifications.readback(typed(notification,envelope))
@@ -79,6 +81,6 @@ export async function apply(ctx,config={},dependencies={}){
       return Reflect.get(target,key)
     }})
     const stateFile=join(paths.state,'channels',namespace,'ingress.json'),ingressState=JSON.parse(await readRegular(stateFile)??'{"paused":false}')
-    stopBridge=startDwsBridge({runtime:facade,adapter,logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>atomicWrite(stateFile,JSON.stringify(state)+'\n'),onDirectMessage:config.directChats===true?raw=>config.directPeers.includes(raw.senderOpenDingTalkId)&&raw.senderOpenDingTalkId!==config.assistantActorId?acceptHistoryMessage(raw,{type:'chat'}):undefined:undefined,onHealthChange:value=>{health=value}})
+    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter,logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>atomicWrite(stateFile,JSON.stringify(state)+'\n'),onDirectMessage:config.directChats===true?raw=>config.directPeers.includes(raw.senderOpenDingTalkId)&&raw.senderOpenDingTalkId!==config.assistantActorId?acceptHistoryMessage(raw,{type:'chat'}):undefined:undefined,onHealthChange:value=>{health=value}})
   })
 }

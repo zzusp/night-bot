@@ -154,15 +154,15 @@
       "source": "dws-adapter.js",
       "sourceSha256": "591384cee4b1f9ec2fdeaf79131e107f33b49e1b5a58792e382a075a8801ca54",
       "status": "adapted",
-      "sha256": "823a3e8bdb54bb7f68fc109e02da9bc3ad667a847aeca4e4bf1b6c0fede1060d",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
+      "sha256": "4c5e9fc34d042e47b34e087c183992c52d71693c12ebe2d526d9d8984ae78f19",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes."
     },
     {
       "source": "dws-bridge.js",
       "sourceSha256": "8c203c1720b160d1e6db2eb2bca1922e95d111921a96aa49917ace97b610da19",
       "status": "adapted",
-      "sha256": "c5e7734e17e318bb0729c457e0d65cfe5f32f93720f706c754be5ffa1e668f07",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
+      "sha256": "b07a0427ef2826b81cd5bbeb7f65017273ba92255e1d7f135e2bd62e8c7b8550",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes."
     },
     {
       "source": "dws-runner.js",

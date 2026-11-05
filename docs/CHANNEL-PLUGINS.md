@@ -86,7 +86,8 @@ Checked the official CLI tag **v1.0.63**, commit
 installed binary or a live account):
 
 - `event +listen-im --kind group --chat-id ... --events message --format ndjson`
-  and `--kind all-direct` are declared in `internal/app/event_listen_im.go`.
+  is declared in `internal/app/event_listen_im.go`. The broader `all-direct`
+  intent exists but is never used by this adapter.
 - `internal/event/personal/output.go` publishes `quoted_message` with
   `sender_open_dingtalk_id`, message/conversation IDs, content and create time.
   The event schema does not promise @ or automation metadata. When present in
@@ -99,8 +100,22 @@ installed binary or a live account):
 
 Private chat ingress is opt-in: `config.directChats:true` requires an explicit
 `directPeers` allowlist of authenticated open IDs and `assistantActorId` to exclude
-the account's own output. It reuses the bridge's reconnecting all-direct stream;
-operator reply handling remains active. Avoid configuring the same peer as a
+the account's own output. Each allowed peer gets a reconnecting server-scoped
+`event consume user_im_message_receive_o2o --open-dingtalk-id PEER --flatten
+--format ndjson` subscription. This public specific-conversation event is declared
+in `internal/event/personal/registry.go`, with target/flatten flags in
+`internal/app/event_command.go`. It avoids both all-direct collection and sender
+subscriptions (which may cover messages beyond private conversation scope).
+Operator replies require `operatorNotifications:true` plus explicit `operatorPeers`
+open IDs. The union of enabled direct/operator peers determines the subscriptions;
+merely listing peers without enabling their feature does nothing. No peers means
+no private subscription, polling or authorization-recall history reads. Events
+with unauthenticated or non-allowlisted senders are dropped before normalization,
+health updates and application ingestion. Operator history/recovery is also scoped
+to configured peers. Group event conversation IDs must match their subscription.
+The composite private listener waits for every configured stream to be ready,
+stops sibling streams on exit and reconnects the configured set only.
+Avoid configuring the same peer as a
 business-chat participant and an operator unless both processing paths are desired.
 Private quoted replies use `chat +messages-reply --open-dingtalk-id ...
 --conversation-id ... --message-id ... --ref-sender ... --content ...

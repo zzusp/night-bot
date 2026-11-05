@@ -173,8 +173,8 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
     compileGroupListen(groupId) {
       return withProfile(['event', '+listen-im', '--kind', 'group', '--events', 'message', '--chat-id', assertStableId(groupId, 'group_id'), '--format', 'ndjson'])
     },
-    compileHumanReplyListen() {
-      return withProfile(['event', '+listen-im', '--kind', 'all-direct', '--events', 'message', '--format', 'ndjson'])
+    compileHumanReplyListen(peerId) {
+      return withProfile(['event','consume','user_im_message_receive_o2o','--open-dingtalk-id',assertStableId(peerId,'private_peer_id'),'--flatten','--format','ndjson'])
     },
     compileGroupRead(groupId) {
       return withProfile(['chat', '+chat-messages', '--group', assertStableId(groupId, 'group_id'), '--format', 'json'])
@@ -618,13 +618,26 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       })
       return { lifecycle, ready: readyPromise, done: child.done, stop: () => child.terminate('SIGTERM') }
     },
-    startHumanReplySubscription(onEvent) {
+    startHumanReplySubscription(onEvent,peerIds=[]) {
+      requireEnabled()
+      if(!Array.isArray(peerIds)||!peerIds.length||peerIds.some(id=>typeof id!=='string'||!id))throw new Error('dws_private_peers_required')
+      const streams=[],lifecycle=new EventEmitter()
+      let stopped=false
+      const stop=()=>{if(stopped)return;stopped=true;for(const stream of streams)stream.stop()}
+      try{for(const peerId of new Set(peerIds)){
+        const stream=this.startPrivateSubscription(peerId,onEvent)
+        stream.lifecycle.on('line-error',error=>lifecycle.emit('line-error',error))
+        streams.push(stream)
+      }}catch(error){stop();throw error}
+      return {lifecycle,ready:Promise.all(streams.map(stream=>stream.ready)),done:Promise.race(streams.map(stream=>stream.done)).finally(stop),stop}
+    },
+    startPrivateSubscription(peerId,onEvent) {
       requireEnabled()
       const lifecycle = new EventEmitter()
       let ready = false
       let resolveReady
       const readyPromise = new Promise((resolve) => { resolveReady = resolve })
-      const child = runner.spawn(this.compileHumanReplyListen(), {
+      const child = runner.spawn(this.compileHumanReplyListen(peerId), {
         onStdoutLine(line) {
           try {
             const event = JSON.parse(line)
