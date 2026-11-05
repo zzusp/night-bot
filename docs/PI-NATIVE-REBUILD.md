@@ -1,3 +1,24 @@
+# Application template compiler replaces the renderer fork (2026-11-05)
+
+Removed the old renderer module and unused snapshot-rendering export. Application
+templates compile literal/reference operations, then expand once against the own
+properties of one assembly. Literal contributions bypass parsing. Compiled
+functions and error attribution are immutable; unknown, unset, malformed and
+nonstring variables fail with distinct codes without exposing assembly values.
+Strings remain nonrecursive; trailing incomplete openings remain literal and no
+longer require repeated remainder searches. Contribution ordering, empty behavior,
+named context sections and existing context framing/snapshot identity remain.
+
+Validation: **656 default pass**, **14 focused overlap**, **31 task model/skill/
+archive/channel integration pass** (partly overlapping default). Independent
+checks cover inherited properties, reusable compilation, literal/recursive text,
+owner diagnostics and 200000 UTF-16 units of incomplete braces. Real Pi requests
+and tool continuation pass. Source/import/Pi-license/fork-hash/diff guards pass and
+prevent restoring the retired module. **44 direct DSH dev declarations remain**;
+no package/lock changes. Registry/assembly algorithms, retained grammar/framing
+and other codecs still retain their notice; no license removal is claimed here.
+Evidence: `docs/pi-native-prompt-template-validation.json`.
+
 # Owned file/job tool contracts without original test packages (2026-11-05)
 
 Replaced original-module equality tests with explicit file input schemas, literal

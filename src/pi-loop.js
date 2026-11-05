@@ -18,7 +18,7 @@ import { SessionPersistenceNotFoundError } from "./native-persistence-protocol.j
 import { agentEvents, assembleContextFor } from "./native-agent-context.js";
 import { assertNever, deepFreeze } from "./native-values.js";
 import { createScope } from "./native-scope.js";
-import { joinContextSections, renderContextSections, renderPrompt } from "./native-prompt-render.js";
+import { joinContextSections, renderContextSections, renderPrompt } from "./runtime/prompt-template.js";
 import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER } from "./native-tool-protocol.js";
 //#region lib/types/inbox.js
 /**

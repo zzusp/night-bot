@@ -1,0 +1,48 @@
+{
+  "base": "fd515ce",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 656,
+      "pass": 656,
+      "fail": 0,
+      "skipped": 0
+    },
+    "integration": {
+      "tests": 31,
+      "pass": 31,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "remainingDirectDshDevDependencies": 44,
+  "removed": "src/native-prompt-render.js and unused renderContextSnapshot export; original-renderer equality comparison",
+  "replacement": "Application template compiler separates literal/reference operations from assembly expansion. Own-property lookup, one-pass nonrecursive string values, literal bypass, reusable immutable compiled functions and structured immutable owner-attributed errors. Unmatched trailing openings remain literal and are scanned once.",
+  "preserved": "Prompt contribution order, empty/literal behavior, named context sections, prior context framing/snapshot identity and current Night history. Registry/assembly still retains source-derived algorithms and MIT notice; no notice removed.",
+  "validation": "Independent values/diagnostics/prototype/recursive-input checks; 200000 UTF16 units of unmatched braces; actual Pi wire, instruction context, task models/skills and archive/channel behavior.",
+  "limits": "Variables must be strings; invalid nonstring values now fail explicitly instead of incidental coercion. System prompt registry and other message/session codecs still remain attributed. No new platform validation claim or dependency change.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-prompt-template-focused.txt",
+      "sha256": "1eeb7420e20a06f308135ce67fb4c3f762952168c8931e3ca2318b6146399500"
+    },
+    {
+      "path": "docs/evidence/pi-native-prompt-template-default.txt",
+      "sha256": "165c1748840efd5e0bbcebc81773ce7a328687ceb98f80af755e8f905f1f3671"
+    },
+    {
+      "path": "docs/evidence/pi-native-prompt-template-integration.txt",
+      "sha256": "2d6d34747c9f417de7f96f86636c0ded336facfddc41b7eaf16660113e6a05dc"
+    },
+    {
+      "path": "docs/evidence/pi-native-prompt-template-checks.txt",
+      "sha256": "c2eaebbefb3f59c97d1a5b1d5a44881ee5d9e1f7e7bf7c027208d70456eb9610"
+    }
+  ]
+}

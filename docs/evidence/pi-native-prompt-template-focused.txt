@@ -1,0 +1,22 @@
+✔ real Pi instruction context retains scoped baseline, successful nested discovery, update/removal and cwd replacement (2511.285672ms)
+✔ prompt templates attribute missing, unset and malformed references without exposing assembly values (4.607298ms)
+✔ native rendering does not recursively interpolate values and preserves literal or empty contributions (0.755994ms)
+✔ compiled templates can be reused with detached assemblies and remain strictly single-pass (0.835824ms)
+✔ native prompt scope precedence, ordering, dynamic context and rendering preserve legacy assembly (17.835718ms)
+✔ native prompt assembly and rendering match the legacy service (16.28672ms)
+✔ prompt tool order preserves hidden known names, rest placement, copied parameters and rejects unknown names (7.004423ms)
+✔ complete section remains authoritative after middleware and duplicates fail (3.559277ms)
+✔ runtime suppression cannot remove required facts and admission refresh restores their current values without rerunning middleware (7.082389ms)
+✔ scoped suppression and contributions dispose independently and unrelated scopes stay separate (4.655991ms)
+✔ invalid registrations fail and detached tool schemas cannot mutate later assembly (3.552066ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (2130.144642ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (3511.834762ms)
+✔ headless Host refuses startup when the required native provider failed to mount (65.611337ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6104.355376

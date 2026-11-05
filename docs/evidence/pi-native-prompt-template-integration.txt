@@ -1,0 +1,69 @@
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (1364.398922ms)
+✔ optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data (738.970546ms)
+✔ standard application composition exposes channel-neutral health and single task creation with no channel installed (903.032388ms)
+✔ discovered third-party plugins load only enabled instances and release transports on host close (591.963435ms)
+✔ real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata (739.183804ms)
+✔ manifest validation rejects duplicate types, escaped entries and duplicate enabled channel identities (317.894285ms)
+✔ generic message readers use neutral identities and enforce conversation scope (287.370674ms)
+✔ multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization (566.612446ms)
+✔ DWS private credentials use supported roots; Windows defaults to the protected current-user login (1.445267ms)
+✔ system-account plugins use the existing CLI context and describe shared login without creating a private vault (263.548279ms)
+✔ group-only DWS never subscribes to private messages or polls private history (268.072388ms)
+✔ default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections (8298.456232ms)
+✔ sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun (1270.958016ms)
+✔ task-required attachment bytes are local and independently restored without the original attachment store (1791.906793ms)
+✔ a committed restore marker blocks startup, can be finalized idempotently, and does not resume work (1558.06354ms)
+✔ default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact (760.982943ms)
+✔ explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals (768.206389ms)
+✔ restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation (777.942323ms)
+✔ an archive filesystem failure after a committed completion reports maintenance without reversing task state (680.96358ms)
+✔ task index restoration preserves decision chronology independently of command-id lexical order (90.878387ms)
+✔ task model defaults and explicit selection preserve the execution selection (2.770635ms)
+✔ native create and resume use the current exact task model on the original session; missing model never creates or resumes (1337.266611ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":641,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":659,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":36,"aborted":false}
+✔ native service isolates task model from delegated execution: old config (2382.684537ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2362,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ native service isolates task model from delegated execution: explicit-owner (1006.112287ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":982,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✔ native personal skills are discovered cheaply, loaded independently by both sessions, and references stay execution-owned (5001.818812ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":497,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4450,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":53,"aborted":false}
+✔ an unavailable native skill is a correctable read and does not leave unknown external effects (3531.260606ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":127,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3378,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":27,"aborted":false}
+✔ task session rejects business tools and late replacements while keeping the original evidence reader (765.475614ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":99,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":598,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":68,"aborted":false}
+✔ unconfigured native profiles expose no bundled personal skills (466.592418ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":401,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✔ an execution same-name replacement does not inherit the native loader read-only accounting (2654.499569ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":69,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2551,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":34,"aborted":false}
+✔ 已读技能和引用变化只提示相关路径，原生重读后消除提示且保留旧版本审计 (443.697102ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":107,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":288,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":48,"aborted":false}
+✔ 执行会话续办恢复已读版本，入口未变而引用改变也能在首次模型步骤看到 (3518.264352ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":80,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3418,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26006.053839
