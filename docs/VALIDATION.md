@@ -1,3 +1,25 @@
+# Owned Unicode output windows replace the retention fork (2026-11-05)
+
+Replaced the 302-line retention fork with application text windows and detached
+item snapshots, wired into job notices and grep previews. The implementation
+selects whole Unicode scalars with exact UTF-8 omission counts, bounds stored
+prefix/suffix contents and avoids iterating huge discarded middles in JavaScript.
+Only string input is admitted; binary decoding belongs to each transport. Removed
+unused generic formatting APIs, old comparison test, direct dev declaration and
+the dedicated notice after removing all local retention implementation copies.
+Inherited job/search implementations and their notices remain. **47 DSH direct
+dev declarations remain**; this is a concrete helper rewrite, not full migration.
+
+Validation: **642 default pass** both before and after successful frozen install,
+**14 focused overlap**, Linux containment **20 pass / 1 Windows skip**, application
+bubblewrap enabled. Independent reference selection covers every stream prefix
+across 196 budget pairs, malformed surrogate chunks, exact omitted counts,
+detached snapshots and a multi-megabyte discarded middle. Real Pi grep spill/read
+and tool rendering tests pass. Source/import/Pi-license/diff guards pass. Frozen
+installation after removing the dependency passes all **630** supply-chain checks
+in **8.5s** with the standard writable store-dir option; no network/policy changes.
+Evidence: `docs/pi-native-output-window-validation.json`.
+
 # Frozen installation retry succeeds (2026-11-05)
 
 `pnpm install --frozen-lockfile --store-dir /tmp/night-bot-pnpm-store`

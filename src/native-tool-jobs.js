@@ -2,7 +2,7 @@
 import z from "@deepseek-ai/schemastery";
 import { boundContextSummary, createUserMessage } from './native-message-protocol.js';
 
-import { TextRetainer } from "./native-output-retention.js";
+import { boundText } from "./runtime/output-window.js";
 import { defineTool } from "./native-tool-protocol.js";
 // Job ids are validated at the model and registry boundaries; the old brand was identity-only.
 const JobId = value => value;
@@ -131,22 +131,8 @@ const PUBLIC_JOB_SCHEMA = {
 	}
 };
 const encoder = new TextEncoder();
-function retainTail(text, maxBytes) {
-	const retainer = new TextRetainer({
-		kind: "tail",
-		maxBytes
-	});
-	retainer.push(text);
-	return retainer.finish().text;
-}
-function retainHead(text, maxBytes) {
-	const retainer = new TextRetainer({
-		kind: "head",
-		maxBytes
-	});
-	retainer.push(text);
-	return retainer.finish().text;
-}
+function retainTail(text, maxBytes) { return boundText(text, {tailBytes:maxBytes}).text; }
+function retainHead(text, maxBytes) { return boundText(text, {headBytes:maxBytes}).text; }
 function fitWithSuffix(content, suffix, maxBytes, omitted) {
 	const complete = `${content}${suffix}`;
 	if (maxBytes === void 0 || encoder.encode(complete).byteLength <= maxBytes) return complete;

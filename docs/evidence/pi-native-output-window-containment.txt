@@ -1,0 +1,47 @@
+✔ actual full-access model shell cannot read another principal raw Markdown or original state (2592.484918ms)
+✔ portable workspace-write shell confines business writes to its installation workspace (743.539838ms)
+✔ portable danger-full-access shell confines business writes to its installation workspace (513.557163ms)
+✔ portable read-only shell confines business writes to its installation workspace (465.864466ms)
+✔ portable model processes cannot read the vault or inherit provider/environment credential values (394.472228ms)
+✔ portable capped grep exposes only its own durable spill and read recovers the omitted tail (679.462379ms)
+✔ task archive fences absolute writes, symlink escapes and private journals in an actual model shell; task temporary files stay local (555.960697ms)
+✔ a real task-scoped capped grep stores and recovers its complete output within that task archive (432.281388ms)
+✔ native kernel sandbox enforces read-only within and outside workspace (255.303368ms)
+✔ native kernel sandbox enforces workspace-write within and outside workspace (116.745131ms)
+✔ actual Pi bash uses owned execution facts and strips ambient namespaces: portable=false (2600.100175ms)
+✔ actual Pi bash uses owned execution facts and strips ambient namespaces: portable=true (614.570014ms)
+✔ actual Pi native confined bash retains one managed effect through explicit background and job collection (2620.333368ms)
+✔ actual Pi native confined bash retains one managed effect through timeout promotion and job collection (598.381758ms)
+(node:62169) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ native code transport uses a real isolated Node RPC worker and enforces workspace writes (2265.114408ms)
+﹣ 受信原生完整模式允许原临时Git工作树及MSYS，默认模式保留产物边界 (1.078895ms) # SKIP
+✔ 原生Host已授权完整模式在恢复绑定时保留，原生逐次模式与只读模式均不改历史身份 (725.467762ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":505,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":158,"aborted":false}
+ℹ Permission recovery phases: [{"phase":"begin","elapsedMs":0},{"phase":"host-ready","elapsedMs":505},{"phase":"created","elapsedMs":606},{"phase":"disposed","elapsedMs":624},{"phase":"resumed","elapsedMs":657},{"phase":"readback","elapsedMs":662}]
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":61,"aborted":false}
+✔ official execution artifact binding makes native FS and shell share one root and reject outside writes (1695.3297ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1677,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (3916.192946ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3875,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":38,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (4210.570869ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4191,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (2159.999394ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2142,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+ℹ tests 21
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 30513.34827

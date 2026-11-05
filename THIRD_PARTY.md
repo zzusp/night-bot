@@ -80,7 +80,7 @@ Trusted shell facts: `src/native-shell-env.js` retains attributed registry/contr
 
 `src/native-tool-skill.js` retains MIT tool-skill schema/catalog/invocation/formatting algorithms from `@deepseek-ai/dsh-tool-skill@0.2.1-alpha.2`; Pi hostMessages replaces legacy visible-surface authority. See `licenses/dsh-tool-skill-MIT.txt`.
 
-`src/native-tool-jobs.js` and `src/native-output-retention.js` preserve MIT job control/notice/rendering and bounded retention algorithms from `@deepseek-ai/dsh-tool-jobs`/`dsh-output-retention@0.2.1-alpha.2`, explicitly attributed compatibility forks; see matching licenses.
+`src/native-tool-jobs.js` retains MIT job control/notice/rendering source from `@deepseek-ai/dsh-tool-jobs@0.2.1-alpha.2`; its notice remains. The old bounded-retention source module and comparison test are removed. `src/runtime/output-window.js` is an application implementation with scalar-based bounded text windows, exact UTF-8 byte accounting and detached item snapshots; tools retain their domain output schemas. No local retention-library source/test copy remains, so its dedicated notice is retired. Other development tools can still depend transitively on the original library and retain their package licenses.
 
 `src/native-fs-local.js`, `native-fs-sandbox.js` and `native-fs-observation-policy.js` preserve MIT filesystem IO/atomic/CAS/watch/Windows-DACL/containment and observation-gate algorithms from matching `@deepseek-ai/dsh-* @0.2.1-alpha.2` packages. These are explicitly attributed compatibility forks, not original security algorithms; canonical FsError/service/type helpers and sandbox writableRoots remain explicit libraries.
 

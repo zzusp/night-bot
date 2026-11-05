@@ -5,7 +5,7 @@ import { isAbsolute, join, parse, relative, sep } from "node:path";
 import { defineTool } from "./native-tool-protocol.js";
 import { existsSync } from "node:fs";
 import { HarnessError } from "./native-llm-protocol.js";
-import { ItemRetainer, TextRetainer } from "./native-output-retention.js";
+import { boundText, itemWindow } from "./runtime/output-window.js";
 //#region lib/types/search-core.js
 /**
 * Shared execution plumbing for the `glob` / `grep` search tools: the
@@ -235,12 +235,7 @@ function toWorkdirRelative(path, workdir) {
 * @returns the preview, suffixed with ` (line truncated)` when bytes were cut.
 */
 function previewLine(line, maxBytes) {
-	const retainer = new TextRetainer({
-		kind: "head",
-		maxBytes
-	});
-	retainer.push(line);
-	const kept = retainer.finish();
+	const kept = boundText(line, {headBytes:maxBytes});
 	return kept.truncated ? `${kept.text} (line truncated)` : kept.text;
 }
 /**
@@ -257,15 +252,10 @@ function previewLine(line, maxBytes) {
 * @returns the retention outcome over the previewed matches.
 */
 function retainGrepMatches(matches, maxMatches, maxLineBytes) {
-	const retainer = new ItemRetainer({
-		kind: "head",
-		maxItems: maxMatches
-	});
-	for (const match of matches) retainer.push({
-		...match,
-		line: previewLine(match.line, maxLineBytes)
-	});
-	return retainer.finish();
+ const window = itemWindow(maxMatches);
+ for (const match of matches) window.append({...match,line:previewLine(match.line,maxLineBytes)});
+ const {values,seen,dropped}=window.snapshot();
+ return {items:values,seen,kept:values.length,truncated:dropped>0,omitted:dropped?{kind:'exact',count:dropped}:{kind:'none'}};
 }
 /**
 * Best-effort save of one COMPLETE formatted search result through
