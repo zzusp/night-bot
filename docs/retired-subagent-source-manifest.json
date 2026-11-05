@@ -24,7 +24,12 @@
       "sourcePackage": "@deepseek-ai/dsh-subagent-{spawn,fork}-in-process",
       "sourceVersion": "0.2.1-alpha.2",
       "license": "MIT",
-      "retainedNotice": "licenses/dsh-subagent-providers-MIT.txt"
+      "removedNotice": "licenses/dsh-subagent-providers-MIT.txt",
+      "removalEvidence": {
+        "sourceRemovalCommit": "e14acec",
+        "removedTests": ["test/pi-native-subagent-providers.test.js", "test/pi-subagent-provider-wire.test.js"],
+        "review": "Former local source and upstream spawn/fork implementations inspected; no provider definitions or continuous 40-token copies in 1049 parsed application/test/script modules. Shared test fixture contains consumers, not provider implementations. Distinct manager source and its notice remain."
+      }
     }
   ],
   "remainingReferences": [
