@@ -77,7 +77,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     { name: new URL('../../src/native-workspace.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [{ name: new URL('../../src/native-skills.js', import.meta.url).href }] : []),
     { name: new URL('../../src/native-agent-presets.js', import.meta.url).href, config: { default: 'native-test' } },
-    ...(options.resident ? [{ name: new URL('../../src/native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } }, { name: new URL('../../src/native-attachments.js', import.meta.url).href, config: { dshHome: join(root, 'attachment-home') } }] : []),
+    ...(options.resident ? [{ name: new URL('../../src/native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: false } }, { name: new URL('../../src/native-attachments.js', import.meta.url).href, config: { storageRoot: join(root, 'attachment-home') } }] : []),
   ])
   signal?.throwIfAborted()
   await ctx.loader.await()

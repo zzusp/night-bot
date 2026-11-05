@@ -1,3 +1,27 @@
+# Retired direct development declarations (2026-11-05)
+
+Twelve further DSH declarations had only source-attribution comments rather than
+complete package-name references in parsed JS/MJS/CJS. After inspecting dynamic
+resolution, temporarily removed their root symlinks, ran regression with those
+links absent, verified they were still absent, then restored every temporary
+link. No dependency package contents or nested peers changed; no downloads or
+policy bypass were used. Only root declarations/importers are removed; canonical
+workspace overrides and retained peer snapshots stay. **59 DSH dev declarations
+remain**. Source-derived implementations and their notices remain attributed.
+
+With root links absent: **634 default +142 runtime +47 routing +390 domain +20
+Linux containment pass**, one Windows-only skip. The first runtime run found two
+failures from a test-host attachment row still using the retired home option;
+changed that fixture to its explicit owned root and repeated all 142 runtime
+cases successfully. Source/import/Pi-license/diff guards pass. See [dependency
+evidence](pi-native-retired-deps-validation.json).
+
+This is local negative dependency visibility verification, not fresh installation
+acceptance. Registry metadata/attestation HTTP 503 still blocks successful frozen
+package-policy verification. Actual Windows kernel/ACL acceptance remains open.
+
+---
+
 # Explicit storage and credential import removal (2026-11-05)
 
 Credentials require an explicit `path`; attachments require `storageRoot`.
