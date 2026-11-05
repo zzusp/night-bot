@@ -1,3 +1,29 @@
+> Current default wiring and source-specific results are recorded in
+> [PI-NATIVE-DEFAULT-STATUS.md](PI-NATIVE-DEFAULT-STATUS.md) and
+> [pi-default-checkpoint-evidence.json](pi-default-checkpoint-evidence.json).
+> Sections below are chronological earlier checkpoints; statements that the
+> official AgentSession is not yet the default have been superseded.
+> Cohorts may use `NIGHT_BOT_TEST_CONCURRENCY=2` for isolated files; the default
+> remains one worker, with a validated range of one through eight. This changes
+> test scheduling only, not application sandbox or lifecycle deadlines.
+
+## Clean installation policy
+
+The four unused direct DSH development entries were removed after a 1049-module
+AST import/require/resolve audit and a dynamic-name review. This leaves 32 direct
+entries (six local compatibility aliases and 26 registry packages); dsh-base
+still brings transitive packages. Runtime source and its required attribution
+were not removed by deleting dependency declarations.
+
+A clean pnpm 11 installation exposed unconfigured build-script decisions that an
+incremental install had not exercised. pnpm-workspace.yaml now explicitly allows
+the pinned koffi prebuild and node-pty install/postinstall paths. The retained
+development subprocess package only restores the helper's executable mode.
+Google GenAI's no-op and protobufjs's version-warning install hooks are explicitly
+disabled. The actual standard frozen installation then passed; no registry,
+lockfile resolution or supply-chain checks were bypassed. This Linux result
+does not prove Windows native-build or containment parity.
+
 # Official Pi projection and native message boundary (2026-11-05)
 
 The required target is all session/history/context/message behavior through Pi

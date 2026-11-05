@@ -1,3 +1,12 @@
+allowBuilds:
+  # Temporary dev fixture: restores the executable bit on node-pty's helper.
+  '@deepseek-ai/dsh-subprocess-local': true
+  # Published JS is used; the no-op/version-warning install hooks are unnecessary.
+  '@google/genai': false
+  # Pinned native packages use their reviewed prebuild/install paths.
+  koffi: true
+  node-pty: true
+  protobufjs: false
 overrides:
   "@deepseek-ai/dsh-scope": "link:./packages/scope-compat"
   "@deepseek-ai/dsh-web": "link:./packages/capability-compat/web"

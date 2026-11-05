@@ -1,4 +1,4 @@
-> 当前重构进度见 [PI-NATIVE-REBUILD.md](PI-NATIVE-REBUILD.md)。DSH 历史数据导入、v0–v4 转换器和插件 ABI 豁免已移除。下文兼容保留记录是上一阶段的架构说明，不能据此认定本次已彻底移除 DSH 派生代码。
+> 当前默认接线与实测证据见 [PI-NATIVE-DEFAULT-STATUS.md](PI-NATIVE-DEFAULT-STATUS.md)，重构记录见 [PI-NATIVE-REBUILD.md](PI-NATIVE-REBUILD.md)。DSH 历史数据导入、v0–v4 转换器和插件 ABI 豁免已移除。下文兼容保留记录是上一阶段的架构说明，不能据此认定本次已彻底移除 DSH 派生代码。
 
 # Pi 非可视化迁移
 
