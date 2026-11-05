@@ -19,7 +19,7 @@ test('explicit instruction roots retain precedence, duplicate suppression, UTF-8
  for(const [path,text] of [['home/AGENTS.md','GLOBAL_TOKEN'],['shared/AGENTS.md',' GLOBAL_TOKEN '],['project/AGENTS.md','ROOT_TOKEN </system-reminder>'],['project/CLAUDE.md',' ROOT_TOKEN </system-reminder> '],['project/sub/AGENTS.local.md','子目录'.repeat(120)]])await writeFile(join(root,path),text)
  const options={cwd:join(root,'project/sub'),instructionHome:join(root,'home'),agentsHome:join(root,'shared'),maxBytes:65536}
  const files=await discoverBaselineInstructionFiles(options)
- assert.deepEqual(files.map(file=>file.displayPath),['$NIGHT_BOT_INSTRUCTIONS/AGENTS.md','$NIGHT_BOT_AGENTS/AGENTS.md','AGENTS.md','CLAUDE.md','sub/AGENTS.local.md'])
+ assert.deepEqual(files.map(file=>file.displayPath),['night-bot://instructions/AGENTS.md','night-bot://agents/AGENTS.md','AGENTS.md','CLAUDE.md','sub/AGENTS.local.md'])
  const full=await loadBaselineInstructions(options)
  assert.equal(full.text.split('GLOBAL_TOKEN').length-1,1)
  assert.equal(full.text.split('ROOT_TOKEN').length-1,1)
@@ -40,7 +40,11 @@ test('removing an owned global instruction root refreshes Pi context without pro
  const files=new Map([['/fixture/owned/AGENTS.md','OWNED_GLOBAL_TOKEN'],['/fixture/work/AGENTS.md','PROJECT_TOKEN'],['/fixture/work/user-global/AGENTS.md','LOOKALIKE_TOKEN'],['/fixture/home/AGENTS.md','EXTERNAL_DSH_TOKEN']])
  const previous=fixture(t,{files,config:{instructionHome:'/fixture/owned',agentsHome:'/fixture/shared'}}),first=await previous.step(),baseline=first.messages.find(message=>message.source.kind==='agent-instructions')
  assert.ok(JSON.stringify(baseline).includes('OWNED_GLOBAL_TOKEN'))
- const current=fixture(t,{files,authority:[baseline],config:{agentsHome:'/fixture/shared'}}),paths=[],resolve=current.fs.resolve.bind(current.fs)
+ const oldBaseline=structuredClone(baseline)
+ for(const change of oldBaseline.source.changes)change.path=change.path.replace('night-bot://instructions','$DSH_HOME').replace('night-bot://agents','$DSH_AGENTS_HOME')
+ const oldIdentity=JSON.parse(oldBaseline.source.baselineIdentity);delete oldIdentity.instructionContextVersion;delete oldIdentity.instructionHome;delete oldIdentity.agentsHome
+ oldBaseline.source.baselineIdentity=JSON.stringify(oldIdentity)
+ const current=fixture(t,{files,authority:[oldBaseline],config:{agentsHome:'/fixture/shared'}}),paths=[],resolve=current.fs.resolve.bind(current.fs)
  current.fs.resolve=async(path,options)=>{paths.push(path);return resolve(path,options)}
  const result=await current.step(),next=result.messages.find(message=>message.source.kind==='agent-instructions')
  assert.ok(next);assert.match(JSON.stringify(next),/PROJECT_TOKEN/)
@@ -65,4 +69,9 @@ test('instruction shutdown aborts and drains admitted preparation without late i
 })
 test('instruction cancellation and providerless mounting do not read or inject context',async t=>{
  const control=new AbortController();control.abort(new Error('fixture cancelled'));const h=fixture(t,{signal:control.signal});await assert.rejects(h.step(),/fixture cancelled/);const h2=fixture(t);h2.ctx.get=()=>undefined;assert.equal((await h2.step()).messages.length,1)
+})
+
+test('private instruction roots reject relative and tilde aliases instead of selecting another home',async t=>{
+ const root=await fresh(t)
+ for(const field of ['instructionHome','agentsHome'])for(const path of ['relative','~/outside'])await assert.rejects(discoverBaselineInstructionFiles({cwd:root,[field]:path}),error=>error.code==='NIGHT_INSTRUCTION_ROOT_INVALID')
 })

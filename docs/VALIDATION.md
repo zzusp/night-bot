@@ -1,3 +1,23 @@
+# Explicit instruction roots and logical source labels (2026-11-05)
+
+Removed the home-path library expansion and display aliases, including its skill
+provider copy. Private instruction/agents roots require absolute native paths;
+Host-owned physical locations and the standard `.agents` default are unchanged.
+Fresh instruction source labels use `night-bot://` identifiers. Previously stored
+Night Bot changes keep their logical scope without parsing old display paths;
+context identity version 2 refreshes the model context. Public skillDirs retain
+their existing installation-relative handling. This does not import DSH data.
+
+Validation: **636 default pass**, **21 focused overlap**, **7 task-skill pass**,
+**41 archive/channel pass** (partly overlapping default). Source/import/hash/Pi
+license and diff guards pass. Historical instruction replay is covered using a
+generated old-shaped audit fixture, not a cold external DSH archive. No fresh
+install or new platform validation; the known npm HTTP 503 remains unresolved.
+Removed only the home-path notice after removing its local implementations;
+retained instruction discovery/rendering/reconciliation and watcher attribution.
+Direct DSH dev declarations remain **58**. Evidence:
+`docs/pi-native-home-protocol-validation.json`.
+
 # Primitive identity shim removal (2026-11-05)
 
 The nominal primitive-brand module consisted only of functions returning their

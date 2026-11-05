@@ -7,13 +7,14 @@ import { createUserMessage } from './native-message-protocol.js';
 
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import z from "@deepseek-ai/schemastery";
-// Historical display labels are read only when reconciling Night Bot's own
-// existing Pi audit messages. They never select a live filesystem root.
-const DSH_HOME_ENV='DSH_HOME', AGENTS_HOME_ENV='DSH_AGENTS_HOME', DEFAULT_DSH_HOME_DISPLAY='~/.dsh', DEFAULT_AGENTS_HOME_DISPLAY='~/.agents';
-const INSTRUCTION_HOME_DISPLAY='$NIGHT_BOT_INSTRUCTIONS', AGENTS_HOME_DISPLAY='$NIGHT_BOT_AGENTS';
-const absoluteHome=path=>resolve(path==='~'?homedir():path.startsWith('~/')||path.startsWith('~\\')?join(homedir(),path.slice(2)):path);
-const resolveAgentsHome=configured=>absoluteHome(configured??join(homedir(),'.agents'));
-const agentsHomeDisplay=path=>path===resolve(join(homedir(),'.agents'))?DEFAULT_AGENTS_HOME_DISPLAY:AGENTS_HOME_DISPLAY;
+// Root locations are explicit native paths; source labels are logical metadata,
+// never environment variables or path-resolution aliases.
+const INSTRUCTION_HOME_DISPLAY='night-bot://instructions', AGENTS_HOME_DISPLAY='night-bot://agents';
+function configuredDirectory(path,label){
+ if(typeof path!=='string'||!isAbsolute(path))throw Object.assign(new TypeError('Instruction root must be absolute: '+label),{code:'NIGHT_INSTRUCTION_ROOT_INVALID'})
+ return resolve(path)
+}
+const resolveAgentsHome=configured=>configuredDirectory(configured??join(homedir(),'.agents'),'agentsHome');
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { assertNever } from "./native-values.js";
@@ -51,6 +52,7 @@ const Config = z.object({
 */
 function workspaceBaselineIdentity(config, cwd, projectRoot) {
 	return JSON.stringify({
+		instructionContextVersion: 2,
 		projectRoot: relative(cwd, projectRoot),
 		instructionHome: config.instructionHome ?? null,
 		agentsHome: config.agentsHome,
@@ -92,7 +94,7 @@ function resolveConfig(config) {
 */
 function resolveDiscoveryConfig(config) {
 	return {
-		instructionHome: config.instructionHome===undefined?undefined:absoluteHome(config.instructionHome),
+		instructionHome: config.instructionHome===undefined?undefined:configuredDirectory(config.instructionHome,'instructionHome'),
 		agentsHome: resolveAgentsHome(config.agentsHome),
 		projectRootMarkers: config.projectRootMarkers ?? [...DEFAULT_PROJECT_ROOT_MARKERS],
 		instructionFileCandidates: resolveInstructionFileCandidates(config.instructionFileCandidates, DEFAULT_INSTRUCTION_FILE_CANDIDATES),
@@ -188,8 +190,8 @@ const USER_GLOBAL_FILE = "AGENTS.md";
 * @returns `user-global`, `agents-global`, `.`, or the containing project-relative directory.
 */
 function scopeForDisplayPath(displayPath) {
-	if (displayPath === `${INSTRUCTION_HOME_DISPLAY}/AGENTS.md` || displayPath === `${DEFAULT_DSH_HOME_DISPLAY}/AGENTS.md` || displayPath === `$${DSH_HOME_ENV}/AGENTS.md`) return USER_GLOBAL_DIRECTORY;
-	if (displayPath === `${AGENTS_HOME_DISPLAY}/AGENTS.md` || displayPath === `${DEFAULT_AGENTS_HOME_DISPLAY}/AGENTS.md` || displayPath === `$${AGENTS_HOME_ENV}/AGENTS.md`) return AGENTS_GLOBAL_DIRECTORY;
+	if (displayPath === `${INSTRUCTION_HOME_DISPLAY}/AGENTS.md`) return USER_GLOBAL_DIRECTORY;
+	if (displayPath === `${AGENTS_HOME_DISPLAY}/AGENTS.md`) return AGENTS_GLOBAL_DIRECTORY;
 	return dirname(displayPath);
 }
 /**
@@ -496,7 +498,7 @@ function renderAgentInstructions(files, options) {
 function userGlobalRoots(config) {
  const roots=[]
  if(config.instructionHome!==undefined)roots.push({directory:USER_GLOBAL_DIRECTORY,home:config.instructionHome,display:INSTRUCTION_HOME_DISPLAY})
- roots.push({directory:AGENTS_GLOBAL_DIRECTORY,home:config.agentsHome,display:agentsHomeDisplay(config.agentsHome)})
+ roots.push({directory:AGENTS_GLOBAL_DIRECTORY,home:config.agentsHome,display:AGENTS_HOME_DISPLAY})
  return roots
 }
 function signalOptions(signal) {

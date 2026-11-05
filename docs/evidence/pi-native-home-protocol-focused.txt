@@ -1,0 +1,29 @@
+✔ real Pi instruction context retains scoped baseline, successful nested discovery, update/removal and cwd replacement (1734.401423ms)
+✔ explicit instruction roots retain precedence, duplicate suppression, UTF-8 byte budgets and safe framing (46.888766ms)
+✔ removing an owned global instruction root refreshes Pi context without probing a project-global lookalike (8.335534ms)
+✔ Pi authority alone owns baseline visibility and change/removal reconciliation (5.355373ms)
+✔ nested successful touches use token identity, dedupe pending context, and ignore errors/cancellation (3.280651ms)
+✔ instruction reads retain the capability provider and cannot fall back to raw filesystem on denial (4.483856ms)
+✔ instruction shutdown aborts and drains admitted preparation without late inbox publication (1.501543ms)
+✔ instruction cancellation and providerless mounting do not read or inject context (0.659739ms)
+✔ private instruction roots reject relative and tilde aliases instead of selecting another home (1.029174ms)
+✔ skill discovery uses explicit and agents roots, ignores DSH environment roots and leaves their bytes untouched (31.731439ms)
+✔ Pi parser preserves strict legacy framing, CRLF body, invocation spellings and ambiguous delimiter fallback (5.921312ms)
+✔ skill discovery and body reload obey the filesystem service; only declared bundled roots use trusted host reads (6.976941ms)
+✔ nontext or invalid files are ignored and filesystem I/O failures are never downgraded into an empty catalog (2.881172ms)
+✔ first-party write/edit observations invalidate caches synchronously even when OS watching is disabled (8.27292ms)
+✔ missing skill roots become live without broad ancestor recursion and watchers drain on disposal (23.817378ms)
+✔ a physical root replacement is rewatched and project watcher ownership stays bounded (116.789322ms)
+✔ symlink skill bundles load through the same filesystem policy and disposed providers reject further reads (5.022459ms)
+✔ default headless Host observes external skill edits through its scoped native provider (803.545412ms)
+✔ watcher startup failure keeps readable candidates explicitly incomplete and later healthy discovery can recover (6.167251ms)
+✔ cancellation after filesystem resolution prevents subsequent catalog or body reads (4.954172ms)
+✔ private skill roots reject relative or tilde home aliases before watcher admission (2.030556ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1888.41944
