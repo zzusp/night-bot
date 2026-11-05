@@ -118,7 +118,7 @@
       "source": "coordination-sessions.js",
       "sourceSha256": "c5ce357fd79c143f78a23746baad3f9f02e8faa32ad86b9246170128e4d5a27f",
       "status": "adapted",
-      "sha256": "d01a142822cedc904cc50687af1178c800bbc5fef662b351450f3035efa2745f",
+      "sha256": "efe728f9dee81d64a6043aeb72b25cb4c3616ea9de89897a45c0f2156983b498",
       "adaptation": "Portable triage uses stable durable session identity and immediate steer for appended same-batch input while preserving group fairness for other roles."
     },
     {
@@ -1067,7 +1067,7 @@
       "source": "task-topic-coordinator.js",
       "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
       "status": "adapted",
-      "sha256": "9107bec05dee5d0f365aa8854860a761a88efe3cf339ab045d516c876369730e",
+      "sha256": "61ca0249a56375642fa6bbcd48f28edb275b238f562a3de4301b4fce8a04409a",
       "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body."
     },
     {
@@ -1126,7 +1126,7 @@
       "source": "topic-runtime.js",
       "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
       "status": "adapted",
-      "sha256": "9e585daaa803afa3f7c54be79504b4568edb0585cd7a5023456e289d1b40637c",
+      "sha256": "2c8158b4075ea17c8f00eb4c93b8f84f554741adf18542799d8549f7d654b693",
       "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body. Topic visibility, body retries and read provenance use live Pi model context; writer/authority failures propagate. Exact decision-schema admission returns declared structured correction before dispatch; issue scope is arguments rather than invented field-specific diagnostics."
     },
     {

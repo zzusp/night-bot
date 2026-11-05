@@ -378,7 +378,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     if (state?.status === 'exhausted') { request.exhausted = true; return agent }
     if (dispatchRequest) return dispatchRequest(request, Object.freeze({ ...textMessage(text, images), id: messageId }))
     const pending = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])]
-    const recorded = pending.some((message) => message.id === messageId) || agent.session?.snapshotEvents?.().some((event) => event.type === 'user/message' && event.data?.id === messageId)
+    const recorded = pending.some((message) => message.id === messageId) || (agent.piSession?agent.admission.status(messageId)==='admitted':agent.session?.snapshotEvents?.().some((event) => event.type === 'user/message' && event.data?.id === messageId))
     if (!recorded) agent.steer(Object.freeze({ ...textMessage(text, images), id: messageId }))
     return agent
   }
@@ -433,7 +433,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
           const visible = pending.some(hasBody) || coordinationMessages(agent)?.some(hasBody)
           // 原文仍在 surface 时仅发送短提醒；压缩已移出则恢复正文，不能靠历史已消费记录假定可见。
           const text = visible ? `[COORDINATION_RESUME]\n请求 ${request.requestId} 仍待提交；继续处理当前可见的原请求，不重复执行已完成的外部动作。` : request.text
-          const consumed = agent.session?.snapshotEvents?.().some((event) => event.type === 'user/message' && event.data?.id === id)
+          const consumed = (agent.piSession?agent.admission.status(id)==='admitted':agent.session?.snapshotEvents?.().some((event) => event.type === 'user/message' && event.data?.id === id))
           if (!pending.some((message) => message.id === id) && !consumed) {
             const message = Object.freeze({ ...textMessage(text, visible ? [] : request.images), id })
             if (dispatchRequest) agent = await dispatchRequest(request, message)
@@ -953,13 +953,14 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     return { requestIds, ...(compact ? compactReplyReviewCandidates(candidates) : { candidates }), candidateCount: candidates.length }
   }
   function register(agentCtx, groupId, scope) {
+    const tools=agentCtx.get?.('tools')??agentCtx.tools
     const tool = (name, description, parameters, execute, argumentRejection) => {
       if (scope && !coordinationTools(coordinationRole(scope)).includes(name)) return
       if (scope && name === 'group_topic_title_submit' && !scope.requestId.startsWith('coord-title-')) return
       if (scope && name === 'group_topic_summary_submit' && !scope.requestId.startsWith('coord-summary-')) return
       if (scope && name === 'group_task_prompt_get' && !workflowPromptsEnabled) return
       if (name === 'group_decision_submit' && !scope) decisionSubmitters.set(groupId, execute)
-      return agentCtx.tools.register({ name, description, parameters, ...(argumentRejection ? { argumentRejection } : {}), output: objectOutput, execute: async (args, exec) => {
+      return tools.register({ name, description, parameters, ...(argumentRejection ? { argumentRejection } : {}), output: objectOutput, execute: async (args, exec) => {
       if (!live()) throw new Error('resident_runtime_closed')
       assertSession(exec, groupId, scope, name)
       if (scope && (args.requestId !== undefined && args.requestId !== scope.requestId
@@ -1143,7 +1144,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
         // Derive from the current revision even while its async envelope is being built.
         const updateMessageId = `message-${request.requestId}-revision-${request.revision}`
         const pending = [...(agent?.inbox?.nextStep ?? []), ...(agent?.inbox?.nextTurn ?? [])]
-        const consumed = agent?.session?.snapshotEvents?.().some(event => event.type === 'user/message' && event.data.id === updateMessageId)
+        const consumed = (agent?.piSession?agent.admission.status(updateMessageId)==='admitted':agent?.session?.snapshotEvents?.().some(event => event.type === 'user/message' && event.data.id === updateMessageId))
         if (!consumed || pending.some(message => message.id === updateMessageId))
           return { status: 'decision-update-unread', revision: request.revision, nextAction: 'consume-current-update' }
       }

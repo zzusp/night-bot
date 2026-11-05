@@ -1,15 +1,19 @@
+import {isDeepStrictEqual} from 'node:util'
+import {z} from 'zod'
 import { randomUUID } from 'node:crypto'
 import { fingerprint, topicDecisionRecovery } from './topic-model.js'
 import { createTopicCoordinator } from './topic-runtime.js'
-import { createCoordinationSessions, createCoordinationStepGate, coordinationTools } from './coordination-sessions.js'
+import { createCoordinationSessions, coordinationTools } from './coordination-sessions.js'
 import { createCoordinationResourceTools } from './coordination-resources.js'
 import { buildReplyReviewCandidates } from './decision.js'
-import { sessionWorkspace, nameSession } from './session-workspaces.js'
+import { sessionWorkspace, sessionTitle } from './session-workspaces.js'
 import { groupReplyInstructions } from './group-message.js'
 import { groupNotificationInstructions } from './group-notification.js'
 import { createFixedTopicHandler } from './fixed-topic-handler.js'
 import { taskBoundaryInstructions } from './task-boundary-instructions.js'
 
+const coordinationIdentity=z.strictObject({groupId:z.string().min(1),requestId:z.string().min(1),role:z.enum(['route','decision','review']),sessionId:z.string().min(1)})
+const coordinationAuditKinds=Object.freeze({'coordination/identity':value=>coordinationIdentity.safeParse(value).success})
 const output = { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
 const sameStringSet = (a, b) => a.length === b.length && a.every(value => b.includes(value))
 const taskMatterInstructions = '同一业务事项可以包含多个功能和验收项，不逐功能点创建Task。先结合本次新增需求、Topic摘要和关联任务简要状态选择适配的原任务；同一轮工作追加目标、验收项或截图交付要求时，优先按任务状态使用task-context/task-reopen，核对并保留仍有效的完整要求，不能让相关需求在各自objective中互相排除。task-context在目标或验收变化时用replan，单纯补充资料用preserve；同一事项的后续截图交付沿原Task补充。查无适配任务再创建包含本轮完整目标的new-task；确有独立执行交付边界时才拆Task，内部并行交给同一Owner的执行会话。Topic和Task不机械一一对应。首包摘要和本次增量足够判断时直接使用；修改原任务前按现有readCall核对目标、验收及当前版本，不为判断事项边界读取全执行历史。'
@@ -39,29 +43,31 @@ export function taskIndexPage(tasks, offset, limit, query = '') {
 }
 
 export function registerTopicRoleInstructions(agentCtx, { role, request, store }) {
-  if(agentCtx.get('channels')?.groupContext(request.groupId)?.type==='chat')agentCtx.systemPrompt.section({name:'channel:chat-semantics',order:141,text:'这是单人私聊chat，原消息来自当前认证的对话者，不要求群@或多人负责人判断；回复引用对应原消息，不@其他人、不使用群体广播。仍保留不确定的初诊与后续Topic处理边界。'})
-  if(request.firstTierFeedback)agentCtx.systemPrompt.section({name:'triage:preliminary',order:140,text:'一级初诊负责依据当前批次与Topic摘要作不确定的初步反馈，调用group_topic_initial_reply，分话题且逐条引用对应原消息；不是结论、不是执行结果。同批次追加用同一会话steer，最多15条。已有初步反馈不得再发。二级继续Topic路由和任务处理，不能把初步反馈当成完成证据。'})
-  if(role==='decision'&&agentCtx.get('runtimePaths')?.mode==='portable')agentCtx.systemPrompt.section({name:'triage:second-tier',order:140,text:'一级已负责逐话题引用原消息的初步反馈。二级继续结合Topic处理路由、任务和后续实质回复，不重复接收确认；初步判断不是结论、不是业务执行或完成证据。'})
-  if (role !== 'route') agentCtx.systemPrompt.section({ name: 'dingtalk-group-reply', order: 119, text: `${groupReplyInstructions}\n${groupNotificationInstructions}` })
-  agentCtx.systemPrompt.section({ name: 'dingtalk-reply-ownership', order: 130, text:
+  const systemPrompt=agentCtx.get?.('systemPrompt')??agentCtx.systemPrompt
+  if(agentCtx.get?.('channels')?.groupContext(request.groupId)?.type==='chat')systemPrompt.section({name:'channel:chat-semantics',order:141,text:'这是单人私聊chat，原消息来自当前认证的对话者，不要求群@或多人负责人判断；回复引用对应原消息，不@其他人、不使用群体广播。仍保留不确定的初诊与后续Topic处理边界。'})
+  if(request.firstTierFeedback)systemPrompt.section({name:'triage:preliminary',order:140,text:'一级初诊负责依据当前批次与Topic摘要作不确定的初步反馈，调用group_topic_initial_reply，分话题且逐条引用对应原消息；不是结论、不是执行结果。同批次追加用同一会话steer，最多15条。已有初步反馈不得再发。二级继续Topic路由和任务处理，不能把初步反馈当成完成证据。'})
+  if(role==='decision'&&agentCtx.get?.('runtimePaths')?.mode==='portable')systemPrompt.section({name:'triage:second-tier',order:140,text:'一级已负责逐话题引用原消息的初步反馈。二级继续结合Topic处理路由、任务和后续实质回复，不重复接收确认；初步判断不是结论、不是业务执行或完成证据。'})
+  if (role !== 'route') systemPrompt.section({ name: 'dingtalk-group-reply', order: 119, text: `${groupReplyInstructions}\n${groupNotificationInstructions}` })
+  systemPrompt.section({ name: 'dingtalk-reply-ownership', order: 130, text:
     request.trigger === 'task-facts'
       ? '本轮由已绑定Topic处理任务事实。只判断回复或沉默并更新摘要，不能调用任务动作、路由或把事实当新需求。默认输入是有界摘要和证据引用；只有影响决定的缺口才补读。无需重新总结执行会话，不复述内部标识或逐条日志。'
       : '接收与回复使用同一种Topic。跨Topic消息路由时，在route.replyTopic中从本条topics选一个现有/本批业务Topic负责整体回复，不新建回复专用Topic。Decision输入replyOwnership明确谁回复：其他Topic可执行本事项任务动作，使用reason说明由指定Topic统一回复，不各自发送确认。回复Topic结合整条原文说明本次接纳的事项及真实处理进度，不把其他Topic未处理说成已经执行；后续实质结果仍可回复。' })
-  agentCtx.systemPrompt.section({ name: 'dingtalk-task-continuation', order: 121, text: role === 'route' ? '先区分共同业务目标与独立交付；同一事项追加材料、截图、验收或返工优先关联原Topic，不因Task已完成或负责人变化另拆话题。批量跟进可查询group_task_list及group_task_context_get核对目标；目录仅为摘要，不继承授权。当前请求已读的同版本目录和材料可复用，hasMore按nextCall续读。候选摘要足以排除不同目标时不强读历史；需要原文时复制候选readCall.arguments，不猜topicId。' : `${taskContinuationInstructions}\n同一请求当前上下文中已读的Task目录可直接复用，不重复读同一查询第一页。group_task_list返回query、snapshotFingerprint和nextCall；续页照用nextCall，改变query从offset=0重新查询，当前目录指纹变化后重新核对。目录和本轮linkedTasks.snapshots均只有有界状态摘要；提交已有任务动作前，按group_task_context_get核对完整目标、授权和版本，不能把摘要当作完整任务合同。group_reply_review_get在固定决策/审阅会话中由Host绑定本请求，{}即可读取，不能填写别的requestIds。${role === 'decision' ? '本决策会话group_topic_context_get可用{}读取Host绑定的当前固定版本。' : '当前会话没有唯一当前Topic；候选摘要足以排除不同业务目标时直接路由，不因关键词相近强读历史。确需历史时原样复制候选readCall.arguments，不得传空参数，不从标题猜topicId。'}` })
-  agentCtx.systemPrompt.section({ name: 'dingtalk-task-boundary', order: 123, text: `${taskBoundaryInstructions}${role === 'decision' ? '\n' + taskMatterInstructions : ''}` })
-  if (role === 'decision' && request.trigger !== 'task-facts') agentCtx.systemPrompt.section({ name: 'dingtalk-task-fact-feedback', order: 125, text: taskFactFeedbackInstructions })
-  if (role === 'decision') agentCtx.systemPrompt.section({ name: 'dingtalk-linked-task-context', order: 124,
+  systemPrompt.section({ name: 'dingtalk-task-continuation', order: 121, text: role === 'route' ? '先区分共同业务目标与独立交付；同一事项追加材料、截图、验收或返工优先关联原Topic，不因Task已完成或负责人变化另拆话题。批量跟进可查询group_task_list及group_task_context_get核对目标；目录仅为摘要，不继承授权。当前请求已读的同版本目录和材料可复用，hasMore按nextCall续读。候选摘要足以排除不同目标时不强读历史；需要原文时复制候选readCall.arguments，不猜topicId。' : `${taskContinuationInstructions}\n同一请求当前上下文中已读的Task目录可直接复用，不重复读同一查询第一页。group_task_list返回query、snapshotFingerprint和nextCall；续页照用nextCall，改变query从offset=0重新查询，当前目录指纹变化后重新核对。目录和本轮linkedTasks.snapshots均只有有界状态摘要；提交已有任务动作前，按group_task_context_get核对完整目标、授权和版本，不能把摘要当作完整任务合同。group_reply_review_get在固定决策/审阅会话中由Host绑定本请求，{}即可读取，不能填写别的requestIds。${role === 'decision' ? '本决策会话group_topic_context_get可用{}读取Host绑定的当前固定版本。' : '当前会话没有唯一当前Topic；候选摘要足以排除不同业务目标时直接路由，不因关键词相近强读历史。确需历史时原样复制候选readCall.arguments，不得传空参数，不从标题猜topicId。'}` })
+  systemPrompt.section({ name: 'dingtalk-task-boundary', order: 123, text: `${taskBoundaryInstructions}${role === 'decision' ? '\n' + taskMatterInstructions : ''}` })
+  if (role === 'decision' && request.trigger !== 'task-facts') systemPrompt.section({ name: 'dingtalk-task-fact-feedback', order: 125, text: taskFactFeedbackInstructions })
+  if (role === 'decision') systemPrompt.section({ name: 'dingtalk-linked-task-context', order: 124,
     text: '输入linkedTasks只包含Host在本轮话题版本创建时重新读取的本群关联任务状态摘要，不沿用旧会话审批。snapshots含有界标题、状态、版本和结果摘要，不含完整目标或执行正文；需要对已有任务采取动作时按reads中的readCall核对完整上下文。hasMore=true或业务目标指向其他任务时再查询目录；输入未含linkedTasks时使用原查询工具。replyOwnership指定每条来源的回复归属：混合批次推进全部本Topic事项，只确认由本Topic负责回复的来源，其他来源由其replyTopic统一答复。提交前仍由Host校验当前来源、Topic和Task版本；新消息与新授权必须重新判断。' })
-  if (role !== 'route') agentCtx.systemPrompt.section({ name: 'dingtalk-task-progress-query', order: 124,
+  if (role !== 'route') systemPrompt.section({ name: 'dingtalk-task-progress-query', order: 124,
     text: '普通进度询问只读取原任务当前事实并一次答复，不能作为任务补充、恢复、重开、依赖或持续观察；提到多个任务不等于批量执行授权。单项在原Topic用actions:[]和reply回答；涉及多个任务时在对应Topic读取相关任务状态后答复，不创建持续观察任务。明确催办或追加要求才按原文范围选择任务动作，不能仅因问“修复了没”而唤醒Owner。' })
-  if (role !== 'route') agentCtx.systemPrompt.section({ name: 'dingtalk-running-input', order: 119,
+  if (role !== 'route') systemPrompt.section({ name: 'dingtalk-running-input', order: 119,
     text: 'task-context 必须显式填写progressImpact：preserve声明目标、授权、验收和既有证据有效性不变，适用于明确要求推进的提醒、定位信息和事实澄清；仅询问进度不属于任务补充；不要重复附带objective/acceptanceCriteria/stageTasks。replan声明真实目标、验收或证据变化，须根据原文补判，不能因字段遗漏或无法判断就默认replan。收回或改变授权必须authorizationChange=changed并使用replan；明确取消用task-cancel独立路径。缺失分类或preserve与变更字段冲突会被拒绝，原执行保持；先读取来源补判，仍无法判定则不提交任务动作并说明缺口。preserve的context只写本次新增信息、来源及必要限制，不复述不变目标、验收或历史事实。Host会保留普通补充的原作业并在安全步骤送入；补充受理不代表已进入模型步骤。' })
-  if (role !== 'route') agentCtx.systemPrompt.section({ name: 'dingtalk-reply-recipient', order: 121, text: '回复由话题语义决定对象：非空回复先选本次收件人；确需引用时用 replyToMessageId 选择相关真人消息，引用作者可能被平台自动@，必须属于最终接收集合。无合适引用或需避免隐式提及叠加时省略 replyToMessageId，显式指定收件人并直接发普通群消息。atOpenDingTalkIds 是可多人的收件人集合，结合原始需求、验收反馈和明确知会约定选择；后续补充者或最近发言人不自动替换原接收人，也不自动加入全部历史参与者。只填写原文提供的受信身份ID，不按相似姓名猜ID，不用正文@姓名代替钉钉原生提及。普通消息决策省略或空数组默认提醒所选目标作者；任务事实回复须显式填写收件人集合。对本助手同事项回复对象的明确纠正不是业务转派；核对原回复与人员身份后，可用 actions:[] 和 reply 适当沟通，不因此取消或重建任务。身份不明先澄清，不猜测；无需每次纠正都另发消息。' })
-  agentCtx.systemPrompt.section({ name: 'dingtalk-topic-coordination', order: 120, text: () => {
+  if (role !== 'route') systemPrompt.section({ name: 'dingtalk-reply-recipient', order: 121, text: '回复由话题语义决定对象：非空回复先选本次收件人；确需引用时用 replyToMessageId 选择相关真人消息，引用作者可能被平台自动@，必须属于最终接收集合。无合适引用或需避免隐式提及叠加时省略 replyToMessageId，显式指定收件人并直接发普通群消息。atOpenDingTalkIds 是可多人的收件人集合，结合原始需求、验收反馈和明确知会约定选择；后续补充者或最近发言人不自动替换原接收人，也不自动加入全部历史参与者。只填写原文提供的受信身份ID，不按相似姓名猜ID，不用正文@姓名代替钉钉原生提及。普通消息决策省略或空数组默认提醒所选目标作者；任务事实回复须显式填写收件人集合。对本助手同事项回复对象的明确纠正不是业务转派；核对原回复与人员身份后，可用 actions:[] 和 reply 适当沟通，不因此取消或重建任务。身份不明先澄清，不猜测；无需每次纠正都另发消息。' })
+  const topicInstructions=() => {
     const group = store.getGroup(request.groupId)
     if (role === 'route') return `当前仅处理Route请求 ${request.requestId}。群职责：${group?.responsibility ?? ''}。Agent名称/别名：${JSON.stringify(store.getAgentNames?.() ?? [])}。结合整批原文、受信作者、引用及已有Topic判断共同业务事项和职责范围；归属不是交办或授权，@、人名和别名不单独决定负责人。职责内具体事项即使他人负责、没有助手Task，也保留业务Topic上下文；仅真正职责外事项使用固定类别。上下文解释省略但不继承他人权限。完整保留原文约束与附件来源，不猜附件内容、人员身份、数据、链接或执行结果，不泄漏凭据或内部标识。已有同目标事项优先复用，新独立目标才建Topic；多Topic选择唯一effectOwner和整条消息的replyTopic，不新建回复专用Topic。通过group_topic_route_submit提交固定批次完整归属；只读查询不能变成交办，不执行Task、不回复群聊。陈旧版本按Host反馈读取当前请求后修订，不重放已接纳效果。`
     return `当前仅处理 ${role} 请求 ${request.requestId}。群职责：${group?.responsibility ?? ''}。收到 [GROUP_TOPIC_DECISION] 后根据固定 Topic 版本及当前增量，通过 group_decision_submit 提交。只有累计事实、结论或未决事项变化时才提交topicUpdate对应字段；省略表示保留，空数组表示明确清空，不能因省略清空。摘要首次缺失时补齐；变化时提供简洁完整的新摘要，不复写不变事实，不把承接写成完成。摘要缺失或不足以理解历史时，先用 group_topic_context_get 读取固定版本原文，不仅复述最新消息。basisMessageIds 必须包含当前增量原文。已有任务按需读取group_task_list/context；需要回复且同时核对旧Task时优先group_task_context_get({taskIds,includeReplyReview:true})一并读取；独立审阅用group_reply_review_get({compact:true})，共享ref在返回的sourceMessages/tasks中解析，必要原文沿消息/任务工具读取；任务动作使用 topicRefs 和当前 inputVersion/runSequence。纯讨论可以 actions:[] 加 reason。routing-required 先完成路由；topic-stale/task-stale 读取当前版本重做判断。accepted 只表示意图持久接受，不表示完成或送达。仅处理原文真实授权，不能把同事间聊天变成交办。是否承接由 TopicDecision 结合需求原文、引用、已有任务及前后分工判断，不能只看当前一句。@、点名、cc: 和 personAliases 只提供参与者线索，不能单独证明交办或他人负责，也不能把最后一个 @ 当作事项负责人。先区分需求提出、通知同步、实际分工和明确转交；多人对话逐项核对谁提出什么要求、谁负责什么。上下文已明确交给本助手且属于本群职责、形成可验证目标时，按已有任务状态选择 task-context/task-reopen；查无对应任务才选择 new-task，不因当前只 @ 同事或省略助手称呼而重复索要确认。引用中出现助手名字也不自动授权另一个事项。只有结合上下文仍不能确定是否交办、没有明确其他负责人且确实需要助手承接时，才选择 task-proposal，询问“这个事项是否需要我处理？”，暂不创建任务；普通讨论或无行动目标不自动提议。topicUpdate.summary 记录承接或静默的判断及分工依据，basisMessageIds/basisUnitRefs 引用对应原文，保持可追溯。task-proposal 回复只询问是否交办，不承诺“我会处理”、已开始、已执行或已完成；new-task 的接收确认也不表示执行完成。消息明确 @其他同事或正文点名时，结合原文、引用、personAliases 和任务上下文区分实际负责人、通知收件人、引用信息与同时向本助手求助。话题归属与助手动作分开判断。职责内业务消息即使明确其他人负责、来自其他助手通知或只在引用同事信息，仍保留对应业务 Topic 的完整上下文，不以缺少本助手 Task 为由剥离。不能只因 @ 别人就硬过滤，本助手已有任务的新事实仍归原业务 Topic；没有本助手原Task，或新增信息与原Task推进无关时，明确他人负责且未要求本助手参与、明确纠正本助手误介入（如“没你的事”“不是找你”），用 actions:[]、reason 和 topicUpdate.summary 记录事实，省略 reply，不创建 task-proposal/new-task、不唤醒已有任务、不追问、不主动回答；已有未完成Task的路线、责任、时间或执行依据受影响时，先按事实回流规则交原Owner判断，不将静默群回复等同静默内部回流。他人处理进展只作为其报告的业务事实，不能自动作为本助手任务完成证据。同时向本助手提出的诉求仍按原文处理，只有确实超出本群职责才归职责外话题。只有明确转交或新授权才可改变本助手任务范围，信息补充本身不授权重做。personAliases 是已确认的本群人员身份，不是助手别名；仅提到人名不等于指定负责人，不按相似字或昵称推断交办。当前 Agent 名称/别名：${JSON.stringify(store.getAgentNames?.() ?? [])}。任务目标忠实保留原请求动作范围，不把诊断/观察扩写成修复、实施、发布，不追加未经授权的业务验收。附件只沿本请求明确引用，通过 group_message_get/group_resource_get 读取；读取失败须保留限制，不能猜测正文。`
-  } })
+  }
+  systemPrompt.section({name:'dingtalk-topic-coordination',order:120,text:topicInstructions,officialText:topicInstructions})
 }
 
 export function createTaskContextReadTool({ request, assert, store, readArchivedTask, readReplyReview }) {
@@ -124,22 +130,27 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
   }
   const presence = Object.freeze({})
   const sessions = createCoordinationSessions({ eventPrefix: null, onStage,
+    assertHostScheduler:()=>{if(ctx.get('agents').currentInitiator())throw new Error('coordination_host_scheduler_required')},
     isCurrent: request => !closed && topics.isCurrentRequest(request),
     onError: error => report(error.coordinationGroupId, error),
     create: async entry => {
       const { request, role, sessionId } = entry
       const agentPreset = legacy.getAgentConfig().agentPreset
-      const creation={ sessionId, seed: [{ type: 'plugin:dingtalk/coordination', seq: 0, time: Date.now(), ignorable: true, data: { groupId: request.groupId, requestId: request.requestId, role } }],
+      const identity={groupId:request.groupId,requestId:request.requestId,role,sessionId}
+      const prior=request.firstTierFeedback&&await ctx.sessionPersistence.stat(sessionId)
+      if(prior){const stored=await ctx.sessionPersistence.readNative(sessionId,{requireComplete:true}),identities=stored.audit.filter(receipt=>receipt.domain==='coordination'&&receipt.kind==='identity');if(identities.length!==1||!isDeepStrictEqual(identities[0].payload,identity))throw new Error('coordination_session_identity_mismatch')}
+      const creation={ sessionId,auditKinds:coordinationAuditKinds,initialReceipts:prior?[]:[{version:1,domain:'coordination',kind:'identity',payload:identity}],
+        authorizeInput:packet=>entry.active&&topics.isCurrentRequest(request)&&isDeepStrictEqual(entry.authorizedPackets.get(packet.id),packet),
+        beforeRequest:()=>{if(!entry.active||!topics.isCurrentRequest(request))throw new Error('coordination_request_inactive')},
         meta: { cwd: await sessionWorkspace(root, role), origin: 'subagent', delegationDepth: 1, agentPreset },
         agentOptions: typeof models === 'function' ? models() : models,
         setup: async agentCtx => {
           const presets = agentCtx.get('agentPresets')
           if (!presets) throw new Error('agent_presets_required')
-          const preset = await presets.mount(agentCtx, agentPreset)
-          if (preset?.id !== undefined && preset.id !== agentPreset) throw new Error('coordination_agent_preset_invalid')
+          // The official factory mounts the header preset before setup.
           const assert = exec => sessions.assert(exec.agent, request.groupId, request.requestId)
           topics.register(agentCtx, request.groupId, request)
-          agentCtx.tools.register({ name: 'group_task_list', description: '分页查询当前群未归档任务的最新轻量目录，包含已完成任务；目标和结果仅为摘要，完整正文用 group_task_context_get。同一请求当前可见的已读目录可直接复用，不重复从offset=0读取；hasMore=true 时直接使用nextCall，保留query和limit，不用请求的limit推算偏移。改变query须从offset=0查询；snapshotFingerprint变化表示当前目录已变化，需重新核对关联。',
+          agentCtx.get('tools').register({ name: 'group_task_list', description: '分页查询当前群未归档任务的最新轻量目录，包含已完成任务；目标和结果仅为摘要，完整正文用 group_task_context_get。同一请求当前可见的已读目录可直接复用，不重复从offset=0读取；hasMore=true 时直接使用nextCall，保留query和limit，不用请求的limit推算偏移。改变query须从offset=0查询；snapshotFingerprint变化表示当前目录已变化，需重新核对关联。',
             parameters: { type: 'object', properties: { query: { type: 'string' }, offset: { type: 'integer' }, limit: { type: 'integer' } }, additionalProperties: false }, output,
             execute: ({ query = '', offset = 0, limit = 50 }, exec) => {
               assert(exec)
@@ -148,44 +159,47 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
               const tasks = store.listTasks().filter(task => task.groupId === request.groupId && (!needle || `${task.title ?? ''} ${task.objective ?? ''}`.toLowerCase().includes(needle)))
               return taskIndexPage(tasks, offset, limit, needle)
             } })
-          agentCtx.tools.register(createTaskContextReadTool({ request, assert, store, readArchivedTask, readReplyReview: role === 'decision' ? (...args) => topics.readReplyReview(...args) : undefined }))
+          agentCtx.get('tools').register(createTaskContextReadTool({ request, assert, store, readArchivedTask, readReplyReview: role === 'decision' ? (...args) => topics.readReplyReview(...args) : undefined }))
           for (const tool of createCoordinationResourceTools({ request, assertCurrent: assert,
             readMessage: legacy.readGroupMessage?.bind(legacy) ?? legacy.readMessage?.bind(legacy), readResource: legacy.readGroupResource?.bind(legacy) ?? legacy.readResource?.bind(legacy), readImage: legacy.readImage?.bind(legacy),
-          })) agentCtx.tools.register(tool)
-          agentCtx.on('agent/pre-step', createCoordinationStepGate(entry, request => topics.isCurrentRequest(request)))
+          })) agentCtx.get('tools').register(tool)
+          agentCtx.on('tools/execute',async(exec,next)=>{
+            const result=await next()
+            entry.sliceSteps=(entry.sliceSteps??0)+1
+            const limit=role==='route'?1:3
+            if(!entry.active||!topics.isCurrentRequest(request)){exec.concludeTurn();return result}
+            if(entry.yieldRequested||request.routingPaused||entry.hasContenders?.()&&(entry.sliceSteps>=limit||Date.now()-entry.sliceStartedAt>=30_000)){entry.sliceYielded=!request.routingPaused;exec.concludeTurn()}
+            return result
+          })
           const allowed = new Set(coordinationTools(role))
-          agentCtx.tools.restrict({ allow: [...allowed].filter(name => agentCtx.tools.get(name)) })
-          agentCtx.tools.guard(execution => allowed.has(execution.name) ? undefined : 'coordination_tool_outside_role')
+          agentCtx.get('tools').restrict({ allow: [...allowed].filter(name => agentCtx.get('tools').get(name)) })
+          agentCtx.get('tools').guard(execution => allowed.has(execution.name) ? undefined : 'coordination_tool_outside_role')
           registerTopicRoleInstructions(agentCtx, { role, request, store })
         } }
-      const prior=request.firstTierFeedback&&await ctx.sessionPersistence.stat(sessionId)
-      const {sessionId:_id,seed:_seed,meta:_meta,...resumption}=creation
+      const {sessionId:_id,initialReceipts:_receipts,meta:_meta,...resumption}=creation
       const handle=prior?await ctx.agents.resume({...resumption,resumeSessionId:sessionId}):await ctx.agents.create(creation)
       handles.add(handle)
-      const dispose = handle.dispose.bind(handle)
-      handle.dispose = async () => { try { await dispose() } finally { handles.delete(handle) } }
-      nameSession(ctx, handle.agent.session, role, request.title ?? store.getGroup(request.groupId)?.name)
-      const permissions = handle.agent.ctx.get('permissionPresets')
-      permissions?.set(handle.agent.session, 'danger-full-access')
+      const dispose = handle.dispose.bind(handle);let unsubscribe
+      handle.dispose = async () => { await dispose();unsubscribe?.();handles.delete(handle) }
+      try{
+      const actor=handle.agent,manager=actor.piSession.sessionManager,title=sessionTitle(role,request.title??store.getGroup(request.groupId)?.name)
+      if(manager.getSessionName()!==title)manager.appendSessionInfo(title)
+      const permissions=actor.ctx.get('permissionPresets')
+      if(!permissions)throw new Error('coordination_permission_presets_required')
+      await permissions.set(actor,'danger-full-access');await actor.receipts.commit()
+      let turn
+      unsubscribe=handle.session.subscribe(event=>{
+        if(event.type==='agent_start')turn={spanId:`turn:${sessionId}:${randomUUID()}`,stage:'turn',requestId:request.requestId,sessionId,attempt:request.attempt??0,startedAt:new Date().toISOString(),completedAt:null}
+        if(!turn||!['agent_start','agent_settled'].includes(event.type))return
+        const value={...turn,...event.type==='agent_settled'?{completedAt:new Date().toISOString()}:{}}
+        timingTail=timingTail.then(()=>onStage(request,value)).catch(error=>report(request.groupId,error))
+        if(event.type==='agent_settled')turn=undefined
+      })
       return handle
+      }catch(error){try{await handle.dispose()}catch(cleanup){throw new AggregateError([error,cleanup],'Coordination startup cleanup failed',{cause:error})}throw error}
     },
   })
-  const turns = new Map()
   let timingTail = Promise.resolve()
-  const stopTiming = ctx.on?.('session/event', (session, event) => {
-    if (!['turn/start', 'turn/end'].includes(event.type)) return
-    const entry = sessions.identity({ session })
-    if (!entry) return
-    const key = String(session.id)
-    if (event.type === 'turn/start') turns.set(key, { spanId: `turn:${key}:${event.seq}`, stage: 'turn',
-      requestId: entry.request.requestId, sessionId: key, attempt: entry.request.attempt ?? 0,
-      startedAt: new Date(event.time).toISOString(), completedAt: null })
-    const stage = turns.get(key)
-    if (!stage) return
-    const value = { ...stage, ...(event.type === 'turn/end' ? { completedAt: new Date(event.time).toISOString() } : {}) }
-    timingTail = timingTail.then(() => onStage(entry.request, value)).catch(error => report(entry.request.groupId, error))
-    if (event.type === 'turn/end') turns.delete(key)
-  })
   function validateReplyReview(review, candidates, { confirmationTaskIds = [] } = {}) {
     if (candidates.length === 0 && review === undefined) return
     if (review === undefined) throw new Error('group_reply_review_required')
@@ -270,6 +284,7 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
     async whenIdle() {
       await topics.drain()
       while (handles.size || dispatches.size) {
+        sessions.assertHealthy()
         await Promise.allSettled([...dispatches])
         await Promise.all([...handles].map(handle => handle.agent.whenIdle()))
         await topics.drain()
@@ -279,6 +294,6 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
       await serial
       await timingTail
     },
-    async close() { closed = true; await fixedTopics?.close(); await topics.close(); await sessions.close(); await serial; await timingTail; stopTiming?.() },
+    async close() { closed = true; await fixedTopics?.close(); await topics.close(); await sessions.close(); await Promise.all([...handles].map(handle=>handle.dispose())); await serial; await timingTail },
   }
 }

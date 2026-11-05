@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util'
 // 请求会话只管理模型运行句柄；业务版本、授权与提交仍由 Topic coordinator 持有。
 import { createHash, randomUUID } from 'node:crypto'
 import { createUserMessage } from '../../src/native-message-protocol.js';
@@ -31,8 +32,10 @@ export function coordinationTools(role) {
   return [...reads, ...submits]
 }
 
-export function createCoordinationSessions({ create, isCurrent, onError, onStage = async () => {}, eventPrefix = 'dingtalk' }) {
+export function createCoordinationSessions({ create, isCurrent, onError, onStage = async () => {}, eventPrefix = 'dingtalk', assertHostScheduler = () => {} }) {
   const entries = new Map(), bySession = new Map(), tails = new Map(), queues = new Map(), active = new Map(), pending = new Set(), routeBursts = new Map()
+  const drainFailures=new Map()
+  const assertHealthy=()=>{if(drainFailures.size)throw new AggregateError([...drainFailures.values()],'Coordination resources remain owned after failed drain')}
   let closed = false, timingTail = Promise.resolve()
   const reportStage = (request, stage) => {
     timingTail = timingTail.then(() => onStage(request, stage)).catch(error => onError(Object.assign(error, { coordinationGroupId: request.groupId })))
@@ -40,13 +43,30 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
   }
   const keyOf = request => `${request.groupId}:${request.requestId}`
   async function obtain(request) {
+    assertHostScheduler();assertHealthy()
     const key = keyOf(request)
     let entry = entries.get(key)
     if (entry && !entry.active) { await entry.disposal; entry = entries.get(key) }
     if (entry) return entry.ready
     const suffix = createHash('sha256').update(key).digest('hex').slice(0, 24)
-    entry = { request, role: coordinationRole(request), sessionId: request.firstTierFeedback?request.sessionId:`session-coordination-${suffix}-${randomUUID().slice(0, 8)}`, active: true }
+    entry = { request, role: coordinationRole(request), sessionId: request.firstTierFeedback?request.sessionId:`session-coordination-${suffix}-${randomUUID().slice(0, 8)}`, active: true, authorizedPackets:new Map() }
     entries.set(key, entry)
+    // Register disposal from the Host scheduler, before any SDK delivery begins.
+    // A tool may only signal completion: inheriting its AsyncLocalStorage scope
+    // into dispose would correctly trip the official reentrant close guard.
+    entry.finishSignal=Promise.withResolvers()
+    entry.disposal=entry.finishSignal.promise.then(async()=>{
+      try{await entry.ready}catch{return}
+      if(entry.cancelRequested)await entry.handle.cancel({kind:'user'})
+      await entry.handle.whenIdle()
+      await entry.handle.dispose()
+    }).catch(error=>{drainFailures.set(key,error);onError(Object.assign(error,{coordinationGroupId:entry.request.groupId}))}).finally(()=>{
+      settle(entry);entry.release?.();if(drainFailures.has(key))return
+      bySession.delete(entry.sessionId)
+      if(entries.get(key)===entry)entries.delete(key)
+      pending.delete(entry.disposal)
+    })
+    pending.add(entry.disposal)
     entry.ready = (async () => {
       try {
         entry.handle = await create(entry)
@@ -57,6 +77,7 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
         // 尚未获得句柄，也未steer用户输入；仅这一阶段允许自动重新创建。
         if (!entry.handle && error.message !== 'coordination_request_inactive') error.coordinationStartupFailure = true
         if (entries.get(key) === entry) entries.delete(key)
+        entry.finishSignal.resolve()
         throw error
       }
     })()
@@ -73,7 +94,7 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     entry?.settlement?.resolve()
     if (entry) entry.settlement = undefined
   }
-  function identity(agent) { return bySession.get(String(agent?.session?.id)) }
+  function identity(agent) { const entry=bySession.get(String(agent?.id));return entry?.handle?.agent===agent?entry:undefined }
   function assert(agent, groupId, requestId) {
     const entry = identity(agent)
     if (!entry?.active || entry.request.groupId !== groupId || !isCurrent(entry.request)
@@ -89,19 +110,34 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     }
     const entry = entries.get(keyOf(request))
     if (!entry) return
-    if (!entry.active) { if (cancel) entry.ready.then(() => entry.handle.agent.cancel({ kind: 'user' })).catch(() => {}); return }
-    entry.active = false
-    // 当前工具结果必须先返回；pre-step gate 会阻止终态后的额外模型调用。
-    const disposal = entry.ready.then(async () => {
-      if (cancel) entry.handle.agent.cancel({ kind: 'user' })
-      await entry.handle.agent.whenIdle()
-      await entry.handle.dispose()
-    }).catch(error => { if (error.message !== 'coordination_request_inactive') onError(Object.assign(error, { coordinationGroupId: entry.request.groupId })) }).finally(() => { settle(entry); entry.release?.(); bySession.delete(entry.sessionId); if (entries.get(keyOf(request)) === entry) entries.delete(keyOf(request)); pending.delete(disposal) })
-    pending.add(disposal)
-    entry.disposal = disposal
+    entry.cancelRequested||=cancel
+    if(!entry.active)return
+    entry.active=false
+    entry.finishSignal.resolve()
+  }
+
+  async function deliver(entry,message){
+    const actor=entry.handle.agent
+    if(!actor.piSession||actor.session)throw new Error('coordination_official_actor_required')
+    const content=[]
+    for(const part of message.content??[]){
+      if(part.type==='text')content.push({type:'text',text:part.text})
+      else if(part.type==='image'&&part.attachment){
+        const image=await actor.ctx.get('attachments').readImage(part.attachment,actor.lifecycle.signal)
+        content.push({type:'image',data:Buffer.from(image.data).toString('base64'),mimeType:image.ref.mediaType})
+      }else if(part.type==='image'&&typeof part.data==='string'&&typeof part.mimeType==='string')content.push(structuredClone(part))
+      else throw new Error('coordination_input_content_invalid')
+    }
+    const packet={id:message.id,source:structuredClone(message.source),content}
+    const prior=entry.authorizedPackets.get(packet.id)
+    if(prior&&!isDeepStrictEqual(prior,packet))throw new Error('coordination_input_conflict')
+    entry.authorizedPackets.set(packet.id,packet)
+    if(!actor.admission.has(packet.id))await entry.handle.enqueue(packet)
+    else if(!isDeepStrictEqual(actor.admission.lookupPacket(packet.id),packet))throw new Error('coordination_input_conflict')
+    return entry.handle.deliver(packet.id,{deliverAs:'steer'})
   }
   function dispatch(request, message) {
-    const liveEntry=entries.get(keyOf(request));if(request.appendIngress&&liveEntry?.active&&liveEntry.handle&&active.get(request.groupId)===liveEntry){liveEntry.handle.agent.steer(message);return Promise.resolve(liveEntry.handle.agent)}
+    const liveEntry=entries.get(keyOf(request));if(request.appendIngress&&liveEntry?.active&&liveEntry.handle&&active.get(request.groupId)===liveEntry)return deliver(liveEntry,message).then(()=>liveEntry.handle.agent)
     const queuedAt = Date.now()
     let resolve, reject
     const delivered = new Promise((yes, no) => { resolve = yes; reject = no })
@@ -152,14 +188,9 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
             await reportStage(request, { spanId, stage: 'queue', requestId: request.requestId,
               attempt: request.attempt ?? 0, startedAt: new Date(queuedAt).toISOString(), completedAt: new Date().toISOString() })
             const agent = entry.handle.agent
-            const exists = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])].some(item => item.id === message.id)
-              || agent.session.snapshotEvents().some(event => event.type === 'user/message' && event.data?.id === message.id)
-            if (!exists) {
-              if (eventPrefix) agent.session.append(`${eventPrefix}/coordination-dispatched`, { requestId: request.requestId, queuedAt, dispatchedAt: Date.now(), role: entry.role, fairnessTurn, priorRouteBurst, queueDepth: queue.length })
-              agent.steer(message)
-            }
+            const running=deliver(entry,message)
             resolve(agent)
-            await Promise.race([agent.whenIdle(), released])
+            await Promise.race([running.then(()=>agent.whenIdle()), released])
             if (entry.release === release) entry.release = undefined
             if (entry.sliceYielded && !entry.request.routingPaused && !closed && entry.active && isCurrent(request)
               && !queue.some(item => keyOf(item.request) === keyOf(request))) {
@@ -179,13 +210,13 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     }
     return delivered
   }
-  return { get, identity, assert, dispatch, finish, whenSettled,
+  return { get, identity, assert, dispatch, finish, whenSettled, assertHealthy,
     async close() {
       closed = true
       for (const entry of entries.values()) finish(entry.request, { cancel: true })
       await Promise.allSettled([...tails.values(), ...pending])
       await timingTail
-      routeBursts.clear()
+      routeBursts.clear();assertHealthy()
     },
   }
 }
