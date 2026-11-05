@@ -17,12 +17,14 @@ storage. Temporal is a generic calendar dependency, pinned separately in the loc
 
 ## Local managed-process backend
 
-`src/process/{index,runner,runner-launch-B2zsQ1Dz,output}.js` derive from
+`src/process/{index,runner,runner-launch-B2zsQ1Dz}.js` derive from
 `@deepseek-ai/dsh-subprocess-local@0.2.1-alpha.2`, Copyright (c) 2026 DeepSeek,
 under MIT (`licenses/dsh-subprocess-local-MIT.txt`). This is an explicit source fork
 of the platform backend, not a from-scratch implementation or a claim that all
 DSH semantics have been removed. Local contracts and runner resolution replace
 DSH service/loading dependencies; Windows process FFI remains a separate library.
+
+`src/process/output.js` is replaced by an application implementation using a private circular byte buffer and lazy, exclusive, owner-only complete-output spooling. It handles short writes, fsync/seal, spool budget retirement, symlink-root refusal and detached snapshots. Its existing internal provider-facing method contract is retained while the platform fork is migrated. The former collector source is recorded only as historical provenance in `docs/process-fork-manifest.json`; the notice remains necessary for the provider and runner sources.
 
 `src/process/control.js` derives from `@deepseek-ai/dsh-subprocess@0.2.1-alpha.2`, Copyright (c) 2026 DeepSeek, under the same MIT terms. The legacy control marker is retained for unmodified worker interoperability.
 

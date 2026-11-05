@@ -1,3 +1,32 @@
+# Owned byte-ring process output capture (2026-11-05)
+
+Replaced the inherited chunk-list collector with a private circular byte buffer
+and lazy complete-output spooling. Allocation grows only with observed output up
+to the byte limit; ingress/snapshots are copied. Cursor offsets describe the full
+byte stream independently for each reader. Full files use exclusive owner-only
+creation, short-write handling and fsync/seal; budget or I/O failure removes the
+advertised full-file path and preserves the bounded tail. Root symlinks and unsafe
+POSIX writable directories are refused before opening. The current provider-facing
+constructor/method boundary remains internal while launch/termination is migrated.
+
+Updated only the reviewed output module LF/CRLF restart fingerprints and the
+corresponding core manifest; no dynamic source blessing or relaxed recovery gate.
+The output source moves to historical replacement provenance; five other platform
+files remain attributed forks and now have their hashes checked by the source
+guard. **47 DSH direct dev declarations remain**; their notices remain. Bare
+primitive callers retain a private OS temporary fallback; portable Host keeps its
+existing owned spill directory. Ancestor-replacement TOCTOU and OS cleanup failure
+limits remain explicit, not claimed eliminated.
+
+Validation: **648 default pass**, focused **39 pass / 5 Windows-PowerShell skip**,
+archive/channel/cold-job recovery **34 pass** (overlaps default), Linux containment
+**20 pass / 1 Windows skip**, bubblewrap enabled. Independent byte-stream reference
+covers 80 appends at six limits, all wraps/cursors, binary bytes and detached
+snapshots; real process/PTY/descendant termination and complete-file readback pass.
+Source/import/Pi-license/fork-hash/diff guards pass. No package/lock changes here;
+latest standard frozen install succeeded in the preceding phase. Evidence:
+`docs/pi-native-process-output-validation.json`.
+
 # Owned Unicode output windows replace the retention fork (2026-11-05)
 
 Replaced the 302-line retention fork with application text windows and detached

@@ -31,13 +31,6 @@
       "adaptedSha256": "82805c4bc3f975ff6b8d2db4ec4b2f216b26eb6b4292751670de344960939a77"
     },
     {
-      "path": "src/process/output.js",
-      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
-      "sourceFile": "lib/output.js",
-      "sourceSha256": "4f77ef6da608d36df168c99177e9b527e7145df1418845eba567635e64a4c2a3",
-      "adaptedSha256": "1557cbbf8c2204f17fd8d7f7af7d31862924bee82ac07ec31631965cc9277003"
-    },
-    {
       "path": "src/process/control.js",
       "sourcePackage": "dsh-subprocess@0.2.1-alpha.2",
       "sourceFile": "lib/control.js",
@@ -50,6 +43,20 @@
       "sourceFile": "lib/index.js",
       "sourceSha256": "622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9",
       "adaptedSha256": "8c9166f720b9002035167be149e3a2ee6291f4ab5da5879496361006dd779ff4"
+    }
+  ],
+  "replacedSources": [
+    {
+      "path": "src/process/output.js",
+      "historicalSource": {
+        "path": "src/process/output.js",
+        "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+        "sourceFile": "lib/output.js",
+        "sourceSha256": "4f77ef6da608d36df168c99177e9b527e7145df1418845eba567635e64a4c2a3",
+        "adaptedSha256": "1557cbbf8c2204f17fd8d7f7af7d31862924bee82ac07ec31631965cc9277003"
+      },
+      "replacementSha256": "c515195a74ece81854ab9c57f8dd7d1ba5ed8fe5943496c60dc7fdd89e9093cc",
+      "implementation": "Application private circular byte buffer, complete-output spool and independent cursor/snapshot interface; original chunk-list collector source removed. Platform provider/runner and control source remain attributed."
     }
   ]
 }

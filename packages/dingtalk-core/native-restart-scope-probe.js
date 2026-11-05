@@ -25,8 +25,8 @@ export const nativeRestartProviderFiles = Object.freeze([
   },
   {
     "path": "src/process/output.js",
-    "sha256": "1557cbbf8c2204f17fd8d7f7af7d31862924bee82ac07ec31631965cc9277003",
-    "sha256CRLF": "f7f7d2003832c0c6a9ffc6e793302c6719d3057a8e22079b8a03d09fb6adede0"
+    "sha256": "c515195a74ece81854ab9c57f8dd7d1ba5ed8fe5943496c60dc7fdd89e9093cc",
+    "sha256CRLF": "6d69e6b7e80c4c3d887800cdef78ce649b4adef9fbbe26332f08336e8c854405"
   },
   {
     "path": "src/process/runner-launch-B2zsQ1Dz.js",
