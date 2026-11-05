@@ -1,3 +1,5 @@
+Source checkpoint: 4568d3f
+391 tests; task/business source unchanged since this run.
 ℹ tests 391
 ℹ suites 0
 ℹ pass 391
@@ -5,4 +7,4 @@
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 16656.311245
+ℹ duration_ms 18396.39573

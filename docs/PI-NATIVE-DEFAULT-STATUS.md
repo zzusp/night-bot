@@ -1,6 +1,7 @@
 # Official Pi default runtime checkpoint
 
-Checkpoint: `d31d117`. This is not a completed removal of all DSH-derived code.
+Checkpoint: `4568d3f` (following official file/tool wiring at `1cc6ebf`).
+This is not a completed removal of all DSH-derived code.
 No push, deployment or main merge has been performed.
 
 The default Host uses public Pi 1.5.0 AgentSession and SessionManager for inference,
@@ -12,9 +13,17 @@ with independent ownership, privacy, archive and drain safeguards preserved.
 
 ## Verified integration
 
-- `pnpm test`: 1117 passed, zero failed/cancelled; source/import guards passed.
+- Final stable `pnpm test`: 1173 passed, zero failures/cancellations; all
+  source/import guards passed (421 runtime modules, zero external DSH imports).
 - `pnpm test:domain`: 391 passed. `pnpm test:routing`: 47 passed.
-- Effect reconciliation core/native-store/real Host recovery: 44 passed.
+- Current effect reconciliation core/real Host recovery: 44 passed.
+- Current priority file/task/permission/state cohort: 60 passed; domain: 391.
+- Actual live preserve SDK/actor/lease/producer and unknown-effect closure:
+  3 passed with application bwrap kept, using the approved outer execution mode.
+- Intentional repeated action under a new authenticated source versus duplicate
+  request/cold recovery/unknown effect: 2 passed. Startup cleanup: 7 passed.
+- Native provider retry and task/review/dialogue recovery cohort: 35 passed;
+  business ledger regression: 168 passed. Counts overlap.
 - Operator HTTP/CLI/default application/privacy/backup: 5 passed. A separate
   actual Linux model-process credential probe: 1 passed, application bwrap kept.
 - Official skill input/source/queue/revocation/cancellation: 23 passed.
@@ -24,11 +33,9 @@ with independent ownership, privacy, archive and drain safeguards preserved.
 - Frozen installation previously passed: 621 entries; direct DSH development
   declarations remain 36, production declarations and external runtime imports 0.
 
-Counts overlap. Summary files and full-log digests are recorded in
-pi-default-checkpoint-evidence.json. The latest full test includes the branch-cut
-reconciliation fix and tracked naming reads. The later lifecycle-listener fix was
-separately checked by jobs ledger/tools (5 passed) and the actual four-lease-epoch
-single-task listener regression. No Windows kernel claim is made.
+Counts overlap. pi-default-checkpoint-evidence.json records source checkpoints,
+summary files and full-log hashes; older entries retain their own checkpoint
+rather than being presented as new verification. No Windows kernel claim is made.
 
 ## Unknown effects
 
@@ -43,19 +50,27 @@ See EFFECT-RECONCILIATION.md for the exact operator flow and proof limits.
 
 ## Remaining migration and failed checks
 
-`pnpm test:runtime` is not passing: 32 passed, 123 failed. These 155 tests still
-largely construct old PiLoop/Owner/delegation fixtures; failures include explicit
-PI_SKILL_OBSERVATION_PORT_REQUIRED. Retained human-review, notification, recovery,
-model selection, cancellation and no-replay contracts must be ported to actual
-single-task official sessions. Do not hide them by dropping the group.
+The last complete runtime diagnostic was 32 passed, 123 failed, using old
+PiLoop/Owner/delegation fixtures. Follow/model, human, jobs, skills, progress and
+provider cohorts have since moved to actual official Single sessions. The service
+cohort is still being finalized, so no whole-runtime passing result is claimed.
+See RUNTIME-SERVICE-CONTRACT-MIGRATION.md for retained contracts and explicit
+retirement of cancelled structures.
 
-The file-tool replacement remains an unmounted prototype; default file tools and
-some process/platform components remain attributed derivations. Official Pi
-read buffers full files; a separately named bounded read_window has prototype
-coverage but still needs real NativeTools registration, exact pre-effect checks,
-resource budgets and lifecycle/IO joins before switching production defaults.
-New resource limits and public path/edits[] schemas are behavior changes requiring
-explicit documentation. A passing prototype does not prove default Host wiring.
+Default file tools now mount public Pi read/write/edit and an independently
+bounded read_window through the actual NativeTools registry. Exact capability
+identity, mutation preflight, actor-scoped resource budgets, awaited IO joins and
+default Host wiring are tested. Read buffering/window limits and public
+path/edits[] schemas are explicit behavior changes documented in PI-FILE-TOOLS.md.
+The file cohort passed 51 tests and separate actual Linux boundary checks passed
+9; some process/platform components and old fixture file-tool code remain derived.
+
+Task context and preserve delivery now retain real authenticated source and use
+the same official AgentSession steer queue. Night no longer restarts its own
+provider retry budget after native exhaustion. Unknown effects retain strict
+original-input drain/closure proofs. See PI-TASK-INPUT-AND-RETRY.md, including the
+existing same-input intentional-repeat limitation; equal arguments across new
+authenticated sources are not globally deduplicated.
 
 Some legacy source aliases, manager modules and test copies remain. Their DSH
 notices stay until all corresponding retained code and copies are removed.

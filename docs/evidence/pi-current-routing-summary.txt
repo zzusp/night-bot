@@ -1,3 +1,5 @@
+Source checkpoint: 4568d3f
+47 tests; final production source and frozen shared official fixture.
 ℹ tests 47
 ℹ suites 0
 ℹ pass 47
@@ -5,4 +7,4 @@
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 119245.668112
+ℹ duration_ms 99436.058364

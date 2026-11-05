@@ -5,6 +5,13 @@ pnpm-lock.yaml. Source identity and MIT provenance are recorded in
 pi-license-source.json. This is a capability inventory, not a declaration that
 all remaining adapters have been retired.
 
+Current default runtime: `4568d3f` uses public createAgentSession/AgentSession
+and SessionManager; the old Host session/LLM driver is no longer mounted. Default
+file capabilities also use official read/write/edit. Earlier migration-stage
+paragraphs below are historical capability notes, not a current wiring report.
+See PI-NATIVE-DEFAULT-STATUS.md and PI-TASK-INPUT-AND-RETRY.md for current boundaries
+and explicitly unresolved limitations.
+
 Session history, context, message conversion, branching and compaction must use
 Pi's official implementation. Night must not build a second implementation when
 an official component exists. An adapter limitation is not an upstream gap.

@@ -1,52 +1,86 @@
 {
-  "checkpoint": "d31d117",
+  "checkpoint": "4568d3f",
   "complete": false,
   "resultsOverlap": true,
   "evidence": [
     {
       "name": "default",
       "target": "docs/evidence/pi-current-default-summary.txt",
-      "logSha256": "410a7ea8e297db38ada48937ed22a7ab36c7e98282c340ceb50457c19abf9703"
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "33cf84036c7f99b4f7f7ee252474f5a1200a2c8dadd1186c1a8fc972b06e8564",
+      "note": "Final stable source; 1173 tests and all source/import guards."
     },
     {
       "name": "domain",
       "target": "docs/evidence/pi-current-domain-summary.txt",
-      "logSha256": "28aceb78eeb7c3112269f8987dad8659680a84fdca4582ec2bfc8085426cf91d"
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "ced205399211a9c27eba128b8952b580752ce04de8b92b2bb316e195659fe822",
+      "note": "391 tests; task/business source unchanged since this run."
     },
     {
       "name": "routing",
       "target": "docs/evidence/pi-current-routing-summary.txt",
-      "logSha256": "80a47dd0d88d4fed722cbb57da0a3e5ef9ddccb17732c16cf4872c2b5ae988ff"
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "cbbcd69ad7b9d04a3191c3aed3531f96ff4375e982bab795ce1b550641eeeae8",
+      "note": "47 tests; final production source and frozen shared official fixture."
     },
     {
       "name": "runtime-diagnostic",
       "target": "docs/evidence/pi-current-runtime-diagnostic-summary.txt",
-      "logSha256": "1696eb5dd5769fe488691630573180603a55cda67cb327062c20e69e83f337e9"
+      "logSha256": "1696eb5dd5769fe488691630573180603a55cda67cb327062c20e69e83f337e9",
+      "sourceCheckpoint": "d31d117"
     },
     {
       "name": "effect-reconciliation",
       "target": "docs/evidence/pi-current-effect-reconciliation-summary.txt",
-      "logSha256": "a9fecb59cf28afc402742cdce7e393d0247fc8dc3e00bfbeeee85baff6aed29e"
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "0c926652fa222337fec0f9c48b35dbae571b5dc06a178d4170f6a9b85e8ec205",
+      "note": "44 core and actual Host tests."
     },
     {
       "name": "operator",
       "target": "docs/evidence/pi-current-operator-summary.txt",
-      "logSha256": "5e7b51c3df03ca583c0f3da10689d246abc97afaab9e4585c64e6ee080c8825e"
+      "logSha256": "5e7b51c3df03ca583c0f3da10689d246abc97afaab9e4585c64e6ee080c8825e",
+      "sourceCheckpoint": "d31d117"
     },
     {
       "name": "operator-kernel",
       "target": "docs/evidence/pi-current-operator-kernel-summary.txt",
-      "logSha256": "6dbe875feb2b3194b1ce782078f0818f57d201b407edf4243de67e13a5aa5ad3"
+      "logSha256": "6dbe875feb2b3194b1ce782078f0818f57d201b407edf4243de67e13a5aa5ad3",
+      "sourceCheckpoint": "d31d117"
     },
     {
       "name": "skills",
       "target": "docs/evidence/pi-current-skills-summary.txt",
-      "logSha256": "ce8aa7ddccc24ba1697ba2c8bd37cf946dae224166c13f0b234b4d32bb7a2bf6"
+      "logSha256": "ce8aa7ddccc24ba1697ba2c8bd37cf946dae224166c13f0b234b4d32bb7a2bf6",
+      "sourceCheckpoint": "d31d117"
     },
     {
       "name": "names",
       "target": "docs/evidence/pi-current-names-summary.txt",
-      "logSha256": "a7c65a91c7e79709706244cbe4393b81cefb11d3aeaf45842f6c824d1fa11e9e"
+      "logSha256": "a7c65a91c7e79709706244cbe4393b81cefb11d3aeaf45842f6c824d1fa11e9e",
+      "sourceCheckpoint": "d31d117"
+    },
+    {
+      "name": "priority-contracts",
+      "target": "docs/evidence/pi-current-priority-contracts-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "63db09532ac6493d4ba0ee1ae5c2712ac23c6eb3c7855bc7829468863c471aea",
+      "note": "60 file/task/permission/state tests."
+    },
+    {
+      "name": "live-supplement",
+      "target": "docs/evidence/pi-current-live-supplement-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "51e48231fb1f37b0c804d8a126fcfb3585598ff1e4cdc4fc4e981471e9efca36",
+      "note": "3 actual producer tests; approved outer execution; application bwrap retained."
+    },
+    {
+      "name": "effect-call-identity",
+      "target": "docs/evidence/pi-current-effect-call-identity-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "d1ef150606ffeaf21252bc20383810c6948ce00e3f99884a27fed3821988bbb6",
+      "note": "2 real SDK intentional-repeat/duplicate/cold/unknown-effect counterexamples."
     }
   ]
 }

@@ -1,8 +1,13 @@
-ℹ tests 1117
+Source checkpoint: 4568d3f
+Final stable source; 1173 tests and all source/import guards.
+ℹ tests 1173
 ℹ suites 0
-ℹ pass 1117
+ℹ pass 1173
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 141102.2583
+ℹ duration_ms 163186.06804
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":47,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":421,"literalBareImports":212,"status":"declared-production-imports"}
+{"runtimeJsFiles":421,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":5,"historicalFormatFilesRemoved":9}

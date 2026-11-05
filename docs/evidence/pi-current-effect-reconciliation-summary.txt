@@ -1,3 +1,5 @@
+Source checkpoint: 4568d3f
+44 core and actual Host tests.
 ℹ tests 44
 ℹ suites 0
 ℹ pass 44
@@ -5,4 +7,4 @@
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 6238.377945
+ℹ duration_ms 4376.365517
