@@ -852,7 +852,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (!message || message.routingStatus !== 'needs-context' || message.messageVersion !== payload.sourceVersion
       || hold.messageVersion !== fact.messageVersion || !draft || draft.epoch !== fact.epoch
       || message.senderOpenDingTalkId !== payload.actorId || ['web', 'internal'].includes(message.sourceKind)
-      || message.messageAiSendFlag === 'DWS' || isOwnNotification({ ...message, groupId: group.groupId })
+      || (message.automated === true || message.messageAiSendFlag === 'DWS') || isOwnNotification({ ...message, groupId: group.groupId })
       || draft.question !== fact.question || draft.assignmentQuote !== fact.assignmentQuote || draft.reviewFingerprint !== fact.reviewFingerprint
       || fact.agentDirected !== true || draft.replyReview?.kind !== 'substantive' || draft.replyReview.replaceOutboundIds?.length)
       fail('routing_clarification_stale')
@@ -875,7 +875,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const outboundId = stableId('routing-clarification', JSON.stringify([groupId, message.messageId, message.messageVersion, draft.epoch]))
       // 已准备、已发送或未知效果只恢复原账，不能换正文或创建第二个发送身份。
       if (notificationCache.has(outboundId)) continue
-      if (!message.senderOpenDingTalkId || ['web', 'internal'].includes(message.sourceKind) || message.messageAiSendFlag === 'DWS'
+      if (!message.senderOpenDingTalkId || ['web', 'internal'].includes(message.sourceKind) || (message.automated === true || message.messageAiSendFlag === 'DWS')
         || isOwnNotification({ ...message, groupId })) continue
       const names = legacy.getAgentConfig().agentNames ?? []
       const namedRecipient = names.filter(name => typeof name === 'string' && name.trim()).some(name =>
@@ -2015,7 +2015,18 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(!['chat','chat-room'].includes(input?.type))return ingest(input)
     const channel=await ctx.get('channels').registerConversation(input),e=channel.envelope
     if(!residentStore.getGroup(channel.sessionId))await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationId,responsibility:'Respect authenticated channel participants and the current user request.'})
-    const response=await ingest({groupId:channel.sessionId,messageId:e.messageId,senderOpenDingTalkId:channel.principal,senderName:e.senderId,text:e.text,...e.resourceRefs?{resourceRefs:e.resourceRefs}:{},...e.quotedMessage?{quotedMessage:{messageId:e.quotedMessage.messageId,text:e.quotedMessage.text??'',...e.quotedMessage.senderId?{senderOpenDingTalkId:ctx.get('channels').identity({...e,senderId:e.quotedMessage.senderId}).principal}:{}}}:{},sourceKind:'dingtalk',occurredAt:ctx.get('channels').groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt,timestamp:ctx.get('channels').groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt})
+    const channels=ctx.get('channels'),principal=senderId=>channels.identity({...e,senderId}).principal
+    const occurredAt=channels.groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt
+    const response=await ingest({
+      groupId:channel.sessionId,messageId:e.messageId,senderOpenDingTalkId:channel.principal,senderName:e.senderId,text:e.text,
+      sourceKind:'channel',channelType:e.type,channelId:e.channelId,occurredAt,timestamp:occurredAt,
+      ...e.resourceRefs?{resourceRefs:e.resourceRefs}:{},
+      ...e.quotedMessage?{quotedMessage:{messageId:e.quotedMessage.messageId,content:e.quotedMessage.text??'',
+        ...e.quotedMessage.senderId?{senderOpenDingTalkId:principal(e.quotedMessage.senderId)}:{}}}:{},
+      ...typeof e.mentionedAgent==='boolean'?{mentionedAgent:e.mentionedAgent}:{},
+      ...e.mentions?{mentions:e.mentions.map(principal)}:{},
+      ...e.platformFlags?{platformFlags:e.platformFlags}:{},automated:e.platformFlags?.automated===true,
+    })
     return {...response,channelType:e.type,conversationId:e.conversationId}
   }
   const detachIngress=singleExecution?ctx.get('channels').attachIngress(unifiedIngress):undefined

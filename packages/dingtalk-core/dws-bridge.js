@@ -58,28 +58,30 @@ function normalizeEvent(event) {
     rawOccurredAt: event.event_time ?? event.create_time ?? event.timestamp ?? null,
     ...(event.messageAiSendFlag === 'DWS' || event.message_ai_send_flag === 'DWS' ? { messageAiSendFlag: 'DWS' } : {}),
     ...(typeof mentionedAgent === 'boolean' ? { mentionedAgent } : {}),
+    ...(Array.isArray(event.at_open_dingtalk_ids ?? event.atOpenDingTalkIds) ? { mentions: event.at_open_dingtalk_ids ?? event.atOpenDingTalkIds } : {}),
     senderName: meaningful(event.sender) ? event.sender : undefined,
     senderOpenDingTalkId: event.sender_open_dingtalk_id ?? event.sender_id ?? undefined,
     ...(resourceRefs.length > 0 ? { resourceRefs } : {}),
-    ...(quoted ? { quotedMessage: { ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime ?? quoted.create_time, content: quoted.content ?? quoted.text ?? '' } } : {}),
+    ...(quoted ? { quotedMessage: { ...(quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id ? { senderOpenDingTalkId: quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id } : {}), ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime ?? quoted.create_time, content: quoted.content ?? quoted.text ?? '' } } : {}),
   }
 }
 
 export function normalizeHistoryMessage(message, fallbackGroupId) {
-  const groupId = message.conversationId ?? fallbackGroupId
+  const groupId = message.conversationId ?? message.groupId ?? fallbackGroupId
   const messageId = message.messageId
   if (typeof groupId !== 'string' || groupId === '' || typeof messageId !== 'string' || messageId === '') throw new Error('dws_history_identity_missing')
-  const quoted = message.quotedMessage
+  const quoted = message.quotedMessage ?? message.quoted_message
   const text = message.text ?? ''
   const resourceRefs = normalizeResourceRefs(message.resourceRefs, text)
   return {
-    groupId, messageId, text, occurredAt: normalizeMessageTime(message.createTime ?? new Date().toISOString()), rawOccurredAt: message.createTime ?? null,
+    groupId, messageId, text, occurredAt: normalizeMessageTime(message.createTime ?? message.occurredAt ?? new Date().toISOString()), rawOccurredAt: message.createTime ?? message.occurredAt ?? null,
     ...(message.messageAiSendFlag === 'DWS' || message.message_ai_send_flag === 'DWS' ? { messageAiSendFlag: 'DWS' } : {}),
-    ...(typeof (message.isInAtList ?? message.is_in_at_list) === 'boolean' ? { mentionedAgent: message.isInAtList ?? message.is_in_at_list } : {}),
+    ...(typeof (message.isInAtList ?? message.is_in_at_list ?? message.mentionedAgent) === 'boolean' ? { mentionedAgent: message.isInAtList ?? message.is_in_at_list ?? message.mentionedAgent } : {}),
+    ...(Array.isArray(message.mentions ?? message.atOpenDingTalkIds) ? { mentions: message.mentions ?? message.atOpenDingTalkIds } : {}),
     senderName: meaningful(message.sender ?? message.senderName) ? message.sender ?? message.senderName : undefined,
     senderOpenDingTalkId: message.senderOpenDingTalkId ?? message.sender_open_dingtalk_id ?? message.senderId ?? undefined,
     ...(resourceRefs.length > 0 ? { resourceRefs } : {}),
-    ...(quoted ? { quotedMessage: { ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime, content: quoted.content ?? quoted.text ?? '' } } : {}),
+    ...(quoted ? { quotedMessage: { ...(quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id ? { senderOpenDingTalkId: quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id } : {}), ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime, content: quoted.content ?? quoted.text ?? '' } } : {}),
   }
 }
 
@@ -96,7 +98,7 @@ export function parseWorkflowApprovalDecision(text) {
   return undefined
 }
 
-export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentDwsUserName, humanPollIntervalMs = 30_000, groupBackfillIntervalMs = 10_000, groupBackfillOverlapMs = 30_000, outboxRetryIntervalMs = 10_000, listenerReconnectBaseMs = 1_000, listenerReconnectMaxMs = 30_000, listenerReadyTimeoutMs = 15_000, onHealthChange, ingressState = { paused: false }, saveIngressState = async () => {} }) {
+export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentDwsUserName, humanPollIntervalMs = 30_000, groupBackfillIntervalMs = 10_000, groupBackfillOverlapMs = 30_000, outboxRetryIntervalMs = 10_000, listenerReconnectBaseMs = 1_000, listenerReconnectMaxMs = 30_000, listenerReadyTimeoutMs = 15_000, onHealthChange, ingressState = { paused: false }, saveIngressState = async () => {}, onDirectMessage }) {
   const subscriptions = new Map()
   const bridgeEntries = new Map()
   const inflightMessages = new Map()
@@ -789,6 +791,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
           delete humanReplyEntry.lastEventError
           publishHealth()
           await processHumanReplyEvent(event)
+          if(!ingress.paused)await onDirectMessage?.(normalizeEvent(event))
         } catch (error) {
           humanReplyEntry.lastEventError = describeError(error)
           publishHealth()

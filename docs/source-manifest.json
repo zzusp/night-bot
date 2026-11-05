@@ -153,14 +153,16 @@
     {
       "source": "dws-adapter.js",
       "sourceSha256": "591384cee4b1f9ec2fdeaf79131e107f33b49e1b5a58792e382a075a8801ca54",
-      "status": "retained",
-      "sha256": "591384cee4b1f9ec2fdeaf79131e107f33b49e1b5a58792e382a075a8801ca54"
+      "status": "adapted",
+      "sha256": "823a3e8bdb54bb7f68fc109e02da9bc3ad667a847aeca4e4bf1b6c0fede1060d",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "dws-bridge.js",
       "sourceSha256": "8c203c1720b160d1e6db2eb2bca1922e95d111921a96aa49917ace97b610da19",
-      "status": "retained",
-      "sha256": "8c203c1720b160d1e6db2eb2bca1922e95d111921a96aa49917ace97b610da19"
+      "status": "adapted",
+      "sha256": "c5e7734e17e318bb0729c457e0d65cfe5f32f93720f706c754be5ffa1e668f07",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "dws-runner.js",
@@ -690,8 +692,9 @@
     {
       "source": "performance.js",
       "sourceSha256": "ecaf9bb3d2bf5dc6dc061b6ec97a37e0f14f062ab960cd5a1514b99a206af1bb",
-      "status": "retained",
-      "sha256": "ecaf9bb3d2bf5dc6dc061b6ec97a37e0f14f062ab960cd5a1514b99a206af1bb"
+      "status": "adapted",
+      "sha256": "fe5f970de772b0c24e30838b7159780dd00a1b67183eb162bb3d8aa2d28574a2",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "platform-host.js",
@@ -772,15 +775,16 @@
     {
       "source": "storage-v8-schema.js",
       "sourceSha256": "73f76d1576a69647b8a8a0e040f1bf9dfba16d150a67512aae0c2e99c9731d60",
-      "status": "retained",
-      "sha256": "998fa06d31f88a771ef6ef76447e28acff1c725169e9c1020ecb7cee310b2a22"
+      "status": "adapted",
+      "sha256": "0fd486043ba17eb11d74bedcecd26623bdeb007c3be6485f26eb433de19e0c51",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "store.js",
       "sourceSha256": "642f453d7baf48c065c8f504028a59e5052d027487b6433d916ab87c522bcfe2",
       "status": "adapted",
-      "sha256": "0ab0bcc9524e6756b77630a871a4c7a1d21eca0130be8c95a0495b7e56c5c18b",
-      "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains."
+      "sha256": "679b62d8a7f2f1ffa048091e0e6cf2fb274dde5835321ed7bfb44e1ef9998a14",
+      "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "task-actions.js",
@@ -1016,8 +1020,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "1c477bd82b072b6249fc8f3af27b2af3d7ade771de8189fff4a49f92ab5ac0e0",
-      "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests."
+      "sha256": "3853cf58a8bff94ae94f78d514921fb307d59d1072b6afaf070e5a262921d78d",
+      "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "task-session.js",
@@ -1103,8 +1107,9 @@
     {
       "source": "topic-model.js",
       "sourceSha256": "b6e674e1a98dda2423256065bb4170c569c69d19c8b81db44da446d48108ea17",
-      "status": "retained",
-      "sha256": "b6e674e1a98dda2423256065bb4170c569c69d19c8b81db44da446d48108ea17"
+      "status": "adapted",
+      "sha256": "afa9618482a1c253a7700a670b8f18b8023cd4b24b91189088ef09d3b4993de4",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
       "source": "topic-runtime.js",

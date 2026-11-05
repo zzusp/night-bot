@@ -21,7 +21,7 @@ curl http://127.0.0.1:18998/health
 
 所有 Night Bot 运行数据位于安装目录的 `data/`，任务工作区与业务产物位于 `data/workspaces/`，备份位于 `backups/`；这些目录被 Git 忽略。代码升级须保留数据目录。初始化命令只创建配置和目录，不会替你验证真实模型、渠道身份或外发授权；再次初始化拒绝覆盖配置。本项目不需要导入原 DSH 插件历史数据。目录、权限、备份与异路径恢复详见 [DATA-LAYOUT](docs/DATA-LAYOUT.md)。
 
-默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，使用 `channelPlugins` 的 `dingtalk-dws` 配置；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。保留原工具的权限 preset 与业务授权规则。HTTP 仅监听 loopback；需要远程访问时使用经过鉴权的运维通道。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
+默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，外部渠道的目录发现、生命周期和能力接口见 [插件接口](docs/CHANNEL-PLUGINS.md)。钉钉使用 `channelPlugins` 的 `dingtalk-dws` 配置；Windows 因 DWS 使用用户级注册表凭据而暂时拒绝启用，不能用 HOME/config 目录宣称账号隔离；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。保留原工具的权限 preset 与业务授权规则。HTTP 仅监听 loopback；需要远程访问时使用经过鉴权的运维通道。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
 
 `/config/agent` 保存的默认模型选择持久化于 `stateDir/storage/night_model_selection.json`，重启后优先于初始 JSON 配置中的默认选择；provider 声明仍由启动配置提供。
 

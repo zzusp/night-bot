@@ -215,6 +215,25 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       if (writesAuthorized) args.push('--yes')
       return withProfile(args)
     },
+    compileDirectSend({openDingTalkId,text,idempotencyKey,conversationId,replyToMessageId,replyToSenderId}) {
+      const args=replyToMessageId
+        ? ['chat','+messages-reply','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),
+          '--conversation-id',assertStableId(conversationId,'conversation_id'),'--message-id',assertStableId(replyToMessageId,'reply_message_id'),
+          '--ref-sender',assertStableId(replyToSenderId,'reply_sender_id'),'--content',assertStableId(text,'text'),
+          '--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+        : ['chat','+messages-send','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),
+          '--text',assertStableId(text,'text'),'--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+      if(writesAuthorized)args.push('--yes')
+      return withProfile(args)
+    },
+    async sendDirectIntent(request) {
+      requireEnabled()
+      if(!writesAuthorized)throw new Error('dws_write_not_authorized')
+      assertGroupReply(request.text,[request.openDingTalkId,request.idempotencyKey])
+      const result=await runner.run(this.compileDirectSend(request))
+      if(result.exitCode!==0)throw commandError('dws_direct_send_failed',result)
+      return sendCommandReceipt(result,'direct')
+    },
     compileSelfSend({ userId, text, idempotencyKey }) {
       const args = ['chat', '+messages-send', '--as', 'user', '--user', assertStableId(userId, 'human_user_id'), '--text', assertStableId(text, 'text'), '--idempotency-key', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
       if (writesAuthorized) args.push('--yes')

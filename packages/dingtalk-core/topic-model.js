@@ -92,7 +92,7 @@ export function webTaskTopicReusePlan(group, tasks) {
     const targets = group.topics.filter(topic => topic.topicId !== source.topicId && !topic.mergedInto && !synthetic(topic)
       && action.topicRefs?.some(ref => ref.topicId === topic.topicId)
       && task.topicRefs?.some(ref => ref.topicId === topic.topicId)
-      && topic.entries.some(entry => group.messages.some(message => message.messageId === entry.messageId && message.sourceKind === 'dingtalk')))
+      && topic.entries.some(entry => group.messages.some(message => message.messageId === entry.messageId && ['channel','dingtalk'].includes(message.sourceKind))))
     if (targets.length !== 1) continue
     const target = targets[0]
     if (!task.drained || task.recovering || source.processedRevision !== source.revision || target.processedRevision !== target.revision
