@@ -283,3 +283,6 @@ Consumed-work accounting, primitive brands and consumed JSON/value algorithms no
 ### Proxy and environment dependency closure
 
 Proxy policy/transport/child environment and language hints now use attributed local modules, including both CLI dynamic imports. Three unused direct legacy interface declarations are pruned; active owners were already native. Direct DSH production dependencies20; active replacements49 unchanged. Root declaration inventory is not a claim that every transitive DSH module is absent. Scope, Session/inbox/legacy formats, schema/message/RPC/error/skill-render helpers and Windows ACL remain.
+### Prompt/RPC/credential protocol closure
+
+Local strict renderers and RPC protocol replace helper imports, not additional active services. Credential protocol is an actual core call-site migration: workflow-configuration.js uses the local two-argument builder, recorded as the seventh source adaptation. Direct DSH production dependencies:17; active replacements:49. Scope, Session/inbox/legacy formats, schema/message/error/skill helpers and Windows ACL remain.

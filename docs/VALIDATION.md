@@ -335,3 +335,14 @@ runtime142/routing47/domain388对应核心/夹具未改动沿用de10f64证据，
 初次测试错误假设undici getGlobalDispatcher一定返回原Agent对象，实际可返回版本桥接wrapper；改为能力检查并用真实传输验证。私有地址测试恢复默认resolver而非用会抛错的测试resolver。生产首轮还暴露两测试文件静态导入已移到开发依赖的旧环境/策略模块；拆分Native协议验证和lazy开发差分，重跑own及production core，不恢复旧生产依赖，也不丢掉Native生产测试。最终14项定向组通过；此前HTTP完整合同组也已通过。
 
 真实kernel11通过/一Windows跳过（18354.55915ms）；全新/tmp/night-bot-proxy-production frozen production ignore-scripts安装，333实质核心/wire+38合同+3真实kernel wire=374复测通过。300运行文件及manifest/lock逐字一致，静态297 JS/256字面bare imports通过。runtime142/routing47/domain388对应未改动核心/夹具沿用de10f64证据，不声称重跑；共1076独立通过。证据evidence/native-proxy-*.txt。20直接DSH依赖/49活动组件替换，纯helper和unused声明不计服务替换。仍非DSH独立；403未重试。
+## 原生提示、RPC与凭据协议验证
+
+最终own497/497（41847.722393ms）、runtime142/142（281725.314098ms）、routing47/47（36512.477477ms）、domain388/388（14164.301484ms）通过；真实kernel11通过/一Windows跳过（24952.60358ms），聚合1085独立通过。另有workflow-configuration/execution-configuration两文件16项通过，单列，不假定与历史覆盖无重叠而增加总数。
+
+新增6提示/RPC合同及2凭据协议合同，验证严格变量诊断、literal/空context/不递归替换、新旧RPC元数据/结构错误/owned-value双向互读、一次dispose、detached版本描述符、scope参数与service namespace。结构错误协议按marker/code识别，原型复制后仍能识别；不使用instanceof作为判据。
+
+Import guard发现核心workflow仍需双参数credentialKey，新增本地纯protocol，只改变该core import并记录第7处适配。16项已有配置回归和真实NativeCredentials保存/关闭/重开/秘密脱敏/轮换后旧run冻结版本测试通过；原始记录键不变。
+
+独立/tmp/night-bot-prompt-rpc-production frozen production ignore-scripts安装，338实质核心/wire+38合同+3真实kernel wire=379复测通过；303运行文件及manifest/lock逐字一致。静态300 JS/251字面bare imports通过；源账200保留、3 UI排除、7显式适配，relative imports/HTTP routes闭合。证据为evidence/native-prompt-rpc-*.txt。17直接DSH依赖/49活动组件替换，仍非DSH独立；403未重试。
+
+文档汇总脚本语法错误导致证据未随00f10d1代码提交；随后追加文档提交，运行代码未改变，以上均引用已完成的最终验证日志。

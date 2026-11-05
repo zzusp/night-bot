@@ -1,0 +1,27 @@
+✔ 真实执行器冻结托管变量，移动导入文件并重建Host后原运行与新运行各用其版本 (493.615062ms)
+✔ 取消后受信节点保存的读取器失效，旧Run不能借重投冻结最新配置 (216.996851ms)
+✔ 未接配置服务时原执行照常，实际读取失败关闭；旧Run缺快照不能自动冻结 (526.777668ms)
+✔ 正式执行Runtime入口透传配置服务给冻结Run与code节点 (331.330814ms)
+✔ 管理普通与秘密变量，Web投影和快照只含允许字段，Host按类型读取 (13.282959ms)
+✔ 配置文档CAS在原子修改内部比较，并发只有一个发布成功 (1.397208ms)
+✔ 冻结精确变量版本和绑定，更新停用不改变旧Run，停用阻止新绑定与新快照 (3.153848ms)
+✔ runId独占快照，工程派生同目录沿用初始身份，跨流程读取拒绝 (2.470157ms)
+✔ 身份与存储边界明确拒绝，秘密与provider错误不进入错误回执 (0.908871ms)
+✔ 输入严格验证、种类与格式不能改变、非法绑定不发布 (2.776649ms)
+✔ 100变量和4MiB完整历史上限原子拒绝且不更改持久版本 (1762.649652ms)
+✔ 损坏持久记录不静默重置或读取最新版本 (1.119226ms)
+✔ 正式native provider隔离持久化，移动来源文件并重启后仍读取冻结版本 (93.21591ms)
+✔ 两个正式native provider共享隔离文件，文件锁内CAS只发布一个版本 (33.100315ms)
+✔ 共享native凭据文件的不同实例隔离变量、相同runId快照及管理身份 (37.067954ms)
+✔ 真实Resident以task-session启动，旧workflow配置HTTP返回410且保留历史凭据 (365.924477ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":353,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3375.306645

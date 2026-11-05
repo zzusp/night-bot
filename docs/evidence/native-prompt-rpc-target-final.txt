@@ -1,0 +1,34 @@
+✔ native strict prompt and context renderers match retained source including diagnostics (7.95286ms)
+✔ native rendering does not recursively interpolate values and preserves literal or empty contributions (0.433453ms)
+✔ native RPC descriptors, errors and owned resources interoperate with retained protocol copies (2.797738ms)
+✔ native RPC metadata is a detached versioned snapshot with exact scoped invocation and segment validation (0.254503ms)
+✔ native RPC owned resources dispose once and structural JSON errors retain wire identity (0.722449ms)
+✔ native RPC service binding retains a stable namespace and undefined invocation outside calls (4.333944ms)
+✔ native manager commits child catalog, lists cold Pi children and resumes without provider redispatch or tool replay (1476.211594ms)
+✔ native child control rejects foreign/stale lineage and invalid human input before model execution (159.941201ms)
+✔ native children retain structured validation, corrective Pi iteration and conclude only on a committed result (165.173709ms)
+✔ human queue prompts cold-resume a child with durable request and time-zone attribution (307.002273ms)
+✔ native activation capacity is per forest and interrupt acknowledgement waits separately from tool drain (212.986835ms)
+✔ native startup commit failure returns no accepted receipt and runs no child model or effects (87.752913ms)
+✔ native local terminal persistence failure is reported as an error result and still releases the activation (104.441297ms)
+✔ native discovery preserves unavailable/unknown branches without loading or resuming any child (111.365109ms)
+✔ native scoped descendant drain stops one forest, waits for its body, and leaves unrelated parents admitted (218.956661ms)
+✔ external provider capability refusal has zero starts and provider removal preserves an already owned run (68.617845ms)
+✔ closing the actual native Host cancels a child and drains its admitted tool before releasing activation ownership (115.128583ms)
+✔ native prompt scope precedence, ordering, dynamic context and rendering preserve legacy assembly (9.760835ms)
+✔ native prompt assembly and rendering match the legacy service (12.251439ms)
+✔ prompt tool order preserves hidden known names, rest placement, copied parameters and rejects unknown names (4.894729ms)
+✔ complete section remains authoritative after middleware and duplicates fail (1.793985ms)
+✔ runtime suppression cannot remove required facts and admission refresh restores their current values without rerunning middleware (3.135387ms)
+✔ scoped suppression and contributions dispose independently and unrelated scopes stay separate (2.26872ms)
+✔ invalid registrations fail and detached tool schemas cannot mutate later assembly (1.964682ms)
+✔ native credential scope-id and reference helpers preserve source address grammar (2.85264ms)
+✔ workflow configuration keeps durable historical keys, redacted secrets and frozen revisions on native credentials (87.096974ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3150.985818
