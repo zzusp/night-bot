@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-05",
+  "baseline": "c423629a3fbc5adfad716d94f6cc6b3c2bb22ce7",
+  "supersedes": "Windows activation refusal and account-storage policy in channel-plugins-validation.json",
+  "change": {
+    "windowsDefault": "system: use current OS user protected DWS login, without credential copy/export or OS protection changes",
+    "linuxMacDefault": "private: retains plugin-directory config/token files; system mode explicitly selectable",
+    "unsupported": "only an explicit private-account mode on Windows",
+    "metadata": "plugin.accountPolicy and transport.capabilities.account state credential scope, shared instance effects and external config ownership",
+    "systemAccountDirectory": "undefined; no misleading private vault created"
+  },
+  "validation": {
+    "command": "node --test test/pi-channel-plugin.test.js test/pi-channels.test.js test/pi-config.test.js",
+    "passed": 31,
+    "failed": 0,
+    "skipped": 0,
+    "checks": [
+      "source/hash/import guard: 200 retained, 33 adapted",
+      "production imports: 378 runtime JS files, 175 declared bare imports",
+      "native runtime guard: no external SDK imports or old orchestrator definitions",
+      "git diff --check"
+    ],
+    "evidence": {
+      "path": "docs/evidence/channel-system-account.txt",
+      "sha256": "90e109ff0abee0560e542c2b9900656b728897aaae167b229fcc66c947a559e3"
+    }
+  },
+  "boundaries": [
+    "No real DWS binary/account used, no live sends, no Baibu access or deployment.",
+    "Windows environment/policy paths tested with explicit platform selection; Windows OS execution remains separate acceptance.",
+    "System-mode instances may share token slots/account indexes/current login/config selection; channelId/profile alone does not prove independent accounts.",
+    "No continuous current-account identity probe implemented. Validate after intentional CLI login changes.",
+    "Existing protected CLI credentials and CLI-managed config/cache/logs may remain outside Night Bot data/ and are not included in Night Bot backup.",
+    "No test keychain namespace, weaker keychain mode, copied credentials or protection bypass."
+  ]
+}

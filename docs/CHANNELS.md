@@ -101,16 +101,19 @@ register a transport, probe a binary, subscribe or create an account home. To op
 }}]}
 ```
 
-Windows activation currently fails closed because DWS v1.0.63 keeps credentials
-in user-wide DPAPI/HKCU slots, independent of HOME/config directories. See the
-credential isolation findings in [CHANNEL-PLUGINS](CHANNEL-PLUGINS.md). On supported
-platforms, supply your own authenticated CLI account in the plugin's private
-`DWS_CONFIG_DIR` and `DWS_KEYCHAIN_DIR` environment.
+Windows defaults to `accountMode:"system"`, using the current user's existing DWS
+login with its DPAPI/HKCU protection. This does not copy credentials or claim
+independent login per plugin. Linux/macOS default to private config/keychain files;
+`accountMode:"system"` may also be selected explicitly there. Only an explicit
+private-account request is unsupported on Windows. Credential ownership, shared
+account effects and configuration examples are in
+[CHANNEL-PLUGINS](CHANNEL-PLUGINS.md).
 No account, actor ID, group or credential is bundled. Enable writes separately
 only after checking authorization. `listen:false` supports explicit SDK ingress
 without starting listeners. The plugin retains attributed DWS history, resource,
 mention, file, subscription and receipt/readback adapters; typed ingress retains
-the real sender and source quote. Account files live in `data/secrets/dingtalk-dws`.
+the real sender and source quote. Night Bot-managed private account files live
+in `data/secrets/dingtalk-dws`; system-mode credentials remain owned by DWS/OS.
 Optional operator notifications require explicit plugin configuration and actual
 operator/account identity validation. General private-chat ingress is separately
 opt-in via `directChats`, `directPeers` and `assistantActorId`; it supports native

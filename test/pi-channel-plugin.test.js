@@ -16,7 +16,7 @@ test('optional DWS plugin registers the typed boundary, preserves authenticated 
   const f=await memoryHost(t);let commands=0
   const runner={cwd:f.root,async run(){commands++;throw Error('No real CLI calls in plugin registration test')},spawn(){commands++;throw Error('No subscription requested')}}
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture-profile',writesAuthorized:false,listen:false},{runner})})
-  const plugin=f.host.ctx.get('dingtalkChannel');assert.ok(plugin);assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')))
+  const plugin=f.host.ctx.get('dingtalkChannel');assert.ok(plugin);if(plugin.accountPolicy.mode==='private')assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')));else{assert.equal(plugin.accountDirectory,undefined);assert.equal(plugin.accountPolicy.sharedAcrossInstances,true)}
   await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
   let captured;const receive=f.host.ctx.channels.receive.bind(f.host.ctx.channels);f.host.ctx.channels.receive=input=>{captured=input;return receive(input)}
   const response=await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'real-source-1',senderOpenDingTalkId:'authenticated-sender',text:'quoted boundary proof',occurredAt:'2026-11-05T10:00:00.000Z',quotedMessage:{messageId:'original-quoted-message',text:'earlier context',senderOpenDingTalkId:'quoted-person'}})
@@ -114,11 +114,12 @@ test('generic message readers use neutral identities and enforce conversation sc
   remote='other';await assert.rejects(channels.readResource('readMessage',identity.sessionId,'source'),/SCOPE_MISMATCH/)
 })
 
-test('multiple DWS accounts have isolated paths and transports; direct peers require explicit authorization',async t=>{
+test('multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization',async t=>{
   const f=await memoryHost(t),channels=f.host.ctx.channels,runner={run(){throw Error('unexpected CLI')},spawn(){throw Error('unexpected listener')}}
   for(const channelId of ['account-one','account-two'])await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,listen:false,profile:'fixture',channelId},{runner})})
   assert.equal(channels.plugins.size,2);assert.equal(channels.transports.size,2)
-  assert.notEqual(channels.plugins.get('account-one').accountDirectory,channels.plugins.get('account-two').accountDirectory)
+  if(channels.plugins.get('account-one').accountPolicy.mode==='private')assert.notEqual(channels.plugins.get('account-one').accountDirectory,channels.plugins.get('account-two').accountDirectory)
+  else{assert.equal(channels.plugins.get('account-one').accountDirectory,undefined);assert.equal(channels.plugins.get('account-two').accountPolicy.sharedAcrossInstances,true)}
   await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
   await assert.rejects(channels.plugins.get('account-one').acceptHistoryMessage({groupId:'private',messageId:'m',senderOpenDingTalkId:'peer',text:'private'},{type:'chat'}),/CHAT_NOT_AUTHORIZED/)
   const raw={groupId:'shared',messageId:'same-message',senderOpenDingTalkId:'same-peer',text:'isolated account message',quotedMessage:{messageId:'quote-without-author',content:'unknown identity'}}
@@ -127,11 +128,32 @@ test('multiple DWS accounts have isolated paths and transports; direct peers req
   await f.close();assert.equal(channels.plugins.size,0);assert.equal(channels.transports.size,0)
 })
 
-test('DWS credentials use supported config/keychain roots and Windows fails before CLI access',async()=>{
-  const {dwsEnvironment}=await import('../src/channels/plugins/dws-environment.js')
+test('DWS private credentials use supported roots; Windows defaults to the protected current-user login',async()=>{
+  const {dwsEnvironment,dwsAccountPolicy}=await import('../src/channels/plugins/dws-environment.js')
   const options={platform:'linux',inherited:{PATH:'/fixture/bin',DWS_CONFIG_DIR:'/foreign',DWS_KEYCHAIN_DIR:'/foreign-keychain',DWS_CLIENT_SECRET:'fixture-secret',DWS_DISABLE_KEYCHAIN:'1',DWS_KEYCHAIN_TEST_NAMESPACE:'forbidden-production-namespace'}}
   const environment=dwsEnvironment({temp:'/fixture/temp'},'/fixture/private','/fixture/cache',options)
   assert.equal(environment.DWS_CONFIG_DIR,'/fixture/private/config');assert.equal(environment.DWS_KEYCHAIN_DIR,'/fixture/private/keychain');assert.equal(environment.PATH,'/fixture/bin')
   for(const key of ['DWS_CLIENT_SECRET','DWS_DISABLE_KEYCHAIN','DWS_KEYCHAIN_TEST_NAMESPACE'])assert.equal(environment[key],undefined)
-  assert.throws(()=>dwsEnvironment({temp:'/fixture/temp'},'/fixture/private','/fixture/cache',{...options,platform:'win32'}),/WINDOWS_ACCOUNT_ISOLATION_UNAVAILABLE/)
+  const inherited={...options.inherited,HOME:'C:/Users/current',USERPROFILE:'C:/Users/current',LOCALAPPDATA:'C:/Users/current/AppData/Local'}
+  const windows=dwsEnvironment({temp:'/fixture/temp'},'/fixture/private','/fixture/cache',{platform:'win32',inherited})
+  assert.equal(windows.HOME,inherited.HOME);assert.equal(windows.USERPROFILE,inherited.USERPROFILE);assert.equal(windows.LOCALAPPDATA,inherited.LOCALAPPDATA)
+  assert.equal(windows.DWS_CONFIG_DIR,inherited.DWS_CONFIG_DIR);assert.equal(windows.DWS_KEYCHAIN_DIR,inherited.DWS_KEYCHAIN_DIR)
+  assert.equal(windows.DWS_CLIENT_SECRET,undefined);assert.equal(windows.DWS_DISABLE_KEYCHAIN,undefined);assert.equal(windows.DWS_KEYCHAIN_TEST_NAMESPACE,undefined)
+  assert.deepEqual(dwsAccountPolicy(undefined,{platform:'win32'}),{mode:'system',credentialScope:'os-user',sharedAcrossInstances:true,independentLogin:false,configurationOwner:'external-cli'})
+  assert.throws(()=>dwsEnvironment({temp:'/fixture/temp'},'/fixture/private','/fixture/cache',{platform:'win32',accountMode:'private',inherited}),/PRIVATE_ACCOUNT_UNSUPPORTED_ON_WINDOWS/)
+  assert.throws(()=>dwsAccountPolicy('unknown'),/ACCOUNT_MODE_INVALID/)
+})
+
+
+test('system-account plugins use the existing CLI context and describe shared login without creating a private vault',async t=>{
+  const f=await memoryHost(t),channels=f.host.ctx.channels,runner={run(){throw Error('unexpected CLI')},spawn(){throw Error('unexpected listener')}}
+  for(const channelId of ['shared-one','shared-two'])await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,listen:false,profile:'fixture',channelId,accountMode:'system'},{runner})})
+  const one=channels.plugins.get('shared-one'),two=channels.plugins.get('shared-two')
+  assert.equal(one.accountPolicy.mode,'system');assert.equal(one.accountPolicy.sharedAcrossInstances,true);assert.equal(one.accountPolicy.independentLogin,false)
+  assert.equal(one.accountDirectory,undefined);assert.equal(two.accountDirectory,undefined)
+  assert.deepEqual(channels.transports.get('shared-one').capabilities.account,one.accountPolicy)
+  const {readdir}=await import('node:fs/promises')
+  assert.ok(!(await readdir(f.host.ctx.runtimePaths.secrets)).some(name=>name.startsWith('dingtalk-dws')))
+  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
+  assert.equal(channels.transports.size,2)
 })

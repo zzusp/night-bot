@@ -1,4 +1,4 @@
-import {dwsEnvironment} from './dws-environment.js'
+import {dwsEnvironment,dwsAccountPolicy} from './dws-environment.js'
 import {hash} from '../../memory/format.js'
 import {join} from 'node:path'
 import {createDwsAdapter} from '../../../packages/dingtalk-core/dws-adapter.js'
@@ -19,8 +19,9 @@ export async function apply(ctx,config={},dependencies={}){
   if(config.directChats===true&&(!Array.isArray(config.directPeers)||!config.directPeers.length||config.directPeers.some(id=>typeof id!=='string'||!id)||!config.assistantActorId))throw failure('DWS_DIRECT_PEERS_AND_SELF_REQUIRED')
   const channelId=config.channelId??'dingtalk-dws',namespace=channelId==='dingtalk-dws'?'dingtalk-dws':'dingtalk-dws-'+hash(channelId)
   const paths=ctx.runtimePaths,privateHome=join(paths.secrets,namespace),workspace=join(paths.workspaces,'channels',namespace),cache=join(paths.cache,namespace)
-  const environment=dwsEnvironment(paths,privateHome,cache)
-  for(const directory of [privateHome,join(privateHome,'config'),join(privateHome,'keychain'),workspace,cache])await privateDirectory(directory)
+  const accountPolicy=dwsAccountPolicy(config.accountMode)
+  const environment=dwsEnvironment(paths,privateHome,cache,{accountMode:accountPolicy.mode})
+  for(const directory of [...accountPolicy.mode==='private'?[privateHome,join(privateHome,'config'),join(privateHome,'keychain')]:[],workspace,cache])await privateDirectory(directory)
   const runnerFor=cwd=>dependencies.runner?{...dependencies.runner,cwd}:createNodeDwsRunner({executable:config.executable??'dws',cwd,env:environment}),runner=runnerFor(workspace)
   const adapter=createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner})
   let app,stopBridge,health={healthy:false,configured:true},closed=false
@@ -32,7 +33,7 @@ export async function apply(ctx,config={},dependencies={}){
     sendFile:(_notification,file)=>createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner:runnerFor(file.directory)}).sendGroupFile({groupId:_notification.payload.conversationId,fileName:file.fileName,idempotencyKey:_notification.id}),
     readbackFile:notification=>readTaskFileDelivery(adapter,notification),querySendStatus:id=>adapter.querySendStatus(id),recall:notification=>recallOperatorNotification(adapter,notification)}
   const unregister=ctx.channels.registerTransport(channelId,{canSend:()=>config.writesAuthorized===true,
-    capabilities:{conversationTypes:config.directChats===true?['chat','chat-room']:['chat-room'],files:['chat-room'],quotedReplies:config.directChats===true?['chat','chat-room']:['chat-room']},
+    capabilities:{account:accountPolicy,conversationTypes:config.directChats===true?['chat','chat-room']:['chat-room'],files:['chat-room'],quotedReplies:config.directChats===true?['chat','chat-room']:['chat-room']},
     send:(envelope,notification)=>envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:envelope.senderId,text:envelope.text,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:envelope.senderId}):notifications.send(typed(notification,envelope)),
     readback:async(envelope,notification)=>{
       if(envelope.type!=='chat')return notifications.readback(typed(notification,envelope))
@@ -57,7 +58,7 @@ export async function apply(ctx,config={},dependencies={}){
     if(!message?.groupId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
     return ctx.channels.receive({type,channelId,conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text||'[attachment]',...message.occurredAt?{sentAt:message.occurredAt}:{},...typeof message.mentionedAgent==='boolean'?{mentionedAgent:message.mentionedAgent}:{},...message.mentions?{mentions:message.mentions}:{},...message.messageAiSendFlag?{platformFlags:{messageAiSendFlag:message.messageAiSendFlag,automated:message.messageAiSendFlag==='DWS'}}:{},...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}})
   }
-  const plugin={adapter,notifications,acceptHistoryMessage,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:createNativeDwsObserver,get health(){return health},get accountDirectory(){return privateHome}}
+  const plugin={accountPolicy,adapter,notifications,acceptHistoryMessage,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:createNativeDwsObserver,get health(){return health},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
   const unregisterPlugin=ctx.channels.registerPlugin(channelId,plugin)
   if(!ctx.get('dingtalkChannel'))ctx.provide('dingtalkChannel',plugin)
   const stopObserver=ctx.channels.registerOperationObserver(channelId,plugin),stopOperator=config.operatorNotifications===true?ctx.channels.registerOperatorNotifications(channelId,notifications):undefined

@@ -76,5 +76,6 @@
       "path": "docs/evidence/channel-plugins-quote-final.txt",
       "sha256": "b8e9db612b29069af92d3e88b724e6c4b5a9be5cba694a95db9b19230b33c61d"
     }
-  ]
+  ],
+  "credentialPolicySupersededBy": "channel-system-account-validation.json"
 }

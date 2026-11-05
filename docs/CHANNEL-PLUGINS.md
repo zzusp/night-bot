@@ -32,8 +32,9 @@ Enabled instance IDs must be unique. Disabled instances do not import or invoke
 code, create account directories, register transports or probe executables.
 `dingtalk-dws` remains a built-in optional type for compatibility; the Host has no
 vendor-specific composition logic. Multiple enabled instances may use the same
-type when the plugin supports it. DWS namespaces private account/cache/state and
-workspace directories by channel ID. The first `dingtalkChannel` service is a
+type when the plugin supports it. DWS namespaces cache/state/workspace directories
+by channel ID; account directories are namespaced only in private-account mode.
+System-account instances share the external CLI credential context. The first `dingtalkChannel` service is a
 compatibility alias; all instances are available in `channels.plugins`.
 
 ## Lifecycle and capabilities
@@ -119,7 +120,7 @@ send/receive, reconnect delivery and upload/download remain live acceptance work
 The separate Baibu task owns “Night Bot Test” live testing; this branch does not
 connect, deploy or send messages there.
 
-## Credential isolation: Windows blocks activation
+## Existing system login and optional private-account storage
 
 The official v1.0.63 `pkg/config/constants.go` selects `DWS_CONFIG_DIR` over
 `~/.dws`. Configuration location is separate from credentials:
@@ -137,18 +138,60 @@ The official v1.0.63 `pkg/config/constants.go` selects `DWS_CONFIG_DIR` over
   `DWS_KEYCHAIN_TEST_NAMESPACE` changes the registry namespace, but its declaration
   in `keychain.go` explicitly says production must not set it.
 
-The plugin now explicitly sets both official config/keychain directories below
-its private account directory on supported platforms, and removes inherited
-`DWS_*` account/override environment variables. It never sets the test namespace,
-never disables Keychain/DPAPI, and never copies or exports existing credentials.
-Operators must log in independently using the plugin's two directory settings.
+Existing operating-system credentials are a legitimate external CLI dependency.
+Night Bot does not need to own or relocate them to use the current user's DWS
+login. Central storage rules apply to Night Bot-managed secrets; they do not turn
+third-party system credential storage into a prerequisite for independent login.
 
-Real Windows activation fails with `DWS_WINDOWS_ACCOUNT_ISOLATION_UNAVAILABLE`
-before creating account directories, launching the executable or registering a
-transport. Disabled DWS and the channel-neutral application still start normally.
-There is no config override to silently reuse the Windows user's existing account.
-A dedicated Windows OS account with independently verified login, or an upstream
-production-supported keychain namespace, is needed before designing and validating
-a Windows enablement path. That OS provisioning/upstream change is not performed
-by this branch. Linux environment/path tests and source inspection are evidence;
-real account isolation on all platforms still needs target-system acceptance.
+`config.accountMode` selects the actual behavior:
+
+| Mode | Default | Behavior |
+| --- | --- | --- |
+| `system` | Windows | Use the current OS user's existing CLI configuration and protected credentials. Preserve HOME, USERPROFILE, APPDATA/LOCALAPPDATA and explicit inherited DWS_CONFIG_DIR/DWS_KEYCHAIN_DIR selections. No credential copy/export, login, registry edit or encryption changes. |
+| `private` | Linux/macOS | Set the official config/keychain paths below the plugin's private account directory. Independent token/config files; macOS still uses a system Keychain DEK. No guarantee of separation from other trusted programs running as the same OS user. |
+
+`system` is also available explicitly on Linux/macOS. Windows `system` works
+without an extra opt-in or isolation acknowledgment beyond enabling the channel.
+Only an explicit Windows request for `private` fails with
+`DWS_PRIVATE_ACCOUNT_UNSUPPORTED_ON_WINDOWS`, because that requested capability
+cannot be supplied by the examined CLI. This is a mode-specific error, not a ban
+on the Windows channel. Disabled plugins still do nothing.
+
+For example, reuse the current user's authenticated CLI account:
+
+```json
+{"channelPlugins":[{"type":"dingtalk-dws","enabled":true,"config":{
+  "accountMode":"system","profile":"YOUR_PROFILE","writesAuthorized":false,
+  "groups":["YOUR_ROOM_ID"]
+}}]}
+```
+
+The plugin publishes `accountPolicy` in `channels.plugins.get(channelId)` and
+`transport.capabilities.account`: system mode reports `credentialScope:'os-user'`,
+`sharedAcrossInstances:true`, `independentLogin:false` and external CLI ownership
+of configuration. `accountDirectory` is undefined in system mode; no empty private
+vault is created that could imply the system credentials were moved there.
+Per-channel state/workspace isolation still holds, but channel IDs and profile
+names do not prove separate external accounts.
+
+Multiple system-mode instances can share DWS credential slots, account indexes,
+refreshes and current-login/config selection. DWS may use identity-scoped token
+entries internally, but profiles or separate HOME/config folders do not provide
+an independent Windows keychain. Logging in, switching account, resetting auth or
+changing CLI config elsewhere under the same OS user can affect running instances.
+Use an explicit profile, keep account-changing CLI operations out of the bot's
+runtime workflow, and revalidate the account after a deliberate login switch.
+`assistantActorId` binds self-message filtering/readback where configured; it is
+not a continuous verification of the CLI's current login identity. If genuinely
+independent Windows account lifecycles are needed, use separate OS users or wait
+for an upstream production-supported credential namespace. This is an optional
+multi-account deployment choice, not a single-account startup requirement.
+
+Neither mode injects plaintext `DWS_*` authentication overrides, a test registry
+namespace or DWS_DISABLE_KEYCHAIN into children. Both preserve OS protections and
+scope the subprocess temp directory. In system mode, DWS-owned config/keychain
+state and any CLI diagnostic/cache files may remain outside Night Bot's `data/`;
+Night Bot backup does not include those credentials. A restore needs a separately
+available CLI login. No actual Windows execution/account was used in this branch;
+unit tests cover the Windows environment and policy selection, and fixture tests
+cover registration without copying credentials or contacting an account.
