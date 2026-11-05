@@ -1332,23 +1332,6 @@ function renderToolsSdkPy(schemas) {
 	return `${SDK_INSTRUCTIONS}\n\n\`\`\`python\n${`from typing import ${imports.join(", ")}\n\nclass ToolCallError(Exception):
     toolName: str\n\n${classBlock}class Tools(Protocol):\n${body}\n\ntools: Tools`}\n\`\`\``;
 }
-const CONTENT_VALUE_SCHEMA = {
-	type: "array",
-	items: { type: "json" }
-};
-function defineContentToolFixture(options) {
-	const execute = options.execute;
-	return defineTool({
-		...options,
-		output: {
-			schema: CONTENT_VALUE_SCHEMA,
-			render: (_args, value) => value
-		},
-		async execute(args, exec) {
-			return await execute(args, exec);
-		}
-	});
-}
 const TOOL_RUNTIME_SCHEDULER = Symbol("night-bot.tool-scheduler");
 const TOOL_ABORTED = "ABORTED";
 const TOOL_ABORTED_BEFORE_DISPATCH = "ABORTED_BEFORE_DISPATCH";
@@ -1374,4 +1357,4 @@ var ToolOutputError = class extends HarnessError {
 	}
 };
 
-export { CodeRunFailedError, JsonSchemaError, RUN_CODE_NAME, TOOL_ABORTED, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, ToolArgsError, ToolNotFoundError, ToolOutputError, assertObjectJsonSchema, assertSupportedJsonSchema, defineContentToolFixture, defineTool, jsonSchemaToPy, jsonSchemaToTs, parameterSchemaSpecToJsonSchema, renderToolsSdk, renderToolsSdkPy, validateArgs, validateJsonSchemaValue, valueSchemaSpecToJsonSchema };
+export { CodeRunFailedError, JsonSchemaError, RUN_CODE_NAME, TOOL_ABORTED, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, ToolArgsError, ToolNotFoundError, ToolOutputError, assertObjectJsonSchema, assertSupportedJsonSchema, defineTool, jsonSchemaToPy, jsonSchemaToTs, parameterSchemaSpecToJsonSchema, renderToolsSdk, renderToolsSdkPy, validateArgs, validateJsonSchemaValue, valueSchemaSpecToJsonSchema };

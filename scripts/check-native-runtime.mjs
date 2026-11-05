@@ -7,7 +7,7 @@ if(Object.keys(manifest.dependencies??{}).some(name=>name.startsWith('@deepseek-
 // Retired source copies and their differential-only direct dependencies must not
 // silently become part of a later install or validation path again.
 for(const name of ['dsh-chunked-list','dsh-util-time','dsh-llm-pi-ai'])if(manifest.devDependencies?.['@deepseek-ai/'+name])throw new Error('Retired differential dependency reintroduced: '+name)
-for(const path of ['src/native-chunked-list.js','test/fixtures/legacy-subagent-interface.mjs','test/fixtures/legacy-llm-interface.mjs']){
+for(const path of ['src/native-chunked-list.js','test/fixtures/legacy-subagent-interface.mjs','test/fixtures/legacy-llm-interface.mjs','test/fixtures/legacy-tools-interface.mjs']){
  try{await access(path)}catch(error){if(error.code==='ENOENT')continue;throw error}
  throw new Error('Retired comparison source reintroduced: '+path)
 }

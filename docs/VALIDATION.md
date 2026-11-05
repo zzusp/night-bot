@@ -1,3 +1,21 @@
+# Tool comparison cleanup (2026-11-05)
+
+The 3,712-line differential ToolRuntime fixture and unused content-tool fixture
+builder are removed. All three execution reference copies (subagent, LLM, tools)
+are now absent and guarded against reintroduction. Direct tool tests verify
+scope-visible schemas, known-but-denied tools, body-entry fencing, invalid output,
+pre-dispatch cancellation and constrained SDK declarations. Existing actual Pi
+code-worker tests continue to validate dispatch and containment. Retained schema,
+SDK and error algorithms still require the DSH tools notice; **79 direct DSH dev
+dependencies remain**.
+
+Validation: **629 default pass**, focused **6** overlap default, actual Linux
+containment **19 pass / 1 Windows-only skip**. Source/import and diff checks pass.
+See [tool cleanup evidence](pi-native-tools-cleanup-validation.json). No push,
+deployment or claim of Windows kernel validation.
+
+---
+
 # Native model contract cleanup (2026-11-05)
 
 The 2,397-line differential LLM fixture and unused DSH retry schema/resolver are

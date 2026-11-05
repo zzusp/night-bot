@@ -5,14 +5,15 @@ import * as tools from '../src/native-tool-protocol.js'
 import NativeTools from '../src/native-tools.js'
 import NativeLlm from '../src/native-llm.js'
 import NativeSubagents from '../src/native-subagents.js'
-test('internal execution entrypoints resolve owned services and keep foreign scheduler capabilities separate',async()=>{
+test('internal execution entrypoints resolve owned services and the application scheduler capability',async()=>{
  for(const [name,Owner] of [['llm',NativeLlm],['tools',NativeTools],['subagent',NativeSubagents]]){
   const alias=await import('../packages/capability-compat/'+name+'/index.js')
   assert.equal(alias.default,Owner)
  }
- const alias=await import('../packages/capability-compat/tools/index.js'),original=await import('./fixtures/legacy-tools-interface.mjs')
+ const alias=await import('../packages/capability-compat/tools/index.js')
  assert.equal(alias.TOOL_RUNTIME_SCHEDULER,tools.TOOL_RUNTIME_SCHEDULER)
- assert.notEqual(alias.TOOL_RUNTIME_SCHEDULER,original.TOOL_RUNTIME_SCHEDULER)
+ assert.equal(typeof alias.TOOL_RUNTIME_SCHEDULER,'symbol')
+ assert.notEqual(alias.TOOL_RUNTIME_SCHEDULER,Symbol('night-bot.tool-scheduler'))
 })
 test('canonical model errors retain strict trusted identity and validated detached failure facts',async()=>{
  const cause=new Error('cause')
@@ -33,19 +34,16 @@ test('historical Session and model namespaces expose canonical native implementa
  const request={};api.markAgentLoopRequest(request);assert.equal(llm.isAgentLoopRequest(request),true)
 })
 
-test('tool schema validation and both code SDK renderers agree with independent original helpers',async()=>{
- const original=await import('./fixtures/legacy-tools-interface.mjs')
+test('tool schemas reject invalid nested values and SDK declarations expose constrained arguments',()=>{
  const schema={type:'object',properties:{name:{type:'string',enum:['a','b']},rows:{type:'array',items:{type:'integer'}}},required:['name'],additionalProperties:false}
- for(const api of [tools,original]){
-  api.assertSupportedJsonSchema(schema)
-  assert.equal(api.validateJsonSchemaValue(schema,{name:'a',rows:[1,2]}).length,0)
-  assert.ok(api.validateJsonSchemaValue(schema,{name:'c',rows:['bad']}).length)
- }
- assert.equal(tools.jsonSchemaToTs(schema),original.jsonSchemaToTs(schema))
- assert.equal(tools.jsonSchemaToPy(schema),original.jsonSchemaToPy(schema))
+ tools.assertSupportedJsonSchema(schema)
+ for(const valid of [{name:'a'},{name:'b',rows:[1,2]}])assert.deepEqual(tools.validateJsonSchemaValue(schema,valid),[])
+ for(const invalid of [{},{name:'c'},{name:'a',rows:['bad']},{name:'a',rows:[1.5]},{name:'a',extra:true}])assert.ok(tools.validateJsonSchemaValue(schema,invalid).length)
+ assert.equal(tools.jsonSchemaToTs(schema),'{\n  name: "a" | "b";\n  rows?: number[];\n}')
  const declarations=[{name:'fixture',description:'fixture',parameters:schema}]
- assert.equal(tools.renderToolsSdk(declarations),original.renderToolsSdk(declarations))
- assert.equal(tools.renderToolsSdkPy(declarations),original.renderToolsSdkPy(declarations))
+ const ts=tools.renderToolsSdk(declarations),py=tools.renderToolsSdkPy(declarations)
+ assert.match(ts,/fixture/);assert.match(ts,/name: "a" \| "b"/)
+ assert.match(py,/async def fixture/);assert.match(py,/Literal\["a", "b"\]/)
 })
 test('native product attribution and invalid credential guidance preserve secrecy without visual setup references',()=>{
  assert.equal(llm.APP_IDENTITY.product,'night-bot')

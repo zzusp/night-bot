@@ -1,0 +1,45 @@
+{
+  "base": "db73cd0",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 629,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 6,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "linuxContainment": {
+    "pass": 19,
+    "fail": 0,
+    "skip": 1,
+    "skipReason": "Windows-only platform case"
+  },
+  "remainingDirectDshDevDependencies": 79,
+  "removedSourceCopies": [
+    "test/fixtures/legacy-tools-interface.mjs"
+  ],
+  "removedUnusedProtocol": "defineContentToolFixture and its constant; neither used by production or retained tests",
+  "notices": "Retained schema, tool contracts, SDK renderers and errors remain source-derived; keep DSH tools notice",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-tools-cleanup-default.txt",
+      "sha256": "2f8f9c9cb74cf42701ef022593d02fdadd254d3b521d22d2740dbf7e5978dac6"
+    },
+    {
+      "path": "docs/evidence/pi-native-tools-cleanup-focused.txt",
+      "sha256": "f3e53eec6fc94ff1c18424dcb5f8e50cbe8fc92556a605a98542f9d13d755f0d"
+    },
+    {
+      "path": "docs/evidence/pi-native-tools-cleanup-kernel.txt",
+      "sha256": "adfa7aa10e7c1a216987ea06ce9ffb2285a02c56fd03646f4033c6dc956b0632"
+    },
+    {
+      "path": "docs/evidence/pi-native-tools-cleanup-checks.txt",
+      "sha256": "632d182bb9a76550da092e0364bb5f16d708ac6e740ff575de0245520bea70e0"
+    }
+  ]
+}
