@@ -586,8 +586,8 @@
       "source": "native-restart-scope-probe.js",
       "sourceSha256": "6b5c5f8a750a595e40d933e2d5fa834c2df8d003d763993a8803142d41e6a86f",
       "status": "adapted",
-      "sha256": "2f6a1db13c56ac2377d083114b3d3a500ce3b8d45f14e7b9f90657eaa1aefa8b",
-      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof. Reviewed native process contracts now scrub ambient NIGHT_BOT_ metadata as well as retired DSH_ names; LF and CRLF fingerprints updated to those exact source bytes."
+      "sha256": "ded7fdfc4950544490d060ddd3c72829401c16e9e3e5579f8885062b5dbea2fb",
+      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof. Reviewed native process contracts now scrub ambient NIGHT_BOT_ metadata as well as retired DSH_ names; LF and CRLF fingerprints updated to those exact source bytes. Removed explicit DSH profile/provider compatibility branch; only native source fingerprints can define a plan, with all review and exclusion requirements retained."
     },
     {
       "source": "node-output-readout.js",

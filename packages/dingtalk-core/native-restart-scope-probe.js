@@ -5,14 +5,6 @@ import { isolationDigest as hash } from './native-restart-isolation.js'
 import { inspectSession, executionInputFor } from './session-persistence.js'
 import { postgresWrapperScope, postgresWrapperSchema, postgresWrapperInspection } from './native-postgres-wrapper.js'
 
-// These are the reviewed, deployed rc.2 Windows Job owner implementations, not an
-// inference that every shell provider has the same containment semantics.
-const legacyProviderFiles = [
- ['dsh-subprocess-local/lib/runner.js', '4e21528dfdb3e92bdce2340945dc4dcb202e4a4af0bbeb8b97585f67735d30c1'],
- ['dsh-subprocess-local/lib/runner-launch-B2zsQ1Dz.js', '6df08adc4a27f278878a5f4cde8b551b51e647b922ac7d6591fd62d272ced153'],
- ['dsh-win32-process/lib/index.js', '622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9'],
-]
-
 // Reviewed native Job/runner source identities. Both checkout line endings are
 // pinned explicitly; never hash arbitrary deployed code and bless it at runtime.
 export const nativeRestartProviderFiles = Object.freeze([
@@ -124,8 +116,8 @@ function Get-RestartRelatedProducer($Processes, $Spec, $WindowStart, $WindowEnd,
 `
 
 export function restartScopeProbePlan({ command, binding, evidence, workspaceRoot, dshHome, runtimeRoot = process.env.NIGHT_BOT_RUNTIME_ROOT ?? nativeRuntimeRoot }) {
- const legacy = dshHome !== undefined
- const providerRoot = legacy ? safePath(dshHome) ? win32.join(dshHome, 'profiles', 'web', 'node_modules', '@deepseek-ai') : undefined : runtimeRoot
+ if(dshHome!==undefined)return null
+ const providerRoot=runtimeRoot
  const scope = evidence?.postgresWrapper ? postgresWrapperScope(command, evidence.postgresWrapper, binding, workspaceRoot) : localRestartScope(command)
  if (!scope || !safePath(providerRoot) || !safePath(evidence?.hostLogPath) || !/^[a-f0-9]{64}$/u.test(evidence.hostLogSha256 ?? '')
   || !Number.isSafeInteger(evidence.hostPid) || evidence.hostPid < 1
@@ -136,7 +128,7 @@ export function restartScopeProbePlan({ command, binding, evidence, workspaceRoo
   || typeof hostExit.observedAt !== 'string' || !Number.isFinite(Date.parse(hostExit.observedAt)) || Date.parse(hostExit.observedAt) < binding.startedAt || Date.parse(hostExit.observedAt) > Date.now()
   || typeof hostExit.evidenceRef !== 'string' || !hostExit.evidenceRef.trim() || hostExit.evidenceRef.length > 2000)) return null
  const spec = { schema: hostExit ? 'native-restart-scope-v2' : 'native-restart-scope-v1', ...(hostExit ? { hostExit } : {}), binding, scope, hostPid: evidence.hostPid, hostLogPath: evidence.hostLogPath,
-  hostLogSha256: evidence.hostLogSha256, managedProviderKind: legacy ? 'legacy-dsh' : 'night-bot-pi', managedProviderRoot: providerRoot, providerFiles: legacy ? legacyProviderFiles.map(([path, sha256]) => ({ path: win32.join(providerRoot, path), sha256 })) : nativeRestartProviderFiles.map(file => ({ ...file, path: win32.join(providerRoot, file.path) })) }
+  hostLogSha256: evidence.hostLogSha256, managedProviderKind: 'night-bot-pi', managedProviderRoot: providerRoot, providerFiles: nativeRestartProviderFiles.map(file => ({ ...file, path: win32.join(providerRoot, file.path) })) }
  const encoded = Buffer.from(JSON.stringify(spec)).toString('base64')
  const probe = `$ErrorActionPreference = 'Stop'
 ${restartProducerFilter}${pgWrapper ? '\n' + postgresWrapperInspection : ''}

@@ -1,3 +1,24 @@
+# Native-only restart plans (2026-11-05)
+
+Restart isolation plans no longer select old DSH `profiles/web/node_modules`
+providers or their rc.2 fingerprints. An explicit `dshHome` is refused rather
+than silently converted to a native target. Maintenance proposals using that
+field are rejected before reading history or running a probe; native proposals
+use `runtimeRoot`. Native reviewed source identities, host identity/digests,
+original-source exclusion and unknown-effect/no-replay requirements remain.
+The native backend still contains attributed platform forks, which stay licensed.
+
+Validation: focused **50 pass / 1 Windows-wrapper skip**; combined default,
+restart HTTP and maintenance-backup regression **654 pass / 1 platform skip**,
+with overlap documented. The new refusal test proves zero history/probe calls
+and unchanged unknown ledger data for a legacy proposal. Source/import/license/
+diff guards pass. See [native restart evidence](pi-native-restart-only-validation.json).
+No actual Windows kernel acceptance or production probe execution is claimed.
+No package changes in this phase; the registry HTTP 503 frozen-install blocker
+from the preceding phase remains. **73 direct DSH dev declarations remain**.
+
+---
+
 # Execution facts cleanup (2026-11-05)
 
 Shell metadata now publishes only `NIGHT_BOT_SHELL` and `NIGHT_BOT_SESSION_ID`

@@ -49,7 +49,7 @@ function fixture(acknowledged = false) {
  const f = restartFixture(acknowledged, '& D:\\pg\\bin\\postgres.exe -D D:\\agent\\artifacts\\retained -h 127.0.0.1 -p 25428')
  f.execution.sessionBound = true; f.execution.cancelRequested = true
  const tables = { tasks: [{ taskId: 'task', drained: true }], groups: [], executions: [f.execution], operations: [f.operation], notifications: [] }
- const proposal = { schema: 'native-restart-maintenance-v1', expectedOwnerPid: 123, dshHome: 'D:\\host',
+ const proposal = { schema: 'native-restart-maintenance-v1', expectedOwnerPid: 123, runtimeRoot: 'D:\\night-bot',
   operatorApproval: { kind: 'explicit-stop-deploy-resume', authorizedAt: '2026-10-27T11:01:46Z', sourceRef: 'operator-approval' },
   operations: [{ operationId: f.operation.operationId, expectedOperationDigest: hash(f.operation),
    scopeEvidence: { hostPid: 90, hostLogPath: 'D:\\host\\fatal.log', hostLogSha256: 'a'.repeat(64),
@@ -118,3 +118,12 @@ for (const corrupt of [false, true]) test('maintenance retains only unaudited re
  else {const result=inspectRetainedRestart(f.args);assert.equal(result.retained.length,1);assert.equal(result.writes,0);}
  assert.equal(JSON.stringify(f.tables),before);assert.equal(op.state,'unknown');assert.equal(op.job.status,'running');
 });
+
+test('a legacy provider maintenance proposal is refused before history/probe reads and cannot alter unknown effects',()=>{
+ const f=fixture(false),before=JSON.stringify(f.tables);let calls=0
+ f.proposal.dshHome='D:\\legacy'
+ f.args.history=()=>{calls++;throw new Error('must not read')}
+ f.args.runProbe=()=>{calls++;throw new Error('must not probe')}
+ assert.throws(()=>inspectRetainedRestart(f.args),/ISOLATION_UNPROVEN/)
+ assert.equal(calls,0);assert.equal(JSON.stringify(f.tables),before)
+})

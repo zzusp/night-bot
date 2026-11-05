@@ -17,7 +17,7 @@ function runFixedProbe(plan) {
 // writes the ledger, or grants the runtime operator reconciliation.
 export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, runProbe = runFixedProbe, history = readNativeHistory, pathCodec }) {
   const fail = () => { throw Error('DEPLOY_RESTART_ISOLATION_UNPROVEN') }
-  if (proposal?.schema !== 'native-restart-maintenance-v1' || proposal.expectedOwnerPid !== ownerPid
+  if (proposal?.schema !== 'native-restart-maintenance-v1' || Object.hasOwn(proposal,'dshHome') || proposal.expectedOwnerPid !== ownerPid
     || proposal.operatorApproval?.kind !== 'explicit-stop-deploy-resume'
     || !Number.isFinite(Date.parse(proposal.operatorApproval.authorizedAt))
     || !proposal.operatorApproval.sourceRef || !Array.isArray(proposal.operations)
@@ -65,7 +65,7 @@ export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, 
       return message.isError !== false || receipt?.jobId !== operation.job.jobId || receipt.status !== 'running'
     })) fail()
     const plan = restartScopeProbePlan({ command: args.command, binding: isolationBinding(operation, call.data.callId),
-      evidence: item.scopeEvidence, dshHome: proposal.dshHome })
+      evidence: item.scopeEvidence, runtimeRoot: proposal.runtimeRoot })
     if (!plan) fail()
     const observed = runProbe(plan), now = Date.now()
     if (!validRestartScopeObservation(plan, observed) || Math.abs(now - Date.parse(observed.observedAt)) > 60000) {

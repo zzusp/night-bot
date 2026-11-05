@@ -18,10 +18,9 @@ test('native restart scope binds reviewed native provider bytes and excludes leg
  for(const runtimeRoot of [null,'relative','D:\\unsafe;command'])assert.equal(restartScopeProbePlan({...request(),runtimeRoot}),null)
  assert.equal(restartScopeProbePlan({...request(),dshHome:null}),null)
 })
-test('legacy restart scope remains an explicit reviewed compatibility choice without relaxing evidence requirements',()=>{
- const plan=restartScopeProbePlan({...request(),dshHome:'D:\\legacy'})
- assert.ok(plan);assert.equal(plan.spec.managedProviderKind,'legacy-dsh');assert.equal(plan.spec.providerFiles.length,3)
- assert.match(plan.spec.managedProviderRoot,/profiles\\web\\node_modules/)
+test('DSH provider roots are refused and native plans retain every review fence',()=>{
+ for(const dshHome of [null,'D:\\legacy','relative'])assert.equal(restartScopeProbePlan({...request(),dshHome}),null)
  assert.equal(restartScopeProbePlan({...request(),evidence:{...request().evidence,producerScopeReviewed:false}}),null)
  assert.equal(restartScopeProbePlan({...request(),evidence:{...request().evidence,excludeOriginalSourcesConfirmed:false}}),null)
+ assert.equal(restartScopeProbePlan({...request(),evidence:{...request().evidence,localEffectsOnlyConfirmed:false}}),null)
 })
