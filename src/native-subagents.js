@@ -18,7 +18,7 @@ import { isAbsolute, resolve } from "node:path";
 import { brandString } from "./native-brand.js";
 import { SessionLogOffset, SessionSeq } from "./native-session-protocol.js";
 import { assertNever, snapshotJsonValue } from "./native-values.js";
-import { appendChunkedList, chunkedListSchema, iterateChunkedList } from "./native-chunked-list.js";
+import {createChildCatalogProjection} from "./runtime/child-catalog.js";
 import { accessSync, constants, statSync } from "node:fs";
 //#region lib/types/error.js
 /**
@@ -758,45 +758,9 @@ const viewSchema = z$1.array(z$1.union([
 		createdAt: unknownCatalogSchema.shape.childCreatedAt
 	})
 ]));
-const stateSchema = z$1.object({
-	inheritedEventCount: z$1.number().int().nonnegative(),
-	head: chunkedListSchema(eventDataSchema).optional()
-}).strict();
-/**
-* Materialize complete and unknown-mode child identities from parent catalog events.
-* @param state - parent catalog fold state.
-* @returns current direct-child rows in parent catalog event order.
-*/
-function subagentCatalogEntries(state) {
-	const entries = [];
-	for (const data of iterateChunkedList(state.head)) {
-		const { version: _version, childId, childCreatedAt, ...descriptor } = data;
-		entries.push({
-			id: childId,
-			createdAt: childCreatedAt,
-			...descriptor
-		});
-	}
-	return entries;
-}
-/** Parent-owned direct-child catalog projection; invalid own facts reject restoration. */
-const subagentCatalogProjectionDefinition = {
-	key: "subagentCatalog",
-	stateSchema,
-	init: (_header, inheritedEventCount) => ({ inheritedEventCount }),
-	apply: (state, event) => {
-		if (event.type !== "subagent/catalog" || event.seq < state.inheritedEventCount) return state;
-		return {
-			...state,
-			head: appendChunkedList(state.head, eventDataSchema.parse(event.data))
-		};
-	},
-	stateVersion: 6,
-	wire: {
-		viewSchema,
-		view: subagentCatalogEntries
-	}
-};
+// Projection checkpoints are disposable: version 7 rebuilds from the owning
+// Pi journal when an earlier Night Bot checkpoint is encountered.
+const subagentCatalogProjectionDefinition=createChildCatalogProjection(eventDataSchema,viewSchema);
 /**
 * Append a complete direct-child discovery fact to its parent Session.
 * @param parent - durable direct parent receiving the discovery fact.

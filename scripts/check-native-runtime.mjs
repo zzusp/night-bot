@@ -4,6 +4,13 @@ import {resolve,dirname} from 'node:path'
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex')
 const manifest=JSON.parse(await readFile('package.json','utf8'))
 if(Object.keys(manifest.dependencies??{}).some(name=>name.startsWith('@deepseek-ai/dsh-')))throw new Error('Registry SDK runtime dependency reintroduced')
+// Retired source copies and their differential-only direct dependencies must not
+// silently become part of a later install or validation path again.
+for(const name of ['dsh-chunked-list','dsh-util-time'])if(manifest.devDependencies?.['@deepseek-ai/'+name])throw new Error('Retired differential dependency reintroduced: '+name)
+for(const path of ['src/native-chunked-list.js','test/fixtures/legacy-subagent-interface.mjs']){
+ try{await access(path)}catch(error){if(error.code==='ENOENT')continue;throw error}
+ throw new Error('Retired comparison source reintroduced: '+path)
+}
 let files=0
 async function walk(directory){for(const entry of await readdir(directory,{withFileTypes:true})){const path=directory+'/'+entry.name;if(entry.isDirectory())await walk(path);else if(entry.isFile()&&/\.(?:js|cjs|mjs)$/.test(path)){
  files++;const text=await readFile(path,'utf8')

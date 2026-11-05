@@ -1,17 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createRequire} from 'node:module'
-import {pathToFileURL} from 'node:url'
 import * as llm from '../src/native-llm-protocol.js'
 import * as tools from '../src/native-tool-protocol.js'
 import NativeTools from '../src/native-tools.js'
 import NativeLlm from '../src/native-llm.js'
 import NativeSubagents from '../src/native-subagents.js'
-test('native execution namespaces preserve every original public name and map defaults to native owners',async()=>{
+test('internal execution entrypoints resolve owned services and keep foreign scheduler capabilities separate',async()=>{
  for(const [name,Owner] of [['llm',NativeLlm],['tools',NativeTools],['subagent',NativeSubagents]]){
-  const alias=await import('../packages/capability-compat/'+name+'/index.js'),original=await import('./fixtures/legacy-'+name+'-interface.mjs')
+  const alias=await import('../packages/capability-compat/'+name+'/index.js')
   assert.equal(alias.default,Owner)
-  for(const key of Object.keys(original))assert.ok(key in alias,name+': '+key)
  }
  const alias=await import('../packages/capability-compat/tools/index.js'),original=await import('./fixtures/legacy-tools-interface.mjs')
  assert.equal(alias.TOOL_RUNTIME_SCHEDULER,tools.TOOL_RUNTIME_SCHEDULER)

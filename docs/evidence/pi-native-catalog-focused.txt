@@ -1,0 +1,21 @@
+✔ owned catalog keeps ordered flat checkpoints with bounded active-page copies and sealed-page sharing (40.46908ms)
+✔ catalog ignores inherited and unrelated events; rejected payloads cannot partially mutate state (1.965498ms)
+✔ earlier Night Bot checkpoints rebuild from complete Pi audit history and missing history refuses restoration (24.726692ms)
+✔ cold Pi journal discovery preserves all page boundaries without starting missing children or a model (1689.340608ms)
+✔ internal execution entrypoints resolve owned services and keep foreign scheduler capabilities separate (13.405433ms)
+✔ canonical model errors retain strict trusted identity and validated detached failure facts (4.330264ms)
+✔ historical Session and model namespaces expose canonical native implementations (1.615433ms)
+✔ tool schema validation and both code SDK renderers agree with independent original helpers (8.318905ms)
+✔ native product attribution and invalid credential guidance preserve secrecy without visual setup references (0.825999ms)
+✔ delegation depth cannot fall below persisted lineage and rejects invalid runtime depth (1.670946ms)
+✔ children inherit the current model route and a changed route clears route-specific reasoning (1.976925ms)
+✔ child descriptors detach caller data and only the establishing descriptor owns composition (1.394131ms)
+✔ caller zones accept canonical named zones and reject offsets, aliases and malformed inputs (19.731871ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1951.076912

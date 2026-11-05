@@ -17,14 +17,13 @@
       "fixtureSha256": "f69e061b9f7f208d9eeb192f3b4d8f0628553ea0cadd0a06c0428d413a10d752",
       "fixture": "test/fixtures/legacy-tools-interface.mjs",
       "supportAdaptation": "verified local protocol/value/scope/RPC helpers; original algorithms, private markers/scheduler and service classes independent; legacy identity version pinned for original LLM"
-    },
+    }
+  ],
+  "removedReferences": [
     {
-      "package": "@deepseek-ai/dsh-subagent",
-      "version": "0.2.1-alpha.2",
-      "sourceSha256": "09da454106ce761ac44137366a03c9fbe485a4d21f23d1aa117b2e38f82150fa",
-      "fixtureSha256": "5ddd1f2a807955b0aa360cb451f4cfd8f9bfa6ead5856a8abe9e590d7b4e433b",
       "fixture": "test/fixtures/legacy-subagent-interface.mjs",
-      "supportAdaptation": "verified local protocol/value/scope/RPC helpers; original algorithms, private markers/scheduler and service classes independent; legacy identity version pinned for original LLM"
+      "previousFixtureSha256": "5ddd1f2a807955b0aa360cb451f4cfd8f9bfa6ead5856a8abe9e590d7b4e433b",
+      "reason": "Differential-only copy removed; independent owned child/catalog contracts and actual Pi control/restart tests now verify the behavior"
     }
   ]
 }

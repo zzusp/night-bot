@@ -1,0 +1,26 @@
+✔ owned catalog keeps ordered flat checkpoints with bounded active-page copies and sealed-page sharing (41.030073ms)
+✔ catalog ignores inherited and unrelated events; rejected payloads cannot partially mutate state (1.812609ms)
+✔ earlier Night Bot checkpoints rebuild from complete Pi audit history and missing history refuses restoration (30.562533ms)
+✔ native manager commits child catalog, lists cold Pi children and resumes without provider redispatch or tool replay (1816.410557ms)
+✔ native child control rejects foreign/stale lineage and invalid human input before model execution (251.448855ms)
+✔ native children retain structured validation, corrective Pi iteration and conclude only on a committed result (240.625059ms)
+✔ human queue prompts cold-resume a child with durable request and time-zone attribution (548.677022ms)
+✔ native activation capacity is per forest and interrupt acknowledgement waits separately from tool drain (284.233741ms)
+✔ native startup commit failure returns no accepted receipt and runs no child model or effects (139.909439ms)
+✔ native local terminal persistence failure is reported as an error result and still releases the activation (181.027195ms)
+✔ native discovery preserves unavailable/unknown branches without loading or resuming any child (145.841001ms)
+✔ native scoped descendant drain stops one forest, waits for its body, and leaves unrelated parents admitted (312.140264ms)
+✔ external provider capability refusal has zero starts and provider removal preserves an already owned run (159.817135ms)
+✔ closing the actual native Host cancels a child and drains its admitted tool before releasing activation ownership (229.584308ms)
+✔ delegation depth cannot fall below persisted lineage and rejects invalid runtime depth (1.223546ms)
+✔ children inherit the current model route and a changed route clears route-specific reasoning (1.110466ms)
+✔ child descriptors detach caller data and only the establishing descriptor owns composition (0.936585ms)
+✔ caller zones accept canonical named zones and reject offsets, aliases and malformed inputs (15.928152ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4466.105328

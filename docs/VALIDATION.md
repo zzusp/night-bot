@@ -1,3 +1,33 @@
+# Owned child catalog checkpoint (2026-11-05)
+
+`src/runtime/child-catalog.js` replaces the recursive DSH chunk-list storage with
+an application-owned flat page directory. Sealed 128-entry pages are shared;
+appends copy only the pending page except at sealing boundaries. Checkpoint
+schema version 7 validates full page sizes and bounded pending entries. Existing
+Night Bot version 6 checkpoints rebuild from complete Pi audit history; missing
+history refuses restoration. No DSH data importer is added. Inherited parent
+catalog events remain excluded, and malformed own events cannot mutate state.
+
+The 3,333-line subagent comparison fixture is removed. Direct behavioral tests
+cover persisted depth floors, invalid/overflowing depth, current route/effort
+inheritance, live preset metadata and immutable first-descriptor authority.
+The namespace test no longer requires every old DSH export as a product ABI.
+The dedicated chunk-list source and all test copies are gone, so its notice is
+removed; notices for remaining source forks, including time-zone handling, stay.
+Two differential-only direct dependencies were removed: **80 DSH dev packages
+remain**. This is not complete removal of the subagent interface or event facade.
+
+Validation: **628 default tests pass**; focused **13** and earlier control **18**
+overlap default. Task archive/channel/provider-recovery integration **31 pass**
+(overlaps documented). Actual cold Pi discovery retains 260 entries across page
+boundaries without starting child agents or model requests. Guards, frozen
+install with `--ignore-scripts` and diff checks pass. The first full run found a
+dynamic obsolete-fixture import in an old export-compatibility test; the test was
+updated to owned entrypoint/capability assertions, then the full suite passed.
+See [catalog evidence](pi-native-catalog-validation.json). No push or deployment.
+
+---
+
 # Pi native integration checkpoint (2026-11-05)
 
 Task archive `8fa47a255cfc8044b470bd8f104f89ed3211cc83` and channel

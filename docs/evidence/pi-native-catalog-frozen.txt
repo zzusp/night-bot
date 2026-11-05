@@ -1,0 +1,20 @@
+? Verifying lockfile against supply-chain policies (630 entries)...
+Lockfile is up to date, resolution step is skipped
+Packages: -1
+-
+
+   ╭──────────────────────────────────────────────────────────────────────╮
+   │                                                                      │
+   │                 Update available! 11.25.0 → 12.16.1.                 │
+   │                 Changelog: https://pnpm.io/v/12.16.1                 │
+   │   To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -   │
+   │                                                                      │
+   ╰──────────────────────────────────────────────────────────────────────╯
+
+
+devDependencies:
+- @deepseek-ai/dsh-chunked-list 0.2.1-alpha.2
+- @deepseek-ai/dsh-util-time 0.2.1-alpha.2
+
+✓ Lockfile passes supply-chain policies (630 entries in 6.5s)
+Done in 7.4s using pnpm v11.25.0
