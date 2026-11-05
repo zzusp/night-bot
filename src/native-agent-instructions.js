@@ -15,7 +15,7 @@ const dshHomeDisplay=path=>path===resolve(join(homedir(),'.dsh'))?DEFAULT_DSH_HO
 const agentsHomeDisplay=path=>path===resolve(join(homedir(),'.agents'))?DEFAULT_AGENTS_HOME_DISPLAY:'$DSH_AGENTS_HOME';
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { assertNever } from "@deepseek-ai/dsh-util-values";
+import { assertNever } from "./native-values.js";
 import { createHash } from "node:crypto";
 //#region lib/types/config.js
 /**

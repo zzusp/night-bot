@@ -11,11 +11,11 @@ import { AttachmentError } from "./native-attachment-errors.js";
 import { z as z$1 } from "zod";
 import { HarnessError, ReasoningEffortId, boundContextSummary, contentHasImage, createUserMessage, errorChain, joinAssistantStreamText } from "@deepseek-ai/dsh-llm";
 import { randomUUID } from "node:crypto";
-import { foldConsumedWork } from "@deepseek-ai/dsh-agent";
+import { foldConsumedWork } from "./native-consumed-work.js";
 import { isAbsolute, resolve } from "node:path";
-import { brandString } from "@deepseek-ai/dsh-brand";
+import { brandString } from "./native-brand.js";
 import { SessionLogOffset, SessionSeq } from "@deepseek-ai/dsh-session";
-import { assertNever, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+import { assertNever, snapshotJsonValue } from "./native-values.js";
 import { appendChunkedList, chunkedListSchema, iterateChunkedList } from "./native-chunked-list.js";
 import { accessSync, constants, statSync } from "node:fs";
 //#region lib/types/error.js

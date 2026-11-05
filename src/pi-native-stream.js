@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto'
-import {snapshotJsonValue} from '@deepseek-ai/dsh-util-values'
+import {snapshotJsonValue} from './native-values.js'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isDeepStrictEqual} from 'node:util'
 import {AssistantMessageEventStream} from '@earendil-works/pi-ai'

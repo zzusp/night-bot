@@ -321,3 +321,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 真实kernel containment11通过/一Windows跳过（18724.509406ms）。新增两实际Pi/bubblewrap wire验证显式后台及timeout提升，一次受限效果、job_output收集、per-process facts释放且无多余notice；既有可信环境wire确认已切NativeSandboxBashExecutor。全新/tmp/night-bot-shell-production frozen production ignore-scripts安装，327实质核心/wire+38合同+3真实kernel wire=368复测通过；295运行文件及manifest/lock逐字一致，静态292 JS/271字面bare imports通过。
 
 runtime142/routing47/domain388对应核心/夹具未改动沿用de10f64证据，不声称本阶段重跑；独立总计1064通过。证据evidence/native-shell-*.txt。28直接DSH依赖/49活动组件替换，默认Host已无DSH plugin row；仍保留数据facade与公共辅助库，不是完整DSH独立。初次smoke引用不存在测试名没有执行，随即改为现存真实Host wires并通过，不计失败命令为验收。远端403未重试。
+
+## 原生纯值与工作账务辅助验证
+
+最终own481/481（37307.449977ms）通过；新增4合同验证turn/inbox取消/claim/suffix旧折叠差分、跨realm和lossless JSON拒绝差分、getter单次读取/嵌套快照分离/字面__proto__保护，以及循环freeze保留AbortSignal可取消。17项定向组含真实child控制和tool timeout wires通过。Agent registry此前一个用例同时验证native与旧SDK；production移除旧包后初次筛选遇开发包缺失，已拆成独立Native协议验证与开发差分，重跑受影响own和production core；未恢复生产旧包或丢掉Native验证。
+
+真实kernel11通过/一Windows跳过（20292.826325ms）；全新/tmp/night-bot-value-helpers-production frozen production ignore-scripts安装，329实质核心/wire+38合同+3真实kernel wire=370复测通过。298运行文件及manifest/lock逐字一致，静态295 JS/258字面bare imports通过。runtime142/routing47/domain388沿用de10f64对应未改动核心/夹具证据，不声称重跑；共1069独立通过。证据evidence/native-value-helpers-*.txt。25直接DSH依赖/49活动组件替换；纯helper不计服务替换，仍非DSH独立，403未重试。

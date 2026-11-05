@@ -1,6 +1,6 @@
 import {defineTool,parameterSchemaSpecToJsonSchema,CodeRunFailedError,TOOL_RUNTIME_SCHEDULER} from '@deepseek-ai/dsh-tools'
 import {nativeEscalationTargets as ESCALATION_TARGETS,approveNativeSandbox as approveEscalation,validateNativeEscalation as validateEscalationArgs} from './native-sandbox-approval.js'
-import {snapshotJsonValue,deepFreeze} from '@deepseek-ai/dsh-util-values'
+import {snapshotJsonValue,deepFreeze} from './native-values.js'
 import {createUserMessage} from '@deepseek-ai/dsh-llm'
 const json=value=>{const copy=snapshotJsonValue(value);if(copy===undefined)throw new TypeError('Code tool arguments must be lossless JSON');return copy}
 const guidance=' A wider program sandbox requires separate approval for one run. Nested tools retain their own policies. Request wider access only after evidence of a denial and choose the narrowest sufficient mode. Earlier effects may have completed: inspect them before an explicit retry. Programs are never replayed automatically.'

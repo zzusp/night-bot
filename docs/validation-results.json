@@ -1117,5 +1117,36 @@
     "platformLimit": "real Linux Bash verified; PowerShell argv/encoding/config/control tested with fake subprocess only, no real Windows/Pwsh acceptance",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeValueAndWorkHelpers": {
+    "date": "2026-11-05",
+    "ownPass": 481,
+    "ownDurationMs": 37307.449977,
+    "newHelperContracts": 4,
+    "agentContractSplit": "Native live publication contract retained in production; separate legacy registry differential development-only",
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain unchanged from de10f64; no rerun claimed",
+    "containment": {
+      "pass": 11,
+      "windowsSkipped": 1,
+      "durationMs": 20292.826325,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 1069,
+    "productionOnlyRepeatedPass": 370,
+    "productionScope": "329 meaningful core/wires plus38 contracts plus3 real kernel wires; development-only differentials excluded",
+    "runtimeFilesCompared": 298,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 295,
+    "literalBareImports": 258,
+    "directRuntimeDshDependencies": 25,
+    "removedActiveDshServices": 49,
+    "sourceDerivedAlgorithms": "MIT consumed-work audit fold, primitive brands and consumed pure JSON/value helpers; no service-removal credit",
+    "remainingScopeBoundary": "shared legacy scope marker/WeakMaps remain canonical pending coordinated consumer migration; do not duplicate silently",
+    "productionInitialFailure": "first production core selection accidentally included old agent registry differential after package moved to development-only; split Native contract from differential and reran affected own/core groups, keeping Native production verification",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

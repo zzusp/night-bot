@@ -3,7 +3,7 @@ import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import TurndownService from "turndown";
 import { gfm } from "@joplin/turndown-plugin-gfm";
-import { assertNever } from "@deepseek-ai/dsh-util-values";
+import { assertNever } from "./native-values.js";
 //#region lib/types/trust.js
 /**
 * Model-visible labeling shared by web tools.

@@ -1,5 +1,5 @@
 // MIT source-derived model tool binding; see licenses/dsh-tool-subagent-control-MIT.txt. Active lifecycle belongs to native services and Pi.
-import { brandString } from "@deepseek-ai/dsh-brand";
+import { brandString } from "./native-brand.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 // Stable interoperability marker consumed by NativeSubagents; no legacy runtime import.
 function markAdjacentAgentSendMessageTool(tool) {

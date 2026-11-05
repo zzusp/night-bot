@@ -2,7 +2,7 @@ import {nativeCodeTransport} from './native-code-transport.js'
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {scopeOf,scopeChainOf,scopeTarget} from '@deepseek-ai/dsh-scope'
-import {snapshotJsonValue,deepFreeze} from '@deepseek-ai/dsh-util-values'
+import {snapshotJsonValue,deepFreeze} from './native-values.js'
 import {HarnessError} from '@deepseek-ai/dsh-llm'
 import {assertSupportedJsonSchema,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy} from '@deepseek-ai/dsh-tools'
 const errorText=error=>{try{return typeof error?.message==='string'?error.message:String(error)}catch{return'Unprintable tool failure'}}

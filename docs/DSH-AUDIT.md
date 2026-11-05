@@ -275,3 +275,7 @@ Active tool-fs/tool-fs-search now use attributed local bindings, native deadline
 ### Shell runtime ownership
 
 Active Bash/Pwsh sandbox consumers and model tools now mount native URLs over local shell/base executors, with MIT source attribution. No active literal/dynamic DSH plugin rows remain. Four active rows earn replacement credit; abstract/render helper copies do not. Direct DSH production dependencies28; active replacements49. Canonical sandbox/helper functions, v4 Session/inbox data facade, validation/presentation/message/schema/scope/RPC helpers, Windows ACL/proxy and optional worker remain. Agent package usage was verified as consumed-work fold/type metadata only, not an active inherited Agent base or registry. No complete migration claim.
+
+### Pure helper ownership
+
+Consumed-work accounting, primitive brands and consumed JSON/value algorithms now live locally with MIT attribution. The old agent registry is development-only for differential validation; Native live registry publication still has a separate production contract. Direct DSH production dependencies25; active replacements49. Transitive/inactive helper package presence is not hidden by the direct count; scope/Session/inbox/schema/error/RPC/format/platform/proxy boundaries remain.
