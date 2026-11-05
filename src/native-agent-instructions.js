@@ -1,5 +1,7 @@
 // MIT source-derived instruction discovery/rendering/reconciliation; see licenses/dsh-agent-instructions-MIT.txt.
 // Pi journal context, rather than the legacy Session surface, owns visible instruction state.
+import {scopeOf} from './native-scope.js';
+import {officialWorkingDirectoryOrigin} from './native-working-directory.js';
 import { isDeepStrictEqual } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { homedir } from "node:os";
@@ -679,6 +681,13 @@ async function discoverInstructionFiles(options, fileSystem) {
 	const cwd = resolve(options.cwd);
 	const projectRoot = options.projectRoot ?? await findProjectRoot(cwd, config.projectRootMarkers, fileSystem, options.signal);
 	for (const dir of ancestorChain(projectRoot, cwd)) for (const candidates of [config.instructionFileCandidates, config.localInstructionFileCandidates]) for (const file of await allExistingInstructionFiles(dir, projectRoot, candidates, fileSystem, options.signal)) addFile(file);
+	// Successful application tool observations select additional instruction
+	// directories. File contents still pass the same scoped reader and budgets;
+	// this list contains paths, never a second conversation or publication log.
+	for(const touchedPath of options.discoveredPaths??[]) {
+		if(typeof touchedPath!=='string'||!isAbsolute(touchedPath))throw new TypeError('Absolute observed instruction path required');
+		for(const dir of descendantDirsBetween(projectRoot,touchedPath))for(const candidates of [config.instructionFileCandidates,config.localInstructionFileCandidates])for(const file of await allExistingInstructionFiles(dir,projectRoot,candidates,fileSystem,options.signal))addFile(file);
+	}
 	return files;
 }
 /**
@@ -1240,7 +1249,9 @@ function filePathFromExecution(exec) {
 function apply(ctx, config) {
 	const resolved=resolveConfig(config);
 	const authority=ctx.piAuthority, active=new Set(), calls=new AsyncLocalStorage();
-	ctx.provide('nativeAgentInstructions',Object.freeze({owner:name,contextAuthority:'pi-session-manager'}));
+	const officialPaths=new WeakMap();
+	const assertOfficialActor=actor=>{if(scopeOf(actor?.ctx)!==actor||actor?.lifecycle?.isLive()!==true)throw new Error('PI_INSTRUCTION_ACTOR_REQUIRED');return officialWorkingDirectoryOrigin(actor)};
+	ctx.provide('nativeAgentInstructions',Object.freeze({owner:name,contextAuthority:'pi-session-manager',officialDiscoveredPaths(actor){assertOfficialActor(actor);return [...officialPaths.get(actor)??[]]}}));
 	function track(operation){const record={};active.add(record);let result;try{result=calls.run(record,operation)}catch(error){active.delete(record);throw error}record.done=Promise.resolve(result).finally(()=>active.delete(record));return record.done}
 	const publications=agent=>instructionPublications(agent,authority);
 	const instructionVersions = /* @__PURE__ */ new WeakMap();
@@ -1442,6 +1453,13 @@ function apply(ctx, config) {
 		};
 	}));
 	ctx.on("tools/result", (exec, result) => {
+		if(exec.agent?.piSession){
+			if(!result.isError&&!exec.signal.aborted){
+				const touched=filePathFromExecution(exec);
+				if(touched!==undefined){assertOfficialActor(exec.agent);const cwd=ctx.workingDirectory.get(exec.agent);let paths=officialPaths.get(exec.agent);if(!paths)officialPaths.set(exec.agent,paths=new Set());paths.add(resolve(cwd,touched));}
+			}
+			return;
+		}
 		const touches = executionTouches.get(exec.token) ?? [];
 		executionTouches.delete(exec.token);
 		if (!result.isError && exec.agent !== void 0 && !exec.signal.aborted) {
