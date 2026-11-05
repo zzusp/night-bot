@@ -46,7 +46,7 @@ test('real Pi first-tier steers arrivals into the same 15-message batch; 16 queu
   await until(()=>delivered.length===16)
   assert.equal(new Set(delivered.map(row=>row.replyToMessageId)).size,16);assert.deepEqual(delivered.map(row=>row.replyToMessageId).sort(),Array.from({length:16},(_,n)=>input(n+1).messageId).sort());for(const row of delivered){const original=input(Number(row.replyToMessageId.slice('source-'.length)));assert.ok(row.text.includes(original.text));assert.equal(row.senderId,original.senderId)};assert.ok(delivered.every(row=>row.type==='chat-room'&&row.text.startsWith('初步判断')&&row.mentions.includes(row.senderId)))
   const batches=Object.values(h.residentStore.getGroup(groupId).coordinationRequests).filter(row=>row.triageBatch).map(row=>row.triageBatch.messages.length);assert.deepEqual(batches.sort((a,b)=>b-a),[15,1],JSON.stringify({batches,modelErrors}))
-  try{await until(()=>secondEndedAt)}catch(error){throw Error(JSON.stringify({modelErrors,tools:f.requests.slice(-4).map(r=>r.tools?.map(t=>t.function.name)),topics:h.residentStore.getGroup(groupId).topics,requests:h.residentStore.getGroup(groupId).coordinationRequests}))};assert.ok(firstSentAt<=secondEndedAt);assert.equal((await h.store.query({kind:'execution.list'})).length,0);t.diagnostic(JSON.stringify({firstTierSendBeforeSecondTierMs:secondEndedAt-firstSentAt,batchSizes:batches,delivered:delivered.length}));await h.service.whenIdle();assert.equal(f.host.ctx.agents.list().filter(actor=>actor.metadata?.origin==='subagent').length,0,'completed coordination actors really release official ownership');await h.close()
+  try{await until(()=>secondEndedAt)}catch(error){throw Error(JSON.stringify({modelErrors,tools:f.requests.slice(-4).map(r=>r.tools?.map(t=>t.function.name)),topics:h.residentStore.getGroup(groupId).topics,requests:h.residentStore.getGroup(groupId).coordinationRequests}))};assert.ok(firstSentAt<=secondEndedAt);assert.equal((await h.store.query({kind:'execution.list'})).length,0);t.diagnostic(JSON.stringify({firstTierSendBeforeSecondTierMs:secondEndedAt-firstSentAt,batchSizes:batches,delivered:delivered.length}));await h.service.whenIdle();assert.equal(f.host.ctx.agents.list().filter(actor=>actor.metadata?.runtimeOwner==='topic-coordinator').length,0,'completed coordination actors really release official ownership');await h.close()
 })
 
 test('cold recovery keeps the same triage session; an uncertain private-chat send is read back and never sent again',{timeout:30000},async t=>{
@@ -85,6 +85,7 @@ test('triage startup admits the latest full batch when arrivals precede the firs
   if(!feedbackDone.has(env.requestId)){feedbackDone.add(env.requestId);return feedback(env)}
   return routes(env)
  })
+ const archived=await f.agent('unrelated-archived-session');await archived.dispose();await f.host.ctx.workspaceRegistry.archiveSession('unrelated-archived-session')
  const h=await serviceFor(f);t.after(()=>h.close())
  f.host.ctx.channels.registerTransport('local-fixture',{async send(envelope){delivered.push(envelope);return {messageId:'startup-'+delivered.length}},async readback(){return undefined}})
  await Promise.all([f.host.ctx.channels.receive(input(201)),f.host.ctx.channels.receive(input(202))])

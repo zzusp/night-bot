@@ -50,5 +50,5 @@ test('actual default Host rejects a DSH plugin before module evaluation',async t
  const marker=join(root,'evaluated.txt'),entry=join(root,'plugin/index.js')
  await writeFile(entry,`import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(marker)},'unsafe');export function apply(){throw Error('must not load')}`)
  const host=await createHost({installRoot:root,model:{provider:'fixture',model:'fixture'},plugins:[{name:pathToFileURL(entry).href}],credentialsWatch:false,skillWatch:false})
- try{await assert.rejects(readFile(marker),{code:'ENOENT'});assert.ok(host.ctx.get('agentLoop'))}finally{await host.close()}
+ try{await assert.rejects(readFile(marker),{code:'ENOENT'});assert.ok(host.ctx.get('officialAgentFactory'));assert.equal(host.ctx.get('agentLoop'),undefined);assert.equal(host.ctx.get('llm'),undefined)}finally{await host.close()}
 })

@@ -142,7 +142,7 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
       const creation={ sessionId,auditKinds:coordinationAuditKinds,initialReceipts:prior?[]:[{version:1,domain:'coordination',kind:'identity',payload:identity}],
         authorizeInput:packet=>entry.active&&topics.isCurrentRequest(request)&&isDeepStrictEqual(entry.authorizedPackets.get(packet.id),packet),
         beforeRequest:()=>{if(!entry.active||!topics.isCurrentRequest(request))throw new Error('coordination_request_inactive')},
-        meta: { cwd: await sessionWorkspace(root, role), origin: 'subagent', delegationDepth: 1, agentPreset },
+        meta: { cwd: await sessionWorkspace(root, role), runtimeOwner: 'topic-coordinator', agentPreset },
         agentOptions: typeof models === 'function' ? models() : models,
         setup: async agentCtx => {
           const presets = agentCtx.get('agentPresets')

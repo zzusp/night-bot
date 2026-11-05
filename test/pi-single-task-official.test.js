@@ -22,7 +22,7 @@ import {createSingleTaskSessions} from '../src/tasks/single-session.js'
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 const decision={action:'complete',summary:'Verified',evidence:['scripted tool result'],limitations:[]}
 const definition=(name,execute)=>({name,description:name,parameters:{type:'object',properties:{a:{type:'integer'},b:{type:'integer'}},additionalProperties:false},output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute})
-async function fixture(t,plan,{effect=async()=>({ok:true})}={}){
+async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>true}={}){
  const root=await mkdtemp('/tmp/night-single-official-'),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context();new NativeSessions(ctx);new NativeAgents(ctx);new NativeSystemPrompt(ctx,{});new NativeTools(ctx);new NativeJobs(ctx);authority(ctx)
  const persistence=new PiPersistence(ctx,{root:join(root,'sessions')}),requests=[],actors=[];let effects=0
@@ -60,7 +60,7 @@ async function fixture(t,plan,{effect=async()=>({ok:true})}={}){
   }catch(error){official?.session.dispose();detach?.();unbindDirectory?.();await scope?.dispose();await store.close();throw error}
  }
  ctx.agents.setFactory({createAgent:(_owner,options)=>build(options,false),resume:(_owner,options)=>build(options,true)})
- const sessions=createSingleTaskSessions({ctx,isCurrent:async()=>true,getWorkspaceDir:async()=>root})
+ const sessions=createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir:async()=>root})
  t.after(async()=>{await sessions.close();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  return{ctx,persistence,sessions,requests,actors,get effects(){return effects},binding:{taskId:'task',sessionId:'single',sessionBound:false,requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1},input:{task:{objective:'Create proof'},sources:[],materials:[],blockers:[]},provider:model.provider,model:model.id}
 }
@@ -133,4 +133,25 @@ test('business request rejection always attempts disposal, while real commit or 
   else{assert.equal(result,refusal);assert.equal(result.taskSessionDrained,undefined)}
   if(failed){await assert.rejects(sessions.cancel('task'),error=>error===result);await assert.rejects(sessions.close(),error=>error===result)}else await sessions.close()
  }
+})
+
+
+test('a superseded official run cancels without effects and disposes its writer before the next revision',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();let current=true
+ const f=await fixture(t,async()=>{entered.resolve();await release.promise;return {calls:[{name:'write'}]}},{isCurrent:async()=>current})
+ t.after(()=>release.resolve())
+ const running=f.sessions.run({...f,binding:f.binding,input:f.input,onSessionBound:async()=>{},submit:async()=>{throw Error('stale submission must not run')}})
+ await entered.promise;current=false;release.resolve()
+ const result=await running
+ assert.equal(result.status,'cancelled');assert.equal(result.reason,'TASK_BINDING_SUPERSEDED')
+ assert.equal(f.effects,0);assert.equal(f.requests.length,1);assert.equal(f.ctx.agents.list().length,0)
+ const stored=await f.persistence.readNative(f.binding.sessionId,{requireComplete:true})
+ assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent').length,0)
+})
+
+test('supersession never converts a factory startup cleanup failure into a drained task',async()=>{
+ const cleanupFailure=new Error('factory retained startup ownership'),cause=Object.assign(new Error('startup failed'),{cleanupFailure})
+ const sessions=createSingleTaskSessions({ctx:{sessionPersistence:{async readNative(id){throw Object.assign(new Error('new'),{name:'SessionPersistenceNotFoundError',sessionId:id})}},agents:{async create(){throw cause}}},isCurrent:async()=>false,getWorkspaceDir:async()=>'/authorized/task'})
+ await assert.rejects(sessions.run({binding:{taskId:'task',sessionId:'startup',sessionBound:false},input:{},onSessionBound:async()=>{},submit:async()=>{}}),error=>error.code==='TASK_SESSION_DRAIN_FAILED'&&error.taskSessionDrained===false&&error.cause===cleanupFailure)
+ await assert.rejects(sessions.close(),{code:'TASK_SESSION_DRAIN_FAILED',taskSessionDrained:false})
 })

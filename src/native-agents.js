@@ -11,7 +11,7 @@ export default class NativeAgents extends Service{
   ctx.on('internal/status',fiber=>{if(fiber.state===5&&this.ownsLifecycle(fiber))this.closeInitiators()})
   ctx.effect(function*(){yield()=>this.disposeInitiators();yield()=>this.closeInitiators()}.bind(this),'native agent attribution lifecycle')
   ctx.on('workspace/session-activity',async({sessionId},next)=>{const running=this.get(sessionId)?.status==='running',rest=await next();return running?[{kind:'turn'},...rest]:rest})
-  ctx.on('workspace/session-stop',({sessionId})=>{const agent=this.get(sessionId);if(agent?.status==='running')agent.cancel({kind:'user'})})
+  ctx.on('workspace/session-stop',({sessionId})=>{const agent=this.get(sessionId);if(agent?.status==='running')return agent.cancel({kind:'user'})})
  }
  ownsLifecycle(candidate){let fiber=this.ctx.fiber;while(fiber){if(fiber===candidate)return true;const parent=fiber.parent.fiber;if(parent===fiber)return false;fiber=parent}return false}
  currentInitiator(){if(this.initiatorState==='disposed')throw new Error('agent initiator scope is disposed');return this.initiators.getStore()}
@@ -43,6 +43,7 @@ export default class NativeAgents extends Service{
  detach(entry){entry.pendingDetach=false;if(this.entries.get(entry.id)!==entry)return;this.entries.delete(entry.id);if(!entry.announced)return;const args=[entry.carrier,'agent/disposed',{agent:entry.agent}];for(const listener of this.ctx.events.dispatch('emit',args))try{Promise.resolve(listener(...args)).catch(error=>this.ctx.logger.warn(error))}catch(error){this.ctx.logger.warn(error)}}
  async announce(agent,source,signal){const entry=this.entries.get(agent.id);if(!entry||entry.agent!==agent)throw new Error('agent is not live in this registry');if(entry.announced||entry.announcing)throw new Error('agent was already announced');entry.announcing=true;entry.announced=true;try{await this.ctx.serial(entry.carrier,'agent/created',{agent,source,...signal===undefined?{}:{signal}})}finally{entry.announcing=false;if(entry.pendingDetach)this.detach(entry)}}
  get(id){return this.entries.get(id)?.agent}
+ ownerOf(actor){const entry=actor&&this.entries.get(actor.id);if(!entry||entry.agent!==actor)throw Object.assign(new Error('NATIVE_AGENT_OWNER_UNBOUND'),{code:'NATIVE_AGENT_OWNER_UNBOUND'});return entry.owner}
  isOwnedBy(id,owner){return this.entries.get(id)?.owner===owner}
  list(){return[...this.entries.values()].map(e=>e.agent)}
  roots(){return[...this.entries.values()].filter(e=>e.owner===undefined).map(e=>e.agent)}

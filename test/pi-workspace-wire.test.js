@@ -5,19 +5,73 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '../packages/capability-compat/llm/index.js'
-const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
-test('native workspace archive blocks real Pi requests including subagent lineage and unarchive restores admission', {timeout:15000},async t=>{
+import {underArchivedSession} from '../src/native-workspace.js'
+
+let nextInput=0
+const input=async(handle,text)=>{const id='workspace-input-'+(++nextInput);await handle.enqueue({id,source:{kind:'workspace-fixture'},content:text});await handle.deliver(id);await handle.whenIdle()}
+const until=async check=>{for(let n=0;n<200;n++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,5))}throw Error('workspace fixture timeout')}
+async function fixture(t,decide=()=>undefined){
  const root=await mkdtemp(join(tmpdir(),'night-workspace-wire-')),requests=[],handles=[];let host
- const server=createServer(async(req,res)=>{for await(const _ of req){}requests.push(req.url);res.writeHead(200,{'content-type':'text/event-stream'});for(const [delta,finish_reason]of [[{role:'assistant',content:'workspace verified'},null],[{},'stop']])res.write('data: '+JSON.stringify({id:'workspace-wire',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta,finish_reason}]})+'\n\n');res.end('data: [DONE]\n\n')})
+ const server=createServer(async(req,res)=>{
+  let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);requests.push(body)
+  const decision=await decide(body,requests.length)
+  res.writeHead(200,{'content-type':'text/event-stream'})
+  const send=(delta,finish_reason=null)=>res.write('data: '+JSON.stringify({id:'workspace-wire',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta,finish_reason}]})+'\n\n')
+  if(decision){send({role:'assistant',tool_calls:[{index:0,id:'workspace-tool',type:'function',function:{name:decision.name,arguments:JSON.stringify(decision.args??{})}}]});send({},'tool_calls')}
+  else{send({role:'assistant',content:'workspace verified'});send({},'stop')}
+  res.end('data: [DONE]\n\n')
+ })
  t.after(async()=>{try{for(const handle of handles.toReversed())await handle.dispose()}finally{try{await host?.close()}finally{await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true})}}})
- await new Promise(r=>server.listen(0,'127.0.0.1',r))
- const work=join(root,'work');host=await createHost({stateDir:join(root,'state'),workspaceDir:work,model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',apiKeyEnv:'FIXTURE_WORKSPACE_KEY',baseURL:`http://127.0.0.1:${server.address().port}/v1`,retry:{enabled:false,provider:{maxRetries:0}},models:[{id:'m',contextWindow:4096,maxTokens:128}]}}},{environmentSnapshot:{get(name){return name==='FIXTURE_WORKSPACE_KEY'?{value:'fixture',source:'process'}:undefined},getFrom(name,sources){return sources.includes('process')?this.get(name):undefined}}})
- assert.equal(host.ctx.workspaceRegistry.constructor.name,'NativeWorkspace')
- const create=async(id,meta={},parentAgent)=>{const h=await host.ctx.agents.create({sessionId:id,...meta.isSeeded?{seed:[],inheritedEventCount:0}:{},agentOptions:{provider:'fixture',model:'m'},meta:{cwd:work,...meta},...parentAgent?{parentAgent}:{}});handles.push(h);return h}
- const parent=await create('workspace-parent'),child=await create('workspace-child',{origin:'subagent',parentSession:'workspace-parent'},parent.agent),fork=await create('workspace-fork',{isSeeded:true,parentSession:'workspace-parent'})
- const workspace=await host.ctx.workspaceRegistry.create(work);await workspace.attachSession('workspace-parent');await host.ctx.workspaceRegistry.archiveSession('workspace-parent')
- for(const h of [parent,child]){h.agent.steer(input('This archived lineage must stay blocked'));await h.agent.whenIdle();assert.equal(h.agent.session.snapshotEvents().findLast(e=>e.type==='turn/end').data.reason.kind,'blocked')}
- assert.equal(requests.length,0);fork.agent.steer(input('Independent fork may run'));await fork.agent.whenIdle();assert.equal(requests.length,1)
- await host.ctx.workspaceRegistry.unarchiveSession('workspace-parent');child.agent.steer(input('Restored lineage may run'));await child.agent.whenIdle();assert.equal(requests.length,2);assert.equal(child.agent.providerStreamProtocol,'pi-native')
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
+ const work=join(root,'work')
+ const boot=async()=>host=await createHost({stateDir:join(root,'state'),workspaceDir:work,model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',apiKeyEnv:'FIXTURE_WORKSPACE_KEY',baseURL:`http://127.0.0.1:${server.address().port}/v1`,retry:{enabled:false,provider:{maxRetries:0}},models:[{id:'m',contextWindow:8192,maxTokens:128}]}}},{environmentOptions:{cwd:root,home:root,inherited:{FIXTURE_WORKSPACE_KEY:'fixture'}}})
+ await boot()
+ const authorization=packet=>packet.source.kind==='workspace-fixture'
+ const create=async(id,meta={},parentAgent,setup)=>{const handle=await host.ctx.agents.create({sessionId:id,meta:{cwd:work,agentPreset:'night-bot',...meta},...parentAgent?{parentAgent}:{},authorizeInput:authorization,...setup?{setup}:{}});handles.push(handle);return handle}
+ const resume=async id=>{const handle=await host.ctx.agents.resume({resumeSessionId:id,authorizeInput:authorization});handles.push(handle);return handle}
+ return {get host(){return host},root,work,requests,create,resume,boot,async close(){await host?.close();host=undefined},get registry(){return host.ctx.workspaceRegistry}}
+}
+test('native workspace archive blocks official own/live/cold lineage while independent forks remain independent',{timeout:15000},async t=>{
+ const f=await fixture(t),parent=await f.create('workspace-parent'),child=await f.create('workspace-child',{origin:'subagent',parentSession:parent.actor.id},parent.actor),fork=await f.create('workspace-fork',{parentSession:parent.actor.id})
+ const workspace=await f.registry.create(f.work);await workspace.attachSession(parent.actor.id);await f.registry.archiveSession(parent.actor.id)
+ assert.equal(f.host.ctx.agents.ownerOf(child.actor),parent.actor)
+ assert.throws(()=>f.host.ctx.agents.ownerOf({...child.actor}),{code:'NATIVE_AGENT_OWNER_UNBOUND'})
+ for(const handle of [parent,child])await assert.rejects(input(handle,'This archived lineage must stay blocked'),{code:'WORKSPACE_SESSION_ARCHIVED'})
+ assert.equal(f.requests.length,0)
+ await input(fork,'Independent fork may run');assert.equal(f.requests.length,1)
+ await child.dispose();await parent.dispose();await f.close();await f.boot()
+ assert.equal(f.registry.lineageHeaders.size,0,'cold lineage starts without trusted in-memory ancestor observations')
+ const cold=await f.resume('workspace-child')
+ await assert.rejects(input(cold,'Cold native header lineage must remain blocked'),{code:'WORKSPACE_SESSION_ARCHIVED'})
+ assert.equal(f.requests.length,1)
+ await f.registry.unarchiveSession('workspace-parent');await input(cold,'Restored lineage may run');assert.equal(f.requests.length,2)
+ assert.equal(cold.actor.metadata.parentSession,'workspace-parent');assert.equal(cold.actor.session,undefined)
+})
+test('active archive persists its gate before awaiting real cancel and body drain; unarchive uses fresh resume',{timeout:15000},async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();let exited=false
+ t.after(()=>release.resolve())
+ const f=await fixture(t,(_body,n)=>n===1?{name:'held_effect'}:undefined)
+ const handle=await f.create('active-archive',{},undefined,async ctx=>{ctx.get('tools').register({name:'held_effect',description:'Controlled uncooperative body',parameters:{type:'object',properties:{}},output:{schema:{type:'object'},render:()=>[]},async execute(){entered.resolve();await release.promise;exited=true;return{joined:true}}})})
+ const running=input(handle,'Start the controlled body').catch(error=>error)
+ await entered.promise;await assert.rejects(f.registry.archiveSession(handle.actor.id),error=>error.name==='WorkspaceActiveSessionError')
+ assert.equal(f.registry.archivedSessionIds.includes(handle.actor.id),false)
+ let completed=false
+ const archived=f.registry.archiveSession(handle.actor.id,{stopActivity:true}).then(()=>{completed=true})
+ await until(()=>f.registry.archivedSessionIds.includes(handle.actor.id));await new Promise(resolve=>setTimeout(resolve,20))
+ assert.equal(completed,false);assert.equal(exited,false);assert.equal(f.host.ctx.agents.get(handle.actor.id),handle.actor);assert.equal(f.requests.length,1)
+ release.resolve();await archived;await running
+ assert.equal(completed,true);assert.equal(exited,true);assert.equal(handle.session.isStreaming,false)
+ await f.registry.unarchiveSession(handle.actor.id)
+ await assert.rejects(async()=>handle.enqueue({id:'cannot-reuse-cancelled',source:{kind:'workspace-fixture'},content:'no private flag reset'}),{code:'PI_OFFICIAL_ACTOR_NOT_LIVE'})
+ await handle.dispose();const resumed=await f.resume(handle.actor.id);await input(resumed,'Fresh actor after unarchive may run');assert.equal(f.requests.length,2)
+})
+test('drain failure preserves durable archive and exact owner and is reported again without claiming completion',{timeout:15000},async t=>{
+ const f=await fixture(t),handle=await f.create('archive-drain-failed'),cancel=handle.actor.cancel,cause=Error('controlled unresolved drain')
+ handle.actor.cancel=async()=>{throw cause}
+ try{
+  await assert.rejects(f.registry.archiveSession(handle.actor.id,{stopActivity:true}),{code:'WORKSPACE_ARCHIVE_DRAIN_FAILED'})
+  assert.ok(f.registry.archivedSessionIds.includes(handle.actor.id));assert.equal(f.host.ctx.agents.get(handle.actor.id),handle.actor)
+  await assert.rejects(f.registry.archiveSession(handle.actor.id,{stopActivity:true}),{code:'WORKSPACE_ARCHIVE_DRAIN_FAILED'})
+  await assert.rejects(input(handle,'Gate remains closed despite failed cancellation'),{code:'WORKSPACE_SESSION_ARCHIVED'});assert.equal(f.requests.length,0)
+ }finally{handle.actor.cancel=cancel}
 })

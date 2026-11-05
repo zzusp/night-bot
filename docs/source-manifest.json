@@ -1067,7 +1067,7 @@
       "source": "task-topic-coordinator.js",
       "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
       "status": "adapted",
-      "sha256": "5187337523c435803545390bfa053636d01e8a40dd538ff0798d424198bde950",
+      "sha256": "7095c8504f8ed5a8416d6a8a47f8c3ce17e8fac379e0a79d7ffa71ce53923728",
       "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body."
     },
     {

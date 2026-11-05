@@ -122,9 +122,13 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
     }catch(cause){
       entry.outcomeError=cause
       if(entry.effectUncertain?.())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY',effectDisposition:'held',failure:{code:cause.code??'TASK_EFFECT_UNCERTAIN_NO_REPLAY',message:cause.message}}
+      // Supersession is a business outcome, independent of which official SDK
+      // cancellation point observed it. Finally must still prove real disposal.
+      if(!await current())return {status:'cancelled',reason:'TASK_BINDING_SUPERSEDED',failure:{code:typeof cause.code==='string'?cause.code:cause.name}}
       throw cause
     }finally{
       let idleOutcome;const drainErrors=[]
+      if(!entry.handle&&entry.outcomeError?.cleanupFailure)drainErrors.push(entry.outcomeError.cleanupFailure)
       try{
         if(entry.handle){
           // The public SDK can already be physically idle while its application
