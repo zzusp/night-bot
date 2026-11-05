@@ -70,7 +70,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     await ctx.loader.root.update(prepareProfileEntries(ctx,rows,ctx.baseUrl))
     await ctx.loader.await()
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
-    for (const service of ['agents','officialAgentFactory','nativeModelRoutes','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','sessionController','schedule','memory','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
+    for (const service of ['agents','credentials','officialAgentFactory','nativeModelRoutes','sessions','sessionProjections','piAuthority','sessionPersistence','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','sessionController','schedule','memory','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('tools')) throw new Error('NIGHT_BOT_TOOL_RUNTIME_UNAVAILABLE')
     if (!ctx.get('jobs')) throw new Error('NIGHT_BOT_JOB_RUNTIME_UNAVAILABLE')

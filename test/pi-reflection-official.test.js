@@ -37,12 +37,12 @@ test('background review uses explicit configured resolution, refuses secrets and
  const f=await memoryHost(t,async body=>{if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return;entered.resolve();await release.promise;const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content);return{text:JSON.stringify({lessons:[{key:'bounded',observation:'Verified local result',hypothesis:'limited',shortcut:'Inspect first',evidenceIds:[input.eventId]}]})}})
  const ctx=f.host.ctx,official=ctx.nativePiProvider.official,original=official.resolve.bind(official),resolved=[]
  official.resolve=async(config,scope)=>{resolved.push({config,scope});return original(config,scope)}
- ctx.llm.stream=()=>{throw Error('legacy reflection path forbidden')}
  const store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'reflection-contract.sqlite'),instanceId:'reflection-contract',initialize:true});t.after(()=>store.close())
  async function complete(id,summary){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded request',ownerActorId:'PRIVATE_OWNER_NEVER_PROVIDER'});const binding=(await command('task.claim',{taskId:id})).result.binding;await command('task.complete',{binding,summary,result:{summary}})}
  await complete('one','verified local result');const detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await entered.promise
  const scope=memoryScope({actorId:'PRIVATE_OWNER_NEVER_PROVIDER'},{scope:'personal'},true)
  await ctx.memory.store.forget(scope,{topic:'experience',key:'bounded',source:{sessionId:'forget',messageId:'forget'}});release.resolve();await ctx.reflection.whenIdle()
+ assert.equal(f.requests.length,1);assert.equal(f.requests[0].tools,undefined)
  assert.equal(resolved.length,1);assert.equal(resolved[0].config.provider,'fixture');assert.equal(resolved[0].scope,undefined);assert.ok(resolved[0].config.signal instanceof AbortSignal)
  assert.doesNotMatch(JSON.stringify(f.requests),/PRIVATE_OWNER_NEVER_PROVIDER/);assert.equal((await ctx.memory.store.read(scope,{topic:'experience'})).entries.length,0)
  assert.equal(Object.values((await ctx.reflection.state(scope)).reviews)[0].code,'MEMORY_SCOPE_CHANGED')

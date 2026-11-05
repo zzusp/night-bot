@@ -7,6 +7,7 @@ import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {memoryScope} from '../src/memory/scope.js'
+import {createPiProjectionRequest} from '../src/runtime/pi-request-context.js'
 
 async function completed(store,id,groupId){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded local task',ownerActorId:'owner',...groupId?{groupId}:{}});const binding=(await command('task.claim',{taskId:id})).result.binding;return (await command('task.complete',{binding,summary:'Verified bounded task result'})).completionEvent}
 const lesson=input=>({text:JSON.stringify({lessons:[{key:'inspect-first',observation:'Read evidence before changing files',hypothesis:'Preflight may avoid detours for similar local tasks',shortcut:'Inspect current state before choosing a write',evidenceIds:[input.eventId],skill:{steps:['Inspect current state','Make the smallest authorized change','Read back the result'],reason:'Evidence from this bounded task is reusable',applicability:'Similar local evidence-first edits',evidenceBacked:true}}]})})
@@ -26,9 +27,14 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   const scope=await f.host.ctx.memory.scope(a.agent,{}),state=JSON.parse(await readFile(join(f.host.ctx.reflection.directory(scope),'state.json'),'utf8'));assert.equal(Object.keys(state.reviews).length,2)
   const rememberedSkill=skill.content
   const key=(await f.host.ctx.memory.read(a.agent,{topic:'experience'})).entries[0].key
+  const manager=a.session.sessionManager
+  const historicalId=manager.appendCustomMessageEntry('night.tool-context',[{type:'text',text:rememberedSkill}],false)
   await f.say(a.agent,'忘记 experience/'+key)
   assert.equal((await f.host.ctx.skills.list({scope:a.agent})).filter(s=>s.provider==='learned').length,0)
-  const filtered=await f.host.ctx.agents.withInitiator(a.agent,()=>f.host.ctx.memory.filterRequest({messages:[{id:'historic-skill',role:'tool',content:[{type:'text',text:rememberedSkill}]}]}));assert.match(filtered.messages[0].content[0].text,/revoked/)
+  const projection=manager.buildSessionProjection(),historical=projection.entries.find(entry=>entry.sourceEntry.id===historicalId).messages[0]
+  const filtered=await f.host.ctx.memory.filterRequest(createPiProjectionRequest(projection),a.agent)
+  assert.match(filtered.messages[projection.messages.indexOf(historical)].content[0].text,/revoked/)
+  assert.equal(manager.buildSessionProjection().entries.find(entry=>entry.sourceEntry.id===historicalId).messages[0].content[0].text,rememberedSkill)
   assert.doesNotMatch(await readFile(join(f.host.ctx.reflection.directory(scope),'state.json'),'utf8'),new RegExp(key))
   detach();await f.close();await store.close();await f.boot();store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning'});detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle();assert.equal(analyses,2);detach()
 })

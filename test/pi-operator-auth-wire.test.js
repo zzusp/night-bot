@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '../packages/capability-compat/llm/index.js'
+import {AgentSession} from '@earendil-works/pi-coding-agent'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 async function cli(path,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(process.execPath,['bin/night-bot-auth.js',path,...args],{cwd:new URL('..',import.meta.url),stdio:['pipe','pipe','pipe']}),timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('auth subprocess timeout'))},10000);let output='';child.stdout.on('data',c=>output+=c);child.stderr.on('data',c=>output+=c);child.on('error',reject);child.on('exit',code=>{clearTimeout(timer);code===0?resolve(output):reject(new Error('auth subprocess failed'))});child.stdin.end(input)})}
 test('standalone operator writes and deletes refresh the running Host before its next real Pi request',{timeout:20000},async t=>{
@@ -21,7 +21,7 @@ test('standalone operator writes and deletes refresh the running Host before its
   await cli(path,['set-ref','NIGHT_OPERATOR_WIRE_KEY'],key+'\n')
   for(let i=0;i<100&&(await host.ctx.credentials.resolve('NIGHT_OPERATOR_WIRE_KEY'))?.value!==key;i++)await sleep(25)
   assert.equal((await host.ctx.credentials.resolve('NIGHT_OPERATOR_WIRE_KEY')).value,key)
-  const h=await host.ctx.agents.create({sessionId:id,agentOptions:{provider:'fixture',model:'m'},meta:{cwd:config.workspaceDir}});handles.push(h);h.agent.steer(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'verify'}]}));await h.agent.whenIdle();assert.equal(h.agent.providerStreamProtocol,'pi-native')
+  const h=await host.ctx.agents.create({sessionId:id,agentOptions:{provider:'fixture',model:'m'},meta:{cwd:config.workspaceDir},authorizeInput:packet=>packet.id==='verify'&&packet.source.kind==='fixture-user'});handles.push(h);await h.enqueue({id:'verify',source:{kind:'fixture-user'},content:[{type:'text',text:'verify'}]});await h.deliver('verify');await h.whenIdle();assert.ok(h.session instanceof AgentSession);assert.equal(h.agent.session,undefined);const saved=await host.ctx.sessionPersistence.readNative(h.agent.id);assert.equal(saved.entries.filter(e=>e.type==='custom_message'&&e.customType==='night.business-input').length,1)
  }
  assert.deepEqual(keys,['Bearer fixture-external-one','Bearer fixture-external-two']);await cli(path,['unset-ref','NIGHT_OPERATOR_WIRE_KEY']);await changed(false);assert.equal(process.env.NIGHT_OPERATOR_WIRE_KEY,undefined)
 })

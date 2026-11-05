@@ -215,7 +215,7 @@ function readBody(read) {
 const noticeFailure=code=>Object.assign(new Error(code),{code})
 /** Recover only committed application job facts. Neither Pi tool results nor
  * conversation messages prove a producer exited or authorize notification. */
-export async function reconcileJobCompletionNotices(ctx,actor,{entryId}={}){
+export async function reconcileJobCompletionNotices(ctx,actor,{entryId,wake=false}={}){
  assertOfficialJobOwner(ctx,actor)
  if(typeof actor.receipts?.readEntries!=='function')throw noticeFailure('NIGHT_JOB_COMPLETION_RECEIPTS_REQUIRED')
  const entries=await actor.receipts.readEntries(),seen=new Set()
@@ -239,7 +239,11 @@ export async function reconcileJobCompletionNotices(ctx,actor,{entryId}={}){
   if(!registered||!['jobId','owner','kind','label','startedAt'].every(key=>registered[key]===data[key])||!['callId','rootCallId','toolName'].every(key=>registered.toolCall[key]===data.toolCall[key]))continue
   const job={id:data.jobId,kind:data.kind,label:data.label,status:data.status,startedAt:data.startedAt,finishedAt:data.finishedAt,...data.detail===undefined?{}:{detail:data.detail},...data.outputLimitBytes===undefined?{}:{outputLimitBytes:data.outputLimitBytes}}
   assertOfficialJobOwner(ctx,actor)
-  await enqueueBusinessNotice(actor,{id:`job:${job.id}:${entry.entryId}`,source:{kind:'job-completion',jobId:job.id,terminalReceiptId:entry.entryId},content:[{type:'text',text:fitCompletionNotice(job)}]})
+  const packet={id:`job:${job.id}:${entry.entryId}`,source:{kind:'job-completion',jobId:job.id,terminalReceiptId:entry.entryId},content:[{type:'text',text:fitCompletionNotice(job)}]}
+  await enqueueBusinessNotice(actor,packet)
+  // A live producer's committed completion may wake its actual owner. Cold
+  // inspection only reconstructs durable pending notices; it starts no model.
+  if(wake&&actor.admission.status(packet.id)==='pending')void actor.input.deliver(packet.id,{deliverAs:'followUp'}).catch(error=>ctx.logger.warn('Live job completion delivery failed: '+error.message))
   enqueued++
  }
  return {enqueued,unknown}
@@ -296,7 +300,7 @@ function apply(ctx, config) {
             killedByModel.delete(event.job.id)
             if(event.completionNotice!=='pending'||event.producerReported!==true)return
             if(typeof event.terminalReceiptId!=='string'){ctx.logger.warn('NIGHT_JOB_COMPLETION_RECEIPTS_REQUIRED');return}
-            void reconcileJobCompletionNotices(ctx,owner,{entryId:event.terminalReceiptId}).catch(error=>ctx.logger.warn(String(error)))
+            void reconcileJobCompletionNotices(ctx,owner,{entryId:event.terminalReceiptId,wake:true}).catch(error=>ctx.logger.warn(String(error)))
             return
         }
 		if (killedByModel.delete(event.job.id) || event.awaited || event.cause === "teardown" || event.job.owner === void 0) return;
