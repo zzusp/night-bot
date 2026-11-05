@@ -17,7 +17,7 @@ for (const mode of ['event', 'history']) test(`任务会话技术申请通过私
     startHumanReplySubscription(callback) { onReply = callback; return { lifecycle: new EventEmitter(), done: done.promise, stop() { done.resolve() } } },
     async readConversation() { return mode === 'history' ? [{ ...message, senderOpenDingTalkId: 'requester' }, message] : [] },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { errors.push(error.message) } },
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { errors.push(error.message) } },
     humanPollIntervalMs: mode === 'history' ? 10 : 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
   try {
     if (mode === 'event') {
@@ -534,7 +534,7 @@ test('没有订阅群时 bridge 也会发布初始健康状态', async () => {
     onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
   }
   const stop = startDwsBridge({ runtime, adapter: {}, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, onHealthChange: (value) => { health = value } })
-  assert.deepEqual(health, { ingress: { paused: false, recovering: false }, healthy: true, groups: [], humanReplies: { state: 'unavailable', generation: 0, reconnect: { attempt: 0 } } })
+  assert.deepEqual(health, { ingress: { paused: false, recovering: false }, healthy: true, groups: [], humanReplies: { state: 'disabled', generation: 0, reconnect: { attempt: 0 } } })
   await stop()
 })
 
@@ -849,7 +849,7 @@ test('本人私聊阻塞不设超时并只用引用消息恢复原Task', async (
     async readConversation() { reads += 1; return reads === 1 ? [] : [{ messageId: 'reply-message', text: '按方案清理', quotedMessage: { messageId: 'blocker-message' } }] },
   }
   const warnings = []
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn: (error) => warnings.push(error) }, humanUserId: 'self-user', humanPollIntervalMs: 0 })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn: (error) => warnings.push(error) }, humanUserId: 'self-user', humanPollIntervalMs: 0 })
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(task.humanBlocker.status, 'waiting-reply')
   assert.equal(task.state, 'waiting', '没有引用回复时必须无限期保持等待')
@@ -878,11 +878,11 @@ test('个人IM实时引用回复精确恢复redline审批且重复事件幂等',
     startHumanReplySubscription(callback) { onHumanReply = callback; return { lifecycle: new EventEmitter(), done, stop() { stopped = true; resolveDone(undefined) } } },
     async findHumanBlockerExchange() { return undefined }, async readConversation() { return [] },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, onHealthChange: (value) => { health = value } })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, onHealthChange: (value) => { health = value } })
   assert.equal(health.humanReplies.state, 'ready')
-  await onHumanReply({ conversation_id: 'self-cid', message_id: 'reply-wrong', content: '批准', quotedMessage: { messageId: 'another-request' } })
-  await onHumanReply({ conversation_id: 'self-cid', message_id: 'reply-approved', content: '按限定范围执行', quotedMessage: { messageId: 'request-msg' } })
-  await onHumanReply({ conversation_id: 'self-cid', message_id: 'reply-approved', content: '按限定范围执行', quotedMessage: { messageId: 'request-msg' } })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-wrong', content: '批准', quotedMessage: { messageId: 'another-request' } })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-approved', content: '按限定范围执行', quotedMessage: { messageId: 'request-msg' } })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-approved', content: '按限定范围执行', quotedMessage: { messageId: 'request-msg' } })
 
   assert.deepEqual(resolutions, [{ taskId: 'task-live-redline', requestId: 'blocker-live', quotedMessageId: 'request-msg', replyMessageId: 'reply-approved', reply: '按限定范围执行', decision: 'approved' }])
   await stop()
@@ -903,8 +903,8 @@ test('非redline个人引用回复按处置意见恢复并补齐approved decisio
     startHumanReplySubscription(callback) { onHumanReply = callback; return { lifecycle: new EventEmitter(), done, stop() { resolveDone(undefined) } } },
     async findHumanBlockerExchange() { return undefined }, async readConversation() { return [] },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
-  await onHumanReply({ conversation_id: 'self-cid', message_id: 'reply-help', content: '网络已经恢复，请继续', quotedMessage: { messageId: 'request-help' } })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-help', content: '网络已经恢复，请继续', quotedMessage: { messageId: 'request-help' } })
 
   assert.equal(resolutions[0].decision, 'approved')
   assert.equal(resolutions[0].reply, '网络已经恢复，请继续')
@@ -928,7 +928,7 @@ test('个人IM审批监听异常退出后重连并恢复健康', async () => {
       return listener.subscription
     },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0, onHealthChange: (value) => { health = value } })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0, onHealthChange: (value) => { health = value } })
   assert.equal(health.healthy, true)
   listeners[0].resolveDone({ exitCode: 9, signal: null })
   for (let attempts = 0; attempts < 20 && listeners.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
@@ -955,7 +955,7 @@ test('阻塞单已真实发送并获引用批准时自动补记投递并恢复�
     async findHumanBlockerExchange() { return { conversationId: 'self-cid', messageId: 'request-msg', sentAt: '2026-08-25 15:25:22', replyMessageId: 'reply-msg', reply: '批准' } },
     async sendSelf() { throw new Error('已有申请时不得重复发送') },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
   await new Promise((resolve) => setImmediate(resolve))
   await stop()
   assert.equal(deliveries.length, 1)
@@ -980,7 +980,7 @@ test('已补记错误恢复时间的阻塞单会改用原申请时间回读批�
       return [{ messageId: 'reply-msg', text: '批准', quotedMessage: { messageId: 'request-msg' } }]
     },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
   await new Promise((resolve) => setImmediate(resolve))
   await stop()
   assert.equal(deliveries[0].sentAt, '2026-08-25 15:25:22')
@@ -1018,7 +1018,7 @@ function nativeApprovalFixture() {
     async readConversation() { return state.history ?? [] },
   }
   const run = async () => {
-    const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { state.warnings.push(error) } }, humanUserId: 'human-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+    const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { state.warnings.push(error) } }, humanUserId: 'human-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
     await new Promise(resolve => setImmediate(resolve)); await stop()
   }
   return { state, runtime, adapter, run }
@@ -1128,7 +1128,7 @@ test('Web在DWS发送过程中批复时撤回已落地申请并停止等待', as
     },
     async recallMessage(messageId) { recalled.push(messageId); return { recalled: true } },
   }
-  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
   await new Promise((resolve) => setImmediate(resolve))
   await stop()
   assert.deepEqual(recalled, ['message-race'])
@@ -1152,7 +1152,7 @@ test('task-session补拉保留本人手动消息和DWS发送标记，由统一�
     onGroupSubscribed: () => () => {}, onOutboxAppended: () => () => {},
     async ingest(message) { received.push(message); return { accepted: true } },
   }
-  const stop = startDwsBridge({ runtime, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0,
+  const stop = startDwsBridge({ privatePeerIds:['human-actor'],runtime, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0,
     adapter: { startGroupSubscription(_group, handler) { callback = handler; return { stop() {} } },
       async readGroupRange() { return { complete: true, messages: [
         { messageId: 'manual', senderId: 'self', text: '本人要求', createTime: '2026-10-14T00:00:00Z' },
@@ -1335,4 +1335,14 @@ test('暂停成功回执等待已开始的可靠接收排空，不把已调度�
   await Promise.all([event, pause])
   assert.equal(completed, true)
   assert.deepEqual(received.map(item => item.messageId), ['inflight'])
+})
+
+test('default group bridge never starts or polls private channels, including authorization-change callbacks',async()=>{
+  let privateReads=0,privateSubscriptions=0,authorizationQueries=0,onDecision,health
+  const runtime={listGroups:()=>[],listAuthorizationRequests(){authorizationQueries++;return []},onGroupSubscribed:()=>()=>{},onOutboxAppended:()=>()=>{},onAuthorizationDecided(callback){onDecision=callback;return()=>{}}}
+  const adapter={startHumanReplySubscription(){privateSubscriptions++;throw Error('must not subscribe')},readConversation(){privateReads++;throw Error('must not read private history')}}
+  const stop=startDwsBridge({runtime,adapter,logger:{warn(error){throw error}},humanPollIntervalMs:1,groupBackfillIntervalMs:0,outboxRetryIntervalMs:0,onHealthChange(value){health=value}})
+  onDecision({authorization:{kind:'workflow-approval',approverActorId:'outsider',requestId:'foreign'}})
+  await new Promise(resolve=>setTimeout(resolve,15));await stop()
+  assert.equal(privateReads,0);assert.equal(privateSubscriptions,0);assert.equal(authorizationQueries,0)
 })

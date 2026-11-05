@@ -34,25 +34,25 @@ test('群监听等待 ready 后逐行交付且坏行不吞后续事件', async (
 
 test('个人IM监听等待ready后交付引用回复', async () => {
   let hooks
-  const runner = { run: async () => undefined, spawn(args, value) { hooks = value; assert.deepEqual(args, ['event', '+listen-im', '--kind', 'all-direct', '--events', 'message', '--format', 'ndjson']); return { done: Promise.resolve(), terminate: (signal) => signal } } }
+  const runner = { run: async () => undefined, spawn(args, value) { hooks = value; assert.deepEqual(args, ['event','consume','user_im_message_receive_o2o','--open-dingtalk-id','peer','--flatten','--format','ndjson']); return { done: Promise.resolve(), terminate: (signal) => signal } } }
   const adapter = createDwsAdapter({ enabled: true, runner })
   const events = []
   const errors = []
-  const subscription = adapter.startHumanReplySubscription((event) => events.push(event))
+  const subscription = adapter.startHumanReplySubscription((event) => events.push(event),['peer'])
   subscription.lifecycle.on('line-error', (error) => errors.push(error.message))
   hooks.onStdoutLine('{"message_id":"early"}')
-  hooks.onStderrLine('[event] ready event_key=user_im_message_receive_o2o_all bus_pid=1 subscribe_id=s1')
+  hooks.onStderrLine('[event] ready event_key=user_im_message_receive_o2o bus_pid=1 subscribe_id=s1')
   hooks.onStdoutLine('{"message_id":"reply-1","conversation_id":"self-cid","quotedMessage":{"messageId":"request-1"}}')
 
   assert.deepEqual(events.map((event) => event.message_id), ['reply-1'])
   assert.deepEqual(errors, ['dws_event_before_ready'])
-  assert.equal(subscription.stop(), 'SIGTERM')
+  subscription.stop()
 })
 
 test('DWS profile固定附加到订阅、回读和发送命令', () => {
   const adapter = createDwsAdapter({ enabled: true, profile: 'corp:user', runner: { run: async () => undefined, spawn: () => undefined } })
   assert.deepEqual(adapter.compileGroupListen('cid-a').slice(-2), ['--profile', 'corp:user'])
-  assert.deepEqual(adapter.compileHumanReplyListen().slice(-2), ['--profile', 'corp:user'])
+  assert.deepEqual(adapter.compileHumanReplyListen('peer').slice(-2), ['--profile', 'corp:user'])
   assert.deepEqual(adapter.compileGroupRead('cid-a').slice(-2), ['--profile', 'corp:user'])
   assert.deepEqual(adapter.compileGroupSend({ groupId: 'cid-a', text: 'reply', idempotencyKey: 'out-1' }).slice(-2), ['--profile', 'corp:user'])
   assert.deepEqual(adapter.compileSelfSend({ userId: 'self-user', text: 'blocked', idempotencyKey: 'blocker-1' }).slice(-2), ['--profile', 'corp:user'])
@@ -557,4 +557,17 @@ test('历史待发正文在领取前拒绝内部机制，已发送记录仍可�
  assert.equal(sends,0);assert.equal(claims,0)
  const delivered={...adapter,readGroup:async()=>({complete:true,messages:[{messageId:'m',outboundId:'out-public',text:outbound.text}]})}
  assert.equal((await dispatchOutbox({adapter:delivered,groupId:'g',outbound})).deduplicated,true)
+})
+
+test('private subscriptions require explicit peers and compile server-scoped o2o events, never all-direct',async()=>{
+  const streams=[]
+  const adapter=createDwsAdapter({enabled:true,runner:{spawn(args,hooks){const done=Promise.withResolvers(),stream={args,stopped:false};streams.push(stream);queueMicrotask(()=>hooks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){stream.stopped=true;done.resolve()}}}}})
+  assert.throws(()=>adapter.startHumanReplySubscription(()=>{}),/private_peers_required/)
+  assert.equal(streams.length,0)
+  const subscription=adapter.startHumanReplySubscription(()=>{},['alice','bob','alice'])
+  await subscription.ready
+  assert.equal(streams.length,2)
+  assert.deepEqual(streams.map(s=>s.args[s.args.indexOf('--open-dingtalk-id')+1]),['alice','bob'])
+  assert.ok(streams.every(s=>s.args.includes('user_im_message_receive_o2o')&&!s.args.includes('all-direct')))
+  subscription.stop();await subscription.done;assert.ok(streams.every(s=>s.stopped))
 })

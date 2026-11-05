@@ -1,0 +1,39 @@
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (1119.916091ms)
+✔ optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data (563.357504ms)
+✔ standard application composition exposes channel-neutral health and single task creation with no channel installed (455.796819ms)
+✔ discovered third-party plugins load only enabled instances and release transports on host close (407.533037ms)
+✔ real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata (455.396985ms)
+✔ manifest validation rejects duplicate types, escaped entries and duplicate enabled channel identities (193.017538ms)
+✔ generic message readers use neutral identities and enforce conversation scope (196.786985ms)
+✔ multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization (402.55894ms)
+✔ DWS private credentials use supported roots; Windows defaults to the protected current-user login (1.463299ms)
+✔ system-account plugins use the existing CLI context and describe shared login without creating a private vault (187.492825ms)
+✔ chat and chat-room preserve sender identity, isolate context/memory and deduplicate across cold restart (3280.477203ms)
+✔ configuration rejects relative state (28.403729ms)
+✔ configuration rejects same workspace (2.335683ms)
+✔ configuration rejects nested state (6.377759ms)
+✔ configuration rejects missing model (2.492109ms)
+✔ configuration rejects missing provider (3.153306ms)
+✔ configuration rejects public API (2.052205ms)
+✔ configuration rejects inconsistent DWS flags (3.114387ms)
+✔ configuration rejects inline key (2.498198ms)
+✔ configuration rejects invalid tool parallelism (5.287249ms)
+✔ configuration rejects invalid credential watcher (5.433245ms)
+✔ configuration rejects invalid web provider selector (1.612181ms)
+✔ configuration rejects invalid web registry config (1.255614ms)
+✔ configuration rejects invalid web timeout (2.02201ms)
+✔ configuration rejects invalid redirect limit (1.569807ms)
+✔ configuration rejects invalid web tool enablement (1.244497ms)
+✔ configuration rejects invalid web search query cap (1.059127ms)
+✔ configuration rejects invalid web tool deadline (1.298078ms)
+✔ configuration rejects fake production model (1.49813ms)
+✔ configuration keeps disabled transport and provider env reference (2.399319ms)
+✔ configuration preserves explicit native web selection and anonymous HTTP limits (3.635223ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5417.242606

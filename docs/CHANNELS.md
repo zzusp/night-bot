@@ -82,6 +82,13 @@ acknowledgment and readback without a second send. It deliberately holds the sec
 tier and proves initial sends happen first. Reported timing is a controlled local
 fixture comparison, not a benchmark for a real model vendor or DWS.
 
+## Plugin discovery
+
+External channel packages are discovered from explicit `channelPluginDirs` and
+activated only by enabled `channelPlugins` instances. API, manifest, lifecycle,
+capabilities, multi-account isolation and DWS source evidence are specified in
+[CHANNEL-PLUGINS](CHANNEL-PLUGINS.md).
+
 ## Optional DingTalk DWS plugin
 
 The standard CLI composes `src/application.js`, not the historical DWS resident.
@@ -94,14 +101,23 @@ register a transport, probe a binary, subscribe or create an account home. To op
 }}]}
 ```
 
-Supply your own authenticated CLI account in the plugin's private environment.
+Windows defaults to `accountMode:"system"`, using the current user's existing DWS
+login with its DPAPI/HKCU protection. This does not copy credentials or claim
+independent login per plugin. Linux/macOS default to private config/keychain files;
+`accountMode:"system"` may also be selected explicitly there. Only an explicit
+private-account request is unsupported on Windows. Credential ownership, shared
+account effects and configuration examples are in
+[CHANNEL-PLUGINS](CHANNEL-PLUGINS.md).
 No account, actor ID, group or credential is bundled. Enable writes separately
 only after checking authorization. `listen:false` supports explicit SDK ingress
 without starting listeners. The plugin retains attributed DWS history, resource,
 mention, file, subscription and receipt/readback adapters; typed ingress retains
-the real sender and source quote. Account files live in `data/secrets/dingtalk-dws`.
+the real sender and source quote. Night Bot-managed private account files live
+in `data/secrets/dingtalk-dws`; system-mode credentials remain owned by DWS/OS.
 Optional operator notifications require explicit plugin configuration and actual
-operator/account identity validation. They are not a generic private-chat adapter.
+operator/account identity validation. General private-chat ingress is separately
+opt-in via `directChats`, `directPeers` and `assistantActorId`; it supports native
+quoted text replies, not private-chat file delivery or general history catch-up.
 
 `test/pi-channel-plugin.test.js` checks disabled/registered modes and the actual
 standard application without any channel installed. Local adapter/domain contracts

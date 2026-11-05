@@ -58,28 +58,30 @@ function normalizeEvent(event) {
     rawOccurredAt: event.event_time ?? event.create_time ?? event.timestamp ?? null,
     ...(event.messageAiSendFlag === 'DWS' || event.message_ai_send_flag === 'DWS' ? { messageAiSendFlag: 'DWS' } : {}),
     ...(typeof mentionedAgent === 'boolean' ? { mentionedAgent } : {}),
+    ...(Array.isArray(event.at_open_dingtalk_ids ?? event.atOpenDingTalkIds) ? { mentions: event.at_open_dingtalk_ids ?? event.atOpenDingTalkIds } : {}),
     senderName: meaningful(event.sender) ? event.sender : undefined,
     senderOpenDingTalkId: event.sender_open_dingtalk_id ?? event.sender_id ?? undefined,
     ...(resourceRefs.length > 0 ? { resourceRefs } : {}),
-    ...(quoted ? { quotedMessage: { ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime ?? quoted.create_time, content: quoted.content ?? quoted.text ?? '' } } : {}),
+    ...(quoted ? { quotedMessage: { ...(quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id ? { senderOpenDingTalkId: quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id } : {}), ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime ?? quoted.create_time, content: quoted.content ?? quoted.text ?? '' } } : {}),
   }
 }
 
 export function normalizeHistoryMessage(message, fallbackGroupId) {
-  const groupId = message.conversationId ?? fallbackGroupId
+  const groupId = message.conversationId ?? message.groupId ?? fallbackGroupId
   const messageId = message.messageId
   if (typeof groupId !== 'string' || groupId === '' || typeof messageId !== 'string' || messageId === '') throw new Error('dws_history_identity_missing')
-  const quoted = message.quotedMessage
+  const quoted = message.quotedMessage ?? message.quoted_message
   const text = message.text ?? ''
   const resourceRefs = normalizeResourceRefs(message.resourceRefs, text)
   return {
-    groupId, messageId, text, occurredAt: normalizeMessageTime(message.createTime ?? new Date().toISOString()), rawOccurredAt: message.createTime ?? null,
+    groupId, messageId, text, occurredAt: normalizeMessageTime(message.createTime ?? message.occurredAt ?? new Date().toISOString()), rawOccurredAt: message.createTime ?? message.occurredAt ?? null,
     ...(message.messageAiSendFlag === 'DWS' || message.message_ai_send_flag === 'DWS' ? { messageAiSendFlag: 'DWS' } : {}),
-    ...(typeof (message.isInAtList ?? message.is_in_at_list) === 'boolean' ? { mentionedAgent: message.isInAtList ?? message.is_in_at_list } : {}),
+    ...(typeof (message.isInAtList ?? message.is_in_at_list ?? message.mentionedAgent) === 'boolean' ? { mentionedAgent: message.isInAtList ?? message.is_in_at_list ?? message.mentionedAgent } : {}),
+    ...(Array.isArray(message.mentions ?? message.atOpenDingTalkIds) ? { mentions: message.mentions ?? message.atOpenDingTalkIds } : {}),
     senderName: meaningful(message.sender ?? message.senderName) ? message.sender ?? message.senderName : undefined,
     senderOpenDingTalkId: message.senderOpenDingTalkId ?? message.sender_open_dingtalk_id ?? message.senderId ?? undefined,
     ...(resourceRefs.length > 0 ? { resourceRefs } : {}),
-    ...(quoted ? { quotedMessage: { ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime, content: quoted.content ?? quoted.text ?? '' } } : {}),
+    ...(quoted ? { quotedMessage: { ...(quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id ? { senderOpenDingTalkId: quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id } : {}), ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime, content: quoted.content ?? quoted.text ?? '' } } : {}),
   }
 }
 
@@ -96,14 +98,16 @@ export function parseWorkflowApprovalDecision(text) {
   return undefined
 }
 
-export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentDwsUserName, humanPollIntervalMs = 30_000, groupBackfillIntervalMs = 10_000, groupBackfillOverlapMs = 30_000, outboxRetryIntervalMs = 10_000, listenerReconnectBaseMs = 1_000, listenerReconnectMaxMs = 30_000, listenerReadyTimeoutMs = 15_000, onHealthChange, ingressState = { paused: false }, saveIngressState = async () => {} }) {
+export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentDwsUserName, humanPollIntervalMs = 30_000, groupBackfillIntervalMs = 10_000, groupBackfillOverlapMs = 30_000, outboxRetryIntervalMs = 10_000, listenerReconnectBaseMs = 1_000, listenerReconnectMaxMs = 30_000, listenerReadyTimeoutMs = 15_000, onHealthChange, ingressState = { paused: false }, saveIngressState = async () => {}, onDirectMessage, privatePeerIds = [], operatorRepliesEnabled = true }) {
+  if(!Array.isArray(privatePeerIds)||privatePeerIds.some(id=>typeof id!=='string'||!id))throw new Error('dws_private_peers_invalid')
+  const privatePeers=new Set(privatePeerIds)
   const subscriptions = new Map()
   const bridgeEntries = new Map()
   const inflightMessages = new Map()
   const inflightHumanReplies = new Map()
   const humanReplyEntry = {
     generation: 0,
-    listenerState: typeof adapter.startHumanReplySubscription === 'function' ? 'starting' : 'unavailable',
+    listenerState: !privatePeers.size?'disabled':typeof adapter.startHumanReplySubscription === 'function' ? 'starting' : 'unavailable',
     reconnectAttempt: 0,
   }
   let ingress = { ...ingressState }
@@ -130,7 +134,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     }
   })
   const processMessage = (message) => {
-    if (ingress.paused || stopping) return Promise.resolve()
+    if (ingress.paused || stopping || !runtime.listGroups().some(group=>group.groupId===message.groupId)) return Promise.resolve()
     const key = `${message.groupId}\u0000${message.messageId}`
     const existing = inflightMessages.get(key)
     if (existing !== undefined) return existing
@@ -273,7 +277,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     const groupsHealthy = groups.length === 0 || groups.every((group) => group.listener.state === 'ready' && group.backfill.state === 'ok' && group.backfill.recoveryRequired !== true)
     return {
       ingress: { ...ingress, recovering: !ingress.paused && !!ingress.recoveryFromAt },
-      healthy: !ingress.paused && groupsHealthy && (humanReplies.state === 'ready' || humanReplies.state === 'unavailable'),
+      healthy: !ingress.paused && groupsHealthy && (humanReplies.state === 'ready' || humanReplies.state === 'unavailable' || humanReplies.state === 'disabled'),
       groups,
       humanReplies,
     }
@@ -492,6 +496,9 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
   }
   const processHumanReplyEvent = event => processHumanReplyMessage(normalizeEvent(event))
   const recallInactiveAuthorization = async (authorization) => {
+    if(!operatorRepliesEnabled||!privatePeers.size)return
+    const peer=authorization?.notification?.delivery?.senderActorId??authorization?.approverActorId??humanUserId
+    if(!privatePeers.has(peer))return
     if (authorization?.kind === 'workflow-approval') {
       const notice = await runtime.getWorkflowApprovalNotice(authorization.requestId)
       if (notice?.status !== 'recall-required') return
@@ -566,11 +573,13 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
   }
   const processHumanBlockers = () => {
     humanPollTail = humanPollTail.then(async () => {
-      if (stopping) return
+      if (stopping || !privatePeers.size || !operatorRepliesEnabled) return
       const authorizations = await runtime.listAuthorizationRequests?.() ?? (runtime.listTasks?.() ?? [])
         .filter((task) => task.humanBlocker)
         .map((task) => ({ ...task.humanBlocker, taskId: task.taskId }))
       for (const authorization of authorizations) {
+        const peer=authorization.notification?.delivery?.senderActorId??authorization.approverActorId??humanUserId
+        if(!privatePeers.has(peer))continue
         if (authorization.taskSessionRequest) {
           if (authorization.status !== 'waiting-reply' || authorization.audience !== 'operator' || authorization.notification?.state !== 'delivered') continue
           const delivery = authorization.notification.delivery
@@ -697,6 +706,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
       subscription = adapter.startGroupSubscription(group.groupId, async (event) => {
         if (stopping || bridgeEntries.get(group.groupId) !== entry || entry.generation !== generation || entry.subscription !== subscription) return
         try {
+          if(event.conversation_id!==group.groupId)return
           const message = normalizeEvent(event)
           entry.lastEventAt = now()
           delete entry.lastEventError
@@ -773,7 +783,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     scheduleHumanReplyReconnect()
   }
   attachHumanReplies = () => {
-    if (stopping || typeof adapter.startHumanReplySubscription !== 'function' || humanReplyEntry.subscription !== undefined || humanReplyEntry.retryTimer !== undefined) return
+    if (!privatePeers.size || stopping || typeof adapter.startHumanReplySubscription !== 'function' || humanReplyEntry.subscription !== undefined || humanReplyEntry.retryTimer !== undefined) return
     const generation = humanReplyEntry.generation + 1
     humanReplyEntry.generation = generation
     humanReplyEntry.listenerState = 'starting'
@@ -784,17 +794,19 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     try {
       subscription = adapter.startHumanReplySubscription(async (event) => {
         if (stopping || humanReplyEntry.generation !== generation || humanReplyEntry.subscription !== subscription) return
+        if(!privatePeers.has(event.sender_open_dingtalk_id??event.sender_id))return
         try {
           humanReplyEntry.lastEventAt = now()
           delete humanReplyEntry.lastEventError
           publishHealth()
-          await processHumanReplyEvent(event)
+          if(operatorRepliesEnabled)await processHumanReplyEvent(event)
+          if(!ingress.paused)await onDirectMessage?.(normalizeEvent(event))
         } catch (error) {
           humanReplyEntry.lastEventError = describeError(error)
           publishHealth()
           logger.warn(error)
         }
-      })
+      },[...privatePeers])
     } catch (error) {
       humanReplyListenerFailed(generation, undefined, { error })
       return
@@ -913,7 +925,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     humanPollTail = humanPollTail.then(() => recallInactiveAuthorization(authorization)).catch((error) => logger.warn(error))
   })
   processHumanBlockers()
-  if (humanPollIntervalMs > 0) {
+  if (humanPollIntervalMs > 0 && privatePeers.size && operatorRepliesEnabled) {
     humanPollTimer = setInterval(processHumanBlockers, humanPollIntervalMs)
     humanPollTimer.unref?.()
   }

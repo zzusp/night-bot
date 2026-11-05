@@ -208,7 +208,7 @@ export function workflowPerformance({ tasks, groups }, filter = {}, now = Date.n
   else for (const group of groups.filter(item => matches(item, ['groupId']))) {
     const delivered = group.outbox.filter(item => item.status === 'sent' && item.deliveredMessageId && Number.isFinite(timestamp(item.deliveredAt)))
     for (const message of group.messages) {
-      if (message.sourceKind && message.sourceKind !== 'dingtalk') continue
+      if (message.sourceKind && !['channel','dingtalk'].includes(message.sourceKind)) continue
       const start = timestamp(message.occurredAt)
       if (!Number.isFinite(start)) { missing.add('inbound-event-time'); continue }
       const day = dayAt(start)

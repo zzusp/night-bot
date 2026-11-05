@@ -112,11 +112,13 @@ export const storedTaskCheckpointBaseSchema = z.object({
 }).strict()
 
 
-const quotedMessageSchema = z.object({ messageId: z.string().min(1).optional(), senderName: z.string().min(1).optional(), occurredAt: z.union([z.string().min(1), z.number().finite()]).optional(), content: z.string() })
+const quotedMessageSchema = z.object({ senderOpenDingTalkId:z.string().min(1).optional(), messageId: z.string().min(1).optional(), senderName: z.string().min(1).optional(), occurredAt: z.union([z.string().min(1), z.number().finite()]).optional(), content: z.string() })
 const messageFactFields = {
+  mentionedAgent:z.boolean().optional(),messageAiSendFlag:z.literal('DWS').optional(),
+  channelType:z.enum(['chat','chat-room']).optional(),channelId:z.string().optional(),automated:z.boolean().optional(),mentions:z.array(z.string()).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),
   resourceRefs: z.array(z.record(z.string(), z.unknown())).optional(),
   messageVersion: z.number().int().positive(), imageRefs: z.array(z.record(z.string(), z.unknown())).optional(), mediaUnavailable: z.array(z.string()).optional(),
-  sourceKind: z.enum(['dingtalk', 'web', 'internal', 'migration']).optional(), migrationSource: z.string().optional(),
+  sourceKind: z.enum(['channel', 'dingtalk', 'web', 'internal', 'migration']).optional(), migrationSource: z.string().optional(),
   ignoredRanges: z.array(sourceRangeSchema.extend({ reason: z.string().min(1) })).optional(),
   units: z.array(z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive(), unitKey: z.string().min(1), summary: z.string().min(1), sourceRanges: z.array(sourceRangeSchema), sourceAttachments: z.array(z.object({ imageRefId: z.string().min(1) }).strict()).default([]), contextRanges: z.array(sourceRangeSchema.extend({ purpose: z.string().min(1) })).default([]), predecessorUnitRefs: z.array(z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive() }).strict()).default([]), effectInheritance: z.enum(['inherit', 'new-scope']).optional(), revisionReason: z.string().min(1).optional() }).refine((unit) => unit.sourceRanges.length + unit.sourceAttachments.length > 0, 'topic_unit_source_required')).optional(),
   activeUnitRefs: z.array(z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive() }).strict()).optional(),

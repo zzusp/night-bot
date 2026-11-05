@@ -65,14 +65,15 @@ const replacementBusy = (group, replacesOutboundIds, decisionId) => replacesOutb
     && (record.decision.replyReview?.replaceOutboundIds ?? []).some((id) => replacesOutboundIds.includes(id))))
 )
 
-const quotedMessageSchema = z.object({ messageId: z.string().min(1).optional(), senderName: z.string().min(1).optional(), occurredAt: z.union([z.string().min(1), z.number().finite()]).optional(), content: z.string() })
+const quotedMessageSchema = z.object({ senderOpenDingTalkId:z.string().min(1).optional(), messageId: z.string().min(1).optional(), senderName: z.string().min(1).optional(), occurredAt: z.union([z.string().min(1), z.number().finite()]).optional(), content: z.string() })
 const messageFactFields = {
+  channelType:z.enum(['chat','chat-room']).optional(),channelId:z.string().optional(),automated:z.boolean().optional(),mentions:z.array(z.string()).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),
   replyTopicId: z.string().min(1).optional(),
   mentionedAgent: z.boolean().optional(),
   taskSessionRefs: z.array(z.string().min(1)).optional(),
   resourceRefs: z.array(z.record(z.string(), z.unknown())).optional(),
   messageVersion: z.number().int().positive(), imageRefs: z.array(z.record(z.string(), z.unknown())).optional(), mediaUnavailable: z.array(z.string()).optional(),
-  sourceKind: z.enum(['dingtalk', 'web', 'internal', 'migration']).optional(), migrationSource: z.string().optional(),
+  sourceKind: z.enum(['channel', 'dingtalk', 'web', 'internal', 'migration']).optional(), migrationSource: z.string().optional(),
   ignoredRanges: z.array(sourceRangeSchema.extend({ reason: z.string().min(1) })).optional(),
   units: z.array(z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive(), unitKey: z.string().min(1), fixedTopic: z.enum(fixedTopicIds).optional(), outOfScopeHelp: z.boolean().optional(), fixedTopicHandledAt: z.string().optional(), manualCorrection: z.object({ requestId: z.string().min(1), reason: z.string().min(1) }).optional(), dispatchOwner: z.enum(['legacy-topic', 'coordination']).optional(), summary: z.string().min(1), sourceRanges: z.array(sourceRangeSchema), sourceAttachments: z.array(z.object({ imageRefId: z.string().min(1) }).strict()).default([]), contextRanges: z.array(sourceRangeSchema.extend({ purpose: z.string().min(1) })).default([]), predecessorUnitRefs: z.array(z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive() }).strict()).default([]), effectInheritance: z.enum(['inherit', 'new-scope']).optional(), revisionReason: z.string().min(1).optional() }).refine((unit) => unit.sourceRanges.length + unit.sourceAttachments.length > 0, 'topic_unit_source_required')).optional(),
   activeUnitRefs: z.array(z.object({ unitId: z.string().min(1), unitRevision: z.number().int().positive() }).strict()).optional(),
@@ -789,7 +790,7 @@ export async function openResidentStore(storageDomain) {
       await groups.delete(entry[0])
       return { removed: true, groupId }
     }),
-    ingest: ({ groupId, messageId, text, occurredAt, senderName, senderOpenDingTalkId, messageAiSendFlag, mentionedAgent, quotedMessage, imageRefs, mediaUnavailable, resourceRefs, messageVersion, sourceKind = 'dingtalk' }) => serialize(groupId, async () => {
+    ingest: ({ groupId, messageId, text, occurredAt, senderName, senderOpenDingTalkId, messageAiSendFlag, mentionedAgent, quotedMessage, imageRefs, mediaUnavailable, resourceRefs, messageVersion, channelType,channelId,automated,mentions,platformFlags,sourceKind = 'channel' }) => serialize(groupId, async () => {
       const entry = findGroupEntry(groupId)
       if (!entry) throw new Error(`group_not_subscribed:${groupId}`)
       let duplicate = false, enriched = false, sequence
@@ -802,7 +803,7 @@ export async function openResidentStore(storageDomain) {
             ...(sameQuote && missingText(quotedMessage.content) && !missingText(previous.quotedMessage?.content) ? { content: previous.quotedMessage.content } : {}),
             ...(sameQuote && missingText(quotedMessage.senderName) && !missingText(previous.quotedMessage?.senderName) ? { senderName: previous.quotedMessage.senderName } : {}),
             ...(sameQuote && !quotedMessage.occurredAt && previous.quotedMessage?.occurredAt ? { occurredAt: previous.quotedMessage.occurredAt } : {}) } : previous.quotedMessage
-          const next = { ...previous, ...(mentionedAgent !== undefined ? { mentionedAgent } : {}), ...(messageAiSendFlag ? { messageAiSendFlag } : {}), ...(messageVersion > previous.messageVersion ? { text } : {}), ...(resourceRefs !== undefined ? { resourceRefs: mergeTaskResources(previous.resourceRefs, resourceRefs) } : {}), ...(senderName ? { senderName } : {}), ...(senderOpenDingTalkId ? { senderOpenDingTalkId } : {}),
+          const next = { ...previous, ...channelType?{channelType}:{},...channelId?{channelId}:{},...automated!==undefined?{automated}:{},...mentions?{mentions}:{},...platformFlags?{platformFlags}:{}, ...(mentionedAgent !== undefined ? { mentionedAgent } : {}), ...(messageAiSendFlag ? { messageAiSendFlag } : {}), ...(messageVersion > previous.messageVersion ? { text } : {}), ...(resourceRefs !== undefined ? { resourceRefs: mergeTaskResources(previous.resourceRefs, resourceRefs) } : {}), ...(senderName ? { senderName } : {}), ...(senderOpenDingTalkId ? { senderOpenDingTalkId } : {}),
             ...(nextQuote ? { quotedMessage: nextQuote } : {}), ...(imageRefs !== undefined ? { imageRefs } : {}), ...(mediaUnavailable !== undefined ? { mediaUnavailable } : {}) }
           if (JSON.stringify(next) === JSON.stringify(previous) && !(messageVersion > previous.messageVersion)) return latest
           const { resourceRefs: previousResources, messageAiSendFlag: _previousSendFlag, ...previousFacts } = previous
@@ -819,7 +820,7 @@ export async function openResidentStore(storageDomain) {
           next.routingHold = undefined
           next.routingEpoch = (previous.routingEpoch ?? 0) + 1
           const now = new Date().toISOString()
-          const quotedHold = next.sourceKind === 'dingtalk' && next.senderOpenDingTalkId && next.messageAiSendFlag !== 'DWS' && next.quotedMessage?.messageId !== messageId
+          const quotedHold = ['channel','dingtalk'].includes(next.sourceKind) && next.senderOpenDingTalkId && next.automated !== true && next.messageAiSendFlag !== 'DWS' && next.quotedMessage?.messageId !== messageId
             ? latest.messages.find(item => item.messageId === next.quotedMessage?.messageId && item.routingStatus === 'needs-context') : undefined
           return { ...latest, ...(quotedHold ? { routingRevision: latest.routingRevision + 1 } : {}), messages: latest.messages.map((item) => item.messageId === messageId ? next : item.messageId === quotedHold?.messageId
             ? { ...item, routingStatus: 'pending', routingHold: undefined, routingEpoch: (item.routingEpoch ?? 0) + 1, routingRecoveryMessageId: messageId } : item),
@@ -832,9 +833,9 @@ export async function openResidentStore(storageDomain) {
             }) }
         }
         sequence = latest.nextSequence
-        const accepted = inboundSchema.parse({ messageId, sequence, text, occurredAt, senderName, senderOpenDingTalkId, messageAiSendFlag, mentionedAgent, quotedMessage,
+        const accepted = inboundSchema.parse({ channelType,channelId,automated,mentions,platformFlags,messageId, sequence, text, occurredAt, senderName, senderOpenDingTalkId, messageAiSendFlag, mentionedAgent, quotedMessage,
           imageRefs, mediaUnavailable, resourceRefs, sourceKind, messageVersion: messageVersion ?? 1, facts: [], routingStatus: 'pending', agentDeliveryStatus: 'pending' })
-        const quotedHold = sourceKind === 'dingtalk' && senderOpenDingTalkId && messageAiSendFlag !== 'DWS' && quotedMessage?.messageId
+        const quotedHold = ['channel','dingtalk'].includes(sourceKind) && senderOpenDingTalkId && automated !== true && messageAiSendFlag !== 'DWS' && quotedMessage?.messageId
           ? latest.messages.find(item => item.messageId === quotedMessage.messageId && item.routingStatus === 'needs-context') : undefined
         const messages = quotedHold ? latest.messages.map(item => item.messageId !== quotedHold.messageId ? item : {
           ...item, routingStatus: 'pending', routingHold: undefined, routingEpoch: (item.routingEpoch ?? 0) + 1, routingRecoveryMessageId: messageId,

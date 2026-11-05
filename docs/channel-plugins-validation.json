@@ -1,0 +1,81 @@
+{
+  "baseline": "47a59ae318bf50ec85caa3b0af0ecd9a9a9841d6",
+  "branch": "fix/channel-plugin-runtime",
+  "date": "2026-11-05",
+  "dwsSource": {
+    "repository": "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
+    "tag": "v1.0.63",
+    "commit": "4cd5d05393a8748e89d9265eb9f7ec85745a0331",
+    "installedBinary": false,
+    "liveAccount": false
+  },
+  "checks": {
+    "ownFull": {
+      "passed": 594,
+      "failed": 0,
+      "command": "node --test test/pi-*.test.js",
+      "note": "Before final direct-quote and credential-environment changes; affected tests repeated below. Two subsequent new tests cover multiple DWS accounts and credential roots/Windows fail-closed."
+    },
+    "domain": {
+      "passed": 388,
+      "failed": 0,
+      "command": "node scripts/test-pi.mjs domain"
+    },
+    "routing": {
+      "passed": 47,
+      "failed": 0,
+      "command": "node scripts/test-pi.mjs routing"
+    },
+    "runtime": {
+      "passed": 142,
+      "failed": 0,
+      "command": "node scripts/test-pi.mjs runtime"
+    },
+    "finalChannelConfig": {
+      "passed": 30,
+      "failed": 0,
+      "command": "node --test test/pi-channel-plugin.test.js test/pi-config.test.js test/pi-channels.test.js"
+    },
+    "finalBridgeAdapter": {
+      "passed": 107,
+      "failed": 0,
+      "command": "node --test test/pi-channel-plugin.test.js test/dws-adapter.test.js test/dws-bridge.test.js"
+    },
+    "containment": "not rerun; no model containment code changed",
+    "pnpmWrapper": "pnpm scripts initially failed before tests because automatic dependency verification selected unwritable default pnpm cache; exact Node script entrypoints used instead. Install materialized dependencies but reported ignored optional/native builds; dependency lock/config unchanged."
+  },
+  "limitations": [
+    "Windows real DWS activation blocked: user-wide DPAPI/HKCU keychain has no supported production namespace override in v1.0.63. No test namespace or weakened encryption used.",
+    "No real account login/subscriptions/sends/reconnect/media/files; no Baibu connection, deployment, push, merge or CI.",
+    "Private chat supports opt-in allowlisted live ingress and text/native quote sends; private files and general private history catch-up remain unsupported.",
+    "Vendor metadata absent from event output remains unknown. The official v1.0.63 event schema does not guarantee native @/automation flags.",
+    "Historical internal DingTalk field names remain in attributed domain compatibility APIs; public plugin protocol uses neutral identities."
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/channel-plugins-own.txt",
+      "sha256": "c9adc3c1c148a219ea746b15cf78c7092bf67a1f4386015162ee31d52a8254f9"
+    },
+    {
+      "path": "docs/evidence/channel-plugins-domain.txt",
+      "sha256": "548344dd548f344bf918d0fa80cc86f63412d7fc84f4d5dd4458fc243039b733"
+    },
+    {
+      "path": "docs/evidence/channel-plugins-routing.txt",
+      "sha256": "7aa89b09779667daabbdcdfca236f3d3ef643d466758a042afc8db402949248e"
+    },
+    {
+      "path": "docs/evidence/channel-plugins-runtime.txt",
+      "sha256": "ec1f973b9cd57b5b30104397da4cdbb8e628607d6ca346330415111046224bad"
+    },
+    {
+      "path": "docs/evidence/channel-plugins-final-targeted.txt",
+      "sha256": "bc6a3e22d2ab81b84d14702bfd963821f525b619a964860f826394bc888a716a"
+    },
+    {
+      "path": "docs/evidence/channel-plugins-quote-final.txt",
+      "sha256": "b8e9db612b29069af92d3e88b724e6c4b5a9be5cba694a95db9b19230b33c61d"
+    }
+  ],
+  "credentialPolicySupersededBy": "channel-system-account-validation.json"
+}

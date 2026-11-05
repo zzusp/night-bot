@@ -1,5 +1,6 @@
 import {prepareProfileEntries} from './native-profile-preflight.js'
 import {taskSessionRoutes} from './tasks/session-routes.js'
+import {channelPluginRows} from './channels/loader.js'
 import {assertNativeScopeAuthority} from './native-scope-guard.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -65,7 +66,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,
-      ...(config.channelPlugins??[]).filter(plugin=>plugin.enabled===true).map(plugin=>{if(plugin.type!=='dingtalk-dws')throw new Error('NIGHT_CHANNEL_PLUGIN_UNKNOWN');return {name:new URL('./channels/plugins/dingtalk-dws.js',import.meta.url).href,config:{...plugin.config,enabled:true}}}),
+      ...await channelPluginRows(config,paths),
     ]
     await ctx.loader.root.update(prepareProfileEntries(ctx,rows,ctx.baseUrl))
     await ctx.loader.await()

@@ -173,8 +173,8 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
     compileGroupListen(groupId) {
       return withProfile(['event', '+listen-im', '--kind', 'group', '--events', 'message', '--chat-id', assertStableId(groupId, 'group_id'), '--format', 'ndjson'])
     },
-    compileHumanReplyListen() {
-      return withProfile(['event', '+listen-im', '--kind', 'all-direct', '--events', 'message', '--format', 'ndjson'])
+    compileHumanReplyListen(peerId) {
+      return withProfile(['event','consume','user_im_message_receive_o2o','--open-dingtalk-id',assertStableId(peerId,'private_peer_id'),'--flatten','--format','ndjson'])
     },
     compileGroupRead(groupId) {
       return withProfile(['chat', '+chat-messages', '--group', assertStableId(groupId, 'group_id'), '--format', 'json'])
@@ -214,6 +214,25 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       if (atAll) args.push('--at-all')
       if (writesAuthorized) args.push('--yes')
       return withProfile(args)
+    },
+    compileDirectSend({openDingTalkId,text,idempotencyKey,conversationId,replyToMessageId,replyToSenderId}) {
+      const args=replyToMessageId
+        ? ['chat','+messages-reply','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),
+          '--conversation-id',assertStableId(conversationId,'conversation_id'),'--message-id',assertStableId(replyToMessageId,'reply_message_id'),
+          '--ref-sender',assertStableId(replyToSenderId,'reply_sender_id'),'--content',assertStableId(text,'text'),
+          '--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+        : ['chat','+messages-send','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),
+          '--text',assertStableId(text,'text'),'--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+      if(writesAuthorized)args.push('--yes')
+      return withProfile(args)
+    },
+    async sendDirectIntent(request) {
+      requireEnabled()
+      if(!writesAuthorized)throw new Error('dws_write_not_authorized')
+      assertGroupReply(request.text,[request.openDingTalkId,request.idempotencyKey])
+      const result=await runner.run(this.compileDirectSend(request))
+      if(result.exitCode!==0)throw commandError('dws_direct_send_failed',result)
+      return sendCommandReceipt(result,'direct')
     },
     compileSelfSend({ userId, text, idempotencyKey }) {
       const args = ['chat', '+messages-send', '--as', 'user', '--user', assertStableId(userId, 'human_user_id'), '--text', assertStableId(text, 'text'), '--idempotency-key', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
@@ -599,13 +618,26 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       })
       return { lifecycle, ready: readyPromise, done: child.done, stop: () => child.terminate('SIGTERM') }
     },
-    startHumanReplySubscription(onEvent) {
+    startHumanReplySubscription(onEvent,peerIds=[]) {
+      requireEnabled()
+      if(!Array.isArray(peerIds)||!peerIds.length||peerIds.some(id=>typeof id!=='string'||!id))throw new Error('dws_private_peers_required')
+      const streams=[],lifecycle=new EventEmitter()
+      let stopped=false
+      const stop=()=>{if(stopped)return;stopped=true;for(const stream of streams)stream.stop()}
+      try{for(const peerId of new Set(peerIds)){
+        const stream=this.startPrivateSubscription(peerId,onEvent)
+        stream.lifecycle.on('line-error',error=>lifecycle.emit('line-error',error))
+        streams.push(stream)
+      }}catch(error){stop();throw error}
+      return {lifecycle,ready:Promise.all(streams.map(stream=>stream.ready)),done:Promise.race(streams.map(stream=>stream.done)).finally(stop),stop}
+    },
+    startPrivateSubscription(peerId,onEvent) {
       requireEnabled()
       const lifecycle = new EventEmitter()
       let ready = false
       let resolveReady
       const readyPromise = new Promise((resolve) => { resolveReady = resolve })
-      const child = runner.spawn(this.compileHumanReplyListen(), {
+      const child = runner.spawn(this.compileHumanReplyListen(peerId), {
         onStdoutLine(line) {
           try {
             const event = JSON.parse(line)
