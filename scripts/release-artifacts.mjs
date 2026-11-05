@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { verifyOfficialPi } from './verify-native-test-profile.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const hash = (bytes, algorithm = 'sha256') => createHash(algorithm).update(bytes).digest('hex')
@@ -13,6 +14,11 @@ export function assertCleanCheckout(directory = root) {
   if (tracked.status !== 0) throw Error('release_source_dirty')
   const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '--', 'packages', 'index.js', 'package.json', 'README.md', 'CHANGELOG.md', 'cordis.patch.yml'], { cwd: directory, encoding: 'utf8', windowsHide: true }).trim()
   if (untracked) throw Error('release_untracked_package_source')
+}
+export async function collectSourceEvidence() {
+  return { lockSha256: hash(await readFile(resolve(root, 'pnpm-lock.yaml'))),
+    profileSha256: hash(await readFile(resolve(root, 'test/fixtures/native-profile/package.json'))),
+    piVersions: await verifyOfficialPi() }
 }
 export async function inspectArtifacts(directory, identity) {
   if (!/^[0-9a-f]{40}$/.test(identity.sha) || !/^\d+$/.test(identity.runId) || !identity.tag.startsWith('v')) throw Error('release_identity_invalid')
@@ -35,10 +41,7 @@ export async function inspectArtifacts(directory, identity) {
     files.push({ name, file, version, size: bytes.length, sha256: hash(bytes), sha1: hash(bytes, 'sha1') })
   }
   return { schema: 1, ...identity, node: process.version, platform: process.platform, pnpm: '10.13.1',
-    lockSha256: hash(await readFile(resolve(root, 'pnpm-lock.yaml'))),
-    profileSha256: hash(await readFile(resolve(root, 'test/fixtures/native-profile/package.json'))),
-    rc2ProfileSha256: hash(await readFile(resolve(root, 'test/fixtures/native-rc2-profile/package.json'))),
-    rc2LockSha256: hash(await readFile(resolve(root, 'test/fixtures/native-rc2-profile/pnpm-lock.yaml'))), files }
+    ...await collectSourceEvidence(), files }
 }
 export async function verifyArtifacts(directory, identity) {
   const saved = JSON.parse(await readFile(resolve(directory, 'release-manifest.json'), 'utf8'))

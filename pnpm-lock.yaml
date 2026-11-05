@@ -119,9 +119,6 @@ importers:
       '@deepseek-ai/dsh-agent-loop':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(c90dd922244170f7c08b24042973c837)
-      '@deepseek-ai/dsh-agent-preset-registry':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(4729c4ee254c7c151f53bfd6e849a2eb)
       '@deepseek-ai/dsh-base':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(6bd4de75dc9f3a2585d9132ecccc5e29)
@@ -3780,6 +3777,7 @@ snapshots:
       - '@deepseek-ai/cordis-plugin-group'
       - '@deepseek-ai/dsh-home-paths'
       - '@deepseek-ai/dsh-launch-environment'
+    optional: true
 
   '@deepseek-ai/dsh-agent@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat)(@deepseek-ai/dsh-session-projection@packages+capability-compat+session-projection)(@deepseek-ai/dsh-session@packages+capability-compat+session)(@deepseek-ai/dsh-system-prompt@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat))(@deepseek-ai/dsh-typert-protocol@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-util-values@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))':
     dependencies:
