@@ -1,3 +1,23 @@
+# Explicit dotenv directory (2026-11-05)
+
+Environment loading no longer selects a user `.env` from `DSH_HOME` or `~/.dsh`.
+It reads inherited/project layers and only an explicitly supplied user directory;
+portable Host continues to pass its owned secrets directory. Omitting that
+user directory does not turn the project into a privileged proxy/CA source.
+Precedence, provenance, intentional empty values, immutable snapshots and
+bootstrap rejection remain. No files or secrets are moved or materialized.
+The differential launch-environment declaration is removed: **72 direct DSH dev
+declarations remain**. Storage services still have separate legacy defaults.
+
+Validation: **632 default pass**, focused **9** overlap; source/import/Pi-license/
+diff checks pass. Lockfile syntax and the retired importer were checked; only
+three importer lines were removed, with no new versions/integrity entries.
+The known registry metadata/attestation HTTP 503 blocker prevents fresh frozen
+installation verification; no policy bypass or alternative install route used.
+See [environment evidence](pi-native-environment-roots-validation.json).
+
+---
+
 # Native-only restart plans (2026-11-05)
 
 Restart isolation plans no longer select old DSH `profiles/web/node_modules`

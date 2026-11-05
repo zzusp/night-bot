@@ -128,7 +128,7 @@
     "generic Cordis service/event extension substrate"
   ],
   "directRuntimeDshDependencies": [],
-  "developmentDependencyCount": 80,
+  "developmentDependencyCount": 79,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [
