@@ -1,0 +1,40 @@
+{
+  "base": "2da8216c5ce9e4284a32c557fdee1ddda1f92f84",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 634,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 52,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "remainingDirectDshDevDependencies": 58,
+  "removedSource": [
+    "src/native-brand.js",
+    "embedded primitive brandNumber copy in src/native-tool-skill.js"
+  ],
+  "inlinedIdentityCalls": 20,
+  "method": "Acorn verified each imported brand reference was a one-argument call with no spread/nesting; replaced calls with parenthesized arguments. Embedded numeric identity call inlined after retaining its safe-integer guard.",
+  "preserved": "Exact values and argument evaluation, numeric event-position validation, private session publication, exact live execution/session ownership, journal provenance and no-replay guards",
+  "removedNotice": "licenses/dsh-brand-MIT.txt after removing standalone source, embedded copy and fixture support import",
+  "retained": "Per-domain constructors/data protocols and remaining source forks retain their existing attribution; this is not runtime ownership-brand removal",
+  "freshInstall": "Still blocked by known npm metadata/attestation HTTP 503; no package changes or install attempts in this phase",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-primitive-brands-focused.txt",
+      "sha256": "2ea43c97550d7f86d81a0901ceec2b4f82e5237429907b02a6ca6b22af761430"
+    },
+    {
+      "path": "docs/evidence/pi-native-primitive-brands-default.txt",
+      "sha256": "936f7d1df27de5ce31c3c81c41dc30ee4d37f55308b63ff485f91780655e8f7b"
+    },
+    {
+      "path": "docs/evidence/pi-native-primitive-brands-checks.txt",
+      "sha256": "dae84a9410bd0bc84e178bc0e9b917d86c397bacc9d112e7b6eda016b5bd747b"
+    }
+  ]
+}

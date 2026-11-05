@@ -8,7 +8,7 @@ import { Service, symbols } from "@deepseek-ai/cordis";
 import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
-import { brandString } from "./native-brand.js";
+
 import { LlmError } from './native-llm-protocol.js';
 import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
 
@@ -1538,7 +1538,7 @@ var AgentLoop = class extends Service {
 		for (const { id, sessionId, cwd, resumeSessionId, ...options } of this.config.agents) {
 			const meta = cwd === void 0 ? {} : { cwd };
 			if (resumeSessionId === void 0 || resumeSessionId === "") {
-				const configuredId = sessionId ?? brandString(`${id}-session-${randomUUID()}`);
+				const configuredId = sessionId ?? (`${id}-session-${randomUUID()}`);
 				const persistence = sessionId === void 0 ? void 0 : ctx.get("sessionPersistence");
 				if (persistence === void 0) {
 					const startup = this.create(configuredId, options, meta).then(() => void 0, (error) => {

@@ -7,16 +7,6 @@ import { createUserMessage } from './native-message-protocol.js';
 import "@deepseek-ai/cordis";
 import "node:path";
 import { escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent } from "./native-skill-protocol.js";
-//#region ../../util/brand/src/index.ts
-/**
-* Apply a compile-time number brand without changing the value.
-* @param value - number admitted by the domain that owns the target brand.
-* @returns the same number with the requested compile-time brand.
-*/
-function brandNumber(value) {
-	return value;
-}
-//#endregion
 //#region ../../util/values/src/partial-json.ts
 /**
 * Lazily scanned view of one JSON object's top-level fields, built from text
@@ -661,7 +651,7 @@ function assertNever(value, context) {
 */
 function SessionSeq(value) {
 	if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new TypeError(`SessionSeq must be a non-negative safe integer, got ${String(value)}`);
-	return brandNumber(value);
+	return value;
 }
 new Set([
 	"agent-preset/selected",

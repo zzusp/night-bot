@@ -24,10 +24,11 @@
     "sourceVersion": "0.2.1-alpha.2",
     "originalSha256": "a33af459cfc7af29dd17412443a63655fd5037dd348b0dec20a413ce60c6c8bc",
     "fixture": "test/fixtures/legacy-workspace-interface.mjs",
-    "fixtureSha256": "2b94a16d0751f692cd79408bdaac1bcba07bd29a80425bf2189dd3e494c34156",
+    "fixtureSha256": "0c8856b26c03b8c284a58453c94edf587b55fea1f160c6142728fe5305e60f79",
     "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
     "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
-    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent",
+    "primitiveSupportAdaptation": "Inlined the pure identity cast instead of keeping a separate nominal-brand source copy; registry/lifecycle algorithms unchanged."
   },
   {
     "package": "@deepseek-ai/dsh-session-title",

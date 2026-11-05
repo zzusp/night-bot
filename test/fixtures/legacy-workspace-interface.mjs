@@ -3,7 +3,7 @@ import { mkdir, realpath, stat } from "node:fs/promises";
 import { Service } from "@deepseek-ai/cordis";
 import { posix, win32 } from "node:path";
 import { z } from "zod";
-import { brandString } from "../../src/native-brand.js";
+
 import { defineDomain, domainTable } from "../../src/native-domain.js";
 //#region lib/types/paths.js
 /**
@@ -200,7 +200,7 @@ var WorkspaceEntity = class {
 */
 /** Workspace id schema at the durable boundary; branding has no runtime representation. */
 const workspaceId = z.string().transform((value) => value);
-const sessionId = z.string().transform((value) => brandString(value));
+const sessionId = z.string().transform((value) => (value));
 /**
 * Durable shape of one workspace record. `path` is the `fs.realpath` canon
 * stamped at create; `sessionIds` is the ordered ownership account (array

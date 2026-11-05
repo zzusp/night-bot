@@ -15,7 +15,7 @@ import { ReasoningEffortId, boundContextSummary, contentHasImage, createUserMess
 import { randomUUID } from "node:crypto";
 import { foldConsumedWork } from "./native-consumed-work.js";
 import { isAbsolute, resolve } from "node:path";
-import { brandString } from "./native-brand.js";
+
 import { SessionLogOffset, SessionSeq } from "./native-session-protocol.js";
 import { assertNever, snapshotJsonValue } from "./native-values.js";
 import {createChildCatalogProjection} from "./runtime/child-catalog.js";
@@ -1355,7 +1355,7 @@ var SubagentManager = class {
 		this.assertAdmitting(parent);
 		const persistence = spec.delivery === "caller" ? this.ctx.get("sessionPersistence") : this.requirePersistence();
 		assertSubagentMaxDepth(request.maxDepth);
-		const childId = spec.childId ?? brandString(randomUUID());
+		const childId = spec.childId ?? (randomUUID());
 		this.assertChildIdAvailable(childId);
 		const childDepth = resolveChildDepth(parent, request.maxDepth);
 		const agentOptions = resolveChildAgentOptions(parent, request.agentOptions, childDepth);
@@ -1449,7 +1449,7 @@ var SubagentManager = class {
 	async startExternal(spec) {
 		const parent = spec.request.parent;
 		this.assertAdmitting(parent);
-		const pendingId = brandString(randomUUID());
+		const pendingId = (randomUUID());
 		const releaseHold = this.holdOwnership(parent, pendingId);
 		let activation;
 		try {

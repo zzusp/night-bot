@@ -1,5 +1,5 @@
 // MIT source-derived credential reference and scope/id address protocol; see licenses/dsh-credentials-MIT.txt. Distinct from the stored-address validator in native-credentials.js.
-import {brandString} from "./native-brand.js";
+
 const REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Both halves of a {@link CredentialKey}; the `/` between them is what keeps it out of {@link REF_PATTERN}. */
 const KEY_SEGMENT_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -10,7 +10,7 @@ const KEY_SEGMENT_PATTERN = /^[a-z][a-z0-9-]*$/;
 */
 function credentialRef(value) {
 	if (!isCredentialRefName(value)) throw new TypeError(`credential ref "${value}" must match ${String(REF_PATTERN)}`);
-	return brandString(value);
+	return (value);
 }
 /**
 * Whether a raw string could name a reference at all. Consumers that receive
@@ -45,7 +45,7 @@ function isCredentialKeySegment(value) {
 */
 function credentialKey(scope, id) {
 	for (const segment of [scope, id]) if (!KEY_SEGMENT_PATTERN.test(segment)) throw new TypeError(`credential key segment "${segment}" must match ${String(KEY_SEGMENT_PATTERN)}`);
-	return brandString(`${scope}/${id}`);
+	return (`${scope}/${id}`);
 }
 /**
 * Brand a stored `<scope>/<id>` string as a {@link CredentialKey}. This is the

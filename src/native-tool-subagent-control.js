@@ -1,5 +1,5 @@
 // MIT source-derived model tool binding; see licenses/dsh-tool-subagent-control-MIT.txt. Active lifecycle belongs to native services and Pi.
-import { brandString } from "./native-brand.js";
+
 import { defineTool } from "./native-tool-protocol.js";
 // Stable interoperability marker consumed by NativeSubagents; no legacy runtime import.
 function markAdjacentAgentSendMessageTool(tool) {
@@ -60,7 +60,7 @@ function apply(ctx) {
 				type: "text",
 				text: args.message
 			}];
-			return { messageId: await ctx.subagents.sendMessage(sender, brandString(args.agent_id), message, { signal: exec.signal }) };
+			return { messageId: await ctx.subagents.sendMessage(sender, (args.agent_id), message, { signal: exec.signal }) };
 		}
 	})));
 	ctx.tools.register(defineTool({
@@ -88,7 +88,7 @@ function apply(ctx) {
 		execute(args, exec) {
 			const caller = exec.agent;
 			if (!caller) throw new Error("interrupt_agent requires a calling agent (exec.agent was undefined)");
-			ctx.subagents.interrupt(brandString(args.agent_id), {
+			ctx.subagents.interrupt((args.agent_id), {
 				kind: "ancestor",
 				agent: caller
 			});

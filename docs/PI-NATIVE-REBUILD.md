@@ -1,3 +1,25 @@
+# Primitive identity shim removal (2026-11-05)
+
+The nominal primitive-brand module consisted only of functions returning their
+argument; it owned no runtime state, validation or authority. Inlined **20** such
+calls while preserving argument evaluation and values. Removed the standalone
+module, an embedded skill-tool copy and the fixture support import. Kept the
+skill event-position safe-integer guard, actual private session publication and
+live execution ownership checks. Per-domain data constructors remain unchanged
+in value. The workspace reference fixture hash records this support-only change.
+No source/test copy of the identity shim remains, so its dedicated notice is
+removed; the remaining data/validation/controller source notices remain.
+
+Validation: **634 default pass**, focused **52** overlap (session publication,
+Pi authority/journals, owned job admission and workspace contracts). Source/import/
+Pi-license/diff guards pass; scans find no primitive helper implementation/import.
+See [primitive shim evidence](pi-native-primitive-brands-validation.json).
+**58 DSH dev declarations remain**; no package changes or install attempts in this
+phase. Registry HTTP 503 still blocks fresh package-policy verification. No new
+platform claim or weakening of actual object/provenance checks.
+
+---
+
 # Ordinary application control services (2026-11-05)
 
 The default Host never mounted a Typert Gateway, and production code did not

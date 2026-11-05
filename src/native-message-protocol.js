@@ -1,7 +1,7 @@
 // MIT source-derived message, projection and assistant-stream protocols; see licenses/dsh-llm-MIT.txt.
 // Request markers are application-local. Canonical error classes and attribution are owned by the adjacent native LLM protocols.
 import {assertNever,deepFreeze,snapshotJsonValue} from './native-values.js';
-import {brandString} from './native-brand.js';
+
 import {randomUUID} from 'node:crypto';
 import {HarnessError,LlmError} from './native-llm-errors.js';
 //#region lib/types/message.js
@@ -36,7 +36,7 @@ function freezeMessage(message) {
 function createMessage(input) {
 	return deepFreeze(structuredClone({
 		...input,
-		id: brandString(randomUUID())
+		id: (randomUUID())
 	}));
 }
 /**
@@ -717,13 +717,9 @@ function projectToolUpdates(messages, tools, toolUpdate, history) {
 //#endregion
 //#region lib/types/brand.js
 /**
-* dsh-llm's owned branded ids: tool-call correlation and provider request
-* diagnostics.
-*
-* The `Branded<B>` primitive and stateless constructor live in
-* `@deepseek-ai/dsh-brand` so every owner of a cross-boundary id can brand it
-* without depending on dsh-llm; see that package's README for the
-* nominal-typing policy.
+* Correlation ids remain primitive strings. Session and tool authority is
+* checked against live owning objects and committed receipts, separately from
+* these data constructors. No nominal-brand runtime library is needed.
 *
 * @module @deepseek-ai/dsh-llm/brand
 */
@@ -733,7 +729,7 @@ function projectToolUpdates(messages, tools, toolUpdate, history) {
 * @returns the same string with the message-id brand.
 */
 function MessageId(id) {
-	return brandString(id);
+	return (id);
 }
 /**
 * Brand a string as a {@link ToolCallId}.
@@ -741,7 +737,7 @@ function MessageId(id) {
 * @returns the same string with the tool-call-id brand.
 */
 function ToolCallId(id) {
-	return brandString(id);
+	return (id);
 }
 /**
 * Brand a provider-issued request identifier.
@@ -749,7 +745,7 @@ function ToolCallId(id) {
 * @returns the same string, branded; no validation is performed.
 */
 function ProviderRequestId(id) {
-	return brandString(id);
+	return (id);
 }
 /**
 * Brand one loop-owned streaming attempt identifier.
@@ -757,7 +753,7 @@ function ProviderRequestId(id) {
 * @returns the same string with the attempt-id brand.
 */
 function LlmAttemptId(id) {
-	return brandString(id);
+	return (id);
 }
 /**
 * Brand an adapter-owned reasoning-effort identifier.
@@ -765,7 +761,7 @@ function LlmAttemptId(id) {
 * @returns the same string, branded; no validation is performed.
 */
 function ReasoningEffortId(id) {
-	return brandString(id);
+	return (id);
 }
 //#endregion
 //#region lib/types/assembler.js
@@ -867,7 +863,7 @@ var BlockAssembler = class {
 			};
 			case "tool-call": return {
 				type: "tool-call",
-				id: partial.toolCallId ?? brandString(`call-${index}`),
+				id: partial.toolCallId ?? (`call-${index}`),
 				name: partial.toolCallName ?? "",
 				arguments: partial.toolCallArguments
 			};

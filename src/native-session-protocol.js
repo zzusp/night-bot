@@ -1,18 +1,18 @@
 // MIT source-derived audit/publication/inbox facade and legacy event contracts. Pi SessionManager is model-context/history authority; no legacy SessionStore.
 import { isAbsolute } from "node:path";
-import { brandNumber, brandString } from "./native-brand.js";
+
 import { assertNever, deepFreeze, snapshotJsonValue } from "./native-values.js";
 import { callConfigEquals } from "./native-llm-protocol.js";
 function SessionId(id) {
-	return brandString(id);
+	return (id);
 }
 function SessionSeq(value) {
 	if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new TypeError(`SessionSeq must be a non-negative safe integer, got ${String(value)}`);
-	return brandNumber(value);
+	return (value);
 }
 function SessionLogOffset(value) {
 	if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new TypeError(`SessionLogOffset must be a non-negative safe integer, got ${String(value)}`);
-	return brandNumber(value);
+	return (value);
 }
 const SESSION_FORMAT_VERSION = 4;
 const KNOWN_SESSION_EVENT_TYPES = new Set([
@@ -635,7 +635,7 @@ var ToolCallRecovery = class {
 		for (const [callId, { turn, step, callSeq }] of this.pendingCalls) {
 			const started = callSeq !== void 0;
 			const message = deepFreeze({
-				id: brandString(`${this.cause.kind}-tool-result-${callId}-${seq}`),
+				id: (`${this.cause.kind}-tool-result-${callId}-${seq}`),
 				role: "tool",
 				toolCallId: callId,
 				isError: true,
