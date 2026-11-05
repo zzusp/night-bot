@@ -3,17 +3,17 @@
 import { isDeepStrictEqual } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { homedir } from "node:os";
-import { launchEnvironmentOf, resolveLegacyHome } from "./native-environment.js";
 import { createUserMessage } from './native-message-protocol.js';
 
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import z from "@deepseek-ai/schemastery";
-// Historical labels and root precedence are a compatibility protocol.
+// Historical display labels are read only when reconciling Night Bot's own
+// existing Pi audit messages. They never select a live filesystem root.
 const DSH_HOME_ENV='DSH_HOME', AGENTS_HOME_ENV='DSH_AGENTS_HOME', DEFAULT_DSH_HOME_DISPLAY='~/.dsh', DEFAULT_AGENTS_HOME_DISPLAY='~/.agents';
-const resolveDshHome=resolveLegacyHome;
-const resolveAgentsHome=(configured,env=process.env)=>resolveLegacyHome(configured??(env.DSH_AGENTS_HOME?.trim()?env.DSH_AGENTS_HOME:join(homedir(),'.agents')));
-const dshHomeDisplay=path=>path===resolve(join(homedir(),'.dsh'))?DEFAULT_DSH_HOME_DISPLAY:'$DSH_HOME';
-const agentsHomeDisplay=path=>path===resolve(join(homedir(),'.agents'))?DEFAULT_AGENTS_HOME_DISPLAY:'$DSH_AGENTS_HOME';
+const INSTRUCTION_HOME_DISPLAY='$NIGHT_BOT_INSTRUCTIONS', AGENTS_HOME_DISPLAY='$NIGHT_BOT_AGENTS';
+const absoluteHome=path=>resolve(path==='~'?homedir():path.startsWith('~/')||path.startsWith('~\\')?join(homedir(),path.slice(2)):path);
+const resolveAgentsHome=configured=>absoluteHome(configured??join(homedir(),'.agents'));
+const agentsHomeDisplay=path=>path===resolve(join(homedir(),'.agents'))?DEFAULT_AGENTS_HOME_DISPLAY:AGENTS_HOME_DISPLAY;
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { assertNever } from "./native-values.js";
@@ -34,7 +34,7 @@ const RESERVED_PATH_SEGMENTS = new Set([
 	".."
 ]);
 const Config = z.object({
-    dshHome: z.string(),
+    instructionHome: z.string(),
     agentsHome: z.string(),
 	projectRootMarkers: z.array(z.string()).default([...DEFAULT_PROJECT_ROOT_MARKERS]),
 	maxBytes: z.number().required(),
@@ -52,6 +52,8 @@ const Config = z.object({
 function workspaceBaselineIdentity(config, cwd, projectRoot) {
 	return JSON.stringify({
 		projectRoot: relative(cwd, projectRoot),
+		instructionHome: config.instructionHome ?? null,
+		agentsHome: config.agentsHome,
 		projectRootMarkers: config.projectRootMarkers,
 		maxBytes: config.maxBytes,
 		maxSourceBytes: config.maxSourceBytes,
@@ -60,14 +62,15 @@ function workspaceBaselineIdentity(config, cwd, projectRoot) {
 	});
 }
 /**
-* Resolve row defaults, the process harness home, and valid same-directory candidates.
-* Undeclared row fields cannot override the process home.
+* Resolve explicit application instruction roots and valid same-directory candidates.
+* Environment variables do not select instruction roots.
 * @param config - user-facing plugin configuration.
 * @returns normalized runtime configuration.
 */
 function resolveConfig(config) {
 	return {
 		...resolveDiscoveryConfig({
+            instructionHome:config.instructionHome,agentsHome:config.agentsHome,
 			...config.projectRootMarkers === void 0 ? {} : { projectRootMarkers: config.projectRootMarkers },
 			...config.instructionFileCandidates === void 0 ? {} : { instructionFileCandidates: config.instructionFileCandidates },
 			...config.localInstructionFileCandidates === void 0 ? {} : { localInstructionFileCandidates: config.localInstructionFileCandidates }
@@ -80,16 +83,16 @@ function resolveConfig(config) {
 * Resolve the subset of configuration used before instruction content is rendered.
 *
 * The harness home comes from the process environment through
-* {@link resolveDshHome}; the row cannot point instruction loading at a second
+* the explicit instruction root; the row cannot point instruction loading at a second
 * root that other harness consumers would not share. An owner that already
-* resolved the homes passes them as `dshHome` and `agentsHome`, which are
+* resolved the homes passes them as `instructionHome` and `agentsHome`, which are
 * normalized here so discovery and reconciliation use the same values.
 * @param config - optional discovery controls plus the already-resolved homes.
 * @returns normalized home, root markers, and instruction candidates.
 */
 function resolveDiscoveryConfig(config) {
 	return {
-		dshHome: resolveDshHome(config.dshHome),
+		instructionHome: config.instructionHome===undefined?undefined:absoluteHome(config.instructionHome),
 		agentsHome: resolveAgentsHome(config.agentsHome),
 		projectRootMarkers: config.projectRootMarkers ?? [...DEFAULT_PROJECT_ROOT_MARKERS],
 		instructionFileCandidates: resolveInstructionFileCandidates(config.instructionFileCandidates, DEFAULT_INSTRUCTION_FILE_CANDIDATES),
@@ -185,8 +188,8 @@ const USER_GLOBAL_FILE = "AGENTS.md";
 * @returns `user-global`, `agents-global`, `.`, or the containing project-relative directory.
 */
 function scopeForDisplayPath(displayPath) {
-	if (displayPath === `${DEFAULT_DSH_HOME_DISPLAY}/AGENTS.md` || displayPath === `$${DSH_HOME_ENV}/AGENTS.md`) return USER_GLOBAL_DIRECTORY;
-	if (displayPath === `${DEFAULT_AGENTS_HOME_DISPLAY}/AGENTS.md` || displayPath === `$${AGENTS_HOME_ENV}/AGENTS.md`) return AGENTS_GLOBAL_DIRECTORY;
+	if (displayPath === `${INSTRUCTION_HOME_DISPLAY}/AGENTS.md` || displayPath === `${DEFAULT_DSH_HOME_DISPLAY}/AGENTS.md` || displayPath === `$${DSH_HOME_ENV}/AGENTS.md`) return USER_GLOBAL_DIRECTORY;
+	if (displayPath === `${AGENTS_HOME_DISPLAY}/AGENTS.md` || displayPath === `${DEFAULT_AGENTS_HOME_DISPLAY}/AGENTS.md` || displayPath === `$${AGENTS_HOME_ENV}/AGENTS.md`) return AGENTS_GLOBAL_DIRECTORY;
 	return dirname(displayPath);
 }
 /**
@@ -491,22 +494,10 @@ function renderAgentInstructions(files, options) {
 * @returns the roots in model precedence order.
 */
 function userGlobalRoots(config) {
-	return USER_GLOBAL_DIRECTORIES.map((directory) => {
-		switch (directory) {
-			case USER_GLOBAL_DIRECTORY: return {
-				directory,
-				home: config.dshHome,
-				display: dshHomeDisplay(config.dshHome)
-			};
-			case AGENTS_GLOBAL_DIRECTORY: return {
-				directory,
-				home: config.agentsHome,
-				display: agentsHomeDisplay(config.agentsHome)
-			};
-			/* v8 ignore next -- USER_GLOBAL_DIRECTORIES is closed; this arm only makes adding a label a compile error. */
-			default: return assertNever(directory, "user-global directory");
-		}
-	});
+ const roots=[]
+ if(config.instructionHome!==undefined)roots.push({directory:USER_GLOBAL_DIRECTORY,home:config.instructionHome,display:INSTRUCTION_HOME_DISPLAY})
+ roots.push({directory:AGENTS_GLOBAL_DIRECTORY,home:config.agentsHome,display:agentsHomeDisplay(config.agentsHome)})
+ return roots
 }
 function signalOptions(signal) {
 	return signal === void 0 ? void 0 : { signal };
@@ -827,6 +818,7 @@ async function loadBaselineInstructionSet(options, fileSystem) {
 function scopeInstructionFile(scope, projectRoot, resolved) {
 	const { directory, candidateName } = decodeScopeKey(scope);
 	const globalRoot = userGlobalRoots(resolved).find((root) => root.directory === directory);
+    if(RESERVED_SCOPE_DIRECTORIES.has(directory)&&globalRoot===undefined)return undefined;
 	const absolutePath = join(globalRoot?.home ?? (directory === "." ? projectRoot : join(projectRoot, directory)), candidateName);
 	return {
 		absolutePath,
@@ -844,6 +836,7 @@ function scopeInstructionFile(scope, projectRoot, resolved) {
 */
 async function probeScopeInstruction(scope, projectRoot, resolved, fileSystem, signal) {
 	const candidate = scopeInstructionFile(scope, projectRoot, resolved);
+    if(candidate===undefined)return {kind:"absent"};
 	let target;
 	let info;
 	try {
@@ -1116,7 +1109,7 @@ async function reconcileInstructionContext(agent, resolved, versionCache, fileSy
 			versionUpdates.splice(versionUpdateStart);
 			for (const [candidateScope, prior] of priorVersions) if (prior === void 0) versions.delete(candidateScope);
 			else versions.set(candidateScope, prior);
-			for (const scope of probedScopes) seenAbsolutePaths.add(scopeInstructionFile(scope, projectRoot, resolved).absolutePath);
+			for (const scope of probedScopes){const candidate=scopeInstructionFile(scope,projectRoot,resolved);if(candidate)seenAbsolutePaths.add(candidate.absolutePath);}
 			keptTrimmedByGroup.delete(group);
 		};
 		for (const scope of probedScopes) {
@@ -1225,8 +1218,7 @@ function filePathFromExecution(exec) {
 	return filePath.length > 0 ? filePath : void 0;
 }
 function apply(ctx, config) {
-	const inherited=launchEnvironmentOf(ctx), env={DSH_HOME:inherited.getFrom('DSH_HOME',['process'])?.value,DSH_AGENTS_HOME:inherited.getFrom('DSH_AGENTS_HOME',['process'])?.value};
-	const resolved = {...resolveConfig(config),dshHome:resolveDshHome(config.dshHome,env),agentsHome:resolveAgentsHome(config.agentsHome,env)};
+	const resolved=resolveConfig(config);
 	const authority=ctx.piAuthority, active=new Set(), calls=new AsyncLocalStorage();
 	ctx.provide('nativeAgentInstructions',Object.freeze({owner:name,contextAuthority:'pi-session-manager'}));
 	function track(operation){const record={};active.add(record);let result;try{result=calls.run(record,operation)}catch(error){active.delete(record);throw error}record.done=Promise.resolve(result).finally(()=>active.delete(record));return record.done}
@@ -1266,7 +1258,7 @@ function apply(ctx, config) {
 			const replacePreviousBaseline = baselinePresent && !keepVisibleBaseline;
 			const instructions = await loadBaselineInstructionSet({
 				cwd,
-				dshHome: resolved.dshHome,
+				instructionHome: resolved.instructionHome,
 				agentsHome: resolved.agentsHome,
 				projectRootMarkers: resolved.projectRootMarkers,
 				maxBytes: resolved.maxBytes,

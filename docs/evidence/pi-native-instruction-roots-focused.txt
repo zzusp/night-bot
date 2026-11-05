@@ -1,0 +1,17 @@
+✔ real Pi instruction context retains scoped baseline, successful nested discovery, update/removal and cwd replacement (1692.222433ms)
+✔ explicit instruction roots retain precedence, duplicate suppression, UTF-8 byte budgets and safe framing (42.792003ms)
+✔ removing an owned global instruction root refreshes Pi context without probing a project-global lookalike (7.189464ms)
+✔ Pi authority alone owns baseline visibility and change/removal reconciliation (5.103956ms)
+✔ nested successful touches use token identity, dedupe pending context, and ignore errors/cancellation (2.86005ms)
+✔ instruction reads retain the capability provider and cannot fall back to raw filesystem on denial (3.311236ms)
+✔ instruction shutdown aborts and drains admitted preparation without late inbox publication (1.673931ms)
+✔ instruction cancellation and providerless mounting do not read or inject context (0.890095ms)
+✔ worktree 子目录只用唯一标记回溯到 night-bot 根 AGENTS.md (9.355943ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1844.556181

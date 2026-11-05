@@ -1,3 +1,29 @@
+# Instruction roots cleanup (2026-11-05)
+
+Instruction discovery now uses explicit `instructionHome`, standard/explicit
+`agentsHome` and project files. It no longer consults DSH environment variables
+or implicitly reads `.dsh/AGENTS.md`. Portable Host supplies its existing owned
+harness/agents folders, preserving Night Bot backup bytes and configured paths.
+The global root is optional. Disabled reserved scopes never fall back to a
+project-relative lookalike. Root identities participate in baseline identity,
+so changing/removing roots refreshes the Pi context without rewriting history.
+Old display labels are decoded only for prior Night Bot audit reconciliation;
+they cannot select filesystem roots. The source remains an attributed fork.
+Its differential-only direct dependency is removed: **77 DSH dev packages remain**.
+
+Validation: **631 default + project-root cases pass** (630 pi-* plus one root
+case); focused **9** overlap; archive/channel/task-skill integration **27 pass**.
+The actual portable Pi wire loads owned global/project/nested instructions and
+rejects external DSH environment roots, while retaining update/removal/cwd
+reconciliation. The first full run identified an obsolete wire expectation that
+DSH environment roots should load; replaced it with owned-positive and external-
+negative checks, then repeated the full suite. Frozen install (`--ignore-scripts`),
+source/import/Pi license and diff checks pass. See [instruction root evidence](pi-native-instruction-roots-validation.json).
+General environment and shell facts still contain separate DSH home/namespace
+contracts; no process/platform independence is claimed by this stage.
+
+---
+
 # Skill roots cleanup (2026-11-05)
 
 Skill discovery no longer reads implicit project/user `.dsh/skills` or roots from
