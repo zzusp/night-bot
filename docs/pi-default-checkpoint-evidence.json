@@ -1,0 +1,37 @@
+{
+  "checkpoint": "af9c9f3",
+  "complete": false,
+  "resultsOverlap": true,
+  "evidence": [
+    {
+      "name": "core",
+      "target": "docs/evidence/pi-default-core-summary.txt",
+      "logSha256": "f9ac00235862c4d3853ac3ad1bd5d3ea25859170421f12328a4ab12f169aebae"
+    },
+    {
+      "name": "kernel",
+      "target": "docs/evidence/pi-default-kernel-summary.txt",
+      "logSha256": "adf8dece283e25763ad37ec0e5d50d4e117bb2dbfd55c3a468fe561abb4d0d43"
+    },
+    {
+      "name": "jobs-retry",
+      "target": "docs/evidence/pi-default-jobs-retry-summary.txt",
+      "logSha256": "0db87feef270fb2ed23cb9da518591f2ec0c180fe5f8eab73ffc8be8b6efb859"
+    },
+    {
+      "name": "archives",
+      "target": "docs/evidence/pi-default-archives-summary.txt",
+      "logSha256": "906b4e4def585488f26695f5447ff85a1ceb8208f562ced6239e619eefa17a12"
+    },
+    {
+      "name": "triage",
+      "target": "docs/evidence/pi-default-triage-summary.txt",
+      "logSha256": "296eab08813ac9294a17002d9a14267aa1e5a7946b400f6524142bc0a9f726e0"
+    },
+    {
+      "name": "presets",
+      "target": "docs/evidence/pi-default-presets-summary.txt",
+      "logSha256": "de09f63d60660eba1f6328a791ccd87a3ff8d9472135740ea4045aead6f29f08"
+    }
+  ]
+}
