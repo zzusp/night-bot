@@ -53,7 +53,7 @@ export class OfficialPiModelRuntime {
   if(!Number.isSafeInteger(maxTokens)||maxTokens<=0||maxTokens>cap)fail('INVALID_MODEL_MAX_TOKENS','Requested output exceeds configured model limit')
   if(config.temperature!==undefined&&!Number.isFinite(config.temperature))fail('INVALID_TEMPERATURE','Temperature must be finite')
   config.signal?.throwIfAborted()
-  return {modelRuntime:state.runtime,model,thinkingLevel,requestOptions:{maxTokens,...config.temperature===undefined?{}:{temperature:config.temperature},...profile.retrySettings.provider},retrySettings:profile.retrySettings}
+  return {modelRuntime:state.runtime,model,thinkingLevel,requestImageLimitsFor:currentModel=>{const current=this.profiles().get(currentModel.provider);if(!current||!current.models.some(candidate=>candidate.id===currentModel.id))fail('OFFICIAL_MODEL_ROUTE_CHANGED','Image route is not configured');return Object.fromEntries(['requestImagePixelBudget','requestImageMaxBytes','maxRequestImageBytes'].map(key=>[key,current[key]]))},requestOptions:{maxTokens,...config.temperature===undefined?{}:{temperature:config.temperature},...profile.retrySettings.provider},retrySettings:profile.retrySettings}
  }
  #signal(signal) {return signal?AbortSignal.any([this.#lifetime.signal,signal]):this.#lifetime.signal}
  #track(operation) {

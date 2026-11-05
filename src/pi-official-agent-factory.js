@@ -77,7 +77,7 @@ export class OfficialAgentFactory {
   const lifecycle=new AbortController(),deliveryContext=new AsyncLocalStorage(),pending=new Set()
   const requestGuards=new Set()
   const live=()=>!!scope&&!disposed&&(!published||ownerCtx.agents.get(id)===actor)
-  const check=()=>{const error=bundle?.durability.failure??bundle?.durability.requestFailure??bundle?.bridge.policyFailure;if(error)throw error}
+  const check=()=>{const error=bundle?.durability.failure??bundle?.durability.requestFailure??bundle?.requestImageFailure??bundle?.bridge.policyFailure;if(error)throw error}
   const active=()=>{if(bundle?.durability.failure)throw bundle.durability.failure;if(cancelled)throw cancellationError;if(closing||disposed||!published||!live())throw fail('PI_OFFICIAL_ACTOR_NOT_LIVE')}
   const drain=async(phase)=>{
    const proof=await drainBusiness(actor,{phase})

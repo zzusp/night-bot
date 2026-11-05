@@ -1,3 +1,4 @@
+import {bindPiRequestImageBudget} from './pi-request-image-budget.js'
 import {createAgentSession} from '@earendil-works/pi-coding-agent'
 import {createPiOfficialTools,createOfficialToolContextDelivery} from './pi-official-tools.js'
 import {createNightOfficialContext} from './pi-official-context.js'
@@ -25,7 +26,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
  const unbindApproval=bindApprovalAudit(actor,audit)
- let session
+ let session,imageBudget
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
@@ -42,6 +43,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   ;({session}=await createAgentSession({cwd:store.header.cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager,resourceLoader:bridge.resourceLoader,sessionManager:store.manager,noTools:'builtin',tools:tools.customTools.map(tool=>tool.name),customTools:tools.customTools}))
   actor.piSession=session
   session.agent.toolExecution='parallel'
+  if(resolved.requestImageLimitsFor)imageBudget=bindPiRequestImageBudget({session,getLimits:resolved.requestImageLimitsFor})
   const stream=session.agent.streamFunction
   session.agent.streamFunction=(model,request,options)=>{
    const configured=resolved.requestOptions??{}
@@ -50,15 +52,17 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    const maxTokens=configured.maxTokens===undefined?options?.maxTokens:Math.min(configured.maxTokens,options?.maxTokens??configured.maxTokens)
    return stream(model,request,{...options,...configured,...maxTokens===undefined?{}:{maxTokens}})
   }
-  durability=bindOfficialDurability({session,store,tools,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(bridge.policyFailure)throw bridge.policyFailure}})
+  durability=bindOfficialDurability({session,store,tools,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(imageBudget?.failure)throw imageBudget.failure
+    if(bridge.policyFailure)throw bridge.policyFailure}})
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
   if(!deferResources){await bridge.refreshResources();await bridge.resourceLoader.reload()}
-  return {actor,session,tools,bridge,durability,
+  return {actor,session,tools,bridge,durability,get requestImageFailure(){return imageBudget?.failure},
    async deliver(packetId,options){
     if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
     if(!session.isStreaming)tools.beginTurn()
     await bridge.refreshResources();await bridge.resourceLoader.reload()
     const result=await admission.deliver(session,packetId,options)
+    if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure
     if(durability.failure)throw durability.failure
     if(durability.requestFailure)throw durability.requestFailure
@@ -71,15 +75,16 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     await session.prompt(...args)
     // The official extension runner reports and absorbs handler exceptions.
     // Aborting protects dispatch; returning the typed reason protects the UI.
+    if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure
     if(durability.failure)throw durability.failure
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
-   async close(){await durability.close();unbindApproval()},
+   async close(){await durability.close();imageBudget?.close();unbindApproval()},
   }
  }catch(cause){
-  unbindApproval();await session?.abort();await tools?.close();session?.dispose()
+  unbindApproval();imageBudget?.close();await session?.abort();await tools?.close();session?.dispose()
   // No SDK execution has been admitted during construction. Preserve any
   // independently owned store for its caller to inspect and close explicitly.
   throw cause
