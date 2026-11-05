@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { available, reason, nativeTaskHost, topicTaskCalls } from './fixtures/task-session-native-host.js'
+import { available, reason, nativeTaskHost, topicTaskCalls } from './fixtures/routing-official-host.js'
 import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
 import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/group-message.js'
 
@@ -20,7 +20,7 @@ test('real native completed task retires its definitively unsent start confirmat
     return { exitCode: 1, stdout: '', stderr: JSON.stringify(refusal) }
   } } })
   await t.beginBusiness()
-  host = await t.step(async () => nativeTaskHost(root, async request => topicTaskCalls(request) ?? [{ name: 'task_session_submit', args: {
+  host = await t.step(async () => nativeTaskHost(root, async request => topicTaskCalls(request) ?? [{ name: 'task_result', args: {
     decision: { action: 'complete', summary: '已核验完整资料。', evidence: ['真实任务所有验收条件已满足'], limitations: [] },
   } }], { notifications: { send: notice => sendWorkflowNotification(adapter, notice), readback: async () => { reads++; return undefined } } }))
   await t.step(async () => host.service.ingest({ groupId: 'native-group', messageId: 'request', senderOpenDingTalkId: 'native-user',
@@ -35,5 +35,8 @@ test('real native completed task retires its definitively unsent start confirmat
   assert.equal(notice.deliveryError.retryable, false)
   assert.equal(notice.nextAttemptAt, null)
   assert.equal(sends, 1); assert.equal(reads, 0)
-  assert.equal((await t.step(async () => host.query('task.list'))).length, 1)
+  const tasks = await t.step(async () => host.query('task.list'))
+  assert.equal(tasks.length, 1)
+  assert.equal(tasks[0].status, 'completed', 'retiring an unsent confirmation cannot cancel a valid completion')
+  assert.equal(host.toolResults.filter(item => item.name === 'task_result').length, 1, 'recovery cannot re-dispatch the completed task')
 }))

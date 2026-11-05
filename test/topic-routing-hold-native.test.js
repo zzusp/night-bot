@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { available, reason, nativeTaskHost, latestInput, waitUntil } from './fixtures/task-session-native-host.js'
+import { available, reason, nativeTaskHost, latestInput, waitUntil } from './fixtures/routing-official-host.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
@@ -36,7 +36,7 @@ test('本地 API 恢复待判后真实调度并收束原始来源', { timeout: n
         units: [], ignoredRefs: [{ quote: message.text, reason: '澄清后无需执行' }] })) } }]
   }, { resident: true }))
   const resident = h.residentStore = await t.step(() => openResidentStore(h.ctx.storageDomain))
-  runtime = await t.step(() => openTaskResidentRuntime(h.ctx, resident, root, { agentPreset: 'native-test' }))
+  runtime = await t.step(() => openTaskResidentRuntime(h.ctx, resident, h.ctx.runtimePaths.workspaces, { agentPreset: 'night-bot' }))
   await t.step(() => runtime.subscribe({ groupId: 'g', name: '隔离群' }))
   h.service = await t.step(() => openTaskSessionService({ ctx: h.ctx, legacy: runtime, residentStore: resident,
     config: { dbPath: join(root, 'dynamic.db'), instanceId: 'hold-native', initialize: true, ownerActorId: 'native-user', webActorId: 'native-user' },
