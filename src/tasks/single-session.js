@@ -1,5 +1,5 @@
 import {groupReplyScopeInstructions} from '../../packages/dingtalk-core/group-message.js'
-import {preflightNativeFileMutation} from '../native-tool-fs.js'
+import {preflightPiFileMutation,isPiFileObservationalTool} from '../pi-file-tool-registration.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
@@ -13,7 +13,7 @@ export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceipt
   'task/effect-intent':value=>exact(value,['key','name','callId'])&&key(value.key)&&typeof value.name==='string'&&value.name.length>0&&typeof value.callId==='string'&&value.callId.length>0,
   'task/effect-result':value=>exact(value,['key','isError'])&&key(value.key)&&typeof value.isError==='boolean',
 })
-const observational=new Set(['read','read_image','glob','grep','skill','web_search','web_fetch','memory_read','memory_search','memory_status','memory_candidates','job_output','job_list','task_result'])
+const observational=new Set(['read','read_image','read_window','glob','grep','skill','web_search','web_fetch','memory_read','memory_search','memory_status','memory_candidates','job_output','job_list','task_result'])
 const instructions='You are the sole execution session for this task. Directly use the available tools to complete the current authorized objective. There is no task coordinator, delegation or child execution session. Do not create another agent. Write process files and artifacts in work/ under this task workspace; tmp/ is temporary. materials/, outputs/, sessions/, reviews/ and task metadata are Host-owned, not writable. Report work/ artifact paths; the Host freezes selected delivery files into outputs/. Current user requirements and permissions prevail over memory and learned skills. Read current evidence, avoid unnecessary detours and never replay an already attempted effect. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations; use wait with a specific question when required information or authority is missing. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.'
 function effectState(receipts){
   const intents=new Map()
@@ -63,22 +63,24 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
       if(uncertain())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}
       const source={kind:'task-input',taskSession:structuredClone(binding)},content=[{type:'text',text:JSON.stringify({task:input.task,sources:input.sources,materials:input.materials,dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers})}]
       const packet={id:'task-input:'+fingerprint({taskId:binding.taskId,sessionId:binding.sessionId,requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,leaseEpoch:binding.leaseEpoch}),source,content}
+      let executionRegistry,observationalDefinitions
+      const isObservational=exec=>observationalDefinitions?.get(exec.name)!==undefined&&observationalDefinitions.get(exec.name)===executionRegistry.get(exec.name,exec.agent)
       const setup=async(agentCtx,actor)=>{
         await ctx.get('agentPresets').mount(agentCtx,'night-bot-task')
-        const tools=agentCtx.get('tools'),systemPrompt=agentCtx.get('systemPrompt')
+        const tools=agentCtx.get('tools'),systemPrompt=agentCtx.get('systemPrompt');executionRegistry=tools
         const denied=tools.schemas(actor).map(tool=>tool.name).filter(name=>/^(?:subagent|task_delegate|task_execution|agent_create|schedule_create|schedule_update)/.test(name))
         if(denied.length)tools.restrict({deny:denied})
         systemPrompt.section({name:'task:single-execution',order:0,text:instructions})
         systemPrompt.section({name:'task:reply-scope',order:1,text:groupReplyScopeInstructions})
         if(input.humanReview)systemPrompt.section({name:'task:human-review',order:1,text:'本轮只读核对人工业务答复。读取原待答问题、候选来源的完整原文和引用，核对真实作者的业务角色、权限、对应事项和全部限制；模型摘要与推断不是授权。事实追问使用 task_result(wait, replySourceId)，以 summary/evidence/limitations 记录事实，保持原问题待答，不为回复事实追问解除实施限制。只有真实来源已回答同一问题、角色与条件证据齐备时，才用 task_human_resolve 记录原答复；SQL再次核验来源及版本。解除成功后本轮仍保持只读并以无新问题的 wait 结束，由下一普通轮在原有授权范围继续。不得在本轮执行写入、命令、记忆写入、委派、扩大目标或完成任务。'})
         if(input.dialogue)systemPrompt.section({name:'task:dialogue',order:1,text:'本轮仅只读回答当前任务对话。以 task_result 的 wait 和 summary 给出基于已有证据的答复，不执行外部效果，不创建新问题，不完成或扩大原任务。'})
-        const reviewTool=name=>observational.has(name)||!!input.humanReview&&name==='task_human_resolve'
-        if(readOnly)tools.guard(exec=>reviewTool(exec.name)?undefined:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY')
-        agentCtx.on('tools/pre-execute',async(exec,next)=>!await current()?{kind:'deny',reason:'TASK_SESSION_STALE'}:uncertain()?{kind:'deny',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}:readOnly&&!reviewTool(exec.name)?{kind:'deny',reason:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY'}:next())
+        const reviewTool=exec=>isObservational(exec)
+        if(readOnly)tools.guard(exec=>reviewTool(exec)?undefined:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY')
+        agentCtx.on('tools/pre-execute',async(exec,next)=>!await current()?{kind:'deny',reason:'TASK_SESSION_STALE'}:uncertain()?{kind:'deny',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}:readOnly&&!reviewTool(exec)?{kind:'deny',reason:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY'}:next())
         agentCtx.on('tools/execute',async(exec,next)=>{
-          if(observational.has(exec.name)||input.humanReview&&exec.name==='task_human_resolve')return next()
+          if(isObservational(exec))return next()
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
-          await preflightNativeFileMutation(exec,tools.get(exec.name,actor))
+          await preflightPiFileMutation(exec,tools.get(exec.name,actor))
           const effectKey=fingerprint({requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,name:exec.name,args:exec.arguments})
           if(intents.has(effectKey)||[...intents.values()].some(value=>value.reconciled&&value.name===exec.name&&value.argumentsDigest===fingerprint(exec.arguments)))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
           const intent={key:effectKey,name:exec.name,callId:exec.callId}
@@ -110,11 +112,19 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffe
           if(decision.action==='complete'&&(jobs.list(actor.id).some(job=>['running','stopping'].includes(job.status))||unresolvedNativeJobReceipts(await actor.receipts.read(),actor.id).length))throw fail('TASK_NOT_QUIESCENT')
           const result=await submit(decision,binding);entry.submitted=true;exec.concludeTurn();return {received:true,...result}
         }})
+        // Capture business read capabilities before agent-created listeners
+        // can replace a same-named registration. File tools are mounted by the
+        // factory afterwards and are admitted only through their private marker.
+        observationalDefinitions=new Map([...observational,...input.humanReview?['task_human_resolve']:[]].filter(name=>!['read','read_image','read_window'].includes(name)).map(name=>[name,tools.get(name,actor)]).filter(([,definition])=>definition!==undefined))
       }
       const options={agentOptions:{provider,model,...reasoningEffort?{reasoningEffort}:{}},setup,signal:entry.abort.signal,auditKinds:singleTaskAuditKinds,readOnly,
         initialReceipts:stored?[]:[{version:1,domain:'task',kind:'identity',payload:{taskId:binding.taskId,sessionId:binding.sessionId}}],
         authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packet),
-        beforeRequest:async()=>{if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')},
+        beforeRequest:async actor=>{if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
+          // A later same-named registration is not the read-only capability
+          // captured for this execution. It needs ordinary effect admission.
+          for(const name of ['read','read_image','read_window'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}
+        },
         drainBusiness:async(actor,{phase,proof}={})=>{
           const jobs=ctx.get('jobs');if(typeof jobs?.drainOwner!=='function')throw fail('TASK_JOB_DRAIN_UNPROVEN');await jobs.drainOwner(actor,{reason:'single task execution ended'})
           if(phase!=='dispose'||!uncertain())return

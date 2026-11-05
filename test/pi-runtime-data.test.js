@@ -100,7 +100,7 @@ test('new Night Bot data restores A to B: continued Pi history, workspace, sched
   assert.equal((await b.ctx.memory.read(resumed.agent,{topic:'facts'})).entries[0].text,'portable assistant')
   assert.equal(await readFile(join(paths.workspaces,'artifact.txt'),'utf8'),'retained-output')
   const chunks=[];for await(const chunk of b.ctx.attachments.readFileStream(attachment))chunks.push(chunk);assert.equal(Buffer.concat(chunks).toString(),'attachment-proof')
-  for(let n=0;n<180;n++){if((await b.ctx.schedule.catalog()).find(r=>r.id===task.id)?.status==='inactive')break;await new Promise(r=>setTimeout(r,25))}
+  for(let n=0;n<180;n++){const row=(await b.ctx.schedule.catalog()).find(r=>r.id===task.id);if(row?.status==='inactive'&&row.lastDelivery?.messageId&&resumed.agent.admission.status(row.lastDelivery.messageId)==='admitted')break;await new Promise(r=>setTimeout(r,25))}
   await resumed.agent.whenIdle()
   assert.equal((await b.ctx.schedule.history({sessionId:'relocation',id:task.id,limit:10})).records.length,1)
   const restoredHistory=await b.ctx.sessionPersistence.readNative('relocation',{requireComplete:true})

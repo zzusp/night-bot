@@ -48,7 +48,7 @@ test('default production Host delivers a real Pi request and native file effect 
   let writes=0
   const f=await fixture(t,body=>{
     if(!body.messages.some(m=>wireText(m).includes('DUE_FILE_PROOF')))return
-    if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{file_path:'scheduled-proof.txt',content:'due-file-by-native-tool'}}}
+    if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{path:'scheduled-proof.txt',content:'due-file-by-native-tool'}}}
   })
   const h=await f.session('due-file');const record=await f.host.ctx.schedule.create('due-file',rule('DUE_FILE_PROOF'))
   for(const capability of ['agentPresets','attachments','fs','jobs','officialAgentFactory','permissionPresets','sandboxPolicy','schedule','sessionController','sessionPersistence','skills','subprocess','workspaceRegistry'])assert.ok(f.host.ctx.get(capability),capability)
@@ -138,11 +138,11 @@ test('explicit cancellation during receipt admission clears the reminder and col
   const f=await fixture(t,async()=>{if(first){first=false;entered.resolve();await releaseModel.promise}})
   t.after(()=>{releaseModel.resolve();releaseCommit.resolve()})
   const h=await f.session('cancel-busy')
-  void prompt(h,'first turn');await entered.promise
+  const firstTurn=prompt(h,'first turn');firstTurn.catch(()=>{});await entered.promise
   const runtime=f.host.ctx.schedule.runtime,commit=runtime.commit
   runtime.commit=async task=>{committing.resolve();await releaseCommit.promise;return commit(task)}
   const row=await f.host.ctx.schedule.create('cancel-busy',rule('CANCEL_BUSY'))
-  await committing.promise;releaseModel.resolve();await new Promise(r=>setTimeout(r,50))
+  await committing.promise;releaseModel.resolve();await firstTurn
   const cancelled=h.cancel();releaseCommit.resolve();await cancelled;await runtime.running;await h.whenIdle()
   assert.equal(h.agent.admission.pending().length,0);assert.equal(f.requests.length,1)
   await f.close();await f.boot();await f.host.ctx.schedule.runtime.running
@@ -274,7 +274,7 @@ for(const superseded of [false,true])test(`real platform bridge restores origina
   await store.ingest({groupId:'local-group',messageId:'source',text,senderOpenDingTalkId:'local-owner',occurredAt:new Date().toISOString()})
   await store.routeMessages({groupId:'local-group',routeId:'route',routingRevision:0,routes:[{messageId:'source',messageVersion:1,units:[{unitKey:'report',summary:text,sourceRefs:[{quote:text}],topics:[],fixedTopic:'agent-platform',reason:'scheduled report'}]}]})
   const message=store.getGroup('local-group').messages[0],unit=message.units[0],requestId=fixedUnitRequestId('local-group',message,unit)
-  const result=await bridge.submit({groupId:'local-group',messageId:'source',messageVersion:1,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,650))
+  const result=await bridge.submit({groupId:'local-group',messageId:'source',messageVersion:1,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,2500))
   assert.equal(result.status,'scheduled')
   assert.equal(f.requests.length,0)
   if(superseded)await store.ingest({groupId:'local-group',messageId:'source',messageVersion:2,text:'withdraw prior request',senderOpenDingTalkId:'local-owner',occurredAt:new Date().toISOString()})
@@ -282,7 +282,8 @@ for(const superseded of [false,true])test(`real platform bridge restores origina
   await f.boot({deferScheduledDelivery:true});await mount();f.host.ctx.schedule.start()
   const [row]=await f.host.ctx.schedule.catalog()
   await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome===(superseded?'superseded':'replied'),'original source outcome')
-  await assert.rejects(f.delivered(row.id),{code:superseded?'platform_schedule_superseded':'platform_schedule_settled'})
+  if(superseded)await assert.rejects(f.delivered(row.id),{code:'platform_schedule_superseded'})
+  else await f.delivered(row.id)
   const actor=f.host.ctx.agents.get(row.sessionId)
   assert.ok(actor.piSession instanceof AgentSession);assert.equal(actor.session,undefined)
   assert.equal(actor.admission.status((await f.host.ctx.schedule.catalog())[0].lastDelivery.messageId),'admitted','official packet admission is distinct from model authorization')
@@ -311,7 +312,7 @@ test('late platform mount reopens official tools and recovers one admitted origi
  await store.ingest({groupId:'late-group',messageId:'late-source',text,senderOpenDingTalkId:'late-owner',occurredAt:new Date().toISOString()})
  await store.routeMessages({groupId:'late-group',routeId:'late-route',routingRevision:0,routes:[{messageId:'late-source',messageVersion:1,units:[{unitKey:'late-report',summary:text,sourceRefs:[{quote:text}],topics:[],fixedTopic:'agent-platform',reason:'scheduled report'}]}]})
  const message=store.getGroup('late-group').messages[0],unit=message.units[0],requestId=fixedUnitRequestId('late-group',message,unit)
- const created=await bridge.submit({groupId:'late-group',messageId:message.messageId,messageVersion:message.messageVersion,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,650))
+ const created=await bridge.submit({groupId:'late-group',messageId:message.messageId,messageVersion:message.messageVersion,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,2500))
  await bridge.close();bridge=undefined;await store.close();store=undefined;await f.close()
  await new Promise(resolve=>setTimeout(resolve,700));await f.boot()
  await assert.rejects(f.delivered(created.scheduleId),{code:'PI_PLATFORM_SOURCE_NOT_READY'})
@@ -322,7 +323,7 @@ test('late platform mount reopens official tools and recovers one admitted origi
  await mount()
  await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome==='replied','late platform recovery outcome')
  const actor=f.host.ctx.agents.get(row.sessionId)
- await assert.rejects(actor.whenIdle(),{code:'platform_schedule_settled'})
+ await actor.whenIdle()
  assert.equal(notices.length,1);assert.equal(f.requests.length,before+2)
  const receipts=await actor.receipts.read(),recovery=receipts.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued-internal'&&receipt.payload.source.kind==='platform-schedule-recovery')
  assert.equal(recovery.length,1);assert.equal(recovery[0].payload.source.originalPacketId,row.lastDelivery.messageId)
@@ -337,7 +338,7 @@ test('actual CLI process restart executes a persisted reminder and never repeats
   let writes=0,child,exited
   const f=await fixture(t,body=>{
     if(!body.messages.some(m=>wireText(m).includes('CLI_RESTART_PROOF')))return
-    if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{file_path:'cli-schedule-proof.txt',content:'one process effect'}}}
+    if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{path:'cli-schedule-proof.txt',content:'one process effect'}}}
   })
   await f.session('cli-schedule')
   await f.host.ctx.schedule.create('cli-schedule',rule('CLI_RESTART_PROOF',700))
@@ -358,4 +359,41 @@ test('actual CLI process restart executes a persisted reminder and never repeats
   await stop();await start()
   await new Promise(r=>setTimeout(r,250))
   assert.equal(writes,1);await stop()
+})
+
+test('late platform recovery cannot dispose the original writer between inactive commit and native enqueue',{timeout:20000},async t=>{
+ let store,bridge,step=0;const notices=[],entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ const f=await fixture(t,body=>body.tools.some(tool=>tool.function.name==='platform_task_query')?step++===0?{name:'platform_task_query',args:{state:'all'}}:{name:'platform_reply_submit',args:{text:'single recovered report'}}:undefined)
+ const mount=async()=>{
+  store=await openResidentStore(f.host.ctx.storageDomain)
+  bridge=createPlatformSchedules({ctx:f.host.ctx,store,legacy:{getAgentConfig:()=>({agentPreset:'night-bot'})},root:f.config.workspaceDir,models:f.config.model,readTasks:async()=>store.listTasks(),notify:async input=>{input.preflight();notices.push(input)}})
+ }
+ t.after(async()=>{await bridge?.close();await store?.close()})
+ await mount();await store.subscribe({groupId:'commit-window',timezone:'UTC'})
+ const text='report this exact source after restart'
+ await store.ingest({groupId:'commit-window',messageId:'source',senderOpenDingTalkId:'owner',text,occurredAt:new Date().toISOString()})
+ await store.routeMessages({groupId:'commit-window',routeId:'r',routingRevision:0,routes:[{messageId:'source',messageVersion:1,units:[{unitKey:'report',summary:text,sourceRefs:[{quote:text}],topics:[],fixedTopic:'agent-platform',reason:'scheduled report'}]}]})
+ const source=store.getGroup('commit-window').messages[0],unit=source.units[0],requestId=fixedUnitRequestId('commit-window',source,unit)
+ const created=await bridge.submit({groupId:'commit-window',messageId:'source',messageVersion:1,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,2500))
+ await bridge.close();bridge=undefined;await store.close();store=undefined;await f.close()
+ await until(()=>Date.now()>Date.parse(created.at),'due time while stopped')
+ await f.boot({deferScheduledDelivery:true})
+ const controller=f.host.ctx.get('sessionController'),resolveAgent=controller.resolveAgent.bind(controller);let gate=true
+ controller.resolveAgent=async id=>{const value=await resolveAgent(id);if(gate){gate=false;entered.resolve(value);await release.promise}return value}
+ f.host.ctx.schedule.start()
+ const original=(await entered.promise).agent,row=(await f.host.ctx.schedule.catalog()).find(r=>r.id===created.scheduleId)
+ assert.equal(row.status,'inactive');assert.ok(row.lastDelivery);assert.equal(original.admission.lookupPacket(row.lastDelivery.messageId),undefined)
+ let subscriptions=0;const subscribe=original.piSession.subscribe.bind(original.piSession)
+ original.piSession.subscribe=listener=>{subscriptions++;return subscribe(listener)}
+ await mount();await until(()=>subscriptions>0,'public settled watcher registered')
+ assert.equal(f.host.ctx.agents.get(row.sessionId),original,'inactive commit alone cannot release the original writer')
+ assert.equal(f.requests.length,0);assert.equal(notices.length,0)
+ release.resolve()
+ await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome==='replied','admitted original source recovers after native settlement')
+ const final=f.host.ctx.agents.get(row.sessionId);await final.whenIdle()
+ assert.equal(notices.length,1);assert.equal(f.requests.length,2)
+ const receipts=await final.receipts.read()
+ assert.equal(receipts.filter(r=>r.domain==='admission'&&r.kind==='enqueued-internal'&&r.payload.source.originalPacketId===row.lastDelivery.messageId).length,1)
+ assert.equal((await f.host.ctx.schedule.history({sessionId:row.sessionId,id:row.id,limit:10})).records.length,1)
+ assert.deepEqual(f.errors,[])
 })

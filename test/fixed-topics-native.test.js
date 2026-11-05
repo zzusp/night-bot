@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util'
 import NativeSessionQuery from '../src/native-session-query.js'
 import NativeSessionController from '../src/native-session-controller.js'
 import NativeSchedule from '../src/native-schedule.js'
@@ -8,7 +9,7 @@ import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { available, reason, nativeTaskHost, latestInput, modelToolValues, waitUntil } from './fixtures/task-session-native-host.js'
+import { available, reason, nativeRuntimeHost as nativeTaskHost, latestInput, modelToolValues, waitUntil } from './fixtures/runtime-official-host.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
@@ -67,6 +68,15 @@ for (const category of ['agent-platform', 'out-of-scope']) test(`fixed ${categor
   assert.deepEqual(notification.payload.topicRefs, [])
   assert.equal(notification.taskId, null)
   assert.equal(h.sent.length, 1); assert.equal(h.readbacks.length, 1)
+  if(category==='agent-platform'){
+    const actorId=h.toolResults.find(result=>result.name==='platform_reply_submit').sessionId
+    const saved=await h.ctx.sessionPersistence.readNative(actorId,{requireComplete:true})
+    assert.equal('events' in saved,false)
+    const identities=saved.audit.filter(receipt=>receipt.domain==='platform'&&receipt.kind==='query')
+    assert.equal(identities.length,1);assert.equal(identities[0].payload.groupId,fixedMessage.groupId);assert.equal(identities[0].payload.messageId,fixedMessage.messageId)
+    assert.equal(saved.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted').length,1)
+    assert.equal(h.ctx.agents.get(actorId),undefined)
+  }
   const group = h.residentStore.getGroup(fixedMessage.groupId), message = group.messages[0], unit = message.units[0]
   assert.equal(notification.id, fixedUnitRequestId(group.groupId, message, unit))
   assert.equal(notification.payload.sourceRef.messageId, fixedMessage.messageId)
@@ -112,7 +122,7 @@ for (const legacyFrozen of [false, true]) test(`restart resumes a frozen fixed r
   }
   await t.step(async () => h.service.ingest(fixedMessage)); await t.step(async () => h.service.whenIdle())
   const [frozen] = h.residentStore.getGroup(fixedMessage.groupId).outbox
-  assert.ok(frozen); assert.equal(frozen.status, 'pending')
+  assert.ok(frozen,JSON.stringify(h.service.listAlerts())); assert.equal(frozen.status, 'pending')
   assert.equal(h.sent.length, 0); assert.deepEqual(await t.step(async () => h.query('notification.list')), [])
   assert.equal(h.residentStore.getGroup(fixedMessage.groupId).messages[0].units[0].fixedTopicHandledAt, undefined)
   await t.step(async () => h.close()); await t.step(async () => ledger.close())
@@ -143,28 +153,30 @@ test('native platform tools coexist with preset tools and full access stays sess
   h = await t.step(async () => nativeTaskHost(root, request => {
     const names = request.tools.map(tool => tool.name)
     for (const name of ['read', 'write', 'platform_task_query', 'platform_reply_submit']) assert.ok(names.includes(name), name)
-    if (step++ === 0) return [{ name: 'read', args: { file_path: join(root, 'probe.txt') } }, { name: 'platform_task_query', args: { state: 'completed', day: 'today' } }]
+    if (step++ === 0) return [{ name: 'read', args: { path: join(root, 'probe.txt') } }, { name: 'platform_task_query', args: { state: 'completed', day: 'today' } }]
     return [{ name: 'platform_reply_submit', args: { atOpenDingTalkIds: ['test-actor'], text: '约定时间已过，现补报：本群当前范围没有完成记录。' } }]
   }, { resident: true }))
-  h.ctx.on('tools/result', exec => modes.push(h.ctx.permissionPresets.current(exec.agent.session)))
+  h.ctx.on('tools/result', exec => modes.push(h.ctx.permissionPresets.current(exec.agent)))
   h.ctx.on('agent/error', event => errors.push(event.error))
-  const ordinary = await t.step(async () => h.ctx.agents.create({ sessionId: 'ordinary-session' }))
-  assert.equal(h.ctx.permissionPresets.current(ordinary.agent.session), 'workspace-write')
+  const ordinary = await t.step(async () => h.ctx.agents.create({ sessionId: 'ordinary-session',meta:{cwd:h.ctx.runtimePaths.workspaces},agentOptions:{provider:'native-task-test',model:'controlled'} }))
+  assert.equal(h.ctx.permissionPresets.current(ordinary.agent), 'workspace-write')
+  assert.throws(()=>h.ctx.agents.withInitiator(ordinary.agent,()=>createFixedTopicHandler({ctx:h.ctx,store:{},root:h.ctx.runtimePaths.workspaces})),/PLATFORM_QUERY_HOST_CONTEXT_REQUIRED/)
   store = await t.step(async () => openResidentStore(h.ctx.storageDomain))
   await t.step(async () => store.subscribe({ groupId: 'test-group', timezone: 'Asia/Shanghai' }))
   const text = '八点十分汇报今天工作成果'
   await t.step(async () => store.ingest({ groupId: 'test-group', messageId: 'test-message', text, occurredAt: '2026-10-28T00:00:00Z', senderOpenDingTalkId: 'test-actor' }))
   await t.step(async () => store.routeMessages({ groupId: 'test-group', routeId: 'test-route', routingRevision: 0, routes: [{ messageId: 'test-message', messageVersion: 1,
     units: [{ unitKey: 'report', summary: '工作汇报', sourceRefs: [{ quote: text }], topics: [], fixedTopic: 'agent-platform', reason: '平台汇报' }] }] }))
-  handler = createFixedTopicHandler({ ctx: h.ctx, store, root, legacy: { getAgentConfig: () => ({ agentPreset: 'native-test' }) },
+  handler = createFixedTopicHandler({ ctx: h.ctx, store, root:h.ctx.runtimePaths.workspaces, legacy: { getAgentConfig: () => ({ agentPreset: 'night-bot' }) },
     models: { provider: 'native-task-test', model: 'controlled' }, now: () => Date.parse('2026-10-28T00:30:00Z'),
     readTasks: async () => [], appendOutbox: args => store.appendOutbox(args), onError: (_group, error) => errors.push(error) })
   handler.schedule('test-group'); await t.step(async () => handler.whenIdle()); handler.schedule('test-group'); await t.step(async () => handler.whenIdle())
   assert.deepEqual(errors, [], JSON.stringify({ requests: h.requests.length, results: h.toolResults, errors: errors.map(error => error?.message) }))
   assert.equal(h.requests.length, 2)
   assert.deepEqual(h.toolResults.map(item => [item.name, item.result.isError === true]).sort(), [['platform_reply_submit', false], ['platform_task_query', false], ['read', false]])
+  assert.match(JSON.stringify(h.toolResults.find(item=>item.name==='read').result.content),/native-platform-read/)
   assert.ok(modes.length === 3 && modes.every(mode => mode === 'danger-full-access'))
-  assert.equal(h.ctx.permissionPresets.current(ordinary.agent.session), 'workspace-write')
+  assert.equal(h.ctx.permissionPresets.current(ordinary.agent), 'workspace-write')
   assert.equal(store.getGroup('test-group').outbox.length, 1)
   assert.equal(store.listTasks().length, 0)
   await t.step(async () => ordinary.dispose())
@@ -180,16 +192,17 @@ test('rc2 native schedule tool remains visible and reports its delegated-session
     return step++ === 0 ? [{ name: 'schedule_create', args: { title: '工作汇报', prompt: '汇报当前工作成果', after_seconds: 600 } }] : []
   }, { resident: true }))
   if (!await t.step(async () => nativeSchedule(h))) return
-  handle = await t.step(async () => h.ctx.agents.create({ sessionId: 'schedule-platform-session', meta: { cwd: root, origin: 'subagent', delegationDepth: 1 },
+  const packet={id:'schedule-probe',source:{kind:'fixture-probe'},content:[{type:'text',text:JSON.stringify({task:{title:'检查当前会话的原生调度边界'}})}]}
+  handle = await t.step(async () => h.ctx.agents.create({ sessionId: 'schedule-platform-session',authorizeInput:candidate=>isDeepStrictEqual(candidate,packet), meta: { cwd: h.ctx.runtimePaths.workspaces, origin: 'subagent', delegationDepth: 1 },
     agentOptions: { provider: 'native-task-test', model: 'controlled' }, setup: async (agentCtx, agent) => {
-      await agentCtx.get('agentPresets').mount(agentCtx, 'native-test')
-      agentCtx.get('permissionPresets').set(agent.session, 'danger-full-access')
+      await agentCtx.get('agentPresets').mount(agentCtx, 'night-bot')
+      await agentCtx.get('permissionPresets').set(agent, 'danger-full-access')
     } }))
-  handle.agent.steer({ id: 'schedule-probe', role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text', text: JSON.stringify({ task: { title: '检查当前会话的原生调度边界' } }) }] })
+  await handle.agent.input.enqueue(packet);await handle.agent.input.deliver(packet.id)
   await t.step(async () => handle.agent.whenIdle())
   assert.equal(h.toolResults[0].name, 'schedule_create')
   assert.match(JSON.stringify(h.toolResults[0].result), /subagent_session/)
-  assert.deepEqual(await t.step(async () => h.ctx.schedule.list({ sessionId: handle.agent.session.id })), [])
+  assert.deepEqual(await t.step(async () => h.ctx.schedule.list({ sessionId: handle.agent.id })), [])
 }))
 
 for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: ' + scenario, { ...({ skip: !available ? reason : false, timeout: 15000 }), timeout: nativeLifecycleTimeout(15000) }, nativeLifecycle(15000, async (t) => {
@@ -214,7 +227,7 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
       return [{ name: 'platform_reply_submit', args: { atOpenDingTalkIds: ['original-actor'], text: '本群当前完成一项：到期时新事实。' } }]
     }, { resident: true })
     h.ctx.on('agent/error', event => errors.push(event.error))
-    h.ctx.on('tools/result', exec => { if (exec.name === 'platform_schedule_submit') childHeaders.push(exec.agent.session.header) })
+    h.ctx.on('tools/result', exec => { if (exec.name === 'platform_schedule_submit') childHeaders.push(exec.agent.metadata) })
     h.residentStore = await openResidentStore(h.ctx.storageDomain)
     const update = h.residentStore.updatePlatformSchedule
     h.residentStore.updatePlatformSchedule = (id, changes) => {
@@ -225,7 +238,7 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
       if (!await nativeSchedule(h)) return false
       await waitUntil(async () => (await h.ctx.schedule.catalog())[0]?.status === 'inactive', 'native service delivers while bridge is loading')
     }
-    handler = createFixedTopicHandler({ ctx: h.ctx, store: h.residentStore, root, legacy: { getAgentConfig: () => ({ agentPreset: 'native-test' }) },
+    handler = createFixedTopicHandler({ ctx: h.ctx, store: h.residentStore, root:h.ctx.runtimePaths.workspaces, legacy: { getAgentConfig: () => ({ agentPreset: 'night-bot' }) },
       models: { provider: 'native-task-test', model: 'controlled' }, readTasks: async groupId => {
         taskReads.push({ groupId, title: taskTitle, at: Date.now() })
         return [{ taskId: 'test-task', groupId, title: taskTitle, state: 'completed', completedAt: new Date().toISOString() }]
@@ -248,16 +261,15 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
   assert.equal(record.status, 'active')
   if (scenario === 'before-due') assert.equal(h.toolResults.filter(item => item.name === 'platform_schedule_submit' && item.result.isError).length, 1)
   assert.ok(childHeaders.length === 2 && childHeaders.every(header => header.origin === 'subagent' && header.delegationDepth === 1))
-  const persisted = await t.step(async () => h.ctx.sessionPersistence.open(record.sessionId, 'read'))
+  const persisted = await t.step(async () => h.ctx.sessionPersistence.readNative(record.sessionId,{requireComplete:true}))
   assert.equal(persisted.header.origin, undefined); assert.equal(persisted.header.delegationDepth ?? 0, 0)
-  await t.step(async () => persisted.close())
   assert.equal(h.residentStore.getGroup('scheduled-group').outbox.length, 1)
   if (superseded) await t.step(async () => h.residentStore.ingest({ groupId: 'scheduled-group', messageId: 'scheduled-source', messageVersion: 2, senderOpenDingTalkId: 'original-actor', text: '撤回之前的汇报要求', occurredAt: new Date().toISOString() }))
   taskTitle = '到期时新事实'
   await t.step(async () => handler.close()); await t.step(async () => h.close())
   if (restoreLate) await t.step(async () => waitUntil(() => Date.now() > Date.parse(scheduled.at), 'original target passes while Host is stopped'))
   await t.step(async () => boot(restoreLate))
-  await t.step(async () => waitUntil(() => h.residentStore.getPlatformSchedule(record.sessionId)?.outcome === (superseded ? 'superseded' : 'replied'), 'native reminder settles the original group report'))
+  await t.step(async () => waitUntil(() => h.residentStore.getPlatformSchedule(record.sessionId)?.outcome === (superseded ? 'superseded' : 'replied'), 'native reminder settles the original group report').catch(async error=>{t.diagnostic(JSON.stringify({tools:h.toolResults,errors:errors.map(e=>e.stack),dueTurns,originalTurns,catalog:await h.ctx.schedule.catalog(),binding:h.residentStore.getPlatformSchedule(record.sessionId),actor:h.ctx.agents.get(record.sessionId)?{id:record.sessionId,status:h.ctx.agents.get(record.sessionId).status,admission:h.ctx.agents.get(record.sessionId).admission.pending()}:null}));throw error}))
   // The Agent can settle before Schedule's separate inbox flush/status commit.
   // Await that durable boundary too; neither completion stands in for the other.
   await t.step(async () => waitUntil(async () => (await h.ctx.schedule.catalog()).find(item => item.id === record.id)?.status === 'inactive', 'original native reminder commits its delivery'))
@@ -272,8 +284,8 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
   assert.equal(dueReads.length, superseded ? 0 : 1, JSON.stringify(taskReads))
   assert.ok(dueReads.every(read => read.groupId === 'scheduled-group' && read.title === '到期时新事实'))
   const restored = await t.step(async () => h.ctx.sessionController.resolveAgent(record.sessionId))
-  restored.agent.followup({ id: 'duplicate-delivery-probe', role: 'user', source: { kind: 'schedule' }, content: [{ type: 'text', text: '[SCHEDULE REMINDER]\n重复送入同一事项' }] })
-  await t.step(async () => restored.agent.whenIdle())
+  await assert.rejects(restored.agent.input.enqueue({id:'duplicate-delivery-probe',source:{kind:'schedule'},content:[{type:'text',text:'[SCHEDULE REMINDER]\n重复送入同一事项'}]}),{code:'PI_BUSINESS_ADMISSION_DENIED'})
+  await t.step(async () => restored.agent.whenIdle().catch(error=>{if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}))
   assert.equal(dueTurns, superseded ? 0 : 2); assert.equal(h.residentStore.getGroup('scheduled-group').outbox.length, superseded ? 1 : 2)
   assert.equal(h.residentStore.listTasks().length, 0)
 }))
@@ -310,13 +322,13 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
       await h.residentStore.setAgentNames(['测试助手'])
       await h.residentStore.ingest({ groupId: 'native-group', messageId: 'reviewer-message', senderOpenDingTalkId: 'reviewer', text: '我是验收成员', occurredAt: new Date().toISOString() })
       await h.residentStore.routeMessages({ groupId: 'native-group', routeId: 'reviewer-route', routingRevision: 0, routes: [{ messageId: 'reviewer-message', messageVersion: 1, units: [], ignoredRefs: [{ quote: '我是验收成员', reason: '背景身份' }] }] })
-      const directory = await sessionWorkspace(root, 'platform')
+      const directory = await sessionWorkspace(h.ctx.runtimePaths.workspaces, 'platform')
       for (const index of [1, 2]) await writeFile(join(directory, `result-${index}.png`), Buffer.from([137,80,78,71,index]))
     }
-    const legacy = { getAgentConfig: () => ({ workspaceDir: root, agentPreset: 'native-test', provider: 'native-task-test', model: 'controlled', agentNames: ['测试助手'] }),
+    const legacy = { getAgentConfig: () => ({ workspaceDir: h.ctx.runtimePaths.workspaces, agentPreset: 'night-bot', provider: 'native-task-test', model: 'controlled', agentNames: ['测试助手'] }),
       getGroup: id => h.residentStore.getGroup(id) }
     h.service = await openTaskSessionService({ ctx: h.ctx, residentStore: h.residentStore, legacy,
-      config: { workspaceDir: root, dbPath: join(root, 'dynamic.db'), instanceId: 'scheduled-native-test', initialize, ownerActorId: 'native-user', provider: 'native-task-test' },
+      config: { workspaceDir: h.ctx.runtimePaths.workspaces, dbPath: join(root, 'dynamic.db'), instanceId: 'scheduled-native-test', initialize, ownerActorId: 'native-user', provider: 'native-task-test' },
       notifications: {
         async send(notification) { await sendWorkflowNotification(adapter, notification); sends.push(structuredClone(notification)); return { messageId: `delivered-${notification.id}` } },
         async sendFile(notification, file) { assert.equal(file.artifactId, notification.payload.artifact.artifactId); sends.push(structuredClone(notification)); return { messageId: `delivered-${notification.id}` } },
@@ -392,7 +404,7 @@ test('Host refuses an expired instant without scheduling tomorrow, while native 
     units: [{ unitKey: 'u', summary: '定时', sourceRefs: [{ quote: text }], topics: [], fixedTopic: 'agent-platform', reason: '平台事项' }] }] }))
   const message = h.residentStore.getGroup('g').messages[0], unit = message.units[0]
   const source = { groupId: 'g', messageId: 'm', messageVersion: 1, unitId: unit.unitId, unitRevision: unit.unitRevision, timezone: 'Asia/Shanghai', requestId: fixedUnitRequestId('g', message, unit) }
-  bridge = createPlatformSchedules({ ctx: h.ctx, store: h.residentStore, root, legacy: { getAgentConfig: () => ({ agentPreset: 'native-test' }) },
+  bridge = createPlatformSchedules({ ctx: h.ctx, store: h.residentStore, root:h.ctx.runtimePaths.workspaces, legacy: { getAgentConfig: () => ({ agentPreset: 'night-bot' }) },
     readTasks: async () => [], appendOutbox: () => assert.fail('expired request must not send') })
   const args = { title: '工作汇报', prompt: '汇报工作', at: new Date(Date.now() - 60000).toISOString() }
   assert.equal((await t.step(async () => bridge.submit(source, args))).status, 'expired')

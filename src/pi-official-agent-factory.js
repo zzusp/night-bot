@@ -121,6 +121,7 @@ export class OfficialAgentFactory {
      actor.ctx.get('tools')?.guard(()=>published&&live()&&!closing&&!cancelled&&!admission.paused?undefined:'Agent is not admitting effects')
      await ports.mount?.(actor.ctx,actor,options)
      await options.setup?.(actor.ctx,actor)
+     await ports.prepareTools?.(actor.ctx,actor,options)
      await ownerCtx.serial(scopeTarget(actor,actor),'night/agent-prepare',{agent:actor,signal:options.signal})
      await ports.validatePreparedActor?.(actor,{options,mode})
     },

@@ -45,8 +45,8 @@ test('portable capped grep exposes only its own durable spill and read recovers 
   const {writeFile,readdir}=await import('node:fs/promises');let phase=0,spill
   const f=await memoryHost(t,async body=>{
     if(phase++===0)return {tool:'grep',args:{pattern:'PORTABLE_SPILL_LINE',include:'many.txt'}}
-    if(phase===2){const entries=await readdir(f.host.ctx.runtimePaths.spills,{recursive:true,withFileTypes:true}),file=entries.find(entry=>entry.isFile());assert.ok(file);spill=join(file.parentPath,file.name);assert.ok(JSON.stringify(body).includes(spill));return {tool:'read',args:{file_path:spill,offset:245,limit:30}}}
-    if(phase===4)return {tool:'read',args:{file_path:spill}}
+    if(phase===2){const entries=await readdir(f.host.ctx.runtimePaths.spills,{recursive:true,withFileTypes:true}),file=entries.find(entry=>entry.isFile());assert.ok(file);spill=join(file.parentPath,file.name);assert.ok(JSON.stringify(body).includes(spill));return {tool:'read',args:{path:spill,offset:245,limit:30}}}
+    if(phase===4)return {tool:'read',args:{path:spill}}
     return {text:'portable tail verified'}
   }),h=await f.agent('portable-spill-owner',{actorId:'owner'})
   await writeFile(join(f.host.ctx.runtimePaths.workspaces,'many.txt'),Array.from({length:251},(_,i)=>'PORTABLE_SPILL_LINE_'+(i+1)).join('\n'))
@@ -68,7 +68,7 @@ test('task archive fences absolute writes, symlink escapes and private journals 
 
 test('a real task-scoped capped grep stores and recovers its complete output within that task archive',{skip:process.platform!=='linux',timeout:15000},async t=>{
   const {taskDirectories}=await import('../packages/dingtalk-core/session-workspaces.js'),{registerTaskSession}=await import('../src/tasks/session-routes.js'),{writeFile,readdir}=await import('node:fs/promises');let phase=0,spill
-  const f=await memoryHost(t,async body=>{if(phase++===0)return {tool:'grep',args:{pattern:'TASK_LOCAL_SPILL',include:'many.txt'}};if(phase===2){const entries=await readdir(join(root,'materials/runtime-evidence/tools'),{recursive:true,withFileTypes:true}),file=entries.find(entry=>entry.isFile());assert.ok(file);spill=join(file.parentPath,file.name);assert.ok(JSON.stringify(body).includes(spill));return {tool:'read',args:{file_path:spill,offset:245,limit:30}}}return {text:'task-local full output verified'}})
+  const f=await memoryHost(t,async body=>{if(phase++===0)return {tool:'grep',args:{pattern:'TASK_LOCAL_SPILL',include:'many.txt'}};if(phase===2){const entries=await readdir(join(root,'materials/runtime-evidence/tools'),{recursive:true,withFileTypes:true}),file=entries.find(entry=>entry.isFile());assert.ok(file);spill=join(file.parentPath,file.name);assert.ok(JSON.stringify(body).includes(spill));return {tool:'read',args:{path:spill,offset:245,limit:30}}}return {text:'task-local full output verified'}})
   const paths=f.host.ctx.runtimePaths,task={taskId:'task-local-spill',sessionId:'task-local-spill-session'},root=(await taskDirectories(paths.workspaces,task.taskId)).root;await registerTaskSession(paths,f.host.ctx.get('taskSessionRoutes'),task);await writeFile(join(root,'work/many.txt'),Array.from({length:251},(_,n)=>'TASK_LOCAL_SPILL_'+(n+1)).join('\n'))
   const handle=await f.host.ctx.agents.create({sessionId:task.sessionId,meta:{cwd:root,agentPreset:'night-bot-task'},agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user',setup:async ctx=>{await f.host.ctx.agentPresets.mount(ctx,'night-bot-task')}});await f.host.ctx.memory.bindSession(task.sessionId,{actorId:'owner'});await f.say(handle.agent,'Search the task fixture and recover its omitted tail');assert.equal(phase,3);assert.ok(spill.startsWith(join(root,'materials/runtime-evidence/tools')));assert.match(JSON.stringify(f.requests.at(-1).messages.filter(message=>message.role==='tool').at(-1)),/TASK_LOCAL_SPILL_251/)
 })

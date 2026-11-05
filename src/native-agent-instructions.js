@@ -1236,14 +1236,16 @@ function sameContextPayload(left, right) {
 }
 const FILE_TOUCH_TOOL_NAMES = new Set([
 	"read",
+	"read_window",
 	"write",
 	"edit"
 ]);
 function filePathFromExecution(exec) {
 	if (!FILE_TOUCH_TOOL_NAMES.has(exec.name)) return void 0;
 	if (typeof exec.arguments !== "object" || exec.arguments === null) return void 0;
-	if (!("file_path" in exec.arguments) || typeof exec.arguments.file_path !== "string") return void 0;
-	const filePath = exec.arguments.file_path.trim();
+	const rawPath = exec.arguments.path ?? exec.arguments.file_path;
+	if (typeof rawPath !== "string") return void 0;
+	const filePath = rawPath.trim();
 	return filePath.length > 0 ? filePath : void 0;
 }
 function apply(ctx, config) {

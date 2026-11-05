@@ -16,7 +16,7 @@ async function fixture(t){
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){reviews++;const input=JSON.parse(asText(content(body)));return {text:JSON.stringify({lessons:[{key:'verify-local-artifact',observation:'A local artifact was produced',evidenceIds:[input.eventId],hypothesis:'Evidence is limited to this task',shortcut:'Read the local evidence before delivery',skill:{steps:['Inspect the current artifact before delivery'],reason:'Preserves evidence',applicability:'Local file delivery tasks',evidenceBacked:true}}]})}}
     if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
     const input=JSON.parse(asText(content(body))),id=input.task.taskId,n=calls.get(id)??0;calls.set(id,n+1)
-    if(n===0)return {tool:'write',args:{file_path:'work/proof.txt',content:'PROOF:'+id}}
+    if(n===0)return {tool:'write',args:{path:'work/proof.txt',content:'PROOF:'+id}}
     return completed
   })
   f.config.resident={port:0,taskSessions:{instanceId:'task-archives',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}}
@@ -74,8 +74,8 @@ test('default task file tools cannot forge frozen outputs; a denied write does n
   let step=0;const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
     if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
-    if(step++===0)return {tool:'write',args:{file_path:'outputs/forged.txt',content:'MUST_NOT_BE_FROZEN'}}
-    if(step===2)return {tool:'write',args:{file_path:'work/proof.txt',content:'legitimate work'}}
+    if(step++===0)return {tool:'write',args:{path:'outputs/forged.txt',content:'MUST_NOT_BE_FROZEN'}}
+    if(step===2)return {tool:'write',args:{path:'work/proof.txt',content:'legitimate work'}}
     return completed
   });f.config.resident={port:0,taskSessions:{instanceId:'archive-file-boundary',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}};await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,f.config)});const app=f.host.ctx.get('application'),task=await app.tasks.createTask({requestId:'file-fence',objective:'Create a local file under the task archive rules'});await app.tasks.whenIdle();const row=await app.tasks.store.query({kind:'task.get',taskId:task.taskId});assert.equal(row.status,'completed');const history=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),results=history.context.piMessages.filter(message=>message.role==='toolResult');assert.equal(results[0].isError,true);assert.match(JSON.stringify(results[0].content),/sandbox: file access denied|FS_SANDBOX_DENIED|Task archive areas are Host-owned/);await assert.rejects(readFile(join(task.session.workspaceDir,'outputs/forged.txt')),error=>error.code==='ENOENT');assert.equal(await readFile(join(task.session.workspaceDir,'work/proof.txt'),'utf8'),'legitimate work');await app.close()
 })

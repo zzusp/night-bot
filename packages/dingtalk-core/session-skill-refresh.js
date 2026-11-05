@@ -3,6 +3,7 @@ import {z} from 'zod'
 import {AgentSession} from '@earendil-works/pi-coding-agent'
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
+const resultDigest=result=>digest({value:result.value,content:result.content})
 const skillDigest=value=>digest([value.provider,value.resourceBase,value.content])
 const base={key:z.string().min(1),name:z.string().min(1),version:z.string().min(1)}
 const resource=z.strictObject({kind:z.literal('directory'),path:z.string().min(1)})
@@ -25,7 +26,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
  if(agents?.get(actor.id)!==actor||session.sessionId!==actor.id||signal?.aborted)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')
  const loader=tools?.get('skill',actor);if(!skills||!loader)return {async close(){},async refresh(){}}
  const currentCwd=()=>get('workingDirectory')?.get(actor)??cwd
- const filesystem=get('agentPresets')?.serviceFor?.(actor,'fs')??get('fs'),reader=tools.get('read',actor),loaded=new Map(),references=new Map(),observations=new WeakMap(),prepared=new WeakMap(),legacy=new Set(),pendingResults=new Map(),disposers=[]
+ const filesystem=get('agentPresets')?.serviceFor?.(actor,'fs')??get('fs'),readers=new Map(['read','read_window'].map(name=>[name,tools.get(name,actor)]).filter(([,tool])=>tool)),loaded=new Map(),references=new Map(),observations=new WeakMap(),prepared=new WeakMap(),legacy=new Set(),pendingResults=new Map(),disposers=[]
  let closed=false,tail=Promise.resolve(),failure,pending=[],lastNotice,renderedPromptKey
  const alive=()=>{if(closed||signal?.aborted||actor.piSession!==session||agents?.get(actor.id)!==actor)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')}
  const remember=record=>{if(record.kind==='skill'){if(digest(loaded.get(record.key)?.resourceBase??null)!==digest(record.resourceBase??null))for(const [key,ref]of references)if(ref.name===record.name)references.delete(key);loaded.set(record.key,record);legacy.delete(record.name)}else references.set(record.key,record)}
@@ -39,7 +40,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
  for(const receipt of await actor.receipts.read())if(receipt.domain==='skill-observation'&&receipt.kind==='read'){
   const data=receiptSchema.parse(receipt.payload)
   const evidence=success.get(data.resultEntryId)
-  if(evidence?.message.toolCallId===data.callId&&(data.record.kind==='skill'?evidence.call.name==='skill'&&evidence.call.arguments?.name===data.record.name:evidence.call.name==='read'))remember(data.record)
+  if(evidence?.message.toolCallId===data.callId&&(data.record.kind==='skill'?evidence.call.name==='skill'&&evidence.call.arguments?.name===data.record.name:['read','read_window'].includes(evidence.call.name)))remember(data.record)
  }
  const text=()=>[
   pending.length?`本会话已读技能或引用有变化：${JSON.stringify(pending)}。继续相关操作前，用原生 skill 重读对应入口、read 按需重读相关引用；缺失或读取失败如实说明。此提示不是已读取的证据，不扩大授权，也不要求重做已经有效完成的操作。`:'',
@@ -65,7 +66,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   if(!notice)lastNotice=undefined
  }
  disposers.push(ctx.on('fs/observed',(target,observation,exec)=>{
-  if(exec?.agent===actor&&exec.name==='read'&&tools.get('read',actor)===reader&&observation.kind==='present'&&typeof observation.version==='string')observations.set(exec,{path:filesystem.processPath(target),version:observation.version})
+  if(exec?.agent===actor&&readers.has(exec.name)&&tools.get(exec.name,actor)===readers.get(exec.name)&&observation.kind==='present'&&typeof observation.version==='string')observations.set(exec,{path:filesystem.processPath(target),version:observation.version})
  }))
  disposers.push(ctx.on('tools/post-execute',async(exec,result,next)=>{
   const decision=await next(),observation=observations.get(exec);observations.delete(exec)
@@ -73,15 +74,15 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   alive();let record
   if(exec.name==='skill'&&tools.get('skill',actor)===loader&&result.value?.name===exec.arguments.name&&typeof result.value.content==='string'){
    const value=result.value;record={kind:'skill',key:value.name,name:value.name,version:skillDigest(value),...value.resourceBase?{resourceBase:value.resourceBase}:{}}
-  }else if(observation&&typeof result.value?.path==='string'&&filesystem){
+  }else if(observation&&filesystem){
    try{const target=await filesystem.resolve(observation.path,{cwd:currentCwd(),signal});for(const skill of loaded.values())if(skill.resourceBase?.kind==='directory'){const root=await filesystem.resolve(skill.resourceBase.path,{cwd:currentCwd(),signal});if(filesystem.contains(root,target)){record={kind:'reference',key:observation.path,name:skill.name,...observation};break}}}catch(error){if(signal?.aborted)throw error;for(const skill of loaded.values())legacy.add(skill.name)}
   }
-  if(record)prepared.set(exec,{record:recordSchema.parse(record),valueDigest:digest(result.value)})
+  if(record)prepared.set(exec,{record:recordSchema.parse(record),valueDigest:resultDigest(result)})
   return decision
  }))
  disposers.push(ctx.on('tools/result',(exec,result)=>{
   const item=prepared.get(exec);prepared.delete(exec)
-  if(!item||exec.agent!==actor||result.isError||digest(result.value)!==item.valueDigest)return
+  if(!item||exec.agent!==actor||result.isError||resultDigest(result)!==item.valueDigest)return
   pendingResults.set(exec.callId,{...item,toolName:exec.name})
  }))
  disposers.push(session.agent.subscribe(async event=>{

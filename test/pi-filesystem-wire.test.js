@@ -13,11 +13,11 @@ test('actual Pi native filesystem preserves observation CAS, stale refusal and d
  let file
  const f=await subagentFixture(t,async(_body,f)=>{
   const n=f.requests.length,tool=(name,args)=>({tools:[{id:'fs-'+n,name,args}]})
-  if(n===1)return tool('edit',{file_path:'observed.txt',old_string:'original',new_string:'must not happen'})
-  if(n===2||n===4)return tool('read',{file_path:'observed.txt'})
-  if(n===3){await writeFile(file,'external content');return tool('edit',{file_path:'observed.txt',old_string:'original',new_string:'stale overwrite'})}
-  if(n===5)return tool('edit',{file_path:'observed.txt',old_string:'external',new_string:'final'})
-  if(n===6)return tool('write',{file_path:'new.txt',content:'new durable content'})
+  if(n===1)return tool('edit',{path:'observed.txt',edits:[{oldText:'original',newText:'must not happen'}]})
+  if(n===2||n===4)return tool('read',{path:'observed.txt'})
+  if(n===3){await writeFile(file,'external content');return tool('edit',{path:'observed.txt',edits:[{oldText:'original',newText:'stale overwrite'}]})}
+  if(n===5)return tool('edit',{path:'observed.txt',edits:[{oldText:'external',newText:'final'}]})
+  if(n===6)return tool('write',{path:'new.txt',content:'new durable content'})
   return{text:'files verified'}
  }),handle=await actor(f,'native-fs-actor')
  file=join(f.root,'work','observed.txt');await writeFile(file,'original content')
@@ -33,7 +33,7 @@ test('actual Pi native filesystem preserves observation CAS, stale refusal and d
  assert.equal(saved.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted').length,1)
 })
 test('actual Pi native filesystem read-only policy rejects a new file without granting escalation',{timeout:20000},async t=>{
- const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'read-only-write',name:'write',args:{file_path:'denied.txt',content:'must not write'}}]}:{text:'denial observed'}),handle=await actor(f,'read-only-filesystem')
+ const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'read-only-write',name:'write',args:{path:'denied.txt',content:'must not write'}}]}:{text:'denial observed'}),handle=await actor(f,'read-only-filesystem')
  await handle.actor.ctx.get('permissionPresets').set(handle.actor,'read-only')
  await run(handle,'check read-only refusal')
  await assert.rejects(readFile(join(f.root,'work','denied.txt')),{code:'ENOENT'})
@@ -41,4 +41,24 @@ test('actual Pi native filesystem read-only policy rejects a new file without gr
  assert.equal(result.isError,true);assert.match(JSON.stringify(f.requests[1]),/read-only|sandbox/)
  assert.equal(saved.audit.filter(receipt=>receipt.domain==='approval'&&receipt.kind==='decided').length,0)
  assert.equal(handle.actor.ctx.get('sandboxPolicy').resolve({actor:handle.actor}).mode,'read-only')
+})
+test('default file catalog uses official path and edits schemas and rejects retired parameter aliases',{timeout:20000},async t=>{
+ const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'old-write-schema',name:'write',args:{file_path:'retired-alias.txt',content:'must not write'}}]}:{text:'retired arguments refused'}),handle=await actor(f,'official-file-schema')
+ const registry=handle.actor.ctx.get('tools'),read=registry.schemaOf(registry.get('read',handle.actor)),edit=registry.schemaOf(registry.get('edit',handle.actor))
+ assert.ok(read.parameters.properties.path);assert.equal(read.parameters.properties.file_path,undefined)
+ assert.ok(edit.parameters.properties.edits);assert.equal(edit.parameters.properties.old_string,undefined)
+ await run(handle,'Reject old file tool arguments')
+ assert.equal(f.requests.length,2);await assert.rejects(readFile(join(f.root,'work','retired-alias.txt')),{code:'ENOENT'})
+ const result=(await stored(f,handle.actor.id)).context.piMessages.find(message=>message.role==='toolResult')
+ assert.equal(result.isError,true);assert.match(JSON.stringify(result),/path|file_path|arguments/i)
+})
+test('default large-file reads use explicit bounded read_window with honest final continuation',{timeout:20000},async t=>{
+ const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'read-large-buffer',name:'read',args:{path:'large-window.txt'}}]}:f.requests.length===2?{tools:[{id:'read-bounded-tail',name:'read_window',args:{path:'large-window.txt',offset:10999,limit:2}}]}:{text:'bounded read verified'}),handle=await actor(f,'official-bounded-file')
+ await writeFile(join(f.root,'work','large-window.txt'),Array.from({length:11000},(_,i)=>`${i+1}:`+'x'.repeat(1000)).join('\n'))
+ await run(handle,'Read the large local fixture through the bounded native window')
+ assert.equal(f.requests.length,3)
+ const results=(await stored(f,handle.actor.id)).context.piMessages.filter(message=>message.role==='toolResult')
+ assert.equal(results[0].isError,true);assert.match(JSON.stringify(results[0]),/PI_FILE_USE_READ_WINDOW/)
+ assert.notEqual(results[1].isError,true,JSON.stringify(results[1]));assert.match(JSON.stringify(results[1].content),/10999:|11000:/);assert.match(JSON.stringify(results[1].content),/End of file/)
+ assert.ok(Buffer.byteLength(JSON.stringify(results[1].content))<10000,'bounded output cannot contain the full file')
 })

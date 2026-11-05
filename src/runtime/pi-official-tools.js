@@ -1,5 +1,18 @@
+import {createHash} from 'node:crypto'
 import {snapshotJsonValue,deepFreeze} from '../native-values.js'
 import {validateJsonSchemaValue,ToolArgsError} from '../native-tool-protocol.js'
+
+// SDK content is the sole image payload. Diagnostic business details retain
+// identity/size only, avoiding a second persisted base64 copy of that message.
+function diagnosticResult(value){
+ if(Array.isArray(value))return value.map(diagnosticResult)
+ if(value===null||typeof value!=='object')return value
+ if(value.type==='image'&&typeof value.data==='string'&&typeof value.mimeType==='string'){
+  const {data,...metadata}=value
+  return {...metadata,bytes:Buffer.byteLength(data,'base64'),sha256:createHash('sha256').update(data,'base64').digest('hex')}
+ }
+ return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,diagnosticResult(item)]))
+}
 
 const stopped=message=>Object.assign(new Error(message),{name:'AbortError'})
 
@@ -106,10 +119,10 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
      }catch(cause){
       fenced??=cause
       try{contextDelivery?.fence(cause)}catch{}
-      return{isError:true,content:[{type:'text',text:'Tool supplemental context delivery failed: '+cause.message}],details:{nativeResult:result,contextDeliveryError:{message:cause.message,...cause.code?{code:cause.code}:{}}}}
+      return{isError:true,content:[{type:'text',text:'Tool supplemental context delivery failed: '+cause.message}],details:{nativeResult:diagnosticResult(result),contextDeliveryError:{message:cause.message,...cause.code?{code:cause.code}:{}}}}
      }
     }
-    return{content:await officialContent(result.content,registry.ctx,combined),details:{nativeResult:result},isError:result.isError===true,...result.isError?{}:{structuredContent:result.value},...result.concludesTurn?{terminate:true}:{}}
+    return{content:await officialContent(result.content,registry.ctx,combined),details:{nativeResult:diagnosticResult(result)},isError:result.isError===true,...result.isError?{}:{structuredContent:result.value},...result.concludesTurn?{terminate:true}:{}}
    }finally{release?.()}
    }
    const agents=registry.ctx.get('agents')

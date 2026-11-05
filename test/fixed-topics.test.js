@@ -25,16 +25,17 @@ async function fixture(t, { tasks = [], decide = async () => {}, timezone = 'Asi
   await store.subscribe({ groupId: 'g', responsibility: '修复UPR业务', timezone })
   const created = [], errors = [], replies = [], sections = []
   const ctx = { agents: { async create(options) {
-    const tools = new Map(), hooks = new Map(); let pending = Promise.resolve()
-    const agent = { session: { id: options.sessionId }, steer(message) { pending = Promise.resolve().then(() => decide({ message, tools, exec: { agent } })) }, whenIdle: () => pending, cancel() {} }
-    const record = { options, tools }; created.push(record)
-    await options.setup({
-      get: name => name === 'agentPresets' ? { mount: async () => ({ id: 'preset' }) }
-        : name === 'permissionPresets' ? { set(session, preset) { assert.equal(session, agent.session); record.permissionPreset = preset } } : undefined,
-      tools: { register(tool) { tools.set(tool.name, tool) }, restrict() { assert.fail('platform must inherit native tools') }, guard() { assert.fail('platform must use host permissions') } },
-      on: (event, fn) => hooks.set(event, fn), systemPrompt: { section: section => sections.push(section) },
-    }, agent)
-    return { agent, async dispose() {} }
+    const tools = new Map(); let pending=Promise.resolve(),packet
+    const agent={id:options.sessionId,metadata:{id:options.sessionId,...options.meta},receipts:{async commit(){}},
+      input:{async enqueue(input){assert.equal(await options.authorizeInput(input,agent),true);packet=structuredClone(input)},async deliver(id){assert.equal(id,packet.id);await options.beforeRequest?.();pending=Promise.resolve().then(()=>decide({message:packet,tools,exec:{agent,concludeTurn(){}}}));await pending}},
+      whenIdle:()=>pending,cancel(){} }
+    const record={options,tools};created.push(record)
+    const services={agentPresets:{mount:async()=>({id:'preset'})},permissionPresets:{set(actor,preset){assert.equal(actor,agent);record.permissionPreset=preset}},
+      tools:{register(tool){tools.set(tool.name,tool)},restrict(){assert.fail('platform must inherit native tools')},guard(){assert.fail('platform must use host permissions')}},
+      systemPrompt:{section:section=>sections.push(section)}}
+    await options.setup({get:name=>services[name]},agent)
+    return{agent,session:{setSessionName(name){record.name=name}},async dispose(){}}
+
   } } }
   const handler = createFixedTopicHandler({ ctx, store, root, legacy: { getAgentConfig: () => ({ agentPreset: 'preset' }) },
     now: () => Date.parse('2026-10-28T00:30:00Z'), readTasks: async groupId => { assert.equal(groupId, 'g'); return tasks },

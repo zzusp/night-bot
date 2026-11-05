@@ -4,7 +4,7 @@ import {mkdir,writeFile,readFile,symlink,unlink,stat} from 'node:fs/promises'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 import {taskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
-import {preflightNativeFileMutation} from '../src/native-tool-fs.js'
+import {preflightPiFileMutation} from '../src/pi-file-tool-registration.js'
 import {FsError} from '../src/native-fs-protocol.js'
 
 async function fixture(t,decide,{beforeBody,custom}={}){
@@ -14,7 +14,7 @@ async function fixture(t,decide,{beforeBody,custom}={}){
   await ctx.get('agentPresets').mount(ctx,'night-bot')
   await custom?.(ctx,dirs)
   ctx.on('tools/execute',async(exec,next)=>{
-   await preflightNativeFileMutation(exec,ctx.get('tools').get(exec.name,exec.agent))
+   await preflightPiFileMutation(exec,ctx.get('tools').get(exec.name,exec.agent))
    actor.receipts.append({version:1,domain:'fixture',kind:'effect-intent',payload:{callId:exec.callId}});await actor.receipts.commit()
    await beforeBody?.(exec,dirs)
    const result=await next()
@@ -28,7 +28,7 @@ async function fixture(t,decide,{beforeBody,custom}={}){
 }
 test('Host-owned archive paths are refused before intent and a later legal write still executes',async t=>{
  let step=0
- const f=await fixture(t,()=>++step===1?{tool:'write',args:{file_path:'outputs/forged.txt',content:'forged'}}:step===2?{tool:'write',args:{file_path:'work/proof.txt',content:'legal'}}:{text:'done'})
+ const f=await fixture(t,()=>++step===1?{tool:'write',args:{path:'outputs/forged.txt',content:'forged'}}:step===2?{tool:'write',args:{path:'work/proof.txt',content:'legal'}}:{text:'done'})
  await f.run()
  await assert.rejects(stat(join(f.dirs.outputs,'forged.txt')),{code:'ENOENT'});assert.equal(await readFile(join(f.dirs.work,'proof.txt'),'utf8'),'legal')
  const receipts=(await f.actor.receipts.read()).filter(receipt=>receipt.domain==='fixture')
@@ -38,7 +38,7 @@ test('Host-owned archive paths are refused before intent and a later legal write
 test('only exact native definitions preflight canonical paths, including symlink aliases',async t=>{
  const f=await fixture(t,()=>({text:'unused'})),definition=f.actor.ctx.get('tools').get('write',f.actor)
  await symlink(f.dirs.outputs,join(f.dirs.work,'output-alias'),'dir')
- const check=async(file_path,def=definition)=>f.host.ctx.agents.withInitiator(f.actor,()=>preflightNativeFileMutation({name:'write',agent:f.actor,arguments:{file_path},signal:new AbortController().signal},def))
+ const check=async(path,def=definition)=>f.host.ctx.agents.withInitiator(f.actor,()=>preflightPiFileMutation({name:'write',agent:f.actor,arguments:{path,content:'preflight only'},signal:new AbortController().signal},def))
  for(const path of ['outputs/forged.txt','materials/forged.txt','sessions/forged.txt','task.json','work/output-alias/forged.txt'])await assert.rejects(check(path),error=>error.code==='FS_SANDBOX_DENIED')
  await check('work/allowed.txt');await assert.rejects(stat(join(f.dirs.work,'allowed.txt')),{code:'ENOENT'})
  await check('outputs/forged.txt',{...definition})
@@ -46,7 +46,7 @@ test('only exact native definitions preflight canonical paths, including symlink
 })
 test('a symlink replacement after preflight is checked again during mutation and retains intent',async t=>{
  let first=true
- const f=await fixture(t,()=>first?(first=false,{tool:'write',args:{file_path:'work/alias/late.txt',content:'must not escape'}}):{text:'denial observed'},{beforeBody:async(_exec,dirs)=>{await unlink(join(dirs.work,'alias'));await symlink(dirs.outputs,join(dirs.work,'alias'),'dir')}})
+ const f=await fixture(t,()=>first?(first=false,{tool:'write',args:{path:'work/alias/late.txt',content:'must not escape'}}):{text:'denial observed'},{beforeBody:async(_exec,dirs)=>{await unlink(join(dirs.work,'alias'));await symlink(dirs.outputs,join(dirs.work,'alias'),'dir')}})
  await mkdir(join(f.dirs.work,'allowed'));await symlink(join(f.dirs.work,'allowed'),join(f.dirs.work,'alias'),'dir')
  await f.run();await assert.rejects(stat(join(f.dirs.outputs,'late.txt')),{code:'ENOENT'})
  const receipts=(await f.actor.receipts.read()).filter(receipt=>receipt.domain==='fixture')

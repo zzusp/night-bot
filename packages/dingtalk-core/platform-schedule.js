@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks'
 import {bindPlatformScheduleSource} from '../../src/runtime/pi-platform-source.js'
 import {scopeOf} from '../../src/native-scope.js'
 import {officialWorkingDirectoryOrigin} from '../../src/native-working-directory.js'
@@ -21,9 +22,12 @@ const recoveryInput=(binding,record)=>({id:`${record.id}-platform-recovery:${rec
 // Native Schedule owns timing, storage and cold-session delivery. This bridge
 // owns only the accepted source binding and its existing outbox identity.
 export function createPlatformSchedules({ ctx, store, legacy, root, models, readTasks, appendOutbox, notify = createPlatformNotifier({ store, root, appendOutbox }), now = Date.now }) {
+  if(ctx.get?.('agents')?.currentInitiator?.()!==undefined)throw fail('platform_schedule_host_context_required')
+  const hostScheduler=AsyncLocalStorage.snapshot(),watchers=new Map()
   let closed = false
+  const watch=actor=>{if(watchers.has(actor)||!actor.piSession)return;watchers.set(actor,actor.piSession.subscribe(event=>{if(event.type==='agent_settled')recover()}))}
   const flights = new Map(), mounted = new Map(), recovered = new Set()
-  let recovery = Promise.resolve()
+  let recovery = Promise.resolve(),recoveryRunning=false,recoveryRequested=false
   const source = binding => {
     if (closed) return null
     const message = store.getGroup(binding.groupId)?.messages.find(item => item.messageId === binding.messageId && item.messageVersion === binding.messageVersion)
@@ -68,11 +72,12 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         const { text } = decision
         assert(exec)
         const saved = store.getPlatformSchedule(binding.sessionId)
-        if (saved.outcome) return { status: saved.outcome }
-        if (text === null) { await settle(binding, 'expired'); return { status: 'expired' } }
+        if (saved.outcome) {exec.concludeTurn();return { status: saved.outcome }}
+        if (text === null) { await settle(binding, 'expired'); exec.concludeTurn(); return { status: 'expired' } }
         if (typeof text !== 'string' || !text.trim()) throw new Error('platform_reply_empty')
         if ([...pages.values()].some(page => page.consumed < page.total)) throw new Error('platform_task_pages_unread')
         await deliver(binding, decision)
+        exec.concludeTurn()
         return { status: 'accepted', outboundId: outboundKey(binding.requestId) }
       }) }))
     if(typeof agent.requestPolicy?.addBeforeRequest!=='function')throw fail('platform_schedule_request_policy_required')
@@ -104,13 +109,12 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     mounted.set(agent, {disposers,prepared:!agent.piSession})
   }
   const stopPrepared=ctx.on?.('night/agent-prepare',({agent})=>mount(agent))
-  const stopCreated = ctx.on?.('agent/created', ({ agent }) => mount(agent))
-  const stopDisposed = ctx.on?.('agent/disposed', ({ agent }) => {const entry=mounted.get(agent);mounted.delete(agent);for(const dispose of entry?.disposers??[])dispose?.()})
+  const stopCreated = ctx.on?.('agent/created', ({ agent }) => {mount(agent);if(store.getPlatformSchedule?.(agent.id))watch(agent)})
+  const stopDisposed = ctx.on?.('agent/disposed', ({ agent }) => {const entry=mounted.get(agent);mounted.delete(agent);watchers.get(agent)?.();watchers.delete(agent);for(const dispose of entry?.disposers??[])dispose?.()})
   // Schedule can restore a due actor before Resident finishes loading. Its
   // accepted ledger and durable business packet authorize one recovery after idle;
   // ordinary successful turns need no additional model call or timer.
-  const recover = () => {
-    recovery = recovery.catch(() => {}).then(async () => {
+  const recoverOnce = async () => {
       if (closed) return
       const schedule = ctx.get?.('schedule'), controller = ctx.get?.('sessionController')
       if (!schedule || !controller) return
@@ -120,12 +124,21 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         let result=await controller.resolveAgent(record.sessionId)
         if(result.error)throw result.error
         if(closed)return
+        // Inactive records are committed before Schedule's original enqueue.
+        // Do not dispose that writer until its real packet has been admitted.
+        const originalActor=result.agent
+        watch(originalActor)
+        const firstPacket=originalActor.admission.lookupPacket(record.lastDelivery.messageId)
+        if(!firstPacket||originalActor.admission.status(firstPacket.id)==='pending')continue
+        if(originalActor.admission.status(firstPacket.id)==='cancelled')continue
+        if(originalActor.admission.status(firstPacket.id)!=='admitted'||!await schedule.authorizeInput(firstPacket,originalActor))throw fail('platform_schedule_delivery_unproven')
         if(!mounted.get(result.agent)?.prepared){
           await result.agent.dispose()
           result=await controller.resolveAgent(record.sessionId)
           if(result.error)throw result.error
         }
         const actor=result.agent
+        watch(actor)
         if(!mounted.get(actor)?.prepared)throw fail('platform_schedule_prepared_tools_required')
         try{await actor.whenIdle()}catch(error){if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}
         if(closed||store.getPlatformSchedule(record.sessionId).outcome)continue
@@ -142,8 +155,14 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         try{await actor.input.deliver(packet.id,{deliverAs:'followUp'})}catch(error){if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}
 
       }
-    })
-    void recovery.catch(error => ctx.logger?.warn?.(`platform schedule recovery: ${error.message}`))
+  }
+  const recover = () => {
+    if(closed)return
+    recoveryRequested=true
+    if(recoveryRunning)return
+    recoveryRunning=true
+    recovery=hostScheduler(async()=>{while(recoveryRequested&&!closed){recoveryRequested=false;await recoverOnce()}}).finally(()=>{recoveryRunning=false;if(recoveryRequested&&!closed)recover()})
+    void recovery.catch(error=>ctx.logger?.warn?.(`platform schedule recovery: ${error.message}`))
   }
   const stopChanged = ctx.on?.('schedule/changed', recover)
   ctx.inject?.(['schedule'], () => { recover() })
@@ -198,7 +217,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       try { return await work } finally { if (flights.get(binding.sessionId) === work) flights.delete(binding.sessionId) }
     },
     async close() {
-      closed = true; stopPrepared?.(); stopCreated?.(); stopDisposed?.(); stopChanged?.()
+      closed = true;for(const detach of watchers.values())detach();watchers.clear(); stopPrepared?.(); stopCreated?.(); stopDisposed?.(); stopChanged?.()
       const draining=Promise.allSettled([...mounted.keys()].map(actor=>actor.dispose()))
       await Promise.allSettled([...flights.values(),recovery])
       const failed=(await draining).filter(result=>result.status==='rejected').map(result=>result.reason)

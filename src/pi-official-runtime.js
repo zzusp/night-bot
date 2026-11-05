@@ -1,3 +1,5 @@
+import {registerPiFileTools} from './pi-file-tool-registration.js'
+import {createPiFileToolBudgets} from './runtime/pi-file-tool-budgets.js'
 import PiSessionNames from './pi-session-names.js'
 import {join,resolve} from 'node:path'
 import OfficialAgentFactory from './pi-official-agent-factory.js'
@@ -31,6 +33,15 @@ export function apply(ctx,config={}){
     if(inherited!==wanted)throw Object.assign(new Error('Declared preset differs from inherited parent composition'),{code:'NATIVE_PRESET_HEADER_MISMATCH'})
    }else await presets.mount(actorCtx,wanted)
    await actorCtx.get('permissionPresets').pinInitialPermission(actor)
+  },
+  prepareTools(actorCtx,actor){
+   const presets=actorCtx.get('agentPresets')
+   // A preset without its own file capability does not gain model file tools.
+   if(!presets.serviceFor(actor,'fs'))return
+   const services=Object.fromEntries(['fs','workingDirectory','sandboxPolicy','approval','attachments'].map(name=>[name,presets.serviceFor(actor,name)??actorCtx.get(name)]))
+   const budgets=createPiFileToolBudgets({actor,maxBatchTransportBytes:config.fileTools?.maxTransportBytes??33554432})
+   const files=registerPiFileTools({ctx:actorCtx,actor,services,sourceConfig:config.fileTools,onlyMissing:true,...budgets})
+   actorCtx.effect(()=>async()=>{await files.close();budgets.close()},'official Pi file capability ownership')
   },
   validatePreparedActor(actor){
    const presets=actor.ctx.get('agentPresets')

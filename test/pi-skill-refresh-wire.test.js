@@ -31,3 +31,63 @@ test('external body-only skill edits notify the next real Pi request and require
  await observation.close();await handle.dispose();handle=await host.ctx.agents.resume({resumeSessionId:'skill-refresh-proof',agentOptions:{provider:'fixture',model:'m'},auditKinds:skillObservationAuditKinds,authorizeInput:packet=>packet.id==='after-delete'&&packet.source.kind==='fixture-user',setup:async ctx=>{await host.ctx.agentPresets.mount(ctx,'night-bot')}})
  const recovered=await installSessionSkillRefresh(handle.agent.ctx,handle.agent,{cwd:work,signal:handle.agent.lifecycle.signal});t.after(()=>recovered.close());const beforeDelete=host.ctx.skills.revision;await rm(file);for(let i=0;i<150&&host.ctx.skills.revision===beforeDelete;i++)await sleep(10);assert.ok(host.ctx.skills.revision>beforeDelete);await handle.enqueue({id:'after-delete',source:{kind:'fixture-user'},content:'Check whether the skill still exists.'});await handle.deliver('after-delete');await handle.whenIdle();assert.equal(requests.length,5);assert.match(JSON.stringify(requests[4]),/本会话已读技能或引用有变化/);assert.match(JSON.stringify(requests[4]),/unavailable/);assert.equal((await handle.agent.receipts.read()).filter(r=>r.domain==='skill-observation'&&r.kind==='read').length,2)
 })
+
+for(const reader of ['read','read_window'])test('official '+reader+' reference observations retain exact execution evidence and survive cold restore',{timeout:20000},async t=>{
+ const {memoryHost}=await import('./fixtures/memory-host.js')
+ const {registerPiFileTools}=await import('../src/pi-file-tool-registration.js')
+ const {createPiFileToolBudgets}=await import('../src/runtime/pi-file-tool-budgets.js')
+ let file,index=0
+ const f=await memoryHost(t,async body=>{
+  index++
+  if(index===1)return {tool:'skill',args:{name:'reference-fixture'}}
+  if(index===2)return {tool:reader,args:{path:file,offset:1,limit:1}}
+  if(index===3){assert.match(JSON.stringify(body),/REFERENCE_BEFORE_CHANGE/);await writeFile(file,'REFERENCE_AFTER_CHANGE\n');return {tool:'reference_checkpoint',args:{}}}
+  assert.match(JSON.stringify(body),/本会话已读技能或引用有变化/)
+  assert.ok(!JSON.stringify(body).includes('REFERENCE_AFTER_CHANGE'),'notice must not silently read changed reference content')
+  return {text:'reference change verified'}
+ })
+ const directory=join(f.host.ctx.runtimePaths.workspaces,'reference-skill-'+reader);await mkdir(directory);file=join(directory,'procedure.md');await writeFile(file,'REFERENCE_BEFORE_CHANGE\n')
+ f.host.ctx.skills.register({name:'reference-fixture',description:'Reference observation fixture',content:'Read procedure.md only when needed.',source:'fixture',resourceBase:{kind:'directory',path:directory}})
+ const resources=[]
+ const setup=async(ctx,actor)=>{
+  const budgets=createPiFileToolBudgets({actor}),files=registerPiFileTools({ctx,actor,...budgets});resources.push({budgets,files})
+  ctx.get('tools').register({name:'reference_checkpoint',description:'Read-only reference checkpoint',effectClass:'read',parameters:{type:'object',properties:{}},output:{schema:{type:'object'},render:()=>[{type:'text',text:'checkpoint'}]},execute:async()=>({ok:true})})
+ }
+ let handle=await f.host.ctx.agents.create({sessionId:'reference-'+reader,agentOptions:f.config.model,meta:{cwd:f.host.ctx.runtimePaths.workspaces},authorizeInput:packet=>packet.source.kind==='user',setup})
+ t.after(async()=>{await handle.dispose();for(const {files,budgets}of resources){await files.close();budgets.close()}})
+ await handle.enqueue({id:'reference-input',source:{kind:'user'},content:'Load the skill and read its reference.'});await handle.deliver('reference-input');await handle.whenIdle()
+ assert.equal(f.requests.length,4)
+ let saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true})
+ const reference=saved.audit.find(receipt=>receipt.domain==='skill-observation'&&receipt.payload.record.kind==='reference')
+ assert.equal(reference.payload.record.path,file)
+ const entry=saved.entries.find(entry=>entry.id===reference.payload.resultEntryId)
+ assert.equal(entry.message.toolName,reader);assert.equal(entry.message.isError??false,false);assert.equal(entry.message.toolCallId,reference.payload.callId)
+ assert.doesNotMatch(JSON.stringify(reference),/REFERENCE_BEFORE_CHANGE|REFERENCE_AFTER_CHANGE/)
+ assert.equal(saved.audit.filter(receipt=>receipt.domain==='skill-observation').length,2)
+ await handle.dispose()
+ handle=await f.host.ctx.agents.resume({sessionId:'reference-'+reader,agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user',setup})
+ await handle.enqueue({id:'reference-after-cold',source:{kind:'user'},content:'Inspect the current reference version notice without rereading.'});await handle.deliver('reference-after-cold');await handle.whenIdle()
+ saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true})
+ assert.equal(saved.audit.filter(receipt=>receipt.domain==='skill-observation').length,2,'cold receipts are verified against original official read/read_window entries without replay')
+ assert.equal(f.requests.length,5)
+})
+
+test('a copied execution carrying a canonical observation cannot create a skill reference receipt',{timeout:15000},async t=>{
+ const {memoryHost}=await import('./fixtures/memory-host.js');let index=0,file
+ const f=await memoryHost(t,()=>++index===1?{tool:'skill',args:{name:'copied-exec-skill'}}:index===2?{tool:'read',args:{path:file}}:{text:'done'})
+ const directory=join(f.host.ctx.runtimePaths.workspaces,'copied-exec-reference');await mkdir(directory);file=join(directory,'reference.md');await writeFile(file,'REFERENCE_BYTES')
+ f.host.ctx.skills.register({name:'copied-exec-skill',description:'Exact execution negative fixture',content:'Read reference only when needed.',source:'fixture',resourceBase:{kind:'directory',path:directory}})
+ const handle=await f.host.ctx.agents.create({sessionId:'copied-exec-reference',agentOptions:f.config.model,meta:{cwd:f.host.ctx.runtimePaths.workspaces},authorizeInput:packet=>packet.source.kind==='user',setup:async(ctx,actor)=>{
+  ctx.get('tools').register({name:'read',description:'Fixture reader with deliberately unassociated observation',effectClass:'read',parameters:{type:'object',required:['path'],properties:{path:{type:'string'}}},output:{schema:{type:'object'},render:()=>[{type:'text',text:'literal fixture output'}]},async execute(args,exec){
+   const fs=ctx.get('agentPresets').serviceFor(actor,'fs')??ctx.get('fs'),target=await fs.resolve(args.path,{cwd:actor.metadata.cwd,signal:exec.signal}),info=await fs.stat(target,exec.signal)
+   ctx.emit('fs/observed',target,{kind:'present',version:info.version},{...exec})
+   return {text:'literal fixture output',images:[]}
+  }})
+ }})
+ t.after(()=>handle.dispose())
+ await handle.enqueue({id:'copied-exec-input',source:{kind:'user'},content:'Load the skill then exercise the reader.'});await handle.deliver('copied-exec-input');await handle.whenIdle()
+ const saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true})
+ assert.equal(saved.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&!entry.message.isError).length,2)
+ const receipts=saved.audit.filter(receipt=>receipt.domain==='skill-observation')
+ assert.equal(receipts.length,1);assert.equal(receipts[0].payload.record.kind,'skill','same actor/name/callId is insufficient without the identical execution object')
+})

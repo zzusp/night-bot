@@ -440,8 +440,9 @@
     {
       "source": "fixed-topic-handler.js",
       "sourceSha256": "ec20d7aaf8823bccf9c78cf2393e94456f6fd68b2fb1b83f19089b7bd4170e23",
-      "status": "retained",
-      "sha256": "ec20d7aaf8823bccf9c78cf2393e94456f6fd68b2fb1b83f19089b7bd4170e23"
+      "status": "adapted",
+      "sha256": "1e0c7561bbc5f42e672396e3cbf5f68689c5f47ea32a087b8cf8881e1c72a730",
+      "adaptation": "Official single-session fixed-topic input and name/permission ports, exact typed source admission, captured Host scheduler and cancellation/drain ownership."
     },
     {
       "source": "fixed-topics.js",
@@ -718,8 +719,8 @@
       "source": "platform-schedule.js",
       "sourceSha256": "2e3da4accc1654b8eff117b3df8db8cdfab5d88f1df53c86f27ad1d345f400ac",
       "status": "adapted",
-      "sha256": "9049ebeacffeb57b89ad5b573a3c2f98acb1915527d3e7f2fc00d4b783ad38cd",
-      "adaptation": "Keep the native scheduler-owned pending inbox delivery; do not enqueue a second platform recovery input between receipt commit and wake."
+      "sha256": "c146e64449f0c31472a5bb669874e8e34e59121e74d27ccf5a897009579aaf31",
+      "adaptation": "Official typed schedule admission and tools; Host scheduler and actual admitted-packet/settled recovery close the inactive-record-before-enqueue window without replay."
     },
     {
       "source": "resident.js",
@@ -758,8 +759,8 @@
       "source": "session-skill-refresh.js",
       "sourceSha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32",
       "status": "adapted",
-      "sha256": "e5f973ee38032eefe236bd58a8aa7d189afb905de787dd0cc2ccf12f2a53cf47",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "eaafa3c33522e6490885733d8cef267dcf2ec2cebfcf1905f7fd69081c6e9514",
+      "adaptation": "Official Pi successful native result/version receipts with exact NativeTools execution observations, path/read_window references, cold committed evidence and no duplicate history."
     },
     {
       "source": "session-workspaces.js",
@@ -1030,8 +1031,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "94e8557a63cb9263322764361bbfd237c23d12d9c1bbacd4eb600a6c0799876d",
-      "adaptation": "Official single execution sessions with trusted Host effect inspection/reconciliation, continuous writer/admission ownership and projection-only crash recovery."
+      "sha256": "31d24b1a88683acfe334ca16071d6220531c54fb9ce47c4781166d37608dc8b3",
+      "adaptation": "Official single execution with trusted effect reconciliation and projection-only crash recovery; public factual reply summaries reject internal identifiers before durable topic facts."
     },
     {
       "source": "task-session.js",

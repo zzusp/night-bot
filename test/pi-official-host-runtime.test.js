@@ -30,7 +30,7 @@ test('default Host publishes a real official SDK, scoped resources and durable i
 })
 test('default read-only file tool cannot inherit the deployment write policy',async t=>{
  let calls=0
- const f=await memoryHost(t,()=>++calls===1?{tool:'write',args:{file_path:'forbidden.txt',content:'must not write'}}:{text:'verified denial'})
+ const f=await memoryHost(t,()=>++calls===1?{tool:'write',args:{path:'forbidden.txt',content:'must not write'}}:{text:'verified denial'})
  const h=await create(f,'official-read-only',{permission:'read-only'});t.after(()=>h.dispose())
  await h.enqueue({id:'readonly-input',source:{kind:'test-input',principal:'authorized-fixture'},content:'Exercise the read-only boundary'})
  await h.deliver('readonly-input');await h.whenIdle()

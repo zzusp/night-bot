@@ -1,3 +1,4 @@
+import {validatePiFileSourceConfig} from './runtime/pi-file-tool-config.js'
 import { readFile } from 'node:fs/promises'
 import { resolve, isAbsolute, relative, sep } from 'node:path'
 import {runtimePaths} from './runtime/paths.js'
@@ -17,6 +18,7 @@ export async function loadConfig(path) {
   if (!config.providers?.[config.model.provider]) throw new Error('NIGHT_BOT_PROVIDER_PROFILE_REQUIRED')
   if (config.skillWatch !== undefined && typeof config.skillWatch !== 'boolean') throw new Error('NIGHT_BOT_SKILL_WATCH_INVALID')
   if (config.credentialsWatch !== undefined && typeof config.credentialsWatch !== 'boolean') throw new Error('NIGHT_BOT_CREDENTIALS_WATCH_INVALID')
+  validatePiFileSourceConfig(config.fileTools)
   if (config.maxParallelToolCalls !== undefined && (!Number.isSafeInteger(config.maxParallelToolCalls) || config.maxParallelToolCalls < 1)) throw new Error('NIGHT_BOT_MAX_PARALLEL_TOOL_CALLS_INVALID')
   for(const key of ['web','webFetch','webTools'])if(config[key]!==undefined&&(!config[key]||typeof config[key]!=='object'||Array.isArray(config[key])))throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)
   for(const key of ['searchProvider','fetchProvider'])if(config.web?.[key]!==undefined&&typeof config.web[key]!=='string')throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)

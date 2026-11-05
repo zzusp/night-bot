@@ -16,9 +16,9 @@ test('one task directly writes an artifact, cold resumes the same session, denie
   const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){reviews++;return {text:'{"lessons":[]}'}}
     if(!body.tools?.some(t=>t.function.name==='task_result'))return
-    if(phase==='write'){phase='pause';return {tool:'write',args:{file_path:'work/proof.txt',content:'single-session-proof'}}}
+    if(phase==='write'){phase='pause';return {tool:'write',args:{path:'work/proof.txt',content:'single-session-proof'}}}
     if(phase==='pause')return {text:'temporary provider interruption before final submission'}
-    if(!replay){replay=true;return {tool:'write',args:{file_path:'work/proof.txt',content:'single-session-proof'}}}
+    if(!replay){replay=true;return {tool:'write',args:{path:'work/proof.txt',content:'single-session-proof'}}}
     return {...result,args:{decision:{...result.args.decision,artifacts:["work/proof.txt"],deliveryFiles:[{path:"work/proof.txt",caption:"isolated proof"}]}}}
   })
   let h=await serviceFor(f);t.after(()=>h.close())
@@ -108,8 +108,8 @@ test('a task rejects forged archive output and can still submit a legitimate wor
   const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
     if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
-    if(step++===0)return {tool:'write',args:{file_path:'outputs/forged.txt',content:'forged archive'}}
-    if(step===2)return {tool:'write',args:{file_path:'work/proof.txt',content:'legitimate work'}}
+    if(step++===0)return {tool:'write',args:{path:'outputs/forged.txt',content:'forged archive'}}
+    if(step===2)return {tool:'write',args:{path:'work/proof.txt',content:'legitimate work'}}
     return {...result,args:{decision:{...result.args.decision,artifacts:['work/proof.txt'],deliveryFiles:[{path:'work/proof.txt'}]}}}
   }),h=await serviceFor(f);t.after(()=>h.close())
   const task=await h.service.createTask({requestId:'archive-forgery-denied',objective:'Return a legitimate work artifact'})

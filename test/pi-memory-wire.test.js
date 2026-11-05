@@ -107,7 +107,7 @@ test('read-only and group read-only bindings cannot persist or forget memory',as
 
 test('generic model file tools cannot bypass another user memory through raw filesystem paths',async t=>{
   let path,attempt=false
-  const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'read',args:{file_path:path}}}})
+  const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'read',args:{path:path}}}})
   const a=await f.agent('private-a',{actorId:'alice'}),b=await f.agent('private-b',{actorId:'bob'})
   await f.say(a.agent,'记住 facts/value：PRIVATE_BODY_FROM_FILE')
   const scope=await f.host.ctx.memory.scope(a.agent,{})

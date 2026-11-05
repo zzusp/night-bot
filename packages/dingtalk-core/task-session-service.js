@@ -1481,12 +1481,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             }
             if (humanReview && (decision.action !== 'wait' || decision.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
             if (decision.replySourceId !== undefined && (!humanReview || decision.action !== 'wait' || !humanReview.sourceIds.includes(decision.replySourceId))) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
-            const publicInternalIds = decision.question?.trim() && decision.audience !== 'requester' || dialogue ? await replyInternalIds(task, sources) : []
+            const publicInternalIds = decision.question?.trim() && decision.audience !== 'requester' || dialogue || decision.replySourceId !== undefined ? await replyInternalIds(task, sources) : []
             if (decision.question?.trim() && decision.audience !== 'requester') {
               // 人工问题和已尝试事项会外发；evidence 保留在内部账本，不拿调试 ID 当用户操作入口。
               for (const text of [task.title, decision.question, ...(decision.attemptedActions ?? [])]) assertGroupReply(text, publicInternalIds)
             }
-            if (dialogue) assertGroupReply(decision.summary, publicInternalIds)
+            if (dialogue || decision.replySourceId !== undefined) assertGroupReply(decision.summary, publicInternalIds)
             if (dialogue) {
               if (decision.action !== 'wait' || decision.question?.trim()) fail('TASK_DIALOGUE_REPLY_ONLY')
               await command('task.dialogue.reply', { binding, messageId: dialogue.id, reply: decision.summary, decision }, `dialogue-reply:${taskId}:${dialogue.id}`)

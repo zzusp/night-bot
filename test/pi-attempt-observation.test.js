@@ -20,7 +20,7 @@ test('max-token observation cannot publish a partial tool call or misalign repla
  assert.deepEqual(observer.blocks(),[{type:'text',text:'safe'}]);assert.deepEqual(observer.replayState,{response:{responseId:'fixture'},blocks:[{kind:'text'}]})
 })
 test('actual Pi tool continuation persists one assistant result per step without obsolete assistant frames',async t=>{
- const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'observed-read',name:'read',args:{file_path:'observation.txt'}}]}:{text:'observation complete'})
+ const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'observed-read',name:'read',args:{path:'observation.txt'}}]}:{text:'observation complete'})
  const handle=await f.host.ctx.agents.create({sessionId:'observation-owner',meta:{cwd:join(f.root,'work')},agentOptions:{provider:'fixture',model:'m'},authorizeInput:(packet,actor)=>actor.id==='observation-owner'&&packet.id==='observation-input'&&packet.source.kind==='fixture-user',setup:async ctx=>{await ctx.get('agentPresets').mount(ctx,'night-bot')}});f.handles.push(handle)
  let frames=0;f.host.ctx.on('agent/assistant-stream',()=>frames++)
  await writeFile(join(f.root,'work','observation.txt'),'OWNED_OBSERVATION_PROOF')

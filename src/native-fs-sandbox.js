@@ -151,6 +151,12 @@ var SandboxedFileSystem = class NativeSandboxedFileSystem extends LocalFileSyste
 	* refusal — the tool layer maps it to the model-facing `[sandbox: …]` marker
 	* and the escalation hint.
 	*/
+	/** Resolve a mutation's canonical target without changing files or granting
+     * authority. The actual mutation still performs its fresh mode/root check.
+     * PrivateFileSystem additionally enforces Host-owned archive boundaries. */
+    async preflightMutation(path,{cwd,signal}={}) {
+        signal?.throwIfAborted();await this.resolve(path,{cwd,signal});signal?.throwIfAborted();
+    }
 	async checkedTarget(target, sandboxPolicy) {
 		const policy = sandboxPolicy ?? this.ctx.sandboxPolicy.resolve();
 		const { mode } = policy;

@@ -13,6 +13,10 @@ for (const [name,mutate,code] of [
   ['public API',c=>{c.resident={host:'0.0.0.0'}},'HTTP_REQUIRES_LOOPBACK'],
   ['inconsistent DWS flags',c=>{c.resident={dws:{enabled:false,writesAuthorized:true}}},'DWS_WRITE_CONFIGURATION_INVALID'],
   ['inline key',c=>{c.providers.fixture.apiKey='do-not-copy-credentials'},'USE_CREDENTIAL_ENV_REFERENCE'],
+  ['file tool authority injection',c=>{c.fileTools={services:{fs:{}}}},'FILE_TOOLS_CONFIG_INVALID'],
+  ['unbounded file scan',c=>{c.fileTools={windowMaxScanBytes:0}},'FILE_TOOLS_CONFIG_INVALID'],
+  ['fractional file budget',c=>{c.fileTools={maxEditCount:1.5}},'FILE_TOOLS_CONFIG_INVALID'],
+  ['invalid file output budget',c=>{c.fileTools={windowMaxBytes:255}},'FILE_TOOLS_CONFIG_INVALID'],
   ['invalid tool parallelism',c=>{c.maxParallelToolCalls=0},'MAX_PARALLEL_TOOL_CALLS_INVALID'],
   ['invalid credential watcher',c=>{c.credentialsWatch='false'},'CREDENTIALS_WATCH_INVALID'],
   ['invalid web provider selector',c=>{c.web={fetchProvider:1}},'WEB_CONFIG_INVALID'],
@@ -35,3 +39,5 @@ test('configuration keeps disabled transport and provider env reference',async()
 })
 
 test('configuration preserves explicit native web selection and anonymous HTTP limits',async()=>{const root=await mkdtemp('/tmp/night-config-');try{const config={...valid(),web:{fetchProvider:'http',searchProvider:'search'},webFetch:{timeoutMs:1000,maxRedirects:2,maxResponseBytes:1024,maxBodyChars:1000,userAgent:'fixture-agent'}},path=join(root,'config.json');await writeFile(path,JSON.stringify(config));assert.deepEqual(await loadConfig(path),config)}finally{await rm(root,{recursive:true,force:true})}})
+
+test('configuration preserves explicit official file resource limits',async()=>{const root=await mkdtemp('/tmp/night-config-');try{const config={...valid(),fileTools:{maxBufferedBytes:10485760,maxEditBytes:2097152,windowMaxScanBytes:33554432}},path=join(root,'config.json');await writeFile(path,JSON.stringify(config));assert.deepEqual(await loadConfig(path),config)}finally{await rm(root,{recursive:true,force:true})}})

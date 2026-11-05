@@ -18,8 +18,8 @@ export async function memoryHost(t,decide=()=>undefined,{background=false}={}){
   const config={installRoot:root,dataDir:'data',model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:`http://127.0.0.1:${server.address().port}/v1`,apiKeyEnv:'MEMORY_FIXTURE_KEY',models:[{id:'m',input:['text'],contextWindow:32000,maxTokens:1024}]}},memory:{background},skillWatch:false,credentialsWatch:false}
   const boot=async()=>{host=await createHost(config,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});host.ctx.on('agent/error',e=>errors.push(e.error));return host}
   const close=async()=>{await host?.close();host=undefined}
-  await boot()
   t.after(async()=>{try{await close()}finally{await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true})}})
+  await boot()
   return {root,config,requests,errors,get host(){return host},boot,close,
     async agent(id,binding){const handle=await host.ctx.agents.create({sessionId:id,meta:{cwd:join(root,'data','workspaces'),agentPreset:'night-bot'},agentOptions:config.model,authorizeInput:packet=>packet.source.kind==='user',setup:async ctx=>{await host.ctx.agentPresets.mount(ctx,'night-bot')}});if(binding)await host.ctx.memory.bindSession(id,binding);return handle},
     async say(agent,text){const message={id:randomUUID(),source:{kind:'user'},content:[{type:'text',text}]};await agent.input.enqueue(message);await agent.input.deliver(message.id,{deliverAs:'followUp'});await agent.whenIdle();await host.ctx.memory.whenIdle();return message},
