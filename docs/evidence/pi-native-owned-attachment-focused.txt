@@ -1,0 +1,23 @@
+✔ actual Pi image wire uses native durable attachments and bounded request derivatives without changing the original (1652.945872ms)
+✔ owned file references preserve bytes, safe aliases and content-addressed v1 paths (139.199181ms)
+✔ normalized images have verified content identity, bounded geometry and isolated request variants (199.836288ms)
+✔ file writes preserve exact bytes, private modes, hard-link deduplication and zero-byte uploads (38.150612ms)
+✔ corrupt and missing file/image objects fail integrity checks and never get silently overwritten (32.100069ms)
+✔ batch admission and canonical base64 fail before any publication, with image limits intact (15.652999ms)
+✔ cancelled streamed writes drain their source and remove staging without publishing a receipt (9.961876ms)
+✔ closing an attachment service drains a paused stream iterator and rejects new storage operations (12.794895ms)
+✔ shared request cancellation preserves another waiter, refreshes corrupt cache, and keeps transformation identity (40.680805ms)
+✔ linked storage directories are rejected before creating anything outside the owned attachment root (7.58345ms)
+✔ supported image formats preserve clean bytes and strip metadata with normalized 8-bit decoding (100.657346ms)
+✔ a failed image batch waits for other admitted transforms and publishes no partial objects (5.984293ms)
+✔ compression concurrency is bounded and aborting every shared waiter prevents late cache publication (26.00186ms)
+✔ cache links cannot cause creation outside the owned home and a returned stream can be closed before consumption (38.228248ms)
+✔ native image request geometry obeys landscape/portrait pixel budgets and transpose symmetry (8.801927ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1851.506112

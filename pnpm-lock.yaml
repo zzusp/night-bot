@@ -119,12 +119,6 @@ importers:
       '@deepseek-ai/dsh-api-session-controller':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(d54cec9d78f973970f3cc39e734329f1)
-      '@deepseek-ai/dsh-attachment':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-brand@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))
-      '@deepseek-ai/dsh-attachment-local':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-attachment@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-brand@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))(@deepseek-ai/dsh-home-paths@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@types/node@26.6.6)
       '@deepseek-ai/dsh-base':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(d40149e4d2f16adc59e8be82d7c94afd)

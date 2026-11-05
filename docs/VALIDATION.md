@@ -1,3 +1,23 @@
+# Owned attachment contracts without old service dependencies (2026-11-05)
+
+Replaced old-service differential tests with direct attachment contracts: verified
+content digests and durable paths, exact streamed bytes, sanitized bounded names,
+normalized dimensions and metadata, independent request variants/cache reads and
+unchanged originals. Existing corruption, private modes, symlink refusal, shared
+waiter cancellation, stream disposal, batch atomicity and compression bounds
+remain covered. Geometry tests include explicit vectors and transpose symmetry.
+Encoded-byte targets remain best effort at the smallest supported quality.
+
+Removed the two root attachment development declarations and only their exact
+lock importer blocks; snapshots/integrities remain intact. **636 default pass**
+with both root package links temporarily absent, restored in finally; **390 domain
+pass** and **15 focused overlap**. Acorn scanned **926** files with no attachment
+package literals or parser failures. Source/import/Pi-license/YAML/diff guards
+pass. **56 DSH direct dev declarations remain**. Existing attachment implementation
+and its MIT notice remain; this is test dependency retirement, not a claim of an
+independent attachment rewrite or fresh installation success. Known registry
+HTTP 503 remains. Evidence: `docs/pi-native-owned-attachment-validation.json`.
+
 # Explicit instruction roots and logical source labels (2026-11-05)
 
 Removed the home-path library expansion and display aliases, including its skill

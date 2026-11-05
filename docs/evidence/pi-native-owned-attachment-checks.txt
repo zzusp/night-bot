@@ -1,0 +1,7 @@
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":37,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":371,"literalBareImports":170,"status":"declared-production-imports"}
+{"runtimeJsFiles":371,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":7,"historicalFormatFilesRemoved":9}
+{"status":"native-runtime-with-explicit-legacy-protocols","directRuntimeDshDependencies":0,"removedActiveDshServices":49,"standaloneFromDshLibraries":true}
+Root attachment declarations removed; YAML parses; retained transitive snapshots unchanged
+Acorn parsed 926 JS/MJS/CJS files across src/test/scripts/packages/bin: zero exact attachment package literals, zero parse failures.
+Negative root-resolution test: both direct node_modules attachment package symlinks absent for the complete default suite; all restored in finally. Transitive dependencies untouched.

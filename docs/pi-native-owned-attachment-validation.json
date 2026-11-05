@@ -1,0 +1,45 @@
+{
+  "base": "2e64458",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 636,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 15,
+    "overlap": "subset of default"
+  },
+  "domain": {
+    "pass": 390,
+    "fail": 0
+  },
+  "removedDirectDevDependencies": [
+    "@deepseek-ai/dsh-attachment",
+    "@deepseek-ai/dsh-attachment-local"
+  ],
+  "remainingDirectDshDevDependencies": 56,
+  "sourceChanges": "None; existing attachment algorithms and notices retained",
+  "method": "Independent public result invariants and explicit geometry vectors replace old-service differential assertions; default suite runs with both root package symlinks temporarily absent, restored in finally",
+  "preserved": "Night v1 stored paths/content identity and own backup formats; hard-link deduplication, nofollow/integrity checks, source drain, bounded compression, per-waiter cancellation, batch atomicity, immutable originals and scoped caches",
+  "limitations": "Encoded-byte budget remains best effort at minimum quality; no new exact-byte legacy parity claim. Existing inherited implementation remains attributed. No Windows kernel validation.",
+  "freshInstall": "Known npm metadata/attestation HTTP503 remains; no install attempt or route/policy change",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-owned-attachment-focused.txt",
+      "sha256": "b2d40b44b9a448d3e9b29925294688e70598d6b71a1d3f721f9d823ad08cb923"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-attachment-default.txt",
+      "sha256": "6178b7fd9c47c9d9db351f018997e269df779ad9f5925292d20dcb9d3bf1c22e"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-attachment-domain.txt",
+      "sha256": "1f2a71976330d4c38339b1e5f2e9cd31a69070cf03e52fd65e415e9b095ed61a"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-attachment-checks.txt",
+      "sha256": "f61f208b73813f34e53dbfe27118594c08b6a25f7cdfd684e9d5ea8bf2f6d59e"
+    }
+  ]
+}
