@@ -1,0 +1,42 @@
+✔ native sandbox public wraps match platform profiles and structured failure metadata (37.471527ms)
+✔ native sandbox probes in preference order once and retains partial enforcement (1.809651ms)
+✔ native sandbox unavailable verdict is cached and cannot dispatch unconfined argv (2.050886ms)
+✔ native sandbox validates custom runners, exact argv, cancellation and policy before grants (3.651682ms)
+✔ native sandbox owns isolated metadata snapshots and read-only profiles (1.090215ms)
+✔ Windows capability contract keeps workspace grant shared and session temp grants isolated (2.481696ms)
+✔ Windows temp capability failure cleans private directory before propagating (1.247403ms)
+✔ Scope algorithms agree with independent original private-state implementation (10.922062ms)
+✔ historical Scope namespace shares every application-owned public export (0.406183ms)
+✔ native query semantic text/filter helpers preserve legacy read presentation (9.916879ms)
+✔ native read-only query lists live sessions, snapshots leases and rejects inconsistent headers (15.48836ms)
+✔ native cold observation reuses only an exact source revision and releases bounded read handles (8.563285ms)
+✔ native query owner close aborts and drains a borrowed cold read, closes its handle and rejects future work (6.378969ms)
+✔ native cold helper closes a read handle on validation/read failure and never acquires writer authority (0.468838ms)
+✔ native query disposed from its own backend completes without waiting on its own nested call (3.044686ms)
+✔ native session publication, plugin records, flush and teardown match the original (15.284942ms)
+✔ native session detach during append waits until every accepted event observer runs (2.762911ms)
+✔ native session flush awaits all listeners before returning its first registered failure (2.519543ms)
+✔ native session stale preparations and cross-store attachments cannot replace a live owner (2.414285ms)
+✔ native sessions reject a legacy owner and fail closed on conflicting publication ownership (4.277232ms)
+✔ native session fork keeps exact prefix lineage and rejects stale source identities (3.289135ms)
+✔ native session creation rollback restores its publication method after an observer throws (1.566896ms)
+✔ sealed facade teardown cannot replace an accepted append and can safely reattach (1.506634ms)
+✔ one facade publication hook cannot be borrowed to impersonate another session (3.329316ms)
+✔ Pi native branch is authoritative while retired authorization remains in immutable audit (41.770697ms)
+✔ Pi journal restores only complete commit batches; read-only inspection never repairs the tail (20.23241ms)
+✔ Pi history checksum refuses modified complete records without rewriting evidence (10.363533ms)
+✔ closing a read handle preserves the active writer and failed pre-validation does not poison it (9.886534ms)
+✔ unpublished creation can be rolled back without leaving an empty durable identity (6.115301ms)
+✔ legacy import preserves source events, fences the old writer, and resumes from Pi without replay (41.937424ms)
+✔ global Pi journal refuses symbolic file targets before reads or writes (4.755008ms)
+✔ Pi projection carries actual multimodal bytes and structured operational content (0.557151ms)
+✔ a legacy writer changing imported history between Pi leases blocks resume without rewriting Pi evidence (32.079844ms)
+✔ failed legacy image import releases native authority and both writer fences (31.290992ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1141.237422

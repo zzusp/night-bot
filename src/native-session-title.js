@@ -7,7 +7,7 @@ import { z as z$1 } from "zod";
 import { isAgentLoopRequest } from './native-message-protocol.js';
 
 import { assertNever, deepFreeze } from "./native-values.js";
-import { SessionSeq } from "@deepseek-ai/dsh-session";
+import { SessionSeq } from "./native-session-protocol.js";
 //#region lib/types/normalize.js
 /** Title text normalization and UTF-8-safe truncation. */
 /** Operating-system-command escape sequences, including unterminated tails. */

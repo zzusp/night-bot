@@ -1,0 +1,13 @@
+{
+  "name": "@night-bot/session-format-catalog-compat",
+  "version": "0.2.1-alpha.2",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./message-projections": "./message-projections.js"
+  }
+}

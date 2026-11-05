@@ -15,8 +15,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
 import { LlmRuntime, LlmAdapter, createUserMessage } from '../packages/capability-compat/llm/index.js'
-import { SessionStore } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { SessionStore } from '../packages/capability-compat/session/index.js'
+import JsonlSessionPersistence from '../packages/capability-compat/session-persistence-jsonl/index.js'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
@@ -157,7 +157,7 @@ test('自身资源查询不能被原生注册接口同名覆盖，仍调用 Host
 })
 
 test('32 continued inputs retire recursive Host snapshots on actual SDK requests and replay', async t => {
-  const { foldSurface, deriveEventMessage } = await import('@deepseek-ai/dsh-session')
+  const { foldSurface, deriveEventMessage } = await import('../packages/capability-compat/session/index.js')
   const root = await temp(), history = [], metrics = []
   let allInputs = 0
   for (let version = 1; version <= 32; version++) {

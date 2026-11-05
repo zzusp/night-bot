@@ -2,7 +2,7 @@
 import z from "@deepseek-ai/schemastery";
 import { scopeChainOf, scopeOf } from "./native-scope.js";
 import { defineTool } from "./native-tool-protocol.js";
-import { SessionSeq } from "@deepseek-ai/dsh-session";
+import { SessionSeq } from "./native-session-protocol.js";
 import { assertSubagentMaxDepth, parentAgentOptionsForDelegation } from "./native-subagents.js";
 import { ReasoningEffortId } from './native-message-protocol.js';
 

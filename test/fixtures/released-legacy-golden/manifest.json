@@ -1,0 +1,27 @@
+{
+  "sourcePackage": "@deepseek-ai/dsh-session-persistence-jsonl@0.2.1-alpha.2",
+  "generatedBeforeNativeReplacement": true,
+  "marker": "ORIGINAL_LEGACY_GOLDEN_NO_REPLAY",
+  "files": [
+    {
+      "path": "none/--fixture--/golden-none/session.lock",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "none/--fixture--/golden-none/session.v4.jsonl",
+      "sha256": "0466cc1e431b752439eb4d1d4f7b715d12ece9a59adef392c8410736c9a2eaa9",
+      "size": 354
+    },
+    {
+      "path": "zstd/--fixture--/golden-zstd/session.lock",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "zstd/--fixture--/golden-zstd/session.v4.jsonl.zstd",
+      "sha256": "e585e5ff2ff3ced81a4fb33d1f814933ec2030587597984d88b29d4adbf5e004",
+      "size": 314
+    }
+  ]
+}

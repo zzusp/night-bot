@@ -1,5 +1,5 @@
 {
-  "status": "partial-migration-not-dsh-independent",
+  "status": "native-runtime-with-explicit-legacy-protocols",
   "compatibilityAliases": [
     {
       "requested": "@deepseek-ai/dsh-scope",
@@ -72,8 +72,40 @@
       "target": "link:./packages/capability-compat/subagent",
       "authority": "src/native-subagents.js + native-subagent-errors.js",
       "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-session",
+      "target": "link:./packages/capability-compat/session",
+      "authority": "src/native-sessions.js + native-session-protocol.js",
+      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-session-persistence",
+      "target": "link:./packages/capability-compat/session-persistence",
+      "authority": "src/native-persistence-protocol.js",
+      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "target": "link:./packages/capability-compat/session-persistence-jsonl",
+      "authority": "src/legacy-v4/dsh-session-persistence-jsonl/lib/index.js",
+      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-session-format-catalog",
+      "target": "link:./packages/capability-compat/session-format-catalog",
+      "authority": "src/legacy-v4/dsh-session-format-catalog/lib/index.js",
+      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "target": "link:./packages/capability-compat/sandbox-windows-acl",
+      "authority": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js",
+      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
     }
   ],
+  "externalFeatureAcceptanceComplete": false,
+  "compatibilityBoundary": "Local MIT-derived v4 audit/publication/inbox facade, released v0-v4 codecs/import I/O and Windows ACL; no external registry SDK runtime or old model/tool/session-store orchestrator. Real vendor/platform acceptance remains separate.",
   "piVersions": {
     "@earendil-works/pi-agent-core": "1.5.0",
     "@earendil-works/pi-ai": "1.5.0",
@@ -81,7 +113,7 @@
   },
   "unmountedPreparation": [],
   "standaloneProcess": true,
-  "standaloneFromDshLibraries": false,
+  "standaloneFromDshLibraries": true,
   "piNative": [
     "Pi coding-agent parseFrontmatter for ordinary skill headers, explicit legacy delimiter fallback; capability-aware discovery remains application-owned",
     "agent-core.runAgentLoop iteration",
@@ -150,29 +182,8 @@
     "canonical filesystem service/errors and sandbox helper policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay now local",
     "skill rendering/invocation helpers; workspace error identities only (registry local) and canonical child-agent errors and control/tool helpers; continuation manager and local provider declarations are now application-owned"
   ],
-  "directRuntimeDshDependencies": [
-    {
-      "name": "@deepseek-ai/dsh-sandbox-windows-acl",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-persistence",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-persistence-jsonl",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session-format-catalog",
-      "version": "0.2.1-alpha.2"
-    }
-  ],
-  "developmentDependencyCount": 157,
+  "directRuntimeDshDependencies": [],
+  "developmentDependencyCount": 162,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [

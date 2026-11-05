@@ -3,7 +3,7 @@ import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
 import { isAgentLoopRequest } from "../../packages/capability-compat/llm/index.js";
 import { assertNever, deepFreeze } from "../../src/native-values.js";
-import { SessionSeq } from "@deepseek-ai/dsh-session";
+import { SessionSeq } from "../../packages/capability-compat/session/index.js";
 //#region lib/types/normalize.js
 /** Title text normalization and UTF-8-safe truncation. */
 /** Operating-system-command escape sequences, including unterminated tails. */

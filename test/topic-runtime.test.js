@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
-import { Session, SessionStore } from '@deepseek-ai/dsh-session'
+import { Session, SessionStore } from '../packages/capability-compat/session/index.js'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'

@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { foldConsumedWork } from "./native-consumed-work.js";
 import { isAbsolute, resolve } from "node:path";
 import { brandString } from "./native-brand.js";
-import { SessionLogOffset, SessionSeq } from "@deepseek-ai/dsh-session";
+import { SessionLogOffset, SessionSeq } from "./native-session-protocol.js";
 import { assertNever, snapshotJsonValue } from "./native-values.js";
 import { appendChunkedList, chunkedListSchema, iterateChunkedList } from "./native-chunked-list.js";
 import { accessSync, constants, statSync } from "node:fs";

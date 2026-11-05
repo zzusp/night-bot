@@ -721,7 +721,7 @@ for (const [ownEcho, followupActor] of [[true, 'native-user'], [true, 'colleague
 test('180 legacy task Host markers retire without changing audit or foreign context, including compacted surface replay', { ...({ timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   await t.beginBusiness()
   const { createUserMessage, createSystemMessage } = await t.step(async () => import('../packages/capability-compat/llm/index.js'))
-  const { foldSurface, deriveEventMessage } = await t.step(async () => import('@deepseek-ai/dsh-session'))
+  const { foldSurface, deriveEventMessage } = await t.step(async () => import('../packages/capability-compat/session/index.js'))
   const fixture = await t.step(async () => nativeCase(t, 'task-host-retirement-'))
   const h = await t.step(async () => fixture.host(async () => []))
   const binding = { taskId: 'retirement-task', sessionId: 'retirement-session', leaseEpoch: 181 }
@@ -813,7 +813,7 @@ test('owner keeps one current Host snapshot and delegates non-recursive executio
   const log = await t.step(async () => inspectSession(h.ctx.sessionPersistence, task.sessionId))
   assert.ok(log.events.filter(event => event.type === 'user/message' && event.data.source?.taskSession && !event.data.source.taskContextHistory).length >= 4,
     '原始Host输入仍在审计日志')
-  const { foldSurface, deriveEventMessage } = await t.step(async () => import('@deepseek-ai/dsh-session'))
+  const { foldSurface, deriveEventMessage } = await t.step(async () => import('../packages/capability-compat/session/index.js'))
   const folded = foldSurface(log.events)
   const visible = folded.nodes.map(seq => deriveEventMessage(log.events[seq], folded.projectedMessages)).filter(Boolean)
   assert.equal(visible.filter(message => message.source?.taskSession).length, 1)

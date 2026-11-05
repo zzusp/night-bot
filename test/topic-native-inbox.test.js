@@ -11,7 +11,7 @@ import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { LlmRuntime } from '../packages/capability-compat/llm/index.js'
 import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
 import { createRequire } from 'node:module'
-import { SessionStore } from '@deepseek-ai/dsh-session'
+import { SessionStore } from '../packages/capability-compat/session/index.js'
 import { stableId } from '../packages/dingtalk-dsh-assistant/topic-model.js'
 
 const requireLoop = createRequire(import.meta.resolve('@deepseek-ai/dsh-agent-loop'))

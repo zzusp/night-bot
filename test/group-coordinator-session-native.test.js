@@ -10,8 +10,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
 import { LlmRuntime, LlmAdapter } from '../packages/capability-compat/llm/index.js'
-import { SessionStore } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { SessionStore } from '../packages/capability-compat/session/index.js'
+import JsonlSessionPersistence from '../packages/capability-compat/session-persistence-jsonl/index.js'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
 import PermissionPresetService from '@deepseek-ai/dsh-permission-presets'
@@ -89,7 +89,7 @@ test('group single-input nested quotes, policy and read-tool copies share resolv
 })
 
 test('ordinary group reads deduplicate while explicit content reads return literal evidence, including after reopen', async t => {
-  const { foldSurface, deriveEventMessage } = await import('@deepseek-ai/dsh-session')
+  const { foldSurface, deriveEventMessage } = await import('../packages/capability-compat/session/index.js')
   const root = await mkdtemp(join(tmpdir(), 'group-read-index-')), hosts = []
   t.after(async () => { for (const h of hosts.toReversed()) await h.close(); await rm(root, { recursive: true, force: true }) })
   const bodies = ['source original ', 'history evidence ', 'material evidence ', 'task evidence '].map(text => text.repeat(200))
@@ -134,7 +134,7 @@ test('ordinary group reads deduplicate while explicit content reads return liter
 })
 
 test('native json-index pages reach exact previously unseen text, quoted author/version, and remain readable after reopen', async t => {
-  const { foldSurface, deriveEventMessage } = await import('@deepseek-ai/dsh-session')
+  const { foldSurface, deriveEventMessage } = await import('../packages/capability-compat/session/index.js')
   const root = await mkdtemp(join(tmpdir(), 'group-json-index-')), hosts = []
   t.after(async () => { for (const h of hosts.toReversed()) await h.close(); await rm(root, { recursive: true, force: true }) })
   const body = Array.from({ length: 1200 }, (_, i) => `证据段${i}🙂：仅分析，不发布；`).join('')
@@ -265,7 +265,7 @@ test('repeated and empty source wakes keep one copy across SDK requests, includi
 
 test('upgrade deduplicates stored histories but preserves independent versions, actors and authorization evidence', async t => {
   const { createUserMessage, createSystemMessage } = await import('../packages/capability-compat/llm/index.js')
-  const { foldSurface, deriveEventMessage } = await import('@deepseek-ai/dsh-session')
+  const { foldSurface, deriveEventMessage } = await import('../packages/capability-compat/session/index.js')
   const root = await mkdtemp(join(tmpdir(), 'group-upgrade-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const h = await host(root); t.after(() => h.close())

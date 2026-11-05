@@ -7,7 +7,7 @@ import { sdkHost } from './fixtures/model-context-sdk-host.js'
 import { context172Fixture } from './fixtures/model-context-172.js'
 import { createTaskSessions } from '../packages/dingtalk-dsh-assistant/task-session.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
-import { foldSurface, deriveEventMessage } from '@deepseek-ai/dsh-session'
+import { foldSurface, deriveEventMessage } from '../packages/capability-compat/session/index.js'
 
 test('issue172 actual SDK requests: seven operations, lazy historical goals, direct reads and three continued snapshots', { timeout: 30000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'issue172-native-')), cwd = join(root, 'task')

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import NativeSandbox,{sandboxProfile} from '../src/native-sandbox.js'
-import {AclWriteGrant} from '@deepseek-ai/dsh-sandbox-windows-acl'
+import {AclWriteGrant} from '../packages/capability-compat/sandbox-windows-acl/index.js'
 import {existsSync} from 'node:fs'
 const policy={mode:'workspace-write',workspaceRoot:'/workspace'}
 function fixture(t,Impl=NativeSandbox,config={}){const ctx=new Context();ctx.logger={warn(){}};const provider=new Impl(ctx,{runnerCommand:[],runnerFailureSignatures:[],probeTimeoutMs:100,...config});t.after(()=>ctx.fiber.dispose());return provider}

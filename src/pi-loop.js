@@ -12,8 +12,8 @@ import { brandString } from "./native-brand.js";
 import { LlmError } from './native-llm-protocol.js';
 import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
 
-import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "@deepseek-ai/dsh-session";
-import { SessionPersistenceNotFoundError } from "@deepseek-ai/dsh-session-persistence";
+import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "./native-session-protocol.js";
+import { SessionPersistenceNotFoundError } from "./native-persistence-protocol.js";
 import { agentEvents, assembleContextFor } from "./native-agent-context.js";
 import { assertNever, deepFreeze } from "./native-values.js";
 import { createScope } from "./native-scope.js";

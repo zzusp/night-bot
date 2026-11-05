@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {LAUNCHER_BIN,LAUNCHER_FAILURE_EXIT,grantArgs,launcherPath,probe} from '@deepseek-ai/node-addon-system/landlock-run'
-import {AclWriteGrant,assertTempRootOutsideWorkspace,registerAclDiagnosisSkill,tempWriteSid,workspaceWriteSid} from '@deepseek-ai/dsh-sandbox-windows-acl'
+import {AclWriteGrant,assertTempRootOutsideWorkspace,registerAclDiagnosisSkill,tempWriteSid,workspaceWriteSid} from './legacy-v4/dsh-sandbox-windows-acl/lib/index.js'
 const chains={linux:['bwrap','landlock'],darwin:['seatbelt'],win32:['windows-acl']}
 const denial={bwrap:['read-only file system'],landlock:['permission denied'],seatbelt:['operation not permitted'],'windows-acl':['access is denied','access to the path','permission denied','operation not permitted'],custom:['read-only file system','permission denied']}
 const fatal={bwrap:[{fatalSignatures:['bwrap: ']}],landlock:[{allowedExitCodes:[LAUNCHER_FAILURE_EXIT],fatalSignatures:[`${LAUNCHER_BIN}: `],informationalLines:[`${LAUNCHER_BIN}: partial enforcement (older Landlock ABI)`]}],seatbelt:[{fatalSignatures:['sandbox-exec: ']}],'windows-acl':[{allowedExitCodes:[127],fatalSignatures:['windows-acl-run: ']}]}
@@ -60,7 +60,7 @@ export default class NativeSandbox extends Service{
  }
  landlockPath(){return this.internals.landlockLauncher??launcherPath()}
  seatbeltPath(){return this.internals.seatbeltExec??'sandbox-exec'}
- windowsInvocation(){if(this.internals.windowsAclRunnerArgs)return[...this.internals.windowsAclRunnerArgs];const entry=this.internals.windowsAclRunnerEntry??fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/runner'));if(!existsSync(entry))throw new NativeSandboxUnavailableError('workspace-write','Windows ACL runner is absent');return[process.execPath,entry]}
+ windowsInvocation(){if(this.internals.windowsAclRunnerArgs)return[...this.internals.windowsAclRunnerArgs];const entry=this.internals.windowsAclRunnerEntry??fileURLToPath(import.meta.resolve('./legacy-v4/dsh-sandbox-windows-acl/lib/runner.js'));if(!existsSync(entry))throw new NativeSandboxUnavailableError('workspace-write','Windows ACL runner is absent');return[process.execPath,entry]}
  windowsArgv(policy){const base=[...this.windowsInvocation(),'--workspace',policy.workspaceRoot];if(policy.mode==='read-only'||policy.sessionId===undefined)return[...base,'--temp',tmpdir(),'--mode',policy.mode];const capability=this.grant(policy.sessionId,policy.workspaceRoot);return[...base,'--temp',capability.dir,'--mode',policy.mode,'--write-sid',workspaceWriteSid(policy.workspaceRoot),'--temp-write-sid',capability.sid]}
  grant(session,workspace){
   assertTempRootOutsideWorkspace(workspace,tmpdir())

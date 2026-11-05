@@ -1,0 +1,13 @@
+✔ original release-generated plain and zstd logs remain readable without rewriting evidence (43.891621ms)
+✔ isolated native verifier checks physical bytes, logical count and identity for both legacy encodings (501.369803ms)
+✔ native verifier rejects malformed requests before reading any caller path (65.462028ms)
+✔ application legacy verification worker excludes the old bundled model runtime (2.779422ms)
+✔ all released v0 through v4 catalogs retain complete empty-history migration and reject future versions (5.714389ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 730.138182

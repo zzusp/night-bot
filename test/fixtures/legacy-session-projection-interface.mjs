@@ -1,5 +1,5 @@
 import { Service } from "@deepseek-ai/cordis";
-import { SessionLogOffset, SessionSeq } from "@deepseek-ai/dsh-session";
+import { SessionLogOffset, SessionSeq } from "../../packages/capability-compat/session/index.js";
 //#region lib/types/index.js
 /**
 * Service Definition and drive registry for the session-projection capability seam: the merge-extensible state and client-view type

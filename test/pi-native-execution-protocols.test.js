@@ -26,12 +26,16 @@ test('canonical model errors retain strict trusted identity and validated detach
  assert.equal(llm.isHarnessError(current),true);assert.equal(llm.isHarnessError({message:'fake',code:'RATE_LIMIT'}),false)
  for(const invalid of [{status:99},{status:600},{providerRetryAfterMs:0},{requestId:''}])assert.throws(()=>new llm.LlmError('fixture','CODE',invalid))
 })
-test('actual retained Session SDK peer shares native model errors and request-marker protocol',async()=>{
- const root=createRequire(import.meta.url),peer=createRequire(root.resolve('@deepseek-ai/dsh-session'))
- const api=await import(pathToFileURL(peer.resolve('@deepseek-ai/dsh-llm')))
+test('historical Session and model namespaces expose canonical native implementations',async()=>{
+ const session=await import('../packages/capability-compat/session/index.js')
+ const protocol=await import('../src/native-session-protocol.js')
+ const api=await import('../packages/capability-compat/llm/index.js')
+ assert.equal(session.Session,protocol.Session)
+ assert.equal(session.snapshotSessionEvent,protocol.snapshotSessionEvent)
  assert.equal(api.HarnessError,llm.HarnessError);assert.equal(api.LlmError,llm.LlmError)
  const request={};api.markAgentLoopRequest(request);assert.equal(llm.isAgentLoopRequest(request),true)
 })
+
 test('tool schema validation and both code SDK renderers agree with independent original helpers',async()=>{
  const original=await import('./fixtures/legacy-tools-interface.mjs')
  const schema={type:'object',properties:{name:{type:'string',enum:['a','b']},rows:{type:'array',items:{type:'integer'}}},required:['name'],additionalProperties:false}

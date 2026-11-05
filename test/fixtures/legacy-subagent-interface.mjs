@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { foldConsumedWork } from "../../src/native-consumed-work.js";
 import { isAbsolute, resolve } from "node:path";
 import { brandString } from "../../src/native-brand.js";
-import { SessionLogOffset, SessionSeq } from "@deepseek-ai/dsh-session";
+import { SessionLogOffset, SessionSeq } from "../../packages/capability-compat/session/index.js";
 import { assertNever, snapshotJsonValue } from "../../src/native-values.js";
 import { appendChunkedList, chunkedListSchema, iterateChunkedList } from "../../src/native-chunked-list.js";
 import { accessSync, constants, statSync } from "node:fs";

@@ -11,3 +11,8 @@ overrides:
   "@deepseek-ai/dsh-llm": "link:./packages/capability-compat/llm"
   "@deepseek-ai/dsh-tools": "link:./packages/capability-compat/tools"
   "@deepseek-ai/dsh-subagent": "link:./packages/capability-compat/subagent"
+  "@deepseek-ai/dsh-session": "link:./packages/capability-compat/session"
+  "@deepseek-ai/dsh-session-persistence": "link:./packages/capability-compat/session-persistence"
+  "@deepseek-ai/dsh-session-persistence-jsonl": "link:./packages/capability-compat/session-persistence-jsonl"
+  "@deepseek-ai/dsh-session-format-catalog": "link:./packages/capability-compat/session-format-catalog"
+  "@deepseek-ai/dsh-sandbox-windows-acl": "link:./packages/capability-compat/sandbox-windows-acl"

@@ -1,3 +1,5 @@
+Current runtime closure:0 external registry DSH packages in the complete fresh production dependency graph. All default runtime owners are native; local MIT-derived event/format/ACL compatibility is explicit and Pi remains authoritative. Verification1111 unique/403 production repetitions; Windows restart-scope provider-evidence paths still need functionality review before final completion.
+
 Execution protocol checkpoint: canonical model/tool/child errors, adapter, schema and code SDK helpers are local; LlmRuntime/ToolRuntime/SubagentRuntime names map to native owners. Only the legacy Session facade still imports SDK Scope. Five direct external DSH dependencies remain: Session, persistence base/JSONL/catalog and Windows ACL.
 
 Interface checkpoint: filesystem/sandbox capability bases and shared errors, skill rendering/invocation helpers and skill/projection namespace owners are local. Nine transparent historical namespace aliases receive no extra active-service replacement credit. Three remaining SDK Scope peers share the native graph; native skill authority is checked via its actual ACL peer in production.

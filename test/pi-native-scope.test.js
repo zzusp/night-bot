@@ -34,13 +34,8 @@ function behavior(api) {
 test('Scope algorithms agree with independent original private-state implementation',async()=>{
   await behavior(native);await behavior(legacy)
 })
-test('every retained SDK Scope peer shares the application authority',async()=>{
-  assertNativeScopeAuthority()
-  const root=createRequire(import.meta.url)
-  for(const name of ['session']) {
-    const peer=createRequire(root.resolve('@deepseek-ai/dsh-'+name))
-    const api=await import(pathToFileURL(peer.resolve('@deepseek-ai/dsh-scope')))
-    assert.equal(api.scopeOf,native.scopeOf)
-    assert.equal(api.bindScopeParent,native.bindScopeParent)
-  }
+test('historical Scope namespace shares every application-owned public export',async()=>{
+ assertNativeScopeAuthority()
+ const api=await import('../packages/scope-compat/index.js')
+ for(const [name,value] of Object.entries(native))assert.equal(api[name],value)
 })

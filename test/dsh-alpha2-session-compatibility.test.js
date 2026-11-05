@@ -84,7 +84,7 @@ test('migration compatibility still rejects duplicate identities, wrong call pro
 
 test('real V3 JSONL migration preserves plugin identity payloads and originals through V4 write/reopen', async () => {
   const { Context } = await import('@deepseek-ai/cordis')
-  const { default: JsonlSessionPersistence } = await import('@deepseek-ai/dsh-session-persistence-jsonl')
+  const { default: JsonlSessionPersistence } = await import('../packages/capability-compat/session-persistence-jsonl/index.js')
   const { mkdtemp, mkdir, writeFile, readFile, readdir, rm } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { Session } from '@deepseek-ai/dsh-session'
+import { Session } from '../packages/capability-compat/session/index.js'
 import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { installSessionSkillRefresh } from '../packages/dingtalk-dsh-assistant/session-skill-refresh.js'
 

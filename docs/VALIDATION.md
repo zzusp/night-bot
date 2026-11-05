@@ -431,3 +431,20 @@ Only the legacy Session facade still needs an external private Scope peer check.
 Windows ACL),49 active replacements unchanged. Source algorithms MIT-attributed;
 no claim of original authorship or completed migration. Evidence:
 `evidence/native-execution-protocol-*.txt`.
+
+Complete external SDK runtime dependency closure:523 own +142 runtime +47 routing
++388 domain +11 real containment =1111 unique passes; one Windows-only skip.
+Fresh frozen production installation repeats362 core +38 contracts +3 kernel =403;
+its complete package graph contains zero registry `@deepseek-ai/dsh-*` packages.
+407 runtime files and manifests/lock/workspace match byte-for-byte. Guard348 JS/
+164 bare imports; source200 retained/3 UI excluded/24 explicit adaptations.
+Local compatibility covers only data/audit/publication/inbox, released v0-v4
+format and import IO, and Windows ACL/process support; Pi remains current context,
+history and inference authority. Independent original Store/private brands use
+matching reference append helpers; strict receiver and ownership checks remain.
+Original release-generated plain/zstd logs read unchanged. The new isolated ESM
+verifier validates bytes/identity/count/prefix, rejects malformed requests and
+excludes the old worker's bundled model Runtime. Eleven MIT source packages have
+exact source/target hashes and import rewrites recorded. Real Windows/macOS and
+vendor/DingTalk acceptance remain unavailable; Windows restart-scope provider
+pins still need native binding review. Evidence: `evidence/native-legacy-*`.

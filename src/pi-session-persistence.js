@@ -1,5 +1,5 @@
 import { restorePiReplay } from './pi-replay.js'
-import LegacyJsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import LegacyJsonlPersistence from './legacy-v4/dsh-session-persistence-jsonl/lib/index.js'
 import { Service, Context } from '@deepseek-ai/cordis'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { mkdir, readFile, writeFile, open, stat, readdir, truncate, rm, lstat, link, unlink } from 'node:fs/promises'
@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   SessionPersistenceNotFoundError, SessionAlreadyExistsError, SessionAlreadyOwnedError, SessionReadOnlyError,
   SessionHandleClosedError, SessionOwnershipLostError, materializeCreateHeader, materializeAppendBatch, validateStoredEvents,
-} from '@deepseek-ai/dsh-session-persistence'
+} from './native-persistence-protocol.js'
 
 const owners = new Map()
 const digest = value => createHash('sha256').update(value).digest('hex')

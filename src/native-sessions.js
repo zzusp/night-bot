@@ -1,6 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import {scopeOf,scopeTarget} from './native-scope.js'
-import {Session,SessionId,SessionForkError,buildForkSeed} from '@deepseek-ai/dsh-session'
+import {Session,SessionId,SessionForkError,buildForkSeed} from './native-session-protocol.js'
 const attachments=new WeakMap(),hookOwners=new WeakMap()
 const callbacks=(ctx,carrier,name,...args)=>[...ctx.events.dispatch('emit',[carrier,name,...args])]
 function observe(ctx,list,args){for(const callback of list)try{Promise.resolve(callback(...args)).catch(error=>ctx.logger.warn(error))}catch(error){ctx.logger.warn(error)}}

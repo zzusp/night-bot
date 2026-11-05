@@ -1,0 +1,381 @@
+{
+  "sourceVersion": "0.2.1-alpha.2",
+  "purpose": "legacy physical formats, migration/verification and Windows ACL capabilities only; Pi remains current inference/context/journal authority",
+  "roots": {
+    "@deepseek-ai/dsh-session-persistence-jsonl": "src/legacy-v4/dsh-session-persistence-jsonl/lib/index.js",
+    "@deepseek-ai/dsh-session-format-catalog": "src/legacy-v4/dsh-session-format-catalog/lib/index.js",
+    "@deepseek-ai/dsh-session-format-catalog/message-projections": "src/legacy-v4/dsh-session-format-catalog/lib/types/message-projections.js",
+    "@deepseek-ai/dsh-sandbox-windows-acl": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js",
+    "@deepseek-ai/dsh-sandbox-windows-acl/runner": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js"
+  },
+  "packages": [
+    {
+      "name": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format-catalog",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format-v3-to-v4",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-compaction-image-offload",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-subprocess",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    },
+    {
+      "name": "@deepseek-ai/dsh-win32-process",
+      "version": "0.2.1-alpha.2",
+      "license": "MIT"
+    }
+  ],
+  "files": [
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "027803dde72aac7038253f0a8ff9fdcdbf0eb8cad53ed26efa3ec610f01587e7",
+      "sha256": "927bd34954c7b864bbff85aa720351dd88ad318e97a24cdaa362ff97ddd95056",
+      "target": "src/legacy-v4/dsh-session-persistence-jsonl/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "836bbb772ab505c299f1a4a246164c50c7c08b67ab0d17f1251d7ea2cd8c1818",
+      "sha256": "c5ff139253d004adf1ad689dce6a2637d4fb8e4d4dde761f000c88f41bf2182e",
+      "target": "src/legacy-v4/dsh-session-format-catalog/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "sourcePath": "lib/types/message-projections.js",
+      "sourceSha256": "c63245bf0c22fbb6bca4de7029437611bac766ca2527e89012f9a6a42c4f907d",
+      "sha256": "3c3feec53707805537805f07e9efe871f17586b9dea8c530b8cce0345b33d492",
+      "target": "src/legacy-v4/dsh-session-format-catalog/lib/types/message-projections.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "83379e9c6e8bb725d0ed48ad086fc666bfe151c8c1a345e29e3da5b998aa4fd8",
+      "sha256": "83379e9c6e8bb725d0ed48ad086fc666bfe151c8c1a345e29e3da5b998aa4fd8",
+      "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "sourcePath": "lib/runner.js",
+      "sourceSha256": "9159aaa995d417e5948dd1cc3d8cd40616270e320048e577c58a1c65be3f3a2d",
+      "sha256": "67b71b8988583451a8c21451f06960f5266d3d27d133276aa74cd7096a612246",
+      "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "6c7417ec2cd555e2781197d91c4566c88ffcf2728f362d7a2937859be57226ec",
+      "sha256": "dd17e5db7dbd6747c4f3d66940bb73927b3b3046e70debe3e4b4060f4392c619",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v3-to-v4",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "a6b974d110572bd0b16aa7ab09a30d9061944e8dc9f811e8c4a35e4891f83f12",
+      "sha256": "a9b6b6a400fa5fb667b204610e16960a8a11e1bbb963d498b1483a225b269ed1",
+      "target": "src/legacy-v4/dsh-session-format-v3-to-v4/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-compaction-image-offload",
+      "sourcePath": "lib/types/projection.js",
+      "sourceSha256": "205b873f17bd73e96f474e9f2bae3dd92375b6e29d706f34bee24e869507e113",
+      "sha256": "205b873f17bd73e96f474e9f2bae3dd92375b6e29d706f34bee24e869507e113",
+      "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/projection.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "1b3bff6aaf28ca62a864cf97b9aa9aa45ab76de5e459f7881ba4bc8de73490b1",
+      "sha256": "124973e1fa70ec87c05f4559d86c431e7438e69e8e52aca3efc172ca4062bfdc",
+      "target": "src/legacy-v4/dsh-session-format-v0-to-v1/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "b2b401d880bb000017ba8663c4448b501427b23a1cd2f9fdb04cb7ec9d763eff",
+      "sha256": "9220d58a1c2e58ba1494733dff3d0966c54ad283d498a845f030c54104407afa",
+      "target": "src/legacy-v4/dsh-session-format-v1-to-v2/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "0dc56fb447e9046fc25995bcd08dbac26e832eba6e9eb583ef49d26467c27cd7",
+      "sha256": "8c9207e89b5fa416d054bb85c7b04df521d5fac1a42a0f6859a81b6a55d348e4",
+      "target": "src/legacy-v4/dsh-session-format-v2-to-v3/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "sourcePath": "lib/types-Cl_DXjhk.js",
+      "sourceSha256": "0bb3a34508785bdc34626542f9358d398fd9f60fdaf4b48201dfdff2122f25fc",
+      "sha256": "d42375a720d7f628a93cde5cd4a8964f3d75cd1d2fcd589d379d210883e91ee4",
+      "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/types-Cl_DXjhk.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-subprocess",
+      "sourcePath": "lib/control.js",
+      "sourceSha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+      "sha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+      "target": "src/legacy-v4/dsh-subprocess/lib/control.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-compaction-image-offload",
+      "sourcePath": "lib/types/project-message.js",
+      "sourceSha256": "8f8341afd28e967df5aa57f5f4d3d7c9a386fee39c91f4899f779c470ae3198b",
+      "sha256": "b1eb62116bd628513ebc4b85debf591bcdce0cad6e1439aedd36577eaaf50c30",
+      "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/project-message.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-win32-process",
+      "sourcePath": "lib/index.js",
+      "sourceSha256": "622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9",
+      "sha256": "034c397a6da2d41904d156a5e3e520b6fc2e95b26643c7e4dd0ad83c3790bd23",
+      "target": "src/legacy-v4/dsh-win32-process/lib/index.js"
+    }
+  ],
+  "rewrites": [
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-catalog",
+      "target": "src/legacy-v4/dsh-session-format-catalog/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-persistence",
+      "target": "src/native-persistence-protocol.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-llm",
+      "target": "src/native-llm-protocol.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session",
+      "target": "src/native-session-protocol.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v3-to-v4",
+      "target": "src/legacy-v4/dsh-session-format-v3-to-v4/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-catalog/message-projections",
+      "target": "src/legacy-v4/dsh-session-format-catalog/lib/types/message-projections.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session",
+      "target": "src/native-session-protocol.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-compaction-image-offload/projection",
+      "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/projection.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "target": "src/legacy-v4/dsh-session-format-v0-to-v1/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "target": "src/legacy-v4/dsh-session-format-v1-to-v2/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "target": "src/legacy-v4/dsh-session-format-v2-to-v3/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v3-to-v4",
+      "target": "src/legacy-v4/dsh-session-format-v3-to-v4/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-catalog",
+      "file": "lib/types/message-projections.js",
+      "specifier": "@deepseek-ai/dsh-compaction-image-offload/projection",
+      "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/projection.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "file": "lib/runner.js",
+      "specifier": "@deepseek-ai/dsh-subprocess/control",
+      "target": "src/legacy-v4/dsh-subprocess/lib/control.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-util-values",
+      "target": "src/native-values.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v3-to-v4",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "target": "src/legacy-v4/dsh-session-format-v2-to-v3/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v3-to-v4",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-util-values",
+      "target": "src/native-values.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "target": "src/legacy-v4/dsh-session-format-v0-to-v1/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-llm",
+      "target": "src/native-llm-protocol.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v1-to-v2",
+      "target": "src/legacy-v4/dsh-session-format-v1-to-v2/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format",
+      "target": "src/legacy-v4/dsh-session-format/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session-format-v2-to-v3",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-session-format-v0-to-v1",
+      "target": "src/legacy-v4/dsh-session-format-v0-to-v1/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "file": "lib/types-Cl_DXjhk.js",
+      "specifier": "@deepseek-ai/dsh-win32-process",
+      "target": "src/legacy-v4/dsh-win32-process/lib/index.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "file": "lib/types-Cl_DXjhk.js",
+      "specifier": "@deepseek-ai/dsh-lazy-require",
+      "target": "src/process/contracts.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "file": "lib/types-Cl_DXjhk.js",
+      "specifier": "@deepseek-ai/dsh-skill",
+      "target": "src/native-skill-protocol.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-compaction-image-offload",
+      "file": "lib/types/project-message.js",
+      "specifier": "@deepseek-ai/dsh-util-values",
+      "target": "src/native-values.js"
+    },
+    {
+      "package": "@deepseek-ai/dsh-win32-process",
+      "file": "lib/index.js",
+      "specifier": "@deepseek-ai/dsh-lazy-require",
+      "target": "src/process/contracts.js"
+    }
+  ],
+  "externalImports": [
+    "@deepseek-ai/node-addon-system/flock",
+    "@deepseek-ai/schemastery",
+    "koffi",
+    "yaml"
+  ],
+  "worker": {
+    "sourceSha256": "2589f80da04b1848af377da5583def9dc847bf1136c020c655576b6f68078eec",
+    "target": "src/legacy-v4/dsh-session-persistence-jsonl/lib/worker.js",
+    "sha256": "6dc4a8a779dde0b5c02b32a0edd520f8d1e72e04e2e5b108769d10df660564a2",
+    "change": "reuse main owned verifier in an isolated ESM worker; exclude old bundled LlmRuntime and duplicated SDK graph"
+  }
+}
