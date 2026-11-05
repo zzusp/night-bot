@@ -1,3 +1,68 @@
+# Pi native rebuild: maintenance and publication stage
+
+This stage continues `d2e148e`; full DSH independence remains unfinished.
+
+- Live persistence and offline maintenance share `runtime/pi-journal.js`. Offline
+  evidence reads exactly the task router's Pi filename and location; it never
+  discovers v4 logs or repairs tails. It validates Pi identity, tree, provenance,
+  event sequence, each commit checksum/count, complete physical bytes and stable
+  file identity. Both ancestor links and file symlink/hardlink aliases are refused.
+  Process identity, original ledger/binding/operation digests and no-replay checks
+  remain. The reader uses the router's exported path helper so task-layout changes
+  can be integrated without another hardcoded storage layout.
+- Portable path decoding is an explicit argument shared with live inspection.
+  Missing decoding refuses the proof; relocation does not rewrite user text or
+  opaque effect receipts. The task service passes its installed path codec;
+  offline inspectors accept that same explicit codec.
+- Local session publication is now a private application capability. Foreign or
+  prototype-forged Session facades cannot attach. Public method overrides cannot
+  redirect accepted events, and committing an accepted event is private. Detach,
+  reentrancy rejection, observer containment, sealed instances and flush/drain
+  behavior remain tested. The Session event/folding protocol is still derived
+  code, not a completed rewrite; its MIT notice remains.
+- Removed the independent original Session fixture and dead original code-tool /
+  tool-result pipeline implementations. The active application code transport,
+  schema validation, tool admissions, durable dispatch barriers and cancellation
+  were retained and tested, including real isolated Node worker execution.
+- Main runtime/routing test hosts now mount local filesystem, shell, job, skill,
+  policy and Pi modules. They do not resolve a DSH profile. Historical Windows
+  rc2 substitution was removed. Windows producer-bound durable job evidence is
+  still absent in NativeJobs; the Windows acceptance cases explicitly remain
+  blocked, rather than substituting a different provider to claim support.
+- Default Host plugin rows now pass the same manifest/Include preflight as agent
+  presets. DSH package identities are refused even without declared peers. An
+  actual Host test proves rejected plugin code never evaluates.
+- Removed **65 more direct DSH development declarations**, leaving **84**. This is
+  declaration cleanup, not removal of all transitive development packages. The
+  installed production graph has 278 visited nodes and zero registry DSH packages.
+  Spawn/fork tests now assert application behavior directly instead of loading
+  removed original provider packages solely for parity. Source-derived algorithms
+  and corresponding notices still remain elsewhere.
+
+Validation: **591 default, 142 runtime, 47 routing and 17 Linux containment pass**.
+The containment group has one Windows-only skip. Maintenance regressions add
+33 passes and one platform skip, but include six cases already in the default
+count; focused repeats are not additional coverage. Actual Pi cold maintenance
+recovery also passes without a further model/tool run. Frozen install, source
+accounting/import/provenance guards and diff checks pass.
+Evidence: [pi-native-stage2-validation.json](pi-native-stage2-validation.json).
+
+Integration remains blocked: Library metadata resolved both requested bundles,
+but the current supported Library download helper failed before transferring any
+bytes with `hosted apps tools/list request failed with HTTP status 401`. No raw
+URL fallback was used, no bundle hash/validity is claimed and no merge was attempted.
+The required task/channel commits remain `8fa47a2` and `066f334` from baseline
+`47a59ae`. Their product behaviors still need joint regression after retrieval.
+
+Next work remains removal of the DSH-shaped message/event facade and LLM adapters,
+Pi AgentTool-native definitions, remaining historical test hosts and namespace
+aliases, then independent process/platform/ACL implementations with real kernel
+proofs. In particular, current NativeJobs does not provide producer-bound durable
+job evidence for the reviewed Windows probe. It must continue to fail closed.
+No live vendor/channel acceptance, push, merge, CI or deployment was performed.
+
+---
+
 # Pi native rebuild: first removal stage
 
 Base: `feat/pi-headless-runtime` / `47a59ae318bf50ec85caa3b0af0ecd9a9a9841d6`.

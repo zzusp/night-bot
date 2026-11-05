@@ -1,5 +1,8 @@
+import {Context} from '@deepseek-ai/cordis'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Group from '@deepseek-ai/cordis-plugin-group'
+import {LlmAdapter} from '../../src/native-llm-protocol.js'
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { openResidentStore } from '../../packages/dingtalk-dsh-assistant/store.js'
@@ -9,27 +12,11 @@ import { registerNativeCleanup, nativeLifecycleSignal, nativeCleanupSignal, nati
 // Use one installed native composition, including its real preset and process providers.
 // No manager, agent, persistence, filesystem, shell, or control-store implementation is mocked.
 export const nativeShell = process.platform === 'win32' ? 'pwsh' : 'bash'
-export function loadNativeTestProfile(path) {
-  try {
-    const profile = createRequire(pathToFileURL(resolve(path)))
-    const native = createRequire(profile.resolve('@deepseek-ai/dsh-base'))
-    const Context = profile('@deepseek-ai/cordis').Context
-    const Loader = profile('@deepseek-ai/cordis-plugin-loader').default
-    const LlmAdapter = native('@deepseek-ai/dsh-llm').LlmAdapter
-    for (const name of ['workspace', 'fs-local', 'tool-fs', 'tool-' + nativeShell, nativeShell + '-local', 'subprocess-local']) native.resolve('@deepseek-ai/dsh-' + name)
-    return { profile, native, Context, Loader, LlmAdapter, available: true }
-  } catch (error) {
-    return { available: false, reason: 'Full native profile required: ' + path + '; ' + error.message.split('\n')[0] }
-  }
-}
-const defaultProfile = loadNativeTestProfile(process.env.DSH_NATIVE_TEST_PROFILE ?? '.dsh/profiles/resident/package.json')
-export const { available, reason } = defaultProfile
+export const available=true,reason=undefined
 
 let closeSequence = 0
 export async function nativeTaskHost(root, decide, options = {}) {
-  const { profile, native, Context, Loader, LlmAdapter, available, reason } = options.nativeProfile ?? defaultProfile
-  if (!available) throw new Error(reason)
-  const row = (name, config) => ({ name: pathToFileURL(native.resolve('@deepseek-ai/dsh-' + name)).href, ...(config ? { config } : {}) })
+  const row = (name, config) => ({name:new URL('../../src/native-'+name+'.js',import.meta.url).href,...config?{config}:{}})
   const ctx = new Context(), requests = [], auxiliaryRequests = [], sent = [], readbacks = [], toolResults = []
   if (process.env.NIGHT_BOT_TEST_DEBUG) ctx.on('agent/error', event => console.error('PI_ERROR', event.error))
   const h = { ctx, requests, auxiliaryRequests, sent, readbacks, toolResults, root }
@@ -75,7 +62,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
   ctx.baseUrl = pathToFileURL(join(root, 'cordis.yml')).href
   await ctx.plugin(Loader)
   signal?.throwIfAborted()
-  ctx.loader.builtins.group = profile('@deepseek-ai/cordis-plugin-group').default
+  ctx.loader.builtins.group = Group
   const artifactPolicyEntry = options.artifactPolicyEntry ?? process.env.DSH_ARTIFACT_POLICY_MODULE
   const policyRow = { name: artifactPolicyEntry ? pathToFileURL(resolve(artifactPolicyEntry)).href : new URL('../../src/native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: root } }
   await ctx.loader.root.update([

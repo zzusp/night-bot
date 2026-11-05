@@ -1,0 +1,98 @@
+{
+  "base": "d2e148eb444c0aa9941bef61927388f103efec1e",
+  "completeDshIndependence": false,
+  "groups": {
+    "default": {
+      "pass": 591,
+      "fail": 0,
+      "skip": 0
+    },
+    "runtime": {
+      "pass": 142,
+      "fail": 0,
+      "skip": 0
+    },
+    "routing": {
+      "pass": 47,
+      "fail": 0,
+      "skip": 0
+    },
+    "containment": {
+      "pass": 17,
+      "fail": 0,
+      "skip": 1
+    },
+    "maintenance": {
+      "pass": 33,
+      "fail": 0,
+      "skip": 1,
+      "overlap": "Includes six default maintenance journal cases"
+    },
+    "cold-maintenance": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "focused": {
+      "pass": 66,
+      "fail": 0,
+      "skip": 0,
+      "overlap": "Subset of default group repeated after final strict-reader changes"
+    },
+    "platform-blockers": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 4
+    }
+  },
+  "remainingDirectDshDevDependencies": 84,
+  "removedDirectDshDevDeclarations": 65,
+  "productionGraph": {
+    "nodes": 278,
+    "registryDshPackages": []
+  },
+  "frozenInstall": "passed --ignore-scripts",
+  "containmentExecutor": "AGENTS.md-authorized escalation only for nested application bubblewrap; application policy unchanged",
+  "integration": {
+    "status": "blocked before byte transfer",
+    "helperError": "hosted apps tools/list request failed with HTTP status 401",
+    "downloadedBundles": 0,
+    "taskCommit": "8fa47a255cfc8044b470bd8f104f89ed3211cc83",
+    "channelCommit": "066f334121cf18442863e70059a7bf6ff216b6bc",
+    "note": "Both Library metadata records resolved; neither byte hash nor bundle validity could be verified. No merge attempted."
+  },
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-stage2-default.txt",
+      "sha256": "54b8574fbbb29e89102d7988a5d2f305d0e21645497be624a9fb1495d7ebee7e"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-runtime.txt",
+      "sha256": "e00796732569f0776e3496758ea61c89c34b432b771c6ceb86712d8f052d03a3"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-routing.txt",
+      "sha256": "5a263cf3a3681dbfb7f923f083842d3be9bb0f4c4209d5e3bebcf5535c7a963b"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-containment.txt",
+      "sha256": "744f1fdce660990ff165f6e7cf2bd79a902c244b1de298f89d24a31bb75863bc"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-maintenance.txt",
+      "sha256": "6db4d3c9dbed02e9327c08f41f01eebba1af89c31c2750764cfa0dc987668c55"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-cold-maintenance.txt",
+      "sha256": "672f3f429a662f65260f0d805a7ab1677cc3762a7577ff9d6dc8c6d8325fc103"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-focused.txt",
+      "sha256": "9f90f987508384d0c0a8f87797202739f9db58162c7b5069203f002459b5c5c1"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage2-platform-blockers.txt",
+      "sha256": "89fe836e329358a04ad2f59a20e2d910ce935e21994f0df428ae57b99301d688"
+    }
+  ]
+}

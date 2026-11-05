@@ -11,10 +11,11 @@ import {entryListSchema,applyEntryPatches} from '@deepseek-ai/cordis-plugin-incl
 // a profile compatibility.json cannot turn an unsupported ABI into support.
 export function evaluatePluginCompatibility(manifest) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new TypeError('Plugin manifest must be an object')
-  if (!Object.hasOwn(manifest, 'peerDependencies')) return
+  const peers={}
+  if(typeof manifest.name==='string'&&(manifest.name==='@deepseek-ai/dsh'||manifest.name.startsWith('@deepseek-ai/dsh-')))peers[manifest.name]='unsupported package'
+  if (!Object.hasOwn(manifest, 'peerDependencies')) return Object.keys(peers).length?{name:manifest.name,version:manifest.version,peers}:undefined
   const dependencies = manifest.peerDependencies
   if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) throw new TypeError('Plugin peerDependencies must be an object')
-  const peers = {}
   for (const [name, range] of Object.entries(dependencies)) {
     if (typeof range !== 'string') throw new TypeError('Plugin peer dependency range must be a string')
     if (name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-')) peers[name] = range

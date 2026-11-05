@@ -1,0 +1,42 @@
+✔ maintenance reopen through HTTP creates a current reconciliation request without replay: succeeded (295.773445ms)
+✔ maintenance reopen through HTTP creates a current reconciliation request without replay: scope-missing (172.131717ms)
+✔ real HTTP/service/ledger check is zero-write; reply is digest-bound/idempotent; missing-result drain uses the same audit (103.928484ms)
+✔ formal check/probe/reply preserves unknown and original arguments: direct launch (129.414735ms)
+﹣ formal check/probe/reply preserves unknown and original arguments: PG wrapper (0.263315ms) # Windows task workspace required
+✔ retained maintenance audit binds the native input, feedback, terminal history and original process identities (43.798496ms)
+✔ maintenance preserves original ledger and history: false (5.324138ms)
+✔ maintenance preserves original ledger and history: true (0.994762ms)
+✔ maintenance accepts reviewed non-OOM exit only with full original-scope exclusion (1.132029ms)
+✔ maintenance rejects no explicit approval (0.267741ms)
+✔ maintenance rejects wrong current Host (0.335103ms)
+✔ maintenance rejects stale digest (0.251357ms)
+✔ maintenance rejects new live task (0.251076ms)
+✔ maintenance rejects other unfinished execution (1.273731ms)
+✔ maintenance rejects live group (0.436224ms)
+✔ maintenance rejects uncancelled original (0.615763ms)
+✔ maintenance rejects not recovery (0.298608ms)
+✔ maintenance rejects another unresolved call (0.330395ms)
+✔ maintenance rejects old settled receipt (0.388173ms)
+✔ maintenance rejects wrong registration (2.013772ms)
+✔ maintenance rejects unreviewed scope (0.292829ms)
+✔ maintenance rejects residual producer (0.424417ms)
+✔ maintenance rejects residual writer (0.352329ms)
+✔ maintenance rejects listener (0.282554ms)
+✔ maintenance rejects stale observation (0.27367ms)
+✔ maintenance rejects lost retained artifacts (0.405689ms)
+✔ maintenance retains only unaudited restart work; corrupt audit rejects: false (1.122885ms)
+✔ maintenance retains only unaudited restart work; corrupt audit rejects: true (0.37985ms)
+✔ offline maintenance reads exact committed Pi history without taking a writer lease (52.851539ms)
+✔ offline proof rejects uncommitted Pi tails while ordinary read-only inspection leaves them untouched (28.740643ms)
+✔ offline Pi evidence rejects changed records and unsupported headers without rewriting bytes (24.80629ms)
+✔ offline Pi evidence rejects symbolic/hard-linked files and a linked ancestor (11.804361ms)
+✔ old v4 physical logs cannot substitute for missing Pi evidence (12.228398ms)
+✔ portable maintenance uses the same explicit controlled-path codec as live Pi inspection (28.908945ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 1792.794589

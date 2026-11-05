@@ -19,7 +19,7 @@ test('retained maintenance audit binds the native input, feedback, terminal hist
   { type: 'agent/inbox/spliced', data: { inserted: [], removedCount: 1 } }, { type: 'turn/end', data: { reason: { kind: 'blocked' } } })
  f.original.forEach((event, seq) => { event.seq = seq })
  const encoded = structuredClone(f.original)
- encoded.at(-1).sourceEventSeqs = [[0, 2], 4]
+ encoded.at(-1).sourceEventSeqs = [0, 1, 2, 4]
  f.original.at(-1).sourceEventSeqs = [0, 1, 2, 4]
  const audit = await maintenanceEvidenceFixture(root, binding, encoded), operations = [f.operation]
  const args = { workspace: root, binding, events: f.original, calls: f.original.filter(event => event.type === 'tool/call'), operations, evidence: audit.evidence, observeProcesses: async () => [] }

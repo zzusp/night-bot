@@ -563,8 +563,9 @@
     {
       "source": "native-maintenance-drain.js",
       "sourceSha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b",
-      "status": "retained",
-      "sha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b"
+      "status": "adapted",
+      "sha256": "ea189012c00c9ea8dc51a38e2c6f437b1976190981bb91e30d5827233db04c3a",
+      "adaptation": "Strict shared Pi journal decoding and exact physical evidence binding; no DSH v4 file discovery or normalization."
     },
     {
       "source": "native-postgres-wrapper.js",
@@ -1016,7 +1017,7 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "1c477bd82b072b6249fc8f3af27b2af3d7ade771de8189fff4a49f92ab5ac0e0",
+      "sha256": "c4de8f3baa552e8e906d4233d45322855d242e2a74aabef3e47fdd3983e38033",
       "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests."
     },
     {

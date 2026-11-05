@@ -115,3 +115,15 @@ Local `native-fs-protocol.js` and the abstract/error additions in `native-sandbo
 `native-llm-errors.js`, `native-llm-protocol.js`, `native-tool-protocol.js` and `native-subagent-errors.js` retain MIT public contracts/algorithms from the corresponding0.2.1-alpha.2 LLM/tools/subagent SDK packages (individual licenses in `licenses/`). AST extraction excludes old LlmRuntime, ToolRuntime and ToolLayer implementations; historical runtime names map to existing native owners. Independent full original runtime references are test-only fixtures with verified local support imports and original private markers/scheduler retained; hashes and extraction details are in `docs/execution-protocol-reference-manifest.json`. Default product attribution identifies Night Bot; the explicit custom-identity API remains.
 
 `native-session-protocol.js` retains MIT data/audit/publication/inbox contracts from `dsh-session` 0.2.1-alpha.2; `native-persistence-protocol.js` retains the abstract IO/error contract from `dsh-session-persistence`. These still require their notices. DSH historical JSONL import, v0–v4 converters, format catalog, verifier worker and the original bundled test reference have been deleted. Their two standalone notices and seven directory-local licenses were removed with the corresponding copied sources. Historical tests still importing registry DSH packages receive the packages' own licenses; this is not a claim that all development DSH dependencies are gone. `src/legacy-v4/` now retains only the attributed Windows ACL/process support and image-offload projection used by the application. Retained hashes and removed-format accounting remain in `docs/legacy-runtime-source-manifest.json`.
+
+## Further Pi migration stage
+
+Session publication now uses an application-private capability and branded local
+instances, replacing the DSH method-interception compatibility bridge. The original
+Session differential fixture was deleted; event validation and folding in
+`native-session-protocol.js` remain attributed DSH-derived code, so its notice is
+still required. Unreachable original `createRunCodeTool` and tool-result pipeline
+helpers were removed from `native-tool-protocol.js`; retained schemas/SDK rendering
+remain attributed, and the application code transport keeps its isolation/cancel
+semantics. Removing 65 unused direct SDK development declarations does not remove
+the remaining development graph or the copied runtime code's license duties.

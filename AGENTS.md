@@ -21,8 +21,11 @@ Read `docs/MIGRATION.md` and `docs/VALIDATION.md` before changing runtime bounda
 Pi core owns inference/tool iteration; Pi SessionManager owns durable history and
 model context. The application owns authorization and side-effect receipts. Local LLM routing, live-agent ownership and tool execution are application-owned.
 Production dependency graphs must contain no external registry DSH packages.
-Local attributed audit/event/format/ACL compatibility is intentional; Pi remains
-current context/history and inference authority. Preserve its guards, audit,
+Attributed audit/event/ACL implementations remain temporary migration work; Pi is
+current context/history and inference authority. Do not add DSH data import or
+plugin ABI compatibility. Application session publication rejects foreign facades.
+Runtime and offline maintenance must share strict Pi journal decoding; maintenance
+proofs reject uncommitted tails and require explicit portable-path decoding. Preserve its guards, audit,
 cancellation/drain, ownership and no-replay contracts. Historical namespace
 aliases and pnpm-workspace.yaml are part of the runtime artifact. Run the native
 source/hash/import guard after changing compatibility code.

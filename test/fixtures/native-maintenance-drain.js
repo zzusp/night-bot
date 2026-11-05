@@ -1,3 +1,6 @@
+import {SessionManager} from '@earendil-works/pi-coding-agent'
+import {createHash} from 'node:crypto'
+import {piJournalFilename} from '../../src/runtime/pi-journal.js'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isolationDigest as hash } from '../../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
@@ -6,8 +9,17 @@ import { isolationDigest as hash } from '../../packages/dingtalk-dsh-assistant/n
 export async function maintenanceEvidenceFixture(root, binding, events, rawText) {
   const directory = join(root, 'maintenance-audit'), logs = join(root, 'tasks', binding.taskId, '.dsh', 'sessions')
   await mkdir(directory, { recursive: true }); await mkdir(logs, { recursive: true })
-  const text = rawText ?? [{ type: 'session', id: binding.sessionId, timestamp: '2026-01-01T00:00:00Z' }, ...events].map(row => JSON.stringify(row)).join('\n') + '\n'
-  const logFile = join(logs, 'session.v4.jsonl'); await writeFile(logFile, text)
+  let text=rawText
+  if(text===undefined){
+    const manager=SessionManager.inMemory(root);manager.newSession({id:binding.sessionId})
+    manager.appendCustomEntry('night.header',{header:{id:binding.sessionId,version:4,createdAt:1,isSeeded:false,cwd:root},inheritedEventCount:0})
+    for(const event of events)manager.appendCustomEntry('night.event',{event})
+    const header=manager.getHeader(),batch=manager.getEntries()
+    const entriesHash=createHash('sha256').update(JSON.stringify(header)+'\n'+batch.map(e=>JSON.stringify(e)).join('\n')).digest('hex')
+    manager.appendCustomEntry('night.commit',{eventCount:events.length,previousCommit:null,entriesHash})
+    text=[header,...manager.getEntries()].map(e=>JSON.stringify(e)).join('\n')+'\n'
+  }
+  const logFile=join(logs,piJournalFilename(binding.sessionId));await writeFile(logFile,text)
   const expectedHost = { pid: 412, creationDate: '2026-01-01T00:00:00.123456Z', commandLineSha256: 'a'.repeat(64) }
   const frozen = { executionId: binding.executionId,
     binding: Object.fromEntries(['taskId','executionId','sessionId','requirementRevision','controlRevision','inputVersion','inputDigest','leaseEpoch'].map(key => [key, binding[key]])),

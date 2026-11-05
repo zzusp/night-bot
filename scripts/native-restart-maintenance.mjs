@@ -14,7 +14,7 @@ function runFixedProbe(plan) {
 
 // This proves only a maintenance cutover boundary. It never settles a job,
 // writes the ledger, or grants the runtime operator reconciliation.
-export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, runProbe = runFixedProbe, history = readNativeHistory }) {
+export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, runProbe = runFixedProbe, history = readNativeHistory, pathCodec }) {
   const fail = () => { throw Error('DEPLOY_RESTART_ISOLATION_UNPROVEN') }
   if (proposal?.schema !== 'native-restart-maintenance-v1' || proposal.expectedOwnerPid !== ownerPid
     || proposal.operatorApproval?.kind !== 'explicit-stop-deploy-resume'
@@ -35,7 +35,7 @@ export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, 
       || !execution || execution.taskId !== operation.taskId || !binding || binding.sessionId !== execution.sessionId
       || operation.job.owner !== execution.sessionId || !execution.sessionBound || execution.cancelRequested !== true
       || !execution.drained && !execution.recovering || execution.definition?.executionBackend === 'claude-code') fail()
-    const stored = history(workspace, execution), events = stored.events
+    const stored = history(workspace, execution,{pathCodec}), events = stored.events
     if (!events.some(event => event.type === 'plugin:dingtalk/execution-session'
       && event.data.identity?.taskId === operation.taskId && event.data.identity.executionId === execution.executionId
       && event.data.identity.sessionId === execution.sessionId)) fail()
@@ -97,7 +97,7 @@ function streamControlTable(db, table, { where = '', unknown = false } = {}) {
   }
   return { count, sha256: digest.digest('hex'), ...(unknown ? { unknown: { count: unknownCount, sha256: unknownDigest.digest('hex') } } : {}) }
 }
-export function inspectDrainFailureMaintenance({ db, workspace, proposal, ownerPid, freeze = false, history = readNativeHistory }) {
+export function inspectDrainFailureMaintenance({ db, workspace, proposal, ownerPid, freeze = false, history = readNativeHistory, pathCodec }) {
   const fail = reason => { throw Error('DEPLOY_DRAIN_MAINTENANCE_' + reason) }
   const validTime = value => typeof value === 'string' && Number.isFinite(Date.parse(value))
   if (proposal?.schema !== 'native-drain-maintenance-v1' || proposal.expectedHost?.pid !== ownerPid
@@ -140,7 +140,7 @@ export function inspectDrainFailureMaintenance({ db, workspace, proposal, ownerP
     const response = item.cancelResponse
     if (![400, 500].includes(response?.statusCode) || !validTime(response.observedAt)
       || !/execution_(?:process|session)_drain_failed/u.test(JSON.stringify(response.body))) fail('CANCEL_RECEIPT')
-    const stored = history(workspace, execution), events = stored.events
+    const stored = history(workspace, execution,{pathCodec}), events = stored.events
     const identity = events.filter(event => event.type === 'plugin:dingtalk/execution-session')
     if (identity.length !== 1 || !['taskId', 'executionId', 'sessionId'].every(key => identity[0].data?.identity?.[key] === execution[key])) fail('SESSION_IDENTITY')
     const inputs = events.flatMap(event => event.type === 'user/message' ? [{ seq: event.seq, source: event.data?.source }]

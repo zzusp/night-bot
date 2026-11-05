@@ -1,3 +1,4 @@
+import {decodePiJournal,piJournalFilename} from './runtime/pi-journal.js'
 import { restorePiReplay } from './pi-replay.js'
 import { Service } from '@deepseek-ai/cordis'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
@@ -15,9 +16,6 @@ const zeroUsage = () => ({ input:0, output:0, cacheRead:0, cacheWrite:0, totalTo
 const parseArgs = raw => { try { return JSON.parse(raw || '{}') } catch { return raw } }
 const hostMessage = event => !event ? null : event.type === 'user/message' ? event.data
   : ['system/message','developer/message','assistant/message','tool/result'].includes(event.type) ? event.data.message : null
-const logicalEvent = entry => entry.type === 'custom' && entry.customType === 'night.event' ? entry.data.event
-  : entry.type === 'message' && !entry.message.night?.copy ? entry.message.night?.event
-  : entry.type === 'custom_message' && !entry.details?.copy ? entry.details?.event : undefined
 const fail = code => Object.assign(new Error(code), { code })
 const clean = value => structuredClone(value)
 
@@ -74,32 +72,9 @@ async function acquire(path,id) {
  */
 async function load(path,id,codec) {
   const bytes=await readFile(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
-  let offset=0, committedBytes=0, entries=[], committed=[], header,previousCommit=null,batch=[];const seen=new Set()
-  for(const raw of bytes.toString('utf8').split(/(?<=\n)/)) {
-    if(!raw.endsWith('\n'))break
-    let entry;try{entry=JSON.parse(raw)}catch{throw fail('PI_SESSION_JOURNAL_CORRUPT')}
-    offset+=Buffer.byteLength(raw)
-    if(!header) {
-      if(entry.type!=='session'||entry.version!==3||entry.id!==id)throw fail('PI_SESSION_FORMAT_UNSUPPORTED')
-      header=entry;continue
-    }
-    if(typeof entry.id!=='string'||seen.has(entry.id)||entry.parentId!==null&&!seen.has(entry.parentId))throw fail('PI_SESSION_TREE_CORRUPT')
-    entries.push(entry);seen.add(entry.id)
-    if(entry.type==='custom'&&entry.customType==='night.commit'){
-      const hash=digest((previousCommit===null?JSON.stringify(header)+'\n':'')+batch.map(e=>JSON.stringify(e)).join('\n'))
-      if(entry.data.previousCommit!==previousCommit||entry.data.entriesHash!==hash)throw fail('PI_SESSION_CHECKSUM_MISMATCH')
-      committed=entries.slice();committedBytes=offset;previousCommit=entry.id;batch=[]
-    }else batch.push(entry)
-  }
-  if(!header||!committed.length)throw fail('PI_SESSION_COMMIT_REQUIRED')
-  const metadata=committed.find(e=>e.type==='custom'&&e.customType==='night.header')?.data
-  if(!metadata||metadata.header.id!==id)throw fail('PI_SESSION_IDENTITY_MISMATCH')
-  if(metadata.importedFrom!==undefined)throw fail('PI_SESSION_IMPORT_UNSUPPORTED')
-  const events=committed.map(logicalEvent).filter(Boolean).map(event=>codec?.readEvent(event)??event)
-  const logicalHeader=codec?.readHeader(metadata.header)??metadata.header
-  if(events.some((e,i)=>e.seq!==i)||committed.at(-1).data.eventCount!==events.length)throw fail('PI_SESSION_EVENT_SEQUENCE_INVALID')
-  validateStoredEvents(logicalHeader,events,{kind:'pi-jsonl',path})
-  return {header:logicalHeader,inheritedEventCount:metadata.inheritedEventCount,events,entries:committed,piHeader:header,committedBytes,totalBytes:bytes.length}
+  const result=decodePiJournal(bytes,id,{codec})
+  validateStoredEvents(result.header,result.events,{kind:'pi-jsonl',path})
+  return result
 }
 async function piContent(content,ctx,signal) {
   const result=[]
@@ -190,7 +165,7 @@ export default class PiSessionPersistence extends Service {
     if(!info){if(allowMissing)return;throw new SessionPersistenceNotFoundError(id)}
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1)throw fail('PI_SESSION_PATH_UNSAFE')
   }
-  path(id){if(typeof id!=='string'||!id)throw fail('PI_SESSION_ID_INVALID');return join(this.config.root,digest(id)+'.pi.jsonl')}
+  path(id){return join(this.config.root,piJournalFilename(id))}
   async create(header,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');header=materializeCreateHeader(header)
     await this.checkedRoot(true)

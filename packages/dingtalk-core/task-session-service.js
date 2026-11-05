@@ -279,7 +279,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     isRecoveryCurrent: binding => query('execution.recovery-current', { binding }),
     getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
     readRestartDrainProof: args => readAuditedRestartDrain({ ctx, query, ...args }),
-    readMaintenanceDrainProof: async args => readMaintenanceDrainProof({ workspace: root, ...args, operations: await query('operation.list', { taskId: args.binding.taskId }) }),
+    readMaintenanceDrainProof: async args => readMaintenanceDrainProof({ workspace: root, pathCodec:ctx.get?.('portablePaths'), ...args, operations: await query('operation.list', { taskId: args.binding.taskId }) }),
   }))
   const claudeExecutionSessions = suppliedClaudeExecutionSessions ?? (singleExecution?disabledExecutionSessions():createClaudeExecutionSessions({ ctx,
     isCurrent: binding => query('execution.current', { binding }),

@@ -1,0 +1,12 @@
+﹣ managed probe passes authoritative LF-preserving bytes through real native pwsh, jobs, persistence and strict reader: OOM (0.86042ms) # Windows native pwsh required
+﹣ managed probe passes authoritative LF-preserving bytes through real native pwsh, jobs, persistence and strict reader: observed exit (0.198147ms) # Windows native pwsh required
+﹣ managed probe passes authoritative LF-preserving bytes through real native pwsh, jobs, persistence and strict reader: retained PG wrapper (0.087551ms) # Windows native pwsh required
+﹣ managed native entry rejects tampering and policy denial; a failed real producer stays failed and its original call remains readable (0.164306ms) # Windows native pwsh required
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 4
+ℹ todo 0
+ℹ duration_ms 1225.812997

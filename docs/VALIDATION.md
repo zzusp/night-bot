@@ -1,3 +1,22 @@
+# Pi native maintenance/publication stage (2026-11-05)
+
+Current validation: **591 default +142 runtime +47 routing +17 Linux containment
+passes**. One containment Windows-only case is skipped. Maintenance reader tests
+and actual Pi cold recovery pass; focused repeats and overlap are recorded in
+[pi-native-stage2-validation.json](pi-native-stage2-validation.json), not added to
+these counts. Frozen install, source/import/provenance and diff checks pass.
+
+This stage fixes offline maintenance Pi decoding, removes the foreign Session
+publication bridge, ports runtime/routing test providers to local modules and
+removes 65 unused direct DSH dev declarations. **84 remain**; full DSH independence
+is unfinished. Windows producer-bound durable job evidence remains an explicit
+implementation blocker. No application containment check was disabled.
+
+The task/channel bundles were found in Library but supported materialization
+failed before byte transfer with HTTP 401. They have not been hash-verified or
+merged, and no joint integration success is claimed. No push/deploy/merge/CI.
+See [PI-NATIVE-REBUILD.md](PI-NATIVE-REBUILD.md). Earlier entries below are historical.
+
 # Pi native rebuild removal stage (2026-11-05)
 
 Current removal-stage validation: 584 default Pi tests passed; 278 retained

@@ -2,7 +2,6 @@
 import { isAbsolute } from "node:path";
 import { brandNumber, brandString } from "./native-brand.js";
 import { assertNever, deepFreeze, snapshotJsonValue } from "./native-values.js";
-import { scopeOf, scopeTarget } from "./native-scope.js";
 import { callConfigEquals } from "./native-llm-protocol.js";
 function SessionId(id) {
 	return brandString(id);
@@ -928,7 +927,21 @@ function invokeContainedSessionObservers(ctx, name, id, args, callbacks) {
 		ctx.logger.warn(`session "${id}": ${name} listener threw: ${String(error)}`);
 	}
 }
-const attachments = /* @__PURE__ */ new WeakMap();
+// Night Bot owns publication. External DSH-shaped objects and public method
+// overrides cannot acquire or redirect the publication capability.
+const applicationSessions=new WeakSet(),publications=new WeakMap();
+export const isApplicationSession=value=>applicationSessions.has(value);
+export function bindSessionPublication(session,entry){
+ if(!applicationSessions.has(session))throw new TypeError('Unsupported external Session facade');
+ if(publications.has(session))throw new Error('session is already attached to a store');
+ publications.set(session,entry);let active=true;
+ return()=>{if(!active)return;active=false;if(publications.get(session)!==entry)throw new Error('Session publication ownership lost');publications.delete(session)};
+}
+function publicationFor(session){
+ const entry=publications.get(session);
+ if(entry?.appending)throw new Error('session append cannot reenter while another append is being published');
+ return entry;
+}
 const PLUGIN_RECORD_TYPE = /^plugin:[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*$/u;
 function isPluginRecordType(type) {
 	return PLUGIN_RECORD_TYPE.test(type);
@@ -1027,6 +1040,7 @@ var Session = class Session {
 		return new Session(id, seed, header, eventState, inheritedEventCount, projections);
 	}
 	constructor(id, seed, header, mode = "snapshot", suppliedInheritedEventCount, projections = []) {
+        applicationSessions.add(this);
 		this.surfaceManager = new SurfaceManager(this.log, SessionLogOffset(0), projections);
 		const restoredHeader = mode === "snapshot" ? void 0 : validateRestoredSessionHeader(id, header);
 		if (seed !== void 0) for (const [index, source] of seed.entries()) {
@@ -1154,7 +1168,7 @@ var Session = class Session {
 		if (dataSnapshot === void 0) throw new Error(`session event "${type}" carries non-JSON-serializable data`);
 		const surfaceMetadataSnapshot = snapshotJsonValue(surfaceMetadata);
 		if (surfaceMetadataSnapshot === void 0) throw new Error(`session event "${type}" carries non-JSON-serializable surface metadata`);
-		const entry = this.publicationEntry();
+		const entry = publicationFor(this);
 		const event = deepFreeze({
 			type,
 			seq: SessionSeq(this.log.length),
@@ -1163,7 +1177,7 @@ var Session = class Session {
 			...surfaceMetadataSnapshot
 		});
 		validateSessionEventData(event, `session event "${type}" at seq ${event.seq}`);
-		this.commit(event, entry);
+		this.#commit(event, entry);
 		return event;
 	}
 	static {
@@ -1178,7 +1192,7 @@ var Session = class Session {
 	#appendRecord(type, data) {
 		const dataSnapshot = snapshotJsonValue(data);
 		if (dataSnapshot === void 0) throw new Error(`plugin record "${type}" carries non-JSON-serializable data`);
-		const entry = this.publicationEntry();
+		const entry = publicationFor(this);
 		const record = deepFreeze({
 			type,
 			seq: SessionSeq(this.log.length),
@@ -1187,7 +1201,7 @@ var Session = class Session {
 			ignorable: true
 		});
 		assertPluginRecordEvent(record);
-		this.commit(record, entry);
+		this.#commit(record, entry);
 		return record.seq;
 	}
 	/**
@@ -1195,18 +1209,14 @@ var Session = class Session {
 	* reenters while another append is being published.
 	* @returns the attachment, or undefined for a detached Session.
 	*/
-	publicationEntry() {
-		const entry = attachments.get(this);
-		if (entry?.appending) throw new Error("session append cannot reenter while another append is being published");
-		return entry;
-	}
+
 	/**
 	* Accept one frozen candidate at the next sequence number, enter it into the
 	* log, and notify `session/event` observers with per-listener containment.
 	* @param event - the candidate built at the current log length.
 	* @param entry - the attachment read before the candidate was built.
 	*/
-	commit(event, entry) {
+	#commit(event, entry) {
 		this.surfaceManager.validateNext(event);
 		if (entry !== void 0) entry.appending = true;
 		try {

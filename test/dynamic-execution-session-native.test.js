@@ -1,3 +1,5 @@
+import PiPersistence from '../src/pi-session-persistence.js'
+import {apply as installPiAuthority} from '../src/pi-authority.js'
 import { requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
 import SessionTitleService from '@deepseek-ai/dsh-session-title'
@@ -57,14 +59,14 @@ async function temp() {
 }
 
 // 只有 LlmAdapter 为脚本；每次 Host 都用真实原生 Loop、Tools、文件 JSONL 后端。
-async function host({ root, script = [submit('done')], isCurrent = async () => true, isRecoveryCurrent, repositoryInspect, tools, getWorkspaceDir } = {}) {
+async function host({ piPersistence=false, root, script = [submit('done')], isCurrent = async () => true, isRecoveryCurrent, repositoryInspect, tools, getWorkspaceDir } = {}) {
   root ??= await temp()
   const ctx = new Context()
   new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
   new SessionTitleService(ctx, { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 })
   new SystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
   new LlmRuntime(ctx); new ToolRuntime(ctx)
-  new JsonlSessionPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
+  installPiAuthority(ctx);new (piPersistence?PiPersistence:JsonlSessionPersistence)(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
   await ctx.plugin(SandboxPolicy, { mode: 'workspace-write', workspaceRoot: root })
   await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
   const requests = [], reads = [], effects = [], handles = []
@@ -517,14 +519,14 @@ test('native recovery validates durable identity and refuses missing bound sessi
   await assert.rejects(next.manager.recoverDrained({ binding: dynamic({ sessionId: 'missing-session', sessionBound: true }) }), { code: 'execution_session_missing' })
 })
 
-test('maintenance proof accepts actual native v4 history after cold inspection without another model or tool run', async t => {
-  const root = await temp(), first = await host({ root, script: [dynamicSubmit('original result')] })
+test('maintenance proof accepts actual committed Pi history after cold inspection without another model or tool run', async t => {
+  const root = await temp(), first = await host({ piPersistence:true,root, script: [dynamicSubmit('original result')] })
   await dynamicDrive(first)
   const events = (await inspectSession(first.ctx.sessionPersistence, dynamic().sessionId)).events
   await first.close()
   const raw = await readFile(await findSessionLog(root, dynamic().sessionId), 'utf8')
   const audit = await maintenanceEvidenceFixture(root, dynamic(), events, raw)
-  const next = await host({ root, script: () => { throw new Error('must not replay') } })
+  const next = await host({ piPersistence:true,root, script: () => { throw new Error('must not replay') } })
   t.after(() => next.close())
   const current = (await inspectSession(next.ctx.sessionPersistence, dynamic().sessionId)).events
   const proof = await readMaintenanceDrainProof({ workspace: root, binding: dynamic(), events: current,

@@ -1,53 +1,44 @@
-import { readFileSync, readdirSync, lstatSync } from 'node:fs'
-import { join, isAbsolute } from 'node:path'
+import {readFileSync, lstatSync, openSync, fstatSync, closeSync, constants} from 'node:fs'
+import {join,isAbsolute,dirname,resolve} from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { zstdDecompressSync } from 'node:zlib'
+import {decodePiJournal,piJournalFilename} from '../../src/runtime/pi-journal.js'
+import {taskSessionLogRoot} from './task-session-persistence.js'
 import { isolationDigest as hash } from './native-restart-isolation.js'
 
 const fail = reason => { throw Object.assign(new Error('DYNAMIC_MAINTENANCE_' + reason), { code: 'DYNAMIC_MAINTENANCE_' + reason }) }
 const time = value => typeof value === 'string' ? Date.parse(value) : NaN
 const bindingKeys = ['taskId', 'executionId', 'sessionId', 'requirementRevision', 'controlRevision', 'inputVersion', 'inputDigest', 'leaseEpoch']
 
-// Native v4 persists consecutive source sequences as ranges; inspection expands
-// them. Compare ranges without expanding untrusted or very large intervals.
-function comparableEvents(events) {
-  return events.map(event => {
-    if (!Object.hasOwn(event, 'sourceEventSeqs')) return event
-    if (!Array.isArray(event.sourceEventSeqs)) fail('NATIVE_HISTORY_CHANGED')
-    const ranges = []
-    for (const value of event.sourceEventSeqs) {
-      const range = Array.isArray(value) ? value : [value, value]
-      if (range.length !== 2 || range.some(item => !Number.isSafeInteger(item) || item < 0) || range[1] < range[0]) fail('NATIVE_HISTORY_CHANGED')
-      const previous = ranges.at(-1)
-      if (previous && previous[1] + 1 === range[0]) previous[1] = range[1]
-      else ranges.push([...range])
-    }
-    return { ...event, sourceEventSeqs: ranges }
-  })
-}
-
-// Shared with the offline freezer: compare the original JSONL bytes, including feedback.
-export function readNativeHistory(workspace, row) {
-  const matches = []
-  function walk(directory) {
-    if (lstatSync(directory).isSymbolicLink()) throw Error('DEPLOY_LOG_REPARSE_POINT')
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const file = join(directory, entry.name)
-      if (entry.isSymbolicLink()) throw Error('DEPLOY_LOG_REPARSE_POINT')
-      if (entry.isDirectory()) walk(file)
-      else if (/^session\.v4\.jsonl(?:\.zst)?$/u.test(entry.name)) {
-        let bytes = readFileSync(file)
-        if (file.endsWith('.zst')) bytes = zstdDecompressSync(bytes)
-        const text = bytes.toString('utf8')
-        const events = text.trim().split(/\r?\n/u).map(line => JSON.parse(line))
-        if (events[0]?.id === row.sessionId) matches.push({ events, digest: hash({ text }) })
-      }
-    }
-  }
-  walk(join(workspace, 'tasks', row.taskId, '.dsh', 'sessions'))
-  if (matches.length !== 1) throw Error('DEPLOY_NATIVE_LOG_IDENTITY')
-  return matches[0]
+/** Read one exact Pi journal without directory discovery, migration or repair.
+ * Both the freezer and recovery compare the full committed physical bytes.
+ * A remaining writer or uncertain file identity is not a quiescence proof.
+ */
+export function readNativeHistory(workspace, row, {pathCodec}={}) {
+  const directory=taskSessionLogRoot(workspace,row.taskId)
+  const path=join(directory,piJournalFilename(row.sessionId))
+  const checkDirectories=()=>{let current=resolve(directory)
+  for (;;) {
+    const info=lstatSync(current)
+    if (!info.isDirectory()||info.isSymbolicLink()) throw Error('DEPLOY_LOG_REPARSE_POINT')
+    const parent=dirname(current);if(parent===current)break;current=parent
+  }}
+  checkDirectories()
+  const before=lstatSync(path)
+  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1)throw Error('DEPLOY_LOG_REPARSE_POINT')
+  const fd=openSync(path,constants.O_RDONLY|(constants.O_NOFOLLOW??0))
+  try {
+    const opened=fstatSync(fd)
+    if(opened.dev!==before.dev||opened.ino!==before.ino||!opened.isFile()||opened.nlink!==1)throw Error('DEPLOY_NATIVE_LOG_IDENTITY')
+    const bytes=readFileSync(fd),after=fstatSync(fd),named=lstatSync(path)
+    if(after.size!==opened.size||after.mtimeMs!==opened.mtimeMs||after.ctimeMs!==opened.ctimeMs||bytes.length!==opened.size
+      ||named.dev!==opened.dev||named.ino!==opened.ino||named.nlink!==1||named.isSymbolicLink()
+      ||named.size!==opened.size||named.mtimeMs!==opened.mtimeMs||named.ctimeMs!==opened.ctimeMs)throw Error('DEPLOY_NATIVE_LOG_CHANGED')
+    checkDirectories()
+    const decoded=decodePiJournal(bytes,row.sessionId,{requireComplete:true,codec:pathCodec})
+    if(!pathCodec&&(decoded.header.portableCwd!==undefined||decoded.events.some(event=>event.type==='working-directory/change'&&event.data?.portableCwd!==undefined)))throw Error('PI_SESSION_PATH_CODEC_REQUIRED')
+    return {header:decoded.header,events:decoded.events,digest:hash({text:bytes.toString('utf8')}),path,format:'pi-jsonl-v3'}
+  } finally {closeSync(fd)}
 }
 
 async function currentProcesses(identities) {
@@ -67,7 +58,7 @@ ConvertTo-Json -InputObject $rows -Compress`
 
 // An authenticated operator selects the existing installation audit. This is a
 // stopped-host-tree proof, never a native Job receipt or an effect settlement.
-export async function readMaintenanceDrainProof({ workspace, binding, events, evidence, calls = [], operations = [], observeProcesses = currentProcesses, history = readNativeHistory }) {
+export async function readMaintenanceDrainProof({ workspace, binding, events, evidence, calls = [], operations = [], observeProcesses = currentProcesses, history = readNativeHistory, pathCodec }) {
   if (!isAbsolute(evidence?.directory ?? '') || !/^[a-f0-9]{64}$/u.test(evidence?.expectedProposalDigest ?? '')
     || !/^[\w][\w.-]*$/u.test(binding.taskId)) fail('EVIDENCE_INVALID')
   if (lstatSync(evidence.directory).isSymbolicLink()) fail('EVIDENCE_INVALID')
@@ -108,11 +99,10 @@ export async function readMaintenanceDrainProof({ workspace, binding, events, ev
       || proof.writes !== 0 || hash(retained) !== hash({ ...row, cancelResponseDigest: hash(cancelResponse), ledgerDrainedUnchanged: true })) fail('CUTOVER_UNPROVEN')
   }
   if (hash(pre.maintenance) !== hash(post.maintenance) || hash(post.maintenance) !== hash(cutover.maintenance)) fail('CUTOVER_UNPROVEN')
-  const stored = history(workspace, binding)
-  // Persistence inspection excludes the JSONL header; the remaining native events must agree.
-  if (stored.events[0]?.type !== 'session' || stored.events[0].id !== binding.sessionId) fail('NATIVE_HISTORY_CHANGED')
-  const nativeEvents = stored.events.slice(1)
-  if (stored.digest !== frozen.nativeLogDigest || hash(comparableEvents(nativeEvents)) !== hash(comparableEvents(events))) fail('NATIVE_HISTORY_CHANGED')
+  let stored
+  try{stored=history(workspace,binding,{pathCodec})}catch(cause){throw Object.assign(new Error('DYNAMIC_MAINTENANCE_NATIVE_HISTORY_CHANGED',{cause}),{code:'DYNAMIC_MAINTENANCE_NATIVE_HISTORY_CHANGED'})}
+  if(stored.header?.id!==binding.sessionId||stored.format!=='pi-jsonl-v3'
+    ||stored.digest!==frozen.nativeLogDigest||hash(stored.events)!==hash(events))fail('NATIVE_HISTORY_CHANGED')
   const inputs = events.flatMap(event => event.type === 'user/message' ? [{ seq: event.seq, source: event.data?.source }]
     : event.type === 'agent/inbox/spliced' ? (event.data?.inserted ?? []).filter(message => message.role === 'user').map(message => ({ seq: event.seq, source: message.source })) : [])
   const input = inputs.findLast(item => Object.hasOwn(item.source ?? {}, 'executionSession'))

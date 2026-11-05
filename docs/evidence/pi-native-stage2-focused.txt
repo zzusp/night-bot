@@ -1,0 +1,83 @@
+✔ offline maintenance reads exact committed Pi history without taking a writer lease (80.347988ms)
+✔ offline proof rejects uncommitted Pi tails while ordinary read-only inspection leaves them untouched (33.950007ms)
+✔ offline Pi evidence rejects changed records and unsupported headers without rewriting bytes (16.992419ms)
+✔ offline Pi evidence rejects symbolic/hard-linked files and a linked ancestor (14.067533ms)
+✔ old v4 physical logs cannot substitute for missing Pi evidence (8.815143ms)
+✔ portable maintenance uses the same explicit controlled-path codec as live Pi inspection (15.671208ms)
+✔ every DSH peer is unsupported, regardless of matching historical version or wildcard (2.423726ms)
+night-bot: disabling profile plugin file:///tmp/night-preflight-lH30gi/plugin/index.js: Plugin fixture declares unsupported DSH peers {"@deepseek-ai/dsh":"*"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+night-bot: disabling profile plugin file:///tmp/night-preflight-lH30gi/plugin/index.js: Plugin fixture declares unsupported DSH peers {"@deepseek-ai/dsh":"*"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+night-bot: disabling profile plugin file:///tmp/night-preflight-lH30gi/plugin/index.js: Plugin fixture declares unsupported DSH peers {"@deepseek-ai/dsh":"*"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+night-bot: disabling profile plugin file:///tmp/night-preflight-lH30gi/plugin/index.js: Plugin fixture declares unsupported DSH peers {"@deepseek-ai/dsh":"*"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+night-bot: disabling profile plugin cordis:include: its included file /tmp/night-preflight-lH30gi/nested.json reaches an incompatible plugin, and that file is never rewritten
+night-bot: disabling profile plugin file:///tmp/night-preflight-lH30gi/plugin/index.js: Plugin fixture declares unsupported DSH peers {"@deepseek-ai/dsh":"*"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+night-bot: disabling profile plugin cordis:include: its included file /tmp/night-preflight-lH30gi/nested.json reaches an incompatible plugin, and that file is never rewritten
+✔ DSH plugin code is never evaluated and historical exemptions do not authorize its ABI (18.454042ms)
+✔ ordinary trusted application plugins and detached profile rows remain available (7.154493ms)
+✔ unreadable and recursive includes preserve loader diagnostics without rewriting files (16.23624ms)
+night-bot: disabling profile plugin file:///tmp/night-preflight-OTP2is/plugin/index.js: Plugin @deepseek-ai/dsh-fixture declares unsupported DSH peers {"@deepseek-ai/dsh-fixture":"unsupported package"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+✔ actual default Host rejects a DSH plugin before module evaluation (1425.629332ms)
+✔ application session publication orders durable records, flush and detach notifications (13.493782ms)
+✔ native session detach during append waits until every accepted event observer runs (3.219811ms)
+✔ native session flush awaits all listeners before returning its first registered failure (3.475053ms)
+✔ native session stale preparations and cross-store attachments cannot replace a live owner (2.394301ms)
+✔ external Session facades and prototype impersonations cannot acquire application publication (1.29977ms)
+✔ native session fork keeps exact prefix lineage and rejects stale source identities (6.109274ms)
+✔ native session creation rollback restores its publication method after an observer throws (1.239509ms)
+✔ sealed facade teardown cannot replace an accepted append and can safely reattach (2.062484ms)
+✔ public publicationEntry methods cannot redirect another session event or ownership (1.840842ms)
+✔ Pi spawn provider keeps a completed parent boundary without borrowing an active turn (3.858478ms)
+✔ Pi fork provider keeps a completed parent boundary without borrowing an active turn (0.397456ms)
+✔ spawn never reads parent history and fork preserves exact immutable event identities with a detached prefix array (0.478649ms)
+✔ native registry restrictions intersect inherited capabilities without hiding scope-owned submission tools (20.377819ms)
+✔ native monotonic guard applies after permissive middleware and prevents hidden/unknown side effects with audit (10.061052ms)
+✔ native execution drains a started body before recording cancellation and never invokes an already cancelled body (4.838749ms)
+✔ native output contract validates body and post-policy values and isolates observers (13.924568ms)
+✔ native staged scheduler preserves deferred contexts, turn completion, projection, post-policy and final content order (5.160331ms)
+✔ native PTC dispatch preserves capability collapse, ordered parallel commits, audit and structured results (13.089065ms)
+✔ an early PTC program return drains started effects and rejects queued work without replay (6.325669ms)
+✔ PTC calls cannot expose capabilities removed by a child restriction and fail closed without a runtime (5.340792ms)
+✔ disposing one duplicate guard registration never removes another active permission boundary (2.977036ms)
+✔ a collapsed direct capability cannot run its content finalizer to hide the denial (3.389254ms)
+✔ invalid admission and post-policy decisions fail closed without forging successful effects (3.005147ms)
+✔ validated output values retain identity from post-policy to the final immutable audit snapshot (3.436556ms)
+✔ an execution wrapper cannot replace away the original caller cancellation (1.394161ms)
+✔ tool failures with hostile Error getters still settle one auditable error result (7.81315ms)
+✔ a journal flush failure prevents tool and wrapper effects before dispatch (2.32009ms)
+✔ cancellation during the durable intent barrier never reaches an execution wrapper (2.619299ms)
+✔ code audit failure aborts admission and still drains all started effects and outstanding audit work (6.246961ms)
+✔ code result rendering preserves shallow JSON formatting and handles deeply nested JSON with bounded indentation (96.260011ms)
+✔ structured error facts are read once before the final audit snapshot (2.078027ms)
+✔ portable defaults live below install root while explicit legacy paths remain unchanged (19.570989ms)
+✔ real default Host, auth credential path, attachment cache and memory use the portable layout (1694.111057ms)
+✔ offline backups exclude credentials/env/cache/logs, sanitize config, relocate controlled data and refuse corrupt bytes (76.268417ms)
+✔ unified layout never silently falls back when a data directory is a symlink or unwritable file (10.841934ms)
+✔ an interrupted restore blocks startup and new snapshots instead of accepting partial state (21.211388ms)
+✔ managed launcher writes logs/tmp under data and starts the real loopback service (2090.845474ms)
+✔ new Night Bot data restores A to B: continued Pi history, workspace, scheduled task, attachment and Markdown memory (2803.760115ms)
+✔ initializer creates unique private generic configuration, honors install layout and never overwrites it (94.568139ms)
+✔ credential values and environment files are confined to the separate private secrets directory (8.116206ms)
+✔ Pi native branch is authoritative while retired authorization remains in immutable audit (53.427004ms)
+✔ Pi journal restores only complete commit batches; read-only inspection never repairs the tail (21.06613ms)
+✔ Pi history checksum refuses modified complete records without rewriting evidence (11.105149ms)
+✔ closing a read handle preserves the active writer and failed pre-validation does not poison it (11.261563ms)
+✔ unpublished creation can be rolled back without leaving an empty durable identity (7.72663ms)
+✔ global Pi journal refuses symbolic file targets before reads or writes (6.547622ms)
+✔ Pi projection carries actual multimodal bytes and structured operational content (0.818919ms)
+✔ DSH directory histories are neither discovered nor imported and remain untouched (29.163457ms)
+✔ former DSH-imported Pi snapshots are refused without reopening the source or modifying evidence (25.390177ms)
+✔ one task directly writes an artifact, cold resumes the same session, denies replay and completes then reflects (6596.356776ms)
+✔ single task cancellation aborts the active turn, drains it and never creates a replacement execution (201.463184ms)
+✔ chat and chat-room task creation binds the correct memory scope without creating a coordinator (326.05323ms)
+✔ single-task delivery freezes only explicitly reported workspace files and rejects escapes (20.026272ms)
+✔ real Pi first-tier steers arrivals into the same 15-message batch; 16 queues, topic replies quote exact sources before second-tier ends (2963.713544ms)
+ℹ {"firstTierSendBeforeSecondTierMs":498,"batchSizes":[15,1],"delivered":16}
+✔ cold recovery keeps the same triage session; an uncertain private-chat send is read back and never sent again (5445.264995ms)
+ℹ tests 66
+ℹ suites 0
+ℹ pass 66
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11919.106475

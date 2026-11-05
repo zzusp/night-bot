@@ -1,7 +1,7 @@
 import {Service} from '@deepseek-ai/cordis'
 import {scopeOf,scopeTarget} from './native-scope.js'
-import {Session,SessionId,SessionForkError,buildForkSeed} from './native-session-protocol.js'
-const attachments=new WeakMap(),hookOwners=new WeakMap()
+import {Session,SessionId,SessionForkError,buildForkSeed,isApplicationSession,bindSessionPublication} from './native-session-protocol.js'
+const attachments=new WeakMap()
 const callbacks=(ctx,carrier,name,...args)=>[...ctx.events.dispatch('emit',[carrier,name,...args])]
 function observe(ctx,list,args){for(const callback of list)try{Promise.resolve(callback(...args)).catch(error=>ctx.logger.warn(error))}catch(error){ctx.logger.warn(error)}}
 /** Owns publication, liveness and durability admission. The pinned legacy
@@ -21,23 +21,14 @@ export default class NativeSessions extends Service{
  }
  create(id,options){const session=this.prepare(id,options);this.ctx.effect(function*(){yield this.enter(session);this.announce(session)}.bind(this),'native session lifecycle');return session}
  enter(session){
+  if(!isApplicationSession(session))throw new TypeError('Unsupported external Session facade')
   const id=session.id;if(this.store.has(id))throw new Error(`session "${id}" already exists`);if(attachments.has(session))throw new Error(`session "${id}" is already attached to a store`)
-  // Pinned compatibility seam: preserve the original private publication method
-  // and restore it on detach where configurable. Sealed facades retain a
-  // stateless, owner-checked hook; its WeakMap entry is still removed.
-  // A foreign live attachment fails before log mutation.
-  const original=session.publicationEntry,descriptor=Object.getOwnPropertyDescriptor(session,'publicationEntry')
-  if(typeof original!=='function'||typeof session.commit!=='function')throw new Error('Unsupported Session publication facade')
-  if(hookOwners.has(original)&&hookOwners.get(original)!==session)throw new Error('Session publication hook belongs to another facade')
-  if(Reflect.apply(original,session,[])!==undefined)throw new Error(`session "${id}" is already attached to a store`)
   const entry={id,session,carrier:scopeTarget(session,scopeOf(this.ctx)),emitCtx:this.ctx,announced:false,announcing:false,appending:false,detachRequested:false}
-  const hook=hookOwners.get(original)===session?original:()=>{const own=attachments.get(session),foreign=Reflect.apply(original,session,[]);if(own&&foreign&&foreign!==own)throw new Error('Session has conflicting publication owners');const live=own??foreign;if(live?.appending)throw new Error('session append cannot reenter while another append is being published');return live}
-  if(hook!==original){hookOwners.set(hook,session);Object.defineProperty(session,'publicationEntry',{value:hook,configurable:true,writable:false})}
-  entry.restoreHook=()=>{const current=Object.getOwnPropertyDescriptor(session,'publicationEntry');if(hook===original||current?.value!==hook||!current.configurable)return;if(descriptor)Object.defineProperty(session,'publicationEntry',descriptor);else delete session.publicationEntry}
+  entry.releasePublication=bindSessionPublication(session,entry)
   entry.detach=()=>this.detach(entry);this.store.set(id,entry);attachments.set(session,entry);let entered=true
   return()=>{if(!entered)return;entered=false;if(entry.announcing||entry.appending)entry.detachRequested=true;else entry.detach()}
  }
- detach(entry){entry.detachRequested=false;if(this.store.get(entry.id)!==entry)return;this.store.delete(entry.id);attachments.delete(entry.session);entry.restoreHook();if(entry.announced)try{observe(this.ctx,callbacks(this.ctx,entry.carrier,'session/disposed',entry.session),[entry.session])}catch(error){this.ctx.logger.warn(error)}}
+ detach(entry){entry.detachRequested=false;if(this.store.get(entry.id)!==entry)return;this.store.delete(entry.id);attachments.delete(entry.session);entry.releasePublication();if(entry.announced)try{observe(this.ctx,callbacks(this.ctx,entry.carrier,'session/disposed',entry.session),[entry.session])}catch(error){this.ctx.logger.warn(error)}}
  liveEntryFor(session){const entry=attachments.get(session);if(!entry||this.store.get(entry.id)!==entry)throw new Error(`session "${session.id}" is not live in this store`);return entry}
  announce(session){const entry=this.liveEntryFor(session);if(entry.announced||entry.announcing)throw new Error(`session "${entry.id}" was already announced`);entry.announced=true;entry.announcing=true;try{for(const callback of callbacks(this.ctx,entry.carrier,'session/created',session)){const returned=callback(session);Promise.resolve(returned).catch(error=>this.ctx.logger.warn(error))}}finally{entry.announcing=false;if(entry.detachRequested&&!entry.appending)entry.detach()}}
  async flush(session){const entry=this.liveEntryFor(session),list=callbacks(this.ctx,entry.carrier,'session/flush',session),results=await Promise.allSettled(list.map(callback=>{try{return callback(session)}catch(error){return Promise.reject(error)}})),failure=results.find(r=>r.status==='rejected');if(failure)throw failure.reason;return list.length>0}

@@ -1,3 +1,4 @@
+import {prepareProfileEntries} from './native-profile-preflight.js'
 import {assertNativeScopeAuthority} from './native-scope-guard.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -64,7 +65,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       ...(config.plugins ?? []), ...extraPlugins,
       ...(config.channelPlugins??[]).filter(plugin=>plugin.enabled===true).map(plugin=>{if(plugin.type!=='dingtalk-dws')throw new Error('NIGHT_CHANNEL_PLUGIN_UNKNOWN');return {name:new URL('./channels/plugins/dingtalk-dws.js',import.meta.url).href,config:{...plugin.config,enabled:true}}}),
     ]
-    await ctx.loader.root.update(rows)
+    await ctx.loader.root.update(prepareProfileEntries(ctx,rows,ctx.baseUrl))
     await ctx.loader.await()
     for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','sessionController','schedule','memory','sessionTitle','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
