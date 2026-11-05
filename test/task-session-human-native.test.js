@@ -120,8 +120,16 @@ for (const failure of ['none', 'empty', 'invalid-source', 'topic']) test(`群业
       assert.equal((await t.step(async () => h.query('execution.list'))).length, 0)
       return
     }
-    assert.equal(interrupted.providerRecovery.failure.code, 'TASK_SESSION_NO_SUBMISSION')
-    await t.step(async () => waitUntil(() => resumed, '空返回沿原会话在既有有界退避后重试', 15000))
+    assert.equal(interrupted.providerRecovery, null, '空返回不再授权 Host 自动退避重试')
+    const heldReview = interrupted.humanRequests[0].reviewFailures.at(-1)
+    assert.equal(heldReview.code, 'TASK_SESSION_NO_SUBMISSION')
+    const heldSources = await Promise.all(heldReview.sourceIds.map(sourceId => h.query('source.get', { sourceId })))
+    assert.ok(heldSources.some(source => source.messageId === 'business-answer' && source.text === answer), '失败复核保留原始完整答复与作者')
+    const heldCount = h.requests.length
+    for (let i = 0; i < 3; i++) { await t.step(async () => h.service.recover()); await t.step(async () => h.service.whenIdle()) }
+    assert.equal(h.requests.length, heldCount, '同一失败来源不触发 Host 自动复核或空转')
+    assert.equal(resumed, undefined)
+    await t.step(async () => h.service.ingest({ groupId: 'native-group', messageId: 'business-answer-explicit-renewed', senderOpenDingTalkId: 'business-responsible', text: answer, occurredAt: new Date().toISOString() }))
     await t.step(async () => h.service.whenIdle())
   }
   const after = await t.step(async () => h.query('task.get', { taskId: original.taskId }))
@@ -135,6 +143,7 @@ for (const failure of ['none', 'empty', 'invalid-source', 'topic']) test(`群业
   assert.equal(resumed.humanReview, undefined)
   assert.ok((await h.query('wake.list',{taskId:original.taskId})).some(item=>item.kind==='human.responded'))
   assert.equal(resumed.sources.find(item => item.actorId === 'business-responsible').text, answer)
+  if (failure === 'empty') assert.ok(resumed.sources.some(source => source.messageId === 'business-answer-explicit-renewed' && source.actorId === 'business-responsible' && source.text === answer), '续办消费真实的新答复来源，不能伪造旧来源的自动重试')
   assert.equal((await t.step(async () => h.query('execution.list'))).length, 0, '复核工具无法派发执行')
   assert.equal((await t.step(async () => h.query('operation.list'))).length, 0, '复核没有写操作')
   if (['none', 'topic'].includes(failure)) {const denied=h.toolResults.find(item=>item.name==='write');assert.equal(denied.result.isError,true);assert.match(JSON.stringify(denied),/DYNAMIC_HUMAN_REVIEW_READ_ONLY|FS_SANDBOX_DENIED/)}

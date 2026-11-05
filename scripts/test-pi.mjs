@@ -7,7 +7,9 @@ const groups = {
 }
 const files = groups[process.argv[2]]
 if (!files) throw new Error('Expected runtime, routing, containment or domain')
-const child = spawn(process.execPath, ['--test','--test-concurrency=1',...files.map(name => `test/${name}.test.js`)], {
+const concurrency=Number(process.env.NIGHT_BOT_TEST_CONCURRENCY??1)
+if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>8)throw new Error('Test concurrency must be an integer from 1 to 8')
+const child = spawn(process.execPath, ['--test',`--test-concurrency=${concurrency}`,...files.map(name => `test/${name}.test.js`)], {
   stdio: 'inherit', env: { ...process.env },
 })
 child.on('error', error => { console.error(error.message); process.exitCode = 1 })
