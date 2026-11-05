@@ -59,3 +59,9 @@ skills、observation 等实际官方测试复用，不能随名称删除。
   取消产品架构的同义词，不能通过关键词批量删除。
 
 许可文件、来源清单、源统计及 guard 元数据不在此切片中自行删除或刷新。
+
+旧 scripts/repair-subagent-descriptors.mjs 读取 DSH session.jsonl/seq 并改写
+subagent/descriptor，随取消架构退役；它不是官方 Pi 档案修复能力。
+混合 listener 回归保留为 task-session-listener-resume-native.test.js：真实默认
+Host、官方单任务会话、异步准备/创建 listener、材料引用和四次 lease epoch
+续办，验证 identity 仅一条、绑定/提交各四次且不创建子会话。

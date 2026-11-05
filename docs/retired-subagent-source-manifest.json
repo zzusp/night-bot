@@ -33,5 +33,12 @@
     "src/native-subagents.js still uses native-subagent-errors.js and runtime/child-catalog.js"
   ],
   "acceptance": "test/pi-retired-subagent-tools.test.js",
-  "safetyMapping": "docs/SUBAGENT-RETIREMENT.md"
+  "safetyMapping": "docs/SUBAGENT-RETIREMENT.md",
+  "retiredUtilities": [
+    {
+      "target": "scripts/repair-subagent-descriptors.mjs",
+      "priorLocalSha256": "9b1b530e37edd28fb1f5776f6094661fe6d7ee82919ac67e7c9c0403b735ce06",
+      "reason": "Cancelled subagent descriptor repair over DSH session.jsonl/seq; not an official Pi archive repair capability."
+    }
+  ]
 }
