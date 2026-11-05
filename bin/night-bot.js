@@ -13,7 +13,7 @@ if (!path || process.argv.includes('--help')) {
   try {
     const config = await loadConfig(path)
     const environmentSnapshot = await loadNativeEnvironment({materialize:true,warn:message=>console.error(message)})
-    const {installProxyFromEnvironment} = await import('@deepseek-ai/dsh-http-proxy')
+    const {installProxyFromEnvironment} = await import('../src/native-http-proxy.js')
     releaseProxy = await installProxyFromEnvironment(environmentSnapshot,message=>console.error(message))
     const {createHost} = await import('../src/host.js')
     const {apply:applyResident} = await import('../packages/dingtalk-core/resident.js')

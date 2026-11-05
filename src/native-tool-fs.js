@@ -2,7 +2,7 @@
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { FsError } from "@deepseek-ai/dsh-fs";
-import { readLangHintForPath as langFromPath } from "@deepseek-ai/dsh-util-code-language";
+import { readLangHintForPath as langFromPath } from "./native-code-language.js";
 import { structuredPatch } from "diff";
 import { basename, extname } from "node:path";
 import { AttachmentError } from "./native-attachment-errors.js";

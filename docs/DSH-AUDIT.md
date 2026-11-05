@@ -279,3 +279,7 @@ Active Bash/Pwsh sandbox consumers and model tools now mount native URLs over lo
 ### Pure helper ownership
 
 Consumed-work accounting, primitive brands and consumed JSON/value algorithms now live locally with MIT attribution. The old agent registry is development-only for differential validation; Native live registry publication still has a separate production contract. Direct DSH production dependencies25; active replacements49. Transitive/inactive helper package presence is not hidden by the direct count; scope/Session/inbox/schema/error/RPC/format/platform/proxy boundaries remain.
+
+### Proxy and environment dependency closure
+
+Proxy policy/transport/child environment and language hints now use attributed local modules, including both CLI dynamic imports. Three unused direct legacy interface declarations are pruned; active owners were already native. Direct DSH production dependencies20; active replacements49 unchanged. Root declaration inventory is not a claim that every transitive DSH module is absent. Scope, Session/inbox/legacy formats, schema/message/RPC/error/skill-render helpers and Windows ACL remain.

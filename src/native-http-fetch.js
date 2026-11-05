@@ -2,7 +2,7 @@
 import z from "@deepseek-ai/schemastery";
 import { WebError } from "./native-web.js";
 import { deadline, timeoutOf } from "./native-deadline.js";
-import { proxyRouteFor } from "@deepseek-ai/dsh-http-proxy";
+import { proxyRouteFor } from "./native-http-proxy.js";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import ipaddr from "ipaddr.js";

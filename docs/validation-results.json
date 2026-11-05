@@ -1148,5 +1148,39 @@
     "productionInitialFailure": "first production core selection accidentally included old agent registry differential after package moved to development-only; split Native contract from differential and reran affected own/core groups, keeping Native production verification",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeProxyAndLanguageHelpers": {
+    "date": "2026-11-05",
+    "ownPass": 488,
+    "ownDurationMs": 41684.222031,
+    "newProxyContracts": 4,
+    "newActualPiWireCases": 1,
+    "testSplits": "Native environment and policy contracts separated from development-only source differentials; Native production verification retained",
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain unchanged from de10f64; no rerun claimed",
+    "containment": {
+      "pass": 11,
+      "windowsSkipped": 1,
+      "durationMs": 18354.55915,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 1076,
+    "productionOnlyRepeatedPass": 374,
+    "productionScope": "333 meaningful core/wires plus38 contracts plus3 real kernel wires; development-only source differentials excluded",
+    "runtimeFilesCompared": 300,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 297,
+    "literalBareImports": 256,
+    "directRuntimeDshDependencies": 20,
+    "removedActiveDshServices": 49,
+    "proxyOwnership": "CLI/auth CLI/public HTTP/process child overlay share one local module singleton; nested direct override/restore, inherited child values, diagnostics and admitted transport close preserved",
+    "realTransport": "local authenticated HTTP CONNECT fixture; installed dispatcher handles public fixture origin with zero direct resolver calls; actual Pi model loopback bypass and one proxied web receipt verified",
+    "unusedDirectDeclarations": "launch-environment/sandbox-policy/subprocess removed after first-party call-site inventory and isolated production proof; corresponding active services already native, no new replacement credit",
+    "productionInitialFailure": "two test files had static development-only legacy imports; refactored lazy source differentials and retained standalone Native contracts, then reran affected own/production core",
+    "sourceDerivedAlgorithms": "MIT proxy policy/undici/env overlay and path-language mappings explicitly attributed",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

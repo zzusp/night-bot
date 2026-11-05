@@ -12,7 +12,7 @@ if(!path||path==='--help'||args.includes('--help')){
  try{
   const config=await loadConfig(path)
   const environmentSnapshot=await loadNativeEnvironment({materialize:true,warn:message=>console.error(message)})
-  const {installProxyFromEnvironment}=await import('@deepseek-ai/dsh-http-proxy')
+  const {installProxyFromEnvironment}=await import('../src/native-http-proxy.js')
   releaseProxy=await installProxyFromEnvironment(environmentSnapshot,message=>console.error(message))
   const {createOperatorInteraction}=await import('../src/operator-terminal.js')
   const {runAuthCommand}=await import('../src/operator-auth.js')

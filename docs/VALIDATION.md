@@ -327,3 +327,11 @@ runtime142/routing47/domain388对应核心/夹具未改动沿用de10f64证据，
 最终own481/481（37307.449977ms）通过；新增4合同验证turn/inbox取消/claim/suffix旧折叠差分、跨realm和lossless JSON拒绝差分、getter单次读取/嵌套快照分离/字面__proto__保护，以及循环freeze保留AbortSignal可取消。17项定向组含真实child控制和tool timeout wires通过。Agent registry此前一个用例同时验证native与旧SDK；production移除旧包后初次筛选遇开发包缺失，已拆成独立Native协议验证与开发差分，重跑受影响own和production core；未恢复生产旧包或丢掉Native验证。
 
 真实kernel11通过/一Windows跳过（20292.826325ms）；全新/tmp/night-bot-value-helpers-production frozen production ignore-scripts安装，329实质核心/wire+38合同+3真实kernel wire=370复测通过。298运行文件及manifest/lock逐字一致，静态295 JS/258字面bare imports通过。runtime142/routing47/domain388沿用de10f64对应未改动核心/夹具证据，不声称重跑；共1069独立通过。证据evidence/native-value-helpers-*.txt。25直接DSH依赖/49活动组件替换；纯helper不计服务替换，仍非DSH独立，403未重试。
+
+## 原生代理策略、语言映射与环境声明清理验证
+
+最终own488/488（41684.222031ms）通过；新增4代理合同及1实际Pi wire。测试打包原实现路由/child overlay/语言映射差分、嵌套direct恢复dispatcher和环境、unsupported scheme不泄漏合成凭据且保留child原值、真实认证HTTP CONNECT在无直接DNS下传输并等待响应后关闭。真实Pi wire证明public Web一次经proxy、loopback模型服务直连，ordinary child使用同一overlay，收据正常且无真实外部网络。
+
+初次测试错误假设undici getGlobalDispatcher一定返回原Agent对象，实际可返回版本桥接wrapper；改为能力检查并用真实传输验证。私有地址测试恢复默认resolver而非用会抛错的测试resolver。生产首轮还暴露两测试文件静态导入已移到开发依赖的旧环境/策略模块；拆分Native协议验证和lazy开发差分，重跑own及production core，不恢复旧生产依赖，也不丢掉Native生产测试。最终14项定向组通过；此前HTTP完整合同组也已通过。
+
+真实kernel11通过/一Windows跳过（18354.55915ms）；全新/tmp/night-bot-proxy-production frozen production ignore-scripts安装，333实质核心/wire+38合同+3真实kernel wire=374复测通过。300运行文件及manifest/lock逐字一致，静态297 JS/256字面bare imports通过。runtime142/routing47/domain388对应未改动核心/夹具沿用de10f64证据，不声称重跑；共1076独立通过。证据evidence/native-proxy-*.txt。20直接DSH依赖/49活动组件替换，纯helper和unused声明不计服务替换。仍非DSH独立；403未重试。

@@ -1,7 +1,7 @@
 import {Service} from '@deepseek-ai/cordis'
 import {createRequire} from 'node:module'
-// Proxy policy remains shared with installed capabilities until that seam moves.
-import {proxyEnvironmentForChild} from '@deepseek-ai/dsh-http-proxy'
+// One application policy owns public HTTP routing and ordinary child proxy overlays.
+import {proxyEnvironmentForChild} from '../native-http-proxy.js'
 export const MAX_TIMER_DELAY_MS=2147483647
 export class SubprocessRuntime extends Service{constructor(ctx){super(ctx,'subprocess')}}
 export class SubprocessExecutableNotFoundError extends Error{constructor(message,options){super(message,options);this.name='SubprocessExecutableNotFoundError'}}

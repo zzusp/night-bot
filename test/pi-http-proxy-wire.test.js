@@ -1,0 +1,8 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {installProxyFromEnvironment} from '../src/native-http-proxy.js'
+import {scrubbedParentEnv} from '../src/process/contracts.js'
+import {proxyFixture,fakeEnvironment} from './fixtures/native-proxy-fixture.js'
+import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
+test('actual Pi native web fetch uses one configured proxy while loopback model traffic bypasses it',{timeout:15000},async t=>{const proxy=await proxyFixture(t);await fakeEnvironment({HTTP_PROXY:proxy.proxyURL},async env=>{const release=await installProxyFromEnvironment(env,()=>{});try{const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'proxy-web-fetch',name:'web_fetch',args:{url:'http://proxy-fixture.example/body'}}]}:{text:'proxied web verified'}),parent=await f.parent('proxy-web-owner');const child=scrubbedParentEnv();assert.ok(child.HTTP_PROXY===proxy.proxyURL,'child proxy overlay mismatch');assert.ok(child.NODE_USE_ENV_PROXY==='1','child proxy capability flag missing');parent.steer(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'Read the one proxied fixture'}]}));await parent.whenIdle();assert.equal(f.requests.length,2);assert.equal(proxy.seen.length,1);assert.equal(proxy.seen[0].target,'proxy-fixture.example:80');assert.match(JSON.stringify(f.requests[1]),/NATIVE_PROXY_BODY_MARKER/);const events=await f.events(parent.id),results=events.filter(e=>e.type==='tool/result');assert.equal(results.length,1);assert.equal(results[0].data.message.isError,false);assert.equal(events.findLast(e=>e.type==='turn/end').data.reason.kind,'completed')}finally{await release()}})})

@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "Native shared HTTP proxy install/restore/routing and child environment overlay across CLI/auth/HTTP/process; native language hints; explicit MIT algorithms; unused direct legacy environment/policy/subprocess declarations pruned, no service-removal credit",
     "Native consumed-work audit fold, primitive brands and duplicate-install-safe JSON/immutable helpers; explicit MIT algorithms, no active service removal credit",
     "Native Bash/PowerShell shell capability, local executors, sandbox consumers and model controls; explicit MIT algorithms, own deadline reason identity and admitted confinement-preparation drain; native process/jobs/permission owners retained",
     "Native file/image/CAS and packaged ripgrep model bindings, native timer/retention and private session spillStore repair; save admission/drain and active-root-only cleanup; missing service earns no replacement credit",
@@ -67,7 +68,7 @@
     "historical Agent/RPC type-symbol strings only; consumed-work fold is local; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; canonical filesystem/language/sandbox helpers; optional PTC worker backend",
-    "canonical filesystem service/errors and sandbox helper policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
+    "canonical filesystem service/errors and sandbox helper policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay now local",
     "skill rendering/invocation helpers; workspace error identities only (registry local) and canonical child-agent errors and control/tool helpers; continuation manager and local provider declarations are now application-owned"
   ],
   "directRuntimeDshDependencies": [
@@ -84,19 +85,7 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-http-proxy",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-launch-environment",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-sandbox-policy",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -136,10 +125,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-subprocess",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-system-prompt",
       "version": "0.2.1-alpha.2"
     },
@@ -166,13 +151,9 @@
     {
       "name": "@deepseek-ai/dsh-sandbox",
       "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-util-code-language",
-      "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 137,
+  "developmentDependencyCount": 142,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [
@@ -211,7 +192,7 @@
     "llm runtime service -> src/native-llm.js; public message/projection helpers and RPC carrier remain",
     "agent runtime service -> src/native-agents.js and native-agent-context.js; Pi-loop factory and session compatibility view remain",
     "sandbox-local -> src/native-sandbox.js; native Linux/macOS profile/selection with Windows ACL capability library remaining",
-    "subprocess-local -> source-derived src/process backend; local contracts/bootstrap/output/FFI, shared proxy overlay remains",
+    "subprocess-local -> source-derived src/process backend; local contracts/bootstrap/output/FFI, shared proxy overlay now local",
     "jobs-local -> src/native-jobs.js; process execution and durable task receipts remain separate",
     "tools runtime service -> src/native-tools.js + native-code-transport.js; schema/scope helpers and capability backends remain"
   ],

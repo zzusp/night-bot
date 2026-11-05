@@ -1,0 +1,22 @@
+✔ actual Pi native web fetch uses one configured proxy while loopback model traffic bypasses it (1428.782197ms)
+✔ native environment snapshot preserves source ordering and immutable launch-time values (1.825152ms)
+✔ native launch environment metadata and precedence match the legacy snapshot (2.563335ms)
+✔ native dotenv layers preserve credential precedence without materializing secrets in embedding mode (11.387942ms)
+✔ dotenv bootstrap guards reject repository proxy and home CA changes before applying either layer (5.350388ms)
+✔ native proxy policy, child overlay and code-language hints preserve retained source contracts (55.513988ms)
+✔ native proxy nested direct policy restores exact outer route, dispatcher and launch environment (1.089844ms)
+✔ native proxy unsupported schemes report safely and preserve original child values without Node proxy flag (0.64285ms)
+✔ native HTTP uses the installed proxy dispatcher without direct DNS and proxy disposal drains an admitted response (48.873875ms)
+✔ native policy preserves default/session/one-shot precedence and durable mode events (24.572663ms)
+✔ native policy precedence and durable events match the legacy service (31.694741ms)
+✔ native policy binds one durable artifact root without mutating immutable session cwd (6.831561ms)
+✔ native policy rechecks artifact ancestors and rejects a replaced root link at every resolution (4.447095ms)
+✔ native policy validates modes, root layout and missing identity before recording permissions (2.381821ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1559.008698
