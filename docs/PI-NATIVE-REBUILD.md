@@ -1,3 +1,26 @@
+# Explicit owned spill roots and retired historical discovery (2026-11-05)
+
+Removed prior-default temporary-root discovery/scanning and fallback, plus empty
+service/primitive wrappers. Spill now mounts as an ordinary native Cordis service
+and requires an explicit absolute application root before publication. Host keeps
+the same physical owned path. Root symlinks cannot redirect either writes or age
+cleanup. Private modes, hashed session paths, exact UTF-8 bytes, safe encoding,
+exclusive writes/fsync and admitted-write shutdown drain remain covered.
+
+Retired the dsh-spill-local root comparison dependency and exact lock importer
+block; **48 direct DSH dev declarations remain**. Independent encoding/storage
+assertions replace old-service equality. Existing inherited IO/encoding/sweep
+algorithms retain both notices; this is not an independent backend rewrite.
+Trusted path IO still has an ancestor-replacement TOCTOU limit.
+
+Validation: **638 default pass** with the old package root link absent (restored
+in finally), **13 focused overlap**, **34 archive/channel/cold-job integration
+pass** (partly overlapping default), Linux containment **20 pass / 1 Windows
+skip**, application bubblewrap enabled. Source/import/Pi-license/YAML/diff guards
+pass; Acorn parses 926 files with no retired spill-package literals. Package and
+snapshot lock bytes are unchanged. No installation retry: known npm HTTP 503
+remains. Evidence: `docs/pi-native-owned-spill-validation.json`.
+
 # Six unused root protocol declarations retired (2026-11-05)
 
 Removed root development declarations for jobs, ptc-runtime, spill, storage, fs

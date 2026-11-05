@@ -1,0 +1,21 @@
+✔ actual Pi native glob and grep run packaged ripgrep and preserve safe literal argv and match receipts (1896.613982ms)
+✔ actual Pi native image reader retains image bytes and native attachment mismatch guidance (316.77602ms)
+✔ actual Pi capped grep persists the complete private result and read retrieves omitted matches (380.609883ms)
+✔ owned spill writes preserve exact UTF-8 bytes and private traversal-safe names (45.417444ms)
+✔ native spill session paths are traversal-safe and reject a symlinked session directory (28.630647ms)
+✔ native spill cleanup covers only active app root and leaves unrelated prior roots intact (25.914172ms)
+✔ native spill close drains admitted real file writes and rejects future admission (11.978038ms)
+✔ spill roots are explicit absolute paths and invalid configuration publishes no service (2.033591ms)
+✔ a linked active spill root cannot redirect writes or cleanup into another directory (23.579049ms)
+✔ native job schemas, model output and byte bounds match retained source protocol (27.32629ms)
+✔ native job controls clamp waits, preserve caller signal and hide producer logs and ownership (1.927561ms)
+✔ native job notices preserve wake budgets, user resets, truncation and awaited/killed suppression (3.486951ms)
+✔ native UTF-8 retention preserves old algorithms across chunk boundaries and tiny budgets (3.341924ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2850.929126

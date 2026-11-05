@@ -1,13 +1,9 @@
 // MIT source-derived private spill storage and retention algorithms; see licenses/dsh-spill-local-MIT.txt and dsh-spill-MIT.txt. App-owned admission/drain and active-root-only cleanup.
-import { dirname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { Service } from "@deepseek-ai/cordis";
-const SpillLocator = value => value;
-class SpillStore extends Service { constructor(ctx) { super(ctx, "spillStore"); } }
 import { chmod, lstat, mkdir, open, readdir, realpath, rmdir, unlink } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync } from "node:fs";
 //#region lib/types/store.js
 /**
 * Cordis-free storage mechanics for the local spill backend: private
@@ -16,8 +12,6 @@ import { mkdtempSync } from "node:fs";
 *
 * @module @deepseek-ai/dsh-spill-local/store
 */
-/** Prefix shared by default-root creation and startup discovery. */
-const DEFAULT_ROOT_PREFIX = "dsh-spill-";
 /**
 * Test a caught value for a Node system error code.
 *
@@ -27,16 +21,6 @@ const DEFAULT_ROOT_PREFIX = "dsh-spill-";
 */
 function isErrno(error, code) {
 	return error instanceof Error && error.code === code;
-}
-let defaultRoot;
-/**
-* Return the lazily-created private per-process spill root.
-*
-* @returns The private root path.
-*/
-function privateRoot() {
-	defaultRoot ??= mkdtempSync(join(tmpdir(), DEFAULT_ROOT_PREFIX));
-	return defaultRoot;
 }
 /**
 * Encode an arbitrary string as one safe path segment, injectively over ALL JS
@@ -116,14 +100,6 @@ async function saveTextFile(options) {
 //#endregion
 //#region lib/types/cleanup.js
 /** Startup cleanup mechanics for local spill roots. */
-/**
-* A backend-generated default root name: `dsh-spill-` plus the 6-character
-* suffix `mkdtemp` appends. Discovery matches this
-* EXACT shape, not the bare prefix, so an unrelated `dsh-spill-test-*` fixture
-* or a foreign tool's differently-shaped `dsh-spill-…` directory is never
-* mistaken for a backend root to sweep.
-*/
-const DEFAULT_ROOT_RE = new RegExp(`^${DEFAULT_ROOT_PREFIX}[A-Za-z0-9]{6}$`);
 /**
 * A backend-generated session directory name: `session-` plus the 12 lowercase
 * hex characters {@link sessionDir} derives from `sha256(sessionId)`. The sweep
@@ -399,82 +375,6 @@ async function sweepSpillRoots(options) {
 		}
 	}
 }
-/**
-* Discover prior default spill roots: the `dsh-spill-<6 chars>` directories
-* directly under `base` (the OS tmpdir) that earlier default-root runs created.
-* A long-lived deployment
-* with a configured root will find none; a series of default-root runs
-* accumulates one per process, so the startup sweep reclaims them all. Matching
-* is the EXACT `mkdtemp` shape (see {@link DEFAULT_ROOT_RE}), not the bare
-* prefix, so an unrelated `dsh-spill-test-*` fixture or a foreign
-* differently-shaped directory is never swept; symlinks and non-directories are
-* excluded too — only real directories the backend could have created.
-*
-* @param warn Sink for a failure reading `base` (returns `[]` on failure).
-* @param base The directory to scan; defaults to the OS tmpdir (a test seam).
-* @returns Absolute paths of the discovered default roots (possibly empty).
-*/
-async function discoverDefaultRootRecords(warn, base) {
-	let entries;
-	try {
-		entries = await readdir(base);
-	} catch (error) {
-		warnSafely(warn, `spill-local: failed to scan ${base} for default roots: ${String(error)}`);
-		return [];
-	}
-	const roots = [];
-	for (const name of entries) {
-		if (!DEFAULT_ROOT_RE.test(name)) continue;
-		const resolved = await resolveRoot(join(base, name), false, warn);
-		if (resolved !== void 0) roots.push(resolved);
-	}
-	return roots;
-}
-/**
-* Discover trusted prior default roots below the OS temporary directory.
-*
-* @param warn Sink for contained discovery failures.
-* @param base Directory to scan; defaults to the OS temporary directory.
-* @returns Canonical paths of trusted default roots.
-*/
-async function discoverDefaultRoots(warn, base = tmpdir()) {
-	return (await discoverDefaultRootRecords(warn, base)).map((root) => root.path);
-}
-/**
-* Gather and de-duplicate the trusted roots for one startup sweep. The active
-* configured path may be a symlink; its resolved identity overrides a matching
-* discovered root so the live target is never marked prunable.
-*
-* @param activeRoot Active configured root.
-* @param warn Sink for contained inspection failures.
-* @param defaultRootsBase Directory holding prior default roots.
-* @returns Trusted roots with the active identity marked non-prunable.
-*/
-async function gatherSweepRoots(activeRoot, warn, defaultRootsBase = tmpdir()) {
-	const [discovered, active] = await Promise.all([discoverDefaultRootRecords(warn, defaultRootsBase), resolveRoot(activeRoot, true, warn)]);
-	const roots = /* @__PURE__ */ new Map();
-	for (const root of discovered) roots.set(root.identity, {
-		path: root.path,
-		pruneWhenEmpty: true
-	});
-	if (active !== void 0) roots.set(active.identity, {
-		path: active.path,
-		pruneWhenEmpty: false
-	});
-	return [...roots.values()];
-}
-//#endregion
-//#region lib/types/index.js
-/**
-* `LocalSpillStore`: the host-filesystem implementation of the
-* `@deepseek-ai/dsh-spill` storage seam. Persists oversized text to a
-* private, session-scoped file (see `./store.ts` for the traversal-safe naming
-* and exclusive owner-only write) and returns a path locator plus local
-* read/grep retrieval guidance. After activation it runs one best-effort
-* startup sweep that reclaims spill files older than `cleanupPeriodDays`.
-*
-* @module @deepseek-ai/dsh-spill-local
-*/
 /** Milliseconds in one day — converts the `cleanupPeriodDays` config to the sweep cutoff. */
 const MS_PER_DAY = 1440 * 60 * 1e3;
 /**
@@ -488,12 +388,12 @@ const MS_PER_DAY = 1440 * 60 * 1e3;
 * service availability; the sweep is owned by the plugin fiber and awaited
 * during disposal, so a fiber unload never returns before it quiesces.
 */
-var LocalSpillStore = class NativeSpillStore extends SpillStore {
+class NativeSpillStore extends Service {
 	static Config = z.object({
-		root: z.string(),
+		root: z.string().required(),
 		cleanupPeriodDays: z.number().step(1).min(0).default(30)
 	});
-	/** Resolved absolute spill root (config `root`, else the private default), fixed at construction. */
+	/** Explicit application-owned root, fixed at construction. */
 	root;
  closed = false;
  pending = new Set();
@@ -504,11 +404,12 @@ var LocalSpillStore = class NativeSpillStore extends SpillStore {
 	* it; `undefined` when cleanup is disabled (`cleanupPeriodDays === 0`).
 	*/
 	cleanup;
-	constructor(ctx, config) {
-		super(ctx);
+	constructor(ctx, config = {}) {
+  if(typeof config.root!=='string'||!isAbsolute(config.root))throw Object.assign(new TypeError('Spill storage requires an absolute application root'),{code:'NIGHT_SPILL_ROOT_REQUIRED'});
+  super(ctx,'spillStore');
 		this.config = config;
   ctx.effect(() => async () => { this.closed = true; await Promise.allSettled([...this.pending]); }, "native spill admitted-write drain");
-		this.root = config.root !== void 0 ? resolve(config.root) : privateRoot();
+		this.root = resolve(config.root);
 		ctx.effect(function* () {
 			if (this.config.cleanupPeriodDays > 0) {
 				const warn = (message) => {
@@ -538,35 +439,11 @@ var LocalSpillStore = class NativeSpillStore extends SpillStore {
 			warn
 		});
 	}
-	/**
-	* The roots the startup sweep covers: each discovered prior-default
-	* `dsh-spill-*` temp root (see {@link discoverDefaultRoots}), pruned when
-	* emptied, plus the active/configured root, which is never itself pruned while
-	* the live process may write into it. Empty session directories are pruned in
-	* every root. Filesystem identity de-duplicates aliases before the active root
-	* overrides a discovered match as non-prunable. A test overrides this to
-	* inject an isolated root set — and, being the sweep's one async gather point,
-	* to hold the sweep open across a disposal for the quiescence check; it is a
-	* test seam, not a deployment knob.
-	*
-	* @param warn - sink for a contained discovery failure.
-	* @returns The roots to sweep, each flagged for prune-when-empty.
-	*/
+	/** Sweep only this instance's explicitly configured root. */
 	async gatherRoots(warn) {
 		// Only this instance's configured/private root is eligible, never unrelated prior process roots.
-  const active = await resolveRoot(this.root, true, warn);
+  const active = await resolveRoot(this.root, false, warn);
   return active === undefined ? [] : [{path: active.path, pruneWhenEmpty: false}];
-	}
-	/**
-	* The directory scanned for prior default `dsh-spill-*` roots — the OS tmpdir,
-	* where {@link privateRoot} creates them (accumulation only happens there). A
-	* test overrides this to point discovery at an isolated fixture instead of the
-	* real tmpdir; it is a test seam, not a deployment knob.
-	*
-	* @returns The base directory to scan for default spill roots.
-	*/
-	defaultRootsBase() {
-		return tmpdir();
 	}
 	async saveText(input) {
 		if(this.closed)throw new Error("SPILL_STORE_CLOSED");
@@ -580,11 +457,10 @@ var LocalSpillStore = class NativeSpillStore extends SpillStore {
   let saved;
   try { saved = await saving; } finally { this.pending.delete(saving); }
 		return {
-			locator: SpillLocator(saved.path),
+			locator: saved.path,
 			bytes: saved.bytes,
 			retrievalHint: "Use read with offset/limit, or grep this path to search within it."
 		};
 	}
-};
-//#endregion
-export { DEFAULT_ROOT_PREFIX, LocalSpillStore, LocalSpillStore as default, discoverDefaultRoots, encodeSegment, isErrno, privateRoot, saveTextFile, sessionDir, sweepSpillRoots };
+}
+export { NativeSpillStore, NativeSpillStore as default, encodeSegment, isErrno, saveTextFile, sessionDir, sweepSpillRoots };

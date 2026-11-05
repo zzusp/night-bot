@@ -1,0 +1,63 @@
+{
+  "base": "f49c4ff",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 638,
+      "pass": 638,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    },
+    "integration": {
+      "tests": 34,
+      "pass": 34,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "remainingDirectDshDevDependencies": 48,
+  "removedDirectDevDependency": "@deepseek-ai/dsh-spill-local",
+  "source": {
+    "path": "src/native-spill.js",
+    "sha256": "0e0f15ed03ccd072cdcb8a8f71d0325e045b8540a84c8e01c3a934660362d09d",
+    "changes": "Removed prior-default root discovery/scanning, automatic temporary-root fallback and empty service/primitive wrappers. Native Cordis service requires explicit absolute root before publication. Active root symlinks refused for cleanup as well as writes."
+  },
+  "preserved": "Private file/directory modes, safe UTF16 names, session hash paths, exclusive writes/fsync, admitted-write shutdown drain and age sweep. Existing storage/encoding/sweep algorithms and notices remain attributed. Standard Host physical spill root unchanged.",
+  "validationMethod": "Default suite passes with old root package link absent; restored in finally. Linux containment uses application bubblewrap; Windows skipped. Separate archive/channel/cold-job recovery integration.",
+  "limits": "Trusted local path IO retains ancestor replacement TOCTOU limitation; no new Windows ACL claim, no full rewrite claim, generic projection/message/process forks and 48 dev declarations remain.",
+  "freshInstall": "Known npm metadata/attestation HTTP503 remains; no retry or policy/route changes",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-owned-spill-focused.txt",
+      "sha256": "82c46378ef8061cb23903aa1e2d02db82f6b4df053d9720b3fcb418ff324c1db"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-spill-default.txt",
+      "sha256": "bd2b48baf84602b83e29a973cbfe98daa9316de8cae1e7efee3f6645cab1727d"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-spill-containment.txt",
+      "sha256": "6c65272052681a030f3cd19e71c7f13f3bf991e6e6b17076961160bd9741c7cc"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-spill-integration.txt",
+      "sha256": "3e8ef047bba8dd4d7fe02366202173dc9d43533bf634b6452782d90d3964b7dc"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-spill-checks.txt",
+      "sha256": "ee8d2b0a55ac4685c899b834b4154ca35d4fc9c304324eb3775a803a3fd9d089"
+    }
+  ]
+}
