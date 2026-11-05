@@ -1,37 +1,52 @@
 {
-  "checkpoint": "af9c9f3",
+  "checkpoint": "d31d117",
   "complete": false,
   "resultsOverlap": true,
   "evidence": [
     {
-      "name": "core",
-      "target": "docs/evidence/pi-default-core-summary.txt",
-      "logSha256": "f9ac00235862c4d3853ac3ad1bd5d3ea25859170421f12328a4ab12f169aebae"
+      "name": "default",
+      "target": "docs/evidence/pi-current-default-summary.txt",
+      "logSha256": "410a7ea8e297db38ada48937ed22a7ab36c7e98282c340ceb50457c19abf9703"
     },
     {
-      "name": "kernel",
-      "target": "docs/evidence/pi-default-kernel-summary.txt",
-      "logSha256": "adf8dece283e25763ad37ec0e5d50d4e117bb2dbfd55c3a468fe561abb4d0d43"
+      "name": "domain",
+      "target": "docs/evidence/pi-current-domain-summary.txt",
+      "logSha256": "28aceb78eeb7c3112269f8987dad8659680a84fdca4582ec2bfc8085426cf91d"
     },
     {
-      "name": "jobs-retry",
-      "target": "docs/evidence/pi-default-jobs-retry-summary.txt",
-      "logSha256": "0db87feef270fb2ed23cb9da518591f2ec0c180fe5f8eab73ffc8be8b6efb859"
+      "name": "routing",
+      "target": "docs/evidence/pi-current-routing-summary.txt",
+      "logSha256": "80a47dd0d88d4fed722cbb57da0a3e5ef9ddccb17732c16cf4872c2b5ae988ff"
     },
     {
-      "name": "archives",
-      "target": "docs/evidence/pi-default-archives-summary.txt",
-      "logSha256": "906b4e4def585488f26695f5447ff85a1ceb8208f562ced6239e619eefa17a12"
+      "name": "runtime-diagnostic",
+      "target": "docs/evidence/pi-current-runtime-diagnostic-summary.txt",
+      "logSha256": "1696eb5dd5769fe488691630573180603a55cda67cb327062c20e69e83f337e9"
     },
     {
-      "name": "triage",
-      "target": "docs/evidence/pi-default-triage-summary.txt",
-      "logSha256": "296eab08813ac9294a17002d9a14267aa1e5a7946b400f6524142bc0a9f726e0"
+      "name": "effect-reconciliation",
+      "target": "docs/evidence/pi-current-effect-reconciliation-summary.txt",
+      "logSha256": "a9fecb59cf28afc402742cdce7e393d0247fc8dc3e00bfbeeee85baff6aed29e"
     },
     {
-      "name": "presets",
-      "target": "docs/evidence/pi-default-presets-summary.txt",
-      "logSha256": "de09f63d60660eba1f6328a791ccd87a3ff8d9472135740ea4045aead6f29f08"
+      "name": "operator",
+      "target": "docs/evidence/pi-current-operator-summary.txt",
+      "logSha256": "5e7b51c3df03ca583c0f3da10689d246abc97afaab9e4585c64e6ee080c8825e"
+    },
+    {
+      "name": "operator-kernel",
+      "target": "docs/evidence/pi-current-operator-kernel-summary.txt",
+      "logSha256": "6dbe875feb2b3194b1ce782078f0818f57d201b407edf4243de67e13a5aa5ad3"
+    },
+    {
+      "name": "skills",
+      "target": "docs/evidence/pi-current-skills-summary.txt",
+      "logSha256": "ce8aa7ddccc24ba1697ba2c8bd37cf946dae224166c13f0b234b4d32bb7a2bf6"
+    },
+    {
+      "name": "names",
+      "target": "docs/evidence/pi-current-names-summary.txt",
+      "logSha256": "a7c65a91c7e79709706244cbe4393b81cefb11d3aeaf45842f6c824d1fa11e9e"
     }
   ]
 }

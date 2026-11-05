@@ -1,66 +1,63 @@
 # Official Pi default runtime checkpoint
 
-The default Host now constructs the public Pi 1.5.0 AgentSession through
-OfficialAgentFactory. Pi owns session entries, history, context construction,
-tool execution scheduling, model retries, branching and compaction. Night owns
-business admission, task authority, durable effect receipts, resource policy,
-channels and shutdown ownership. The retired Host LLM service is not mounted.
+Checkpoint: `d31d117`. This is not a completed removal of all DSH-derived code.
+No push, deployment or main merge has been performed.
 
-This is an integration checkpoint, **not a completed migration**. Do not deploy
-this work as a fully verified replacement yet.
+The default Host uses public Pi 1.5.0 AgentSession and SessionManager for inference,
+history, messages, context, queues, retries, branches and compaction. Night owns
+source authorization, task state, permissions, durable effect receipts, channels,
+resource budgets and shutdown ownership. No legacy Host LLM or child/delegation
+service is mounted. User-cancelled subagent product architecture was retired,
+with independent ownership, privacy, archive and drain safeguards preserved.
 
-Verified on the current integration tree:
+## Verified integration
 
-- Official core cohort after sealed presets and skill observers: 178 passed.
-  Domain: 391 passed. The latest routing diagnostic is 16 passed / 31 failed;
-  the old PiLoop fixture is being replaced with an actual official Host fixture.
-- Production import and source accounting checks passed (200 retained core
-  modules, 45 explicitly adapted modules at this checkpoint).
-- Frozen installation passed using the configured registry (621 entries).
-- Official retries preserve a preceding completed effect; unknown effects
-  fence further requests and remain held for reconciliation.
-- Metadata observations contain no message bodies, tool arguments/results or
-  raw call identifiers. Model counts represent SDK assistant attempts, not HTTP
-  dispatches. Final observations are joined during shutdown.
+- `pnpm test`: 1117 passed, zero failed/cancelled; source/import guards passed.
+- `pnpm test:domain`: 391 passed. `pnpm test:routing`: 47 passed.
+- Effect reconciliation core/native-store/real Host recovery: 44 passed.
+- Operator HTTP/CLI/default application/privacy/backup: 5 passed. A separate
+  actual Linux model-process credential probe: 1 passed, application bwrap kept.
+- Official skill input/source/queue/revocation/cancellation: 23 passed.
+- Official names, default Host binding, pinning/cold recovery and metadata drain:
+  14 passed. Automatic naming defaults off; explicit opt-in sends approved labels
+  only, with no main conversation or tool bodies.
+- Frozen installation previously passed: 621 entries; direct DSH development
+  declarations remain 36, production declarations and external runtime imports 0.
 
-The first complete default-suite diagnostic run ended with 967 passed, 70 failed
-and 1 cancelled. Some fixtures were being ported during that run, so it is not a
-stable final snapshot. Failures include obsolete Session/steer fixtures **and
-real production wiring gaps**. Targeted fixes do not supersede that result until
-a fresh complete run passes.
+Counts overlap. Summary files and full-log digests are recorded in
+pi-default-checkpoint-evidence.json. The latest full test includes the branch-cut
+reconciliation fix and tracked naming reads. The later lifecycle-listener fix was
+separately checked by jobs ledger/tools (5 passed) and the actual four-lease-epoch
+single-task listener regression. No Windows kernel claim is made.
 
-Ordinary-channel admission, first-tier triage, dynamic instruction discovery
-and request-image budgets now have actual official-Host coverage. Further
-checks passed: ingress/triage startup and shutdown 14; presets and startup
-barriers 20; live jobs and official retries 6; backup/archive/preflight 29.
-Linux kernel privacy/containment passed 8 using the repository-approved outer
-execution mode while retaining application bwrap. This does not prove Windows
-isolation.
+## Unknown effects
 
-A second full default diagnostic ended with 1,020 passed and 40 failed, without
-cancellations. That run overlapped the final filesystem repair and predates
-subsequent fixture and scheduler fixes; it is not final acceptance. A fresh
-stable full run is still required.
+Actual SDK/tool/process/job joins issue a scope-limited drain attestation. The
+operator entry requires an independently private capability and configured web
+actor. It verifies original official call/input/arguments, current committed
+branch and scope, and Host-owned readback evidence. Closure records possible
+partial effects, leaves the task paused and permanently forbids replay of the
+original tool/arguments. Prepared SQL holds and native receipt/SQL projection
+crash windows are tested with zero recovery model/effect dispatches.
+See EFFECT-RECONCILIATION.md for the exact operator flow and proof limits.
 
-Remaining work includes native subagent business lifecycle, an official skill
-command ingress (the retired DSH inline /name gesture is not reimplemented),
-workspace admission verification, and the remaining old runtime fixtures/sources.
-Night's historical backup/upgrade reader remains; automatic old-Night-to-native
-execution upgrade is not implemented. Earlier experimental native headers
-missing a declared preset are rejected rather than silently rewritten. A concrete privileged reconciliation
-workflow for single-task unknown effect intents is also still missing; effects
-are held rather than replayed or falsely marked successful.
+## Remaining migration and failed checks
 
-Maintenance drain establishes completion only for explicitly owned jobs and
-registered process-provider ranges. It is not evidence of complete platform or
-Windows kernel containment. Unsupported native maintenance paths fail closed.
+`pnpm test:runtime` is not passing: 32 passed, 123 failed. These 155 tests still
+largely construct old PiLoop/Owner/delegation fixtures; failures include explicit
+PI_SKILL_OBSERVATION_PORT_REQUIRED. Retained human-review, notification, recovery,
+model selection, cancellation and no-replay contracts must be ported to actual
+single-task official sessions. Do not hide them by dropping the group.
 
-Official Pi read buffers the complete file before applying output limits.
-The new Pi file-tool module therefore remains unmounted pending integration of
-business guards, lifecycle joins, aggregate image budgets and transport budgets.
-Its separate read_window tool provides bounded streaming; its new resource caps
-must be reviewed before changing the production defaults.
+The file-tool replacement remains an unmounted prototype; default file tools and
+some process/platform components remain attributed derivations. Official Pi
+read buffers full files; a separately named bounded read_window has prototype
+coverage but still needs real NativeTools registration, exact pre-effect checks,
+resource budgets and lifecycle/IO joins before switching production defaults.
+New resource limits and public path/edits[] schemas are behavior changes requiring
+explicit documentation. A passing prototype does not prove default Host wiring.
 
-There are 37 direct DSH development dependencies and zero production DSH
-dependencies in package.json. Derived source and historical test copies remain;
-their license notices have intentionally not been removed.
+Some legacy source aliases, manager modules and test copies remain. Their DSH
+notices stay until all corresponding retained code and copies are removed.
+Portable non-Linux process privacy fails closed; Windows kernel isolation and
+real external provider/vendor effects have not been newly validated here.
