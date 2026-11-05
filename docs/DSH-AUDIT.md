@@ -259,3 +259,7 @@ Four former active tool rows now use explicitly MIT-attributed local modules. Ca
 ### Skill model binding
 
 Active tool-skill now uses attributed local algorithms. Catalog visibility authority is Pi hostMessages; the retained Session audit scan only records historical publication. Generic public skill render/invocation helpers remain explicit. Direct DSH production dependencies36; active components replaced40. Job/FS/shell tools, capability backends and v4 Session/inbox helpers remain.
+
+### Background job model binding
+
+Active tool-jobs now uses attributed local control/notice/format and retention algorithms, over the already native producer registry. Generic schema and message helpers remain. The former JobId brand import was identity-only and is local; no old jobs service mounted. Direct DSH production dependencies35; active components replaced41.

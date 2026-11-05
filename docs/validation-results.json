@@ -991,5 +991,29 @@
     "sourceDerivedAlgorithms": "MIT schema/catalog/invocation/presentation algorithms explicitly attributed",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeJobTools": {
+    "date": "2026-11-05",
+    "ownPass": 449,
+    "ownDurationMs": 22936.492967,
+    "newContracts": 4,
+    "newActualPiWireCases": 3,
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain/kernel9pass1WindowsSkip unchanged from d78b96e; no rerun claimed",
+    "uniquePass": 1035,
+    "productionOnlyRepeatedPass": 344,
+    "productionScope": "306 meaningful core/wires plus38 contracts; two new development-only differentials omitted",
+    "runtimeFilesCompared": 282,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 279,
+    "literalBareImports": 239,
+    "directRuntimeDshDependencies": 35,
+    "removedActiveDshServices": 41,
+    "sourceDerivedAlgorithms": "MIT job controls/notice/output formatting and bounded retention explicitly attributed",
+    "cancellationBoundary": "kill acknowledges requested cancellation before producer exit; owner drain and durable effect ledger responsibilities remain separate",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

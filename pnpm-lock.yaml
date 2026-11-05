@@ -107,9 +107,6 @@ importers:
       '@deepseek-ai/dsh-tool-fs-search':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(a4b4b91fd062203db0459d64511fbccb)
-      '@deepseek-ai/dsh-tool-jobs':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-agent@0.2.1-alpha.2(3dc6930769662420cb44e109694f1822))(@deepseek-ai/dsh-jobs@0.2.1-alpha.2(8d7b1d440163ad8c2809bb357ba6b879))(@deepseek-ai/dsh-llm@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-output-retention@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-system-prompt@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-scope@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))(@deepseek-ai/dsh-tools@0.2.1-alpha.2(7dae165423b610802c67ae1eb268e109))
       '@deepseek-ai/dsh-tool-pwsh':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(4393a64135f75c363d5fb0f46e629b1c)
@@ -480,6 +477,9 @@ importers:
       '@deepseek-ai/dsh-tool-goal':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(3a55d397a06900f346753db70d5853d6)
+      '@deepseek-ai/dsh-tool-jobs':
+        specifier: 0.2.1-alpha.2
+        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-agent@0.2.1-alpha.2(3dc6930769662420cb44e109694f1822))(@deepseek-ai/dsh-jobs@0.2.1-alpha.2(8d7b1d440163ad8c2809bb357ba6b879))(@deepseek-ai/dsh-llm@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-output-retention@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-system-prompt@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-scope@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))(@deepseek-ai/dsh-tools@0.2.1-alpha.2(7dae165423b610802c67ae1eb268e109))
       '@deepseek-ai/dsh-tool-present':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(c37b54ead533d542770d5cc38daacc79)

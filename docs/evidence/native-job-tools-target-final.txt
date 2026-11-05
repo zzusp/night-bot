@@ -1,0 +1,15 @@
+✔ actual Pi native job output consumes delta and final result once and suppresses an awaited completion wake (1382.742167ms)
+✔ actual Pi job kill acknowledges before producer exit and preserves foreign-owner read guard (151.501708ms)
+✔ actual Pi native job completion wakes an idle owner with one durable bounded notice (101.025412ms)
+✔ native job schemas, model output and byte bounds match retained source protocol (14.06435ms)
+✔ native job controls clamp waits, preserve caller signal and hide producer logs and ownership (1.758242ms)
+✔ native job notices preserve wake budgets, user resets, truncation and awaited/killed suppression (6.822663ms)
+✔ native UTF-8 retention preserves old algorithms across chunk boundaries and tiny budgets (2.003243ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1766.276395

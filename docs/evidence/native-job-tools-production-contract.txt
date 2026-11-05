@@ -1,0 +1,46 @@
+✔ file writes preserve exact bytes, private modes, hard-link deduplication and zero-byte uploads (101.502411ms)
+✔ corrupt and missing file/image objects fail integrity checks and never get silently overwritten (85.608322ms)
+✔ batch admission and canonical base64 fail before any publication, with image limits intact (91.741303ms)
+✔ cancelled streamed writes drain their source and remove staging without publishing a receipt (22.142449ms)
+✔ closing an attachment service drains a paused stream iterator and rejects new storage operations (81.905146ms)
+✔ shared request cancellation preserves another waiter, refreshes corrupt cache, and keeps transformation identity (60.221934ms)
+✔ linked storage directories are rejected before creating anything outside the owned attachment root (5.785759ms)
+✔ a failed image batch waits for other admitted transforms and publishes no partial objects (10.085488ms)
+✔ compression concurrency is bounded and aborting every shared waiter prevents late cache publication (17.998166ms)
+✔ cache links cannot cause creation outside the owned home and a returned stream can be closed before consumption (65.237038ms)
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (22.487961ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (104.517494ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (43.910494ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (10.369346ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (29.308421ms)
+✔ legacy flat documents migrate once under writer admission and watcher follows external atomic changes (158.209516ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (35.11319ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (158.207388ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (44.257477ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (37.905056ms)
+✔ reference edits cancelled while waiting for the durable lock never mutate the store (13.695024ms)
+✔ Pi parser preserves strict legacy framing, CRLF body, invocation spellings and ambiguous delimiter fallback (19.104505ms)
+✔ skill discovery and body reload obey the filesystem service; only declared bundled roots use trusted host reads (29.041448ms)
+✔ nontext or invalid files are ignored and filesystem I/O failures are never downgraded into an empty catalog (7.964617ms)
+✔ first-party write/edit observations invalidate caches synchronously even when OS watching is disabled (10.369286ms)
+✔ missing skill roots become live without broad ancestor recursion and watchers drain on disposal (32.396965ms)
+✔ a physical root replacement is rewatched and project watcher ownership stays bounded (134.550556ms)
+✔ symlink skill bundles load through the same filesystem policy and disposed providers reject further reads (8.326192ms)
+✔ default headless Host observes external skill edits through its scoped native provider (1079.403513ms)
+✔ watcher startup failure keeps readable candidates explicitly incomplete and later healthy discovery can recover (10.091727ms)
+✔ cancellation after filesystem resolution prevents subsequent catalog or body reads (8.323549ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (38.604508ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (7.161816ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (5.007225ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (33.474406ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (10.789559ms)
+✔ directory validation retains caller attribution through the injected filesystem service (4.472568ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (6.928834ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2781.36786

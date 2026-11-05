@@ -291,3 +291,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own442/442（21525.140975ms）通过，新增5合同及1实际Pi wire。旧schema/输出差分、Session.surface访问即抛错、Pi目录重复抑制/变更/清空、malformed seed/writer缺失、精确registration shadow、invocation禁止/incomplete snapshot、直接user手势去重与scope均通过。实际Pi三轮证明summary不偷加载body、/wire-skill注入正文且无重复catalog/无tool effect、移除后空replacement。既有OS watcher body变更与显式重读wire也在7项定向组通过。
 
 全新/tmp/night-bot-skill-tool-production frozen production ignore-scripts安装，301实质核心/wire+38合同=339复测通过；280运行文件及manifest/lock逐字一致，静态277 JS/236字面bare imports通过。runtime142/routing47/domain388/kernel9通过1 Windows跳过因对应边界未改动沿用d78b96e证据，不声称重跑；共1028独立通过。证据evidence/native-skill-tool-*.txt。36直接DSH依赖/40活动组件替换，仍未完成迁移；403未重试。
+
+## 原生后台作业工具验证
+
+最终own449/449（22936.492967ms）通过；新增4合同和3实际Pi wire。验证旧schema/render与UTF-8跨chunk保留差分、wait cap及caller signal、隐藏producer log/owner/offset、完成notice字节预算、连续唤醒预算/直接user重置和awaited/killed/teardown抑制。真实Pi验证增量与final result仅消费一次、awaited不重复唤醒、foreign read拒绝、kill先接受而producer仍stopping，以及空闲owner一次持久notice唤醒。首次wire有测试语法错误已修正；空闲完成测试使用观察等待而非jobs.wait，避免人为把其变为awaited并改变待验行为。
+
+全新/tmp/night-bot-job-tools-production frozen production ignore-scripts安装，306实质核心/wire+38合同=344复测通过；282运行文件及manifest/lock逐字一致，静态279 JS/239字面bare imports通过。runtime142/routing47/domain388/kernel9通过1 Windows跳过因对应边界未改动沿用d78b96e证据，不声称重跑；共1035独立通过。证据evidence/native-job-tools-*.txt。35直接DSH依赖/41活动组件替换；仍非完整迁移，403未重试。

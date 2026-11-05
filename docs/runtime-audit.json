@@ -181,10 +181,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-tool-jobs",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-tool-pwsh",
       "version": "0.2.1-alpha.2"
     },
@@ -213,20 +209,20 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 126,
+  "developmentDependencyCount": 127,
   "activeLiteralDshPluginRows": [
     "fs-observation-policy",
     "fs-sandbox",
     "tool-",
     "tool-fs",
-    "tool-fs-search",
-    "tool-jobs"
+    "tool-fs-search"
   ],
   "activeDynamicDshPluginRows": [
     "bash-sandbox or pwsh-sandbox",
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "tool-jobs -> attributed local model controls/notices and native-output-retention; registry stays NativeJobs, brand helper was identity-only",
     "tool-skill -> attributed local schema/catalog/invocation binding; visible catalog digest uses Pi hostMessages only, historical published boolean uses audit-only facade",
     "tool-working-directory/tool-todo/tool-subagent-control/tool-subagent -> attributed local model bindings over native lifecycles; generic schema/scope/message helpers remain",
     "tool-web -> src/native-tool-web.js; restored native-tool-timeout.js policy was absent and earns no replacement credit",

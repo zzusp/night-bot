@@ -28,7 +28,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-attachments.js', import.meta.url).href, config: { dshHome: root } },
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
-      { name: new URL('./native-jobs.js', import.meta.url).href }, row('tool-jobs'), { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
+      { name: new URL('./native-jobs.js', import.meta.url).href }, { name: new URL('./native-tool-jobs.js', import.meta.url).href }, { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
       { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
       row(shell + '-sandbox', { cwd: workspace }), { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'never' } },
       { name: new URL('./native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: {
