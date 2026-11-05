@@ -128,9 +128,6 @@ importers:
       '@deepseek-ai/dsh-credentials':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
-      '@deepseek-ai/dsh-fs':
-        specifier: link:packages/capability-compat/fs
-        version: link:packages/capability-compat/fs
       '@deepseek-ai/dsh-fs-local':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-fs@packages+capability-compat+fs)
@@ -143,18 +140,12 @@ importers:
       '@deepseek-ai/dsh-http-proxy':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
-      '@deepseek-ai/dsh-jobs':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-agent@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat)(@deepseek-ai/dsh-session-projection@packages+capability-compat+session-projection)(@deepseek-ai/dsh-session@packages+capability-compat+session)(@deepseek-ai/dsh-system-prompt@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat))(@deepseek-ai/dsh-typert-protocol@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-util-values@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-workspace@packages+capability-compat+workspace))(@deepseek-ai/dsh-brand@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-session@packages+capability-compat+session)(@deepseek-ai/dsh-workspace@packages+capability-compat+workspace)
       '@deepseek-ai/dsh-llm':
         specifier: link:packages/capability-compat/llm
         version: link:packages/capability-compat/llm
       '@deepseek-ai/dsh-output-retention':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
-      '@deepseek-ai/dsh-ptc-runtime':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)
       '@deepseek-ai/dsh-ptc-runtime-node':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-fs@packages+capability-compat+fs)(@deepseek-ai/dsh-ptc-runtime@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox))(@deepseek-ai/dsh-sandbox-policy@0.2.1-alpha.2(e55c3ebba1d60781b484a2256de76a51))(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)(@deepseek-ai/dsh-session@packages+capability-compat+session)(@deepseek-ai/dsh-subprocess@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-http-proxy@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)))(@deepseek-ai/dsh-timeout@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))
@@ -179,9 +170,6 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: link:packages/capability-compat/session
         version: link:packages/capability-compat/session
-      '@deepseek-ai/dsh-session-persistence':
-        specifier: link:packages/capability-compat/session-persistence
-        version: link:packages/capability-compat/session-persistence
       '@deepseek-ai/dsh-session-persistence-jsonl':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(c90b6f1398b7bc749aaade69233d8a7a)
@@ -194,15 +182,9 @@ importers:
       '@deepseek-ai/dsh-session-title':
         specifier: link:packages/capability-compat/session-title
         version: link:packages/capability-compat/session-title
-      '@deepseek-ai/dsh-spill':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-brand@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-session@packages+capability-compat+session)
       '@deepseek-ai/dsh-spill-local':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-spill@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-brand@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-session@packages+capability-compat+session))
-      '@deepseek-ai/dsh-storage':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
       '@deepseek-ai/dsh-storage-domain':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-storage@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))

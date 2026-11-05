@@ -1,3 +1,21 @@
+# Six unused root protocol declarations retired (2026-11-05)
+
+Removed root development declarations for jobs, ptc-runtime, spill, storage, fs
+and session-persistence. Acorn parsed 926 files (including subpath literals) with
+zero references; dynamic dispatch entrypoints were reviewed. Lock package and
+snapshot bytes and all non-root-dev fields remain exactly unchanged. Nested
+packages, local aliases and attributed source implementations/notices remain.
+**49 direct DSH dev declarations remain**; this is root dependency retirement,
+not complete removal of the corresponding inherited source protocols.
+
+With all six root links absent: **636 default**, **142 runtime**, **390 domain**,
+**47 routing**, **34 additional overlap** pass. Linux containment: **20 pass**,
+**1 Windows skip**, application bubblewrap enabled. All links restored in finally.
+Runtime suite completed in ~291s; its 32-continuation test passed in ~59s, not a
+stuck process. Source/import/Pi-license/YAML/diff guards pass. No frozen install
+retry; known npm HTTP 503 remains. Evidence:
+`docs/pi-native-retired-protocol-validation.json`.
+
 # Native permission preset test assembly (2026-11-05)
 
 The retained group-session fixture now mounts the local permission preset service.
