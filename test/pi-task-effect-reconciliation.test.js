@@ -80,6 +80,7 @@ test('a drain receipt constructor requires an awaited Host capability, not JSON 
 for(const [name,options,code] of [
  ['missing owner attestation',{withDrain:false},'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED'],
  ['foreign branch attestation',{mutate:f=>{f.writer.manager.branch(f.inputEntryId);const payload=structuredClone(f.writer.manager.getEntry(f.ownerDrainEntryId).data.payload);payload.cutEntryId=f.writer.manager.getLeafId();f.receipt('owner-drained',payload)}},'TASK_EFFECT_DRAIN_BRANCH_MISMATCH'],
+ ['commit-only branch change after attestation',{mutate:f=>{f.writer.manager.branch(f.inputEntryId)}},'TASK_EFFECT_DRAIN_BRANCH_MISMATCH'],
  ['wrong attestation cut',{mutate:f=>{f.writer.manager.getEntry(f.ownerDrainEntryId).data.payload.cutEntryId=f.callEntryId}},'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED'],
  ['wrong attestation scope',{mutate:f=>{f.writer.manager.getEntry(f.ownerDrainEntryId).data.payload.scopeDigest='f'.repeat(64)}},'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED'],
  ['self-reported active process',{mutate:f=>{f.writer.manager.getEntry(f.ownerDrainEntryId).data.payload.proof.processes=1}},'TASK_EFFECT_DRAIN_ATTESTATION_INVALID'],

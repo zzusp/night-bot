@@ -64,7 +64,15 @@ export default class Channels extends Service {
       }
       const existing=await this.host.sessionPersistence.stat(sessionId)
       const auditKinds={'channel/delivery':value=>value!==null&&typeof value==='object'&&Object.keys(value).length===2&&typeof value.messageKey==='string'&&/^[a-f0-9]{64}$/.test(value.messageKey)&&typeof value.ok==='boolean'}
-      const options={agentOptions:this.host.agentDefaultModel.currentSelection(),authorizeInput,auditKinds,setup:async ctx=>{await this.host.agentPresets.mount(ctx,'night-bot')}}
+      const options={agentOptions:this.host.agentDefaultModel.currentSelection(),authorizeInput,auditKinds,
+        // Only authenticated direct chat installs the explicit user-command
+        // capability. Room/task/schedule intake retains its business routing.
+        ...envelope.type==='chat'?{authorizeSkillCommand:async(candidate,name,actor)=>{
+          if(!await authorizeInput(candidate,actor))return false
+          const skills=actor.ctx.get('skills');if(!skills)return false
+          const skill=await this.host.agents.withInitiator(actor,()=>skills.get(name,{scope:actor,cwd:actor.ctx.get('workingDirectory')?.get(actor)??actor.metadata.cwd,signal:actor.lifecycle.signal}))
+          return skill?.invocation?.userInvocable===true
+        }}:{},setup:async ctx=>{await this.host.agentPresets.mount(ctx,'night-bot')}}
       handle=existing?await this.host.agents.resume({...options,resumeSessionId:sessionId}):await this.host.agents.create({...options,sessionId,meta:{cwd:workspace,agentPreset:'night-bot'}})
       this.handles.set(sessionId,handle)
     }

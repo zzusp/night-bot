@@ -3,6 +3,8 @@ import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions,disabledExecutionSessions} from '../../src/tasks/single-session.js'
+import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
+import {readTaskEffectScope} from '../../src/tasks/effect-scope.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
 import {createObserverGroupPages} from './observer-group-pages.js'
 import {retiredSourceOwnership} from './coordination-retirement.js'
@@ -288,7 +290,58 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       && (task.contextRevision ?? 0) === (binding.contextRevision ?? 0)
   }
   const taskSessions = suppliedTaskSessions ?? (singleExecution?createSingleTaskSessions:createTaskSessions)({ ctx, isCurrent: currentTask, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action),
+    readEffectScope:async(binding,stored)=>readTaskEffectScope(ctx,await query('task.get',{taskId:binding.taskId}),stored),
     getWorkspaceDir: async ({ binding }) => {if(archives)await archives.register(await query('task.get',{taskId:binding.taskId}));return taskWorkspace(root, binding.taskId)}, registerPersistence: value => persistence.register(value) })
+  const effectReconciliation=singleExecution&&config.webActorId?createTaskEffectReconciliation({persistence:ctx.sessionPersistence,readTask:taskId=>query('task.get',{taskId}),readScope:(task,stored)=>readTaskEffectScope(ctx,task,stored),isSessionLive:async sessionId=>!!ctx.agents.get(sessionId),readOperatorSource:sourceId=>query('source.get',{sourceId}),operatorActorId:config.webActorId}):undefined
+  async function projectEffectReconciliation(task,row,writerHeld=false){
+    if(!writerHeld){
+      if(ctx.agents.get(task.sessionId)||inflightTasks.has(task.taskId))fail('TASK_EFFECT_OWNER_LIVE')
+      const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:effectReconciliationAuditKinds})
+      try{return await projectEffectReconciliation(task,row,true)}finally{await writer.close()}
+    }
+    const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+    const matches=stored.auditEntries.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled'&&entry.data.payload.requestId===row.requestId)
+    if(!matches.length)return false
+    if(matches.length!==1||taskEffectDigest(matches[0].data)!==row.receiptDigest)fail('TASK_EFFECT_RECONCILIATION_JOURNAL_CONFLICT')
+    await command('task.effect-reconciliation.commit',{taskId:task.taskId,requestId:row.requestId,receiptDigest:row.receiptDigest,entryId:matches[0].entryId},'effect-reconciliation-commit:'+hash([task.taskId,row.requestId]))
+    failures.delete(task.taskId);return true
+  }
+  async function reconcileTaskEffect({operatorText,...proposal}){
+    if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+    if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+    if(typeof operatorText!=='string'||!operatorText.trim()||operatorText.length>16000)fail('DYNAMIC_ARGUMENT_INVALID')
+    const identity=taskEffectReconciliationIdentity(proposal),taskId=identity.taskId
+    return admitTask(taskId,async(oldTask)=>{
+      if(oldTask)await oldTask
+      let task=await requireTask(taskId)
+      if(inflightTasks.has(taskId)||ctx.agents.get(task.sessionId))fail('TASK_EFFECT_OWNER_LIVE')
+      const previous=task.effectReconciliations?.find(row=>row.requestId===identity.requestId)
+      const sourceId='effect-operator:'+hash([taskId,identity.requestId])
+      const existingSource=await query('source.get',{sourceId})
+      if(existingSource&&(existingSource.text!==operatorText||hash(existingSource.requestIdentity?.effectReconciliation)!==hash(identity)))fail('DYNAMIC_COMMAND_ID_CONFLICT')
+      if(previous){
+        const source=await query('source.get',{sourceId})
+        if(source?.text!==operatorText||hash(source.requestIdentity?.effectReconciliation)!==hash(identity))fail('DYNAMIC_COMMAND_ID_CONFLICT')
+        if(previous.state==='committed')return {taskId,state:'committed',entryId:previous.entryId,outcome:previous.receipt.payload.outcome,noReplay:true}
+        if(await projectEffectReconciliation(task,previous)){const updated=await requireTask(taskId),row=updated.effectReconciliations.find(row=>row.requestId===identity.requestId);return {taskId,state:row.state,entryId:row.entryId,outcome:row.receipt.payload.outcome,noReplay:true}}
+      }
+      // The native writer is held continuously across evidence validation, SQL
+      // prepare, journal commit and SQL projection. It never opens an actor.
+      const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:{...effectReconciliationAuditKinds}})
+      try{
+        if(!existingSource)await command('source.record',{sourceId,groupId:task.groupId??'task:'+taskId,messageId:sourceId,actorId:config.webActorId,channel:'web',text:operatorText,timestamp:new Date().toISOString(),requestIdentity:{effectReconciliation:identity}},'source:'+sourceId)
+        const receipt=await effectReconciliation.prepare({...identity,operatorSourceId:sourceId})
+        const prepared=await command('task.effect-reconciliation.prepare',{taskId,receipt},'effect-reconciliation-prepare:'+hash([taskId,identity.requestId]))
+        if(prepared.result.reconciliation.receiptDigest!==taskEffectDigest(receipt))fail('DYNAMIC_COMMAND_ID_CONFLICT')
+        writer.appendAudit(receipt);await writer.commit()
+        // A failure here leaves the SQL prepared hold intact. Restart only
+        // verifies the exact committed receipt and completes this projection.
+        await projectEffectReconciliation(task,prepared.result.reconciliation,true)
+      }finally{await writer.close()}
+      task=await requireTask(taskId);const row=task.effectReconciliations.find(row=>row.requestId===identity.requestId)
+      return {taskId,state:row.state,entryId:row.entryId,outcome:row.receipt.payload.outcome,noReplay:true}
+    })
+  }
   const dshExecutionSessions = suppliedExecutionSessions ?? (singleExecution?disabledExecutionSessions():createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
     isCurrent: binding => query('execution.current', { binding }),
     isRecoveryCurrent: binding => query('execution.recovery-current', { binding }),
@@ -425,6 +478,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         // SQLite is the durable queue. A freed slot promotes existing work immediately,
         // without depending on a periodic recovery tick or manufacturing another wake.
         for (const task of await query('task.list')) {
+          if(task.effectReconciliations?.some(row=>row.state==='prepared'))continue
           if (closed) return
           if (task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
           const pending = await query('wake.list', { taskId: task.taskId })
@@ -1261,6 +1315,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed || admissionHolds.has(taskId) || !retryReady(taskId) || !reserveTask(taskId)) return Promise.resolve()
     return track(inflightTasks, taskId, async () => {
       let task = await requireTask(taskId)
+      if(task.effectReconciliations?.some(row=>row.state==='prepared')){taskSlots.delete(taskId);return}
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') { taskSlots.delete(taskId); return }
       if (!task.drained) return
       const pending = await query('wake.list', { taskId })
@@ -1682,6 +1737,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed) return { failures: [] }
     if (recovering) return recovering
     return recovering = (async () => {
+      if(singleExecution)for(const task of await query('task.list'))for(const row of task.effectReconciliations??[])if(row.state==='prepared'){
+        try{await admitTask(task.taskId,async()=>projectEffectReconciliation(task,row))}catch(error){failures.set('effect-reconciliation:'+task.taskId,{id:task.taskId,code:error.code??'TASK_EFFECT_RECONCILIATION_RECOVERY_FAILED'})}
+      }
       if(archives)for(const taskId of archives.errors.keys())archives.schedule(taskId)
       // A process restart cannot prove detached external operations stopped. Recover only native handles known absent;
       // unfinished operation rows remain unknown and fence execution until explicit readback reconciliation.
@@ -2185,6 +2243,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         writable: !!config.webActorId && !task.archivedAt && task.status === 'active' && task.control === 'active',
         error: failures.get(taskId)?.code ?? null }
     },
+    async inspectTaskEffect(args){if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED');if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED');return admitTask(args.taskId,()=>effectReconciliation.inspect(args))},
+    reconcileTaskEffect,
     async sendTaskDialogue({ taskId, requestId, text }) {
       if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
       const receipt = await command('task.dialogue.add', { taskId, requestId, text, actorId: config.webActorId }, `dialogue:${taskId}:${requestId}`)

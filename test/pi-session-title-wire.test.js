@@ -1,11 +1,51 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createUserMessage} from '../packages/capability-compat/llm/index.js'
-import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
-import {foldSessionTitle} from '../src/native-session-title.js'
-const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
-test('native title automatic cadence follows Pi main requests without duplicate headers and survives pin, refresh and cold read',{timeout:20000},async t=>{
- const f=await subagentFixture(t),agent=await f.parent('title-wire'),title=f.host.ctx.sessionTitle,calls=[];assert.equal(title.constructor.name,'NativeSessionTitle');const remove=title.register({id:'fixture-title',automatic:'all-prompts',generate:async request=>{calls.push({route:request.route,messages:request.messages});return{title:'generated '+request.messages.length,messageSeqs:[request.messages.at(-1).seq],model:request.route}}});t.after(()=>remove())
- for(const text of ['FIRST_TITLE_WIRE','SECOND_TITLE_WIRE']){agent.steer(input(text));await agent.whenIdle();await title.drain(title.inFlight)}assert.equal(f.requests.length,2);assert.equal(calls.length,2);assert.deepEqual(calls.map(c=>c.route),[{provider:'fixture',model:'m'},{provider:'fixture',model:'m'}]);assert.equal(calls[1].messages.length,2);assert.equal(agent.session.snapshotEvents().filter(e=>e.type==='request/header').length,1);assert.equal(title.get(agent.session).title,'generated 2')
- title.rename(agent.session,'Pinned user title');agent.steer(input('THIRD_TITLE_WIRE'));await agent.whenIdle();await title.drain(title.inFlight);assert.equal(calls.length,2);assert.equal(title.get(agent.session).title,'Pinned user title');await title.refresh(agent.session);assert.equal(calls.length,3);assert.equal(title.get(agent.session).title,'generated 3');await f.host.ctx.sessions.flush(agent.session);assert.ok((await f.events(agent.id)).some(e=>e.type==='session/title'&&e.data.title==='generated 3'));await f.handles.find(h=>h.agent===agent).dispose();const observation=await f.host.ctx.sessionQuery.observeSession(agent.id);try{const cold=foldSessionTitle(observation.events);assert.equal(cold.title,'generated 3');assert.equal(cold.source.provider,'fixture-title')}finally{observation[Symbol.dispose]()}assert.equal(f.requests.length,3)
+import {namesFixture} from './fixtures/pi-session-names-fixture.js'
+test('official names preserve manual pin, explicit automatic refresh and strict cold name without main replay',async t=>{
+ const f=await namesFixture(t);await f.bind({automatic:true})
+ await f.handle.enqueue({id:'main',source:{kind:'test'},content:'PRIVATE MAIN BODY'});await f.handle.deliver('main');await f.handle.whenIdle()
+ assert.equal(f.requests.length,1)
+ await f.names.settled(f.handle.actor,{packetId:'main'});assert.equal(f.requests.length,2)
+ assert.equal((await f.names.get(f.handle.actor)).name,'Approved name')
+ await f.names.set(f.handle.actor,'Pinned user title');assert.deepEqual(await f.names.settled(f.handle.actor),{skipped:true});assert.equal(f.requests.length,2)
+ f.respond=()=> 'Refreshed title';await f.names.refresh(f.handle.actor)
+ const cold=await f.backend.readNative('names',{requireComplete:true});assert.equal(cold.sessionName.name,'Refreshed title');assert.ok(cold.audit.some(r=>r.domain==='session-name'&&r.payload.nameEntryId===cold.sessionName.nameEntryId))
+ assert.equal(f.requests.length,3);assert.equal(f.requests[1].context.messages.at(-1).content,'Approved public label');assert.ok(!JSON.stringify(f.requests.slice(1).map(r=>r.context)).includes('PRIVATE MAIN BODY'))
+ await f.reopen();await f.bind({automatic:false});assert.equal((await f.names.get(f.handle.actor)).name,'Refreshed title');assert.equal(f.requests.length,3)
+})
+
+test('default Host sessionNames pins manual names and restores committed name after a full cold boot without auxiliary calls',async t=>{
+ const {memoryHost}=await import('./fixtures/memory-host.js')
+ const f=await memoryHost(t),h=await f.agent('default-session-name')
+ const names=f.host.ctx.sessionNames
+ assert.equal(names.constructor.name,'PiSessionNames')
+ const named=await names.set(h.agent,'Manual official name')
+ assert.equal(named.durable,true);assert.equal(named.pinned,true)
+ assert.equal(h.session.sessionName,'Manual official name')
+ await f.say(h.agent,'PRIVATE DEFAULT MAIN BODY')
+ await names.drain(h.agent)
+ assert.equal(f.requests.length,1,'default naming adds no model request')
+ const cold=await f.host.ctx.sessionPersistence.readNative(h.agent.id,{requireComplete:true})
+ assert.deepEqual(cold.sessionName,{name:'Manual official name',nameEntryId:named.nameEntryId})
+ assert.ok(cold.audit.some(receipt=>receipt.domain==='session-name'&&receipt.payload.nameEntryId===named.nameEntryId))
+ await f.close();await f.boot()
+ const resumed=await f.host.ctx.agents.resume({sessionId:h.agent.id,agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user'})
+ const restored=await f.host.ctx.sessionNames.get(resumed.agent)
+ assert.equal(restored.name,'Manual official name');assert.equal(restored.pinned,true)
+ assert.equal(resumed.session.sessionName,'Manual official name');assert.equal(f.requests.length,1,'cold boot does not regenerate a title or replay input')
+ await resumed.dispose()
+})
+
+test('default Host explicitly opted-in naming uses only an approved label and closes its auxiliary work',async t=>{
+ const {memoryHost}=await import('./fixtures/memory-host.js')
+ const f=await memoryHost(t,body=>({text:JSON.stringify(body).includes('Approved public naming label')?'Public generated name':'main reply'}))
+ const h=await f.host.ctx.agents.create({sessionId:'optin-session-name',meta:{cwd:f.host.ctx.runtimePaths.workspaces},agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user',sessionNaming:{automatic:true,readPublicSubject:async()=>({id:'approved-label',text:'Approved public naming label'}),resolveModel:(actor,{signal})=>actor.ctx.get('nativePiProvider').official.resolve({...f.config.model,signal},{credentials:actor.ctx.get('credentials')})}})
+ await f.say(h.agent,'PRIVATE MAIN TEXT MUST NOT ENTER AUXILIARY NAMING')
+ await f.host.ctx.sessionNames.drain(h.agent)
+ assert.equal(f.requests.length,2)
+ const auxiliary=f.requests.find(request=>JSON.stringify(request).includes('Approved public naming label'))
+ assert.ok(auxiliary);assert.equal(auxiliary.tools,undefined)
+ assert.ok(!JSON.stringify(auxiliary).includes('PRIVATE MAIN TEXT MUST NOT ENTER AUXILIARY NAMING'))
+ assert.equal((await f.host.ctx.sessionNames.get(h.agent)).name,'Public generated name')
+ await h.dispose()
 })

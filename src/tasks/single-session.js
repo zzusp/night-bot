@@ -4,11 +4,12 @@ import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from 
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {taskAuditKinds,validateTaskIdentity} from './session-audit.js'
+import {effectReconciliationAuditKinds,ownerDrainedReceipt,taskEffectScopeDigest} from './effect-reconciliation.js'
 const fail=code=>Object.assign(new Error(code),{code})
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
 const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))
 const key=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
-export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceiptKinds,
+export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceiptKinds,...effectReconciliationAuditKinds,
   'task/effect-intent':value=>exact(value,['key','name','callId'])&&key(value.key)&&typeof value.name==='string'&&value.name.length>0&&typeof value.callId==='string'&&value.callId.length>0,
   'task/effect-result':value=>exact(value,['key','isError'])&&key(value.key)&&typeof value.isError==='boolean',
 })
@@ -17,6 +18,12 @@ const instructions='You are the sole execution session for this task. Directly u
 function effectState(receipts){
   const intents=new Map()
   for(const receipt of receipts){
+    if(receipt.domain==='task'&&receipt.kind==='effect-reconciled'){
+      if(receipt.version!==1||!effectReconciliationAuditKinds['task/effect-reconciled'](receipt.payload))throw fail('TASK_EFFECT_AUDIT_INVALID')
+      const intent=intents.get(receipt.payload.key)
+      if(!intent||intent.settled||intent.name!==receipt.payload.toolName||intent.callId!==receipt.payload.callId)throw fail('TASK_EFFECT_AUDIT_INVALID')
+      intent.settled=true;intent.reconciled=true;intent.argumentsDigest=receipt.payload.argumentsDigest;continue
+    }
     if(receipt.domain!=='task'||!['effect-intent','effect-result'].includes(receipt.kind))continue
     if(receipt.version!==1||!singleTaskAuditKinds['task/'+receipt.kind](receipt.payload))throw fail('TASK_EFFECT_AUDIT_INVALID')
     const data=receipt.payload
@@ -34,7 +41,7 @@ function effectState(receipts){
 }
 /** One task owns one official AgentSession. These receipts are business effect
  * and admission facts; Pi alone owns messages, queue delivery and model context. */
-export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPersistenceWriter=(_binding,action)=>action()}){
+export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,readEffectScope,withPersistenceWriter=(_binding,action)=>action()}){
   const active=new Map();let closed=false
   async function run({binding,input,provider,model,reasoningEffort,onSessionBound,resolveHuman,submit}){
     if(closed||active.has(binding.taskId))throw fail('TASK_SESSION_BUSY')
@@ -73,7 +80,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
           await preflightNativeFileMutation(exec,tools.get(exec.name,actor))
           const effectKey=fingerprint({requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,name:exec.name,args:exec.arguments})
-          if(intents.has(effectKey))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
+          if(intents.has(effectKey)||[...intents.values()].some(value=>value.reconciled&&value.name===exec.name&&value.argumentsDigest===fingerprint(exec.arguments)))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
           const intent={key:effectKey,name:exec.name,callId:exec.callId}
           actor.receipts.append({version:1,domain:'task',kind:'effect-intent',payload:intent});intents.set(effectKey,{...intent,settled:false});await actor.receipts.commit()
           const result=await next()
@@ -108,7 +115,15 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
         initialReceipts:stored?[]:[{version:1,domain:'task',kind:'identity',payload:{taskId:binding.taskId,sessionId:binding.sessionId}}],
         authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packet),
         beforeRequest:async()=>{if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')},
-        drainBusiness:async actor=>{const jobs=ctx.get('jobs');if(typeof jobs?.drainOwner!=='function')throw fail('TASK_JOB_DRAIN_UNPROVEN');await jobs.drainOwner(actor,{reason:'single task execution ended'})},
+        drainBusiness:async(actor,{phase,proof}={})=>{
+          const jobs=ctx.get('jobs');if(typeof jobs?.drainOwner!=='function')throw fail('TASK_JOB_DRAIN_UNPROVEN');await jobs.drainOwner(actor,{reason:'single task execution ended'})
+          if(phase!=='dispose'||!uncertain())return
+          if(typeof readEffectScope!=='function'||proof?.modelIdle!==true||proof?.toolsIdle!==true||proof?.processes!==0||proof?.jobs!==0||proof?.scope!=='registered-owned-provider-ranges')throw fail('TASK_EFFECT_DRAIN_UNPROVEN')
+          await actor.receipts.commit()
+          const stored=await ctx.sessionPersistence.readNative(binding.sessionId,{requireComplete:true}),scope=await readEffectScope(binding,stored)
+          actor.receipts.append(await ownerDrainedReceipt({binding:Object.fromEntries(['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(name=>[name,binding[name]??0])),scopeDigest:taskEffectScopeDigest(scope),cutEntryId:actor.piSession.sessionManager.getLeafId()},async()=>({issuer:'night-owned-provider-drain-v1',scope:proof.scope,ownerId:actor.id,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle,processes:proof.processes,jobs:proof.jobs,observedAt:new Date().toISOString(),evidenceDigest:fingerprint({phase,proof:{scope:proof.scope,processes:proof.processes,jobs:proof.jobs,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle},binding})})))
+          await actor.receipts.commit()
+        },
       }
       entry.handle=await withPersistenceWriter(binding,()=>stored?ctx.agents.resume({...options,resumeSessionId:binding.sessionId}):ctx.agents.create({...options,sessionId:binding.sessionId,meta:{cwd,agentPreset:'night-bot-task'}}))
       await entry.handle.agent.receipts.commit();await onSessionBound(binding)

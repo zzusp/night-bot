@@ -1,4 +1,5 @@
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
+import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
@@ -528,6 +529,9 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
   }
   const topicFacts = topicFactLedger({ db, get: (table, id) => get(table, id, true), put })
   function reduce(kind, a, commandId) {
+    const heldTaskId=a.taskId??a.binding?.taskId
+    if(heldTaskId&&kind.startsWith('task.')&&!kind.startsWith('task.effect-reconciliation.')&&kind!=='task.drained'
+      &&get('dynamic_tasks',heldTaskId,true)?.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
     if (kind.startsWith('topic.fact.')) {
       const result = topicFacts.reduce(kind, a)
       if (result !== undefined) return changed(result)
@@ -684,6 +688,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.revise' || kind === 'task.reopen' || kind === 'task.control') {
       const task = get('dynamic_tasks', a.taskId)
+      if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
       if (kind === 'task.revise' || kind === 'task.reopen') {
         if (a.expectedRequirementRevision !== undefined && a.expectedRequirementRevision !== task.requirementRevision
@@ -720,9 +725,35 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       saveTask(task); wake(task.taskId, kind, { requirementRevision: task.requirementRevision, controlRevision: task.controlRevision }, `wake:${commandId}`)
       return changed({ task })
     }
+    if(kind==='task.effect-reconciliation.prepare'){
+      const receipt=record(a.receipt),payload=receipt.payload,task=get('dynamic_tasks',a.taskId)
+      if(receipt.version!==1||receipt.domain!=='task'||receipt.kind!=='effect-reconciled'||!effectReconciliationAuditKinds['task/effect-reconciled'](payload)||payload.taskId!==task.taskId||payload.sessionId!==task.sessionId)fail('TASK_EFFECT_RECONCILIATION_INVALID')
+      const source=get('dynamic_sources',payload.operatorSourceId)
+      if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId)||payload.operatorActorId!==webActorId||taskEffectDigest(source.text)!==payload.operatorTextDigest)fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
+      if(!task.drained||task.recovering||task.archivedAt||!['active','cancelled'].includes(task.status)||digest(taskEffectBinding(task))!==digest(payload.currentBinding))fail('TASK_EFFECT_PROPOSAL_STALE')
+      task.effectReconciliations??=[]
+      const previous=task.effectReconciliations.find(row=>row.requestId===payload.requestId||row.intentEntryId===payload.intentEntryId)
+      if(previous){if(previous.receiptDigest!==taskEffectDigest(receipt))fail('DYNAMIC_COMMAND_ID_CONFLICT');return changed({task,reconciliation:previous})}
+      if(task.effectReconciliations.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
+      const reconciliation={requestId:payload.requestId,intentEntryId:payload.intentEntryId,state:'prepared',receipt:clone(receipt),receiptDigest:taskEffectDigest(receipt),preparedAt:stamp}
+      task.effectReconciliations.push(reconciliation);saveTask(task);return changed({task,reconciliation})
+    }
+    if(kind==='task.effect-reconciliation.commit'){
+      const task=get('dynamic_tasks',a.taskId),reconciliation=task.effectReconciliations?.find(row=>row.requestId===a.requestId)
+      if(!reconciliation||reconciliation.receiptDigest!==a.receiptDigest)fail('TASK_EFFECT_RECONCILIATION_INVALID')
+      if(reconciliation.state==='committed'){if(reconciliation.entryId!==a.entryId)fail('DYNAMIC_COMMAND_ID_CONFLICT');return changed({task,reconciliation})}
+      if(!task.drained||task.recovering||digest(taskEffectBinding(task))!==digest(reconciliation.receipt.payload.currentBinding))fail('TASK_EFFECT_PROPOSAL_STALE')
+      reconciliation.state='committed';reconciliation.entryId=text(a.entryId,'entryId');reconciliation.committedAt=stamp
+      // Closing the uncertain attempt never authorizes continuation or success.
+      // An explicit later Host resume is required for the original objective.
+      if(task.control!=='cancelled'){task.control='paused';task.controlRevision++}
+      task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；禁止重放。任务保持暂停，继续须另行明确请求。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
+      saveTask(task);return changed({task,reconciliation})
+    }
     if (kind === 'task.claim') {
       if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
+      if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
       if (!task.drained) fail('DYNAMIC_TASK_BUSY')
       if (task.providerRecovery?.requirementRevision === task.requirementRevision
@@ -1737,6 +1768,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         return changed({ source: prior })
       }
       if (source.initialRouteDecision) { source.routeDecision = clone(source.initialRouteDecision); source.routePreparedAt = stamp }
+      if(source.requestIdentity?.effectReconciliation){
+        const identity=taskEffectReconciliationIdentity(source.requestIdentity.effectReconciliation),task=get('dynamic_tasks',identity.taskId)
+        if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId))fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
+        // An operator audit source is consumed by this exact business command,
+        // never eligible for channel triage or a task/model wake, even on crash.
+        source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
+      }
       put('dynamic_sources', source); return changed({ source })
     }
     if (kind === 'source.enrich') {

@@ -1,3 +1,4 @@
+import PiSessionNames from './pi-session-names.js'
 import {join,resolve} from 'node:path'
 import OfficialAgentFactory from './pi-official-agent-factory.js'
 import {createOfficialHostResourceResolver} from './pi-official-host-resources.js'
@@ -12,6 +13,9 @@ export function apply(ctx,config={}){
  // resource discovery never falls back to the process user's home.
  const resourcesPaths={...paths,agentsHome:paths.agentsHome??join(paths.runtime,'configured-agents'),harnessHome:paths.harnessHome??join(paths.runtime,'configured-harness')}
  const resolveResources=createOfficialHostResourceResolver(ctx,{paths:resourcesPaths,model:config.model??ctx.agentDefaultModel.currentSelection(),memoryModel:config.memoryModel??config.model??ctx.agentDefaultModel.currentSelection(),maxParallelToolCalls:config.maxParallelToolCalls??4,skillRoots:(config.skillDirs??[]).map(path=>resolve(paths.installRoot,path))})
+ const names=new PiSessionNames({readCommitted:actor=>ctx.get('sessionPersistence').readNative(actor.id,{requireComplete:true})})
+ ctx.provide('sessionNames',names)
+ ctx.effect(()=>()=>names.close(),'official Pi session names ownership')
  const ownership=installOfficialProcessOwnership(ctx)
  const factory=new OfficialAgentFactory(ctx,{
   resolveResources,

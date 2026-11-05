@@ -1,3 +1,4 @@
+import {taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {ObserverMemoryPages} from './observer-memory-pages.js'
 import { randomUUID } from 'node:crypto'
 const mixedTopicPages=new WeakMap()
@@ -149,6 +150,7 @@ const reopenTaskInputSchema = z.strictObject({ requestId: requiredText.max(200),
   maintenanceEvidence: z.strictObject({ directory: requiredText, expectedProposalDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).optional() })
 
 export function residentErrorStatus(error) {
+  if(/^TASK_EFFECT_.*(?:STALE|CONFLICT|BUSY|NOT_QUIESCENT|OWNER_LIVE|ALREADY_SETTLED|ALREADY_RECONCILED)$/.test(error?.code??''))return 409
   if(['OBSERVER_PAGE_PROVIDER_REQUIRED','OBSERVER_PAGINATION_MIGRATION_REQUIRED','OBSERVER_TEXT_MIGRATION_REQUIRED'].includes(error?.code))return 503
   if(error?.code==='OBSERVER_PAGE_STALE')return 409
   const message = error instanceof Error ? error.message : String(error)
@@ -177,11 +179,34 @@ async function submitWebTask(request, response, runtime, kind, taskId) {
   } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
 }
 
-export async function handleRequest(request, response, store, { testApiEnabled = false, transport = 'fake-dws', outboundAuthorized = false, modelMode = 'fake', checkForUpdatesImpl = checkForUpdates } = {}) {
+export async function handleRequest(request, response, store, { testApiEnabled = false, transport = 'fake-dws', outboundAuthorized = false, modelMode = 'fake', checkForUpdatesImpl = checkForUpdates, effectOperatorAuth } = {}) {
   applyResidentCorsHeaders(request, response)
   const url = new URL(request.url ?? '/', 'http://localhost')
   // 浏览器预检不执行业务操作，须先于旧写入口清退规则响应。
   if (request.method === 'OPTIONS') return send(response, 204, null)
+  const effectRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/([^/]+)\/(inspect|close)$/u.exec(url.pathname)
+  if (effectRoute) {
+    if (!localConfigurationRequest(request)) return send(response,403,{error:'TASK_LOCAL_IDENTITY_REQUIRED'})
+    if (!effectOperatorAuth?.available) return send(response,503,{error:'EFFECT_OPERATOR_PRIVACY_UNAVAILABLE'})
+    if (!await effectOperatorAuth.authorize(request)) return send(response,403,{error:'EFFECT_OPERATOR_CAPABILITY_REQUIRED'})
+    try {
+      const taskId=decodeURIComponent(effectRoute[1]),intentEntryId=decodeURIComponent(effectRoute[2]),body=await readJson(request)
+      if(effectOperatorAuth.containsSecret({taskId,intentEntryId,body}))return send(response,400,{error:'EFFECT_OPERATOR_SECRET_IN_REQUEST'})
+      let result
+      if(effectRoute[3]==='inspect'){
+        z.strictObject({}).parse(body)
+        if(!store.inspectTaskEffect)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
+        result=await store.inspectTaskEffect({taskId,intentEntryId})
+      }else{
+        const {operatorText,...proposal}=z.object({operatorText:z.string().min(1).max(16000).refine(value=>value.trim().length>0)}).passthrough().parse(body)
+        const identity=taskEffectReconciliationIdentity(proposal)
+        if(identity.taskId!==taskId||identity.intentEntryId!==intentEntryId)return send(response,400,{error:'TASK_EFFECT_PROPOSAL_IDENTITY_MISMATCH'})
+        if(!store.reconcileTaskEffect)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
+        result=await store.reconcileTaskEffect({...identity,operatorText})
+      }
+      return send(response,200,effectOperatorAuth.redact(result))
+    }catch(error){const code=error?.code;return send(response,error?.name==='ZodError'||!code?400:residentErrorStatus(error),effectOperatorAuth.redact({error:typeof code==='string'&&/^(?:TASK_EFFECT_|TASK_SESSION_|DYNAMIC_)[A-Z_]+$/.test(code)?code:'TASK_EFFECT_OPERATOR_REQUEST_INVALID'}))}
+  }
   const routingHold = request.method === 'POST' && /^\/config\/groups\/([^/]+)\/messages\/([^/]+)\/routing-hold$/u.exec(url.pathname)
   if (routingHold) {
     if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })

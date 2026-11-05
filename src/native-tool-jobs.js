@@ -288,7 +288,7 @@ function apply(ctx, config) {
 		text: "Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job's work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering."
 	});
 	const killedByModel = /* @__PURE__ */ new Set();
-    ctx.on('agent/created',async({agent})=>{if(!agent.piSession)return;const result=await reconcileJobCompletionNotices(ctx,agent);if(result.unknown)ctx.logger.warn('NIGHT_JOB_COMPLETION_NOTICE_UNKNOWN');return result})
+    ctx.on('agent/created',async({agent})=>{if(!agent.piSession)return;const result=await reconcileJobCompletionNotices(ctx,agent);if(result.unknown)ctx.logger.warn('NIGHT_JOB_COMPLETION_NOTICE_UNKNOWN')})
 	ctx.jobs.events.subscribe({ owners: "scope" }, (event) => {
 		if (event.type === "removed") {
 			killedByModel.delete(event.job.id);

@@ -1,4 +1,5 @@
 import {AgentSession} from '@earendil-works/pi-coding-agent'
+import {commandBodyDigest} from './pi-skill-command-input.js'
 import {isDeepStrictEqual} from 'node:util'
 
 const bindings=new WeakMap()
@@ -16,7 +17,7 @@ export function bindBusinessInputAuthority(actor,port){
  if(typeof port?.lookupPacket!=='function'||typeof port.isLive!=='function')throw new TypeError('Durable admission lookup and live actor capability required')
  const previous=bindings.get(actor)
  if(previous){if(previous.port!==port)throw fail('BUSINESS_INPUT_AUTHORITY_ALREADY_BOUND');return()=>{}}
- const bound={port,lookupPacket:port.lookupPacket.bind(port),isLive:port.isLive.bind(port)}
+ const bound={port,lookupPacket:port.lookupPacket.bind(port),isLive:port.isLive.bind(port),lookupCommandEntry:port.lookupCommandEntry?.bind(port)}
  bindings.set(actor,bound)
  return()=>{if(bindings.get(actor)===bound)bindings.delete(actor)}
 }
@@ -30,6 +31,15 @@ export function visibleBusinessInputs(actor){
  if(bound.isLive(actor)!==true)throw fail('BUSINESS_INPUT_ACTOR_NOT_LIVE')
  const result=[]
  for(const {sourceEntry:entry,messages}of projection.entries){
+  if(entry.type==='message'&&entry.message.role==='user'){
+   const command=bound.lookupCommandEntry?.(entry.id)
+   if(command?.then)throw fail('BUSINESS_INPUT_SYNC_LOOKUP_REQUIRED')
+   if(command&&command.entryId===entry.id&&command.bodyDigest===commandBodyDigest(entry.message.content)&&messages.length===1&&messages[0].role==='user'&&isDeepStrictEqual(messages[0].content,entry.message.content)){
+    const packet=bound.lookupPacket(command.id)
+    if(packet&&isDeepStrictEqual(packet,command.packet))result.push({entryId:entry.id,packetId:packet.id,source:structuredClone(packet.source),content:structuredClone(packet.content)})
+   }
+   continue
+  }
   if(entry.type!=='custom_message'||entry.customType!=='night.business-input')continue
   const details=entry.details
   if(!details||typeof details.packetId!=='string'||!details.packetId||Object.keys(details).length!==2||!Object.hasOwn(details,'source'))continue

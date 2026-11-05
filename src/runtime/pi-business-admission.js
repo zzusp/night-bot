@@ -1,3 +1,4 @@
+import {createSkillCommandInput,skillCommand,skillCommandAuditKinds} from './pi-skill-command-input.js'
 import {z} from 'zod'
 import {isDeepStrictEqual} from 'node:util'
 import {snapshotJsonValue,deepFreeze} from '../native-values.js'
@@ -8,6 +9,7 @@ const packetSchema=z.strictObject({id:z.string().min(1),source:z.looseObject({ki
 const admittedSchema=z.strictObject({id:z.string().min(1),entryId:z.string().min(1)})
 const cancelledSchema=z.strictObject({id:z.string().min(1),reason:z.string().min(1)})
 export const admissionAuditKinds=Object.freeze({
+ ...skillCommandAuditKinds,
  'admission/enqueued':value=>packetSchema.safeParse(value).success,
  'admission/enqueued-internal':value=>packetSchema.safeParse(value).success,
  'admission/admitted':value=>admittedSchema.safeParse(value).success,
@@ -19,7 +21,7 @@ const fail=code=>Object.assign(new Error(code),{code})
  * Pi's public sendCustomMessage/steer/followUp own all model scheduling. Recovery
  * restores delivery facts only and never invokes a model or repeats an effect.
  */
-export async function createBusinessAdmission({store,authorize,bindInternal}) {
+export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
  let tail=Promise.resolve(),failure,paused=false,current,closed=false
@@ -43,6 +45,8 @@ export async function createBusinessAdmission({store,authorize,bindInternal}) {
   }
  }
  for(const receipt of await store.readAudit())restore(receipt)
+ const commands=await createSkillCommandInput({store,lookupPacket:id=>packets.get(id),authorize:async(packet,name)=>!internalPackets.has(packet.id)&&await authorize(packet)===true&&typeof authorizeSkillCommand==='function'&&await authorizeSkillCommand(packet,name)===true})
+ for(const id of packets.keys())if(commands.has(id)&&(admitted.has(id)||cancelled.has(id)))throw fail('PI_BUSINESS_ADMISSION_ACK_INVALID')
  const serialize=action=>{const operation=tail.then(()=>{healthy();return action()});tail=operation.catch(()=>{});return operation}
  const commit=async()=>{try{await store.commit()}catch(cause){failure??=cause;throw failure}}
  const findEntry=packet=>{
@@ -67,7 +71,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal}) {
    return serialize(async()=>{
     if(!internal&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
     const previous=packets.get(packet.id)
-    if(previous){if(!isDeepStrictEqual(previous,packet))throw fail('PI_BUSINESS_ADMISSION_ID_CONFLICT');return {id:packet.id,duplicate:true,admitted:admitted.has(packet.id)}}
+    if(previous){if(!isDeepStrictEqual(previous,packet))throw fail('PI_BUSINESS_ADMISSION_ID_CONFLICT');return {id:packet.id,duplicate:true,admitted:admitted.has(packet.id)||commands.status(packet.id)==='admitted'}}
     append(internal?'enqueued-internal':'enqueued',packet);await commit();packets.set(packet.id,packet);if(internal)internalPackets.add(packet.id)
     return {id:packet.id,duplicate:false,admitted:false}
    })
@@ -78,19 +82,21 @@ export async function createBusinessAdmission({store,authorize,bindInternal}) {
  return {
   enqueue:input=>enqueue(input),
   has:id=>packets.has(id),
-  status:id=>admitted.has(id)?'admitted':cancelled.has(id)?'cancelled':packets.has(id)?'pending':undefined,
+  status:id=>commands.status(id)??(admitted.has(id)?'admitted':cancelled.has(id)?'cancelled':packets.has(id)?'pending':undefined),
+  bindSession:(session,options)=>commands.bindSession(session,options),
+  lookupCommandEntry:entryId=>commands.lookupEntry(entryId),
   lookupPacket:id=>packets.has(id)?structuredClone(packets.get(id)):undefined,
-  pending:()=>[...packets.keys()].filter(id=>!admitted.has(id)&&!cancelled.has(id)),
+  pending:()=>[...packets.keys()].filter(id=>!admitted.has(id)&&!cancelled.has(id)&&commands.status(id)!=='admitted'),
   current:()=>current===undefined?undefined:structuredClone(current),
   pause(){healthy();paused=true},
   resume(){healthy();paused=false},
   get paused(){return paused},
-  beforeRequest:()=>serialize(async()=>{if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED');await acknowledge()}),
+  beforeRequest:()=>serialize(async()=>{if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED');await acknowledge();await commands.beforeRequest()}),
   cancelPending(reason='user'){
    return serialize(async()=>{
     if(typeof reason!=='string'||!reason)throw new TypeError('Cancellation reason required')
     await acknowledge()
-    const ids=[...packets.keys()].filter(id=>!admitted.has(id)&&!cancelled.has(id))
+    const ids=[...packets.keys()].filter(id=>!admitted.has(id)&&!cancelled.has(id)&&!commands.has(id))
     for(const id of ids)append('cancelled',{id,reason})
     await commit();for(const id of ids)cancelled.add(id)
     return ids
@@ -108,6 +114,12 @@ export async function createBusinessAdmission({store,authorize,bindInternal}) {
    if(!internalPackets.has(id)&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
    healthy();if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(admitted.has(id)||inflight.has(id))return {id,duplicate:true}
+   const command=!internalPackets.has(id)?skillCommand(packet):undefined
+   if(command){
+    if(typeof authorizeSkillCommand!=='function')throw fail('PI_SKILL_COMMAND_DENIED')
+    commands.bindSession(session);current={id,messages:[structuredClone(packet)]}
+    return commands.deliver(packet,command,{deliverAs})
+   }
    inflight.add(id);current={id,messages:[structuredClone(packet)]}
    try{
     await session.sendCustomMessage({customType:'night.business-input',content:packet.content,display:false,details:{packetId:id,source:packet.source}},{triggerTurn:true,deliverAs})
@@ -115,6 +127,6 @@ export async function createBusinessAdmission({store,authorize,bindInternal}) {
     return {id,duplicate:false,admitted:admitted.has(id)}
    }finally{inflight.delete(id)}
   },
-  async close(){paused=true;await tail;closed=true},
+  async close(){paused=true;await commands.close();await tail;closed=true},
  }
 }

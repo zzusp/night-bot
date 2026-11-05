@@ -126,6 +126,7 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
   const drain=drains.findLast(entry=>isDeepStrictEqual(entry.data.payload.binding,originBinding))
   assert(drain&&drain.data.payload.scopeDigest===scopeDigest&&drain.parentId===drain.data.payload.cutEntryId&&drain.data.payload.proof.ownerId===task.sessionId,'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED')
   assert(manager.getBranch(drain.id).some(entry=>entry.id===intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+  assert(manager.getBranch(entries.at(-1).id).some(entry=>entry.id===drain.id),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
   const later=entries.slice(entries.findIndex(entry=>entry.id===drain.id)+1)
   // A new business receipt can admit work or change a producer's state even
   // without adding a model message. Only physical commit markers may follow
@@ -146,7 +147,7 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
    latest=Math.max(latest,Date.parse(evidence.observedAt))
   }
   const source=await readOperatorSource(text.parse(operatorSourceId))
-  assert(source?.sourceId===operatorSourceId&&source.channel==='web'&&source.actorId===operatorActorId&&source.groupId===inspection.scope.groupId&&typeof source.text==='string'&&source.text.trim()&&timestamp.safeParse(source.timestamp).success&&Date.parse(source.timestamp)>=latest&&isDeepStrictEqual(source.requestIdentity?.effectReconciliation,identity),'TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
+  assert(source?.sourceId===operatorSourceId&&source.channel==='web'&&source.actorId===operatorActorId&&source.groupId===(inspection.scope.groupId??'task:'+inspection.taskId)&&typeof source.text==='string'&&source.text.trim()&&timestamp.safeParse(source.timestamp).success&&Date.parse(source.timestamp)>=latest&&isDeepStrictEqual(source.requestIdentity?.effectReconciliation,identity),'TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
   const fresh=await inspect({taskId:identity.taskId,intentEntryId:identity.intentEntryId,signal})
   assert(fresh.journalRevision===inspection.journalRevision&&fresh.scopeDigest===inspection.scopeDigest&&isDeepStrictEqual(fresh.currentBinding,inspection.currentBinding),'TASK_EFFECT_PROPOSAL_STALE')
   const {scope,drainedAt,proofScope,kind,...data}=inspection

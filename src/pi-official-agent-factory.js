@@ -1,3 +1,5 @@
+import {sessionNameAuditKinds} from './pi-session-names.js'
+import {effectReconciliationAuditKinds} from './tasks/effect-reconciliation.js'
 import {installSessionSkillRefresh,skillObservationAuditKinds} from '../packages/dingtalk-core/session-skill-refresh.js'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isDeepStrictEqual} from 'node:util'
@@ -72,7 +74,7 @@ export class OfficialAgentFactory {
   if(options.parentAgent&&(ownerCtx.agents.get(options.parentAgent.id)!==options.parentAgent||!options.parentAgent.piSession||options.parentAgent.lifecycle?.isLive()!==true||options.parentAgent.lifecycle.signal.aborted))throw fail('PI_OFFICIAL_PARENT_NOT_LIVE')
   const id=mode==='resume'?(options.resumeSessionId??options.sessionId):options.sessionId
   if(typeof id!=='string'||!id)throw fail('PI_OFFICIAL_FACTORY_ID_REQUIRED')
-  const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,ports.auditKinds,options.auditKinds)
+  const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,effectReconciliationAuditKinds,sessionNameAuditKinds,ports.auditKinds,options.auditKinds)
   const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
   const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
   let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[]
@@ -83,9 +85,13 @@ export class OfficialAgentFactory {
   const check=()=>{const error=bundle?.durability.failure??bundle?.durability.requestFailure??bundle?.requestImageFailure??bundle?.bridge.policyFailure;if(error)throw error}
   const active=()=>{if(bundle?.durability.failure)throw bundle.durability.failure;if(cancelled)throw cancellationError;if(closing||disposed||!published||!live())throw fail('PI_OFFICIAL_ACTOR_NOT_LIVE')}
   const drain=async(phase)=>{
+   // These are actual public SDK and tool-lease joins, independent of a
+   // request's business outcome. Failed joins never produce an attestation.
+   await bundle.session.agent.waitForIdle();await bundle.tools.drain()
+   if(bundle.session.isStreaming||bundle.session.agent.state.isStreaming)throw fail('PI_OFFICIAL_MODEL_DRAIN_UNPROVEN')
    const proof=await drainBusiness(actor,{phase})
    if(!proof||!(proof.processes===0&&proof.jobs===0))throw Object.assign(fail('execution_process_drain_failed'),{executionDrained:false})
-   await options.drainBusiness?.(actor,{phase})
+   await options.drainBusiness?.(actor,{phase,proof:Object.freeze({...proof,modelIdle:true,toolsIdle:true})})
    return proof
   }
   try{
@@ -93,7 +99,12 @@ export class OfficialAgentFactory {
    for(const receipt of options.initialReceipts??[])store.appendAudit(receipt)
    await store.commit()
    let publishInternal
-   const admission=await createBusinessAdmission({store,authorize:packet=>authorize(packet,actor),bindInternal:publish=>{publishInternal=(...args)=>{if(bundle?.durability.failure)throw bundle.durability.failure;return publish(...args)}}})
+   const admission=await createBusinessAdmission({store,authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
+    const authorizeCommand=options.authorizeSkillCommand??ports.authorizeSkillCommand
+    if(typeof authorizeCommand!=='function')return false
+    await bundle.bridge.refreshResources();await bundle.bridge.resourceLoader.reload()
+    return await authorizeCommand(packet,name,actor)===true
+   },bindInternal:publish=>{publishInternal=(...args)=>{if(bundle?.durability.failure)throw bundle.durability.failure;return publish(...args)}}})
    const state=await createNativeBusinessState(store,{readOnly:options.readOnly===true})
    bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,
     prepareActor:async value=>{
@@ -127,18 +138,20 @@ export class OfficialAgentFactory {
      await options.beforeRequest?.(actor)
      for(const guard of requestGuards)await guard({actor,signal:lifecycle.signal})
     },
-    beforeStoreClose:async()=>{await skillRefresh?.close();if(published)await drain('dispose');await admission.close()},
+    beforeStoreClose:async()=>{await ownerCtx.get('sessionNames')?.closeActor(actor);await skillRefresh?.close();if(published)await drain('dispose');await admission.close()},
    })
    actor.options=deepFreeze({...actor.options,...bundle.session.model?{provider:bundle.session.model.provider,model:bundle.session.model.id}:{},reasoningEffort:bundle.session.thinkingLevel})
    Object.defineProperty(actor,'status',{enumerable:true,get:()=>bundle.session.isStreaming?'running':'idle'})
-   unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,isLive:live})
+   admission.bindSession(bundle.session,{signal:actor.lifecycle.signal})
+   unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,isLive:live})
    unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live})
    options.signal.throwIfAborted();await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true
+   await ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming})
    skillRefresh=await installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal})
    await bundle.bridge.refreshResources();await bundle.bridge.resourceLoader.reload()
    observer=bindPiAgentObservation({actor,emit:(owner,record)=>owner.ctx.emit(scopeTarget(owner,owner),'night/agent-observation',owner,record),onError:()=>ownerCtx.logger.warn('Native agent observation could not be recorded')})
    let settled
-   const unsubscribe=bundle.session.subscribe(event=>{if(event.type==='agent_start')settled??=Promise.withResolvers();if(event.type==='agent_settled'){settled?.resolve();settled=undefined}})
+   const unsubscribe=bundle.session.subscribe(event=>{if(event.type==='agent_start')settled??=Promise.withResolvers();if(event.type==='agent_settled'){settled?.resolve();settled=undefined;void ownerCtx.get('sessionNames')?.settled(actor).catch(()=>ownerCtx.logger.warn('Session name generation failed'))}})
    const whenIdle=async()=>{
     for(;;){await Promise.allSettled([...pending]);await bundle.session.agent.waitForIdle();if(settled)await settled.promise;await bundle.tools.drain();if(!pending.size&&!bundle.session.isStreaming&&!settled)break}
     // Business request rejection remains recorded and is returned by delivery.
