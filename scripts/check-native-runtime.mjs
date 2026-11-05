@@ -28,10 +28,11 @@ async function walk(directory){for(const entry of await readdir(directory,{withF
 for(const directory of ['src','bin','packages/dingtalk-core','packages/scope-compat','packages/capability-compat'])await walk(directory)
 const legacy=JSON.parse(await readFile('docs/legacy-runtime-source-manifest.json','utf8'))
 for(const entry of legacy.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded legacy/platform source change: '+entry.target)
-for(const entry of [...legacy.removedHistoricalFormats.files,legacy.removedHistoricalFormats.worker]){try{await access(entry.target)}catch(error){if(error.code==='ENOENT')continue;throw error}throw new Error('Removed historical format source reintroduced: '+entry.target)}
+for(const entry of [...legacy.removedHistoricalFormats.files,legacy.removedHistoricalFormats.worker,...(legacy.retiredImageSelection?.files??[])]){try{await access(entry.target)}catch(error){if(error.code==='ENOENT')continue;throw error}throw new Error('Removed historical format source reintroduced: '+entry.target)}
 const processSources=JSON.parse(await readFile('docs/process-fork-manifest.json','utf8'))
 for(const entry of processSources.files)if(digest(await readFile(entry.path))!==entry.adaptedSha256)throw new Error('Unrecorded process fork change: '+entry.path)
 for(const entry of processSources.replacedSources??[])if(digest(await readFile(entry.path))!==entry.replacementSha256)throw new Error('Unrecorded owned process module change: '+entry.path)
+for(const entry of processSources.ownedSources??[])if(digest(await readFile(entry.path))!==entry.sha256)throw new Error('Unrecorded owned process source: '+entry.path)
 const schedule=JSON.parse(await readFile('docs/schedule-source-manifest.json','utf8'))
 for(const entry of schedule.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded schedule source adaptation: '+entry.target)
 console.log(JSON.stringify({runtimeJsFiles:files,externalSdkImports:0,legacyOrchestratorDefinitions:0,legacySourceFilesVerified:legacy.files.length,historicalFormatFilesRemoved:legacy.removedHistoricalFormats.files.length+1}))

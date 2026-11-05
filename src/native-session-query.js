@@ -1,10 +1,11 @@
 // MIT source-derived read-only query/cold observation algorithms; see licenses/dsh-session-query-MIT.txt.
 // Storage uses native Pi persistence. Legacy event surfaces here are presentation/audit compatibility, never Pi model-request authority.
 import {AsyncLocalStorage} from "node:async_hooks";
-import {imageOffloadProjection} from "./legacy-v4/dsh-compaction-image-offload/lib/types/projection.js";
-const currentSessionMessageProjections = [imageOffloadProjection];
+import {deepFreeze} from "./native-values.js";
+import {imageSelectionProjection} from "./runtime/session-image-selection.js";
+const currentSessionMessageProjections = [imageSelectionProjection];
 import { Service } from "@deepseek-ai/cordis";
-import { Session, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent } from "./native-session-protocol.js";
+import { validateSessionAudit, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent } from "./native-session-protocol.js";
 import { foldSessionTitle } from "./native-session-title.js";
 import { HarnessError } from "./native-llm-protocol.js";
 //#region lib/types/config.js
@@ -13,7 +14,7 @@ import { HarnessError } from "./native-llm-protocol.js";
 const SESSION_QUERY_READ_WINDOW_MAX = 50;
 /** Default maximum number of concurrent persisted-log reads in one batch read. */
 const SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY = 4;
-/** Default maximum number of cold prepared-Session observations retained for reuse. */
+/** Default maximum number of cold read-only audit views retained for reuse. */
 const SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE = 5;
 /** Typed session-query failure whose `code` is one closed taxonomy member. */
 var SessionQueryError = class extends HarnessError {
@@ -28,19 +29,21 @@ var SessionQueryError = class extends HarnessError {
 * Read one complete stored session log without taking ownership or mutating
 * storage: open a read handle, read the validated contiguous log, close the
 * handle, and append `interruptedTurnClosers` so a log whose writer crashed
-* mid-turn folds as a balanced transcript. Backend failures propagate
+* mid-turn folds as a balanced audit transcript. These synthetic closers never
+* enter storage or the optional context returned from the same committed Pi read.
+* Backend failures propagate
 * unmapped — each caller owns its error taxonomy.
 * @param persistence - the mounted persistence service.
 * @param sessionId - the stored session to read.
 * @param signal - optional cancellation for the open and read work.
-* @returns an adoptable seed in a caller-owned outer array, ready for in-place Session restoration.
+* @returns a detached audit log with optional frozen committed Pi context; no Session is constructed or published.
 */
 async function readColdSessionLog(persistence, sessionId, signal) {
 	const options = signal === void 0 ? void 0 : { signal };
 	const handle = await persistence.open(sessionId, "read", options);
 	let read;
 	try {
-		read = await handle.read(0, void 0, options);
+		read = await handle.read(0, void 0, { ...options, includeContext: true });
 	} catch (error) {
 		try {
 			await handle.close();
@@ -50,6 +53,7 @@ async function readColdSessionLog(persistence, sessionId, signal) {
 	await handle.close();
 	const { events } = read;
 	return {
+		...read.context === undefined ? {} : { context: deepFreeze(structuredClone(read.context)) },
 		eventState: read.eventState,
 		header: handle.header,
 		inheritedEventCount: handle.inheritedEventCount,
@@ -321,13 +325,14 @@ function errorMessage$1(error) {
 }
 //#endregion
 //#region lib/types/observation.js
-/** Shared live/prepared observations for Session page and lifecycle consumers. */
+/** Shared live audit cuts and cold read-only views for history consumers. */
 /**
 * Builds point observations without a corpus listing preflight.
 *
 * Cold reads are cached per session id, keyed by the persistence instance and
 * the `stat` revision observed before the log read: an unchanged revision
-* reuses the restored Session without re-reading the log. The cache is bounded
+* reuses the frozen audit view and committed Pi context without re-reading the
+* log. No application Session or Session projection cells are created. The cache is bounded
 * (least-recently-used unpinned entries are evicted past the capacity), and
 * entries pinned by active leases survive eviction and replacement — a lease's
 * cut stays valid for the lease lifetime even after a newer revision lands.
@@ -337,7 +342,7 @@ var SessionObservationReader = class {
 	cacheCapacity;
 	cache = /* @__PURE__ */ new Map();
 	/**
-	* @param ctx - context carrying Session and optional persistence/projection services.
+	* @param ctx - context carrying the live session store and optional persistence/projection services.
 	* @param cacheCapacity - maximum unpinned cold observations retained for reuse.
 	*/
 	constructor(ctx, cacheCapacity = 5) {
@@ -345,11 +350,11 @@ var SessionObservationReader = class {
 		this.cacheCapacity = cacheCapacity;
 	}
 	/**
-	* Observe one live-preferred Session and retain a cold preparation until disposal.
+	* Observe one live-preferred audit cut and retain a cold read-only view until disposal.
 	* @param sessionId - logical Session identity.
 	* @param options - cancellation and all-or-none projection computation for this read.
 	* @returns one exact immutable observation.
-	* @throws {@link SessionQueryError} with code `SESSION_QUERY_CORRUPT_SESSION` when live or prepared projection computation fails.
+	* @throws {@link SessionQueryError} with code `SESSION_QUERY_CORRUPT_SESSION` when audit validation or projection computation fails.
 	*/
 	async read(sessionId, options = {}) {
 		const { signal, projectionMode = "all" } = options;
@@ -368,26 +373,23 @@ var SessionObservationReader = class {
 				throwIfObservationAborted(signal);
 				const attached = this.ctx.sessions.get(sessionId);
 				if (attached !== void 0) return this.live(attached, projectionMode);
-				const seed = loaded.events;
-				let session;
-				try {
-					session = this.ctx.sessions.prepare(sessionId, {
-						seed,
-						meta: structuredClone(loaded.header),
-						inheritedEventCount: loaded.inheritedEventCount,
-						eventState: loaded.eventState
-					});
-				} catch (error) {
-					if (this.ctx.sessions.get(sessionId) !== void 0) continue;
-					throw new SessionQueryError(`stored session "${sessionId}" is corrupt: ${errorMessage(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
-				}
-				entry = {
-					persistenceIdentity: persistence.identity,
-					revision: snapshot.revision,
-					session,
-					events: Object.freeze(seed),
-					refs: 0
-				};
+                assertSessionHeadersCompatible(snapshot.header, loaded.header);
+                let audit;
+                try {
+                    audit = validateSessionAudit(sessionId, loaded.events, loaded.header, loaded.inheritedEventCount, currentSessionMessageProjections);
+                } catch (error) {
+                    if (this.ctx.sessions.get(sessionId) !== void 0) continue;
+                    throw new SessionQueryError(`stored session "${sessionId}" is corrupt: ${errorMessage(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
+                }
+                entry = {
+                    persistenceIdentity: persistence.identity,
+                    revision: snapshot.revision,
+                    header: audit.header,
+                    inheritedEventCount: audit.inheritedEventCount,
+                    events: audit.events,
+                    context: loaded.context,
+                    refs: 0
+                };
 				this.store(sessionId, entry);
 			}
 			let projections;
@@ -457,11 +459,12 @@ var SessionObservationReader = class {
 			let disposed = false;
 			return {
 				source: "prepared",
-				header: entry.session.header,
-				inheritedEventCount: entry.session.inheritedEventCount,
+				header: entry.header,
+				inheritedEventCount: entry.inheritedEventCount,
 				events: entry.events,
 				cursor: entry.events.at(-1)?.seq ?? -1,
 				revision: entry.revision,
+				...entry.context === undefined ? {} : { context: entry.context },
 				...projections === void 0 ? {} : { projections },
 				retain: () => {
 					if (disposed) throw new Error(`session observation "${sessionId}" is disposed`);
@@ -513,8 +516,9 @@ var SessionObservationReader = class {
 	preparedProjections(entry) {
 		const registry = this.ctx.get("sessionProjections");
 		if (registry === void 0) return void 0;
-		const cache = this.ctx.get("sessionProjectionCache");
-		return cache === void 0 ? registry.hydrate(entry.session, {}, entry.events, SessionLogOffset(0)) : cache.hydratePrepared(entry.session, entry.events);
+        // Detached folds do not create weak Session cells or trust checkpoint
+        // caches. Their end is exactly the audited observation cut.
+        return registry.restore({}, entry.events, SessionLogOffset(0), entry.header, entry.inheritedEventCount).snapshot;
 	}
 };
 function throwIfObservationAborted(signal) {
@@ -858,11 +862,18 @@ function eventRecords(sessionId, events) {
 * @returns detached current surface events in folded order.
 */
 function currentSurfaceEvents(sessionId, events) {
-	return analyzeEventLog(sessionId, events).currentSeqs.map((seq) => {
+	const analysis = analyzeEventLog(sessionId, events);
+	return analysis.currentSeqs.map((seq) => {
 		const event = events[seq];
 		/* v8 ignore next 6 -- analyzeEventLog validated contiguous seqs and foldSurface returned only surface-event seqs. */
 		if (event === void 0 || event.seq !== seq || !isSurfaceEvent(event)) throw new SessionQueryError(`invalid session surface: current node ${seq} is not a surface event`, "SESSION_QUERY_INVALID_SURFACE");
-		return snapshotSessionEvent(event);
+        const snapshot = snapshotSessionEvent(event);
+        const message = analysis.projectedMessages.get(seq);
+        if (message !== undefined) {
+            if (event.type === "user/message") snapshot.data = structuredClone(message);
+            else snapshot.data.message = structuredClone(message);
+        }
+        return snapshot;
 	});
 }
 /**
@@ -979,6 +990,7 @@ function analyzeEventLog(sessionId, events) {
 		})),
 		replacedBy,
 		replacedEventSeqs,
+		projectedMessages: folded.projectedMessages,
 		currentSeqs: [...folded.nodes]
 	};
 }
@@ -1064,7 +1076,8 @@ var NativeSessionQuery = class extends Service {
 		this._observations = new SessionObservationReader(ctx, preparedSessionCacheSize);
 	}
 	/**
-	* Observe one exact live or prepared Session without a persistence listing preflight.
+	* Observe one exact live audit cut or cold read-only view without a listing preflight.
+	* The historical source tag "prepared" identifies a cold view, not a Session.
 	* @param sessionId - logical Session identity.
 	* @param options - cancellation and projection selection for this read.
 	* @returns a caller-owned observation lease.
@@ -1081,14 +1094,14 @@ var NativeSessionQuery = class extends Service {
 		return this._corpus.listSessions(signal);
 	}
 	/**
-	* Read and replay-validate one complete logical session log without making it live.
+	* Read and validate one complete audit log without creating or publishing a Session.
 	* @param sessionId - live or persisted session id to read.
 	* @returns cloned header and complete raw event log from one observation.
-	* @throws when persistence, header compatibility, or replay validation fails.
+	* @throws when persistence, header compatibility, or audit validation fails.
 	*/
 	async readSession(sessionId) {
 		const loaded = await this._corpus.load(sessionId,this.lifetime.signal);
-		Session.create(sessionId, loaded.events, loaded.header, loaded.inheritedEventCount, currentSessionMessageProjections);
+		validateSessionAudit(sessionId, loaded.events, loaded.header, loaded.inheritedEventCount, currentSessionMessageProjections);
 		return {
 			session: structuredClone(loaded.header),
 			inheritedEventCount: loaded.inheritedEventCount,

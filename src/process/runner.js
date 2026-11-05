@@ -1,6 +1,7 @@
+import { runLinuxBootstrap } from "./linux-bootstrap.js";
 // Derived from DeepSeek dsh-subprocess-local 0.2.1-alpha.2 (MIT).
 // Copyright (c) 2026 DeepSeek. See licenses/dsh-subprocess-local-MIT.txt.
-import { S as loadLinuxExecve, a as resolveWindowsExecutable, b as serializeRunnerError, f as consumeLinuxLaunchRequest, g as linuxLaunchFilesFromLocator, h as isWindowsTerminateRequest, i as parseRunnerTargetArgv, r as consumeRunnerSelection, t as SUBPROCESS_RUNNER_ENV, v as parseWindowsStartRequest, x as writeLinuxStartupError } from "./runner-launch-B2zsQ1Dz.js";
+import { S as loadLinuxExecve, a as resolveWindowsExecutable, b as serializeRunnerError, g as linuxLaunchFilesFromLocator, h as isWindowsTerminateRequest, i as parseRunnerTargetArgv, r as consumeRunnerSelection, t as SUBPROCESS_RUNNER_ENV, v as parseWindowsStartRequest, x as writeLinuxStartupError } from "./runner-launch-B2zsQ1Dz.js";
 import { closeSync } from "node:fs";
 import { SUBPROCESS_CONTROL_FD } from "./control.js";
 import { Win32Error, closeHandleChecked, isJobEmpty, loadWin32ProcessBindings, pollProcessExit, spawnCurrentTokenJobProcess, terminateJob } from "./win32.js";
@@ -51,80 +52,6 @@ function windowsStartCancelledError() {
 		name: "Error",
 		message: "subprocess target start was cancelled"
 	};
-}
-function linuxPathNotFoundError(program) {
-	return Object.assign(/* @__PURE__ */ new Error(`spawn ${program} ENOENT`), {
-		code: "ENOENT",
-		errno: -2,
-		syscall: `spawn ${program}`,
-		path: program,
-		spawnargs: []
-	});
-}
-function execLinuxFile(file, argv, env, internals, control) {
-	try {
-		return control === void 0 ? internals.execve(file, argv, env) : internals.execve(file, argv, env, control);
-	} catch (error) {
-		if (error.code !== "ENOEXEC") throw error;
-		return control === void 0 ? internals.execve("/bin/sh", [
-			"/bin/sh",
-			file,
-			...argv.slice(1)
-		], env) : internals.execve("/bin/sh", [
-			"/bin/sh",
-			file,
-			...argv.slice(1)
-		], env, control);
-	}
-}
-function execLinuxTarget(request, argv, internals) {
-	const program = argv[0];
-	if (program.includes("/")) return execLinuxFile(program, argv, request.env, internals, request.control);
-	const path = request.env.PATH ?? "/usr/bin:/bin";
-	let permissionFailure;
-	for (const directory of path.split(":")) {
-		const root = directory.startsWith("/") ? directory : `${request.cwd}${request.cwd.endsWith("/") ? "" : "/"}${directory}`;
-		const candidate = `${root}${root.endsWith("/") ? "" : "/"}${program}`;
-		try {
-			return execLinuxFile(candidate, argv, request.env, internals, request.control);
-		} catch (error) {
-			const code = error.code;
-			if (code === "EACCES") {
-				permissionFailure ??= error;
-				continue;
-			}
-			if (code === "ENOENT" || code === "ENOTDIR") continue;
-			throw error;
-		}
-	}
-	throw permissionFailure ?? linuxPathNotFoundError(program);
-}
-function runLinux(locator, argv, host, internals) {
-	const files = linuxLaunchFilesFromLocator(locator);
-	let request;
-	try {
-		request = consumeLinuxLaunchRequest(files.requestPath);
-	} catch (error) {
-		writeLinuxStartupError(files, {
-			type: "error",
-			error: serializeRunnerError(error)
-		});
-		host.exitCode = 127;
-		return;
-	}
-	try {
-		host.chdir(request.cwd);
-		execLinuxTarget({
-			...request,
-			cwd: host.cwd()
-		}, argv, internals);
-	} catch (error) {
-		writeLinuxStartupError(files, {
-			type: "error",
-			error: asSpawnError(error, argv[0])
-		});
-		host.exitCode = 127;
-	}
 }
 function sendMessage(host, result) {
 	return new Promise((resolve, reject) => {
@@ -387,7 +314,7 @@ async function runSpawnRunner(selection, argv, host = process, internals = defau
 		await new WindowsJobRunner(targetArgv, host, internals).run();
 		return;
 	}
-	runLinux(selection, targetArgv, host, internals);
+	runLinuxBootstrap(selection, targetArgv, host, internals.execve);
 }
 /**
 * Best-effort reporting for failures before the selected runner established its owner.

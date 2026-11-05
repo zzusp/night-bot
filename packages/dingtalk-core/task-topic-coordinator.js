@@ -67,6 +67,7 @@ export function registerTopicRoleInstructions(agentCtx, { role, request, store }
 export function createTaskContextReadTool({ request, assert, store, readArchivedTask, readReplyReview }) {
   return { name: 'group_task_context_get', description: '读取当前群任务的完整关联上下文；已归档任务仅返回身份、状态和空 allowedActions，不恢复或执行。',
     parameters: { type: 'object', properties: { ...(readReplyReview ? { includeReplyReview: { type: 'boolean', description: '需要回复审阅时与任务一起读取；省去独立读取往返，审阅事实以共享ref索引去重。' } } : {}), taskIds: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string', minLength: 1 } } }, required: ['taskIds'], additionalProperties: false }, output,
+    argumentRejection: { status: 'invalid-arguments', issues: [{ field: 'taskIds', code: 'group_task_context_request_invalid', message: 'taskIds must contain 1 to 8 distinct nonempty strings' }], nextAction: 'correct-arguments' },
     execute: async (args, exec) => {
       assert(exec)
       const captured = { requestId: request.requestId, revision: request.revision, versionRequestId: request.versionRequestId }

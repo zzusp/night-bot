@@ -69,7 +69,7 @@ export const groupDecisionJsonSchema = toToolJsonSchema(groupDecisionSchema)
 const candidateComparisonSchema = z.strictObject({ topicId: z.string().min(1), revision: z.number().int().positive(), reason: z.string().trim().min(1) })
 const topicRouteTargetSchema = z.union([
   z.strictObject({ topicId: z.string().min(1), relationship: z.enum(['continuation', 'affected']).optional(), reason: z.string().trim().min(1).optional(), candidateComparisons: z.array(candidateComparisonSchema).optional() }),
-  z.strictObject({ newTopicKey: z.string().min(1), title: z.string().trim().min(1).max(TOPIC_TITLE_MAX_CHARS), relationship: z.enum(['continuation', 'affected']).optional(), reason: z.string().trim().min(1).optional(), candidateComparisons: z.array(candidateComparisonSchema).optional() }),
+  z.strictObject({ newTopicKey: z.string().min(1), title: z.string().trim().min(1).max(TOPIC_TITLE_MAX_CHARS).describe('建议 8–20 字且不超过 30 字的简洁话题名称，只概括共同讨论对象，不复述消息详情。'), relationship: z.enum(['continuation', 'affected']).optional(), reason: z.string().trim().min(1).optional(), candidateComparisons: z.array(candidateComparisonSchema).optional() }),
 ])
 const topicRouteOwnerSchema = z.union([
   z.strictObject({ topicId: z.string().min(1) }),
@@ -128,42 +128,14 @@ export const topicRouteSubmissionSchema = z.strictObject({
     if (route.effectOwner && !route.topics?.some((topic) => sameRouteTarget(route.effectOwner, topic))) ctx.addIssue({ code: 'custom', message: '动作主归属必须属于当前 Topic 集合', path: ['effectOwner'] })
   })).min(1),
 })
-export const topicRouteSubmissionJsonSchema = {
-  type: 'object', additionalProperties: false,
-  properties: {
-    requestId: stringJsonSchema,
-    routes: { type: 'array', items: {
-      type: 'object', additionalProperties: false,
-      properties: {
-        messageId: stringJsonSchema, messageVersion: { type: 'integer' },
-        deferred: { type: 'object', additionalProperties: false, properties: { reason: stringJsonSchema, clarification: { type: 'object', additionalProperties: false, properties: { question: stringJsonSchema, assignmentQuote: stringJsonSchema, replyReview: replyReviewJsonSchema }, required: ['question', 'assignmentQuote', 'replyReview'] } }, required: ['reason'] },
-        replyTopic: { oneOf: [
-          { type: 'object', additionalProperties: false, properties: { topicId: stringJsonSchema }, required: ['topicId'] },
-          { type: 'object', additionalProperties: false, properties: { newTopicKey: stringJsonSchema }, required: ['newTopicKey'] },
-        ], description: '本消息跨多个业务 Topic 时必须从本条归属中选一个统一回复；单 Topic 自动使用它。不要新建回复专用 Topic。' },
-        ignoredRefs: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { quote: stringJsonSchema, reason: stringJsonSchema }, required: ['quote', 'reason'] } },
-        units: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
-          unitKey: stringJsonSchema, summary: stringJsonSchema,
-          dispatchOwner: { type: 'string', enum: ['legacy-topic', 'coordination'], description: '跨任务安排、依赖、批量修改、时间计划及其澄清/改口归独立 coordination；Topic 仅为可选上下文。' },
-          replacesUnitIds: { type: 'array', items: stringJsonSchema }, effectInheritance: { type: 'string', enum: ['inherit', 'new-scope'] }, revisionReason: stringJsonSchema,
-          sourceRefs: { type: 'array', items: { oneOf: [
-            { type: 'object', additionalProperties: false, properties: { quote: stringJsonSchema }, required: ['quote'] },
-            { type: 'object', additionalProperties: false, properties: { imageRefId: stringJsonSchema }, required: ['imageRefId'] },
-            { type: 'object', additionalProperties: false, properties: { wholeMessage: { type: 'boolean', const: true } }, required: ['wholeMessage'] },
-          ] } },
-          contextRefs: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { quote: stringJsonSchema, purpose: stringJsonSchema }, required: ['quote', 'purpose'] } },
-          topics: { type: 'array', items: { oneOf: [
-            { type: 'object', additionalProperties: false, properties: { topicId: stringJsonSchema, relationship: { type: 'string', enum: ['continuation', 'affected'] }, reason: stringJsonSchema, candidateComparisons: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { topicId: stringJsonSchema, revision: { type: 'integer' }, reason: stringJsonSchema }, required: ['topicId', 'revision', 'reason'] } } }, required: ['topicId'] },
-            { type: 'object', additionalProperties: false, properties: { newTopicKey: stringJsonSchema, title: { ...stringJsonSchema, description: '建议 8–20 字且不超过 30 字的简洁话题名称，只概括共同讨论对象，不复述消息详情。' }, relationship: { type: 'string', enum: ['continuation', 'affected'] }, reason: stringJsonSchema, candidateComparisons: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { topicId: stringJsonSchema, revision: { type: 'integer' }, reason: stringJsonSchema }, required: ['topicId', 'revision', 'reason'] } } }, required: ['newTopicKey', 'title'] },
-          ] } }, effectOwner: { oneOf: [
-            { type: 'object', additionalProperties: false, properties: { topicId: stringJsonSchema }, required: ['topicId'] },
-            { type: 'object', additionalProperties: false, properties: { newTopicKey: stringJsonSchema }, required: ['newTopicKey'] },
-          ] }, reason: stringJsonSchema,
-        }, required: ['unitKey', 'summary', 'replacesUnitIds', 'sourceRefs', 'topics'] } }, reason: stringJsonSchema,
-      }, required: ['messageId', 'messageVersion'],
-    } },
-  }, required: ['requestId', 'routes'],
-}
+// Publish the input contract from the same schema that admits the decision.
+// Defaults are optional inputs; fixed categories must not disappear from the wire.
+export const topicRouteSubmissionJsonSchema = toToolJsonSchema(topicRouteSubmissionSchema)
+const routeWireProperties = topicRouteSubmissionJsonSchema.properties.routes.items.properties
+routeWireProperties.replyTopic.description = '本消息跨多个业务 Topic 时必须从本条归属中选一个统一回复；单 Topic 自动使用它。不要新建回复专用 Topic。'
+const unitWireProperties = routeWireProperties.units.items.properties
+unitWireProperties.dispatchOwner.description = '跨任务安排、依赖、批量修改、时间计划及其澄清/改口归独立 coordination；Topic 仅为可选上下文。'
+
 export const groupDecisionSubmissionSchema = z.strictObject({
   requestId: z.string().min(1), topicId: z.string().min(1), revision: z.number().int().positive(), decision: groupDecisionSchema,
 })

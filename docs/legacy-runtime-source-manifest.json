@@ -1,6 +1,6 @@
 {
   "sourceVersion": "0.2.1-alpha.2",
-  "purpose": "legacy physical formats, migration/verification and Windows ACL capabilities only; Pi remains current inference/context/journal authority",
+  "purpose": "Provenance catalogue for remaining platform forks; removed format/image code tracked separately as historical evidence. Pi remains inference/context/journal authority.",
   "roots": {
     "@deepseek-ai/dsh-session-persistence-jsonl": "src/legacy-v4/dsh-session-persistence-jsonl/lib/index.js",
     "@deepseek-ai/dsh-session-format-catalog": "src/legacy-v4/dsh-session-format-catalog/lib/index.js",
@@ -31,11 +31,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-session-format-v3-to-v4",
-      "version": "0.2.1-alpha.2",
-      "license": "MIT"
-    },
-    {
-      "name": "@deepseek-ai/dsh-compaction-image-offload",
       "version": "0.2.1-alpha.2",
       "license": "MIT"
     },
@@ -81,13 +76,6 @@
       "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js"
     },
     {
-      "package": "@deepseek-ai/dsh-compaction-image-offload",
-      "sourcePath": "lib/types/projection.js",
-      "sourceSha256": "205b873f17bd73e96f474e9f2bae3dd92375b6e29d706f34bee24e869507e113",
-      "sha256": "205b873f17bd73e96f474e9f2bae3dd92375b6e29d706f34bee24e869507e113",
-      "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/projection.js"
-    },
-    {
       "package": "@deepseek-ai/dsh-sandbox-windows-acl",
       "sourcePath": "lib/types-Cl_DXjhk.js",
       "sourceSha256": "0bb3a34508785bdc34626542f9358d398fd9f60fdaf4b48201dfdff2122f25fc",
@@ -100,13 +88,6 @@
       "sourceSha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
       "sha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
       "target": "src/legacy-v4/dsh-subprocess/lib/control.js"
-    },
-    {
-      "package": "@deepseek-ai/dsh-compaction-image-offload",
-      "sourcePath": "lib/types/project-message.js",
-      "sourceSha256": "8f8341afd28e967df5aa57f5f4d3d7c9a386fee39c91f4899f779c470ae3198b",
-      "sha256": "b1eb62116bd628513ebc4b85debf591bcdce0cad6e1439aedd36577eaaf50c30",
-      "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/project-message.js"
     },
     {
       "package": "@deepseek-ai/dsh-win32-process",
@@ -140,12 +121,6 @@
       "file": "lib/types-Cl_DXjhk.js",
       "specifier": "@deepseek-ai/dsh-skill",
       "target": "src/native-skill-protocol.js"
-    },
-    {
-      "package": "@deepseek-ai/dsh-compaction-image-offload",
-      "file": "lib/types/project-message.js",
-      "specifier": "@deepseek-ai/dsh-util-values",
-      "target": "src/native-values.js"
     },
     {
       "package": "@deepseek-ai/dsh-win32-process",
@@ -226,5 +201,28 @@
       "sha256": "6dc4a8a779dde0b5c02b32a0edd520f8d1e72e04e2e5b108769d10df660564a2",
       "change": "reuse main owned verifier in an isolated ESM worker; exclude old bundled LlmRuntime and duplicated SDK graph"
     }
+  },
+  "retiredImageSelection": {
+    "reason": "Owned read-only Night image selection codec replaces the old projection; no attachment I/O or DSH data import",
+    "files": [
+      {
+        "package": "@deepseek-ai/dsh-compaction-image-offload",
+        "sourcePath": "lib/types/projection.js",
+        "sourceSha256": "205b873f17bd73e96f474e9f2bae3dd92375b6e29d706f34bee24e869507e113",
+        "sha256": "205b873f17bd73e96f474e9f2bae3dd92375b6e29d706f34bee24e869507e113",
+        "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/projection.js"
+      },
+      {
+        "package": "@deepseek-ai/dsh-compaction-image-offload",
+        "sourcePath": "lib/types/project-message.js",
+        "sourceSha256": "8f8341afd28e967df5aa57f5f4d3d7c9a386fee39c91f4899f779c470ae3198b",
+        "sha256": "b1eb62116bd628513ebc4b85debf591bcdce0cad6e1439aedd36577eaaf50c30",
+        "target": "src/legacy-v4/dsh-compaction-image-offload/lib/types/project-message.js"
+      }
+    ],
+    "removedMetadata": [
+      "src/legacy-v4/dsh-compaction-image-offload/LICENSE",
+      "src/legacy-v4/dsh-compaction-image-offload/package.json"
+    ]
   }
 }

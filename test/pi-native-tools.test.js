@@ -72,3 +72,72 @@ test('code result rendering preserves shallow JSON formatting and handles deeply
 test('structured error facts are read once before the final audit snapshot',async t=>{
  const {HarnessError}=await import('../packages/capability-compat/llm/index.js'),h=await fixture(t);let reads=0;h.ctx.tools.register(tool('bad',async()=>{const error=new HarnessError('fact','CODE');Object.defineProperty(error,'code',{get(){if(++reads>1)throw new Error('read twice');return'CODE'}});throw error}));const result=await h.run('bad');assert.equal(result.error.info.code,'CODE');assert.equal(reads,1)
 })
+test('raw tool parameter contracts reject invalid calls before durable and wrapper effects',async t=>{
+ const h=await fixture(t);let body=0,wrappers=0,flushes=0
+ h.ctx.provide('sessions',{flush:async()=>{flushes++}})
+ h.ctx.tools.register({...tool('raw',async()=>{body++;return{ok:true}}),parameters:{type:'object',properties:{count:{type:'integer'}},required:['count'],additionalProperties:false}})
+ h.ctx.on('tools/execute',(_exec,next)=>{wrappers++;return next()})
+ const rejected=await h.run('raw',{count:'not integer'},{agent:{session:{}}})
+ assert.equal(rejected.error.info.code,'INVALID_ARGS');assert.equal(body,0);assert.equal(wrappers,0);assert.equal(flushes,0)
+ assert.equal((await h.run('raw',{count:2},{agent:{session:{}}})).isError,false)
+ assert.equal(body,1);assert.equal(wrappers,1);assert.equal(flushes,1)
+ assert.throws(()=>h.ctx.tools.register({...tool('unsupported'),parameters:{type:'object',minimum:1}}),/unsupported JSON schema/)
+ assert.throws(()=>h.ctx.tools.register({...tool('nonobject'),parameters:{type:'string'}}),/object-rooted/)
+})
+test('registered contracts are detached from author mutations and immutable on the Pi wire',async t=>{
+ const h=await fixture(t),definition={...tool('stable'),parameters:{type:'object',properties:{name:{type:'string'}},required:['name'],additionalProperties:false}}
+ h.ctx.tools.register(definition);assert.equal(h.ctx.tools.get('stable'),definition);definition.parameters.properties.name.type='number';definition.output.schema.type='string'
+ const wire=h.ctx.tools.wireSchemas().schemas[0]
+ assert.equal(wire.parameters.properties.name.type,'string')
+ assert.throws(()=>{wire.parameters.properties.name.type='number'},TypeError)
+ assert.equal((await h.run('stable',{name:'captured'})).isError,false)
+ assert.equal((await h.run('stable',{name:7})).error.info.code,'INVALID_ARGS')
+})
+test('middleware cannot replace the admitted tool identity, owner, parent, or argument snapshot',async t=>{
+ const h=await fixture(t);let effects=0
+ h.ctx.tools.register(tool('allowed',async()=>{effects++;return{ok:true}}));h.ctx.tools.register(tool('other',async()=>{effects++;return{wrong:true}}))
+ for(const [key,value]of [['name','other'],['agent',{}],['callId','forged'],['rootCallId','forged'],['parent',{}],['arguments',{forged:true}],['token',Symbol('forged')]]) {
+  const stop=h.ctx.on('tools/execute',(exec,next)=>{exec[key]=value;return next()})
+  const result=await h.run('allowed');assert.equal(result.isError,true,key);assert.equal(effects,0,key);stop()
+ }
+ assert.equal((await h.run('allowed')).isError,false);assert.equal(effects,1)
+})
+test('raw core pagination bounds and task list constraints fail before wrappers and effects',async t=>{
+ const h=await fixture(t);let effects=0,wrappers=0
+ h.ctx.tools.register({...tool('bounded',async()=>{effects++;return{ok:true}}),parameters:{type:'object',properties:{offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:16000},executionIds:{type:'array',minItems:1,maxItems:2,uniqueItems:true,items:{type:'string',minLength:1,maxLength:10}}},additionalProperties:false}})
+ h.ctx.on('tools/execute',(_exec,next)=>{wrappers++;return next()})
+ for(const args of [{offset:-1},{limit:0},{limit:16001},{executionIds:[]},{executionIds:['a','a']},{executionIds:['a','b','c']},{executionIds:['']}]) {
+  assert.equal((await h.run('bounded',args)).error.info.code,'INVALID_ARGS',JSON.stringify(args))
+  assert.equal(effects,0);assert.equal(wrappers,0)
+ }
+ assert.equal((await h.run('bounded',{offset:0,limit:16000,executionIds:['a','b']})).isError,false)
+ assert.equal(effects,1);assert.equal(wrappers,1)
+})
+test('static argument rejection preserves correction feedback without entering tool code or effect wrappers',async t=>{
+ const h=await fixture(t);let body=0,wrappers=0,flushes=0,observed
+ h.ctx.provide('sessions',{flush:async()=>{flushes++}})
+ const rejection={status:'invalid-arguments',issues:[{field:'taskIds',code:'task_ids_invalid',message:'Use explicit task ids'}],nextAction:'correct-arguments'}
+ h.ctx.tools.register({...tool('domain',async()=>{body++;return{ok:true}}),parameters:{type:'object',properties:{taskIds:{type:'array',minItems:1,items:{type:'string'}}},required:['taskIds'],additionalProperties:false},argumentRejection:rejection})
+ rejection.issues[0].code='mutated_after_registration'
+ h.ctx.on('tools/execute',(_exec,next)=>{wrappers++;return next()})
+ h.ctx.on('tools/result',(_exec,result)=>{observed=result})
+ const result=await h.run('domain',{}, {agent:{session:{}}})
+ assert.equal(result.isError,false);assert.equal(result.value.status,'invalid-arguments');assert.equal(result.value.issues[0].code,'task_ids_invalid');assert.equal(result,observed)
+ assert.equal(body,0);assert.equal(wrappers,0);assert.equal(flushes,0);assert.ok(Object.isFrozen(result.value.issues[0]))
+ assert.equal((await h.run('domain',{taskIds:['one']},{agent:{session:{}}})).isError,false)
+ assert.equal(body,1);assert.equal(wrappers,1);assert.equal(flushes,1)
+ const stop=h.ctx.tools.guard(()=> 'request_scope_denied')
+ const denied=await h.run('domain',{});assert.equal(denied.isError,true);assert.equal(denied.error.message,'request_scope_denied');stop()
+})
+test('argument rejection accepts static typed refusal values and cannot install callbacks or success receipts',async t=>{
+ const h=await fixture(t)
+ for(const rejection of [()=>({status:'invalid-arguments',issues:[{code:'x'}]}),Promise.resolve({}),{status:'accepted',issues:[{code:'x'}]},{status:'invalid-arguments',issues:[]},{status:'invalid-arguments',issues:[{}]}])assert.throws(()=>h.ctx.tools.register({...tool('bad-template'),argumentRejection:rejection}),TypeError)
+ assert.throws(()=>h.ctx.tools.register({...tool('typed-template'),output:{schema:{type:'object',properties:{ok:{type:'boolean'}},required:['ok'],additionalProperties:false},render:()=>[]},argumentRejection:{status:'invalid-arguments',issues:[{code:'invalid'}]}}),/output contract/)
+})
+test('static rejection still enters post-policy and preserves cancellation without dispatch effects',async t=>{
+ const h=await fixture(t),controller=new AbortController();let effects=0,post=0
+ h.ctx.tools.register({...tool('correction',async()=>{effects++;return{ok:true}}),parameters:{type:'object',properties:{name:{type:'string'}},required:['name']},argumentRejection:{status:'invalid-arguments',issues:[{code:'name_required'}],nextAction:'correct-arguments'}})
+ h.ctx.on('tools/post-execute',(_exec,result,next)=>{post++;assert.equal(result.value.status,'invalid-arguments');controller.abort();return next()})
+ const result=await h.run('correction',{}, {signal:controller.signal})
+ assert.equal(post,1);assert.equal(effects,0);assert.equal(result.error.info.code,'ABORTED_BEFORE_DISPATCH')
+})

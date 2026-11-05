@@ -1,3 +1,8 @@
-import {AssistantStreamAccumulator,BlockAssembler} from '../../packages/capability-compat/llm/index.js'
-/** Test audit observer with the same public accumulators as the application. */
-export function createLiveAttempt(){const assembler=new BlockAssembler(),acc=new AssistantStreamAccumulator();return{count:0,push(chunk){this.count++;acc.push({time:1,chunk});assembler.push(chunk)},blocks:()=>assembler.blocks(),get finish(){return assembler.finish},get usage(){return assembler.usage},get replayState(){return assembler.replayState},get stream(){return acc.snapshot()}}}
+import {createAttemptObservation} from '../../src/runtime/attempt-observation.js'
+/** Test instrumentation around the actual production observation. */
+export function createLiveAttempt(){
+ const observation=createAttemptObservation()
+ return {count:0,push(chunk){this.count++;observation.push(chunk)},blocks:()=>observation.blocks(),
+  get finish(){return observation.finish},get usage(){return observation.usage},
+  get replayState(){return observation.replayState},get stream(){return observation.stream}}
+}

@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { nativeTaskHost } from './fixtures/task-session-native-host.js'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
-import { Session, SessionStore } from '../packages/capability-compat/session/index.js'
-import { Context } from '@deepseek-ai/cordis'
-import { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
-import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { LlmRuntime, createToolResultMessage } from '../packages/capability-compat/llm/index.js'
-import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
-import { createRequire } from 'node:module'
+import { Session } from '../packages/capability-compat/session/index.js'
+import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { coordinationTools } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../packages/capability-compat/tools/index.js'
 import { openResidentStore, resolveTopicMessages } from '../packages/dingtalk-dsh-assistant/store.js'
@@ -2567,25 +2565,22 @@ test('只读快路径拒绝动作和候选变化，Task事实在真实提交临�
 })
 
 test('原生 Inbox 仍停放原请求时，恢复提醒不会再排入第二份正文', async (t) => {
-  const ctx = new Context()
-  new AgentRegistry(ctx); new SessionStore(ctx)
-  const requireLoop = createRequire(import.meta.resolve('@deepseek-ai/dsh-agent-loop'))
-  const { SessionProjectionRegistry } = requireLoop('@deepseek-ai/dsh-session-projection')
-  new SessionProjectionRegistry(ctx)
-  new SystemPrompt(ctx, { includeRuntimeContext: false }); new LlmRuntime(ctx); new ToolRuntime(ctx)
-  await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
-  const loop = ctx.agentLoop
-  const { session, inbox } = await loop.create('session-pending-body')
-  t.after(() => ctx.fiber.dispose())
+  const root = await mkdtemp(join(tmpdir(), 'topic-pi-pending-inbox-'))
+  let native, handle
+  t.after(async () => { try { await handle?.dispose(); await native?.close() } finally { await rm(root, { recursive: true, force: true }) } })
+  native = await nativeTaskHost(root, async () => { throw new Error('parked inbox must not start inference') }, { resident: true })
+  handle = await native.ctx.agents.create({ sessionId: 'session-pending-body' })
+  const { session, inbox } = handle.agent
   let finish, idleCalls = 0
   const reminder = new Promise((resolve) => { finish = resolve })
-  const h = await setup(t, { session, inbox, retryDelayMs: 2, whenIdle: () => ++idleCalls === 1 ? Promise.resolve() : new Promise(() => {}), onSteer(message) { inbox.append('next-step', message); if (message.content[0].text.startsWith('[COORDINATION_RESUME]')) finish() } })
+  const h = await setup(t, { session, inbox, retryDelayMs: 2, whenIdle: () => ++idleCalls === 1 ? Promise.resolve() : new Promise(() => {}), onSteer(message) { handle.agent.inject(message); if (message.content[0].text.startsWith('[COORDINATION_RESUME]')) finish() } })
   await ingest(h, 'parked'); await h.coordinator.schedule('g')
   let watchdog
   try { await Promise.race([reminder, new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error('pending_reminder_timeout')), 1000) })]) }
   finally { clearTimeout(watchdog) }
   assert.equal(inbox.nextStep.length, 2)
   assert.equal(inbox.nextStep.filter((message) => message.content[0].text.startsWith('[GROUP_TOPIC_ROUTE]')).length, 1)
+  assert.equal(native.requests.length, 0, 'Pi keeps the injected original and reminder parked without a model turn')
 })
 
 test('显式恢复递增持久epoch，不会被此前已消费提醒身份吞掉', async (t) => {

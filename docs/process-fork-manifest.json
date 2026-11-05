@@ -6,7 +6,10 @@
     "shared proxy overlay explicitly retained",
     "local runner path, JavaScript distribution only; no tsx or packaged-DSH bootstrap",
     "local Windows FFI source fork",
-    "legacy control markers preserved for existing workers"
+    "legacy control markers preserved for existing workers",
+    "Linux private request/bootstrap/PATH dispatch and weaker fallback observation replaced with owned modules; libc execve, systemd/PTY and Windows forks remain",
+    "Common managed lifecycle replaced with application implementation; Linux scope/PTY, libc execve and Windows platform owners remain attributed and kernel parity is not claimed",
+    "PTY fallback preserves unknown tracked identities under incomplete proc snapshots and rejects quiescence proof until a complete final observation; no unverified-PID signal path added"
   ],
   "files": [
     {
@@ -14,21 +17,21 @@
       "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
       "sourceFile": "lib/index.js",
       "sourceSha256": "20c29aded30123bb9b4ec5cf9df64bf3f2f26fb60cd6f48ad67b31b6e56c5ce3",
-      "adaptedSha256": "5da229501aab0ba7e1d3eaf3da55d59460f7c9fe29e3229592b068f44d2bdb67"
+      "adaptedSha256": "710ca8e8a812e05352860bcbc4a469b2bdf28a49f7816dbcdac9dcb15abcd999"
     },
     {
       "path": "src/process/runner.js",
       "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
       "sourceFile": "lib/runner.js",
       "sourceSha256": "4e21528dfdb3e92bdce2340945dc4dcb202e4a4af0bbeb8b97585f67735d30c1",
-      "adaptedSha256": "723b513f51f6980c3d920d5b5fa1f53800fae55a3cbb3b1b8dbd5a557bb4a2a3"
+      "adaptedSha256": "a6182b3cce75b0a2808f34fb9ea892132e14eb6b155097f90864dff10972f16a"
     },
     {
       "path": "src/process/runner-launch-B2zsQ1Dz.js",
       "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
       "sourceFile": "lib/runner-launch-B2zsQ1Dz.js",
       "sourceSha256": "6df08adc4a27f278878a5f4cde8b551b51e647b922ac7d6591fd62d272ced153",
-      "adaptedSha256": "82805c4bc3f975ff6b8d2db4ec4b2f216b26eb6b4292751670de344960939a77"
+      "adaptedSha256": "4b560172ccb4c02b1fd07d59c7a3eba60c1558e44f7e7d7623bcae753fcfc4d5"
     },
     {
       "path": "src/process/control.js",
@@ -57,6 +60,28 @@
       },
       "replacementSha256": "c515195a74ece81854ab9c57f8dd7d1ba5ed8fe5943496c60dc7fdd89e9093cc",
       "implementation": "Application private circular byte buffer, complete-output spool and independent cursor/snapshot interface; original chunk-list collector source removed. Platform provider/runner and control source remain attributed."
+    }
+  ],
+  "ownedSources": [
+    {
+      "path": "src/process/linux-launch.js",
+      "sha256": "48e674fdaff9887179b1bdc832d8ea3609b0a5979c07e24df9d0b1d7f774dcad",
+      "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
+    },
+    {
+      "path": "src/process/linux-bootstrap.js",
+      "sha256": "d23ccca8e2962111d619bb6f99e7a5fc9a5fb8447d9726f21e099e6f816f3047",
+      "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
+    },
+    {
+      "path": "src/process/linux-owner.js",
+      "sha256": "5ae9e086b4304334f1ea0a7d77d87f83438402f5cc74ef34fae882e7c0319a55",
+      "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
+    },
+    {
+      "path": "src/process/managed-process.js",
+      "sha256": "f5843963fe330bbc27298018ebdbb71a63329943040a3ef069e1797b7af13aad",
+      "role": "Application process lifecycle: direct settlement, output grace, separate owner drain, cancellation and escalation"
     }
   ]
 }

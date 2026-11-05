@@ -38,7 +38,7 @@ export function nativeExecutionStream(sourceFactory,request,live){
    // Feed the same audit once, before any terminal can advance the agent loop.
    const finish=live.finish,reason=message?.stopReason==='length'?'max-tokens':message?.stopReason==='toolUse'?'tool-calls':message?.stopReason
    const auditUnchanged=capture.nativeHash.digest('hex')===capture.admittedHash.digest('hex')
-   const matches=auditUnchanged&&!capture.overflow&&capture.tokens.size===1&&message&&isDeepStrictEqual(semantic(message),live.blocks())&&usageEqual(message,live.usage)&&isDeepStrictEqual(capturePiReplay(message,request.model),live.replayState)&&reason===finish.kind&&(!['error','aborted'].includes(reason)||message._hostFailure?.code===finish.failure?.code)
+   const matches=auditUnchanged&&!capture.overflow&&capture.tokens.size===1&&message&&isDeepStrictEqual(semantic(message),live.blocks())&&usageEqual(message,live.usage)&&(isDeepStrictEqual(capturePiReplay(message,request.model),live.replayState)||['error','aborted'].includes(reason)&&live.replayState===undefined)&&reason===finish.kind&&(!['error','aborted'].includes(reason)||message._hostFailure?.code===finish.failure?.code)
    if(matches){
     // Metadata is an audit view. The content, signatures, response identity and
     // operational events retain Pi's native structures.

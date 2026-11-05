@@ -932,7 +932,7 @@ var LocalTerminalHandle = class {
 		} catch (_unidentifiedShellExitedDuringHostExit) {}
 	}
 	survivors(members, observed) {
-		return members.filter((member) => observed.alive(member));
+		return members.filter((member) => observed.alive(member) !== false);
 	}
 	descendants(observed) {
 		const tree = observed.tree(this.pid);
@@ -982,7 +982,12 @@ var LocalTerminalHandle = class {
 		this.signalMembers(members, "SIGKILL");
 		const survivors = await this.waitForMembers(members);
 		const observed = this.inspector.snapshot();
-		return this.survivors(this.unionMembers(survivors, this.descendants(observed)), observed);
+		const remaining = this.survivors(this.unionMembers(survivors, this.descendants(observed)), observed);
+		if (observed.complete === false) throw Object.assign(new Error("terminal cleanup cannot prove exit from an incomplete process observation"), {
+			code: "execution_process_drain_failed",
+			executionDrained: false
+		});
+		return remaining;
 	}
 	async stopShell() {
 		if (this.platform === "win32") {

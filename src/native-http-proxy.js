@@ -1,4 +1,5 @@
 // MIT source-derived http-proxy compatibility algorithms; see licenses/dsh-http-proxy-MIT.txt.
+import { installHttpDispatcher } from "./runtime/http-dispatcher.js";
 //#region lib/types/policy.js
 /**
 * Proxy policy resolution: the pure, transport-free half of this package. It turns the launch
@@ -414,47 +415,36 @@ async function createPolicyDispatcher(policy) {
 * @returns a disposer restoring the previous dispatcher, policy, and environment, then closing the agent.
 */
 async function installGlobalProxy(policy) {
-	const previousPolicy = active;
-	if (policy.source === "none") {
-		if (previousPolicy === void 0) {
-			active = policy;
-			return () => {
-				active = previousPolicy;
-				return Promise.resolve();
-			};
-		}
-		const previousInstalled = installed;
-		const restoreEnv = inheritedProxyEnv === void 0 ? void 0 : writeProxyEnv(inheritedProxyEnv);
-		const undici = await import("undici");
-		const previous = undici.getGlobalDispatcher();
-		const direct = new undici.Agent();
-		undici.setGlobalDispatcher(direct);
-		active = policy;
-		installed = void 0;
-		return async () => {
-			undici.setGlobalDispatcher(previous);
-			active = previousPolicy;
-			installed = previousInstalled;
-			restoreEnv?.();
-			await direct.close();
-		};
-	}
-	const restoreEnv = applyPolicyEnv(policy);
-	const { getGlobalDispatcher, setGlobalDispatcher } = await import("undici");
-	const previousDispatcher = getGlobalDispatcher();
-	const previousInstalled = installed;
-	const agent = await createPolicyDispatcher(policy);
-	setGlobalDispatcher(agent);
-	active = policy;
-	installed = agent;
-	return async () => {
-		setGlobalDispatcher(previousDispatcher);
-		active = previousPolicy;
-		installed = previousInstalled;
-		restoreEnv();
-		await agent.close();
-	};
+ const undici = await import("undici");
+ return installHttpDispatcher({
+  create: () => policy.source === "none"
+   ? active === void 0 ? void 0 : new undici.Agent()
+   : createPolicyDispatcher(policy),
+  publish(dispatcher) {
+   const previousPolicy = active;
+   const previousInstalled = installed;
+   const previousDispatcher = undici.getGlobalDispatcher();
+   const restoreEnv = policy.source === "none"
+    ? inheritedProxyEnv === void 0 ? void 0 : writeProxyEnv(inheritedProxyEnv)
+    : applyPolicyEnv(policy);
+   try {
+    if (dispatcher !== void 0) undici.setGlobalDispatcher(dispatcher);
+    active = policy;
+    installed = policy.source === "none" ? void 0 : dispatcher;
+   } catch (error) {
+    restoreEnv?.();
+    throw error;
+   }
+   return () => {
+    if (dispatcher !== void 0) undici.setGlobalDispatcher(previousDispatcher);
+    active = previousPolicy;
+    installed = previousInstalled;
+    restoreEnv?.();
+   };
+  }
+ });
 }
+
 /**
 * The proxy environment a spawned child needs.
 *

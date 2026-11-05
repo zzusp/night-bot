@@ -1,7 +1,7 @@
 // MIT source-derived pinned public HTTP transport and response protocol; see licenses/dsh-web-fetch-http-MIT.txt.
 import z from "@deepseek-ai/schemastery";
 import { WebError } from "./native-web.js";
-import { deadline, timeoutOf } from "./runtime/deadlines.js";
+import { HttpFetchExecution } from "./runtime/http-fetch.js";
 import { proxyRouteFor } from "./native-http-proxy.js";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -362,203 +362,14 @@ function decoderForCharset(charset) {
 * @module @deepseek-ai/dsh-web-fetch-http/provider
 */
 const LOCAL_FETCH_PROVIDER_ID = "http";
-var NativeHttpFetchProvider = class {
-	network;route;
-	limits;
-	resolveAddresses;
-	id = LOCAL_FETCH_PROVIDER_ID;
-	/**
-	* @param limits - resolved transport and response limits.
-	* @param resolveAddresses - resolver that rejects non-public destinations before returning.
-	*/
-	constructor(limits, resolveAddresses = publicHttpNetwork.resolve, network = publicHttpNetwork, route = proxyRouteFor) {
-		this.network=network;this.route=route;
-		this.limits = limits;
-		this.resolveAddresses = resolveAddresses;
-	}
-	/** No credentials to check — an anonymous public fetcher is always usable. */
-	available() {
-		return true;
-	}
- async fetch(request, signal) {
-  if(signal?.aborted)throw new WebError('web fetch aborted','WEB_ABORTED');
-  const clock=deadline(signal,this.limits.timeoutMs,'WEB_FETCH_TIMEOUT');
-  try{return await this.followAndRead(request.url,clock.signal)}finally{clock[Symbol.dispose]()}
+class NativeHttpFetchProvider extends HttpFetchExecution {
+ id = LOCAL_FETCH_PROVIDER_ID;
+ constructor(limits, resolveAddresses = publicHttpNetwork.resolve, network = publicHttpNetwork, route = proxyRouteFor) {
+  super(limits, {
+   policy: {validateFetchUrl, isSameOrigin, classifyContentType, parseCharset, decoderForCharset, isNonPublicIpLiteral},
+   resolve: resolveAddresses, network, route
+  });
  }
-
-	/** Follow same-origin redirects up to the hop cap, then read the final response. */
-	async followAndRead(initialUrl, signal) {
-		let currentUrl = validateFetchUrl(initialUrl);
-		let redirectsFollowed = 0;
-		for (;;) {
-			const request = await this.requestOnce(currentUrl, signal);
-			const { response } = request;
-			try {
-				if (isRedirectStatus(response.status)) {
-					if (redirectsFollowed >= this.limits.maxRedirects) {
-						await response.body?.cancel();
-						throw new WebError(`exceeded the maximum of ${this.limits.maxRedirects} redirects`, "WEB_REDIRECT_BLOCKED");
-					}
-					const location = response.headers.get("location");
-					if (location === null) {
-						await response.body?.cancel();
-						throw new WebError(`redirect response (HTTP ${response.status}) without a Location header`, "WEB_PROVIDER_ERROR");
-					}
-					const target = resolveRedirect(location, currentUrl);
-					let validatedTarget;
-					try {
-						validatedTarget = validateFetchUrl(target.toString());
-						if (!isSameOrigin(validatedTarget, currentUrl)) throw new WebError(`cross-origin redirect to ${validatedTarget.origin} is not followed automatically; retry against that URL directly`, "WEB_REDIRECT_BLOCKED");
-					} catch (error) {
-						await response.body?.cancel();
-						throw error;
-					}
-					await response.body?.cancel();
-					currentUrl = validatedTarget;
-					redirectsFollowed++;
-					continue;
-				}
-				return await this.readBody(response, currentUrl, signal);
-			} finally {
-				await request.close();
-			}
-		}
-	}
-	async requestOnce(url, signal) {
-		const headers = {
-			"user-agent": this.limits.userAgent,
-			"accept": "text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8"
-		};
-		try {
-			const route = this.route(url);
-			if(signal.aborted)throw translateAbortOrNetwork(signal.reason,signal);
-			if (route.proxied && !isNonPublicIpLiteral(url.hostname)) return await this.network.requestVia(route.dispatcher, url, headers, signal);
-			const addresses = await this.resolveAddresses(url.hostname, signal);
-			if(signal.aborted)throw translateAbortOrNetwork(signal.reason,signal);
-			return await this.network.request(url, addresses, headers, signal);
-		} catch (error) {
-			if (error instanceof WebError) throw error;
-			throw translateAbortOrNetwork(error, signal);
-		}
-	}
-	/** Read, byte-cap, classify, and decode the final response body. */
-	async readBody(response, finalUrl, signal) {
-		const contentType = response.headers.get("content-type");
-		const kind = classifyContentType(contentType);
-		if (kind === void 0) {
-			await response.body?.cancel();
-			throw new WebError(`unsupported content type "${contentType ?? "unknown"}"`, "WEB_UNSUPPORTED_CONTENT_TYPE");
-		}
-		let decoder;
-		try {
-			decoder = decoderForCharset(parseCharset(contentType));
-		} catch (error) {
-			await response.body?.cancel();
-			throw error;
-		}
-		const { bytes, truncatedByBytes } = await this.readCapped(response, signal);
-		const decoded = decoder.decode(bytes);
-		const truncatedByChars = decoded.length > this.limits.maxBodyChars;
-		const content = truncatedByChars ? decoded.slice(0, this.limits.maxBodyChars) : decoded;
-		const body = kind === "html" ? {
-			kind: "html",
-			content
-		} : {
-			kind: "text",
-			content
-		};
-		return {
-			url: finalUrl.toString(),
-			statusCode: response.status,
-			body,
-			truncated: truncatedByBytes || truncatedByChars
-		};
-	}
-	/**
-	* Read the response stream up to `maxResponseBytes`. A `Content-Length` over
-	* the cap rejects immediately with `WEB_FETCH_TOO_LARGE`; a stream that grows
-	* past the cap is cut short (`truncatedByBytes`) rather than rejected, so a
-	* server that under-reports still yields a bounded usable body.
-	*/
-	async readCapped(response, signal) {
-		const declared = response.headers.get("content-length");
-		if (declared !== null) {
-			const length = Number(declared);
-			if (Number.isFinite(length) && length > this.limits.maxResponseBytes) {
-				await response.body?.cancel();
-				throw new WebError(`response exceeds the maximum of ${this.limits.maxResponseBytes} bytes`, "WEB_FETCH_TOO_LARGE");
-			}
-		}
-		/* v8 ignore next -- a 2xx Response from fetch always exposes a body stream; the null guard is defensive. */
-		if (response.body === null) return {
-			bytes: new Uint8Array(0),
-			truncatedByBytes: false
-		};
-		const chunks = [];
-		let total = 0;
-		let truncatedByBytes = false;
-		const reader = response.body.getReader();
-		try {
-			for (;;) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				const remaining = this.limits.maxResponseBytes - total;
-				if (value.byteLength > remaining) {
-					chunks.push(value.subarray(0, remaining));
-					total += remaining;
-					truncatedByBytes = true;
-					break;
-				}
-				chunks.push(value);
-				total += value.byteLength;
-			}
-		} catch (error) {
-			/* v8 ignore next -- mid-stream read fault needs a network drop after headers; translate path covered by request-phase tests. */
-			throw translateAbortOrNetwork(error, signal);
-		} finally {
-			/* v8 ignore next 4 -- cancel() after a completed/broken read settles without rejecting; unobserved best-effort cleanup. */
-			await reader.cancel().catch(() => {});
-		}
-		const bytes = new Uint8Array(total);
-		let offset = 0;
-		for (const chunk of chunks) {
-			bytes.set(chunk, offset);
-			offset += chunk.byteLength;
-		}
-		return {
-			bytes,
-			truncatedByBytes
-		};
-	}
-};
-/** HTTP redirect status codes that carry a `Location`. */
-function isRedirectStatus(status) {
-	return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
-}
-/** Resolve a (possibly relative) `Location` against the current URL. */
-function resolveRedirect(location, base) {
-	try {
-		return new URL(location, base);
-	} catch (error) {
-		/* v8 ignore next 2 -- URL resolution against a valid absolute base effectively never throws; defensive guard. */
-		throw new WebError(`invalid redirect Location "${location}"`, "WEB_PROVIDER_ERROR", { cause: error });
-	}
-}
-/**
-* Translate a thrown fetch/stream error into a `WebError`, classified by the
-* deadline signal rather than the thrown value (which differs by phase: the
-* request-phase `fetch` rejects with the abort reason, while the read-phase
-* reader surfaces a bare `AbortError`). `timeoutOf(signal, 'WEB_FETCH_TIMEOUT')`
-* recovering OUR reason means our timeout fired (`WEB_FETCH_TIMEOUT`); any other
-* abort — an upstream cancel, or a foreign/outer deadline's timeout under
-* nesting — is `WEB_ABORTED`; a throw with the signal NOT aborted is a
-* transport/network failure (`WEB_PROVIDER_ERROR`).
-*/
-function translateAbortOrNetwork(error, signal) {
-	const timeout = timeoutOf(signal, "WEB_FETCH_TIMEOUT");
-	if (timeout !== void 0) return new WebError("web fetch timed out", "WEB_FETCH_TIMEOUT", { cause: timeout });
-	if (signal.aborted) return new WebError("web fetch aborted", "WEB_ABORTED", { cause: error });
-	return new WebError(`web fetch failed: ${String(error)}`, "WEB_PROVIDER_ERROR", { cause: error });
 }
 //#endregion
 //#region lib/types/index.js
@@ -570,7 +381,7 @@ function translateAbortOrNetwork(error, signal) {
 */
 const MAX_NODE_TIMER_DELAY_MS = 2147483647;
 /** Default `User-Agent`: an explicit product agent, never a browser disguise. */
-const DEFAULT_USER_AGENT = "deepseek-harness/0.0.1 (+https://github.com/deepseek-ai)";
+const DEFAULT_USER_AGENT = "night-bot/0.1.0";
 /** Cordis plugin name used by loader diagnostics. */
 const name = "night-native-http-fetch";
 /** The web seam this provider registers into. */

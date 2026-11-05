@@ -964,6 +964,27 @@ function pluginRecordOf(event) {
 		data: event.data
 	};
 }
+/** Decode Night's audit presentation without creating an application Session.
+ * This is a read-only codec, never a model-context or publication authority. */
+function validateSessionAudit(id, sourceEvents, sourceHeader, suppliedInheritedEventCount, projections = []) {
+ const headerSnapshot = snapshotJsonValue(sourceHeader);
+ if (headerSnapshot === void 0) throw new Error("session header is not losslessly JSON-serializable");
+ const header = validateRestoredSessionHeader(id, headerSnapshot);
+ const events = snapshotJsonValue(sourceEvents);
+ if (!Array.isArray(events)) throw new Error("session audit events must be a JSON array");
+ for (const [index, event] of events.entries()) {
+  assertSessionEventEnvelope(event, index);
+  if (event.seq !== index) throw new Error(`seed event at index ${index} has seq ${event.seq} (expected ${index}); seed must be contiguous from 0`);
+ }
+ foldSurface(events, projections);
+ if (header.isSeeded && suppliedInheritedEventCount === void 0) throw new Error("seeded session requires an inherited event count");
+ const inheritedEventCount = SessionLogOffset(suppliedInheritedEventCount ?? 0);
+ if (!header.isSeeded && inheritedEventCount !== 0) throw new Error("unseeded session inherited event count must be 0");
+ if (inheritedEventCount > events.length) throw new Error("session inherited event count exceeds its event log");
+ const marker = events[inheritedEventCount];
+ if (marker?.type === "session/end-seed" && marker.data.inherited === true && events.slice(inheritedEventCount + 1).some(event => event.type === "session/end-seed" && event.data.inherited === true)) throw new Error("session inherited event count must identify the final inherited marker");
+ return deepFreeze({header, events, inheritedEventCount});
+}
 var Session = class Session {
 	log = [];
 	/** Single incremental owner of surface acceptance and projection state. */
@@ -1343,4 +1364,4 @@ var SessionForkError = class extends Error {
 		this.name = "SessionForkError";
 	}
 };
-export { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionForkError, SessionId, SessionLogOffset, SessionPreparation, SessionSeq, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN, ToolCallRecovery, adoptSessionEvent, appendPluginRecord, buildForkSeed, canonicalHeader, decodeSeqRanges, deriveEventMessage, encodeSeqRanges, foldRequestHeader, foldSurface, headerEquals, interruptedTurnClosers, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEligibleType, isSurfaceEvent, pluginRecordOf, snapshotSessionEvent };
+export { validateSessionAudit, KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionForkError, SessionId, SessionLogOffset, SessionPreparation, SessionSeq, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN, ToolCallRecovery, adoptSessionEvent, appendPluginRecord, buildForkSeed, canonicalHeader, decodeSeqRanges, deriveEventMessage, encodeSeqRanges, foldRequestHeader, foldSurface, headerEquals, interruptedTurnClosers, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEligibleType, isSurfaceEvent, pluginRecordOf, snapshotSessionEvent };

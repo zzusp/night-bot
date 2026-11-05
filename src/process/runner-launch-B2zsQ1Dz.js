@@ -1,9 +1,11 @@
+import { bindManagedProcess } from "./managed-process.js";
+import { createLinuxGroupOwner } from "./linux-owner.js";
+import { createLinuxLaunchFiles, linuxLaunchFilesFromLocator, consumeLinuxLaunchRequest, writeLinuxStartupError, readLinuxStartupError, cleanupLinuxLaunchFiles } from "./linux-launch.js";
 // Derived from DeepSeek dsh-subprocess-local 0.2.1-alpha.2 (MIT).
 // Copyright (c) 2026 DeepSeek. See licenses/dsh-subprocess-local-MIT.txt.
-import { OutputCollector, prepareManagedProcessBinding } from "./output.js";
-import { accessSync, chmodSync, closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join } from "node:path";
+import { prepareManagedProcessBinding } from "./output.js";
+import { accessSync, closeSync, constants, lstatSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { createLazyRequire } from "./contracts.js";
 import { scrubbedParentEnv } from "./contracts.js";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -12,35 +14,6 @@ import { MAX_TIMER_DELAY_MS } from "./contracts.js";
 import { SUBPROCESS_CONTROL_ENV, SUBPROCESS_CONTROL_FD } from "./control.js";
 import { getSystemErrorMessage, getSystemErrorName, inspect } from "node:util";
 import { fileURLToPath } from "node:url";
-//#region lib/types/managed-owner.js
-/** Minimal managed-range ownership bound to one ordinary subprocess handle. */
-/**
-* Apply an optional abort bound to one shared wait promise.
-* @param pending - managed-range wait shared by all callers.
-* @param signal - optional caller cancellation signal.
-* @returns whether the managed-range wait completed before cancellation.
-*/
-async function waitWithAbort(pending, signal) {
-	if (signal?.aborted) {
-		pending.catch(() => {});
-		return false;
-	}
-	if (signal === void 0) {
-		await pending;
-		return true;
-	}
-	const aborted = Promise.withResolvers();
-	const onAbort = () => {
-		aborted.resolve(false);
-	};
-	signal.addEventListener("abort", onAbort, { once: true });
-	try {
-		return await Promise.race([pending.then(() => true), aborted.promise]);
-	} finally {
-		signal.removeEventListener("abort", onAbort);
-	}
-}
-//#endregion
 //#region lib/types/control-spawn.js
 /** Parent-side setup for one explicitly requested inherited control pipe. */
 /**
@@ -542,6 +515,8 @@ var PosixProcessSnapshot = class {
 	}
 	alive(identity) {
 		const row = this.byPid.get(identity.pid);
+		// A missing row in a partial observation is not evidence of exit.
+		if (row === void 0 && this.complete === false) return void 0;
 		return row?.started === identity.started && !quiescent(row.state);
 	}
 };
@@ -797,6 +772,7 @@ function directChildResult(child) {
 	});
 }
 function fallbackOwner(platform, pid, child, taskkill, linuxGroupHasLiveMembers, direct) {
+	if (platform === "linux") return createLinuxGroupOwner({ pid, direct, hasLiveMembers: linuxGroupHasLiveMembers, signal: signal => signalTree(platform, pid, signal, child, taskkill) });
 	let stopped = false;
 	let directSettled = false;
 	let observation;
@@ -842,175 +818,6 @@ function fallbackOwner(platform, pid, child, taskkill, linuxGroupHasLiveMembers,
 			if (stopped) return;
 			signalTree(platform, pid, "SIGKILL", child, taskkill);
 		}
-	};
-}
-/**
-* Bind platform launch facts to the existing stdio, outcome, abort, and termination lifecycle.
-* @param spec - fully resolved argv, cwd, stdio, grace, cancellation, environment.
-* @param launch - platform streams, direct outcome, and managed-range owner.
-* @param internals - spill-directory override and spill failure reporter.
-* @returns live subprocess handle.
-*/
-function bindManagedProcess(spec, launch, internals = {}) {
-	const { spillDir, onSpillFailure } = prepareManagedProcessBinding(internals);
-	const { stdin, stdout, stderr } = launch;
-	const isCollect = (mode) => mode !== "pipe" && mode !== "inherit";
-	const outMode = spec.stdio.stdout;
-	const errMode = spec.stdio.stderr;
-	const stdinMode = spec.stdio.stdin;
-	const collectStream = (mode, stream, label) => {
-		if (!isCollect(mode) || stream === null) return void 0;
-		const collector = new OutputCollector(mode.maxBytes, label, mode.spill === void 0 ? void 0 : {
-			maxBytes: mode.spill.maxBytes,
-			dir: spillDir,
-			onFailure: onSpillFailure
-		});
-		stream.on("data", (chunk) => {
-			collector.push(chunk);
-		});
-		return collector;
-	};
-	const stdoutCollector = collectStream(outMode, stdout, "stdout");
-	const stderrCollector = collectStream(errMode, stderr, "stderr");
-	const observeOutputStream = (mode, stream) => {
-		if (mode === "inherit" || stream === null || stream.readableEnded || stream.destroyed) return void 0;
-		return new Promise((resolve) => {
-			const settle = () => {
-				stream.off("end", settle);
-				stream.off("close", settle);
-				stream.off("error", settle);
-				resolve();
-			};
-			stream.once("end", settle);
-			stream.once("close", settle);
-			stream.once("error", settle);
-		});
-	};
-	const stdoutClosed = observeOutputStream(outMode, stdout);
-	const stderrClosed = observeOutputStream(errMode, stderr);
-	const outputStreamsClosed = Promise.all([stdoutClosed, stderrClosed]);
-	const stopCollectors = () => {
-		if (stdoutCollector !== void 0) stdout?.destroy();
-		if (stderrCollector !== void 0) stderr?.destroy();
-		stdoutCollector?.seal();
-		stderrCollector?.seal();
-	};
-	let graceTimer;
-	let terminationStarted = false;
-	let rangeExitObserved = false;
-	let rangeExitObservation;
-	let settled = false;
-	const scheduleOwnerCleanup = () => {
-		if (launch.owner.cleanup === void 0) return false;
-		queueMicrotask(() => {
-			done.finally(() => {
-				launch.owner.cleanup?.();
-			}).catch(() => {});
-		});
-		return true;
-	};
-	/**
-	* Start or reuse the handle's managed-range exit observer. A failed read
-	* before direct settlement can be retried. Once direct settlement permits
-	* cleanup, retain a failed observation because removing its private evidence
-	* must not turn a later wait into a false success. The first confirmed
-	* absence is the permanent no-more-signals boundary and cancels pending
-	* escalation before stale identity can be used.
-	*/
-	const observeRangeExit = () => {
-		rangeExitObservation ??= (async () => {
-			await launch.owner.waitForExit();
-			rangeExitObserved = true;
-			if (graceTimer !== void 0) clearTimeout(graceTimer);
-			graceTimer = void 0;
-			spec.signal?.removeEventListener("abort", onAbort);
-			scheduleOwnerCleanup();
-		})().catch((error) => {
-			if (!settled || !scheduleOwnerCleanup()) rangeExitObservation = void 0;
-			throw error;
-		});
-		return rangeExitObservation;
-	};
-	const kill = (sig, cancellationReason) => {
-		if (rangeExitObserved) return;
-		launch.owner.signal(sig, cancellationReason);
-	};
-	const terminateWithReason = (cancellationReason) => {
-		if (rangeExitObserved || terminationStarted) return;
-		terminationStarted = true;
-		observeRangeExit().catch(() => {});
-		kill("SIGTERM", cancellationReason);
-		graceTimer = setTimeout(() => {
-			graceTimer = void 0;
-			kill("SIGKILL");
-		}, spec.graceMs);
-	};
-	const terminate = () => {
-		terminateWithReason(/* @__PURE__ */ new Error("subprocess terminated before target start"));
-	};
-	const terminateForHostExit = () => {
-		launch.owner.terminateForHostExit();
-	};
-	const onAbort = () => {
-		terminateWithReason(spec.signal?.reason);
-	};
-	spec.signal?.addEventListener("abort", onAbort, { once: true });
-	if (typeof stdinMode === "object" && stdin !== null) {
-		stdin.on("error", () => {});
-		stdin.end(stdinMode.data);
-	}
-	const done = new Promise((resolve, reject) => {
-		let pipeDrainTimer;
-		const settle = (outcome) => {
-			if (settled) return;
-			settled = true;
-			stopCollectors();
-			cleanup();
-			resolve(outcome);
-		};
-		const fail = (error) => {
-			settled = true;
-			terminate();
-			stopCollectors();
-			cleanup();
-			reject(error);
-		};
-		launch.direct.then((outcome) => {
-			if (stdoutClosed === void 0 && stderrClosed === void 0) {
-				settle(outcome);
-				return;
-			}
-			pipeDrainTimer = setTimeout(() => {
-				settle(outcome);
-			}, spec.graceMs);
-			outputStreamsClosed.then(() => {
-				settle(outcome);
-			});
-		}, fail);
-		function cleanup() {
-			if (pipeDrainTimer !== void 0) clearTimeout(pipeDrainTimer);
-		}
-	});
-	const waitForExit = async (signal) => {
-		if (rangeExitObserved) return true;
-		return waitWithAbort(observeRangeExit(), signal);
-	};
-	return {
-		/* v8 ignore start -- pipe-mode streams exist on every conforming launch;
-		the null-coalesces guard an internal adapter defect only. */
-		stdin: stdinMode === "pipe" ? stdin ?? void 0 : void 0,
-		stdout: outMode === "pipe" ? stdout ?? void 0 : void 0,
-		stderr: errMode === "pipe" ? stderr ?? void 0 : void 0,
-		control: launch.control,
-		/* v8 ignore stop */
-		collected: {
-			...stdoutCollector !== void 0 ? { stdout: stdoutCollector } : {},
-			...stderrCollector !== void 0 ? { stderr: stderrCollector } : {}
-		},
-		done,
-		terminate,
-		terminateForHostExit,
-		waitForExit
 	};
 }
 /**
@@ -1129,82 +936,6 @@ function parseErrorResult(value) {
 	};
 }
 /**
-* Create a private 0700 directory and one complete 0600 launch request.
-* @param request - target cwd and complete environment for the bootstrap.
-* @returns private paths owned by this launch.
-*/
-function createLinuxLaunchFiles(request) {
-	const directory = mkdtempSync(join(tmpdir(), "dsh-subprocess-launch-"));
-	const files = {
-		directory,
-		requestPath: join(directory, "launch-request.json"),
-		startupErrorPath: join(directory, "startup-error.json")
-	};
-	try {
-		chmodSync(directory, 448);
-		writeFileSync(files.requestPath, JSON.stringify(request), {
-			flag: "wx",
-			mode: 384
-		});
-		return files;
-	} catch (error) {
-		cleanupLinuxLaunchFiles(files);
-		throw error;
-	}
-}
-/**
-* Derive the only permitted startup-error path from an absolute request locator.
-* @param requestPath - absolute path to the private launch-request file.
-* @returns validated sibling paths for this launch.
-*/
-function linuxLaunchFilesFromLocator(requestPath) {
-	if (!isAbsolute(requestPath) || basename(requestPath) !== "launch-request.json") throw new Error("subprocess runner received an invalid Linux launch-request locator");
-	const directory = dirname(requestPath);
-	return {
-		directory,
-		requestPath,
-		startupErrorPath: join(directory, "startup-error.json")
-	};
-}
-/**
-* Strictly read and remove a one-shot Linux launch request.
-* @param requestPath - private launch-request path to consume.
-* @returns validated target cwd and environment.
-*/
-function consumeLinuxLaunchRequest(requestPath) {
-	const text = readFileSync(requestPath, "utf8");
-	unlinkSync(requestPath);
-	const value = JSON.parse(text);
-	if (!isRecord(value) || !hasExactKeys(value, ["cwd", "env"], ["control"]) || typeof value.cwd !== "string" || !isStringRecord(value.env) || value.control !== void 0 && value.control !== "pipe") throw new Error("subprocess runner received an invalid Linux launch request");
-	return {
-		cwd: value.cwd,
-		env: value.env,
-		...value.control === "pipe" ? { control: "pipe" } : {}
-	};
-}
-/**
-* Publish one strict 0600 Linux pre-exec error.
-* @param files - private paths for this launch.
-* @param error - bounded spawn or runner failure to publish.
-*/
-function writeLinuxStartupError(files, error) {
-	writeFileSync(files.startupErrorPath, JSON.stringify(error), {
-		flag: "wx",
-		mode: 384
-	});
-}
-/**
-* Read the Linux pre-exec error, if the bootstrap published one.
-* @param path - expected startup-error path.
-* @returns the validated failure, or undefined when none was published.
-*/
-function readLinuxStartupError(path) {
-	if (!existsSync(path)) return void 0;
-	const value = JSON.parse(readFileSync(path, "utf8"));
-	if (!isRecord(value)) throw new Error("subprocess runner emitted an invalid startup error");
-	return parseErrorResult(value);
-}
-/**
 * Strictly parse the single Windows start message.
 * @param value - untrusted IPC payload.
 * @returns validated target start request.
@@ -1277,24 +1008,6 @@ function deserializeRunnerError(serialized) {
 		...serialized.syscall === void 0 ? {} : { syscall: serialized.syscall },
 		...serialized.path === void 0 ? {} : { path: serialized.path }
 	});
-}
-/**
-* Best-effort removal of only the private paths created for this Linux spawn.
-* @param files - exact private paths owned by this launch.
-*/
-function cleanupLinuxLaunchFiles(files) {
-	try {
-		if (lstatSync(files.directory).isSymbolicLink()) {
-			unlinkSync(files.directory);
-			return;
-		}
-		for (const path of [files.requestPath, files.startupErrorPath]) try {
-			unlinkSync(path);
-		} catch (error) {
-			if (error.code !== "ENOENT") throw error;
-		}
-		rmdirSync(files.directory);
-	} catch {}
 }
 //#endregion
 //#region lib/types/runner-launch.js

@@ -20,8 +20,8 @@ export const nativeRestartProviderFiles = Object.freeze([
   },
   {
     "path": "src/process/index.js",
-    "sha256": "5da229501aab0ba7e1d3eaf3da55d59460f7c9fe29e3229592b068f44d2bdb67",
-    "sha256CRLF": "54db87ea0ace7a5f6b2d11a890b26bc94d400ce6a087cc3cf388d71c3a01da7b"
+    "sha256": "710ca8e8a812e05352860bcbc4a469b2bdf28a49f7816dbcdac9dcb15abcd999",
+    "sha256CRLF": "953623535364f914ffadbf57be0fd544d5083891f2d31755a9dc93c7e3b705c5"
   },
   {
     "path": "src/process/output.js",
@@ -30,13 +30,13 @@ export const nativeRestartProviderFiles = Object.freeze([
   },
   {
     "path": "src/process/runner-launch-B2zsQ1Dz.js",
-    "sha256": "82805c4bc3f975ff6b8d2db4ec4b2f216b26eb6b4292751670de344960939a77",
-    "sha256CRLF": "9f8bceb6843261ec01659a02614e042285e0a2b125967c5eeca24af540cb1ad5"
+    "sha256": "4b560172ccb4c02b1fd07d59c7a3eba60c1558e44f7e7d7623bcae753fcfc4d5",
+    "sha256CRLF": "673f82ad30f10b443a9e7d1b136cb4ed570ca0c65b59913abc47767c9880ac00"
   },
   {
     "path": "src/process/runner.js",
-    "sha256": "723b513f51f6980c3d920d5b5fa1f53800fae55a3cbb3b1b8dbd5a557bb4a2a3",
-    "sha256CRLF": "6b9f3285d46c3fd795cf388f3e6b3800c10446e3d8ce274a1b70a9225c1572e5"
+    "sha256": "a6182b3cce75b0a2808f34fb9ea892132e14eb6b155097f90864dff10972f16a",
+    "sha256CRLF": "987c5993f1784dcb7ffb0be785f9fd0e80a68068186aaa8e7230c8901b846ba2"
   },
   {
     "path": "src/process/win32.js",
@@ -62,6 +62,26 @@ export const nativeRestartProviderFiles = Object.freeze([
     "path": "src/legacy-v4/dsh-sandbox-windows-acl/lib/types-Cl_DXjhk.js",
     "sha256": "d42375a720d7f628a93cde5cd4a8964f3d75cd1d2fcd589d379d210883e91ee4",
     "sha256CRLF": "bdb7b217029b3ce1457b4dd166905049fad25389d14e44b15249c32389e42482"
+  },
+  {
+    "path": "src/process/linux-launch.js",
+    "sha256": "48e674fdaff9887179b1bdc832d8ea3609b0a5979c07e24df9d0b1d7f774dcad",
+    "sha256CRLF": "b9895a9311ea86824b61dbbbab15a758543d6aa8cb4e3149d25a355c9c360045"
+  },
+  {
+    "path": "src/process/linux-bootstrap.js",
+    "sha256": "d23ccca8e2962111d619bb6f99e7a5fc9a5fb8447d9726f21e099e6f816f3047",
+    "sha256CRLF": "13ab984ee4e28d1e5b287c32946df92add9c9b26ecc287f4aa424d560ba2284f"
+  },
+  {
+    "path": "src/process/linux-owner.js",
+    "sha256": "5ae9e086b4304334f1ea0a7d77d87f83438402f5cc74ef34fae882e7c0319a55",
+    "sha256CRLF": "00f9372978ce831a5a2504f4eac70e0706d1204bf2c795090e1cacf97c500067"
+  },
+  {
+    "path": "src/process/managed-process.js",
+    "sha256": "f5843963fe330bbc27298018ebdbb71a63329943040a3ef069e1797b7af13aad",
+    "sha256CRLF": "159e5932d69bbd4e1be5911c647d352ffed9b6b71a6c6bde05b655737ab816ae"
   }
 ].map(Object.freeze))
 const nativeRuntimeRoot = fileURLToPath(new URL('../..', import.meta.url))

@@ -1,6 +1,7 @@
 // MIT source-derived schema, tool definitions, code SDK and canonical error protocols; no legacy ToolRuntime/layers.
 import { HarnessError } from "./native-llm-protocol.js";
-import { assertNever, isJsonValue } from "./native-values.js";
+import { assertNever, isJsonValue, deepFreeze, snapshotJsonValue } from "./native-values.js";
+import { validateToolSchemaValue } from "./runtime/tool-schema-value.js";
 var JsonSchemaError = class extends HarnessError {
 	/** Individual schema violations in walk order. */
 	violations;
@@ -10,7 +11,13 @@ var JsonSchemaError = class extends HarnessError {
 		this.violations = violations;
 	}
 };
+const VALUE_CONSTRAINT_TYPES = {
+  minimum: ["number", "integer"], maximum: ["number", "integer"],
+  minLength: ["string"], maxLength: ["string"], pattern: ["string"], format: ["string"],
+  minItems: ["array"], maxItems: ["array"], uniqueItems: ["array"]
+};
 const CONSTRAINT_KEYWORDS = new Set([
+  ...Object.keys(VALUE_CONSTRAINT_TYPES),
 	"type",
 	"oneOf",
 	"properties",
@@ -97,6 +104,7 @@ function scalarMatches(type, value) {
 	}
 }
 const ONE_OF_SIBLING_KEYWORDS = [
+  ...Object.keys(VALUE_CONSTRAINT_TYPES),
 	"properties",
 	"required",
 	"additionalProperties",
@@ -157,7 +165,7 @@ function checkSchemaNode(root, rootPath, violations, seen) {
 				}
 				continue;
 			}
-			violations.push(`${path}.${key} is not a supported keyword (subset: type/oneOf/properties/required/additionalProperties/items/enum/const + annotations)`);
+			violations.push(`${path}.${key} is not a supported keyword (supported: type/oneOf/properties/required/additionalProperties/items/enum/const, numeric bounds, string/array constraints + annotations)`);
 		}
 		if (Object.hasOwn(node, "description") && typeof node.description !== "string") violations.push(`${path}.description must be a string`);
 		if (Object.hasOwn(node, "title") && typeof node.title !== "string") violations.push(`${path}.title must be a string`);
@@ -168,7 +176,18 @@ function checkSchemaNode(root, rootPath, violations, seen) {
 			continue;
 		}
 		if (!hasType && !hasOneOf) {
-			for (const key of ONE_OF_SIBLING_KEYWORDS) if (Object.hasOwn(node, key)) violations.push(`${path}.${key} requires type or oneOf`);
+      // Core tools also use standard type-free enums (for example task state).
+      // Admit their JSON values and enforce equality, rather than dropping them.
+      for (const key of ONE_OF_SIBLING_KEYWORDS) if (key !== "enum" && key !== "const" && Object.hasOwn(node, key)) violations.push(`${path}.${key} requires type or oneOf`);
+      let enumValid = false;
+      if (Object.hasOwn(node, "enum")) {
+        enumValid = isPlainJsonArray(node.enum) && node.enum.length > 0 && node.enum.every(value => isJsonValue(value));
+        if (!enumValid) violations.push(`${path}.enum must be a non-empty array of lossless JSON values`);
+      }
+      if (Object.hasOwn(node, "const")) {
+        if (!isJsonValue(node.const)) violations.push(`${path}.const must be a lossless JSON value`);
+        else if (enumValid && validateToolSchemaValue({enum: node.enum}, node.const).length) violations.push(`${path}.const must be one of ${path}.enum when both are declared`);
+      }
 			continue;
 		}
 		if (hasOneOf) {
@@ -192,6 +211,24 @@ function checkSchemaNode(root, rootPath, violations, seen) {
 			continue;
 		}
 		const schemaType = type;
+    for (const [key, types] of Object.entries(VALUE_CONSTRAINT_TYPES)) {
+      if (!Object.hasOwn(node, key)) continue;
+      if (!types.includes(type)) { violations.push(`${path}.${key} is not supported on type "${type}"`); continue; }
+      const value = node[key];
+      if (key === "minimum" || key === "maximum") {
+        if (typeof value !== "number" || !Number.isFinite(value)) violations.push(`${path}.${key} must be a finite number`);
+      } else if (key === "uniqueItems") {
+        if (typeof value !== "boolean") violations.push(`${path}.${key} must be a boolean`);
+      } else if (key === "format") {
+        if (value !== "date-time") violations.push(`${path}.format must be the supported format "date-time"`);
+      } else if (key === "pattern") {
+        if (typeof value !== "string") violations.push(`${path}.pattern must be a string`);
+        else { try { new RegExp(value, "u"); } catch { violations.push(`${path}.pattern must be a valid Unicode regular expression`); } }
+      } else if (!Number.isSafeInteger(value) || value < 0) violations.push(`${path}.${key} must be a nonnegative safe integer`);
+    }
+    for (const [lower, upper] of [["minimum", "maximum"], ["minLength", "maxLength"], ["minItems", "maxItems"]]) {
+      if (Object.hasOwn(node, lower) && Object.hasOwn(node, upper) && typeof node[lower] === "number" && typeof node[upper] === "number" && node[lower] > node[upper]) violations.push(`${path}.${lower} must not exceed ${upper}`);
+    }
 		for (const [key, types] of Object.entries({
 			properties: ["object"],
 			required: ["object"],
@@ -278,184 +315,9 @@ function assertObjectJsonSchema(schema) {
 	if (violations.length === 0 && (!isJsonSchemaRecord(schema) || !Object.hasOwn(schema, "type") || schema.type !== "object")) violations.push("schema.type must be \"object\" (structured output is object-rooted)");
 	if (violations.length > 0) throw new JsonSchemaError(violations);
 }
-function safelyIsJsonValue(value) {
-	try {
-		return isJsonValue(value);
-	} catch {
-		return false;
-	}
-}
-function diagnosticPath(path) {
-	return path === "" ? "arguments" : path;
-}
-function propertyPath(path, key) {
-	return path === "" ? key : `${path}.${key}`;
-}
-function losslessValueViolation(path) {
-	return [`"${diagnosticPath(path)}" must be a lossless JSON value`];
-}
-function appendViolations(target, source) {
-	for (const violation of source) target.push(violation);
-}
-function valueFrame(node, value, path) {
-	return {
-		node,
-		value,
-		path,
-		catches: false,
-		phase: "start",
-		children: [],
-		childIndex: 0,
-		violations: [],
-		tailViolations: [],
-		matches: 0
-	};
-}
-function checkScalarValue(node, value, path) {
-	const allowed = Object.hasOwn(node, "enum") ? node.enum : void 0;
-	if (allowed !== void 0 && !allowed.includes(value)) return [`"${diagnosticPath(path)}" must be one of ${JSON.stringify(allowed)}`];
-	if (Object.hasOwn(node, "const") && value !== node.const) return [`"${diagnosticPath(path)}" must be ${JSON.stringify(node.const)}`];
-	return [];
-}
-function checkValue(schema, value, path) {
-	const frames = [valueFrame(schema, value, path)];
-	let rootResult;
-	const receive = (result) => {
-		const parent = frames.at(-1);
-		if (parent === void 0) {
-			rootResult = result;
-			return;
-		}
-		if (parent.kind === "oneOf") {
-			if (result.length === 0) parent.matches++;
-		} else appendViolations(parent.violations, result);
-	};
-	const finish = (result) => {
-		frames.pop();
-		receive(result);
-	};
-	while (frames.length > 0) {
-		const frame = frames.at(-1);
-		/* v8 ignore next -- the loop condition guarantees a current frame. */
-		if (frame === void 0) break;
-		try {
-			if (frame.phase === "children") {
-				if (frame.childIndex < frame.children.length) {
-					const child = frame.children[frame.childIndex];
-					/* v8 ignore next -- childIndex is bounded by children.length. */
-					if (child === void 0) throw new Error("missing schema-value child frame");
-					frame.childIndex++;
-					frames.push(valueFrame(child.node, child.value, child.path));
-					continue;
-				}
-				if (frame.kind === "oneOf") {
-					finish(frame.matches === 1 ? [] : [`"${diagnosticPath(frame.path)}" must match exactly one oneOf branch (matched ${frame.matches})`]);
-					continue;
-				}
-				appendViolations(frame.violations, frame.tailViolations);
-				if (frame.violations.length > 0) finish(frame.violations);
-				else if (frame.kind === "object") finish(safelyIsJsonValue(frame.value) ? [] : [`"${diagnosticPath(frame.path)}" must be a lossless JSON object`]);
-				else finish(safelyIsJsonValue(frame.value) ? [] : [`"${diagnosticPath(frame.path)}" must be a dense lossless JSON array`]);
-				continue;
-			}
-			const nodeType = Object.hasOwn(frame.node, "type") ? frame.node.type : void 0;
-			frame.catches = !(nodeType !== void 0 && !SCHEMA_TYPES.includes(nodeType));
-			const oneOf = Object.hasOwn(frame.node, "oneOf") ? frame.node.oneOf : void 0;
-			if (oneOf !== void 0) {
-				frame.kind = "oneOf";
-				frame.children = Array.from(oneOf, (branch) => ({
-					node: branch,
-					value: frame.value,
-					path: frame.path
-				}));
-				frame.childIndex = 0;
-				frame.matches = 0;
-				frame.phase = "children";
-				continue;
-			}
-			if (nodeType === void 0) {
-				finish(safelyIsJsonValue(frame.value) ? [] : losslessValueViolation(frame.path));
-				continue;
-			}
-			switch (nodeType) {
-				case "object": {
-					if (!isPlainJsonRecord(frame.value)) {
-						finish([`"${diagnosticPath(frame.path)}" must be an object`]);
-						break;
-					}
-					const properties = Object.hasOwn(frame.node, "properties") ? frame.node.properties ?? {} : {};
-					const violations = [];
-					const required = Object.hasOwn(frame.node, "required") ? frame.node.required ?? [] : [];
-					for (const key of required) if (!Object.hasOwn(frame.value, key) || frame.value[key] === void 0) violations.push(`missing required property "${propertyPath(frame.path, key)}"`);
-					const children = [];
-					for (const [key, child] of Object.entries(properties)) {
-						if (!Object.hasOwn(frame.value, key) || frame.value[key] === void 0) continue;
-						children.push({
-							node: child,
-							value: frame.value[key],
-							path: propertyPath(frame.path, key)
-						});
-					}
-					const tailViolations = [];
-					if (Object.hasOwn(frame.node, "additionalProperties") && frame.node.additionalProperties === false) {
-						for (const key of Object.keys(frame.value)) if (!Object.hasOwn(properties, key)) tailViolations.push(`"${propertyPath(frame.path, key)}" is not a declared property (additionalProperties: false)`);
-					}
-					frame.kind = "object";
-					frame.children = children;
-					frame.childIndex = 0;
-					frame.violations = violations;
-					frame.tailViolations = tailViolations;
-					frame.phase = "children";
-					break;
-				}
-				case "array": {
-					if (!Array.isArray(frame.value)) {
-						finish([`"${diagnosticPath(frame.path)}" must be an array`]);
-						break;
-					}
-					const items = Object.hasOwn(frame.node, "items") ? frame.node.items : void 0;
-					const children = items === void 0 ? [] : frame.value.flatMap((entry, index) => [{
-						node: items,
-						value: entry,
-						path: `${frame.path}[${index}]`
-					}]);
-					frame.kind = "array";
-					frame.children = children;
-					frame.childIndex = 0;
-					frame.violations = [];
-					frame.phase = "children";
-					break;
-				}
-				case "string":
-					finish(typeof frame.value === "string" ? checkScalarValue(frame.node, frame.value, frame.path) : [`"${diagnosticPath(frame.path)}" must be a string`]);
-					break;
-				case "number":
-					finish(typeof frame.value !== "number" ? [`"${diagnosticPath(frame.path)}" must be a number`] : !isJsonNumber(frame.value) ? [`"${diagnosticPath(frame.path)}" must be a finite JSON number`] : checkScalarValue(frame.node, frame.value, frame.path));
-					break;
-				case "integer":
-					finish(!isJsonNumber(frame.value) || !Number.isInteger(frame.value) ? [`"${diagnosticPath(frame.path)}" must be an integer`] : checkScalarValue(frame.node, frame.value, frame.path));
-					break;
-				case "boolean":
-					finish(typeof frame.value === "boolean" ? checkScalarValue(frame.node, frame.value, frame.path) : [`"${diagnosticPath(frame.path)}" must be a boolean`]);
-					break;
-				case "null":
-					finish(frame.value === null ? checkScalarValue(frame.node, frame.value, frame.path) : [`"${diagnosticPath(frame.path)}" must be null`]);
-					break;
-				default: finish(assertNever(nodeType, "JsonSchemaType"));
-			}
-		} catch (error) {
-			let failed = frames.pop();
-			while (failed !== void 0 && !failed.catches) failed = frames.pop();
-			if (failed === void 0) throw error;
-			receive(losslessValueViolation(failed.path));
-		}
-	}
-	/* v8 ignore next -- every root frame finishes or throws. */
-	return rootResult ?? losslessValueViolation(path);
-}
-function validateJsonSchemaValue(schema, value, path = "value") {
-	return checkValue(schema, value, path);
-}
+// JSON value execution is application-owned; schema admission and authoring remain
+// explicitly attributed while their separate migration is in progress.
+const validateJsonSchemaValue = validateToolSchemaValue;
 const ANNOTATION_KEYS = [
 	"description",
 	"title",
@@ -569,7 +431,9 @@ function runSchemaCompiler(initial) {
 		if (seen.has(input)) authorError(`${path} is circular`);
 		seen.add(input);
 		const authorKeys = [...ANNOTATION_KEYS, ...task.allowRequired ? ["required"] : []];
+    const valueConstraints = Object.keys(VALUE_CONSTRAINT_TYPES).filter(key => VALUE_CONSTRAINT_TYPES[key].includes(input.type));
 		const node = {};
+    for (const key of valueConstraints) if (Object.hasOwn(input, key)) node[key] = input[key];
 		assignCompiledNode(task.destination, node);
 		tasks.push({
 			kind: "leave",
@@ -630,7 +494,8 @@ function runSchemaCompiler(initial) {
 				assertAuthorKeys(input, path, [
 					...authorKeys,
 					"type",
-					"items"
+					"items",
+          ...valueConstraints
 				]);
 				node.type = "array";
 				copyAnnotations(input, node);
@@ -654,7 +519,8 @@ function runSchemaCompiler(initial) {
 					...authorKeys,
 					"type",
 					"enum",
-					"const"
+					"const",
+          ...valueConstraints
 				]);
 				node.type = inputType;
 				copyAnnotations(input, node);
@@ -724,55 +590,38 @@ var ToolArgsError = class extends HarnessError {
 function validateArgs(spec, args) {
 	return validateJsonSchemaValue(parameterSchemaSpecToJsonSchema(spec), args, "");
 }
+/** Build an application tool from its authoring contract. Pi consumes parameters;
+ * the application retains execution and presentation callbacks, never an ABI.
+ */
 function defineTool(options) {
-	const userExecute = options.execute;
-	const userFinalizeContent = options.finalizeContent;
-	const userProjectContent = options.projectContent;
-	const userRender = options.output.render;
-	const userPresentationMeta = options.output.presentationMeta;
-	const userPresentCall = options.presentCall;
-	const userPresentResult = options.presentResult;
-	const userIsConcurrencySafe = options.isConcurrencySafe;
-	if (options.timeoutMs !== void 0 && (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)) throw new Error(`defineTool(${options.name}): timeoutMs must be a positive finite number`);
-	const parameters = parameterSchemaSpecToJsonSchema(options.parameters);
-	const outputSchema = valueSchemaSpecToJsonSchema(options.output.schema);
-	const validate = (args) => validateJsonSchemaValue(parameters, args, "");
-	const tool = {
-		name: options.name,
-		description: options.description,
-		parameters,
-		output: {
-			schema: outputSchema,
-			render(args, value) {
-				return userRender(args, value);
-			},
-			...userPresentationMeta !== void 0 ? { presentationMeta(args, value) {
-				return userPresentationMeta(args, value);
-			} } : {}
-		},
-		...options.deferLoading === true ? { deferLoading: options.deferLoading } : {},
-		...options.timeoutMs !== void 0 ? { timeoutMs: options.timeoutMs } : {},
-		async execute(args, exec) {
-			const violations = validate(args);
-			if (violations.length > 0) throw new ToolArgsError(violations);
-			return userExecute(args, exec);
-		}
-	};
-	if (userProjectContent) tool.projectContent = (exec, result) => userProjectContent(exec, result);
-	if (userFinalizeContent) tool.finalizeContent = (exec, result) => userFinalizeContent(exec, result);
-	if (userPresentCall) tool.presentCall = (args) => {
-		if (validate(args).length > 0) return void 0;
-		return userPresentCall(args);
-	};
-	if (userPresentResult) tool.presentResult = (args, result) => {
-		if (validate(args).length > 0) return void 0;
-		return userPresentResult(args, result);
-	};
-	if (userIsConcurrencySafe) tool.isConcurrencySafe = (args) => {
-		if (validate(args).length > 0) return false;
-		return userIsConcurrencySafe(args);
-	};
-	return tool;
+  const {name, description, timeoutMs, execute, output} = options;
+  if (typeof execute !== "function" || typeof output?.render !== "function") throw new TypeError("Tool execute and output.render must be functions");
+  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) throw new TypeError(`defineTool(${name}): timeoutMs must be a positive finite number`);
+  const parameters = deepFreeze(snapshotJsonValue(parameterSchemaSpecToJsonSchema(options.parameters)));
+  const schema = deepFreeze(snapshotJsonValue(valueSchemaSpecToJsonSchema(output.schema)));
+  const render = output.render, presentationMeta = output.presentationMeta;
+  const valid = args => validateJsonSchemaValue(parameters, args, "");
+  const tool = {
+    name, description, parameters,
+    output: {schema, render: (...args) => render(...args)},
+    async execute(args, execution) {
+      const violations = valid(args);
+      if (violations.length) throw new ToolArgsError(violations);
+      return execute(args, execution);
+    }
+  };
+  if (options.deferLoading === true) tool.deferLoading = true;
+  if (timeoutMs !== undefined) tool.timeoutMs = timeoutMs;
+  if (presentationMeta !== undefined) tool.output.presentationMeta = (...args) => presentationMeta(...args);
+  for (const key of ["projectContent", "finalizeContent"]) {
+    const callback = options[key];
+    if (callback !== undefined) tool[key] = (...args) => callback(...args);
+  }
+  for (const key of ["presentCall", "presentResult", "isConcurrencySafe"]) {
+    const callback = options[key];
+    if (callback !== undefined) tool[key] = (args, ...rest) => valid(args).length ? (key === "isConcurrencySafe" ? false : undefined) : callback(args, ...rest);
+  }
+  return tool;
 }
 const RUN_CODE_NAME = "run_code";
 // Application code transport owns execution and cancellation. The old DSH

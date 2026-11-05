@@ -953,13 +953,13 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     return { requestIds, ...(compact ? compactReplyReviewCandidates(candidates) : { candidates }), candidateCount: candidates.length }
   }
   function register(agentCtx, groupId, scope) {
-    const tool = (name, description, parameters, execute) => {
+    const tool = (name, description, parameters, execute, argumentRejection) => {
       if (scope && !coordinationTools(coordinationRole(scope)).includes(name)) return
       if (scope && name === 'group_topic_title_submit' && !scope.requestId.startsWith('coord-title-')) return
       if (scope && name === 'group_topic_summary_submit' && !scope.requestId.startsWith('coord-summary-')) return
       if (scope && name === 'group_task_prompt_get' && !workflowPromptsEnabled) return
       if (name === 'group_decision_submit' && !scope) decisionSubmitters.set(groupId, execute)
-      return agentCtx.tools.register({ name, description, parameters, output: objectOutput, execute: async (args, exec) => {
+      return agentCtx.tools.register({ name, description, parameters, ...(argumentRejection ? { argumentRejection } : {}), output: objectOutput, execute: async (args, exec) => {
       if (!live()) throw new Error('resident_runtime_closed')
       assertSession(exec, groupId, scope, name)
       if (scope && (args.requestId !== undefined && args.requestId !== scope.requestId
@@ -1293,7 +1293,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
         }
       }
       return context
-    })
+    }, currentTopic ? undefined : { status: 'invalid-arguments', issues: [{ code: 'topic_id_required', field: 'topicId', message: '当前路由没有唯一Topic，请从输入topics或group_topic_list选择明确topicId。' }], nextAction: 'group_topic_list', nextCall: { name: 'group_topic_list', arguments: { offset: 0, limit: 50 } } })
     tool('group_reply_review_get', `读取 Topic 判断或 Task 通知绑定的完整历史回复候选。${scope ? '本会话唯一request由Host绑定，直接传{}；显式requestIds只能是当前请求。' : '必须显式提供requestIds。'}`, { type: 'object', properties: { requestIds: { type: 'array', items: { type: 'string' } }, compact: { type: 'boolean', description: '共享来源与任务事实用ref索引去重；false保留原展开格式，原文仍可通过消息/任务工具读取。' } }, required: scope ? [] : ['requestIds'], additionalProperties: false }, ({ requestIds = scope ? [scope.requestId] : undefined, compact = false }) => {
       return readReplyReview(groupId, requestIds, compact)
     })

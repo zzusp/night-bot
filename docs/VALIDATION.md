@@ -1,3 +1,50 @@
+# Parallel native runtime replacement (2026-11-05)
+
+Five implementation units replaced active runtime paths, with targeted validation
+before integration: Pi-shaped one-way attempt reduction and compact audit writing;
+lossless tool argument capture/value checking; HTTP request/body/dispatcher
+ownership; Linux private launch transport/bootstrap/observed ownership and common managed
+process lifecycle; and cold
+session observation without constructing the mutable Session service. Cold model
+context uses Pi 1.5 public buildSessionContext on the same strictly committed
+entries, including portable codec decoding. Direct process outcome, output grace and owner
+drain remain separate; failed signal delivery cannot manufacture a successful drain. Image selection now uses an owned,
+read-only projection; the old source copies and their directory license are gone.
+Other session/query/message/HTTP/platform notices remain where derived code stays.
+
+Integration exposed actual contract omissions: routing wire omitted fixedTopic
+and required a defaulted array; raw tool validation interrupted structured business
+correction; and date-time format prevented investigation tools from registering.
+The wire is generated from the same input schema; immutable declared refusal
+results preserve correction without tool-body execution; supported date-time
+values are validated. Effect-proof requirements must remain unchanged.
+
+Remaining architecture work includes the mutable Session/audit facade, message
+request projection, derived query indexes and platform backends. This wave is not
+complete DSH independence. Direct development dependency retirement is separate
+from source replacement; retained third-party source requires attribution.
+Linux fallback observed PID ownership is weaker than cgroup/kernel ownership and
+retains a check/signal race. Windows kernel parity and live vendor delivery are
+not established by local Linux/scripted integration tests.
+
+Review found a pre-existing PTY fallback false-quiescence case: an incomplete
+/proc snapshot could discard a tracked descendant. Missing observations now remain
+unknown; final incomplete snapshots reject drain with executionDrained:false.
+No unverified-PID KILL path was added. Regression injects snapshots into actual
+source classes and the real process scope, so it proves deterministic semantics,
+not a live kernel failure experiment or complete platform isolation parity.
+
+Validation: default **740 pass**, runtime **155 pass**, domain **390 pass**,
+routing **47 pass**, Linux containment **20 pass / 1 Windows skip**. Runtime was
+completed before the final PTY observation fix; final source additionally passes
+**41 process** and **14 job recovery** cases, plus repeated default and containment.
+Counts overlap. Frozen install succeeds in 440ms using the pinned existing store;
+root package and lock are unchanged, with **41 direct DSH dev declarations**.
+Source/import/Pi-license/fork-hash/diff guards pass. Supplemental dynamic execution
+fixture is ported to actual Pi and **41 pass**; one unrelated historical decision schema mismatch
+also reproduces on b11f97e. No claim that every historical test file passes.
+Evidence: `docs/pi-native-parallel-runtime-validation.json`.
+
 # Native scheduling/read-only fixtures join mandatory runtime regression (2026-11-05)
 
 Removed old DSH profile lookup, SDK session-controller/RPC registry and missing-

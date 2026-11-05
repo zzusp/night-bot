@@ -4,7 +4,7 @@ import z from '@deepseek-ai/schemastery'
 import {scopeOf,scopeChainOf,scopeTarget} from './native-scope.js'
 import {snapshotJsonValue,deepFreeze} from './native-values.js'
 import {HarnessError} from './native-llm-protocol.js'
-import {assertSupportedJsonSchema,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy} from './native-tool-protocol.js'
+import {assertObjectJsonSchema,assertSupportedJsonSchema,ToolArgsError,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy} from './native-tool-protocol.js'
 const errorText=error=>{try{return typeof error?.message==='string'?error.message:String(error)}catch{return'Unprintable tool failure'}}
 const snapshot=value=>{const result=snapshotJsonValue(value);if(result===undefined)throw new TypeError('Tool values must be lossless JSON');return result}
 const failure=error=>{const message=errorText(error);let info;try{if(error instanceof HarnessError){const name=error.name,code=error.code;if(typeof name==='string'&&typeof code==='string')info={name,code}}}catch{}return{isError:true,content:[{type:'text',text:'Error: '+message}],error:{message,...info?{info}:{}}}}
@@ -26,7 +26,7 @@ export default class NativeTools extends Service {
  static inject=['systemPrompt']
  static Config=z.object({mode:z.union(['native','ptc']).default('native'),maxParallelSubCalls:z.natural().min(1).default(10)})
  constructor(ctx,config={}){
-  super(ctx,'tools');this.config={mode:'native',maxParallelSubCalls:10,...config};if(!['native','ptc'].includes(this.config.mode)||!Number.isInteger(this.config.maxParallelSubCalls)||this.config.maxParallelSubCalls<1)throw new TypeError('Invalid native tool runtime configuration');this.global=layer();this.scoped=new Map();this.states=new WeakMap();this.canonical=new WeakMap()
+  super(ctx,'tools');this.config={mode:'native',maxParallelSubCalls:10,...config};if(!['native','ptc'].includes(this.config.mode)||!Number.isInteger(this.config.maxParallelSubCalls)||this.config.maxParallelSubCalls<1)throw new TypeError('Invalid native tool runtime configuration');this.global=layer();this.scoped=new Map();this.states=new WeakMap();this.canonical=new WeakMap();this.contracts=new WeakMap()
   ctx.systemPrompt.tools(context=>this.wireSchemas(context.scope))
   if(this.config.mode!=='native'){ctx.systemPrompt.section(this.collapseSection());ctx.systemPrompt.section(this.sdkSection())}
   this[TOOL_RUNTIME_SCHEDULER]={prepare:input=>this.prepare(input),dispatch:exec=>this.dispatch(exec),finalize:(exec,result)=>this.finalize(exec,result),finish:(exec,result)=>this.finish(exec,result)}
@@ -43,10 +43,25 @@ export default class NativeTools extends Service {
   }.bind(this),'native tools registration')
  }
  register(definition){
+  assertObjectJsonSchema(definition.parameters)
   if(definition.name==='run_code')throw new Error('run_code is a reserved transport name')
   if(!definition.output||typeof definition.output.render!=='function'||definition.output.presentationMeta!==undefined&&typeof definition.output.presentationMeta!=='function')throw new TypeError('Tool output schema and render are required')
   assertSupportedJsonSchema(definition.output.schema)
   if(definition.timeoutMs!==undefined&&(!Number.isFinite(definition.timeoutMs)||definition.timeoutMs<=0))throw new TypeError('Tool timeoutMs must be positive')
+  // Keep the definition identity: application markers and scoped ownership use it.
+  // Captured data contracts belong to the registry and cannot be mutated by authors.
+  if(!this.contracts.has(definition)){
+   const contract={parameters:deepFreeze(snapshot(definition.parameters)),output:deepFreeze(snapshot(definition.output.schema))}
+   // A static domain rejection preserves model-facing correction contracts without
+   // calling tool code, an execution wrapper, or an effect/intent barrier.
+   if(Object.hasOwn(definition,'argumentRejection')){
+    const rejection=deepFreeze(snapshot(definition.argumentRejection))
+    if(rejection?.status!=='invalid-arguments'||!Array.isArray(rejection.issues)||!rejection.issues.length||rejection.issues.some(issue=>typeof issue?.code!=='string'||!issue.code))throw new TypeError('argumentRejection must be a static invalid-arguments result with issue codes')
+    if(validateJsonSchemaValue(contract.output,rejection).length)throw new TypeError('argumentRejection must satisfy the tool output contract')
+    contract.argumentRejection=rejection
+   }
+   this.contracts.set(definition,contract)
+  }
   return this.mutate(target=>{if(target.tools.has(definition.name))throw new Error('Duplicate tool '+definition.name);target.tools.set(definition.name,definition);return()=>{if(target.tools.get(definition.name)===definition)target.tools.delete(definition.name)}})
  }
  view(scope){
@@ -84,9 +99,9 @@ export default class NativeTools extends Service {
  sdkSection(){return{name:'tools:sdk',order:this.ctx.systemPrompt.getSectionOrder('TOOLS_SDK'),interpolate:false,text:context=>{if(this.modeFor(context.scope)==='native')return'';const runtime=this.requirePtcRuntime();return(runtime.language==='python'?renderToolsSdkPy:renderToolsSdk)(this.sdkSchemas(context.scope))}}}
  async shapeDispatchLog(dispatch){try{return await this.ctx.waterfall(scopeTarget(this,dispatch.agent),'tools/ptc-dispatch-log',dispatch,()=>Promise.resolve(dispatch.content))}catch(error){this.ctx.logger.warn(errorText(error));return dispatch.content}}
 
- schemaOf({name,description,parameters,deferLoading},detach=true){return{name,description,parameters:detach?snapshot(parameters):parameters,...deferLoading===true?{deferLoading:true}:{}}}
+ schemaOf(definition,detach=true){const{name,description,deferLoading}=definition,parameters=this.contracts.get(definition)?.parameters??definition.parameters;return{name,description,parameters:detach?snapshot(parameters):parameters,...deferLoading===true?{deferLoading:true}:{}}}
  schemas(scope){return[...this.view(scope).visible.values()].map(d=>this.schemaOf(d))}
- sdkSchemas(scope){return[...this.view(scope).visible.values()].filter(d=>d.name!=='run_code').map(d=>({...this.schemaOf(d),output:snapshot(d.output.schema)}))}
+ sdkSchemas(scope){return[...this.view(scope).visible.values()].filter(d=>d.name!=='run_code').map(d=>({...this.schemaOf(d),output:snapshot(this.contracts.get(d)?.output??d.output.schema)}))}
  wireSchemas(scope){if(this.modeFor(scope)!=='native')this.requirePtcRuntime();const view=this.view(scope);return{schemas:[...view.visible.values()].filter(d=>this.modeFor(scope)==='native'||d.name==='run_code').map(d=>this.schemaOf(d,false)),knownNames:this.modeFor(scope)==='native'?[...view.knownNames]:['run_code']}}
  resolveExecution(name,scope,nested){if(this.modeFor(scope)==='ptc'&&!nested&&name!=='run_code')return;return this.get(name,scope)}
  executionMode(exec){const tool=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);try{return{kind:tool?.isConcurrencySafe?.(exec.arguments)===true?'parallel':'exclusive'}}catch{return{kind:'exclusive'}}}
@@ -98,7 +113,7 @@ export default class NativeTools extends Service {
  mark(exec,result){this.canonical.set(result,exec.token);return result}
  success(exec,definition,candidate){
   let value;try{value=deepFreeze(snapshot(candidate))}catch(error){throw new ToolOutputError(definition.name,[errorText(error)])}
-  const errors=validateJsonSchemaValue(definition.output.schema,value,'value');if(errors.length)throw new ToolOutputError(definition.name,errors)
+  const errors=validateJsonSchemaValue(this.contracts.get(definition)?.output??definition.output.schema,value,'value');if(errors.length)throw new ToolOutputError(definition.name,errors)
   let content,meta;try{content=snapshot(definition.output.render(exec.arguments,value));if(definition.output.presentationMeta)meta=snapshot(definition.output.presentationMeta(exec.arguments,value))}catch(error){throw new ToolOutputError(definition.name,[errorText(error)])}
   return this.mark(exec,this.materialize({isError:false,value,content,...meta===undefined?{}:{meta},...this.states.get(exec).concluded?{concludesTurn:true}:{}}))
  }
@@ -124,6 +139,9 @@ export default class NativeTools extends Service {
   state.finalizer=collapsed&&!input.signal.aborted?undefined:definition?.finalizeContent?.bind(definition);state.projector=collapsed?undefined:definition?.projectContent?.bind(definition);this.states.set(exec,state)
   try{
    exec.arguments=deepFreeze(snapshot(input.arguments));state.arguments=exec.arguments;state.identity={token:exec.token,agent:exec.agent,callId:exec.callId,rootCallId:exec.rootCallId,name:exec.name}
+   // Middleware may wrap cancellation, but cannot replace the admitted capability,
+   // owner, RPC parent or captured parameters before an effect.
+   for(const key of ['token','agent','callId','rootCallId','name','arguments','parent','schema'])Object.defineProperty(exec,key,{value:exec[key],writable:false,configurable:false,enumerable:Object.hasOwn(exec,key)})
    if(state.callerSignal.aborted)return{kind:'final-result',exec,result:aborted(false)}
    if(this.modeFor(exec.agent)==='ptc'&&exec.parent===undefined&&exec.name!=='run_code')return{kind:'final-result',exec,result:failure(new ToolNotFoundError(exec.name,'use run_code instead'))}
    let gate=await this.ctx.waterfall(scopeTarget(this,exec.agent),'tools/pre-execute',exec,()=>Promise.resolve({kind:'allow'}))
@@ -133,6 +151,14 @@ export default class NativeTools extends Service {
    const denial=gate.kind==='allow'?this.guardReason(exec):gate.reason
    if(denial!==undefined)return{kind:'post-result',exec,result:{isError:true,content:[{type:'text',text:'Error: '+denial}],error:{message:denial,...gate.info===undefined?{}:{info:gate.info}}}}
    if(state.callerSignal.aborted)return{kind:'post-result',exec,result:aborted(false)}
+   const admitted=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined)
+   if(!admitted)throw new ToolNotFoundError(exec.name)
+   const violations=validateJsonSchemaValue(this.contracts.get(admitted)?.parameters??admitted.parameters,exec.arguments,'')
+   if(violations.length){
+    const rejection=this.contracts.get(admitted)?.argumentRejection
+    if(rejection!==undefined)return{kind:'post-result',exec,result:this.success(exec,admitted,rejection)}
+    throw new ToolArgsError(violations)
+   }
    return{kind:'dispatch',exec}
   }catch(error){return{kind:'final-result',exec,result:failure(error)}}
  }
