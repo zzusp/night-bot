@@ -118,7 +118,7 @@
       "source": "coordination-sessions.js",
       "sourceSha256": "c5ce357fd79c143f78a23746baad3f9f02e8faa32ad86b9246170128e4d5a27f",
       "status": "adapted",
-      "sha256": "efe728f9dee81d64a6043aeb72b25cb4c3616ea9de89897a45c0f2156983b498",
+      "sha256": "ab66e6ed27e40672966c8254f0fedbe1611e05556b3911f74b2dd24c85414ff3",
       "adaptation": "Portable triage uses stable durable session identity and immediate steer for appended same-batch input while preserving group fairness for other roles."
     },
     {
@@ -1029,7 +1029,7 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "1a45852ec624a57386ee16aad514d68d79510f91b41f1bec556cc8b35c3ea491",
+      "sha256": "e4fd9ae240adef8f90a1a1878ae718fec740e88689a1bf411b6a1c2ce69a413f",
       "adaptation": "Preserve business task behavior and native single-task recovery while isolating legacy event inspection to the split driver."
     },
     {
@@ -1067,7 +1067,7 @@
       "source": "task-topic-coordinator.js",
       "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
       "status": "adapted",
-      "sha256": "61ca0249a56375642fa6bbcd48f28edb275b238f562a3de4301b4fce8a04409a",
+      "sha256": "5187337523c435803545390bfa053636d01e8a40dd538ff0798d424198bde950",
       "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body."
     },
     {

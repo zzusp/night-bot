@@ -56,10 +56,14 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     // into dispose would correctly trip the official reentrant close guard.
     entry.finishSignal=Promise.withResolvers()
     entry.disposal=entry.finishSignal.promise.then(async()=>{
-      try{await entry.ready}catch{return}
-      if(entry.cancelRequested)await entry.handle.cancel({kind:'user'})
-      await entry.handle.whenIdle()
-      await entry.handle.dispose()
+      try{await entry.ready}catch{if(!entry.handle)return}
+      const businessErrors=[]
+      if(entry.cancelRequested)try{await entry.handle.cancel({kind:'user'})}catch(error){businessErrors.push(error)}
+      try{await entry.handle.whenIdle()}catch(error){businessErrors.push(error)}
+      // A business request can reject while shutdown invalidates its binding.
+      // Independently await the actual SDK/tool/process/store disposal. Only
+      // that successful ownership release proves this entry may be removed.
+      try{await entry.handle.dispose()}catch(error){throw businessErrors.length?new AggregateError([...businessErrors,error],'Coordination disposal failed',{cause:error}):error}
     }).catch(error=>{drainFailures.set(key,error);onError(Object.assign(error,{coordinationGroupId:entry.request.groupId}))}).finally(()=>{
       settle(entry);entry.release?.();if(drainFailures.has(key))return
       bySession.delete(entry.sessionId)
@@ -137,7 +141,15 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
     return entry.handle.deliver(packet.id,{deliverAs:'steer'})
   }
   function dispatch(request, message) {
-    const liveEntry=entries.get(keyOf(request));if(request.appendIngress&&liveEntry?.active&&liveEntry.handle&&active.get(request.groupId)===liveEntry)return deliver(liveEntry,message).then(()=>liveEntry.handle.agent)
+    const liveEntry=entries.get(keyOf(request))
+    if(request.appendIngress&&liveEntry?.active&&!liveEntry.hasStartedDelivery){
+      // The full batch can grow while the SDK actor is still being built. No
+      // earlier packet was admitted yet: start with the latest Host snapshot,
+      // rather than trapping that update behind a run unable to cover its batch.
+      liveEntry.startupAppend=message
+      return liveEntry.ready.then(()=>liveEntry.handle.agent)
+    }
+    if(request.appendIngress&&liveEntry?.active&&liveEntry.handle&&active.get(request.groupId)===liveEntry)return deliver(liveEntry,message).then(()=>liveEntry.handle.agent)
     const queuedAt = Date.now()
     let resolve, reject
     const delivered = new Promise((yes, no) => { resolve = yes; reject = no })
@@ -188,7 +200,9 @@ export function createCoordinationSessions({ create, isCurrent, onError, onStage
             await reportStage(request, { spanId, stage: 'queue', requestId: request.requestId,
               attempt: request.attempt ?? 0, startedAt: new Date(queuedAt).toISOString(), completedAt: new Date().toISOString() })
             const agent = entry.handle.agent
-            const running=deliver(entry,message)
+            const firstMessage=entry.startupAppend??message
+            entry.startupAppend=undefined;entry.hasStartedDelivery=true
+            const running=deliver(entry,firstMessage)
             resolve(agent)
             await Promise.race([running.then(()=>agent.whenIdle()), released])
             if (entry.release === release) entry.release = undefined

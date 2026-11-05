@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as search from '../src/native-tool-fs-search.js'
 import * as files from '../src/native-tool-fs.js'
-function fileFixture(impl){const tools=new Map(),ctx={tools:{register:t=>tools.set(t.name,t)},fs:{sandboxMode:undefined},systemPrompt:{section(){},getSectionOrder:()=>1},inject(){},on(){}};impl.apply(ctx,{readLimit:100,readMaxLineLength:1000,readMaxBytes:10000,readStreamMinSize:10000});return tools}
+function fileFixture(impl){const tools=new Map(),ctx={get(name){return this[name]},tools:{register:t=>tools.set(t.name,t)},fs:{sandboxMode:undefined},systemPrompt:{section(){},getSectionOrder:()=>1},inject(){},on(){}};impl.apply(ctx,{readLimit:100,readMaxLineLength:1000,readMaxBytes:10000,readStreamMinSize:10000});return tools}
 test('file tool schemas and search argv preserve literal paths and independent UTF-8 preview limits',()=>{
  const tools=fileFixture(files);assert.deepEqual([...tools.keys()],['read','write','edit'])
  for(const [name,required]of [['read',['file_path']],['write',['file_path','content']],['edit',['file_path','old_string','new_string']]]){const tool=tools.get(name);assert.equal(tool.parameters.type,'object');assert.deepEqual(tool.parameters.required,required);assert.equal(tool.output.schema.type,'object');assert.equal(tool.parameters.properties.file_path.type,'string')}

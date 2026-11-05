@@ -74,3 +74,24 @@ test('cold recovery keeps the same triage session; an uncertain private-chat sen
   const sessions=(await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.id===sessionId);assert.equal(sessions.length,1)
   await h.close()
 })
+
+test('triage startup admits the latest full batch when arrivals precede the first official delivery',{timeout:20000},async t=>{
+ const observed=[],feedbackDone=new Set(),delivered=[]
+ const f=await memoryHost(t,body=>{
+  const env=envelope(body)
+  if(!has(body,'group_topic_route_submit'))return {text:'No additional business action requested'}
+  observed.push(env.messages.map(message=>message.messageId))
+  const read=routeRead(body,env);if(read)return read
+  if(!feedbackDone.has(env.requestId)){feedbackDone.add(env.requestId);return feedback(env)}
+  return routes(env)
+ })
+ const h=await serviceFor(f);t.after(()=>h.close())
+ f.host.ctx.channels.registerTransport('local-fixture',{async send(envelope){delivered.push(envelope);return {messageId:'startup-'+delivered.length}},async readback(){return undefined}})
+ await Promise.all([f.host.ctx.channels.receive(input(201)),f.host.ctx.channels.receive(input(202))])
+ await until(()=>delivered.length===2)
+ assert.deepEqual(new Set(observed[0]),new Set(['source-201','source-202']),'the unadmitted one-source snapshot cannot trap the full current batch behind itself')
+ assert.deepEqual(new Set(delivered.map(envelope=>envelope.replyToMessageId)),new Set(['source-201','source-202']))
+ const groupId=f.host.ctx.channels.identity(input(201)).sessionId,batches=Object.values(h.residentStore.getGroup(groupId).coordinationRequests).filter(row=>row.triageBatch)
+ assert.equal(batches.length,1);assert.equal(batches[0].triageBatch.messages.length,2)
+ await h.close()
+})

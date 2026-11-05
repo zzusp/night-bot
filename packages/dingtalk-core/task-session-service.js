@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
@@ -70,6 +71,11 @@ const drainDiagnostic = (error, depth = 0) => ({
 export async function openTaskSessionService({ ctx, config, legacy, residentStore, notifications, readMessage, readResource, readMentioned,
   taskSessions: suppliedTaskSessions, executionSessions: suppliedExecutionSessions, claudeExecutionSessions: suppliedClaudeExecutionSessions,
   store: suppliedStore, persistence: suppliedPersistence, startupObserver, closeObserver } = {}) {
+  const hostAgents=typeof ctx.get==='function'?ctx.get('agents'):ctx.agents
+  if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+  // Capture the trusted service startup context. Accepted SQL-backed work must
+  // not inherit the initiating model actor's revocable filesystem capability.
+  const hostScheduler=AsyncLocalStorage.snapshot()
   const closeTrace = createCloseObservation(closeObserver)
   const startup = createStartupMetrics(startupObserver)
   if (!config?.dbPath || !config?.instanceId) fail('TASK_SESSION_CONFIGURATION_REQUIRED')
@@ -313,7 +319,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const track = (map, id, action) => {
     if (map.has(id)) return map.get(id)
     const previousFailure = failures.get(id)
-    const promise = Promise.resolve().then(action).then(async value => {
+    const promise = hostScheduler(()=>Promise.resolve().then(action).then(async value => {
       const settled = map !== inflightTasks || (await query('task.get', { taskId: id }))?.drained
       if (settled && failures.get(id) === previousFailure) failures.delete(id)
       return value
@@ -347,7 +353,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       map.delete(id)
       if (again) void kickTask(id)
       if (!closed && (map === inflightTasks || map === inflightExecutions)) void schedulePending()
-    })
+    }))
     map.set(id, promise)
     promise.catch(() => {})
     return promise

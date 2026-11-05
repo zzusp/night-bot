@@ -1,3 +1,4 @@
+import {groupReplyScopeInstructions} from '../../packages/dingtalk-core/group-message.js'
 import {preflightNativeFileMutation} from '../native-tool-fs.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
@@ -61,6 +62,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
         const denied=tools.schemas(actor).map(tool=>tool.name).filter(name=>/^(?:subagent|task_delegate|task_execution|agent_create|schedule_create|schedule_update)/.test(name))
         if(denied.length)tools.restrict({deny:denied})
         systemPrompt.section({name:'task:single-execution',order:0,text:instructions})
+        systemPrompt.section({name:'task:reply-scope',order:1,text:groupReplyScopeInstructions})
         if(input.humanReview)systemPrompt.section({name:'task:human-review',order:1,text:'本轮只读核对人工业务答复。读取原待答问题、候选来源的完整原文和引用，核对真实作者的业务角色、权限、对应事项和全部限制；模型摘要与推断不是授权。事实追问使用 task_result(wait, replySourceId)，以 summary/evidence/limitations 记录事实，保持原问题待答，不为回复事实追问解除实施限制。只有真实来源已回答同一问题、角色与条件证据齐备时，才用 task_human_resolve 记录原答复；SQL再次核验来源及版本。解除成功后本轮仍保持只读并以无新问题的 wait 结束，由下一普通轮在原有授权范围继续。不得在本轮执行写入、命令、记忆写入、委派、扩大目标或完成任务。'})
         if(input.dialogue)systemPrompt.section({name:'task:dialogue',order:1,text:'本轮仅只读回答当前任务对话。以 task_result 的 wait 和 summary 给出基于已有证据的答复，不执行外部效果，不创建新问题，不完成或扩大原任务。'})
         const reviewTool=name=>observational.has(name)||!!input.humanReview&&name==='task_human_resolve'

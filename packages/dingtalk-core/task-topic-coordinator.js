@@ -147,7 +147,9 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
         setup: async agentCtx => {
           const presets = agentCtx.get('agentPresets')
           if (!presets) throw new Error('agent_presets_required')
-          // The official factory mounts the header preset before setup.
+          // Repeating the declared mount verifies the same startup composition idempotently.
+          const preset=await presets.mount(agentCtx,agentPreset)
+          if(preset?.id!==agentPreset)throw new Error('coordination_agent_preset_invalid')
           const assert = exec => sessions.assert(exec.agent, request.groupId, request.requestId)
           topics.register(agentCtx, request.groupId, request)
           agentCtx.get('tools').register({ name: 'group_task_list', description: '分页查询当前群未归档任务的最新轻量目录，包含已完成任务；目标和结果仅为摘要，完整正文用 group_task_context_get。同一请求当前可见的已读目录可直接复用，不重复从offset=0读取；hasMore=true 时直接使用nextCall，保留query和limit，不用请求的limit推算偏移。改变query须从offset=0查询；snapshotFingerprint变化表示当前目录已变化，需重新核对关联。',
