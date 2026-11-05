@@ -1,4 +1,4 @@
-Pending install checkpoint: package-manager metadata/attestation HTTP 503 retries; no successful frozen-install claim.
+Frozen install failed before successful package-policy verification. pnpm reported ERR_PNPM_FETCH_503 for registry metadata/attestation. No policy was disabled or bypassed; existing installed dependencies were used for local tests.
 [WARN] Request took 70086ms: https://registry.npmjs.org/@aws-sdk%2Fnested-clients
 [WARN] Request took 70100ms: https://registry.npmjs.org/@aws-sdk%2Fxml-builder
 [WARN] Request took 70084ms: https://registry.npmjs.org/@deepseek-ai%2Fcordis-plugin-include

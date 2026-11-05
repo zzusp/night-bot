@@ -32,9 +32,9 @@
   },
   "remainingDirectDshDevDependencies": 73,
   "frozenInstall": {
-    "status": "pending",
-    "reason": "npm registry metadata and attestation requests return HTTP 503; package manager is retrying",
-    "verification": "Source/import/license guards ran directly and passed; this does not replace external package verification"
+    "status": "failed",
+    "reason": "ERR_PNPM_FETCH_503: npm registry metadata/attestation unavailable; supply-chain verification could not complete",
+    "verification": "No policy bypass or alternative install route attempted. Existing installed dependencies used for local tests; independent source checks pass."
   },
   "removedContract": "DSH home/profile shell facts, DSH_* contributor namespace, dshEnv request field and four differential-only direct development declarations",
   "preserved": "Exact live tool/session ownership, durable job admission/terminal receipts, cancellation/drain, native sandbox and portable privacy; arbitrary extension values remain filtered in portable processes",
@@ -66,8 +66,8 @@
       "sha256": "78c9d49f386ab4fa10c1cde881d12e8cd5dbcd4a9de6cbf60b4842e5b1836d1b"
     },
     {
-      "path": "docs/evidence/pi-native-shell-facts-install-pending.txt",
-      "sha256": "5429586faab8af986abcaaa4e749dbc68763657ae812abbca73d9a7399e3bbc3"
+      "path": "docs/evidence/pi-native-shell-facts-install-failed.txt",
+      "sha256": "7afe9f90fd57b4995ef02662bee7bf02c5aed966551dfc07d01ce48510eeba9a"
     }
   ]
 }

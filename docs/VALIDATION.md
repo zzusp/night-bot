@@ -19,9 +19,10 @@ fingerprint change; reviewed the stronger ambient namespace scrub and pinned the
 exact updated LF/CRLF source bytes, then repeated the full suite successfully.
 Source/import/Pi-license/diff checks pass. Actual Windows acceptance remains open.
 
-Frozen install is **pending**, not passed: npm registry metadata/attestation
-requests return HTTP 503 and the package manager is retrying. Independent source
-checks do not substitute for that verification. See [execution facts evidence](pi-native-shell-facts-validation.json).
+Frozen install **failed** with `ERR_PNPM_FETCH_503`: npm registry metadata/
+attestation requests returned HTTP 503 and package-policy verification could
+not complete. No policy was bypassed; tests used already installed dependencies.
+Independent source checks do not substitute for a successful fresh install. See [execution facts evidence](pi-native-shell-facts-validation.json).
 No push or deployment. General storage/environment default paths and the explicit
 legacy restart-provider branch remain subsequent work.
 
