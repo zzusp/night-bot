@@ -44,6 +44,9 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
   pi.on('turn_end',guarded(async(event,ctx)=>{
    lastOutcome=event.outcome
    const current=actor()
+   // Cancellation drains the accepted SDK turn; it must not reopen scoped
+   // resource reads after the actor's lifetime capability has been revoked.
+   if(current.lifecycle?.signal.aborted)return
    await memory?.turnEnd?.(current,event,ctx)
    await refreshResources();await resourceLoader.reload()
    if(runPromptOptions){runPromptOptions.contextFiles=resources.agentsFiles;runPromptOptions.skills=resources.skills;if(currentDirectory)runPromptOptions.cwd=await currentDirectory(current)}

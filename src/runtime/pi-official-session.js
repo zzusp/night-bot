@@ -1,3 +1,4 @@
+import {bindPiToolCallBatchGuard} from './pi-tool-call-batch.js'
 import {bindPiRequestImageBudget} from './pi-request-image-budget.js'
 import {createAgentSession} from '@earendil-works/pi-coding-agent'
 import {createPiOfficialTools,createOfficialToolContextDelivery} from './pi-official-tools.js'
@@ -26,7 +27,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
  const unbindApproval=bindApprovalAudit(actor,audit)
- let session,imageBudget
+ let session,imageBudget,toolBatchGuard
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
@@ -43,6 +44,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   ;({session}=await createAgentSession({cwd:store.header.cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager,resourceLoader:bridge.resourceLoader,sessionManager:store.manager,noTools:'builtin',tools:tools.customTools.map(tool=>tool.name),customTools:tools.customTools}))
   actor.piSession=session
   session.agent.toolExecution='parallel'
+  toolBatchGuard=bindPiToolCallBatchGuard(session)
   if(resolved.requestImageLimitsFor)imageBudget=bindPiRequestImageBudget({session,getLimits:resolved.requestImageLimitsFor})
   const stream=session.agent.streamFunction
   session.agent.streamFunction=(model,request,options)=>{
@@ -81,10 +83,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
-   async close(){await durability.close();imageBudget?.close();unbindApproval()},
+   async close(){await durability.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
   }
  }catch(cause){
-  unbindApproval();imageBudget?.close();await session?.abort();await tools?.close();session?.dispose()
+  unbindApproval();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
   // No SDK execution has been admitted during construction. Preserve any
   // independently owned store for its caller to inspect and close explicitly.
   throw cause
