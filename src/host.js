@@ -7,8 +7,6 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const require = createRequire(import.meta.url)
-const row = (name, config) => ({ name: pathToFileURL(require.resolve('@deepseek-ai/dsh-' + name)).href,
-  ...(config ? { config } : {}) })
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
 export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot } = {}) {
   const root = resolve(config.stateDir), workspace = resolve(config.workspaceDir)
@@ -30,7 +28,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
       { name: new URL('./native-spill.js', import.meta.url).href, config: { root: join(root, 'spills') } }, { name: new URL('./native-jobs.js', import.meta.url).href }, { name: new URL('./native-tool-jobs.js', import.meta.url).href }, { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
       { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
-      row(shell + '-sandbox', { cwd: workspace }), { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'never' } },
+      { name: new URL('./native-' + shell + '-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'never' } },
       { name: new URL('./native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: {
         'read-only': { sandbox: 'read-only', approval: 'never' },
         'workspace-write': { sandbox: 'workspace-write', approval: 'never' },
@@ -59,7 +57,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
         isolate: { fs: true, workingDirectory: true, shellEnv: true, nativeAgentInstructions: true }, config: [
           { name: new URL('./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
           { name: new URL('./native-shell-env.js', import.meta.url).href }, { name: new URL('./native-tool-fs.js', import.meta.url).href }, { name: new URL('./native-tool-fs-search.js', import.meta.url).href, config: { sampleOverCapGlobResults: false } }, { name: new URL('./native-fs-observation-policy.js', import.meta.url).href },
-          row('tool-' + shell, { enableRunInBackground: true, promoteOnTimeout: true }),
+          { name: new URL('./native-tool-' + shell + '.js', import.meta.url).href, config: { enableRunInBackground: true, promoteOnTimeout: true } },
           { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, { name: new URL('./native-tool-skill.js', import.meta.url).href },
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },
           { name: new URL('./native-tool-subagent.js', import.meta.url).href, config: { provider: 'spawn' } },

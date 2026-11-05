@@ -271,3 +271,7 @@ Active filesystem backend and observation listeners now use attributed local IO/
 ### File/image/search tool ownership and spill repair
 
 Active tool-fs/tool-fs-search now use attributed local bindings, native deadline/retention and packaged ripgrep1.18.0. NativeSpillStore repairs missing full-result storage with active-root-only cleanup and admitted-write drain. Native image registration repairs explicit scoped capability injection and native error identity recognition. The missing spill service earns no removal credit. Direct DSH production dependencies33 (one newly explicit language-hint helper); active components replaced45. Remaining active dynamic rows are Shell sandbox wrappers/tools; v4 Session/inbox facade, canonical service/error/type/schema/message/scope/RPC/format/policy helpers, Windows ACL/proxy/optional-worker boundaries remain.
+
+### Shell runtime ownership
+
+Active Bash/Pwsh sandbox consumers and model tools now mount native URLs over local shell/base executors, with MIT source attribution. No active literal/dynamic DSH plugin rows remain. Four active rows earn replacement credit; abstract/render helper copies do not. Direct DSH production dependencies28; active replacements49. Canonical sandbox/helper functions, v4 Session/inbox data facade, validation/presentation/message/schema/scope/RPC helpers, Windows ACL/proxy and optional worker remain. Agent package usage was verified as consumed-work fold/type metadata only, not an active inherited Agent base or registry. No complete migration claim.

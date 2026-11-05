@@ -313,3 +313,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 补回默认Host缺失spillStore；真实Pi grep251条保留内联250条，完整私有结果保存且read取回第251条。验证安全编码、0600文件/0700目录、会话symlink替换拒绝、active-root-only清理不影响其他旧根、同步写入和关闭排空/拒绝后续请求。初次symlink测试暴露旧存储写路径只做编码而跟随已替换session目录，本地实现增加root/session检查；保留普通可信路径祖先并发替换TOCTOU限制，不声称内核安全。新增服务是修复缺失，未计移除旧活动组件。
 
 全新/tmp/night-bot-file-tools-production frozen production ignore-scripts安装，322实质核心/wire+38合同=360复测通过；288运行文件及manifest/lock逐字一致，静态285 JS/258字面bare imports通过。证据evidence/native-file-tools-*.txt。33直接DSH依赖/45活动组件替换；Shell wrapper/tool和v4 Session/inbox等辅助依赖仍明确保留，仍非完整迁移。403未重试，未推送/创建PR/合并/部署。
+
+## 原生 Shell 执行/沙箱消费/工具验证
+
+最终own476/476（27306.976154ms）通过，新增8合同。保留旧Bash/Pwsh argv/env/output/exit、工具schema/render与尾部marker协议；校验精确caller cwd/env/signal、background禁用和未声明escalation零执行、provider创建失败不重试。原生准备取消/超时等待已准入回调退出、禁止晚到argv spawn；同BASH_TIMEOUT码祖先先取消即使本地计时器随后触发也保留原因身份。准备忽略取消时不能谎称已经退出。PowerShell保留历史共享错误码，但未运行真实Pwsh/Windows。
+
+真实kernel containment11通过/一Windows跳过（18724.509406ms）。新增两实际Pi/bubblewrap wire验证显式后台及timeout提升，一次受限效果、job_output收集、per-process facts释放且无多余notice；既有可信环境wire确认已切NativeSandboxBashExecutor。全新/tmp/night-bot-shell-production frozen production ignore-scripts安装，327实质核心/wire+38合同+3真实kernel wire=368复测通过；295运行文件及manifest/lock逐字一致，静态292 JS/271字面bare imports通过。
+
+runtime142/routing47/domain388对应核心/夹具未改动沿用de10f64证据，不声称本阶段重跑；独立总计1064通过。证据evidence/native-shell-*.txt。28直接DSH依赖/49活动组件替换，默认Host已无DSH plugin row；仍保留数据facade与公共辅助库，不是完整DSH独立。初次smoke引用不存在测试名没有执行，随即改为现存真实Host wires并通过，不计失败命令为验收。远端403未重试。

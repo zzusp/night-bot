@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "Native Bash/PowerShell shell capability, local executors, sandbox consumers and model controls; explicit MIT algorithms, own deadline reason identity and admitted confinement-preparation drain; native process/jobs/permission owners retained",
     "Native file/image/CAS and packaged ripgrep model bindings, native timer/retention and private session spillStore repair; save admission/drain and active-root-only cleanup; missing service earns no replacement credit",
     "Native filesystem local atomic/CAS IO, bounded read/diff basis, watch and canonical per-call mutation containment plus owner-isolated observation gates; MIT algorithms explicitly attributed, canonical FsError/service/policy helpers remain",
     "Native web tools own query validation/dedup/order/caps and bounded untrusted HTML-to-markdown/render/presentation protocol; native cooperative tool timeout restores missing metadata enforcement, waits for delegated exit and distinguishes same-code ancestor deadlines by reason identity",
@@ -58,15 +59,14 @@
   "dshRemaining": [
     "Canonical WebError identity; active web registry/HTTP/tool definitions and formatting now local, generic defineTool/schema helpers retained",
     "Session-title public input-error identity and event-format/catalog presentation helpers; active title/query controllers now application-owned",
-    "Cordis agent factory/lifecycle compatibility fork",
     "pinned in-memory v4 Session data facade and publication compatibility hook; Session/Projection registries now local",
     "v4 event validators and persistent inbox compatibility facade",
     "public prompt rendering/scope helpers and provider replay (active prompt registry/assembly local)",
     "legacy v4 import and writer fencing only",
-    "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
+    "legacy consumed-work fold and type symbols for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
-    "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; canonical filesystem/language/sandbox helpers and shell tool backends; optional PTC worker backend",
-    "shell wrappers, canonical filesystem service/errors and sandbox helper policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
+    "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; canonical filesystem/language/sandbox helpers; optional PTC worker backend",
+    "canonical filesystem service/errors and sandbox helper policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
     "skill rendering/invocation helpers; workspace error identities only (registry local) and canonical child-agent errors and control/tool helpers; continuation manager and local provider declarations are now application-owned"
   ],
   "directRuntimeDshDependencies": [
@@ -76,10 +76,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-authorization",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-bash-sandbox",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -104,10 +100,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-pwsh-sandbox",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -143,10 +135,6 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-shell",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-skill",
       "version": "0.2.1-alpha.2"
     },
@@ -160,14 +148,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-system-prompt",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tool-bash",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tool-pwsh",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -203,15 +183,11 @@
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 129,
-  "activeLiteralDshPluginRows": [
-    "tool-"
-  ],
-  "activeDynamicDshPluginRows": [
-    "bash-sandbox or pwsh-sandbox",
-    "tool-bash or tool-pwsh"
-  ],
+  "developmentDependencyCount": 134,
+  "activeLiteralDshPluginRows": [],
+  "activeDynamicDshPluginRows": [],
   "nativeReplacements": [
+    "bash/pwsh sandbox consumers and tool-bash/tool-pwsh -> attributed native shell/base/local executors and model tools; native timers/process/jobs/sandbox/policy owners, canonical sandbox/message/schema helpers retained",
     "tool-fs/tool-fs-search -> attributed model file/image/CAS bindings and packaged argv-only ripgrep search; native deadline/output retention, canonical helpers remain",
     "fs-sandbox/fs-observation-policy -> attributed native-fs-local/native-fs-sandbox/native-fs-observation-policy; canonical FsError/service and sandbox policy helpers retained",
     "tool-jobs -> attributed local model controls/notices and native-output-retention; registry stays NativeJobs, brand helper was identity-only",

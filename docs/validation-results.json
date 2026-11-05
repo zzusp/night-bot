@@ -1083,5 +1083,39 @@
     "sourceDerivedAlgorithms": "MIT file/image schemas/format/CAS and ripgrep parsing/format/retention plus spill IO/sweep algorithms explicitly attributed",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeShellExecutionAndTools": {
+    "date": "2026-11-05",
+    "ownPass": 476,
+    "ownDurationMs": 27306.976154,
+    "newContracts": 8,
+    "newActualPiKernelWireCases": 2,
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain unchanged from de10f64; no rerun claimed",
+    "containment": {
+      "pass": 11,
+      "windowsSkipped": 1,
+      "durationMs": 18724.509406,
+      "source": "fresh AGENTS-authorized real kernel run; includes two new native Bash background/promotion cases and existing trusted-env wire"
+    },
+    "uniquePass": 1064,
+    "productionOnlyRepeatedPass": 368,
+    "productionScope": "327 meaningful core/wires plus38 contracts plus3 real Pi kernel shell cases; three development-only shell differentials excluded",
+    "runtimeFilesCompared": 295,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 292,
+    "literalBareImports": 271,
+    "directRuntimeDshDependencies": 28,
+    "removedActiveDshServices": 49,
+    "activeLiteralDshPluginRows": [],
+    "activeDynamicDshPluginRows": [],
+    "preparationLifetime": "cancel/timeout drains admitted confinement preparation before outcome, and never dispatches late argv",
+    "deadlineOwnership": "separate owned deadline plus fused upstream; reason identity preserves first cause even when ancestor uses same historical BASH_TIMEOUT code and local timer later fires",
+    "sourceDerivedAlgorithms": "MIT shell capability/render, Bash/Pwsh executor, sandbox consumer and model tool algorithms explicitly attributed; cancellation changes explicit adaptations",
+    "platformLimit": "real Linux Bash verified; PowerShell argv/encoding/config/control tested with fake subprocess only, no real Windows/Pwsh acceptance",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }
