@@ -1,0 +1,23 @@
+✔ real Pi call owns a committed job receipt and cold inspection never relaunches its producer (1813.032323ms)
+✔ cold Pi activation refuses an unresolved job journal instead of polling or restarting its producer (382.932166ms)
+✔ owned job admission is physically committed before producer startup and binds the actual tool call (49.974444ms)
+✔ a failed registration flush cannot launch or fall back to an unjournaled producer (14.64727ms)
+✔ cancellation during registration waits for the barrier and journals no producer invocation (14.161072ms)
+✔ uncertain terminal persistence never emits a completed receipt or releases a successful wait (22.40021ms)
+✔ copied execution objects cannot borrow owned producer admission (33.69748ms)
+✔ asynchronous job admission reserves capacity until its journal barrier finishes (37.263183ms)
+✔ a throwing producer startup records possible effects and never supplies a terminal success proof (18.664226ms)
+✔ teardown cancellation failure is durable uncertainty rather than a producer-reported exit (16.832155ms)
+✔ cold job receipt projection refuses mismatched, duplicate and unsupported terminal facts (1.124605ms)
+✔ one task directly writes an artifact, cold resumes the same session, denies replay and completes then reflects (6459.079376ms)
+✔ single task cancellation aborts the active turn, drains it and never creates a replacement execution (239.251678ms)
+✔ chat and chat-room task creation binds the correct memory scope without creating a coordinator (394.411293ms)
+✔ single-task delivery freezes only explicitly reported workspace files and rejects escapes (19.282082ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8166.480733

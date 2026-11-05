@@ -88,7 +88,7 @@ for (const [name, mutate] of [
  ['uncancelled original', f => { f.execution.cancelRequested = false }],
  ['not recovery', f => { f.execution.recovering = false }],
  ['another unresolved call', f => { f.original.push({ seq: 4, type: 'tool/call', data: { callId: 'other' } }) }],
- ['old settled receipt', f => { f.original.push({ seq: 4, type: 'job/settled', data: { jobId: f.operation.job.jobId } }) }],
+ ['old settled receipt', f => { f.original.push({ seq: 4, type: 'plugin:night-bot/job-settled', data: { version: 1, jobId: f.operation.job.jobId } }) }],
  ['wrong registration', f => { f.original[3].data.startedAt++ }],
  ['unreviewed scope', f => { f.proposal.operations[0].scopeEvidence.localEffectsOnlyConfirmed = false }],
  ['residual producer', f => { f.observation.legacySourceCount = 1 }],

@@ -1,3 +1,4 @@
+import {appendPluginRecord} from '../src/native-session-protocol.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as installPiAuthority} from '../src/pi-authority.js'
 import { requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
@@ -610,8 +611,8 @@ for (const fixture of [
   const preset = await nativePreset(h, { execute: (_args, exec) => {
     const job = { jobId: 'current-foreground-job', owner: exec.agent.session.id, kind: 'pwsh', startedAt: 100,
       toolCall: { callId: exec.callId, rootCallId: exec.callId } }
-    exec.agent.session.append('job/registered', job)
-    exec.agent.session.append('job/settled', { ...job, finishedAt: 101, status: 'completed', cause: 'producer', producerReported: true, detail: 'exit code: 0' })
+    appendPluginRecord(exec.agent.session,'plugin:night-bot/job-registered',{version:1,...job})
+    appendPluginRecord(exec.agent.session,'plugin:night-bot/job-settled',{version:1,...job, finishedAt: 101, status: 'completed', cause: 'producer', producerReported: true, detail: 'exit code: 0' })
     return value
   } })
   t.after(async () => { await h.close(); await preset.standing.dispose() })
@@ -622,7 +623,7 @@ for (const fixture of [
   assert.equal(settled.jobReceipt, null)
   assert.equal(result.status, 'submitted')
    const events = (await readFile(await findSessionLog(h.root, dynamic().sessionId), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
-  assert.equal(events.find(event => event.type === 'job/settled').data.detail, 'exit code: 0')
+  assert.equal(events.find(event => event.type === 'plugin:night-bot/job-settled').data.detail, 'exit code: 0')
   assert.doesNotMatch(JSON.stringify(h.requests), /execution_background_identity_missing/)
 })
 

@@ -1,3 +1,4 @@
+import {JOB_REGISTERED,JOB_SETTLED} from '../src/runtime/job-ledger.js'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { isolationDigest as hash, isolationBinding, hasRestartIsolation } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
@@ -48,12 +49,12 @@ export function inspectRetainedRestart({ tables, workspace, proposal, ownerPid, 
       && operation.key === 'native:' + binding.executionId + ':' + binding.inputVersion + ':' + binding.leaseEpoch + ':' + event.data.callId)
     if (calls.length !== 1 || calls[0].data.name !== operation.definition.toolName) fail()
     const call = calls[0], args = JSON.parse(call.data.arguments)
-    const registrations = events.filter(event => event.type === 'job/registered' && event.data.jobId === operation.job.jobId)
+    const registrations = events.filter(event => event.type === JOB_REGISTERED && event.data.version === 1 && event.data.jobId === operation.job.jobId)
     if (hash(args) !== operation.definition.argumentsDigest || registrations.length !== 1
       || registrations[0].seq <= call.seq || registrations[0].data.owner !== execution.sessionId
       || registrations[0].data.startedAt !== operation.job.startedAt || registrations[0].data.toolCall?.callId !== call.data.callId
       || registrations[0].data.kind !== operation.definition.toolName || registrations[0].data.label !== args.command
-      || events.some(event => event.type === 'job/settled' && event.data.jobId === operation.job.jobId)) fail()
+      || events.some(event => event.type === JOB_SETTLED && event.data.jobId === operation.job.jobId)) fail()
     const toolMessages = event => event.data.message?.role === 'tool' ? [event.data.message] : event.data.message?.content ?? []
     const completed = new Set(events.filter(event => event.type === 'tool/result').flatMap(toolMessages).map(message => message.toolCallId))
     if (events.some(event => event.type === 'tool/call' && !completed.has(event.data.callId) && event.data.callId !== call.data.callId)) fail()
@@ -154,7 +155,7 @@ export function inspectDrainFailureMaintenance({ db, workspace, proposal, ownerP
     const start = events.findLast(event => event.type === 'turn/start'), end = events.findLast(event => event.type === 'turn/end')
     // Native consumption appends user/message after turn/start, not before it.
     if (!start || !end || end.seq <= input.seq || end.seq <= start.seq || inputs.some(row => row.seq > end.seq)
-      || events.some(event => event.seq > end.seq && ['tool/call', 'job/registered'].includes(event.type))) fail('TERMINAL_MISSING')
+      || events.some(event => event.seq > end.seq && ['tool/call', JOB_REGISTERED].includes(event.type))) fail('TERMINAL_MISSING')
     const current = { executionId: execution.executionId, binding, taskDigest: hash(task), executionDigest: hash(execution),
       nativeLogDigest: stored.digest, terminalSequence: end.seq, cancelResponse: response }
     if (!freeze && hash(current) !== hash(item)) fail('EVIDENCE_CHANGED')

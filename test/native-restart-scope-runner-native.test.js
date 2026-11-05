@@ -15,10 +15,9 @@ import { readNativeOperationContext } from '../packages/dingtalk-dsh-assistant/d
 
 const digest = text => createHash('sha256').update(text).digest('hex')
 const nativeTaskHost=createNativeTaskHost
-// These acceptance cases require a producer-bound durable job journal, which
-// current NativeJobs does not provide. Never substitute an old DSH provider or
-// synthesize evidence to claim Windows acceptance.
-const skip=process.platform!=='win32'?'Windows native pwsh required':'Blocked: Pi NativeJobs producer-bound durable job evidence is not implemented'
+// Exercise the current Pi/application journal on Windows; no historical SDK
+// provider is substituted. Linux cannot accept the Windows kernel path.
+const skip=process.platform!=='win32'?'Windows native pwsh required':false
 
 // 全部保留物均为新建夹具；运行的只是生产只读探针，不启动 PostgreSQL / Maven，不读取历史业务账本。
 async function fixturePlan(root, observedExit = false, wrapper = false) {
@@ -84,7 +83,7 @@ for (const [observedExit, wrapper] of [[false, false], [true, false], [true, tru
  assert.ok(plan.command.length > 6000)
  assert.equal(nativeCall.arguments.command, plan.command)
  assert.equal(nativeCall.callId, `${outer.data.callId}:restart-scope`)
- assert.ok(events.some(event => event.type === 'job/registered' && event.data.toolCall.callId === nativeCall.callId))
+ assert.ok(events.some(event => event.type === 'plugin:night-bot/job-registered' && event.data.toolCall.callId === nativeCall.callId))
  assert.ok(phases.some(event => event.phase === 'settled' && event.callId === nativeCall.callId))
  assert.ok(!phases.some(event => event.toolName === restartScopeProbeToolName), 'Composite must not create a second operation for the same native call')
  const readback = { ...binding, status: 'succeeded', drained: true, recovering: false, definition: { recoveryReadOnly: true }, input: { readbackOperationId: operation.operationId } }
@@ -102,9 +101,9 @@ for (const [observedExit, wrapper] of [[false, false], [true, false], [true, tru
   'missing operation observation': list => changeResult(list, value => { delete value.operationObservation }),
   'cancelled operation observation': list => changeResult(list, value => { value.operationObservation.cancelled = true }),
   'missing outer result': list => list.splice(list.findIndex(e => e.type === 'tool/result' && e.data.message?.toolCallId === outer.data.callId), 1),
-  'wrong parent': list => { list.find(e => e.type === 'job/registered').data.toolCall.rootCallId = 'other' },
-  'duplicate jobs': list => { list.push(structuredClone(list.find(e => e.type === 'job/registered'))) },
-  'not producer settled': list => { list.find(e => e.type === 'job/settled').data.producerReported = false },
+  'wrong parent': list => { list.find(e => e.type === 'plugin:night-bot/job-registered').data.toolCall.rootCallId = 'other' },
+  'duplicate jobs': list => { list.push(structuredClone(list.find(e => e.type === 'plugin:night-bot/job-registered'))) },
+  'not producer settled': list => { list.find(e => e.type === 'plugin:night-bot/job-settled').data.producerReported = false },
  })) {
   const tampered = structuredClone(events); alter(tampered)
   const ctx = { agents: { get: () => undefined }, sessions: { get: () => undefined },
@@ -152,7 +151,7 @@ test('managed native entry rejects tampering and policy denial; a failed real pr
     const original = phases.find(event => event.phase === 'started' && event.toolName === 'pwsh')
     const settled = phases.find(event => event.phase === 'settled' && event.callId === original?.callId)
     assert.ok(settled, h.toolResults.map(item => `${item.name}: ${item.result.isError}`).join('; '))
-    assert.equal(events.find(event => event.type === 'job/settled').data.detail, mode.startsWith('failed-native') ? 'exit code: 1' : 'exit code: 0')
+    assert.equal(events.find(event => event.type === 'plugin:night-bot/job-settled').data.detail, mode.startsWith('failed-native') ? 'exit code: 1' : 'exit code: 0')
     const failedOperation = { operationId: 'failed-probe-operation', taskId: binding.taskId, executionId: binding.executionId,
      dispatchBinding: binding, key: `native:${binding.executionId}:${binding.inputVersion}:${binding.leaseEpoch}:${original.callId}`,
      state: settled.result.isError ? 'unknown' : 'succeeded', definition: { toolName: 'pwsh', argumentsDigest: hash(original.arguments) },
@@ -175,7 +174,7 @@ test('managed native entry rejects tampering and policy denial; a failed real pr
     assert.equal(failedOperation.result.callId, original.callId)
    } else {
     assert.ok(!phases.some(event => event.phase === 'started' && event.toolName === 'pwsh'), mode)
-    assert.ok(!events.some(event => event.type === 'job/registered'), mode)
+    assert.ok(!events.some(event => event.type === 'plugin:night-bot/job-registered'), mode)
    }
    if (mode === 'command-injection') assert.equal(read, 0)
    if (mode === 'native-guard') assert.equal(denied, 1)

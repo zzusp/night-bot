@@ -1,3 +1,4 @@
+import {unresolvedJobReceipts,isJobOutcomeUncertain} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {appendPluginRecord} from '../native-session-protocol.js'
 import {createUserMessage} from '../native-message-protocol.js'
@@ -20,6 +21,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
       if(stored&&(stored.meta.cwd!==cwd||stored.events.find(e=>e.type==='plugin:night/task-identity')?.data.taskId!==binding.taskId))throw fail('TASK_SESSION_IDENTITY_MISMATCH')
       const intents=new Map()
       for(const event of stored?.events??[]){if(event.type==='plugin:night/task-effect-intent')intents.set(event.data.key,{...event.data,settled:false});if(event.type==='plugin:night/task-effect-result'&&intents.has(event.data.key))intents.get(event.data.key).settled=true}
+      if(unresolvedJobReceipts(stored?.events??[],binding.sessionId).length)return {status:'no_submission',reason:'TASK_JOB_UNCERTAIN_NO_REPLAY'}
       if([...intents.values()].some(value=>!value.settled))return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}
       const setup=async(agentCtx,agent)=>{
         await ctx.agentPresets.mount(agentCtx,'night-bot-task')
@@ -35,7 +37,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
           appendPluginRecord(agent.session,'plugin:night/task-effect-intent',{key,name:exec.name,callId:exec.callId});await ctx.sessions.flush(agent.session);intents.set(key,{settled:false})
           const result=await next()
           // An aborted/unknown tool result cannot establish absence of effects.
-          if(exec.signal.aborted||['ABORTED','TOOL_OUTCOME_UNKNOWN'].includes(result.error?.info?.code))throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          if(exec.signal.aborted||isJobOutcomeUncertain(result)||['ABORTED','TOOL_OUTCOME_UNKNOWN'].includes(result.error?.info?.code))throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
           appendPluginRecord(agent.session,'plugin:night/task-effect-result',{key,isError:result.isError===true});await ctx.sessions.flush(agent.session);intents.get(key).settled=true
           return result
         })

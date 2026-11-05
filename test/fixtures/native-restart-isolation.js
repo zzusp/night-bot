@@ -14,7 +14,7 @@ export function restartFixture(launchAcknowledged = true, commandOverride) {
  const seed = identity => ({ seq: 0, type: 'plugin:dingtalk/execution-session', data: { version: 2, identity, creationLease: 1 } })
  const input = b => ({ seq: 1, type: 'user/message', data: { source: { executionSession: b } } })
  const original = [seed(binding), input(binding), { seq: 2, type: 'tool/call', data: { name: 'pwsh', callId: 'original-call', arguments: JSON.stringify(args) } },
-  { seq: 3, type: 'job/registered', data: { ...operation.job, kind: 'pwsh', label: args.command, toolCall: { callId: 'original-call', rootCallId: 'original-call' } } }]
+  { seq: 3, type: 'plugin:night-bot/job-registered', data: { version: 1, ...operation.job, kind: 'pwsh', label: args.command, toolCall: { callId: 'original-call', rootCallId: 'original-call' } } }]
  if (launchAcknowledged) original.push({ seq: 4, type: 'tool/result', data: { message: { role: 'tool', toolCallId: 'original-call', isError: false,
   content: [{ type: 'text', text: JSON.stringify({ nativeJobReceipt: operation.job }) }] } } })
  const reads = [seed(readback), input(readback), { seq: 2, type: 'tool/call', data: { callId: 'read-call', name: 'read', arguments: '{"file_path":"original-evidence.json"}' } },

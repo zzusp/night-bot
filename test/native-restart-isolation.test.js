@@ -40,7 +40,8 @@ const refusals = {
  'no durable fence': f => { f.receipt.durableFence = false },
  'revoked fence': f => f.revoke(),
  'no authority': f => { const get = f.ctx.get; f.ctx.get = name => name === 'nativeJobRecovery' ? undefined : get(name) },
- 'real terminal receipt must use normal reconciliation': f => f.original.push({ seq: 5, type: 'job/settled', data: { jobId: f.operation.job.jobId, status: 'failed' } }),
+ 'unsupported application job receipt version': f => { f.original.find(e=>e.type==='plugin:night-bot/job-registered').data.version=99 },
+ 'real terminal receipt must use normal reconciliation': f => f.original.push({ seq: 5, type: 'plugin:night-bot/job-settled', data: { version: 1, jobId: f.operation.job.jobId, status: 'failed' } }),
  'wrong original registration': f => { f.original[3].data.toolCall.callId = 'other' },
  'changed original arguments': f => { f.original[2].data.arguments = '{"command":"other"}' },
 }

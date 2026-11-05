@@ -1,3 +1,4 @@
+import {JOB_REGISTERED,JOB_SETTLED} from '../../src/runtime/job-ledger.js'
 import {readFileSync, lstatSync, openSync, fstatSync, closeSync, constants} from 'node:fs'
 import {join,isAbsolute,dirname,resolve} from 'node:path'
 import { execFile } from 'node:child_process'
@@ -109,7 +110,7 @@ export async function readMaintenanceDrainProof({ workspace, binding, events, ev
   const end = events.findLast(event => event.type === 'turn/end'), start = events.findLast(event => event.type === 'turn/start')
   if (!input || !bindingKeys.filter(key => !['taskId', 'executionId'].includes(key)).every(key => input.source.executionSession?.[key] === binding[key])
     || !end || !start || end.seq !== frozen.terminalSequence || end.seq <= input.seq || end.seq <= start.seq
-    || inputs.some(item => item.seq > end.seq) || events.some(event => event.seq > end.seq && ['tool/call', 'job/registered'].includes(event.type))) fail('NATIVE_HISTORY_CHANGED')
+    || inputs.some(item => item.seq > end.seq) || events.some(event => event.seq > end.seq && ['tool/call', JOB_REGISTERED].includes(event.type))) fail('NATIVE_HISTORY_CHANGED')
   const pendingOperations = calls.map(call => {
     const operation = operations.find(item => item.taskId === binding.taskId && item.executionId === binding.executionId
       && item.key === `native:${binding.executionId}:${binding.inputVersion}:${binding.leaseEpoch}:${call.data.callId}`)

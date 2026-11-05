@@ -388,11 +388,11 @@ function apply(ctx, config = {}) {
 		const background = jobs !== void 0;
 		const promote = background && promoteOnTimeout;
 		/** Register the command as a job; the process spawns inside the starter, after admission. */
-		const startJob = (registry, args, exec, spec) => {
+		const startJob = async (registry, args, exec, spec) => {
 			let proc;
 			let stopped;
 			return {
-				id: registry.start({
+				id: await registry.startDurable({
 					kind: "bash",
 					label: args.command,
 					...exec.agent ? { owner: exec.agent.id } : {},
@@ -413,7 +413,7 @@ function apply(ctx, config = {}) {
 							}
 						};
 					}
-				}),
+				}, exec),
 				process: () => proc,
 				stopped: () => stopped
 			};
@@ -669,7 +669,7 @@ function apply(ctx, config = {}) {
 				};
 				if (args.run_in_background === true) {
 					if (!backgroundEnabled) throw new Error("run_in_background is disabled for this deployment (enableRunInBackground: false)");
-					if (jobs === void 0) throw new Error("background jobs unavailable: load @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs");
+					if (jobs === void 0) throw new Error("background jobs unavailable: the application job service and controller are required");
 					if (exec.signal.aborted) throw toolAborted();
 					const spec = ctx.shell.resolve({
 						...request,
@@ -677,7 +677,7 @@ function apply(ctx, config = {}) {
 					});
 					return {
 						kind: "background",
-						jobId: startJob(jobs, args, exec, spec).id,
+						jobId: (await startJob(jobs, args, exec, spec)).id,
 						cwd: spec.workdir
 					};
 				}
@@ -688,8 +688,9 @@ function apply(ctx, config = {}) {
 					});
 					let attached;
 					try {
-						attached = startJob(jobs, args, exec, spec);
+						attached = await startJob(jobs, args, exec, spec);
 					} catch (error) {
+						if (!["background jobs unavailable: no job controller serves this agent", "background job limit reached for this owner"].includes(error.message)) throw error;
 						ctx.logger.warn(`bash: job registration refused, running in the foreground with the timeout kill instead: ${String(error)}`);
 					}
 					if (attached !== void 0) return waitOnJob(jobs, attached, exec, spec);

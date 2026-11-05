@@ -1,3 +1,4 @@
+import {JOB_REGISTERED,JOB_SETTLED} from '../../src/runtime/job-ledger.js'
 import { createHash } from 'node:crypto'
 import { inspectSession, executionInputFor, latestExecutionInput } from './session-persistence.js'
 import { safeNotificationDetail } from './notification-delivery.js'
@@ -167,13 +168,13 @@ export async function inspectIsolatedHostRestart({ ctx, operation, execution, ex
   let args
   try { args = JSON.parse(call.data.arguments) } catch { return null }
   if (hash(args) !== operation.definition.argumentsDigest || typeof args.command !== 'string') return null
-  const registrations = events.filter(event => event.type === 'job/registered' && event.data.jobId === job.jobId)
+  const registrations = events.filter(event => event.type === JOB_REGISTERED && event.data.version === 1 && event.data.jobId === job.jobId)
   if (registrations.length !== 1) return null
   const registered = registrations[0], data = registered.data
   if (registered.seq <= call.seq || data.owner !== job.owner || data.startedAt !== job.startedAt
     || data.kind !== operation.definition.toolName || data.label !== args.command || data.toolCall?.callId !== callId
     || data.toolCall.rootCallId && data.toolCall.rootCallId !== callId
-    || events.some(event => event.type === 'job/settled' && event.data.jobId === job.jobId)) return null
+    || events.some(event => event.type === JOB_SETTLED && event.data.jobId === job.jobId)) return null
   const responses = events.flatMap(event => event.seq > call.seq ? results(event).filter(result => result.toolCallId === callId) : [])
   if (responses.length > 1) return null
   if (responses.length) {

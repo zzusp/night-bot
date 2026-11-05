@@ -110,13 +110,20 @@ export default class NativeTools extends Service {
   if(!['rejected','cancelled','unavailable'].includes(outcome))throw new Error('Unknown approval outcome')
   return{kind:'deny',approvalCancelled:outcome==='cancelled',reason:outcome==='rejected'?`the user rejected tool "${exec.name}"`:outcome==='cancelled'?`approval for tool "${exec.name}" was cancelled`:`tool "${exec.name}" requires approval, but no approval channel is available`}
  }
+ executionIdentity(exec){
+  const state=this.states.get(exec),identity=state?.identity
+  if(!identity||!state.started||state.finished||state.callerSignal.aborted||exec.signal.aborted
+    ||exec.token!==identity.token||exec.agent!==identity.agent||exec.callId!==identity.callId||exec.rootCallId!==identity.rootCallId
+    ||exec.name!==identity.name||exec.arguments!==state.arguments)return
+  return Object.freeze({callId:identity.callId,rootCallId:identity.rootCallId,name:identity.name,owner:identity.agent?.id})
+ }
  async prepare(input){
   const state={callerSignal:input.signal,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
   const exec={token:Symbol('night.tool.execution'),callId:input.callId,rootCallId:input.rootCallId??input.callId,name:input.name,signal:input.signal,...input.agent===undefined?{}:{agent:input.agent},...input.parent===undefined?{}:{parent:input.parent},...input.schema===undefined?{}:{schema:input.schema},deferContext:context=>state.deferred.push(context),concludeTurn:()=>{state.concluded=true}}
   const collapsed=this.modeFor(input.agent)==='ptc'&&input.parent===undefined&&input.name!=='run_code'
   state.finalizer=collapsed&&!input.signal.aborted?undefined:definition?.finalizeContent?.bind(definition);state.projector=collapsed?undefined:definition?.projectContent?.bind(definition);this.states.set(exec,state)
   try{
-   exec.arguments=deepFreeze(snapshot(input.arguments))
+   exec.arguments=deepFreeze(snapshot(input.arguments));state.arguments=exec.arguments;state.identity={token:exec.token,agent:exec.agent,callId:exec.callId,rootCallId:exec.rootCallId,name:exec.name}
    if(state.callerSignal.aborted)return{kind:'final-result',exec,result:aborted(false)}
    if(this.modeFor(exec.agent)==='ptc'&&exec.parent===undefined&&exec.name!=='run_code')return{kind:'final-result',exec,result:failure(new ToolNotFoundError(exec.name,'use run_code instead'))}
    let gate=await this.ctx.waterfall(scopeTarget(this,exec.agent),'tools/pre-execute',exec,()=>Promise.resolve({kind:'allow'}))
@@ -159,6 +166,7 @@ export default class NativeTools extends Service {
  finish(exec,candidate){
   let result
   try{result=this.materialize(candidate);const finalize=this.states.get(exec)?.finalizer;if(finalize){const content=finalize(exec,result);if(content!==undefined)result=this.materialize({...result,content})}}catch(error){result=this.materialize(failure(error))}
+  const state=this.states.get(exec);if(state)state.finished=true
   Object.freeze(exec)
   for(const callback of this.ctx.events.dispatch('emit',[scopeTarget(this,exec.agent),'tools/result',exec,result]))try{Promise.resolve(callback(exec,result)).catch(error=>this.ctx.logger.warn(errorText(error)))}catch(error){this.ctx.logger.warn(errorText(error))}
   return result

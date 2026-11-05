@@ -1,3 +1,44 @@
+# Pi native rebuild: owned job journal stage
+
+Model-facing bash and PowerShell now admit jobs through an application-owned,
+versioned journal. Registration is flushed before invoking the producer, and its
+identity binds the exact live NativeTools execution and owning session. Random
+job IDs avoid restart collisions. Pending asynchronous admissions reserve capacity.
+Only an actual producer outcome may set `producerReported`; teardown cancellation
+errors remain explicitly uncertain. Terminal persistence failure neither emits a
+successful completion notification nor releases a successful wait. Journal/start
+uncertainty never falls back to an unjournaled foreground command.
+
+Cold Pi activation and single-task continuation refuse unresolved owned job
+receipts. Physical committed evidence is inspected without recreating jobs or
+replaying producers. Task side-effect intents also retain new journal uncertainty
+codes. These fences do not supply a generic operator reconciliation API: missing
+proof remains a block. Trusted in-process `jobs.start()` remains ephemeral; model
+shell tools use `startDurable()` and do not borrow that API's lack of receipts.
+
+Recovery consumers now accept the application `plugin:night-bot/job-*` namespace,
+with version and original binding checks, rather than DSH producer event types.
+The existing process-tree/source exclusion, ledger/digest, partial-effect and
+no-replay requirements remain. Windows tests use the current application provider;
+Linux does not claim validation of Windows process/ACL behavior.
+
+Validation before integration: **602 default tests pass**; real isolated Linux
+bash background/promotion/environment tests **3 pass**, checking one actual effect
+and committed producer receipts. Recovery supplement **79 pass, 2 platform skips**.
+Additional focused runs overlap these groups. Source/import guards and frozen
+install pass. See [pi-native-stage3-validation.json](pi-native-stage3-validation.json).
+One differential-only jobs package declaration was removed; **83 direct DSH dev
+packages remain**. Existing attributed shell/process/schema code still needs its
+notices. This stage is not a claim of complete DSH removal.
+
+The two integration refs have now been fetched and verified through Git:
+`origin/feat/task-archive-portability` -> `8fa47a2`,
+`origin/fix/channel-plugin-runtime` -> `066f334`. The earlier Library download
+blocker remains an historical fact; it is no longer blocking local integration.
+No remote push, main merge, deployment or CI trigger is part of this work.
+
+---
+
 # Pi native rebuild: maintenance and publication stage
 
 This stage continues `d2e148e`; full DSH independence remains unfinished.

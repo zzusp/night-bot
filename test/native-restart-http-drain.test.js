@@ -74,7 +74,7 @@ async function fixture(t, mode, wrapped = false) {
  Object.keys(facts.execution).forEach(key => delete facts.execution[key]); Object.assign(facts.execution, original)
  Object.keys(facts.readback).forEach(key => delete facts.readback[key]); Object.assign(facts.readback, readback)
  facts.readback.kind = 'task-execution'
- facts.original[3].data = { ...operation.job, kind: 'pwsh', label: pg, toolCall: { callId: 'original-call', rootCallId: 'original-call' } }
+ facts.original[3].data = { version:1,...operation.job, kind: 'pwsh', label: pg, toolCall: { callId: 'original-call', rootCallId: 'original-call' } }
  if (mode) {
   facts.original.splice(1, 0, { type: 'turn/start', data: {} })
   facts.original.push({ type: 'agent/inbox/spliced', data: { inserted: [{ role: 'user', source: { kind: 'coordinator', executionFeedback: { executionId: 'original', messageId: 'feedback' } } }] } },
@@ -219,8 +219,8 @@ for (const wrapped of [false, true]) test('formal check/probe/reply preserves un
  const startedAt = Date.now(), original = JSON.stringify(f.facts.original)
  f.facts.reads.push(
   { seq: 4, type: 'tool/call', data: { callId: 'scope-probe', name: 'pwsh', arguments: JSON.stringify({ command: plan.command }) } },
-  { seq: 5, type: 'job/registered', data: { jobId: 'scope-job', owner: f.facts.readback.sessionId, kind: 'pwsh', label: plan.command, startedAt, toolCall: { callId: 'scope-probe' } } },
-  { seq: 6, type: 'job/settled', data: { jobId: 'scope-job', owner: f.facts.readback.sessionId, startedAt, status: 'completed', producerReported: true, detail: 'exit code: 0' } },
+  { seq: 5, type: 'plugin:night-bot/job-registered', data: { version: 1, jobId: 'scope-job', owner: f.facts.readback.sessionId, kind: 'pwsh', label: plan.command, startedAt, toolCall: { callId: 'scope-probe' } } },
+  { seq: 6, type: 'plugin:night-bot/job-settled', data: { version: 1, jobId: 'scope-job', owner: f.facts.readback.sessionId, startedAt, status: 'completed', producerReported: true, detail: 'exit code: 0' } },
   { seq: 7, type: 'tool/result', data: { message: { role: 'tool', toolCallId: 'scope-probe', isError: false, content: [{ type: 'text', text: JSON.stringify(observation) }] } } })
  Object.assign(evidence, { probeExecutionId: f.facts.readback.executionId, probeCallId: 'scope-probe' })
  const checked = await f.post('/check', f.body)

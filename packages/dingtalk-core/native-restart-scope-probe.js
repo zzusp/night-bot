@@ -1,3 +1,4 @@
+import {JOB_REGISTERED,JOB_SETTLED} from '../../src/runtime/job-ledger.js'
 import { win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isolationDigest as hash } from './native-restart-isolation.js'
@@ -232,8 +233,8 @@ export function registerRestartScopeProbe({ agentCtx, agent, current, readPlan, 
    outcomes.set(exec.token, outcome)
    await check()
    const events = agent.session.snapshotEvents()
-   const jobs = events.filter(event => event.type === 'job/registered' && event.data.owner === agent.id && event.data.toolCall?.callId === callId)
-   const settled = jobs.length === 1 ? events.filter(event => event.type === 'job/settled' && event.data.owner === agent.id
+   const jobs = events.filter(event => event.type === JOB_REGISTERED && event.data.version === 1 && event.data.owner === agent.id && event.data.toolCall?.callId === callId)
+   const settled = jobs.length === 1 ? events.filter(event => event.type === JOB_SETTLED && event.data.version === 1 && event.data.owner === agent.id
     && event.data.jobId === jobs[0].data.jobId && event.data.startedAt === jobs[0].data.startedAt) : []
    // shell 工具可成功返回 exitCode=1；调用成功不能替代 producer 成功，缺 job 也不能生成受管成功回执。
    if (result.isError || !operationObservation || operationObservation.cancelled || operationObservation.postExecutionDecision !== 'accept'
@@ -295,13 +296,13 @@ export async function readRestartScopeProbe({ ctx, plan, evidence, operation, ex
  let args
  try { args = JSON.parse(call?.data.arguments) } catch { return null }
  if (args.command !== plan.command || args.run_in_background === true || Object.keys(args).some(key => !['command', 'description', 'timeoutMs', 'run_in_background'].includes(key))) return null
- const registered = events.filter(event => event.seq > call.seq && event.type === 'job/registered' && event.data.owner === readback.sessionId
+ const registered = events.filter(event => event.seq > call.seq && event.type === JOB_REGISTERED && event.data.version === 1 && event.data.owner === readback.sessionId
   && event.data.toolCall?.callId === call.data.callId)
  if (registered.length !== 1) return null
  const registration = registered[0]
  if (registration.data.kind !== 'pwsh' || registration.data.label !== plan.command
   || managed && registration.data.toolCall.rootCallId !== call.data.rootCallId) return null
- const settled = events.filter(event => event.seq > registration.seq && event.type === 'job/settled'
+ const settled = events.filter(event => event.seq > registration.seq && event.type === JOB_SETTLED && event.data.version === 1
   && event.data.jobId === registration.data.jobId && event.data.owner === readback.sessionId && event.data.startedAt === registration.data.startedAt)
  if (settled.length !== 1 || settled[0].data.producerReported !== true || settled[0].data.status !== 'completed' || settled[0].data.detail !== 'exit code: 0') return null
  const returned = managed?.returned ?? events.find(event => event.seq > call.seq && toolMessages(event).some(message => message.toolCallId === call.data.callId))

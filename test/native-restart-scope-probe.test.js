@@ -30,8 +30,8 @@ function probeFixture(command, acknowledged, hostExit, postgresWrapper) {
   listeningCount: 0, originalArtifactsPreserved: true, artifactState: 'retained-unverified' }
  if (hostExit) Object.assign(observation, { hostFatal: false, hostFatalTime: '2026-10-27T07:00:00Z', hostLogVerified: true, hostExitObservedAt: hostExit.observedAt })
  f.reads.splice(2, f.reads.length, { seq: 2, type: 'tool/call', data: { callId: 'scope-probe', name: 'pwsh', arguments: JSON.stringify({ command: plan.command }) } },
-  { seq: 3, type: 'job/registered', data: { jobId: 'scope-job', owner: f.readback.sessionId, kind: 'pwsh', label: plan.command, startedAt: 1000, toolCall: { callId: 'scope-probe' } } },
-  { seq: 4, type: 'job/settled', data: { jobId: 'scope-job', owner: f.readback.sessionId, startedAt: 1000, status: 'completed', producerReported: true, detail: 'exit code: 0' } },
+  { seq: 3, type: 'plugin:night-bot/job-registered', data: { version: 1, jobId: 'scope-job', owner: f.readback.sessionId, kind: 'pwsh', label: plan.command, startedAt: 1000, toolCall: { callId: 'scope-probe' } } },
+  { seq: 4, type: 'plugin:night-bot/job-settled', data: { version: 1, jobId: 'scope-job', owner: f.readback.sessionId, startedAt: 1000, status: 'completed', producerReported: true, detail: 'exit code: 0' } },
   { seq: 5, type: 'tool/result', data: { message: { role: 'tool', toolCallId: 'scope-probe', isError: false,
    content: [{ type: 'text', text: JSON.stringify(observation) + '\n[exit code: 0]' }] } } },
   { seq: 6, type: 'tool/call', data: { callId: 'read-call', name: 'read', arguments: '{"file_path":"effects.json"}' } },

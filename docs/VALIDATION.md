@@ -1,3 +1,17 @@
+# Owned job journal stage (2026-11-05)
+
+Pre-integration default tests: **602 pass, 0 failures**. Owned journal intent,
+terminal persistence, cancellation, forged execution, capacity and cold no-replay
+cases pass. Actual confined Linux shell background/promotion/environment: **3 pass**.
+Recovery supplement: **79 pass, 2 skips**. See [stage evidence](pi-native-stage3-validation.json).
+The application job namespace replaces DSH producer receipts; process/platform
+proof requirements are retained. Frozen install and source guards pass. **83 DSH
+direct development packages remain**. Windows kernel acceptance remains unverified.
+
+Both task/channel Git refs are now fetched and hash-verified. Integration and its
+joint regression are subsequent work; older materialization failures below do
+not describe the current Git availability. No push, deployment, main merge or CI.
+
 # Pi native maintenance/publication stage (2026-11-05)
 
 Current validation: **591 default +142 runtime +47 routing +17 Linux containment

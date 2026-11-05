@@ -184,8 +184,9 @@
     {
       "source": "dynamic-operation-readback.js",
       "sourceSha256": "06d5d204b26ca445f19083f0134b98faff8654b2a911dc7f3a12f96a24d0b10c",
-      "status": "retained",
-      "sha256": "06d5d204b26ca445f19083f0134b98faff8654b2a911dc7f3a12f96a24d0b10c"
+      "status": "adapted",
+      "sha256": "a10c91eeb613f6e4426fe01c3977737fd4f998306d97229778b8e35c0f9d9a48",
+      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof."
     },
     {
       "source": "dynamic-process-scope.js",
@@ -564,8 +565,8 @@
       "source": "native-maintenance-drain.js",
       "sourceSha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b",
       "status": "adapted",
-      "sha256": "ea189012c00c9ea8dc51a38e2c6f437b1976190981bb91e30d5827233db04c3a",
-      "adaptation": "Strict shared Pi journal decoding and exact physical evidence binding; no DSH v4 file discovery or normalization."
+      "sha256": "e972a9c2b468e697a1efe7d76c5b2270d5762e7adcf5f57cb31a7a72087a03d6",
+      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof."
     },
     {
       "source": "native-postgres-wrapper.js",
@@ -583,8 +584,8 @@
       "source": "native-restart-scope-probe.js",
       "sourceSha256": "6b5c5f8a750a595e40d933e2d5fa834c2df8d003d763993a8803142d41e6a86f",
       "status": "adapted",
-      "sha256": "9efe28797b59c92d8f4c3adadd012b1c8a4c7ebd6319eaa9e257a71bf2489e5a",
-      "adaptation": "Native restart probe binds native provider paths and reviewed LF/CRLF hashes; explicit legacy layout retained."
+      "sha256": "ea039dc7293a238f9a84b359ac1d8a9a3e678cda7144d8d967b1c7c0c4a11cd0",
+      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof."
     },
     {
       "source": "node-output-readout.js",
