@@ -1,3 +1,4 @@
+import {preflightNativeFileMutation} from '../native-tool-fs.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
@@ -68,6 +69,7 @@ export function createSingleTaskSessions({ctx,isCurrent,getWorkspaceDir,withPers
         agentCtx.on('tools/execute',async(exec,next)=>{
           if(observational.has(exec.name)||input.humanReview&&exec.name==='task_human_resolve')return next()
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          await preflightNativeFileMutation(exec,tools.get(exec.name,actor))
           const effectKey=fingerprint({requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,name:exec.name,args:exec.arguments})
           if(intents.has(effectKey))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
           const intent={key:effectKey,name:exec.name,callId:exec.callId}

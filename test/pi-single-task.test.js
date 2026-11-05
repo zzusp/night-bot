@@ -102,3 +102,22 @@ test('an uncertain default task effect releases its physically drained actor and
     await h?.close();for(const cleanup of cleanups.reverse())await cleanup()
   }
 })
+
+test('a task rejects forged archive output and can still submit a legitimate work artifact',{timeout:15000},async t=>{
+  let step=0
+  const f=await memoryHost(t,body=>{
+    if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
+    if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
+    if(step++===0)return {tool:'write',args:{file_path:'outputs/forged.txt',content:'forged archive'}}
+    if(step===2)return {tool:'write',args:{file_path:'work/proof.txt',content:'legitimate work'}}
+    return {...result,args:{decision:{...result.args.decision,artifacts:['work/proof.txt'],deliveryFiles:[{path:'work/proof.txt'}]}}}
+  }),h=await serviceFor(f);t.after(()=>h.close())
+  const task=await h.service.createTask({requestId:'archive-forgery-denied',objective:'Return a legitimate work artifact'})
+  await h.service.whenIdle()
+  const row=await h.store.query({kind:'task.get',taskId:task.taskId}),dialogue=await h.service.taskDialogue(task.taskId)
+  assert.equal(row.status,'completed',JSON.stringify({status:row.status,error:dialogue.error,decision:row.lastDecision}))
+  assert.match(JSON.stringify(f.requests),/FS_SANDBOX_DENIED|Task archive areas are Host-owned/)
+  await assert.rejects(stat(join(task.session.workspaceDir,'outputs/forged.txt')),{code:'ENOENT'})
+  assert.equal(await readFile(join(task.session.workspaceDir,'work/proof.txt'),'utf8'),'legitimate work')
+  assert.equal(row.completion.result.artifactFiles.length,1)
+})

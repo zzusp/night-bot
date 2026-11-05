@@ -16,10 +16,20 @@ export default class PrivateFileSystem extends NativeSandboxedFileSystem {
   async stat(target,...args){if(this.outside(target))return undefined;return super.stat(this.check(target),...args)}
   outside(target,writing=false){const agent=this.ctx.get('agents')?.currentInitiator();if(!agent||!this.ctx.memoryPrivacy.installRoot)return false;const path=String(target.targetKey),workspace=origin(agent,this.ctx.memoryPrivacy.workspaces);return !inside(writing?workspace:this.ctx.memoryPrivacy.installRoot,path)||inside(this.ctx.memoryPrivacy.workspaces,path)&&!inside(workspace,path)&&!inside(path,workspace)}
   boundary(target,writing=false){const agent=this.ctx.get('agents')?.currentInitiator(),path=String(target.targetKey);const workspace=origin(agent),task=workspace&&/^tasks[/\\][^/\\]+$/.test(relative(this.ctx.memoryPrivacy.workspaces,workspace));if(writing&&task&&!['work','tmp'].some(name=>inside(join(workspace,name),path)))throw new FsError('Task archive areas are Host-owned; write process files under work/ or tmp/.','FS_SANDBOX_DENIED');if(agent&&this.ctx.memoryPrivacy.installRoot&&inside(this.ctx.memoryPrivacy.workspaces,path)&&!inside(origin(agent,this.ctx.memoryPrivacy.workspaces),path))throw new FsError('Another conversation/task workspace is private.','FS_SANDBOX_DENIED');if(this.outside(target,writing))throw new FsError('Business files belong under the installation workspace.','FS_SANDBOX_DENIED');return this.check(target)}
+  /** Non-mutating admission check only. No target/grant is reused by a later
+   * write: execution resolves and checks the boundary and CAS again. */
+  async preflightMutation(path,options={}){
+    options.signal?.throwIfAborted()
+    const target=await this.resolve(path,options)
+    this.boundary(target,true)
+    options.signal?.throwIfAborted()
+  }
   async checkedTarget(target,policy){
     const actor=this.ctx.get('agents')?.currentInitiator()
     if(actor?.piSession){officialWorkingDirectoryOrigin(actor);const bound=this.ctx.sandboxPolicy.resolve({actor});policy??=bound}
-    return super.checkedTarget(target,policy)
+    // SandboxedFileSystem may refresh an alias to a new canonical target.
+    // Enforce the task-owned areas on that exact returned mutation target too.
+    return this.boundary(await super.checkedTarget(target,policy),true)
   }
   async readText(target,...args){return super.readText(this.boundary(target),...args)}
   async readBytes(target,...args){return super.readBytes(this.boundary(target),...args)}

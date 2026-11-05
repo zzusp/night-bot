@@ -94,7 +94,8 @@ test('new Night Bot data restores A to B: continued Pi history, workspace, sched
   const destination=await fixture(t),configB={...f.config,installRoot:destination},restored=await restoreData(configB,backup);assert.equal(restored.relocated,true);assert.equal((await loadConfig(join(destination,'data/config/config.json'))).installRoot,destination)
   const b=await createHost(configB,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});t.after(()=>b.close())
   const paths=b.ctx.runtimePaths,resumed=await b.ctx.sessionController.resolveAgent('relocation');assert.ok(resumed.agent,resumed.error?.message)
-  assert.equal(resumed.agent.session.header.cwd,paths.workspaces)
+  assert.equal(resumed.agent.metadata.cwd,paths.workspaces)
+  const restoredPiCwd=resumed.agent.piSession.sessionManager.getCwd()
   assert.equal(b.ctx.workspaceRegistry.get(workspace.id).path,paths.workspaces)
   assert.equal((await b.ctx.memory.read(resumed.agent,{topic:'facts'})).entries[0].text,'portable assistant')
   assert.equal(await readFile(join(paths.workspaces,'artifact.txt'),'utf8'),'retained-output')
@@ -102,10 +103,28 @@ test('new Night Bot data restores A to B: continued Pi history, workspace, sched
   for(let n=0;n<180;n++){if((await b.ctx.schedule.catalog()).find(r=>r.id===task.id)?.status==='inactive')break;await new Promise(r=>setTimeout(r,25))}
   await resumed.agent.whenIdle()
   assert.equal((await b.ctx.schedule.history({sessionId:'relocation',id:task.id,limit:10})).records.length,1)
-  resumed.agent.followup((await import('../src/native-message-protocol.js')).createUserMessage({source:{kind:'user'},content:[{type:'text',text:'continue after relocation'}]}));await resumed.agent.whenIdle()
-  assert.ok(resumed.agent.session.snapshotEvents().some(e=>e.type==='user/message'&&e.data.content.some(p=>p.text==='continue after relocation')))
+  const restoredHistory=await b.ctx.sessionPersistence.readNative('relocation',{requireComplete:true})
+  assert.equal(restoredHistory.format,'pi-native-v1')
+  assert.match(JSON.stringify(restoredHistory.context.projection),/portable assistant/)
+  assert.match(JSON.stringify(restoredHistory.context.projection),/RELOCATED_TIMER_PROOF/)
   await b.close()
-  const c=await createHost(configB,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});try{assert.equal((await c.ctx.sessionPersistence.stat('relocation')).header.cwd,paths.workspaces);assert.equal((await c.ctx.schedule.history({sessionId:'relocation',id:task.id,limit:10})).records.length,1)}finally{await c.close()}
+  const c=await createHost(configB,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});try{
+    assert.equal((await c.ctx.sessionPersistence.stat('relocation')).header.cwd,paths.workspaces)
+    assert.equal((await c.ctx.schedule.history({sessionId:'relocation',id:task.id,limit:10})).records.length,1)
+    // The test Host owns this explicit user admission; the ordinary controller
+    // intentionally admits only its registered scheduled inputs.
+    const continued=await c.ctx.agents.resume({resumeSessionId:'relocation',agentOptions:configB.model,
+      authorizeInput:packet=>packet.id==='relocation-continuation'&&JSON.stringify(packet.source)===JSON.stringify({kind:'user'})&&JSON.stringify(packet.content)===JSON.stringify([{type:'text',text:'continue after relocation'}]),
+      setup:ctx=>ctx.get('agentPresets').mount(ctx,'night-bot')})
+    try{
+      await continued.enqueue({id:'relocation-continuation',source:{kind:'user'},content:[{type:'text',text:'continue after relocation'}]})
+      await continued.deliver('relocation-continuation',{deliverAs:'followUp'});await continued.whenIdle()
+      const native=await c.ctx.sessionPersistence.readNative('relocation',{requireComplete:true})
+      assert.match(JSON.stringify(native.context.projection),/portable assistant/)
+      assert.match(JSON.stringify(native.context.projection),/continue after relocation/)
+    }finally{await continued.dispose()}
+    assert.equal(restoredPiCwd,paths.workspaces)
+  }finally{await c.close()}
 })
 
 test('initializer creates unique private generic configuration, honors install layout and never overwrites it',async t=>{

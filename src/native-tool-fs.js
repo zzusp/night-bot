@@ -1,3 +1,22 @@
+// Application-owned pre-effect boundary admission for exact registered tools.
+// A same-named custom tool cannot manufacture this private capability.
+const nativeMutationPreflights=new WeakMap();
+export async function preflightNativeFileMutation(exec,definition){
+ const preflight=definition&&nativeMutationPreflights.get(definition);
+ if(preflight&&exec.name===definition.name)await preflight(exec);
+}
+function registerNativeMutation(ctx,definition){
+ nativeMutationPreflights.set(definition,async exec=>{
+  const fs=ctx.get('fs');
+  if(typeof fs?.preflightMutation==='function'){
+   // Read the bound directory without ensure()'s recovery/publication effects.
+   const cwd=exec.agent===undefined?undefined:ctx.get('workingDirectory').get(exec.agent);
+   await fs.preflightMutation(exec.arguments.file_path,{...cwd===undefined?{}:{cwd},signal:exec.signal});
+  }
+ });
+ return ctx.get('tools').register(definition);
+}
+
 // MIT source-derived model file/image read, guarded write/edit, bounded render and presentation algorithms; see licenses/dsh-tool-fs-MIT.txt. Native attachment errors are recognized.
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "./native-tool-protocol.js";
@@ -549,7 +568,7 @@ function applyWriteTool(ctx, sandbox) {
 		order: ctx.systemPrompt.getSectionOrder("TOOL_WRITE"),
 		text: guidance, officialText: guidance
 	});
-	ctx.tools.register(defineTool({
+	registerNativeMutation(ctx,defineTool({
 		name: "write",
 		description: "Create or fully replace a UTF-8 text file.",
 		parameters: {
@@ -691,7 +710,7 @@ function applyEditTool(ctx, sandbox) {
 		order: ctx.systemPrompt.getSectionOrder("TOOL_EDIT"),
 		text: guidance, officialText: guidance
 	});
-	ctx.tools.register(defineTool({
+	registerNativeMutation(ctx,defineTool({
 		name: "edit",
 		description: "Edit an existing UTF-8 text file by replacing literal text.",
 		parameters: {
@@ -1213,6 +1232,7 @@ function apply(ctx, config) {
 	ctx.inject(["attachments", "tools", "fs", "workingDirectory"], (imageCtx) => {
 		applyReadImageTool(imageCtx);
 	});
+	ctx.on('tools/pre-execute',async(exec,next)=>{await preflightNativeFileMutation(exec,ctx.get('tools').get(exec.name,exec.agent));return next()});
 	const sandbox = new FsSandboxController(ctx);
 	applyWriteTool(ctx, sandbox);
 	applyEditTool(ctx, sandbox);
