@@ -1,0 +1,97 @@
+{
+  "integrationHead": "7933b65",
+  "taskArchiveCommit": "8fa47a255cfc8044b470bd8f104f89ed3211cc83",
+  "channelCommit": "066f334121cf18442863e70059a7bf6ff216b6bc",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 623,
+    "fail": 0,
+    "skip": 0,
+    "scope": "Merged runtime before differential-only retry test replacement"
+  },
+  "retryReplacement": {
+    "pass": 7,
+    "fail": 0,
+    "skip": 0,
+    "scope": "After direct dependency removal and frozen install; overlaps default"
+  },
+  "routing": {
+    "pass": 47,
+    "fail": 0,
+    "skip": 0
+  },
+  "domain": {
+    "pass": 390,
+    "fail": 0,
+    "skip": 0
+  },
+  "linuxContainment": {
+    "pass": 19,
+    "fail": 0,
+    "skip": 1,
+    "skipReason": "Windows-only platform case"
+  },
+  "runtime": {
+    "pass": 142,
+    "fail": 0,
+    "skip": 0
+  },
+  "remainingDirectDshDevDependencies": 82,
+  "frozenInstall": "passed --ignore-scripts; no claim of fresh native builds",
+  "windows": "No actual Windows process/ACL or vendor CLI acceptance on this Linux environment",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-integrated-own.txt",
+      "sha256": "613598c0a7b10960e28fd4d46ebb79bc4d639db3657106456cdd4b4818744557"
+    },
+    {
+      "path": "docs/evidence/pi-native-integrated-routing.txt",
+      "sha256": "396842738a06e25bed0a653e6574b882eadd8e82d142152c3cde2cca07b05432"
+    },
+    {
+      "path": "docs/evidence/pi-native-integrated-domain.txt",
+      "sha256": "f849f0b655607d5c20804e0f969f9c6f592d22d4c27b4d7715e5f8d993a9b3be"
+    },
+    {
+      "path": "docs/evidence/pi-native-integrated-containment.txt",
+      "sha256": "0df607111458f2d48bdd5225785914c2c9d7907b337aeed58ac3d2d7734991f8"
+    },
+    {
+      "path": "docs/evidence/pi-native-integrated-checks.txt",
+      "sha256": "b852293673a42c5f8bb77aec71683a9a0a3da97474ff26ff9fb3643ed5c393f9"
+    },
+    {
+      "path": "docs/evidence/pi-native-integrated-frozen-final.txt",
+      "sha256": "c06d2a675bd9a4076e8b4c379f1c62d6b298ef413fcdbe286c33ec78b20d40f7"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-retry.txt",
+      "sha256": "2ee58e1768d79d45e2ac23f0d4af4742bb3a4c8fb36417a9a56a52fe630e28f5"
+    },
+    {
+      "path": "docs/evidence/pi-native-integrated-runtime.txt",
+      "sha256": "af88acee7938b6fc5eb1d021ab51e5813833c3d92e1dadeaf8b539ef0189399d"
+    }
+  ],
+  "retryCleanupCommit": "2f36e28",
+  "integrationConflicts": {
+    "archive": [
+      "docs/VALIDATION.md",
+      "docs/source-manifest.json",
+      "scripts/check-coverage.mjs",
+      "src/host.js",
+      "src/pi-session-persistence.js"
+    ],
+    "channels": [
+      "docs/source-manifest.json",
+      "scripts/check-coverage.mjs",
+      "src/host.js"
+    ]
+  },
+  "additionalFocused": {
+    "pass": 27,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Channel plugin, channel, task archive, triage and routed journal cases; not added to totals"
+  }
+}

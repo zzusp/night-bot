@@ -1,3 +1,38 @@
+# Pi native integration checkpoint (2026-11-05)
+
+Task archive `8fa47a255cfc8044b470bd8f104f89ed3211cc83` and channel
+`066f334121cf18442863e70059a7bf6ff216b6bc` were fetched and verified against
+explicit remote tracking refs. Local merge commits are `e2ea36d` and `7933b65`.
+Archive merge conflicts in Host, Pi persistence, source provenance, coverage and
+validation documentation were resolved around the shared strict Pi decoder and
+Host-owned task routes. Channel conflicts in Host, provenance and coverage retain
+discovery plus pre-evaluation DSH ABI rejection. No push/main merge/deployment.
+
+Task journals publish temporary files and fsync in their actual routed directory;
+route changes cannot redirect an admitted commit. Offline archive validation
+requires complete physical commits. Maintenance resolves the protected task
+ownership marker, verifies task/session identity and uses the same decoder without
+historical DSH format discovery. Four added regressions exercise these boundaries.
+
+The integrated default suite passes **623 tests**; runtime **142**, routing **47**
+and domain **390** pass. Actual Linux containment passes **19**, with one Windows-only skip.
+A former differential retry test now directly verifies bounded admissions,
+chain identity, exponential delay, durable started records and budget reset.
+Its seven cases pass after removal of its dedicated direct DSH dependency;
+**82 direct DSH dev dependencies remain**. Attributed retry/process/protocol
+sources remain and their notices are retained. Source/import guards and frozen
+install (`--ignore-scripts`) pass; this is not fresh native-build acceptance.
+Runtime long-suite completed with zero failures; exact logs and hashes are recorded
+in the linked evidence manifest.
+
+See [integrated validation](pi-native-integrated-validation.json). This remains an
+incremental rebuild: event/message/tool facades, process/platform implementations,
+legacy test-profile/release references and other differential tests still require
+work. Actual Windows kernel/ACL and vendor CLI acceptance remain unverified.
+No download, permission or Git blocker remains for the local integration.
+
+---
+
 # Pi native rebuild: owned job journal stage
 
 Model-facing bash and PowerShell now admit jobs through an application-owned,

@@ -1,0 +1,15 @@
+✔ retry budgets admit exactly two attempts with a stable chain and capped exponential delays (22.969487ms)
+✔ retry schedule and started records must both flush before the retry decision (29.380795ms)
+✔ failed or non-Pi journal admission cannot schedule another model attempt (9.851711ms)
+✔ cancelled backoff and owner close drain scheduled writes without a started retry (3.050501ms)
+✔ always policy honors downstream retry, contains failures and uses bounded local delay for oversized Retry-After (5.44381ms)
+✔ unrelated policies/providers have separate budgets and permanent errors defer downstream (7.268139ms)
+✔ a downstream recovery handler may close its owner without awaiting its own request (3.663828ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 241.754553

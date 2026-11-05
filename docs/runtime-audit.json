@@ -86,18 +86,6 @@
       "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
     },
     {
-      "requested": "@deepseek-ai/dsh-session-persistence-jsonl",
-      "target": "link:./packages/capability-compat/session-persistence-jsonl",
-      "authority": "src/legacy-v4/dsh-session-persistence-jsonl/lib/index.js",
-      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
-    },
-    {
-      "requested": "@deepseek-ai/dsh-session-format-catalog",
-      "target": "link:./packages/capability-compat/session-format-catalog",
-      "authority": "src/legacy-v4/dsh-session-format-catalog/lib/index.js",
-      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
-    },
-    {
       "requested": "@deepseek-ai/dsh-sandbox-windows-acl",
       "target": "link:./packages/capability-compat/sandbox-windows-acl",
       "authority": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js",
@@ -140,7 +128,7 @@
     "generic Cordis service/event extension substrate"
   ],
   "directRuntimeDshDependencies": [],
-  "developmentDependencyCount": 162,
+  "developmentDependencyCount": 89,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [
@@ -171,7 +159,7 @@
     "credentials-local -> src/native-credentials.js + credential-file.js; legacy document/lock protocol retained for interoperability",
     "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
     "agent-default-model/config-editor dependency -> durable native model selection",
-    "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; legacy v4 importer/fence remains",
+    "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; historical DSH import removed",
     "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
     "session/session-projection services -> src/native-sessions.js + native-projections.js; legacy Session data facade retained explicitly",
     "generated sandbox-policy patch -> src/native-policy.js; identical standing/one-shot/artifact boundary contract",
@@ -191,7 +179,7 @@
     "internalRemaining": [
       "Cordis service/events",
       "DSH Agent/Session interfaces",
-      "DSH v4 event facade; legacy v4 import only",
+      "DSH v4 event facade; no historical import",
       "DSH LLM GenerateOptions/StreamChunk",
       "DSH tool schema/result/job receipts"
     ]
