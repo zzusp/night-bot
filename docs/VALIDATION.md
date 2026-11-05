@@ -257,3 +257,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 真实wires验证cold continuation不重调provider/不重放已完成工具、目录/递归未知与不可用分支、父会话完成通知、结构化纠错、人工文本和有效/无效图片、request/time-zone归属、容量forest隔离、interrupt ack与工具退出分离、scoped forest drain、startup/terminal Pi commit失败及实际Host shutdown。人工图片错误从旧AttachmentError身份切换为本地错误及当前附件服务的封闭代码识别，保留attachment-invalid；图片正文进入真实Pi wire。测试最初误把父通知HTTP算入child重复请求，已按子内容/图片识别并显式验证通知，未禁用通知。外部provider仅fake run协议，非真实后端验收。
 
 全新`/tmp/night-bot-native-subagents-production`production frozen ignore-scripts安装成功，250实质核心/wire+38合同=288项复测通过。首次筛选把全部排除的helper文件作为Node空harness计入1项；最终移除该文件重跑，不给空harness通过计数。269运行文件及manifest/lock逐字一致，静态266 JS/201字面bare imports通过。证据`evidence/native-subagents-*.txt`。43直接DSH生产依赖（新声明一个read-only格式helper）、31个活动服务替换；此前缺失query已恢复，但仍非完整迁移。远端403未重试。
+
+## 原生会话标题验证
+
+最终own392/392、完整runtime142/142（266058.478842ms）、routing47/47（24867.636413ms）通过；任务夹具已切换NativeSessionTitle。真实kernel containment九项通过、一项Windows专属跳过（11203.299369ms）；domain388未改动沿用，共978独立通过。七项合同含旧normalizer/lifecycle差分、pin/late-result、声明与来源seq验证、provider卸载排空、self-unregister/owner self-close；实际Pi wire证明只有一个request/header的两轮自动标题、固定后不覆盖、显式刷新与持久cold read。
+
+全新`/tmp/night-bot-session-title-production`production frozen ignore-scripts安装成功，256核心/wire+38合同=294项复测通过；270运行文件及manifest/lock逐字一致，静态267 JS/207字面bare imports通过。证据`evidence/native-session-title-*.txt`。原生控制器仍保留canonical公开错误身份，43直接生产DSH依赖/32活动组件替换；不是完整迁移。同步rename保留append语义，未冒充同步fsync。远端403未重试。

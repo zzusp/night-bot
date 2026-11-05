@@ -36,7 +36,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
         'workspace-write': { sandbox: 'workspace-write', approval: 'never' },
         'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' },
       } } },
-      row('session-title', { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 }),
+      { name: new URL('./native-session-title.js', import.meta.url).href, config: { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 } },
       { name: new URL('./pi-authority.js', import.meta.url).href },
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
       { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },

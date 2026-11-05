@@ -845,5 +845,37 @@
     "externalAcceptance": "external run/capability/removal is fake protocol only; no real external backend/vendor acceptance",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeSessionTitle": {
+    "date": "2026-11-05",
+    "ownPass": 392,
+    "titleContracts": 7,
+    "actualPiTitleWireCases": 1,
+    "runtimePass": 142,
+    "runtimeDurationMs": 266058.478842,
+    "routingPass": 47,
+    "routingDurationMs": 24867.636413,
+    "domainPass": 388,
+    "domainSource": "unchanged domain modules from prior verified checkpoint",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 11203.299369,
+      "source": "fresh AGENTS-authorized real kernel run; application sandbox retained"
+    },
+    "uniquePass": 978,
+    "productionOnlyRepeatedPass": 294,
+    "productionScope": "256 core/wire +38 native contracts; title legacy reference cases excluded",
+    "runtimeFilesCompared": 270,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 267,
+    "literalBareImports": 207,
+    "directRuntimeDshDependencies": 43,
+    "removedActiveDshServices": 32,
+    "titleOwnership": "local metadata/cadence/provider state with immutable declarations and input refs; nested self-disposal-safe drain",
+    "retainedHelper": "canonical SessionTitleInvalidError identity only, active service not mounted; query uses local fold",
+    "durabilityBoundary": "sync rename appends metadata; NativeSessions/Pi flush remains durable acceptance boundary",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

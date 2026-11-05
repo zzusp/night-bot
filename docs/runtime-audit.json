@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "NativeSessionTitle owns normalized/fallback/user-pinned and versioned provider title metadata, main-request cadence, immutable registration/input snapshots and nested cancellation/drain; canonical public input-error identity retained",
     "NativeSubagents owns provider registry, activation pools/lineage/control/cold reconstruction/structured result and descendant drain via Pi-backed local Agents; initial parent catalog/inbox and terminal results require Pi commit proof; canonical error identities and control tool helpers remain explicit",
     "NativeSessionQuery restores missing default-host cold observation/discovery, live-preferred snapshots/revision cache and read-only audit/presentation operations with owner cancellation/drain; legacy event facade/catalog helpers remain explicit",
     "NativeAgentPresets owns versioned definitions, retained generations, scoped leases, exact parent revision binding and Loader isolation audits; local profile compatibility preflight preserves legacy v4 peer ABI checks without app-boot import; selection is Pi-committed and concurrent-start rechecked",
@@ -51,7 +52,7 @@
     "native code transport with ordered nested dispatch, cancellation/drain and one-shot sandbox approval"
   ],
   "dshRemaining": [
-    "Session-title service and event-format/catalog presentation helpers; query/observation controller now application-owned",
+    "Session-title public input-error identity and event-format/catalog presentation helpers; active title/query controllers now application-owned",
     "Cordis agent factory/lifecycle compatibility fork",
     "pinned in-memory v4 Session data facade and publication compatibility hook; Session/Projection registries now local",
     "v4 event validators and persistent inbox compatibility facade",
@@ -241,7 +242,6 @@
   "activeLiteralDshPluginRows": [
     "fs-observation-policy",
     "fs-sandbox",
-    "session-title",
     "tool-",
     "tool-fs",
     "tool-fs-search",
@@ -260,6 +260,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "session-title -> src/native-session-title.js; public error identity remains canonical, query fold is local",
     "subagent -> src/native-subagents.js with Pi admission/terminal gates; native-session-query.js restores an absent required service, not counted as an old active service replacement",
     "agent-preset-registry -> src/native-agent-presets.js + native-profile-preflight.js; explicit source-derived generation/preflight algorithms, Pi selection admission and failure fencing",
     "agent-instructions -> src/native-agent-instructions.js; Pi hostMessages are the only visible-history authority, source-derived document algorithms explicitly attributed",

@@ -4,7 +4,7 @@ import {AsyncLocalStorage} from "node:async_hooks";
 import { currentSessionMessageProjections } from "@deepseek-ai/dsh-session-format-catalog/message-projections";
 import { Service } from "@deepseek-ai/cordis";
 import { Session, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent } from "@deepseek-ai/dsh-session";
-import { foldSessionTitle } from "@deepseek-ai/dsh-session-title";
+import { foldSessionTitle } from "./native-session-title.js";
 import { HarnessError } from "@deepseek-ai/dsh-llm";
 //#region lib/types/config.js
 /** Public configuration and typed failures for the combined session-query service. */

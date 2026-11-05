@@ -239,3 +239,7 @@ Active preset generations and compatibility admission now live in `native-agent-
 ### Subagent control and cold-query repair
 
 `NativeSubagents` owns the active child graph and Pi commit gates. `NativeSessionQuery` restores the previously missing default-host observation seam; it is not counted as replacement of an already active DSH service. Generic `tool-subagent`/`tool-subagent-control`, canonical subagent error identities, Session/title/event-format helpers and the v4 data facade remain. Direct production DSH dependencies are 43 (one newly explicit read-presentation helper); active services replaced are 31. Counts are inventory, not functional-completion proof.
+
+### Session title ownership
+
+Active title metadata/cadence now lives in `native-session-title.js`; query folding imports it locally. The old package remains only for its canonical public invalid-input error identity and other externally retained helpers; its service is not mounted. Direct DSH production dependencies remain 43; active component replacements are 32. This does not remove the remaining Session/inbox facade, generic scope/message/RPC/format/tool helpers or FS/shell/worker backends.
