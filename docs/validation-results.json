@@ -914,5 +914,34 @@
     "externalAcceptance": "no real vendor search/public Internet acceptance; provider/response fixtures and real local pinned connector only",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeWebToolsAndTimeout": {
+    "date": "2026-11-05",
+    "ownPass": 429,
+    "runtimePass": 142,
+    "runtimeDurationMs": 260962.880164,
+    "routingPass": 47,
+    "routingDurationMs": 24453.076894,
+    "domainPass": 388,
+    "domainSource": "unchanged verified domain modules",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 10240.516272
+    },
+    "uniquePass": 1015,
+    "productionOnlyRepeatedPass": 328,
+    "productionScope": "290 meaningful core/wires plus38 contracts; development reference differential omitted",
+    "runtimeFilesCompared": 275,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 272,
+    "literalBareImports": 220,
+    "directRuntimeDshDependencies": 41,
+    "removedActiveDshServices": 35,
+    "timeoutBoundary": "cooperative abort; awaits admitted delegated body before receipt/model continuation, own reason identity distinguishes ancestor timeout; no process exit claim",
+    "restoredMissingTimeoutPolicy": true,
+    "sourceDerivedAlgorithms": "MIT tool-web schemas/validation/render/format explicitly attributed",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

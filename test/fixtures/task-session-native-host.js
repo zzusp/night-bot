@@ -81,7 +81,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
   await ctx.loader.root.update([
     { name: new URL('../../src/native-agents.js', import.meta.url).href }, { name: new URL('../../src/native-sessions.js', import.meta.url).href }, { name: new URL('../../src/native-projections.js', import.meta.url).href },
     { name: new URL('../../src/native-system-prompt.js', import.meta.url).href, config: { includeRuntimeContext: false, includeHarnessIdentity: false } },
-    { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, { name: new URL('../../src/native-approval.js', import.meta.url).href, config: { policy: 'never' } },
+    { name: new URL('../../src/native-llm.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/native-tools.js')).href }, { name: new URL('../../src/native-tool-timeout.js', import.meta.url).href }, { name: new URL('../../src/native-approval.js', import.meta.url).href, config: { policy: 'never' } },
     ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),
     { name: new URL('../../src/process/index.js', import.meta.url).href }, { name: new URL('../../src/native-sandbox.js', import.meta.url).href }, policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     { name: new URL('../../src/native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } } },

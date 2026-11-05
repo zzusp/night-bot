@@ -55,7 +55,6 @@
     "@deepseek-ai/dsh-tool-subagent": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-subagent-control": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-todo": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-tool-web": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-working-directory": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tools": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.1-alpha.2",
@@ -80,7 +79,9 @@
     "@deepseek-ai/cordis-plugin-include": "1.0.10-alpha.1",
     "semver": "7.8.6",
     "@deepseek-ai/dsh-session-format-catalog": "0.2.1-alpha.2",
-    "ipaddr.js": "2.5.0"
+    "ipaddr.js": "2.5.0",
+    "turndown": "7.2.4",
+    "@joplin/turndown-plugin-gfm": "1.0.68"
   },
   "packageManager": "pnpm@11.25.0",
   "devDependencies": {
@@ -203,6 +204,7 @@
     "acorn": "8.15.0",
     "@deepseek-ai/dsh-agent-instructions": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-web-fetch-http": "0.2.1-alpha.2"
+    "@deepseek-ai/dsh-web-fetch-http": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-tool-web": "0.2.1-alpha.2"
   }
 }

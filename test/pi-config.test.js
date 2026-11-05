@@ -19,6 +19,9 @@ for (const [name,mutate,code] of [
   ['invalid web registry config',c=>{c.web=[]},'WEB_CONFIG_INVALID'],
   ['invalid web timeout',c=>{c.webFetch={timeoutMs:2147483648}},'WEB_CONFIG_INVALID'],
   ['invalid redirect limit',c=>{c.webFetch={maxRedirects:-1}},'WEB_CONFIG_INVALID'],
+  ['invalid web tool enablement',c=>{c.webTools={fetch:'false'}},'WEB_CONFIG_INVALID'],
+  ['invalid web search query cap',c=>{c.webTools={searchMaxQueries:0}},'WEB_CONFIG_INVALID'],
+  ['invalid web tool deadline',c=>{c.webTools={searchTimeoutMs:2147483648}},'WEB_CONFIG_INVALID'],
   ['fake production model',c=>{c.resident={fakeModel:true}},'FAKE_MODEL_IS_TEST_ONLY'],
 ]) test('configuration rejects '+name, async () => {
   const root=await mkdtemp('/tmp/night-config-')

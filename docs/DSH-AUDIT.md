@@ -247,3 +247,7 @@ Active title metadata/cadence now lives in `native-session-title.js`; query fold
 ### Web ownership and retained boundaries
 
 Active registry and anonymous HTTP backend are local `native-web.js`/`native-http-fetch.js`. The latter and `native-deadline.js` are attributed MIT compatibility algorithms; fixed DNS lookup is exercised by a real local socket fixture while the public provider's private-address policy stays enforced. The old HTTP package is development-only; canonical WebError and generic web tool definitions/presentation plus proxy overlay remain. Direct DSH production dependencies: 42; active components replaced: 34. Generic tool timeout policy is an identified absent default-host capability pending restoration.
+
+### Web model bindings and restored timeout policy
+
+NativeToolWeb owns the former active tool-web plugin, with explicit MIT algorithm attribution and retained generic defineTool/schema helpers. NativeToolTimeout restores previously absent generic declaration enforcement; no replacement credit for that repair. Direct DSH production dependencies:41; active components replaced:35. Session/inbox facade, generic capability/helper libraries and remaining FS/shell/job/skill/child tool rows still require migration.

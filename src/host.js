@@ -23,7 +23,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
     const rows = [
       { name: new URL('./native-agents.js', import.meta.url).href }, { name: new URL('./native-sessions.js', import.meta.url).href }, { name: new URL('./native-projections.js', import.meta.url).href }, { name: new URL('./native-system-prompt.js', import.meta.url).href, config: { includeHarnessIdentity: false } },
-      { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, { name: new URL('./native-web.js', import.meta.url).href, config: config.web ?? {} }, { name: new URL('./native-http-fetch.js', import.meta.url).href, config: config.webFetch ?? {} }, { name: new URL('./native-llm-retry.js', import.meta.url).href }, { name: new URL('./native-authorization.js', import.meta.url).href },
+      { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, { name: new URL('./native-tool-timeout.js', import.meta.url).href }, { name: new URL('./native-web.js', import.meta.url).href, config: config.web ?? {} }, { name: new URL('./native-http-fetch.js', import.meta.url).href, config: config.webFetch ?? {} }, { name: new URL('./native-llm-retry.js', import.meta.url).href }, { name: new URL('./native-authorization.js', import.meta.url).href },
       { name: new URL('./native-credentials.js', import.meta.url).href, config: { path: join(root, 'credentials.json'), watch: config.credentialsWatch ?? true } },
       { name: new URL('./native-attachments.js', import.meta.url).href, config: { dshHome: root } },
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
@@ -46,7 +46,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     ]
     await ctx.loader.root.update(rows)
     await ctx.loader.await()
-    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','web','nativeHttpFetch','approval','permissionPresets'])
+    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','web','nativeHttpFetch','nativeToolTimeout','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
@@ -63,7 +63,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, row('tool-skill'),
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, row('tool-working-directory'),
           row('tool-subagent', { provider: 'spawn' }),
-          row('tool-todo', { allowParallelInProgress: true }), row('tool-web'),
+          row('tool-todo', { allowParallelInProgress: true }), { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },
         ] }] })
     } })
     const preset = await ctx.agentPresets.resolve('night-bot')

@@ -271,3 +271,11 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 真实Pi web_fetch/search证明意图在provider/transport前持久化、private请求无transport、结果/错误收据及不可信内容标记保留；旧工具默认不输出provider answer，HTML的markdown转义按原行为保留。旧/new night-bot preset并存验证HTTP为Host单例，避免全局重复注册。未对真实搜索vendor/外网服务验收。
 
 全新`/tmp/night-bot-web-production`production frozen ignore-scripts安装成功，279核心/wire+38合同=317项复测通过；273运行文件及manifest/lock逐字一致，静态270 JS/215字面bare imports通过。证据`evidence/native-web-*.txt`。42直接生产DSH依赖/34活动组件替换，仍有generic tool timeout缺口及FS/shell/工具等后续工作；不是完整迁移。远端403未重试。
+
+## 原生 Web 工具与协作超时验证
+
+最终own429/429、runtime142/142（260962.880164ms）、routing47/47（24453.076894ms）通过。真实kernel containment九项通过、一项Windows专属跳过（10240.516272ms）；domain388未改动沿用，共1015独立通过。新增4超时合同、3Web工具合同、2实际Pi超时wire及3配置合同。验证旧schema/render差分、校验先于provider、精确去重和有序来源、输出截断、工具启用及安全timer界限。
+
+实际Pi wire证明timeout发出取消后仍等待已开始且忽略取消的body退出，持久化一份超时收据后才继续模型，不重放effect；search配置budget同样作用于provider。祖先和本地timer具有相同公开错误码时用reason身份保持归属。协作超时不代表进程已经终止；后端仍负责自身排空。
+
+全新/tmp/night-bot-web-tools-production frozen production ignore-scripts安装成功，290实质核心/wire+38合同=328复测通过；275运行文件及manifest/lock逐字一致，静态272 JS/220字面bare imports通过。证据evidence/native-web-tools-*.txt。41直接DSH依赖/35活动组件替换；补回此前未挂载的timeout策略不计旧组件替换。仍非完整迁移，远端403未重试。
