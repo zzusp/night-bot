@@ -1,0 +1,53 @@
+{
+  "base": "c217af9",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 629,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 31,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "nativeTaskModelAndProvider": {
+    "pass": 17,
+    "fail": 0,
+    "skip": 0
+  },
+  "catalog": {
+    "providers": 41,
+    "models": 1592,
+    "source": "Installed pinned Pi SDK 1.5.0; no model requests"
+  },
+  "remainingDirectDshDevDependencies": 79,
+  "removedSourceCopies": [
+    "test/fixtures/legacy-llm-interface.mjs"
+  ],
+  "removedUnusedProtocol": "Source-derived RetryPolicySchema/resolveRetryPolicy and private supporting declarations; active owned Pi retry resolver unchanged",
+  "notices": "No LLM/provider notice removed: retained message/stream/error and provider-derived code still needs attribution",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-model-cleanup-default.txt",
+      "sha256": "737a8f6593846176dcc5f2d5df5175fe93d769b58e10d77aef9a267af3bd8ab3"
+    },
+    {
+      "path": "docs/evidence/pi-native-model-cleanup-focused.txt",
+      "sha256": "47286e9381434f29901e4a83ce7b6d814d764770ef2c7703f799c9117b389089"
+    },
+    {
+      "path": "docs/evidence/pi-native-model-cleanup-runtime.txt",
+      "sha256": "53d2e33c54b8eb0ff70950da4213ca4b6d57fc22163423b3f35dbc7db81864fe"
+    },
+    {
+      "path": "docs/evidence/pi-native-model-cleanup-checks.txt",
+      "sha256": "23a6e4677d1b2bfb237b8036fd7bd40bef0e9ba261011996576ace341e24355c"
+    },
+    {
+      "path": "docs/evidence/pi-native-model-cleanup-frozen.txt",
+      "sha256": "da86fc4038bef7ac70a35009496dd868bdcbedc65b9021544e339c9e4d7211e4"
+    }
+  ]
+}

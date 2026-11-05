@@ -1,3 +1,22 @@
+# Native model contract cleanup (2026-11-05)
+
+The 2,397-line differential LLM fixture and unused DSH retry schema/resolver are
+removed. Active request recovery continues through the owned Pi retry policy.
+Tests assert immutable messages, exact-object request ownership, stream packing,
+prepared-call adapter binding and failure facts directly. Provider catalog tests
+now validate **41 providers / 1,592 models** against the pinned Pi SDK without
+network model requests. The old DSH provider comparison dependency is removed;
+**79 direct DSH dev dependencies remain**. Message/stream/error and provider
+source derivations remain attributed, so their notices are retained.
+
+Validation: **629 default pass**, focused **31** overlap default; native task
+model/provider **17 pass**. Frozen install (`--ignore-scripts`), source/import
+checks and diff checks pass. See [model cleanup evidence](pi-native-model-cleanup-validation.json).
+This phase removes unused compatibility code; it does not claim the remaining
+application message/audit/tool facades are all independently rewritten.
+
+---
+
 # Owned child catalog checkpoint (2026-11-05)
 
 `src/runtime/child-catalog.js` replaces the recursive DSH chunk-list storage with

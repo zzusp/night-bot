@@ -15,10 +15,10 @@ test('internal execution entrypoints resolve owned services and keep foreign sch
  assert.notEqual(alias.TOOL_RUNTIME_SCHEDULER,original.TOOL_RUNTIME_SCHEDULER)
 })
 test('canonical model errors retain strict trusted identity and validated detached failure facts',async()=>{
- const original=await import('./fixtures/legacy-llm-interface.mjs'),cause=new Error('cause')
+ const cause=new Error('cause')
  const options={cause,status:429,providerRetryAfterMs:100,requestId:'fixture',offloadImages:2}
- const current=new llm.LlmError('fixture','RATE_LIMIT',options),old=new original.LlmError('fixture','RATE_LIMIT',options)
- assert.equal(current.name,old.name);assert.equal(current.message,old.message);assert.deepEqual(current.failure,old.failure)
+ const current=new llm.LlmError('fixture','RATE_LIMIT',options)
+ assert.equal(current.name,'LlmError');assert.equal(current.message,'fixture');assert.deepEqual(current.failure,{message:'fixture',code:'RATE_LIMIT',status:429,providerRetryAfterMs:100,requestId:'fixture',offloadImages:2})
  assert.equal(current.cause,cause);assert.equal(Object.isFrozen(current.failure),true)
  assert.equal(llm.isHarnessError(current),true);assert.equal(llm.isHarnessError({message:'fake',code:'RATE_LIMIT'}),false)
  for(const invalid of [{status:99},{status:600},{providerRetryAfterMs:0},{requestId:''}])assert.throws(()=>new llm.LlmError('fixture','CODE',invalid))

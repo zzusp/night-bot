@@ -3,14 +3,6 @@
   "extraction": "AST top-level declarations; legacy ToolRuntime/ToolLayer omitted, LlmRuntime omitted, existing native Subagent helpers retained",
   "references": [
     {
-      "package": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2",
-      "sourceSha256": "aa958631d989ea6ef9b6d0399261e7c52361c8137da33d13cfad6ebd36af41d9",
-      "fixtureSha256": "303285f21ca7a4394f2b93060fe34dd2c6a64f36beed5aac51746bfa304f2571",
-      "fixture": "test/fixtures/legacy-llm-interface.mjs",
-      "supportAdaptation": "verified local protocol/value/scope/RPC helpers; original algorithms, private markers/scheduler and service classes independent; legacy identity version pinned for original LLM"
-    },
-    {
       "package": "@deepseek-ai/dsh-tools",
       "version": "0.2.1-alpha.2",
       "sourceSha256": "c427f5bf2162a5afb13bf3cc99b4df38e93f46980836d8e1d414a612181567cc",
@@ -24,6 +16,11 @@
       "fixture": "test/fixtures/legacy-subagent-interface.mjs",
       "previousFixtureSha256": "5ddd1f2a807955b0aa360cb451f4cfd8f9bfa6ead5856a8abe9e590d7b4e433b",
       "reason": "Differential-only copy removed; independent owned child/catalog contracts and actual Pi control/restart tests now verify the behavior"
+    },
+    {
+      "fixture": "test/fixtures/legacy-llm-interface.mjs",
+      "previousFixtureSha256": "303285f21ca7a4394f2b93060fe34dd2c6a64f36beed5aac51746bfa304f2571",
+      "reason": "Differential-only LLM copy removed; tests directly verify message identity/streams, adapter binding and provider metadata against pinned Pi SDK"
     }
   ]
 }

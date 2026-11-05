@@ -1,0 +1,70 @@
+✔ task model defaults and explicit selection preserve the execution selection (2.518628ms)
+✔ native create and resume use the current exact task model on the original session; missing model never creates or resumes (847.661357ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":306,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":504,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":36,"aborted":false}
+✔ native service isolates task model from delegated execution: old config (1141.812708ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1124,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ native service isolates task model from delegated execution: explicit-owner (638.810231ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":624,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ task provider transient classifier only accepts the exact verified provider errors (1.815443ms)
+✔ native owner provider error keeps the same session and submitted decisions take priority: trailing=false (657.501604ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":324,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":276,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":57,"aborted":false}
+✔ native owner provider error keeps the same session and submitted decisions take priority: trailing=true (222.916893ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":115,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":85,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ stale owner no-submission drains and resumes the same session with the supplement without technical backoff (614.200463ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":5,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":587,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✔ service retries a transient native owner with its claimed wake and same session after cooldown (5369.121651ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":91,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5266,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ normal empty owner completion resumes automatically with the same session and wake: restart=false (5277.558351ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":59,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5186,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":32,"aborted":false}
+✔ normal empty owner completion resumes automatically with the same session and wake: restart=true (5263.445763ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5209,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ restart recovers only a legacy acknowledged no-submission with exact transient native proof: true (311.369914ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":299,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ restart recovers only a legacy acknowledged no-submission with exact transient native proof: false (231.169987ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":214,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ owner technical failures have a durable bounded budget across leases and restart; later real input preserves a recovery entrance: noSubmission=false (854.311624ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":794,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ owner technical failures have a durable bounded budget across leases and restart; later real input preserves a recovery entrance: noSubmission=true (947.975479ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":895,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ owner recovery admission cannot hot-loop on non-provider runtime failure: newInput=true (110.082545ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ owner recovery admission cannot hot-loop on non-provider runtime failure: newInput=false (95.065588ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21412.285699
