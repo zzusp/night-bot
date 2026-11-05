@@ -1,0 +1,48 @@
+{
+  "base": "60253c2",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 652,
+      "pass": 652,
+      "fail": 0,
+      "skipped": 0
+    },
+    "integration": {
+      "tests": 31,
+      "pass": 31,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "remainingDirectDshDevDependencies": 47,
+  "removed": "General bridgeDshStream export, empty-source second consumption pass and Object.create shadow live observer",
+  "replacement": "Pure observedPiMessage settlement from admitted application observations into one Pi terminal event; content snapshots detached, partial tools omitted on failure/abort, transformed content cannot retain native replay signatures",
+  "preserved": "Exact provider invocation capture, private token namespace, audit fingerprints, native Pi response identity/signatures on unmodified output, bounded native event capture, policy redaction, cancellation and no provider redispatch",
+  "limits": "Live audit assemblers and historical message/session codecs remain attributed; this does not claim their removal or a new inference driver",
+  "installation": "Latest standard frozen install passed; no package changes in this phase",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-observed-settlement-focused.txt",
+      "sha256": "6980b71e6284d1818a7bec4502d5a8e74a9d14e1c8502b5c4de02469e60d5d31"
+    },
+    {
+      "path": "docs/evidence/pi-native-observed-settlement-default.txt",
+      "sha256": "4cbc95775fd51d0fc03a0be168bfb4754dfe583ff85d7ecf6f397296cdf6c46d"
+    },
+    {
+      "path": "docs/evidence/pi-native-observed-settlement-integration.txt",
+      "sha256": "72408396c41253ee299616d8175f1e692768ed1fb86fd5bb89b3ea7453e37777"
+    },
+    {
+      "path": "docs/evidence/pi-native-observed-settlement-checks.txt",
+      "sha256": "dae84a9410bd0bc84e178bc0e9b917d86c397bacc9d112e7b6eda016b5bd747b"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+✔ native model retry flushes Pi retry receipts and never repeats the preceding completed tool (1884.927681ms)
+✔ native execution forwards actual Pi events, response identity and signatures with one-way audit (9.017498ms)
+✔ output policy remains authoritative and observed settlement never redispatches provider (1.960954ms)
+✔ nested native invocations cannot lend a terminal message to another request (1.656477ms)
+✔ pre-aborted native capture never enters request factory (0.460511ms)
+✔ native event retention is bounded without redispatching or dropping final content (5.297743ms)
+✔ middleware delta redaction is honored even when final text remains identical (1.345861ms)
+✔ observed settlement maps admitted text/reasoning/tools to Pi without consuming a source or invoking an observer (2.805942ms)
+✔ application observation errors settle once as Pi errors and cannot dispatch their partial tools (3.722989ms)
+✔ provider rejection produces one failed Pi terminal without entering an additional stream (0.50648ms)
+✔ aborted observed settlement keeps failure classification and drops partial content (0.223115ms)
+✔ Pi parallel batches retain bounded safe concurrency, exclusive barriers, permission guards and model-order receipts (1926.683408ms)
+✔ cancelling a Pi parallel batch stops replenishment and drains started effects before idle (284.170216ms)
+✔ one concluding tool ends a Pi parallel batch after all admitted sibling receipts commit (294.621606ms)
+✔ a later tool reclassified as exclusive waits for the running safe pool to drain (264.654353ms)
+✔ malformed repeated call ids preserve no-effect recovery and conservative unstarted receipts (194.701998ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1811.127808ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (3349.373406ms)
+✔ headless Host refuses startup when the required native provider failed to mount (72.341337ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5586.07337

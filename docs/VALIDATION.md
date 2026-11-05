@@ -1,3 +1,21 @@
+# Direct Pi settlement of admitted output (2026-11-05)
+
+Removed the general DSH stream bridge, shadow live observer and empty second
+stream-consumption pass. Policy-transformed output is settled directly from the
+already admitted application observation into one Pi terminal event. Unmodified
+provider output keeps actual Pi events, response identity and signatures; changed
+content drops native replay metadata. Failure/abort drops partial tool content.
+The pure builder detaches content and accepts no source or dispatch callback.
+
+Validation: **652 default pass**, **19 focused overlap**, **31 provider cold
+recovery/archive/channel integration pass** (partly overlapping default). Tests
+verify one provider invocation, no observer re-entry, policy delta redaction,
+bounded capture, nested token separation and single failed terminal settlement.
+Source/import/Pi-license/fork-hash/diff guards pass. No package changes; latest
+frozen installation remains successful. **47 direct DSH dev declarations** and
+attributed live-audit/message/session codecs remain; this is not full migration.
+Evidence: `docs/pi-native-observed-settlement-validation.json`.
+
 # Owned byte-ring process output capture (2026-11-05)
 
 Replaced the inherited chunk-list collector with a private circular byte buffer

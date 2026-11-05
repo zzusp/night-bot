@@ -3,7 +3,7 @@ import {snapshotJsonValue} from './native-values.js'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isDeepStrictEqual} from 'node:util'
 import {AssistantMessageEventStream} from '@earendil-works/pi-ai'
-import {piFailureStream,bridgeDshStream} from './pi-messages.js'
+import {piFailureStream,observedPiMessage} from './pi-messages.js'
 import { createAssistantMessage } from './native-message-protocol.js';
 import {capturePiReplay} from './pi-provider-events.js'
 const captures=new AsyncLocalStorage()
@@ -23,7 +23,7 @@ export function nativePiEventSink(){
 
 /** Keep generic policy/middleware admission while preserving Pi's actual event
  * protocol as execution output whenever the admitted audit semantics agree.
- * Legacy or output-transforming plugins retain the explicit compatibility path.
+ * Output transformations settle through an application observation boundary.
  */
 export function nativeExecutionStream(sourceFactory,request,live){
  const output=new AssistantMessageEventStream(),capture={active:true,tokens:new Set(),events:[],nativeHash:createHash('sha256'),admittedHash:createHash('sha256')}
@@ -47,13 +47,15 @@ export function nativeExecutionStream(sourceFactory,request,live){
     for(const event of source)output.push(event===terminal?(event.type==='done'?{...event,message:final}:{...event,error:final}):event)
     output.end(final)
    }else{
-    // The audit has already observed these chunks. Preserve final assembly but
-    // suppress duplicate public start/chunk frames during compatibility encoding.
-    const shadow=Object.create(live);shadow.start=()=>{};shadow.push=()=>{}
-    if(message&&!isDeepStrictEqual(semantic(message),live.blocks()))Object.defineProperty(shadow,'replayState',{get:()=>undefined})
-    const fallback=bridgeDshStream((async function*(){})(),request,shadow)
-    for await(const event of fallback){if(event.type==='done')event.message._hostLive=live;else if(event.type==='error')event.error._hostLive=live;output.push(event)}
-    const final=await fallback.result();final._hostLive=live;output.end(final)
+    // Policy-transformed output is settled from the admitted observation once.
+    // Native signatures are excluded when content changed. No legacy stream
+    // source, shadow observer or second consumption pass is involved.
+    const changed=message&&!isDeepStrictEqual(semantic(message),live.blocks())
+    const final=observedPiMessage(request,{content:live.blocks(),finish:live.finish,usage:live.usage,
+      replayState:changed?undefined:live.replayState,stream:live.stream,live})
+    const failed=final.stopReason==='error'||final.stopReason==='aborted'
+    output.push(failed?{type:'error',reason:final.stopReason,error:final}:{type:'done',reason:final.stopReason,message:final})
+    output.end(final)
    }
   }catch(error){capture.active=false;const failed=piFailureStream(error,request.signal?.aborted?'aborted':'error');for await(const event of failed)output.push(event);output.end(await failed.result())}
   finally{capture.active=false}
