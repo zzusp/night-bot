@@ -44,7 +44,7 @@ const replyReviewSchema = z.strictObject({
   sameMatterOutboundIds: z.array(z.string().min(1)).default([]).describe('reviewedOutboundIds中经原文与任务事实核对属于同一事项的子集。confirmation必须包含候选中与本次确认Task相同的已有confirmation，不能漏掉；correction至少一个目标。'),
   replaceOutboundIds: z.array(z.string().min(1)).default([]).describe('待替换旧回复ID，只能来自sameMatterOutboundIds。confirmation和correction必须与sameMatterOutboundIds集合完全相等；substantive必须为[]。不得自动补ID或跳过审阅。'),
 })
-// DSH 不支持数组长度约束；先按 reply / reason 分支，避免投影时把互斥字段合并为可同时填写。
+// Keep reply/reason branches mutually exclusive in the exact published input schema.
 const makeDecisionSchema = actionSchema => {
   const replyDecisionSchema = z.strictObject({
   ...decisionBasis, actions: z.array(actionSchema),

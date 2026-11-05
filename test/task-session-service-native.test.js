@@ -1,3 +1,4 @@
+import {createPiRequestContext} from '../src/runtime/pi-request-context.js'
 import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import { lifecycleStages } from './fixtures/lifecycle-stages.js'
 import testRunner from 'node:test'
@@ -111,7 +112,7 @@ testRunner('原生网页工具错误不建立未知效果，仍可完成后续�
  assert.equal((await t.step(async () => host.query('task.list')))[0].humanRequests?.length ?? 0,0)
 }))
 import { projectTaskNotification } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
-import { findSessionLog, requestSystemText } from './fixtures/session-persistence.js'
+import { findSessionLog, requestSystemText,modelMessageParts,modelMessageSource,providerContentMessages,providerRequestView } from './fixtures/session-persistence.js'
 
 const call = (name, args) => ({ name, args })
 const test = (name, options, run) => testRunner(name, { ...options, ...(!available ? { skip: reason } : {}) }, run)
@@ -408,8 +409,9 @@ for (const mode of ['missing', 'preserve', 'replan', 'cancel']) test(`real coord
   await t.step(async () => h.service.ingest({ groupId: 'native-group', messageId: 'semantic-input', senderOpenDingTalkId: 'native-user',
     text: mode === 'cancel' ? '测试助手，明确取消原任务' : mode === 'replan' ? '测试助手，改为新的明确目标，停止旧目标' : '测试助手，开发分支别搞错了', timestamp: new Date().toISOString() }))
   if (mode === 'missing') {
-    const rejected = () => h.toolResults.some(item => item.name === 'group_decision_submit' && item.result.isError)
-      || h.requests.some(request => request.messages.some(message => message.role === 'tool' && JSON.stringify(message).includes('progressImpact')))
+    const rejected = () => h.toolResults.some(item => item.name === 'group_decision_submit' && (item.result.isError
+      || item.result.value?.status === 'invalid-arguments' && item.result.value.issues?.some(issue => issue.code === 'decision_schema_invalid')))
+      || h.requests.some(request => request.messages.some(message => ['toolResult','tool'].includes(message.role) && JSON.stringify(message).includes('progressImpact')))
     await t.step(async () => waitUntil(async () => rejected() || (await h.query('task.get', { taskId: task.taskId })).requirementRevision !== 1, 'real tool schema rejects omitted classification'))
     const current = await t.step(async () => h.query('task.get', { taskId: task.taskId })), [execution] = await t.step(async () => h.query('execution.list'))
     assert.equal(current.requirementRevision, 1); assert.equal(execution.cancelRequested, false); assert.equal(execution.drained, false)
@@ -432,8 +434,8 @@ for (const mode of ['missing', 'preserve', 'replan', 'cancel']) test(`real coord
 
 function requiredDecisionRead(request, input) {
   for (const source of input.sources ?? []) if (source.textFile && source.readRequired) {
-    const alreadyLocated = request.messages.filter(message => message.role === 'tool').some(message =>
-      (message.content ?? []).some(part => part.type === 'text' && part.text.includes(source.textFile)))
+    const alreadyLocated = request.messages.filter(message => ['toolResult','tool'].includes(message.role)).some(message =>
+      modelMessageParts(message).some(part => part.type === 'text' && part.text.includes(source.textFile)))
     if (!alreadyLocated) return call('read', { file_path: source.textFile, offset: 1, limit: 1 })
   }
   const refs = new Set()
@@ -463,16 +465,20 @@ async function nativeCase(t, prefix) {
 test('owner injects one authoritative source body across task, Web identity and materials', { ...({ timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   const fixture = await nativeCase(t, 'task-content-index-')
   const body = ('AUTHORIZATION_CORRECTION: analyze only; ' + 'boundary evidence '.repeat(150)).trim()
-  const counts = [], metrics = []
+  const counts = [], metrics = [];let currentSource
   const h = await fixture.host(async request => {
     const routed = topicTaskCalls(request)
     if (routed) return routed
-    const text = JSON.stringify(request.messages)
+    const text = JSON.stringify(providerContentMessages(request))
     counts.push(text.split(body).length - 1)
     const bytes = messages => Buffer.byteLength(JSON.stringify(messages))
-    metrics.push({ currentHostBytes: bytes(request.messages.filter(message => message.source?.taskSession && !message.source.taskContextHistory)),
-      oldHostBytes: bytes(request.messages.filter(message => message.source?.taskContextHistory)), toolHistoryBytes: bytes(request.messages.filter(message => message.role === 'tool')),
-      systemBytes: bytes(request.messages.filter(message => message.role === 'system')), schemaBytes: Buffer.byteLength(JSON.stringify(request.tools)), adapterRequestBytes: Buffer.byteLength(JSON.stringify(request)) })
+    const current=request.messages.filter(message=>{const source=modelMessageSource(request,message);return source?.taskSession&&!source.taskContextHistory})
+    assert.equal(current.length,1,'current Task provenance must be observed before cloning')
+    currentSource=modelMessageSource(request,current[0])
+    metrics.push({currentHostBytes:bytes(providerContentMessages(request,current)),
+      oldHostBytes:bytes(providerContentMessages(request,request.messages.filter(message=>modelMessageSource(request,message)?.taskContextHistory))),
+      toolHistoryBytes:bytes(providerContentMessages(request,request.messages.filter(message=>['toolResult','tool'].includes(message.role)))),
+      systemBytes:Buffer.byteLength(requestSystemText(request)),schemaBytes:bytes(request.tools),adapterRequestBytes:bytes(providerRequestView(request))})
     const required = requiredDecisionRead(request, latestInput(request))
     if (required) return [required]
     return [decision('complete', 'only analysis')]
@@ -497,8 +503,8 @@ test('owner injects one authoritative source body across task, Web identity and 
   assert.equal(task.status, 'completed', 'A direct analysis task does not need an execution member')
   assert.equal((await t.step(async () => h.query('execution.list', { taskId: task.taskId }))).length, 0)
   const saved = await t.step(async () => inspectSession(h.ctx.sessionPersistence, task.sessionId))
-  const current = h.requests.at(-1).messages.find(message => message.source?.taskSession && !message.source.taskContextHistory)
-  const raw = saved.events.flatMap(event => event.type === 'agent/inbox/spliced' ? event.data.inserted : []).find(message => message.id === current.source.rawHostMessageId)
+  assert.ok(currentSource?.rawHostMessageId,'raw admission linkage must survive the native model projection')
+  const raw = saved.events.flatMap(event => event.type === 'agent/inbox/spliced' ? event.data.inserted : []).find(message => message.id === currentSource.rawHostMessageId)
   assert.ok(raw)
   assert.ok(raw.content[0].text.split(body).length - 1 > 1, 'raw admission audit is not deduplicated to shrink display')
   assert.equal(JSON.parse(raw.content[0].text).sources[0].requestIdentity.request.args.context, body)
@@ -721,7 +727,6 @@ for (const [ownEcho, followupActor] of [[true, 'native-user'], [true, 'colleague
 test('180 legacy task Host markers retire without changing audit or foreign context, including compacted surface replay', { ...({ timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   await t.beginBusiness()
   const { createUserMessage, createSystemMessage } = await t.step(async () => import('../packages/capability-compat/llm/index.js'))
-  const { foldSurface, deriveEventMessage } = await t.step(async () => import('../packages/capability-compat/session/index.js'))
   const fixture = await t.step(async () => nativeCase(t, 'task-host-retirement-'))
   const h = await t.step(async () => fixture.host(async () => []))
   const binding = { taskId: 'retirement-task', sessionId: 'retirement-session', leaseEpoch: 181 }
@@ -734,34 +739,47 @@ test('180 legacy task Host markers retire without changing audit or foreign cont
     { historicalTaskContext: { leaseEpoch: i }, instruction: '此轮Host快照已替换，原文留审计' })
   append({ kind: 'coordinator', taskSession: { ...binding, taskId: 'foreign-task' }, taskContextHistory: true }, { instruction: 'FOREIGN_TASK_AUDIT' })
   const original = structuredClone(session.snapshotEvents())
-  const messages = () => { const events = session.snapshotEvents(), folded = foldSurface(events)
-    return folded.nodes.map(seq => deriveEventMessage(events[seq], folded.projectedMessages)).filter(Boolean) }
-  const beforeBytes = Buffer.byteLength(JSON.stringify(messages()))
+  const writer=await h.ctx.sessionPersistence.create(session.header)
+  t.after(()=>writer.close())
+  await writer.append(session.snapshotEvents())
+  let storedCount=session.seq
+  const sync=async()=>{await writer.append(session.snapshotEvents(storedCount));storedCount=session.seq}
+  const messages=()=>{const request=createPiRequestContext(h.ctx.piAuthority,session.id);return {request,rows:request.messages.map(message=>({message,source:modelMessageSource(request,message)}))}}
+  const before=messages(),beforeBytes=Buffer.byteLength(JSON.stringify(providerContentMessages(before.request)))
   retireTaskContext(session, binding, { turn: 1, step: 1 })
   const current = { task: { taskId: binding.taskId }, sources: [
     { sourceId: 'initial', actorId: 'requester', text: '原授权：仅UAT隔离验证' },
     { sourceId: 'restriction', actorId: 'operator', text: '后续收窄：暂停部署，只继续准备' }], unknownOperation: 'UNKNOWN_EFFECT_RETAINED' }
   append({ kind: 'coordinator', taskSession: binding }, current)
-  const live = messages(), afterBytes = Buffer.byteLength(JSON.stringify(live))
+  await sync()
+  const liveState=messages(),live=liveState.rows,afterBytes=Buffer.byteLength(JSON.stringify(providerContentMessages(liveState.request)))
   assert.deepEqual(session.snapshotEvents().slice(0, original.length), original)
   assert.equal(live.filter(item => item.source?.taskSession?.taskId === binding.taskId).length, 1)
   assert.equal(live.filter(item => item.source?.taskContextHistory).length, 1, '其他任务的占位不动')
   assert.match(JSON.stringify(live), /FOREIGN_TASK_AUDIT/)
-  assert.deepEqual(JSON.parse(live.find(item => item.source?.taskSession?.taskId === binding.taskId).content[0].text), current)
-  assert.ok(beforeBytes - afterBytes > 30000, '删除旧占位确实降低总可见内容，而不是换位置')
+  assert.deepEqual(JSON.parse(modelMessageParts(live.find(item=>item.source?.taskSession?.taskId===binding.taskId).message)[0].text), current)
+  const retired=before.rows.filter(row=>row.source?.taskSession?.taskId===binding.taskId)
+  assert.equal(retired.length,180)
+  const keep=before.rows.filter(row=>row.source?.taskSession?.taskId!==binding.taskId).map(row=>row.message)
+  const currentMessage=live.find(row=>row.source?.taskSession?.taskId===binding.taskId).message
+  const retiredBytes=providerContentMessages(before.request,retired.map(row=>row.message)).reduce((bytes,item)=>bytes+Buffer.byteLength(JSON.stringify(item)),0)
+  const addedBytes=Buffer.byteLength(JSON.stringify(providerContentMessages(liveState.request,[currentMessage])[0]))
+  assert.deepEqual(providerContentMessages(liveState.request),[...providerContentMessages(before.request,keep),...providerContentMessages(liveState.request,[currentMessage])],'官方model context只剩原system、外部任务和新正文，不能把旧内容换位置')
+  assert.equal(beforeBytes-afterBytes,retiredBytes+retired.length-1-addedBytes,'实际provider字节差必须恰好对应180条退休消息减去新消息；不计audit侧元数据')
   // 用SDK公开surface替换模拟压缩已移除旧Host；新输入仍必须全文独立，不能依赖已消失基线。
   const hostNode = session.surface.nodes.find(seq => session.snapshotEvents()[seq].data?.source?.taskSession?.taskId === binding.taskId)
   append({ kind: 'runtime-context', form: 'snapshot' }, { summary: 'COMPACTED_CONTEXT' },
     { surfaceOp: { op: 'replace', startSeq: hostNode, endSeq: hostNode }, sourceEventSeqs: [hostNode] })
   retireTaskContext(session, { ...binding, leaseEpoch: 182 }, { turn: 1, step: 1 })
   append({ kind: 'coordinator', taskSession: { ...binding, leaseEpoch: 182 } }, current)
-  const restored = messages()
+  await sync()
+  const restoredState=messages(),restored=restoredState.rows
   assert.match(JSON.stringify(restored), /COMPACTED_CONTEXT/)
-  assert.deepEqual(JSON.parse(restored.find(item => item.source?.taskSession?.taskId === binding.taskId).content[0].text), current)
+  assert.deepEqual(JSON.parse(modelMessageParts(restored.find(item=>item.source?.taskSession?.taskId===binding.taskId).message)[0].text), current)
   assert.deepEqual(session.snapshotEvents().slice(0, original.length), original)
-  t.diagnostic(JSON.stringify({ scope: 'actual native foldSurface UTF-8 JSON message bytes; source/task identity retained',
+  t.diagnostic(JSON.stringify({ scope:'official Pi projection provider-content UTF-8 JSON bytes; source/task identity retained separately',
     legacyHostCount: 180, beforeBytes, afterBytes, newInputBytes: Buffer.byteLength(JSON.stringify(current)), retainedBaselineBytes: 0,
-    afterCompactionBytes: Buffer.byteLength(JSON.stringify(restored)), rawAuditEvents: session.snapshotEvents().length }))
+    afterCompactionBytes:Buffer.byteLength(JSON.stringify(providerContentMessages(restoredState.request))), rawAuditEvents: session.snapshotEvents().length }))
 }))
 
 test('owner keeps one current Host snapshot and delegates non-recursive execution context across three generations', { ...({ timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
@@ -772,8 +790,8 @@ test('owner keeps one current Host snapshot and delegates non-recursive executio
     if (topicCalls) return topicCalls
     const input = latestInput(request)
     if (request.tools.some(tool => tool.name === 'task_delegate')) {
-      ownerRequests.push(structuredClone(request))
-      const snapshots = request.messages.filter(message => message.role === 'user').flatMap(message => message.content ?? [])
+      ownerRequests.push({request:structuredClone(request),providerView:providerRequestView(request)})
+      const snapshots = request.messages.filter(message=>message.role==='user').flatMap(modelMessageParts)
         .filter(block => block.type === 'text').flatMap(block => { try { const value = JSON.parse(block.text); return value.task && value.executions ? [value] : [] } catch { return [] } })
       assert.equal(snapshots.length, 1, '原生模型可见面只保留当前完整Host快照')
       assert.ok(latestInput(request).sources.some(source => source.readRequired || JSON.stringify(source).includes('CURRENT_AUTHORIZATION_SCOPE_')))
@@ -813,14 +831,16 @@ test('owner keeps one current Host snapshot and delegates non-recursive executio
   const log = await t.step(async () => inspectSession(h.ctx.sessionPersistence, task.sessionId))
   assert.ok(log.events.filter(event => event.type === 'user/message' && event.data.source?.taskSession && !event.data.source.taskContextHistory).length >= 4,
     '原始Host输入仍在审计日志')
-  const { foldSurface, deriveEventMessage } = await t.step(async () => import('../packages/capability-compat/session/index.js'))
-  const folded = foldSurface(log.events)
-  const visible = folded.nodes.map(seq => deriveEventMessage(log.events[seq], folded.projectedMessages)).filter(Boolean)
-  assert.equal(visible.filter(message => message.source?.taskSession).length, 1)
-  assert.equal(visible.filter(message => message.source?.taskContextHistory).length, 0)
-  const last = ownerRequests.at(-1)
+  const reader=await h.ctx.sessionPersistence.open(task.sessionId,'read')
+  let stored
+  try{stored=await reader.read(0,undefined,{includeContext:true})}finally{await reader.close()}
+  const visible=stored.context.projection.entries.flatMap(({sourceEntry,messages})=>messages.map(message=>({message,
+    source:sourceEntry.type==='message'&&sourceEntry.message.role==='user'&&sourceEntry.message.night?.event?.type==='user/message'?sourceEntry.message.night.event.data.source:undefined})))
+  assert.equal(visible.filter(row=>row.source?.taskSession).length,1)
+  assert.equal(visible.filter(row=>row.source?.taskContextHistory).length,0)
+  const last=ownerRequests.at(-1)
   console.log(JSON.stringify({ contextProof: { ownerRequests: ownerRequests.length,
-    latestInputBytes: Buffer.byteLength(JSON.stringify(latestInput(last))), totalRequestBytes: Buffer.byteLength(JSON.stringify(last)) } }))
+    latestInputBytes:Buffer.byteLength(JSON.stringify(latestInput(last.request))),totalRequestBytes:Buffer.byteLength(JSON.stringify(last.providerView)) } }))
 }))
 
 // Full baseline and current native runs need about 140s for 32 generations and independent verification.
@@ -835,7 +855,7 @@ test('32 continuations bound owner Host input and execution-read tool results wh
     const input = latestInput(request)
     const verification = team.execute(request, input); if (verification) return verification
     if (!request.tools.some(tool => tool.name === 'task_delegate')) return [call('execution_submit', { output: { status: 'completed', summary: 'done-' + input.objective, evidence: ['UNKNOWN_EFFECT: observed, never replay'], limitations: ['analysis only'], artifacts: [] } })]
-    const host = request.messages.filter(m => m.source?.taskSession && !m.source.taskContextHistory)
+    const host = request.messages.filter(m=>{const source=modelMessageSource(request,m);return source?.taskSession&&!source.taskContextHistory})
     assert.equal(host.length, 1)
     assert.ok(input.sources.some(source => source.readRequired || JSON.stringify(source).includes('ONLY_ANALYZE_AUTHORIZATION_')))
     const required = requiredDecisionRead(request, input)
@@ -844,14 +864,14 @@ test('32 continuations bound owner Host input and execution-read tool results wh
       assert.equal(e.input?.previousExecutions, undefined); assert.equal(e.input?.context, undefined); assert.equal(e.results, undefined); assert.equal(e.inputHistory, undefined)
     }
     const execution = input.executions[0]
-    const values = request.messages.filter(m => m.role === 'tool').flatMap(m => m.content).filter(b => b.type === 'text').flatMap(b => { try { return [JSON.parse(b.text)] } catch { return [] } })
+    const values = request.messages.filter(m=>['toolResult','tool'].includes(m.role)).flatMap(modelMessageParts).filter(b => b.type === 'text').flatMap(b => { try { return [JSON.parse(b.text)] } catch { return [] } })
     const reads = values.filter(value => value.executionId && value.record)
     if (++ownerSteps > 200) throw new Error(JSON.stringify({ inputVersion: execution?.inputVersion, values: values.slice(-3).map(value => ({ keys: Object.keys(value), inputVersion: value.inputVersion, contentRef: value.contentRef, record: value.record })) }))
     for (const e of reads) { assert.ok(e.record.contentRef); assert.equal(e.input, undefined); assert.equal(e.results, undefined) }
-    const currentHost = host[0].content.find(block => block.type === 'text').text
-    const retainedHost = request.messages.filter(m => m.source?.taskSession && m !== host[0])
+    const currentHost=modelMessageParts(host[0]).find(block=>block.type==='text').text
+    const retainedHost = request.messages.filter(m=>modelMessageSource(request,m)?.taskSession&&m!==host[0])
     assert.equal(retainedHost.length, 0, '退休快照不留下历史占位或隐含基线')
-    metrics.push({ lease: input.task.leaseEpoch, inputVersion: execution?.inputVersion ?? 0, currentInputBytes: Buffer.byteLength(currentHost), retainedHostCount: retainedHost.length, retainedBaselineBytes: retainedHost.reduce((bytes, item) => bytes + Buffer.byteLength(JSON.stringify(item)), 0), hostMessagesBytes: Buffer.byteLength(JSON.stringify(request.messages.filter(m => m.source?.taskSession))), messagesBytes: Buffer.byteLength(JSON.stringify(request.messages)), adapterRequestBytes: Buffer.byteLength(JSON.stringify(request)) })
+    metrics.push({ lease: input.task.leaseEpoch, inputVersion: execution?.inputVersion ?? 0, currentInputBytes: Buffer.byteLength(currentHost), retainedHostCount: retainedHost.length, retainedBaselineBytes:providerContentMessages(request,retainedHost).reduce((bytes,item)=>bytes+Buffer.byteLength(JSON.stringify(item)),0), hostMessagesBytes: Buffer.byteLength(JSON.stringify(providerContentMessages(request,request.messages.filter(m=>modelMessageSource(request,m)?.taskSession)))), messagesBytes:Buffer.byteLength(JSON.stringify(providerContentMessages(request))),adapterRequestBytes:Buffer.byteLength(JSON.stringify(providerRequestView(request))) })
     if (execution && !execution.drained) return [decision('wait', 'wait for physical drain')]
     if (execution && !reads.some(e => e.inputVersion === execution.inputVersion)) return [call('task_execution_read', { executionId: execution.executionId })]
     if (execution) {
@@ -862,7 +882,7 @@ test('32 continuations bound owner Host input and execution-read tool results wh
       if (path) return [call('model_content_read', { contentRef: ref.contentRef, path })]
     }
     if (execution?.inputVersion === 32) {
-      assert.match(JSON.stringify(request.messages), /UNKNOWN_EFFECT/)
+      assert.match(JSON.stringify(providerContentMessages(request)),/UNKNOWN_EFFECT/)
       const primary = (await serviceHost.query('execution.list'))[0], more = team.owner(input, primary); if (more) return more
       return [decision(input.executions.length === 3 && input.executions.every(item => item.drained && item.status === 'succeeded') ? 'complete' : 'wait', '32 inputs reviewed')]
     }
@@ -931,7 +951,7 @@ test('simple existing-file delivery uses one executor and owner reads the delive
         ownerRead = true
         return [call('task_execution_read', { executionId: execution.executionId }), call('read', { file_path: 'delivered-template.txt' })]
       }
-      assert.ok(JSON.stringify(request.messages.filter(message => message.role === 'tool')).includes(contents.trim()))
+      assert.ok(JSON.stringify(providerContentMessages(request,request.messages.filter(message=>['toolResult','tool'].includes(message.role)))).includes(contents.trim()))
       return [decision('complete', '现有文件已原样交付。')]
     }
     assert.ok(names.includes(nativeShell) && names.includes('write'), '执行会话仍有实际业务操作能力')
@@ -940,7 +960,7 @@ test('simple existing-file delivery uses one executor and owner reads the delive
       description: '原样复制已定位的文件，不重新生成内容',
     })]
     if (executorStep === 2) return [call('read', { file_path: 'delivered-template.txt' })]
-    assert.ok(JSON.stringify(request.messages.filter(message => message.role === 'tool')).includes(contents.trim()))
+    assert.ok(JSON.stringify(providerContentMessages(request,request.messages.filter(message=>['toolResult','tool'].includes(message.role)))).includes(contents.trim()))
     return [call('execution_submit', { output: { status: 'completed', summary: '原文件已复制并读回',
       evidence: ['delivered-template.txt'], limitations: ['仅验证本地文件交付，没有真实外发'], artifacts: ['delivered-template.txt'] } })]
   }))
@@ -998,8 +1018,8 @@ test('native service routes authenticated source, delegates parallel execution, 
         ownerRounds++
         return ['alpha', 'beta', 'gamma'].map(key => call('read', { file_path: key + '-native-proof.txt' }))
       }
-      for (const key of ['alpha', 'beta', 'gamma']) assert.ok(request.messages.some(message => message.role === 'tool'
-        && JSON.stringify(message.content).includes(key + '-native-proof.txt')), '统筹须实际读取执行产物')
+      for (const key of ['alpha', 'beta', 'gamma']) assert.ok(request.messages.some(message => ['toolResult','tool'].includes(message.role)
+        && JSON.stringify(providerContentMessages(request,[message])).includes(key+'-native-proof.txt')), '统筹须实际读取执行产物')
       return [decision('complete', 'alpha、beta 和 gamma 已分别生成并实际验证。')]
     }
     assert.ok(names.includes('execution_submit'))
@@ -1182,7 +1202,7 @@ test('native sequential handoff preserves one executor before independent review
         independentStartedAfterDrain = true
       }
       if (step === 0) return [call('read', { file_path: artifact })]
-      assert.ok(JSON.stringify(request.messages.filter(message => message.role === 'tool')).includes('candidate-proof:7'), 'Actual native file contents reach each verifier')
+      assert.ok(JSON.stringify(providerContentMessages(request,request.messages.filter(message=>['toolResult','tool'].includes(message.role)))).includes('candidate-proof:7'), 'Actual native file contents reach each verifier')
     }
     return [call('execution_submit', { output: { status: 'completed', summary: input.objective,
       evidence: [artifact, 'sha256:' + sha256], limitations: ['仅核验固定本地产物，未部署或发送'], artifacts: [artifact] } })]

@@ -39,7 +39,7 @@ test('tool schemas reject invalid nested values and SDK declarations expose cons
  tools.assertSupportedJsonSchema(schema)
  for(const valid of [{name:'a'},{name:'b',rows:[1,2]}])assert.deepEqual(tools.validateJsonSchemaValue(schema,valid),[])
  for(const invalid of [{},{name:'c'},{name:'a',rows:['bad']},{name:'a',rows:[1.5]},{name:'a',extra:true}])assert.ok(tools.validateJsonSchemaValue(schema,invalid).length)
- assert.equal(tools.jsonSchemaToTs(schema),'{\n  name: "a" | "b";\n  rows?: number[];\n}')
+ assert.equal(tools.jsonSchemaToTs(schema),'{ name: "a" | "b"; rows?: Array<number>; }')
  const declarations=[{name:'fixture',description:'fixture',parameters:schema}]
  const ts=tools.renderToolsSdk(declarations),py=tools.renderToolsSdkPy(declarations)
  assert.match(ts,/fixture/);assert.match(ts,/name: "a" \| "b"/)

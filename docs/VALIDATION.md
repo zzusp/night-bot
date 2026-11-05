@@ -1,3 +1,44 @@
+# Official Pi projection and native message boundary (2026-11-05)
+
+The required target is all session/history/context/message behavior through Pi
+public components, not a second Night implementation. This stage removes the
+Host message shadow: live/cold queries return official buildSessionProjection,
+primary requests use native Pi messages and convertToLlm, and material/instruction/
+skill visibility uses official sourceEntry/messages. Ordinary summaries no longer
+fail because of a Night role mapper. Night keeps only source authorization, memory
+revocation, attachment/path budgets and bounded transport policy at this boundary.
+
+Query shrinks from 1302 to 325 lines; unused corpus/fulltext/trace/title/history ABI
+is retired after production AST caller checks. No connected user search feature
+is removed. Official CLI/selector/transcript search exists; the headless helper is
+not public in locked/latest 1.5.0. See PI-OFFICIAL-CAPABILITIES.md for exact options.
+The bespoke schema evaluator/admission walker and TS renderer are replaced by
+official pi-schema/pi-codemode components. Mutable schema capture is single-pass,
+versioned and bounded; original inputs are not coerced. Python and Node execution
+are separate support, not a blocker or new scope for official session migration.
+
+Validation: **805 default**, **155 runtime**, **47 routing**, **391 domain** pass;
+Linux containment **21 pass / 1 Windows skip**, and real Node RPC **2 pass** after
+dev-dependency retirement. Counts overlap. Frozen install passes **621** policies
+in **6.3s**; root DSH dev declarations are **39**, production declarations zero.
+The default/containment code run preceded retirement of two AST-proven-unused dev
+entries; runtime/routing/domain/PTC/frozen runs followed it. Source/import/license/
+fork-hash/diff guards pass. Initial native-format fixture failures were corrected
+without dropping permission, source, zero-replay, archive or 32-round assertions.
+
+This is not complete migration. pi-loop lifecycle/tool-batch framing, mutable
+Session/surface state, write-side audit-to-history rebuild and auxiliary legacy
+request adapters still need retirement. Real official createAgentSession tests
+prove headless tools, queueing, cancellation, branch, compaction and awaited strict
+commit barriers; that SDK is verified, not yet the default driver. Night durable
+business admission/effect receipts remain, without becoming parallel history.
+
+Signed-memory edits currently fail closed with a specific reason. Official whole-
+turn null edits/branch are proven options with explicit context loss; no signatures
+were rewritten and vendor signature acceptance is unverified. Linux proc sampling
+is non-atomic; Windows/real vendor behavior is not claimed. Retained source keeps
+its notices. Evidence: pi-official-authority-validation.json.
+
 # Parallel native runtime replacement (2026-11-05)
 
 Five implementation units replaced active runtime paths, with targeted validation

@@ -1,14 +1,8 @@
 // Application-owned lifetime for the documented weaker POSIX-group fallback.
 // A direct-process result is independent of the lifetime of its descendants.
-import {readFileSync} from 'node:fs'
+import {observeLinuxPid} from './linux-observation.js'
 import {setTimeout as delay} from 'node:timers/promises'
-function leaderIdentity(pid) {
-  try {
-    const text=readFileSync(`/proc/${pid}/stat`,'utf8')
-    const fields=text.slice(text.lastIndexOf(')')+2).trim().split(/\s+/)
-    return /^\d+$/.test(fields[19]) ? fields[19] : undefined
-  } catch {return undefined}
-}
+function leaderIdentity(pid) {return observeLinuxPid(pid).row?.started}
 export function createLinuxGroupOwner({pid,direct,probe = group => process.kill(-group,0),hasLiveMembers,signal,identity = leaderIdentity,poll = () => delay(10)}) {
   let initialIdentity
   try {initialIdentity=identity(pid)} catch {}

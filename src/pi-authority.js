@@ -7,10 +7,10 @@ export function apply(ctx) {
       writers.set(id, owner)
       return () => { if (writers.get(id) === owner) writers.delete(id) }
     },
-    context(id) {
+    context(id, options) {
       const owner = writers.get(id)
       if (!owner) throw new Error('PI_SESSION_WRITER_REQUIRED:' + id)
-      return owner.context()
+      return owner.context(options)
     },
     describe(id) { return writers.get(id)?.describe() },
   })

@@ -1,13 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {getCurrentTools,normalizeContext} from '@earendil-works/pi-ai'
 import {piProviderContext} from '../src/pi-provider-context.js'
 const profile={maxRequestImageBytes:1000,requestImagePixelBudget:100,requestImageMaxBytes:100},model={api:'openai-completions',input:['text','image']}
 const text=value=>({type:'text',text:value}),user=content=>({role:'user',id:'u',source:{kind:'user'},content})
 const empty={get:()=>undefined}
 test('native provider retains leading and in-history instructions, actual tool schemas and native tool identities',async()=>{
- const tool={name:'read',description:'read a file',parameters:{type:'object',properties:{path:{type:'string'}},required:['path']}},messages=[{role:'system',content:[text('BASE')]},user([text('ACTUAL')]),{role:'developer',content:[text('LATER'),{type:'tool-addition',toolName:'read'}]},{role:'assistant',source:{provider:'fixture',model:'m'},content:[{type:'tool-call',id:'call',name:'read',arguments:'{"path":"a"}'}]},{role:'tool',toolCallId:'call',isError:false,content:[text('REAL_RESULT')]}]
- const result=await piProviderContext({messages,tools:[tool],system:'FIRST'},{profile,model,ctx:empty,alreadyProjected:true,toolUpdate:'in-history'})
- assert.equal(result.systemPrompt,'FIRST\n\nBASE');assert.equal(result.messages[0].content,'ACTUAL');assert.deepEqual(result.messages[1].toolsAdded,[tool]);assert.equal(result.messages.at(-1).toolName,'read');assert.equal(result.messages.at(-1).content[0].text,'REAL_RESULT');assert.deepEqual(result.tools,[tool])
+ const tool={name:'read',description:'read a file',parameters:{type:'object',properties:{path:{type:'string'}},required:['path']}},messages=[{role:'system',content:[text('BASE')]},user([text('ACTUAL')]),{role:'developer',id:'dev',content:[text('LATER'),{type:'tool-addition',toolName:'read'}]},{role:'assistant',source:{provider:'fixture',model:'m'},content:[{type:'tool-call',id:'call',name:'read',arguments:'{"path":"a"}'}]},{role:'tool',toolCallId:'call',isError:false,content:[text('REAL_RESULT')]}]
+ const result=await piProviderContext({messages,tools:[tool],toolHistory:{tools:[],updates:[{messageId:'dev',additions:[tool]}]},system:'FIRST'},{profile,model,ctx:empty,alreadyProjected:true,toolUpdate:'in-history'})
+ assert.equal(result.systemPrompt,'FIRST\n\nBASE');assert.equal(result.messages[0].content,'ACTUAL');assert.deepEqual(result.messages[1].toolsAdded,[tool]);assert.equal(result.messages.at(-1).toolName,'read');assert.equal(result.messages.at(-1).content[0].text,'REAL_RESULT');assert.deepEqual(getCurrentTools(normalizeContext(result).messages),[tool])
 })
 test('multimodal projection reads bounded request versions and preserves per-occurrence names and readonly access',async()=>{
  const ref={attachmentId:'sha256:abcdefgh',name:'first.png',width:100,height:100,mediaType:'image/png'},reads=[]

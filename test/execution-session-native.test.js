@@ -1,31 +1,31 @@
-import { requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
+import { captureModelRequest, requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
-import SessionTitleService from '@deepseek-ai/dsh-session-title'
+import NativeSessionTitle from '../src/native-session-title.js'
 import { sessionWorkspace, taskDirectories, taskFilePath } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
 import assert from 'node:assert/strict'
 import testRunner from 'node:test'
 import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Context } from '@deepseek-ai/cordis'
-import { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
-import { LlmRuntime, LlmAdapter, createUserMessage } from '../packages/capability-compat/llm/index.js'
-import { SessionStore } from '../packages/capability-compat/session/index.js'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
+import NativeAgents from '../src/native-agents.js'
+import NativeProjections from '../src/native-projections.js'
+import PiLoop from '../src/pi-loop.js'
+import {apply as installPiAuthority} from '../src/pi-authority.js'
+import NativeLlm from '../src/native-llm.js'
+import {LlmAdapter} from '../src/native-llm-protocol.js'
+import {createUserMessage} from '../src/native-message-protocol.js'
+import NativeSessions from '../src/native-sessions.js'
+import PiPersistence from '../src/pi-session-persistence.js'
+import NativeSystemPrompt from '../src/native-system-prompt.js'
+import NativeTools from '../src/native-tools.js'
 import { createExecutionSessions, inspectLegacyTurnFailure } from '../packages/dingtalk-dsh-assistant/execution-session.js'
 import { createAgentQueryTools, verifyAgentEvidence, readExecutedAgentQueryRefs } from '../packages/dingtalk-dsh-assistant/agent-query-tools.js'
 import { createAgentResourceReadCapability } from '../packages/dingtalk-dsh-assistant/agent-query-resources.js'
 import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
 import { validateAgentWorkResult, agentWorkResultSchema, createInvestigationWorkflow } from '../packages/dingtalk-dsh-assistant/agent-work.js'
-
-const requireLoop = createRequire(import.meta.resolve('@deepseek-ai/dsh-agent-loop'))
-const { SessionProjectionRegistry } = requireLoop('@deepseek-ai/dsh-session-projection')
 
 // Process fixtures run only the requested phase, without registering the parent suites.
 const test = process.argv[2] === '--execution-session-child' ? () => {} : testRunner
@@ -39,23 +39,23 @@ const leases = events => [...new Set(events.flatMap(event => event.type === 'plu
   : event.type === 'user/message' && event.data.source.executionSession ? [event.data.source.executionSession.leaseEpoch] : []))]
 async function temp() { await mkdir(artifacts, { recursive: true }); return mkdtemp(join(artifacts, 'run-')) }
 
-// 只有 LlmAdapter 为脚本；每次 Host 都用真实原生 Loop、Tools、文件 JSONL 后端。
+// Only inference is scripted; native services and Pi own execution and durable history.
 async function host({ root, script = [submit('done')], isCurrent = async () => true, repositoryInspect, tools, getWorkspaceDir } = {}) {
   root ??= await temp()
   const ctx = new Context()
-  new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
-  new SessionTitleService(ctx, { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 })
-  new SystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
-  new LlmRuntime(ctx); new ToolRuntime(ctx)
-  new JsonlSessionPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
-  await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
+  new NativeAgents(ctx); new NativeSessions(ctx); new NativeProjections(ctx)
+  new NativeSessionTitle(ctx, { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 })
+  new NativeSystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
+  new NativeLlm(ctx); new NativeTools(ctx)
+  installPiAuthority(ctx);new PiPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
+  await ctx.plugin(PiLoop, { agents: [], maxParallelToolCalls: 1 })
   const requests = [], reads = [], effects = [], handles = []
   await writeFile(join(root, 'fixture.txt'), 'NATIVE_READ_VALUE_922d')
   ctx.on('agent/created', ({ agent }) => { handles.push(agent) })
   class Scripted extends LlmAdapter {
     async resolveModel(provider, model) { return { ...await super.resolveModel(provider, model), reasoning: { efforts: [{ id: 'low', name: 'Low' }] } } }
     async *stream(options) {
-      requests.push(JSON.parse(JSON.stringify(options)))
+      requests.push(captureModelRequest(options))
       const next = await (typeof script === 'function' ? script(requests.length) : script[requests.length - 1])
       if (!next) throw new Error('unexpected model continuation')
       if (next.providerFailure) { yield { type: 'finish', reason: { kind: 'error', failure: next.providerFailure } }; return }

@@ -386,16 +386,6 @@ var SurfaceManager = class {
 		if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta();
 		return this._state.contentGeneration;
 	}
-	/**
-	* Project one message with every committed message projection applied.
-	* @param event - message-producing or log-only event.
-	* @returns its immutable projected message, or null when it produces none.
-	*/
-	deriveEventMessage(event) {
-		this._assertProjections();
-		if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta();
-		return deriveEventMessage(event, this._state.projectedMessages);
-	}
 	/** Surface event sequences in model-visible order. */
 	get nodes() {
 		this._assertProjections();
@@ -683,73 +673,6 @@ function buildForkSeed(events, boundary) {
 		data: { inherited: true }
 	});
 	return prefix.concat(openTurnClosers(prefix, { kind: "forked" }));
-}
-var SessionPreparation = class SessionPreparation {
-	options;
-	released = false;
-	/** The exact Session to use for setup and publication. */
-	session;
-	constructor(session, options) {
-		this.options = options;
-		this.session = session;
-	}
-	/**
-	* Wrap an unpublished Session in one preparation lifetime.
-	* @param session - exact unpublished Session.
-	* @param options - optional provider release behavior.
-	* @returns a preparation disposed after publication or rollback.
-	*/
-	static create(session, options) {
-		return new SessionPreparation(session, options ?? {});
-	}
-	/** Release provider state once when this preparation leaves its caller. */
-	[Symbol.dispose]() {
-		if (this.released) return;
-		this.released = true;
-		this.options.release?.();
-	}
-};
-function isStrictlyIncreasing(values) {
-	return values.every((value, index) => index === 0 || value > values[index - 1]);
-}
-function encodeSeqRanges(values) {
-	if (!isStrictlyIncreasing(values)) return [...values];
-	const encoded = [];
-	for (let start = 0; start < values.length;) {
-		let end = start;
-		while (end + 1 < values.length && values[end + 1] === values[end] + 1) end += 1;
-		if (end - start >= 2) encoded.push([values[start], values[end]]);
-		else for (let index = start; index <= end; index += 1) encoded.push(values[index]);
-		start = end + 1;
-	}
-	return encoded;
-}
-function decodeSeqRanges(value, maxEntries = Number.MAX_SAFE_INTEGER) {
-	if (!Array.isArray(value)) throw new TypeError("sourceEventSeqs must be an array");
-	const decoded = [];
-	let hasRange = false;
-	for (const entry of value) {
-		if (typeof entry === "number") {
-			assertSeq(entry);
-			if (decoded.length >= maxEntries) throw new TypeError("sourceEventSeqs exceeds its event sequence");
-			decoded.push(SessionSeq(entry));
-			continue;
-		}
-		if (!Array.isArray(entry) || entry.length !== 2) throw new TypeError("sourceEventSeqs range entries must be [start, end] pairs");
-		const start = entry[0];
-		const end = entry[1];
-		assertSeq(start);
-		assertSeq(end);
-		if (end < start) throw new TypeError("sourceEventSeqs ranges require start <= end");
-		if (end - start + 1 > maxEntries - decoded.length) throw new TypeError("sourceEventSeqs range exceeds its event sequence");
-		for (let seq = start; seq <= end; seq += 1) decoded.push(SessionSeq(seq));
-		hasRange = true;
-	}
-	if (hasRange && !isStrictlyIncreasing(decoded)) throw new TypeError("sourceEventSeqs ranges must be strictly increasing");
-	return decoded;
-}
-function assertSeq(value) {
-	if (!Number.isSafeInteger(value) || value < 0) throw new TypeError("sourceEventSeqs must contain non-negative safe integers");
 }
 function validateSessionHeader(id, input) {
 	if (input === null || typeof input !== "object" || Array.isArray(input)) throw new Error("session header is not a plain JSON record");
@@ -1153,11 +1076,11 @@ var Session = class Session {
 	* @param type - The event type (key of {@link SessionEventMap}).
 	* @param data - The event payload; must be JSON-serializable.
 	* @param opts - Surface metadata: `surfaceOp` controls how the event enters
-	*   the ordered surface; `sourceEventSeqs` lists the seq numbers of earlier
+	*   the ordered Night audit surface; `sourceEventSeqs` lists the seq numbers of earlier
 	*   events this one derives from. REQUIRED for
 	*   {@link SurfaceEventType} events (every message-producing event must
-	*   declare how it joins the surface, the sole source of derived model
-	*   history) and
+	*   declare how it joins the surface, the audit projection; Pi remains the model-history
+	*   authority) and
 	*   rejected by the compiler for non-surface types like `turn/start` or
 	*   `assistant/attempt`. Assistant messages embed their exact provider
 	*   stream and cannot cite top-level source events.
@@ -1306,55 +1229,7 @@ var Session = class Session {
 		this.toolHistorySeq = this.log.length;
 		return this.toolHistoryProjection.snapshot();
 	}
-	/** The derived-message cache: frozen projections, extended per unseen node. */
-	derived = [];
-	/** Surface position (nodes projected) the cache has reached. */
-	derivedNodes = 0;
-	/** {@link SurfaceManager.contentGeneration} the cache was built under. */
-	derivedGeneration = 0;
-	/**
-	* Derive the LLM message history by walking the ordered sequences of
-	* message-producing events maintained by `surfaceOp` markers. The
-	* surface is the single source of derived history: every message-producing
-	* append records its `surfaceOp`, so a raw event with no marker (a chunk, a
-	* turn boundary) is correctly absent, and a compaction `replace` deletes the
-	* shadowed nodes from the derivation. The projection rules are
-	* {@link deriveEventMessage}, with logged message projections applied
-	* without changing node membership or message identity.
-	*
-	* CACHED: pure tail growth costs O(new nodes); a replacement or message projection
-	* ({@link SessionSurface.contentGeneration}) rebuilds. The returned array is
-	* a fresh snapshot per call (later appends never grow an array a caller
-	* already holds); the `Message` objects in it are SHARED and **deep-frozen**.
-	* Unchanged content reuses frozen event data; projected blocks are frozen
-	* derived copies. Consumers cannot mutate the log through either form.
-	* @returns a fresh array of the shared, frozen derived history.
-	*/
-	deriveMessages() {
-		const surface = this.surface;
-		const nodes = surface.nodes;
-		const generation = surface.contentGeneration;
-		if (generation !== this.derivedGeneration) {
-			this.derived = [];
-			this.derivedNodes = 0;
-			this.derivedGeneration = generation;
-		}
-		for (const seq of nodes.slice(this.derivedNodes)) {
-			const msg = this.deriveEventMessage(this.log[seq]);
-			if (msg) this.derived.push(msg);
-		}
-		this.derivedNodes = nodes.length;
-		return [...this.derived];
-	}
-	/**
-	* Project one event with all committed message projections applied.
-	* The original durable event remains unchanged.
-	* @param event - the event to project.
-	* @returns the derived message, or null when the event produces none.
-	*/
-	deriveEventMessage(event) {
-		return this.surfaceManager.deriveEventMessage(event);
-	}
+
 };
 var SessionForkError = class extends Error {
 	code;
@@ -1364,4 +1239,4 @@ var SessionForkError = class extends Error {
 		this.name = "SessionForkError";
 	}
 };
-export { validateSessionAudit, KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionForkError, SessionId, SessionLogOffset, SessionPreparation, SessionSeq, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN, ToolCallRecovery, adoptSessionEvent, appendPluginRecord, buildForkSeed, canonicalHeader, decodeSeqRanges, deriveEventMessage, encodeSeqRanges, foldRequestHeader, foldSurface, headerEquals, interruptedTurnClosers, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEligibleType, isSurfaceEvent, pluginRecordOf, snapshotSessionEvent };
+export { validateSessionAudit, KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionForkError, SessionId, SessionLogOffset, SessionSeq, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN, ToolCallRecovery, adoptSessionEvent, appendPluginRecord, buildForkSeed, canonicalHeader, deriveEventMessage, foldRequestHeader, foldSurface, headerEquals, interruptedTurnClosers, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEligibleType, isSurfaceEvent, pluginRecordOf, snapshotSessionEvent };

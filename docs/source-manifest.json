@@ -74,8 +74,9 @@
     {
       "source": "coordination-context.js",
       "sourceSha256": "3574c57fc954f47af84e0ff1a8d2da47a3f172b031d2d933cff46734f8beba43",
-      "status": "retained",
-      "sha256": "3574c57fc954f47af84e0ff1a8d2da47a3f172b031d2d933cff46734f8beba43"
+      "status": "adapted",
+      "sha256": "3f2bc10cbaafde638e1a856fd1aaad42458e0cc4b3fd3ac2859e3709071c66ec",
+      "adaptation": " Pi live writer context is the sole visible-material source; no audit/surface derivation fallback or stale surface-generation cache."
     },
     {
       "source": "coordination-ledger.js",
@@ -148,8 +149,8 @@
       "source": "decision.js",
       "sourceSha256": "e5a351b39eae37209b7896f8c6115c5cf14b6927b4bad7546dae2bd6bbdade06",
       "status": "adapted",
-      "sha256": "06195e6d5dddb6da657b4c982dcfa83f44429516125b9039fd6649cac1999d3d",
-      "adaptation": " Publish routing input from the same Zod input contract, retaining fixed category fields and optional defaults; strict domain effect-ownership checks remain."
+      "sha256": "d3cd288d90b6b562ff09c9f8dfe48311e37d6b8f648602c88cc90a5b9c283229",
+      "adaptation": " Publish routing input from the same Zod input contract, retaining fixed category fields and optional defaults; strict domain effect-ownership checks remain. Describe exact reply/reason branch schema rather than retired DSH subset limits."
     },
     {
       "source": "dws-adapter.js",
@@ -587,7 +588,7 @@
       "source": "native-restart-scope-probe.js",
       "sourceSha256": "6b5c5f8a750a595e40d933e2d5fa834c2df8d003d763993a8803142d41e6a86f",
       "status": "adapted",
-      "sha256": "2dbf6fc50365d3db7fbbe58d0d97702f6b13d104b19144a9a723f68d2f29ca55",
+      "sha256": "e417967793374dd60daa4ceed0b9430d003044e39b98b743eb425263d5b82359",
       "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof. Reviewed native process contracts now scrub ambient NIGHT_BOT_ metadata as well as retired DSH_ names; LF and CRLF fingerprints updated to those exact source bytes. Removed explicit DSH profile/provider compatibility branch; only native source fingerprints can define a plan, with all review and exclusion requirements retained. Reviewed replacement of process output capture with the application byte ring; pinned LF/CRLF hashes updated only for the reviewed output module, without runtime self-blessing. Pin reviewed owned Linux bootstrap/transport/owner modules and updated runner imports; no deployed-source auto-blessing or weaker exclusion/receipt guards."
     },
     {
@@ -1099,8 +1100,9 @@
     {
       "source": "tool-schema.js",
       "sourceSha256": "b8a382058e0f1edf8dd0c110945483db115313e34fffc09d877eb57c9c766e0a",
-      "status": "retained",
-      "sha256": "b8a382058e0f1edf8dd0c110945483db115313e34fffc09d877eb57c9c766e0a"
+      "status": "adapted",
+      "sha256": "152252413ea225e432e05a952d5120da77b1b06d8ca1ca81427ec2b7bf5f0603",
+      "adaptation": " Retain exact Zod input JSON Schema; remove obsolete DSH subset widening and description-only constraints."
     },
     {
       "source": "topic-facts.js",
@@ -1120,8 +1122,8 @@
       "source": "topic-runtime.js",
       "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
       "status": "adapted",
-      "sha256": "c0f9d4ed860d7cd9bc4437e6b55c825daefaae9ecafa7fc7334d9fcfa4e2ba8b",
-      "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body."
+      "sha256": "9e585daaa803afa3f7c54be79504b4568edb0585cd7a5023456e289d1b40637c",
+      "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body. Topic visibility, body retries and read provenance use live Pi model context; writer/authority failures propagate. Exact decision-schema admission returns declared structured correction before dispatch; issue scope is arguments rather than invented field-specific diagnostics."
     },
     {
       "source": "uat-acceptance-policy.js",

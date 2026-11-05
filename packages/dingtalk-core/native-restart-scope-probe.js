@@ -30,8 +30,8 @@ export const nativeRestartProviderFiles = Object.freeze([
   },
   {
     "path": "src/process/runner-launch-B2zsQ1Dz.js",
-    "sha256": "4b560172ccb4c02b1fd07d59c7a3eba60c1558e44f7e7d7623bcae753fcfc4d5",
-    "sha256CRLF": "673f82ad30f10b443a9e7d1b136cb4ed570ca0c65b59913abc47767c9880ac00"
+    "sha256": "f78368931db8b45dee4f973d0de0ffdcab33fe783379554ca24eafdfbcc0f77b",
+    "sha256CRLF": "ecc25511d34529950a93248f2dee87f44430b75f32218dc99d39781e68114f95"
   },
   {
     "path": "src/process/runner.js",
@@ -75,13 +75,18 @@ export const nativeRestartProviderFiles = Object.freeze([
   },
   {
     "path": "src/process/linux-owner.js",
-    "sha256": "5ae9e086b4304334f1ea0a7d77d87f83438402f5cc74ef34fae882e7c0319a55",
-    "sha256CRLF": "00f9372978ce831a5a2504f4eac70e0706d1204bf2c795090e1cacf97c500067"
+    "sha256": "5a0b69dd65407c83a9c8f0ece50934029d3f9a16c529559022c70b9e3a22869a",
+    "sha256CRLF": "f222902e91c5a3f33e66493051710b81c4fee65c58e2780a9fa44fcac2522e70"
   },
   {
     "path": "src/process/managed-process.js",
     "sha256": "f5843963fe330bbc27298018ebdbb71a63329943040a3ef069e1797b7af13aad",
     "sha256CRLF": "159e5932d69bbd4e1be5911c647d352ffed9b6b71a6c6bde05b655737ab816ae"
+  },
+  {
+    "path": "src/process/linux-observation.js",
+    "sha256": "65290b908cfc4111ca7442530e6fa633d85add4aeaaa73a5deea7678cf981c39",
+    "sha256CRLF": "726eff73403aaf859f69815573568206f771f6f9882e976f1099d74b6aac0291"
   }
 ].map(Object.freeze))
 const nativeRuntimeRoot = fileURLToPath(new URL('../..', import.meta.url))

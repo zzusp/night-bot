@@ -6,14 +6,14 @@ const manifest=JSON.parse(await readFile('package.json','utf8'))
 if(Object.keys(manifest.dependencies??{}).some(name=>name.startsWith('@deepseek-ai/dsh-')))throw new Error('Registry SDK runtime dependency reintroduced')
 // Retired source copies and their differential-only direct dependencies must not
 // silently become part of a later install or validation path again.
-for(const name of ['dsh-chunked-list','dsh-util-time','dsh-llm-pi-ai','dsh-skill-filesystem','dsh-agent-instructions','dsh-shell-env','dsh-shell','dsh-tool-bash','dsh-tool-pwsh','dsh-launch-environment','dsh-credentials-local','dsh-timeout','dsh-tool-call-timeout-policy','dsh-tool-subagent-control','dsh-fs-sandbox','dsh-fs-observation-policy','dsh-bash-sandbox','dsh-pwsh-sandbox','dsh-brand','dsh-authorization','dsh-workspace','dsh-skill','dsh-sandbox-windows-acl','dsh-typert-protocol','dsh-attachment','dsh-attachment-local','dsh-permission-presets','dsh-jobs','dsh-ptc-runtime','dsh-spill','dsh-storage','dsh-fs','dsh-session-persistence','dsh-spill-local','dsh-output-retention','dsh-tool-fs','dsh-tool-fs-search','dsh-tool-jobs','dsh-schedule','dsh-tool-schedule','dsh-typert-registry'])if(manifest.devDependencies?.['@deepseek-ai/'+name])throw new Error('Retired differential dependency reintroduced: '+name)
+for(const name of ['dsh-chunked-list','dsh-util-time','dsh-llm-pi-ai','dsh-skill-filesystem','dsh-agent-instructions','dsh-shell-env','dsh-shell','dsh-tool-bash','dsh-tool-pwsh','dsh-launch-environment','dsh-credentials-local','dsh-timeout','dsh-tool-call-timeout-policy','dsh-tool-subagent-control','dsh-fs-sandbox','dsh-fs-observation-policy','dsh-bash-sandbox','dsh-pwsh-sandbox','dsh-brand','dsh-authorization','dsh-workspace','dsh-skill','dsh-sandbox-windows-acl','dsh-typert-protocol','dsh-attachment','dsh-attachment-local','dsh-permission-presets','dsh-jobs','dsh-ptc-runtime','dsh-spill','dsh-storage','dsh-fs','dsh-session-persistence','dsh-spill-local','dsh-output-retention','dsh-tool-fs','dsh-tool-fs-search','dsh-tool-jobs','dsh-schedule','dsh-tool-schedule','dsh-typert-registry','dsh-api-session-controller','dsh-session-query'])if(manifest.devDependencies?.['@deepseek-ai/'+name])throw new Error('Retired differential dependency reintroduced: '+name)
 for(const path of ['src/native-chunked-list.js','test/fixtures/legacy-subagent-interface.mjs','test/fixtures/legacy-llm-interface.mjs','test/fixtures/legacy-tools-interface.mjs','src/native-typert-protocol.js','src/native-brand.js','src/native-output-retention.js','src/native-prompt-render.js','src/native-deadline.js']){
  try{await access(path)}catch(error){if(error.code==='ENOENT')continue;throw error}
  throw new Error('Retired comparison source reintroduced: '+path)
 }
 const piLicense=JSON.parse(await readFile('docs/pi-license-source.json','utf8'))
 if(digest(await readFile(piLicense.localLicense))!==piLicense.sha256)throw new Error('Pinned Pi license text changed')
-for(const name of ['pi-agent-core','pi-ai','pi-coding-agent']){
+for(const name of ['pi-agent-core','pi-ai','pi-coding-agent','pi-schema','pi-codemode']){
  const dependency='@earendil-works/'+name,source=piLicense.packages.find(row=>row.name===dependency)
  if(!source||source.version!==manifest.dependencies[dependency])throw new Error('Pi dependency/license provenance mismatch: '+dependency)
 }
@@ -23,6 +23,10 @@ async function walk(directory){for(const entry of await readdir(directory,{withF
  if(/(?:\bfrom\s*|\bimport\s*\(\s*|\bcreateLazyRequire\s*\(\s*|\bimport\.meta\.resolve\s*\(\s*|\brequire\s*\(\s*)['"]@deepseek-ai\/dsh-[^'"]+['"]/.test(text))throw new Error('External SDK runtime import: '+path)
  if(/\b(?:var|class)\s+(?:LlmRuntime|ToolRuntime|SessionStore)\b/.test(text))throw new Error('Legacy runtime orchestrator definition: '+path)
  if(/\bagent\/assistant-stream\b|\b(?:var|class)\s+AssistantStreamAttempt\b|\bfunction\s+bridgeDshStream\b/.test(text))throw new Error('Retired assistant-frame/stream bridge ABI reintroduced: '+path)
+ if(/\b(?:var|class)\s+(?:AssistantStreamAccumulator|BlockAssembler)\b/.test(text))throw new Error('Retired assistant assembler reintroduced: '+path)
+ if(path==='src/native-session-protocol.js'&&/\bderiveMessages\s*\(/.test(text))throw new Error('Retired duplicate session history derivation reintroduced')
+ if(/\b(?:var|class)\s+SessionPreparation\b|\bfunction\s+projectToolUpdates\b/.test(text))throw new Error('Retired preparation/tool-projection adapter reintroduced: '+path)
+ if(/\bnativeHostMessage\s*\(|\.hostMessages\b/.test(text))throw new Error('Retired Host history shadow reintroduced: '+path)
  for(const [,specifier]of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*)['"](\.{1,2}\/[^'"\r\n]+)['"]/g))await access(resolve(dirname(path),specifier))
 }}}
 for(const directory of ['src','bin','packages/dingtalk-core','packages/scope-compat','packages/capability-compat'])await walk(directory)

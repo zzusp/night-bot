@@ -1,7 +1,7 @@
 import {decodePiJournal,piJournalFilename} from './runtime/pi-journal.js'
 import { restorePiReplay } from './pi-replay.js'
 import { Service } from '@deepseek-ai/cordis'
-import { SessionManager, buildSessionContext } from '@earendil-works/pi-coding-agent'
+import { SessionManager, buildSessionProjection } from '@earendil-works/pi-coding-agent'
 import { mkdir, readFile, writeFile, open, stat, readdir, truncate, rm, lstat, link, unlink } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
@@ -97,37 +97,13 @@ export async function projectPiMessage(message,ctx,signal) {
   if(message.role==='tool')return {role:'toolResult',content,toolCallId:message.toolCallId,toolName:'host',isError:message.isError===true,timestamp}
   return {role:'user',content,timestamp}
 }
-function nativeHostMessage(message,codec) {
-  const metadata=message.role==='custom'?message.details:message.night
-  const event=metadata?.event
-  const original=hostMessage(event&&codec?codec.readEvent(event):event)
-  if(!original)throw fail('PI_SESSION_CONTEXT_PROVENANCE_REQUIRED')
-  const native=typeof message.content==='string'?[{type:'text',text:message.content}]:message.content
-  const content=native.map((block,index)=>{
-    if(block.type==='text') {
-      if(['file','tool-addition','tool-removal'].includes(original.content[index]?.type)) {
-        try {const decoded=JSON.parse(block.text);if(decoded.type===original.content[index].type)return decoded}catch{}
-      }
-      return {type:'text',text:block.text}
-    }
-    if(block.type==='thinking')return {type:'reasoning',text:block.thinking}
-    if(block.type==='toolCall')return {type:'tool-call',id:block.id,name:block.name,arguments:typeof block.arguments==='string'?block.arguments:JSON.stringify(block.arguments)}
-    if(block.type==='image') {
-      if(metadata.contentHash!==digest(JSON.stringify(native))||original.content[index]?.type!=='image')throw fail('PI_INLINE_IMAGE_REQUIRES_NATIVE_PROVIDER')
-      return original.content[index]
-    }
-    throw fail('PI_SESSION_CONTEXT_BLOCK_UNSUPPORTED')
-  })
-  const source=clean(original.source)
-  if(metadata.contentHash!==digest(JSON.stringify(native)))delete source.replayState
-  return {...clean(original),content,source}
-}
-
 /** A read-only Pi projection of one already-validated committed snapshot.
  * Never re-open a physical tail with Pi's permissive parser. */
-function committedContext(data,codec){
-  const messages=clean(buildSessionContext(data.entries??[],data.entries?.at(-1)?.id??null).messages)
-  return {engine:'pi-session-manager',eventCount:data.events.length,piMessages:messages,hostMessages:messages.map(message=>nativeHostMessage(message,codec)).filter(message=>message&&message.content.length)}
+function projectedContext(projection){return {projection,piMessages:projection.messages}}
+
+function committedContext(data){
+  const projection=clean(buildSessionProjection(data.entries??[],data.entries?.at(-1)?.id??null))
+  return {engine:'pi-session-manager',eventCount:data.events.length,...projectedContext(projection)}
 }
 
 function projection(events) {
@@ -271,7 +247,7 @@ export default class PiSessionPersistence extends Service {
             if(ended||backend.closed)throw new SessionHandleClosedError(id,'read')
             await chain
             const codec=backend.ctx.get('portablePaths'),data=newFile?{events,entries:entries??[]}:await load(path,id,codec)
-            return{eventState:'detached',events:clean(data.events.slice(offset,length===undefined?undefined:offset+length)),...options.includeContext?{context:committedContext(data,codec)}:{}}
+            return{eventState:'detached',events:clean(data.events.slice(offset,length===undefined?undefined:offset+length)),...options.includeContext?{context:committedContext(data)}:{}}
           },
           async append(){throw new SessionReadOnlyError(id,'append')},
           async flush(){throw new SessionReadOnlyError(id,'flush')},
@@ -283,7 +259,7 @@ export default class PiSessionPersistence extends Service {
       snapshot(){assertOpen('stat');return{header:clean(header),eventCount:events.length,revision:digest(JSON.stringify(entries?.at(-1)??header)),formatStatus:'current'}},
       enqueue(event){if(closing||closed||backend.closed){poisoned=fail('PI_SESSION_LATE_EVENT');throw poisoned}pending.push(event)},
       append(batch,options={}){options.signal?.throwIfAborted();if(access!=='write')return Promise.reject(new SessionReadOnlyError(id,'append'));return mutation(()=>commit(batch))},
-      async read(offset=0,length,options={}){options.signal?.throwIfAborted();assertOpen('read');const codec=backend.ctx.get('portablePaths');let data;if(access==='write'){await chain;assertOpen('read');data={events,entries:entries??[]}}else data=await load(path,id,codec);options.signal?.throwIfAborted();return{eventState:'detached',events:clean(data.events.slice(offset,length===undefined?undefined:offset+length)),...options.includeContext?{context:committedContext(data,codec)}:{}}},
+      async read(offset=0,length,options={}){options.signal?.throwIfAborted();assertOpen('read');const codec=backend.ctx.get('portablePaths');let data;if(access==='write'){await chain;assertOpen('read');data={events,entries:entries??[]}}else data=await load(path,id,codec);options.signal?.throwIfAborted();return{eventState:'detached',events:clean(data.events.slice(offset,length===undefined?undefined:offset+length)),...options.includeContext?{context:committedContext(data)}:{}}},
       flush(options={}){options.signal?.throwIfAborted();if(access!=='write')return Promise.reject(new SessionReadOnlyError(id,'flush'));return mutation(async()=>{const batch=pending.splice(0);try{await commit(batch)}catch(error){pending.unshift(...batch);throw error}})},
       close(){
         return closing??=(async()=>{
@@ -307,7 +283,7 @@ export default class PiSessionPersistence extends Service {
     }
     if(access==='write') {
       unregister=this.ctx.get('piAuthority').register(id,{
-        context(){assertOpen('context');const messages=structuredClone(manager.buildSessionContext().messages);return{piMessages:messages,hostMessages:messages.map(message=>nativeHostMessage(message,backend.ctx.get('portablePaths'))).filter(message=>message&&message.content.length)}},
+        context(options){assertOpen('context');return projectedContext(clean(manager.buildSessionProjection()))},
         describe(){return{engine:'pi-session-manager',path,sessionId:manager.getSessionId(),leafId:manager.getLeafId(),events:events.length}},
       })
       this.writers.set(id,handle)

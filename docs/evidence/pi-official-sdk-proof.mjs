@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,rmSync,openSync,fsyncSync,closeSync} from 'node:fs';import {join,dirname} from 'node:path';import {tmpdir} from 'node:os';
+import {createAgentSession,SessionManager,SettingsManager,DefaultResourceLoader,ModelRuntime} from '@earendil-works/pi-coding-agent';
+import {createAssistantMessageEventStream,InMemoryCredentialStore,InMemoryModelsStore} from '@earendil-works/pi-ai';
+const root=mkdtempSync(join(tmpdir(),'night-official-pi-proof-')),agentDir=join(root,'agent');mkdirSync(agentDir);
+const trace=[],events=[];let effects=0,calls=0,hold,failCommit=false,receiptThrow=false,externalFetchAttempts=0;globalThis.fetch=()=>{externalFetchAttempts++;throw new Error('external network prohibited by fixture')};const commitEntered=Promise.withResolvers(),commitRelease=Promise.withResolvers();let firstCommit=true;
+const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false});
+const model=runtime.getModels().find(model=>model.provider==='openai'&&model.api==='openai-completions')??runtime.getModels()[0];assert.ok(model);await runtime.setRuntimeApiKey(model.provider,'local-scripted-fixture-key');
+const settings=SettingsManager.inMemory({compaction:{enabled:false,reserveTokens:32,keepRecentTokens:16},retry:{enabled:false}});
+const loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:'Local headless SDK proof.',extensionFactories:[pi=>{
+ pi.on('tool_call',async event=>{trace.push('permission:'+event.toolCallId);await Promise.resolve();return event.input.deny?{block:true,reason:'fixture denied'}:undefined});
+ pi.on('tool_result',async event=>{trace.push('receipt:'+event.toolCallId);await Promise.resolve();if(receiptThrow)throw new Error('tool_result receipt sink failed')});
+}]});await loader.reload();
+const manager=SessionManager.inMemory(root);
+const {session}=await createAgentSession({cwd:root,agentDir,modelRuntime:runtime,model,thinkingLevel:'off',settingsManager:settings,sessionManager:manager,resourceLoader:loader,noTools:'builtin',tools:['owned_fixture'],customTools:[{name:'owned_fixture',label:'Owned fixture',description:'Local permission and receipt proof',parameters:{type:'object',properties:{value:{type:'string'},deny:{type:'boolean'}},required:['value']},async execute(id,args){trace.push('execute:'+id);assert.ok(manager.getBranch().some(entry=>entry.type==='message'&&entry.message.role==='assistant'));effects++;return {content:[{type:'text',text:'receipt:'+args.value}],details:{committed:true}}}}]});
+assert.deepEqual(session.getActiveToolNames(),['owned_fixture']);
+session.subscribe(event=>events.push(event.type));session.agent.subscribe(async event=>{if(event.type==='message_end'&&event.message.role==='assistant'&&event.message.content.some(item=>item.type==='toolCall')){assert.ok(manager.getBranch().some(entry=>entry.type==='message'&&entry.message===event.message));trace.push('commit:'+event.message.content.find(item=>item.type==='toolCall').id);const journal=manager.getSessionFile();if(journal){for(const path of [journal,dirname(journal)]){const fd=openSync(path,'r');try{fsyncSync(fd)}finally{closeSync(fd)}}trace.push('fsync:'+event.message.content.find(item=>item.type==='toolCall').id)};if(firstCommit){firstCommit=false;commitEntered.resolve();await commitRelease.promise}if(failCommit){failCommit=false;throw new Error('strict commit barrier failed')}}});
+const usage={input:10,output:5,cacheRead:0,cacheWrite:0,totalTokens:15,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}};
+session.agent.streamFunction=(_model,context,options)=>{
+ const stream=createAssistantMessageEventStream();
+ queueMicrotask(async()=>{try{
+  calls++;if(hold){await hold(options?.signal);hold=undefined}
+  const last=context.messages.at(-1),text=last?.content?.filter(x=>x.type==='text').map(x=>x.text).join('')??'';
+  const tool=calls===1||['deny','gatefail','receipt-hook-failure'].includes(text);
+  const message={role:'assistant',content:tool?[{type:'toolCall',id:'call-'+calls,name:'owned_fixture',arguments:{value:'literal',...(text==='deny'?{deny:true}:{})}}]:[{type:'text',text:'official SDK response '+calls}],api:model.api,provider:model.provider,model:model.id,usage,stopReason:tool?'toolUse':'stop',timestamp:Date.now()};
+  if(options?.signal?.aborted){message.stopReason='aborted';message.content=[];stream.push({type:'error',reason:'aborted',error:message})}else stream.push({type:'done',reason:message.stopReason,message});stream.end(message)
+ }catch(error){stream.end();throw error}});return stream;
+};
+const firstRun=session.prompt('tool proof');await commitEntered.promise;assert.equal(effects,0);commitRelease.resolve();await firstRun;assert.equal(effects,1);assert.ok(trace.indexOf('permission:call-1')<trace.indexOf('execute:call-1'));assert.ok(trace.indexOf('receipt:call-1')>trace.indexOf('execute:call-1'));assert.ok(manager.getBranch().some(entry=>entry.type==='message'&&entry.message.role==='toolResult'));
+await session.prompt('deny');assert.equal(effects,1);failCommit=true;await session.prompt('gatefail');assert.equal(effects,1);assert.ok(session.messages.some(message=>message.errorMessage==='strict commit barrier failed'));
+let entered=Promise.withResolvers(),release=Promise.withResolvers();hold=async()=>{entered.resolve();await release.promise};const running=session.prompt('queue run');await entered.promise;await session.steer('steering proof');await session.followUp('follow-up proof');release.resolve();await running;assert.ok(session.messages.some(message=>message.role==='user'&&JSON.stringify(message.content).includes('steering proof')));assert.ok(session.messages.some(message=>message.role==='user'&&JSON.stringify(message.content).includes('follow-up proof')));
+entered=Promise.withResolvers();hold=async signal=>{entered.resolve();await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}))};const aborting=session.prompt('abort proof');await entered.promise;await session.abort();await aborting;assert.ok(session.messages.some(message=>message.role==='assistant'&&message.stopReason==='aborted'));
+const branchTarget=manager.getBranch().find(entry=>entry.type==='message'&&entry.message.role==='assistant');const navigated=await session.navigateTree(branchTarget.id,{summarize:false});assert.equal(navigated.cancelled,false);assert.equal(manager.getLeafId(),branchTarget.id);
+await session.prompt('branch proof');
+let compaction;try{compaction=await session.compact('Summarize fixture conversation.')}catch(error){compaction={error:error.message}}
+receiptThrow=true;await session.prompt('receipt-hook-failure');assert.equal(effects,2);assert.ok(session.getLastAssistantText().includes('official SDK response'));assert.equal(externalFetchAttempts,0);console.log(JSON.stringify({strictCommitFailureBlockedEffect:true,toolResultHookFailureDidNotStopContinuation:true,externalFetchAttempts,sdk:'official createAgentSession',activeTools:session.getActiveToolNames(),effects,modelCalls:calls,trace,events:[...new Set(events)],entries:manager.getEntries().length,branchEntries:manager.getBranch().length,compaction,externalModelRequests:0,agentDir,sessionFile:manager.getSessionFile()}));
+await session.dispose();rmSync(root,{recursive:true,force:true});

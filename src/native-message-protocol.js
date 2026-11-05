@@ -631,89 +631,6 @@ function projectImagesForTextModel(messages) {
 		};
 	});
 }
-function withoutDeveloperMessages(messages) {
-	const retained = messages.filter((message) => message.role !== "developer");
-	return retained.length === messages.length ? messages : retained;
-}
-function toolDeclarations(tools, mode, history) {
-	const declarations = new Map(history.tools.map((tool) => [tool.name, tool]));
-	for (const update of history.updates) for (const tool of update.additions) if (!declarations.has(tool.name)) declarations.set(tool.name, {
-		...tool,
-		deferLoading: true
-	});
-	switch (mode) {
-		case "in-history": return declarations;
-		case "addition-only": {
-			const activeNames = new Set(tools?.map((tool) => tool.name));
-			for (const name of declarations.keys()) if (!activeNames.has(name)) declarations.delete(name);
-			return declarations;
-		}
-		/* v8 ignore next 2 -- closed-union exhaustiveness guard */
-		default: return assertNever(mode);
-	}
-}
-/**
-* Construct provider declarations from session-folded history without changing logged active tools.
-* Unsupported routes and incomplete history use current declarations without developer updates.
-* Explicitly deferred baseline tools become available only after their first retained addition.
-* @param messages - complete request inputs, or the prefix selected for an auxiliary call.
-* @param tools - currently active tool schemas.
-* @param toolUpdate - the resolved route's update mode.
-* @param history - immutable state folded from committed headers and developer messages.
-* @returns provider declarations and the corresponding filtered history.
-*/
-function projectToolUpdates(messages, tools, toolUpdate, history) {
-	if (toolUpdate === void 0) {
-		let immediateTools = tools;
-		if (tools?.some((tool) => tool.deferLoading === true)) immediateTools = tools.map(({ deferLoading: _loading, ...tool }) => tool);
-		return {
-			messages: withoutDeveloperMessages(messages),
-			tools: immediateTools
-		};
-	}
-	if (history === void 0) return {
-		messages: withoutDeveloperMessages(messages),
-		tools
-	};
-	const messageIds = new Set(messages.flatMap((message) => message.role === "developer" ? [message.id] : []));
-	if (history.updates.some((update) => !messageIds.has(update.messageId))) return {
-		messages: withoutDeveloperMessages(messages),
-		tools
-	};
-	const declarations = toolDeclarations(tools, toolUpdate, history);
-	const updateIds = new Set(history.updates.map((update) => update.messageId));
-	const offered = new Set(history.tools.filter((tool) => !tool.deferLoading).map((tool) => tool.name));
-	const projectedMessages = [];
-	for (const message of messages) {
-		if (message.role !== "developer") {
-			projectedMessages.push(message);
-			continue;
-		}
-		if (!updateIds.has(message.id)) continue;
-		const content = message.content.filter((block) => {
-			switch (block.type) {
-				case "tool-addition":
-					if (!declarations.has(block.toolName) || offered.has(block.toolName)) return false;
-					offered.add(block.toolName);
-					return true;
-				case "tool-removal":
-					if (toolUpdate !== "in-history") return false;
-					return offered.delete(block.toolName);
-				default: return true;
-			}
-		});
-		if (content.length === 0) continue;
-		if (content.length === message.content.length) projectedMessages.push(message);
-		else projectedMessages.push({
-			...message,
-			content
-		});
-	}
-	return {
-		messages: projectedMessages.length === messages.length && projectedMessages.every((message, index) => message === messages[index]) ? messages : projectedMessages,
-		tools: [...declarations.values()]
-	};
-}
 //#endregion
 //#region lib/types/brand.js
 /**
@@ -1057,4 +974,4 @@ function exactKeys(record, keys, label) {
 }
 //#endregion
 
-export { ACCOUNT_QUOTA_EXCEEDED_CODE, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAttemptId, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, ToolCallId, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText };
+export { ACCOUNT_QUOTA_EXCEEDED_CODE, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAttemptId, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, ToolCallId, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText };

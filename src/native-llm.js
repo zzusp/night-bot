@@ -1,8 +1,9 @@
+import {piRequestContext} from './runtime/pi-request-context.js'
 import {Service} from '@deepseek-ai/cordis'
 import {ControlError} from './runtime/control-error.js'
 import {deepFreeze} from './native-values.js'
 import { LlmError, HarnessError } from './native-llm-protocol.js';
-import { callConfigEquals, freezeMessage, fileHandleText, contentHasFile, contentHasImage, projectFilesToText, projectImagesForTextModel, projectToolUpdates } from './native-message-protocol.js';
+import { callConfigEquals, freezeMessage, fileHandleText, contentHasFile, contentHasImage, projectFilesToText, projectImagesForTextModel } from './native-message-protocol.js';
 import {resolvePiRetryPolicy} from './pi-provider-retry.js'
 const ownData=(object,key)=>{try{const d=Object.getOwnPropertyDescriptor(object,key);return d&&'value'in d?d.value:undefined}catch{return}}
 function normalizeLlmFailure(value){
@@ -64,7 +65,7 @@ export default class NativeLlm extends Service{
   signal?.throwIfAborted();const {provider,model,...controls}=config,entry=this.registration(provider),call=await entry.adapter.prepareCall(provider,model,signal);signal?.throwIfAborted();const info=this.normalize(entry,model,call.model),proposed=configure?{...configure(frozen(controls),frozen(info)),provider,model}:config;signal?.throwIfAborted();const resolved=frozen(this.resolveControls(proposed,info)),adapterDefaults=frozen({...proposed.reasoningEffort===undefined&&resolved.reasoningEffort!==undefined?{reasoningEffort:true}:{},...proposed.maxTokens===undefined&&resolved.maxTokens!==undefined?{maxTokens:true}:{}});let used=false
   return Object.freeze({config:resolved,retryPolicy:entry.retryPolicy,adapterDefaults,...info.context!==undefined?{context:frozen(info.context)}:{},...info.inputModalities!==undefined?{inputModalities:Object.freeze([...info.inputModalities])}:{},...info.systemPromptUpdate!==undefined?{systemPromptUpdate:info.systemPromptUpdate}:{},...info.toolUpdate!==undefined?{toolUpdate:info.toolUpdate}:{},stream:options=>{if(used||!callConfigEquals(options,resolved))fail('prepared LLM call reused or config changed','INVALID_PREPARED_CALL');used=true;return this.streamWith(options,{entry,info,config:resolved,dispatch:request=>call.stream(request)})}})
  }
- forAdapter(options,adapter){let changed=false;const messages=options.messages.map(m=>{if(m.role!=='assistant'||m.source.replayState===undefined||this.adapters.get(m.source.provider)?.adapter===adapter)return m;changed=true;return freezeMessage({...m,source:{kind:'model',provider:m.source.provider,model:m.source.model}})});if(!changed)return options;const result={...options,messages};return Object.isFrozen(options)?deepFreeze(result):result}
+ forAdapter(options,adapter){if(piRequestContext(options))return options;let changed=false;const messages=options.messages.map(m=>{if(m.role!=='assistant'||m.source.replayState===undefined||this.adapters.get(m.source.provider)?.adapter===adapter)return m;changed=true;return freezeMessage({...m,source:{kind:'model',provider:m.source.provider,model:m.source.model}})});if(!changed)return options;const result={...options,messages};return Object.isFrozen(options)?deepFreeze(result):result}
  failure(error,signal){const failure=normalizeLlmFailure(error);return{type:'finish',reason:{kind:signal?.aborted||failure.code==='ABORTED'?'aborted':'error',failure}}}
  async *adapterStream(options,prepared){
   let iterator
@@ -73,9 +74,8 @@ export default class NativeLlm extends Service{
    if(!prepared){const call=await entry.adapter.prepareCall(options.provider,options.model,options.signal);info=this.normalize(entry,options.model,call.model);config=this.resolveControls(options,info);dispatch=request=>call.stream(request)}
    if(prepared&&!callConfigEquals(options,config))fail('prepared call configuration changed before dispatch','INVALID_PREPARED_CALL')
    let request=callConfigEquals(options,config)?options:{...options,...config};if(request!==options&&Object.isFrozen(options))deepFreeze(request)
-   let messages=request.messages;if(messages.some(m=>contentHasFile(m.content)))messages=projectFilesToText(messages,ref=>this.fileReadPath(ref));if(info.inputModalities&&!info.inputModalities.includes('image')&&messages.some(m=>contentHasImage(m.content)))messages=projectImagesForTextModel(messages)
-   const tools=projectToolUpdates(messages,request.tools,info.toolUpdate,request.toolHistory);messages=tools.messages
-   if(messages!==request.messages||tools.tools!==request.tools){const projected={...request,messages,...tools.tools!==undefined?{tools:tools.tools}:{}};request=Object.isFrozen(request)?deepFreeze(projected):projected}
+   let messages=request.messages;if(!piRequestContext(request)){if(messages.some(m=>contentHasFile(m.content)))messages=projectFilesToText(messages,ref=>this.fileReadPath(ref));if(info.inputModalities&&!info.inputModalities.includes('image')&&messages.some(m=>contentHasImage(m.content)))messages=projectImagesForTextModel(messages)}
+   if(messages!==request.messages){const projected={...request,messages};request=Object.isFrozen(request)?deepFreeze(projected):projected}
    iterator=dispatch(this.forAdapter(request,entry.adapter))[Symbol.asyncIterator]()
   }catch(error){yield this.failure(error,options.signal);return}
   let ended=false

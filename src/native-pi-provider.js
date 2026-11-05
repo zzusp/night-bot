@@ -1,3 +1,4 @@
+import {piRequestContext} from './runtime/pi-request-context.js'
 import z from '@deepseek-ai/schemastery'
 import {  LlmError, attributionHeaders } from './native-llm-protocol.js'
 import { launchEnvironmentOf } from './native-environment.js'
@@ -50,7 +51,7 @@ export class NativePiProvider {
       const profile=this.profile(snapshot,request.provider),model=this.model(snapshot,request.provider,request.model),effort=request.reasoningEffort??profile.reasoning
       if(effort!==undefined&&!levels(model).includes(effort))throw new LlmError('Unsupported model reasoning effort','UNSUPPORTED_REASONING_EFFORT')
       const apiKey=await this.authentication.resolveApiKey(profile),updates=piConversationUpdates(model)
-      if(!model.input.includes('image')&&request.messages.some(message=>message.content.some(block=>block.type==='image')))throw new LlmError('Model does not support image input','UNSUPPORTED_CONTENT')
+      if(!piRequestContext(request)&&!model.input.includes('image')&&request.messages.some(message=>message.content.some(block=>block.type==='image')))throw new LlmError('Model does not support image input','UNSUPPORTED_CONTENT')
       const context=await piProviderContext({...request,signal},{profile,model,ctx:this.ctx,alreadyProjected:true,toolUpdate:updates.toolUpdate})
       signal.throwIfAborted()
       const headers=new Headers(profile.headers);for(const [key,value]of Object.entries(attributionHeaders()))headers.set(key,value)

@@ -1,4 +1,5 @@
 import {nativeCodeTransport} from './native-code-transport.js'
+import {captureToolSchema} from './runtime/tool-schema-value.js'
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {scopeOf,scopeChainOf,scopeTarget} from './native-scope.js'
@@ -43,15 +44,16 @@ export default class NativeTools extends Service {
   }.bind(this),'native tools registration')
  }
  register(definition){
-  assertObjectJsonSchema(definition.parameters)
   if(definition.name==='run_code')throw new Error('run_code is a reserved transport name')
-  if(!definition.output||typeof definition.output.render!=='function'||definition.output.presentationMeta!==undefined&&typeof definition.output.presentationMeta!=='function')throw new TypeError('Tool output schema and render are required')
-  assertSupportedJsonSchema(definition.output.schema)
   if(definition.timeoutMs!==undefined&&(!Number.isFinite(definition.timeoutMs)||definition.timeoutMs<=0))throw new TypeError('Tool timeoutMs must be positive')
-  // Keep the definition identity: application markers and scoped ownership use it.
-  // Captured data contracts belong to the registry and cannot be mutated by authors.
+  // Keep definition identity for application markers. Policy, compilation and
+  // execution all use the same single capture, never reread schema accessors.
   if(!this.contracts.has(definition)){
-   const contract={parameters:deepFreeze(snapshot(definition.parameters)),output:deepFreeze(snapshot(definition.output.schema))}
+   const output=definition.output
+   if(!output||typeof output.render!=='function'||output.presentationMeta!==undefined&&typeof output.presentationMeta!=='function')throw new TypeError('Tool output schema and render are required')
+   const contract={parameters:captureToolSchema(definition.parameters),output:captureToolSchema(output.schema)}
+   assertObjectJsonSchema(contract.parameters)
+   assertSupportedJsonSchema(contract.output)
    // A static domain rejection preserves model-facing correction contracts without
    // calling tool code, an execution wrapper, or an effect/intent barrier.
    if(Object.hasOwn(definition,'argumentRejection')){

@@ -11,7 +11,7 @@ import { resolveTopicMessages, sourceDispatchOwnershipFor } from './store.js'
 import { fingerprint, isPendingDecision, replyTopicForMessage, routingBlocksTopics } from './topic-model.js'
 import { factDecisionSchema, factDecisionJsonSchema } from './topic-facts.js'
 import { TaskRevisionError } from './task-input-revision.js'
-import { visiblePromptRefs, visibleSectionLength, visibleCoordinatorText, visibleToolOutputs, promptContent, compactSectionValue, buildMaterialManifest } from './coordination-context.js'
+import { coordinationMessages, visiblePromptRefs, visibleSectionLength, visibleCoordinatorText, visibleToolOutputs, promptContent, compactSectionValue, buildMaterialManifest } from './coordination-context.js'
 import { taskProgressSnapshot } from './task-progress.js'
 import { assertCurrentTaskPrompts, isDiagnosticCheckpoint } from './task-result.js'
 import { compactReplyReviewCandidates, blockTaskDecisionForUnavailableMedia, groupDecisionSubmissionSchema, groupDecisionSubmissionJsonSchema, legacyGroupDecisionSubmissionSchema, legacyGroupDecisionSubmissionJsonSchema, topicRouteSubmissionSchema, topicRouteSubmissionJsonSchema, replyReviewJsonSchema, TOPIC_TITLE_MAX_CHARS, collectDecisionIssues, isSilentTaskFactFeedback } from './decision.js'
@@ -341,7 +341,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
   }
   function refreshVisibleReads(request) {
     const agent = getAgent(request.groupId, request)
-    if (!agent?.session?.deriveMessages) return
+    if (coordinationMessages(agent) === undefined) return
     if (request.readPromptRefs) {
       const prompts = (store.getTaskPrompts?.() ?? []).filter((prompt) => prompt.enabled && request.promptCatalog.some((ref) => ref.id === prompt.id && ref.revision === prompt.revision))
       request.readPromptRefs = new Map(visiblePromptRefs(agent, prompts).map((ref) => [ref.id, ref]))
@@ -430,7 +430,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
           const id = `message-${request.requestId}-resume-${request.resumeEpoch}-${request.attempt}`
           const pending = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])]
           const hasBody = (message) => message.id === request.messageId || (message.content ?? []).some((part) => part.type === 'text' && part.text === request.text)
-          const visible = pending.some(hasBody) || agent.session?.deriveMessages?.().some(hasBody)
+          const visible = pending.some(hasBody) || coordinationMessages(agent)?.some(hasBody)
           // 原文仍在 surface 时仅发送短提醒；压缩已移出则恢复正文，不能靠历史已消费记录假定可见。
           const text = visible ? `[COORDINATION_RESUME]\n请求 ${request.requestId} 仍待提交；继续处理当前可见的原请求，不重复执行已完成的外部动作。` : request.text
           const consumed = agent.session?.snapshotEvents?.().some((event) => event.type === 'user/message' && event.data?.id === id)
@@ -920,7 +920,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     const topic = store.getTopic(request.groupId, request.topicId)
     const delta = new Set(topic.entries.filter((entry) => entry.revision > topic.processedRevision && entry.revision <= request.revision).map(unitKey))
     const agent = getAgent(request.groupId, request)
-    if (!request.statusQueryRead && agent?.session?.deriveMessages) {
+    if (!request.statusQueryRead && coordinationMessages(agent) !== undefined) {
       const inlineVisible = request.inlineDelta && visibleCoordinatorText(agent, request.text)
       const sectionVisible = visibleSectionLength(agent, request.sections.messages) === request.sections.messages.length
       const visibleUnits = new Set(visibleToolOutputs(agent).flatMap((output) => output.completedUnitRefs ?? []).map(unitKey))
@@ -1225,7 +1225,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
         return { status: result.status, decisionId: args.requestId, ...(current ? { routeRequestId: current.requestId } : {}), nextAction: 'wait-for-routing', retryScheduled: true }
       }
       return { status: result.status, decisionId: args.requestId }
-    })
+    }, { status: 'invalid-arguments', issues: [{ field: 'arguments', code: 'decision_schema_invalid', message: '核对参数的必填字段、类型及decision互斥分支（reply与reason不能同时填写）；本次参数未进入业务执行。' }], nextAction: 'correct-arguments' })
     tool('group_topic_list', '搜索本群 Topic 摘要，按需召回历史话题。query 按原文整串匹配；queries 最多五个词组按命中数排序，词面命中不代表同一事项。', { type: 'object', properties: { requestId: { type: 'string', description: '读取当前路由引用命中的关联目录；省略则查询全群目录' }, query: { type: 'string' }, queries: { type: 'array', items: { type: 'string' }, description: '1..5 个非空词组，每项最多32字符；不能与 query 同时使用。' }, offset: { type: 'integer', description: 'Topic条目偏移，非负整数，默认0；续页使用返回的nextOffset。' }, limit: { type: 'integer', description: '请求的Topic条数，整数1..100，默认50；关联目录仍受字符预算限制，实际条数可能更少。' } }, additionalProperties: false }, ({ requestId, query, queries, offset = 0, limit = 50 }) => {
       if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('topic_page_invalid')
       if (queries !== undefined && (query !== undefined || !Array.isArray(queries) || queries.length < 1 || queries.length > 5 || queries.some(value => typeof value !== 'string' || !value.trim() || value.trim().length > 32))) throw new Error('topic_query_invalid')
@@ -1256,8 +1256,8 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
         return decisionTextPage(requestId, section, JSON.stringify(facts), offset)
       }
       if (!Object.hasOwn(request.sections, section)) throw new Error(`decision_context_section_unknown:allowed=${DECISION_SECTIONS.join(',')}`)
-      if (getAgent(groupId, request)?.session?.deriveMessages && visibleCoordinatorText(getAgent(groupId, request), request.text)) request.surfaceTracked = true
-      if (getAgent(groupId, request)?.session?.deriveMessages) request.readSectionOffsets.set(section, visibleSectionLength(getAgent(groupId, request), request.sections[section]))
+      if (coordinationMessages(getAgent(groupId, request)) !== undefined && visibleCoordinatorText(getAgent(groupId, request), request.text)) request.surfaceTracked = true
+      if (coordinationMessages(getAgent(groupId, request)) !== undefined) request.readSectionOffsets.set(section, visibleSectionLength(getAgent(groupId, request), request.sections[section]))
       if ((request.readSectionOffsets.get(section) ?? 0) !== offset) throw new Error('decision_context_offset_out_of_order')
       const page = decisionTextPage(requestId, section, request.sections[section], offset)
       request.readSectionOffsets.set(section, page.nextOffset)

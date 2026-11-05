@@ -39,12 +39,13 @@ async function fixture(t,decide=()=>undefined){
     async delivered(id){return until(async()=>{const row=(await host.ctx.schedule.catalog()).find(r=>r.id===id);if(row?.status!=='inactive')return;const found=await host.ctx.sessionController.resolveAgent(row.sessionId);if(found.error)throw found.error;await found.agent.whenIdle();return row},'durable delivery '+id)},
   }
 }
+const wireText = message => typeof message.content === 'string' ? message.content : (message.content ?? []).filter(part => part.type === 'text').map(part => part.text).join('\n')
 const rule=(prompt,ms=180)=>({title:'local validation',prompt,at:new Date(Date.now()+ms).toISOString()})
 
 test('default production Host delivers a real Pi request and native file effect at due time',{timeout:20000},async t=>{
   let writes=0
   const f=await fixture(t,body=>{
-    if(!body.messages.some(m=>String(m.content).includes('DUE_FILE_PROOF')))return
+    if(!body.messages.some(m=>wireText(m).includes('DUE_FILE_PROOF')))return
     if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{file_path:'scheduled-proof.txt',content:'due-file-by-native-tool'}}}
   })
   const h=await f.session('due-file');const record=await f.host.ctx.schedule.create('due-file',rule('DUE_FILE_PROOF'))
@@ -69,7 +70,7 @@ test('default preset exposes working session-bound schedule tools through actual
   const [row]=await f.host.ctx.schedule.catalog();assert.equal(row.sessionId,'model-create')
   await f.delivered(row.id)
   assert.equal((await f.host.ctx.schedule.catalog()).length,1)
-  assert.equal(f.requests.filter(r=>r.messages.some(m=>String(m.content).includes('[SCHEDULE REMINDER]'))).length,1)
+  assert.equal(f.requests.filter(r=>r.messages.some(m=>wireText(m).includes('[SCHEDULE REMINDER]'))).length,1)
   assert.deepEqual(f.errors,[])
 })
 
@@ -207,7 +208,7 @@ test('model tools refuse delegated callers before creating any schedule',{timeou
   const h=await f.session('child-caller',{origin:'subagent',parentSession:'parent',delegationDepth:1})
   h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'try reminder'}]}));await h.agent.whenIdle()
   assert.deepEqual(await f.host.ctx.schedule.catalog(),[])
-  assert.ok(f.requests[1].messages.some(message=>message.role==='tool'&&String(message.content).includes('subagent_session')))
+  assert.ok(f.requests[1].messages.some(message=>message.role==='tool'&&wireText(message).includes('subagent_session')))
 })
 
 test('overdue recurring reminders coalesce missed occurrences into one actual Pi batch',{timeout:20000},async t=>{
@@ -289,7 +290,7 @@ for(const superseded of [false,true])test(`real platform bridge restores origina
 test('actual CLI process restart executes a persisted reminder and never repeats its file effect',{timeout:30000},async t=>{
   let writes=0,child,exited
   const f=await fixture(t,body=>{
-    if(!body.messages.some(m=>String(m.content).includes('CLI_RESTART_PROOF')))return
+    if(!body.messages.some(m=>wireText(m).includes('CLI_RESTART_PROOF')))return
     if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{file_path:'cli-schedule-proof.txt',content:'one process effect'}}}
   })
   await f.session('cli-schedule')

@@ -1,6 +1,7 @@
 import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import testRunner from 'node:test'
 import assert from 'node:assert/strict'
+import { convertToLlm } from '@earendil-works/pi-coding-agent'
 import { mkdir, readFile, rmdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { taskDirectories } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
@@ -464,8 +465,14 @@ testRunner('native task service preserves Topic routing, task association, ignor
   await t.beginBusiness()
   h = await t.step(async () => nativeTaskHost(root, async (request, host) => {
     const names = request.tools.map(tool => tool.name)
-    if (!names.includes('group_topic_route_submit')) assert.ok(JSON.stringify(request.messages.filter(message => message.role === 'system')).includes(groupReplyScopeInstructions),
-      '话题承接及任务结果的原生模型请求都必须携带多事项与部分处理的回复范围规则')
+    if (!names.includes('group_topic_route_submit')) {
+      // Pi persists Night's system declarations as official custom messages.
+      // Inspect their official LLM rendering, never arbitrary user/tool quotes.
+      const system = request.messages.filter(message => message.role === 'system'
+        || message.role === 'custom' && message.customType === 'night.system' && message.details?.event?.type === 'system/message')
+      assert.ok(JSON.stringify(convertToLlm(system)).includes(groupReplyScopeInstructions),
+        '话题承接及任务结果的原生模型请求都必须携带多事项与部分处理的回复范围规则')
+    }
     if (names.includes('group_topic_route_submit')) {
       const input = envelope(request, '[GROUP_TOPIC_ROUTE]')
       const existing = residentStore.listTopics('native-group').find(topic => topic.title === '原生文件检查')

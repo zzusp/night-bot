@@ -1,3 +1,5 @@
+import {createPiRequestContext} from './runtime/pi-request-context.js'
+import {convertToLlm} from '@earendil-works/pi-coding-agent'
 import {createAttemptObservation} from './runtime/attempt-observation.js';
 // Lifecycle compatibility fork of @deepseek-ai/dsh-agent-loop 0.2.1-alpha.2 (MIT).
 // Inference and tool iteration are owned by pi-agent-core; host events stay compatible.
@@ -13,7 +15,7 @@ import { z as z$1 } from "zod";
 import { LlmError } from './native-llm-protocol.js';
 import { createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
 
-import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "./native-session-protocol.js";
+import { SessionLogOffset, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "./native-session-protocol.js";
 import { SessionPersistenceNotFoundError } from "./native-persistence-protocol.js";
 import { agentEvents, assembleContextFor } from "./native-agent-context.js";
 import { assertNever, deepFreeze } from "./native-values.js";
@@ -934,7 +936,7 @@ var PiLoopAgent = class {
 				} catch (error) { return piFailureStream(error, signal.aborted ? 'aborted' : 'error'); }
 			};
 			await runAgentLoop(admittedPrompts, { systemPrompt: '', messages: [], tools }, {
-				model: { id: first.config.model, provider: first.config.provider, api: 'host', baseUrl: '', reasoning: false, input: ['text'], contextWindow: 128000, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }, convertToLlm: messages => messages,
+				model: { id: first.config.model, provider: first.config.provider, api: 'host', baseUrl: '', reasoning: false, input: ['text'], contextWindow: 128000, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }, convertToLlm,
 				toolExecution: 'parallel',
 				afterToolCall: ({ result }) => ({ isError: result.details?.hostIsError === true, terminate: concluded }),
 				finishTurn: async () => rejected || concluded ? { action: 'end' } : undefined,
@@ -1089,7 +1091,8 @@ var PiLoopAgent = class {
 		signal.throwIfAborted();
 		deepFreeze(header);
 		await this.loopCtx.sessions.flush(session);
-        const boundaryMessages = this.loopCtx.piAuthority.context(session.id).hostMessages;
+        const nativeContext = createPiRequestContext(this.loopCtx.piAuthority,session.id);
+        const boundaryMessages = nativeContext.messages;
 		for (const message of boundaryMessages) {
 			if (this.frozenMessages.has(message)) continue;
 			deepFreeze(message);
@@ -1098,7 +1101,7 @@ var PiLoopAgent = class {
 		Object.freeze(boundaryMessages);
 		return markAgentLoopRequest(Object.freeze({
 			...header.config,
-			messages: boundaryMessages,
+			...nativeContext,
 			toolHistory: session.toolHistory(),
 			...header.tools !== void 0 ? { tools: header.tools } : {},
 			sessionId: this.session.id,
@@ -1115,64 +1118,6 @@ var PiLoopAgent = class {
 const DEFAULT_MAX_PARALLEL_TOOL_CALLS = 10;
 //#endregion
 //#region lib/types/index.js
-var __addDisposableResource = function(env, value, async) {
-	if (value !== null && value !== void 0) {
-		if (typeof value !== "object" && typeof value !== "function") throw new TypeError("Object expected.");
-		var dispose, inner;
-		if (async) {
-			if (!Symbol.asyncDispose) throw new TypeError("Symbol.asyncDispose is not defined.");
-			dispose = value[Symbol.asyncDispose];
-		}
-		if (dispose === void 0) {
-			if (!Symbol.dispose) throw new TypeError("Symbol.dispose is not defined.");
-			dispose = value[Symbol.dispose];
-			if (async) inner = dispose;
-		}
-		if (typeof dispose !== "function") throw new TypeError("Object not disposable.");
-		if (inner) dispose = function() {
-			try {
-				inner.call(this);
-			} catch (e) {
-				return Promise.reject(e);
-			}
-		};
-		env.stack.push({
-			value,
-			dispose,
-			async
-		});
-	} else if (async) env.stack.push({ async: true });
-	return value;
-};
-var __disposeResources = (function(SuppressedError) {
-	return function(env) {
-		function fail(e) {
-			env.error = env.hasError ? new SuppressedError(e, env.error, "An error was suppressed during disposal.") : e;
-			env.hasError = true;
-		}
-		var r, s = 0;
-		function next() {
-			while (r = env.stack.pop()) try {
-				if (!r.async && s === 1) return s = 0, env.stack.push(r), Promise.resolve().then(next);
-				if (r.dispose) {
-					var result = r.dispose.call(r.value);
-					if (r.async) return s |= 2, Promise.resolve(result).then(next, function(e) {
-						fail(e);
-						return next();
-					});
-				} else s |= 1;
-			} catch (e) {
-				fail(e);
-			}
-			if (s === 1) return env.hasError ? Promise.reject(env.error) : Promise.resolve();
-			if (env.hasError) throw env.error;
-		}
-		return next();
-	};
-})(typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed, message) {
-	var e = new Error(message);
-	return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
-});
 /** Fiber states that cannot own or serve a new lifecycle. */
 const INACTIVE_STATES = new Set([
 	5,
@@ -1644,32 +1589,21 @@ var AgentLoop = class extends Service {
 	* @returns the published running agent.
 	*/
 	async create(id, options = {}, meta = {}) {
-		const env_1 = {
-			stack: [],
-			error: void 0,
-			hasError: false
-		};
+		const session = this.runtime.ctx.sessions.prepare(id, { meta });
+		const stored = await this.createStoredSession(session);
+		let prepared;
 		try {
-			const preparation = __addDisposableResource(env_1, SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta })), false);
-			const stored = await this.createStoredSession(preparation.session);
-			let prepared;
-			try {
-				prepared = this.prepare(this.ctx, id, options, preparation.session, void 0, stored?.handle);
-			} catch (error) {
-				await stored?.handle.close().catch(() => {});
-				throw error;
-			}
-			return (await this.initializeAgent(prepared, async () => {
-				await this.appendUnstoredSuffix(stored, preparation.session);
-				return await prepared.publish("startup");
-			})).agent;
-		} catch (e_1) {
-			env_1.error = e_1;
-			env_1.hasError = true;
-		} finally {
-			__disposeResources(env_1);
+			prepared = this.prepare(this.ctx, id, options, session, void 0, stored?.handle);
+		} catch (error) {
+			await stored?.handle.close().catch(() => {});
+			throw error;
 		}
+		return (await this.initializeAgent(prepared, async () => {
+			await this.appendUnstoredSuffix(stored, session);
+			return await prepared.publish("startup");
+		})).agent;
 	}
+
 	/**
 	* Take a fresh session's write ownership when persistence is mounted.
 	* Nothing is appended here: the constructor seed (which never re-emits
@@ -1714,53 +1648,34 @@ var AgentLoop = class extends Service {
 	* @returns the published handle.
 	*/
 	async createAgent(ownerCtx, options) {
-		const preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(options.sessionId, {
+		const session = this.runtime.ctx.sessions.prepare(options.sessionId, {
 			...options.seed === void 0 ? {} : { seed: options.seed },
 			...options.meta === void 0 ? {} : { meta: options.meta },
 			...options.inheritedEventCount === void 0 ? {} : { inheritedEventCount: options.inheritedEventCount }
-		}));
+		});
 		const published = (async () => {
-			let stored;
-			try {
-				stored = options.signal === void 0 ? await this.createStoredSession(preparation.session) : await raceAbortCall(() => this.createStoredSession(preparation.session, options.signal), options.signal, options.sessionId, (abandoned) => {
-					abandoned?.handle.close().catch(() => {});
-				});
-			} catch (error) {
-				preparation[Symbol.dispose]();
-				throw error;
-			}
-			return this.setupAndPublish(ownerCtx, options.sessionId, preparation, options.agentOptions ?? {}, options.setup, options.signal, "startup", stored, options.parentAgent);
+			const stored = options.signal === void 0 ? await this.createStoredSession(session) : await raceAbortCall(() => this.createStoredSession(session, options.signal), options.signal, options.sessionId, (abandoned) => {
+				abandoned?.handle.close().catch(() => {});
+			});
+			return this.setupAndPublish(ownerCtx, options.sessionId, session, options.agentOptions ?? {}, options.setup, options.signal, "startup", stored, options.parentAgent);
 		})();
 		this.ownership.trackWrapper(published);
 		return published;
 	}
 	/** Prepare one Agent around an acquired Session, run setup, and publish it. */
-	async setupAndPublish(ownerCtx, id, preparation, agentOptions, setup, signal, source, stored, parentAgent) {
-		const env_2 = {
-			stack: [],
-			error: void 0,
-			hasError: false
-		};
+	async setupAndPublish(ownerCtx, id, session, agentOptions, setup, signal, source, stored, parentAgent) {
+		let prepared;
 		try {
-			const session = __addDisposableResource(env_2, preparation, false).session;
-			let prepared;
-			try {
-				prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, stored?.handle, parentAgent);
-			} catch (error) {
-				await stored?.handle.close().catch(() => {});
-				throw error;
-			}
-			return await this.initializeAgent(prepared, async () => {
-				(await raceAbort(setup?.(prepared.agent.ctx, prepared.agent), prepared.signal, id))?.commit();
-				await this.appendUnstoredSuffix(stored, session);
-				return await prepared.publish(source);
-			});
-		} catch (e_2) {
-			env_2.error = e_2;
-			env_2.hasError = true;
-		} finally {
-			__disposeResources(env_2);
+			prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, stored?.handle, parentAgent);
+		} catch (error) {
+			await stored?.handle.close().catch(() => {});
+			throw error;
 		}
+		return await this.initializeAgent(prepared, async () => {
+			(await raceAbort(setup?.(prepared.agent.ctx, prepared.agent), prepared.signal, id))?.commit();
+			await this.appendUnstoredSuffix(stored, session);
+			return await prepared.publish(source);
+		});
 	}
 	async initializeAgent(prepared, initialize) {
 		try {
@@ -1785,7 +1700,7 @@ var AgentLoop = class extends Service {
 	*/
 	async resume(ownerCtx, options) {
 		const persistence = this.runtime.ctx.get("sessionPersistence");
-		if (persistence === void 0) throw new Error("cannot resume: session persistence is not configured (load a dsh-session-persistence backend)");
+		if (persistence === void 0) throw new Error("cannot resume: Pi session persistence is not configured");
 		return this.resumeWith(ownerCtx, persistence, options);
 	}
 	/** Resume through an explicit persistence handle used by the deferred config path. */
@@ -1803,7 +1718,7 @@ var AgentLoop = class extends Service {
 			]);
 			let handle;
 			let stored;
-			let preparation;
+			let session;
 			try {
 				try {
 					handle = await raceAbortCall(() => persistence.open(id, "write", { signal: fused }), fused, id, (abandoned) => {
@@ -1814,17 +1729,17 @@ var AgentLoop = class extends Service {
 					const persisted = coldRead.events;
 					const closers = interruptedTurnClosers(persisted);
 					if (closers.length > 0) await handle.append(closers);
-					preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, {
+					session = this.runtime.ctx.sessions.prepare(id, {
 						seed: [...persisted, ...closers],
 						meta: structuredClone(handle.header),
 						inheritedEventCount: handle.inheritedEventCount,
 						eventState: coldRead.eventState
-					}));
+					});
 					stored = {
 						handle,
 						storedCount: persisted.length + closers.length
 					};
-					await this.appendUnstoredSuffix(stored, preparation.session);
+					await this.appendUnstoredSuffix(stored, session);
 				} finally {
 					await unfollowOwner();
 				}
@@ -1832,9 +1747,8 @@ var AgentLoop = class extends Service {
 				if (!this.ownership.isActive()) throw new Error("agent loop is not active");
 				const owned = stored;
 				handle = void 0;
-				return await this.setupAndPublish(ownerCtx, id, preparation, options.agentOptions ?? {}, options.setup, options.signal, "resume", owned, options.parentAgent);
+				return await this.setupAndPublish(ownerCtx, id, session, options.agentOptions ?? {}, options.setup, options.signal, "resume", owned, options.parentAgent);
 			} finally {
-				preparation?.[Symbol.dispose]();
 				await handle?.close().catch(() => {});
 			}
 		})();

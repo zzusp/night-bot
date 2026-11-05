@@ -9,7 +9,8 @@
     "legacy control markers preserved for existing workers",
     "Linux private request/bootstrap/PATH dispatch and weaker fallback observation replaced with owned modules; libc execve, systemd/PTY and Windows forks remain",
     "Common managed lifecycle replaced with application implementation; Linux scope/PTY, libc execve and Windows platform owners remain attributed and kernel parity is not claimed",
-    "PTY fallback preserves unknown tracked identities under incomplete proc snapshots and rejects quiescence proof until a complete final observation; no unverified-PID signal path added"
+    "PTY fallback preserves unknown tracked identities under incomplete proc snapshots and rejects quiescence proof until a complete final observation; no unverified-PID signal path added",
+    "Linux proc decoding, identity sampling, snapshot/tree/group observation replaced with owned module; retained stdin/syscall detector injected and Mac/Windows backends remain attributed"
   ],
   "files": [
     {
@@ -31,7 +32,7 @@
       "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
       "sourceFile": "lib/runner-launch-B2zsQ1Dz.js",
       "sourceSha256": "6df08adc4a27f278878a5f4cde8b551b51e647b922ac7d6591fd62d272ced153",
-      "adaptedSha256": "4b560172ccb4c02b1fd07d59c7a3eba60c1558e44f7e7d7623bcae753fcfc4d5"
+      "adaptedSha256": "f78368931db8b45dee4f973d0de0ffdcab33fe783379554ca24eafdfbcc0f77b"
     },
     {
       "path": "src/process/control.js",
@@ -75,13 +76,18 @@
     },
     {
       "path": "src/process/linux-owner.js",
-      "sha256": "5ae9e086b4304334f1ea0a7d77d87f83438402f5cc74ef34fae882e7c0319a55",
+      "sha256": "5a0b69dd65407c83a9c8f0ece50934029d3f9a16c529559022c70b9e3a22869a",
       "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
     },
     {
       "path": "src/process/managed-process.js",
       "sha256": "f5843963fe330bbc27298018ebdbb71a63329943040a3ef069e1797b7af13aad",
       "role": "Application process lifecycle: direct settlement, output grace, separate owner drain, cancellation and escalation"
+    },
+    {
+      "path": "src/process/linux-observation.js",
+      "role": "Application Linux process sampling and explicit alive/dead/unknown identity; non-atomic proc observation, not kernel ownership",
+      "sha256": "65290b908cfc4111ca7442530e6fa633d85add4aeaaa73a5deea7678cf981c39"
     }
   ]
 }

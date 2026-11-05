@@ -1,3 +1,4 @@
+import {SessionManager} from '@earendil-works/pi-coding-agent'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,writeFile,rm,stat,readFile} from 'node:fs/promises'
@@ -6,10 +7,10 @@ import {join} from 'node:path'
 import {apply,loadBaselineInstructions,renderAgentInstructions,discoverBaselineInstructionFiles} from '../src/native-agent-instructions.js'
 import {createLaunchEnvironmentSnapshot} from '../src/native-environment.js'
 const fresh=async t=>{const root=await mkdtemp(join(tmpdir(),'night-instructions-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
-function fixture(t,{files=new Map(),signal,ensure,authority=[],config={}}={}){
+function fixture(t,{files=new Map(),signal,ensure,authority=[],projectionManager,config={}}={}){
  const handlers=new Map(),disposals=[],pending=[],session={},agent={id:'fixture',session,inbox:{nextStep:pending,prepend(_kind,m){pending.unshift(m)},remove(id){const i=pending.findIndex(m=>m.id===id);if(i>=0)pending.splice(i,1)},replace(id,m){pending.splice(pending.findIndex(v=>v.id===id),1,m)}}};Object.defineProperty(session,'surface',{get(){throw new Error('legacy surface must not be consulted')}})
  const fs={async resolve(path,{signal}={}){signal?.throwIfAborted();return path},async stat(path){const content=files.get(path);return content===undefined?undefined:{type:'file',version:content,size:Buffer.byteLength(content)}},async *streamText(path){yield files.get(path)}}
- const ctx={get:n=>n==='fs'?fs:n==='launchEnvironment'?createLaunchEnvironmentSnapshot([{source:'process',values:{DSH_HOME:'/fixture/home',DSH_AGENTS_HOME:'/fixture/shared'}}]):undefined,provide(n,v){this[n]=v},effect(f){disposals.push(f())},on(n,f){handlers.set(n,f);return()=>handlers.delete(n)},logger:{warn(){}},workingDirectory:{ensure:ensure??(async()=>'/fixture/work')},piAuthority:{context:()=>({hostMessages:authority})},sessionProjections:{stateOf:()=>({openTurnStartSeq:null})}}
+ const ctx={get:n=>n==='fs'?fs:n==='launchEnvironment'?createLaunchEnvironmentSnapshot([{source:'process',values:{DSH_HOME:'/fixture/home',DSH_AGENTS_HOME:'/fixture/shared'}}]):undefined,provide(n,v){this[n]=v},effect(f){disposals.push(f())},on(n,f){handlers.set(n,f);return()=>handlers.delete(n)},logger:{warn(){}},workingDirectory:{ensure:ensure??(async()=>'/fixture/work')},piAuthority:{context:(id,options)=>{assert.equal(id,agent.id);assert.deepEqual(options,{projectionOnly:true});const manager=projectionManager??SessionManager.inMemory();if(!projectionManager)for(const message of authority)manager.appendMessage({role:'user',content:message.content,timestamp:1,night:{event:{type:'user/message',data:message}}});return{projection:manager.buildSessionProjection(),get hostMessages(){throw Error('Host messages forbidden')}}}},sessionProjections:{stateOf:()=>({openTurnStartSeq:null})}}
  apply(ctx,{maxBytes:65536,...config});let closed=false;const close=async()=>{if(closed)return;closed=true;await Promise.all(disposals.map(fn=>fn?.()))};t.after(close)
  return{ctx,agent,fs,files,authority,handlers,close,step:async()=>{const messages=[{id:'input',source:{kind:'user'},content:[{type:'text',text:'test'}]}];return handlers.get('agent/pre-step')({agent,messages,step:1,signal:signal??new AbortController().signal},async()=>({kind:'continue',messages}))}}
 }
@@ -74,4 +75,59 @@ test('instruction cancellation and providerless mounting do not read or inject c
 test('private instruction roots reject relative and tilde aliases instead of selecting another home',async t=>{
  const root=await fresh(t)
  for(const field of ['instructionHome','agentsHome'])for(const path of ['relative','~/outside'])await assert.rejects(discoverBaselineInstructionFiles({cwd:root,[field]:path}),error=>error.code==='NIGHT_INSTRUCTION_ROOT_INVALID')
+})
+
+function commitInstruction(manager,message) {
+ return manager.appendMessage({role:'user',content:structuredClone(message.content),timestamp:1,night:{event:{type:'user/message',data:structuredClone(message)}}})
+}
+test('official context edits remove or alter instruction publication proof without Host history',async t=>{
+ for(const replacement of [null,{content:[{type:'text',text:'EDITED_BODY_WITH_OLD_METADATA'}]}]) {
+  const manager=SessionManager.inMemory(),h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','NATIVE_SOURCE_INSTRUCTION']]),projectionManager:manager})
+  const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
+  const id=commitInstruction(manager,baseline)
+  assert.equal((await h.step()).messages.filter(message=>message.source.kind==='agent-instructions').length,0)
+  manager.appendContextEdit(id,replacement)
+  const restored=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
+  assert.ok(restored);assert.match(JSON.stringify(restored.content),/NATIVE_SOURCE_INSTRUCTION/)
+  assert.doesNotMatch(JSON.stringify(restored.content),/EDITED_BODY_WITH_OLD_METADATA/)
+ }
+})
+test('official compaction, branch summaries and abandoned branches do not prove visible instructions',async t=>{
+ for(const mode of ['compaction','summary','branch']) {
+  const manager=SessionManager.inMemory(),root=manager.appendMessage({role:'user',content:'ordinary root input',timestamp:0})
+  const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','PUBLISH_AGAIN']]),projectionManager:manager})
+  const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions');commitInstruction(manager,baseline)
+  assert.equal((await h.step()).messages.filter(message=>message.source.kind==='agent-instructions').length,0)
+  if(mode==='compaction')manager.appendCompaction(JSON.stringify(baseline),null,100)
+  else if(mode==='summary')manager.branchWithSummary(root,JSON.stringify(baseline))
+  else manager.branch(root)
+  const fresh=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
+  assert.ok(fresh);assert.match(JSON.stringify(fresh.content),/PUBLISH_AGAIN/)
+ }
+})
+test('instruction projection rejects missing writer and malformed official context before publication',async t=>{
+ const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','no publication']] )})
+ for(const value of [undefined,{}, {projection:{entries:[],messages:null}}, {projection:{entries:[{}],messages:[]}}, {projection:{entries:[{sourceEntry:{type:'message',id:'bad'},messages:[]}],messages:[]}}]) {
+  h.ctx.piAuthority.context=()=>value
+  await assert.rejects(h.step(),/PI_INSTRUCTION_PROJECTION/)
+  assert.equal(h.agent.inbox.nextStep.length,0)
+ }
+ h.ctx.piAuthority.context=()=>{throw new Error('PI_SESSION_WRITER_REQUIRED:fixture')}
+ await assert.rejects(h.step(),/PI_SESSION_WRITER_REQUIRED/)
+})
+
+test('claimed instruction publication remains a local business fact without a shadow Pi message',async t=>{
+ const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','CLAIMED_INSTRUCTION']])})
+ const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
+ const messages=[{id:'claimed-user',source:{kind:'user'},content:[{type:'text',text:'continue'}]},baseline]
+ const result=await h.handlers.get('agent/pre-step')({agent:h.agent,messages,step:2,signal:new AbortController().signal},async()=>({kind:'continue',messages}))
+ assert.equal(result.messages.filter(message=>message.source.kind==='agent-instructions').length,1)
+ assert.equal(result.messages.find(message=>message.source.kind==='agent-instructions'),baseline)
+ assert.deepEqual(h.agent.inbox.nextStep,[])
+})
+test('changed instruction metadata body cannot prove the baseline while its native content differs',async t=>{
+ const manager=SessionManager.inMemory(),h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','REAL_FILE_INSTRUCTION']]),projectionManager:manager})
+ const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
+ manager.appendMessage({role:'user',content:[{type:'text',text:'unrelated native body'}],timestamp:1,source:baseline.source,night:{event:{type:'user/message',data:baseline}}})
+ assert.ok((await h.step()).messages.some(message=>message.source.kind==='agent-instructions'))
 })

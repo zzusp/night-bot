@@ -143,21 +143,23 @@ export async function nativeTaskHost(root, decide, options = {}) {
   } catch (error) { construction.resolve(); await h.close(); throw error }
 }
 
+const modelMessageParts = message => typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content ?? []
+
 export function modelToolValues(request) {
-  const definitions = Object.assign({}, ...request.messages.flatMap(message => (message.content ?? []).flatMap(part => {
+  const definitions = Object.assign({}, ...request.messages.flatMap(message => modelMessageParts(message).flatMap(part => {
     if (part.type !== 'text') return []
     try { return [JSON.parse(part.text).contentIndex ?? {}] } catch { return [] }
   })))
   const inline = value => value && typeof value === 'object' ? value.contentRef && Object.hasOwn(definitions, value.contentRef)
     ? definitions[value.contentRef] : Array.isArray(value) ? value.map(inline) : Object.fromEntries(Object.entries(value).map(([key, child]) => [key, inline(child)])) : value
-  return request.messages.filter(message => message.role === 'tool').flatMap(message => message.content ?? []).filter(part => part.type === 'text')
+  return request.messages.filter(message => ['toolResult', 'tool'].includes(message.role)).flatMap(modelMessageParts).filter(part => part.type === 'text')
     .flatMap(part => { try { return [inline(JSON.parse(part.text))] } catch { return [] } })
 }
 
 export function latestInput(request) {
   // Scripted models understand the same inline dictionary as a real model.
   // Deferred catalogues remain references and must be read with the model tool.
-  const definitions = Object.assign({}, ...request.messages.flatMap(message => (message.content ?? []).flatMap(part => {
+  const definitions = Object.assign({}, ...request.messages.flatMap(message => modelMessageParts(message).flatMap(part => {
     if (part.type !== 'text') return []
     try { return [JSON.parse(part.text).contentIndex ?? {}] } catch { return [] }
   })))
@@ -327,7 +329,7 @@ export function nativeVerificationTeam({ filePath, expected } = {}) {
         assert.ok(Array.isArray(original.result.payload.output.limitations))
         if (scope.filePath) {
           if (step === 1) { steps.set(key, 2); return [call('read', { file_path: scope.filePath })] }
-          assert.ok(JSON.stringify(request.messages.filter(message => message.role === 'tool')).includes(scope.expected), '实际交付内容必须进入核验成员上下文')
+          assert.ok(JSON.stringify(request.messages.filter(message => ['toolResult', 'tool'].includes(message.role))).includes(scope.expected), '实际交付内容必须进入核验成员上下文')
         }
       }
       return [call('execution_submit', { output: { status: 'completed', summary: scope.instruction,

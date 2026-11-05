@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 // MIT source-derived skill tool schema, catalog, invocation and presentation algorithms; see licenses/dsh-tool-skill-MIT.txt. Visible history authority adapted to Pi.
 import { createHash } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
@@ -1047,17 +1048,26 @@ function readCatalogEntries(source) {
 	}
 	return readable;
 }
-/** Visible catalog authority is Pi committed host messages, never Session.surface.
+/** Current catalog identity comes only from original Pi publication entries.
  * The audit scan only answers whether any catalog was ever published, so an
  * empty replacement can invalidate previously advertised names after pruning. */
 function catalogHistory(agent, authority) {
- const messages = authority.context(agent.id).hostMessages;
- for (let i=messages.length-1;i>=0;i--) {
-  const message=messages[i];
-  if(message.role!=="user" || message.source?.kind!=="skill-catalog")continue;
-  const entries=readCatalogEntries(message.source);
-  if(entries!==undefined)return {visibleDigest:digestCatalogEntries(entries),published:true};
+ const context=authority.context(agent.id,{projectionOnly:true});
+ const projected=context?.projection?.entries;
+ if(!Array.isArray(projected) || !Array.isArray(context.projection.messages))throw new Error('PI_SKILL_PROJECTION_REQUIRED');
+ let visibleDigest;
+ for(const entry of projected) {
+  if(!entry || !entry.sourceEntry || typeof entry.sourceEntry.type!=='string' || typeof entry.sourceEntry.id!=='string' || !Array.isArray(entry.messages) || entry.messages.some(message=>!message || typeof message.role!=='string'))throw new Error('PI_SKILL_PROJECTION_INVALID');
+  if(entry.sourceEntry.type==='message' && (!entry.sourceEntry.message || typeof entry.sourceEntry.message.role!=='string'))throw new Error('PI_SKILL_PROJECTION_INVALID');
+  const original=entry.sourceEntry.type==='message'?entry.sourceEntry.message:undefined;
+  const event=original?.night?.event;
+  if(original?.role!=='user' || event?.type!=='user/message' || event.data?.role!=='user' || event.data.source?.kind!=='skill-catalog')continue;
+  if(!Array.isArray(original.content) || original.content.length===0 || original.content.some(block=>block?.type!=='text' || typeof block.text!=='string'))continue;
+  if(entry.messages.length!==1 || entry.messages[0]?.role!=='user' || !isDeepStrictEqual(entry.messages[0].content,original.content) || !isDeepStrictEqual(original.content,event.data.content))continue;
+  const entries=readCatalogEntries(event.data.source);
+  if(entries!==undefined)visibleDigest=digestCatalogEntries(entries);
  }
+ if(visibleDigest!==undefined)return {visibleDigest,published:true};
  for(let index=agent.session.seq-1;index>=0;index--) {
   const event=agent.session.eventAt(SessionSeq(index));
   if(event===undefined)throw new Error(`skill catalog cannot read seq ${String(index)} below the current Session length`);

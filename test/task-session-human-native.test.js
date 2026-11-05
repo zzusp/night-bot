@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { available, reason, nativeTaskHost, latestInput, modelToolValues, waitUntil, topicTaskCalls } from './fixtures/task-session-native-host.js'
 import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
-import { requestSystemText, findSessionLog } from './fixtures/session-persistence.js'
+import {findSessionLog} from './fixtures/session-persistence.js'
+import {requestSystemText,taskSessionMessages} from './fixtures/human-native-context.js'
 const call = (name, args) => ({ name, args })
 const requestHuman = (audience = 'operator') => call('task_request_human', { audience, reason: '目标环境尚未明确，不能自行扩大授权', question: '请明确本次允许的环境和操作范围', evidence: ['已读取原始交办'], attemptedActions: ['核对现有需求，未执行外部修改'] })
 const finish = summary => call('task_session_submit', { decision: { action: 'complete', summary, evidence: ['已核对人工原文和原执行结果'], limitations: [] } })
@@ -35,7 +36,9 @@ function completionReviews() {
 }
 async function fixture(t, decide, options) {
   const root = await mkdtemp(join(tmpdir(), 'task-human-native-'))
-  const h = await nativeTaskHost(root, decide, options)
+  const modelTaskMessages=[]
+  const h = await nativeTaskHost(root,async(request,...args)=>{modelTaskMessages.push(...taskSessionMessages(request));return decide(request,...args)},options)
+  h.humanModelTaskMessages=modelTaskMessages
   t.after(async () => { try { await h.close() } finally { await rm(root, { recursive: true, force: true }) } })
   return h
 }
@@ -354,8 +357,8 @@ for (const permission of [false, true]) test(`operator technical reply retains b
   assert.equal(after.humanRequests.length, 1)
   assert.equal(after.humanRequests[0].status, 'answered')
   assert.ok(h.toolResults.some(result => result.name === 'model_content_read'), '超预算上下文经过真实只读工具，不把引用视为已读')
-  for (const request of h.requests) for (const message of request.messages.filter(message => message.source?.taskSession))
-    assert.ok(Buffer.byteLength(message.content[0].text) <= 3000, '恢复后仍保留Host的UTF8预算')
+  assert.ok(h.humanModelTaskMessages.length>0,'原生模型请求必须保留可核验的Task来源，预算断言不能空跑')
+  for(const message of h.humanModelTaskMessages)assert.ok(Buffer.byteLength(message.text)<=3000,'恢复后仍保留Host的UTF8预算')
   assert.equal(seen.at(-1).sources.find(source => source.messageId === 'business-authorization').text, objective)
   assert.equal(seen.at(-1).sources.find(source => source.text === reply).actorId, 'operator-user')
   if (permission) {

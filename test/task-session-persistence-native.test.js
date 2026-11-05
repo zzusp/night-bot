@@ -2,18 +2,21 @@ import testRunner from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { createRequire } from 'node:module'
 import { mkdir, mkdtemp, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import { AgentRegistry } from '@deepseek-ai/dsh-agent'
+import NativeAgents from '../src/native-agents.js'
+import NativeSessions from '../src/native-sessions.js'
+import NativeProjections from '../src/native-projections.js'
 import { AgentLoop } from '../src/pi-loop.js'
 import * as PiAuthority from '../src/pi-authority.js'
-import { SessionStore, appendPluginRecord } from '../packages/capability-compat/session/index.js'
+import { appendPluginRecord } from '../src/native-session-protocol.js'
 import JsonlSessionPersistence from '../src/pi-session-persistence.js'
-import { LlmRuntime, LlmAdapter, createUserMessage } from '../packages/capability-compat/llm/index.js'
-import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
+import NativeLlm from '../src/native-llm.js'
+import { LlmAdapter } from '../src/native-llm-protocol.js'
+import { createUserMessage } from '../src/native-message-protocol.js'
+import NativeSystemPrompt from '../src/native-system-prompt.js'
 import ToolRuntime from '../src/native-tools.js'
 import { taskDirectories, taskWorkspace, taskExecutionWorkspace, taskFilePath } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
 import { installTaskSessionPersistence, registerTaskSessionPersistence, taskSessionLogRoot } from '../packages/dingtalk-dsh-assistant/task-session-persistence.js'
@@ -21,8 +24,6 @@ import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persi
 import { findSessionLog } from './fixtures/session-persistence.js'
 
 const run = promisify(execFile)
-const requireLoop = createRequire(import.meta.resolve('@deepseek-ai/dsh-agent-loop'))
-const { SessionProjectionRegistry } = requireLoop('@deepseek-ai/dsh-session-projection')
 const test = process.argv[2] === '--task-native-child' ? () => {} : testRunner
 const artifacts = resolve('docs/tmp/task-session-native-persistence')
 async function temporary() { await mkdir(artifacts, { recursive: true }); return mkdtemp(join(artifacts, 'run-')) }
@@ -30,9 +31,9 @@ const message = text => createUserMessage({ source: { kind: 'coordinator' }, con
 
 async function host(root) {
   const ctx = new Context(), requests = [], handles = [], actualCwds = []
-  new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
-  new SystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
-  new LlmRuntime(ctx); new ToolRuntime(ctx)
+  new NativeAgents(ctx); new NativeSessions(ctx); new NativeProjections(ctx)
+  new NativeSystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
+  new NativeLlm(ctx); new ToolRuntime(ctx)
   await ctx.plugin(PiAuthority)
   new JsonlSessionPersistence(ctx, { root: join(root, 'legacy-sessions'), compression: 'none' })
   // Install the native factory first. A scoped ctx replacement would NOT redirect this factory.
@@ -43,7 +44,7 @@ async function host(root) {
   class Model extends LlmAdapter {
     async *stream(request) {
       requests.push(structuredClone(request))
-      if (request.messages.at(-1)?.role === 'tool') {
+      if (request.messages.at(-1)?.role === 'toolResult') {
         yield { type: 'block-start', index: 0, blockType: 'text' }
         yield { type: 'text-delta', index: 0, text: 'native probe finished' }
         yield { type: 'block-end', index: 0, block: { type: 'text', text: 'native probe finished' } }

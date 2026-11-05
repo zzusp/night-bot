@@ -141,3 +141,36 @@ test('static rejection still enters post-policy and preserves cancellation witho
  const result=await h.run('correction',{}, {signal:controller.signal})
  assert.equal(post,1);assert.equal(effects,0);assert.equal(result.error.info.code,'ABORTED_BEFORE_DISPATCH')
 })
+test('exact Zod union, tuple and typed-record inputs reject before effects and keep explicit correction templates',async t=>{
+ const {z}=await import('zod'),{toToolObjectJsonSchema}=await import('../packages/dingtalk-core/tool-schema.js')
+ const h=await fixture(t);let effects=0,wrappers=0
+ const parameters=toToolObjectJsonSchema(z.union([z.strictObject({kind:z.literal('one'),rows:z.tuple([z.string().min(1)])}),z.strictObject({kind:z.literal('many'),values:z.record(z.string(),z.number().positive())})]))
+ h.ctx.tools.register({...tool('precise',async()=>{effects++;return{ok:true}}),parameters})
+ h.ctx.tools.register({...tool('precise-correction',async()=>{effects++;return{ok:true}}),parameters,argumentRejection:{status:'invalid-arguments',issues:[{code:'correct_precise_input'}],nextAction:'correct-arguments'}})
+ h.ctx.on('tools/execute',(_exec,next)=>{wrappers++;return next()})
+ for(const args of [{kind:'one',rows:[]},{kind:'one',rows:['']},{kind:'one',rows:['x','extra']},{kind:'one',values:{}},{kind:'many',values:{x:0}},{kind:'many',values:{x:'bad'}}]){
+  assert.equal((await h.run('precise',args)).error.info.code,'INVALID_ARGS')
+  const rejected=await h.run('precise-correction',args);assert.equal(rejected.value.status,'invalid-arguments')
+  assert.equal(rejected.value.issues[0].code,'correct_precise_input');assert.equal(effects,0);assert.equal(wrappers,0)
+ }
+ assert.equal((await h.run('precise',{kind:'one',rows:['x']})).isError,false)
+ assert.equal((await h.run('precise',{kind:'many',values:{x:1}})).isError,false)
+ assert.equal(effects,2);assert.equal(wrappers,2)
+})
+test('registration shares one schema capture across admission, wire and effects even after a public cache hit',async t=>{
+ const {officialToolValidator}=await import('../src/runtime/tool-schema-value.js')
+ const h=await fixture(t);let effects=0,wrappers=0
+ const parameters={type:'object',properties:{n:{type:'number'}},required:['n'],additionalProperties:false}
+ officialToolValidator(parameters);parameters.properties.n.minimum=5
+ h.ctx.tools.register({...tool('changed-contract',async args=>{effects++;return args}),parameters})
+ h.ctx.on('tools/execute',(_exec,next)=>{wrappers++;return next()})
+ assert.equal((await h.run('changed-contract',{n:2})).error.info.code,'INVALID_ARGS');assert.equal(effects,0);assert.equal(wrappers,0)
+ let reads=0,outputReads=0
+ const accessor={type:'object',properties:{n:{type:'number',get minimum(){reads++;return reads===1?5:0}}},required:['n'],additionalProperties:false}
+ const definition={...tool('captured-once',async args=>{effects++;return args}),parameters:accessor,output:{get schema(){outputReads++;return{type:'object'}},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]}}
+ h.ctx.tools.register(definition);assert.equal(reads,1);assert.equal(outputReads,1)
+ assert.equal(h.ctx.tools.wireSchemas().schemas.find(schema=>schema.name==='captured-once').parameters.properties.n.minimum,5)
+ assert.equal((await h.run('captured-once',{n:2})).error.info.code,'INVALID_ARGS');assert.equal(effects,0);assert.equal(wrappers,0);assert.equal(reads,1);assert.equal(outputReads,1)
+ assert.equal((await h.run('captured-once',{n:5})).isError,false);assert.equal(effects,1);assert.equal(wrappers,1)
+ assert.equal(reads,1);assert.equal(outputReads,1)
+})

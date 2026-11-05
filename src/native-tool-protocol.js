@@ -1,7 +1,10 @@
-// MIT source-derived schema, tool definitions, code SDK and canonical error protocols; no legacy ToolRuntime/layers.
+// Official Pi owns schema validation and TypeScript declarations. Attributed
+// authoring DSL, Python SDK and canonical errors remain; no legacy tool loop.
 import { HarnessError } from "./native-llm-protocol.js";
-import { assertNever, isJsonValue, deepFreeze, snapshotJsonValue } from "./native-values.js";
-import { validateToolSchemaValue } from "./runtime/tool-schema-value.js";
+import { deepFreeze, snapshotJsonValue } from "./native-values.js";
+import { captureToolSchema, validateToolSchemaValue, toolSchemaContractJson } from "./runtime/tool-schema-value.js";
+import { toolSchemaViolations } from "./runtime/tool-schema-admission.js";
+import {schemaToType,renderDeclarations} from "@earendil-works/pi-codemode/declarations";
 var JsonSchemaError = class extends HarnessError {
 	/** Individual schema violations in walk order. */
 	violations;
@@ -12,36 +15,10 @@ var JsonSchemaError = class extends HarnessError {
 	}
 };
 const VALUE_CONSTRAINT_TYPES = {
-  minimum: ["number", "integer"], maximum: ["number", "integer"],
+  minimum: ["number", "integer"], maximum: ["number", "integer"], exclusiveMinimum: ["number", "integer"], exclusiveMaximum: ["number", "integer"],
   minLength: ["string"], maxLength: ["string"], pattern: ["string"], format: ["string"],
   minItems: ["array"], maxItems: ["array"], uniqueItems: ["array"]
 };
-const CONSTRAINT_KEYWORDS = new Set([
-  ...Object.keys(VALUE_CONSTRAINT_TYPES),
-	"type",
-	"oneOf",
-	"properties",
-	"required",
-	"additionalProperties",
-	"items",
-	"enum",
-	"const"
-]);
-const ANNOTATION_KEYWORDS = new Set([
-	"description",
-	"title",
-	"default",
-	"examples"
-]);
-const SCHEMA_TYPES = [
-	"object",
-	"array",
-	"string",
-	"number",
-	"integer",
-	"boolean",
-	"null"
-];
 function hasIntrinsicConstructor(prototype, name) {
 	const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
 	if (typeof constructor !== "function") return false;
@@ -89,234 +66,20 @@ function isPlainJsonArray(value) {
 		return false;
 	}
 }
-function isJsonNumber(value) {
-	return typeof value === "number" && Number.isFinite(value) && !Object.is(value, -0);
-}
-function scalarMatches(type, value) {
-	switch (type) {
-		case "string": return typeof value === "string";
-		case "number": return isJsonNumber(value);
-		case "integer": return isJsonNumber(value) && Number.isInteger(value);
-		case "boolean": return typeof value === "boolean";
-		case "null": return value === null;
-		/* v8 ignore next -- JsonSchemaScalarType is closed; this retains compile-time exhaustiveness. */
-		default: return assertNever(type, "JsonSchemaType");
-	}
-}
-const ONE_OF_SIBLING_KEYWORDS = [
-  ...Object.keys(VALUE_CONSTRAINT_TYPES),
-	"properties",
-	"required",
-	"additionalProperties",
-	"items",
-	"enum",
-	"const"
-];
-function checkObjectSchemaTail(node, path, properties, violations) {
-	const hasRequired = Object.hasOwn(node, "required");
-	const required = hasRequired ? node.required : void 0;
-	if (hasRequired) if (!isPlainJsonArray(required) || required.some((entry) => typeof entry !== "string")) violations.push(`${path}.required must be an array of strings`);
-	else {
-		const declared = isJsonSchemaRecord(properties) ? properties : {};
-		for (const key of required) if (!Object.hasOwn(declared, key)) violations.push(`${path}.required names "${key}" which is not in properties`);
-	}
-	if (Object.hasOwn(node, "additionalProperties") && typeof node.additionalProperties !== "boolean") violations.push(`${path}.additionalProperties must be a boolean`);
-}
-function checkSchemaNode(root, rootPath, violations, seen) {
-	const tasks = [{
-		kind: "enter",
-		node: root,
-		path: rootPath
-	}];
-	for (let task = tasks.pop(); task !== void 0; task = tasks.pop()) {
-		if (task.kind === "leave") {
-			seen.delete(task.node);
-			continue;
-		}
-		if (task.kind === "one-of-tail") {
-			for (const key of ONE_OF_SIBLING_KEYWORDS) if (Object.hasOwn(task.node, key)) violations.push(`${task.path}.${key} is not supported beside oneOf`);
-			continue;
-		}
-		if (task.kind === "object-tail") {
-			checkObjectSchemaTail(task.node, task.path, task.properties, violations);
-			continue;
-		}
-		const { node, path } = task;
-		if (!isJsonSchemaRecord(node)) {
-			violations.push(`${path} must be a schema object`);
-			continue;
-		}
-		if (seen.has(node)) {
-			violations.push(`${path} is circular`);
-			continue;
-		}
-		seen.add(node);
-		tasks.push({
-			kind: "leave",
-			node
-		});
-		for (const key of Object.keys(node)) {
-			if (CONSTRAINT_KEYWORDS.has(key)) continue;
-			if (ANNOTATION_KEYWORDS.has(key)) {
-				try {
-					if (!isJsonValue(node[key])) violations.push(`${path}.${key} annotation must be lossless JSON data`);
-				} catch {
-					violations.push(`${path}.${key} annotation must be lossless JSON data`);
-				}
-				continue;
-			}
-			violations.push(`${path}.${key} is not a supported keyword (supported: type/oneOf/properties/required/additionalProperties/items/enum/const, numeric bounds, string/array constraints + annotations)`);
-		}
-		if (Object.hasOwn(node, "description") && typeof node.description !== "string") violations.push(`${path}.description must be a string`);
-		if (Object.hasOwn(node, "title") && typeof node.title !== "string") violations.push(`${path}.title must be a string`);
-		const hasType = Object.hasOwn(node, "type");
-		const hasOneOf = Object.hasOwn(node, "oneOf");
-		if (hasType && hasOneOf) {
-			violations.push(`${path} cannot declare both type and oneOf`);
-			continue;
-		}
-		if (!hasType && !hasOneOf) {
-      // Core tools also use standard type-free enums (for example task state).
-      // Admit their JSON values and enforce equality, rather than dropping them.
-      for (const key of ONE_OF_SIBLING_KEYWORDS) if (key !== "enum" && key !== "const" && Object.hasOwn(node, key)) violations.push(`${path}.${key} requires type or oneOf`);
-      let enumValid = false;
-      if (Object.hasOwn(node, "enum")) {
-        enumValid = isPlainJsonArray(node.enum) && node.enum.length > 0 && node.enum.every(value => isJsonValue(value));
-        if (!enumValid) violations.push(`${path}.enum must be a non-empty array of lossless JSON values`);
-      }
-      if (Object.hasOwn(node, "const")) {
-        if (!isJsonValue(node.const)) violations.push(`${path}.const must be a lossless JSON value`);
-        else if (enumValid && validateToolSchemaValue({enum: node.enum}, node.const).length) violations.push(`${path}.const must be one of ${path}.enum when both are declared`);
-      }
-			continue;
-		}
-		if (hasOneOf) {
-			const oneOf = node.oneOf;
-			tasks.push({
-				kind: "one-of-tail",
-				node,
-				path
-			});
-			if (!isPlainJsonArray(oneOf) || oneOf.length < 2) violations.push(`${path}.oneOf must be an array of at least two schemas`);
-			else for (let index = oneOf.length - 1; index >= 0; index--) tasks.push({
-				kind: "enter",
-				node: oneOf[index],
-				path: `${path}.oneOf[${index}]`
-			});
-			continue;
-		}
-		const type = node.type;
-		if (typeof type !== "string" || !SCHEMA_TYPES.includes(type)) {
-			violations.push(Array.isArray(type) ? `${path}.type must be a single type string (type arrays are not supported)` : `${path}.type must be one of ${SCHEMA_TYPES.join("/")}`);
-			continue;
-		}
-		const schemaType = type;
-    for (const [key, types] of Object.entries(VALUE_CONSTRAINT_TYPES)) {
-      if (!Object.hasOwn(node, key)) continue;
-      if (!types.includes(type)) { violations.push(`${path}.${key} is not supported on type "${type}"`); continue; }
-      const value = node[key];
-      if (key === "minimum" || key === "maximum") {
-        if (typeof value !== "number" || !Number.isFinite(value)) violations.push(`${path}.${key} must be a finite number`);
-      } else if (key === "uniqueItems") {
-        if (typeof value !== "boolean") violations.push(`${path}.${key} must be a boolean`);
-      } else if (key === "format") {
-        if (value !== "date-time") violations.push(`${path}.format must be the supported format "date-time"`);
-      } else if (key === "pattern") {
-        if (typeof value !== "string") violations.push(`${path}.pattern must be a string`);
-        else { try { new RegExp(value, "u"); } catch { violations.push(`${path}.pattern must be a valid Unicode regular expression`); } }
-      } else if (!Number.isSafeInteger(value) || value < 0) violations.push(`${path}.${key} must be a nonnegative safe integer`);
-    }
-    for (const [lower, upper] of [["minimum", "maximum"], ["minLength", "maxLength"], ["minItems", "maxItems"]]) {
-      if (Object.hasOwn(node, lower) && Object.hasOwn(node, upper) && typeof node[lower] === "number" && typeof node[upper] === "number" && node[lower] > node[upper]) violations.push(`${path}.${lower} must not exceed ${upper}`);
-    }
-		for (const [key, types] of Object.entries({
-			properties: ["object"],
-			required: ["object"],
-			additionalProperties: ["object"],
-			items: ["array"],
-			enum: [
-				"string",
-				"number",
-				"integer",
-				"boolean",
-				"null"
-			],
-			const: [
-				"string",
-				"number",
-				"integer",
-				"boolean",
-				"null"
-			]
-		})) if (Object.hasOwn(node, key) && !types.includes(schemaType)) violations.push(`${path}.${key} is not supported on type "${schemaType}"`);
-		switch (schemaType) {
-			case "object": {
-				const properties = Object.hasOwn(node, "properties") ? node.properties : void 0;
-				tasks.push({
-					kind: "object-tail",
-					node,
-					path,
-					properties
-				});
-				if (Object.hasOwn(node, "properties")) if (!isJsonSchemaRecord(properties)) violations.push(`${path}.properties must be an object of schemas`);
-				else {
-					const entries = Object.entries(properties);
-					for (let index = entries.length - 1; index >= 0; index--) {
-						const entry = entries[index];
-						/* v8 ignore next -- the loop is bounded by the captured entry count. */
-						if (entry === void 0) continue;
-						tasks.push({
-							kind: "enter",
-							node: entry[1],
-							path: `${path}.properties.${entry[0]}`
-						});
-					}
-				}
-				break;
-			}
-			case "array":
-				if (Object.hasOwn(node, "items")) tasks.push({
-					kind: "enter",
-					node: node.items,
-					path: `${path}.items`
-				});
-				break;
-			case "string":
-			case "number":
-			case "integer":
-			case "boolean":
-			case "null": {
-				const hasEnum = Object.hasOwn(node, "enum");
-				const allowed = hasEnum ? node.enum : void 0;
-				const enumValid = isPlainJsonArray(allowed) && allowed.length > 0 && allowed.every((entry) => scalarMatches(schemaType, entry));
-				if (hasEnum && !enumValid) violations.push(`${path}.enum must be a non-empty array of ${schemaType} values`);
-				const hasConst = Object.hasOwn(node, "const");
-				const declaredConst = hasConst ? node.const : void 0;
-				const constValid = scalarMatches(schemaType, declaredConst);
-				if (hasConst) {
-					if (!constValid) violations.push(`${path}.const must be a ${schemaType} value`);
-					else if (enumValid && !allowed.includes(declaredConst)) violations.push(`${path}.const must be one of ${path}.enum when both are declared`);
-				}
-				break;
-			}
-			/* v8 ignore next -- schemaType was narrowed from the closed SCHEMA_TYPES table above. */
-			default: assertNever(schemaType, "JsonSchemaType");
-		}
-	}
-}
 function assertSupportedJsonSchema(schema) {
-	const violations = [];
-	checkSchemaNode(schema, "schema", violations, /* @__PURE__ */ new Set());
+	const violations = toolSchemaViolations(schema);
 	if (violations.length > 0) throw new JsonSchemaError(violations);
 }
 function assertObjectJsonSchema(schema) {
-	const violations = [];
-	checkSchemaNode(schema, "schema", violations, /* @__PURE__ */ new Set());
-	if (violations.length === 0 && (!isJsonSchemaRecord(schema) || !Object.hasOwn(schema, "type") || schema.type !== "object")) violations.push("schema.type must be \"object\" (structured output is object-rooted)");
+  let captured;
+  try { captured = captureToolSchema(schema); }
+  catch { throw new JsonSchemaError(["schema must be lossless JSON schema data"]); }
+	const violations = toolSchemaViolations(captured);
+	if (violations.length === 0 && (!isJsonSchemaRecord(captured) || !Object.hasOwn(captured, "type") || captured.type !== "object")) violations.push("schema.type must be \"object\" (structured output is object-rooted)");
 	if (violations.length > 0) throw new JsonSchemaError(violations);
 }
-// JSON value execution is application-owned; schema admission and authoring remain
-// explicitly attributed while their separate migration is in progress.
+// Official Pi validates values; Night supplies policy, lossless capture and error
+// framing. The authoring DSL and Python SDK below remain explicitly attributed.
 const validateJsonSchemaValue = validateToolSchemaValue;
 const ANNOTATION_KEYS = [
 	"description",
@@ -629,187 +392,10 @@ const RUN_CODE_NAME = "run_code";
 class CodeRunFailedError extends HarnessError {
  constructor(message){super(message,'CODE_RUN_FAILED');this.name='CodeRunFailedError'}
 }
-const IDENTIFIER$1 = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-function renderKey(name) {
-	return IDENTIFIER$1.test(name) ? name : JSON.stringify(name);
-}
-function pad$1(indent) {
-	return "  ".repeat(indent);
-}
-function docLines$1(description, indent) {
-	if (typeof description !== "string" || description.length === 0) return [];
-	const collapsed = description.replace(/\s+/g, " ").trim();
-	return [`${pad$1(indent)}/** ${collapsed.replaceAll("*/", String.raw`*\/`)} */`];
-}
-function renderScalar(value) {
-	return JSON.stringify(value);
-}
-function renderConstrainedScalar$1(node, type) {
-	const broad = type === "integer" ? "number" : type;
-	if (Object.hasOwn(node, "const")) return renderScalar(node.const);
-	if (Object.hasOwn(node, "enum")) return node.enum.map(renderScalar).join(" | ");
-	return broad;
-}
-function typeDocumentFrom(parts) {
-	return {
-		parts,
-		containsUnionOrIntersection: parts.some((part) => typeof part === "string" ? part.includes("|") || part.includes("&") : part.containsUnionOrIntersection)
-	};
-}
-function typeDocument(...parts) {
-	return typeDocumentFrom(parts);
-}
-function flattenTypeDocument(document) {
-	const chunks = [];
-	const tasks = [document];
-	for (let task = tasks.pop(); task !== void 0; task = tasks.pop()) {
-		if (typeof task === "string") {
-			chunks.push(task);
-			continue;
-		}
-		for (let index = task.parts.length - 1; index >= 0; index--) {
-			const part = task.parts[index];
-			/* v8 ignore next -- the loop is bounded by the captured part count. */
-			if (part !== void 0) tasks.push(part);
-		}
-	}
-	return chunks.join("");
-}
-function schemaRenderFrame(node, indent) {
-	return {
-		node,
-		indent,
-		phase: "start",
-		children: [],
-		childIndex: 0,
-		childDocuments: [],
-		entries: []
-	};
-}
-function renderSupportedSchema(schema, indent) {
-	const frames = [schemaRenderFrame(schema, indent)];
-	let rootDocument;
-	const finish = (document) => {
-		frames.pop();
-		const parent = frames.at(-1);
-		if (parent === void 0) rootDocument = document;
-		else parent.childDocuments.push(document);
-	};
-	while (frames.length > 0) {
-		const frame = frames.at(-1);
-		/* v8 ignore next -- the loop condition guarantees a current frame. */
-		if (frame === void 0) break;
-		if (frame.phase === "children") {
-			if (frame.childIndex < frame.children.length) {
-				const child = frame.children[frame.childIndex];
-				/* v8 ignore next -- childIndex is bounded by children.length. */
-				if (child === void 0) throw new Error("missing schema render child");
-				frame.childIndex++;
-				frames.push(schemaRenderFrame(child.node, child.indent));
-				continue;
-			}
-			if (frame.kind === "oneOf") {
-				const parts = [];
-				for (let index = 0; index < frame.childDocuments.length; index++) {
-					if (index > 0) parts.push(" | ");
-					const child = frame.childDocuments[index];
-					/* v8 ignore next -- child documents correspond one-to-one with children. */
-					if (child !== void 0) parts.push(child);
-				}
-				finish(typeDocumentFrom(parts));
-				continue;
-			}
-			if (frame.kind === "array") {
-				const child = frame.childDocuments[0];
-				/* v8 ignore next -- array frames always schedule exactly one child. */
-				if (child === void 0) throw new Error("missing array item type");
-				finish(child.containsUnionOrIntersection ? typeDocument("(", child, ")[]") : typeDocument(child, "[]"));
-				continue;
-			}
-			const required = new Set(frame.node.required);
-			const parts = ["{"];
-			for (let index = 0; index < frame.entries.length; index++) {
-				const entry = frame.entries[index];
-				const child = frame.childDocuments[index];
-				/* v8 ignore next -- object entries and child documents have the same length. */
-				if (entry === void 0 || child === void 0) throw new Error("missing object property type");
-				const [name, prop] = entry;
-				for (const line of docLines$1(prop.description, frame.indent + 1)) parts.push("\n", line);
-				parts.push("\n", `${pad$1(frame.indent + 1)}${renderKey(name)}${required.has(name) ? "" : "?"}: `, child, ";");
-			}
-			parts.push("\n", `${pad$1(frame.indent)}}`);
-			const declared = typeDocumentFrom(parts);
-			finish(frame.node.additionalProperties === false ? declared : typeDocument(declared, " & Record<string, JsonValue>"));
-			continue;
-		}
-		const node = frame.node;
-		if (node.oneOf !== void 0) {
-			frame.kind = "oneOf";
-			frame.children = Array.from(node.oneOf, (child) => ({
-				node: child,
-				indent: frame.indent
-			}));
-			frame.childIndex = 0;
-			frame.childDocuments = [];
-			frame.phase = "children";
-			continue;
-		}
-		if (node.type === void 0) {
-			finish(typeDocument("JsonValue"));
-			continue;
-		}
-		switch (node.type) {
-			case "string":
-			case "number":
-			case "integer":
-			case "boolean":
-			case "null":
-				finish(typeDocument(renderConstrainedScalar$1(node, node.type)));
-				break;
-			case "array":
-				if (node.items === void 0) finish(typeDocument("JsonValue[]"));
-				else {
-					frame.kind = "array";
-					frame.children = [{
-						node: node.items,
-						indent: frame.indent
-					}];
-					frame.childIndex = 0;
-					frame.childDocuments = [];
-					frame.phase = "children";
-				}
-				break;
-			case "object": {
-				const open = node.additionalProperties !== false;
-				const entries = Object.entries(node.properties ?? {});
-				if (entries.length === 0) finish(typeDocument(open ? "Record<string, JsonValue>" : "Record<string, never>"));
-				else {
-					frame.kind = "object";
-					frame.entries = entries;
-					frame.children = entries.map(([, child]) => ({
-						node: child,
-						indent: frame.indent + 1
-					}));
-					frame.childIndex = 0;
-					frame.childDocuments = [];
-					frame.phase = "children";
-				}
-				break;
-			}
-			/* v8 ignore next -- assertSupportedJsonSchema narrowed this closed type union. */
-			default: finish(typeDocument("unknown"));
-		}
-	}
-	/* v8 ignore next -- every root frame produces one document. */
-	return rootDocument ?? typeDocument("unknown");
-}
-function jsonSchemaToTs(schema, indent = 0) {
-	try {
-		assertSupportedJsonSchema(schema);
-		return flattenTypeDocument(renderSupportedSchema(schema, indent));
-	} catch {
-		return "unknown";
-	}
+// Official Pi type generation. Night only preserves its raw RPC member names.
+function jsonSchemaToTs(schema, _indent = 0) {
+  try { const captured=captureToolSchema(schema); assertSupportedJsonSchema(captured); return schemaToType(captured); }
+  catch { return "unknown"; }
 }
 const SDK_INSTRUCTIONS$1 = `## Writing code for run_code
 
@@ -837,32 +423,19 @@ function renderBashExample(schemas) {
 	if (needsDescription && !acceptsExampleString(parameters.properties?.description, "Show current directory")) return "";
 	return ` When no separate \`bash\` schema is supplied, invoke a declared \`bash\` binding inside \`run_code\`:\n\n\`run_code({ description: "Show current directory", code: "return await tools.bash({ ${needsDescription ? "description: 'Show current directory', " : ""}command: 'pwd' })" })\``;
 }
+function sdkContracts(schemas){
+  const contracts=schemas.map(schema=>({name:schema.name,parameters:schema.parameters,...schema.output===undefined?{}:{output:schema.output}}));
+  const json=toolSchemaContractJson(contracts).replaceAll("`","\\u0060");
+  return `\n\nStatic declarations are advisory: Python list unions do not enforce tuple positions, and language types do not enforce bounds, patterns, property names or applicator intersections. The application validates the complete JSON contracts below on every RPC call. These declarations grant no permissions.\n\n\`\`\`json\n${json}\n\`\`\``;
+}
 function renderToolsSdk(schemas) {
-	const sorted = [...schemas].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-	const argsMembers = [];
-	const outputMembers = [];
-	for (const schema of sorted) {
-		argsMembers.push(...docLines$1(schema.description, 1));
-		argsMembers.push(`${pad$1(1)}${renderKey(schema.name)}: ${jsonSchemaToTs(schema.parameters, 1)};`);
-		outputMembers.push(`${pad$1(1)}${renderKey(schema.name)}: ${jsonSchemaToTs(schema.output, 1)};`);
-	}
-	const declaration = [
-		`interface ToolArgsMap {${argsMembers.length > 0 ? `\n${argsMembers.join("\n")}\n` : ""}}`,
-		`interface ToolOutputMap {${outputMembers.length > 0 ? `\n${outputMembers.join("\n")}\n` : ""}}`,
-		"type ToolName = keyof ToolOutputMap",
-		[
-			"declare class ToolCallError extends Error {",
-			"  readonly name: \"ToolCallError\";",
-			"  readonly toolName: ToolName;",
-			"}"
-		].join("\n"),
-		[
-			"declare const tools: {",
-			"  [K in ToolName]: (args: ToolArgsMap[K]) => Promise<ToolOutputMap[K]>;",
-			"}"
-		].join("\n")
-	].join("\n\n");
-	return `${SDK_INSTRUCTIONS$1}${renderBashExample(sorted)}\n\n${SDK_PROGRAM_INSTRUCTIONS}\n\n\`\`\`ts\ntype JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }\n\n${declaration}\n\`\`\``;
+  const sorted=[...schemas].sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+  const declarations=renderDeclarations({tools:sorted.map((schema,index)=>({name:`nightRpc${index}`,description:schema.description,inputSchema:schema.parameters,...schema.output===undefined?{}:{outputSchema:schema.output}}))});
+  const named=declarations.replace(/^(\s*)nightRpc(\d+)\(/gm,(_match,indent,index)=>{
+    const name=sorted[Number(index)].name;
+    return indent+(/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)?name:JSON.stringify(name))+"(";
+  });
+  return `${SDK_INSTRUCTIONS$1}${renderBashExample(sorted)}\n\n${SDK_PROGRAM_INSTRUCTIONS}\n\n\`\`\`ts\ndeclare class ToolCallError extends Error { readonly toolName: string; }\n${named}\n\`\`\`${sdkContracts(sorted)}`;
 }
 const IDENTIFIER = /^[\p{XID_Start}_]\p{XID_Continue}*$/u;
 function isBareIdentifier(name) {
@@ -907,6 +480,7 @@ const RESERVED = new Set([
 	"__debug__"
 ]);
 const TYPING_ORDER = [
+  "Never",
 	"Any",
 	"Literal",
 	"NotRequired",
@@ -1014,6 +588,8 @@ function renderType(schema, className, state) {
 					finish(union);
 					continue;
 				}
+				if(frame.kind==="tuple"){finish(`list[${[...new Set(frame.childTypes)].join(" | ")||"Never"}]`);if(!frame.childTypes.length)state.typing.add("Never");continue;}
+        if(frame.kind==="record"){finish(`dict[str, ${frame.childTypes[0]}]`);continue;}
 				if (frame.kind === "array") {
 					/* v8 ignore next -- the ?? arm needs a childless array frame, which start never builds. */
 					finish(`list[${frame.childTypes[0] ?? "Any"}]`);
@@ -1047,16 +623,13 @@ function renderType(schema, className, state) {
 			}
 			frame.phase = "children";
 			const node = frame.schema;
-			if (node.oneOf !== void 0) {
-				frame.kind = "oneOf";
-				frame.children = node.oneOf.map((branch, index) => ({
-					schema: branch,
-					className: childClassName(frame.className, `${index + 1}`),
-					listDepth: frame.listDepth
-				}));
-				continue;
-			}
+      if(typeof node==="boolean"){state.typing.add(node?"Any":"Never");finish(node?"Any":"Never");continue;}
+      const alternatives=node.oneOf??node.anyOf??(Array.isArray(node.type)?node.type.map(type=>({...node,type})):undefined);
+      if(alternatives){
+        frame.kind="oneOf";frame.children=alternatives.map((branch,index)=>({schema:branch,className:childClassName(frame.className,String(index+1)),listDepth:frame.listDepth}));continue;
+      }
 			if (node.type === void 0) {
+        if(node.enum?.every(value=>value===null||["string","number","boolean"].includes(typeof value))||Object.hasOwn(node,"const")&&(node.const===null||["string","number","boolean"].includes(typeof node.const))){finish(renderConstrainedScalar(node,"Any",state));continue;}
 				state.typing.add("Any");
 				finish("Any");
 				continue;
@@ -1078,6 +651,10 @@ function renderType(schema, className, state) {
 					finish("None");
 					break;
 				case "array":
+          if(node.prefixItems!==undefined||node.items===false){
+            frame.kind="tuple";const children=[...node.prefixItems??[],...node.items===false?[]:[node.items??{}]];
+            frame.children=children.map((child,index)=>({schema:child,className:childClassName(frame.className,String(index+1)),listDepth:frame.listDepth+1}));continue;
+          }
 					if (node.items === void 0) {
 						state.typing.add("Any");
 						finish("list[Any]");
@@ -1097,6 +674,9 @@ function renderType(schema, className, state) {
 					break;
 				case "object": {
 					const entries = Object.entries(node.properties ?? {});
+          if(entries.length===0&&typeof node.additionalProperties==="object"){
+            frame.kind="record";frame.children=[{schema:node.additionalProperties,className:childClassName(frame.className,"Value"),listDepth:frame.listDepth}];continue;
+          }
 					if (className === "" || !entries.every(([name]) => isBareIdentifier(name) && !RESERVED.has(name) && !(name.startsWith("__") && !name.endsWith("__")))) {
 						state.typing.add("Any");
 						finish("dict[str, Any]");
@@ -1179,7 +759,7 @@ function renderToolsSdkPy(schemas) {
 	const imports = TYPING_ORDER.filter((symbol) => state.typing.has(symbol));
 	const classBlock = state.classes.length > 0 ? `${state.classes.join("\n\n")}\n\n` : "";
 	return `${SDK_INSTRUCTIONS}\n\n\`\`\`python\n${`from typing import ${imports.join(", ")}\n\nclass ToolCallError(Exception):
-    toolName: str\n\n${classBlock}class Tools(Protocol):\n${body}\n\ntools: Tools`}\n\`\`\``;
+    toolName: str\n\n${classBlock}class Tools(Protocol):\n${body}\n\ntools: Tools`}\n\`\`\`${sdkContracts(sorted)}`;
 }
 const TOOL_RUNTIME_SCHEDULER = Symbol("night-bot.tool-scheduler");
 const TOOL_ABORTED = "ABORTED";

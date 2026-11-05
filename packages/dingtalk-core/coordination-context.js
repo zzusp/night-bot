@@ -1,22 +1,33 @@
 import { fingerprint } from './topic-model.js'
 import { z } from 'zod'
-const projections = new WeakMap()
+import {isApplicationSession} from '../../src/native-session-protocol.js'
 
-// 只读取 DSH 当前 surface 上的工具结果；原始事件日志、压缩摘要和模型复述不构成正文可见证明。
+// Pure composition fakes have no execution context or branded application session.
+// A production agent must read its live Pi writer; errors never fall back to audit.
+function coordinationProjection(agent) {
+  if(!agent||typeof agent!=='object')throw new Error('COORDINATION_PI_AGENT_REQUIRED')
+  const authority=agent?.ctx?.get?.('piAuthority')
+  if(!authority){
+    if(agent?.ctx||isApplicationSession(agent?.session))throw new Error('COORDINATION_PI_AUTHORITY_REQUIRED')
+    return undefined
+  }
+  const context=authority.context(agent.id,{projectionOnly:true})
+  if(!Array.isArray(context?.projection?.entries)||!Array.isArray(context.projection.messages))throw new Error('COORDINATION_PI_CONTEXT_INVALID')
+  return context.projection
+}
+
+export function coordinationMessages(agent){return coordinationProjection(agent)?.messages}
+
+// 只读取当前 Pi 模型上下文；审计日志、压缩摘要和模型复述不构成正文可见证明。
 export function visibleToolOutputs(agent) {
-  const session = agent?.session
-  const generation = session?.surface && `${session.surface.replaceGeneration}:${session.surface.nodes.length}`
-  const previous = session && projections.get(session)
-  if (generation !== undefined && previous?.generation === generation) return previous.outputs
   const outputs = []
-  const messages = agent?.session?.deriveMessages?.() ?? []
-  const calls = new Map(messages.flatMap((message) => message.content ?? []).filter((block) => block.type === 'tool-call').map((block) => [block.id, block.name]))
+  const messages = coordinationMessages(agent) ?? []
+  const calls = new Map(messages.filter(message=>message.role==='assistant').flatMap((message) => message.content ?? []).filter((block) => block.type === 'toolCall').map((block) => [block.id, block.name]))
   for (const message of messages) {
-    if (message.role !== 'tool' || message.isError || !['group_task_prompt_get', 'group_task_review_context_get', 'group_decision_context_get', 'group_topic_context_get'].includes(calls.get(message.toolCallId))) continue
+    if (message.role !== 'toolResult' || message.isError || !['group_task_prompt_get', 'group_task_review_context_get', 'group_decision_context_get', 'group_topic_context_get'].includes(calls.get(message.toolCallId))) continue
     const text = (message.content ?? []).filter((item) => item.type === 'text').map((item) => item.text).join('\n')
     try { outputs.push(JSON.parse(text)) } catch { /* 非 JSON 工具结果不能证明结构化内容身份。 */ }
   }
-  if (session && generation !== undefined) projections.set(session, { generation, outputs })
   return outputs
 }
 
@@ -38,8 +49,12 @@ export function visibleSectionLength(agent, text) {
 }
 
 export function visibleCoordinatorText(agent, text) {
-  return agent?.session?.deriveMessages?.().some((message) => message.role === 'user' && message.source?.kind === 'coordinator'
-    && message.content?.some((part) => part.type === 'text' && part.text === text)) ?? false
+  const projection=coordinationProjection(agent)
+  return projection?.entries.some(({sourceEntry,messages})=>{
+    const event=sourceEntry.type==='message'&&sourceEntry.message.role==='user'?sourceEntry.message.night?.event:undefined
+    return event?.type==='user/message'&&event.data.source?.kind==='coordinator'
+      &&messages.some(message=>message.role==='user'&&(typeof message.content==='string'?message.content===text:message.content?.some(part=>part.type==='text'&&part.text===text)))
+  })??false
 }
 
 // 仅在同一请求的首包内去重；原 section 保持完整，分页及当前 surface 校验仍读取原文。

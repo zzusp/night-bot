@@ -19,7 +19,7 @@ test('根协调联合在只保留properties/required的提供方仍公开可填�
   const providerSchema = { type: 'object', properties: schema.properties ?? {}, required: schema.required ?? [] }
   assert.ok(providerSchema.required.includes('kind'))
   for (const key of ['kind', 'members', 'question', 'coordinationId', 'expectedRevision']) assert.ok(providerSchema.properties[key])
-  assert.equal(schema.oneOf, undefined, 'DSH不支持根oneOf与properties并列，分支精确约束在执行时原Zod')
+  assert.ok(schema.oneOf?.length || schema.anyOf?.length, '完整分支保留在对象根，原生校验和Zod共同拒绝错分支')
   assert.ok(violations(providerSchema, {}).length)
   const proposal = { kind: 'arrangement', members: [{ action: 'task-observe', taskId: 'original', inputVersion: 4, runSequence: 4 }] }
   validateJsonSchemaValue(providerSchema, proposal)
@@ -29,12 +29,12 @@ test('根协调联合在只保留properties/required的提供方仍公开可填�
   assert.equal(coordinationProposalSchema.safeParse({}).success, false)
 })
 
-test('真实DSH接受同源生成的工具契约，无Zod元属性或不支持关键字', () => {
+test('原生校验接受同源生成的精确工具契约，无Zod元属性或不支持关键字', () => {
   for (const schema of [taskCheckpointJsonSchema, taskResultJsonSchema, groupDecisionSubmissionJsonSchema, replyReviewJsonSchema]) assert.doesNotThrow(() => assertSupportedJsonSchema(schema))
 })
 
 test('群回复工具公开审阅集合合同，保留optional补答及原精确校验', () => {
-  const replyBranch=groupDecisionSubmissionJsonSchema.properties.decision.oneOf.find(branch=>branch.properties.reply)
+  const replyBranch=(groupDecisionSubmissionJsonSchema.properties.decision.anyOf??groupDecisionSubmissionJsonSchema.properties.decision.oneOf).find(branch=>branch.properties.reply)
   assert.ok(!replyBranch.required.includes('replyReview'),'仍由Host按回复事实请求补答，不改为schema必填')
   assert.match(replyBranch.properties.replyReview.description,/候选为空也须声明kind/)
   for(const schema of [replyReviewJsonSchema,replyBranch.properties.replyReview]) {
@@ -52,25 +52,25 @@ test('群回复工具公开审阅集合合同，保留optional补答及原精确
   assert.throws(()=>groupDecisionSchema.parse({...decision,replyReview:{kind:'unknown'}}))
   assert.throws(()=>groupDecisionSchema.parse({...decision,replyReview:{kind:'confirmation',replaceOutboundIds:[1]}}))
 })
-test('DSH wire保留checkpoint kind互斥、错误字段拒绝；长度由Zod精确执行', () => {
+test('原生wire保留checkpoint kind互斥、错误字段拒绝；长度由Zod精确执行', () => {
   const diagnostic = { inputVersion: 1, runSequence: 1, kind: 'risk-changed', summary: '风险', nextStep: '核对', stageTask: '部署' }
   assert.doesNotThrow(() => validateJsonSchemaValue(taskCheckpointJsonSchema, diagnostic))
   assert.throws(() => validateJsonSchemaValue(taskCheckpointJsonSchema, { ...diagnostic, kind: 'unknown' }))
   assert.throws(() => validateJsonSchemaValue(taskCheckpointJsonSchema, { ...diagnostic, workflowAssessment: { promptRefs: [] } }))
   assert.throws(() => parseTaskCheckpoint({ ...diagnostic, completedItems: ['已完成'] }))
 })
-test('DSH wire保留result status/waitingKind区分，群动作仍按kind校验', () => {
+test('原生wire保留result status/waitingKind区分，群动作仍按kind校验', () => {
   assert.doesNotThrow(() => validateJsonSchemaValue(taskResultJsonSchema, { inputVersion: 1, runSequence: 1, status: 'completed', planRevision: plan.revision, criterionReviews: [{ criterionId: plan.criteria[0].criterionId, evidenceRefs: [stage.evidence.evidenceId], verdict: 'pass', reason: '已核验' }], summary: '完成', evidence: ['proof'] }))
   assert.throws(() => validateJsonSchemaValue(taskResultJsonSchema, { inputVersion: 1, runSequence: 1, status: 'waiting', summary: '等待' }))
   const decision = { actions: [{ kind: 'task-cancel', taskId: 't1', inputVersion: 1, runSequence: 1, reason: '取消', topicRefs: [{ topicId: 'topic1', revision: 1 }] }], basisMessageIds: ['m1'], reply: '' }
   const request = { requestId: 'r1', topicId: 'topic1', revision: 1, decision }
   assert.doesNotThrow(() => validateJsonSchemaValue(groupDecisionSubmissionJsonSchema, request))
   assert.throws(() => validateJsonSchemaValue(groupDecisionSubmissionJsonSchema, { ...request, decision: { ...decision, actions: [{ ...decision.actions[0], kind: 'shell' }] } }))
-  // wire不支持minItems及anyOf，精确空actions/reply/reason关系不能假称由DSH执行。
+  // 原生wire执行minItems/anyOf；跨字段superRefine仍由Zod最终执行。
   assert.throws(() => groupDecisionSchema.parse({ actions: [], basisMessageIds: ['m1'] }))
 })
 
-test('DSH wire要求新计划与阶段输出和完成验收字段，不接受仅旧字符串的提交', () => {
+test('原生wire要求新计划与阶段输出和完成验收字段，不接受仅旧字符串的提交', () => {
   const checkpoint = { inputVersion: 1, runSequence: 1, kind: 'plan-confirmed', summary: '计划', nextStep: '执行' }
   assert.throws(() => validateJsonSchemaValue(taskCheckpointJsonSchema, checkpoint))
   assert.doesNotThrow(() => validateJsonSchemaValue(taskCheckpointJsonSchema, { ...checkpoint, plan }))
@@ -82,7 +82,7 @@ test('DSH wire要求新计划与阶段输出和完成验收字段，不接受仅
   assert.throws(() => validateJsonSchemaValue(taskResultJsonSchema, { ...result, planRevision: 1 }))
 })
 
-test('完整协调工具契约经原生DSH校验，nullable候选仅允许字符串或null', () => {
+test('完整协调工具契约经原生校验，nullable候选仅允许字符串或null', () => {
   const schema = toToolJsonSchema(coordinatorDecisionSchema)
   assert.doesNotThrow(() => assertSupportedJsonSchema(schema))
   const candidate = schema.properties.decisions.items.properties.units.items.properties.binding.properties.candidateId
@@ -90,13 +90,13 @@ test('完整协调工具契约经原生DSH校验，nullable候选仅允许字符
   assert.ok(violations(candidate, 42).length)
 })
 
-test('JSON Schema type数组投影为DSH互斥类型分支，原Zod精确验证不变', () => {
+test('JSON Schema type数组原样保留，原Zod精确验证不变', () => {
   // Zod 4.5以type数组表达nullable；用元信息固定该输入形态，避免测试依赖本地Zod版本。
   const source = z.string().meta({ type: ['string', 'null'] })
   assert.deepEqual(z.toJSONSchema(source).type, ['string', 'null'])
   const schema = toToolJsonSchema(source)
   assert.doesNotThrow(() => assertSupportedJsonSchema(schema))
-  assert.deepEqual(schema.oneOf.map(branch => branch.type), ['string', 'null'])
+  assert.deepEqual(schema.type, ['string', 'null'])
   for (const value of ['candidate', null]) assert.deepEqual(violations(schema, value), [])
   assert.ok(violations(schema, false).length)
   assert.throws(() => source.parse(null))

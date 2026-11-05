@@ -24,6 +24,18 @@
       "version": "1.5.0",
       "sourcePackage": "packages/coding-agent/package.json",
       "sourcePackageSha256": "990aac3caff17b717294fa792b4e3f60b991d274d9f4ab6977d6aa42aa43c95e"
+    },
+    {
+      "name": "@earendil-works/pi-schema",
+      "version": "1.5.0",
+      "sourcePackage": "packages/schema/package.json",
+      "sourcePackageSha256": "88f3e22dc6830ed0a7dc287ce82dfc63a0958483143031e6f0c462183ad6177c"
+    },
+    {
+      "name": "@earendil-works/pi-codemode",
+      "version": "1.5.0",
+      "sourcePackage": "packages/codemode/package.json",
+      "sourcePackageSha256": "afcb00a94e443af214e383989af8cdebd72bfbcb3c777846d6b0afe40bd22eab"
     }
   ],
   "verification": "Tag resolved by git ls-remote; tag/commit license bytes match; pinned source package names/version/license match installed package metadata. npm artifact integrity remains pinned by pnpm-lock.yaml."

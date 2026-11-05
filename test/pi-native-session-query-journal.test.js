@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,writeFile,mkdir,cp} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import {buildSessionContext} from '@earendil-works/pi-coding-agent'
+import {buildSessionContext,buildSessionProjection} from '@earendil-works/pi-coding-agent'
 import {runtimePaths} from '../src/runtime/paths.js'
 import {portablePaths} from '../src/runtime/portable.js'
 import NativeSessions from '../src/native-sessions.js'
@@ -27,9 +27,10 @@ test('cold query context comes from the committed Pi journal without publishing 
  assert.equal(observation.context.engine,'pi-session-manager')
  assert.equal(observation.context.eventCount,session.seq)
  assert.ok(JSON.stringify(observation.context.piMessages).includes('COMMITTED_PI_CONTEXT'))
- assert.ok(JSON.stringify(observation.context.hostMessages).includes('COMMITTED_PI_CONTEXT'))
+ assert.deepEqual(observation.context.projection,buildSessionProjection(decoded.entries,decoded.entries.at(-1).id))
+ assert.equal(Object.hasOwn(observation.context,'hostMessages'),false)
  assert.equal(ctx.sessions.get(session.id),undefined);assert.equal(backend.writers.size,0)
- assert.equal(Object.isFrozen(observation.context.hostMessages),true)
+ assert.equal(Object.isFrozen(observation.context.projection.entries),true)
  assert.deepEqual(await readFile(path),before)
  // A read lease does not own the writer: a legitimate writer can open while
  // the retained observation keeps its exact committed context cut.
@@ -62,8 +63,14 @@ test('copied Night portable journal restores cold context and controlled paths t
  assert.equal(observation.header.cwd,paths.workspaces)
  assert.equal(observation.events.find(event=>event.type==='working-directory/change').data.cwd,paths.workspaces)
  assert.deepEqual(observation.context.piMessages,buildSessionContext(decoded.entries,decoded.entries.at(-1).id).messages)
- assert.ok(JSON.stringify(observation.context.hostMessages).includes('NIGHT_BACKUP_CONTEXT'))
+ assert.deepEqual(observation.context.projection,buildSessionProjection(decoded.entries,decoded.entries.at(-1).id))
+ assert.equal(Object.hasOwn(observation.context,'hostMessages'),false)
  assert.equal(observation.context.eventCount,session.seq)
+ const nativeSurface=await restored.ctx.sessionQuery.readSurface(session.id),documents=await restored.ctx.sessionQuery.readContextProjection(session.id)
+ assert.equal(nativeSurface.session.cwd,paths.workspaces)
+ assert.equal(nativeSurface.authority,'pi-session-manager')
+ assert.deepEqual(documents.messages,observation.context.projection.messages)
+ assert.ok(JSON.stringify(documents.messages).includes('NIGHT_BACKUP_CONTEXT'))
  assert.equal(restored.ctx.sessions.get(session.id),undefined);assert.equal(restored.backend.writers.size,0)
  observation[Symbol.dispose]();assert.deepEqual(await readFile(path),before)
 })

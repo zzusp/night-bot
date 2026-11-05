@@ -1,3 +1,4 @@
+import { LinuxProcessInspector, readLinuxStat, linuxProcessGroupHasLiveMembers } from "./linux-observation.js";
 import { bindManagedProcess } from "./managed-process.js";
 import { createLinuxGroupOwner } from "./linux-owner.js";
 import { createLinuxLaunchFiles, linuxLaunchFilesFromLocator, consumeLinuxLaunchRequest, writeLinuxStartupError, readLinuxStartupError, cleanupLinuxLaunchFiles } from "./linux-launch.js";
@@ -310,50 +311,6 @@ const DEFAULT_INTERNALS = {
 	exec: (file, args) => execFileSync(file, args, { encoding: "utf8" }),
 	kill: (pid, signal) => process.kill(pid, signal)
 };
-/**
-* Parse fields used from Linux `/proc/<pid>/stat`, including parenthesized comm text.
-* @param text - complete stat line.
-* @returns Parsed identity/group fields, or undefined for malformed input.
-*/
-function parseProcStat(text) {
-	const open = text.indexOf("(");
-	const close = text.lastIndexOf(")");
-	if (open <= 0 || close <= open) return void 0;
-	const pid = Number(text.slice(0, open).trim());
-	const rest = text.slice(close + 2).trim().split(/\s+/);
-	const state = rest[0] || "";
-	const parentPid = Number(rest[1]);
-	const pgrp = Number(rest[2]);
-	const session = Number(rest[3]);
-	const ttyDevice = Number(rest[4]);
-	const tpgid = Number(rest[5]);
-	const started = rest[19];
-	if (![
-		pid,
-		parentPid,
-		pgrp,
-		session,
-		ttyDevice,
-		tpgid
-	].every(Number.isSafeInteger) || state.length !== 1 || started === void 0) return void 0;
-	return {
-		pid,
-		parentPid,
-		pgrp,
-		session,
-		state,
-		ttyDevice,
-		tpgid,
-		started
-	};
-}
-function readLinuxStat(internals, pid) {
-	try {
-		return parseProcStat(internals.readFile(`/proc/${pid}/stat`));
-	} catch (_unreadableProcEntry) {
-		return;
-	}
-}
 function linuxDeviceNumber(value) {
 	return value >>> 0;
 }
@@ -368,31 +325,6 @@ function readLinuxTerminalDevice(internals, pid, ttyDevice, tid) {
 	} catch (_unreadableStdinDevice) {
 		return;
 	}
-}
-/**
-* Report whether a Linux process group has an executing member. `false`
-* means the group contains only zombie/dead entries; `undefined` means the
-* process table could not prove either outcome.
-* @param processGroupId - POSIX process-group id to inspect.
-* @param internals - injectable process-table operations.
-* @returns Live-member presence, or `undefined` when unavailable/absent.
-*/
-function linuxProcessGroupHasLiveMembers(processGroupId, internals = DEFAULT_INTERNALS) {
-	let entries;
-	try {
-		entries = internals.readDir("/proc");
-	} catch (_unreadableProcDirectory) {
-		return;
-	}
-	let matched = false;
-	for (const entry of entries) {
-		if (!/^\d+$/.test(entry)) continue;
-		const stat = readLinuxStat(internals, Number(entry));
-		if (stat?.pgrp !== processGroupId) continue;
-		matched = true;
-		if (!/^[ZXx]$/.test(stat.state)) return true;
-	}
-	return matched ? false : void 0;
 }
 function numericEntries(internals, path) {
 	try {
@@ -543,54 +475,23 @@ function processTree(entries, rootPid) {
 	visit(root);
 	return result;
 }
-var LinuxProcessInspector = class extends PosixProcessInspector {
-	arch;
-	constructor(arch, internals) {
-		super(internals);
-		this.arch = arch;
-	}
-	foregroundPgid(shellPid) {
-		const tpgid = readLinuxStat(this.internals, shellPid)?.tpgid;
-		return tpgid !== void 0 && tpgid > 0 ? tpgid : void 0;
-	}
-	isStdinWaiting(pgid, shellPid) {
-		const tables = linuxSyscallTables(this.arch);
+function linuxStdinWaiting(internals, arch, pgid, shellPid) {
+		const tables = linuxSyscallTables(arch);
 		if (tables === void 0) return false;
-		const shell = readLinuxStat(this.internals, shellPid);
+		const shell = readLinuxStat(internals, shellPid);
 		if (shell === void 0) return false;
-		const terminalDevice = readLinuxTerminalDevice(this.internals, shellPid, shell.ttyDevice);
+		const terminalDevice = readLinuxTerminalDevice(internals, shellPid, shell.ttyDevice);
 		if (terminalDevice === void 0) return false;
-		for (const pid of numericEntries(this.internals, "/proc") ?? []) {
-			const process = readLinuxStat(this.internals, pid);
+		for (const pid of numericEntries(internals, "/proc") ?? []) {
+			const process = readLinuxStat(internals, pid);
 			if (process?.pgrp !== pgid) continue;
-			for (const tid of numericEntries(this.internals, `/proc/${pid}/task`) ?? []) {
-				const syscall = readSyscall(this.internals, pid, tid);
-				if (syscall !== void 0 && syscallWaitsOnStdin(this.internals, pid, tid, syscall, tables) && readLinuxTerminalDevice(this.internals, pid, process.ttyDevice, tid) === terminalDevice) return true;
+			for (const tid of numericEntries(internals, `/proc/${pid}/task`) ?? []) {
+				const syscall = readSyscall(internals, pid, tid);
+				if (syscall !== void 0 && syscallWaitsOnStdin(internals, pid, tid, syscall, tables) && readLinuxTerminalDevice(internals, pid, process.ttyDevice, tid) === terminalDevice) return true;
 			}
 		}
 		return false;
 	}
-	isAlive(identity) {
-		const stat = readLinuxStat(this.internals, identity.pid);
-		return stat?.started === identity.started && !quiescent(stat.state);
-	}
-	snapshot() {
-		const pids = numericEntries(this.internals, "/proc");
-		if (pids === void 0) throw new Error("Cannot inspect processes: /proc directory is unreadable");
-		let complete = true;
-		return new PosixProcessSnapshot(pids.flatMap((pid) => {
-			const stat = readLinuxStat(this.internals, pid);
-			if (stat === void 0) complete = false;
-			return stat === void 0 ? [] : [{
-				pid,
-				parentPid: stat.parentPid,
-				started: stat.started,
-				session: stat.session,
-				state: stat.state
-			}];
-		}), complete);
-	}
-};
 function macProcessTable(internals) {
 	let complete = true;
 	return {
@@ -644,7 +545,7 @@ var MacProcessInspector = class extends PosixProcessInspector {
 * @returns Platform process inspector.
 */
 function createProcessInspector(platform = process.platform, arch = process.arch, internals = DEFAULT_INTERNALS) {
-	if (platform === "linux") return new LinuxProcessInspector(arch, internals);
+	if (platform === "linux") return new LinuxProcessInspector(internals, (pgid, shellPid) => linuxStdinWaiting(internals, arch, pgid, shellPid));
 	if (platform === "darwin") return new MacProcessInspector(internals);
 	if (platform === "win32") return createWindowsProcessInspector();
 	throw new Error(`subprocess-local: terminal inspection is unsupported on platform ${platform}`);

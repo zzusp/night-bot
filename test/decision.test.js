@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { blockTaskDecisionForUnavailableMedia, buildReplyReviewCandidates, isDirectedToOtherParticipants, isExplicitAgentDirection, groupDecisionSchema, REPLY_REVIEW_CANDIDATE_LIMIT, REPLY_REVIEW_MAX_CHARS, TOPIC_TITLE_MAX_CHARS, groupDecisionSubmissionSchema, topicRouteSubmissionSchema, validateTaskDispatchAssessment } from '../packages/dingtalk-dsh-assistant/decision.js'
+import { blockTaskDecisionForUnavailableMedia, buildReplyReviewCandidates, isDirectedToOtherParticipants, isExplicitAgentDirection, groupDecisionSchema, REPLY_REVIEW_CANDIDATE_LIMIT, REPLY_REVIEW_MAX_CHARS, TOPIC_TITLE_MAX_CHARS, groupDecisionSubmissionSchema, legacyGroupDecisionSubmissionSchema, topicRouteSubmissionSchema, validateTaskDispatchAssessment } from '../packages/dingtalk-dsh-assistant/decision.js'
 
 const topicRefs = [{ topicId: 'topic-a', revision: 2 }]
 const executionVersion = { inputVersion: 1, runSequence: 1 }
@@ -12,7 +12,9 @@ test('派发核对绑定来源事项与当前启用流程版本', () => {
     dispatchAssessment: { businessObject: '流属性', agentDeliverable: '配置与核验', externalFollowup: ['测试同事复测'], sourceUnitRefs: basisUnitRefs,
       workflowRefs: [{ id: 'workflow-uat', revision: 3 }], workflowReason: '涉及 UAT 配置验证' } }
   const prompts = [{ id: 'workflow-uat', revision: 3, enabled: true }]
-  assert.deepEqual(groupDecisionSchema.parse({ basisMessageIds: ['m1'], actions: [action], reply: '开始' }).actions[0], action)
+  const decision = { basisMessageIds: ['m1'], actions: [action], reply: '开始' }
+  assert.deepEqual(legacyGroupDecisionSubmissionSchema.parse({ requestId: 'request-workflow', topicId: 'topic-a', revision: 2, decision }).decision.actions[0], action)
+  assert.throws(() => groupDecisionSchema.parse(decision)) // Workflow fields belong only to the explicitly enabled workflow contract.
   assert.doesNotThrow(() => validateTaskDispatchAssessment(action, { requiresAssessment: true, currentPrompts: prompts }))
   assert.throws(() => validateTaskDispatchAssessment({ ...action, dispatchAssessment: { ...action.dispatchAssessment, sourceUnitRefs: [{ unitId: 'unit-method-select', unitRevision: 1 }] } }, { requiresAssessment: true, currentPrompts: prompts }), /task_dispatch_source_units_invalid/)
   assert.throws(() => validateTaskDispatchAssessment(action, { requiresAssessment: true, currentPrompts: [{ ...prompts[0], revision: 4 }] }), /task_dispatch_workflow_refs_invalid/)

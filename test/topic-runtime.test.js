@@ -1,3 +1,4 @@
+import {visibilityAuthority,visibilityAgent,visibilityContext,appendVisible,compactVisible,restoreVisibility} from './fixtures/pi-coordination-visibility.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -28,7 +29,7 @@ async function setup(t, options = {}) {
   await store.setAgentNames(['助理'])
   const sent = [], errors = [], tools = new Map(), applications = []
   const consumedEvents = []
-  const agent = { session: options.session ?? { snapshotEvents: () => consumedEvents }, inbox: options.inbox, steer(message) { consumedEvents.push({ type: 'user/message', data: message }); sent.push(message.content[0].text); options.onSteer?.(message) }, whenIdle: options.whenIdle ?? (() => new Promise(() => {})) }
+  const agent = { id:options.session?.id??'topic-fixture', ...(options.piAuthority?{ctx:{get:name=>name==='piAuthority'?options.piAuthority:undefined}}:options.session instanceof Session?{ctx:{get:name=>name==='piAuthority'?visibilityAuthority(options.session):undefined}}:{}), session: options.session ?? { snapshotEvents: () => consumedEvents }, inbox: options.inbox, steer(message) { if(options.session instanceof Session)appendVisible(options.session,message); consumedEvents.push({ type: 'user/message', data: message }); sent.push(message.content[0].text); options.onSteer?.(message) }, whenIdle: options.whenIdle ?? (() => new Promise(() => {})) }
   const coordinator = createTopicCoordinator({
     taskFacts: options.taskFacts, fixedTopicsEnabled: options.fixedTopicsEnabled, workflowPromptsEnabled: options.workflowPromptsEnabled, dispatchRequest: options.dispatchRequest, checkStartupRecovery: options.checkStartupRecovery, quotedReminderContext: options.quotedReminderContext,
     store, getAgent: () => agent, assertSession(exec, groupId) { if (exec?.groupId !== groupId) throw new Error('wrong_session') },
@@ -736,7 +737,7 @@ test('拆分确认和条件后，各话题仍能读取完整同条原文且不�
 
 test('压缩移除已见决策正文后需重新取得必要增量', async (t) => {
   let visible = []
-  const h = await setup(t, { session: { deriveMessages: () => visible } })
+  const h = await setup(t, { piAuthority: {context:()=>visibilityContext(visible)} })
   await ingest(h, 'surface')
   const request = (await route(h)).pendingDecisions[0]
   const body = h.sent.findLast((item) => item.startsWith('[GROUP_TOPIC_DECISION]'))
@@ -2317,6 +2318,8 @@ function visibleTool(session, name, result) {
   const id = `call-${session.snapshotEvents().length}`
   session.append('assistant/message', { turn: 1, step: 1, stream: [], message: { id: `assistant-${id}`, role: 'assistant', source: { kind: 'model', provider: 'fixture', model: 'fixture' }, content: [{ type: 'tool-call', id, name, arguments: '{}' }] } }, { surfaceOp: 'append' })
   session.append('tool/result', { turn: 1, step: 1, message: { ...createToolResultMessage({ callId: id, isError: false, content: [{ type: 'text', text: JSON.stringify(result) }] }), id: `result-${id}` } }, { surfaceOp: 'append' })
+  appendVisible(session,{role:'assistant',content:[{type:'tool-call',id,name,arguments:'{}'}]})
+  appendVisible(session,createToolResultMessage({callId:id,isError:false,content:[{type:'text',text:JSON.stringify(result)}]}))
 }
 
 test('材料清单从当前surface分页形成，跨请求与压缩摘要不冒充正文', async t => {
@@ -2434,12 +2437,13 @@ test('审阅身份忽略提交时间，但流程引用、最后检查点和Topic
   assert.notEqual(h.envelope('[TASK_CHECKPOINT_REVIEW]', '审阅请求').requestId, firstId)
 })
 function compactSurface(session) {
+  compactVisible(session)
   const nodes = [...session.surface.nodes]
   session.append('user/message', { id: `summary-${session.snapshotEvents().length}`, role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text', text: '之前曾经读取流程和原文；此摘要不保留完整正文。' }] }, { surfaceOp: { op: 'replace', startSeq: nodes[0], endSeq: nodes.at(-1) }, sourceEventSeqs: nodes })
 }
 
 test('原生 surface 流程正文与连续页跨请求复用，压缩后历史日志不能冒充可见', () => {
-  const session = Session.create('session-visible-context'), agent = { session }
+  const session = Session.create('session-visible-context'), agent = visibilityAgent(session)
   const prompt = { id: 'release', revision: 1, name: '发布', description: '发布校验', prompt: '核对批准原文' }
   visibleTool(session, 'pwsh', { prompts: [prompt] })
   assert.deepEqual(visiblePromptRefs(agent, [prompt]), [])
@@ -2452,11 +2456,12 @@ test('原生 surface 流程正文与连续页跨请求复用，压缩后历史�
   visibleTool(session, 'group_task_review_context_get', { requestId: 'old', section: 'messages', offset: 0, nextOffset: 4, text: text.slice(0, 4) })
   assert.equal(visibleSectionLength(agent, text), text.length)
   const reopened = Session.fromRestore(session.id, JSON.parse(JSON.stringify(session.snapshotEvents())), JSON.parse(JSON.stringify(session.header)), 0, 'detached')
-  assert.equal(visiblePromptRefs({ session: reopened }, [prompt]).length, 1)
+  restoreVisibility(session,reopened)
+  assert.equal(visiblePromptRefs(visibilityAgent(reopened), [prompt]).length, 1)
   compactSurface(reopened)
   assert.ok(reopened.snapshotEvents().some((event) => event.type === 'tool/result'))
-  assert.deepEqual(visiblePromptRefs({ session: reopened }, [prompt]), [])
-  assert.equal(visibleSectionLength({ session: reopened }, text), 0)
+  assert.deepEqual(visiblePromptRefs(visibilityAgent(reopened), [prompt]), [])
+  assert.equal(visibleSectionLength(visibilityAgent(reopened), text), 0)
 })
 
 test('审阅复用当前流程正文，压缩或禁用后重新门禁而不是沿用已读标记', async (t) => {
@@ -2493,6 +2498,7 @@ test('稳定请求跨重启识别已消费消息，原文可见时恢复只发�
   const request = h.envelope('[GROUP_TOPIC_ROUTE]')
   await h.coordinator.close(); await h.store.close()
   const restored = Session.fromRestore(session.id, JSON.parse(JSON.stringify(session.snapshotEvents())), JSON.parse(JSON.stringify(session.header)), 0, 'detached')
+  restoreVisibility(session,restored)
   let resume, idleCalls = 0
   const reminder = new Promise((resolve) => { resume = resolve })
   const reopened = await setup(t, { snapshot: h.snapshot, session: restored, retryDelayMs: 5, whenIdle: () => ++idleCalls === 1 ? Promise.resolve() : new Promise(() => {}), onSteer: resume })
@@ -3269,4 +3275,17 @@ test('historical presentation folds omitted fields and explicit clears across re
   assert.equal(historical.topic.summary, 'First factual summary')
   assert.deepEqual(historical.topic.openQuestions, ['Pending evidence'])
   assert.deepEqual(h.store.getTopic('g', first.topicId).openQuestions, [])
+})
+test('Pi writer failure blocks decision validation instead of skipping visibility gates',async t=>{
+ let broken=false
+ const failure=new Error('PI_SESSION_WRITER_REQUIRED:topic-fixture')
+ const h=await setup(t,{piAuthority:{context(){if(broken)throw failure;return visibilityContext([])}}})
+ await ingest(h,'writer-lost')
+ const request=(await route(h)).pendingDecisions[0]
+ const before=h.store.getGroup('g').outbox.length
+ broken=true
+ await assert.rejects(h.call('group_decision_submit',{requestId:request.requestId,topicId:request.topicId,revision:request.revision,
+  decision:{basisMessageIds:['writer-lost'],actions:[],reason:'must fail closed'}}),error=>error===failure)
+ assert.equal(h.store.getGroup('g').outbox.length,before)
+ assert.equal(h.applications.length,0)
 })

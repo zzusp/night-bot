@@ -5,10 +5,10 @@ import {validateJsonSchemaValue as validate, defineTool} from '../src/native-too
 
 const object = {type:'object',properties:{name:{type:'string'}},required:['name'],additionalProperties:false}
 test('tool contract diagnostics preserve required, child, and undeclared-property order',()=>{
- assert.deepEqual(validate(object,{name:12,other:true},''),['"name" must be a string','"other" is not a declared property (additionalProperties: false)'])
- assert.deepEqual(validate(object,{},''),['missing required property "name"'])
+ assert.deepEqual(validate(object,{name:12,other:true},''),['"name": expected string, got integer','"other": unknown field'])
+ assert.deepEqual(validate(object,{},''),['"name": missing'])
  const union={oneOf:[{type:'integer'},{type:'number'}]}
- assert.match(validate(union,1)[0],/matched 2/)
+ assert.match(validate(union,1)[0],/more than one alternative/)
  assert.deepEqual(validate(union,1.5),[])
 })
 test('schema evaluation captures accessors once before checking mutually exclusive branches',()=>{
@@ -30,14 +30,15 @@ test('tool values reject hidden, sparse, cyclic and hostile data even in open pr
  assert.deepEqual(validate(object,runInNewContext('({name:"realm"})')),[])
  assert.deepEqual(validate(object,Object.assign(Object.create(null),{name:'null prototype'})),[])
 })
-test('deep tool contracts use bounded call stack and capture each property once',()=>{
- let schema={type:'string'},value='leaf',reads=0
- for(let i=0;i<12000;i++) {
-  schema={type:'object',properties:{next:schema},required:['next'],additionalProperties:false}
-  const next=value;value={get next(){reads++;return next}}
+test('official compiler limits fail closed while ordinary nested values are captured once',async()=>{
+ const {assertSupportedJsonSchema}=await import('../src/native-tool-protocol.js')
+ for(const depth of [120,12000]){
+  let schema={type:'string'},value='leaf',reads=0
+  for(let i=0;i<depth;i++){schema={type:'object',properties:{next:schema},required:['next'],additionalProperties:false};const next=value;value={get next(){reads++;return next}}}
+  if(depth===120)assert.deepEqual(validate(schema,value),[])
+  else {assert.throws(()=>assertSupportedJsonSchema(schema),error=>error.code==='UNSUPPORTED_SCHEMA');assert.match(validate(schema,value)[0],/official schema validation could not evaluate/)}
+  assert.equal(reads,depth)
  }
- assert.deepEqual(validate(schema,value),[])
- assert.equal(reads,12000)
 })
 test('application definitions publish immutable schemas and fail invalid calls before callbacks',async()=>{
  let effects=0
@@ -69,13 +70,13 @@ test('core numeric, string, array and uniqueness contracts are enforced at inclu
  await assert.rejects(definition.execute({limit:101}),error=>error.code==='INVALID_ARGS')
  await assert.rejects(definition.execute({limit:1,rows:['']}),error=>error.code==='INVALID_ARGS')
 })
-test('schema admission rejects malformed, misplaced, contradictory and unknown constraints',async()=>{
+test('schema policy rejects malformed, misplaced and unknown constraints',async()=>{
  const {assertSupportedJsonSchema}=await import('../src/native-tool-protocol.js')
  for(const schema of [
-  {type:'integer',minimum:'0'}, {type:'number',maximum:Infinity}, {type:'number',minimum:2,maximum:1},
+  {type:'integer',minimum:'0'}, {type:'number',maximum:Infinity},
   {type:'string',minimum:0},{type:'array',minItems:-1},{type:'array',maxItems:1.5},{type:'array',uniqueItems:'true'},
-  {type:'string',minLength:2,maxLength:1},{type:'string',pattern:'['},{type:'string',pattern:12},
-  {type:'array',minItems:2,maxItems:1},{type:'object',maxLength:1},{minimum:0},
+  {type:'string',pattern:'['},{type:'string',pattern:12},
+  {type:'object',maxLength:1},{minimum:0},
   {oneOf:[{type:'number'},{type:'null'}],minimum:0},{type:'integer',madeUp:1}
  ])assert.throws(()=>assertSupportedJsonSchema(schema),error=>error.code==='UNSUPPORTED_SCHEMA',JSON.stringify(schema))
 })
@@ -91,19 +92,26 @@ test('type-free core task state enums and JSON const values stay constrained',as
  assert.ok(validate(json,{kind:'task',ids:[2,1]}).length)
  assert.deepEqual(validate({const:{a:1,b:2}},{b:2,a:1}),[])
  assert.ok(validate({const:{a:1,b:2}},{b:2,a:2}).length)
- for(const invalid of [{enum:[]},{enum:[undefined]},{const:undefined},{enum:['allowed'],const:'other'}])assert.throws(()=>assertSupportedJsonSchema(invalid),error=>error.code==='UNSUPPORTED_SCHEMA')
+ for(const invalid of [{enum:[]},{enum:[undefined]},{const:undefined}])assert.throws(()=>assertSupportedJsonSchema(invalid),error=>error.code==='UNSUPPORTED_SCHEMA')
 })
 test('observedAt date-time format enforces calendar dates, times and explicit timezone semantics',async()=>{
  const {assertSupportedJsonSchema}=await import('../src/native-tool-protocol.js')
  const {observedHostExitSchema}=await import('../packages/dingtalk-core/native-restart-scope-probe.js')
  assert.doesNotThrow(()=>assertSupportedJsonSchema(observedHostExitSchema))
  const schema={type:'string',format:'date-time'}
- for(const value of ['2026-11-05T15:21:56.682Z','2024-02-29T23:59:59Z','2000-02-29T00:00:00+08:00','2026-11-05t15:21:56z','2026-11-05T15:21:56.123456-04:30','2026-11-05T00:00:00-00:00'])assert.deepEqual(validate(schema,value),[],value)
- for(const value of ['2026-02-29T00:00:00Z','1900-02-29T00:00:00Z','2026-02-30T12:00:00Z','2026-04-31T00:00:00Z','2026-00-01T00:00:00Z','2026-13-01T00:00:00Z','2026-11-00T00:00:00Z','2026-11-05T24:00:00Z','2026-11-05T23:60:00Z','2026-11-05T23:59:60Z','2026-11-05T15:21:56','2026-11-05 15:21:56Z','2026-11-05T15:21:56+24:00','2026-11-05T15:21:56+08:60','2026-11-05T15:21:56+0800','2026-11-05T15:21Z',' 2026-11-05T15:21:56Z','2026-11-05T15:21:56Z\n'])assert.ok(validate(schema,value).length,value)
+ for(const value of ['2026-11-05T15:21:56.682Z','2024-02-29T23:59:59Z','2000-02-29T00:00:00+08:00','2026-11-05t15:21:56z','2026-11-05T15:21:56.123456-04:30','2026-11-05T00:00:00-00:00','2016-12-31T23:59:60Z'])assert.deepEqual(validate(schema,value),[],value)
+ for(const value of ['2026-02-29T00:00:00Z','1900-02-29T00:00:00Z','2026-02-30T12:00:00Z','2026-04-31T00:00:00Z','2026-00-01T00:00:00Z','2026-13-01T00:00:00Z','2026-11-00T00:00:00Z','2026-11-05T24:00:00Z','2026-11-05T23:60:00Z','2026-11-05T15:21:56','2026-11-05 15:21:56Z','2026-11-05T15:21:56+24:00','2026-11-05T15:21:56+08:60','2026-11-05T15:21:56+0800','2026-11-05T15:21Z',' 2026-11-05T15:21:56Z','2026-11-05T15:21:56Z\n'])assert.ok(validate(schema,value).length,value)
  for(const format of ['email','uri','unknown',null,42])assert.throws(()=>assertSupportedJsonSchema({type:'string',format}),error=>error.code==='UNSUPPORTED_SCHEMA')
  assert.throws(()=>assertSupportedJsonSchema({type:'number',format:'date-time'}),error=>error.code==='UNSUPPORTED_SCHEMA')
  const tool=defineTool({name:'observed',parameters:{observedAt:{type:'string',format:'date-time',required:true}},output:{schema:{type:'json'},render:()=>[]},execute:async args=>args})
  assert.equal(tool.parameters.properties.observedAt.format,'date-time')
  await assert.rejects(tool.execute({observedAt:'2026-02-30T12:00:00Z'}),error=>error.code==='INVALID_ARGS')
  assert.deepEqual(validate(observedHostExitSchema,{observedAt:'2026-11-05T15:21:56.682Z',evidenceRef:'operator evidence'}),[])
+})
+
+test('official validator keeps contradictory contracts impossible instead of widening them',async()=>{
+ const {assertSupportedJsonSchema}=await import('../src/native-tool-protocol.js')
+ for(const [schema,value]of [[{type:'number',minimum:2,maximum:1},1.5],[{type:'string',minLength:2,maxLength:1},'x'],[{enum:['allowed'],const:'other'},'allowed']]){
+  assert.doesNotThrow(()=>assertSupportedJsonSchema(schema));assert.ok(validate(schema,value).length)
+ }
 })

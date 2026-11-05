@@ -941,11 +941,11 @@ function workspaceInstructionChanges(source) {
 function sameInstructionChange(a, b) {
 	return a.action === b.action && a.scope === b.scope && a.path === b.path && a.digest === b.digest;
 }
-function visibleInstructionChanges(agent, authorityMessages) {
+function visibleInstructionChanges(publicationSources) {
 	const visible = /* @__PURE__ */ new Map();
-	for (const message of authorityMessages) {
-		if (!isAgentInstructionsSource(message.source)) continue;
-		for (const change of workspaceInstructionChanges(message.source)) visible.set(change.scope, change);
+	for (const source of publicationSources) {
+		if (!isAgentInstructionsSource(source)) continue;
+		for (const change of workspaceInstructionChanges(source)) visible.set(change.scope, change);
 	}
 	return visible;
 }
@@ -1023,7 +1023,7 @@ function relativeScope(projectRoot, dir) {
 */
 async function reconcileInstructionContext(agent, resolved, versionCache, fileSystem, options) {
 	const session = agent.session;
-	const effective = visibleInstructionChanges(agent, options.authorityMessages);
+	const effective = visibleInstructionChanges(options.publicationSources);
 	const cwd = options.cwd;
 	const projectRoot = options.projectRoot ?? await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, options.signal);
 	const scopes = /* @__PURE__ */ new Set();
@@ -1197,9 +1197,27 @@ async function reconcileInstructionContext(agent, resolved, versionCache, fileSy
 */
 /** Services required by workspace instruction projection. */
 const inject = ["sessionProjections", "workingDirectory", "piAuthority"];
-function visibleBaselineSource(agent, authorityMessages) {
-	for (const message of authorityMessages.toReversed()) if (message.source.kind === "agent-instructions" && message.source.baseline === true) return message.source;
-
+/** Read only original instruction publication facts still present in Pi context.
+ * A summary or edited body cannot renew the original publication's authority. */
+function instructionPublications(agent, authority) {
+ const context=authority.context(agent.id,{projectionOnly:true});
+ const entries=context?.projection?.entries;
+ if(!Array.isArray(entries) || !Array.isArray(context.projection.messages))throw new Error('PI_INSTRUCTION_PROJECTION_REQUIRED');
+ const facts=[];
+ for(const entry of entries) {
+  if(!entry || !entry.sourceEntry || typeof entry.sourceEntry.type!=='string' || typeof entry.sourceEntry.id!=='string' || !Array.isArray(entry.messages) || entry.messages.some(message=>!message || typeof message.role!=='string'))throw new Error('PI_INSTRUCTION_PROJECTION_INVALID');
+  if(entry.sourceEntry.type==='message' && (!entry.sourceEntry.message || typeof entry.sourceEntry.message.role!=='string'))throw new Error('PI_INSTRUCTION_PROJECTION_INVALID');
+  const original=entry.sourceEntry.type==='message'?entry.sourceEntry.message:undefined;
+  const event=original?.night?.event;
+  if(original?.role!=='user' || event?.type!=='user/message' || event.data?.role!=='user' || !isAgentInstructionsSource(event.data.source))continue;
+  if(!Array.isArray(original.content) || original.content.length===0 || original.content.some(block=>block?.type!=='text' || typeof block.text!=='string'))continue;
+  if(entry.messages.length!==1 || entry.messages[0]?.role!=='user' || !isDeepStrictEqual(entry.messages[0].content,original.content) || !isDeepStrictEqual(original.content,event.data.content))continue;
+  facts.push({publicationSource:event.data.source,renderedContent:original.content});
+ }
+ return facts;
+}
+function visibleBaselineSource(publicationSources) {
+ for(const source of publicationSources.toReversed())if(source.kind==='agent-instructions' && source.baseline===true)return source;
 }
 function isAgentInstructionsMessage(message) {
 	return message.source.kind === "agent-instructions";
@@ -1224,7 +1242,7 @@ function apply(ctx, config) {
 	const authority=ctx.piAuthority, active=new Set(), calls=new AsyncLocalStorage();
 	ctx.provide('nativeAgentInstructions',Object.freeze({owner:name,contextAuthority:'pi-session-manager'}));
 	function track(operation){const record={};active.add(record);let result;try{result=calls.run(record,operation)}catch(error){active.delete(record);throw error}record.done=Promise.resolve(result).finally(()=>active.delete(record));return record.done}
-	const visible=agent=>authority.context(agent.id).hostMessages;
+	const publications=agent=>instructionPublications(agent,authority);
 	const instructionVersions = /* @__PURE__ */ new WeakMap();
 	const baselinePreparations = /* @__PURE__ */ new WeakMap();
 	const projectionLifecycle = new AbortController();
@@ -1245,12 +1263,12 @@ function apply(ctx, config) {
 		const content = [];
 		const changes = [];
 		let desiredBaseline = false;
-		const authorityMessages = [...visible(agent),...claimed];
+		const publicationSources = [...publications(agent).map(fact=>fact.publicationSource),...claimed.filter(isAgentInstructionsMessage).map(message=>message.source)];
 		const cwd = await ctx.workingDirectory.ensure(agent, signal);
 		const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal,ctx.get('runtimePaths')?.mode==='portable'?ctx.get('runtimePaths').workspaces:undefined);
 		const identity = workspaceBaselineIdentity(resolved, cwd, projectRoot);
 		if (touchedPaths.length === 0 && pending.length > 0 && baselinePreparations.get(agent.session)?.identity === identity) return pending[0];
-		const visibleBaseline = visibleBaselineSource(agent, authorityMessages);
+		const visibleBaseline = visibleBaselineSource(publicationSources);
 		const baselinePresent = visibleBaseline !== void 0;
 		const keepVisibleBaseline = visibleBaseline?.baselineIdentity === identity;
 		const prepared = baselinePreparations.get(agent.session);
@@ -1307,22 +1325,19 @@ function apply(ctx, config) {
 					path: change.path
 				}]) : [], ...baseline.changes.values()];
 				changes.push(...baselineChanges);
-				authorityMessages.push(createUserMessage({
-					content: baselineContent,
-					source: {
-						kind: "agent-instructions",
-						form: "instructions",
-						baseline: true,
-						baselineIdentity: identity,
-						changes: baselineChanges
-					}
-				}));
+				publicationSources.push({
+					kind: "agent-instructions",
+					form: "instructions",
+					baseline: true,
+					baselineIdentity: identity,
+					changes: baselineChanges
+				});
 				desiredBaseline = true;
 			}
 		}
 		const update = await reconcileInstructionContext(agent, resolved, instructionVersions, fileSystem, {
 			cwd,
-			authorityMessages,
+			publicationSources,
 			scopeMessages: pending,
 			includeBaselineScopes: keepVisibleBaseline,
 			...keepVisibleBaseline ? { excludedBaselineScopes } : {},
@@ -1351,7 +1366,7 @@ function apply(ctx, config) {
 	};
 	const syncInbox = (agent, claimed, desired) => {
 		const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage);
-		const alreadySupplied=desired!==undefined&&[...visible(agent),...claimed].some(message=>sameContextPayload(message,desired));
+		const alreadySupplied=desired!==undefined&&(publications(agent).some(fact=>isDeepStrictEqual(fact.renderedContent,desired.content)&&isDeepStrictEqual(fact.publicationSource,desired.source))||claimed.some(message=>sameContextPayload(message,desired)));
 		if (desired === void 0 || alreadySupplied) {
 			for (const message of pending) agent.inbox.remove(message.id);
 			return;

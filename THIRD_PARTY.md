@@ -58,7 +58,7 @@ Trusted shell facts: `src/native-shell-env.js` retains attributed registry/contr
 
 ## Subagent control and read-only query compatibility
 
-`src/native-subagents.js` retains MIT source-derived activation/lineage/catalog/control/delegation/structured-result algorithms from pinned `dsh-subagent@0.2.1-alpha.2`. The active service owns its provider registry and activation graph and requires native Pi admission/terminal commit proofs; canonical public SubagentError/SubagentDepthError identities remain imported for existing control-tool compatibility. `native-session-query.js` retains the MIT read-only corpus/observation/search/presentation algorithms from `dsh-session-query`, backed by native Pi storage, with application-owned lifetime cancellation/drain. Its legacy event surface is a presentation/audit API, never model-request authority. `native-time-zone.js` retains its MIT zone helper. See `licenses/dsh-{subagent,session-query,util-time}-MIT.txt`. The application-owned flat-page catalog in `src/runtime/child-catalog.js` replaces the removed recursive chunk-list source. Its checkpoint version 7 rebuilds from complete Night Bot Pi history when an earlier application checkpoint is encountered; it does not import DSH data. The old subagent comparison fixture and chunk-list source are both removed, so their dedicated chunk-list notice is removed. These source forks and retained helper imports are explicit, not claims of independent rewrites.
+`src/native-subagents.js` retains MIT source-derived activation/lineage/catalog/control/delegation/structured-result algorithms from pinned `dsh-subagent@0.2.1-alpha.2`. The active service owns its provider registry and activation graph and requires native Pi admission/terminal commit proofs; canonical public SubagentError/SubagentDepthError identities remain imported for existing control-tool compatibility. `native-session-query.js` retains attributed observation/cache/lease helpers from `dsh-session-query`, with application-owned cancellation/drain. Unused corpus, fulltext, title, trace and generic history-query APIs are removed. Context pages use official Pi buildSessionProjection without a Host message shadow; effects and source receipts remain application audit data. `native-time-zone.js` retains its MIT zone helper. See `licenses/dsh-{subagent,session-query,util-time}-MIT.txt`. The application-owned flat-page catalog in `src/runtime/child-catalog.js` replaces the removed recursive chunk-list source. Its checkpoint version 7 rebuilds from complete Night Bot Pi history when an earlier application checkpoint is encountered; it does not import DSH data. The old subagent comparison fixture and chunk-list source are both removed, so their dedicated chunk-list notice is removed. These source forks and retained helper imports are explicit, not claims of independent rewrites.
 
 ## Session title protocol
 
@@ -130,4 +130,35 @@ remain attributed, and the application code transport keeps its isolation/cancel
 semantics. Removing 65 unused direct SDK development declarations does not remove
 the remaining development graph or the copied runtime code's license duties.
 
-The native migration replaces HTTP request/redirect/body lifetime and dispatcher ownership with application modules `runtime/http-fetch.js` and `runtime/http-dispatcher.js`; retained address, connector, MIME and proxy policy source still requires its notices. Tool JSON capture and value admission use `runtime/tool-schema-value.js`; schema authoring and SDK rendering remain attributed. Read-only session queries no longer instantiate the mutable session service; Pi public `buildSessionContext` derives cold context from strictly admitted journal entries. Owned image selection replaces the deleted image-offload source and its directory-local license; session/query and compact audit codecs retain their notices. Linux request transport, bootstrap and observed process ownership use owned modules under `src/process/linux-*.js`; systemd/PTY, libc execve and Windows support remain attributed. Process-group fallback is weaker than kernel cgroup ownership, including a remaining check/signal race.
+The native migration replaces HTTP request/redirect/body lifetime and dispatcher ownership with application modules `runtime/http-fetch.js` and `runtime/http-dispatcher.js`; retained address, connector, MIME and proxy policy source still requires its notices. Tool JSON capture wraps official Pi schema validation through `runtime/tool-schema-value.js`; retained authoring/Python SDK source remains attributed. Read-only session queries no longer instantiate the mutable session service; Pi public `buildSessionContext` derives cold context from strictly admitted journal entries. Owned image selection replaces the deleted image-offload source and its directory-local license; session/query and compact audit codecs retain their notices. Linux request transport, bootstrap and observed process ownership use owned modules under `src/process/linux-*.js`; systemd/PTY, libc execve and Windows support remain attributed. Process-group fallback is weaker than kernel cgroup ownership, including a remaining check/signal race.
+
+The subsequent authority migration removes the unused Session message-derivation
+cache, no-op SessionPreparation/disposal scaffold and unused sequence-range
+helpers. It routes production material visibility to the live Pi writer context;
+readSurface/readContextProjection use one strictly committed Pi read, while
+unused audit-surface/query APIs have been removed. The old
+request-side tool-update projection is deleted: Pi 1.5 public catalog APIs now
+fold native tool additions/removals. Historical declaration schemas still come
+from the attributed Session toolHistory projection until their durable Pi mapping
+is migrated. Raw Pi compaction summaries without Night provenance are currently
+refused by the production projection; the application provenance-preserving
+replacement path is supported.
+
+The Linux /proc decoder, sampler, identity observation and tree/group membership
+now live in owned linux-observation.js; attributed syscall/stdin readiness,
+Mac/Windows inspectors, systemd/PTY and libc support remain. These observations
+and a later signal are non-atomic; invisible or never-observed descendants are
+not certified kernel ownership. The old lossy DSH schema subset projection and
+schema-admission walker are removed in favor of exact Zod input schema plus
+official pi-schema compilation. Night retains lossless capture and an allowed-vocabulary policy validated by that official engine. The prior TypeScript renderer is removed in favor of official pi-codemode/declarations; a narrow binding keeps exact RPC names. Python rendering and authoring source still require their notices. Language types do not replace the full runtime JSON contract.
+
+All production Host-message shadow readers and nativeHostMessage are removed.
+Ordinary model messages and summaries pass through official convertToLlm; the
+remaining Night custom system/developer interpreter is an application namespace
+adapter for existing Night entries, pending native system writing. Instruction
+and skill publication visibility reads official sourceEntry/messages, excludes
+summaries and checks exact original/projected body equality. This does not make
+an audit record a second model-history authority. The remaining pi-loop lifecycle
+fork, Session/audit facade, historical tool-schema fold and write-side surface
+rebuild are still explicit migration work; official AgentSession capabilities
+have been verified rather than replaced with another application session engine.

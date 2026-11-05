@@ -1,21 +1,28 @@
+import {nativePiProviderContext} from './runtime/pi-native-provider-context.js'
+import {piRequestContext} from './runtime/pi-request-context.js'
+import {piToolCatalog} from './runtime/pi-tool-catalog.js'
 import { LlmError } from './native-llm-protocol.js';
-import { projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, offloadedImageText, requestImageHandleText, requiredImageOffload } from './native-message-protocol.js';
+import { projectFilesToText, projectImagesForTextModel, projectOffloadedImages, offloadedImageText, requestImageHandleText, requiredImageOffload } from './native-message-protocol.js';
 import { piRequestImageDimensions } from './pi-provider-image.js'
 import { projectPiMessage } from './pi-session-persistence.js'
-const tool=({name,description,parameters})=>({name,description,parameters})
 const fail=(message,code='UNSUPPORTED_CONTENT',details)=>{throw new LlmError(message,code,details)}
 /** Request projection while the generic Host attachment/history policies remain.
  * Pi supplies authoritative message content. Shared public policy helpers are
  * retained explicitly until the corresponding attachment/LLM seam migration.
+ * alreadyProjected covers attachment policy only; tool catalogs always enter
+ * through the Pi transcript boundary after middleware admission.
  */
 export async function piProviderContext(request,{profile,model,ctx,alreadyProjected=false,toolUpdate}={}) {
+  if(piRequestContext(request))return nativePiProviderContext(request,{profile,model,ctx,toolUpdate:toolUpdate??request.toolUpdate})
   let messages=request.messages,tools=request.tools??[]
   const updateMode=toolUpdate??request.toolUpdate
   if(!alreadyProjected){
     messages=projectFilesToText(messages,ref=>{try{const path=ctx.get('attachments')?.fileHostPath(ref);return path===undefined?undefined:ctx.get('fs')?.processPathFromHostPath(path)}catch{return undefined}})
     if(!model.input.includes('image'))messages=projectImagesForTextModel(messages)
-    const updated=projectToolUpdates(messages,tools,updateMode,request.toolHistory);messages=updated.messages;tools=updated.tools??[]
   }
+  const knownTools=new Set([...tools,...(request.toolHistory?.tools??[]),...(request.toolHistory?.updates.flatMap(update=>update.additions)??[])].map(tool=>tool.name))
+  for(const message of messages)for(const block of message.content)if(block.type==='tool-addition'&&!knownTools.has(block.toolName))fail('Undeclared tool change '+block.toolName,'INVALID_REQUEST')
+  const catalog=piToolCatalog(messages,tools,updateMode,request.toolHistory)
   for(const message of messages){
     if(message.role!=='developer'&&message.content.some(b=>['tool-addition','tool-removal'].includes(b.type)))fail('Tool declaration changes require developer role')
     if(!['user','tool'].includes(message.role)&&message.content.some(b=>b.type==='image'))fail('Unsupported image role '+message.role)
@@ -48,14 +55,12 @@ export async function piProviderContext(request,{profile,model,ctx,alreadyProjec
   for(const message of exact){
     if(message.role==='system'){const text=message.content.map(b=>b.text).join('');if(text)native.push({role:'system',content:text,timestamp:0});continue}
     if(message.role==='developer'){
-      const text=[],added=[],removed=[]
-      for(const block of message.content){
-        if(block.type==='text'){if(block.text)text.push({...block})}
-        else if(block.type==='tool-addition'){const declared=tools.find(t=>t.name===block.toolName);if(!declared)fail('Undeclared tool change '+block.toolName,'INVALID_REQUEST');added.push(tool(declared))}
-        else if(block.type==='tool-removal')removed.push({name:block.toolName})
-        else fail('Unsupported developer content '+block.type)
-      }
-      if(text.length||added.length||removed.length)native.push({role:'system',content:text,timestamp:0,...added.length?{toolsAdded:added}:{},...removed.length?{toolsRemoved:removed}:{}})
+      const update=catalog.updates.get(message.id)
+      if(!update)continue
+      const text=message.content.filter(block=>block.type==='text').map(block=>({...block}))
+      if(message.content.some(block=>!['text','tool-addition','tool-removal'].includes(block.type)))fail('Unsupported developer content')
+      if(update.length)native.push(...update.map((delta,index)=>({...delta,content:index===0?text:[]})))
+      else if(text.length)native.push({role:'system',content:text,timestamp:0})
       continue
     }
     if(message.role==='assistant'){
@@ -67,8 +72,8 @@ export async function piProviderContext(request,{profile,model,ctx,alreadyProjec
     const value=content(message.content)
     native.push(message.role==='tool'?{role:'toolResult',toolCallId:message.toolCallId,toolName:names.get(message.toolCallId)??'unknown',content:typeof value==='string'?[{type:'text',text:value||'(no output)'}]:value,isError:message.isError??false,timestamp:0}:{role:'user',content:value,timestamp:0})
   }
-  let active=tools.filter(t=>!t.deferLoading).map(tool)
-  if(model.api==='anthropic-messages'&&updateMode==='in-history'&&!active.length&&tools.length&&native.some(m=>m.role==='system'&&m.toolsAdded?.length))active=[{name:'DeferredToolPlaceholder',description:'Reserved placeholder for deferred loading. Never call this tool.',parameters:{type:'object',properties:{}}}]
+  let active=catalog.tools
+  if(model.api==='anthropic-messages'&&updateMode==='in-history'&&!active.length&&native.some(m=>m.role==='system'&&m.toolsAdded?.length))active=[{name:'DeferredToolPlaceholder',description:'Reserved placeholder for deferred loading. Never call this tool.',parameters:{type:'object',properties:{}}}]
   const systemPrompt=leading.filter(Boolean).join('\n\n')
   return{...(systemPrompt?{systemPrompt}:{}),messages:native,...active.length?{tools:active}:{}}
 }

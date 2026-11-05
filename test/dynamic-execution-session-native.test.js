@@ -1,7 +1,8 @@
 import {appendPluginRecord} from '../src/native-session-protocol.js'
+import {piRequestEvent} from '../src/runtime/pi-request-context.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as installPiAuthority} from '../src/pi-authority.js'
-import { requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
+import { captureModelRequest, modelMessageSource, providerContentMessages, providerRequestView, requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
 import NativeSessionTitle from '../src/native-session-title.js'
 import { sessionWorkspace, taskDirectories, taskFilePath } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
@@ -70,13 +71,22 @@ async function host({ root, script = [submit('done')], isCurrent = async () => t
   installPiAuthority(ctx);new PiPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
   await ctx.plugin(NativePolicy, { mode: 'workspace-write', workspaceRoot: root })
   await ctx.plugin(PiLoop, { agents: [], maxParallelToolCalls: 1 })
-  const requests = [], reads = [], effects = [], handles = []
+  const requests = [], hostInputs = [], providerMetrics = [], reads = [], effects = [], handles = []
   await writeFile(join(root, 'fixture.txt'), 'NATIVE_READ_VALUE_922d')
   ctx.on('agent/created', ({ agent }) => { handles.push(agent) })
   class Scripted extends LlmAdapter {
     async resolveModel(provider, model) { return { ...await super.resolveModel(provider, model), reasoning: { efforts: [{ id: 'low', name: 'Low' }] } } }
     async *stream(options) {
-      requests.push(JSON.parse(JSON.stringify(options)))
+      // Capture only the current Host publication evidence before cloning loses
+      // its opaque source capability. Never backfill a source into request history.
+      hostInputs.push(options.messages.flatMap(message => {
+        const source = modelMessageSource(options, message)
+        return source?.executionSession ? [{source:structuredClone(source), publicationId:piRequestEvent(options,message)?.data.id,
+          content:structuredClone(message.content)}] : []
+      }))
+      providerMetrics.push({messagesBytes:Buffer.byteLength(JSON.stringify(providerContentMessages(options))),
+        adapterRequestBytes:Buffer.byteLength(JSON.stringify(providerRequestView(options)))})
+      requests.push(captureModelRequest(options))
       const next = typeof script === 'function' ? script(requests.length) : script[requests.length - 1]
       if (!next) throw new Error('unexpected model continuation')
       if (next.providerFailure) { yield { type: 'finish', reason: { kind: 'error', failure: next.providerFailure } }; return }
@@ -108,7 +118,7 @@ async function host({ root, script = [submit('done')], isCurrent = async () => t
   })
   ctx.tools.register({ name: 'unsafe_write', description: '用于拒绝测试的副作用', parameters: { type: 'object' }, output, execute() { effects.push('root-write'); return {} } })
   const manager = createExecutionSessions({ ctx, isCurrent, isRecoveryCurrent, repositoryInspect, tools, getWorkspaceDir, contentRoot: join(root, 'model-content') })
-  return { ctx, root, manager, requests, reads, effects, handles, async close() { await manager.close(); await ctx.fiber.dispose() } }
+  return { ctx, root, manager, requests, hostInputs, providerMetrics, reads, effects, handles, async close() { await manager.close(); await ctx.fiber.dispose() } }
 }
 
 
@@ -160,7 +170,6 @@ test('自身资源查询不能被原生注册接口同名覆盖，仍调用 Host
 })
 
 test('32 continued inputs retire recursive Host snapshots on actual SDK requests and replay', async t => {
-  const { foldSurface, deriveEventMessage } = await import('../packages/capability-compat/session/index.js')
   const root = await temp(), history = [], metrics = []
   let allInputs = 0
   for (let version = 1; version <= 32; version++) {
@@ -172,7 +181,7 @@ test('32 continued inputs retire recursive Host snapshots on actual SDK requests
       allInputs += Buffer.byteLength(JSON.stringify(input))
       const b = dynamic({ leaseEpoch: version, inputVersion: version, inputDigest: 'dynamic-input-v' + version, inputHistory: structuredClone(history), sessionBound: version > 1 })
       assert.equal((await dynamicDrive(h, { binding: b, input })).status, 'submitted')
-      const request = h.requests[0], hostMessages = request.messages.filter(m => m.source?.executionSession)
+      const request = h.requests[0], hostMessages = h.hostInputs[0]
       assert.equal(hostMessages.length, 1, 'only the current complete Host snapshot reaches the adapter')
       assert.match(JSON.stringify(request.messages), /AUTHORIZATION: analysis only/)
       assert.match(JSON.stringify(request.messages), /UNKNOWN_EFFECT_EVIDENCE/)
@@ -182,16 +191,22 @@ test('32 continued inputs retire recursive Host snapshots on actual SDK requests
       const raw = stored.events.flatMap(event => event.type === 'agent/inbox/spliced' ? event.data.inserted : []).find(message => message.id === hostMessages[0].source.rawHostMessageId)
       assert.ok(raw, 'model message links to the original unmodified Host inbox audit')
       assert.deepEqual(JSON.parse(raw.content[0].text), input)
-      assert.notEqual(raw.id, hostMessages[0].id)
-      const folded = foldSurface(stored.events)
-      const messages = folded.nodes.map(seq => deriveEventMessage(stored.events[seq], folded.projectedMessages)).filter(Boolean)
-      assert.equal(messages.filter(m => m.source?.executionSession).length, 1)
+      assert.ok(hostMessages[0].publicationId, 'current model input has a trusted publication identity')
+      assert.notEqual(raw.id, hostMessages[0].publicationId)
+      const reader = await h.ctx.sessionPersistence.open(b.sessionId, 'read')
+      let projection
+      try { projection = (await reader.read(0,undefined,{includeContext:true})).context.projection }
+      finally { await reader.close() }
+      const retainedHosts = projection.entries.filter(entry => entry.messages.length && entry.sourceEntry.type === 'message'
+        && entry.sourceEntry.message.night?.event?.type === 'user/message'
+        && entry.sourceEntry.message.night.event.data.source?.executionSession)
+      assert.equal(retainedHosts.length, 1)
       assert.equal(stored.events.filter(e => e.type === 'user/message' && e.data.source?.executionSession).length, version, 'original inputs remain auditable')
-      metrics.push({ version, rawInputBytes: Buffer.byteLength(JSON.stringify(input)), currentInputBytes: Buffer.byteLength(hostMessages[0].content[0].text), hostBytes: Buffer.byteLength(JSON.stringify(hostMessages)), messagesBytes: Buffer.byteLength(JSON.stringify(request.messages)), adapterRequestBytes: Buffer.byteLength(JSON.stringify(request)) })
+      metrics.push({ version, rawInputBytes: Buffer.byteLength(JSON.stringify(input)), currentInputBytes: Buffer.byteLength(hostMessages[0].content[0].text), hostBytes: Buffer.byteLength(JSON.stringify(hostMessages)), messagesBytes: h.providerMetrics[0].messagesBytes, adapterRequestBytes: h.providerMetrics[0].adapterRequestBytes })
       history.push({ inputVersion: version, inputDigest: b.inputDigest, requirementRevision: 1, controlRevision: 1 })
     } finally { await h.close() }
   }
-  t.diagnostic(JSON.stringify({ scope: 'scripted adapter request, UTF-8 JSON bytes; no provider tokens', rawAuditInputTextBytes: allInputs, metrics: metrics.filter(item => item.version <= 5 || item.version === 32) }))
+  t.diagnostic(JSON.stringify({ scope: 'official provider-visible fields at scripted adapter entry, UTF-8 JSON bytes; no provider tokens', rawAuditInputTextBytes: allInputs, metrics: metrics.filter(item => item.version <= 5 || item.version === 32) }))
   assert.ok(metrics.slice(3).every(item => item.hostBytes < 2500), 'Host budget includes absolute context paths; use a short physical TEMP/TMP root')
   assert.ok(metrics.at(-1).messagesBytes - metrics[4].messagesBytes < 27 * 550, 'only preserved result history grows, within a per-turn budget')
 })
@@ -220,12 +235,12 @@ test('upgrade shadows every already stored recursive v1/v2/v3 input without rewr
   assert.equal(result.status, 'submitted')
   assert.doesNotMatch(JSON.stringify(h.requests[0]), /LEGACY_RECURSION/)
   assert.match(JSON.stringify(h.requests[0]), /INDEPENDENT_AUTHORIZATION_BOUNDARY/)
-  assert.equal(h.requests[0].messages.filter(m => m.source?.executionSession).length, 1)
+  assert.equal(h.hostInputs[0].length, 1)
   const saved = await inspectSession(h.ctx.sessionPersistence, b.sessionId)
   assert.deepEqual(saved.events.slice(0, originals.length), originals)
   assert.equal(saved.events.filter(e => e.type === 'developer/message' && e.data.message.source.kind === 'dingtalk-host-context').length, 3)
   t.diagnostic(JSON.stringify({ scope: 'execution Host messages, UTF-8 JSON bytes', beforeBytes: Buffer.byteLength(JSON.stringify(originals.filter(e => e.type === 'user/message' && e.data.source?.executionSession).map(e => e.data))),
-    afterBytes: Buffer.byteLength(JSON.stringify(h.requests[0].messages.filter(m => m.source?.executionSession))) }))
+    afterBytes: Buffer.byteLength(JSON.stringify(h.hostInputs[0])) }))
 })
 
 test('dynamic execution uses independent identities, task-parallel sessions and a generic submit tool', async t => {
@@ -705,7 +720,7 @@ test('oversized execution Host survives reopen with exact source and recovery di
         originalOperation: { operationId: 'unknown', state: 'unknown', evidenceRef: 'exact-evidence', instruction: '先核对未知效果' } }
       const b = dynamic({ leaseEpoch: version, inputVersion: version, inputDigest: 'input-' + version, inputHistory: structuredClone(inputHistory), sessionBound: version > 1 })
       assert.equal((await dynamicDrive(h, { binding: b, input })).status, 'submitted')
-      const hosts = h.requests[0].messages.filter(m => m.source?.executionSession)
+      const hosts = h.hostInputs[0]
       assert.equal(hosts.length, 1)
       const text = hosts[0].content.filter(b => b.type === 'text').map(b => b.text).join(''), view = JSON.parse(text)
       assert.ok(Buffer.byteLength(text) <= 3000)

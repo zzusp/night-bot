@@ -1,20 +1,26 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createRequire } from 'node:module'
+import {mkdtemp,rm} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+import PiPersistence from '../src/pi-session-persistence.js'
+import NativeAttachments from '../src/native-attachments.js'
+import sharp from 'sharp'
+import {apply as installPiAuthority} from '../src/pi-authority.js'
 import { Context } from '@deepseek-ai/cordis'
-import { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { SessionStore } from '../packages/capability-compat/session/index.js'
-import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
-import { LlmRuntime, LlmAdapter } from '../packages/capability-compat/llm/index.js'
-import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
+import NativeAgents from '../src/native-agents.js'
+import NativeSessions from '../src/native-sessions.js'
+import PiLoop from '../src/pi-loop.js'
+import NativeLlm from '../src/native-llm.js'
+import {LlmAdapter} from '../src/native-llm-protocol.js'
+import NativeSystemPrompt from '../src/native-system-prompt.js'
+import NativeTools from '../src/native-tools.js'
+import NativeProjections from '../src/native-projections.js'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { createCoordinationSessions, createCoordinationStepGate } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
 import { createTopicCoordinator } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 
-const requireGoal = createRequire(import.meta.resolve('@deepseek-ai/dsh-goal'))
-const { SessionProjectionRegistry } = requireGoal('@deepseek-ai/dsh-session-projection')
 const tick = () => new Promise(resolve => setImmediate(resolve))
 
 // 确定性模型只决定调用序列；消息路由、工具校验、调度、决策和 Task 落库均走真实实现。
@@ -32,13 +38,19 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
   await store.routeMessages({ groupId: 'g', routeId: 'seed-old-topic', routingRevision: 0,
     routes: [{ messageId: 'old', messageVersion: 1, topics: [{ newTopicKey: 'old', title: '代理越界接活' }] }] })
   const oldTopicId = store.listTopics('g')[0].topicId
-  const image = { attachmentId: 'sha256:' + '1'.repeat(64), mediaType: 'image/jpeg', bytes: 19471, width: 720, height: 335 }
+  const ctx = new Context()
+  if(process.env.NIGHT_BOT_TEST_DEBUG)ctx.on('agent/error',event=>console.error('PI_ERROR',event.error))
+  if(process.env.NIGHT_BOT_TEST_DEBUG)ctx.on('tools/result',(exec,result)=>{if(result.isError)console.error('TOOL_ERROR',exec.name,result.error?.message)})
+  new NativeAgents(ctx); new NativeSessions(ctx); new NativeProjections(ctx)
+  new NativeSystemPrompt(ctx, { includeRuntimeContext: false }); new NativeLlm(ctx); new NativeTools(ctx)
+  const root=await mkdtemp(join(tmpdir(),'coord-latency-pi-'))
+  installPiAuthority(ctx);new PiPersistence(ctx,{root})
+  await ctx.plugin(PiLoop, { agents: [], maxParallelToolCalls: 1 })
+  new NativeAttachments(ctx,{storageRoot:join(root,'attachments')})
+  const image=await ctx.attachments.saveImage({data:await sharp({create:{width:720,height:335,channels:3,background:'#f4f4f4'}}).jpeg().toBuffer(),mediaType:'image/jpeg'})
   const incoming = { groupId: 'g', messageId: 'msg5oChb4j8c29-fixture', text: '小小鹏看下这个：任一专家已经开始审核后不可撤回；一个专家审核完了，为啥可以撤回，如下图',
     occurredAt: '2026-09-22T08:26:18.310Z', imageRefs: [image] }
-  const ctx = new Context()
-  new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
-  new SystemPrompt(ctx, { includeRuntimeContext: false }); new LlmRuntime(ctx); new ToolRuntime(ctx)
-  await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
+
   const loop = ctx.agentLoop
   const firstEntered = Promise.withResolvers(), releaseFirst = Promise.withResolvers(), taskCreated = Promise.withResolvers()
   const oldFinished = Promise.withResolvers(), newFinished = Promise.withResolvers()
@@ -95,7 +107,7 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
     }
   }
 
-  manager = createCoordinationSessions({ isCurrent: request => coordinator.isCurrentRequest(request), onError: error => errors.push(error), create: async entry => {
+  manager = createCoordinationSessions({ eventPrefix: null, isCurrent: request => coordinator.isCurrentRequest(request), onError: error => errors.push(error), create: async entry => {
     requests.set(entry.request.requestId, entry.request)
     if (entry.role === 'decision' && entry.request.topicId === oldTopicId) oldRequest = entry.request
     else if (entry.role === 'decision') newRequest = entry.request
@@ -126,7 +138,7 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
       taskCreated.resolve()
     },
   })
-  t.after(async () => { releaseFirst.resolve(); await coordinator.close(); await manager.close(); await store.close(); await ctx.fiber.dispose() })
+  t.after(async () => { releaseFirst.resolve(); try { await coordinator.close(); await manager.close(); await store.close() } finally { try { await ctx.fiber.dispose() } finally { await rm(root,{recursive:true,force:true}) } } })
   await coordinator.schedule('g')
   await firstEntered.promise
   await store.ingest(incoming)
@@ -146,7 +158,7 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
   const results = agents.get(oldRequest.requestId).session.snapshotEvents().filter(event => event.type === 'tool/result')
     .map(event => JSON.parse(event.data.message.content[0].text))
   assert.equal(results.filter(result => result.status === 'invalid-arguments').length, 9)
-  assert.ok(results.slice(0, 9).every(result => result.issues.some(issue => issue.field === 'decision.reason')))
+  assert.ok(results.slice(0, 9).every(result => result.nextAction === 'correct-arguments' && result.issues.some(issue => issue.field === 'arguments' && issue.code === 'decision_schema_invalid')), 'schema admission rejects all nine malformed decision unions before business execution')
   assert.equal(store.listTasks().length, 1)
   const [task] = store.listTasks()
   const committed = store.getTopic('g', newRequest.topicId).decisions.find(record => record.revision === newRequest.revision)
@@ -155,7 +167,13 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
   assert.ok(committed.operations.every(operation => operation.status === 'applied'))
   assert.equal(applicationIds.length, 1)
   assert.equal(store.getGroup('g').outbox.length, 1, '只落库一次确认，不调用真实 DWS')
-  for (const request of requests.values()) assert.equal(store.getCoordinationRequest('g', request.requestId).attempt, 0, '公平续行不是请求失败重试')
+  for (const request of requests.values()) {
+    const saved=store.getCoordinationRequest('g',request.requestId)
+    if(!saved) {
+      assert.match(request.requestId,/^coord-summary-/,'只有已被后续摘要替代的维护请求可以不保留当前协调账')
+      assert.ok((calls.get(request.requestId)??0)<=1,'被替代摘要可以尚未进入模型，但不得重放')
+    } else assert.equal(saved.attempt,0,'公平续行不是请求失败重试')
+  }
   await coordinator.schedule('g'); await coordinator.drain('g')
   assert.equal(store.listTasks().length, 1)
   assert.equal(applicationIds.length, 1)
