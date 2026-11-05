@@ -108,7 +108,7 @@ export default class NativeTools extends Service {
  resolveExecution(name,scope,nested){if(this.modeFor(scope)==='ptc'&&!nested&&name!=='run_code')return;return this.get(name,scope)}
  executionMode(exec){const tool=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);try{return{kind:tool?.isConcurrencySafe?.(exec.arguments)===true?'parallel':'exclusive'}}catch{return{kind:'exclusive'}}}
  materialize(result){
-  const presentation={isError:result.isError===true,content:result.content,...result.meta===undefined?{}:{meta:result.meta},...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}}
+  const presentation={isError:result.isError===true,content:result.content,...result.concludesTurn===true?{concludesTurn:true}:{},...result.meta===undefined?{}:{meta:result.meta},...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}}
   if(result.isError)return deepFreeze(snapshot({...presentation,error:result.error}))
   return deepFreeze({...deepFreeze(snapshot({...presentation,...result.concludesTurn===true?{concludesTurn:true}:{}})),value:result.value})
  }
@@ -192,9 +192,12 @@ export default class NativeTools extends Service {
   }catch(error){return this.finish(exec,failure(error))}
  }
  finish(exec,candidate){
+  // Trusted middleware may conclude after the body has already materialized
+  // a success or failure. Carry the final latch through either result shape.
+  const state=this.states.get(exec);if(state?.concluded)candidate={...candidate,concludesTurn:true}
   let result
   try{result=this.materialize(candidate);const finalize=this.states.get(exec)?.finalizer;if(finalize){const content=finalize(exec,result);if(content!==undefined)result=this.materialize({...result,content})}}catch(error){result=this.materialize(failure(error))}
-  const state=this.states.get(exec);if(state)state.finished=true
+  if(state)state.finished=true
   Object.freeze(exec)
   for(const callback of this.ctx.events.dispatch('emit',[scopeTarget(this,exec.agent),'tools/result',exec,result]))try{Promise.resolve(callback(exec,result)).catch(error=>this.ctx.logger.warn(errorText(error)))}catch(error){this.ctx.logger.warn(errorText(error))}
   return result

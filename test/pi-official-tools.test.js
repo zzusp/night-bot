@@ -68,3 +68,21 @@ test('a factory-fenced receipt failure blocks same-batch later effects and ends 
  assert.equal(h.receipts.includes('uncertain-first'),false)
  assert.deepEqual(h.adapter.finishTurn(),{action:'end'})
 })
+
+test('trusted after-body conclusion reaches official finishTurn for both successful and failed tools',async t=>{
+ for(const bad of [false,true]){
+  let later=0
+  const name=bad?'failed-yield':'successful-yield'
+  const h=await fixture(t,({ctx})=>{
+   ctx.tools.register(definition(name,async()=>{if(bad)throw new Error('observed failure');return{done:true}}))
+   ctx.tools.register(definition('must-not-start',async()=>{later++;return{}}))
+   ctx.on('tools/execute',async(exec,next)=>{const result=await next();if(exec.name===name)exec.concludeTurn();return result})
+  })
+  await h.run([{id:name,name},{id:'later-'+name,name:'must-not-start'}])
+  const result=h.results.find(value=>value.toolCallId===name)
+  assert.equal(later,0,JSON.stringify({name,results:h.results}))
+  assert.equal(result.result.terminate,true)
+  assert.equal(result.result.isError,bad)
+  assert.deepEqual(h.adapter.finishTurn(),{action:'end'})
+ }
+})
