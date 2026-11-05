@@ -1,3 +1,16 @@
+# Frozen installation retry succeeds (2026-11-05)
+
+`pnpm install --frozen-lockfile --store-dir /tmp/night-bot-pnpm-store`
+completed successfully in **10.2s** using Node24.19.0/pnpm11.25.0. All **630** lock
+entries passed supply-chain policy verification. The prior registry HTTP 503 did
+not recur; no network route, proxy, trust, TLS, policy or credential changes were
+made. A first bare command failed before verification because its default store
+was outside the writable environment; the standard store-dir option selects the
+same supported task cache used before. Lockfile and tracked source stayed clean.
+This verifies the current workspace installation, not an empty-cache rebuild.
+Earlier HTTP 503 records below are historical, no longer the current result.
+Evidence: `docs/pi-native-frozen-install-retry-validation.json`.
+
 # Explicit owned spill roots and retired historical discovery (2026-11-05)
 
 Removed prior-default temporary-root discovery/scanning and fallback, plus empty

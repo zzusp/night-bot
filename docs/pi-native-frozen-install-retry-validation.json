@@ -1,0 +1,24 @@
+{
+  "base": "1ba402adef0b42e5181c0857b675ba9a59c8bcec",
+  "command": "pnpm install --frozen-lockfile --store-dir /tmp/night-bot-pnpm-store",
+  "exitCode": 0,
+  "pnpm": "11.25.0",
+  "node": "24.19.0",
+  "policyVerification": "630 lock entries pass supply-chain policies, 9.2s",
+  "duration": "10.2s",
+  "lockfileChanged": false,
+  "scope": "Current workspace frozen install; not a clean empty-cache install",
+  "initialFailure": "Default pnpm store under non-writable /home/agent failed mkdir ENOENT before network verification; supported --store-dir selects existing writable task cache, no route/policy/TLS/credential changes",
+  "previous503": "Not reproduced in this attempt; historical failure retained in earlier evidence",
+  "tests": "Not rerun as part of this installation-only checkpoint; subsequent code phases validate installed dependencies",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-frozen-install-retry-default-store.txt",
+      "sha256": "55494ac7c1c6747cf79a4fb668701e85d638c8ed9ce647405f47c5ad658b79b9"
+    },
+    {
+      "path": "docs/evidence/pi-native-frozen-install-retry-owned-store.txt",
+      "sha256": "7d555c7dc0a225feae797fb333cc0f7451679caf94e71bc6c5203aac83f3731f"
+    }
+  ]
+}
