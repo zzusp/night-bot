@@ -12,13 +12,13 @@ async function until(fn){for(let n=0;n<500;n++){const value=await fn();if(value)
 async function serviceFor(f,initialize=true){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'single-test',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize});const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external notifications')},readback:async()=>{throw Error('no external notifications')}}});return {service,store,async close(){await service.close();await store.close()}}}
 const result={tool:'task_result',args:{decision:{action:'complete',summary:'Read back local result',evidence:['local file evidence'],limitations:[]}}}
 test('one task preserves its effect through a held missing result and explicit cold continuation, then completes and reflects',{timeout:20000},async t=>{
-  let phase='write',replay=false,reviews=0
+  let phase='write',readBack=false,reviews=0
   const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){reviews++;return {text:'{"lessons":[]}'}}
     if(!body.tools?.some(t=>t.function.name==='task_result'))return
     if(phase==='write'){phase='pause';return {tool:'write',args:{path:'work/proof.txt',content:'single-session-proof'}}}
     if(phase==='pause')return {text:'temporary provider interruption before final submission'}
-    if(!replay){replay=true;return {tool:'write',args:{path:'work/proof.txt',content:'single-session-proof'}}}
+    if(!readBack){readBack=true;return {tool:'read',args:{path:'work/proof.txt'}}}
     return {...result,args:{decision:{...result.args.decision,artifacts:["work/proof.txt"],deliveryFiles:[{path:"work/proof.txt",caption:"isolated proof"}]}}}
   })
   let h=await serviceFor(f);t.after(()=>h.close())
@@ -35,10 +35,11 @@ test('one task preserves its effect through a held missing result and explicit c
   const completed=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained&&row})
   assert.equal(completed.completion.result.artifactFiles.length,1);assert.equal(completed.completion.result.artifactFiles[0].artifact.fileName,'proof.txt');
   assert.equal(completed.sessionId,sessionId);assert.equal((await h.store.query({kind:'execution.list'})).length,0)
-  assert.match(JSON.stringify(f.requests),/TASK_EFFECT_ALREADY_ATTEMPTED/)
+  assert.ok(readBack,'continuation reads the completed original effect rather than issuing a new write');assert.match(JSON.stringify(f.requests),/single-session-proof/)
   assert.equal((await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,1)
   for(const body of f.requests)assert.ok(!body.tools?.some(t=>/^(subagent|task_delegate)/.test(t.function.name)))
   const stored=await f.host.ctx.sessionPersistence.readNative(sessionId,{requireComplete:true})
+  const officialResults=stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult').map(entry=>entry.message);assert.equal(officialResults.filter(message=>message.toolName==='write'&&!message.isError).length,1);assert.ok(officialResults.some(message=>message.toolName==='read'&&!message.isError&&message.content.some(block=>block.type==='text'&&block.text.includes('single-session-proof'))),'continuation verifies the original file through an official read result')
   assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent').length,1);assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-result').length,1)
   await f.host.ctx.reflection.whenIdle();assert.equal(reviews,1)
   const resume=await f.host.ctx.sessionController.resolveAgent(sessionId);assert.match(resume.error?.message??'',/TASK_OWNED/)

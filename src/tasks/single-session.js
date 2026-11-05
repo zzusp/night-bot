@@ -1,22 +1,22 @@
-import {taskToolInputOrigin,unresolvedTaskInputOrigins} from './input-origin.js'
+import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
 import {groupReplyScopeInstructions} from '../../packages/dingtalk-core/group-message.js'
 import {preflightPiFileMutation,isPiFileObservationalTool} from '../pi-file-tool-registration.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {taskAuditKinds,validateTaskIdentity} from './session-audit.js'
-import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectScopeDigest} from './effect-reconciliation.js'
+import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectScopeDigest,validateTaskEffectIntent} from './effect-reconciliation.js'
 const fail=code=>Object.assign(new Error(code),{code})
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
 const taskInputSnapshot=value=>{if(value===undefined)return;const {liveSupplements,...task}=value;return task}
 const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))
 const key=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceiptKinds,...effectReconciliationAuditKinds,
-  'task/effect-intent':value=>exact(value,['key','name','callId'])&&key(value.key)&&typeof value.name==='string'&&value.name.length>0&&typeof value.callId==='string'&&value.callId.length>0,
+  'task/effect-intent':validateTaskEffectIntent,
   'task/effect-result':value=>exact(value,['key','isError'])&&key(value.key)&&typeof value.isError==='boolean',
 })
 const observational=new Set(['read','read_image','read_window','glob','grep','skill','web_search','web_fetch','memory_read','memory_search','memory_status','memory_candidates','job_output','job_list','task_result'])
-const instructions='You are the sole execution session for this task. Directly use the available tools to complete the current authorized objective. There is no task coordinator, delegation or child execution session. Do not create another agent. Write process files and artifacts in work/ under this task workspace; tmp/ is temporary. materials/, outputs/, sessions/, reviews/ and task metadata are Host-owned, not writable. Report work/ artifact paths; the Host freezes selected delivery files into outputs/. Current user requirements and permissions prevail over memory and learned skills. Read current evidence, avoid unnecessary detours and never replay an already attempted effect. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations; use wait with a specific question when required information or authority is missing. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.'
+const instructions='You are the sole execution session for this task. Directly use the available tools to complete the current authorized objective. There is no task coordinator, delegation or child execution session. Do not create another agent. Write process files and artifacts in work/ under this task workspace; tmp/ is temporary. materials/, outputs/, sessions/, reviews/ and task metadata are Host-owned, not writable. Report work/ artifact paths; the Host freezes selected delivery files into outputs/. Current user requirements and permissions prevail over memory and learned skills. Read current evidence and avoid unnecessary detours. Never replay a recorded invocation. Independent calls may intentionally use identical arguments when the current authorized objective requires repeated actions. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations; use wait with a specific question when required information or authority is missing. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.'
 function effectState(receipts){
   const intents=new Map()
   for(const receipt of receipts){
@@ -45,7 +45,7 @@ function effectState(receipts){
  * and admission facts; Pi alone owns messages, queue delivery and model context. */
 export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent,getWorkspaceDir,readEffectScope,withPersistenceWriter=(_binding,action)=>action()}){
   const active=new Map();let closed=false
-  async function run({binding,input,provider,model,reasoningEffort,groupResponsibility,onSessionBound,onSupplementAdmitted,resolveHuman,submit}){
+  async function run({binding,input,provider,model,reasoningEffort,groupResponsibility,onSessionBound,onSupplementAdmitted,resolveHuman,authorizeEffectInvocation,submit}){
     if(closed||active.has(binding.taskId))throw fail('TASK_SESSION_BUSY')
     const entry={abort:new AbortController(),done:Promise.withResolvers(),submitted:false,binding,pending:new Map(),readOnly:!!(input.humanReview||input.dialogue)};active.set(binding.taskId,entry)
     const current=()=>!closed&&!entry.abort.signal.aborted&&isOwnerCurrent(binding)
@@ -60,6 +60,22 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           ||identity[0].payload.taskId!==binding.taskId||identity[0].payload.sessionId!==binding.sessionId)throw fail('TASK_SESSION_IDENTITY_MISMATCH')
       }
       const intents=effectState(stored?.audit??[]),uncertain=()=>[...intents.values()].some(value=>!value.settled)
+      const seenInvocations=new Set();let historyBound=false,priorReconciliations=[]
+      const bindInvocationHistory=actor=>{
+        if(historyBound)return
+        const origins=new Map(),manager=actor.piSession.sessionManager
+        for(const intent of intents.values()){
+          const origin=taskEffectIntentOrigin(manager,intent,binding)
+          if(seenInvocations.has(origin.invocationKey))throw fail('TASK_EFFECT_INVOCATION_DUPLICATE')
+          seenInvocations.add(origin.invocationKey);origins.set(intent.key,origin)
+        }
+        priorReconciliations=(stored?.auditEntries??[]).filter(row=>row.data.domain==='task'&&row.data.kind==='effect-reconciled').map(row=>{
+          const receipt=row.data,payload=receipt.payload,origin=origins.get(payload.key),entry=manager.getEntries().find(entry=>entry.id===row.entryId)
+          if(!origin||!entry||entry.type!=='custom'||entry.customType!=='night.audit'||!isDeepStrictEqual(entry.data,receipt)||!manager.getBranch(entry.id).some(item=>item.id===origin.intentEntryId)||['intentEntryId','intentDigest','callEntryId','inputEntryId','packetId','inputDigest','argumentsDigest'].some(key=>payload[key]!==origin[key])||!isDeepStrictEqual(payload.originBinding,origin.binding))throw fail('TASK_EFFECT_RECONCILIATION_IDENTITY_MISMATCH')
+          return {entryId:row.entryId,parentId:row.parentId,receipt:structuredClone(receipt)}
+        })
+        historyBound=true
+      }
       entry.effectUncertain=uncertain
       if(unresolvedNativeJobReceipts(stored?.audit??[],binding.sessionId).length)return {status:'no_submission',reason:'TASK_JOB_UNCERTAIN_NO_REPLAY'}
       if(uncertain())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}
@@ -107,9 +123,12 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
           await preflightPiFileMutation(exec,tools.get(exec.name,actor))
           const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
-          const effectKey=origin.key
-          if(intents.has(effectKey)||[...intents.values()].some(value=>value.reconciled&&value.name===exec.name&&value.argumentsDigest===fingerprint(exec.arguments)))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
-          const intent={key:effectKey,name:exec.name,callId:exec.callId}
+          bindInvocationHistory(actor)
+          const effectKey=origin.invocationKey
+          if(seenInvocations.has(effectKey))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
+          if(priorReconciliations.length&&(typeof authorizeEffectInvocation!=='function'||await authorizeEffectInvocation({binding:structuredClone(binding),origin:structuredClone(origin),priorReconciliations:structuredClone(priorReconciliations)})!==true))throw fail('TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED')
+          const intent={version:2,key:effectKey,name:exec.name,callId:exec.callId,invocation:{callEntryId:origin.callEntryId,inputEntryId:origin.inputEntryId,packetId:origin.packetId,inputDigest:origin.inputDigest,originBinding:origin.binding}}
+          seenInvocations.add(effectKey)
           actor.receipts.append({version:1,domain:'task',kind:'effect-intent',payload:intent});intents.set(effectKey,{...intent,settled:false});await actor.receipts.commit()
           const result=await next()
           // Even an ordinary body error can follow an external write. Hold it
@@ -131,6 +150,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
           if(!await isCurrent({...binding,contextRevision:origin.binding.contextRevision}))throw fail('TASK_CONTEXT_NOT_CONSUMED')
           if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          bindInvocationHistory(actor)
+          if(decision.action==='complete'&&priorReconciliations.length&&(typeof authorizeEffectInvocation!=='function'||await authorizeEffectInvocation({binding:structuredClone(binding),origin:structuredClone(origin),priorReconciliations:structuredClone(priorReconciliations)})!==true))throw fail('TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED')
           if(!decision.summary.trim())throw fail('TASK_SESSION_DECISION_INVALID')
           if(input.humanReview&&(decision.action!=='wait'||decision.question?.trim()))throw fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
           if(input.dialogue&&(decision.action!=='wait'||decision.question?.trim()))throw fail('TASK_DIALOGUE_REPLY_ONLY')
@@ -149,7 +170,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       const options={agentOptions:{provider,model,...reasoningEffort?{reasoningEffort}:{}},setup,signal:entry.abort.signal,auditKinds:singleTaskAuditKinds,readOnly,
         initialReceipts:stored?[]:[{version:1,domain:'task',kind:'identity',payload:{taskId:binding.taskId,sessionId:binding.sessionId}}],
         authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packets.get(candidate.id)),
-        beforeRequest:async actor=>{await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
+        beforeRequest:async actor=>{bindInvocationHistory(actor);await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
           // A later same-named registration is not the read-only capability
           // captured for this execution. It needs ordinary effect admission.
           for(const name of ['read','read_image','read_window'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}

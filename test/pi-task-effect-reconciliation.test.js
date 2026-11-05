@@ -9,13 +9,13 @@ import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {singleTaskAuditKinds} from '../src/tasks/single-session.js'
 import {admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
-import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity} from '../src/tasks/effect-reconciliation.js'
+import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity,taskEffectInvocationKey,taskEffectActionAuthorizationIdentity,verifyTaskEffectClosures} from '../src/tasks/effect-reconciliation.js'
 
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 // The records below are deliberately injected Host attestations. These tests
 // verify strict native storage and business evidence binding, never kernel exit
 // or that a production factory already emits an authentic drain attestation.
-async function fixture(t,{mutate=async()=>{},withDrain=true}={}){
+async function fixture(t,{mutate=async()=>{},withDrain=true,intentVersion=1,alterIntent=()=>{}}={}){
  const root=await mkdtemp('/tmp/night-effect-reconcile-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),bindings={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1}
  const task={...bindings,status:'active',control:'active',drained:true,recovering:false,ownerActorId:'owner',groupId:'group'},scope={taskId:'task',sessionId:'session',taskRoot:root,workingDirectory:root,ownerActorId:'owner',groupId:'group',channelDigest:taskEffectDigest({channel:'fixture'}),authorizationDigest:taskEffectDigest({mode:'workspace-write',memory:'fixture-group'})}
@@ -32,7 +32,8 @@ async function fixture(t,{mutate=async()=>{},withDrain=true}={}){
  const args={file_path:'work/proof.txt',content:'possible partial effect'},callId='call-one',toolName='write'
  const assistant={role:'assistant',content:[{type:'toolCall',id:callId,name:toolName,arguments:args}],api:'openai-completions',provider:'fixture',model:'m',timestamp:1,stopReason:'toolUse',usage}
  const callEntryId=writer.manager.appendMessage(assistant)
- const intent={key:taskEffectDigest({requirementRevision:1,contextRevision:0,controlRevision:1,name:toolName,args}),name:toolName,callId},intentEntryId=receipt('effect-intent',intent)
+ const intent={key:intentVersion===2?taskEffectInvocationKey({sessionId:'session',callEntryId,callId}):taskEffectDigest({requirementRevision:1,contextRevision:0,controlRevision:1,name:toolName,args}),name:toolName,callId,...intentVersion===2?{version:2,invocation:{callEntryId,inputEntryId,packetId:packet.id,inputDigest:taskEffectDigest(packet),originBinding:bindings}}:{}}
+ alterIntent(intent);const intentEntryId=receipt('effect-intent',intent)
  writer.manager.appendMessage({role:'toolResult',toolCallId:callId,toolName,isError:true,content:[{type:'text',text:'Unknown external outcome'}],timestamp:1})
  const data={root,ctx,backend,writer,bindings,intent,intentEntryId,callEntryId,inputEntryId,assistant,args,receipt,state,auditKinds}
  if(withDrain){
@@ -130,7 +131,7 @@ test('strict journal decoding rejects an uncommitted physical tail without repai
  await assert.rejects(f.inspect(),{code:'PI_SESSION_UNCOMMITTED_TAIL'});assert.deepEqual(await readFile(f.path),bytes)
 })
 
-async function coveredFixture(t,{alter=value=>{},second=false,after=()=>{}}={}){
+async function coveredFixture(t,{alter=value=>{},second=false,reusedCallId=false,after=()=>{}}={}){
  return fixture(t,{withDrain:false,mutate:async f=>{
   const ownerBinding={...f.bindings,contextRevision:1};f.state.task.contextRevision=1
   const packet={id:'preserve-input',source:{kind:'task-input',taskSession:ownerBinding},content:[{type:'text',text:'Additional facts only; original authority and work remain valid.'}]}
@@ -139,7 +140,7 @@ async function coveredFixture(t,{alter=value=>{},second=false,after=()=>{}}={}){
   f.receipt('admitted',{id:packet.id,entryId:id},'admission')
   const targets=[{id:f.intentEntryId,binding:f.bindings}]
   if(second){
-   const args={path:'work/second.txt',content:'another uncertain effect'},callId='call-two'
+   const args={path:'work/second.txt',content:'another uncertain effect'},callId=reusedCallId?'call-one':'call-two'
    f.writer.manager.appendMessage({...f.assistant,content:[{type:'toolCall',id:callId,name:'write',arguments:args}]})
    const id=f.receipt('effect-intent',{key:taskEffectDigest({requirementRevision:1,controlRevision:1,contextRevision:1,name:'write',args}),name:'write',callId})
    f.writer.manager.appendMessage({role:'toolResult',toolCallId:callId,toolName:'write',isError:true,content:[{type:'text',text:'uncertain'}],timestamp:2})
@@ -155,6 +156,11 @@ test('one coverage receipt retains exact effect origins across authorized preser
  assert.equal(first.ownerDrainEntryId,other.ownerDrainEntryId)
  const proposalValue=await proposal(f),prepared=await f.core.prepare(proposalValue.request)
  assert.equal(prepared.payload.originBinding.contextRevision,0);assert.equal(prepared.payload.ownerDrainEntryId,f.ownerDrainEntryId)
+})
+test('offline Night v1 upgrade uniquely binds reused provider call ids through original admitted inputs',async t=>{
+ const f=await coveredFixture(t,{second:true,reusedCallId:true})
+ const first=await f.inspect(),second=await f.core.inspect({taskId:'task',intentEntryId:f.secondIntentEntryId})
+ assert.notEqual(first.callEntryId,second.callEntryId);assert.equal(first.originBinding.contextRevision,0);assert.equal(second.originBinding.contextRevision,1)
 })
 for(const [name,alter]of [
  ['wrong intent digest',value=>{value.payload.inputs[0].intentDigest='0'.repeat(64)}],
@@ -173,4 +179,26 @@ test('covered drain cannot cover a non-intent entry or a changed committed branc
 test('covered drain still rejects any later business write after its attested cut',async t=>{
  const f=await coveredFixture(t,{after:f=>f.receipt('changed',{cwd:f.root,recovered:false},'directory')})
  await assert.rejects(f.inspect(),{code:'TASK_EFFECT_DRAIN_CUT_CHANGED'})
+})
+
+test('v2 invocation proof reconciles only the exact committed official call',async t=>{
+ const f=await fixture(t,{intentVersion:2}),inspection=await f.inspect(),p=await proposal(f),receipt=await f.core.prepare(p.request)
+ assert.equal(inspection.callEntryId,f.callEntryId);assert.equal(receipt.payload.key,f.intent.key)
+ const writer=await f.backend.openNative('session',{auditKinds:f.auditKinds})
+ let entryId;try{entryId=writer.appendAudit(receipt);await writer.commit()}finally{await writer.close()}
+ const task={...f.state.task,effectReconciliations:[{state:'committed',intentEntryId:f.intentEntryId,entryId,receipt,receiptDigest:taskEffectDigest(receipt)}]},stored=await f.backend.readNative('session',{requireComplete:true})
+ const verified=verifyTaskEffectClosures({task,stored,closedIntentEntryIds:[f.intentEntryId]})
+ assert.equal(verified.length,1);assert.equal(verified[0].entryId,entryId)
+ assert.throws(()=>verifyTaskEffectClosures({task,stored,closedIntentEntryIds:[]}),{code:'TASK_EFFECT_AUTHORIZATION_CLOSURES_MISMATCH'})
+ const changed=structuredClone(stored);changed.entries.find(entry=>entry.id===f.callEntryId).message.content[0].arguments.content='forged new action'
+ assert.throws(()=>verifyTaskEffectClosures({task,stored:changed,closedIntentEntryIds:[f.intentEntryId]}))
+})
+for(const [field,value]of [['callEntryId','foreign-call'],['inputEntryId','foreign-input'],['packetId','foreign-packet'],['inputDigest','0'.repeat(64)],['originBinding',{taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:1,leaseEpoch:1}]])test('offline v2 invocation rejects reassigned '+field,async t=>{
+ const f=await fixture(t,{intentVersion:2,alterIntent:intent=>{intent.invocation[field]=value}})
+ await assert.rejects(f.inspect())
+})
+test('new-action authorization identity is explicit, bounded and canonical',()=>{
+ const identity={taskId:'task',requestId:'new-action',closedIntentEntryIds:['b','a'],objective:' A distinct newly requested action ',expectedRequirementRevision:1,expectedControlRevision:2}
+ assert.deepEqual(taskEffectActionAuthorizationIdentity(identity),{...identity,objective:'A distinct newly requested action',closedIntentEntryIds:['a','b']})
+ for(const change of [{closedIntentEntryIds:[]},{closedIntentEntryIds:['a','a']},{objective:' '},{expectedControlRevision:0},{replayOf:'a'}])assert.throws(()=>taskEffectActionAuthorizationIdentity({...identity,...change}))
 })

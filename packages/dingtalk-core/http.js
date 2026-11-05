@@ -1,4 +1,4 @@
-import {taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
+import {taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {ObserverMemoryPages} from './observer-memory-pages.js'
 import { randomUUID } from 'node:crypto'
 const mixedTopicPages=new WeakMap()
@@ -185,15 +185,22 @@ export async function handleRequest(request, response, store, { testApiEnabled =
   // 浏览器预检不执行业务操作，须先于旧写入口清退规则响应。
   if (request.method === 'OPTIONS') return send(response, 204, null)
   const effectRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/([^/]+)\/(inspect|close)$/u.exec(url.pathname)
-  if (effectRoute) {
+  const effectActionRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/new-action$/u.exec(url.pathname)
+  if (effectRoute || effectActionRoute) {
     if (!localConfigurationRequest(request)) return send(response,403,{error:'TASK_LOCAL_IDENTITY_REQUIRED'})
     if (!effectOperatorAuth?.available) return send(response,503,{error:'EFFECT_OPERATOR_PRIVACY_UNAVAILABLE'})
     if (!await effectOperatorAuth.authorize(request)) return send(response,403,{error:'EFFECT_OPERATOR_CAPABILITY_REQUIRED'})
     try {
-      const taskId=decodeURIComponent(effectRoute[1]),intentEntryId=decodeURIComponent(effectRoute[2]),body=await readJson(request)
+      const taskId=decodeURIComponent((effectRoute??effectActionRoute)[1]),intentEntryId=effectRoute?decodeURIComponent(effectRoute[2]):undefined,body=await readJson(request)
       if(effectOperatorAuth.containsSecret({taskId,intentEntryId,body}))return send(response,400,{error:'EFFECT_OPERATOR_SECRET_IN_REQUEST'})
       let result
-      if(effectRoute[3]==='inspect'){
+      if(effectActionRoute){
+        const {operatorText,...proposal}=z.object({operatorText:z.string().min(1).max(16000).refine(value=>value.trim().length>0)}).passthrough().parse(body)
+        const identity=taskEffectActionAuthorizationIdentity(proposal)
+        if(identity.taskId!==taskId)return send(response,400,{error:'TASK_EFFECT_PROPOSAL_IDENTITY_MISMATCH'})
+        if(!store.authorizeTaskEffectAction)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
+        result=await store.authorizeTaskEffectAction({...identity,operatorText})
+      }else if(effectRoute[3]==='inspect'){
         z.strictObject({}).parse(body)
         if(!store.inspectTaskEffect)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
         result=await store.inspectTaskEffect({taskId,intentEntryId})

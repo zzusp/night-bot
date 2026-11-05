@@ -164,7 +164,13 @@ export default class NativeTools extends Service {
    return{kind:'dispatch',exec}
   }catch(error){return{kind:'final-result',exec,result:failure(error)}}
  }
- async body(exec){
+ body(exec){
+  // A continuation can be entered more than once by middleware. One admitted
+  // execution still owns exactly one body attempt, including overlapping calls.
+  const state=this.states.get(exec)
+  return state.bodyPromise??=Promise.resolve().then(()=>this.runBody(exec))
+ }
+ async runBody(exec){
   const state=this.states.get(exec),wrapper=exec.signal,fused=fusedSignals(state.callerSignal,wrapper),signal=fused.signal
   if(signal.aborted){fused.close();return aborted(false)}
   exec.signal=signal

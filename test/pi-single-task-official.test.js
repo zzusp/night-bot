@@ -68,7 +68,12 @@ const run=(f,extra={})=>f.sessions.run({binding:f.binding,input:f.input,provider
 
 test('single task uses official SDK directly, cold-resumes one session and never replays a settled effect',async t=>{
  let second=false
- const f=await fixture(t,(_context,n)=>n===1||n===3?{calls:[{name:'write',arguments:n===1?{a:1,b:2}:{b:2,a:1}}]}:n===2?{text:'interruption'}:{calls:[{name:'task_result',arguments:{decision}}]})
+ const f=await fixture(t,(context,n)=>{
+  if(n===1)return {calls:[{name:'write',arguments:{a:1,b:2}}]}
+  if(n===2)return {text:'interruption'}
+  assert.ok(context.messages.some(message=>message.role==='toolResult'&&message.toolName==='write'&&!message.isError&&message.content.some(block=>block.type==='text'&&block.text==='{"ok":true}')),'the resumed official context retains the completed effect result')
+  return {calls:[{name:'task_result',arguments:{decision}}]}
+ })
  await assert.rejects(run(f),{code:'TASK_SESSION_NO_SUBMISSION'})
  assert.equal(f.effects,1);f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
  const result=await run(f,{submit:async()=>{second=true;return{accepted:true}}})
@@ -78,7 +83,7 @@ test('single task uses official SDK directly, cold-resumes one session and never
  assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1)
  assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1)
  assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,1)
- assert.ok(JSON.stringify(f.requests).includes('TASK_EFFECT_ALREADY_ATTEMPTED'))
+ assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='write'&&!entry.message.isError).length,1)
  assert.equal((await f.persistence.list()).length,1)
 })
 test('ordinary tool error after an effect remains unknown and blocks retries, submission and cold replay',async t=>{

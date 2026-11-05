@@ -6,7 +6,7 @@ import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions,disabledExecutionSessions} from '../../src/tasks/single-session.js'
-import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
+import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity,verifyTaskEffectClosures,taskEffectScopeDigest,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
 import {readTaskEffectScope} from '../../src/tasks/effect-scope.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
 import {createObserverGroupPages} from './observer-group-pages.js'
@@ -354,6 +354,67 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       task=await requireTask(taskId);const row=task.effectReconciliations.find(row=>row.requestId===identity.requestId)
       return {taskId,state:row.state,entryId:row.entryId,outcome:row.receipt.payload.outcome,noReplay:true}
     })
+  }
+  async function authorizeTaskEffectAction({operatorText,...proposal}) {
+    if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+    if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+    if(typeof operatorText!=='string'||!operatorText.trim()||operatorText.length>16000)fail('DYNAMIC_ARGUMENT_INVALID')
+    const identity=taskEffectActionAuthorizationIdentity(proposal),{taskId,requestId}=identity
+    return admitTask(taskId,async()=>{
+      let task=await requireTask(taskId)
+      const key=hash([taskId,requestId]),sourceId='effect-action:'+key,reviseId='effect-action-revise:'+key,activateId='effect-action-activate:'+key
+      const source=await query('source.get',{sourceId})
+      if(source&&(source.actorId!==config.webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+taskId)||source.text!==operatorText||hash(source.requestIdentity?.effectAuthorization)!==hash(identity)))fail('DYNAMIC_COMMAND_ID_CONFLICT')
+      const activated=await query('receipt.get',{id:activateId})
+      if(activated){if(!source)fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED');return {taskId,sourceId,state:'authorized',requirementRevision:activated.result.task.requirementRevision,controlRevision:activated.result.task.controlRevision,noReplay:true}}
+      if(inflightTasks.has(taskId)||ctx.agents.get(task.sessionId))fail('TASK_EFFECT_OWNER_LIVE')
+      if(!task.drained||task.recovering||task.archivedAt||task.status!=='active'||task.control!=='paused')fail('TASK_EFFECT_TASK_NOT_QUIESCENT')
+      const revised=await query('receipt.get',{id:reviseId})
+      if(revised){
+        if(!source||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==identity.expectedControlRevision||task.objective!==identity.objective||!task.sourceRefs.includes(sourceId))fail('TASK_EFFECT_AUTHORIZATION_STALE')
+      }else if(task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==identity.expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+      const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:effectReconciliationAuditKinds})
+      try {
+        const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+        const closures=await verifyTaskEffectClosures({task,stored,closedIntentEntryIds:identity.closedIntentEntryIds})
+        const scopeDigest=taskEffectScopeDigest(await readTaskEffectScope(ctx,task,stored))
+        if(closures.some(row=>row.receipt.payload.scopeDigest!==scopeDigest))fail('TASK_EFFECT_SCOPE_MISMATCH')
+        if(closures.some(row=>identity.expectedRequirementRevision+1<=row.receipt.payload.currentBinding.requirementRevision))fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        if(!source)await command('source.record',{sourceId,groupId:task.groupId??'task:'+taskId,messageId:sourceId,actorId:config.webActorId,channel:'web',text:operatorText,timestamp:new Date().toISOString(),requestIdentity:{effectAuthorization:identity}},'source:'+sourceId)
+        if(!revised)await command('task.revise',{taskId,expectedRequirementRevision:identity.expectedRequirementRevision,expectedControlRevision:identity.expectedControlRevision,request:identity.objective,objective:identity.objective,sourceRefs:[...new Set([...task.sourceRefs,sourceId])]},reviseId)
+        task=await requireTask(taskId)
+        if(task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==identity.expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        await command('task.control',{taskId,control:'active',expectedControlRevision:identity.expectedControlRevision},activateId)
+      }finally{await writer.close()}
+      const activatedReceipt=await query('receipt.get',{id:activateId})
+      return {taskId,sourceId,state:'authorized',requirementRevision:activatedReceipt.result.task.requirementRevision,controlRevision:activatedReceipt.result.task.controlRevision,noReplay:true}
+    })
+  }
+  async function authorizeEffectInvocation({binding,origin,priorReconciliations}) {
+    if(!config.webActorId||!await currentTask(binding))return false
+    const task=await requireTask(binding.taskId),stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+    const closedIntentEntryIds=priorReconciliations.map(row=>row.receipt.payload.intentEntryId).sort()
+    const closures=await verifyTaskEffectClosures({task,stored,closedIntentEntryIds})
+    const scopeDigest=taskEffectScopeDigest(await readTaskEffectScope(ctx,task,stored))
+    if(closures.some(row=>row.receipt.payload.scopeDigest!==scopeDigest))return false
+    const manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries)),branch=manager.getBranch(origin.callEntryId)
+    const inputIndex=branch.findIndex(entry=>entry.id===origin.inputEntryId),callIndex=branch.findIndex(entry=>entry.id===origin.callEntryId)
+    if(inputIndex<0||callIndex<=inputIndex||closures.some(row=>{const index=branch.findIndex(entry=>entry.id===row.entryId);return index<0||index>=inputIndex||origin.binding.requirementRevision<=row.receipt.payload.currentBinding.requirementRevision}))return false
+    let body;try{body=JSON.parse(origin.packet.content[0].text)}catch{return false}
+    if(!Array.isArray(body.sources))return false
+    for(const snapshot of body.sources){
+      if(!snapshot.requestIdentity?.effectAuthorization)continue
+      let identity;try{identity=taskEffectActionAuthorizationIdentity(snapshot.requestIdentity.effectAuthorization)}catch{continue}
+      if(identity.taskId!==task.taskId||identity.objective!==task.objective||identity.expectedRequirementRevision+1!==origin.binding.requirementRevision||hash(identity.closedIntentEntryIds)!==hash(closedIntentEntryIds))continue
+      const sourceId='effect-action:'+hash([task.taskId,identity.requestId]),source=await query('source.get',{sourceId})
+      if(!source||snapshot.sourceId!==sourceId||!task.sourceRefs.includes(sourceId)||source.actorId!==config.webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId)||!source.text?.trim())continue
+      const stable=value=>Object.fromEntries(['sourceId','groupId','messageId','version','actorId','channel','text','quote','resources','timestamp','requestIdentity'].map(key=>[key,value[key]]))
+      if(hash(stable(snapshot))!==hash(stable(source))||hash(source.requestIdentity.effectAuthorization)!==hash(identity))continue
+      const key=hash([task.taskId,identity.requestId]),revision=await query('receipt.get',{id:'effect-action-revise:'+key}),activated=await query('receipt.get',{id:'effect-action-activate:'+key})
+      if(revision?.result.task.requirementRevision!==origin.binding.requirementRevision||activated?.result.task.requirementRevision!==origin.binding.requirementRevision||activated.result.task.controlRevision!==origin.binding.controlRevision)continue
+      return true
+    }
+    return false
   }
   const dshExecutionSessions = suppliedExecutionSessions ?? (singleExecution?disabledExecutionSessions():createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
     isCurrent: binding => query('execution.current', { binding }),
@@ -1358,6 +1419,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
           blockers: await query('task.blockers', { taskId }) }, ...taskModelSelection(models(), legacy.getAgentConfig().taskSessionModel ?? config), agentPreset: legacy.getAgentConfig().agentPreset,
           groupResponsibility: residentStore.getGroup(task.groupId)?.responsibility ?? '',
+          authorizeEffectInvocation,
           readDecisions: (args, current) => query('task.decisions', { ...args, taskId: current.taskId }),
           onSupplementAdmitted:async({messageId,entryId,packetId,binding:nextBinding})=>{
             await command('task.supplement.admitted',{binding:nextBinding,messageId,entryId,packetId},`task-supplement-admitted:${taskId}:${messageId}`)
@@ -2305,6 +2367,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     },
     async inspectTaskEffect(args){if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED');if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED');return admitTask(args.taskId,()=>effectReconciliation.inspect(args))},
     reconcileTaskEffect,
+    authorizeTaskEffectAction,
     async sendTaskDialogue({ taskId, requestId, text }) {
       if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
       const receipt = await command('task.dialogue.add', { taskId, requestId, text, actorId: config.webActorId }, `dialogue:${taskId}:${requestId}`)

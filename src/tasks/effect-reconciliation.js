@@ -28,7 +28,13 @@ const outcome='closed-with-possible-partial-effects'
 const identitySchema=z.strictObject({taskId:text,intentEntryId:text,intentDigest:hex,currentBinding:bindingSchema,journalRevision:hex,scopeDigest:hex,requestId:text,evidenceRefs:evidenceRefsSchema,outcome:z.literal(outcome),noReplay:z.literal(true)})
 const receiptSchema=z.strictObject({taskId:text,sessionId:text,intentEntryId:text,intentDigest:hex,key:hex,toolName:text,callId:text,callEntryId:text,argumentsDigest:hex,inputEntryId:text,packetId:text,inputDigest:hex,originBinding:bindingSchema,currentBinding:bindingSchema,ownerDrainEntryId:text,ownerDrainDigest:hex,scopeDigest:hex,journalRevision:hex,evidenceRefs:evidenceRefsSchema,operatorSourceId:text,operatorActorId:text,operatorTextDigest:hex,requestId:text,outcome:z.literal(outcome),partialEffectsPossible:z.literal(true),noReplay:z.literal(true)})
 const evidenceSchema=z.strictObject({version:z.literal(1),kind:z.literal('task-effect-readback'),taskId:text,sessionId:text,intentEntryId:text,intentDigest:hex,callEntryId:text,argumentsDigest:hex,originBinding:bindingSchema,currentBinding:bindingSchema,scopeDigest:hex,observedAt:timestamp,summary:z.string().min(1).max(16000),outcome:z.literal('partial-or-unknown'),noReplay:z.literal(true)})
-const intentSchema=z.strictObject({key:hex,name:text,callId:text})
+const invocationSchema=z.strictObject({callEntryId:text,inputEntryId:text,packetId:text,inputDigest:hex,originBinding:bindingSchema})
+const legacyIntentSchema=z.strictObject({key:hex,name:text,callId:text})
+export const taskEffectIntentPayloadSchema=z.union([legacyIntentSchema,legacyIntentSchema.extend({version:z.literal(2),invocation:invocationSchema})])
+const intentSchema=taskEffectIntentPayloadSchema
+export const validateTaskEffectIntent=value=>intentSchema.safeParse(value).success
+const actionAuthorizationSchema=z.strictObject({taskId:text,requestId:text,closedIntentEntryIds:z.array(text).min(1).max(128).refine(ids=>new Set(ids).size===ids.length).transform(ids=>[...ids].sort()),objective:z.string().trim().min(1).max(16000),expectedRequirementRevision:positive,expectedControlRevision:positive})
+export const taskEffectActionAuthorizationIdentity=value=>actionAuthorizationSchema.parse(value)
 const resultSchema=z.strictObject({key:hex,isError:z.boolean()})
 export const effectReconciliationAuditKinds=Object.freeze({
  'task/owner-drained':value=>drainSchema.safeParse(value).success,
@@ -36,6 +42,7 @@ export const effectReconciliationAuditKinds=Object.freeze({
  'task/effect-reconciled':value=>receiptSchema.safeParse(value).success,
 })
 export const taskEffectDigest=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
+export const taskEffectInvocationKey=({sessionId,callEntryId,callId})=>taskEffectDigest({sessionId,callEntryId,callId})
 export const taskEffectScopeDigest=value=>taskEffectDigest(scopeSchema.parse(value))
 export const taskEffectBinding=value=>bindingSchema.parse(Object.fromEntries(Object.keys(bindingSchema.shape).map(key=>[key,key==='contextRevision'?value?.[key]??0:value?.[key]])))
 export const taskEffectReconciliationIdentity=value=>identitySchema.parse(value)
@@ -77,11 +84,45 @@ function intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId
  const target=entries.find(entry=>entry.id===intentEntryId),intent=audit(target??{})
  assert(intent?.version===1&&intent.domain==='task'&&intent.kind==='effect-intent'&&intentSchema.safeParse(intent.payload).success,'TASK_EFFECT_INTENT_INVALID')
  assert(receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-intent'&&entry.data.payload.key===intent.payload.key).length===1,'TASK_EFFECT_INTENT_AMBIGUOUS')
- const branch=manager.getBranch(target.id),candidates=branch.flatMap(entry=>entry.type==='message'&&entry.message.role==='assistant'?entry.message.content.filter(block=>block.type==='toolCall'&&block.id===intent.payload.callId&&block.name===intent.payload.name).map(block=>({entry,block})):[])
+ const branch=manager.getBranch(target.id);let candidates=branch.flatMap(entry=>entry.type==='message'&&entry.message.role==='assistant'&&(intent.payload.version!==2||entry.id===intent.payload.invocation.callEntryId)?entry.message.content.filter(block=>block.type==='toolCall'&&block.id===intent.payload.callId&&block.name===intent.payload.name).map(block=>({entry,block})):[])
+ if(intent.payload.version!==2&&candidates.length>1)candidates=candidates.filter(call=>{
+  const {originBinding}=inputOrigin(manager.getBranch(call.entry.id),task,currentBinding)
+  return taskEffectDigest({requirementRevision:originBinding.requirementRevision,contextRevision:originBinding.contextRevision,controlRevision:originBinding.controlRevision,name:intent.payload.name,args:call.block.arguments})===intent.payload.key
+ })
  assert(candidates.length===1,'TASK_EFFECT_CALL_AMBIGUOUS')
  const call=candidates[0],source=inputOrigin(manager.getBranch(call.entry.id),task,currentBinding)
- assert(taskEffectDigest({requirementRevision:source.originBinding.requirementRevision,contextRevision:source.originBinding.contextRevision,controlRevision:source.originBinding.controlRevision,name:intent.payload.name,args:call.block.arguments})===intent.payload.key,'TASK_EFFECT_ARGUMENTS_MISMATCH')
+ if(intent.payload.version===2){
+  assert(isDeepStrictEqual(intent.payload.invocation,{callEntryId:call.entry.id,inputEntryId:source.input.id,packetId:source.packet.payload.id,inputDigest:taskEffectDigest(source.packet.payload),originBinding:source.originBinding}),'TASK_EFFECT_INVOCATION_MISMATCH')
+  assert(taskEffectInvocationKey({sessionId:task.sessionId,callEntryId:call.entry.id,callId:intent.payload.callId})===intent.payload.key,'TASK_EFFECT_INVOCATION_MISMATCH')
+ }else assert(taskEffectDigest({requirementRevision:source.originBinding.requirementRevision,contextRevision:source.originBinding.contextRevision,controlRevision:source.originBinding.controlRevision,name:intent.payload.name,args:call.block.arguments})===intent.payload.key,'TASK_EFFECT_ARGUMENTS_MISMATCH')
  return {target,intent,call,...source}
+}
+
+/** Read already committed Night closures against the original official calls.
+ * This verifies durable identities; it neither closes an effect nor grants a
+ * model authority. Callers must independently authenticate the new action. */
+export function verifyTaskEffectClosures({task,stored,closedIntentEntryIds}){
+ assert(stored?.format==='pi-native-v1'&&stored.header.id===task.sessionId,'TASK_EFFECT_NATIVE_HISTORY_REQUIRED')
+ const rows=task.effectReconciliations??[],requested=[...closedIntentEntryIds].sort()
+ assert(rows.length>0&&rows.every(row=>row.state==='committed')&&new Set(requested).size===requested.length&&isDeepStrictEqual(requested,rows.map(row=>row.intentEntryId).sort()),'TASK_EFFECT_AUTHORIZATION_CLOSURES_MISMATCH')
+ const entries=stored.entries,receipts=entries.filter(entry=>audit(entry)),manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(entries)),currentBinding=taskEffectBinding(task)
+ const identities=receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='identity')
+ assert(identities.length===1&&identities[0].data.version===1&&validateTaskIdentity(identities[0].data.payload)&&identities[0].data.payload.taskId===task.taskId&&identities[0].data.payload.sessionId===task.sessionId,'TASK_EFFECT_IDENTITY_MISMATCH')
+ const branch=manager.getBranch(),native=receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled')
+ assert(native.length===rows.length,'TASK_EFFECT_RECONCILIATION_JOURNAL_CONFLICT')
+ return rows.map(row=>{
+  const matches=native.filter(entry=>entry.id===row.entryId&&entry.data.payload.intentEntryId===row.intentEntryId)
+  assert(matches.length===1,'TASK_EFFECT_RECONCILIATION_JOURNAL_CONFLICT')
+  const entry=matches[0],receipt=entry.data,payload=receipt.payload
+  assert(receipt.version===1&&receiptSchema.safeParse(payload).success&&taskEffectDigest(receipt)===row.receiptDigest&&isDeepStrictEqual(receipt,row.receipt)&&payload.taskId===task.taskId&&payload.sessionId===task.sessionId&&branch.some(item=>item.id===entry.id),'TASK_EFFECT_RECONCILIATION_JOURNAL_CONFLICT')
+  const origin=intentOrigin(entries,receipts,manager,task,currentBinding,row.intentEntryId)
+  assert(taskEffectDigest(origin.target)===payload.intentDigest&&origin.intent.payload.key===payload.key&&origin.intent.payload.name===payload.toolName&&origin.intent.payload.callId===payload.callId&&origin.call.entry.id===payload.callEntryId&&taskEffectDigest(origin.call.block.arguments)===payload.argumentsDigest&&origin.input.id===payload.inputEntryId&&origin.packet.payload.id===payload.packetId&&taskEffectDigest(origin.packet.payload)===payload.inputDigest&&isDeepStrictEqual(origin.originBinding,payload.originBinding),'TASK_EFFECT_INVOCATION_MISMATCH')
+  const closureBranch=manager.getBranch(entry.id),drain=closureBranch.find(item=>item.id===payload.ownerDrainEntryId),drainReceipt=audit(drain??{})
+  assert(drain&&taskEffectDigest(drain)===payload.ownerDrainDigest&&drainReceipt?.version===1&&drainReceipt.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(drainReceipt.kind)&&(drainReceipt.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(drainReceipt.payload).success&&drainReceipt.payload.proof.ownerId===task.sessionId&&drainReceipt.payload.scopeDigest===payload.scopeDigest&&drain.parentId===drainReceipt.payload.cutEntryId,'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
+  assert(closureBranch.some(item=>item.id===row.intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+  assert(closureBranch.slice(closureBranch.indexOf(drain)+1,-1).every(item=>item.type==='custom'&&item.customType==='night.commit'),'TASK_EFFECT_DRAIN_CUT_CHANGED')
+  return {entryId:entry.id,parentId:entry.parentId,receipt:structuredClone(receipt)}
+ })
 }
 
 async function safeEvidence(root,ref,signal){

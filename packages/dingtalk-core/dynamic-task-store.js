@@ -1,5 +1,5 @@
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
-import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
+import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
@@ -1845,6 +1845,14 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId))fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
         // An operator audit source is consumed by this exact business command,
         // never eligible for channel triage or a task/model wake, even on crash.
+        source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
+      }
+      if(source.requestIdentity?.effectAuthorization){
+        const identity=taskEffectActionAuthorizationIdentity(source.requestIdentity.effectAuthorization),task=get('dynamic_tasks',identity.taskId)
+        const closures=task.effectReconciliations??[]
+        if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId))fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
+        if(task.archivedAt||task.recovering||!task.drained||task.status!=='active'||task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==identity.expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        if(!closures.length||closures.some(row=>row.state!=='committed')||digest(closures.map(row=>row.intentEntryId).sort())!==digest(identity.closedIntentEntryIds))fail('TASK_EFFECT_RECONCILIATION_PENDING')
         source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
       }
       put('dynamic_sources', source); return changed({ source })

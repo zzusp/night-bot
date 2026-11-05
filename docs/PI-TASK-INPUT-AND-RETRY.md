@@ -20,24 +20,26 @@ Read-only dialogue and human-review runs cannot use this live continuation.
 
 Effect origin comes from the actual official assistant/tool-call branch and its
 authenticated admitted input. The mutable latest task revision is not the origin.
-Equal tool names and arguments alone do not prove replay: an authenticated new
-input can deliberately request the same operation. Invocation identity, source
-authority and explicit continuation/replay relationships must distinguish those
-cases. Unknown and operator-reconciled effects retain their stricter no-replay
-fences. The cross-context same-arguments proposal was withdrawn rather than
-silently preventing intentional repeated work.
+Equal tool names and arguments alone do not prove replay. New v2 attempts bind
+the actual official session, assistant entry and call ID, plus the exact admitted
+input entry, packet digest and original task binding. Two independently requested
+calls in one input may use identical arguments. Re-entering the same execution
+sequentially or concurrently shares its original body result and never executes
+that body again. Native provider retry does not create another body attempt.
 
-The older effect key still groups equal arguments within one admitted task
-context. Thus intentional repeated calls within that very same input can still
-be refused; this stage does not claim to resolve that existing limitation.
-Any later change must identify the actual committed call (`callEntryId/callId`),
-its admitted source (`packetId/inputEntryId`) and a trusted replay/continuation
-relationship. A model-provided replacement identity is insufficient. Existing
-operator no-replay commitments must not be weakened during that change.
-The existing reconciled-effect fence also blocks matching tool/arguments in later
-contexts. Distinguishing a newly authorized independent action from the original
-closed effect remains part of that identity work; it is not claimed as solved by
-the successful-effect/new-source counterexample.
+Night's earlier v1 receipts are read without rewriting history: the original full
+key and verified official input must identify exactly one call. Provider call-ID
+reuse across distinct inputs is supported when that proof is unique; genuinely
+ambiguous old records remain held. This is Night upgrade support, not DSH import.
+
+Unknown effects still hold execution until reconciliation. After closure, a new
+call ID, lease or bare unpause cannot authorize effects or declare the old partial
+outcome successful. A separately authenticated operator may authorize a new
+objective referencing the exact set of closed intents; this produces a new
+business source and requirement revision under unchanged permissions. Only calls
+following that actual admitted grant may perform the new work or complete it.
+The original closed invocation remains permanently blocked. See
+EFFECT-ACTION-AUTHORIZATION.md for the private HTTP/CLI entry and crash boundaries.
 
 An owner spanning several admitted inputs emits one scope-limited drain proof
 covering exact original intent identities. It does not fabricate multiple owner
