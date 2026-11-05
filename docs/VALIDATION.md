@@ -1,3 +1,18 @@
+# Native permission preset test assembly (2026-11-05)
+
+The retained group-session fixture now mounts the local permission preset service.
+Explicit assertions cover initial permission facts, alias tie identity, idempotent
+selection, custom knobs, live defaults, catalog, projection and command metadata.
+Removed the old preset service root dev declaration and exact lock importer block.
+**55 DSH direct dev declarations remain**. Implementation/notice and opaque command
+identity are retained; no claim of independently rewritten algorithms is made.
+
+Validation: **636 default pass** with the old root package link absent (restored
+in finally), **36 focused pass**, **23 approval/authority/human integration pass**
+(partly overlapping default). Acorn parsed **926** files with no old preset module
+imports. Source/import/Pi-license/YAML/diff guards pass. No installation retry;
+known npm HTTP 503 remains. See `docs/pi-native-owned-permission-validation.json`.
+
 # Owned attachment contracts without old service dependencies (2026-11-05)
 
 Replaced old-service differential tests with direct attachment contracts: verified

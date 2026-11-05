@@ -152,9 +152,6 @@ importers:
       '@deepseek-ai/dsh-output-retention':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
-      '@deepseek-ai/dsh-permission-presets':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-commands@0.2.1-alpha.2(bf9f32f55c58d67c916b7331a7531043))(@deepseek-ai/dsh-sandbox-policy@0.2.1-alpha.2(e55c3ebba1d60781b484a2256de76a51))(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)(@deepseek-ai/dsh-session-projection@packages+capability-compat+session-projection)(@deepseek-ai/dsh-session@packages+capability-compat+session)(@deepseek-ai/dsh-shell@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)(@deepseek-ai/dsh-subprocess@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-http-proxy@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))))(@deepseek-ai/dsh-typert-protocol@0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1))(@deepseek-ai/dsh-user-approval@0.2.1-alpha.2(9bae0bc41493dd466c50a931f1363b23))
       '@deepseek-ai/dsh-ptc-runtime':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-sandbox@packages+capability-compat+sandbox)
