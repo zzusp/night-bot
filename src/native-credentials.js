@@ -3,9 +3,9 @@ import z from '@deepseek-ai/schemastery'
 import {watch} from 'chokidar'
 import {Document,isMap,isScalar,parseDocument} from 'yaml'
 import {readFile,stat} from 'node:fs/promises'
-import {join,resolve} from 'node:path'
+import {resolve} from 'node:path'
 import {isDeepStrictEqual} from 'node:util'
-import {launchEnvironmentOf,resolveLegacyHome} from './native-environment.js'
+import {launchEnvironmentOf} from './native-environment.js'
 import {canonicalizeWatchPath,withCredentialLock,writeCredentialFile} from './credential-file.js'
 const fail=message=>{throw new TypeError('Credential document: '+message)}
 const empty=()=>({refs:new Map(),records:new Map()})
@@ -30,15 +30,11 @@ export function parseCredentialsDocument(text){
  if(v.version!==1||Object.keys(v).some(k=>!['version','refs','records'].includes(k)))fail('unsupported version or root fields')
  for(const section of ['refs','records']){const values=v[section]??{};if(!mapping(values))fail('section must be a mapping');for(const [k,x]of Object.entries(values))result[section].set(section==='refs'?credentialRef(k):credentialKey(k),section==='refs'?nonempty(x):credentialRecord(x))}return result
 }
-export function renderFlatLayoutMigration(text){let d;try{d=tree(text)}catch{return}if(!isMap(d.contents)||!d.contents.items.length||text.split('\n').some(l=>/^(%|---|\.\.\.)/.test(l)))return
- for(const p of d.contents.items){if(!isScalar(p.key)||!isScalar(p.value)||p.key.value==='version')return;try{credentialRef(p.key.value);nonempty(p.value.value)}catch{return}}
- return'version: 1\nrefs:\n'+text.split('\n').map(l=>l.length?'  '+l:l).join('\n')+(text.endsWith('\n')?'':'\n')
-}
 function render(text,section,key,value){const d=text===undefined?new Document({}):tree(text);d.set('version',1);if(value===undefined){const m=d.get(section,true);if(isMap(m)&&isScalar(m.items[0]?.key)&&m.items[0].key.value===key)m.commentBefore=null;d.deleteIn([section,key])}else d.setIn([section,key],value);const out=d.toString();parseCredentialsDocument(out);return out}
 export default class NativeCredentials extends Service {
- static Config=z.object({path:z.string(),dshHome:z.string(),watch:z.boolean().default(true),debounceMs:z.number().min(0).default(100)})
- constructor(ctx,config={}){super(ctx,'credentials');this.host=ctx;this.spec={filename:resolve(config.path??join(resolveLegacyHome(config.dshHome),'.credentials.yaml')),watch:config.watch??true,debounceMs:config.debounceMs??100};this.snapshot=empty();this.text=undefined;this.operations=Promise.resolve();this.closed=false}
- async *[Service.init](){yield async()=>{this.closed=true;await this.operations};let text=await this.read();if(text!==undefined&&renderFlatLayoutMigration(text)!==undefined)text=await withCredentialLock(this.spec.filename,async owned=>{const current=await this.read();const migrated=current===undefined?undefined:renderFlatLayoutMigration(current);if(migrated===undefined)return current;await writeCredentialFile(this.spec.filename,migrated,owned);return migrated},{closed:()=>this.closed});this.accept(text,false)
+ static Config=z.object({path:z.string().required(),watch:z.boolean().default(true),debounceMs:z.number().min(0).default(100)})
+ constructor(ctx,config={}){if(typeof config.path!=='string'||!config.path.trim()||Object.hasOwn(config,'dshHome'))throw Object.assign(new TypeError('Explicit credential path is required'),{code:'NIGHT_CREDENTIAL_PATH_REQUIRED'});super(ctx,'credentials');this.host=ctx;this.spec={filename:resolve(config.path),watch:config.watch??true,debounceMs:config.debounceMs??100};this.snapshot=empty();this.text=undefined;this.operations=Promise.resolve();this.closed=false}
+ async *[Service.init](){yield async()=>{this.closed=true;await this.operations};const text=await this.read();this.accept(text,false)
   if(this.spec.watch){const watcher=watch(await canonicalizeWatchPath(this.spec.filename),{ignoreInitial:true,awaitWriteFinish:{stabilityThreshold:this.spec.debounceMs,pollInterval:Math.max(1,Math.min(this.spec.debounceMs,10))}});for(const event of ['all','ready'])watcher.on(event,()=>{if(!this.closed)this.queueRefresh()});watcher.on('error',()=>this.warn('watcher failed'));yield async()=>{this.closed=true;await watcher.close();await this.operations}}
  }
  warn(message){try{this.host.logger.warn('Native credentials: '+message)}catch{}}

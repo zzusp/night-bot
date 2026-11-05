@@ -1,0 +1,113 @@
+✔ 真实执行器冻结托管变量，移动导入文件并重建Host后原运行与新运行各用其版本 (1192.340403ms)
+✔ 取消后受信节点保存的读取器失效，旧Run不能借重投冻结最新配置 (510.108067ms)
+✔ 未接配置服务时原执行照常，实际读取失败关闭；旧Run缺快照不能自动冻结 (930.022499ms)
+✔ 正式执行Runtime入口透传配置服务给冻结Run与code节点 (639.092605ms)
+✔ maintenance backup preserves a fixed snapshot while WAL metadata changes (1099.901814ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":170,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":896,"aborted":false}
+ℹ {"writes":475,"childExit":0,"childSignal":null,"stderr":""}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":30,"aborted":false}
+✔ lifecycle prepare deadline fails and prevents subsequent work after drain (21.846328ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":21,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":0,"aborted":false}
+✔ lifecycle business deadline fails and prevents subsequent work after drain (31.797805ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":29,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":0,"aborted":false}
+✔ lifecycle cleanup has an independent deadline and preserves the original failure (22.008722ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":21,"aborted":true}
+✔ lifecycle parent cancellation still drains resources within the cleanup budget (1.260621ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":0,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":0,"aborted":false}
+✔ lifecycle business timeout terminates its child and removes its temporary directory (36.001692ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":21,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ native lifecycle preparation cancellation drains a late fixture and never starts business (43.953148ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":33,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ native lifecycle abort interrupts an await so business finally can release its close gate (24.842172ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":21,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":0,"aborted":false}
+✔ native lifecycle cancellation releases teardown gates before closing resources (22.615052ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":20,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":2,"aborted":false}
+{"cleanupEvent":"deadline-unsettled","pending":[{"stage":"after.hook","elapsedMs":20}],"ownedRootCount":0,"aborted":true}
+✔ native lifecycle cleanup timeout stays bounded and does not run later cleanup (42.293239ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":0,"aborted":false}
+ℹ {"cleanupEvent":"deadline-unsettled","pending":[{"stage":"after.hook","elapsedMs":20}],"ownedRootCount":0,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":41,"aborted":true}
+✔ native lifecycle pre-cancelled parent never invokes the callback (0.93351ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":0,"aborted":false}
+✔ native lifecycle scopes own only their fresh roots and keep independent FIFO cleanup (6.785058ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":5,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":1,"aborted":false}
+✔ native lifecycle onCancel failure still closes resources and preserves cleanup evidence (29.589623ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":5,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":24,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":0,"aborted":false}
+✔ native nested lifecycle inherits the parent business cancellation without sharing roots (66.423683ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":9,"aborted":false}
+ℹ {"lifecyclePhase":"prepare","elapsedMs":5,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":20,"aborted":true}
+ℹ {"lifecyclePhase":"business","elapsedMs":15,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":29,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":34,"aborted":false}
+{"cleanupEvent":"deadline-unsettled","pending":[{"stage":"after.hook","elapsedMs":20},{"stage":"host.close","elapsedMs":20}],"ownedRootCount":1,"aborted":true}
+{"cleanupEvent":"late-settlement","stage":"host.close","elapsedMs":21,"outcome":"settled","pending":[{"stage":"after.hook","elapsedMs":21}],"ownedRootCount":1,"aborted":true}
+{"cleanupEvent":"removal-blocked","pending":[{"stage":"after.hook","elapsedMs":21}],"ownedRootCount":1,"aborted":true}
+{"cleanupEvent":"late-settlement","stage":"after.hook","elapsedMs":22,"outcome":"failed","pending":[],"ownedRootCount":1,"aborted":true}
+✔ cleanup timeout reports pending close and blocks deletion after the late close settles (23.682123ms)
+{"closeEvent":"observer-error","errorCode":"Error"}
+{"closeEvent":"observer-error","errorCode":"Error"}
+✔ normal shared cleanup observes flush and removal while preserving method restoration and frozen APIs (2.949975ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":1,"aborted":false}
+✔ close observation is opt-in, retains Promise identity by default and reports actual pending stages (1.310476ms)
+{"cleanupEvent":"deadline-unsettled","pending":[{"stage":"host.close","elapsedMs":20}],"ownedRootCount":1,"aborted":true}
+{"cleanupEvent":"late-settlement","stage":"host.close","elapsedMs":21,"outcome":"settled","pending":[],"ownedRootCount":1,"aborted":true}
+{"cleanupEvent":"removal-blocked","pending":[],"ownedRootCount":1,"aborted":true}
+✔ independent phased cleanup also retains its root after a late close (23.332969ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":0,"aborted":false}
+ℹ {"cleanupEvent":"deadline-unsettled","pending":[{"stage":"host.close","elapsedMs":20}],"ownedRootCount":1,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":21,"aborted":true}
+ℹ {"cleanupEvent":"late-settlement","stage":"host.close","elapsedMs":21,"outcome":"settled","pending":[],"ownedRootCount":1,"aborted":true}
+ℹ {"cleanupEvent":"removal-blocked","pending":[],"ownedRootCount":1,"aborted":true}
+✔ approved cleanup budget is 20s while representative original business limits stay unchanged (0.308132ms)
+✔ 管理普通与秘密变量，Web投影和快照只含允许字段，Host按类型读取 (56.579979ms)
+✔ 配置文档CAS在原子修改内部比较，并发只有一个发布成功 (11.063224ms)
+✔ 冻结精确变量版本和绑定，更新停用不改变旧Run，停用阻止新绑定与新快照 (10.471848ms)
+✔ runId独占快照，工程派生同目录沿用初始身份，跨流程读取拒绝 (2.265287ms)
+✔ 身份与存储边界明确拒绝，秘密与provider错误不进入错误回执 (1.881092ms)
+✔ 输入严格验证、种类与格式不能改变、非法绑定不发布 (3.031628ms)
+✔ 100变量和4MiB完整历史上限原子拒绝且不更改持久版本 (3761.129705ms)
+✔ 损坏持久记录不静默重置或读取最新版本 (1.652048ms)
+✔ 正式native provider隔离持久化，移动来源文件并重启后仍读取冻结版本 (304.842644ms)
+✔ 两个正式native provider共享隔离文件，文件锁内CAS只发布一个版本 (43.092731ms)
+✔ 共享native凭据文件的不同实例隔离变量、相同runId快照及管理身份 (157.840909ms)
+✔ 真实Resident以task-session启动，旧workflow配置HTTP返回410且保留历史凭据 (604.870691ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":547,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":52,"aborted":false}
+✔ 工程v26正式服务通过原生节点工具消费冻结配置，移动来源并重建Host后仍可查询 (6436.170521ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8881.206752

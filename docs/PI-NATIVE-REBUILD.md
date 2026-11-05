@@ -1,3 +1,29 @@
+# Explicit storage and credential import removal (2026-11-05)
+
+Credentials require an explicit `path`; attachments require `storageRoot`.
+Portable/explicit-root Host supplies the same owned physical paths as before.
+Missing paths fail before publishing a service; deprecated `dshHome` cannot select
+storage. The generic DSH home resolver is removed. Flat credential documents are
+refused without migration, lock creation or byte changes. Official Night Bot v1
+refs/grants and backup paths remain supported. Two application credential writers
+now verify concurrent refresh; workflow configuration/query tests use the real
+application provider instead of the DSH provider. One direct declaration is
+removed: **71 DSH dev declarations remain**. Remaining source/lock/normalization
+attribution is retained; removing a default does not imply an independent rewrite.
+
+Validation: **634 default pass**, focused **16**, earlier format/workflow **42**
+(overlap recorded), domain **390 pass**, maintenance backup/configuration **36
+pass**. Root refusal and unchanged foreign bytes, v1 grants, mutable-input
+isolation, process serialization, comment retention, watcher replacement/deletion,
+write ownership and cancellation pass. The new refusal test initially passed a
+Cordis thenable directly to `assert.rejects`; wrapped it in an async function,
+then the targeted and full runs passed. Source/import/Pi-license/diff guards pass.
+See [storage evidence](pi-native-storage-roots-validation.json). The known registry
+HTTP 503 package-policy blocker still prevents fresh frozen-install verification;
+only the removed importer changed, with no new package version or integrity.
+
+---
+
 # Explicit dotenv directory (2026-11-05)
 
 Environment loading no longer selects a user `.env` from `DSH_HOME` or `~/.dsh`.

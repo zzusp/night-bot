@@ -1,0 +1,53 @@
+✔ 真实执行器冻结托管变量，移动导入文件并重建Host后原运行与新运行各用其版本 (564.369172ms)
+✔ 取消后受信节点保存的读取器失效，旧Run不能借重投冻结最新配置 (185.248329ms)
+✔ 未接配置服务时原执行照常，实际读取失败关闭；旧Run缺快照不能自动冻结 (489.932964ms)
+✔ 正式执行Runtime入口透传配置服务给冻结Run与code节点 (404.968913ms)
+✔ native file refs, sanitized aliases, bounded streaming and v1 paths match legacy storage (193.82416ms)
+✔ native clean and normalized image bytes, dimensions, metadata and request identities match legacy (241.799119ms)
+✔ file writes preserve exact bytes, private modes, hard-link deduplication and zero-byte uploads (26.814845ms)
+✔ corrupt and missing file/image objects fail integrity checks and never get silently overwritten (26.262636ms)
+✔ batch admission and canonical base64 fail before any publication, with image limits intact (11.591784ms)
+✔ cancelled streamed writes drain their source and remove staging without publishing a receipt (5.874931ms)
+✔ closing an attachment service drains a paused stream iterator and rejects new storage operations (15.850842ms)
+✔ shared request cancellation preserves another waiter, refreshes corrupt cache, and keeps transformation identity (47.926537ms)
+✔ linked storage directories are rejected before creating anything outside the owned attachment root (10.044153ms)
+✔ all supported formats, clean pass-through, metadata stripping and 16-bit conversion preserve legacy bytes (122.98667ms)
+✔ a failed image batch waits for other admitted transforms and publishes no partial objects (6.364255ms)
+✔ compression concurrency is bounded and aborting every shared waiter prevents late cache publication (21.59794ms)
+✔ cache links cannot cause creation outside the owned home and a returned stream can be closed before consumption (24.726132ms)
+✔ owned version-one credential documents retain references and detached grants while flat layouts are refused (9.143993ms)
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (3.297145ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (31.004628ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (14.803291ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (8.552406ms)
+✔ two application processes serialize grant refresh without dropping a committed update (281.588657ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (21.127234ms)
+✔ version-one stores retain comments and watcher follows atomic external changes and deletion (123.486259ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (27.237008ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (108.873094ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (16.065713ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (10.754389ms)
+✔ reference edits cancelled while waiting for the durable lock never mutate the store (3.444525ms)
+✔ 管理普通与秘密变量，Web投影和快照只含允许字段，Host按类型读取 (13.11603ms)
+✔ 配置文档CAS在原子修改内部比较，并发只有一个发布成功 (24.075757ms)
+✔ 冻结精确变量版本和绑定，更新停用不改变旧Run，停用阻止新绑定与新快照 (4.587721ms)
+✔ runId独占快照，工程派生同目录沿用初始身份，跨流程读取拒绝 (2.268131ms)
+✔ 身份与存储边界明确拒绝，秘密与provider错误不进入错误回执 (1.185778ms)
+✔ 输入严格验证、种类与格式不能改变、非法绑定不发布 (2.685298ms)
+✔ 100变量和4MiB完整历史上限原子拒绝且不更改持久版本 (1535.0758ms)
+✔ 损坏持久记录不静默重置或读取最新版本 (1.260821ms)
+✔ 正式native provider隔离持久化，移动来源文件并重启后仍读取冻结版本 (107.5864ms)
+✔ 两个正式native provider共享隔离文件，文件锁内CAS只发布一个版本 (32.095885ms)
+✔ 共享native凭据文件的不同实例隔离变量、相同runId快照及管理身份 (59.184084ms)
+✔ 真实Resident以task-session启动，旧workflow配置HTTP返回410且保留历史凭据 (332.530614ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":319,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+ℹ tests 42
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3912.878148
