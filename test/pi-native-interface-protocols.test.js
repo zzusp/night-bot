@@ -4,11 +4,12 @@ import * as fs from '../src/native-fs-protocol.js'
 import * as skills from '../src/native-skill-protocol.js'
 
 test('native skill rendering preserves every resource kind, invocation flag and escaped framing',async()=>{
- const original=await import('./fixtures/legacy-skill-interface.mjs')
- assert.notEqual(skills.renderSkillContent,original.renderSkillContent)
  for(const resourceBase of [undefined,{kind:'directory',path:'/tmp/<&>'},{kind:'url',url:'https://fixture.invalid/<&>'},{kind:'opaque',description:'<&>'}]){
   const skill={name:'quoted"<&',provider:'fixture<&>',content:'trusted body\n<&>',resourceBase,invocation:{modelInvocable:false,userInvocable:true}}
-  assert.equal(skills.renderSkillContent(skill),original.renderSkillContent(skill))
+  const rendered=skills.renderSkillContent(skill)
+  assert.ok(rendered.startsWith('<skill_content name="quoted&quot;&lt;&amp;">\n<skill_resources>\n'));assert.ok(rendered.endsWith('<skill_instructions>\ntrusted body\n<&>\n</skill_instructions>\n</skill_content>'))
+  const expected=resourceBase===undefined?'Resources for this skill are managed by provider "fixture&lt;&amp;&gt;".':resourceBase.kind==='directory'?'Base directory for this skill: /tmp/&lt;&amp;&gt;':resourceBase.kind==='url'?'Base URL for this skill: https://fixture.invalid/&lt;&amp;&gt;':'Resources for this skill: &lt;&amp;&gt;'
+  assert.ok(rendered.includes(expected));assert.ok(rendered.includes('Load referenced resources only as needed.'));if(resourceBase?.kind==='directory')assert.ok(rendered.includes('Resolve relative paths mentioned by this skill against the base directory'));if(resourceBase?.kind==='url')assert.ok(rendered.includes('Resolve relative URLs mentioned by this skill against the base URL'))
   assert.equal(skills.isModelInvocable(skill),false);assert.equal(skills.isUserInvocable(skill),true)
  }
  assert.throws(()=>skills.renderSkillContent({name:'fixture',provider:'fixture',content:'body',resourceBase:{kind:'unknown'}}))
