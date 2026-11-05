@@ -263,3 +263,7 @@ Active tool-skill now uses attributed local algorithms. Catalog visibility autho
 ### Background job model binding
 
 Active tool-jobs now uses attributed local control/notice/format and retention algorithms, over the already native producer registry. Generic schema and message helpers remain. The former JobId brand import was identity-only and is local; no old jobs service mounted. Direct DSH production dependencies35; active components replaced41.
+
+### Filesystem backend and observation gate
+
+Active filesystem backend and observation listeners now use attributed local IO/CAS/containment/watch algorithms, over the retained abstract FileSystem/canonical errors and sandbox writableRoots helper. Two formerly active rows replaced; direct DSH production dependencies34 (one newly explicit sandbox helper), active replacements43. FS model/search tools and shell backends remain. Real Linux containment rerun passed; no Windows acceptance claim.

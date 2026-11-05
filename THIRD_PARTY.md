@@ -71,3 +71,5 @@ Trusted shell facts: `src/native-shell-env.js` preserves the MIT @deepseek-ai/ds
 `src/native-tool-skill.js` retains MIT tool-skill schema/catalog/invocation/formatting algorithms from `@deepseek-ai/dsh-tool-skill@0.2.1-alpha.2`; Pi hostMessages replaces legacy visible-surface authority. See `licenses/dsh-tool-skill-MIT.txt`.
 
 `src/native-tool-jobs.js` and `src/native-output-retention.js` preserve MIT job control/notice/rendering and bounded retention algorithms from `@deepseek-ai/dsh-tool-jobs`/`dsh-output-retention@0.2.1-alpha.2`, explicitly attributed compatibility forks; see matching licenses.
+
+`src/native-fs-local.js`, `native-fs-sandbox.js` and `native-fs-observation-policy.js` preserve MIT filesystem IO/atomic/CAS/watch/Windows-DACL/containment and observation-gate algorithms from matching `@deepseek-ai/dsh-* @0.2.1-alpha.2` packages. These are explicitly attributed compatibility forks, not original security algorithms; canonical FsError/service/type helpers and sandbox writableRoots remain explicit libraries.

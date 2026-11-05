@@ -297,3 +297,9 @@ SessionManager仍是Pi权威持久上下文；NativeSessions仍依赖原v4内存
 最终own449/449（22936.492967ms）通过；新增4合同和3实际Pi wire。验证旧schema/render与UTF-8跨chunk保留差分、wait cap及caller signal、隐藏producer log/owner/offset、完成notice字节预算、连续唤醒预算/直接user重置和awaited/killed/teardown抑制。真实Pi验证增量与final result仅消费一次、awaited不重复唤醒、foreign read拒绝、kill先接受而producer仍stopping，以及空闲owner一次持久notice唤醒。首次wire有测试语法错误已修正；空闲完成测试使用观察等待而非jobs.wait，避免人为把其变为awaited并改变待验行为。
 
 全新/tmp/night-bot-job-tools-production frozen production ignore-scripts安装，306实质核心/wire+38合同=344复测通过；282运行文件及manifest/lock逐字一致，静态279 JS/239字面bare imports通过。runtime142/routing47/domain388/kernel9通过1 Windows跳过因对应边界未改动沿用d78b96e证据，不声称重跑；共1035独立通过。证据evidence/native-job-tools-*.txt。35直接DSH依赖/41活动组件替换；仍非完整迁移，403未重试。
+
+## 原生文件系统后端与观察策略验证
+
+最终own458/458（24798.27982ms），新增7合同及2实际Pi wire通过。验证旧后端差分、CRLF/字节窗口/二进制拒绝、FIFO CAS仅一方成功、POSIX mode保留、真实watch与显式close、staging 0700/0600和取消后旧字节不变/暂存清理、只读及workspace外symlink拒绝、owner观察隔离与卸载清空。真实Pi七步验证unseen edit拒绝、read、外部修改后stale edit拒绝、重读、edit及新建write的六份收据；另验证read-only无授权写入/不擅自escalate。初次测试对原后端CRLF返回、umask创建mode、公开二进制错误码及workspace-write允许/tmp作了错误假设；依据固定源行为修正测试，未改或弱化guard。
+
+真实kernel九通过/一Windows跳过（14650.772878ms），仅执行器按AGENTS升级，应用隔离保持。全新/tmp/night-bot-filesystem-production frozen production ignore-scripts安装，314实质核心/wire+38合同=352复测通过；285运行文件及manifest/lock逐字一致，静态282 JS/246字面bare imports通过。runtime142/routing47/domain388对应夹具未改动沿用d78b96e证据，不声称重跑；共1044独立通过。证据evidence/native-filesystem-*.txt。34直接DSH依赖/43活动组件替换；路径policy仍保留源实现已声明TOCTOU限制，非kernel代码隔离替代。403未重试。

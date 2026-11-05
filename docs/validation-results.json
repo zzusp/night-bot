@@ -1015,5 +1015,37 @@
     "cancellationBoundary": "kill acknowledges requested cancellation before producer exit; owner drain and durable effect ledger responsibilities remain separate",
     "remotePush": "not retried; prior403 denial stands",
     "completeMigration": false
+  },
+  "nativeFilesystemBackend": {
+    "date": "2026-11-05",
+    "ownPass": 458,
+    "ownDurationMs": 24798.27982,
+    "newContracts": 7,
+    "newActualPiWireCases": 2,
+    "runtimePass": 142,
+    "routingPass": 47,
+    "domainPass": 388,
+    "carriedGroups": "runtime/routing/domain unchanged from d78b96e; no rerun claimed",
+    "containment": {
+      "pass": 9,
+      "windowsSkipped": 1,
+      "durationMs": 14650.772878,
+      "source": "fresh AGENTS-authorized actual kernel run; application sandbox kept enabled"
+    },
+    "uniquePass": 1044,
+    "productionOnlyRepeatedPass": 352,
+    "productionScope": "314 meaningful core/wires plus38 contracts; development-only backend differential omitted",
+    "runtimeFilesCompared": 285,
+    "productionManifestAndLockEqual": true,
+    "productionImportFiles": 282,
+    "literalBareImports": 246,
+    "directRuntimeDshDependencies": 34,
+    "removedActiveDshServices": 43,
+    "sourceDerivedAlgorithms": "MIT local IO/atomic CAS/watch/Windows DACL/canonical containment and observation gate explicitly attributed",
+    "remainingFilesystemBoundary": "canonical FsError/abstract service/type helpers and sandbox writableRoots; model-facing filesystem/search tools still legacy",
+    "containmentLimit": "trusted model-controlled path fence is not kernel code isolation; inherited recanonicalization narrows ancestor-symlink TOCTOU, not eliminated",
+    "platformLimit": "actual Linux only; Windows ACL algorithms retained, Windows-only containment skipped",
+    "remotePush": "not retried; prior403 denial stands",
+    "completeMigration": false
   }
 }

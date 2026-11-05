@@ -39,7 +39,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-session-title.js', import.meta.url).href, config: { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 } },
       { name: new URL('./pi-authority.js', import.meta.url).href },
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
-      { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
+      { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, { name: new URL('./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
       { name: new URL('./native-subagents.js', import.meta.url).href }, { name: new URL('./native-subagent-providers.js', import.meta.url).href }, { name: new URL('./native-tool-subagent-control.js', import.meta.url).href }, { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
       { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       ...(config.plugins ?? []), ...extraPlugins,
@@ -57,8 +57,8 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     await ctx.plugin({ inject: ['agentPresets'], async *apply(child) {
       yield await child.agentPresets.register({ id: 'night-bot', plugins: [{ name: 'cordis:group', group: true,
         isolate: { fs: true, workingDirectory: true, shellEnv: true, nativeAgentInstructions: true }, config: [
-          row('fs-sandbox', { cwd: workspace }), { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
-          { name: new URL('./native-shell-env.js', import.meta.url).href }, row('tool-fs'), row('tool-fs-search', { sampleOverCapGlobResults: false }), row('fs-observation-policy'),
+          { name: new URL('./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
+          { name: new URL('./native-shell-env.js', import.meta.url).href }, row('tool-fs'), row('tool-fs-search', { sampleOverCapGlobResults: false }), { name: new URL('./native-fs-observation-policy.js', import.meta.url).href },
           row('tool-' + shell, { enableRunInBackground: true, promoteOnTimeout: true }),
           { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: true, customSkillDirs: config.skillDirs ?? [], watch: config.skillWatch ?? true } }, { name: new URL('./native-tool-skill.js', import.meta.url).href },
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536 } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },

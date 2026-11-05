@@ -1,0 +1,17 @@
+✔ actual Pi native filesystem preserves observation CAS, stale refusal and durable mutation receipts (1441.545577ms)
+✔ actual Pi native filesystem read-only policy rejects a new file without granting escalation (123.024452ms)
+✔ native local filesystem atomic text and stale guards preserve retained backend contracts (36.708468ms)
+✔ native local filesystem serializes competing CAS writes and preserves destination mode (5.43695ms)
+✔ native local filesystem handles byte windows, binary refusal and pre-abort without mutation (5.361467ms)
+✔ native filesystem policy rechecks canonical symlinks and denies read-only mutation (6.704192ms)
+✔ native observation gate isolates owner state, absence and version guards and clears on unload (0.938956ms)
+✔ native atomic filesystem abort after staging preserves old bytes and removes private staging files (5.201706ms)
+✔ native filesystem watcher observes actual changes and explicit close drains its backend (11.65573ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1739.341576

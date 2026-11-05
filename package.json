@@ -27,8 +27,6 @@
     "@deepseek-ai/dsh-brand": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-credentials": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-fs": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-fs-observation-policy": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-fs-sandbox": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-http-proxy": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-launch-environment": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-llm": "0.2.1-alpha.2",
@@ -75,7 +73,8 @@
     "@deepseek-ai/dsh-session-format-catalog": "0.2.1-alpha.2",
     "ipaddr.js": "2.5.0",
     "turndown": "7.2.4",
-    "@joplin/turndown-plugin-gfm": "1.0.68"
+    "@joplin/turndown-plugin-gfm": "1.0.68",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-alpha.2"
   },
   "packageManager": "pnpm@11.25.0",
   "devDependencies": {
@@ -142,7 +141,6 @@
     "@deepseek-ai/dsh-ptc-runtime-node": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-pwsh-local": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-repeat-tool-reminder": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-sandbox": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-sandbox-local": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-schedule": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-session-checkpoint-policy": "0.2.1-alpha.2",
@@ -205,6 +203,8 @@
     "@deepseek-ai/dsh-tool-subagent-control": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-subagent": "0.2.1-alpha.2",
     "@deepseek-ai/dsh-tool-skill": "0.2.1-alpha.2",
-    "@deepseek-ai/dsh-tool-jobs": "0.2.1-alpha.2"
+    "@deepseek-ai/dsh-tool-jobs": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-fs-sandbox": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-fs-observation-policy": "0.2.1-alpha.2"
   }
 }

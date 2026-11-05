@@ -17,6 +17,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "Native filesystem local atomic/CAS IO, bounded read/diff basis, watch and canonical per-call mutation containment plus owner-isolated observation gates; MIT algorithms explicitly attributed, canonical FsError/service/policy helpers remain",
     "Native web tools own query validation/dedup/order/caps and bounded untrusted HTML-to-markdown/render/presentation protocol; native cooperative tool timeout restores missing metadata enforcement, waits for delegated exit and distinguishes same-code ancestor deadlines by reason identity",
     "NativeWeb owns deterministic provider selection, inherited selector snapshots, fixed registration identities and owner/provider cancellation/drain; NativeHttpFetchProvider owns anonymous HTTP with source-derived public-DNS/NAT64/pinned transport/proxy/redirect/body limits; one Host provider across retained presets",
     "NativeSessionTitle owns normalized/fallback/user-pinned and versioned provider title metadata, main-request cadence, immutable registration/input snapshots and nested cancellation/drain; canonical public input-error identity retained",
@@ -64,7 +65,7 @@
     "legacy Agent type symbols/helpers for existing RPC and subagent providers; legacy LLM message/projection/error/audit helper library and Typert RPC carrier; middleware is admitted by local NativeLlm; compatibility event encoding only for legacy/transformed/bounded paths",
     "authorization error identities only (active authorization attempts local), legacy attachment type/admission helpers and generic LLM request projection policies (active blob/codec backend local)",
     "tool schema/defineTool/codegen helpers and scope/event-carrier compatibility; filesystem/shell tool backends; optional PTC worker backend",
-    "filesystem/shell wrappers and capability policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
+    "shell wrappers, canonical filesystem service/errors and sandbox helper policy adapters; approval/preset services are now local; Windows ACL capability backend; shared proxy overlay",
     "skill rendering/invocation helpers; workspace error identities only (registry local) and canonical child-agent errors and control/tool helpers; continuation manager and local provider declarations are now application-owned"
   ],
   "directRuntimeDshDependencies": [
@@ -90,14 +91,6 @@
     },
     {
       "name": "@deepseek-ai/dsh-fs",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-fs-observation-policy",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-fs-sandbox",
       "version": "0.2.1-alpha.2"
     },
     {
@@ -207,12 +200,14 @@
     {
       "name": "@deepseek-ai/dsh-session-format-catalog",
       "version": "0.2.1-alpha.2"
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox",
+      "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 127,
+  "developmentDependencyCount": 128,
   "activeLiteralDshPluginRows": [
-    "fs-observation-policy",
-    "fs-sandbox",
     "tool-",
     "tool-fs",
     "tool-fs-search"
@@ -222,6 +217,7 @@
     "tool-bash or tool-pwsh"
   ],
   "nativeReplacements": [
+    "fs-sandbox/fs-observation-policy -> attributed native-fs-local/native-fs-sandbox/native-fs-observation-policy; canonical FsError/service and sandbox policy helpers retained",
     "tool-jobs -> attributed local model controls/notices and native-output-retention; registry stays NativeJobs, brand helper was identity-only",
     "tool-skill -> attributed local schema/catalog/invocation binding; visible catalog digest uses Pi hostMessages only, historical published boolean uses audit-only facade",
     "tool-working-directory/tool-todo/tool-subagent-control/tool-subagent -> attributed local model bindings over native lifecycles; generic schema/scope/message helpers remain",
