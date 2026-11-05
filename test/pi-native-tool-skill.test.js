@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as native from '../src/native-tool-skill.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const summary={name:'fixture',description:'stable description',provider:'fixture',invocation:{modelInvocable:true,userInvocable:true},content:'TRUSTED_BODY'}
 function fixture(impl=native){const tools=new Map(),hooks=[],calls=[],visible=[],events=[],session={get seq(){return events.length},eventAt:i=>events[i]};Object.defineProperty(session,'surface',{get(){throw Error('legacy visible surface forbidden')}});const agent={id:'skill-owner',session},ctx={tools:{register:t=>tools.set(t.name,t),get:n=>tools.get(n)},skills:{snapshot:async()=>({skills:[summary],complete:true}),list:async()=>[summary],get:async(name,lookup)=>{calls.push({name,lookup});return name===summary.name?summary:undefined}},workingDirectory:{ensure:async()=>'/fixture'},piAuthority:{context:id=>{assert.equal(id,agent.id);return{hostMessages:visible}}},on:(_event,fn)=>hooks.push(fn)};impl.apply(ctx);const run=(index,messages=[])=>hooks[index]({agent,messages,signal:new AbortController().signal},async()=>({kind:'accept',messages}));return{tools,hooks,calls,visible,events,agent,ctx,run}}
 const message=source=>({role:'user',source,content:[]})

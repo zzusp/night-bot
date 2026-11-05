@@ -4,7 +4,7 @@ import {Context,symbols} from '@deepseek-ai/cordis'
 import NativeSessions from '../src/native-sessions.js'
 import NativeProjections from '../src/native-projections.js'
 import NativeTitle,{normalizeSessionTitle,fallbackSessionTitle,truncateTitleUtf8,SessionTitleInvalidError} from '../src/native-session-title.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 const append=(s,text)=>s.append('user/message',input(text),{surfaceOp:'append'})
 async function fixture(t,Impl=NativeTitle){const ctx=new Context();ctx.logger={warn(){},error(){}};new NativeSessions(ctx);new NativeProjections(ctx);const owner=ctx.plugin(Impl,{fallbackMaxWords:3,fallbackMaxBytes:32,maxTitleBytes:64});await owner;const title=ctx.sessionTitle[symbols.original]??ctx.sessionTitle;t.after(()=>ctx.fiber.dispose());return{ctx,owner,title,session:id=>ctx.sessions.create(id),settle:()=>title.drain(title.inFlight)}}

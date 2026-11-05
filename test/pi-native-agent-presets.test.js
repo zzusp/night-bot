@@ -7,7 +7,7 @@ import {join} from 'node:path'
 import {pathToFileURL} from 'node:url'
 import {symbols} from '@deepseek-ai/cordis'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {entryListProblem} from '../src/native-agent-presets.js'
 const input=()=>createUserMessage({source:{kind:'user'},content:[{type:'text',text:'verify preset'}]})
 async function fixture(t){

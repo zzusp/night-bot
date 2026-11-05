@@ -9,11 +9,11 @@ import { createRequire } from 'node:module'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
-import { LlmRuntime, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { LlmRuntime, LlmAdapter } from '../packages/capability-compat/llm/index.js'
 import { SessionStore } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
 import PermissionPresetService from '@deepseek-ai/dsh-permission-presets'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import SessionTitleService from '@deepseek-ai/dsh-session-title'
@@ -264,7 +264,7 @@ test('repeated and empty source wakes keep one copy across SDK requests, includi
 })
 
 test('upgrade deduplicates stored histories but preserves independent versions, actors and authorization evidence', async t => {
-  const { createUserMessage, createSystemMessage } = await import('@deepseek-ai/dsh-llm')
+  const { createUserMessage, createSystemMessage } = await import('../packages/capability-compat/llm/index.js')
   const { foldSurface, deriveEventMessage } = await import('@deepseek-ai/dsh-session')
   const root = await mkdtemp(join(tmpdir(), 'group-upgrade-'))
   t.after(() => rm(root, { recursive: true, force: true }))
@@ -540,7 +540,7 @@ test('常驻空闲挂接保留原生投影、拒绝任意模型步进，关闭�
  await h.sessions.run({binding:{conversationId:'g',sessionId:'visible-group',turnId:'t',leaseEpoch:1,sessionBound:false},input:{},provider:'group-fixture',model:'scripted',decisionSchema,onSessionBound:async()=>{},onCandidate:async()=>{}});
  const live=h.ctx.sessions.get('visible-group');assert.ok(live);assert.equal(h.ctx.sessionProjections.cachedSnapshot(live).values.title,'业务群');
  assert.deepEqual(h.memberships.get(root).sessionIds,['visible-group']);
- const calls=h.requests.length;const {createUserMessage}=await import('@deepseek-ai/dsh-llm');
+ const calls=h.requests.length;const {createUserMessage}=await import('../packages/capability-compat/llm/index.js');
  const agent=h.ctx.agents.get('visible-group');agent.steer(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'用户误触发送'}]}));await agent.whenIdle();assert.equal(h.requests.length,calls);
  await h.sessions.close();assert.equal(h.ctx.agents.get('visible-group'),undefined);assert.equal(h.ctx.sessions.get('visible-group'),undefined);
 });
@@ -615,7 +615,7 @@ for (const variant of ['idle', 'active', 'running', 'foreign-input', 'identity',
   let release, busy
   if (variant === 'active') busy = external.agent.runMaintenance(() => new Promise(resolve => { release = resolve }))
   if (variant === 'running') {
-    const { createUserMessage } = await import('@deepseek-ai/dsh-llm')
+    const { createUserMessage } = await import('../packages/capability-compat/llm/index.js')
     const entered = Promise.withResolvers(), gate = Promise.withResolvers()
     release = gate.resolve
     external.agent.ctx.on('agent/pre-step', async (_event, next) => { entered.resolve(); await gate.promise; return next() })

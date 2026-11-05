@@ -1,5 +1,5 @@
 import { executionDigest, executionError } from './execution-artifacts.js'
-import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 
 // A current native delivery review is read-only and remains claimable while paused.
 export function taskOwnerQueryControlAllowed(owner, plan, binding) {

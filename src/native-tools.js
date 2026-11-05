@@ -3,8 +3,8 @@ import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {scopeOf,scopeChainOf,scopeTarget} from './native-scope.js'
 import {snapshotJsonValue,deepFreeze} from './native-values.js'
-import {HarnessError} from '@deepseek-ai/dsh-llm'
-import {assertSupportedJsonSchema,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy} from '@deepseek-ai/dsh-tools'
+import {HarnessError} from './native-llm-protocol.js'
+import {assertSupportedJsonSchema,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy} from './native-tool-protocol.js'
 const errorText=error=>{try{return typeof error?.message==='string'?error.message:String(error)}catch{return'Unprintable tool failure'}}
 const snapshot=value=>{const result=snapshotJsonValue(value);if(result===undefined)throw new TypeError('Tool values must be lossless JSON');return result}
 const failure=error=>{const message=errorText(error);let info;try{if(error instanceof HarnessError){const name=error.name,code=error.code;if(typeof name==='string'&&typeof code==='string')info={name,code}}}catch{}return{isError:true,content:[{type:'text',text:'Error: '+message}],error:{message,...info?{info}:{}}}}

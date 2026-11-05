@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 const whenAbort=signal=>signal.aborted?Promise.resolve():new Promise(r=>signal.addEventListener('abort',r,{once:true}))

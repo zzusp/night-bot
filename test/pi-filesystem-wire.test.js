@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {writeFile,readFile} from 'node:fs/promises'
 import {join} from 'node:path'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {setSandboxMode} from '../src/native-policy.js'
 import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})

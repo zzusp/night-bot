@@ -1,5 +1,5 @@
 // MIT source-derived capability error vocabulary; see licenses/dsh-{web,authorization,workspace,session-title}-MIT.txt.
-import {HarnessError} from '@deepseek-ai/dsh-llm';
+import {HarnessError} from './native-llm-protocol.js';
 var WebError = class extends HarnessError {};
 var AuthorizationError = class extends HarnessError {
 	constructor(message, code, options) {

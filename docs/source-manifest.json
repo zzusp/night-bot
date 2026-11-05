@@ -36,14 +36,16 @@
     {
       "source": "agent-query-tools.js",
       "sourceSha256": "c7a907e201d4e6ce7e89e96fc08024dab68ca144a4831415cc8049a1b81db1bb",
-      "status": "retained",
-      "sha256": "c7a907e201d4e6ce7e89e96fc08024dab68ca144a4831415cc8049a1b81db1bb"
+      "status": "adapted",
+      "sha256": "eac84bef3f2bb6175324a0265de2ee7e52a695fae15f7093549f6941615da43d",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "agent-work.js",
       "sourceSha256": "868dbb90f6864f803d614afa8820d6c8b55a089ad3d1c5100c5fe5a88b0c5172",
-      "status": "retained",
-      "sha256": "868dbb90f6864f803d614afa8820d6c8b55a089ad3d1c5100c5fe5a88b0c5172"
+      "status": "adapted",
+      "sha256": "5130fe278f6663e85258eb8999f57c7ded1c47d8f71ee349c525473ec32f7387",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "artifact-json.js",
@@ -54,8 +56,9 @@
     {
       "source": "claude-execution-session.js",
       "sourceSha256": "fe0c894dfc98a5eb8afb4cbab787b4b6e52f093e0cfb47db17ab7361928efea1",
-      "status": "retained",
-      "sha256": "fe0c894dfc98a5eb8afb4cbab787b4b6e52f093e0cfb47db17ab7361928efea1"
+      "status": "adapted",
+      "sha256": "7c43082687224e55b9fb7134c435fbcb68408dce509c351c7f7f10f757593398",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "client.js",
@@ -240,8 +243,9 @@
     {
       "source": "execution-controller.js",
       "sourceSha256": "3a4e2384cf853895fec8aedc0b7c8894bc081988a84b6192ea307be56e17e0cb",
-      "status": "retained",
-      "sha256": "3a4e2384cf853895fec8aedc0b7c8894bc081988a84b6192ea307be56e17e0cb"
+      "status": "adapted",
+      "sha256": "276bd9a13fc2affa268ef1e567ed55cf5b9ea291b858f34502227fdabeaf10c5",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "execution-delivery.js",
@@ -331,8 +335,8 @@
       "source": "execution-session.js",
       "sourceSha256": "1648fe1e0dcbf2fc7a2112d46dd55cb19acc11bebda3b65e536673656da70c2c",
       "status": "adapted",
-      "sha256": "75623e17687ebababcef659098cb05835e54db8caf11106bdef475e4cc2b369f",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "719cdb8f599a509ef7ee05922e002aa857c939dada26ce0a9971e01107a6253d",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "execution-store-worker.js",
@@ -415,8 +419,9 @@
     {
       "source": "fake-llm.js",
       "sourceSha256": "6b5bf5b8a9bd1d220943e7cb12096dd3c18f3f32bb9def5fc7bc4cc54e2b9f97",
-      "status": "retained",
-      "sha256": "6b5bf5b8a9bd1d220943e7cb12096dd3c18f3f32bb9def5fc7bc4cc54e2b9f97"
+      "status": "adapted",
+      "sha256": "df406981f4b7d2b596149fccf8d363cc31f252d77cdf8ee508f42598d0d0de47",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "fixed-topic-correction.js",
@@ -440,8 +445,8 @@
       "source": "group-coordinator-session.js",
       "sourceSha256": "36b5f8dc5cf35d8c614a9eb32663ebe9e2604fa451b5de61785a44090e15191c",
       "status": "adapted",
-      "sha256": "66cc157bd23558aa011c01aff38abc11cb3221ec3a205df7ab9c35d8b075d024",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "797695dd676c0df5edbc8f52a433fe44f771bcb01337237ff868c9674a46290b",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "group-message.js",
@@ -724,8 +729,9 @@
     {
       "source": "runtime.js",
       "sourceSha256": "1e0dd7c3619196deb84718bb6e0a32985352cc75dfa57c726c58389706559f8a",
-      "status": "retained",
-      "sha256": "1e0dd7c3619196deb84718bb6e0a32985352cc75dfa57c726c58389706559f8a"
+      "status": "adapted",
+      "sha256": "4eaefe05c78f62c44e816773acc1e246c04211fbf0bf5d1b1fb90ce20cfe5211",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "session-persistence.js",
@@ -908,8 +914,8 @@
       "source": "task-owner-session.js",
       "sourceSha256": "c718a2fcf4ee87fc90a418fc583c036535b39042eb5846521ffefc8a6258964e",
       "status": "adapted",
-      "sha256": "567070425bfb73e6305ad774c67ce4ac0b8ca4ea13f0a61be883b4ae6c18e884",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "36f886412052fffa1921c7aa49dad4f39d20d0ed273755f7a921c2c25c57e379",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "task-owner-store.js",
@@ -1011,8 +1017,8 @@
       "source": "task-session.js",
       "sourceSha256": "afa52ceb8277de93442096ddfe4d7bca6690eab0bd7d6d3dc7f93fa05119c163",
       "status": "adapted",
-      "sha256": "2c0a4f0781e7bf453ce1d429c53b19a283af013f3fa0103fdbd13b0d828ce63f",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "c68a8c68d3b3844445e65b57767e5d02a38680dff17ad535762f3cd1d8989b88",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "task-source-instructions.js",
@@ -1059,8 +1065,9 @@
     {
       "source": "task-workflow-contracts.js",
       "sourceSha256": "cbf3a9c13b85bcc946f12a3e025f8ad7572d93b6c28f8ae9a2fc31729d8ee905",
-      "status": "retained",
-      "sha256": "cbf3a9c13b85bcc946f12a3e025f8ad7572d93b6c28f8ae9a2fc31729d8ee905"
+      "status": "adapted",
+      "sha256": "e6827b350d0e4463b394678da16c9b96315de8075ca37934b209bf37d9714516",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
       "source": "task-workflow.js",

@@ -1,6 +1,6 @@
 // MIT source-derived filesystem capability base and error/value vocabulary; see licenses/dsh-fs-MIT.txt.
 import { Service } from "@deepseek-ai/cordis";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "./native-llm-protocol.js";
 //#region lib/types/types.js
 /**
 * Vocabulary for the filesystem Service Definition (`ctx.fs`): the opaque target/version

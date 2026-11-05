@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as native from '../src/native-message-protocol.js'
-import * as legacy from '@deepseek-ai/dsh-llm'
+import * as legacy from './fixtures/legacy-llm-interface.mjs'
 
 test('local immutable message construction preserves role, source and detached content',()=>{
  for(const api of [native,legacy]){

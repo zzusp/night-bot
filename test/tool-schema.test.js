@@ -4,7 +4,7 @@ import { coordinatorDecisionSchema } from '../packages/dingtalk-dsh-assistant/me
 import { coordinationProposalSchema } from '../packages/dingtalk-dsh-assistant/independent-coordination-planner.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSupportedJsonSchema, validateJsonSchemaValue as violations } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue as violations } from '../packages/capability-compat/tools/index.js'
 import { taskCheckpointJsonSchema, taskResultJsonSchema, parseTaskCheckpoint } from '../packages/dingtalk-dsh-assistant/task-result.js'
 import { groupDecisionSubmissionJsonSchema, groupDecisionSchema, replyReviewJsonSchema } from '../packages/dingtalk-dsh-assistant/decision.js'
 import { taskPlanFixture, stageOutputFixture } from './fixtures/task-plan.js'

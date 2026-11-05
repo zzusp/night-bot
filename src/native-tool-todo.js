@@ -1,7 +1,7 @@
 // MIT source-derived model tool binding; see licenses/dsh-tool-todo-MIT.txt. Active lifecycle belongs to native services and Pi.
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 //#region lib/types/index.js
 /**
 * Model-facing whole-list replacement. Each call appends a `todo/write` snapshot to the calling

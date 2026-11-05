@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 async function cli(path,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(process.execPath,['bin/night-bot-auth.js',path,...args],{cwd:new URL('..',import.meta.url),stdio:['pipe','pipe','pipe']}),timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('auth subprocess timeout'))},10000);let output='';child.stdout.on('data',c=>output+=c);child.stderr.on('data',c=>output+=c);child.on('error',reject);child.on('exit',code=>{clearTimeout(timer);code===0?resolve(output):reject(new Error('auth subprocess failed'))});child.stdin.end(input)})}
 test('standalone operator writes and deletes refresh the running Host before its next real Pi request',{timeout:20000},async t=>{

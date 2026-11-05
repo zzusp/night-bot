@@ -5,7 +5,7 @@ import { inspectExecutionInputLineage, inspectLocalAcceptanceCorrection, executi
 import { normalizeEngineeringAcceptancePlan, normalizeWorktreeAcceptancePlan, proveEngineeringNoAdditionalChange } from './task-workflow.js'
 import { isTerminalUatBuildFailure } from './execution-delivery.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { canonicalExecutionJson, executionDigest, executionError, parseArtifactReference } from './execution-artifacts.js'
 import { validateWorkflowRepairAdmission } from './task-workflow-contracts.js'
 import { classifyExecutionFailure } from './execution-recovery-policy.js'

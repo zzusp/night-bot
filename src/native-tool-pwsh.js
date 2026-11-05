@@ -1,8 +1,8 @@
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-tool-pwsh-MIT.txt. Application process/sandbox/jobs/policy services own effects.
 import { isAbsolute, resolve } from "node:path";
 import z from "@deepseek-ai/schemastery";
-import { TOOL_ABORTED, defineTool } from "@deepseek-ai/dsh-tools";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { TOOL_ABORTED, defineTool } from "./native-tool-protocol.js";
+import { HarnessError } from "./native-llm-protocol.js";
 import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "./native-sandbox-protocol.js";
 import { parseExitStatus } from "./native-shell.js";
 //#region lib/types/background.js

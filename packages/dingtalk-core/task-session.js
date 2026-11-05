@@ -1,5 +1,5 @@
 import { createUserMessage } from '../../src/native-message-protocol.js';
-import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { renameTaskSession } from './session-workspaces.js'
 import { inspectSession } from './session-persistence.js'
 import { createModelContentIndex, taskModelInput, operationModelReadback, modelHostMessage, modelHostInput } from './model-context.js'

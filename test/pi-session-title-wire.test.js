@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 test('native title automatic cadence follows Pi main requests without duplicate headers and survives pin, refresh and cold read',{timeout:20000},async t=>{

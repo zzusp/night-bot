@@ -5,7 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)),gate=()=>Promise.withResolvers()
 const call=(id,name,args={})=>({id,name,args})
 const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]}

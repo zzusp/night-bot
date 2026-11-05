@@ -5,7 +5,7 @@ import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {installSessionSkillRefresh} from '../packages/dingtalk-core/session-skill-refresh.js'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 test('external body-only skill edits notify the next real Pi request and require an explicit reread', {timeout:15000},async t=>{

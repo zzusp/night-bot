@@ -1,10 +1,10 @@
 // MIT source-derived message, projection and assistant-stream protocols; see licenses/dsh-llm-MIT.txt.
-// Request markers are application-local. Error classes and attribution remain explicitly external for now.
+// Request markers are application-local. Canonical error classes and attribution are owned by the adjacent native LLM protocols.
 import {assertNever,deepFreeze,snapshotJsonValue} from './native-values.js';
 import {brandString} from './native-brand.js';
 import {randomUUID} from 'node:crypto';
 import z from '@deepseek-ai/schemastery';
-import {HarnessError,LlmError} from '@deepseek-ai/dsh-llm';
+import {HarnessError,LlmError} from './native-llm-errors.js';
 const MAX_TIMER_DELAY_MS=2147483647;
 //#region lib/types/message.js
 /** Message value types, identity, and immutable construction helpers. */

@@ -1,5 +1,5 @@
 import { executionDigest, executionError } from './execution-artifacts.js'
-import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { selectTaskDeliveryFiles } from './task-group-file-delivery.js'
 import { dataChangeProposalRepairPolicy } from './workflow-data-change.js'
 import { createHash } from 'node:crypto'

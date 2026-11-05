@@ -409,7 +409,7 @@ test('v15无需修改保留源码并重新检查；缺读取、冲突、工作�
 
 test('v19技术方案无需补丁，实施节点内审查且只传共享方案引用，v18保持冻结', async () => {
   const { createEngineeringTechnicalPlanWorkflow, createEngineeringTaskContextWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
-  const { validateJsonSchemaValue } = await import('@deepseek-ai/dsh-tools')
+  const { validateJsonSchemaValue } = await import('../packages/capability-compat/tools/index.js')
   const { executionDigest } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
   const options={workflowId:'task-engineering-v19-factory',provider:'test',model:'test',discovery:{allowedPrefixes:['src/']},project:{targetCommit:'a'.repeat(40),taskBase:'a'.repeat(40)},workspaceAdapter:{},editAdapter:{},checks:[{id:'build',version:'1',run:async()=>({passed:true,log:'fixture'})}],adapterIdentity:'technical-plan'}
   const old=defineExecutionWorkflow(createEngineeringTaskContextWorkflow(options)),flow=createEngineeringTechnicalPlanWorkflow(options)

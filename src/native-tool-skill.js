@@ -1,7 +1,7 @@
 // MIT source-derived skill tool schema, catalog, invocation and presentation algorithms; see licenses/dsh-tool-skill-MIT.txt. Visible history authority adapted to Pi.
 import { createHash } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 import { createUserMessage } from './native-message-protocol.js';
 
 import "@deepseek-ai/cordis";

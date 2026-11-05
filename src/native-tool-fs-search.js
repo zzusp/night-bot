@@ -2,9 +2,9 @@
 import z from "@deepseek-ai/schemastery";
 import { MAX_TIMER_DELAY_MS } from "./native-deadline.js";
 import { isAbsolute, join, parse, relative, sep } from "node:path";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 import { existsSync } from "node:fs";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "./native-llm-protocol.js";
 import { ItemRetainer, TextRetainer } from "./native-output-retention.js";
 //#region lib/types/search-core.js
 /**

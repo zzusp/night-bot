@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter } from '../packages/capability-compat/llm/index.js'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
 import { available, reason, nativeTaskHost, latestInput, nativeShell, waitUntil, contextReadResponse, topicSummaryResponse, nativeVerificationTeam } from './fixtures/task-session-native-host.js'
 const test = (name, fn, options = {}) => testRunner(name, { timeout: 30000, ...options, ...(!available ? { skip: reason } : {}) }, fn)

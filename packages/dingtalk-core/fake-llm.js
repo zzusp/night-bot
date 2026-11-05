@@ -1,4 +1,4 @@
-import { LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter } from '../../src/native-llm-protocol.js'
 import { randomUUID } from 'node:crypto'
 
 const jsonLine = (input, label) => {

@@ -1,5 +1,5 @@
 import { Service } from "@deepseek-ai/cordis";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "../../packages/capability-compat/llm/index.js";
 import { assertNever } from "../../src/native-values.js";
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";

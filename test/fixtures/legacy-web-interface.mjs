@@ -1,6 +1,6 @@
 import { Service } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "../../packages/capability-compat/llm/index.js";
 //#region lib/types/types.js
 /**
 * Vocabulary for the web capability seam (`ctx.web`). Search and fetch deliberately share one

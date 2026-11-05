@@ -415,3 +415,19 @@ Host checks the native skill alias via the retained ACL peer when development
 root links are absent; private SDK Scope checks now apply to session/tools/
 subagent, with skills directly importing native Scope.8 external direct DSH
 packages remain,49 active replacements. Evidence: `evidence/native-interface-*`.
+
+Execution public protocols:518 own +142 runtime +47 routing +388 domain +11 real
+containment =1106 unique passes, one Windows-only skip. Fresh production frozen
+install repeats357 core +38 contracts +3 kernel =398;350 runtime files/manifests/
+lock/workspace identical. Guard323 JS/169 bare imports; source200/3/24 explicit
+adaptations. All original public names remain available through native namespace
+owners. Independent original Runtime references preserve private scheduler/request
+markers; native aliases share their canonical identities. A retained Session SDK
+peer shares native model error constructors, while forged errors still fail
+strict HarnessError narrowing. Schema validators, TS/Python SDK renderers, error
+facts, adapter API, custom attribution and secret-safe nonvisual guidance pass.
+Only the legacy Session facade still needs an external private Scope peer check.
+5 external direct DSH packages remain (Session, persistence base/JSONL/catalog,
+Windows ACL),49 active replacements unchanged. Source algorithms MIT-attributed;
+no claim of original authorship or completed migration. Evidence:
+`evidence/native-execution-protocol-*.txt`.

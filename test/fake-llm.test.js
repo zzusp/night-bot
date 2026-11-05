@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createUserMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { installFakeLlm } from '../packages/dingtalk-dsh-assistant/fake-llm.js'
 import { groupDecisionSubmissionSchema, topicRouteSubmissionSchema } from '../packages/dingtalk-dsh-assistant/decision.js'
 import { taskCheckpointSchema, taskResultSchema } from '../packages/dingtalk-dsh-assistant/task-result.js'

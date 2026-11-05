@@ -1,5 +1,5 @@
 // MIT source-derived model tool binding; see licenses/dsh-tool-working-directory-MIT.txt. Active lifecycle belongs to native services and Pi.
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 //#region lib/types/index.js
 /**
 * Read or change the calling Session's working directory.

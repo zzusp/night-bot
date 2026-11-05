@@ -3,7 +3,7 @@ import z from "@deepseek-ai/schemastery";
 import { boundContextSummary, createUserMessage } from './native-message-protocol.js';
 
 import { TextRetainer } from "./native-output-retention.js";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 // Job ids are validated at the model and registry boundaries; the old brand was identity-only.
 const JobId = value => value;
 //#region lib/types/render.js

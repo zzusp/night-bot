@@ -5,7 +5,7 @@ import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 test('real Pi instruction context retains scoped baseline, successful nested discovery, update/removal and cwd replacement',{timeout:20000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-instruction-wire-')),work=join(root,'work'),requests=[];let host,handle

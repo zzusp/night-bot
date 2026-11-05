@@ -1,6 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import {HarnessError} from '@deepseek-ai/dsh-llm'
+import {HarnessError} from './native-llm-protocol.js'
 import {spawnSync} from 'node:child_process'
 import {existsSync,mkdtempSync,realpathSync,rmSync} from 'node:fs'
 import {tmpdir} from 'node:os'

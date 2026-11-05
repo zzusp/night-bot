@@ -1,6 +1,6 @@
 // MIT source-derived tool schema, validation, bounded formatting and presentation protocol; see licenses/dsh-tool-web-MIT.txt.
 import z from "@deepseek-ai/schemastery";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 import TurndownService from "turndown";
 import { gfm } from "@joplin/turndown-plugin-gfm";
 import { assertNever } from "./native-values.js";

@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import OldLlm,{LlmAdapter,createAssistantMessage,createUserMessage,LlmError} from '@deepseek-ai/dsh-llm'
+import OldLlm from './fixtures/legacy-llm-interface.mjs'
+import {LlmAdapter,createAssistantMessage,createUserMessage,LlmError} from '../src/native-llm-protocol.js'
 import {remoteMethods} from '../src/native-typert-protocol.js'
 import NativeLlm from '../src/native-llm.js'
 function fixture(t,Impl=NativeLlm){const ctx=new Context();ctx.logger={warn(){}};new Impl(ctx);t.after(()=>ctx.fiber.dispose());return ctx}

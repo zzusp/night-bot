@@ -1,4 +1,4 @@
-import {defineTool,parameterSchemaSpecToJsonSchema,CodeRunFailedError,TOOL_RUNTIME_SCHEDULER} from '@deepseek-ai/dsh-tools'
+import {defineTool,parameterSchemaSpecToJsonSchema,CodeRunFailedError,TOOL_RUNTIME_SCHEDULER} from './native-tool-protocol.js'
 import {nativeEscalationTargets as ESCALATION_TARGETS,approveNativeSandbox as approveEscalation,validateNativeEscalation as validateEscalationArgs} from './native-sandbox-approval.js'
 import {snapshotJsonValue,deepFreeze} from './native-values.js'
 import { createUserMessage } from './native-message-protocol.js';

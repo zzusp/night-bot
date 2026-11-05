@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url'
 export function assertNativeScopeAuthority() {
   const require=createRequire(import.meta.url)
   const expected=realpathSync(fileURLToPath(new URL('../packages/scope-compat/index.js',import.meta.url)))
-  for(const name of ['session','tools','subagent']) {
+  for(const name of ['session']) {
     const peer=createRequire(require.resolve('@deepseek-ai/dsh-'+name))
     if(realpathSync(peer.resolve('@deepseek-ai/dsh-scope'))!==expected) {
       const error=new Error('Scope authority mismatch: '+name)

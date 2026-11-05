@@ -91,7 +91,7 @@ test('查询中权限撤销拒绝结果；秘密分页按全文先遮盖；无�
 })
 
 test('工具参数Schema拒绝原始SQL和动态URL，缺工具错误不能伪造correctable',async t=>{
- const {assertSupportedJsonSchema}=await import('@deepseek-ai/dsh-tools')
+ const {assertSupportedJsonSchema}=await import('../packages/capability-compat/tools/index.js')
  const {agentDatabaseParameters}=await import('../packages/dingtalk-dsh-assistant/agent-query-database.js')
  assert.doesNotThrow(()=>assertSupportedJsonSchema(agentDatabaseParameters))
  const f=await fixture(t),db=createAgentDatabaseReadCapability({resources:[{id:'db',connectionId:'alias',tables:[{schema:'public',table:'t',columns:['id']}]}],connectDatabase:async()=>{throw Error('must not connect')}})

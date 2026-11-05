@@ -5,7 +5,7 @@ import { currentSessionMessageProjections } from "@deepseek-ai/dsh-session-forma
 import { Service } from "@deepseek-ai/cordis";
 import { Session, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent } from "@deepseek-ai/dsh-session";
 import { foldSessionTitle } from "./native-session-title.js";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "./native-llm-protocol.js";
 //#region lib/types/config.js
 /** Public configuration and typed failures for the combined session-query service. */
 /** Default maximum `before`/`after` raw-event window. */

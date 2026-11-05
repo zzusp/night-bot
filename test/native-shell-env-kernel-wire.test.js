@@ -5,7 +5,7 @@ import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createServer} from 'node:http'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const quote=text=>"'"+text.replaceAll("'","'\\''")+"'"
 test('actual Pi bash execution uses native trusted facts and strips ambient DSH authority',{timeout:20000,skip:process.platform!=='linux'},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-shell-facts-')),keys=['DSH_SESSION_ID','DSH_EXTRA','DSH_UNDECLARED'],saved=new Map(keys.map(k=>[k,process.env[k]])),requests=[],results=[];let host,handle

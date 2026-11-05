@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdir} from 'node:fs/promises'
 import {join} from 'node:path'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {subagentFixture,eventually} from './fixtures/pi-subagent-fixture.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 test('actual Pi native todo and working-directory bindings retain durable state and scoped directory ownership',{timeout:20000},async t=>{let step=0;const f=await subagentFixture(t,()=>++step===1?{tools:[{id:'todo-write',name:'todo_write',args:{todos:[{content:' scoped plan ',status:'in_progress'}]}},{id:'directory-write',name:'working_directory',args:{cd:'next'}}]}:{text:'plan recorded'}),parent=await f.parent();await mkdir(join(f.root,'work','next'));parent.steer(input('PLAN_DIRECTORY_MARKER'));await parent.whenIdle();const events=await f.events(parent.id);assert.deepEqual(events.find(e=>e.type==='todo/write').data.todos,[{content:'scoped plan',status:'in_progress'}]);assert.equal(events.filter(e=>e.type==='tool/result').length,2);assert.ok(events.filter(e=>e.type==='tool/result').every(e=>!e.data.message.isError));assert.equal(await parent.ctx.get('workingDirectory').ensure(parent),join(f.root,'work','next'));assert.equal(f.host.ctx.piAuthority.describe(parent.id).engine,'pi-session-manager');assert.equal(f.requests.length,2)})

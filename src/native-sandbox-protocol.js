@@ -1,5 +1,5 @@
 import {Service} from '@deepseek-ai/cordis';
-import {HarnessError} from '@deepseek-ai/dsh-llm';
+import {HarnessError} from './native-llm-protocol.js';
 // MIT source-derived sandbox escalation/root/diagnostic protocol; see licenses/dsh-sandbox-MIT.txt. Canonical public error and abstract capability base are now local.
 import { assertNever } from "./native-values.js";
 import { accessSync, constants, realpathSync, statSync } from "node:fs";

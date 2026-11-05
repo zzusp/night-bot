@@ -1,5 +1,5 @@
 import { groupReplyInstructions } from './workflow-notifications.js'
-import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { executionDigest, executionError } from './execution-artifacts.js'
 
 // 消息问答与调查阶段共用业务合同；执行归属和工具权限始终由 Host 提供。

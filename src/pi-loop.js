@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
 import { brandString } from "./native-brand.js";
-import { LlmError } from '@deepseek-ai/dsh-llm';
+import { LlmError } from './native-llm-protocol.js';
 import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest } from './native-message-protocol.js';
 
 import { SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "@deepseek-ai/dsh-session";
@@ -18,7 +18,7 @@ import { agentEvents, assembleContextFor } from "./native-agent-context.js";
 import { assertNever, deepFreeze } from "./native-values.js";
 import { createScope } from "./native-scope.js";
 import { joinContextSections, renderContextSections, renderPrompt } from "./native-prompt-render.js";
-import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER } from "@deepseek-ai/dsh-tools";
+import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER } from "./native-tool-protocol.js";
 //#region lib/types/inbox.js
 /**
 * Driver-owned durable agent inbox projection and command facade.

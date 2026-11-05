@@ -1,5 +1,5 @@
 import { Service } from "@deepseek-ai/cordis";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "../../packages/capability-compat/llm/index.js";
 //#region lib/types/index.js
 /**
 * Service Definition for the authorization capability seam (`ctx.authorization`):

@@ -1,5 +1,5 @@
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
-import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, LlmError } from './native-llm-protocol.js'
 const fail=(message,code='DISCOVERY_FAILED',cause)=>{throw new LlmError(message,code,cause?{cause}:undefined)}
 const capacity=(...values)=>values.find(value=>Number.isSafeInteger(value)&&value>0)
 const label=(...values)=>values.find(value=>typeof value==='string'&&value.length>0)

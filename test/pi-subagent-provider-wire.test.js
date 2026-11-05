@@ -5,7 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 test('native spawn and fork providers create actual Pi children with isolated or completed parent context',{timeout:20000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-subagent-wire-')),requests=[],children=[],receipts=[],release=Promise.withResolvers(),pending=Promise.withResolvers();let host,parent

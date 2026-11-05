@@ -720,7 +720,7 @@ for (const [ownEcho, followupActor] of [[true, 'native-user'], [true, 'colleague
 
 test('180 legacy task Host markers retire without changing audit or foreign context, including compacted surface replay', { ...({ timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   await t.beginBusiness()
-  const { createUserMessage, createSystemMessage } = await t.step(async () => import('@deepseek-ai/dsh-llm'))
+  const { createUserMessage, createSystemMessage } = await t.step(async () => import('../packages/capability-compat/llm/index.js'))
   const { foldSurface, deriveEventMessage } = await t.step(async () => import('@deepseek-ai/dsh-session'))
   const fixture = await t.step(async () => nativeCase(t, 'task-host-retirement-'))
   const h = await t.step(async () => fixture.host(async () => []))

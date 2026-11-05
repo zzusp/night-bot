@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
 import { stripVTControlCharacters } from 'node:util'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { safeNotificationDetail } from './notification-delivery.js'
 import { checkedTaskDirectory } from './session-workspaces.js'
 

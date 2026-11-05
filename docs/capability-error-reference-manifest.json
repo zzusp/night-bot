@@ -4,16 +4,18 @@
     "sourceVersion": "0.2.1-alpha.2",
     "originalSha256": "21d6d99d6b826937e6aabbcb0b32c91bd1f214586c6fd3ada538f15737eec8d7",
     "fixture": "test/fixtures/legacy-web-interface.mjs",
-    "fixtureSha256": "21d6d99d6b826937e6aabbcb0b32c91bd1f214586c6fd3ada538f15737eec8d7",
-    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged"
+    "fixtureSha256": "722c90717c15dcc2630d3114e55025f6e08bf6d7057e9c6d82598d195dcc13af",
+    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
   },
   {
     "package": "@deepseek-ai/dsh-authorization",
     "sourceVersion": "0.2.1-alpha.2",
     "originalSha256": "cfe0784f14f5cc55e0e1c18fc82290967e41e48afb964dc4f6384f84e4bab1ef",
     "fixture": "test/fixtures/legacy-authorization-interface.mjs",
-    "fixtureSha256": "cfe0784f14f5cc55e0e1c18fc82290967e41e48afb964dc4f6384f84e4bab1ef",
-    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged"
+    "fixtureSha256": "d374bb5aaec39fbca23107274d4639d77136f55eb8a84a424e2f60984c41a76f",
+    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
   },
   {
     "package": "@deepseek-ai/dsh-workspace",
@@ -21,14 +23,16 @@
     "originalSha256": "a33af459cfc7af29dd17412443a63655fd5037dd348b0dec20a413ce60c6c8bc",
     "fixture": "test/fixtures/legacy-workspace-interface.mjs",
     "fixtureSha256": "2b94a16d0751f692cd79408bdaac1bcba07bd29a80425bf2189dd3e494c34156",
-    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged"
+    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
   },
   {
     "package": "@deepseek-ai/dsh-session-title",
     "sourceVersion": "0.2.1-alpha.2",
     "originalSha256": "eb814490ca3d0aaabf8f6ddc705a031f99a98709c484c1502c5f28f101cf0eeb",
     "fixture": "test/fixtures/legacy-session-title-interface.mjs",
-    "fixtureSha256": "84205f65d6c0f73b8dfaca69e6214af7974e15fbe37954cd02db9372f4487f25",
-    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged"
+    "fixtureSha256": "b39680d277ca9b67b9d7c6adac5e93bec8976b6a485dba257e0b8eb248c52250",
+    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged"
   }
 ]

@@ -1,6 +1,6 @@
 import {TypertRemoteService,Remote,RemoteError} from './native-typert-protocol.js'
 import {deepFreeze} from './native-values.js'
-import { LlmError, HarnessError } from '@deepseek-ai/dsh-llm';
+import { LlmError, HarnessError } from './native-llm-protocol.js';
 import { callConfigEquals, freezeMessage, fileHandleText, contentHasFile, contentHasImage, projectFilesToText, projectImagesForTextModel, projectToolUpdates } from './native-message-protocol.js';
 import {resolvePiRetryPolicy} from './pi-provider-retry.js'
 const initializers=[]

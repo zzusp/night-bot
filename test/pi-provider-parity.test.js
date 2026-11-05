@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
-import Llm from '@deepseek-ai/dsh-llm'
+import Llm from '../packages/capability-compat/llm/index.js'
 import * as OriginalProvider from '@deepseek-ai/dsh-llm-pi-ai'
 import * as NativeProvider from '../src/native-pi-provider.js'
 import {builtinProviders,getBuiltinModels} from '@earendil-works/pi-ai/providers/all'

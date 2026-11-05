@@ -1,6 +1,6 @@
 import { inspectSession, inboxHasPending } from './session-persistence.js'
 import { createUserMessage } from '../../src/native-message-protocol.js';
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { groupReplyInstructions } from './group-message.js'
 import { createHash } from 'node:crypto'
 import { realpath } from 'node:fs/promises'

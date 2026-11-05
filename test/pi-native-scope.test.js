@@ -37,7 +37,7 @@ test('Scope algorithms agree with independent original private-state implementat
 test('every retained SDK Scope peer shares the application authority',async()=>{
   assertNativeScopeAuthority()
   const root=createRequire(import.meta.url)
-  for(const name of ['session','tools','subagent']) {
+  for(const name of ['session']) {
     const peer=createRequire(root.resolve('@deepseek-ai/dsh-'+name))
     const api=await import(pathToFileURL(peer.resolve('@deepseek-ai/dsh-scope')))
     assert.equal(api.scopeOf,native.scopeOf)

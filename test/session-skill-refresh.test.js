@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Session } from '@deepseek-ai/dsh-session'
-import { createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { installSessionSkillRefresh } from '../packages/dingtalk-dsh-assistant/session-skill-refresh.js'
 
 function fixture(seed = []) {

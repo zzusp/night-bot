@@ -1,15 +1,15 @@
 // MIT source-derived child control, lineage and activation algorithms; active ownership is local.
 // Canonical public errors are retained for existing tool/helper instanceof contracts.
 import {symbols} from '@deepseek-ai/cordis';
-import {SubagentError,SubagentDepthError} from '@deepseek-ai/dsh-subagent';
+import {SubagentError,SubagentDepthError} from './native-subagent-errors.js';
 import z from "@deepseek-ai/schemastery";
 import { scopeTarget } from "./native-scope.js";
-import { ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
+import { ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue } from "./native-tool-protocol.js";
 import { canonicalClientTimeZone } from "./native-time-zone.js";
 import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
 import { AttachmentError } from "./native-attachment-errors.js";
 import { z as z$1 } from "zod";
-import { HarnessError } from '@deepseek-ai/dsh-llm';
+import { HarnessError } from './native-llm-protocol.js';
 import { ReasoningEffortId, boundContextSummary, contentHasImage, createUserMessage, errorChain, joinAssistantStreamText } from './native-message-protocol.js';
 
 import { randomUUID } from "node:crypto";

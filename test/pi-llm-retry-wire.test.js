@@ -5,7 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 test('native model retry flushes Pi retry receipts and never repeats the preceding completed tool',{timeout:15000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-retry-wire-')),requests=[],errors=[];let host,handle,effects=0
  const server=createServer(async(req,res)=>{

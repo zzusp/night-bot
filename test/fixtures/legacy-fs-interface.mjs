@@ -1,5 +1,5 @@
 import { Service } from "@deepseek-ai/cordis";
-import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { HarnessError } from "../../packages/capability-compat/llm/index.js";
 //#region lib/types/types.js
 /**
 * Vocabulary for the filesystem Service Definition (`ctx.fs`): the opaque target/version

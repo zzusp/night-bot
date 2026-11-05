@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {writeFile,readFile,mkdir,readdir} from 'node:fs/promises'
 import {join} from 'node:path'
 import sharp from 'sharp'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
 const input=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]})
 test('actual Pi native glob and grep run packaged ripgrep and preserve safe literal argv and match receipts',{timeout:20000},async t=>{const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'glob-files',name:'glob',args:{pattern:'**/*.txt'}},{id:'grep-lines',name:'grep',args:{pattern:'SEARCH_NATIVE_MARKER',include:'*.txt'}},{id:'invalid-regex',name:'grep',args:{pattern:'['}}]}:{text:'search verified'}),parent=await f.parent('native-search-owner');await mkdir(join(f.root,'work','dir with spaces'));await writeFile(join(f.root,'work','dir with spaces','file.txt'),'SEARCH_NATIVE_MARKER\nsecond line');parent.steer(input('find the isolated fixture files'));await parent.whenIdle();assert.equal(f.requests.length,2);const results=(await f.events(parent.id)).filter(e=>e.type==='tool/result');for(const id of ['glob-files','grep-lines'])assert.equal(results.find(e=>e.data.message.toolCallId===id).data.message.isError,false);assert.equal(results.find(e=>e.data.message.toolCallId==='invalid-regex').data.message.isError,true);assert.match(JSON.stringify(f.requests[1]),/dir with spaces/);assert.match(JSON.stringify(f.requests[1]),/SEARCH_NATIVE_MARKER/);assert.match(JSON.stringify(f.requests[1]),/regex|pattern/);assert.equal(f.host.ctx.get('spillStore').constructor.name,'NativeSpillStore')})

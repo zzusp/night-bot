@@ -1358,5 +1358,33 @@
     "scopeAdmission": "legacy session/tools/subagent peers checked; native skill alias checked through root or retained ACL peer; native owner imports canonical Scope directly",
     "referenceProof": "independent original registry/base/helper sources; support imports only adapted and hashes recorded",
     "completeMigration": false
+  },
+  "nativeExecutionPublicProtocols": {
+    "date": "2026-11-05",
+    "ownPass": 518,
+    "ownDurationMs": 39048.909069,
+    "runtimePass": 142,
+    "runtimeDurationMs": 273100.60372,
+    "routingPass": 47,
+    "domainPass": 388,
+    "containmentPass": 11,
+    "windowsSkipped": 1,
+    "uniquePass": 1106,
+    "productionOnlyRepeatedPass": 398,
+    "productionScope": "fresh frozen prod install;357 core +38 contracts +3 real kernel",
+    "runtimeFilesCompared": 350,
+    "productionImportFiles": 323,
+    "literalBareImports": 169,
+    "directRuntimeDshDependencies": 5,
+    "removedActiveDshServices": 49,
+    "retainedCoreModules": 200,
+    "excludedUiModules": 3,
+    "explicitCoreAdaptations": 24,
+    "extraction": "AST excludes old LlmRuntime/ToolRuntime/ToolLayer; existing native child helpers exported through canonical namespace",
+    "privateIdentity": "new native scheduler and request marker shared by aliases; original test references retain independent private symbols/weak sets",
+    "errorIdentity": "retained Session SDK peer imports canonical native model error classes; strict HarnessError narrowing retained",
+    "productIdentity": "native model attribution defaults to Night Bot/app version; custom identity API preserved; credential errors no longer refer to absent visual setup",
+    "scopeGuard": "only legacy Session still uses SDK private Scope helper; native tool/child/skill owners import canonical local Scope",
+    "completeMigration": false
   }
 }

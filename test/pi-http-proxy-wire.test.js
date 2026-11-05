@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createUserMessage} from '@deepseek-ai/dsh-llm'
+import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 import {installProxyFromEnvironment} from '../src/native-http-proxy.js'
 import {scrubbedParentEnv} from '../src/process/contracts.js'
 import {proxyFixture,fakeEnvironment} from './fixtures/native-proxy-fixture.js'

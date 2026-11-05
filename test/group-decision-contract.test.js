@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../packages/capability-compat/tools/index.js'
 import { groupDecisionSchema, groupDecisionSubmissionSchema, groupDecisionSubmissionJsonSchema } from '../packages/dingtalk-dsh-assistant/decision.js'
 
 const topicRefs = [{ topicId: 'topic-recall', revision: 1 }]

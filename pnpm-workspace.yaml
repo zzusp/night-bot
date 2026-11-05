@@ -8,3 +8,6 @@ overrides:
   "@deepseek-ai/dsh-skill": "link:./packages/capability-compat/skill"
   "@deepseek-ai/dsh-sandbox": "link:./packages/capability-compat/sandbox"
   "@deepseek-ai/dsh-session-projection": "link:./packages/capability-compat/session-projection"
+  "@deepseek-ai/dsh-llm": "link:./packages/capability-compat/llm"
+  "@deepseek-ai/dsh-tools": "link:./packages/capability-compat/tools"
+  "@deepseek-ai/dsh-subagent": "link:./packages/capability-compat/subagent"

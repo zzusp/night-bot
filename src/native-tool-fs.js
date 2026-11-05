@@ -1,6 +1,6 @@
 // MIT source-derived model file/image read, guarded write/edit, bounded render and presentation algorithms; see licenses/dsh-tool-fs-MIT.txt. Native attachment errors are recognized.
 import z from "@deepseek-ai/schemastery";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 import { FsError } from "./native-fs-protocol.js";
 import { readLangHintForPath as langFromPath } from "./native-code-language.js";
 import { structuredPatch } from "diff";

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { visibleToolOutputs, visiblePromptRefs, visibleSectionLength } from '../packages/dingtalk-dsh-assistant/coordination-context.js'
 
 const call = (id, name) => ({ role: 'assistant', content: [{ type: 'tool-call', id, name, arguments: '{}' }] })

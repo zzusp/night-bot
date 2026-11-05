@@ -1,7 +1,7 @@
 // MIT source-derived model tool binding; see licenses/dsh-tool-subagent-MIT.txt. Active lifecycle belongs to native services and Pi.
 import z from "@deepseek-ai/schemastery";
 import { scopeChainOf, scopeOf } from "./native-scope.js";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { defineTool } from "./native-tool-protocol.js";
 import { SessionSeq } from "@deepseek-ai/dsh-session";
 import { assertSubagentMaxDepth, parentAgentOptionsForDelegation } from "./native-subagents.js";
 import { ReasoningEffortId } from './native-message-protocol.js';

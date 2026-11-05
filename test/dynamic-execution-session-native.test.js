@@ -14,12 +14,12 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
-import { LlmRuntime, LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { LlmRuntime, LlmAdapter, createUserMessage } from '../packages/capability-compat/llm/index.js'
 import { SessionStore } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
 import { createExecutionSessions, inspectLegacyTurnFailure } from '../packages/dingtalk-dsh-assistant/execution-session.js'
 import { createAgentQueryTools, verifyAgentEvidence, readExecutedAgentQueryRefs } from '../packages/dingtalk-dsh-assistant/agent-query-tools.js'
 import { createAgentResourceReadCapability } from '../packages/dingtalk-dsh-assistant/agent-query-resources.js'
@@ -194,7 +194,7 @@ test('32 continued inputs retire recursive Host snapshots on actual SDK requests
 })
 
 test('upgrade shadows every already stored recursive v1/v2/v3 input without rewriting originals', async t => {
-  const { createSystemMessage } = await import('@deepseek-ai/dsh-llm')
+  const { createSystemMessage } = await import('../packages/capability-compat/llm/index.js')
   const h = await host({ script: [dynamicSubmit('upgraded')] }); t.after(() => h.close())
   const b = dynamic(), identity = Object.fromEntries(['kind', 'taskId', 'executionId', 'requirementRevision', 'controlRevision', 'inputVersion', 'inputDigest', 'sessionId'].map(key => [key, b[key]]))
   const session = h.ctx.sessions.prepare(b.sessionId, { seed: [{ type: 'plugin:dingtalk/execution-session', seq: 0, time: Date.now(), ignorable: true, data: { version: 2, identity, creationLease: 1 } }] })

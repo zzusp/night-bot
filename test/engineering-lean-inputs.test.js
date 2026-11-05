@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeEngineeringAcceptancePlan, createEngineeringMinimalWorkflow, createEngineeringLeanWorkflow } from '../packages/dingtalk-dsh-assistant/task-workflow.js'
 import { defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue } from '../packages/capability-compat/tools/index.js'
 const context={request:'actual objective',criteria:[{id:'criterion-1',description:'actual goal'}],scenarios:[{id:'actual',description:'execute actual scenario'}]}
 test('minimal acceptance derives only deterministic metadata; expected is still supplied',()=>{
  const normalized=normalizeEngineeringAcceptancePlan({cases:[{expected:'actual business result'}]},context)

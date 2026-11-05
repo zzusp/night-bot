@@ -54,6 +54,24 @@
       "target": "link:./packages/capability-compat/session-projection",
       "authority": "src/native-projections.js",
       "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-llm",
+      "target": "link:./packages/capability-compat/llm",
+      "authority": "src/native-llm.js + native-llm-protocol.js + native-llm-errors.js",
+      "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-tools",
+      "target": "link:./packages/capability-compat/tools",
+      "authority": "src/native-tools.js + native-tool-protocol.js",
+      "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
+    },
+    {
+      "requested": "@deepseek-ai/dsh-subagent",
+      "target": "link:./packages/capability-compat/subagent",
+      "authority": "src/native-subagents.js + native-subagent-errors.js",
+      "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
     }
   ],
   "piVersions": {
@@ -73,6 +91,7 @@
     "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
   ],
   "applicationNative": [
+    "Canonical native harness/model/subagent/tool errors; local abstract model adapter, schema validators and TS/Python SDK rendering; canonical scheduler and request marker across SDK aliases; independent original runtime classes are test-only references",
     "Native filesystem/sandbox abstract capability and canonical error protocols, skill rendering/invocation helpers, and native skill/projection namespace owners; no old runtime class copied, no additional active component credit",
     "Native Web/authorization/workspace/title public error vocabulary with explicit SDK namespace aliases to the existing native owners; independent source reference constructors and full public export vocabulary verified",
     "Native message construction/projection/assistant-stream assembly and exact-object Pi loop markers; no legacy LlmRuntime class copied; canonical error and attribution helpers still external",
@@ -133,10 +152,6 @@
   ],
   "directRuntimeDshDependencies": [
     {
-      "name": "@deepseek-ai/dsh-llm",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-sandbox-windows-acl",
       "version": "0.2.1-alpha.2"
     },
@@ -153,19 +168,11 @@
       "version": "0.2.1-alpha.2"
     },
     {
-      "name": "@deepseek-ai/dsh-subagent",
-      "version": "0.2.1-alpha.2"
-    },
-    {
-      "name": "@deepseek-ai/dsh-tools",
-      "version": "0.2.1-alpha.2"
-    },
-    {
       "name": "@deepseek-ai/dsh-session-format-catalog",
       "version": "0.2.1-alpha.2"
     }
   ],
-  "developmentDependencyCount": 154,
+  "developmentDependencyCount": 157,
   "activeLiteralDshPluginRows": [],
   "activeDynamicDshPluginRows": [],
   "nativeReplacements": [

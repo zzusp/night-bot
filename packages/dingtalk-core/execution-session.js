@@ -13,7 +13,7 @@ import { createUserMessage } from '../../src/native-message-protocol.js';
 import { retireHostContext } from './host-context.js'
 import { createModelContentIndex, executionModelInput, modelHostMessage, modelHostInput } from './model-context.js'
 import { classifyExecutionProviderFailure } from './execution-provider-failure.js'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 
 const IDENTITY_EVENT = 'plugin:dingtalk/execution-session'
 const REBIND_EVENT = 'plugin:dingtalk/execution-session-rebind'
