@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import NativeBash from '../src/native-bash-local.js'
 import NativePwsh from '../src/native-pwsh-local.js'
-import {deadline} from '../src/native-deadline.js'
+import {deadline} from '../src/runtime/deadlines.js'
 import {parseExitStatus,ENV_FACT_PREFIX} from '../src/native-shell.js'
 const abortOf=s=>s.aborted?Promise.resolve():new Promise(r=>s.addEventListener('abort',r,{once:true}))
 function reader(text){return{readFrom:at=>({text:Buffer.from(text).subarray(at).toString(),nextOffset:Buffer.byteLength(text),lossy:false})}}

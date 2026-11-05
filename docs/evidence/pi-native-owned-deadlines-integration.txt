@@ -1,0 +1,84 @@
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (2556.518056ms)
+✔ optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data (1142.720221ms)
+✔ standard application composition exposes channel-neutral health and single task creation with no channel installed (1669.939941ms)
+✔ discovered third-party plugins load only enabled instances and release transports on host close (789.764547ms)
+✔ real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata (1005.786784ms)
+✔ manifest validation rejects duplicate types, escaped entries and duplicate enabled channel identities (328.621319ms)
+✔ generic message readers use neutral identities and enforce conversation scope (409.552019ms)
+✔ multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization (851.527831ms)
+✔ DWS private credentials use supported roots; Windows defaults to the protected current-user login (1.169745ms)
+✔ system-account plugins use the existing CLI context and describe shared login without creating a private vault (493.570043ms)
+✔ group-only DWS never subscribes to private messages or polls private history (436.875366ms)
+✔ default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections (6090.964313ms)
+✔ sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun (1175.093839ms)
+✔ task-required attachment bytes are local and independently restored without the original attachment store (1951.77899ms)
+✔ a committed restore marker blocks startup, can be finalized idempotently, and does not resume work (2471.997173ms)
+✔ default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact (1071.258777ms)
+✔ explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals (811.841487ms)
+✔ restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation (896.434343ms)
+✔ an archive filesystem failure after a committed completion reports maintenance without reversing task state (718.849653ms)
+✔ task index restoration preserves decision chronology independently of command-id lexical order (133.961351ms)
+✔ native file read accepts historical draft and material job records without launching or reconciling a job (2208.897526ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":560,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1593,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":55,"aborted":false}
+✔ native execution consumes serial tool results and wakes the coordinator only for a reported stage and final result (6585.532646ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":110,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6396,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":79,"aborted":false}
+✔ native shell retains its original process, reads output to terminal and persists the owned job receipt: background=false (4672.728946ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":154,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4490,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":28,"aborted":false}
+✔ native shell retains its original process, reads output to terminal and persists the owned job receipt: background=true (4134.194092ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":90,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3998,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":46,"aborted":false}
+✔ native background producer projects its terminal receipt before any job read or execution submission: killed=false (1386.614078ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":132,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1235,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ native background producer projects its terminal receipt before any job read or execution submission: killed=true (936.60519ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":51,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":837,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":48,"aborted":false}
+✔ native missing-job read stays a real error without creating unknown effects or blocking later work (3184.501516ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":103,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3036,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":46,"aborted":false}
+✔ native background HTTP service remains usable by the next tool and drains its original job: explicitStop=false (3593.603063ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":85,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3457,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":51,"aborted":false}
+✔ native background HTTP service remains usable by the next tool and drains its original job: explicitStop=true (3401.981241ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":98,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3272,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":32,"aborted":false}
+✔ cancelling a native job records terminal cancellation and drains the actual owned process: background=false (637.54052ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":568,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":28,"aborted":false}
+✔ cancelling a native job records terminal cancellation and drains the actual owned process: background=true (756.06978ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":114,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":600,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":41,"aborted":false}
+✔ unknown operation keeps native reads available; owner can investigate readonly but cannot clear missing evidence or replay (1700.646917ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":66,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1596,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":38,"aborted":false}
+✔ restart reconciles an original persisted native terminal receipt and resumes the same executor without replay (2650.983862ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2637,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ operator exact error resolution has zero-write HTTP check, retains partial effects and resumes original execution without replay (4129.01852ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":66,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4034,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":29,"aborted":false}
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43258.766753

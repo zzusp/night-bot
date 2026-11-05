@@ -1,0 +1,34 @@
+✔ native HTTP response/redirect/charset/truncation behavior preserves the legacy protocol (20.364948ms)
+✔ public address policy rejects private/mixed answers, malformed families and discovered NAT64 private destinations (9.448323ms)
+✔ pinned lookup serves only the validated address snapshot without re-resolving a hostname (0.436034ms)
+✔ HTTP URL restrictions and redirect policy run before another network request (2.397126ms)
+✔ each same-origin redirect is resolved and pinned separately and closes its response resources (0.816215ms)
+✔ declared limits reject early, streaming limits truncate and unsupported bodies release their transport (1.084647ms)
+✔ body timeout and caller cancellation keep separate codes and both close the request (21.767222ms)
+✔ proxy routing delegates public DNS to its installed dispatcher but private literals cannot use it (0.808383ms)
+✔ the real connector uses its fixed lookup for an otherwise unresolved origin without weakening public URL policy (73.19122ms)
+✔ a late resolver answer cannot dispatch HTTP after caller cancellation (0.897496ms)
+✔ native bash and pwsh local execution preserve argv environment output and exit contracts (33.803577ms)
+✔ native shell preparation timeout waits for admitted preparation exit and never spawns late argv (14.267782ms)
+✔ native shell same-code ancestor deadline keeps caller identity even after owned timer fires (67.404564ms)
+✔ native shell foreground timeout waits for provider close before final result (8.427352ms)
+✔ native shell provider creation failure settles done and preserves one infrastructure rejection without retry (3.243255ms)
+✔ execution fact names and trailing-only exit markers have explicit bounded contracts (0.460761ms)
+✔ cooperative tool timeout aborts the body but waits for its actual exit before returning an error (8.102114ms)
+✔ a nested ancestor timeout with the same public code is not misreported as this tool timer (25.569536ms)
+✔ successful results and upstream cancellation preserve identity and signal restoration (3.07358ms)
+✔ timeout wrappers restore the caller signal after downstream failure and leave undeclared tools untouched (0.982183ms)
+✔ owned clocks expire with exact classification while foreign reason objects cannot impersonate them (11.900561ms)
+✔ disposing an armed clock does not abort its public or caller signal after the original deadline (30.749085ms)
+✔ nested clocks distinguish capability codes and cancellation preserves the exact upstream reason (11.084638ms)
+✔ internal no-clock sentinel, Node timer bounds and public hint clamping stay explicit (1.638257ms)
+✔ actual Pi declared tool timeout waits for a started body and persists one timeout receipt before model continuation (1643.944122ms)
+✔ actual Pi web search applies the configured tool budget and drains a provider that ignores cancellation (255.410282ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2263.512947

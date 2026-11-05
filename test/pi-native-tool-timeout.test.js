@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {apply,toolTimeoutResult,TOOL_TIMEOUT} from '../src/native-tool-timeout.js'
-import {deadline} from '../src/native-deadline.js'
+import {deadline} from '../src/runtime/deadlines.js'
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),whenAbort=signal=>signal.aborted?Promise.resolve():new Promise(r=>signal.addEventListener('abort',r,{once:true}))
 function fixture(timeoutMs){let handler;apply({provide(){},tools:{get:()=>({timeoutMs})},on(_name,callback){handler=callback}});return handler}
 const execution=()=>({name:'fixture',signal:new AbortController().signal})

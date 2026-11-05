@@ -1,4 +1,4 @@
-import {deadline} from './native-deadline.js'
+import {deadline} from './runtime/deadlines.js'
 export const name='night-native-tool-timeout',inject=['tools'],TOOL_TIMEOUT='TOOL_TIMEOUT'
 export function toolTimeoutResult(timeoutMs){
   const message=`tool call timed out after ${timeoutMs}ms`

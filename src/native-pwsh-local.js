@@ -1,7 +1,7 @@
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-pwsh-local-MIT.txt. Application process/sandbox/jobs/policy services own effects.
 import z from "@deepseek-ai/schemastery";
 import { ShellExecutor } from "./native-shell.js";
-import { MAX_TIMER_DELAY_MS, clampTimeout, deadline } from "./native-deadline.js";
+import { MAX_TIMER_DELAY_MS, clampTimeout, deadline } from "./runtime/deadlines.js";
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
 //#region lib/types/resolve.js

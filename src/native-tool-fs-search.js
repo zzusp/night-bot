@@ -1,6 +1,6 @@
 // MIT source-derived argv-only packaged ripgrep, bounded parse/format/retention algorithms; see licenses/dsh-tool-fs-search-MIT.txt.
 import z from "@deepseek-ai/schemastery";
-import { MAX_TIMER_DELAY_MS } from "./native-deadline.js";
+import { MAX_TIMER_DELAY_MS } from "./runtime/deadlines.js";
 import { isAbsolute, join, parse, relative, sep } from "node:path";
 import { defineTool } from "./native-tool-protocol.js";
 import { existsSync } from "node:fs";

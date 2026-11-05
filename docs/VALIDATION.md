@@ -1,3 +1,25 @@
+# Owned disposable clocks replace the timeout fork (2026-11-05)
+
+Removed the 150-line deadline fork, unused idle-watchdog/public reason constructor
+and dedicated notice after local source/test copy removal. Application clocks use
+Node timers/promises with separate timer cancellation/expiration, explicit disposal
+and classification of actual clock-produced reasons. Classification is metadata,
+not authority or an effect receipt. Timer bounds, public hint clamping, internal
+no-timer sentinel, upstream reason identity and nested code behavior remain.
+Callers still own termination/drain. HTTP cleanup now uses finally instead of the
+removed compiler disposal scaffold; address/DNS/proxy/response security stays in
+the existing attributed backend. A focused import failure caught an accidentally
+removed provider-id constant during scaffold removal; restored before validation.
+
+Validation: **660 default pass**, **26 focused overlap**, archive/channel/cold-job
+integration **34 pass** (partly overlapping default), Linux containment **20 pass /
+1 Windows skip**, bubblewrap enabled. Real Pi timeout/drain, shell background and
+body timeout paths pass, as do own-clock expiry/disposal/nested/forged-reason checks.
+Source/import/Pi-license/fork-hash/diff guards pass and prohibit the retired module.
+**44 DSH direct dev declarations remain**, no package/lock changes; last standard
+frozen install passed. Other shell/network/session/platform notices remain.
+Evidence: `docs/pi-native-owned-deadlines-validation.json`.
+
 # Application template compiler replaces the renderer fork (2026-11-05)
 
 Removed the old renderer module and unused snapshot-rendering export. Application
