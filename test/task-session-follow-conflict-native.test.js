@@ -1,17 +1,17 @@
+import NativeSessionQuery from '../src/native-session-query.js'
+import NativeSessionController from '../src/native-session-controller.js'
 import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
 import { mkdir } from 'node:fs/promises'
-import { join, resolve, dirname } from 'node:path'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { available, reason, nativeTaskHost, waitUntil } from './fixtures/task-session-native-host.js'
+import { available, reason, nativeTaskHost } from './fixtures/task-session-native-host.js'
 import { createTaskSessions } from '../packages/dingtalk-dsh-assistant/task-session.js'
 import { installTaskSessionPersistence } from '../packages/dingtalk-dsh-assistant/task-session-persistence.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
 
-test('official session follow reads a cold Host-owned task without acquiring its writer and the Host resumes next lease', { ...({ skip: !available ? reason : false, timeout: 15000 }), timeout: nativeLifecycleTimeout(15000) }, nativeLifecycle(15000, async (t) => {
+test('owned read-only session observation cannot acquire a cold task writer and the Host resumes next lease', { ...({ skip: !available ? reason : false, timeout: 15000 }), timeout: nativeLifecycleTimeout(15000) }, nativeLifecycle(15000, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'task-follow-conflict-'))
   const h = await nativeTaskHost(root, async () => [{ name: 'task_session_submit', args: { decision: { action: 'wait', summary: '原统筹等待执行结果', evidence: [], limitations: [] } } }], { resident: true })
   await t.beginBusiness()
@@ -26,36 +26,20 @@ test('official session follow reads a cold Host-owned task without acquiring its
     onSessionBound: async () => {}, submit: async () => ({ accepted: true }) })
   assert.equal((await t.step(async () => run(1, false))).status, 'submitted')
   assert.equal(h.ctx.agents.get('follow-owner'), undefined)
-  const profile = createRequire(pathToFileURL(resolve(process.env.DSH_NATIVE_TEST_PROFILE ?? '.dsh/profiles/resident/package.json')))
-  const native = createRequire(profile.resolve('@deepseek-ai/dsh-base'))
-  const queryModule = await t.step(async () => import(pathToFileURL(native.resolve('@deepseek-ai/dsh-session-query')).href))
-  await t.step(async () => h.ctx.plugin(queryModule.default ?? queryModule))
-  const registryModule = await t.step(async () => import(pathToFileURL(native.resolve('@deepseek-ai/dsh-typert-registry')).href))
-  await t.step(async () => h.ctx.plugin(registryModule.default ?? registryModule))
-  const modulePath = native.resolve('@deepseek-ai/dsh-api-session-controller'), moduleRoot = dirname(modulePath)
-  const { SessionController } = await t.step(async () => import(pathToFileURL(modulePath).href))
-  const { ApiSessionAgentController } = await t.step(async () => import(pathToFileURL(join(moduleRoot, 'types', 'agent.js')).href))
-  const { SessionHistoryController } = await t.step(async () => import(pathToFileURL(join(moduleRoot, 'types', 'history.js')).href))
-  const { installModelSelectionProjection } = await t.step(async () => import(pathToFileURL(join(moduleRoot, 'types', 'model-selection-projection.js')).href))
-  installModelSelectionProjection(h.ctx)
-  // Invoke the production follow/promote methods directly, avoiding unrelated RPC/file-upload/UI constructor dependencies.
-  const receiver = { ctx: h.ctx, agents: new ApiSessionAgentController(h.ctx), promotions: new Set() }
-  const diagnostics = []
-  h.ctx.on('api-session/error', (_id, message) => diagnostics.push(message))
-  receiver.promote = observation => { diagnostics.push('promote'); return SessionController.prototype.promote.call(receiver, observation) }
-  receiver.history = new SessionHistoryController(h.ctx, observation => receiver.promote(observation))
-  const controller = new AbortController()
-  const stream = SessionController.prototype.follow.call(receiver, { address: { kind: 'session', sessionId: 'follow-owner' } }, controller.signal)
-  const snapshot = await t.step(async () => stream.next())
-  assert.equal(snapshot.value.type, 'snapshot')
-  const next = stream.next().catch(() => ({ done: true }))
-  await t.step(async () => waitUntil(() => diagnostics.some(message => message.includes('TASK_SESSION_HOST_WRITER_REQUIRED')), 'follow promotion rejected by Host writer ownership'))
-  await t.step(async () => Promise.allSettled([...receiver.promotions]))
-  assert.equal(h.ctx.agents.get('follow-owner'), undefined)
-  assert.equal(h.ctx.sessions.get('follow-owner'), undefined)
+  const before=await t.step(async()=>inspectSession(h.ctx.sessionPersistence,'follow-owner'))
+  await t.step(async()=>h.ctx.plugin(NativeSessionQuery))
+  await t.step(async()=>h.ctx.plugin(NativeSessionController))
+  const observation=await t.step(async()=>h.ctx.sessionQuery.observeSession('follow-owner'))
+  try{
+    assert.equal(observation.header.id,'follow-owner');assert.ok(observation.events.length>0)
+    assert.equal(h.ctx.agents.get('follow-owner'),undefined);assert.equal(h.ctx.sessions.get('follow-owner'),undefined)
+    const activation=await t.step(async()=>h.ctx.sessionController.resolveAgent('follow-owner'))
+    assert.ok(activation.error);assert.match(activation.error.message,/TASK_SESSION_HOST_WRITER_REQUIRED|NIGHT_SESSION_TASK_OWNED/)
+    assert.equal(h.ctx.agents.get('follow-owner'),undefined);assert.equal(h.ctx.sessions.get('follow-owner'),undefined)
+  }finally{await observation[Symbol.asyncDispose]?.();observation[Symbol.dispose]?.()}
+  assert.deepEqual((await t.step(async()=>inspectSession(h.ctx.sessionPersistence,'follow-owner'))).events,before.events)
   assert.equal((await t.step(async () => run(2, true))).status, 'submitted')
   const log = await t.step(async () => inspectSession(h.ctx.sessionPersistence, 'follow-owner'))
   assert.deepEqual([...new Set(log.events.filter(event => event.type === 'user/message' && event.data.source?.taskSession).map(event => event.data.source.taskSession.leaseEpoch))], [1,2])
   assert.equal(h.requests.length, 2)
-  controller.abort(); await t.step(async () => next); await t.step(async () => stream.return())
 }))

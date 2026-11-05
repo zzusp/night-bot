@@ -158,9 +158,6 @@ importers:
       '@deepseek-ai/dsh-sandbox-policy':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(e55c3ebba1d60781b484a2256de76a51)
-      '@deepseek-ai/dsh-schedule':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(f9a971e144306daa7f9c9b47ebab42d2)
       '@deepseek-ai/dsh-scope':
         specifier: link:packages/scope-compat
         version: link:packages/scope-compat
@@ -197,9 +194,6 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-scope@packages+scope-compat)
-      '@deepseek-ai/dsh-tool-schedule':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-llm@packages+capability-compat+llm)(@deepseek-ai/dsh-schedule@0.2.1-alpha.2(f9a971e144306daa7f9c9b47ebab42d2))(@deepseek-ai/dsh-subagent@packages+capability-compat+subagent)(@deepseek-ai/dsh-tools@packages+capability-compat+tools)
       '@deepseek-ai/dsh-tool-skill':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(ac39b1a26e10196750f69c02dc6e61f0)
@@ -218,9 +212,6 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: link:packages/capability-compat/tools
         version: link:packages/capability-compat/tools
-      '@deepseek-ai/dsh-typert-registry':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
       '@deepseek-ai/dsh-user-approval':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(9bae0bc41493dd466c50a931f1363b23)

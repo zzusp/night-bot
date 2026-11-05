@@ -1,11 +1,13 @@
+import NativeSessionQuery from '../src/native-session-query.js'
+import NativeSessionController from '../src/native-session-controller.js'
+import NativeSchedule from '../src/native-schedule.js'
+import * as scheduleTools from '../src/native-tool-schedule.js'
 import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, modelToolValues, waitUntil } from './fixtures/task-session-native-host.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
@@ -18,21 +20,15 @@ import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/gro
 import { taskNotificationRecovery } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
 import { fixedUnitRequestId } from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
 
-async function nativeSchedule(h, t) {
-  const profile = createRequire(pathToFileURL(resolve(process.env.DSH_NATIVE_TEST_PROFILE ?? '.dsh/profiles/resident/package.json')))
-  let schedulePath, toolPath
-  try { schedulePath = profile.resolve('@deepseek-ai/dsh-schedule'); toolPath = profile.resolve('@deepseek-ai/dsh-tool-schedule') }
-  catch { t.skip('Requires the installed rc2 native schedule service and tools'); return false }
-  const native = createRequire(profile.resolve('@deepseek-ai/dsh-base'))
-  for (const name of ['session-query', 'typert-registry']) { const module = await import(pathToFileURL(native.resolve('@deepseek-ai/dsh-' + name))); await h.ctx.plugin(module.default ?? module) }
-  const controllerRoot = dirname(profile.resolve('@deepseek-ai/dsh-api-session-controller'))
-  const { ApiSessionAgentController } = await import(pathToFileURL(join(controllerRoot, 'types', 'agent.js')))
-  const { installModelSelectionProjection } = await import(pathToFileURL(join(controllerRoot, 'types', 'model-selection-projection.js')))
-  installModelSelectionProjection(h.ctx)
-  h.ctx.provide('sessionController', new ApiSessionAgentController(h.ctx))
-  const schedule = await import(pathToFileURL(schedulePath)), tool = await import(pathToFileURL(toolPath))
-  await h.ctx.plugin(schedule.default ?? schedule, {})
-  await h.ctx.plugin(tool.default ?? tool)
+async function nativeSchedule(h) {
+  if(h.ctx.get('schedule'))return true
+  if(!h.ctx.get('sessionQuery'))await h.ctx.plugin(NativeSessionQuery)
+  if(!h.ctx.get('sessionController'))await h.ctx.plugin(NativeSessionController)
+  await h.ctx.plugin(NativeSchedule,{})
+  await h.ctx.plugin(scheduleTools)
+  await h.ctx.schedule.ready
+  await h.ctx.fiber.await()
+  h.ctx.schedule.start()
   return true
 }
 
@@ -183,7 +179,7 @@ test('rc2 native schedule tool remains visible and reports its delegated-session
     assert.ok(request.tools.some(tool => tool.name === 'schedule_create'))
     return step++ === 0 ? [{ name: 'schedule_create', args: { title: '工作汇报', prompt: '汇报当前工作成果', after_seconds: 600 } }] : []
   }, { resident: true }))
-  if (!await t.step(async () => nativeSchedule(h, t))) return
+  if (!await t.step(async () => nativeSchedule(h))) return
   handle = await t.step(async () => h.ctx.agents.create({ sessionId: 'schedule-platform-session', meta: { cwd: root, origin: 'subagent', delegationDepth: 1 },
     agentOptions: { provider: 'native-task-test', model: 'controlled' }, setup: async (agentCtx, agent) => {
       await agentCtx.get('agentPresets').mount(agentCtx, 'native-test')
@@ -226,7 +222,7 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
       return update(id, changes)
     }
     if (late) {
-      if (!await nativeSchedule(h, t)) return false
+      if (!await nativeSchedule(h)) return false
       await waitUntil(async () => (await h.ctx.schedule.catalog())[0]?.status === 'inactive', 'native service delivers while bridge is loading')
     }
     handler = createFixedTopicHandler({ ctx: h.ctx, store: h.residentStore, root, legacy: { getAgentConfig: () => ({ agentPreset: 'native-test' }) },
@@ -235,7 +231,7 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
         return [{ taskId: 'test-task', groupId, title: taskTitle, state: 'completed', completedAt: new Date().toISOString() }]
       },
       appendOutbox: args => h.residentStore.appendOutbox(args), onError: (_group, error) => errors.push(error) })
-    return late || nativeSchedule(h, t)
+    return late || nativeSchedule(h)
   }
   t.after(async () => { await handler?.close(); await h?.close(); await rm(root, { recursive: true, force: true }) })
   await t.beginBusiness()
@@ -328,7 +324,7 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
         async readback(notification) { return { messageId: notification.ack.messageId, visible: true } },
       } })
     h.query = (kind, args = {}) => h.service.store.query({ kind, ...args })
-    if (!await nativeSchedule(h, t)) return false
+    if (!await nativeSchedule(h)) return false
     initialize = false
     await h.service.recover(); await h.service.whenIdle()
     return true
@@ -387,7 +383,7 @@ test('Host refuses an expired instant without scheduling tomorrow, while native 
   t.after(async () => { await bridge?.close(); await h?.close(); await rm(root, { recursive: true, force: true }) })
   await t.beginBusiness()
   h = await t.step(async () => nativeTaskHost(root, () => [], { resident: true }))
-  if (!await t.step(async () => nativeSchedule(h, t))) return
+  if (!await t.step(async () => nativeSchedule(h))) return
   h.residentStore = await t.step(async () => openResidentStore(h.ctx.storageDomain))
   await t.step(async () => h.residentStore.subscribe({ groupId: 'g', timezone: 'Asia/Shanghai' }))
   const text = '定点汇报'

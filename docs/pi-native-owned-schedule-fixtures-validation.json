@@ -1,0 +1,69 @@
+{
+  "base": "1e94876",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 660,
+      "pass": 660,
+      "fail": 0,
+      "skipped": 0
+    },
+    "runtime": {
+      "tests": 155,
+      "pass": 155,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "removedRootDevDeclarations": [
+    "@deepseek-ai/dsh-schedule",
+    "@deepseek-ai/dsh-tool-schedule",
+    "@deepseek-ai/dsh-typert-registry"
+  ],
+  "remainingDirectDshDevDependencies": 41,
+  "changes": "Fixed-topic tests mount actual native schedule/query/controller/tool services with no legacy profile/SDK/registry lookup or missing-package skip. Cold task read test uses native immutable observation, rejects unowned activation, checks audit unchanged then original Host resumes next lease. Both files added to mandatory runtime suite.",
+  "installation": {
+    "frozen": true,
+    "supplyChainEntries": 630,
+    "seconds": 8.6
+  },
+  "runtimeDurationSeconds": 303.909,
+  "inventory": {
+    "parsedFiles": 932,
+    "retiredLiteralModuleImports": 0,
+    "packageSnapshotBytes": "unchanged"
+  },
+  "limits": "This commits test/service composition and root dependency retirement; underlying schedule/session code retains attribution. Original transitive development packages may remain. Five parallel implementation groups begin after this validated checkpoint and are not part of these results.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-owned-schedule-fixtures-focused.txt",
+      "sha256": "c1f62931146f17195e61765efd7daad9081502f64fa716e9e5545737f57d10a7"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-schedule-fixtures-default.txt",
+      "sha256": "4d9876e0e0c93be4b155c1e23552217b848d2ff2a7c1c6fd4f9f3b8a84e88e8b"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-schedule-fixtures-runtime.txt",
+      "sha256": "5438fb41b2bac97d86e5cf251f4b914ae4ee930080a209e854dca2636b89a8d1"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-schedule-fixtures-checks.txt",
+      "sha256": "c2eaebbefb3f59c97d1a5b1d5a44881ee5d9e1f7e7bf7c027208d70456eb9610"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-schedule-fixtures-inventory.txt",
+      "sha256": "ab7896d6c2762f51eed45382955fc658279d7de17056aa646b03e381b1f18224"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-schedule-fixtures-install.txt",
+      "sha256": "e1fb6e2cad33379f1c1580dc9d094e97a438a2ad35e88cb22ae12d60a95d0271"
+    }
+  ]
+}

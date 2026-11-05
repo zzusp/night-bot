@@ -1,0 +1,1 @@
+{"parsedFiles":932,"retiredLiteralModuleImports":0,"metadataOnlyReferences":[],"packageAndSnapshotBytes":"unchanged","portedFixtures":"No DSH test profile/SDK registry/controller loading or dependency skip; actual native services mounted"}

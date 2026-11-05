@@ -1,3 +1,22 @@
+# Native scheduling/read-only fixtures join mandatory runtime regression (2026-11-05)
+
+Removed old DSH profile lookup, SDK session-controller/RPC registry and missing-
+package skip from fixed-topic scheduling tests. They mount native query/controller/
+scheduler/tools. Cold task read now proves immutable native observation, refusal
+of unowned activation, unchanged audit and original Host continuation at the next
+lease. Both files join test:runtime permanently: **155 pass**, zero skip, ~304s.
+This adds 13 actual cases to the previous 142 rather than dropping old coverage.
+
+Retired three root dev declarations (schedule, tool-schedule, typert-registry) and
+only exact lock importer blocks; **41 direct DSH dev declarations remain**. Acorn
+scanned 932 files with no retired literal module import; package/snapshot bytes
+unchanged. Standard frozen install passes all **630** policies in **8.6s**. Subsequent
+**660 default pass** and **13 focused overlap** pass. Source/import/Pi-license/fork-
+hash/diff guards pass. No runtime implementation/notice retirement is claimed by
+this test composition change. The parallel implementation wave starts after this
+validated checkpoint and has separate results. Evidence:
+`docs/pi-native-owned-schedule-fixtures-validation.json`.
+
 # Owned disposable clocks replace the timeout fork (2026-11-05)
 
 Removed the 150-line deadline fork, unused idle-watchdog/public reason constructor

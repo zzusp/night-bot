@@ -1,0 +1,60 @@
+✔ fixed agent-platform reply reaches the real outbound ledger and readback without a business Topic (617.311551ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":6,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":576,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":34,"aborted":false}
+✔ fixed out-of-scope reply reaches the real outbound ledger and readback without a business Topic (190.837843ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":5,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":172,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ restart resumes a frozen fixed reply before notification prepare without regenerating it: legacy=false (378.259575ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":18,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":348,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ restart resumes a frozen fixed reply before notification prepare without regenerating it: legacy=true (396.538441ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":13,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":368,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native platform tools coexist with preset tools and full access stays session-local (152.946902ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":140,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ rc2 native schedule tool remains visible and reports its delegated-session boundary truthfully (88.271197ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":70,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: before-due (2659.288414ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2643,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: late-bridge (2701.266576ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2675,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: superseded (2614.920688ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2602,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ native due all report shares final delivery and recovers attachments after cold restart (2950.361645ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2935,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ native due members report shares final delivery and recovers attachments after cold restart (3343.420179ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3318,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ Host refuses an expired instant without scheduling tomorrow, while native source binding stays trusted (178.422262ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":159,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ owned read-only session observation cannot acquire a cold task writer and the Host resumes next lease (592.887264ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":239,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":328,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":24,"aborted":false}
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17540.771092
