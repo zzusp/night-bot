@@ -1,0 +1,2 @@
+Verified old RPC root link absent after completed regression; nested peers/source contents unchanged.
+Restored temporary root link; no package download, install or policy bypass.

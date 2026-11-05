@@ -1,9 +1,9 @@
-import {TypertRemoteService,Remote,RemoteError} from './native-typert-protocol.js'
+import {Service} from '@deepseek-ai/cordis'
+import {ControlError} from './runtime/control-error.js'
 import {deepFreeze} from './native-values.js'
 import { LlmError, HarnessError } from './native-llm-protocol.js';
 import { callConfigEquals, freezeMessage, fileHandleText, contentHasFile, contentHasImage, projectFilesToText, projectImagesForTextModel, projectToolUpdates } from './native-message-protocol.js';
 import {resolvePiRetryPolicy} from './pi-provider-retry.js'
-const initializers=[]
 const ownData=(object,key)=>{try{const d=Object.getOwnPropertyDescriptor(object,key);return d&&'value'in d?d.value:undefined}catch{return}}
 function normalizeLlmFailure(value){
  let error=false;try{error=value instanceof Error}catch{}
@@ -20,8 +20,8 @@ const frozen=value=>deepFreeze(structuredClone(value))
 /** Application-owned provider topology, prepared-call ownership and dispatch
  * policy. Public legacy message projection helpers and RPC carrier remain
  * explicit compatibility dependencies; model execution belongs to Pi. */
-export default class NativeLlm extends TypertRemoteService{
- constructor(ctx){super(ctx,'llm');this.adapters=new Map();this.directory=new Map();this.discoveries=new Map();for(const init of initializers)init.call(this)}
+export default class NativeLlm extends Service{
+ constructor(ctx){super(ctx,'llm');this.adapters=new Map();this.directory=new Map();this.discoveries=new Map()}
  notify(){for(const listener of this.ctx.events.dispatch('emit',['llm/adapters-updated']))try{Promise.resolve(listener()).catch(error=>this.warn(error))}catch(error){this.warn(error)}}
  warn(error){this.ctx.logger.warn('llm: an llm/adapters-updated listener failed');this.ctx.logger.warn(error)}
  registration(provider){const entry=this.adapters.get(provider);if(!entry)fail(`no adapter registered for provider "${provider}"`,'NO_ADAPTER');return entry}
@@ -41,7 +41,7 @@ export default class NativeLlm extends TypertRemoteService{
  listConfigurableProviders(){return[...this.directory.values()].map(e=>({...e,settingsPath:[...e.settingsPath]}))}
  registerModelDiscovery(ns,discover){const dispose=this.ctx.effect(()=>{if(!nonempty(ns))fail('discovery needs a settings namespace','INVALID_DISCOVERY');if(this.discoveries.has(ns))fail('model discovery already registered','DUPLICATE_DISCOVERY');this.discoveries.set(ns,discover);return()=>this.discoveries.delete(ns)},'native llm discovery');return()=>void dispose()}
  async discoverModels(ns,request,signal){const discover=this.discoveries.get(ns);if(!discover)fail('model discovery is not registered','NO_DISCOVERY');if(!nonempty(request.provider)&&!nonempty(request.baseURL))fail('discovery needs a provider route or baseURL','INVALID_DISCOVERY');signal?.throwIfAborted();const result=await discover(request,signal);signal?.throwIfAborted();const seen=new Set(),models=[];for(const m of result){if(!nonempty(m.id)||seen.has(m.id))continue;seen.add(m.id);models.push({id:m.id,...m.name!==undefined?{name:m.name}:{},...m.contextWindow!==undefined?{contextWindow:m.contextWindow}:{},...m.maxTokens!==undefined?{maxTokens:m.maxTokens}:{},...m.inputModalities!==undefined?{inputModalities:[...m.inputModalities]}:{}})}return models}
- async remoteDiscoverModels(ns,request,signal){try{return await this.discoverModels(ns,request,signal)}catch(error){throw new RemoteError('llm/model-discovery-rejected',error instanceof Error?error.message:String(error),{settingsNs:ns,...request.baseURL!==undefined?{baseURL:request.baseURL}:{}},{cause:error})}}
+ async remoteDiscoverModels(ns,request,signal){try{return await this.discoverModels(ns,request,signal)}catch(error){throw new ControlError('llm/model-discovery-rejected',error instanceof Error?error.message:String(error),{settingsNs:ns,...request.baseURL!==undefined?{baseURL:request.baseURL}:{}},{cause:error})}}
  providerRetryPolicy(provider){return this.registration(provider).retryPolicy}
  imageRequestPricing(provider,model){return this.adapters.get(provider)?.adapter.imageRequestPricing(provider,model)}
  fileReadPath(ref){let path;try{path=this.ctx.get('attachments')?.fileHostPath(ref)}catch{return}return path===undefined?undefined:this.ctx.get('fs')?.processPathFromHostPath(path)}
@@ -85,4 +85,3 @@ export default class NativeLlm extends TypertRemoteService{
  async *memoryStream(options,prepared){const memory=this.ctx.get('memory');const request=memory?await memory.filterRequest(options):options;yield* this.adapterStream(request,prepared)}
  streamWith(options,prepared){return this.ctx.waterfall(this,'llm/stream',options,()=>this.ctx.get('memory')?this.memoryStream(options,prepared):this.adapterStream(options,prepared))}
 }
-for(const [name,alias]of [['listProviders'],['listConfigurableProviders'],['remoteDiscoverModels','discoverModels']]){const context={name,kind:'method',static:false,private:false,addInitializer:fn=>initializers.push(fn)};if(alias)Remote(alias)(NativeLlm.prototype[name],context);else Remote(NativeLlm.prototype[name],context)}

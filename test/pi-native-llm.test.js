@@ -2,13 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import {LlmAdapter,createAssistantMessage,createUserMessage,LlmError} from '../src/native-llm-protocol.js'
-import {remoteMethods} from '../src/native-typert-protocol.js'
 import NativeLlm from '../src/native-llm.js'
 function fixture(t,Impl=NativeLlm){const ctx=new Context();ctx.logger={warn(){}};new Impl(ctx);t.after(()=>ctx.fiber.dispose());return ctx}
 const adapter=(label='one')=>new class extends LlmAdapter{resolveModel(provider,id){return Promise.resolve({provider,id,name:label,context:{contextWindow:1000},defaultMaxTokens:32,reasoning:{efforts:[{id:'off',name:'Off'},{id:'low',name:'Low'}],defaultEffort:'low'}})}async *stream(request){yield{type:'block-end',index:0,block:{type:'text',text:label}};yield{type:'finish',reason:{kind:'stop'}}}}
 const collect=async source=>{const chunks=[];for await(const c of source)chunks.push(c);return chunks}
 const request={provider:'fixture',model:'m',messages:[createUserMessage({content:[{type:'text',text:'input'}],source:{kind:'user'}})]}
-async function publicContract(t){const ctx=fixture(t),first=adapter('first'),reg=ctx.llm.registerAdapter(['fixture'],first),call=await ctx.llm.prepareCall({provider:'fixture',model:'m'});reg();ctx.llm.registerAdapter(['fixture'],adapter('second'));const chunks=await collect(call.stream({...request,...call.config}));assert.throws(()=>call.stream({...request,...call.config}),e=>e.code==='INVALID_PREPARED_CALL');return{providers:ctx.llm.listProviders(),config:call.config,context:call.context,defaults:call.adapterDefaults,retryPolicy:call.retryPolicy,chunks,remote:remoteMethods(ctx.llm)}}
+async function publicContract(t){const ctx=fixture(t),first=adapter('first'),reg=ctx.llm.registerAdapter(['fixture'],first),call=await ctx.llm.prepareCall({provider:'fixture',model:'m'});reg();ctx.llm.registerAdapter(['fixture'],adapter('second'));const chunks=await collect(call.stream({...request,...call.config}));assert.throws(()=>call.stream({...request,...call.config}),e=>e.code==='INVALID_PREPARED_CALL');return{providers:ctx.llm.listProviders(),config:call.config,context:call.context,defaults:call.adapterDefaults,retryPolicy:call.retryPolicy,chunks}}
 test('prepared calls retain their admitted adapter after replacement and are consumed exactly once',async t=>{
  const result=await publicContract(t)
  assert.deepEqual(result.providers,[{id:'fixture',name:'fixture'}])
@@ -16,7 +15,6 @@ test('prepared calls retain their admitted adapter after replacement and are con
  assert.deepEqual(result.context,{contextWindow:1000})
  assert.deepEqual(result.defaults,{reasoningEffort:true,maxTokens:true})
  assert.deepEqual(result.chunks,[{type:'block-end',index:0,block:{type:'text',text:'first'}},{type:'finish',reason:{kind:'stop'}}])
- assert.deepEqual(result.remote.map(row=>row.exportName??row.method),['listProviders','listConfigurableProviders','discoverModels'])
  assert.equal(result.retryPolicy.maxRetries,5)
 })
 test('native LLM topology changes validate atomically and contain broken observers',async t=>{const ctx=fixture(t);ctx.on('llm/adapters-updated',()=>{throw Error('observer')});const a=ctx.llm.registerAdapter(['a'],adapter()),b=ctx.llm.registerAdapter(['b'],adapter());assert.throws(()=>a.replace(['c','b']),e=>e.code==='DUPLICATE_ADAPTER');assert.deepEqual(ctx.llm.listProviders().map(p=>p.id),['a','b']);a.replace(['c']);assert.deepEqual(ctx.llm.listProviders().map(p=>p.id),['b','c']);a();assert.throws(()=>a.replace(['d']),e=>e.code==='REGISTRATION_DISPOSED');b()})

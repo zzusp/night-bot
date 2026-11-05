@@ -1,3 +1,31 @@
+# Ordinary application control services (2026-11-05)
+
+The default Host never mounted a Typert Gateway, and production code did not
+consume generic RPC owned-value/JSON carriers. Removed that unused protocol:
+global structural DSH error/owned-value tags, method descriptors, invocation
+accessor, Gateway bindings and optional agent lookup/context registration.
+Preset, permission, model and subagent controllers inherit Cordis Service
+with their existing ordinary control methods and machine codes. The independent
+`ControlError` helper snapshots/freeze diagnostic data, preserves the original
+cause and adds no transport/authority marker. Task/session/process ownership
+continues through the existing private execution and journal mechanisms.
+
+The 279-line source module and old RPC differential tests are gone; source and
+retained-fixture scans find no remaining protocol implementation/copy. Removed
+its dedicated notice only at that point; controller/prompt source notices remain.
+**58 direct DSH dev declarations remain**. This does not claim the remaining
+controller or platform algorithms are independently rewritten.
+
+With the old RPC root link absent: **634 default +142 runtime +47 routing +390
+domain +20 Linux containment pass**, one Windows-only skip. Focused **31**, error/
+prompt **6** overlap default. Restored the temporary link afterward; no downloads,
+package installation or policy bypass. Source/import/Pi-license/diff guards pass.
+See [control-service evidence](pi-native-control-services-validation.json).
+Fresh frozen installation remains blocked by registry metadata/attestation 503;
+actual Windows kernel/ACL acceptance remains unverified. No push or deployment.
+
+---
+
 # Retired direct development declarations (2026-11-05)
 
 Twelve further DSH declarations had only source-attribution comments rather than

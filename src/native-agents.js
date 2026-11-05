@@ -7,7 +7,6 @@ import {scopeTarget} from './native-scope.js'
 export default class NativeAgents extends Service{
  constructor(ctx){
   super(ctx,'agents');this.entries=new Map();this.initiators=new AsyncLocalStorage();this.runs=new AsyncLocalStorage();this.initiatorState='active';this.activeRuns=0
-  ctx.inject(['typert'],child=>{child.typert.lookups.register('agent',{parameter:'agent',wire:'agentId',hostTypeSymbol:'@deepseek-ai/dsh-agent#Agent',wireTypeSymbol:'@deepseek-ai/dsh-session/types#SessionId',resolve:id=>this.get(id)});child.typert.contexts.registerHost('agent',{wire:'agentId',wireTypeSymbol:'@deepseek-ai/dsh-session/types#SessionId',resolve:id=>this.get(id)?.ctx})})
   ctx.on('internal/status',fiber=>{if(fiber.state===5&&this.ownsLifecycle(fiber))this.closeInitiators()})
   ctx.effect(function*(){yield()=>this.disposeInitiators();yield()=>this.closeInitiators()}.bind(this),'native agent attribution lifecycle')
   ctx.on('workspace/session-activity',async({sessionId},next)=>{const running=this.get(sessionId)?.status==='running',rest=await next();return running?[{kind:'turn'},...rest]:rest})

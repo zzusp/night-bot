@@ -260,9 +260,6 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: link:packages/capability-compat/tools
         version: link:packages/capability-compat/tools
-      '@deepseek-ai/dsh-typert-protocol':
-        specifier: 0.2.1-alpha.2
-        version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)
       '@deepseek-ai/dsh-typert-registry':
         specifier: 0.2.1-alpha.2
         version: 0.2.1-alpha.2(@deepseek-ai/cordis@4.0.5-alpha.1)

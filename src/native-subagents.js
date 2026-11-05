@@ -1,12 +1,12 @@
 // MIT source-derived child control, lineage and activation algorithms; active ownership is local.
 // Canonical public errors are retained for existing tool/helper instanceof contracts.
-import {symbols} from '@deepseek-ai/cordis';
+import {Service,symbols} from '@deepseek-ai/cordis';
 import {SubagentError,SubagentDepthError} from './native-subagent-errors.js';
 import z from "@deepseek-ai/schemastery";
 import { scopeTarget } from "./native-scope.js";
 import { ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue } from "./native-tool-protocol.js";
 import { canonicalClientTimeZone } from "./native-time-zone.js";
-import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
+import {ControlError} from './runtime/control-error.js'
 import { AttachmentError } from "./native-attachment-errors.js";
 import { z as z$1 } from "zod";
 import { HarnessError } from './native-llm-protocol.js';
@@ -31,7 +31,7 @@ import { accessSync, constants, statSync } from "node:fs";
 //#region lib/types/control.js
 /**
 * Browser-facing subagent prompt and interrupt request validation plus the
-* stable prompt failure codes returned by the Remote surface.
+* stable prompt failure codes returned by the application control API.
 *
 * @module @deepseek-ai/dsh-subagent
 */
@@ -54,11 +54,11 @@ const CONTROL_ID_SCHEMAS = {
 * branded-string codecs.
 * @param method - method name carried in the failure message.
 * @param payload - decoded control fields to validate.
-* @throws {RemoteError} `gateway/bad-request` with the original Zod issues.
+* @throws {ControlError} `gateway/bad-request` with the original Zod issues.
 */
 function validateControlRequest(method, payload) {
 	const parsed = CONTROL_ID_SCHEMAS[method].safeParse(payload);
-	if (!parsed.success) throw new RemoteError("gateway/bad-request", `invalid payload for ${method}`, { issues: parsed.error.issues });
+	if (!parsed.success) throw new ControlError("gateway/bad-request", `invalid payload for ${method}`, { issues: parsed.error.issues });
 }
 /**
 * Refuse one continuation prompt without exposing provider detail: admission
@@ -68,23 +68,23 @@ function validateControlRequest(method, payload) {
 * @param childSessionId - the addressed child.
 * @param signal - the caller's cancellation.
 * @returns Never — the refusal is thrown.
-* @throws {RemoteError} always.
+* @throws {ControlError} always.
 */
 function rejectPrompt(error, childSessionId, signal, isAttachmentError) {
-	if (isCancellation(error, signal)) throw new RemoteError("gateway/cancelled", "subagent prompt was cancelled", {}, { cause: error });
-	if (error instanceof AttachmentError || isAttachmentError?.(error)) throw new RemoteError("subagent/attachment-invalid", error.message, { reason: error.code }, { cause: error });
+	if (isCancellation(error, signal)) throw new ControlError("gateway/cancelled", "subagent prompt was cancelled", {}, { cause: error });
+	if (error instanceof AttachmentError || isAttachmentError?.(error)) throw new ControlError("subagent/attachment-invalid", error.message, { reason: error.code }, { cause: error });
 	if (error instanceof SubagentError) switch (error.code) {
-		case "MODEL_DOES_NOT_SUPPORT_IMAGES": throw new RemoteError("subagent/attachment-invalid", error.message, { reason: error.code }, { cause: error });
-		case "NOT_RESUMABLE": throw new RemoteError("subagent/not-resumable", "subagent cannot be resumed", { childSessionId }, { cause: error });
-		case "UNAUTHORIZED": throw new RemoteError("subagent/unauthorized", "subagent does not belong to this parent", { childSessionId }, { cause: error });
+		case "MODEL_DOES_NOT_SUPPORT_IMAGES": throw new ControlError("subagent/attachment-invalid", error.message, { reason: error.code }, { cause: error });
+		case "NOT_RESUMABLE": throw new ControlError("subagent/not-resumable", "subagent cannot be resumed", { childSessionId }, { cause: error });
+		case "UNAUTHORIZED": throw new ControlError("subagent/unauthorized", "subagent does not belong to this parent", { childSessionId }, { cause: error });
 		case "DRAINING":
 		case "ACTIVATION_CLOSING":
 		case "ACTIVATION_LIMIT_REACHED":
 		case "CONTINUATION_UNAVAILABLE":
-		case "PERSISTENCE_UNAVAILABLE": throw new RemoteError("subagent/delivery-unavailable", "subagent follow-up is temporarily unavailable", { childSessionId }, { cause: error });
+		case "PERSISTENCE_UNAVAILABLE": throw new ControlError("subagent/delivery-unavailable", "subagent follow-up is temporarily unavailable", { childSessionId }, { cause: error });
 		default: break;
 	}
-	throw new RemoteError("gateway/internal", "subagent prompt failed", {}, { cause: error });
+	throw new ControlError("gateway/internal", "subagent prompt failed", {}, { cause: error });
 }
 function isCancellation(error, signal) {
 	return signal.aborted || error instanceof SubagentError && error.code === "CANCELLED";
@@ -2851,8 +2851,7 @@ function subprocessRunHandle(parts) {
 }
 //#endregion
 //#region lib/types/index.js
-const initializers=[];
-export default class NativeSubagents extends TypertRemoteService {
+export default class NativeSubagents extends Service {
 static Config = z.object({
 	maxDepth: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(1).volatile(),
 	maxActiveSubagents: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(8).volatile()
@@ -2868,7 +2867,6 @@ manager;
 emitLifecycle;
 constructor(ctx, config) {
 	super(ctx, "subagents");
-	for(const initialize of initializers)initialize.call(this);
 	this.config = config;
 	this.emitLifecycle = createLifecycleEmitter(this.ctx, (parent) => scopeTarget(this, parent));
 	ctx.inject(["agents"], (childCtx) => {
@@ -3058,7 +3056,7 @@ listDescendants(rootSessionId, signal) {
 * @param request - durable address, delivery, minted identity, content, and optional browser zone.
 * @param signal - carrier cancellation, owning the call until inbox acceptance.
 * @returns the accepted message's inbox identity.
-* @throws {RemoteError} `gateway/bad-request`, `subagent/attachment-invalid`,
+* @throws {ControlError} `gateway/bad-request`, `subagent/attachment-invalid`,
 *   `subagent/invalid-time-zone`, `subagent/parent-unavailable`,
 *   `subagent/not-resumable`, `subagent/unauthorized`,
 *   `subagent/delivery-unavailable`, `gateway/cancelled`, or `gateway/internal`.
@@ -3067,9 +3065,9 @@ async prompt(request, signal) {
 	const { parentSessionId, childSessionId, clientTimeZone, delivery } = request;
 	validateControlRequest("subagent.prompt", request);
 	const canonicalTimeZone = clientTimeZone === void 0 ? void 0 : canonicalClientTimeZone(clientTimeZone);
-	if (clientTimeZone !== void 0 && canonicalTimeZone === void 0) throw new RemoteError("subagent/invalid-time-zone", "clientTimeZone must be UTC or a valid IANA Area/Location name", { value: clientTimeZone });
+	if (clientTimeZone !== void 0 && canonicalTimeZone === void 0) throw new ControlError("subagent/invalid-time-zone", "clientTimeZone must be UTC or a valid IANA Area/Location name", { value: clientTimeZone });
 	const parent = this.ctx.get("agents")?.get(parentSessionId);
-	if (parent === void 0) throw new RemoteError("subagent/parent-unavailable", `parent session "${parentSessionId}" is not live`, { parentSessionId });
+	if (parent === void 0) throw new ControlError("subagent/parent-unavailable", `parent session "${parentSessionId}" is not live`, { parentSessionId });
 	const source = {
 		kind: "user",
 		rpcId: request.requestId,
@@ -3092,7 +3090,7 @@ async prompt(request, signal) {
 	}
 }
 /**
-* Remote face of {@link interrupt} under one durable parent address. No
+* Control entry point for {@link interrupt} under one durable parent address. No
 * catalog, history, persistence, or parent Agent lookup runs: the core
 * primitive alone authorizes the address against the live Activation, which
 * is what keeps a live child interruptible while its parent Agent is offline.
@@ -3101,7 +3099,7 @@ async prompt(request, signal) {
 * @param parentSessionId - durable direct parent whose authority is claimed.
 * @param mode - required continuable-address discriminator.
 * @returns acknowledgement that the cancel signal was admitted, not that the target is quiescent.
-* @throws {RemoteError} `gateway/bad-request` for an empty id,
+* @throws {ControlError} `gateway/bad-request` for an empty id,
 *   `subagent/unauthorized` when the address does not own the live target,
 *   otherwise `gateway/internal`.
 */
@@ -3117,8 +3115,8 @@ interruptByParent(childSessionId, parentSessionId, mode) {
 			parentSessionId
 		});
 	} catch (error) {
-		if (error instanceof SubagentError && error.code === "UNAUTHORIZED") throw new RemoteError("subagent/unauthorized", "subagent does not belong to this parent", { childSessionId }, { cause: error });
-		throw new RemoteError("gateway/internal", "subagent interrupt failed", {}, { cause: error });
+		if (error instanceof SubagentError && error.code === "UNAUTHORIZED") throw new ControlError("subagent/unauthorized", "subagent does not belong to this parent", { childSessionId }, { cause: error });
+		throw new ControlError("gateway/internal", "subagent interrupt failed", {}, { cause: error });
 	}
 	return { accepted: true };
 }
@@ -3212,5 +3210,4 @@ assertCapabilities(provider, request) {
 }
 }
 
-for(const method of ['prompt','interruptByParent'])Remote(method)(NativeSubagents.prototype[method],{name:method,kind:'method',static:false,private:false,addInitializer:fn=>initializers.push(fn)})
 export {NativeSubagents,SubagentManager,AssistantOutputFold,NO_START_CAPABILITIES,STRUCTURED_OUTPUT_TOOL,SUBAGENT_DESCRIPTOR_VERSION,SubagentDepthError,SubagentError,SubagentRunId,appendDelegatedPolicyOverrides,applyChildComposition,assertPositiveFinite,assertSubagentMaxDepth,assertUsableCwd,captureDelegatedPolicyOverrides,childSessionMeta,delegationDepthOf,finalAssistantOutput,foldSubagentDescriptor,parentAgentOptionsForDelegation,resolveChildAgentOptions,resolveChildDepth,settleRunResult,snapshotSubagentDescriptor,subprocessRunHandle}

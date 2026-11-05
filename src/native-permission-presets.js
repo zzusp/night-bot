@@ -1,6 +1,6 @@
 import schema from '@deepseek-ai/schemastery'
 import {z} from 'zod'
-import {Remote,TypertRemoteService} from './native-typert-protocol.js'
+import {Service} from '@deepseek-ai/cordis'
 import {SANDBOX_MODES,setSandboxMode} from './native-policy.js'
 import {APPROVAL_POLICIES,setApprovalPolicy} from './native-approval.js'
 export const CUSTOM_PRESET='custom',AUTO_PRESET='auto'
@@ -8,11 +8,10 @@ const autoSpec=Object.freeze({sandbox:'danger-full-access',approval:'ask'})
 const defaults=()=>({'workspace-write':{sandbox:'workspace-write',approval:'ask',name:'workspace-write',description:'Write inside the workspace and permitted temporary directories; wider retries require approval.'},'danger-full-access':{sandbox:'danger-full-access',approval:'never',name:'danger-full-access',description:'Full file access without approval prompts.'}})
 const permissionSchema=z.object({preset:z.string().nullable(),sandbox:z.enum(SANDBOX_MODES).nullable(),approval:z.enum(APPROVAL_POLICIES).nullable(),seeded:z.boolean()}).strict()
 const empty=()=>({preset:null,sandbox:null,approval:null,seeded:false})
-const initializers=[]
 function fold(state,event){switch(event.type){case'permission/preset':return{...state,preset:event.data.preset};case'sandbox/mode':return{...state,sandbox:event.data.mode};case'approval/policy':return{...state,approval:event.data.policy};case'session/end-seed':return{...state,seeded:true};default:return state}}
 /** Application-owned preset math/publication. Canonical knob setters retain
  * event compatibility; a live Auto integration must admit before any write. */
-export default class NativePermissionPresets extends TypertRemoteService {
+export default class NativePermissionPresets extends Service {
  static inject=['shell','approval','sessions','sessionProjections']
  static Config=schema.object({presets:schema.dict(schema.object({sandbox:schema.union([...SANDBOX_MODES]).required(),approval:schema.union([...APPROVAL_POLICIES]).required(),name:schema.string(),description:schema.string()})).default(defaults()),defaultPreset:schema.string().volatile()})
  constructor(ctx,config={}){
@@ -27,7 +26,6 @@ export default class NativePermissionPresets extends TypertRemoteService {
   ctx.sessionProjections.register({key:'permissions',stateVersion:2,stateSchema:permissionSchema,init:empty,apply:fold,wire:{viewSchema:z.object({currentValue:z.string().min(1)}),view:state=>({currentValue:this.derive(state)})}})
   ctx.on('session/created',session=>this.pinInitialPermission(session));for(const session of ctx.sessions.list())this.pinInitialPermission(session)
   ctx.inject(['commands'],child=>child.commands.register({definitionId:'@deepseek-ai/dsh-permission-presets',name:'permission',description:'Switch the permission preset (sandbox mode + approval policy)',input:{hint:'<preset>'},handler:({agent,rawInput})=>{const name=rawInput.trim();if(!name)return{kind:'success',text:`current preset ${this.current(agent.session)} (available: ${this.names.join(', ')})`};if(!this.names.includes(name))return{kind:'error',text:`unknown preset "${name}" (available: ${this.names.join(', ')})`};this.apply(agent.session,name,policy=>this.ctx.approval.setPolicy(agent,policy));return{kind:'success',text:`preset ${name}`}}}))
-  for(const init of initializers)init.call(this)
  }
  assertOpen(){if(this.closed)throw new Error('Permission preset service disposed')}
  get names(){return[...Object.keys(this.presets),...this.auto?[AUTO_PRESET]:[]]}
@@ -47,4 +45,3 @@ export default class NativePermissionPresets extends TypertRemoteService {
  emitCatalogChanged(){try{for(const fn of this.host.events.dispatch('emit',['permission-presets/catalog-changed']))try{Promise.resolve(fn()).catch(()=>this.warn())}catch{this.warn()}}catch{this.warn()}}
  warn(){try{this.host.logger.warn('permission: catalog-changed listener failed')}catch{}}
 }
-Remote('catalog')(NativePermissionPresets.prototype.catalog,{name:'catalog',kind:'method',static:false,private:false,addInitializer:fn=>initializers.push(fn)})

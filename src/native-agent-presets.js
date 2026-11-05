@@ -1,12 +1,12 @@
 // MIT source-derived preset generation, scope and Loader audit algorithms; see THIRD_PARTY.md.
 import {AsyncLocalStorage} from "node:async_hooks";
 import z from "@deepseek-ai/schemastery";
-import { Remote, RemoteError, TypertRemoteService } from "./native-typert-protocol.js";
+import {ControlError} from './runtime/control-error.js'
 import { bindScopeParent, createScope, scopeOf, scopeParentOf } from "./native-scope.js";
 import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
 import { dump } from "js-yaml";
 import { z as z$1 } from "zod";
-import { Context, symbols } from "@deepseek-ai/cordis";
+import { Context, Service, symbols } from "@deepseek-ai/cordis";
 import { EntryTree, isJsExpr } from "@deepseek-ai/cordis-plugin-loader";
 import {prepareProfileEntries} from "./native-profile-preflight.js";
 //#region lib/types/definition.js
@@ -347,8 +347,7 @@ function mountedCompositionRows(tree) {
 }
 //#endregion
 //#region lib/types/index.js
-const initializers=[];
-export default class NativeAgentPresets extends TypertRemoteService {
+export default class NativeAgentPresets extends Service {
 static inject = ["loader", "sessionProjections", "sessions", "piAuthority", "agents"];
 static Config = z.object({
 	default: z.string().required(),
@@ -364,7 +363,6 @@ closing=false;
 selectionCalls=new AsyncLocalStorage();
 constructor(ctx, config) {
 	super(ctx, "agentPresets");
-		for(const initialize of initializers)initialize.call(this);
 	this.config = config;
 	this.owner = ctx;
 		this.sessionWriter=ctx.sessions[symbols.original]??ctx.sessions;
@@ -517,7 +515,7 @@ async remoteExportList() {
 async resolve(id) {
 	const wanted = id ?? this.defaultId;
 	const record = this.definitions.get(wanted);
-	if (record === void 0) throw new RemoteError("agent-preset/not-found", `Unknown agent preset: ${wanted}`, {
+	if (record === void 0) throw new ControlError("agent-preset/not-found", `Unknown agent preset: ${wanted}`, {
 		agentPreset: wanted,
 		available: [...this.definitions.keys()]
 	});
@@ -533,7 +531,7 @@ async resolve(id) {
 */
 readDocument(agentPreset) {
 	const record = this.definitions.get(agentPreset);
-	if (record === void 0) return Promise.reject(new RemoteError("agent-preset/not-found", `Unknown agent preset: ${agentPreset}`, {
+	if (record === void 0) return Promise.reject(new ControlError("agent-preset/not-found", `Unknown agent preset: ${agentPreset}`, {
 		agentPreset,
 		available: [...this.definitions.keys()]
 	}));
@@ -554,7 +552,7 @@ async retain(id) {
 	const wanted = id ?? this.defaultId;
 	while (true) {
 		const record = this.definitions.get(wanted);
-		if (record === void 0) throw new RemoteError("agent-preset/not-found", `Unknown agent preset: ${wanted}`, {
+		if (record === void 0) throw new ControlError("agent-preset/not-found", `Unknown agent preset: ${wanted}`, {
 			agentPreset: wanted,
 			available: [...this.definitions.keys()]
 		});
@@ -563,7 +561,7 @@ async retain(id) {
 		const generation = record.generation;
 		if (broken !== void 0 || generation === void 0) {
 			const reason = broken;
-			throw new RemoteError("agent-preset/invalid", reason, {
+			throw new ControlError("agent-preset/invalid", reason, {
 				agentPreset: wanted,
 				reason
 			});
@@ -669,7 +667,7 @@ async recompose(ctx, id, validate) {
 */
 async select(agent, agentPreset) {
 	const turn = (this.switches.get(agent.id) ?? Promise.resolve()).then(() => this.selectionCalls.run(agent.id,async () => {
-		const assertBlank=()=>{if(this.owner.agents.get(agent.id)!==agent)throw new Error('NATIVE_PRESET_LIVE_AGENT_REQUIRED');if(this.closing)throw new Error('NATIVE_PRESET_REGISTRY_CLOSED');if(this.commitFailures.has(agent))throw this.commitFailures.get(agent);const boundary=this.owner.sessionProjections.stateOf(agent.session,'turnBoundary');if(boundary===undefined)throw new Error('NATIVE_PRESET_TURN_PROJECTION_REQUIRED');if(boundary.openTurnStartSeq!==null||boundary.lastTurn>0)throw new RemoteError('agent-preset/locked','This session has already started',{sessionId:agent.id,agentPreset})};
+		const assertBlank=()=>{if(this.owner.agents.get(agent.id)!==agent)throw new Error('NATIVE_PRESET_LIVE_AGENT_REQUIRED');if(this.closing)throw new Error('NATIVE_PRESET_REGISTRY_CLOSED');if(this.commitFailures.has(agent))throw this.commitFailures.get(agent);const boundary=this.owner.sessionProjections.stateOf(agent.session,'turnBoundary');if(boundary===undefined)throw new Error('NATIVE_PRESET_TURN_PROJECTION_REQUIRED');if(boundary.openTurnStartSeq!==null||boundary.lastTurn>0)throw new ControlError('agent-preset/locked','This session has already started',{sessionId:agent.id,agentPreset})};
 		assertBlank();
 		const preset=await this.recompose(agent.ctx,agentPreset,assertBlank);
 		try{agent.session.append('agent-preset/selected',{agentPreset:preset.id});const through=agent.session.seq,flushed=await this.sessionWriter.flush(agent.session),proof=this.authority.describe(agent.id);if(!flushed||proof?.engine!=='pi-session-manager'||!Number.isSafeInteger(proof.events)||proof.events<through)throw new Error('NATIVE_PRESET_PI_COMMIT_REQUIRED')}catch(cause){const failure=new Error('NATIVE_PRESET_SELECTION_COMMIT_FAILED',{cause});this.commitFailures.set(agent,failure);throw failure}
@@ -722,5 +720,4 @@ compositionInventory() {
 }
 }
 
-for(const [method,remote]of [["remoteExportList","list"],["readDocument","read"],["select","select"]])Remote(remote)(NativeAgentPresets.prototype[method],{name:method,kind:"method",static:false,private:false,addInitializer:fn=>initializers.push(fn)})
 export {NativeAgentPresets,agentPresetProjectionDefinition,auditRows,entryListProblem,leakedServices}
