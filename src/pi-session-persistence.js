@@ -172,7 +172,9 @@ export default class PiSessionPersistence extends Service {
     const data=await load(this.path(id),id,this.ctx.get('portablePaths'),options.requireComplete===true)
     if(data.format!=='pi-native-v1')throw fail('PI_SESSION_NATIVE_UPGRADE_REQUIRED')
     options.signal?.throwIfAborted()
-    return clean({format:data.format,header:data.header,audit:data.audit,context:committedContext(data)})
+    return clean({format:data.format,header:data.header,entries:data.entries,audit:data.audit,
+      auditEntries:data.entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>({entryId:entry.id,parentId:entry.parentId,data:entry.data})),
+      context:committedContext(data)})
   }
   async openNative(id,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')

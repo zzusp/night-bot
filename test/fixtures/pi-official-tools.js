@@ -13,14 +13,14 @@ export const definition=(name,execute,extra={})=>({name,description:name,paramet
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 export async function officialToolsFixture(t,register){
  const root=await mkdtemp(join(tmpdir(),'night-official-tools-')),agentDir=join(root,'agent');await mkdir(agentDir)
- const ctx=new Context(),requests=[],receipts=[],results=[]
+ const ctx=new Context(),requests=[],receipts=[],results=[],cleanups=[]
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
  new NativeTools(ctx)
  const manager=SessionManager.create(root,join(root,'sessions')),owner={id:manager.getSessionId(),ctx}
  const businessAudit={isLive:()=>true,flush:async()=>{}}
  let adapter,session,plan,served
- t.after(async()=>{try{await adapter?.close();session?.dispose();await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})
- await register({ctx,owner,businessAudit,receipts,manager})
+ t.after(async()=>{try{for(const cleanup of cleanups.toReversed())await cleanup();await adapter?.close();session?.dispose();await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})
+ await register({ctx,owner,businessAudit,receipts,manager,root})
  adapter=createPiOfficialTools({registry:ctx.tools,owner,businessAudit,maxParallelToolCalls:2})
  ctx.on('tools/execute',async(exec,next)=>{
   manager.appendCustomEntry('night-effect',{callId:exec.callId,state:'started'})
@@ -40,8 +40,9 @@ export async function officialToolsFixture(t,register){
  const settings=SettingsManager.inMemory({compaction:{enabled:false},retry:{enabled:false}})
  const loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
  ;({session}=await createAgentSession({cwd:root,agentDir,modelRuntime:runtime,model,thinkingLevel:'off',settingsManager:settings,resourceLoader:loader,sessionManager:manager,noTools:'builtin',tools:adapter.customTools.map(tool=>tool.name),customTools:adapter.customTools}))
+ owner.piSession=session
  session.agent.toolExecution='parallel';session.agent.finishTurn=adapter.finishTurn
  session.subscribe(event=>{if(event.type==='tool_execution_end')results.push(event)})
- return{ctx,owner,adapter,session,requests,receipts,results,manager,businessAudit,run(calls){adapter.beginTurn();plan=calls;served=false;return session.prompt('exercise official tools')}}
+ return{ctx,owner,adapter,session,requests,receipts,results,manager,businessAudit,runtime,model,settings,loader,root,agentDir,deferCleanup:cleanup=>cleanups.push(cleanup),run(calls){adapter.beginTurn();plan=calls;served=false;return session.prompt('exercise official tools')}}
 }
 

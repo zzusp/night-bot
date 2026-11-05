@@ -2,7 +2,7 @@ import {createServer} from 'node:http'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHost} from '../../src/host.js'
-import {createUserMessage} from '../../src/native-message-protocol.js'
+import {randomUUID} from 'node:crypto'
 export async function memoryHost(t,decide=()=>undefined,{background=false}={}){
   const root=await mkdtemp('/tmp/night-memory-wire-'),requests=[],errors=[];let host
   const server=createServer(async(req,res)=>{
@@ -21,7 +21,7 @@ export async function memoryHost(t,decide=()=>undefined,{background=false}={}){
   await boot()
   t.after(async()=>{try{await close()}finally{await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true})}})
   return {root,config,requests,errors,get host(){return host},boot,close,
-    async agent(id,binding){const handle=await host.ctx.agents.create({sessionId:id,meta:{cwd:join(root,'data','workspaces'),agentPreset:'night-bot'},agentOptions:config.model,setup:async ctx=>{await host.ctx.agentPresets.mount(ctx,'night-bot')}});if(binding)await host.ctx.memory.bindSession(id,binding);return handle},
-    async say(agent,text){const message=createUserMessage({source:{kind:'user'},content:[{type:'text',text}]});agent.followup(message);await agent.whenIdle();await host.ctx.memory.whenIdle();return message},
+    async agent(id,binding){const handle=await host.ctx.agents.create({sessionId:id,meta:{cwd:join(root,'data','workspaces'),agentPreset:'night-bot'},agentOptions:config.model,authorizeInput:packet=>packet.source.kind==='user',setup:async ctx=>{await host.ctx.agentPresets.mount(ctx,'night-bot')}});if(binding)await host.ctx.memory.bindSession(id,binding);return handle},
+    async say(agent,text){const message={id:randomUUID(),source:{kind:'user'},content:[{type:'text',text}]};await agent.input.enqueue(message);await agent.input.deliver(message.id,{deliverAs:'followUp'});await agent.whenIdle();await host.ctx.memory.whenIdle();return message},
   }
 }

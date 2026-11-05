@@ -1,13 +1,13 @@
 import {isDeepStrictEqual} from 'node:util'
 // Direct official SDK model/auth registry. No Night message/chunk conversion.
 import {ModelRuntime} from '@earendil-works/pi-coding-agent'
-import {InMemoryModelsStore,lazyStream} from '@earendil-works/pi-ai'
+import {InMemoryModelsStore,lazyStream,getSupportedThinkingLevels} from '@earendil-works/pi-ai'
 import {isAbsolute,dirname} from 'node:path'
 import {inside} from './runtime/paths.js'
-import {configuredPiProvider,thinkingLevels} from './pi-provider-catalog.js'
+import {configuredPiProvider} from './pi-provider-catalog.js'
 import {attributionHeaders} from './native-llm-protocol.js'
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code})}
-const levels=model=>!model.reasoning?['off']:thinkingLevels.filter(level=>model.thinkingLevelMap?.[level]!==null&&(!['xhigh','max'].includes(level)||model.thinkingLevelMap?.[level]!==undefined))
+
 const emptyProvider=id=>({id,name:id,auth:{},getModels:()=>[],stream(){throw new Error('Provider route is not configured')},streamSimple(){throw new Error('Provider route is not configured')}})
 
 export class OfficialPiModelRuntime {
@@ -46,14 +46,14 @@ export class OfficialPiModelRuntime {
   if(invalid)fail('INVALID_CONFIG',invalid)
   const model=state.runtime.getModel(config.provider,config.model)
   if(!model)fail('UNKNOWN_MODEL','Configured model is unavailable')
-  const thinkingLevel=config.reasoningEffort??profile.reasoning??'off'
-  if(!levels(model).includes(thinkingLevel))fail('UNSUPPORTED_REASONING_EFFORT','Unsupported model reasoning effort')
+  const thinkingLevel=config.reasoningEffort??profile.reasoning
+  if(thinkingLevel!==undefined&&!getSupportedThinkingLevels(model).includes(thinkingLevel))fail('UNSUPPORTED_REASONING_EFFORT','Unsupported model reasoning effort')
   const cap=profile.configuredMaxTokens.get(model.id)??model.maxTokens
   const maxTokens=config.maxTokens??cap
   if(!Number.isSafeInteger(maxTokens)||maxTokens<=0||maxTokens>cap)fail('INVALID_MODEL_MAX_TOKENS','Requested output exceeds configured model limit')
   if(config.temperature!==undefined&&!Number.isFinite(config.temperature))fail('INVALID_TEMPERATURE','Temperature must be finite')
   config.signal?.throwIfAborted()
-  return {modelRuntime:state.runtime,model,thinkingLevel,requestOptions:{maxTokens,...config.temperature===undefined?{}:{temperature:config.temperature},maxRetries:0},retryPolicy:profile.retryPolicy}
+  return {modelRuntime:state.runtime,model,thinkingLevel,requestOptions:{maxTokens,...config.temperature===undefined?{}:{temperature:config.temperature},...profile.retrySettings.provider},retrySettings:profile.retrySettings}
  }
  #signal(signal) {return signal?AbortSignal.any([this.#lifetime.signal,signal]):this.#lifetime.signal}
  #track(operation) {
@@ -110,7 +110,7 @@ export class OfficialPiModelRuntime {
     signal.throwIfAborted()
     if(!Number.isSafeInteger(requested)||requested<=0||requested>cap)fail('INVALID_MODEL_MAX_TOKENS','Requested output exceeds configured model limit')
     touch()
-    return provider[method](model,context,{...knobs,...options,maxTokens:requested,headers:{...Object.fromEntries(headers),...suppressed},signal,maxRetries:0})
+    return provider[method](model,context,{...profile.retrySettings.provider,...knobs,...options,maxTokens:requested,headers:{...Object.fromEntries(headers),...suppressed},signal})
    },{onEvent:touch,onResult:()=>{clearTimeout(timer);controller.abort(new Error('Official provider stream settled'));this.#active.delete(record);record.done.resolve()}})
   }
   return {...provider,auth,stream:(model,context,options)=>dispatch('stream',model,context,options),streamSimple:(model,context,options)=>dispatch('streamSimple',model,context,options)}

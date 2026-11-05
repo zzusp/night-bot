@@ -1,6 +1,6 @@
 // Derived from DeepSeek dsh-tool-schedule 0.2.1-alpha.2 (MIT).
 // Copyright (c) 2026 DeepSeek. See licenses/dsh-tool-schedule-MIT.txt.
-import { delegationDepthOf } from "./native-subagents.js";
+
 import { defineTool } from "./native-tool-protocol.js";
 import { MAX_TITLE_LENGTH, MIN_EVERY_INTERVAL_SECONDS, REQUIRED_TITLE_MESSAGE, ScheduleId, ScheduleInputError, scheduleView } from "./native-schedule-protocol.js";
 //#region lib/types/index.js
@@ -299,7 +299,7 @@ function operationError(error) {
 * @returns the stable refusal, or undefined for a top-level caller.
 */
 function subagentCallerRefusal(agent) {
-	if (agent === void 0 || delegationDepthOf(agent) === 0) return void 0;
+	if (agent === void 0 || Math.max(agent.metadata?.delegationDepth??0,agent.options?.subagentDepth??0) === 0 && agent.metadata?.origin!=='subagent' && agent.metadata?.agentPreset!=='night-bot-task') return void 0;
 	return {
 		code: "subagent_session",
 		message: "A delegated subagent cannot use reminders."
@@ -539,7 +539,7 @@ function registerScheduleTools(ctx) {
 			if (invalid !== void 0) return invalid;
 			if (exec.signal.aborted) return internalError();
 			try {
-				return scheduleView(await ctx.schedule.create(agent.session.id, args, exec.signal), Date.now());
+				return scheduleView(await ctx.schedule.create(agent.id, args, exec.signal), Date.now());
 			} catch (error) {
 				return operationError(error);
 			}
@@ -561,7 +561,7 @@ function registerScheduleTools(ctx) {
 			if (refusal !== void 0) return refusal;
 			if (exec.signal.aborted) return internalError();
 			try {
-				return (await ctx.schedule.list({ sessionId: agent.session.id })).map((record) => scheduleView(record, Date.now()));
+				return (await ctx.schedule.list({ sessionId: agent.id })).map((record) => scheduleView(record, Date.now()));
 			} catch (error) {
 				return operationError(error);
 			}
@@ -593,7 +593,7 @@ function registerScheduleTools(ctx) {
 			if (exec.signal.aborted) return internalError();
 			try {
 				return await ctx.schedule.delete({
-					sessionId: agent.session.id,
+					sessionId: agent.id,
 					id
 				}, exec.signal);
 			} catch (error) {
@@ -635,7 +635,7 @@ function registerScheduleTools(ctx) {
 			if (exec.signal.aborted) return internalError();
 			const id = ScheduleId(args.id);
 			try {
-				const sessionId = agent.session.id;
+				const sessionId = agent.id;
 				const expected = (await ctx.schedule.list({ sessionId })).find((record) => record.id === id);
 				if (expected === void 0) return {
 					id,

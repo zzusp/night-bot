@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, lstatSync, readFileSync, writeFileSync, realpathSync, openSync, fsyncSync, closeSync } from 'node:fs'
-import { join, resolve, parse } from 'node:path'
+import { join, resolve, parse, isAbsolute } from 'node:path'
 import { createUserMessage } from '../../src/native-message-protocol.js';
 const deferred = Symbol('deferred model content')
 const digest = json => 'sha256:' + createHash('sha256').update(json).digest('hex')
@@ -34,14 +34,29 @@ export const modelContextInstructions = `Host输入和只读工具使用contentR
 // contentRef remains a native-session capability. Paths point only to existing
 // admitted immutable files; native filesystem permission policy remains unchanged.
 export function createModelContentIndex(session, { root = modelContentRoot(session.header) } = {}) {
+  const parentScopes=session.snapshotEvents().filter(event => event.type === 'plugin:dingtalk/group-coordinator-session' && event.data.parentContentScope)
+    .map(event => [event.data.parentContentScope, event.data.parentContentRoot ?? root])
+  return createContentIndex(session.header,{root,parentScopes})
+}
+
+// Application-owned immutable file catalog, not a conversation/context engine.
+// Factory setup runs before SDK creation, so its captured logical metadata is
+// used consistently for file identity both before and after AgentSession exists.
+export function createOfficialModelContentIndex(actor,{root}={}){
+  const native=actor?.piSession?.sessionManager.getHeader()
+  const header=actor?.metadata??(native&&{id:native.id,createdAt:native.timestamp,cwd:native.cwd})
+  if(!header||header.id!==actor.id||typeof header.cwd!=='string'||!isAbsolute(header.cwd))fail('MODEL_CONTENT_OFFICIAL_IDENTITY_REQUIRED')
+  return createContentIndex(header,{root:root??resolve(header.cwd,'.night/model-content')})
+}
+
+function createContentIndex(header, {root,parentScopes=[]}) {
   root = resolve(root)
   const values = new Map()
   const decoded = new Map()
   const pages = new Map()
   const objects = new Set()
-  const scope = modelContentScope(session.header)
-  const scopes = new Map([[scope, root], ...session.snapshotEvents().filter(event => event.type === 'plugin:dingtalk/group-coordinator-session' && event.data.parentContentScope)
-    .map(event => [event.data.parentContentScope, event.data.parentContentRoot ?? root])])
+  const scope = modelContentScope(header)
+  const scopes = new Map([[scope, root], ...parentScopes])
   function checkedDirectory(path, create = true) {
     if (!existsSync(path)) {
       if (!create) fail('MODEL_CONTENT_MISSING')
@@ -150,8 +165,10 @@ export function createModelContentIndex(session, { root = modelContentRoot(sessi
       text: text.slice(offset, end), nextOffset: end < text.length ? end : null, resolvedRef }
   }
   function install(agentCtx, isCurrent = async () => true) {
-    agentCtx.systemPrompt.section({ name: 'dingtalk:model-content', order: 20, text: modelContextInstructions })
-    agentCtx.tools.register({ name: 'model_content_read', effectClass: 'read', description: '读取本会话已准入contentRef的精确内容。支持JSON Pointer和分页；未知引用不能读取。',
+    const systemPrompt=agentCtx.get('systemPrompt'),tools=agentCtx.get('tools')
+    if(!systemPrompt||!tools)fail('MODEL_CONTENT_SCOPED_SERVICES_REQUIRED')
+    systemPrompt.section({ name: 'dingtalk:model-content', order: 20, text: modelContextInstructions })
+    tools.register({ name: 'model_content_read', effectClass: 'read', description: '读取本会话已准入contentRef的精确内容。支持JSON Pointer和分页；未知引用不能读取。',
       parameters: { type: 'object', properties: { contentRef: { type: 'string' }, path: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 16000 } }, required: ['contentRef'], additionalProperties: false },
       // An explicit read is the leaf of the index. Re-projecting its `text`
       // changes the page contract into another reference instead of evidence.

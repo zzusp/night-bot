@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer, get, request } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createUserMessage } from '../packages/capability-compat/llm/index.js'
+import {AgentSession} from '@earendil-works/pi-coding-agent'
 import { createHost } from '../src/host.js'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
@@ -22,7 +22,7 @@ const jsonPut = (url, value) => new Promise((resolve, reject) => {
   }); req.on('error', reject); req.end(body)
 })
 
-test('Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up', { timeout: 20000 }, async t => {
+test('Official AgentSession executes a real local OpenAI-compatible wire request, tool, and follow-up', { timeout: 20000 }, async t => {
   const root = await mkdtemp('/tmp/night-pi-wire-'), requests = []
   let host
   const server = createServer(async (req, res) => {
@@ -45,17 +45,17 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
     providers: { fixture: { api: 'openai-completions', apiKeyEnv: 'NIGHT_BOT_WIRE_TEST_KEY', baseURL: `http://127.0.0.1:${server.address().port}/v1`,
       models: [{ id: 'fixture-model', reasoning: false, input: ['text'], contextWindow: 32000, maxTokens: 1024 }] } } })
   const handle = await host.ctx.agents.create({ sessionId: 'wire-session', agentOptions: { provider: 'fixture', model: 'fixture-model' },
-    meta: { cwd: join(root, 'work') }, setup: async c => { c.tools.register({ name: 'echo', description: 'Echo exact text',
+    authorizeInput:packet=>packet.source.kind==='user', meta: { cwd: join(root, 'work') }, setup: async c => { c.get('tools').register({ name: 'echo', description: 'Echo exact text',
       parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: value.text }] }, execute: async args => {
-        const reader = await host.ctx.sessionPersistence.open('wire-session', 'read')
-        try { assert.ok((await reader.read()).events.some(event => event.type === 'tool/call' && event.data.callId === 'fixture-call'), 'tool intent must be committed before effects') } finally { await reader.close() }
+        const stored=await host.ctx.sessionPersistence.readNative('wire-session',{requireComplete:true})
+        assert.ok(stored.context.projection.messages.some(message=>message.role==='assistant'&&message.content.some(part=>part.type==='toolCall'&&part.id==='fixture-call')),'official tool intent must be committed before effects')
         return args
       } }) } })
-  assert.equal(handle.agent.constructor.name, 'PiLoopAgent')
+  assert.ok(handle.session instanceof AgentSession);assert.equal(handle.agent.session,undefined)
   assert.equal(host.ctx.systemPrompt.constructor.name, 'NativeSystemPrompt')
   assert.equal(host.ctx.tools.constructor.name, 'NativeTools')
-  assert.equal(host.ctx.llm.constructor.name, 'NativeLlm')
+  assert.equal(host.ctx.get('llm'),undefined)
   assert.equal(host.ctx.agents.constructor.name, 'NativeAgents')
   assert.equal(host.ctx.sessionProjections.constructor.name, 'NativeProjections')
   assert.equal(host.ctx.sessions.constructor.name, 'NativeSessions')
@@ -63,19 +63,16 @@ test('Pi loop executes a real local OpenAI-compatible wire request, tool, and fo
   assert.equal(host.ctx.jobs.constructor.name, 'NativeJobs')
   assert.equal(host.ctx.sandbox.constructor.name, 'NativeSandbox')
   assert.equal(host.ctx.subprocess.constructor.name, 'ManagedProcessRuntime')
-  assert.equal(host.ctx.get('nativePiProvider').adapter.constructor.name, 'NativePiProvider')
-  handle.agent.session.deriveMessages = () => { throw new Error('Legacy DSH context derivation must not serve model requests') }
+  assert.equal(host.ctx.get('nativePiProvider').adapter,undefined)
   assert.equal(host.ctx.get('piAuthority').describe('wire-session').engine, 'pi-session-manager')
-  handle.agent.steer(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Echo wire-value using echo.' }] }))
-  await handle.agent.whenIdle()
-  assert.equal(handle.agent.providerStreamProtocol, 'pi-native')
-  const events = handle.agent.session.snapshotEvents()
-  assert.equal(events.findLast(e => e.type === 'turn/end').data.reason.kind, 'completed', JSON.stringify(events.findLast(e => e.type === 'turn/end').data.reason))
+  await handle.enqueue({id:'wire-input',source:{kind:'user'},content:'Echo wire-value using echo.'});await handle.deliver('wire-input');await handle.whenIdle()
+  const messages=handle.session.messages
+  assert.equal(messages.at(-1).stopReason,'stop')
   assert.equal(requests.length, 2)
   assert.ok(requests[0].tools.some(tool => tool.function.name === 'echo'))
   assert.ok(requests[1].messages.some(message => message.role === 'tool' && message.content.includes('wire-value')))
-  assert.equal(events.filter(e => e.type === 'tool/call').length, 1)
-  assert.equal(events.filter(e => e.type === 'tool/result').length, 1)
+  assert.equal(messages.filter(message=>message.role==='assistant').flatMap(message=>message.content).filter(part=>part.type==='toolCall').length,1)
+  assert.equal(messages.filter(message=>message.role==='toolResult').length,1)
   await handle.dispose()
 })
 

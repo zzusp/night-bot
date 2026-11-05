@@ -36,3 +36,11 @@ test('a duplicated stored model remains diagnostic and is excluded from the serv
  const profile=resolvePiProfiles({fixture:{api:'openai-completions',baseURL:'https://invalid.example',models:[{id:'duplicate'},{id:'duplicate'},{id:'healthy'}]}},{deferred:true}).get('fixture')
  assert.ok(profile.modelErrors.has('duplicate'));assert.deepEqual(profile.models.map(m=>m.id),['healthy'])
 })
+
+test('provider retry configuration uses Pi-native settings and rejects legacy policy without silent conversion',()=>{
+ const declaration={api:'openai-completions',baseURL:'http://127.0.0.1:1',models:[{id:'m'}]}
+ const profile=resolvePiProfiles({fixture:{...declaration,retry:{enabled:true,maxRetries:2,baseDelayMs:7,maxAgentDelayMs:11,provider:{maxRetries:0}}}}).get('fixture')
+ assert.equal(profile.retrySettings.maxRetries,2);assert.equal(profile.retrySettings.baseDelayMs,7);assert.equal(profile.retrySettings.maxAgentDelayMs,11);assert.equal(profile.retrySettings.provider.maxRetries,0)
+ assert.equal(profile.retryPolicy,undefined)
+ for(const retryPolicy of [undefined,{mode:'normal',maxRetries:0},{mode:'always'}])assert.throws(()=>resolvePiProfiles({fixture:{...declaration,retryPolicy}}),{code:'PI_RETRY_SETTINGS_MIGRATION_REQUIRED'})
+})

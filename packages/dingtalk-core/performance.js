@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 
 // 只投影计量元数据；正文、工具参数和结果不进入这个持久投影。
 export const PERFORMANCE_EVENT_TYPES = new Set(['dingtalk/coordination-dispatched', 'user/message', 'step/start', 'assistant/chunk', 'assistant/message', 'step/end', 'tool/call', 'tool/result'])
@@ -8,7 +9,7 @@ const distributionSchema = z.object({ count: number, sum: number, max: number, f
 const intervalSchema = z.tuple([number, number])
 const bucketSchema = identitySchema.extend({
   day: z.string(), modelCalls: number, missingUsage: number, interrupted: number, toolCalls: number, toolResults: number, toolErrors: number,
-  missingStepStart: number, missingToolCall: number, missingFirstStream: number,
+  missingStepStart: number, missingToolCall: number, missingFirstStream: number, missingModelResult: number.default(0),
   missingToolResult: number.default(0), coordinationMessages: number.default(0), coordinationInputBytes: number.default(0),
   missingCoordinationQueue: number.default(0), coordinationQueueMs: distributionSchema.default(() => ({ count: 0, sum: 0, max: 0, frequencies: {} })),
   usage: z.object({ inputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number, reasoningTokens: number, totalInputTokens: number,
@@ -16,8 +17,10 @@ const bucketSchema = identitySchema.extend({
   contextTokens: distributionSchema, firstStreamMs: distributionSchema, modelResponseMs: distributionSchema, toolMs: distributionSchema,
   modelIntervals: z.array(intervalSchema), toolIntervals: z.array(intervalSchema),
 })
+const nativeSessionSchema=z.object({seen:z.array(z.string()),models:z.record(z.string(),z.object({runId:z.string(),startedAt:number.optional(),firstStreamAt:number.optional(),completed:z.boolean().optional()})),tools:z.record(z.string(),identitySchema.extend({runId:z.string(),startedAt:number.optional(),completed:z.boolean().optional()}))})
 const stepSchema = z.object({ startedAt: number.optional(), firstStreamAt: number.optional(), completed: z.boolean().optional() })
 export const performanceProjectionSchema = z.object({
+  nativeSessions:z.record(z.string(),nativeSessionSchema).optional(),
   observedSince: z.string(), buckets: z.record(z.string(), bucketSchema),
   sessions: z.record(z.string(), z.object({ seen: z.array(intervalSchema), steps: z.record(z.string(), stepSchema), completedSteps: z.record(z.string(), z.array(intervalSchema)).default({}),
     calls: z.record(z.string(), identitySchema.extend({ startedAt: number, stepKey: z.string().optional() })) })),
@@ -47,7 +50,7 @@ const fields = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTok
 function bucketFor(projection, identity, time) {
   const day = dayAt(time), key = JSON.stringify([day, identity.sessionId, identity.groupId, identity.taskId, identity.requestId, identity.submissionId])
   return projection.buckets[key] ??= { ...identity, day, modelCalls: 0, missingUsage: 0, interrupted: 0, toolCalls: 0, toolResults: 0, toolErrors: 0,
-    missingStepStart: 0, missingToolCall: 0, missingFirstStream: 0, missingToolResult: 0, coordinationMessages: 0, coordinationInputBytes: 0,
+    missingStepStart: 0, missingToolCall: 0, missingFirstStream: 0, missingModelResult: 0, missingToolResult: 0, coordinationMessages: 0, coordinationInputBytes: 0,
     missingCoordinationQueue: 0, coordinationQueueMs: distribution(),
     usage: { ...Object.fromEntries(fields.map(field => [field, 0])), totalInputTokens: 0, missingFields: {} },
     contextTokens: distribution(), firstStreamMs: distribution(), modelResponseMs: distribution(), toolMs: distribution(), modelIntervals: [], toolIntervals: [] }
@@ -137,6 +140,64 @@ export function projectPerformanceEvent(previous, input) {
     delete session.steps[key]
   }
   return { created: true, projection }
+}
+
+// Metadata-only SDK measurements share the existing resident performance
+// partitions. They never become Session events, turn/step sequences or messages.
+export function projectAgentObservation(previous,input){
+ const observation=agentObservationSchema.parse(input.observation)
+ if(input.sessionId!==undefined&&input.sessionId!==observation.ownerId)throw new Error('agent_observation_owner_mismatch')
+ const scope={...input,sessionId:observation.ownerId}
+ // SQLite personal tasks explicitly have no group; absence is not a foreign
+ // group and must not discard their SDK measurements.
+ for(const key of ['groupId','taskId','requestId','submissionId'])if(scope[key]===null)delete scope[key]
+ const identity=identitySchema.parse(scope),time=observation.timestamp
+ const row=previous?.nativeSessions&&Object.hasOwn(previous.nativeSessions,identity.sessionId)?previous.nativeSessions[identity.sessionId]:undefined
+ if(row?.seen.includes(observation.eventId))return{created:false,projection:previous}
+ const projection=structuredClone(previous??{observedSince:new Date().toISOString(),buckets:{},sessions:{}})
+ projection.nativeSessions??={}
+ if(!Object.hasOwn(projection.nativeSessions,identity.sessionId))Object.defineProperty(projection.nativeSessions,identity.sessionId,{value:{seen:[],models:{},tools:{}},enumerable:true,writable:true,configurable:true})
+ const session=projection.nativeSessions[identity.sessionId],{kind,spanId,summary}=observation
+ session.seen.push(observation.eventId)
+ const bucket=bucketFor(projection,identity,time)
+ if(kind==='input-admitted'&&summary.sourceKind==='coordinator'){bucket.coordinationMessages++;bucket.coordinationInputBytes+=summary.inputBytes??0}
+ if(kind.startsWith('model-')){
+  const model=session.models[spanId]??={runId:observation.runId}
+  if(!model.completed){
+   if(kind==='model-started')model.startedAt??=time
+   if(kind==='model-first-token'&&model.firstStreamAt===undefined){model.firstStreamAt=time;if(model.startedAt!==undefined&&time>=model.startedAt)addSample(bucket.firstStreamMs,time-model.startedAt)}
+   if(kind==='model-completed'){
+    model.completed=true;bucket.modelCalls++
+    if(summary.stopReason==='aborted')bucket.interrupted++
+    if(!summary.usage)bucket.missingUsage++
+    const mapping={inputTokens:'input',outputTokens:'output',cacheReadTokens:'cacheRead',cacheWriteTokens:'cacheWrite'}
+    for(const field of fields){const value=summary.usage?.[mapping[field]];if(Number.isFinite(value))bucket.usage[field]+=value;else bucket.usage.missingFields[field]=(bucket.usage.missingFields[field]??0)+1}
+    const totalInput=['input','cacheRead','cacheWrite'].reduce((sum,field)=>sum+(summary.usage?.[field]??0),0)
+    bucket.usage.totalInputTokens+=totalInput
+    if(summary.usage?.input!==undefined)addSample(bucket.contextTokens,totalInput)
+    if(model.firstStreamAt===undefined)bucket.missingFirstStream++
+    if(model.startedAt!==undefined&&time>=model.startedAt){addSample(bucket.modelResponseMs,time-model.startedAt);recordInterval(projection,identity,'model',model.startedAt,time)}else bucket.missingStepStart++
+   }
+  }
+ }
+ if(kind==='tool-started'){
+  if(!session.tools[spanId]){session.tools[spanId]={...identity,runId:observation.runId,startedAt:time};bucket.toolCalls++}
+ }
+ if(kind==='tool-completed'){
+  const tool=session.tools[spanId]
+  if(!tool?.completed){
+   bucket.toolResults++;if(summary.isError)bucket.toolErrors++
+   if(tool?.startedAt!==undefined&&time>=tool.startedAt){addSample(bucket.toolMs,time-tool.startedAt);recordInterval(projection,identitySchema.parse(tool),'tool',tool.startedAt,time)}else bucket.missingToolCall++
+   session.tools[spanId]={...tool??identity,runId:observation.runId,completed:true}
+  }
+ }
+ if(kind==='run-settled'){
+  // Only spans explicitly belonging to this run may be closed. Root hashes each
+  // span from run identity; the observation ledger keeps its exact run binding.
+  for(const model of Object.values(session.models))if(model.runId===observation.runId&&!model.completed){model.completed=true;bucket.missingModelResult=(bucket.missingModelResult??0)+1}
+  for(const tool of Object.values(session.tools))if(tool.runId===observation.runId&&!tool.completed){tool.completed=true;bucket.missingToolResult++}
+ }
+ return{created:true,projection}
 }
 
 export function listPerformance(projection, filter = {}) {

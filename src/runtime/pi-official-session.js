@@ -1,5 +1,5 @@
 import {createAgentSession} from '@earendil-works/pi-coding-agent'
-import {createPiOfficialTools} from './pi-official-tools.js'
+import {createPiOfficialTools,createOfficialToolContextDelivery} from './pi-official-tools.js'
 import {createNightOfficialContext} from './pi-official-context.js'
 import {bindOfficialDurability} from './pi-official-durability.js'
 import {bindApprovalAudit} from '../native-approval.js'
@@ -8,9 +8,12 @@ import {bindApprovalAudit} from '../native-approval.js'
  * No global/home resources, alternate message model or model loop is installed.
  * The application must durably admit work before calling session.prompt/steer.
  */
-export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest}) {
- if(store?.kind!=='pi-native'||!resolved?.modelRuntime||!agentDir||!admission||!settingsManager||typeof createAudit!=='function')throw new TypeError('Explicit native store, model, settings, resources and business admission required')
- const actor={id:store.id,ctx,admission,piSession:undefined}
+export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false}) {
+ if(store?.kind!=='pi-native'||!admission||typeof createAudit!=='function')throw new TypeError('Explicit native store and business admission required')
+ const actorAdmission=Object.fromEntries(['enqueue','has','status','lookupPacket','pending','current'].filter(key=>typeof admission[key]==='function').map(key=>[key,admission[key].bind(admission)]))
+ Object.defineProperty(actorAdmission,'paused',{enumerable:true,get:()=>admission.paused});Object.freeze(actorAdmission)
+ const actor={id:store.id,ctx,admission:actorAdmission,piSession:undefined}
+ Object.defineProperty(actor,'id',{value:store.id,enumerable:true,writable:false,configurable:false})
  const sourceAudit=createAudit(actor)
  if(typeof sourceAudit?.flush!=='function')throw new TypeError('Durable business audit capability required')
  let durability,tools,failure
@@ -24,6 +27,15 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const unbindApproval=bindApprovalAudit(actor,audit)
  let session
  try {
+  // Initial permission selection in application setup must see its exact
+  // approval capability, before any scoped resource is resolved or tool copied.
+  await prepareActor?.(actor)
+  if(resolveResources){
+   const resources=await resolveResources(actor)
+   if(!resources||typeof resources!=='object')throw new TypeError('Explicit official resources required')
+   ;({resolved,agentDir,registry,maxParallelToolCalls,settingsManager,context={}}=resources)
+  }
+  if(!resolved?.modelRuntime||!agentDir||!registry||!settingsManager)throw new TypeError('Explicit model, settings, resources and registry required')
   tools=createPiOfficialTools({registry,owner:actor,businessAudit:audit,maxParallelToolCalls})
   const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager})
   await bridge.resourceLoader.reload()
@@ -38,9 +50,21 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    const maxTokens=configured.maxTokens===undefined?options?.maxTokens:Math.min(configured.maxTokens,options?.maxTokens??configured.maxTokens)
    return stream(model,request,{...options,...configured,...maxTokens===undefined?{}:{maxTokens}})
   }
-  durability=bindOfficialDurability({session,store,tools,beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(bridge.policyFailure)throw bridge.policyFailure}})
-  await bridge.refreshResources();await bridge.resourceLoader.reload()
+  durability=bindOfficialDurability({session,store,tools,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(bridge.policyFailure)throw bridge.policyFailure}})
+  tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
+  if(!deferResources){await bridge.refreshResources();await bridge.resourceLoader.reload()}
   return {actor,session,tools,bridge,durability,
+   async deliver(packetId,options){
+    if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
+    if(!session.isStreaming)tools.beginTurn()
+    await bridge.refreshResources();await bridge.resourceLoader.reload()
+    const result=await admission.deliver(session,packetId,options)
+    if(bridge.policyFailure)throw bridge.policyFailure
+    if(durability.failure)throw durability.failure
+    if(durability.requestFailure)throw durability.requestFailure
+    if(failure)throw failure
+    return result
+   },
    async prompt(...args){
     tools.beginTurn()
     await bridge.refreshResources();await bridge.resourceLoader.reload()
@@ -49,6 +73,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     // Aborting protects dispatch; returning the typed reason protects the UI.
     if(bridge.policyFailure)throw bridge.policyFailure
     if(durability.failure)throw durability.failure
+    if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
    async close(){await durability.close();unbindApproval()},

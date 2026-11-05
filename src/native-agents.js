@@ -2,6 +2,7 @@ import {Service,getTraceable,symbols} from '@deepseek-ai/cordis'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {isPromise} from 'node:util/types'
 import {scopeTarget} from './native-scope.js'
+import {AgentSession} from '@earendil-works/pi-coding-agent'
 /** Live Pi-agent ownership and causal attribution. Attribution never grants
  * authority; callers must validate identity and resolve the exact live agent. */
 export default class NativeAgents extends Service{
@@ -33,7 +34,8 @@ export default class NativeAgents extends Service{
  async resume(options){const owner=this.ctx,target=this.requireFactory();return Reflect.apply(target.resume,getTraceable(owner,target),[owner,options])}
  register(agent){return this.ctx.effect(async function*(){yield this.enter(agent,undefined);await this.announce(agent,'startup')}.bind(this),'native agents registration')}
  enter(agent,owner){
-  if(agent.id!==agent.session.id)throw new Error('agent identity must match its session')
+  const sessionId=agent.piSession instanceof AgentSession?agent.piSession.sessionId:agent.session?.id
+  if(typeof sessionId!=='string'||agent.id!==sessionId||agent.piSession&&!(agent.piSession instanceof AgentSession))throw new Error('agent identity must match its session')
   if(this.entries.has(agent.id))throw new Error(`agent "${agent.id}" is already registered`)
   const entry={id:agent.id,agent,owner,carrier:scopeTarget(agent,agent),announced:false,announcing:false,pendingDetach:false};this.entries.set(agent.id,entry);let attached=true
   return()=>{if(!attached)return;attached=false;if(entry.announcing)entry.pendingDetach=true;else this.detach(entry)}

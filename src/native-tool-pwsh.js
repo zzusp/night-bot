@@ -319,7 +319,7 @@ function apply(ctx, config = {}) {
 	const sandboxPolicy = defaultMode === void 0 ? void 0 : ctx.get("sandboxPolicy");
 	if (defaultMode !== void 0 && sandboxPolicy === void 0) throw new Error("tool-pwsh: the mounted bash executor confines but ctx.sandboxPolicy is missing");
 	/** Resolve the complete standing policy for this call when a confining executor is mounted. */
-	const resolveSandboxPolicy = (exec) => sandboxPolicy?.resolve(exec.agent === void 0 ? {} : { session: exec.agent.session });
+	const resolveSandboxPolicy = (exec) => sandboxPolicy?.resolve(exec.agent === void 0 ? {} : exec.agent.piSession ? {actor:exec.agent} : {session:exec.agent.session});
 	/**
 	* Resolve a sandbox-escalation request through `ctx.approval` BEFORE
 	* anything executes, delegating the shared fail-closed sequence (strict

@@ -19,7 +19,7 @@ async function serverFixture(t,handler) {const server=createServer(handler);awai
 function respond(res,text='OFFICIAL_DIRECT') {res.writeHead(200,{'content-type':'text/event-stream'});res.write('data: '+JSON.stringify({id:'native-stream',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({id:'native-stream',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:3,total_tokens:5}})+'\n\ndata: [DONE]\n\n');res.end()}
 test('official runtime serves only configured models with explicit controls and no home stores',async()=>{
  const f=fixture(declaration('http://127.0.0.1:1/v1')),resolved=await f.runtime.resolve({provider:'fixture',model:'m'})
- assert.equal(resolved.model.id,'m');assert.equal(resolved.model.compat.supportsDeveloperRole,false);assert.equal(resolved.requestOptions.maxTokens,64);assert.equal(resolved.thinkingLevel,'off')
+ assert.equal(resolved.model.id,'m');assert.equal(resolved.model.compat.supportsDeveloperRole,false);assert.equal(resolved.requestOptions.maxTokens,64);assert.equal(resolved.thinkingLevel,undefined)
  assert.equal(resolved.modelRuntime.getModels('openai').length,0);assert.deepEqual(resolved.modelRuntime.getModels().map(model=>model.provider),['fixture'])
  assert.ok(!JSON.stringify({model:resolved.model,requestOptions:resolved.requestOptions}).includes('private-fixture-key'))
  await assert.rejects(f.runtime.resolve({provider:'fixture',model:'m',maxTokens:65}),{code:'INVALID_MODEL_MAX_TOKENS'})
@@ -95,13 +95,13 @@ test('official runtime close aborts and joins an admitted direct stream and refu
  await started;await f.runtime.close();assert.ok(['error','aborted'].includes((await result).stopReason))
  await assert.rejects(f.runtime.resolve({provider:'fixture',model:'m'}),{code:'OFFICIAL_MODEL_RUNTIME_CLOSED'})
 })
-test('actual Host exposes the direct official runtime alongside the temporary native adapter',async t=>{
+test('actual Host exposes only the official runtime plus metadata routes',async t=>{
  const {createHost}=await import('../src/host.js')
  const base=await serverFixture(t,async(req,res)=>{for await(const _ of req){}respond(res,'HOST_OFFICIAL_RUNTIME')})
  const root=await mkdtemp(join(tmpdir(),'night-official-host-'));let host
  t.after(async()=>{await host?.close();await rm(root,{recursive:true,force:true})})
  host=await createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:declaration(base)},{environmentOptions:{cwd:root,home:root,inherited:{FIXTURE_KEY:'host-scoped-fixture-key'}}})
- const api=host.ctx.nativePiProvider;assert.ok(api.adapter);assert.ok(api.profiles);assert.ok(api.official instanceof OfficialPiModelRuntime)
+ const api=host.ctx.nativePiProvider;assert.equal(host.ctx.get('llm'),undefined);assert.equal(host.ctx.get('llmRetry'),undefined);assert.equal(api.adapter,undefined);assert.equal(host.ctx.nativeModelRoutes.stream,undefined);assert.ok(api.profiles);assert.ok(api.official instanceof OfficialPiModelRuntime)
  const resolved=await api.official.resolve({provider:'fixture',model:'m'}),message=await resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'host-direct',timestamp:1}]}).result()
  assert.equal(message.content[0].text,'HOST_OFFICIAL_RUNTIME')
 })
@@ -110,13 +110,13 @@ test('official idle budget resets on native event progress rather than becoming 
  const base=await serverFixture(t,async(req,res)=>{
   for await(const _ of req){}res.writeHead(200,{'content-type':'text/event-stream'})
   let count=0
-  const timer=setInterval(()=>{if(count++<6)res.write('data: '+JSON.stringify({id:'progress',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{content:'x'},finish_reason:null}]})+'\n\n');else {clearInterval(timer);res.end('data: '+JSON.stringify({id:'progress',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n')}},15)
+  const timer=setInterval(()=>{if(count++<6)res.write('data: '+JSON.stringify({id:'progress',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{content:'x'},finish_reason:null}]})+'\n\n');else {clearInterval(timer);res.end('data: '+JSON.stringify({id:'progress',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n')}},200)
   res.on('close',()=>clearInterval(timer))
  })
- const raw=declaration(base);raw.fixture.streamIdleTimeoutMs=60
+ const raw=declaration(base);raw.fixture.streamIdleTimeoutMs=1000
  const f=fixture(raw),resolved=await f.runtime.resolve({provider:'fixture',model:'m'}),started=Date.now()
  const result=await resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'progress',timestamp:1}]}).result()
- assert.equal(result.stopReason,'stop');assert.equal(result.content[0].text,'xxxxxx');assert.ok(Date.now()-started>60)
+ assert.equal(result.stopReason,'stop');assert.equal(result.content[0].text,'xxxxxx');assert.ok(Date.now()-started>1000)
 })
 test('caller cancellation terminates an official stream without converting it to a Night finish event',async t=>{
  let entered;const started=new Promise(resolve=>entered=resolve),base=await serverFixture(t,async(req,res)=>{for await(const _ of req){}res.writeHead(200,{'content-type':'text/event-stream'});res.flushHeaders();entered()})
@@ -140,4 +140,17 @@ test('official runtime shutdown drains an admitted uncooperative credential read
  const result=resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'auth drain',timestamp:1}]}).result()
  await reading;let closed=false;const closing=service.close().then(()=>closed=true);await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,false)
  release.resolve();await closing;assert.equal((await result).stopReason,'error');assert.equal(requests,0)
+})
+
+test('unspecified reasoning delegates to official SDK initialization for a high-only model',async t=>{
+ const {getSupportedThinkingLevels}=await import('@earendil-works/pi-ai')
+ const raw=declaration('http://127.0.0.1:1/never-dispatch');raw.fixture.models[0].reasoningEfforts={high:'enabled'}
+ const f=fixture(raw),resolved=await f.runtime.resolve({provider:'fixture',model:'m'})
+ assert.equal(resolved.thinkingLevel,undefined);assert.deepEqual(getSupportedThinkingLevels(resolved.model),['high'])
+ await assert.rejects(f.runtime.resolve({provider:'fixture',model:'m',reasoningEffort:'medium'}),{code:'UNSUPPORTED_REASONING_EFFORT'})
+ assert.equal((await f.runtime.resolve({provider:'fixture',model:'m',reasoningEffort:'high'})).thinkingLevel,'high')
+ const root=await mkdtemp(join(tmpdir(),'night-official-thinking-')),agentDir=join(root,'agent');await mkdir(agentDir);t.after(()=>rm(root,{recursive:true,force:true}))
+ const settings=SettingsManager.inMemory({retry:{enabled:false},compaction:{enabled:false},cacheWarming:'off'}),loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
+ const {session}=await createAgentSession({cwd:root,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,sessionManager:SessionManager.inMemory(root),settingsManager:settings,resourceLoader:loader,noTools:'all'});t.after(()=>session.dispose())
+ assert.equal(session.thinkingLevel,'high');assert.ok(getSupportedThinkingLevels(resolved.model).includes(session.thinkingLevel))
 })

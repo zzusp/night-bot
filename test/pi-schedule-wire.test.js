@@ -6,7 +6,7 @@ import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
 import {createHost} from '../src/host.js'
-import {createUserMessage} from '../src/native-message-protocol.js'
+import {AgentSession} from '@earendil-works/pi-coding-agent'
 import {createEveryScheduleRecord,resolveDailyOccurrence,createDailyScheduleRecord,createCronScheduleRecord,resolveCronOccurrence} from '../src/native-schedule-protocol.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {createPlatformSchedules} from '../packages/dingtalk-core/platform-schedule.js'
@@ -34,11 +34,13 @@ async function fixture(t,decide=()=>undefined){
   t.after(async()=>{try{await close()}finally{delete process.env.NIGHT_SCHEDULE_TEST_KEY;await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true})}})
   await boot()
   return {root,requests,errors,config,get host(){return host},boot,close,
-    async session(id,meta={},model=config.model){return host.ctx.agents.create({sessionId:id,meta:{cwd:config.workspaceDir,agentPreset:'night-bot',...meta},agentOptions:model,
+    async session(id,meta={},model=config.model){return host.ctx.agents.create({sessionId:id,meta:{cwd:config.workspaceDir,agentPreset:'night-bot',...meta},agentOptions:model,authorizeInput:(packet,actor)=>actor.id===id&&(packet.source.kind==='schedule-test'||host.ctx.schedule.authorizeInput(packet,actor)),
       setup:async ctx=>{await ctx.get('agentPresets').mount(ctx,'night-bot')}})},
-    async delivered(id){return until(async()=>{const row=(await host.ctx.schedule.catalog()).find(r=>r.id===id);if(row?.status!=='inactive')return;const found=await host.ctx.sessionController.resolveAgent(row.sessionId);if(found.error)throw found.error;await found.agent.whenIdle();return row},'durable delivery '+id)},
+    async delivered(id){return until(async()=>{const row=(await host.ctx.schedule.catalog()).find(r=>r.id===id);if(row?.status!=='inactive')return;const found=await host.ctx.sessionController.resolveAgent(row.sessionId);if(found.error)throw found.error;await found.agent.whenIdle();if(found.agent.admission.status(row.lastDelivery?.messageId)!=='admitted')return;return row},'durable delivery '+id)},
   }
 }
+let inbound=0
+const prompt=async(handle,text)=>{const packet={id:'schedule-test-'+(++inbound),source:{kind:'schedule-test'},content:text};await handle.enqueue(packet);await handle.deliver(packet.id);await handle.whenIdle()}
 const wireText = message => typeof message.content === 'string' ? message.content : (message.content ?? []).filter(part => part.type === 'text').map(part => part.text).join('\n')
 const rule=(prompt,ms=180)=>({title:'local validation',prompt,at:new Date(Date.now()+ms).toISOString()})
 
@@ -49,7 +51,7 @@ test('default production Host delivers a real Pi request and native file effect 
     if(!body.messages.some(m=>m.role==='tool')){writes++;return {name:'write',args:{file_path:'scheduled-proof.txt',content:'due-file-by-native-tool'}}}
   })
   const h=await f.session('due-file');const record=await f.host.ctx.schedule.create('due-file',rule('DUE_FILE_PROOF'))
-  for(const capability of ['agentPresets','attachments','fs','jobs','llm','permissionPresets','sandboxPolicy','schedule','sessionController','sessionPersistence','sessionProjections','sessionTitle','sessions','skills','subprocess','workspaceRegistry'])assert.ok(f.host.ctx.get(capability),capability)
+  for(const capability of ['agentPresets','attachments','fs','jobs','officialAgentFactory','permissionPresets','sandboxPolicy','schedule','sessionController','sessionPersistence','skills','subprocess','workspaceRegistry'])assert.ok(f.host.ctx.get(capability),capability)
   assert.equal(f.requests.length,0)
   const saved=await f.delivered(record.id)
   assert.ok(Date.parse(saved.lastDelivery.deliveredAt)>=Date.parse(record.scheduledAt))
@@ -65,7 +67,7 @@ test('default preset exposes working session-bound schedule tools through actual
     if(!created){created=true;assert.ok(body.tools.some(t=>t.function.name==='schedule_create'));return {name:'schedule_create',args:{title:'tool reminder',prompt:'TOOL_DUE',after_seconds:1}}}
   })
   const h=await f.session('model-create')
-  h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'create a local reminder'}]}))
+  await prompt(h,'create a local reminder')
   await h.agent.whenIdle()
   const [row]=await f.host.ctx.schedule.catalog();assert.equal(row.sessionId,'model-create')
   await f.delivered(row.id)
@@ -79,37 +81,37 @@ test('cold restart delivers overdue durable schedule once and subsequent restart
   const record=await f.host.ctx.schedule.create('cold',rule('COLD_DUE',600))
   await f.close();await new Promise(r=>setTimeout(r,650));await f.boot()
   await f.delivered(record.id);assert.equal(f.requests.length,1)
-  const agent=f.host.ctx.agents.get('cold');assert.equal(agent.constructor.name,'PiLoopAgent')
-  assert.equal(agent.session.header.agentPreset,'night-bot')
+  const agent=f.host.ctx.agents.get('cold');assert.ok(agent.piSession instanceof AgentSession)
+  assert.equal(agent.metadata.agentPreset,'night-bot')
   await f.close();await f.boot();await f.host.ctx.schedule.runtime.running
   assert.equal(f.requests.length,1)
   assert.equal((await f.host.ctx.schedule.history({sessionId:'cold',id:record.id,limit:10})).records.length,1)
 })
 
-test('crash between durable Pi inbox and schedule receipt reuses the original message without effects replay',{timeout:20000},async t=>{
+test('crash between accepted batch and task receipt reuses the original packet without effects replay',{timeout:20000},async t=>{
   const f=await fixture(t);await f.session('commit-gap')
   const runtime=f.host.ctx.schedule.runtime,commit=runtime.commit
   let failOnce=true
   runtime.commit=async task=>{if(failOnce){failOnce=false;throw new Error('injected receipt failure')}return commit(task)}
   const record=await f.host.ctx.schedule.create('commit-gap',rule('COMMIT_GAP'))
-  await until(()=>!failOnce,'first delivery persists inbox')
+  await until(()=>!failOnce,'first delivery persists accepted batch')
   assert.equal(f.requests.length,0,'model must wait for receipt commit')
   await f.close();await f.boot();await f.delivered(record.id)
   assert.equal(f.requests.length,1)
-  const events=f.host.ctx.agents.get('commit-gap').session.snapshotEvents()
-  const ids=events.filter(e=>e.type==='agent/inbox/spliced').flatMap(e=>e.data.inserted??[]).filter(m=>m.source?.kind==='schedule').map(m=>m.id)
+  const receipts=await f.host.ctx.agents.get('commit-gap').receipts.read()
+  const ids=receipts.filter(r=>r.domain==='admission'&&r.kind==='enqueued'&&r.payload.source.kind==='schedule').map(r=>r.payload.id)
   assert.equal(ids.length,1)
 })
 
-test('receipt committed before process wake is recovered from the durable inbox once',{timeout:20000},async t=>{
+test('receipt committed before SDK delivery is recovered from the official business outbox once',{timeout:20000},async t=>{
   const f=await fixture(t),h=await f.session('wake-gap')
-  const wake=h.agent.wakeDriver;h.agent.wakeDriver=()=>{}
+  h.agent.input=Object.freeze({...h.agent.input,deliver:async()=>{}})
   const record=await f.host.ctx.schedule.create('wake-gap',rule('WAKE_GAP'))
   await until(async()=>(await f.host.ctx.schedule.catalog())[0]?.status==='inactive','receipt committed')
   assert.equal(f.requests.length,0)
-  // Disposing keeps the pending inbox; the next real Host owns activation.
+  // The official business outbox survives shutdown without being delivered.
   await f.close();await f.boot();await f.delivered(record.id)
-  await until(()=>f.requests.length===1,'pending inbox resumed');assert.equal(f.requests.length,1)
+  await until(()=>f.requests.length===1,'pending official packet resumed');assert.equal(f.requests.length,1)
 })
 
 for(const fails of [false,true])test(`a busy Pi driver cannot execute queued reminder input before its durable receipt: failure=${fails}`,{timeout:20000},async t=>{
@@ -118,7 +120,7 @@ for(const fails of [false,true])test(`a busy Pi driver cannot execute queued rem
   const f=await fixture(t,async()=>{if(first){first=false;firstEntered.resolve();await finishFirst.promise}})
   t.after(()=>{finishFirst.resolve();finishCommit.resolve()})
   const h=await f.session('busy')
-  h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'ordinary first turn'}]}))
+  void prompt(h,'ordinary first turn')
   await firstEntered.promise
   const runtime=f.host.ctx.schedule.runtime,commit=runtime.commit
   runtime.commit=async task=>{commitEntered.resolve();await finishCommit.promise;if(fails)throw new Error('injected busy receipt failure');return commit(task)}
@@ -136,13 +138,13 @@ test('explicit cancellation during receipt admission clears the reminder and col
   const f=await fixture(t,async()=>{if(first){first=false;entered.resolve();await releaseModel.promise}})
   t.after(()=>{releaseModel.resolve();releaseCommit.resolve()})
   const h=await f.session('cancel-busy')
-  h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'first turn'}]}));await entered.promise
+  void prompt(h,'first turn');await entered.promise
   const runtime=f.host.ctx.schedule.runtime,commit=runtime.commit
   runtime.commit=async task=>{committing.resolve();await releaseCommit.promise;return commit(task)}
   const row=await f.host.ctx.schedule.create('cancel-busy',rule('CANCEL_BUSY'))
   await committing.promise;releaseModel.resolve();await new Promise(r=>setTimeout(r,50))
-  h.agent.cancel({kind:'user'});releaseCommit.resolve();await runtime.running;await h.agent.whenIdle()
-  assert.equal(h.agent.inbox.hasPending,false);assert.equal(f.requests.length,1)
+  const cancelled=h.cancel();releaseCommit.resolve();await cancelled;await runtime.running;await h.whenIdle()
+  assert.equal(h.agent.admission.pending().length,0);assert.equal(f.requests.length,1)
   await f.close();await f.boot();await f.host.ctx.schedule.runtime.running
   assert.equal(f.requests.length,1)
   assert.equal((await f.host.ctx.schedule.catalog()).find(r=>r.id===row.id).status,'inactive')
@@ -186,17 +188,17 @@ test('all original timing selectors and strict invalid-rule boundaries use nativ
 
 test('read-only permissions survive cold reminder activation',{timeout:20000},async t=>{
   const f=await fixture(t),h=await f.session('read-only')
-  h.agent.ctx.get('permissionPresets').set(h.agent.session,'read-only');await f.host.ctx.sessions.flush(h.agent.session)
+  await h.agent.ctx.get('permissionPresets').set(h.agent,'read-only')
   const record=await f.host.ctx.schedule.create('read-only',rule('READ_ONLY',600))
   await f.close();await f.boot();await f.delivered(record.id)
   const agent=f.host.ctx.agents.get('read-only')
-  assert.equal(agent.ctx.get('permissionPresets').current(agent.session),'read-only')
+  assert.equal(agent.ctx.get('permissionPresets').current(agent),'read-only')
   assert.deepEqual(f.errors,[])
 })
 
 test('cold activation preserves the committed session model instead of replacing it with the Host default',{timeout:20000},async t=>{
   const f=await fixture(t),h=await f.session('model-route',{}, {provider:'fixture',model:'second'})
-  h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'save session model'}]}));await h.agent.whenIdle()
+  await prompt(h,'save session model');await h.agent.whenIdle()
   const record=await f.host.ctx.schedule.create('model-route',rule('MODEL_ROUTE',600))
   await f.close();await f.boot();await f.delivered(record.id)
   assert.equal(f.requests.length,2);assert.ok(f.requests.every(request=>request.model==='second'))
@@ -206,7 +208,7 @@ test('model tools refuse delegated callers before creating any schedule',{timeou
   let first=true
   const f=await fixture(t,()=>{if(first){first=false;return {name:'schedule_create',args:{title:'child reminder',prompt:'must refuse',after_seconds:1}}}})
   const h=await f.session('child-caller',{origin:'subagent',parentSession:'parent',delegationDepth:1})
-  h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'try reminder'}]}));await h.agent.whenIdle()
+  await prompt(h,'try reminder');await h.agent.whenIdle()
   assert.deepEqual(await f.host.ctx.schedule.catalog(),[])
   assert.ok(f.requests[1].messages.some(message=>message.role==='tool'&&wireText(message).includes('subagent_session')))
 })
@@ -220,7 +222,7 @@ test('overdue recurring reminders coalesce missed occurrences into one actual Pi
   }
   f.host.ctx.schedule.start()
   await until(async()=>(await f.host.ctx.schedule.catalog()).every(r=>r.lastDelivery),'recurring acknowledgments')
-  await f.host.ctx.agents.get('recurring').whenIdle()
+  await until(async()=>{const actor=f.host.ctx.agents.get('recurring'),rows=await f.host.ctx.schedule.catalog();return actor&&rows.every(row=>actor.admission.status(row.lastDelivery?.messageId)==='admitted')},'coalesced SDK admission');await f.host.ctx.agents.get('recurring').whenIdle()
   assert.equal(f.requests.length,1)
   const rows=await f.host.ctx.schedule.catalog()
   assert.equal(rows[0].lastDelivery.messageId,rows[1].lastDelivery.messageId)
@@ -238,7 +240,7 @@ test('a partially committed recurring batch resumes its frozen message once afte
   assert.equal(f.requests.length,0)
   await f.close();await f.boot()
   await until(async()=>(await f.host.ctx.schedule.catalog()).every(r=>r.lastDelivery),'all batch members acknowledged')
-  await f.host.ctx.agents.get('partial-batch').whenIdle();assert.equal(f.requests.length,1)
+  await until(async()=>{const actor=f.host.ctx.agents.get('partial-batch'),rows=await f.host.ctx.schedule.catalog();return actor&&actor.admission.status(rows[0].lastDelivery?.messageId)==='admitted'},'batch SDK admission');await f.host.ctx.agents.get('partial-batch').whenIdle();assert.equal(f.requests.length,1)
   const rows=await f.host.ctx.schedule.catalog();assert.equal(rows[0].lastDelivery.messageId,rows[1].lastDelivery.messageId)
   for(const row of rows){assert.equal((await f.host.ctx.schedule.history({sessionId:'partial-batch',id:row.id,limit:10})).records.length,1);await f.host.ctx.schedule.delete({sessionId:'partial-batch',id:row.id})}
 })
@@ -280,11 +282,55 @@ for(const superseded of [false,true])test(`real platform bridge restores origina
   await f.boot({deferScheduledDelivery:true});await mount();f.host.ctx.schedule.start()
   const [row]=await f.host.ctx.schedule.catalog()
   await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome===(superseded?'superseded':'replied'),'original source outcome')
-  await f.delivered(row.id)
+  await assert.rejects(f.delivered(row.id),{code:superseded?'platform_schedule_superseded':'platform_schedule_settled'})
+  const actor=f.host.ctx.agents.get(row.sessionId)
+  assert.ok(actor.piSession instanceof AgentSession);assert.equal(actor.session,undefined)
+  assert.equal(actor.admission.status((await f.host.ctx.schedule.catalog())[0].lastDelivery.messageId),'admitted','official packet admission is distinct from model authorization')
+  assert.equal(actor.ctx.get('permissionPresets').current(actor),'danger-full-access','standing permission survives official cold resume')
+  assert.equal(f.requests.length,superseded?0:2,'superseded requests never reach the model; completed reports stop after query and submit')
   assert.equal(notifications.length,superseded?0:1)
   assert.equal((await f.host.ctx.schedule.history({sessionId:row.sessionId,id:row.id,limit:10})).records.length,1)
   await bridge.close();bridge=undefined;await store.close();store=undefined
   assert.deepEqual(f.errors,[])
+})
+
+test('late platform mount reopens official tools and recovers one admitted original packet without inbox replay',{timeout:20000},async t=>{
+ let store,bridge,steps=0
+ const notices=[]
+ const f=await fixture(t,body=>{
+  if(!body.tools.some(tool=>tool.function.name==='platform_task_query'))return
+  return steps++===0?{name:'platform_task_query',args:{state:'all'}}:{name:'platform_reply_submit',args:{text:'late mounted report'}}
+ })
+ const mount=async()=>{
+  store=await openResidentStore(f.host.ctx.storageDomain)
+  bridge=createPlatformSchedules({ctx:f.host.ctx,store,legacy:{getAgentConfig:()=>({agentPreset:'night-bot'})},root:f.config.workspaceDir,models:f.config.model,readTasks:async()=>store.listTasks(),notify:async input=>{input.preflight();notices.push(input)}})
+ }
+ t.after(async()=>{await bridge?.close();await store?.close()})
+ await mount();await store.subscribe({groupId:'late-group',timezone:'UTC'})
+ const text='report after late bridge mount'
+ await store.ingest({groupId:'late-group',messageId:'late-source',text,senderOpenDingTalkId:'late-owner',occurredAt:new Date().toISOString()})
+ await store.routeMessages({groupId:'late-group',routeId:'late-route',routingRevision:0,routes:[{messageId:'late-source',messageVersion:1,units:[{unitKey:'late-report',summary:text,sourceRefs:[{quote:text}],topics:[],fixedTopic:'agent-platform',reason:'scheduled report'}]}]})
+ const message=store.getGroup('late-group').messages[0],unit=message.units[0],requestId=fixedUnitRequestId('late-group',message,unit)
+ const created=await bridge.submit({groupId:'late-group',messageId:message.messageId,messageVersion:message.messageVersion,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,650))
+ await bridge.close();bridge=undefined;await store.close();store=undefined;await f.close()
+ await new Promise(resolve=>setTimeout(resolve,700));await f.boot()
+ await assert.rejects(f.delivered(created.scheduleId),{code:'PI_PLATFORM_SOURCE_NOT_READY'})
+ const row=(await f.host.ctx.schedule.catalog()).find(record=>record.id===created.scheduleId),before=f.requests.length
+ assert.equal(before,0,'no model request may execute before the platform guardian is ready')
+ assert.equal(f.host.ctx.agents.get(row.sessionId).admission.status(row.lastDelivery.messageId),'admitted','SDK admission alone is not source authority')
+ assert.equal(notices.length,0)
+ await mount()
+ await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome==='replied','late platform recovery outcome')
+ const actor=f.host.ctx.agents.get(row.sessionId)
+ await assert.rejects(actor.whenIdle(),{code:'platform_schedule_settled'})
+ assert.equal(notices.length,1);assert.equal(f.requests.length,before+2)
+ const receipts=await actor.receipts.read(),recovery=receipts.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued-internal'&&receipt.payload.source.kind==='platform-schedule-recovery')
+ assert.equal(recovery.length,1);assert.equal(recovery[0].payload.source.originalPacketId,row.lastDelivery.messageId)
+ assert.equal((await f.host.ctx.schedule.history({sessionId:row.sessionId,id:row.id,limit:10})).records.length,1)
+ await bridge.close();bridge=undefined;await store.close();store=undefined;await f.close()
+ await f.boot({deferScheduledDelivery:true});await mount();f.host.ctx.schedule.start();await f.host.ctx.schedule.runtime.running
+ assert.equal(notices.length,1);assert.equal(f.requests.length,before+2,'cold restart never replays the recovered report')
+ await bridge.close();bridge=undefined;await store.close();store=undefined
 })
 
 test('actual CLI process restart executes a persisted reminder and never repeats its file effect',{timeout:30000},async t=>{

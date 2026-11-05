@@ -56,6 +56,7 @@ export function nativeStore({backend,path,header,manager,lease,data,options={}})
     flush(options){return handle.commit(options)},
     reader(){throw fail('PI_SESSION_NATIVE_AUDIT_API_REQUIRED')},
     async readAudit(){await chain;assertOpen();return clone(committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>e.data))},
+    async readAuditEntries(){await chain;assertOpen();return clone(committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>({entryId:e.id,parentId:e.parentId,receipt:e.data})))},
     close(){return closing??=(async()=>{try{await chain;await persist()}finally{closed=true;backend.handles.delete(handle);if(backend.writers.get(id)===handle)backend.writers.delete(id);unregister?.();await lease.close()}})()},
     [Symbol.asyncDispose](){return handle.close()},
   }

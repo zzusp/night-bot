@@ -40,3 +40,13 @@ test('official close retains the body lease until cancellation and the real body
  const closing=gate.close();await delay(10);assert.equal(storeClosed,false)
  release.resolve();await running;await closing;assert.equal(storeClosed,true)
 })
+test('SDK-absorbed business request rejection retains its typed cause and is distinct from storage poison',async t=>{
+ let denied=true
+ const f=await officialToolsFixture(t,()=>{}),reason=Object.assign(new Error('current task input was revoked'),{code:'TASK_SESSION_STALE'})
+ const store={kind:'pi-native',manager:f.manager,async commit(){},async close(){}}
+ const gate=bindOfficialDurability({session:f.session,store,tools:f.adapter,beforeRequest(){if(denied)throw reason}})
+ await f.run([]).catch(()=>{})
+ assert.equal(f.requests.length,0);assert.equal(gate.requestFailure,reason);assert.equal(gate.failure,undefined)
+ denied=false;await f.run([]);assert.equal(gate.requestFailure,undefined);assert.equal(f.requests.length,1)
+ await gate.close()
+})

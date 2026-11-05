@@ -1,15 +1,15 @@
 // Management contracts derived from DeepSeek dsh-schedule 0.2.1-alpha.2 (MIT).
 // Copyright (c) 2026 DeepSeek. See licenses/dsh-schedule-MIT.txt.
+import {isDeepStrictEqual} from 'node:util'
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {randomUUID} from 'node:crypto'
 import {ScheduleRuntime} from './native-schedule-runtime.js'
-import {scheduleDomain,ScheduleId,ScheduleInputError,ScheduleLogError,foldScheduleEvents,scheduleTitle,createAtScheduleRecord,createAfterScheduleRecord,createEveryScheduleRecord,createDailyScheduleRecord,createWeeklyScheduleRecord,createCronScheduleRecord,deliveryHistoryPage,resolveScheduleUpdate} from './native-schedule-protocol.js'
+import {scheduleDomain,ScheduleId,ScheduleInputError,scheduleTitle,createAtScheduleRecord,createAfterScheduleRecord,createEveryScheduleRecord,createDailyScheduleRecord,createWeeklyScheduleRecord,createCronScheduleRecord,deliveryHistoryPage,resolveScheduleUpdate} from './native-schedule-protocol.js'
 const DEFAULT_DELIVERY_HISTORY_DAYS=30,DEFAULT_DELIVERY_HISTORY_RECORDS=200
 export default class NativeSchedule extends Service {
 		static inject = [
 			"agents",
-			"sessions",
 			"storageDomain",
 			"sessionController",
 			"sessionPersistence", "workspaceRegistry"
@@ -44,6 +44,7 @@ export default class NativeSchedule extends Service {
 					}
 					throw new Error(`schedule: stored task key "${key}" differs from record id "${task.record.id}"`);
 				}
+				for(const [key,row]of domain.table('deliveries').entries())if(key!==row.packet.id){await domain.close();throw new Error('NIGHT_SCHEDULE_DELIVERY_KEY_MISMATCH')}
 				return domain;
 			});
 			this.initialized = ctx.effect(async () => {
@@ -65,41 +66,11 @@ export default class NativeSchedule extends Service {
 				this.runtime = new ScheduleRuntime(ctx, () => [...tasks.entries()].map(([, task]) => task), (work) => this.serialize(work), async (task) => {
 					await tasks.put(task.record.id, task);
 					this.emitChanged();
-				}, this.retention);
+				}, this.retention, {deliveries:()=>[...domain.table("deliveries").entries()].map(([,row])=>row), saveDelivery:row=>domain.table("deliveries").put(row.packet.id,scheduleDomain.tables.deliveries.valueSchema.parse(row))});
 				// Delivery starts only after the default preset has mounted.
 				return cleanup;
 			});
-            ctx.on('agent/pre-step', async ({agent,messages,signal},next) => {
-                const reminders=messages.filter(message=>message.source?.kind==='schedule'&&Array.isArray(message.source.occurrences));
-                if(!reminders.length)return next();
-                // A busy Pi driver may claim next-turn input without a new
-                // wakeup. Its model step must still wait for the receipt FIFO.
-                await this.chain;
-                const domain=await this.ready;
-                if(signal?.aborted&&signal.reason?.kind!=='disposed')return {kind:'reject'};
-                if(this.stopping){for(const message of reminders)agent.send(message,'next-turn',false);return {kind:'reject'};}
-                const tasks=domain.table('tasks');
-                const blocked=reminders.filter(message=>message.source.occurrences.some(item=>{
-                    const task=tasks.get(item.id);
-                    // Deletion/edits do not retract input already queued.
-                    return task&&task.record.scheduledAt===item.target&&task.lastDelivery?.messageId!==message.id
-                        &&!task.deliveryHistory?.records.some(receipt=>receipt.messageId===message.id);
-                }));
-                if(blocked.length){for(const message of blocked)agent.send(message,'next-turn',false);return {kind:'reject'};}
-                return next();
-            });
-			ctx.on("session/created", (session) => {
-				let activeLegacy = 0;
-				try {
-					activeLegacy = foldScheduleEvents(session.ownEvents()).active.length;
-				} catch (error) {
-					/* v8 ignore next -- foldScheduleEvents normalizes every rejected stream to ScheduleLogError. */
-					if (!(error instanceof ScheduleLogError)) throw error;
-					ctx.logger.warn(`schedule: Session "${session.id}" historical events could not be read (${error.message}); the legacy reminder is ignored.`);
-					return;
-				}
-				if (activeLegacy > 0) ctx.logger.warn(`schedule: Session "${session.id}" contains legacy reminders; recreate active reminders with schedule_create.`);
-			}, { global: true });
+
 			ctx.effect(() => {
 				const activity = ctx.on("workspace/session-activity", async ({ sessionId }, next) => {
 					const active = await this.list({ sessionId });
@@ -195,7 +166,7 @@ export default class NativeSchedule extends Service {
 			})).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id));
 		}
 		/**
-		* Read saved inbox deliveries without activating or reading the original Session.
+		* Read saved accepted reminder deliveries without activating or reading the original Session.
 		* The task's own row supplies its binding, so its records stay readable through this lookup.
 		* @param request - Session binding, task identity, explicit limit, and optional exclusive message cursor.
 		* @returns Newest-first deliveries in append order, or a task/cursor lookup failure.
@@ -295,6 +266,22 @@ export default class NativeSchedule extends Service {
 				this.ctx.logger.warn(`schedule: schedule/changed listener failed: ${String(error)}`);
 			}
 		}
+        async cancelAccepted(actor) {
+            if(!actor||this.ctx.agents.get(actor.id)!==actor)throw new Error('NIGHT_SCHEDULE_FOREIGN_ACTOR')
+            return this.serialize(async()=>{
+                const deliveries=(await this.getDomain()).table('deliveries')
+                for(const [id,row]of deliveries.entries())if(row.sessionId===actor.id&&!row.cancelled&&actor.admission.status?.(id)!=='admitted'){
+                    await deliveries.put(id,{...row,cancelled:true})
+                }
+            })
+        }
+        async authorizeInput(packet,actor) {
+            if(!actor||this.ctx.agents.get(actor.id)!==actor||!actor.lifecycle?.isLive()||actor.lifecycle.signal.aborted)return false
+            try { this.ctx.sessionController.assertOrdinary(actor.metadata) } catch { return false }
+            const row=(await this.getDomain()).table('deliveries').get(packet?.id)
+            return !!row&&!row.cancelled&&row.sessionId===actor.id&&isDeepStrictEqual(row.packet,packet)
+        }
+
 		async getDomain() {
 			await this.initialized;
 			return this.ready;
@@ -314,6 +301,7 @@ export default class NativeSchedule extends Service {
         async reminderTargetRefusal(sessionId) {
             const header = await this.ctx.sessionController.header(sessionId);
             if (this.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId)) throw new ScheduleInputError('session_archived', 'Archived sessions cannot create reminders.');
+            if(header.agentPreset==='night-bot-task')return {code:'subagent_session',message:'Task-owned sessions cannot receive ordinary reminders.'};
             if ((header.delegationDepth ?? 0) === 0 && header.origin !== 'subagent') return;
             return {code:'subagent_session',message:'This Session belongs to subagent routing, which never receives reminder delivery.'};
         }

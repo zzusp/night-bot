@@ -12,7 +12,7 @@ export { createGitDelivery } from './execution-git.js'
 export { createManagedWorkspaces } from './execution-workspace.js'
 
 export const name = 'dingtalk-execution-foundation'
-export const inject = ['executionWorkflows', 'agents', 'agentLoop', 'sessions', 'sessionPersistence', 'sessionProjections', 'llm', 'tools', 'systemPrompt']
+export const inject = ['executionWorkflows', 'agents', 'officialAgentFactory', 'sessions', 'sessionPersistence', 'sessionProjections', 'llm', 'tools', 'systemPrompt']
 
 /** 以已有持久工件引用区分布局；旧任务不会因升级或重启自动搬迁。 */
 export function createTaskDirectoryResolver({ store, workspaceRoot }) {

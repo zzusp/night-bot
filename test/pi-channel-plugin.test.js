@@ -25,7 +25,13 @@ test('optional DWS plugin registers the typed boundary, preserves authenticated 
   await assert.rejects(plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'bad-source',text:'missing sender'}),/AUTHENTICATED_IDENTITY_REQUIRED/)
   assert.equal(commands,0);assert.equal(f.host.ctx.channels.canDeliver({state:'prepared',payload:{conversationId:response.sessionId}}),false)
   const source=(await f.host.ctx.sessionPersistence.list()).find(row=>row.header.id===response.sessionId);assert.ok(source)
-  const history=await f.host.ctx.sessionPersistence.open(response.sessionId,'read');try{assert.ok((await history.read()).events.some(event=>event.type==='user/message'&&event.data.source?.senderId==='authenticated-sender'))}finally{await history.close()}
+  const history=await f.host.ctx.get('sessionPersistence').readNative(response.sessionId,{requireComplete:true})
+  assert.equal(history.format,'pi-native-v1');assert.equal('events' in history,false)
+  const nativeInput=history.context.projection.entries.find(({sourceEntry})=>sourceEntry.type==='custom_message'&&sourceEntry.customType==='night.business-input'&&sourceEntry.details.source?.senderId==='authenticated-sender')?.sourceEntry
+  assert.ok(nativeInput)
+  assert.equal(nativeInput.details.source.principal,f.host.ctx.channels.identity(captured).principal)
+  assert.deepEqual(nativeInput.details.source.quotedMessage,captured.quotedMessage)
+  assert.equal(nativeInput.content[0].text,'quoted boundary proof')
 })
 test('standard application composition exposes channel-neutral health and single task creation with no channel installed',{timeout:15000},async t=>{
   const f=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:'{"lessons":[]}'}:body.tools?.some(t=>t.function.name==='task_result')?{tool:'task_result',args:{decision:{action:'complete',summary:'core application verified',evidence:[],limitations:[]}}}:undefined)

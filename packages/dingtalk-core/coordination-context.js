@@ -1,11 +1,13 @@
 import { fingerprint } from './topic-model.js'
 import { z } from 'zod'
 import {isApplicationSession} from '../../src/native-session-protocol.js'
+import {officialBusinessProjection,visibleBusinessInputs} from '../../src/runtime/pi-business-inputs.js'
 
 // Pure composition fakes have no execution context or branded application session.
 // A production agent must read its live Pi writer; errors never fall back to audit.
 function coordinationProjection(agent) {
   if(!agent||typeof agent!=='object')throw new Error('COORDINATION_PI_AGENT_REQUIRED')
+  if(agent.piSession)return officialBusinessProjection(agent)
   const authority=agent?.ctx?.get?.('piAuthority')
   if(!authority){
     if(agent?.ctx||isApplicationSession(agent?.session))throw new Error('COORDINATION_PI_AUTHORITY_REQUIRED')
@@ -49,6 +51,8 @@ export function visibleSectionLength(agent, text) {
 }
 
 export function visibleCoordinatorText(agent, text) {
+  if(agent?.piSession)return visibleBusinessInputs(agent).some(input=>input.source?.kind==='coordinator'
+    &&(typeof input.content==='string'?input.content===text:input.content?.some(part=>part.type==='text'&&part.text===text)))
   const projection=coordinationProjection(agent)
   return projection?.entries.some(({sourceEntry,messages})=>{
     const event=sourceEntry.type==='message'&&sourceEntry.message.role==='user'?sourceEntry.message.night?.event:undefined

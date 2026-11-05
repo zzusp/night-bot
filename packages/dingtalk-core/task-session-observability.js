@@ -1,3 +1,4 @@
+import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import { PERFORMANCE_EVENT_TYPES, listPerformance, coordinationCosts } from './performance.js'
 
 /** Read-only views over current native identities. Performance uses the existing durable
@@ -15,10 +16,24 @@ export function createTaskSessionObservability({ store, listTasks, resolveSessio
     const ids = currentIds(), rows = base.rows.filter(row => ids.has(row.taskId))
     const { workflow: _retired, coordination: _oldCoordination, ...result } = base
     return { ...result, rows, coordination: coordinationCosts(rows),
-      completeness: 'incomplete', limitations: ['observed-native-events-only', 'business-wait-boundaries-unavailable'],
-      ...(typeof store.recordPerformanceEvent !== 'function' || typeof store.listPerformance !== 'function' ? { status: 'unsupported' } : {}) }
+      completeness: 'incomplete', limitations: ['observed-native-events-only', 'business-wait-boundaries-unavailable', 'native-model-completion-observed-after-durable-commit', 'sdk-assistant-attempts-not-provider-dispatch-count'],
+      ...(typeof store.recordAgentObservation !== 'function' || typeof store.listPerformance !== 'function' ? { status: 'unsupported' } : {}) }
   }
   return {
+    async observeNative(input) {
+      const event=agentObservationSchema.parse(input),identity=resolveSessionIdentity(event.ownerId)
+      if(!identity||!currentIds().has(identity.taskId))return{created:false}
+      const eventKey=event.eventId
+      if(!activities.has(eventKey)){
+        const detail={}
+        if(event.kind==='tool-completed')detail.isError=event.summary.isError===true
+        activities.set(eventKey,{activityId:eventKey,eventKey,sessionId:event.ownerId,taskId:identity.taskId,
+          ...(identity.groupId?{groupId:identity.groupId}:{}),type:event.kind,runId:event.runId,entryId:event.entryId,
+          occurredAt:new Date(event.timestamp).toISOString(),detail,observedSince,coverage:'bounded-process-window',completeness:'incomplete'})
+        while(activities.size>activityLimit)activities.delete(activities.keys().next().value)
+      }
+      return store.recordAgentObservation?.({...identity,sessionId:event.ownerId,observation:event})??{created:false,status:'unsupported'}
+    },
     async observe(session, event) {
       const sessionId = String(session?.id ?? ''), identity = resolveSessionIdentity(sessionId)
       if (!identity || !currentIds().has(identity.taskId) || !PERFORMANCE_EVENT_TYPES.has(event?.type)
@@ -51,7 +66,7 @@ export function createTaskSessionObservability({ store, listTasks, resolveSessio
         const rows = result.rows.filter(row => row.taskId === task.taskId)
         return { taskId: task.taskId, runSequence: task.runSequence ?? null,
           wallMs: null, queuedMs: null, runningMs: null, waitingMs: null, modelMs: null, toolMs: null, unclassifiedRunningMs: null,
-          observedModelSessionMs: rows.some(row => row.modelCalls > 0) && !rows.some(row => row.missingStepStart > 0)
+          observedModelSessionMs: rows.some(row => row.modelCalls > 0) && !rows.some(row => row.missingStepStart > 0 || row.missingModelResult > 0)
             ? rows.reduce((sum, row) => sum + row.modelActiveMs, 0) : null,
           observedToolSessionMs: rows.some(row => row.toolResults > 0) && !rows.some(row => row.missingToolCall > 0 || row.missingToolResult > 0 || row.toolCalls > row.toolResults)
             ? rows.reduce((sum, row) => sum + row.toolActiveMs, 0) : null,

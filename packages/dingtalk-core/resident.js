@@ -18,7 +18,7 @@ import { readTaskFileDelivery } from './task-final-delivery.js'
 import { join, resolve } from 'node:path'
 
 export const name = 'dingtalk-dsh-assistant'
-export const inject = ['storage', 'storageDomain', 'credentials', 'agents', 'agentDefaultModel', 'agentPresets', 'permissionPresets', 'agentLoop', 'sessions', 'sessionPersistence', 'sessionProjections', 'workspaceRegistry', 'tools', 'llm', 'systemPrompt', 'attachments']
+export const inject = ['storage', 'storageDomain', 'credentials', 'agents', 'agentDefaultModel', 'agentPresets', 'permissionPresets', 'officialAgentFactory', 'sessions', 'sessionPersistence', 'sessionProjections', 'workspaceRegistry', 'tools', 'llm', 'systemPrompt', 'attachments']
 
 function applyProxyEnvironment(proxyUrl) {
   for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) {

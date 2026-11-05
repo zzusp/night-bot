@@ -13,6 +13,7 @@ export function bindWorkingDirectoryActor(actor,port){
  Object.freeze(bound);actorDirectories.set(actor,bound)
  return()=>{if(actorDirectories.get(actor)===bound)actorDirectories.delete(actor)}
 }
+export function officialWorkingDirectoryOrigin(actor){return officialDirectory(actor).initialDirectory}
 function officialDirectory(actor){const port=actorDirectories.get(actor);if(!port||!port.isLive(actor))throw unbound();return port}
 /** Session-local directory state. Filesystem resolution remains behind the
  * existing filesystem capability; changing cwd never changes a sandbox grant. */

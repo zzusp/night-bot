@@ -1,3 +1,6 @@
+import {validateNativeAudit} from './runtime/pi-journal.js'
+import {enqueueBusinessNotice} from './runtime/pi-business-notices.js'
+import {assertOfficialJobOwner,officialJobEvents,unresolvedNativeJobReceipts} from './runtime/job-ledger.js'
 // MIT source-derived job model controls/notice/retention protocol; see licenses/dsh-tool-jobs-MIT.txt. NativeJobs owns producers and lifetimes.
 import z from "@deepseek-ai/schemastery";
 import { boundContextSummary, createUserMessage } from './native-message-protocol.js';
@@ -209,6 +212,38 @@ function readBody(read) {
 		job: publicJob(read.job)
 	};
 }
+const noticeFailure=code=>Object.assign(new Error(code),{code})
+/** Recover only committed application job facts. Neither Pi tool results nor
+ * conversation messages prove a producer exited or authorize notification. */
+export async function reconcileJobCompletionNotices(ctx,actor,{entryId}={}){
+ assertOfficialJobOwner(ctx,actor)
+ if(typeof actor.receipts?.readEntries!=='function')throw noticeFailure('NIGHT_JOB_COMPLETION_RECEIPTS_REQUIRED')
+ const entries=await actor.receipts.readEntries(),seen=new Set()
+ if(!Array.isArray(entries))throw noticeFailure('NIGHT_JOB_COMPLETION_RECEIPTS_REQUIRED')
+ for(const entry of entries){
+  if(!entry||Object.keys(entry).some(key=>!['entryId','parentId','receipt'].includes(key))||typeof entry.entryId!=='string'||!entry.entryId||seen.has(entry.entryId)||entry.parentId!==null&&typeof entry.parentId!=='string')throw noticeFailure('NIGHT_JOB_COMPLETION_ENTRY_INVALID')
+  validateNativeAudit(entry.receipt)
+  seen.add(entry.entryId)
+ }
+ const receipts=entries.map(entry=>entry.receipt)
+ officialJobEvents(receipts,actor.id)
+ const unresolved=new Set(unresolvedNativeJobReceipts(receipts,actor.id).map(receipt=>receipt.jobId)),registrations=new Map()
+ for(const {receipt}of entries)if(receipt?.domain==='job'&&receipt.kind==='registered'&&receipt.payload.owner===actor.id)registrations.set(receipt.payload.jobId,receipt.payload)
+ let enqueued=0,unknown=0
+ for(const entry of entries){
+  const receipt=entry.receipt,data=receipt?.payload
+  if(receipt?.domain!=='job'||receipt.kind!=='settled'||data.owner!==actor.id||entryId!==undefined&&entry.entryId!==entryId)continue
+  if(data.completionNotice===undefined){unknown++;continue}
+  if(data.completionNotice!=='pending'||data.producerReported!==true||unresolved.has(data.jobId))continue
+  const registered=registrations.get(data.jobId)
+  if(!registered||!['jobId','owner','kind','label','startedAt'].every(key=>registered[key]===data[key])||!['callId','rootCallId','toolName'].every(key=>registered.toolCall[key]===data.toolCall[key]))continue
+  const job={id:data.jobId,kind:data.kind,label:data.label,status:data.status,startedAt:data.startedAt,finishedAt:data.finishedAt,...data.detail===undefined?{}:{detail:data.detail},...data.outputLimitBytes===undefined?{}:{outputLimitBytes:data.outputLimitBytes}}
+  assertOfficialJobOwner(ctx,actor)
+  await enqueueBusinessNotice(actor,{id:`job:${job.id}:${entry.entryId}`,source:{kind:'job-completion',jobId:job.id,terminalReceiptId:entry.entryId},content:[{type:'text',text:fitCompletionNotice(job)}]})
+  enqueued++
+ }
+ return {enqueued,unknown}
+}
 function apply(ctx, config) {
 	const waitDefault = config.waitTimeoutMs ?? 3e4;
 	const waitCap = config.maxWaitTimeoutMs ?? 6e5;
@@ -249,14 +284,22 @@ function apply(ctx, config) {
 		text: "Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job's work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering."
 	});
 	const killedByModel = /* @__PURE__ */ new Set();
+    ctx.on('agent/created',async({agent})=>{if(!agent.piSession)return;const result=await reconcileJobCompletionNotices(ctx,agent);if(result.unknown)ctx.logger.warn('NIGHT_JOB_COMPLETION_NOTICE_UNKNOWN');return result})
 	ctx.jobs.events.subscribe({ owners: "scope" }, (event) => {
 		if (event.type === "removed") {
 			killedByModel.delete(event.job.id);
 			return;
 		}
 		if (event.type !== "settled") return;
+        const owner=event.job.owner===undefined?undefined:ctx.get('agents')?.get(event.job.owner)
+        if(owner?.piSession){
+            killedByModel.delete(event.job.id)
+            if(event.completionNotice!=='pending'||event.producerReported!==true)return
+            if(typeof event.terminalReceiptId!=='string'){ctx.logger.warn('NIGHT_JOB_COMPLETION_RECEIPTS_REQUIRED');return}
+            void reconcileJobCompletionNotices(ctx,owner,{entryId:event.terminalReceiptId}).catch(error=>ctx.logger.warn(String(error)))
+            return
+        }
 		if (killedByModel.delete(event.job.id) || event.awaited || event.cause === "teardown" || event.job.owner === void 0) return;
-		const owner = ctx.get("agents")?.get(event.job.owner);
 		if (owner === void 0) return;
 		const message = createUserMessage({
 			content: [{
@@ -326,6 +369,7 @@ function apply(ctx, config) {
 			}
 		},
 		async execute(args, exec) {
+            if(exec.agent?.piSession)assertOfficialJobOwner(ctx,exec.agent,{requireInitiator:true})
 			const id = validateJobId(args.job_id);
 			const jobs = ctx.jobs;
 			if (args.wait === true) await jobs.wait(id, Math.min(args.timeout_ms ?? waitDefault, waitCap), exec.agent?.id, exec.signal);
@@ -348,6 +392,7 @@ function apply(ctx, config) {
 			}]
 		},
 		execute(_args, exec) {
+            if(exec.agent?.piSession)assertOfficialJobOwner(ctx,exec.agent,{requireInitiator:true})
 			const jobs = ctx.jobs.list(exec.agent?.id);
 			return Promise.resolve(jobs.map(publicJob));
 		},
@@ -390,6 +435,7 @@ function apply(ctx, config) {
 			}]
 		},
 		execute(args, exec) {
+            if(exec.agent?.piSession)assertOfficialJobOwner(ctx,exec.agent,{requireInitiator:true})
 			const id = validateJobId(args.job_id);
 			const jobs = ctx.jobs;
 			const result = jobs.kill(id, exec.agent?.id, args.reason);

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFile,mkdtemp,rm} from 'node:fs/promises'
+import {readFile,writeFile,mkdtemp,rm,stat} from 'node:fs/promises'
 import {createHost} from '../src/host.js'
 import {backupData,restoreData} from '../src/runtime/backup.js'
 import {join} from 'node:path'
@@ -33,8 +33,8 @@ test('one task directly writes an artifact, cold resumes the same session, denie
   assert.match(JSON.stringify(f.requests),/TASK_EFFECT_ALREADY_ATTEMPTED/)
   assert.equal((await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,1)
   for(const body of f.requests)assert.ok(!body.tools?.some(t=>/^(subagent|task_delegate)/.test(t.function.name)))
-  const read=await f.host.ctx.sessionPersistence.open(sessionId,'read');let events;try{events=(await read.read()).events}finally{await read.close()}
-  assert.equal(events.filter(e=>e.type==='plugin:night/task-effect-intent').length,1);assert.equal(events.filter(e=>e.type==='plugin:night/task-effect-result').length,1)
+  const stored=await f.host.ctx.sessionPersistence.readNative(sessionId,{requireComplete:true})
+  assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent').length,1);assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-result').length,1)
   await f.host.ctx.reflection.whenIdle();assert.equal(reviews,1)
   const resume=await f.host.ctx.sessionController.resolveAgent(sessionId);assert.match(resume.error?.message??'',/TASK_OWNED/)
   await h.close();await f.close();const backup=join(f.root,'backups','single');await backupData(f.config,backup)
@@ -71,4 +71,34 @@ test('single-task delivery freezes only explicitly reported workspace files and 
   await assert.rejects(freezeSingleTaskFiles({...base,reported:['../outside.txt'],selected:[{path:'../outside.txt'}]}),/OUTSIDE_TASK/)
   await assert.rejects(freezeSingleTaskFiles({...base,reported:['alias.txt'],selected:[{path:'alias.txt'}]}),/SCOPE_DENIED/)
   const [frozen]=await freezeSingleTaskFiles({...base,reported:['proof.txt'],selected:[{path:'proof.txt'}]});await writeFile(join(directory,'proof.txt'),'changed later');assert.equal(await readFile((await files.resolve(frozen.artifact)).path,'utf8'),'immutable proof')
+})
+
+test('an uncertain default task effect releases its physically drained actor and writer while keeping reconciliation held',{timeout:15000},async()=>{
+  const cleanups=[],f=await memoryHost({after:fn=>cleanups.push(fn)},body=>body.tools?.some(tool=>tool.function.name==='fault_after_write')?{tool:'fault_after_write',args:{}}:undefined)
+  const ctx=f.host.ctx;let h,task,effects=0
+  ctx.get('tools').register({name:'fault_after_write',description:'Local fixture effect with an uncertain response.',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){
+    effects++;await writeFile(join(exec.agent.metadata.cwd,'work','uncertain.txt'),'effect happened before response failed');throw Error('local effect response failed')
+  }})
+  try{
+    h=await serviceFor(f)
+    task=await h.service.createTask({requestId:'uncertain-effect',objective:'Record the local proof once'})
+    await until(async()=>!!(await h.service.taskDialogue(task.taskId)).error)
+    await h.service.whenIdle()
+    const row=await h.store.query({kind:'task.get',taskId:task.taskId}),dialogue=await h.service.taskDialogue(task.taskId),stored=await ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true})
+    assert.equal(await readFile(join(stored.header.cwd,'work','uncertain.txt'),'utf8'),'effect happened before response failed')
+    assert.equal(effects,1);assert.equal(f.requests.length,1)
+    assert.equal(row.drained,true,JSON.stringify({error:dialogue.error,actorLive:!!ctx.agents.get(row.sessionId),writerLive:!!ctx.piAuthority.describe(row.sessionId)}))
+    assert.equal(ctx.agents.get(row.sessionId),undefined);assert.equal(ctx.piAuthority.describe(row.sessionId),undefined)
+    await assert.rejects(stat(ctx.sessionPersistence.path(row.sessionId)+'.lock'),{code:'ENOENT'})
+    assert.equal(dialogue.error,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+    assert.equal(row.lastDecision.action,'blocked');assert.ok(row.lastDecision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))
+    assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent').length,1)
+    assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-result').length,0)
+    await h.service.recover();await h.service.whenIdle()
+    assert.equal(effects,1);assert.equal(f.requests.length,1)
+  }finally{
+    const id=task?.session?.sessionId
+    await (id?ctx.agents.get(id)?.dispose():undefined)
+    await h?.close();for(const cleanup of cleanups.reverse())await cleanup()
+  }
 })

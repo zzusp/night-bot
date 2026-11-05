@@ -75,8 +75,8 @@
       "source": "coordination-context.js",
       "sourceSha256": "3574c57fc954f47af84e0ff1a8d2da47a3f172b031d2d933cff46734f8beba43",
       "status": "adapted",
-      "sha256": "3f2bc10cbaafde638e1a856fd1aaad42458e0cc4b3fd3ac2859e3709071c66ec",
-      "adaptation": " Pi live writer context is the sole visible-material source; no audit/surface derivation fallback or stale surface-generation cache."
+      "sha256": "bf78aa713a93340b640b7ee3af5ef9e830955ce2f724d2fed713833a11c3cfef",
+      "adaptation": "Read the official actor SessionManager projection and private source-bound business inputs directly."
     },
     {
       "source": "coordination-ledger.js",
@@ -420,8 +420,9 @@
     {
       "source": "execution.js",
       "sourceSha256": "fd183488a96e69bfe3ab739d976e20117bd132ff7d53edc3faaa1480e6ea1816",
-      "status": "retained",
-      "sha256": "fd183488a96e69bfe3ab739d976e20117bd132ff7d53edc3faaa1480e6ea1816"
+      "status": "adapted",
+      "sha256": "323c93d3af5f9be7d2b1648f6c67f3c812316fb304b6af807f98fc4f28a33a4d",
+      "adaptation": "Require the official Pi application factory service rather than the retired DSH-derived loop service."
     },
     {
       "source": "fake-llm.js",
@@ -452,8 +453,8 @@
       "source": "group-coordinator-session.js",
       "sourceSha256": "36b5f8dc5cf35d8c614a9eb32663ebe9e2604fa451b5de61785a44090e15191c",
       "status": "adapted",
-      "sha256": "797695dd676c0df5edbc8f52a433fe44f771bcb01337237ff868c9674a46290b",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
+      "sha256": "ad72f1daf6c241629a6e5e0ed7b9afaea3b91cb512ac44e660153cc342dc5238",
+      "adaptation": "Official AgentSession coordinator with typed business receipts, durable source-bound admission and cancel/drain; no legacy Session, event projection or source-fold."
     },
     {
       "source": "group-message.js",
@@ -556,8 +557,8 @@
       "source": "model-context.js",
       "sourceSha256": "fb7275812c81b863eab6f838bc548a2a1bc65a52f7f61f96140118093dc5a752",
       "status": "adapted",
-      "sha256": "d876d4c82500bcaec47938bc471a16e4a38322b1196e2c25190639cda9d4892d",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper."
+      "sha256": "890c0cbe7dcc91ffdca958d71f4f2b78838c061eaf8dc9e6de15dbe7529e259f",
+      "adaptation": "Business immutable file content index accepts exact official actor metadata without constructing a Session or projecting message history."
     },
     {
       "source": "native-dws-send.js",
@@ -569,7 +570,7 @@
       "source": "native-maintenance-drain.js",
       "sourceSha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b",
       "status": "adapted",
-      "sha256": "9d505378abee528fe1fe841fa8e45e86a9ce56bd42be3809fd06631414d51b12",
+      "sha256": "ff2c3f9d93d0c90a8e882e53b4db11d5a5327ae1a5d2996b822a2200b71589d2",
       "adaptation": "Read strict native committed Pi projections; require explicit native business drain receipts instead of inferring quiescence from messages."
     },
     {
@@ -697,7 +698,7 @@
       "source": "performance.js",
       "sourceSha256": "ecaf9bb3d2bf5dc6dc061b6ec97a37e0f14f062ab960cd5a1514b99a206af1bb",
       "status": "adapted",
-      "sha256": "fe5f970de772b0c24e30838b7159780dd00a1b67183eb162bb3d8aa2d28574a2",
+      "sha256": "d425b31d9836d6023a4bada449a7b8f16d523077851b431cf095fe4f01599c30",
       "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
@@ -716,14 +717,15 @@
       "source": "platform-schedule.js",
       "sourceSha256": "2e3da4accc1654b8eff117b3df8db8cdfab5d88f1df53c86f27ad1d345f400ac",
       "status": "adapted",
-      "sha256": "13489b4fc82558ca6a5c79042aa7f3426cfacec6b9b97fa46d68149c9f08793f",
+      "sha256": "9049ebeacffeb57b89ad5b573a3c2f98acb1915527d3e7f2fc00d4b783ad38cd",
       "adaptation": "Keep the native scheduler-owned pending inbox delivery; do not enqueue a second platform recovery input between receipt commit and wake."
     },
     {
       "source": "resident.js",
       "sourceSha256": "493dacb1129ed7559400bd190fed44c4a639dcfdab14403738411faa2b70b4ed",
-      "status": "retained",
-      "sha256": "493dacb1129ed7559400bd190fed44c4a639dcfdab14403738411faa2b70b4ed"
+      "status": "adapted",
+      "sha256": "6b6ee6ef97d1c8d328136ea5f58a9ec55795bb9bb59b7d1bbcca54fc021b7a40",
+      "adaptation": "Require the official Pi application factory service rather than the retired DSH-derived loop service."
     },
     {
       "source": "resource-close.js",
@@ -789,7 +791,7 @@
       "source": "store.js",
       "sourceSha256": "642f453d7baf48c065c8f504028a59e5052d027487b6433d916ab87c522bcfe2",
       "status": "adapted",
-      "sha256": "679b62d8a7f2f1ffa048091e0e6cf2fb274dde5835321ed7bfb44e1ef9998a14",
+      "sha256": "f3c231b6ca51ba20516a14354b3dea1fc54ff78108f0e70e8b2a47695bc94016",
       "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
@@ -996,7 +998,7 @@
       "source": "task-resident-runtime.js",
       "sourceSha256": "22e0fbeadf09a035a73b082c1dd52ef773f637c8282bf61172152648e906e9b8",
       "status": "retained",
-      "sha256": "22e0fbeadf09a035a73b082c1dd52ef773f637c8282bf61172152648e906e9b8"
+      "sha256": "761f07f79603a6488e94ff1ee9b1fa20d5f5d8dc154c4ede9aabcad7122b90dd"
     },
     {
       "source": "task-result.js",
@@ -1014,7 +1016,7 @@
       "source": "task-session-observability.js",
       "sourceSha256": "248e2c517cf9b40fb0207bbfa93b696bc47a53a597ea546e2142f463e7344a5a",
       "status": "retained",
-      "sha256": "248e2c517cf9b40fb0207bbfa93b696bc47a53a597ea546e2142f463e7344a5a"
+      "sha256": "77fb19f540c0e5e926e1961046b420e493992f37af7413ed123c2e1fbf066e0b"
     },
     {
       "source": "task-session-persistence.js",
@@ -1027,15 +1029,15 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "7f39f450adee236b8caacd491472e2b89e5ad5b22c831a4f452997d824a49180",
-      "adaptation": "New portable-kit runtime uses one task execution session, typed channel ingress, first-tier preliminary replies and separate completion reflection; original explicit-root reference behavior retained for compatibility tests. Integrated per-task archive lifecycle and explicit portable maintenance path codec. Integrated neutral channel metadata, quoted identities and automated-message routing guards."
+      "sha256": "2ab5cbc6db28fe91169e7a82b3afae3dc2dca81ed2e66924318291c351722a86",
+      "adaptation": "Preserve business task behavior and native single-task recovery while isolating legacy event inspection to the split driver."
     },
     {
       "source": "task-session.js",
       "sourceSha256": "afa52ceb8277de93442096ddfe4d7bca6690eab0bd7d6d3dc7f93fa05119c163",
       "status": "adapted",
-      "sha256": "c68a8c68d3b3844445e65b57767e5d02a38680dff17ad535762f3cd1d8989b88",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
+      "sha256": "8d7ffe99d3d6c3bf92730c43d667c8604b9c547ec310b1ba022b3640d63d25ee",
+      "adaptation": "Official actor context retirement uses source-bound context_edit; legacy task path retained pending explicit migration."
     },
     {
       "source": "task-source-instructions.js",

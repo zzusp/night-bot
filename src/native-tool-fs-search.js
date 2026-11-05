@@ -275,7 +275,7 @@ function retainGrepMatches(matches, maxMatches, maxLineBytes) {
 * @returns the saved spill reference, or `undefined` when the result could not be saved.
 */
 async function trySaveFormattedResult(ctx, exec, suggestedName, content) {
-	const sessionId = exec.agent?.session.header.id;
+	const sessionId = exec.agent?.piSession ? exec.agent.id : exec.agent?.session.header.id;
 	if (sessionId === void 0) {
 		ctx.logger.warn(`tool-fs-search: no session owner for ${exec.name} result; complete result not saved`);
 		return;
@@ -763,10 +763,11 @@ function presentGlobResult(_args, result) {
 * @param caps - the deployment's resolved glob caps (plugin config after defaulting).
 */
 function applyGlobTool(ctx, caps) {
+	const guidance = ({ scope }) => ctx.tools.get("glob", scope) === void 0 ? "" : "Use the glob tool — not shell find — to discover files by path pattern.";
 	ctx.systemPrompt.section({
 		name: "tool:glob",
 		order: ctx.systemPrompt.getSectionOrder("TOOL_GLOB"),
-		text: ({ scope }) => ctx.tools.get("glob", scope) === void 0 ? "" : "Use the glob tool — not shell find — to discover files by path pattern."
+		text: guidance, officialText: guidance
 	});
 	const overCapDescription = caps.sampleOverCapGlobResults ? "is sampled across top-level entries" : "keeps the first paths";
 	const tool = defineTool({
@@ -1072,10 +1073,11 @@ function presentGrepResult(_args, result) {
 * @param caps - the deployment's resolved grep caps (plugin config after defaulting).
 */
 function applyGrepTool(ctx, caps) {
+	const guidance = ({ scope }) => ctx.tools.get("grep", scope) === void 0 ? "" : "Use the grep tool — not shell grep or rg — to search file contents." + (ctx.tools.get("read", scope) === void 0 ? "" : " Use read on a matched file when you need surrounding context.");
 	ctx.systemPrompt.section({
 		name: "tool:grep",
 		order: ctx.systemPrompt.getSectionOrder("TOOL_GREP"),
-		text: ({ scope }) => ctx.tools.get("grep", scope) === void 0 ? "" : "Use the grep tool — not shell grep or rg — to search file contents." + (ctx.tools.get("read", scope) === void 0 ? "" : " Use read on a matched file when you need surrounding context.")
+		text: guidance, officialText: guidance
 	});
 	const tool = defineTool({
 		name: "grep",

@@ -2,14 +2,13 @@ import {Service} from '@deepseek-ai/cordis'
 import {z} from 'zod'
 import {join} from 'node:path'
 import {hash} from '../memory/format.js'
-import {appendPluginRecord} from '../native-session-protocol.js'
-import {createUserMessage} from '../native-message-protocol.js'
+import {isDeepStrictEqual} from 'node:util'
 import {failure,privateDirectory,readRegular,atomicWrite,withLock} from '../runtime/files.js'
 const envelopeSchema=z.object({type:z.enum(['chat','chat-room']),channelId:z.string().min(1).max(128),conversationId:z.string().min(1).max(256),senderId:z.string().min(1).max(256),messageId:z.string().min(1).max(256),text:z.string().min(1).max(32000),sentAt:z.string().optional(),mentionedAgent:z.boolean().optional(),mentions:z.array(z.string().min(1).max(256)).max(256).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),resourceRefs:z.array(z.record(z.string(),z.unknown())).max(32).optional(),quotedMessage:z.object({messageId:z.string(),senderId:z.string().optional(),text:z.string().optional()}).strict().optional()}).strict()
 /** Trusted adapter ingress, not an unauthenticated network endpoint. */
 export default class Channels extends Service {
-  static inject=['agents','sessions','sessionPersistence','agentPresets','agentDefaultModel','memory','runtimePaths']
-  constructor(ctx){super(ctx,'channels');this.host=ctx;this.tails=new Map();this.handles=new Map();this.closed=false;this.contexts=new Map();this.transports=new Map();this.plugins=new Map();this.observers=new Map();this.ready=this.loadContexts();ctx.effect(()=>async()=>{this.closed=true;await Promise.allSettled([...this.tails.values()]);await Promise.allSettled([...this.handles.values()].map(handle=>handle.dispose()))},'channel drain')}
+  static inject=['agents','sessionPersistence','agentPresets','agentDefaultModel','memory','runtimePaths']
+  constructor(ctx){super(ctx,'channels');this.host=ctx;this.tails=new Map();this.handles=new Map();this.closed=false;this.contexts=new Map();this.transports=new Map();this.plugins=new Map();this.observers=new Map();this.ready=this.loadContexts();ctx.effect(()=>async()=>{this.closed=true;const pending=await Promise.allSettled([...this.tails.values()]);const disposed=await Promise.allSettled([...this.handles.values()].map(handle=>handle.dispose()));const errors=[...pending,...disposed].filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Channel drain failed')},'channel drain')}
   async [Service.init](){await this.ready}
   async loadContexts(){for(const [key,value]of Object.entries(JSON.parse(await readRegular(join(this.host.runtimePaths.state,'channels','contexts.json'))??'{}')))this.contexts.set(key,value)}
   groupContext(id){return this.contexts.get(id)}
@@ -49,14 +48,38 @@ export default class Channels extends Service {
   }
   async deliver({envelope,sessionId,workspace,binding,principal}){
     await privateDirectory(join(this.host.runtimePaths.workspaces,'conversations'));await privateDirectory(workspace);await this.host.memory.bindSession(sessionId,binding)
-    let handle=this.handles.get(sessionId)
-    if(!handle){const existing=await this.host.sessionPersistence.stat(sessionId);const options={agentOptions:this.host.agentDefaultModel.currentSelection(),setup:async ctx=>{await this.host.agentPresets.mount(ctx,'night-bot')}};handle=existing?await this.host.agents.resume({...options,resumeSessionId:sessionId}):await this.host.agents.create({...options,sessionId,meta:{cwd:workspace,agentPreset:'night-bot'}});this.handles.set(sessionId,handle)}
+    const source={kind:'user',channelType:envelope.type,channelId:envelope.channelId,conversationId:envelope.conversationId,senderId:envelope.senderId,channelMessageId:envelope.messageId,principal,...Object.fromEntries(['mentionedAgent','mentions','platformFlags','quotedMessage','resourceRefs'].filter(key=>envelope[key]!==undefined).map(key=>[key,envelope[key]]))}
     const messageKey=hash(JSON.stringify([envelope.channelId,envelope.conversationId,envelope.messageId]))
-    const prior=handle.agent.session.snapshotEvents().find(e=>e.type==='user/message'&&e.data.source?.channelMessageKey===messageKey)
-    if(prior){if(prior.data.content[0]?.text!==envelope.text||prior.data.source.senderId!==envelope.senderId)throw failure('CHANNEL_MESSAGE_ID_CONFLICT');const receipt=handle.agent.session.snapshotEvents().find(e=>e.type==='plugin:night/channel-delivery'&&e.data.messageKey===messageKey);return {ok:receipt?.data.ok===true,duplicate:true,sessionId,...!receipt?{code:'CHANNEL_DELIVERY_UNCERTAIN'}:{}}}
-    const start=handle.agent.session.snapshotEvents().length
-    handle.agent.followup(createUserMessage({source:{kind:'user',channelType:envelope.type,channelId:envelope.channelId,conversationId:envelope.conversationId,senderId:envelope.senderId,channelMessageId:envelope.messageId,principal,channelMessageKey:messageKey,...Object.fromEntries(['mentionedAgent','mentions','platformFlags','quotedMessage','resourceRefs'].filter(key=>envelope[key]!==undefined).map(key=>[key,envelope[key]]))},content:[{type:'text',text:envelope.text}]}))
-    await handle.agent.whenIdle();const end=handle.agent.session.snapshotEvents().findLast(e=>e.seq>=start&&e.type==='turn/end'),ok=end?.data.reason.kind==='completed';appendPluginRecord(handle.agent.session,'plugin:night/channel-delivery',{messageKey,ok});await this.host.sessions.flush(handle.agent.session)
+    source.channelMessageKey=messageKey
+    const packet={id:'channel:'+messageKey,source,content:[{type:'text',text:envelope.text}]}
+    let handle=this.handles.get(sessionId)
+    if(!handle){
+      const authorizeInput=async(candidate,actor)=>{
+        try{
+          const src=candidate.source,entry={type:src.channelType,channelId:src.channelId,conversationId:src.conversationId,senderId:src.senderId,messageId:src.channelMessageId,text:candidate.content?.[0]?.text,...Object.fromEntries(['mentionedAgent','mentions','platformFlags','quotedMessage','resourceRefs'].filter(key=>src[key]!==undefined).map(key=>[key,src[key]]))}
+          const identity=this.identity(entry),saved=this.contexts.get(identity.sessionId),fact=saved?.messageFacts?.[entry.messageId]
+          const payloadHash=hash(JSON.stringify([identity.principal,entry.text,entry.resourceRefs??[],entry.quotedMessage??null,entry.mentionedAgent??null,entry.mentions??[],entry.platformFlags??{}]))
+          return actor.id===sessionId&&identity.sessionId===sessionId&&!!fact&&fact.payloadHash===payloadHash&&src.kind==='user'&&src.principal===identity.principal&&candidate.id==='channel:'+hash(JSON.stringify([entry.channelId,entry.conversationId,entry.messageId]))&&isDeepStrictEqual(candidate.content,[{type:'text',text:entry.text}])
+        }catch{return false}
+      }
+      const existing=await this.host.sessionPersistence.stat(sessionId)
+      const auditKinds={'channel/delivery':value=>value!==null&&typeof value==='object'&&Object.keys(value).length===2&&typeof value.messageKey==='string'&&/^[a-f0-9]{64}$/.test(value.messageKey)&&typeof value.ok==='boolean'}
+      const options={agentOptions:this.host.agentDefaultModel.currentSelection(),authorizeInput,auditKinds,setup:async ctx=>{await this.host.agentPresets.mount(ctx,'night-bot')}}
+      handle=existing?await this.host.agents.resume({...options,resumeSessionId:sessionId}):await this.host.agents.create({...options,sessionId,meta:{cwd:workspace,agentPreset:'night-bot'}})
+      this.handles.set(sessionId,handle)
+    }
+    const actor=handle.agent,prior=actor.admission.lookupPacket(packet.id)
+    if(prior){
+      if(!isDeepStrictEqual(prior,packet))throw failure('CHANNEL_MESSAGE_ID_CONFLICT')
+      const receipt=(await actor.receipts.read()).find(r=>r.domain==='channel'&&r.kind==='delivery'&&r.payload.messageKey===messageKey)
+      return {ok:receipt?.payload.ok===true,duplicate:true,sessionId,...!receipt?{code:'CHANNEL_DELIVERY_UNCERTAIN'}:{}}
+    }
+    await actor.input.enqueue(packet)
+    await actor.input.deliver(packet.id)
+    await actor.whenIdle()
+    const last=actor.piSession.messages.findLast(message=>message.role==='assistant'),ok=last?.stopReason==='stop'
+    actor.receipts.append({domain:'channel',kind:'delivery',version:1,payload:{messageKey,ok}})
+    await actor.receipts.commit()
     return {ok,...!ok?{code:'CHANNEL_TURN_INCOMPLETE'}:{},sessionId,channelType:envelope.type,conversationId:envelope.conversationId,senderId:envelope.senderId,taskSource:{actorId:principal,...envelope.type==='chat-room'?{groupId:binding.groupId}:{},channelType:envelope.type,channelId:envelope.channelId,conversationId:envelope.conversationId}}
   }
 }

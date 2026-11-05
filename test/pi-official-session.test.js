@@ -9,12 +9,14 @@ import {SessionStore} from '../packages/capability-compat/session/index.js'
 import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import NativeTools from '../src/native-tools.js'
+import NativeAgents from '../src/native-agents.js'
 import {createNightOfficialSession} from '../src/runtime/pi-official-session.js'
 import {definition} from './fixtures/pi-official-tools.js'
+import {createBusinessAdmission,admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
 
 test('real official components execute, commit, cold-read and reopen with no Host session facade',async t=>{
  const root=await mkdtemp('/tmp/night-official-session-'),agentDir=join(root,'agent');await mkdir(agentDir)
- const ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
+ const ctx=new Context();new SessionStore(ctx);new NativeAgents(ctx);await ctx.plugin(Authority)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
  new NativeTools(ctx)
  let active,live=true,effects=0,policyFailure
@@ -30,17 +32,24 @@ test('real official components execute, commit, cold-read and reopen with no Hos
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  ctx.tools.register(definition('effect',async()=>{effects++;return{ok:true}}))
- const options={auditKinds:{'effect/receipt':v=>v.callId==='effect-one'&&v.state==='settled'}}
+ const options={auditKinds:{...admissionAuditKinds,'effect/receipt':v=>v.callId==='effect-one'&&v.state==='settled'}}
  let store=await backend.createNative(ctx.sessions.prepare('official',{meta:{cwd:root}}).header,options)
+ let admission=await createBusinessAdmission({store,authorize:packet=>packet.source.kind==='coordinator'})
  ctx.on('tools/execute',async(exec,next)=>{const result=await next();store.appendAudit({version:1,domain:'effect',kind:'receipt',payload:{callId:exec.callId,state:'settled'}});await exec.agent.audit.flush();return result})
  const settings=()=>SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}})
- const create=()=>createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxTokens:31,maxRetries:0}},settingsManager:settings(),admission:{current:()=>({id:'admitted',messages:[]})},context:{systemPrompt:{officialSections(){if(policyFailure)throw policyFailure;return{}}}},createAudit:()=>({isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=> 'never',append(){throw Error('no approval expected')},flush:()=>store.commit()})})
+ const create=()=>createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxTokens:31,maxRetries:0}},settingsManager:settings(),admission,beforeRequest:()=>admission.beforeRequest(),context:{systemPrompt:{officialSections(){if(policyFailure)throw policyFailure;return{}}}},createAudit:()=>({isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=> 'never',append(){throw Error('no approval expected')},flush:()=>store.commit()})})
  active=await create();assert.equal(active.actor.session,undefined)
- await active.prompt('run once')
+ const detach=ctx.agents.enter(active.actor,undefined)
+ assert.equal(ctx.agents.get('official'),active.actor)
+ assert.throws(()=>ctx.agents.enter({id:'forged',piSession:{sessionId:'forged'}},undefined),/identity/)
+ detach()
+ await admission.enqueue({id:'one',source:{kind:'coordinator'},content:'run once'})
+ await active.deliver('one');assert.deepEqual(admission.pending(),[])
  assert.equal(effects,1);assert.equal(dispatches,2)
- const cold=await backend.readNative('official');assert.equal(cold.audit.length,1);assert.equal(cold.context.piMessages.filter(m=>m.role==='toolResult').length,1)
+ const cold=await backend.readNative('official');assert.equal(cold.audit.length,3);assert.equal(cold.context.piMessages.filter(m=>m.role==='toolResult').length,1)
  await active.close();active=undefined
- store=await backend.openNative('official',options);active=await create()
+ store=await backend.openNative('official',options);admission=await createBusinessAdmission({store,authorize:()=>true});active=await create()
+ assert.deepEqual(await active.deliver('one'),{id:'one',duplicate:true})
  assert.equal(effects,1);assert.equal(dispatches,2,'reopening never replays a tool or dispatches the model')
  assert.ok(active.session.messages.some(m=>m.role==='toolResult'&&m.toolCallId==='effect-one'))
  policyFailure=Object.assign(new Error('Signed content cannot be rewritten'),{code:'MEMORY_SIGNED_ASSISTANT_POLICY_CONFLICT'})

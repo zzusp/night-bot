@@ -3,7 +3,10 @@ import {writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import assert from 'node:assert/strict'
 import {createAttemptObservation} from '../src/runtime/attempt-observation.js'
-import {expandAssistantStream,createUserMessage} from '../src/native-message-protocol.js'
+import {expandAssistantStream} from '../src/native-message-protocol.js'
+import {AgentSession} from '@earendil-works/pi-coding-agent'
+import {officialToolsFixture,definition} from './fixtures/pi-official-tools.js'
+import {createAssistantMessageEventStream} from '@earendil-works/pi-ai'
 import {subagentFixture} from './fixtures/pi-subagent-fixture.js'
 test('application observation preserves immutable Night audit and has no framing or commit API',()=>{
  const observer=createAttemptObservation(),chunk={type:'text-delta',index:0,text:'first'};observer.push(chunk);chunk.text='mutated'
@@ -17,11 +20,19 @@ test('max-token observation cannot publish a partial tool call or misalign repla
  assert.deepEqual(observer.blocks(),[{type:'text',text:'safe'}]);assert.deepEqual(observer.replayState,{response:{responseId:'fixture'},blocks:[{kind:'text'}]})
 })
 test('actual Pi tool continuation persists one assistant result per step without obsolete assistant frames',async t=>{
- const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'observed-read',name:'read',args:{file_path:'observation.txt'}}]}:{text:'observation complete'}),parent=await f.parent('observation-owner');let frames=0
- f.host.ctx.on('agent/assistant-stream',()=>frames++)
+ const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'observed-read',name:'read',args:{file_path:'observation.txt'}}]}:{text:'observation complete'})
+ const handle=await f.host.ctx.agents.create({sessionId:'observation-owner',meta:{cwd:join(f.root,'work')},agentOptions:{provider:'fixture',model:'m'},authorizeInput:(packet,actor)=>actor.id==='observation-owner'&&packet.id==='observation-input'&&packet.source.kind==='fixture-user',setup:async ctx=>{await ctx.get('agentPresets').mount(ctx,'night-bot')}});f.handles.push(handle)
+ let frames=0;f.host.ctx.on('agent/assistant-stream',()=>frames++)
  await writeFile(join(f.root,'work','observation.txt'),'OWNED_OBSERVATION_PROOF')
- parent.steer(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'Read the fixture once'}]}));await parent.whenIdle()
- const events=await f.events(parent.id),assistants=events.filter(event=>event.type==='assistant/message');assert.equal(f.requests.length,2);assert.equal(frames,0);assert.equal(assistants.length,2);const results=events.filter(event=>event.type==='tool/result'&&event.data.message.toolCallId==='observed-read');assert.equal(results.length,1);assert.equal(results[0].data.message.isError,false);assert.match(JSON.stringify(f.requests[1]),/OWNED_OBSERVATION_PROOF/);assert.match(JSON.stringify(assistants),/observation complete/);assert.equal(parent.providerStreamProtocol,'pi-native')
+ await handle.enqueue({id:'observation-input',source:{kind:'fixture-user'},content:'Read the fixture once'});await handle.deliver('observation-input');await handle.whenIdle()
+ assert.ok(handle.session instanceof AgentSession);assert.equal(handle.agent.session,undefined)
+ const saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id),messages=saved.entries.filter(entry=>entry.type==='message').map(entry=>entry.message),assistants=messages.filter(message=>message.role==='assistant'),results=messages.filter(message=>message.role==='toolResult'&&message.toolCallId==='observed-read')
+ assert.equal(f.requests.length,2);assert.equal(frames,0);assert.equal(assistants.length,2);assert.equal(results.length,1);assert.equal(results[0].isError,false)
+ const calls=assistants.flatMap(message=>message.content.filter(block=>block.type==='toolCall'));assert.equal(calls.length,1);assert.equal(calls[0].id,results[0].toolCallId);assert.equal(calls[0].name,results[0].toolName)
+ assert.match(JSON.stringify(f.requests[1]),/OWNED_OBSERVATION_PROOF/);assert.match(JSON.stringify(assistants),/observation complete/)
+ assert.equal(saved.entries.some(entry=>entry.type==='custom'&&entry.customType==='night.legacy-event'&&/assistant|tool\/result/.test(entry.data?.type??'')),false)
+ assert.deepEqual(saved.context.projection.messages.filter(message=>message.role==='assistant'||message.role==='toolResult'),messages.filter(message=>message.role==='assistant'||message.role==='toolResult'))
+
 })
 test('Pi observation writes compact audit records accepted by Night durable readers',()=>{
  const observer=createAttemptObservation()
@@ -64,59 +75,25 @@ test('Pi observation rejects lossy JSON without mutating content or audit',()=>{
  block.name='changed';replay.blocks[0].signature='changed'
  assert.equal(observer.blocks()[0].name,'read');assert.equal(observer.replayState.blocks[0].signature,'original')
 })
-test('production observation preserves the native terminal response and signatures',async()=>{
- const {AssistantMessageEventStream}=await import('@earendil-works/pi-ai')
- const {nativeExecutionStream,nativePiEventSink}=await import('../src/pi-native-stream.js')
- const {observePiEvents}=await import('../src/pi-provider-events.js')
- const message={role:'assistant',provider:'fixture',model:'model',api:'openai-responses',responseId:'production-observation-response',timestamp:1,
+test('official native runtime preserves terminal response identity and signatures',async t=>{
+ const h=await officialToolsFixture(t,()=>{}),message={role:'assistant',provider:h.model.provider,model:h.model.id,api:h.model.api,responseId:'production-observation-response',timestamp:1,
   content:[{type:'text',text:'native',textSignature:'pi-signature'}],usage:{input:2,output:3,totalTokens:5,cacheRead:0,cacheWrite:0,cost:{input:0,output:0,total:0,cacheRead:0,cacheWrite:0}},stopReason:'stop'}
- const observation=createAttemptObservation()
- const stream=nativeExecutionStream(async function*(){
-  const sink=nativePiEventSink(),chunks=[],upstream=new AssistantMessageEventStream()
-  upstream.push({type:'text_delta',contentIndex:0,delta:'native',partial:message})
-  upstream.push({type:'done',reason:'stop',message});upstream.end(message)
-  for await(const event of observePiEvents(upstream,{provider:'fixture',model:'model',onChunk:chunk=>{sink.chunk(chunk);chunks.push(chunk)}})){
-   sink(event);while(chunks.length)yield chunks.shift()
-  }
- },{provider:'fixture',model:'model',signal:new AbortController().signal},observation)
- const result=await stream.result()
- assert.equal(result._hostNative,true);assert.equal(result.responseId,message.responseId)
- assert.equal(result.content[0].textSignature,'pi-signature');assert.equal(result._hostLive,observation)
- assert.equal(result._hostMessage.source.replayState.response.responseId,message.responseId)
+ h.runtime.registerProvider(h.model.provider,{api:h.model.api,streamSimple:()=>{const stream=createAssistantMessageEventStream();queueMicrotask(()=>{stream.push({type:'text_delta',contentIndex:0,delta:'native',partial:message});stream.push({type:'done',reason:'stop',message});stream.end(message)});return stream}})
+ const stream=h.runtime.streamSimple(h.model,{messages:[{role:'user',content:'inspect native signature',timestamp:1}]},{maxTokens:31,maxRetries:0}),events=[]
+ for await(const event of stream)events.push(event)
+ const result=await stream.result();assert.equal(result.responseId,message.responseId);assert.equal(result.content[0].textSignature,'pi-signature');assert.equal(result.stopReason,'stop');assert.equal(events.at(-1).message.responseId,message.responseId)
+ assert.equal(Object.keys(result).some(key=>key.startsWith('_host')),false)
 })
-test('native error and abort retain diagnostic tools and signatures without granting executable output',async()=>{
- const {AssistantMessageEventStream}=await import('@earendil-works/pi-ai')
- const {nativeExecutionStream,nativePiEventSink}=await import('../src/pi-native-stream.js')
- const {observePiEvents}=await import('../src/pi-provider-events.js')
- for(const reason of ['error','aborted'])for(const mutate of [false,true]){
-  const call={type:'toolCall',id:'diagnostic-tool',name:'write',arguments:{path:'never-written'},thoughtSignature:'tool-signature'}
-  const message={role:'assistant',provider:'fixture',model:'model',api:'openai-responses',responseId:'failure-response',timestamp:1,
-   content:[call],usage:{input:2,output:3,totalTokens:5,cacheRead:0,cacheWrite:0,cost:{input:0,output:0,total:0,cacheRead:0,cacheWrite:0}},stopReason:reason,errorMessage:reason==='error'?'500 server failure':'cancelled'}
-  const observation=createAttemptObservation()
-  const stream=nativeExecutionStream(async function*(){
-   const sink=nativePiEventSink(),chunks=[],upstream=new AssistantMessageEventStream()
-   upstream.push({type:'toolcall_start',contentIndex:0,partial:message})
-   upstream.push({type:'toolcall_end',contentIndex:0,toolCall:call,partial:message})
-   upstream.push({type:'error',reason,error:message});upstream.end(message)
-   for await(const event of observePiEvents(upstream,{provider:'fixture',model:'model',onChunk:chunk=>{sink.chunk(chunk);chunks.push(chunk)}})){
-    sink(event);while(chunks.length){const chunk=chunks.shift();yield mutate&&chunk.type==='block-end'?{...chunk,block:{...chunk.block,name:'changed'}}:chunk}
-   }
-  },{provider:'fixture',model:'model',signal:new AbortController().signal},observation)
-  const events=[];for await(const event of stream)events.push(event)
-  const result=await stream.result()
-  assert.equal(result.stopReason,reason);assert.equal(events.at(-1).type,'error');assert.equal(observation.replayState,undefined)
-  if(mutate){assert.equal(result._hostNative,undefined);assert.equal(result.responseId,undefined);assert.deepEqual(result.content,[])}
-  else{
-   assert.equal(result._hostNative,true);assert.equal(result.responseId,'failure-response');assert.equal(result.content[0].thoughtSignature,'tool-signature');assert.equal(result._hostFailure.code,reason==='error'?'SERVER':'ABORTED')
-   const {agentLoop}=await import('@earendil-works/pi-agent-core')
-   let executions=0
-   const loop=agentLoop([{role:'user',content:[{type:'text',text:'test failure'}],timestamp:1}],
-    {messages:[],tools:[{name:'write',label:'Write',description:'Must not execute',parameters:{type:'object',properties:{}},execute:async()=>{executions++;throw Error('executed failed tool')}}]},
-    {model:{provider:'fixture'},convertToLlm:messages=>messages},new AbortController().signal,
-    ()=>{const failed=new AssistantMessageEventStream();failed.push({type:'error',reason,error:result});failed.end(result);return failed})
-   const loopEvents=[];for await(const event of loop)loopEvents.push(event)
-   assert.equal(executions,0);assert.equal(loopEvents.some(event=>event.type==='tool_execution_start'),false)
-   assert.equal(loopEvents.at(-1).type,'agent_end')
-  }
- }
+test('official SDK retains failed diagnostic tool signatures and never executes them',async t=>{
+ for(const reason of ['error','aborted'])await t.test(reason,async t=>{
+  let executions=0
+  const h=await officialToolsFixture(t,({ctx})=>ctx.tools.register(definition('unsafe',async()=>{executions++;return{unexpected:true}})))
+  const call={type:'toolCall',id:'diagnostic-tool',name:'unsafe',arguments:{},thoughtSignature:'tool-signature'},message={role:'assistant',provider:h.model.provider,model:h.model.id,api:h.model.api,responseId:'failure-response',timestamp:1,content:[call],usage:{input:0,output:0,totalTokens:0,cacheRead:0,cacheWrite:0,cost:{input:0,output:0,total:0,cacheRead:0,cacheWrite:0}},stopReason:reason,errorMessage:reason==='error'?'permanent fixture error':'cancelled'}
+  h.runtime.registerProvider(h.model.provider,{api:h.model.api,streamSimple:()=>{const stream=createAssistantMessageEventStream();queueMicrotask(()=>{stream.push({type:'toolcall_start',contentIndex:0,partial:message});stream.push({type:'toolcall_end',contentIndex:0,toolCall:call,partial:message});stream.push({type:'error',reason,error:message});stream.end(message)});return stream}})
+  await h.run([])
+  assert.equal(executions,0);assert.equal(h.results.length,0)
+  const assistants=h.manager.getEntries().filter(entry=>entry.type==='message'&&entry.message.role==='assistant').map(entry=>entry.message)
+  assert.equal(assistants.length,1);assert.equal(assistants[0].stopReason,reason);assert.equal(assistants[0].content[0].thoughtSignature,'tool-signature');assert.equal(assistants[0].responseId,'failure-response')
+  assert.equal(h.manager.getEntries().some(entry=>entry.type==='message'&&entry.message.role==='toolResult'),false)
+ })
 })

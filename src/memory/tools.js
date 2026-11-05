@@ -18,3 +18,9 @@ export function apply(ctx){
     try{const result=await run(exec.agent,args);if(result?.entry&&Number.isSafeInteger(result.revision)){const scope=await ctx.memory.scope(exec.agent,args);return {...result,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}}return result}catch(error){return {ok:false,code:error.code??'MEMORY_OPERATION_FAILED',...error.committed?{committed:error.committed}:{}}}
   }}))
 }
+
+/** Factory callback derived solely from the privately bound business preset
+ * capability. Missing/foreign actors fail closed in NativePermissionPresets. */
+export function memoryWriteAuthorization(ctx){
+ return actor=>{const presets=ctx.get('permissionPresets');if(!presets)throw Object.assign(new Error('Memory permission capability required'),{code:'MEMORY_PERMISSION_CAPABILITY_REQUIRED'});return presets.authorizeMemoryWrite(actor)}
+}

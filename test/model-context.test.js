@@ -296,7 +296,7 @@ test('issue 172: complete catalogs beyond the display window and explicit tool r
   const projected = index.project(taskModelInput(raw), { reuseVisible: false })
   assert.equal(projected.operations.length, 25, 'unknown effects never disappear behind a window')
   assert.deepEqual(projected.blockers.operations, [{ operationId: 'op/24' }])
-  index.install({ systemPrompt: { section() {} }, tools: { register(tool) { tools.set(tool.name, tool) } } })
+  index.install({ get(name) { return name === 'systemPrompt' ? { section() {} } : name === 'tools' ? { register(tool) { tools.set(tool.name, tool) } } : undefined } })
   const tool = tools.get('model_content_read'), exec = { signal: new AbortController().signal }
   const first = await tool.execute({ contentRef: projected.catalogRef.contentRef, path: '/operations' }, exec)
   assert.equal(first.totalEntries, 25); assert.equal(first.nextOffset, 20)

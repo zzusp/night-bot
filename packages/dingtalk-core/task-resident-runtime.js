@@ -12,7 +12,8 @@ const validateExecutionBackend = value => {
 }
 /** Group transport/configuration facade. It has no legacy task scheduler, stage engine or Owner. */
 export async function openTaskResidentRuntime(ctx, store, cwd, { agentWorkspaceDir, agentPreset = 'standard', agentReplySignature, maxConcurrentTasks = 5, taskSessionModel = {}, executionBackend = 'dsh' } = {}) {
-  const initialExecutionBackend = validateExecutionBackend(store.getExecutionBackend?.() ?? executionBackend)
+  const piOnly = !!ctx.get?.('officialAgentFactory')
+  const initialExecutionBackend = piOnly ? 'pi' : validateExecutionBackend(store.getExecutionBackend?.() ?? executionBackend)
   const initialSignature = normalizeReplySignature(store.getReplySignature?.() ?? agentReplySignature)
   const resolveAgentWorkspace = async value => {
     if (typeof value !== 'string') throw new Error('agent_workspace_must_be_absolute')
@@ -37,18 +38,18 @@ export async function openTaskResidentRuntime(ctx, store, cwd, { agentWorkspaceD
   const taskSelection = () => taskModelConfig(store.getTaskSessionModelConfig?.() ?? taskSessionModel)
   const getAgentConfig = () => ({ agentNames: store.getAgentNames?.() ?? [], agentPreset, workspaceDir: store.getAgentWorkspaceDir?.() ?? root, ...selection(),
     taskSessionModel: taskSelection(),
-    executionBackend: store.getExecutionBackend?.() ?? initialExecutionBackend,
+    executionBackend: piOnly ? 'pi' : store.getExecutionBackend?.() ?? initialExecutionBackend,
     replySignature: store.getReplySignature?.() ?? initialSignature,
     proxyUrl: store.getProxyUrl?.() ?? '', maxConcurrentTasks: store.getMaxConcurrentTasks?.() ?? maxConcurrentTasks })
   const api = {
     taskSessionNotifications: true,
     getAgentConfig,
     async getTaskModelOptions({ provider, model }) {
-      const providers = ctx.llm.listProviders().map(({ id, name }) => ({ id, name }))
+      const providers = ctx.nativeModelRoutes.listProviders().map(({ id, name }) => ({ id, name }))
       let models = [], info
       try {
-        models = await ctx.llm.listModels(provider || taskSelection().provider)
-        if (model) info = await ctx.llm.resolveModelInfo(provider || taskSelection().provider, model)
+        models = await ctx.nativeModelRoutes.listModels(provider || taskSelection().provider)
+        if (model) info = await ctx.nativeModelRoutes.describeModel(provider || taskSelection().provider, model)
       } catch {
         return { providers, models: models.map(({ id, name }) => ({ id, name })), reasoning: null, available: false,
           modelError: '模型或提供方不可用，请核对精确模型 ID 或选择其他提供方。' }
@@ -63,7 +64,10 @@ export async function openTaskResidentRuntime(ctx, store, cwd, { agentWorkspaceD
         if (Object.hasOwn(input,'coordinationModel')) throw new Error('INDEPENDENT_COORDINATION_RETIRED')
         if (['taskPrompts','taskPromptsVersion','leafSessionPrompt','workflowVariables','workflowBindings'].some(key => Object.hasOwn(input,key))) retired()
         const patch = {}
-        if (Object.hasOwn(input, 'executionBackend')) patch.executionBackend = validateExecutionBackend(input.executionBackend)
+        if (Object.hasOwn(input, 'executionBackend')) {
+          if (piOnly) { if (input.executionBackend !== 'pi') throw Object.assign(new Error('EXECUTION_BACKEND_RETIRED'), {code:'EXECUTION_BACKEND_RETIRED'}) }
+          else patch.executionBackend = validateExecutionBackend(input.executionBackend)
+        }
         if (input.workspaceDir !== undefined) {
           patch.agentWorkspaceDir = await resolveAgentWorkspace(input.workspaceDir)
           // Agent cwd may change for future tasks. Existing task files,
@@ -93,8 +97,8 @@ export async function openTaskResidentRuntime(ctx, store, cwd, { agentWorkspaceD
         const effort = input.reasoningEffort === undefined ? old.reasoningEffort : input.reasoningEffort
         if (effort) proposedSelection.reasoningEffort = effort
         // Preflight the complete requested state before either independent store is written.
-        if (changesDefault) await ctx.llm.resolveCallConfig(proposedSelection)
-        if (patch.taskSessionModel || input.reasoningEffort !== undefined) await ctx.llm.resolveCallConfig(taskModelSelection(proposedSelection, patch.taskSessionModel ?? taskSelection()))
+        if (changesDefault) await ctx.nativeModelRoutes.validateSelection(proposedSelection)
+        if (patch.taskSessionModel || input.reasoningEffort !== undefined) await ctx.nativeModelRoutes.validateSelection(taskModelSelection(proposedSelection, patch.taskSessionModel ?? taskSelection()))
         try {
           if (changesDefault) await ctx.agentDefaultModel.saveSelection(proposedSelection)
           if (Object.keys(patch).length) await store.setAgentSettings(patch)

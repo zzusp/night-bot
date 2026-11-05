@@ -21,7 +21,7 @@ export default class NativeShellEnvironment extends Service {
  }
  collect(execution){
   this.assertOpen();const values={NIGHT_BOT_SHELL:'1'}
-  if(execution.agent!==undefined)values.NIGHT_BOT_SESSION_ID=execution.agent.session.header.id
+  if(execution.agent!==undefined)values.NIGHT_BOT_SESSION_ID=execution.agent.piSession?execution.agent.id:execution.agent.session.header.id
   for(const record of [...this.contributors.values()].sort((a,b)=>a.name.localeCompare(b.name))){const resolver=record.source.resolve;if(typeof resolver!=='function')throw new Error('Shell environment resolver unavailable');const resolved=Reflect.apply(resolver,record.source,[execution]);if(isPromise(resolved)){void Promise.prototype.then.call(resolved,()=>{},()=>{});throw new Error('Shell environment resolver must return a synchronous record')}if(!resolved||typeof resolved!=='object'||typeof resolved.then==='function')throw new Error('Shell environment resolver must return a synchronous record');for(const [key,value]of Object.entries(resolved)){if(!record.declarations.has(key))throw new Error('Undeclared shell environment key '+key);if(typeof value!=='string')throw new Error('Non-string shell environment value for '+key);values[key]=value}}
   this.assertOpen();return Object.freeze(Object.fromEntries(Object.entries(values).sort(([a],[b])=>a.localeCompare(b))))
  }

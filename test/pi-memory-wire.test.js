@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFile,readdir} from 'node:fs/promises'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
-import {createUserMessage} from '../src/native-message-protocol.js'
+import {randomUUID} from 'node:crypto'
 import {hash} from '../src/memory/format.js'
 
 test('default portable Host immediately remembers, corrects and forgets while temporary preferences stay ephemeral',async t=>{
@@ -17,7 +17,7 @@ test('default portable Host immediately remembers, corrects and forgets while te
   assert.match(JSON.stringify(f.requests.at(-1)),/Current user instructions/)
   await f.say(h.agent,'忘记 preferences/style')
   assert.equal((await f.host.ctx.memory.search(h.agent,{query:'回答'})).entries.length,0)
-  assert.ok(h.agent.session.snapshotEvents().some(e=>e.type==='user/message'&&e.data.content.some(p=>p.text==='记住 preferences/style：简短回答')),'original Pi history retained')
+  assert.ok(h.agent.piSession.sessionManager.getEntries().some(e=>e.type==='custom_message'&&e.customType==='night.business-input'&&e.content.some(p=>p.text==='记住 preferences/style：简短回答')),'original Pi history retained')
   assert.deepEqual(f.errors,[])
 })
 test('real model tools read on demand, honor source consent and revoke stale recalled facts after forget',async t=>{
@@ -49,7 +49,7 @@ test('different users, groups and project grants remain isolated through the def
 test('bindings and Markdown facts survive a real default Host cold reopen',async t=>{
   const f=await memoryHost(t),h=await f.agent('cold',{actorId:'alice'});await f.say(h.agent,'记住 facts/project：night-bot')
   await f.close();await f.boot()
-  const result=await f.host.ctx.sessionController.resolveAgent('cold');assert.ok(result.agent)
+  const result=await f.host.ctx.agents.resume({resumeSessionId:'cold',agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user',setup:ctx=>f.host.ctx.agentPresets.mount(ctx,'night-bot')});assert.ok(result.agent)
   assert.equal((await f.host.ctx.memory.read(result.agent,{topic:'facts'})).entries[0].text,'night-bot')
   await f.say(result.agent,'忘记 facts/project');assert.equal((await f.host.ctx.memory.read(result.agent,{topic:'facts'})).entries.length,0)
 })
@@ -80,7 +80,7 @@ test('an in-flight candidate extraction cannot resurrect a fact forgotten by a l
   t.after(()=>release.resolve())
   const h=await f.agent('race',{actorId:'alice'})
   const first=f.say(h.agent,'我长期偏好文字说明');await entered.promise
-  h.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'忘记 preferences/format'}]}));await h.agent.whenIdle()
+  const forget={id:randomUUID(),source:{kind:'user'},content:[{type:'text',text:'忘记 preferences/format'}]};await h.agent.input.enqueue(forget);await h.agent.input.deliver(forget.id);await h.agent.whenIdle()
   release.resolve();await first;await f.host.ctx.memory.whenIdle()
   assert.equal((await f.host.ctx.memory.read(h.agent,{candidates:true})).entries.length,0)
   assert.equal((await f.host.ctx.memory.search(h.agent,{query:'文字'})).entries.length,0)
@@ -97,7 +97,7 @@ test('unbound sessions receive failure feedback and a session cannot be reassign
 
 test('read-only and group read-only bindings cannot persist or forget memory',async t=>{
   const f=await memoryHost(t),h=await f.agent('readonly',{actorId:'alice'}),g=await f.agent('group-readonly',{actorId:'alice',groupId:'group'})
-  h.agent.ctx.get('permissionPresets').set(h.agent.session,'read-only')
+  await h.agent.ctx.get('permissionPresets').set(h.agent,'read-only')
   await f.say(h.agent,'记住 preferences/style：不可持久化')
   assert.match(JSON.stringify(f.requests.at(-1)),/MEMORY_READ_ONLY/)
   await f.say(g.agent,'记住 本群 facts/name：不可群写')

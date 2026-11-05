@@ -19,7 +19,7 @@ test('retired coordinator settings stay historical; reads hide them and writes f
   const historical={provider:'old',model:'old-model',reasoningMode:'explicit',reasoningEffort:'low'}
   await store.setAgentSettings({coordinationModel:historical})
   const executor={provider:'exec',model:'sol',reasoningEffort:'high'};let writes=0
-  const ctx={agentDefaultModel:{currentSelection:()=>({...executor}),saveSelection:async()=>{writes++}},llm:{resolveCallConfig:async value=>value}}
+  const ctx={agentDefaultModel:{currentSelection:()=>({...executor}),saveSelection:async()=>{writes++}},nativeModelRoutes:{validateSelection:async value=>value}}
   const runtime=await openTaskResidentRuntime(ctx,store,root,{coordinationModel:{enabled:true}})
   const server=createServer((req,res)=>handleRequest(req,res,runtime).catch(e=>{res.writeHead(400);res.end(JSON.stringify({error:e.message}))}))
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(async()=>{await new Promise(r=>server.close(r));await runtime.close()})
@@ -39,7 +39,7 @@ test('combined save validates Task Owner before either write and readbacks indep
   let current={provider:'exec',model:'sol',reasoningEffort:'low'},nativeWrites=0,pluginWrites=0,failure=''
   const originalSave=store.setAgentSettings
   store.setAgentSettings=async patch=>{pluginWrites++;if(failure==='before')throw Error('DISK_FULL');await originalSave(patch);if(failure==='after')throw Error('ACK_LOST')}
-  const ctx={agentDefaultModel:{currentSelection:()=>({...current}),saveSelection:async value=>{nativeWrites++;current={...value}}},llm:{resolveCallConfig:async value=>{
+  const ctx={agentDefaultModel:{currentSelection:()=>({...current}),saveSelection:async value=>{nativeWrites++;current={...value}}},nativeModelRoutes:{validateSelection:async value=>{
     if(value.model==='missing'||value.reasoningEffort==='ultra')throw Error('UNSUPPORTED_MODEL_OR_DEPTH');return value}}}
   const runtime=await openTaskResidentRuntime(ctx,store,root);t.after(()=>runtime.close())
   const owner={provider:'openai-codex',model:'coord-next',reasoningMode:'explicit',reasoningEffort:'high'}

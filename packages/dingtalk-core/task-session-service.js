@@ -1,3 +1,4 @@
+import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions,disabledExecutionSessions} from '../../src/tasks/single-session.js'
@@ -77,7 +78,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   for (const value of [config.maxConcurrentExecutions, config.maxConcurrentTasks, legacy.getAgentConfig().maxConcurrentTasks]) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 50)) fail('TASK_SESSION_CONCURRENCY_INVALID')
   }
-  const singleExecution=ctx.get?.('runtimePaths')?.mode==='portable'
+  const singleExecution=!!ctx.get?.('officialAgentFactory')||ctx.get?.('runtimePaths')?.mode==='portable'
   const referenceChannel=singleExecution?undefined:await import('./native-dws-send.js')
   const root = resolve(config.workspaceDir ?? residentStore.getTaskWorkspaceDir?.() ?? legacy.getAgentConfig().workspaceDir)
   await mkdir(dirname(config.dbPath), { recursive: true })
@@ -261,11 +262,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return null
   } })
   const observationQueue = createTaskObservationQueue({
-    observe: (session, event) => observation.observe(session, event),
-    onError: error => failures.set('observability', { id: 'observability', code: error.code ?? error.message }),
+    observe: record => observation.observeNative(record),
+    onError: error => failures.set('observability', { id: 'observability', code: error.code ?? 'AGENT_OBSERVATION_FAILED' }),
     ...(closeTrace ? { onProgress: queued => closeTrace.sample('service.observation-progress', () => ({ queued })) } : {}),
   })
-  const stopObservation = ctx.on?.('session/event', (session, event) => { observationQueue.enqueue(session, event) })
+  const stopObservation = ctx.on?.('night/agent-observation', (actor, record) => {
+    if(!record||record.ownerId!==actor?.id||actor.metadata?.id!==actor.id||!Object.isFrozen(actor.metadata)||ctx.get('agents')?.get(record.ownerId)!==actor)return
+    try{observationQueue.enqueue(agentObservationSchema.parse(record))}
+    catch(error){failures.set('observability',{id:'observability',code:error.code??'AGENT_OBSERVATION_INVALID'})}
+  })
   residentStore?.setTaskSessionReader?.({ getTask: id => taskCache.get(id), listTasks: () => [...taskCache.values()],
     hasAppliedOperation: async operationId => !!await query('receipt.get', { id: `topic-operation:${operationId}` }),
     isTaskQuiescent: taskId => [...executionCache.values()].filter(item => item.taskId === taskId).every(item => item.drained && !item.recovering) })
@@ -1455,7 +1460,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           if (humanReview && !runResult.reason) throw Object.assign(new Error('TASK_SESSION_NO_SUBMISSION'), { code: 'TASK_SESSION_NO_SUBMISSION', phase: 'decision' })
           if (dialogue) fail('TASK_DIALOGUE_NO_REPLY')
           failures.set(taskId, { id: taskId, code: runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION' })
-          await command('task.wait', { binding, action: 'blocked', summary: '任务会话本轮未能提交有效决定，原任务和执行结果已保留。',
+          const uncertainEffect=['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(runResult.reason)
+          await command('task.wait', { binding, action: 'blocked', summary: uncertainEffect?'任务有尚未核实的外部效果，自动执行已停止，等待人工核验。':'任务会话本轮未能提交有效决定，原任务和执行结果已保留。',
             limitations: [runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION'], ...(humanReview ? { reviewFailureCode: runResult.reason } : {}) }, `task-technical-block:${taskId}:${binding.leaseEpoch}`)
           submitted = !humanReview
         }
@@ -1696,7 +1702,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           || task.lastDecision.question || task.requirementRevision !== candidate.requirementRevision || task.controlRevision !== candidate.controlRevision) continue
         const executions = await query('execution.list', { taskId: task.taskId })
         if (executions.some(execution => !execution.drained || execution.recovering || ['queued', 'running'].includes(execution.status))) continue
-        if (task.lastDecision.action === 'blocked' && task.lastDecision.limitations?.includes('TASK_SESSION_NO_SUBMISSION')) {
+        if (!singleExecution && task.lastDecision.action === 'blocked' && task.lastDecision.limitations?.includes('TASK_SESSION_NO_SUBMISSION')) {
           await persistence.register({ taskId: task.taskId, sessionId: task.sessionId, cwd: await taskWorkspace(root, task.taskId) })
           const { events } = await inspectSession(ctx.sessionPersistence, task.sessionId)
           if (!events.some(event => event.type === 'plugin:dingtalk/task-session' && event.data.taskId === task.taskId && event.data.sessionId === task.sessionId)) continue
@@ -2008,9 +2014,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }catch(error){
     closed=true
     clearTimeout(providerRetryTimer)
-    stopInboxProjection?.();stopObservation?.()
-    await observationQueue.close()
-    await Promise.allSettled([topicCoordinator.close(),taskSessions.close(),executionSessions.close(),persistence.close(),observerGroupPage?.close()])
+    stopInboxProjection?.()
+    await Promise.allSettled([topicCoordinator.close(),taskSessions.close(),executionSessions.close()])
+    stopObservation?.();await observationQueue.close()
+    await Promise.allSettled([persistence.close(),observerGroupPage?.close()])
     if(!suppliedStore)await store.close()
     throw error
   }
@@ -2201,17 +2208,17 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await reflection?.whenIdle()
       nativeDws.close()
       clearTimeout(providerRetryTimer)
-      stopObservation?.()
       const counts = () => ({ observationPending: observationQueue.pending, tasks: inflightTasks.size, executions: inflightExecutions.size, groups: inflightGroups.size,
         notifications: inflightNotifications.size, sourceProjections: sourceProjections.size,
         scheduling: !!scheduling, recovering: !!recovering, notificationScan: !!notificationScan })
-      await observeClose(closeTrace, 'service.observation-tail', () => observationQueue.close(), counts)
       await observeClose(closeTrace, 'service.topic.close', () => topicCoordinator.close(), counts)
       await Promise.all([
         observeClose(closeTrace, 'service.owner.close', () => taskSessions.close(), counts),
         observeClose(closeTrace, 'service.execution.close', () => executionSessions.close(), counts),
       ])
       await observeClose(closeTrace, 'service.inflight-settled', () => Promise.allSettled([scheduling, recovering, notificationScan, ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean)), counts)
+      stopObservation?.()
+      await observeClose(closeTrace, 'service.observation-tail', () => observationQueue.close(), counts)
       await observeClose(closeTrace, 'service.persistence.close', () => persistence.close(), counts)
       stopInboxProjection?.()
       await observeClose(closeTrace, 'service.observer-page.close', () => observerGroupPage.close(), counts)

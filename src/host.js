@@ -41,7 +41,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
     const rows = [
       { name: new URL('./native-agents.js', import.meta.url).href }, { name: new URL('./native-sessions.js', import.meta.url).href }, { name: new URL('./native-projections.js', import.meta.url).href }, { name: new URL('./native-system-prompt.js', import.meta.url).href, config: { includeHarnessIdentity: false } },
-      { name: new URL('./native-llm.js', import.meta.url).href }, { name: new URL('./native-tools.js', import.meta.url).href }, { name: new URL('./native-tool-timeout.js', import.meta.url).href }, { name: new URL('./native-web.js', import.meta.url).href, config: config.web ?? {} }, { name: new URL('./native-http-fetch.js', import.meta.url).href, config: config.webFetch ?? {} }, { name: new URL('./native-llm-retry.js', import.meta.url).href }, { name: new URL('./native-authorization.js', import.meta.url).href },
+      { name: new URL('./native-tools.js', import.meta.url).href }, { name: new URL('./native-tool-timeout.js', import.meta.url).href }, { name: new URL('./native-web.js', import.meta.url).href, config: config.web ?? {} }, { name: new URL('./native-http-fetch.js', import.meta.url).href, config: config.webFetch ?? {} }, { name: new URL('./native-authorization.js', import.meta.url).href },
       { name: new URL('./native-credentials.js', import.meta.url).href, config: { path: paths.credentials, watch: config.credentialsWatch ?? true } },
       { name: new URL('./native-attachments.js', import.meta.url).href, config: { storageRoot: paths.attachmentsHome } },
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
@@ -54,12 +54,11 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
         'workspace-write': { sandbox: 'workspace-write', approval: 'never' },
         'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' },
       } } },
-      { name: new URL('./native-session-title.js', import.meta.url).href, config: { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 } },
       { name: new URL('./pi-authority.js', import.meta.url).href },
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
-      { name: new URL('./native-session-query.js', import.meta.url).href }, { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, { name: new URL(paths.mode==='portable'?'./memory/private-fs.js':'./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
-      { name: new URL('./native-subagents.js', import.meta.url).href }, { name: new URL('./native-subagent-providers.js', import.meta.url).href }, { name: new URL('./native-tool-subagent-control.js', import.meta.url).href }, { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
-      { name: new URL('./pi-loop.js', import.meta.url).href, config: { agents: [], maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
+      { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, { name: new URL(paths.mode==='portable'?'./memory/private-fs.js':'./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
+      { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
+      { name: new URL('./pi-official-runtime.js', import.meta.url).href, config: { model: config.model, memoryModel: config.memory?.model??config.model, skillDirs:config.skillDirs, maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       { name: new URL('./native-session-controller.js', import.meta.url).href },
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
       { name: new URL('./memory/service.js', import.meta.url).href, config: config.memory ?? {} },
@@ -70,10 +69,9 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     ]
     await ctx.loader.root.update(prepareProfileEntries(ctx,rows,ctx.baseUrl))
     await ctx.loader.await()
-    for (const service of ['agents','agentLoop','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','llmRetry','nativeSubagentProviders','subagents','sessionQuery','sessionController','schedule','memory','sessionTitle','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
-      if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
-    if (!ctx.get('llm')) throw new Error('NIGHT_BOT_LLM_RUNTIME_UNAVAILABLE')
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
+    for (const service of ['agents','officialAgentFactory','nativeModelRoutes','sessions','sessionProjections','piAuthority','sessionPersistence','credentials','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','sessionController','schedule','memory','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
+      if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('tools')) throw new Error('NIGHT_BOT_TOOL_RUNTIME_UNAVAILABLE')
     if (!ctx.get('jobs')) throw new Error('NIGHT_BOT_JOB_RUNTIME_UNAVAILABLE')
     if (!ctx.get('sandbox')) throw new Error('NIGHT_BOT_SANDBOX_UNAVAILABLE')
@@ -89,7 +87,6 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           { name: new URL('./native-tool-' + shell + '.js', import.meta.url).href, config: { enableRunInBackground: true, promoteOnTimeout: true } },
           { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: paths.mode!=='portable', customSkillDirs: paths.mode==='portable'?[paths.skills,join(paths.agentsHome,'skills'),join(paths.harnessHome,'skills'),...(config.skillDirs??[]).map(path=>resolve(paths.installRoot,path))]:(config.skillDirs??[]), watch: config.skillWatch ?? true, ...(paths.mode==='portable'?{agentsHome:paths.agentsHome}:{}) } }, { name: new URL('./native-tool-skill.js', import.meta.url).href },
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536, ...(paths.mode==='portable'?{instructionHome:paths.harnessHome,agentsHome:paths.agentsHome}:{}) } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },
-          ...paths.mode==='portable'?[]:[{ name: new URL('./native-tool-subagent.js', import.meta.url).href, config: { provider: 'spawn' } }],
           { name: new URL('./native-tool-todo.js', import.meta.url).href, config: { allowParallelInProgress: true } }, { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },
           { name: new URL('./native-tool-schedule.js', import.meta.url).href },
           { name: new URL('./memory/tools.js', import.meta.url).href },
@@ -98,6 +95,15 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     const preset = await ctx.agentPresets.resolve('night-bot')
     if (preset.broken) throw new Error('NIGHT_BOT_PRESET_BROKEN:' + JSON.stringify(preset.broken))
     if (!deferScheduledDelivery) ctx.schedule.start()
-    return { ctx, close: () => closing??=(async()=>{try{await ctx.fiber.dispose()}finally{await releaseData?.()}})() }
-  } catch (error) { try{await ctx.fiber.dispose()}finally{await releaseData?.()}throw error }
+    return { ctx, close: () => closing??=(async()=>{
+      await ctx.get('application')?.close?.()
+      await ctx.get('officialAgentFactory')?.close()
+      await ctx.fiber.dispose()
+      await releaseData?.()
+    })() }
+  } catch (error) {
+    try{await ctx.get('officialAgentFactory')?.close();await ctx.fiber.dispose();await releaseData?.()}
+    catch(cause){throw new AggregateError([error,cause],'Host startup and cleanup failed')}
+    throw error
+  }
 }

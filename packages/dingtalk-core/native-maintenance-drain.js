@@ -45,7 +45,7 @@ export function readNativeHistory(workspace,row,{pathCodec}={}){
  if(!pathCodec&&(decoded.header.portableCwd!==undefined||decoded.events?.some(event=>event.type==='working-directory/change'&&event.data?.portableCwd!==undefined)))throw Error('PI_SESSION_PATH_CODEC_REQUIRED')
  if(decoded.format==='pi-native-v1'){
   const projection=buildSessionProjection(decoded.entries,decoded.entries.at(-1)?.id??null);convertToLlm(projection.messages)
-  return {header:decoded.header,audit:decoded.audit,context:{engine:'pi-session-manager',projection,piMessages:projection.messages},digest:hash({text:bytes.toString('utf8')}),path,format:decoded.format}
+  return {header:decoded.header,audit:decoded.audit,auditEntries:decoded.entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit'),terminalEntryId:decoded.entries.findLast(entry=>!(entry.type==='custom'&&entry.customType==='night.commit'))?.id,context:{engine:'pi-session-manager',projection,piMessages:projection.messages},digest:hash({text:bytes.toString('utf8')}),path,format:decoded.format}
  }
  return{header:decoded.header,events:decoded.events,digest:hash({text:bytes.toString('utf8')}),path,format:'pi-jsonl-v3'}
 }

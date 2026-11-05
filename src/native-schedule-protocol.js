@@ -1514,7 +1514,13 @@ const deliveryHistorySchema = z$1.object({
 const scheduleDomain = defineDomain({
 	name: "schedule",
 	version: 1,
-	tables: { tasks: domainTable(z$1.object({
+	tables: { deliveries: domainTable(z$1.object({
+        sessionId:z$1.string().min(1).transform(SessionId),
+        acceptedAt:instantSchema,
+        queued:z$1.boolean(),
+        cancelled:z$1.boolean().optional(),
+        packet:z$1.object({id:z$1.string().min(1),source:z$1.object({kind:z$1.literal('schedule'),occurrences:z$1.array(z$1.object({id:z$1.string().min(1),target:instantSchema,occurrenceAt:instantSchema,nextScheduledAt:instantSchema.optional()}).strict()).min(1)}).strict(),content:z$1.array(z$1.object({type:z$1.literal('text'),text:z$1.string()}).strict()).min(1)}).strict()
+    }).strict()), tasks: domainTable(z$1.object({
 		sessionId: z$1.string().min(1).transform(SessionId),
 		record: recordSchema,
 		status: z$1.enum(["active", "inactive"]).default("active"),

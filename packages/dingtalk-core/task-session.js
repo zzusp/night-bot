@@ -11,6 +11,7 @@ import { taskBoundaryInstructions } from './task-boundary-instructions.js'
 import { installSessionSkillRefresh } from './session-skill-refresh.js'
 import { bindTaskArtifactScope, assertTaskArtifactScopePresent } from './task-artifact-scope.js'
 import { dirname } from 'node:path'
+import {retireBusinessInputs} from '../../src/runtime/pi-business-inputs.js'
 
 const identityEvent = 'plugin:dingtalk/task-session'
 const fail = code => Object.assign(new Error(code), { code })
@@ -25,6 +26,7 @@ const object = properties => ({ type: 'object', properties, additionalProperties
 const text = { type: 'string' }
 // 在原生request开放turn边界退休旧快照及前代占位；原审计保留，新输入尚未进入surface。
 export function retireTaskContext(session, binding, position) {
+  if(session?.piSession)return retireBusinessInputs(session,input=>input.source?.kind==='coordinator'&&input.source.taskSession?.taskId===binding.taskId&&input.source.taskSession.sessionId===binding.sessionId)
   const visible = new Set(session.surface.nodes)
   for (const event of session.snapshotEvents()) {
     if (!visible.has(event.seq) || event.type !== 'user/message'

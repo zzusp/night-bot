@@ -6,7 +6,7 @@ import { defineTool } from "./native-tool-protocol.js";
 import { createUserMessage } from './native-message-protocol.js';
 
 import "@deepseek-ai/cordis";
-import "node:path";
+import {isAbsolute,dirname} from "node:path";
 import { escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent } from "./native-skill-protocol.js";
 //#region ../../util/values/src/partial-json.ts
 /**
@@ -1134,8 +1134,8 @@ export async function officialSkillResources(snapshot,{resolveFilePath}={}){
  for(const skill of snapshot.skills){
   if(!isModelInvocable(skill)&&!isUserInvocable(skill))continue
   const filePath=await resolveFilePath?.(skill)
-  if(typeof filePath!=='string'||!filePath.startsWith('/'))throw Object.assign(new Error('Authorized host skill file mapping required: '+skill.name),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
-  const baseDir=filePath.slice(0,filePath.lastIndexOf('/'))||'/'
+  if(typeof filePath!=='string'||!isAbsolute(filePath))throw Object.assign(new Error('Authorized host skill file mapping required: '+skill.name),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
+  const baseDir=dirname(filePath)
   resources.push({name:skill.name,description:skill.description??'',filePath,baseDir,sourceInfo:{path:filePath,source:'night-authorized',scope:'temporary',origin:'top-level',baseDir},disableModelInvocation:!isModelInvocable(skill)})
  }
  return resources

@@ -37,13 +37,13 @@ test('HTTP task settings validate, persist, refresh and reopen without touching 
   const { seed, facility } = memoryFacility()
   const execution = { provider: 'executor', model: 'sol', reasoningEffort: 'low' }
   let defaultWrites = 0
-  const llm = {
+  const nativeModelRoutes = {
     listProviders: () => [{ id: 'openai-codex', name: 'Codex' }],
     listModels: async () => [{ id: 'gpt-6-astra', name: 'Astra' }],
-    resolveModelInfo: async (provider, model) => { if (provider !== 'openai-codex' || model !== 'gpt-6-astra') throw Error('MODEL_NOT_FOUND'); return { reasoning: { efforts: [{ id:'low', name:'Low' },{ id:'high',name:'High' }] } } },
-    async resolveCallConfig(config) { const info = await this.resolveModelInfo(config.provider, config.model); if (config.reasoningEffort && !info.reasoning.efforts.some(x => x.id === config.reasoningEffort)) throw Error('UNSUPPORTED_REASONING_EFFORT'); return config },
+    describeModel: async (provider, model) => { if (provider !== 'openai-codex' || model !== 'gpt-6-astra') throw Error('MODEL_NOT_FOUND'); return { reasoning: { efforts: [{ id:'low', name:'Low' },{ id:'high',name:'High' }] } } },
+    async validateSelection(config) { const info = await this.describeModel(config.provider, config.model); if (config.reasoningEffort && !info.reasoning.efforts.some(x => x.id === config.reasoningEffort)) throw Error('UNSUPPORTED_REASONING_EFFORT'); return config },
   }
-  const ctx = { llm, agentDefaultModel: { currentSelection: () => ({ ...execution }), saveSelection: async () => { defaultWrites++ } } }
+  const ctx = { nativeModelRoutes, agentDefaultModel: { currentSelection: () => ({ ...execution }), saveSelection: async () => { defaultWrites++ } } }
   let runtime = await openTaskResidentRuntime(ctx, await openResidentStore(facility), root)
   const server = createServer((req,res) => handleRequest(req,res,runtime).catch(error => { res.writeHead(400); res.end(JSON.stringify({ error:error.message })) }))
   await new Promise(done => server.listen(0,'127.0.0.1',done))
@@ -83,7 +83,7 @@ test('unified save preflights both models and reports readback on independent-st
   t.after(()=>rm(root,{recursive:true,force:true}))
   const {facility}=memoryFacility(), store=await openResidentStore(facility)
   let current={provider:'executor',model:'sol',reasoningEffort:'low'},defaultWrites=0,residentWrites=0,defaultFailure='',residentFailure=''
-  const llm={async resolveCallConfig(value){
+  const nativeModelRoutes={async validateSelection(value){
     if(!['executor','gateway-next','openai-codex'].includes(value.provider))throw Error('PROVIDER_NOT_FOUND')
     if(!['sol','sol-next','gpt-6-astra'].includes(value.model))throw Error('MODEL_NOT_FOUND')
     if(value.reasoningEffort&&!['low','high'].includes(value.reasoningEffort))throw Error('UNSUPPORTED_REASONING_EFFORT')
@@ -91,7 +91,7 @@ test('unified save preflights both models and reports readback on independent-st
   }}
   const savePatch=store.setAgentSettings
   store.setAgentSettings=async patch=>{residentWrites++;if(residentFailure==='before')throw Error('DISK_FULL');await savePatch(patch);if(residentFailure==='after')throw Error('ACK_LOST')}
-  const ctx={llm,agentDefaultModel:{currentSelection:()=>({...current}),saveSelection:async value=>{
+  const ctx={nativeModelRoutes,agentDefaultModel:{currentSelection:()=>({...current}),saveSelection:async value=>{
     defaultWrites++;if(defaultFailure==='before')throw Error('PROFILE_WRITE_FAILED');current={...value};if(defaultFailure==='after')throw Error('PROFILE_ACK_LOST')
   }}}
   const runtime=await openTaskResidentRuntime(ctx,store,root);t.after(()=>runtime.close())
@@ -122,7 +122,7 @@ test('execution backend defaults to DSH and validates, persists and reopens thro
   let nativeWrites = 0, pluginWrites = 0
   const savePatch = store.setAgentSettings
   store.setAgentSettings = async patch => { pluginWrites++; return savePatch(patch) }
-  const ctx = { agentDefaultModel: { currentSelection: () => ({ provider: 'executor', model: 'sol' }), saveSelection: async () => { nativeWrites++ } }, llm: { resolveCallConfig: async value => value } }
+  const ctx = { agentDefaultModel: { currentSelection: () => ({ provider: 'executor', model: 'sol' }), saveSelection: async () => { nativeWrites++ } }, nativeModelRoutes: { validateSelection: async value => value } }
   let runtime = await openTaskResidentRuntime(ctx, store, root)
   const server = createServer((req, res) => handleRequest(req, res, runtime).catch(error => { res.writeHead(400); res.end(JSON.stringify({ error: error.message })) }))
   await new Promise(done => server.listen(0, '127.0.0.1', done))
@@ -155,4 +155,16 @@ test('execution backend defaults to DSH and validates, persists and reopens thro
   assert.equal(configured.getAgentConfig().executionBackend, 'claude-code')
   await configured.close()
   await assert.rejects(openTaskResidentRuntime(ctx, fresh, root, { executionBackend: 'invalid' }), /agent_execution_backend_invalid/)
+})
+
+test('official resident reports fixed Pi backend without rewriting historical backend storage',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'resident-pi-backend-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const {facility}=memoryFacility(),store=await openResidentStore(facility)
+ await store.setAgentSettings({executionBackend:'dsh'})
+ const ctx={get:name=>name==='officialAgentFactory'?{}:undefined,agentDefaultModel:{currentSelection:()=>({provider:'fixture',model:'m'})}}
+ const runtime=await openTaskResidentRuntime(ctx,store,root);t.after(()=>runtime.close())
+ assert.equal(runtime.getAgentConfig().executionBackend,'pi')
+ assert.equal((await runtime.updateAgentConfig({executionBackend:'pi'})).executionBackend,'pi')
+ for(const executionBackend of ['dsh','claude-code'])await assert.rejects(runtime.updateAgentConfig({executionBackend}),{code:'EXECUTION_BACKEND_RETIRED'})
+ assert.equal(store.getExecutionBackend(),'dsh','historical storage is not falsely migrated')
 })

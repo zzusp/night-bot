@@ -35,6 +35,17 @@ class ToolLeases {
 }
 
 const resultFor=message=>({isError:true,content:[{type:'text',text:message}],details:{businessAdmission:'closed'}})
+const contextActors=new WeakMap()
+/** A factory capability using only the official context-only message API.
+ * The actor/session pointer, not a string id, binds the destination. */
+export function createOfficialToolContextDelivery({session,actor,fence}){
+ if(!session||actor?.piSession!==session||session.sessionManager?.getSessionId()!==actor.id||typeof session.sendCustomMessage!=='function'||typeof fence!=='function')throw new TypeError('Exact official actor/session and failure fence required')
+ const send=session.sendCustomMessage.bind(session),manager=session.sessionManager,id=actor.id
+ const port=Object.freeze({publish:message=>{if(actor.piSession!==session||actor.id!==id||session.sessionManager!==manager||manager.getSessionId()!==id)throw new Error('Official tool context destination changed');return send(message,{triggerTurn:false})},fence})
+ contextActors.set(port,actor)
+ return port
+}
+
 async function officialContent(content,ctx,signal){
  const result=[]
  for(const block of content){
@@ -58,7 +69,7 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
  if(!registry||!owner||!Number.isInteger(maxParallelToolCalls)||maxParallelToolCalls<1)throw new TypeError('Official tools need a registry, owner and positive maxParallelToolCalls')
  if(!businessAudit||typeof businessAudit.flush!=='function'||typeof businessAudit.isLive!=='function')throw new TypeError('Official tools require a durable business audit port')
  const leases=new ToolLeases(maxParallelToolCalls),lifetime=new AbortController()
- let concluded=false,fenced
+ let concluded=false,fenced,contextDelivery
  const customTools=registry.wireSchemas(owner).schemas.map(schema=>{
   const definition=registry.get(schema.name,owner),outputSchema=registry.contracts.get(definition)?.output??definition?.output.schema
   return{
@@ -69,6 +80,7 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
   prepareArguments(input){const args=snapshotJsonValue(input);const issues=args===undefined?['arguments must be lossless JSON']:validateJsonSchemaValue(schema.parameters,args,'');if(issues.length)throw new ToolArgsError(issues);return deepFreeze(args)},
   executionMode:'parallel',replay:'never',
   async execute(callId,args,signal){
+   const operation=async()=>{
    const combined=signal?AbortSignal.any([signal,lifetime.signal]):lifetime.signal
    if(concluded||fenced||!businessAudit.isLive())return resultFor('Tool effect admission closed for this business turn')
    let release
@@ -79,16 +91,41 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
     // unawaited SDK event/result observer is not a receipt or an admission proof.
     const result=await registry.execute({agent:owner,name:schema.name,callId,arguments:args,signal:combined,businessAudit})
     if(result.concludesTurn)concluded=true
+    if(result.additionalContexts?.length){
+     try{
+      if(!contextDelivery)throw Object.assign(new Error('Official tool supplemental context delivery is not bound'),{code:'PI_OFFICIAL_TOOL_CONTEXT_DELIVERY_REQUIRED'})
+      const drafts=[]
+      for(const context of result.additionalContexts){
+       if(!context||typeof context!=='object'||Array.isArray(context)||!Array.isArray(context.content)||context.role!==undefined&&context.role!=='user')throw new TypeError('Tool supplemental context must be user-role content')
+       const {content,...metadata}=context
+       // These are already admitted post-policy contexts, including safety
+       // fences preserved on error/abort. Do not discard them with caller abort.
+       drafts.push({customType:'night.tool-context',content:await officialContent(content,registry.ctx),display:false,details:{toolCallId:callId,toolName:schema.name,metadata}})
+      }
+      for(const draft of drafts)await contextDelivery.publish(draft)
+     }catch(cause){
+      fenced??=cause
+      try{contextDelivery?.fence(cause)}catch{}
+      return{isError:true,content:[{type:'text',text:'Tool supplemental context delivery failed: '+cause.message}],details:{nativeResult:result,contextDeliveryError:{message:cause.message,...cause.code?{code:cause.code}:{}}}}
+     }
+    }
     return{content:await officialContent(result.content,registry.ctx,combined),details:{nativeResult:result},isError:result.isError===true,...result.isError?{}:{structuredContent:result.value},...result.concludesTurn?{terminate:true}:{}}
    }finally{release?.()}
+   }
+   const agents=registry.ctx.get('agents')
+   if(agents){if(typeof agents.withInitiator!=='function')throw new Error('Trusted agent initiator capability required');return agents.withInitiator(owner,operation)}
+   // Small isolated registry fixtures may intentionally omit NativeAgents.
+   // Production composition supplies its existing trusted dynamic slot.
+   return operation()
   },
  }})
  return{
   customTools,
+  bindContextDelivery(port){if(contextActors.get(port)!==owner)throw new Error('Foreign official tool context destination');if(contextDelivery&&contextDelivery!==port)throw new Error('Official tool context delivery already bound');contextDelivery=port},
   beginTurn(){if(leases.active||leases.queue.length)throw new Error('Previous business tool effects have not drained');if(lifetime.signal.aborted)throw new Error('Official tools closed');concluded=false},
   finishTurn(){if(concluded||fenced)return{action:'end'}},
   fence(reason){fenced=reason??new Error('Business effects fenced')},
   drain:()=>leases.drain(),
-  async close(){lifetime.abort(stopped('Official tools closed'));await leases.close()},
+  async close(){lifetime.abort(stopped('Official tools closed'));await leases.close();contextDelivery=undefined},
  }
 }

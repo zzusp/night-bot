@@ -1,3 +1,4 @@
+import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import { ObserverMemoryPages } from './observer-memory-pages.js'
 import { stableTaskResourceIdentity, mergeTaskResources } from './task-message-projections.js'
 import { randomUUID } from 'node:crypto'
@@ -12,7 +13,7 @@ import { taskPlanSchema } from './task-plan.js'
 import { storedTaskCheckpointBaseSchema, storedTaskResultSchema } from './task-result.js'
 import { routingHoldSchema, routingBlocksTopics, topicSchema, topicRefSchema, topicMessages, topicMessageCount, validateTopicRefs, stableId, fingerprint, isPendingDecision, isWebTaskDecision, topicDecisionCoversEntry, sourceRangeSchema, attachmentRefId, resolveRouteBatch, webTaskTopicReusePlan, replyTopicForMessage } from './topic-model.js'
 import { reviseTaskProgress, TaskRevisionError, normalizeRunPlan, stagePlanFor } from './task-input-revision.js'
-import { PERFORMANCE_EVENT_TYPES, performanceProjectionSchema, performanceChunkKey, hasPerformanceFirstStream, projectPerformanceEvent, listPerformance, workflowPerformance, coordinationCosts } from './performance.js'
+import { PERFORMANCE_EVENT_TYPES, performanceProjectionSchema, performanceChunkKey, hasPerformanceFirstStream, projectPerformanceEvent, projectAgentObservation, listPerformance, workflowPerformance, coordinationCosts } from './performance.js'
 
 export { resolveTopicMessages } from './topic-model.js'
 
@@ -512,7 +513,7 @@ export async function openResidentStore(storageDomain) {
         try {
           let projection = scheduler.get(partition)?.performanceProjection
           const results = batch.map(item => {
-            const result = projectPerformanceEvent(projection, item.input)
+            const result = item.agentObservation === true ? projectAgentObservation(projection, item.input) : projectPerformanceEvent(projection, item.input)
             projection = result.projection
             return { created: result.created }
           })
@@ -569,6 +570,18 @@ export async function openResidentStore(storageDomain) {
       return { ...base, observedSince: projections.map(value => value.observedSince).sort()[0] ?? null,
         rows, coordination: coordinationCosts(rows), workflow: workflowPerformance({ tasks: [...tasks.entries()].map(([, value]) => value), groups: [...groups.entries()].map(([, value]) => value) }, filter),
       }
+    },
+    recordAgentObservation: (input) => {
+      if (closing) return Promise.reject(new Error('resident_store_closed'))
+      let observation
+      try { observation=agentObservationSchema.parse(input.observation) } catch(error) { return Promise.reject(error) }
+      if(input.sessionId!==undefined&&input.sessionId!==observation.ownerId)return Promise.reject(new Error('agent_observation_owner_mismatch'))
+      const partition=`performance:${observation.ownerId}`
+      const batch=performanceBatches.get(partition)??[]
+      performanceBatches.set(partition,batch)
+      const persisted=new Promise((resolve,reject)=>batch.push({input:{...input,sessionId:observation.ownerId,observation},agentObservation:true,resolve,reject}))
+      flushPerformanceBatches()
+      return persisted
     },
     recordPerformanceEvent: (input) => {
       if (closing) return Promise.reject(new Error('resident_store_closed'))

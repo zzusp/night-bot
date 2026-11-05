@@ -244,10 +244,11 @@ function parseReadArgs(args, maxLimit) {
 * @param caps - the deployment's resolved read caps (plugin config after defaulting).
 */
 function applyReadTool(ctx, caps) {
+	const guidance = ({ scope }) => ctx.tools.get("read", scope) === void 0 ? "" : "Use the read tool — not shell commands like cat — to inspect text files. Use offset and limit to continue reading large files.";
 	ctx.systemPrompt.section({
 		name: "tool:read",
 		order: ctx.systemPrompt.getSectionOrder("TOOL_READ"),
-		text: ({ scope }) => ctx.tools.get("read", scope) === void 0 ? "" : "Use the read tool — not shell commands like cat — to inspect text files. Use offset and limit to continue reading large files."
+		text: guidance, officialText: guidance
 	});
 	ctx.tools.register(defineTool({
 		name: "read",
@@ -542,10 +543,11 @@ ${outcome.operation === "create" ? "Created" : "Updated"} file
 * @param sandbox - the shared sandbox-escalation API (advertisement, mode stamping, denial mapping).
 */
 function applyWriteTool(ctx, sandbox) {
+	const guidance = ({ scope }) => ctx.tools.get("write", scope) === void 0 ? "" : "Read an existing file before overwriting it with write (the default fs-observation-policy requires it)" + (ctx.tools.get("edit", scope) === void 0 ? "" : " and prefer edit for targeted changes") + ".";
 	ctx.systemPrompt.section({
 		name: "tool:write",
 		order: ctx.systemPrompt.getSectionOrder("TOOL_WRITE"),
-		text: ({ scope }) => ctx.tools.get("write", scope) === void 0 ? "" : "Read an existing file before overwriting it with write (the default fs-observation-policy requires it)" + (ctx.tools.get("edit", scope) === void 0 ? "" : " and prefer edit for targeted changes") + "."
+		text: guidance, officialText: guidance
 	});
 	ctx.tools.register(defineTool({
 		name: "write",
@@ -683,10 +685,11 @@ function formatEditOutput(displayPath, replaceAll) {
 * @param sandbox - the shared sandbox-escalation API (advertisement, mode stamping, denial mapping).
 */
 function applyEditTool(ctx, sandbox) {
+	const guidance = ({ scope }) => ctx.tools.get("edit", scope) === void 0 ? "" : "Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session.";
 	ctx.systemPrompt.section({
 		name: "tool:edit",
 		order: ctx.systemPrompt.getSectionOrder("TOOL_EDIT"),
-		text: ({ scope }) => ctx.tools.get("edit", scope) === void 0 ? "" : "Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session."
+		text: guidance, officialText: guidance
 	});
 	ctx.tools.register(defineTool({
 		name: "edit",
@@ -900,22 +903,13 @@ const IMAGE_VALUE_SCHEMA = {
 function imageMediaTypeForPath(filePath) {
 	return IMAGE_EXTENSIONS[extname(filePath).toLowerCase()];
 }
-/**
-* Enforce the strict image-capability gate for the calling route. Resolves the
-* session's latest routed provider/model (request header config, then agent
-* options) and requires the exact resolved route to declare `image` input explicitly.
-* @param ctx - the plugin context used to resolve the optional `llm` service.
-* @param exec - the tool-execution context supplying the calling agent.
-* @param requestedPath - the raw, not-yet-resolved path rendered in refusal messages.
-*/
-async function assertImageCapableRoute(ctx, exec, requestedPath) {
-	const routed = exec.agent?.session.requestHeader()?.config;
-	const provider = routed?.provider ?? exec.agent?.options.provider;
-	const model = routed?.model ?? exec.agent?.options.model;
-	const llm = ctx.get("llm");
-	if (provider === void 0 || model === void 0 || llm === void 0) throw new Error(`cannot read "${requestedPath}" as an image: the current model route could not be resolved`);
-	const active = await llm.resolveModelInfo(provider, model, exec.signal);
-	if (active.inputModalities === void 0 || !active.inputModalities.includes("image")) throw new Error(`cannot read "${requestedPath}" as an image: model "${model}" does not declare image input; switch to an image-capable model to read images`);
+/** Require image input on the actual official session's current model.
+ * Agent options and historical request metadata cannot select a different gate.
+ */
+async function assertImageCapableRoute(_ctx, exec, requestedPath) {
+ const model = exec.agent?.piSession?.model;
+ if (!model) throw Object.assign(new Error(`cannot read "${requestedPath}" as an image: the current model route could not be resolved`), {code:"MODEL_OFFICIAL_SESSION_REQUIRED"});
+ if (!Array.isArray(model.input) || !model.input.includes("image")) throw new Error(`cannot read "${requestedPath}" as an image: model "${model.id}" does not declare image input; switch to an image-capable model to read images`);
 }
 /** Refuse a media type outside the deployment's accepted set, naming the offending path. */
 function assertDeploymentAccepts(attachments, mediaType, displayPath) {
@@ -981,7 +975,7 @@ function imageReadContent(value) {
 * store is mounted. Execution still re-checks `ctx.get('attachments')` for
 * direct callers and gates on the calling route's declared image input.
 * @param ctx - the registration scope; execution uses its `fs` service plus
-*   the optional `attachments`/`llm` services.
+*   the optional `attachments` service.
 */
 function applyReadImageTool(ctx) {
 	ctx.tools.register(defineTool({
@@ -1135,7 +1129,7 @@ var FsSandboxController = class {
 	*/
 	async resolvePolicy(toolName, args, exec) {
 		validateEscalationArgs(args.sandbox_permissions, args.justification);
-		const standingPolicy = this.policy?.resolve({ ...exec.agent ? { session: exec.agent.session } : {} });
+		const standingPolicy = this.policy?.resolve(exec.agent?.piSession ? {actor:exec.agent} : exec.agent ? {session:exec.agent.session} : {});
 		if (args.sandbox_permissions === void 0 || args.justification === void 0) return standingPolicy;
 		if (this.escalationModes.length === 0) throw new Error("sandbox_permissions is not available in this composition (no sandboxing filesystem to escalate)");
 		const policy = standingPolicy;

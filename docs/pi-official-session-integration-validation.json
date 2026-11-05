@@ -92,5 +92,7 @@
     "Explicit old Night backup format upgrade into native writer is planned but not implemented. Existing old-format backup/upgrade path retained.",
     "No licenses removed in this stage; retained derived source still requires attribution.",
     "Existing observer-archive-interaction test refers to an already deleted observer web-client and was not repaired in this stage."
-  ]
+  ],
+  "historicalCheckpoint": true,
+  "supersededBy": "docs/PI-NATIVE-DEFAULT-STATUS.md"
 }

@@ -1,4 +1,5 @@
 // MIT source-derived owner-isolated observation/intent gate; see licenses/dsh-fs-observation-policy-MIT.txt.
+import {officialWorkingDirectoryOrigin} from './native-working-directory.js'
 import { FsError } from "./native-fs-protocol.js";
 //#region lib/types/index.js
 /**
@@ -16,11 +17,12 @@ import { FsError } from "./native-fs-protocol.js";
 var ObservedStateGate = class {
 	/**
 	* Observed-file state, keyed first by the owner object (weakly held, so a
-	* collected session frees its state), then by {@link FsTarget.targetKey}. An
+	* collected actor/session frees its state), then by {@link FsTarget.targetKey}. An
 	* entry's presence is the prior-observation record; its discriminant keeps
 	* confirmed absence distinct from an unseen target.
 	*/
 	observed = /* @__PURE__ */ new WeakMap();
+    constructor(ctx){this.ctx=ctx}
 	/**
 	* Derive the observed-state owner from the opaque event actor — normally the
 	* active agent session. `undefined` when no owner can be derived (e.g. a
@@ -28,7 +30,13 @@ var ObservedStateGate = class {
 	* the write/edit prior-observation policy.
 	*/
 	owner(actor) {
-		return actor?.agent?.session;
+		const agent=actor?.agent
+        if(agent?.piSession){
+            if(this.ctx.get('agents')?.get(agent.id)!==agent||this.ctx.get('agents')?.currentInitiator()!==agent)throw new FsError('Official file observation actor is not authenticated','FS_ACTOR_AUTHORITY_REQUIRED')
+            try{officialWorkingDirectoryOrigin(agent);const policy=this.ctx.get('sandboxPolicy');if(!policy)throw Error('sandbox authority missing');policy.resolve({actor:agent})}catch{throw new FsError('Official file observation actor has no bound file authority','FS_ACTOR_AUTHORITY_REQUIRED')}
+            return agent
+        }
+        return agent?.session;
 	}
 	get(owner, targetKey) {
 		return this.observed.get(owner)?.get(targetKey);
@@ -77,14 +85,16 @@ var ObservedStateGate = class {
 };
 /** Cordis plugin name used by loader diagnostics. */
 const name = "night-native-fs-observation-policy";
+const inject=["agents","sandboxPolicy"];
 /**
-* Register the three `fs/*` listeners. No `inject` — this plugin reads no
-* services; it operates only on its own `WeakMap`. The waterfalls are unbound
+* Register the three `fs/*` listeners. Official actor ownership is checked
+* against the injected live registry and private file policy. The observation
+* facts remain local to the weak owner map. The waterfalls are unbound
 * (the tool dispatches them with no `this`), so the listeners take the raw
 * `(target, actor, next)` arguments.
 */
 function apply(ctx) {
-	const gate = new ObservedStateGate();
+	const gate = new ObservedStateGate(ctx);
 	ctx.effect(() => () => {
 		gate.clear();
 	}, "fs-observation-policy observed-state teardown");
@@ -95,4 +105,4 @@ function apply(ctx) {
 	});
 }
 //#endregion
-export { apply, name };
+export { apply, name, inject };

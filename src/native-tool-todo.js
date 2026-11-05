@@ -168,10 +168,13 @@ function apply(ctx, config) {
 				text: `Updated todo list: ${value.counts.pending} pending, ${value.counts.inProgress} in progress, ${value.counts.completed} completed.`
 			}]
 		},
-		execute(args, exec) {
+		async execute(args, exec) {
 			const todos = toTodoList(args.todos, allowParallel);
 			if (!exec.agent) throw new Error("todo_write requires an owning agent session");
-			exec.agent.session.append("todo/write", { todos });
+			if(exec.agent.piSession){
+				if(typeof exec.agent.receipts?.append!=='function'||typeof exec.agent.receipts.commit!=='function')throw new Error('PI_TODO_BUSINESS_RECEIPTS_REQUIRED');
+				exec.agent.receipts.append({version:1,domain:'planning',kind:'todos',payload:{todos}});await exec.agent.receipts.commit();
+			}else exec.agent.session.append("todo/write", { todos });
 			const count = (status) => todos.filter((t) => t.status === status).length;
 			return Promise.resolve({
 				todos: todos.map((todo) => ({
@@ -195,3 +198,5 @@ function apply(ctx, config) {
 }
 //#endregion
 export { Config, apply, inject, name };
+const nativeTodoReceipt=z$1.strictObject({todos:z$1.array(z$1.strictObject({content:z$1.string().min(1),status:z$1.enum(STATUSES)}))})
+export const todoAuditKinds=Object.freeze({'planning/todos':value=>nativeTodoReceipt.safeParse(value).success})
