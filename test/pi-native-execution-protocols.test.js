@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import * as llm from '../src/native-llm-protocol.js'
 import * as tools from '../src/native-tool-protocol.js'
 import NativeTools from '../src/native-tools.js'
-import NativeLlm from '../src/native-llm.js'
 test('internal execution entrypoints resolve owned services and the application scheduler capability',async()=>{
- for(const [name,Owner] of [['llm',NativeLlm],['tools',NativeTools]]){
-  const alias=await import('../packages/capability-compat/'+name+'/index.js')
-  assert.equal(alias.default,Owner)
- }
+ const toolNamespace=await import('../packages/capability-compat/tools/index.js')
+ assert.equal(toolNamespace.default,NativeTools)
+ const modelNamespace=await import('../packages/capability-compat/llm/index.js')
+ assert.equal(Object.hasOwn(modelNamespace,'default'),false)
+ assert.equal(Object.hasOwn(modelNamespace,'LlmRuntime'),false)
  const alias=await import('../packages/capability-compat/tools/index.js')
  assert.equal(alias.TOOL_RUNTIME_SCHEDULER,tools.TOOL_RUNTIME_SCHEDULER)
  assert.equal(typeof alias.TOOL_RUNTIME_SCHEDULER,'symbol')

@@ -29,3 +29,23 @@ prompts. Retries never authorize replay or reconcile an unknown outcome.
 No dependency or notice removal is inferred from removing a filename. The parent
 integration owns the remaining source manifest, audit descriptions and notice
 cleanup after checking all remaining runtime and test sources.
+
+## Old LLM service and policy resolver
+
+`native-llm.js`, `pi-provider-retry.js` and their service/policy ABI tests are also
+retired. The historical llm namespace exports helpers/errors only; there is no
+service default or `LlmRuntime` constructor. Shared old business fixtures are
+being migrated to actual official Host sessions, not a replacement LLM service.
+
+| Old LLM-only assertion | Official boundary retaining the relevant contract |
+| --- | --- |
+| Adapter topology and prepared-call routing | `pi-official-model-runtime`: atomic declared-route replacement/removal and stale-descriptor refusal |
+| Directory/discovery and model metadata | Explicit configured official registry; old discovery service/remote gateway ABI is retired |
+| Effort/context/output admission | `pi-official-model-runtime`: configured models, bounded tokens and unsupported controls rejected before dispatch |
+| Error finish conversion/middleware/one-shot prepared stream | Old Host stream ABI retired; official native stream/error events remain unconverted |
+| File/image projection and replay signatures | Official request/context authority owns model messages; native-signature and real tool continuation tests remain |
+| Shutdown, cancellation and iterator cleanup | `pi-official-model-runtime`: cancellation and close join admitted streams/credential reads; factory lifecycle tests join actor cleanup |
+| Retry-policy defaults, code sets and jitter | Deleted, with no compatibility translator; official retry settings, budgets and classifiers remain authoritative |
+
+Distinct audit/error/helper modules and their licenses are retained. Removing the
+LLM service does not claim retirement of those separate source-derived formats.

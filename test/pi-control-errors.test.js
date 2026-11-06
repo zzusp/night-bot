@@ -2,7 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import {ControlError} from '../src/runtime/control-error.js'
-import NativeLlm from '../src/native-llm.js'
 import NativeAgents from '../src/native-agents.js'
 
 test('application control failures detach and freeze diagnostic facts while retaining the original cause',()=>{
@@ -22,19 +21,6 @@ test('control diagnostics reject unsupported live values and invalid machine cod
  assert.throws(()=>new ControlError('control/rejected','message',{callback(){}}))
  const empty=new ControlError('control/rejected',undefined,undefined)
  assert.equal(empty.message,'');assert.equal(empty.details,undefined)
-})
-
-test('ordinary application management methods retain coded failures without a gateway binding',async t=>{
- const ctx=new Context();ctx.logger={warn(){}};new NativeLlm(ctx);t.after(()=>ctx.fiber.dispose())
- assert.deepEqual(ctx.llm.listProviders(),[])
- assert.equal(ctx.llm.typertRemote,undefined)
- await assert.rejects(ctx.llm.remoteDiscoverModels('missing',{provider:'fixture'}),error=>{
-  assert.ok(error instanceof ControlError)
-  assert.equal(error.code,'llm/model-discovery-rejected')
-  assert.deepEqual(error.details,{settingsNs:'missing'})
-  assert.equal(error.cause.code,'NO_DISCOVERY')
-  return true
- })
 })
 
 test('agent ownership no longer registers legacy gateway type or context lookups',async t=>{

@@ -8,7 +8,6 @@ import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventS
 import {isRetryableAssistantError} from '@earendil-works/pi-ai/compat'
 import {retryDelayMs} from '@earendil-works/pi-ai/utils/retry'
 import {officialRetrySettings} from '../src/runtime/pi-official-settings.js'
-import {resolvePiRetryPolicy} from '../src/pi-provider-retry.js'
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 async function fixture(t,retry,produce,tools=[]) {
  const root=await mkdtemp(join(tmpdir(),'night-official-retry-')),agentDir=join(root,'agent');await mkdir(agentDir);t.after(()=>rm(root,{recursive:true,force:true}))
@@ -25,7 +24,7 @@ test('factory helper reads Pi defaults, accepts finite native settings and rejec
  assert.deepEqual(defaults.getRetrySettings(),Object.fromEntries(Object.entries(mapped.retry).filter(([key])=>key!=='provider')))
  const disabled=officialRetrySettings({enabled:false,maxRetries:0,provider:{maxRetries:0}});assert.equal(disabled.retry.enabled,false);assert.equal(disabled.retry.provider.maxRetries,0)
  assert.throws(()=>{disabled.retry.enabled=true},TypeError)
- for(const input of [resolvePiRetryPolicy(),resolvePiRetryPolicy({mode:'always'}),{retryableCodes:['SERVER']},{backoff:{jitterRatio:0}},{maxDelayMs:5}])assert.throws(()=>officialRetrySettings(input),{code:'PI_RETRY_SETTINGS_MIGRATION_REQUIRED'})
+ for(const input of [{mode:'normal'},{mode:'always'},{retryableCodes:['SERVER']},{backoff:{jitterRatio:0}},{maxDelayMs:5}])assert.throws(()=>officialRetrySettings(input),{code:'PI_RETRY_SETTINGS_MIGRATION_REQUIRED'})
  for(const input of [null,[],{enabled:'true'},{maxRetries:-1},{maxRetries:Infinity},{baseDelayMs:0},{maxAgentDelayMs:2147483648},{provider:{maxRetries:-1}},{provider:{unknown:1}}])assert.throws(()=>officialRetrySettings(input),{code:'PI_OFFICIAL_RETRY_SETTINGS_INVALID'})
 })
 test('explicit helper disables both official agent retries and underlying SDK retries',async t=>{
