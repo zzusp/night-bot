@@ -1,0 +1,81 @@
+{
+  "sources": [
+    {
+      "tag": "query",
+      "rev": "457270a",
+      "file": "src/native-session-query.js",
+      "sha256": "ca0a2da71d0588e198f9ab94e936e94cbbec1117628691fb84822929e268aec7"
+    },
+    {
+      "tag": "query",
+      "rev": "457270a",
+      "file": "src/runtime/committed-session-query.js",
+      "sha256": "8a62cd7d2d9a000253d61f1531a9d8ce62ea378cdb8e1419de2cc76215018146"
+    },
+    {
+      "tag": "retry",
+      "rev": "457270a",
+      "file": "src/native-llm-retry.js",
+      "sha256": "54da93480871fcad23614ebe051c28ba96a70499216dbbae53983244e02f77d0"
+    },
+    {
+      "tag": "subagent-tool",
+      "rev": "e14acec^",
+      "file": "src/native-tool-subagent.js",
+      "sha256": "5f03786728fd38ab69602704978f3c2b523f01093caf333b0624373c18fb3b2e"
+    },
+    {
+      "tag": "subagent-control",
+      "rev": "e14acec^",
+      "file": "src/native-tool-subagent-control.js",
+      "sha256": "c25d9f966b41e61233cb8642b74b560ea5e6ea7f8bbd770a2d6436d8a1467604"
+    },
+    {
+      "tag": "subagent-manager",
+      "rev": "457270a",
+      "file": "src/native-subagents.js",
+      "sha256": "aeb0faa67a301b19542e0fef8a7ec4872474d9271b4703083ba04296856d3c32"
+    },
+    {
+      "tag": "loop",
+      "rev": "457270a",
+      "file": "src/pi-loop.js",
+      "sha256": "4717fc0c054deb9e90ec92fcb6194173c46e9865d63c8e27e6c122629028c2ba"
+    }
+  ],
+  "parsed": 1020,
+  "failures": [],
+  "matches": [
+    {
+      "file": "test/fixtures/legacy-sandbox-interface.mjs",
+      "windows": {
+        "subagent-manager": 3
+      }
+    },
+    {
+      "file": "src/native-sandbox-protocol.js",
+      "windows": {
+        "subagent-manager": 3
+      }
+    },
+    {
+      "file": "src/native-pwsh-sandbox.js",
+      "windows": {
+        "subagent-manager": 3
+      }
+    }
+  ],
+  "method": "Acorn token review of all application/test/script JS, caller and removed-source review; continuous 40-token matching supplements manual source review and is not a general legal test.",
+  "removedNotices": {
+    "query": "licenses/dsh-session-query-MIT.txt",
+    "retry": "licenses/dsh-llm-retry-MIT.txt",
+    "subagent-tool": "licenses/dsh-tool-subagent-MIT.txt",
+    "subagent-control": "licenses/dsh-tool-subagent-control-MIT.txt",
+    "loop": "licenses/deepseek-agent-loop-MIT.txt"
+  },
+  "retainedNotices": {
+    "licenses/dsh-subagent-MIT.txt": "Shared 40-token algorithm windows remain in sandbox capability/protocol copies; manager class removal alone is not enough.",
+    "licenses/dsh-session-title-MIT.txt": "Canonical SessionTitleInvalidError vocabulary/constructor remains; service removal alone is not enough."
+  },
+  "scope": "Only exclusive removed implementations and test copies; Pi and all currently retained third-party implementations remain attributed."
+}

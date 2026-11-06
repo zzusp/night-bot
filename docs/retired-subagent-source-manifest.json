@@ -8,7 +8,11 @@
       "sourcePackage": "@deepseek-ai/dsh-tool-subagent",
       "sourceVersion": "0.2.1-alpha.2",
       "license": "MIT",
-      "retainedNotice": "licenses/dsh-tool-subagent-MIT.txt"
+      "removedNotice": "licenses/dsh-tool-subagent-MIT.txt",
+      "removalEvidence": {
+        "sourceRemovalCommit": "e14acec",
+        "review": "docs/retired-notice-copy-audit.json"
+      }
     },
     {
       "target": "src/native-tool-subagent-control.js",
@@ -16,7 +20,11 @@
       "sourcePackage": "@deepseek-ai/dsh-tool-subagent-control",
       "sourceVersion": "0.2.1-alpha.2",
       "license": "MIT",
-      "retainedNotice": "licenses/dsh-tool-subagent-control-MIT.txt"
+      "removedNotice": "licenses/dsh-tool-subagent-control-MIT.txt",
+      "removalEvidence": {
+        "sourceRemovalCommit": "e14acec",
+        "review": "docs/retired-notice-copy-audit.json"
+      }
     },
     {
       "target": "src/native-subagent-providers.js",
