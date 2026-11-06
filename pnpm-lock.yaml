@@ -12,10 +12,8 @@ overrides:
   '@deepseek-ai/dsh-fs': link:./packages/capability-compat/fs
   '@deepseek-ai/dsh-skill': link:./packages/capability-compat/skill
   '@deepseek-ai/dsh-sandbox': link:./packages/capability-compat/sandbox
-  '@deepseek-ai/dsh-session-projection': link:./packages/capability-compat/session-projection
   '@deepseek-ai/dsh-llm': link:./packages/capability-compat/llm
   '@deepseek-ai/dsh-tools': link:./packages/capability-compat/tools
-  '@deepseek-ai/dsh-session': link:./packages/capability-compat/session
   '@deepseek-ai/dsh-session-persistence': link:./packages/capability-compat/session-persistence
   '@deepseek-ai/dsh-sandbox-windows-acl': link:./packages/capability-compat/sandbox-windows-acl
 

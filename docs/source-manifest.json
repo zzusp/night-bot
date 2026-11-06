@@ -577,7 +577,7 @@
       "source": "native-maintenance-drain.js",
       "sourceSha256": "03f7df3e33c84c75404f13c9b5f2dc0f6a03a4186806f897254ddbe4c7e4337b",
       "status": "adapted",
-      "sha256": "ff2c3f9d93d0c90a8e882e53b4db11d5a5327ae1a5d2996b822a2200b71589d2",
+      "sha256": "fce7bc15221320835d8858be689a5b000ffe74ba81d5d84f7a0038e5d8aeea7c",
       "adaptation": "Read strict native committed Pi projections; require explicit native business drain receipts instead of inferring quiescence from messages."
     },
     {
@@ -759,7 +759,7 @@
       "source": "session-persistence.js",
       "sourceSha256": "b3697ffb1d9572e30e1e5b8aba9938d7f6a9359a1f2bf8727e6128697173313a",
       "status": "adapted",
-      "sha256": "0cc7f4c67c6cd75c29c86653da00d382fcfda0efad97f255ea3650bc52502098",
+      "sha256": "eb719f69103f3c969859bb3aab21f3c5b951de14b91ff25bbdef6327856a0e77",
       "adaptation": "Refuse native sessions at the legacy event inspection boundary; native callers use explicit readNative."
     },
     {
@@ -1037,7 +1037,7 @@
       "source": "task-session-persistence.js",
       "sourceSha256": "780a47c4c047c63050c81f375f2f7efb55f327ea74f7a553f3ba239cf00df7f6",
       "status": "adapted",
-      "sha256": "d46184cd630d83ad596cb7574cb38afe04b2197ddcefeeb569d6e07d04279c04",
+      "sha256": "cc1bd44f0117c0d62a5843eef66633214958c107e276a83b47bf90b3f158470e",
       "adaptation": "Route native create/open/read through existing task binding, cwd and writer scope checks."
     },
     {
