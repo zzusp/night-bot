@@ -1,5 +1,7 @@
 import {createHash} from 'node:crypto'
 import {z} from 'zod'
+import {isNativeSkillLoader} from '../../src/native-tool-skill.js'
+import {scopeOf} from '../../src/native-scope.js'
 import {AgentSession} from '@earendil-works/pi-coding-agent'
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -20,15 +22,15 @@ const fail=code=>Object.assign(new Error(code),{code})
  * the custom-message notification. An old successful tool result without a
  * version receipt is not promoted into current instruction evidence. */
 export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
- if(installed.has(actor))return installed.get(actor)
  const get=name=>ctx.get(name),skills=get('skills'),tools=get('tools'),agents=get('agents'),session=actor?.piSession
  if(!(session instanceof AgentSession)||typeof actor.receipts?.read!=='function'||typeof actor.receipts?.commit!=='function'||typeof actor.requestPolicy?.addBeforeRequest!=='function')throw fail('PI_SKILL_OBSERVATION_PORT_REQUIRED')
- if(agents?.get(actor.id)!==actor||session.sessionId!==actor.id||signal?.aborted)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')
- const loader=tools?.get('skill',actor);if(!skills||!loader)return {async close(){},async refresh(){}}
+ if(scopeOf(ctx)!==actor||scopeOf(actor.ctx)!==actor||agents?.get(actor.id)!==actor||session.sessionId!==actor.id||actor.lifecycle?.isLive()!==true||actor.lifecycle.signal.aborted||signal?.aborted)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')
+ if(installed.has(actor))return installed.get(actor)
+ const loader=tools?.get('skill',actor),trustedLoader=isNativeSkillLoader(loader);if(!skills||!loader)return {async close(){},async refresh(){}}
  const currentCwd=()=>get('workingDirectory')?.get(actor)??cwd
  const filesystem=get('agentPresets')?.serviceFor?.(actor,'fs')??get('fs'),readers=new Map(['read','read_window'].map(name=>[name,tools.get(name,actor)]).filter(([,tool])=>tool)),loaded=new Map(),references=new Map(),observations=new WeakMap(),prepared=new WeakMap(),legacy=new Set(),pendingResults=new Map(),disposers=[]
  let closed=false,tail=Promise.resolve(),failure,pending=[],lastNotice,renderedPromptKey
- const alive=()=>{if(closed||signal?.aborted||actor.piSession!==session||agents?.get(actor.id)!==actor)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')}
+ const alive=()=>{if(closed||signal?.aborted||actor.lifecycle?.isLive()!==true||actor.lifecycle.signal.aborted||actor.piSession!==session||scopeOf(ctx)!==actor||agents?.get(actor.id)!==actor)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')}
  const remember=record=>{if(record.kind==='skill'){if(digest(loaded.get(record.key)?.resourceBase??null)!==digest(record.resourceBase??null))for(const [key,ref]of references)if(ref.name===record.name)references.delete(key);loaded.set(record.key,record);legacy.delete(record.name)}else references.set(record.key,record)}
  // Official entries provide successful call/result pairing; receipts carry only
  // Night's version fact. No message conversion, context replay or event fold.
@@ -72,7 +74,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   const decision=await next(),observation=observations.get(exec);observations.delete(exec)
   if(exec.agent!==actor||result.isError||decision.kind!=='accept')return decision
   alive();let record
-  if(exec.name==='skill'&&tools.get('skill',actor)===loader&&result.value?.name===exec.arguments.name&&typeof result.value.content==='string'){
+  if(trustedLoader&&exec.name==='skill'&&tools.get('skill',actor)===loader&&result.value?.name===exec.arguments.name&&typeof result.value.content==='string'){
    const value=result.value;record={kind:'skill',key:value.name,name:value.name,version:skillDigest(value),...value.resourceBase?{resourceBase:value.resourceBase}:{}}
   }else if(observation&&filesystem){
    try{const target=await filesystem.resolve(observation.path,{cwd:currentCwd(),signal});for(const skill of loaded.values())if(skill.resourceBase?.kind==='directory'){const root=await filesystem.resolve(skill.resourceBase.path,{cwd:currentCwd(),signal});if(filesystem.contains(root,target)){record={kind:'reference',key:observation.path,name:skill.name,...observation};break}}}catch(error){if(signal?.aborted)throw error;for(const skill of loaded.values())legacy.add(skill.name)}

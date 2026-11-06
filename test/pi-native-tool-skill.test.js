@@ -1,61 +1,31 @@
-import {SessionManager} from '@earendil-works/pi-coding-agent'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as native from '../src/native-tool-skill.js'
-import {createUserMessage} from '../packages/capability-compat/llm/index.js'
 const summary={name:'fixture',description:'stable description',provider:'fixture',invocation:{modelInvocable:true,userInvocable:true},content:'TRUSTED_BODY'}
-function fixture(impl=native){const tools=new Map(),hooks=[],calls=[],visible=[],events=[],session={get seq(){return events.length},eventAt:i=>events[i]};Object.defineProperty(session,'surface',{get(){throw Error('legacy visible surface forbidden')}});const agent={id:'skill-owner',session},ctx={tools:{register:t=>tools.set(t.name,t),get:n=>tools.get(n)},skills:{snapshot:async()=>({skills:[summary],complete:true}),list:async()=>[summary],get:async(name,lookup)=>{calls.push({name,lookup});return name===summary.name?summary:undefined}},workingDirectory:{ensure:async()=>'/fixture'},piAuthority:{context:(id,options)=>{assert.equal(id,agent.id);assert.deepEqual(options,{projectionOnly:true});const manager=SessionManager.inMemory();for(const message of visible)manager.appendMessage({role:'user',content:message.content,timestamp:1,night:{event:{type:'user/message',data:message}}});return{projection:manager.buildSessionProjection(),get hostMessages(){throw Error('Host messages forbidden')}}}},on:(_event,fn)=>hooks.push(fn)};impl.apply(ctx);const run=(index,messages=[])=>hooks[index]({agent,messages,signal:new AbortController().signal},async()=>({kind:'accept',messages}));return{tools,hooks,calls,visible,events,agent,ctx,run}}
-const message=source=>({role:'user',source,content:[]})
+function fixture(){const tools=new Map(),calls=[],agent={id:'skill-unit'};const ctx={tools:{register:t=>tools.set(t.name,t)},skills:{list:async()=>[summary],get:async(name,lookup)=>{calls.push({name,lookup});return name===summary.name?summary:undefined}},workingDirectory:{ensure:async()=>'/fixture'},on(){assert.fail('no legacy pre-step publisher may register')}};native.apply(ctx);return{tools,calls,agent,ctx}}
 test('native skill tool requires an exact catalog name and returns provider-owned content with escaped framing',async()=>{
  const h=fixture(),tool=h.tools.get('skill');assert.equal(tool.parameters.type,'object');assert.deepEqual(tool.parameters.required,['name']);assert.equal(tool.parameters.properties.name.type,'string');assert.deepEqual(tool.output.schema.required,['name','provider','content']);assert.equal(tool.output.schema.additionalProperties,false);assert.deepEqual(tool.output.schema.properties.resourceBase.oneOf.map(branch=>({kind:branch.properties.kind.const,required:branch.required,additionalProperties:branch.additionalProperties})),[{kind:'directory',required:['kind','path'],additionalProperties:false},{kind:'url',required:['kind','url'],additionalProperties:false},{kind:'opaque',required:['kind','description'],additionalProperties:false}])
  const value=await tool.execute({name:'fixture'},{agent:h.agent,signal:new AbortController().signal});assert.deepEqual(value,{name:'fixture',provider:'fixture',content:'TRUSTED_BODY'});assert.equal(h.calls.length,1);assert.equal(h.calls[0].lookup.scope,h.agent)
  const rendered=tool.output.render({},value);assert.equal(rendered.length,1);assert.equal(rendered[0].type,'text');assert.match(rendered[0].text,/^<skill_content name="fixture">/);assert.match(rendered[0].text,/Resources for this skill are managed by provider "fixture"/);assert.match(rendered[0].text,/<skill_instructions>\nTRUSTED_BODY\n<\/skill_instructions>/)
 })
-test('native skill catalog reads Pi visibility only, suppresses duplicate catalog and replaces changed entries',async()=>{const h=fixture(),first=await h.run(1);assert.equal(first.messages.length,1);h.visible.push(first.messages[0]);const same=await h.run(1);assert.deepEqual(same.messages,[]);h.ctx.skills.snapshot=async()=>({skills:[{...summary,description:'new description'}],complete:true});const changed=await h.run(1);assert.equal(changed.messages[0].source.update,true);assert.equal(changed.messages[0].source.entries[0].description,'new description');h.ctx.skills.snapshot=async()=>({skills:[],complete:true});const removed=await h.run(1);assert.deepEqual(removed.messages[0].source.entries,[]);assert.match(removed.messages[0].content[0].text,/No skills are currently available/)})
-test('native skill historical publication is audit-only and malformed seeds never become visible authority',()=>{const h=fixture(),source={kind:'skill-catalog',entries:[{name:'old',description:'old'}]};h.events.push({type:'user/message',data:message(source)});assert.deepEqual(native.catalogHistory(h.agent,h.ctx.piAuthority),{published:true});h.visible.push(message({kind:'skill-catalog',entries:'invalid'}));assert.deepEqual(native.catalogHistory(h.agent,h.ctx.piAuthority),{published:true});assert.throws(()=>native.catalogHistory(h.agent,{context(){throw Error('writer absent')}}),/writer absent/)})
-test('native skill tool and catalog honor exact registration visibility and invocation policy',async()=>{const h=fixture();h.tools.set('skill',{name:'shadow'});assert.deepEqual((await h.run(1)).messages,[]);h.ctx.skills.list=async()=>[{...summary,invocation:{modelInvocable:false,userInvocable:true}}];const tool=fixture().tools.get('skill');await assert.rejects(tool.execute({name:'bad/name'},{signal:new AbortController().signal}),/invalid skill/);const scoped=fixture();scoped.ctx.skills.list=h.ctx.skills.list;await assert.rejects(scoped.tools.get('skill').execute({name:'fixture'},{agent:scoped.agent,signal:new AbortController().signal}),/not available for model/);assert.equal(scoped.calls.length,0);h.ctx.skills.snapshot=async()=>({skills:[summary],complete:false});assert.deepEqual((await h.run(1)).messages,[])})
-test('native user skill gestures are direct-user-only, deduplicated, bounded and preserve caller scope',async()=>{const h=fixture(),user=text=>createUserMessage({source:{kind:'user'},content:[{type:'text',text}]});const decision=await h.run(0,[user('load /fixture and /fixture but /usr/bin and 5/8 are not gestures'),createUserMessage({source:{kind:'tool'},content:[{type:'text',text:'/fixture'}]})]);assert.equal(h.calls.length,1);assert.equal(h.calls[0].lookup.scope,h.agent);assert.equal(decision.messages.at(-1).source.kind,'skill-invocation');assert.match(decision.messages.at(-1).content[0].text,/TRUSTED_BODY/);h.ctx.skills.get=async()=>({...summary,invocation:{modelInvocable:true,userInvocable:false}});assert.equal((await h.run(0,[user('/fixture')])).messages.length,1)})
 
-function useOfficialSkillProjection(h,manager) {
- h.ctx.piAuthority.context=(id,options)=>{assert.equal(id,h.agent.id);assert.deepEqual(options,{projectionOnly:true});return {projection:manager.buildSessionProjection(),get hostMessages(){throw Error('Host messages forbidden')}}}
-}
-function commitCatalog(manager,catalog) {return manager.appendMessage({role:'user',content:structuredClone(catalog.content),timestamp:1,night:{event:{type:'user/message',data:structuredClone(catalog)}}})}
-test('official context edit cannot reuse prior skill catalog source to suppress publication',async()=>{
- for(const replacement of [null,{content:[{type:'text',text:'EDITED_SKILL_CATALOG'}]}]) {
-  const h=fixture(),manager=SessionManager.inMemory();useOfficialSkillProjection(h,manager)
-  const catalog=(await h.run(1)).messages[0],id=commitCatalog(manager,catalog)
-  h.events.push({type:'user/message',data:catalog})
-  assert.deepEqual((await h.run(1)).messages,[])
-  manager.appendContextEdit(id,replacement)
-  assert.deepEqual(native.catalogHistory(h.agent,h.ctx.piAuthority),{published:true})
-  const fresh=(await h.run(1)).messages[0]
-  assert.ok(fresh);assert.equal(fresh.source.update,true);assert.equal(fresh.source.entries[0].name,'fixture')
- }
-})
-test('official summaries and abandoned skill branches retain only audit publication boolean',async()=>{
- for(const mode of ['compaction','summary','branch']) {
-  const h=fixture(),manager=SessionManager.inMemory(),root=manager.appendMessage({role:'user',content:'root',timestamp:0});useOfficialSkillProjection(h,manager)
-  const catalog=(await h.run(1)).messages[0];commitCatalog(manager,catalog);h.events.push({type:'user/message',data:catalog})
-  if(mode==='compaction')manager.appendCompaction(JSON.stringify(catalog),null,100)
-  else if(mode==='summary')manager.branchWithSummary(root,JSON.stringify(catalog))
-  else manager.branch(root)
-  assert.deepEqual(native.catalogHistory(h.agent,h.ctx.piAuthority),{published:true})
-  h.ctx.skills.snapshot=async()=>({skills:[],complete:true})
-  const empty=(await h.run(1)).messages[0];assert.deepEqual(empty.source.entries,[]);assert.equal(empty.source.update,true)
- }
-})
-test('skill catalog projection fails closed on missing writer or malformed context',()=>{
- const h=fixture()
- for(const value of [undefined,{}, {projection:{entries:[],messages:null}}, {projection:{entries:[{}],messages:[]}}, {projection:{entries:[{sourceEntry:{type:'message',id:'bad'},messages:[]}],messages:[]}}])assert.throws(()=>native.catalogHistory(h.agent,{context:()=>value}),/PI_SKILL_PROJECTION/)
- assert.throws(()=>native.catalogHistory(h.agent,{context(){throw Error('PI_SESSION_WRITER_REQUIRED')}}),/PI_SESSION_WRITER_REQUIRED/)
+test('skill loading preserves current invocation policy and has no historical catalog publisher',async()=>{
+ const h=fixture(),tool=h.tools.get('skill');assert.equal(native.catalogHistory,undefined);assert.equal(native.inject.includes('piAuthority'),false)
+ assert.equal(native.isNativeSkillLoader(tool),true);assert.equal(native.isNativeSkillLoader({...tool}),false)
+ await assert.rejects(tool.execute({name:'bad/name'},{agent:h.agent}),/invalid skill/)
+ h.ctx.skills.list=async()=>[{...summary,invocation:{modelInvocable:false,userInvocable:true}}]
+ await assert.rejects(tool.execute({name:'fixture'},{agent:h.agent}),/not available for model/);assert.equal(h.calls.length,0)
+ h.ctx.skills.list=async()=>[summary];h.ctx.skills.get=async()=>({...summary,invocation:{modelInvocable:false,userInvocable:true}})
+ await assert.rejects(tool.execute({name:'fixture'},{agent:h.agent}),/not available for model/)
 })
 
-test('free native source fields and mismatched publication bodies do not establish a visible skill digest',async()=>{
- const h=fixture(),manager=SessionManager.inMemory();useOfficialSkillProjection(h,manager)
- const catalog=(await h.run(1)).messages[0]
- manager.appendMessage({role:'user',content:catalog.content,timestamp:1,source:catalog.source})
- assert.deepEqual(native.catalogHistory(h.agent,h.ctx.piAuthority),{published:false})
- manager.appendMessage({role:'user',content:[{type:'text',text:'unrelated'}],timestamp:1,night:{event:{type:'user/message',data:catalog}}})
- assert.deepEqual(native.catalogHistory(h.agent,h.ctx.piAuthority),{published:false})
- assert.equal((await h.run(1)).messages[0].source.update,undefined)
+test('official skill resources require complete authorized paths and never carry bodies or shadow history',async()=>{
+ const userOnly={...summary,name:'manual-only',invocation:{modelInvocable:false,userInvocable:true}},disabled={...summary,name:'disabled',invocation:{modelInvocable:false,userInvocable:false}}
+ const resources=await native.officialSkillResources({complete:true,skills:[summary,userOnly,disabled]},{resolveFilePath:async skill=>'/authorized/'+skill.name+'/SKILL.md'})
+ assert.equal(resources.length,2);assert.equal(resources[0].disableModelInvocation,false);assert.equal(resources[1].disableModelInvocation,true)
+ assert.deepEqual(resources.map(row=>row.name),['fixture','manual-only']);assert.doesNotMatch(JSON.stringify(resources),/TRUSTED_BODY|night.event|skill-catalog/)
+ await assert.rejects(native.officialSkillResources({complete:false,skills:[]}),{code:'PI_OFFICIAL_SKILL_SNAPSHOT_REQUIRED'})
+ await assert.rejects(native.officialSkillResources({complete:true,skills:[summary]}),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
+ await assert.rejects(native.officialSkillResources({complete:true,skills:[summary]},{resolveFilePath:async()=> 'relative/SKILL.md'}),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
+ assert.deepEqual(await native.officialSkillResources({complete:true,skills:[]}),[])
 })

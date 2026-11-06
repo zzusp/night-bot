@@ -1,9 +1,6 @@
-import { isDeepStrictEqual } from "node:util";
-// MIT source-derived skill tool schema, catalog, invocation and presentation algorithms; see licenses/dsh-tool-skill-MIT.txt. Visible history authority adapted to Pi.
-import { createHash } from "node:crypto";
+// MIT source-derived skill tool schema, catalog, invocation and presentation algorithms; see licenses/dsh-tool-skill-MIT.txt. Official Pi resources own catalog presentation and invocation.
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "./native-tool-protocol.js";
-import { createUserMessage } from './native-message-protocol.js';
 
 import "@deepseek-ai/cordis";
 import {isAbsolute,dirname} from "node:path";
@@ -644,105 +641,6 @@ function assertNever(value, context) {
 	throw new Error(`unreachable variant${context ? ` in ${context}` : ""}: ${rendered}`);
 }
 //#endregion
-//#region ../../core/session/src/types.ts
-/**
-* Admit a numeric value as an existing Session event position.
-* @param value - non-negative safe integer admitted by the owning log operation.
-* @returns the same number with the Session-sequence brand.
-*/
-function SessionSeq(value) {
-	if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new TypeError(`SessionSeq must be a non-negative safe integer, got ${String(value)}`);
-	return value;
-}
-new Set([
-	"agent-preset/selected",
-	"agent/inbox/spliced",
-	"approval/asked",
-	"approval/decided",
-	"approval/policy",
-	"assistant/attempt",
-	"assistant/message",
-	"command/done",
-	"command/run",
-	"compaction/end",
-	"compaction/prune",
-	"compaction/start",
-	"compaction/summary",
-	"deliverables/presented",
-	"developer/message",
-	"feedback/message-delete",
-	"feedback/message-put",
-	"feedback/record",
-	"goal/change",
-	"hook/invoked",
-	"hook/result",
-	"image/offload",
-	"llm/retry",
-	"llm/retry-started",
-	"model/selection",
-	"permission/preset",
-	"plan/mode",
-	"request/context",
-	"request/header",
-	"sandbox/mode",
-	"schedule/change",
-	"session-log-deepseek/delivery-accepted",
-	"session/end-seed",
-	"session/title",
-	"session/title-llm-request",
-	"step/end",
-	"step/start",
-	"subagent/catalog",
-	"subagent/descriptor",
-	"subagent/model-selection-policy",
-	"system/message",
-	"team/member",
-	"team/message/delivered",
-	"team/message/queued",
-	"team/task",
-	"todo/write",
-	"tool-workflow/agent-end",
-	"tool-workflow/agent-start",
-	"tool-workflow/run-end",
-	"tool-workflow/run-start",
-	"tool/call",
-	"tool/ptc-dispatch",
-	"tool/ptc-dispatch-start",
-	"tool/result",
-	"turn/end",
-	"turn/start",
-	"user/message",
-	"web/deepseek-search-llm-request",
-	"working-directory/change",
-	"workspace/changes"
-]);
-new Set(["image/offload"]);
-new Set([
-	"system/message",
-	"developer/message",
-	"user/message",
-	"assistant/message",
-	"tool/result"
-]);
-/**
-* Deep structural equality over the session-event JSON value domain
-* (null/boolean/number/string, arrays, plain objects). Replaces
-* `node:util`'s isDeepStrictEqual to keep this module browser-safe.
-*/
-function isDeepEqualJson(a, b) {
-	if (a === b) return true;
-	if (Array.isArray(a) || Array.isArray(b)) {
-		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-		return a.every((item, i) => isDeepEqualJson(item, b[i]));
-	}
-	if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-	const aKeys = Object.keys(a);
-	const bRecord = b;
-	if (aKeys.length !== Object.keys(b).length) return false;
-	return aKeys.every((key) => Object.hasOwn(b, key) && isDeepEqualJson(a[key], bRecord[key]));
-}
-new Set(["reasoningEffort", "maxTokens"]);
-//#endregion
 //#region lib/types/index.js
 /**
 * Durable session skill catalog and model-facing `skill` loader tool.
@@ -750,28 +648,20 @@ new Set(["reasoningEffort", "maxTokens"]);
 * @module @deepseek-ai/dsh-tool-skill
 */
 const name = "night-native-tool-skill";
+const nativeSkillLoaders=new WeakSet();
+export const isNativeSkillLoader=definition=>nativeSkillLoaders.has(definition);
 const inject = [
-	"piAuthority",
 	"agents",
 	"tools",
 	"skills",
 	"workingDirectory"
 ];
 const DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH = 500;
-/** Durable entry list mirroring the rendered catalog lines, for non-model consumers. */
-function catalogSourceEntries(skills, descriptionMaxLength) {
-	return skills.map((skill) => ({
-		name: skill.name,
-		description: catalogDescription(skill.description, descriptionMaxLength)
-	}));
-}
 /** Validate and default the model-facing skill catalog configuration. */
 const Config = z.object({ catalogDescriptionMaxLength: z.number().default(DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH) });
 /**
-* Register the model-facing skill loader and its visibility-matched
-* durable session catalog. The catalog is emitted only when the calling agent
-* resolves this plugin's exact tool registration; a restriction or scoped
-* same-name shadow therefore removes both the schema and its call guidance.
+* Register the model-facing loader. Official Pi resources own the catalog and
+* user skill commands; no pre-step publisher or historical catalog fold runs.
 */
 function apply(ctx, config = {}) {
 	const catalogDescriptionMaxLength = config.catalogDescriptionMaxLength ?? DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH;
@@ -885,244 +775,12 @@ function apply(ctx, config = {}) {
 		}
 	});
 	ctx.tools.register(skillTool);
-	ctx.on("agent/pre-step", async ({ agent, messages, signal }, next) => {
-		const decision = await next();
-		if (decision.kind === "reject") return decision;
-		const names = invokedSkillNames(messages);
-		if (names.length === 0) return decision;
-		signal.throwIfAborted();
-		const lookup = {
-			cwd: await ctx.workingDirectory.ensure(agent, signal),
-			signal,
-			scope: agent
-		};
-		const injections = [];
-		for (const name of names) {
-			const skill = await ctx.skills.get(name, lookup);
-			signal.throwIfAborted();
-			if (skill === void 0 || !isUserInvocable(skill)) continue;
-			const source = {
-				kind: "skill-invocation",
-				name,
-				form: "instructions"
-			};
-			injections.push(createUserMessage({
-				content: [{
-					type: "text",
-					text: renderSkillContent(skill)
-				}],
-				source
-			}));
-		}
-		if (injections.length === 0) return decision;
-		return {
-			...decision,
-			messages: [...decision.messages, ...injections]
-		};
-	});
-	ctx.on("agent/pre-step", async ({ agent, signal }, next) => {
-		const decision = await next();
-		if (decision.kind === "reject") return decision;
-		signal.throwIfAborted();
-		const snapshot = ctx.tools.get(skillTool.name, agent) === skillTool ? await ctx.skills.snapshot({
-			cwd: await ctx.workingDirectory.ensure(agent, signal),
-			signal,
-			scope: agent
-		}) : {
-			skills: [],
-			complete: true
-		};
-		signal.throwIfAborted();
-		if (!snapshot.complete) return decision;
-		const skills = snapshot.skills.filter(isModelInvocable);
-		const entries = catalogSourceEntries(skills, catalogDescriptionMaxLength);
-		const digest = digestCatalogEntries(entries);
-		const history = catalogHistory(agent, ctx.piAuthority);
-		const existing = catalogMessage(decision.messages);
-		if (history.visibleDigest === digest) return existing === void 0 ? decision : {
-			...decision,
-			messages: decision.messages.filter((message) => message.id !== existing.message.id)
-		};
-		if (existing !== void 0 && digestCatalogEntries(existing.entries) === digest) return decision;
-		if (!history.published && skills.length === 0) return existing === void 0 ? decision : {
-			...decision,
-			messages: decision.messages.filter((message) => message.id !== existing.message.id)
-		};
-		const catalog = history.published ? renderCatalogUpdate(entries) : renderCatalogMessage(entries);
-		return {
-			...decision,
-			messages: existing === void 0 ? [...decision.messages, catalog] : decision.messages.map((message) => message.id === existing.message.id ? catalog : message)
-		};
-	});
+	nativeSkillLoaders.add(skillTool);
 }
-function renderCatalogMessage(entries) {
-	return createUserMessage({
-		content: [{
-			type: "text",
-			text: [
-				"<system-reminder>",
-				"A skill is a reusable set of task-specific instructions. The following skills are available in this session:",
-				"",
-				"<available_skills>",
-				...renderCatalogEntries(entries),
-				"</available_skills>",
-				"",
-				"If the user names a skill, or the task clearly matches a skill's description, call the `skill` tool with the exact skill name before taking task actions. Load all applicable skills, then follow their full instructions. This catalog contains summaries only; do not infer or follow a skill's instructions until it has been loaded.",
-				"A user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.",
-				"</system-reminder>"
-			].join("\n")
-		}],
-		source: {
-			kind: "skill-catalog",
-			form: "catalog",
-			entries
-		}
-	});
+function assertPositiveInteger(name,value,minimum=1){
+ if(!Number.isInteger(value)||value<minimum)throw new Error(`tool-skill: ${name} must be an integer greater than or equal to ${minimum}`);
 }
-function renderCatalogUpdate(entries) {
-	const availability = entries.length === 0 ? ["No skills are currently available through the `skill` tool. Do not use names from earlier skill catalogs.", "A user may still invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool for it."] : ["Use only names in this replacement catalog. If the user names a listed skill, or the task clearly matches its description, call the `skill` tool with the exact name before acting.", "A user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill."];
-	return createUserMessage({
-		content: [{
-			type: "text",
-			text: [
-				"<system-reminder>",
-				"The available skill catalog changed. This complete catalog replaces every earlier available-skills list in this session:",
-				"",
-				"<available_skills>",
-				...renderCatalogEntries(entries),
-				"</available_skills>",
-				"",
-				...availability,
-				"</system-reminder>"
-			].join("\n")
-		}],
-		source: {
-			kind: "skill-catalog",
-			form: "catalog",
-			update: true,
-			entries
-		}
-	});
-}
-/**
-* Model-facing catalog lines, projected from the same entries the source records.
-* The pseudo-XML escaping belongs to this frame, not to the published fact, so it
-* is applied here and never stored. Names are `isSkillName`-validated and carry
-* no escapable character.
-*/
-function renderCatalogEntries(entries) {
-	return entries.map((entry) => `- \`${entry.name}\`: ${escapeText(entry.description)}`);
-}
-/**
-* Catalog identity over the durable entry list rather than the rendered prose.
-* The entries are what changes; the surrounding `<system-reminder>` framing is
-* written for the model and must not decide whether a republish is needed.
-*/
-function digestCatalogEntries(entries) {
-	const canonical = entries.map((entry) => JSON.stringify([entry.name, entry.description])).join("\n");
-	return createHash("sha256").update(canonical).digest("hex");
-}
-/**
-* Entries of one durable catalog message, or undefined when the record is not a
-* usable catalog.
-*
-* `agent.session.snapshotEvents()` may contain a resumed, forked, or externally written seed,
-* and seed validation only guarantees a source object with a non-empty `kind`;
-* no per-kind field is checked there. An unreadable record is therefore treated
-* as "not this plugin's catalog" — the posture the replaced content digest had —
-* rather than throwing inside the step listener, which would fail every
-* subsequent turn of that session.
-*/
-function readCatalogEntries(source) {
-	const entries = source.entries;
-	if (!Array.isArray(entries)) return void 0;
-	const readable = [];
-	for (const entry of entries) {
-		if (typeof entry !== "object" || entry === null) return void 0;
-		const { name, description } = entry;
-		if (typeof name !== "string" || name === "" || typeof description !== "string") return void 0;
-		readable.push({
-			name,
-			description
-		});
-	}
-	return readable;
-}
-/** Current catalog identity comes only from original Pi publication entries.
- * The audit scan only answers whether any catalog was ever published, so an
- * empty replacement can invalidate previously advertised names after pruning. */
-function catalogHistory(agent, authority) {
- const context=authority.context(agent.id,{projectionOnly:true});
- const projected=context?.projection?.entries;
- if(!Array.isArray(projected) || !Array.isArray(context.projection.messages))throw new Error('PI_SKILL_PROJECTION_REQUIRED');
- let visibleDigest;
- for(const entry of projected) {
-  if(!entry || !entry.sourceEntry || typeof entry.sourceEntry.type!=='string' || typeof entry.sourceEntry.id!=='string' || !Array.isArray(entry.messages) || entry.messages.some(message=>!message || typeof message.role!=='string'))throw new Error('PI_SKILL_PROJECTION_INVALID');
-  if(entry.sourceEntry.type==='message' && (!entry.sourceEntry.message || typeof entry.sourceEntry.message.role!=='string'))throw new Error('PI_SKILL_PROJECTION_INVALID');
-  const original=entry.sourceEntry.type==='message'?entry.sourceEntry.message:undefined;
-  const event=original?.night?.event;
-  if(original?.role!=='user' || event?.type!=='user/message' || event.data?.role!=='user' || event.data.source?.kind!=='skill-catalog')continue;
-  if(!Array.isArray(original.content) || original.content.length===0 || original.content.some(block=>block?.type!=='text' || typeof block.text!=='string'))continue;
-  if(entry.messages.length!==1 || entry.messages[0]?.role!=='user' || !isDeepStrictEqual(entry.messages[0].content,original.content) || !isDeepStrictEqual(original.content,event.data.content))continue;
-  const entries=readCatalogEntries(event.data.source);
-  if(entries!==undefined)visibleDigest=digestCatalogEntries(entries);
- }
- if(visibleDigest!==undefined)return {visibleDigest,published:true};
- for(let index=agent.session.seq-1;index>=0;index--) {
-  const event=agent.session.eventAt(SessionSeq(index));
-  if(event===undefined)throw new Error(`skill catalog cannot read seq ${String(index)} below the current Session length`);
-  if(event.type==="user/message" && event.data.source?.kind==="skill-catalog" && readCatalogEntries(event.data.source)!==undefined)return {published:true};
- }
- return {published:false};
-}
-function catalogMessage(messages) {
-	for (const message of messages) {
-		if (message.source.kind !== "skill-catalog") continue;
-		const entries = readCatalogEntries(message.source);
-		if (entries !== void 0) return {
-			message,
-			entries
-		};
-	}
-}
-function catalogDescription(value, maxLength) {
-	const normalized = value.replaceAll(/\s+/g, " ").trim();
-	return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 3)}...`;
-}
-function assertPositiveInteger(name, value, minimum = 1) {
-	if (!Number.isInteger(value) || value < minimum) throw new Error(`tool-skill: ${name} must be an integer greater than or equal to ${minimum}`);
-}
-/**
-* A whitespace-bounded `/name` token (the public skill-name grammar) anywhere
-* in the text — the same word-boundary shape the transcript chip decoration
-* uses, so a gesture reads as one wherever it sits in the sentence. A second
-* `/` or any non-boundary character breaks the match, which keeps file paths
-* (`/usr/bin`) and fractions (`5/8`) out.
-*/
-const SKILL_GESTURE = /(^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|$)/g;
-/**
-* `/name` gesture tokens from the claimed user messages, deduplicated in
-* first-seen order. Every text block of direct user input is scanned; no
-* other source can forge a gesture.
-* @param messages - the step's claimed batch.
-* @returns candidate skill names, unvalidated against the registry.
-*/
-function invokedSkillNames(messages) {
-	const names = [];
-	for (const message of messages) {
-		if (message.source.kind !== "user") continue;
-		for (const block of message.content) {
-			if (block.type !== "text") continue;
-			for (const match of block.text.matchAll(SKILL_GESTURE)) {
-				const name = match[2];
-				if (name !== void 0 && !names.includes(name)) names.push(name);
-			}
-		}
-	}
-	return names;
-}
-//#endregion
-export { Config, apply, inject, name, catalogHistory };
+export {Config,apply,inject,name};
 
 /** Current business catalog -> official filesystem resources. The caller must
  * authorize a real host file path; sandbox display paths and runtime providers
