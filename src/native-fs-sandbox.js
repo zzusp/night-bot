@@ -127,20 +127,6 @@ var SandboxedFileSystem = class NativeSandboxedFileSystem extends LocalFileSyste
 		return super.writeText(await this.checkedTarget(target, sandboxPolicy), content, expected, signal);
 	}
 	/**
-	* Fence the edit by the per-call policy, then delegate to the inherited
-	* atomic edit. See {@link checkedTarget}.
-	* @param target - the resolved target to edit.
-	* @param edit - the literal search/replace request.
-	* @param expected - the version guard; omit for an unconditional edit.
-	* @param signal - aborts before atomic publication takes effect.
-	* @param sandboxPolicy - the per-call mode and workspace root; omit to use
-	*   the deployment fallback.
-	* @returns the edit outcome from the inherited backend.
-	*/
-	async editText(target, edit, expected, signal, sandboxPolicy) {
-		return super.editText(await this.checkedTarget(target, sandboxPolicy), edit, expected, signal);
-	}
-	/**
 	* Enforce the per-call policy against `target` and return the EXACT target the
 	* mutation must use, so the checked identity is the mutated one (no
 	* check-here-write-there TOCTOU). `read-only` denies; `workspace-write`

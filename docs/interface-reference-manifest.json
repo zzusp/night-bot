@@ -1,14 +1,5 @@
 [
   {
-    "package": "@deepseek-ai/dsh-fs",
-    "originalSha256": "b165659f1eff0607222a7fe761bc56bae03fec8337c2e25affd064a3047dacb9",
-    "fixture": "test/fixtures/legacy-fs-interface.mjs",
-    "fixtureSha256": "5ce99567248fdc13e7f7cccd8bc53152b75533bd723d0a9c9f2843c349f59be2",
-    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
-    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
-  },
-  {
     "package": "@deepseek-ai/dsh-sandbox",
     "originalSha256": "b56373befbfcfe281c17c8892e9a4b2cdcb96851290b3ed0ff56b08915e2f743",
     "fixture": "test/fixtures/legacy-sandbox-interface.mjs",

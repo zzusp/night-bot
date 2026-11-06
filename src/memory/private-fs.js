@@ -36,5 +36,4 @@ export default class PrivateFileSystem extends NativeSandboxedFileSystem {
   async readByteRange(target,...args){return super.readByteRange(this.boundary(target),...args)}
   async listDir(target,...args){return super.listDir(this.boundary(target),...args)}
   async writeText(target,...args){return super.writeText(this.boundary(target,true),...args)}
-  async editText(target,...args){return super.editText(this.boundary(target,true),...args)}
 }
