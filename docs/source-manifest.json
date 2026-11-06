@@ -908,8 +908,9 @@
     {
       "source": "task-model-config.js",
       "sourceSha256": "dfa631a2079eda6456a5a7ae50499ba90368a1ebfd4f71bff42f1b3924375440",
-      "status": "retained",
-      "sha256": "dfa631a2079eda6456a5a7ae50499ba90368a1ebfd4f71bff42f1b3924375440"
+      "status": "adapted",
+      "sha256": "2fd3ea131d9a2a25d6f6ab44a29a5d72eb1661b7fa560c669bafef5449bff3f9",
+      "adaptation": "Owns pure task model/provider selection independently of retired task session drivers."
     },
     {
       "source": "task-notification-readback.js",
@@ -1031,15 +1032,15 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "f90c3430f02f856eb23c26a8b37415892d4854770bb1bedbd15554a7c84215f3",
-      "adaptation": "Official single-task authority with persisted initial context/authenticated source refs, binding-aware Topic facts, private public summaries, explicit removed-backend rejection and crash-safe effect reconciliation."
+      "sha256": "97c31cca21c20250020ddafb88f4e93c4c96e8c85fcd6431e0e35393f8e7da98",
+      "adaptation": "Official Single-only service; rejects absent factory and split execution state, removes legacy driver dispatch and Host provider retry while retaining effect reconciliation, source-bound live admissions, archive holds and official Topic routing."
     },
     {
       "source": "task-session.js",
       "sourceSha256": "afa52ceb8277de93442096ddfe4d7bca6690eab0bd7d6d3dc7f93fa05119c163",
       "status": "adapted",
-      "sha256": "8d7ffe99d3d6c3bf92730c43d667c8604b9c547ec310b1ba022b3640d63d25ee",
-      "adaptation": "Official actor context retirement uses source-bound context_edit; legacy task path retained pending explicit migration."
+      "sha256": "858e4df28e1984ccd4800ae01bf5a5096d5c8f3deb5bf17d2703e039a5d017be",
+      "adaptation": "Retained only for independent legacy callers; pure model selection reexports the shared configuration helper and default TaskService no longer imports this driver."
     },
     {
       "source": "task-source-instructions.js",

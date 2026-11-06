@@ -16,12 +16,8 @@ import {retireBusinessInputs} from '../../src/runtime/pi-business-inputs.js'
 const identityEvent = 'plugin:dingtalk/task-session'
 const fail = code => Object.assign(new Error(code), { code })
 export const isTaskProviderTransient = cause => classifyExecutionProviderFailure(cause).retryable
-// This is an exact native model id, not a display label or a provider alias.
-export function taskSessionModelSelection(selection, configuredModel, configuredProvider) {
-  if (configuredModel !== undefined && typeof configuredModel !== 'string') throw fail('TASK_SESSION_MODEL_INVALID')
-  if (configuredProvider !== undefined && typeof configuredProvider !== 'string') throw fail('TASK_SESSION_PROVIDER_INVALID')
-  return { ...selection, provider: configuredProvider?.trim() || 'openai-codex', model: configuredModel?.trim() || 'gpt-6-astra' }
-}
+export {taskSessionModelSelection} from './task-model-config.js'
+import {taskSessionModelSelection} from './task-model-config.js'
 const object = properties => ({ type: 'object', properties, additionalProperties: false })
 const text = { type: 'string' }
 // 在原生request开放turn边界退休旧快照及前代占位；原审计保留，新输入尚未进入surface。

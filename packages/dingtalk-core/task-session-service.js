@@ -5,32 +5,27 @@ import {AsyncLocalStorage} from 'node:async_hooks'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
-import {createSingleTaskSessions,disabledExecutionSessions} from '../../src/tasks/single-session.js'
+import {createSingleTaskSessions} from '../../src/tasks/single-session.js'
 import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity,verifyTaskEffectClosures,taskEffectScopeDigest,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
 import {readTaskEffectScope} from '../../src/tasks/effect-scope.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
 import {createObserverGroupPages} from './observer-group-pages.js'
 import {retiredSourceOwnership} from './coordination-retirement.js'
 import { deliverTaskNotification, recallTaskOperatorNotification, retryTaskNotification, taskNotificationRecovery } from './notification-delivery.js'
-import { inspectStoppedNativeOperation, inspectInvestigatedNativeFailure, inspectFailedNativeWebRead, inspectFailedNativeFileMutation, inspectFailedNativeJobRead, readNativeOperationContext, readExecutionProgress } from './dynamic-operation-readback.js'
-import { isNativeFilePrecondition, nativeFileError } from './dynamic-filesystem-scope.js'
-import { inspectIsolatedHostRestart, prepareRestartScopeProbe } from './dynamic-operation-readback.js'
-import { readMaintenanceDrainProof } from './native-maintenance-drain.js'
-import { referencesIsolatedPostgres } from './native-postgres-wrapper.js'
-import { hasRestartIsolation, operationBlocksRecovery, verifyRestartIsolation, readAuditedRestartDrain } from './native-restart-isolation.js'
-import { safeNotificationDetail } from './notification-delivery.js'
+import { inspectInvestigatedNativeFailure } from './dynamic-operation-readback.js'
+
+import { inspectIsolatedHostRestart } from './dynamic-operation-readback.js'
+
+import { hasRestartIsolation } from './native-restart-isolation.js'
+
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, lstat, link, unlink } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { openDynamicTaskStore, ingressTimestamp, pendingTaskHumanReview, taskHumanWait } from './dynamic-task-store.js'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { readExecutionResourceCatalog, createExecutionResourceCatalog } from './execution-resource-catalog.js'
-import { createTaskSessions, isTaskProviderTransient, taskSessionModelSelection } from './task-session.js'
-import { taskModelConfig, taskModelSelection } from './task-model-config.js'
-import { inspectSession } from './session-persistence.js'
+import { taskSessionModelSelection, taskModelConfig, taskModelSelection } from './task-model-config.js'
 import { createStartupMetrics, createCloseObservation, observeClose } from './startup-metrics.js'
-import { createExecutionSessions } from './execution-session.js'
-import { createClaudeExecutionSessions, claudeExecutionLogPath } from './claude-execution-session.js'
 import { createTaskSessionObservability, createTaskObservationQueue } from './task-session-observability.js'
 import { activeFixedUnits, fixedTopicIds, fixedUnitRequestId, platformScheduleSessionId, platformScheduleOutboundId } from './fixed-topics.js'
 import { openTaskTopicCoordinator } from './task-topic-coordinator.js'
@@ -39,16 +34,15 @@ import { buildReplyReviewCandidates } from './decision.js'
 import { resolveTopicMessages, topicSourceEntries, stableId, fingerprint, replyTopicForMessage, canonicalReplyTopic, topicDecisionCoversEntry } from './topic-model.js'
 import { createTopicFactHandler } from './topic-facts.js'
 import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from './task-message-projections.js'
-import { executionSessionTitle, taskWorkspace, taskExecutionWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, materializeExecutionDocument } from './session-workspaces.js'
-import { installTaskSessionPersistence, taskSessionLogRoot } from './task-session-persistence.js'
+import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory } from './session-workspaces.js'
 import { prepareGroupNotification } from './group-notification.js'
 import { formatTaskGroupReply } from './group-reply-format.js'
 import { assertGroupReply } from './group-message.js'
 import { taskExecutionContext } from './execution-context.js'
-import { assertTaskContextSemantics, taskContextInputContract } from './task-input-contract.js'
-import { projectTaskTimeline, readTaskLifecycle, latestExecutionRoundTiming } from './task-execution-timeline.js'
+import { assertTaskContextSemantics } from './task-input-contract.js'
+import { projectTaskTimeline, readTaskLifecycle } from './task-execution-timeline.js'
 import { createTaskArtifactFiles } from './task-artifact-files.js'
-import { freezeTaskDeliveryFiles, withTaskFileNotifications } from './task-final-delivery.js'
+import { withTaskFileNotifications } from './task-final-delivery.js'
 export { taskExecutionContext } from './execution-context.js'
 
 const hash = value => createHash('sha256').update(JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)).digest('hex')
@@ -74,10 +68,12 @@ const drainDiagnostic = (error, depth = 0) => ({
 })
 /** All model decisions pass through this Host boundary. No workflow catalog or staged plan exists here. */
 export async function openTaskSessionService({ ctx, config, legacy, residentStore, notifications, readMessage, readResource, readMentioned,
-  taskSessions: suppliedTaskSessions, executionSessions: suppliedExecutionSessions, claudeExecutionSessions: suppliedClaudeExecutionSessions,
-  store: suppliedStore, persistence: suppliedPersistence, startupObserver, closeObserver } = {}) {
+  taskSessions: suppliedTaskSessions, executionSessions: rejectedExecutionSessions, claudeExecutionSessions: rejectedClaudeExecutionSessions,
+  store: suppliedStore, startupObserver, closeObserver } = {}) {
   const hostAgents=typeof ctx.get==='function'?ctx.get('agents'):ctx.agents
   if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+  if(!ctx.get?.('officialAgentFactory'))fail('TASK_OFFICIAL_FACTORY_REQUIRED')
+  if(rejectedExecutionSessions!==undefined||rejectedClaudeExecutionSessions!==undefined)fail('TASK_SPLIT_EXECUTION_REMOVED')
   // Capture the trusted service startup context. Accepted SQL-backed work must
   // not inherit the initiating model actor's revocable filesystem capability.
   const hostScheduler=AsyncLocalStorage.snapshot()
@@ -89,25 +85,21 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   for (const value of [config.maxConcurrentExecutions, config.maxConcurrentTasks, legacy.getAgentConfig().maxConcurrentTasks]) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 50)) fail('TASK_SESSION_CONCURRENCY_INVALID')
   }
-  const singleExecution=!!ctx.get?.('officialAgentFactory')||ctx.get?.('runtimePaths')?.mode==='portable'
-  if(singleExecution)assertPiTaskBackend(config)
-  const referenceChannel=singleExecution?undefined:await import('./native-dws-send.js')
+  assertPiTaskBackend(config)
   const root = resolve(config.workspaceDir ?? residentStore.getTaskWorkspaceDir?.() ?? legacy.getAgentConfig().workspaceDir)
   await mkdir(dirname(config.dbPath), { recursive: true })
   const store = suppliedStore ?? await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId,
     initialize: config.initialize === true, migrate: config.migrate === true, ingressEpoch: config.ingressEpoch, webActorId: config.webActorId,
     resourceCatalog: await readExecutionResourceCatalog(root), startupObserver })
-  let persistence, resourceCatalog
   try {
-    resourceCatalog = createExecutionResourceCatalog(await store.query({ kind: 'resource.catalog' }))
-    persistence = suppliedPersistence ?? (singleExecution?{register:async()=>{},runOwned:(_binding,action)=>action(),close:async()=>{}}:await installTaskSessionPersistence(ctx, { root }))
+    createExecutionResourceCatalog(await store.query({ kind: 'resource.catalog' }))
   } catch (error) {
     if (!suppliedStore) await store.close()
     throw error
   }
-  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),...(singleExecution?{getTaskDirectories:taskId=>taskDirectories(root,taskId)}:{}) })
+  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),getTaskDirectories:taskId=>taskDirectories(root,taskId) })
   const originalNotifications=notifications
-  if(singleExecution)notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('send',notification):originalNotifications.send(notification),readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
+  notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('send',notification):originalNotifications.send(notification),readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws
@@ -116,63 +108,39 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
   const pendingDialogue = task => task.dialogue?.some(item => !item.reply&&!item.replyError)
   const taskLimit = () => legacy.getAgentConfig().maxConcurrentTasks ?? config.maxConcurrentTasks ?? 5
-  const executionLimit = () => config.maxConcurrentExecutions ?? taskLimit()
   const reserveTask = taskId => taskSlots.has(taskId) || taskSlots.size < taskLimit() && (taskSlots.add(taskId), true)
   const retryReady = id => {
+    // Only the retired execution driver wrote dynamic_operations. Official Single
+    // effects use native typed receipts; retained SQL rows never authorize replay.
+    if([...operationCache.values()].some(operation=>operation.taskId===id)){
+      failures.set(id,{id,code:'TASK_LEGACY_OPERATION_REVIEW_REQUIRED'})
+      return false
+    }
     const task = taskCache.get(id), recovery = task?.providerRecovery
-    if(singleExecution&&recovery&&recovery.requirementRevision===task.requirementRevision)return false
+    if(recovery&&recovery.requirementRevision===task.requirementRevision)return false
     if (recovery) return recovery.requirementRevision !== task.requirementRevision
       || !!recovery.nextAttemptAt && Date.parse(recovery.nextAttemptAt) <= Date.now()
     return (failures.get(id)?.retryAfter ?? 0) <= Date.now()
   }
-  let closed = false, closingService, recovering, scheduling, scheduleRequested = false, providerRetryTimer
+  let closed = false, closingService, recovering, scheduling, scheduleRequested = false
   let notificationScan, notificationScanRequested = false, notificationTransportRetryAt = 0
   let sourceProcessingRevision = 0
   let observerGroupPage
   const sourceHeldNotifications = new Map()
   const query = (kind, args = {}) => store.query({ kind, ...args })
-  if(singleExecution&&(await query('execution.list')).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
-  const archives=singleExecution?new TaskArchives({paths:ctx.get('runtimePaths'),store,routes:ctx.get('taskSessionRoutes'),onSuccess:taskId=>failures.delete('task-archive:'+taskId),onFailure:(taskId,error)=>{failures.set('task-archive:'+taskId,{id:taskId,code:error.code??'TASK_ARCHIVE_CAPTURE_FAILED'});ctx.logger?.warn?.('task archive '+taskId+': '+(error.code??'TASK_ARCHIVE_CAPTURE_FAILED'))}}):undefined
+  if((await query('execution.list')).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
+  const archives=new TaskArchives({paths:ctx.get('runtimePaths'),store,routes:ctx.get('taskSessionRoutes'),onSuccess:taskId=>failures.delete('task-archive:'+taskId),onFailure:(taskId,error)=>{failures.set('task-archive:'+taskId,{id:taskId,code:error.code??'TASK_ARCHIVE_CAPTURE_FAILED'});ctx.logger?.warn?.('task archive '+taskId+': '+(error.code??'TASK_ARCHIVE_CAPTURE_FAILED'))}})
   const reflection=ctx.get?.('reflection')
   const stopReflection=reflection?.attachStore(store,{ownerActorId:config.ownerActorId,onReview:archives?(taskId,report)=>archives.recordReview(taskId,report):undefined,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
-  async function* executionIndex() {
-    let after = 0
-    do {
-      const page = await query('execution.index', { after, limit: 100 })
-      yield* page.items
-      after = page.nextAfter
-    } while (after !== null)
-  }
+
   if (residentStore.retireIndependentCoordination)
     await residentStore.retireIndependentCoordination(await query('coordination.retirement'))
   const taskCache = new Map(), operationCache = new Map(), notificationCache = new Map(), executionCache = new Map()
-  const documentTails = new Map()
-  function publishExecutionDocument(executionId) {
-    const previous = documentTails.get(executionId) ?? Promise.resolve()
-    // 前次失败已经回报调用者；允许下一次从权威账本重建当前轮，不沿用失败快照。
-    const pending = previous.catch(() => {}).then(async () => {
-      const execution = await query('execution.get', { executionId })
-      const document = await materializeExecutionDocument(root, execution)
-      failures.delete(`execution-document:${executionId}`)
-      return { execution, document }
-    }).catch(error => {
-      const id = `execution-document:${executionId}`
-      failures.set(id, { id, code: error.code ?? error.message, at: new Date().toISOString() })
-      throw error
-    })
-    documentTails.set(executionId, pending)
-    pending.finally(() => { if (documentTails.get(executionId) === pending) documentTails.delete(executionId) }).catch(() => {})
-    return pending
-  }
-  async function refreshExecutionDocument(executionId) { return (await publishExecutionDocument(executionId)).document }
-  async function documentedExecution(executionId) {
-    const { execution, document } = await publishExecutionDocument(executionId)
-    return { ...execution, document }
-  }
+
   const refreshTasks = async () => { taskCache.clear(); for (const task of await query('task.list')) taskCache.set(task.taskId, topicTaskView(task)) }
   function topicTaskView(task) { return { ...task, state: task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' || task.drained ? 'waiting' : 'running', inputVersion: task.requirementRevision, runSequence: task.runSequence ?? 1, topicRefs: task.topicRefs ?? [], appliedOperations: task.appliedOperations ?? [], acceptanceCriteria: task.requirements ?? [], taskPromptRefs: [] } }
   const command = async (kind, args, id) => {
-    if (kind === 'execution.continue' || kind === 'execution.retry-provider') await refreshExecutionDocument(args.executionId ?? args.binding.executionId)
+    if(kind.startsWith('execution.'))fail('TASK_SPLIT_EXECUTION_REMOVED')
     let clarification = kind === 'notification.prepare' && args.kind === 'routing-clarification' ? args.payload : undefined
     if (kind === 'notification.start') {
       const notification = notificationCache.get(args.notificationId) ?? await query('notification.get', { notificationId: args.notificationId })
@@ -202,12 +170,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       receipt.result.notification = await query('notification.get', { notificationId: receipt.result.notification.id })
     if (receipt.result?.execution) executionCache.set(receipt.result.execution.executionId,
       await query('execution.get', { executionId: receipt.result.execution.executionId }))
-    if (kind.startsWith('execution.') && (receipt.result?.execution || ['execution.peerMessage', 'execution.feedbackConsumed'].includes(kind))) {
-      // 账本提交后不能因阅读视图失败丢失 claim/result 回执；保留可见告警。
-      // 文档读取和轮次切换仍严格失败，不能用旧文档冒充当前；执行路径可正常排空。
-      try { await refreshExecutionDocument(receipt.result?.execution?.executionId ?? args.executionId ?? args.binding.executionId) }
-      catch (error) { ctx.logger?.warn?.(`execution document: ${error.code ?? error.message}`) }
-    }
+
     if (receipt.result?.operation) operationCache.set(receipt.result.operation.id ?? receipt.result.operation.operationId, receipt.result.operation)
     // 人工结清是复合事务，只返回任务；从账本刷新其中已结清的操作，避免残留 unknown 告警。
     if (kind === 'task.human.resolve-failures') for (const resolution of args.resolutions) {
@@ -248,7 +211,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for (const item of await query('execution.list')) executionCache.set(item.executionId, item)
   })
   async function disableSingleProviderRetries(){
-    if(!singleExecution)return
+
     for(const task of await query('task.list'))if(task.providerRecovery&&!task.archivedAt&&task.status==='active'&&!task.effectReconciliations?.some(row=>row.state==='prepared')&&!ctx.agents.get(task.sessionId)&&!inflightTasks.has(task.taskId)){
       if(!task.providerRecovery.hostRetryDisabled)await command('task.provider-retry-disabled',{taskId:task.taskId},'pi-disable-host-retry:'+hash([task.taskId,task.providerRecovery]))
       failures.set(task.taskId,{id:task.taskId,code:'TASK_PI_HOST_RETRY_DISABLED'})
@@ -256,11 +219,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const dwsObserverOptions={ operations: operationCache, residentStore, notificationCache,
     querySendStatus: notifications?.querySendStatus, warn: error => ctx.logger?.warn?.(`channel receipt: ${error.code ?? error.message}`) }
-  nativeDws=singleExecution?ctx.get('channels').createOperationObserver(dwsObserverOptions):referenceChannel.createNativeDwsObserver(dwsObserverOptions)
+  nativeDws=ctx.get('channels').createOperationObserver(dwsObserverOptions)
   await nativeDws.recover()
-  // 仅为启动时已停住的技术等待补一次唤醒；同一实现重启不能反复驱动模型。
-  const runtimeRevision = hash(await Promise.all(['task-session-service.js', 'task-session.js', 'execution-session.js', 'claude-execution-session.js', 'dynamic-native-job.js', 'dynamic-operation-readback.js']
-    .map(file => readFile(new URL(file, import.meta.url), 'utf8'))))
+  // Prior Night business failures remain visible; a code change never authorizes another model run.
   const recoveryCandidates = [...taskCache.values()].filter(task => !task.archivedAt && task.status === 'active' && task.control === 'active'
     && task.drained && !task.lastDecision?.question && (task.lastDecision?.action === 'blocked'
       && task.lastDecision.limitations?.includes('TASK_SESSION_NO_SUBMISSION')
@@ -302,10 +263,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       && task.leaseEpoch === binding.leaseEpoch && task.requirementRevision === binding.requirementRevision && task.controlRevision === binding.controlRevision
       && ((task.contextRevision ?? 0) === (binding.contextRevision ?? 0)||allowLiveSupplements&&(()=>{let revision=binding.contextRevision??0;for(const row of task.liveSupplements??[])if(row.leaseEpoch===binding.leaseEpoch&&row.requirementRevision===binding.requirementRevision&&row.controlRevision===binding.controlRevision&&row.fromContextRevision===revision)revision=row.contextRevision;return revision===(task.contextRevision??0)})())
   }
-  const taskSessions = suppliedTaskSessions ?? (singleExecution?createSingleTaskSessions:createTaskSessions)({ ctx, isCurrent: currentTask, isOwnerCurrent:binding=>currentTask(binding,{allowLiveSupplements:true}), withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action),
+  const taskSessions = suppliedTaskSessions ?? createSingleTaskSessions({ ctx, isCurrent: currentTask, isOwnerCurrent:binding=>currentTask(binding,{allowLiveSupplements:true}),
     readEffectScope:async(binding,stored)=>readTaskEffectScope(ctx,await query('task.get',{taskId:binding.taskId}),stored),
-    getWorkspaceDir: async ({ binding }) => {if(archives)await archives.register(await query('task.get',{taskId:binding.taskId}));return taskWorkspace(root, binding.taskId)}, registerPersistence: value => persistence.register(value) })
-  const effectReconciliation=singleExecution&&config.webActorId?createTaskEffectReconciliation({persistence:ctx.sessionPersistence,readTask:taskId=>query('task.get',{taskId}),readScope:(task,stored)=>readTaskEffectScope(ctx,task,stored),isSessionLive:async sessionId=>!!ctx.agents.get(sessionId),readOperatorSource:sourceId=>query('source.get',{sourceId}),operatorActorId:config.webActorId}):undefined
+    getWorkspaceDir: async ({ binding }) => {if(archives)await archives.register(await query('task.get',{taskId:binding.taskId}));return taskWorkspace(root, binding.taskId)} })
+  const effectReconciliation=config.webActorId?createTaskEffectReconciliation({persistence:ctx.sessionPersistence,readTask:taskId=>query('task.get',{taskId}),readScope:(task,stored)=>readTaskEffectScope(ctx,task,stored),isSessionLive:async sessionId=>!!ctx.agents.get(sessionId),readOperatorSource:sourceId=>query('source.get',{sourceId}),operatorActorId:config.webActorId}):undefined
   async function projectEffectReconciliation(task,row,writerHeld=false){
     if(!writerHeld){
       if(ctx.agents.get(task.sessionId)||inflightTasks.has(task.taskId))fail('TASK_EFFECT_OWNER_LIVE')
@@ -321,6 +282,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function reconcileTaskEffect({operatorText,...proposal}){
     if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+  if(!ctx.get?.('officialAgentFactory'))fail('TASK_OFFICIAL_FACTORY_REQUIRED')
+  if(rejectedExecutionSessions!==undefined||rejectedClaudeExecutionSessions!==undefined)fail('TASK_SPLIT_EXECUTION_REMOVED')
     if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
     if(typeof operatorText!=='string'||!operatorText.trim()||operatorText.length>16000)fail('DYNAMIC_ARGUMENT_INVALID')
     const identity=taskEffectReconciliationIdentity(proposal),taskId=identity.taskId
@@ -357,6 +320,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function authorizeTaskEffectAction({operatorText,...proposal}) {
     if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+  if(!ctx.get?.('officialAgentFactory'))fail('TASK_OFFICIAL_FACTORY_REQUIRED')
+  if(rejectedExecutionSessions!==undefined||rejectedClaudeExecutionSessions!==undefined)fail('TASK_SPLIT_EXECUTION_REMOVED')
     if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
     if(typeof operatorText!=='string'||!operatorText.trim()||operatorText.length>16000)fail('DYNAMIC_ARGUMENT_INVALID')
     const identity=taskEffectActionAuthorizationIdentity(proposal),{taskId,requestId}=identity
@@ -416,33 +381,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     return false
   }
-  const dshExecutionSessions = suppliedExecutionSessions ?? (singleExecution?disabledExecutionSessions():createExecutionSessions({ ctx, withPersistenceWriter: (binding, action) => persistence.runOwned(binding, action), registerPersistence: value => persistence.register(value),
-    isCurrent: binding => query('execution.current', { binding }),
-    isRecoveryCurrent: binding => query('execution.recovery-current', { binding }),
-    getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
-    readRestartDrainProof: args => readAuditedRestartDrain({ ctx, query, ...args }),
-    readMaintenanceDrainProof: async args => readMaintenanceDrainProof({ workspace: root, pathCodec:ctx.get?.('portablePaths'), ...args, operations: await query('operation.list', { taskId: args.binding.taskId }) }),
-  }))
-  const claudeExecutionSessions = suppliedClaudeExecutionSessions ?? (singleExecution?disabledExecutionSessions():createClaudeExecutionSessions({ ctx,
-    isCurrent: binding => query('execution.current', { binding }),
-    getWorkspaceDir: ({ binding }) => taskExecutionWorkspace(root, binding.taskId, binding.sessionId),
-  }))
-  const executionDriver = executionId => {
-    const execution = executionCache.get(executionId)
-    if (!execution) fail('TASK_EXECUTION_NOT_FOUND')
-    const backend = executionBackend(execution)
-    if (!['dsh', 'claude-code'].includes(backend)) fail('TASK_EXECUTION_BACKEND_INVALID')
-    return backend === 'claude-code' ? claudeExecutionSessions : dshExecutionSessions
-  }
-  const executionSessions = {
-    run: args => executionDriver(args.binding.executionId).run(args),
-    cancel: id => executionDriver(id).cancel(id),
-    feedback: id => executionDriver(id).feedback(id),
-    assertDrained: binding => executionDriver(binding.executionId).assertDrained(binding),
-    recoverDrained: args => executionDriver(args.binding.executionId).recoverDrained(args),
-    confirmDrained: binding => executionDriver(binding.executionId).confirmDrained?.(binding),
-    close: () => Promise.all([dshExecutionSessions.close(), claudeExecutionSessions.close()]),
-  }
+
   const track = (map, id, action) => {
     if (map.has(id)) return map.get(id)
     const previousFailure = failures.get(id)
@@ -485,36 +424,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     promise.catch(() => {})
     return promise
   }
-  async function verifyProviderTerminal(execution, binding = undefined) {
-    binding ??= await query('execution.binding', { executionId: execution.executionId })
-    executionSessions.assertDrained(binding)
-    // CLI 有独立日志与终态，不允许拿不存在的原生 turn/end 证明可重试。
-    if (executionBackend(execution) !== 'dsh') fail('CLAUDE_PROVIDER_RECOVERY_UNSUPPORTED')
-    const jobs = ctx.get?.('jobs')
-    if (jobs?.list?.(execution.sessionId).some(job => ['running','stopping'].includes(job.status))) fail('DYNAMIC_JOB_DRAIN_UNPROVEN')
-    const stored = await inspectSession(ctx.sessionPersistence, execution.sessionId)
-    const end = stored.events.findLast(event => event.type === 'turn/end')
-    const input = stored.events.findLast(event => event.type === 'user/message' && event.data.source?.executionSession)
-    if (end?.seq !== execution.providerRecovery.terminal.endSeq || end.data.reason?.kind !== 'error'
-      || hash(end.data.reason.error) !== hash(execution.result.payload.error.providerError)
-      || input?.data.source.executionSession.inputVersion !== binding.inputVersion
-      || input.data.source.executionSession.inputDigest !== binding.inputDigest
-      || input.data.source.executionSession.leaseEpoch !== binding.leaseEpoch || end.seq <= input.seq) fail('DYNAMIC_PROVIDER_TERMINAL_EVIDENCE_CHANGED')
-    return binding
-  }
-  function armProviderRetry() {
-    clearTimeout(providerRetryTimer)
-    if (closed) return
-    const now = Date.now(), due = [...executionCache.values()].filter(execution => ['queued','failed'].includes(execution.status)
-      && (execution.providerRecovery?.nextAttemptAt || execution.providerRecovery?.nextReviewAt) && !execution.cancelRequested)
-      .map(execution => Date.parse(execution.providerRecovery.nextAttemptAt ?? execution.providerRecovery.nextReviewAt))
-      .concat([...taskCache.values()].filter(task => !singleExecution&&!task.archivedAt && task.status === 'active' && task.control === 'active' && task.providerRecovery?.nextAttemptAt)
-        .map(task => Date.parse(task.providerRecovery.nextAttemptAt))).filter(at => at > now)
-    if (due.length) {
-      providerRetryTimer = setTimeout(() => { void schedulePending() }, Math.min(...due) - now)
-      providerRetryTimer.unref()
-    }
-  }
+
   function schedulePending() {
     if (closed) return Promise.resolve()
     scheduleRequested = true
@@ -522,33 +432,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     scheduling = (async () => {
       while (scheduleRequested && !closed) {
         scheduleRequested = false
-        for await (const execution of executionIndex()) {
-          if (closed) return
-          if (admissionHolds.has(execution.taskId)) continue
-          const review = execution.status === 'failed' && execution.providerRecovery?.nextReviewAt
-          if (!(review || execution.status === 'queued' && execution.providerRecovery?.nextAttemptAt) || !execution.drained || execution.recovering
-            || Date.parse(review || execution.providerRecovery.nextAttemptAt) > Date.now()) continue
-          const task = await requireTask(execution.taskId)
-          if (task.archivedAt || task.status !== 'active' || task.control !== 'active' || taskHumanWait(task, execution.executionId)
-            || !review && execution.requirementRevision !== task.requirementRevision || execution.controlRevision !== task.controlRevision
-            || execution.cancelRequested) continue
-          if ((await query('wake.list', { taskId: task.taskId })).some(item => item.kind === 'human.responded' && item.state !== 'acked')) continue
-          let binding
-          try {
-            binding = await query('execution.binding', { executionId: execution.executionId })
-            await verifyProviderTerminal(await query('execution.get', { executionId: execution.executionId }), binding)
-            await command(review ? 'execution.review-provider' : 'execution.retry-provider', { binding },
-              `provider-${review ? 'review' : 'retry'}:${execution.executionId}:${execution.inputVersion}${review ? ':' + execution.providerRecovery.nextReviewAt : ''}`)
-            failures.delete(execution.executionId)
-          } catch (error) {
-            failures.set(execution.executionId, { id: execution.executionId, code: error.code ?? error.message, at: new Date().toISOString() })
-            if (binding) {
-              try { await command('execution.provider-recovery-blocked', { binding, code: error.code ?? error.message }, `provider-recovery-blocked:${execution.executionId}:${execution.inputVersion}`) }
-              catch (recordError) { failures.set(execution.executionId, { id: execution.executionId, code: 'DYNAMIC_PROVIDER_RECOVERY_RECORD_FAILED',
-                cause: error.code ?? error.message, recordError: recordError.code ?? recordError.message, at: new Date().toISOString() }) }
-            }
-          }
-        }
+
         // SQLite is the durable queue. A freed slot promotes existing work immediately,
         // without depending on a periodic recovery tick or manufacturing another wake.
         for (const task of await query('task.list')) {
@@ -560,21 +444,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           if (!taskSlots.has(task.taskId) && taskSlots.size >= taskLimit()) continue
           if (pending.some(item => item.state !== 'acked')) void kickTask(task.taskId)
         }
-        for await (const execution of executionIndex()) {
-          if (closed || inflightExecutions.size >= executionLimit()) break
-          if (admissionHolds.has(execution.taskId) || execution.providerRecovery?.nextAttemptAt || !retryReady(execution.executionId) || inflightExecutions.has(execution.executionId) || !execution.drained || execution.recovering || execution.status !== 'queued' || execution.cancelRequested) continue
-          if (!taskSlots.has(execution.taskId) && taskSlots.size >= taskLimit()) continue
-          if ((await query('execution.get', { executionId: execution.executionId }))?.resources?.state === 'waiting') continue
-          void kickExecution(execution.executionId)
-        }
+
       }
     })().catch(error => { failures.set('scheduler', { id: 'scheduler', code: error.code ?? error.message }) })
-      .finally(() => { scheduling = undefined; armProviderRetry() })
+      .finally(() => { scheduling = undefined })
     return scheduling
   }
   async function attachWorkspace(sessionId, cwd, title) {
     const registry = ctx.get?.('workspaceRegistry') ?? ctx.workspaceRegistry
-    if (!registry) { if (!suppliedTaskSessions && !suppliedExecutionSessions) fail('TASK_WORKSPACE_REGISTRY_REQUIRED'); return }
+    if (!registry) { if (!suppliedTaskSessions) fail('TASK_WORKSPACE_REGISTRY_REQUIRED'); return }
     await registry.sessionKnown(sessionId)
     const workspace = await registry.resolveByPath(cwd) ?? await registry.create(cwd, title)
     // A registry initialized before task-specific persistence may have retained the
@@ -626,18 +504,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const executions = await query('execution.list', { taskId: task.taskId })
     const pendingWake = !task.lastDecision && (await query('wake.list', { taskId: task.taskId })).some(wake => wake.state !== 'acked')
     const state = taskBoardState(task, executions, pendingWake)
-    if(singleExecution)return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.drained?'idle':'running',workspaceDir:await taskWorkspace(root,task.taskId),logPath:ctx.sessionPersistence.path(task.sessionId)}}
-    return { ...publicTask, state, contextInputContract: taskContextInputContract,
-    topicRefs: taskTopicRefs(task), executionCount: executions.length,
-    executionSessions: [...new Map(executions.map(execution => [execution.sessionId || execution.executionId, {
-      executionId: execution.executionId, sessionId: execution.sessionId, executionBackend: executionBackend(execution), title: executionSessionTitle(execution), status: execution.status, createdAt: execution.createdAt,
-      runTiming: execution.runTiming ?? null,
-      latestRoundTiming: latestExecutionRoundTiming(execution),
-      drained: execution.drained, recovering: execution.recovering === true,
-    }])).values()].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.executionId.localeCompare(b.executionId)), waitingReason: state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
-    controlState: task.control, inputVersion: task.requirementRevision, result: task.completion?.result ?? task.lastDecision ?? null,
-    session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running', workspaceDir: await taskWorkspace(root, task.taskId), logPath: taskSessionLogRoot(root, task.taskId) },
-    legacyReadonly: false }
+    return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.drained?'idle':'running',workspaceDir:await taskWorkspace(root,task.taskId),logPath:ctx.sessionPersistence.path(task.sessionId)}}
+
   }
   async function taskDetail(taskId) {
     const task = await query('task.get', { taskId })
@@ -650,20 +518,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
   }
   async function taskExecutions(taskId, { offset = 0, limit = 50, revision, summary = false } = {}) {
-    const page = await query('observer.page', { collection: 'executions', taskId, offset, limit, revision, summary })
-    if (summary) return { ...page, items: undefined, executions: page.items.map(execution => ({
-      executionId: execution.executionId, sessionId: execution.sessionId, title: executionSessionTitle(execution),
-      executionBackend: executionBackend(execution), status: execution.status, drained: execution.drained,
-      recovering: execution.recovering === true, createdAt: execution.createdAt,
-      runTiming: execution.runTiming ?? null, latestRoundTiming: latestExecutionRoundTiming(execution),
-    })) }
-    const executions = await Promise.all(page.items.map(async execution => ({ ...execution, title: executionSessionTitle(execution), objective: execution.prompt,
-      executionBackend: executionBackend(execution),
-      document: { path: taskFilePath(root, taskId, 'outputs', execution.executionId, `round-${execution.inputVersion}.md`), inputVersion: execution.inputVersion },
-      workspaceDir: dirname(taskFilePath(root, taskId, 'work')), workingDirectory: dirname(taskFilePath(root, taskId, 'work')),
-      logPath: executionBackend(execution) === 'claude-code' ? claudeExecutionLogPath(dirname(taskFilePath(root, taskId, 'work')), execution.executionId) : taskSessionLogRoot(root, taskId),
-      result: execution.result?.payload?.output ?? execution.result?.payload?.error ?? null })))
-    return { ...page, items: undefined, executions }
+    const page=await query('observer.page',{collection:'executions',taskId,offset,limit,revision,summary})
+    if(page.items.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
+    return {...page,items:undefined,executions:[]}
   }
   async function materializeSource(taskId, source) {
     const directories = await taskDirectories(root, taskId, { create: true })
@@ -747,7 +604,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function cancelLiveTask(taskId, oldTask, oldExecutions) {
     const list = await query('execution.list', { taskId })
-    await Promise.all([taskSessions.cancel(taskId), ...list.filter(item => !item.drained).map(item => executionSessions.cancel(item.executionId))])
+    if(list.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
+    await taskSessions.cancel(taskId)
     await Promise.allSettled([oldTask, ...list.map(item => oldExecutions.get(item.executionId))].filter(Boolean))
   }
   function admitTask(taskId, action) {
@@ -904,7 +762,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         : supplement
         ? command('task.supplement', { ...args, messageId: id, text: action.context ?? source.text,
           request: `${task.request}\n\n[话题补充]\n${action.context ?? source.text}`,
-          sourceRefs: [...new Set([...task.sourceRefs, ...sources.map(item => item.sourceId)])],...(singleExecution&&taskSessions.liveBinding?.(task.taskId)?{liveBinding:taskSessions.liveBinding(task.taskId)}:{}) }, id)
+          sourceRefs: [...new Set([...task.sourceRefs, ...sources.map(item => item.sourceId)])],...(taskSessions.liveBinding?.(task.taskId)?{liveBinding:taskSessions.liveBinding(task.taskId)}:{}) }, id)
         : command(action.kind === 'task-reopen' ? 'task.reopen' : 'task.revise', { ...args,
           request: `${task.request}\n\n[话题补充]\n${action.context ?? source.text}`,
           sourceRefs: [...new Set([...task.sourceRefs, ...sources.map(item => item.sourceId)])],
@@ -913,10 +771,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       task = receipt.result.task
       if (!supplement) await measure('old-drain', () => cancelLiveTask(task.taskId, oldTask, oldExecutions))
       if (supplement && !task.humanRequests?.some(request => request.status === 'waiting-reply'))
-        for (const execution of await query('execution.list', { taskId: task.taskId })) await executionSessions.feedback(execution.executionId)
+        if((await query('execution.list',{taskId:task.taskId})).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
     }
     await measure('materialize', async () => { for (const item of sources) await materializeSource(task.taskId, item) })
-    if(singleExecution&&task.liveSupplements?.some(row=>row.state==='pending'&&row.leaseEpoch===task.leaseEpoch)&&taskSessions.liveBinding?.(task.taskId)){
+    if(task.liveSupplements?.some(row=>row.state==='pending'&&row.leaseEpoch===task.leaseEpoch)&&taskSessions.liveBinding?.(task.taskId)){
       const allSources=(await Promise.all(task.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean)
       const materials=await Promise.all(allSources.map(source=>materializeSource(task.taskId,source)))
       await taskSessions.supplement({task,sources:allSources,materials})
@@ -1096,7 +954,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     },
     quotedReminderContext: async () => null,
     // 在接纳业务决定前拒绝泄漏正文，让原模型修改后重提，不能先创建任务再卡在外发。
-    validateReply: async args => {if(singleExecution&&args.decision.reply&&args.decision.replyReview?.kind==='confirmation'&&residentStore.getGroup(args.groupId)?.outbox.some(row=>row.outboundId.startsWith('triage-')&&row.matterSourceMessageIds?.some(id=>args.decision.basisMessageIds?.includes(id))))fail('TRIAGE_CONFIRMATION_ALREADY_HANDLED');return assertGroupReply(args.decision.reply,await topicReplyInternalIds(args))},
+    validateReply: async args => {if(args.decision.reply&&args.decision.replyReview?.kind==='confirmation'&&residentStore.getGroup(args.groupId)?.outbox.some(row=>row.outboundId.startsWith('triage-')&&row.matterSourceMessageIds?.some(id=>args.decision.basisMessageIds?.includes(id))))fail('TRIAGE_CONFIRMATION_ALREADY_HANDLED');return assertGroupReply(args.decision.reply,await topicReplyInternalIds(args))},
     readFrozenReply: async args => (await frozenReply(args)).frozen,
     appendOutbox: async args => {
       const { outbound: previous, notification: prepared, frozen } = await frozenReply(args)
@@ -1146,7 +1004,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   function kickGroup(groupId, factsOnly = false) {
     if (closed) return Promise.resolve()
     // 正在处理旧来源时的新入站必须续跑一轮，不能等恢复定时器才解除发送暂缓。
-    if (inflightGroups.has(groupId)) { if(singleExecution)void topicCoordinator.schedule(groupId);rerouteGroups.set(groupId, (rerouteGroups.get(groupId) ?? true) && factsOnly); return inflightGroups.get(groupId) }
+    if (inflightGroups.has(groupId)) { void topicCoordinator.schedule(groupId);rerouteGroups.set(groupId, (rerouteGroups.get(groupId) ?? true) && factsOnly); return inflightGroups.get(groupId) }
     const work=track(inflightGroups, groupId, async () => {
       if (!factsOnly) await refreshTasks()
       await topicCoordinator.schedule(groupId)
@@ -1244,152 +1102,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     } finally { loopDelay.disable() }
   }
 
-  async function verifyTaskRestartIsolations(taskId) {
-    for (const operation of await query('operation.list', { taskId })) if (operation.recoverySettlement && !await verifyRestartIsolation(ctx, operation)) fail('DYNAMIC_ISOLATION_FENCE_UNVERIFIED')
-  }
-
-  async function nativeOperation(event) {
-    const { binding, callId, toolName, arguments: args } = event
-    const dwsCommands = singleExecution?ctx.get('channels').operationCommands(toolName,args):referenceChannel.nativeDwsCommands(toolName,args)
-    const readOnly = event.effectClass === 'read' || event.effectClass === 'pure'
-    if (readOnly && !dwsCommands.some(item => item.kind === 'status')) return { readOnly: true }
-    if (event.phase === 'started') {
-      await verifyTaskRestartIsolations(binding.taskId)
-      if (typeof args.command === 'string') for (const operation of await query('operation.list')) {
-        const scope = operation.recoverySettlement?.proof?.isolation?.provenance?.scope
-        if (hasRestartIsolation(operation) && scope?.kind === 'local-postgres'
-          && referencesIsolatedPostgres(args.command, scope, join(root, 'tasks', binding.taskId))) fail('DYNAMIC_ISOLATED_SOURCE_REUSE_FORBIDDEN')
-      }
-    }
-    const key = `native:${binding.executionId}:${binding.inputVersion ?? 1}:${binding.leaseEpoch}:${callId}`
-    const operationId = `operation-${hash(key).slice(0, 40)}`
-    if (event.phase === 'job') {
-      await command('operation.job', { binding, operationId, job: event.job }, `job:${key}:${hash(event.job)}`)
-      return { operationId }
-    }
-    if (event.phase === 'started') {
-      await command('operation.prepare', { binding, operationId, key, definition: { toolName, argumentsDigest: hash(args), ...(['pwsh', 'bash'].includes(toolName) ? { commandDigest: hash(args.command) } : {}), effectClass: event.effectClass ?? 'unknown',
-        ...(dwsCommands.length ? { nativeDwsCommands: dwsCommands } : {}),
-        ...(['job_output', 'job_list'].includes(toolName) ? { nativeJobRead: false } : {}) },
-        authorizationRef: `task:${binding.taskId}:requirement:${binding.requirementRevision}`, resourceKeys: [] }, `prepare:${key}`)
-      const receipt = await command('operation.start', { binding, operationId }, `start:${key}`)
-      if (!receipt.dispatchEligible) fail(receipt.result.operation.state === 'unknown' ? 'DYNAMIC_OPERATION_UNRESOLVED' : 'DYNAMIC_OPERATION_ALREADY_DISPATCHED')
-      nativeDws.start(operationId, dwsCommands)
-      return { operationId }
-    }
-    // A background launch acknowledgement does not prove a terminal process result.
-    if (event.jobReceipt && ['running', 'stopping'].includes(event.jobReceipt.status)) return { operationId, running: true }
-    const error = nativeFileError(toolName, args, event.result, event.result?.error?.info ?? event.result?.error)
-    const noEffect = readOnly && (event.cancelled || event.result?.isError === true)
-      || !event.cancelled && event.result?.isError === true && isNativeFilePrecondition(toolName, error)
-    const state = noEffect ? 'failed' : event.cancelled || event.result?.isError ? 'unknown' : event.jobReceipt && event.jobReceipt.status !== 'completed' ? 'failed' : 'succeeded'
-    try {
-      const receipt = await command('operation.settle', { binding, operationId, state,
-        result: { callId, toolName, isError: event.result?.isError === true, resultDigest: hash(event.result?.content ?? event.result ?? null),
-          ...(singleExecution?ctx.get('channels').operationObservation(event,dwsCommands):referenceChannel.nativeDwsObservation(event,dwsCommands)),
-          ...(error?.code ? { errorCode: error.code } : {}), ...(noEffect ? { noEffect: true } : {}),
-          ...(event.cancelled ? { cancelled: true } : {}), ...(event.jobReceipt ? { jobReceipt: event.jobReceipt } : {}) } }, `settle:${key}`)
-      try { await nativeDws.observe(receipt.result.operation) }
-      catch (cause) { ctx.logger?.warn?.(`native DWS receipt: ${cause.code ?? cause.message}`) }
-    } finally { nativeDws.finish(operationId) }
-    return { operationId }
-  }
-  function kickExecution(executionId) {
-    if (closed || admissionHolds.has(executionCache.get(executionId)?.taskId) || !retryReady(executionId) || !inflightExecutions.has(executionId) && inflightExecutions.size >= executionLimit()) return Promise.resolve()
-    return track(inflightExecutions, executionId, async () => {
-      const candidate = await query('execution.get', { executionId })
-      if (!candidate || candidate.status !== 'queued' || candidate.providerRecovery?.nextAttemptAt || !candidate.drained || candidate.cancelRequested || candidate.resources?.state === 'waiting' || !reserveTask(candidate.taskId)) return
-      if ((await requireTask(candidate.taskId)).archivedAt) return
-      await verifyTaskRestartIsolations(candidate.taskId)
-      if (admissionHolds.has(candidate.taskId)) return
-      let claimed
-      try { claimed = await command('execution.claim', { executionId }) }
-      catch (error) {
-        // 预读后另一执行可能先获得资源；这是排队，不是执行失败。
-        if (['DYNAMIC_RESOURCE_BUSY', 'DYNAMIC_COORDINATION_WAITING', 'DYNAMIC_COORDINATION_COVERAGE_STALE', 'DYNAMIC_COORDINATION_FROZEN'].includes(error.code)) return
-        throw error
-      }
-      const { binding, execution } = claimed.result
-      let drained = true
-      let stageSequence = 0
-      const stageReports = new Map()
-      try {
-        const artifactScope = await resolveTaskArtifactScope({ root, task: await requireTask(binding.taskId), query })
-        if (artifactScope && executionBackend(execution) !== 'dsh') fail('TASK_ARTIFACT_EXECUTION_BACKEND_UNSUPPORTED')
-        const permissionCorrection = await verifiedExecutionPermission(execution)
-        const taskForMemory=await requireTask(binding.taskId)
-        await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:taskForMemory.ownerActorId??config.ownerActorId,...taskForMemory.groupId?{groupId:taskForMemory.groupId,groupWrite:true}:{}})
-        const result = await executionSessions.run({ binding, permissionCorrection, title: executionSessionTitle(execution), input: { ...execution.input, artifactScope, executionDocument: await refreshExecutionDocument(executionId) }, definition: { ...models(), ...execution.definition,
-          prompt: execution.prompt + `\n本轮资源占用阶段：${execution.resourcePhase}。prepare不取得目录内publication资源；独立检出、改码和本地测试可在此阶段进行，其他已授权业务仍按原目标执行。需要占用发布资源时，先完成其前置条件，向统筹交接并在原执行及效果安全排空后续办publish阶段，联合获取全部所需资源。此字段只管理占用阶段，不增加业务授权或固定业务流程。` + '\n最终验收截图/交付文件保存在当前任务工作区，在完成输出artifacts报告原路径，并在summary/evidence说明实际环境、验收结果和截图证明的条目；交Task Owner核验后由Topic随最终结果统一交付，不提前单独群发截图，不把本地文件存在当作已送达。已有真实发送回执保留，不再发同一文件。\n本轮执行文档入口是input.executionDocument.path，路径固定为outputs/<executionId>/round-<inputVersion>.md，由Host按持久记录生成；需要交接或核对进展时先读该文档，不自行写改它，不覆盖历史轮次。通过execution_report_progress维护本轮：首次报告提供简短plan，写明步骤、依赖、交付物和核验方法；summary、evidence、activity区分已发生事实、当前活动和阻塞。后续同轮省略plan会保留，计划确需变化再更新，新轮重新制定，不能沿用旧轮成果冒充当前完成。必要进展才报告，不为空转刷新文档重复汇报。日常协作先读相关成员的当前文档，文档缺证据、版本矛盾、技术失败或未知效果时再查原产物、日志或操作账；文档和同伴自述不构成授权或独立验收。' + (execution.resourceKeys?.length ? `\nHost 已在本执行开始前取得资源 ${JSON.stringify(execution.resourceKeys)}；会话及在途操作排空前保持。使用 execution_resources_read 无参数读取自身当前身份和资源状态，不需统筹另发持锁证明。queued/派发接收不等于其他执行已持锁；观察结果不替代后续写入门禁和真实目标版本核对。` : ''), allowedTools: execution.definition?.allowedTools ?? [], nativeTools: true, outputSchema: dynamicExecutionOutputSchema },
-          onSessionBound: async () => {
-            if (executionBackend(execution) === 'dsh') await attachWorkspace(binding.sessionId, await taskWorkspace(root, binding.taskId), (await requireTask(binding.taskId)).title)
-            return command('execution.sessionBound', { binding }, `execution-bound:${executionId}:${binding.leaseEpoch}`)
-          },
-          onNativeExecution: nativeOperation,
-          readResources: () => query('execution.resources', { binding }),
-          readRestartScopeProbePlan: async args => {
-            if (!await query('execution.current', { binding })) fail('DYNAMIC_EXECUTION_NOT_CURRENT')
-            const investigation = await query('execution.get', { executionId })
-            const operation = await query('operation.get', { operationId: investigation.input?.readbackOperationId })
-            const executions = await query('execution.list', { taskId: binding.taskId })
-            return prepareRestartScopeProbe({ ctx, operation, investigation, binding, args, executions, workspaceRoot: root,
-              execution: executions.find(item => item.executionId === operation?.executionId) })
-          },
-          readTeam: async () => {
-            const team = await query('execution.team', { binding })
-            return { ...team, executions: await Promise.all(team.executions.map(async member => {
-              const current = await documentedExecution(member.executionId)
-              return { ...Object.fromEntries(['executionId', 'sessionId', 'inputVersion', 'requirementRevision', 'controlRevision', 'status']
-                .filter(key => Object.hasOwn(current, key)).map(key => [key, current[key]])),
-                title: executionSessionTitle(current), objective: current.input?.objective ?? '', context: current.input?.context ?? '',
-                resourceKeys: current.resourceKeys ?? [], resourcePhase: current.resourcePhase, result: current.result ?? null, stageProgress: current.stageProgress ?? null, document: current.document }
-            })) }
-          },
-          sendMessage: async args => {
-            if (!await query('execution.current', { binding })) fail('DYNAMIC_EXECUTION_NOT_CURRENT')
-            const receipt = await command('execution.peerMessage', { binding, ...args }, `peer-message:${executionId}:${binding.inputVersion}:${binding.leaseEpoch}:${hash(args.key)}`)
-            if (!receipt.result.received) return receipt.result
-            await executionSessions.feedback(args.executionId)
-            const target = await query('execution.get', { executionId: args.executionId })
-            const feedback = target.feedback.find(item => item.id === receipt.result.feedback.id)
-            return { received: true, executionId: target.executionId, sessionId: target.sessionId, messageId: feedback.id,
-              inputVersion: feedback.inputVersion, consumed: !!feedback.consumedAt, ...(feedback.sequence === undefined ? {} : { sequence: feedback.sequence }) }
-          },
-          readFeedback: async () => ((await query('execution.get', { executionId })).feedback ?? []).filter(item => item.requirementRevision === binding.requirementRevision && item.controlRevision === binding.controlRevision
-            && (!item.sourceExecutionId || item.inputVersion === binding.inputVersion)),
-          onFeedbackConsumed: proof => command('execution.feedbackConsumed', { binding, ...proof }, `feedback-consumed:${executionId}:${proof.messageId}`),
-          onProgress: async ({ summary, evidence, reportId, activity, plan }) => {
-            if (typeof reportId !== 'string' || !reportId.trim() || reportId.length > 2000) fail('EXECUTION_PROGRESS_REPORT_ID_INVALID')
-            if (!await query('execution.current', { binding })) fail('DYNAMIC_EXECUTION_NOT_CURRENT')
-            if (!stageReports.has(reportId)) stageReports.set(reportId, ++stageSequence)
-            const receipt = await command('execution.progressReported', { binding, summary, evidence, ...(activity === undefined ? {} : { activity }), ...(plan === undefined ? {} : { plan }), sequence: stageReports.get(reportId) },
-              `execution-stage:${executionId}:${binding.inputVersion}:${binding.leaseEpoch}:${hash(reportId)}`)
-            if (!receipt.replayed) void kickTask(binding.taskId)
-            return { recorded: true, sequence: receipt.result.execution.stageProgress.sequence, document: await refreshExecutionDocument(executionId) }
-          },
-          ...(execution.providerRecovery?.activeInputVersion === execution.inputVersion ? { recoveryContext: { kind: 'provider-recovery', attempt: execution.providerRecovery.attempts,
-            failure: execution.results.at(-1)?.payload.error,
-            instruction: '模型服务暂态失败后的同会话恢复。沿原小目标继续，保留原工具结果；不得重放成功操作或未知效果。原生终态与排空已核验，这不是新的业务授权。' } } : {}),
-          onResult: (output, proof) => command('execution.result', { binding, output, feedbackVersion: proof?.feedbackVersion ?? 0 }, `execution-result:${executionId}:${binding.inputVersion ?? 1}`) })
-        if (result.status !== 'submitted') await command('execution.result', { binding, error: { ...result.failure, code: result.reason ?? result.status } }, `execution-result:${executionId}:${binding.inputVersion ?? 1}`)
-      } catch (error) {
-        drained = error.executionDrained !== false
-        // The native submission raced newer feedback. Keep the same execution queued
-        // after drain; its persisted tool results remain authoritative on resume.
-        if (drained && error.code === 'DYNAMIC_EXECUTION_FEEDBACK_PENDING') return
-        if (drained) {
-          try { await command('execution.result', { binding, error: { code: error.code ?? error.message, message: String(error.message), phase: error.phase ?? 'runtime' } }, `execution-result:${executionId}:${binding.inputVersion ?? 1}`) }
-          catch (recordError) { throw Object.assign(new AggregateError([error, recordError], 'DYNAMIC_EXECUTION_FAILURE_RECORD_FAILED'), { code: 'DYNAMIC_EXECUTION_FAILURE_RECORD_FAILED' }) }
-        } else if (error.code === 'execution_session_drain_failed') {
-          await command('execution.drainFailed', { binding, error: drainDiagnostic(error) }, `execution-drain-failed:${executionId}:${binding.leaseEpoch}`)
-        }
-        throw error
-      } finally {
-        if (drained) await command('execution.drained', { binding }, `execution-drained:${executionId}:${binding.leaseEpoch}`)
-        if (!closed) void kickTask(binding.taskId)
-      }
-    })
-  }
   function kickTask(taskId) {
     if (closed || admissionHolds.has(taskId) || !retryReady(taskId) || !reserveTask(taskId)) return Promise.resolve()
     return track(inflightTasks, taskId, async () => {
@@ -1412,7 +1124,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const sources = (await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
         const materials = await Promise.all(sources.map(source => materializeSource(taskId, source)))
         const operations = await query('operation.list', { taskId })
-        const executions = await Promise.all((await query('execution.list', { taskId })).map(execution => documentedExecution(execution.executionId)))
+        const executions = await query('execution.list',{taskId})
+        if(executions.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
         await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:task.ownerActorId??config.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}})
         const runResult = await taskSessions.run({ binding, input: { task, artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: _body, ...resource }) => resource) })), wakes, executions,
           operations,
@@ -1427,130 +1140,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             sources.splice(0,sources.length,...(await Promise.all(task.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean))
           },
           onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root, taskId), task.title); return command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`) },
-          delegate: async args => {
-            if (humanReview) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
-            if (dialogue && (args.feedback !== true || !args.executionId)) fail('TASK_DIALOGUE_FEEDBACK_ONLY')
-            if (args.readbackOperationId) {
-              const operation = await query('operation.get', { operationId: args.readbackOperationId })
-              if (args.readOnly !== true || operation?.taskId !== taskId) fail('TASK_OPERATION_SCOPE_MISMATCH')
-            }
-            if (args.skillNames !== undefined && (!Array.isArray(args.skillNames)
-              || args.skillNames.some(name => typeof name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))
-              || new Set(args.skillNames).size !== args.skillNames.length)) fail('TASK_SKILL_NAMES_INVALID')
-            if (args.resourceKeys !== undefined && (!Array.isArray(args.resourceKeys)
-              || args.resourceKeys.some(key => typeof key !== 'string' || !key.trim()))) fail('DYNAMIC_ARGUMENT_INVALID', 'resourceKeys')
-            if (args.resourceKeys !== undefined) args = { ...args, resourceKeys: resourceCatalog.keys(args.resourceKeys) }
-            if (args.resourcePhase !== undefined && !['prepare', 'publish'].includes(args.resourcePhase)) fail('DYNAMIC_RESOURCE_PHASE_INVALID')
-            const dispatchId = `${args.executionId ? 'continue' : 'delegate'}:${taskId}:${binding.requirementRevision}:${args.key}`
-            if (args.feedback === true && (!args.executionId || args.readOnly || args.readbackOperationId || args.skillNames?.length || args.resourceKeys?.length || args.resourcePhase !== undefined)) fail('TASK_EXECUTION_FEEDBACK_ARGUMENT_INVALID')
-            const prior = await query('receipt.get', { id: dispatchId })
-            if (prior) {
-              if (prior.result.feedback) {
-                if (args.feedback !== true || prior.result.feedback.text !== JSON.stringify({ objective: args.objective, context: args.context ?? '' })
-                  || prior.result.execution.executionId !== args.executionId) fail('DYNAMIC_DISPATCH_KEY_CONFLICT')
-                await executionSessions.feedback(args.executionId)
-                const execution = await query('execution.get', { executionId: args.executionId })
-                const feedback = execution.feedback.find(item => item.id === dispatchId)
-                return { executionId: execution.executionId, sessionId: execution.sessionId, received: true, consumed: !!feedback.consumedAt, feedback }
-              }
-              if (args.feedback === true) fail('DYNAMIC_DISPATCH_KEY_CONFLICT')
-              if (prior.result.execution.input.objective !== args.objective || (args.executionId && prior.result.execution.executionId !== args.executionId)
-                || (prior.result.execution.input.recoveryReadOnly === true) !== (args.readOnly === true)
-                || (prior.result.execution.input.readbackOperationId ?? null) !== (args.readbackOperationId ?? null)
-                || hash(prior.result.execution.input.skillNames ?? []) !== hash(args.skillNames ?? [])
-                || hash(resourceCatalog.keys(prior.result.execution.resourceKeys)) !== hash(args.resourceKeys ?? (args.executionId ? resourceCatalog.keys(prior.result.execution.resourceKeys) : []))
-                || resourceCatalog.executionPhase(prior.result.execution) !== (args.resourcePhase ?? (args.executionId || prior.result.execution.resourcePhase === undefined ? resourceCatalog.executionPhase(prior.result.execution) : 'prepare'))) fail('DYNAMIC_DISPATCH_KEY_CONFLICT')
-              const current = await query('execution.get', { executionId: prior.result.execution.executionId })
-              return { executionId: current.executionId, status: current.status, sessionId: current.sessionId, resourcePhase: current.resourcePhase, resources: current.resources }
-            }
-            if (args.resourceKeys !== undefined) resourceCatalog.keys(args.resourceKeys, true)
-            let existingTitle
-            if (args.executionId) {
-              const original = await query('execution.get', { executionId: args.executionId })
-              if (original?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
-              if (args.feedback === true) {
-                const receipt = await command('execution.feedback', { binding, executionId: args.executionId,
-                  messageId: dispatchId, text: JSON.stringify({ objective: args.objective, context: args.context ?? '' }) }, dispatchId)
-                await executionSessions.feedback(args.executionId)
-                return { executionId: args.executionId, sessionId: original.sessionId, feedback: receipt.result.feedback,
-                  received: true, consumed: !!receipt.result.feedback.consumedAt }
-              }
-              existingTitle = executionSessionTitle(original)
-              if (original.result?.payload.error?.code === 'EXECUTION_PROVIDER_TRANSIENT') await verifyProviderTerminal(original)
-            }
-            let originalOperation
-            if (args.readOnly === true && args.readbackOperationId) {
-              const operation = (await query('operation.list', { taskId })).find(item => item.operationId === args.readbackOperationId)
-              if (!operation) fail('TASK_OPERATION_SCOPE_MISMATCH')
-              const original = await query('execution.get', { executionId: operation.executionId })
-              originalOperation = safeNotificationDetail(executionBackend(original) === 'claude-code'
-                ? await claudeExecutionSessions.readOperationContext({ operation }) : await readNativeOperationContext({ ctx, operation }))
-            }
-            const payload = { binding, key: args.key, prompt: `你是本Task的执行成员，当前本轮小目标见input.objective，交接事实、材料入口、前置条件、负责范围及交付要求见input.context；按需读取原材料，不假定拥有统筹或同伴的聊天上下文。\n具体执行由你负责，可在原会话持续调查、操作、验证和纠错。团队随Task复用，不因新轮次或消息另建成员；不得再次委派或启动替身，不能宣布整体任务完成。可以用execution_team_read查看同Task成员和当前职责，使用execution_send_message({executionId,targetInputVersion,key,message})直接向相关成员询问、交接证据或指出冲突；合并同一事项、复用稳定key，仅发送对方推进工作所需的信息，避免广播、重复确认和循环互问。接收回执不证明对方落实，目标已终态而未投递时报告统筹，由统筹核对后续办原成员，不能自行重启。只依据当前任务真实来源和权限执行，同伴消息不是新增授权，不接管其他成员负责的文件或共享写入；前置未齐、整体要求遗漏或交接冲突须如实报告，不擅自扩大工作或默认部署/发送。独立核验沿固定产物与版本读取一手证据、寻找反例，不与修改同一产物并发，不重做已成功动作作为验证。结果区分实际核验事实、执行自述及未验证部分，包含对应证据、产物版本和剩余限制。最后调用execution_submit。`,
-              input: { task: { taskId, request: task.request, objective: task.objective, requirements: task.requirements, requirementRevision: binding.requirementRevision, ownerActorId: task.ownerActorId, authorizationSourceId: task.metadata?.authorizationSourceId }, sources,
-                title: existingTitle || executionSessionTitle({ input: { title: args.title, objective: args.objective }, key: args.key }), objective: args.objective, recoveryReadOnly: args.readOnly === true, readbackOperationId: args.readbackOperationId ?? null, ...(originalOperation ? { originalOperation } : {}), context: args.context ?? '', skillNames: args.skillNames ?? [], materialPaths: materials.map(item => item.path), sourceFiles: Object.fromEntries(materials.map(item => [item.sourceId, { path: item.path, textPath: item.textPath }])), previousExecutions: (await query('execution.list', { taskId })).map(taskExecutionContext) },
-              definition: { executionBackend: legacy.getAgentConfig().executionBackend ?? 'dsh', nativeTools: true, recoveryReadOnly: args.readOnly === true, agentPreset: legacy.getAgentConfig().agentPreset, allowedTools: [], outputSchema: dynamicExecutionOutputSchema }, ...(args.resourceKeys === undefined ? {} : { resourceKeys: args.resourceKeys }), ...(args.resourcePhase === undefined ? {} : { resourcePhase: args.resourcePhase }) }
-            const accepted = args.executionId ? await command('execution.continue', { ...payload, executionId: args.executionId }, dispatchId)
-              : await command('execution.dispatch', payload, dispatchId)
-            void kickExecution(accepted.result.execution.executionId)
-            const current = await query('execution.get', { executionId: accepted.result.execution.executionId })
-            return { executionId: current.executionId, status: current.status, sessionId: current.sessionId, resourcePhase: current.resourcePhase, resources: current.resources }
-          },
-          readResourceCatalog: () => query('resource.catalog'),
-          readExecution: async executionId => { const execution = await query('execution.get', { executionId }); if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH'); return documentedExecution(executionId) },
-          readProgress: async executionId => {
-            const execution = await query('execution.get', { executionId })
-            if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
-            const current = await documentedExecution(executionId)
-            let observation
-            try { observation = executionBackend(execution) === 'claude-code'
-              ? await claudeExecutionSessions.readProgress({ execution }) : await readExecutionProgress({ ctx, execution }) }
-            catch (error) { observation = { readError: error.code ?? 'EXECUTION_PROGRESS_LOG_UNREADABLE', limitations: ['实际动作读取失败，不得据执行自述确认方向正常。'] } }
-            return { available: true, executionId, sessionId: current.sessionId, status: current.status, drained: current.drained,
-              document: current.document, observation, ...(current.progressReview ? { progressReview: current.progressReview } : {}) }
-          },
-          reconcileOperation: async operationId => {
-            if (humanReview) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
-            const operation = (await query('operation.list', { taskId })).find(item => item.operationId === operationId)
-            if (!operation) fail('TASK_OPERATION_SCOPE_MISMATCH')
-            if (operation.state !== 'unknown') return { operation }
-            const original = await query('execution.get', { executionId: operation.executionId })
-            if (executionBackend(original) === 'claude-code') return { operation, unresolved: true,
-              reason: 'CLAUDE_OPERATION_READBACK_REQUIRED', originalOperation: safeNotificationDetail(await claudeExecutionSessions.readOperationContext({ operation })),
-              nextAction: '原 Claude Code 操作效果未知。按原调用和实际产物只读调查，保留 unknown；本版本不支持将 CLI 日志转换为 DSH 原生自动对账证明，不得重放原操作或换后端重试。' }
-            try {
-              const jobs = ctx.get?.('jobs')
-              if (!original.drained || original.recovering || ctx.agents.get(original.sessionId) || ctx.sessions.get(original.sessionId)
-                || !jobs?.list || jobs.list(original.sessionId).some(job => ['running','stopping'].includes(job.status))) fail('DYNAMIC_OPERATION_EVIDENCE_INSUFFICIENT')
-              return (await command('operation.reconcile-job', { binding, operationId }, `reconcile-job:${operationId}:${hash(operation.job ?? null)}`)).result
-            }
-            catch (error) {
-              if (error.code !== 'DYNAMIC_OPERATION_EVIDENCE_INSUFFICIENT') throw error
-              const executions = await query('execution.list', { taskId })
-              const jobReadProof = await inspectFailedNativeJobRead({ ctx, operation,
-                execution: executions.find(item => item.executionId === operation.executionId) })
-              if (jobReadProof) return (await command('operation.reconcile-job-read', { binding, operationId, proof: jobReadProof }, `reconcile-job-read:${operationId}:${hash(jobReadProof)}`)).result
-              const fileProof = await inspectFailedNativeFileMutation({ ctx, operation,
-                execution: executions.find(item => item.executionId === operation.executionId) })
-              if (fileProof) return (await command('operation.reconcile-file-precondition', { binding, operationId, proof: fileProof }, `reconcile-file-precondition:${operationId}:${hash(fileProof)}`)).result
-              const readProof = await inspectFailedNativeWebRead({ ctx, operation,
-                execution: executions.find(item => item.executionId === operation.executionId) })
-              if (readProof) return (await command('operation.reconcile-web-read', { binding, operationId, proof: readProof }, `reconcile-web-read:${operationId}:${hash(readProof)}`)).result
-              const proof = await inspectStoppedNativeOperation({ ctx, operation, executions,
-                execution: executions.find(item => item.executionId === operation.executionId) })
-              if (proof) return (await command('operation.reconcile-stopped', { binding, operationId, proof }, `reconcile-stopped:${operationId}:${hash(proof)}`)).result
-              return { operation, unresolved: true, reason: error.code,
-                nextAction: 'Use task_delegate with readOnly=true and readbackOperationId=this operationId to associate an investigation with the original operation. The configured native tools remain available. Inspect actual effects without replay, then call task_operation_reconcile again. Verified Host stop/drain plus real observations may close only as failed with partial effects, never success.' }
-            }
-          },
-          cancelExecution: async ({ executionId, reason }) => {
-            if (humanReview) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
-            if (dialogue) fail('TASK_DIALOGUE_CANNOT_CANCEL')
-            const execution = await query('execution.get', { executionId }); if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
-            await command('execution.cancel', { binding, executionId, reason })
-            await executionSessions.cancel(executionId)
-            return { executionId, cancellationRequested: true }
-          },
           resolveHuman: async args => {
             if (!humanReview) fail('DYNAMIC_HUMAN_REVIEW_NOT_PENDING')
             return (await command('task.human.resolve', { binding, ...args },
@@ -1580,10 +1169,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             }
             if (decision.action === 'complete') {
               if (decision.deliveryFiles?.length && (!notifications?.sendFile || !notifications?.readbackFile)) fail('TASK_DELIVERY_FILE_TRANSPORT_UNAVAILABLE')
-              const artifactFiles = await (singleExecution?freezeSingleTaskFiles:freezeTaskDeliveryFiles)({ reported:decision.artifacts,selected: decision.deliveryFiles, task,
+              const artifactFiles = await (freezeSingleTaskFiles)({ reported:decision.artifacts,selected: decision.deliveryFiles, task,
                 executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root, taskId), files: deliveryFiles })
               const replyBindings=await taskReplyBindings(task)
-              const topicFacts=!singleExecution||replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length
+              const topicFacts=replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length
               await command('task.complete', { binding, summary: decision.summary, result: artifactFiles.length ? { ...decision, artifactFiles } : decision, topicFacts,
                 replyBindings }, `complete:${taskId}:${binding.requirementRevision}`)
             } else {
@@ -1595,7 +1184,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
                 replyBindings = bindingsForSources([source])
                 humanReply = { requestId: humanReview.requestId, sourceId: source.sourceId }
               }
-              const topicFacts=!singleExecution||replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length
+              const topicFacts=replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length
               await command('task.wait', { binding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}), ...(decision.question?.trim() ? { humanRequest: {
                 requestId: `human-${hash([taskId, binding.requirementRevision, binding.controlRevision, binding.leaseEpoch])}`,
                 reason: decision.summary, audience: decision.audience ?? 'operator', ...(decision.executionIds ? { executionIds: decision.executionIds } : {}), attemptedActions: decision.attemptedActions ?? [] } } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
@@ -1609,7 +1198,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           } })
         if (!submitted && runResult.status === 'no_submission') {
           // 补充输入会在安全步骤使旧回合停止；旧绑定不能写技术阻塞，排空后由原唤醒接续最新版本。
-          if(singleExecution&&['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(runResult.reason)&&await currentTask(binding,{allowLiveSupplements:true})){const latest=await requireTask(taskId);binding.contextRevision=latest.contextRevision??0}
+          if(['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(runResult.reason)&&await currentTask(binding,{allowLiveSupplements:true})){const latest=await requireTask(taskId);binding.contextRevision=latest.contextRevision??0}
           if (!await currentTask(binding)) return
           // 复核未提交判断时保留候选唤醒，用既有有界退避恢复，不能把技术失败当成已审阅。
           if (humanReview && !runResult.reason) throw Object.assign(new Error('TASK_SESSION_NO_SUBMISSION'), { code: 'TASK_SESSION_NO_SUBMISSION', phase: 'decision' })
@@ -1623,7 +1212,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if (submitted) await command('wake.ack', { binding, wakeIds }, `wake-ack:${taskId}:${binding.leaseEpoch}`)
       } catch (error) {
         drained = error.taskSessionDrained !== false
-        if(singleExecution&&drained&&['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY'].includes(error.code)){
+        if(drained&&['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY'].includes(error.code)){
           if(!await currentTask(binding))return
           const failure={code:error.code,...typeof error.phase==='string'?{phase:error.phase}:{},...typeof error.nativeAssistantStopReason==='string'?{stopReason:error.nativeAssistantStopReason}:{}}
           failures.set(taskId,{id:taskId,code:error.code})
@@ -1634,8 +1223,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           }
           return
         }
-        if (drained && ['TASK_SESSION_PROVIDER_TRANSIENT', 'TASK_SESSION_NO_SUBMISSION'].includes(error.code)) await command('task.provider-failure', { binding,
-          failure: { code: error.code, phase: error.phase, providerError: error.providerError } }, `task-provider-failure:${taskId}:${binding.leaseEpoch}`)
+
         throw error
       }
       finally {
@@ -1717,7 +1305,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       messages: [{ messageId: current.payload.sourceRef?.messageId ?? current.payload.sourceMessageId, messageVersion: current.payload.sourceVersion }] }, stage) : undefined
   async function notificationDeliveryGate(notification) {
     if(notification.archiveRestoreHold)return false
-    if(singleExecution&&notification.id.startsWith('triage-')){const outbound=residentStore.getGroup(notification.payload.conversationId)?.outbox.find(row=>row.outboundId===notification.id),ref=outbound?.sourceRef,current=ref&&residentStore.getGroup(notification.payload.conversationId)?.messages.find(row=>row.messageId===ref.messageId);return !!outbound&&outbound.text.startsWith('初步判断，尚待结合话题进一步核实：')&&(['unknown','starting'].includes(notification.state)||current?.messageVersion===ref?.messageVersion&&current?.senderOpenDingTalkId===ref?.actorId)}
+    if(notification.id.startsWith('triage-')){const outbound=residentStore.getGroup(notification.payload.conversationId)?.outbox.find(row=>row.outboundId===notification.id),ref=outbound?.sourceRef,current=ref&&residentStore.getGroup(notification.payload.conversationId)?.messages.find(row=>row.messageId===ref.messageId);return !!outbound&&outbound.text.startsWith('初步判断，尚待结合话题进一步核实：')&&(['unknown','starting'].includes(notification.state)||current?.messageVersion===ref?.messageVersion&&current?.senderOpenDingTalkId===ref?.actorId)}
     if (notification.kind === 'coordination' || notification.state === 'superseded') return false
     if (notification.kind === 'routing-clarification' && ['prepared', 'failed'].includes(notification.state)) {
       try { assertRoutingClarification(notification.payload, notification.id) }
@@ -1810,7 +1398,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (notification.state === 'delivered' && failures.get(notification.id)?.code === 'TASK_NOTIFICATION_INCOMPLETE_READBACK')
         failures.delete(notification.id)
       const readbackOnly = ['unknown', 'starting'].includes(notification.state)
-      if(singleExecution&&!ctx.get('channels').canDeliver(notification)){failures.set(notification.id,{id:notification.id,code:'CHANNEL_TRANSPORT_UNAVAILABLE'});continue}
+      if(!ctx.get('channels').canDeliver(notification)){failures.set(notification.id,{id:notification.id,code:'CHANNEL_TRANSPORT_UNAVAILABLE'});continue}
       if (notification.state === 'delivered' || notification.state === 'failed' && !(notification.deliveryError?.knownNotSent && notification.deliveryError?.retryable)
         || (readbackOnly ? notificationReadbacks.size > 0 : notificationSends.size > 0 || Date.now() < notificationTransportRetryAt) || !retryReady(notification.id) || Date.parse(notification.nextAttemptAt ?? '') > Date.now() || inflightNotifications.has(notification.id) || attempted?.has(notification.id)) continue
       attempted?.add(notification.id)
@@ -1838,7 +1426,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (recovering) return recovering
     return recovering = (async () => {
       await disableSingleProviderRetries()
-      if(singleExecution)for(const task of await query('task.list'))for(const row of task.effectReconciliations??[])if(row.state==='prepared'){
+      for(const task of await query('task.list'))for(const row of task.effectReconciliations??[])if(row.state==='prepared'){
         try{await admitTask(task.taskId,async()=>projectEffectReconciliation(task,row))}catch(error){failures.set('effect-reconciliation:'+task.taskId,{id:task.taskId,code:error.code??'TASK_EFFECT_RECONCILIATION_RECOVERY_FAILED'})}
       }
       await disableSingleProviderRetries()
@@ -1847,7 +1435,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       // unfinished operation rows remain unknown and fence execution until explicit readback reconciliation.
       const pending = await query('recovery.pending')
       for (const task of pending.tasks) if (task.recovering && !ctx.agents.get(task.sessionId) && !ctx.sessions.get(task.sessionId)){
-        if(singleExecution&&task.liveSupplements?.some(row=>row.state==='pending'&&row.leaseEpoch===task.leaseEpoch)){
+        if(task.liveSupplements?.some(row=>row.state==='pending'&&row.leaseEpoch===task.leaseEpoch)){
           const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
           const manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries))
           for(const admission of committedLiveSupplementAdmissions(manager,task))await command('task.supplement.admitted',admission,`task-supplement-admitted:${task.taskId}:${admission.messageId}`)
@@ -1856,57 +1444,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
       for (const group of pending.groups ?? []) if (group.recovering && !ctx.agents.get(group.sessionId) && !ctx.sessions.get(group.sessionId))
         await command('group.drained', { binding: { kind: 'group-session', groupId: group.groupId, sessionId: group.sessionId, leaseEpoch: group.leaseEpoch, sessionBound: group.sessionBound } })
-      for (const execution of pending.executions) if (execution.recovering && !inflightExecutions.has(execution.executionId)) {
-        // Physical native-session drain is independent of effect certainty. The
-        // operation fence stays unknown; recoverDrained validates real history
-        // and absence of live handles before permitting any readonly continuation.
-        const binding = await query('execution.binding', { executionId: execution.executionId })
-        try {
-          const jobs = ctx.get?.('jobs')
-          if (jobs?.list?.(execution.sessionId).some(job => ['running','stopping'].includes(job.status))) fail('DYNAMIC_JOB_DRAIN_UNPROVEN')
-          const drainProof = await executionSessions.recoverDrained({ binding, input: execution.input, drainFailure: execution.drainFailure })
-          await command('execution.drained', { binding, ...(drainProof?.isolationAuditRefs ? { isolationAuditRefs: drainProof.isolationAuditRefs } : {}) }, `recovered-drained:${execution.executionId}:${binding.leaseEpoch}`)
-          executionSessions.confirmDrained(binding)
-          failures.delete(execution.executionId)
-        } catch (error) { failures.set(execution.executionId, { id: execution.executionId, code: error.code ?? error.message }) }
-      }
+
       await refreshTasks()
       for (const task of taskCache.values()) if (!task.archivedAt && task.status === 'active' && task.control === 'active')
         for (const request of task.humanRequests ?? []) if (request.status === 'waiting-reply') await queueHumanRequest(task, request)
-      for (const candidate of recoveryCandidates) {
-        const task = await query('task.get', { taskId: candidate.taskId })
-        if (task.archivedAt || task.status !== 'active' || task.control !== 'active' || !task.drained
-          || task.lastDecision.question || task.requirementRevision !== candidate.requirementRevision || task.controlRevision !== candidate.controlRevision) continue
-        const executions = await query('execution.list', { taskId: task.taskId })
-        if (executions.some(execution => !execution.drained || execution.recovering || ['queued', 'running'].includes(execution.status))) continue
-        if (!singleExecution && task.lastDecision.action === 'blocked' && task.lastDecision.limitations?.includes('TASK_SESSION_NO_SUBMISSION')) {
-          await persistence.register({ taskId: task.taskId, sessionId: task.sessionId, cwd: await taskWorkspace(root, task.taskId) })
-          const { events } = await inspectSession(ctx.sessionPersistence, task.sessionId)
-          if (!events.some(event => event.type === 'plugin:dingtalk/task-session' && event.data.taskId === task.taskId && event.data.sessionId === task.sessionId)) continue
-          const input = events.findLast(event => event.type === 'user/message' && event.data.source?.taskSession?.leaseEpoch === task.leaseEpoch)
-          const end = events.findLast(event => event.type === 'turn/end')
-          if (input && end?.seq > input.seq && end.data.reason?.kind === 'error' && isTaskProviderTransient(end.data.reason.error))
-            await command('task.wake', { taskId: task.taskId, kind: 'provider.recovered', payload: {
-              instruction: '上轮模型服务临时故障，未产生统筹决定。沿原任务、原执行结果继续，不重放已完成或未知效果。' } },
-            `provider-recovery:${task.taskId}:${task.requirementRevision}:${task.controlRevision}:${task.leaseEpoch}`)
-          continue
-        }
-        if (task.lastDecision.action !== 'wait') continue
-        if (!(await query('operation.list', { taskId: task.taskId })).some(operation => operation.state === 'unknown')) continue
-        await command('task.wake', { taskId: task.taskId, kind: 'runtime.updated', payload: { runtimeRevision,
-          instruction: '运行实现已更新。先调用 task_operation_reconcile；证据不足时用 readOnly=true 和 readbackOperationId 委派原效果只读核验，再对账。此前只读核查若失败，可用executionId续原只读会话，依据Host新增的originalOperation原生材料和原生工具核对实际文件及原始效果。保留 unknown 保护，不能重放原操作。' } },
-        `runtime-recovery:${task.taskId}:${task.requirementRevision}:${task.controlRevision}:${runtimeRevision}`)
-      }
+      for(const candidate of recoveryCandidates)failures.set(candidate.taskId,{id:candidate.taskId,code:'TASK_LEGACY_OPERATION_REVIEW_REQUIRED'})
       for (const task of await query('task.list')) if (task.sessionBound) {
         const cwd = await taskWorkspace(root, task.taskId)
-        await persistence.register({ taskId: task.taskId, sessionId: task.sessionId, cwd })
         await attachWorkspace(task.sessionId, cwd, task.title)
       }
-      for await (const execution of executionIndex()) if (execution.sessionBound && executionBackend(execution) === 'dsh') {
-        const cwd = await taskWorkspace(root, execution.taskId)
-        await persistence.register({ taskId: execution.taskId, sessionId: execution.sessionId, cwd })
-        await attachWorkspace(execution.sessionId, cwd, (await requireTask(execution.taskId)).title)
-      }
+
       const factFailures = await topicFacts.recover()
       for (const key of failures.keys()) if (key.startsWith('topic-fact-projection:')) failures.delete(key)
       for (const failure of factFailures) failures.set(`topic-fact-projection:${failure.id}`, failure)
@@ -1917,28 +1464,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const current = await query('source.get', { sourceId: source.sourceId })
         if (!current.routed || current.processingPending) void kickGroup(source.groupId)
       }
-      for await (const candidate of executionIndex()) {
-        if (!executionProgressDue(candidate)) continue
-        const execution = await query('execution.get', { executionId: candidate.executionId })
-        const task = await query('task.get', { taskId: execution.taskId })
-        if (!task || task.archivedAt || task.status !== 'active' || task.control !== 'active' || !executionProgressDue(execution)) continue
-        let observation
-        try { observation = executionBackend(execution) === 'claude-code'
-          ? await claudeExecutionSessions.readProgress({ execution }) : await readExecutionProgress({ ctx, execution }) }
-        catch (error) { observation = { lastSequence: execution.progressReview?.lastSequence ?? -1, lastActivityAt: null,
-          newEventCount: 0, changed: false, readError: error.code ?? 'EXECUTION_PROGRESS_LOG_UNREADABLE' } }
-        try {
-          const { lastSequence, lastActivityAt, newEventCount, changed, readError } = observation
-          await command('execution.progressReviewed', { executionId: execution.executionId, inputVersion: execution.inputVersion,
-            leaseEpoch: execution.leaseEpoch, inputDigest: execution.inputDigest,
-            observation: { lastSequence, lastActivityAt, newEventCount, changed, ...(readError ? { readError } : {}) } },
-          `execution-progress:${execution.executionId}:${execution.inputVersion}:${execution.leaseEpoch}:${execution.progressReview?.checkedAt ?? execution.updatedAt}`)
-        } catch (error) {
-          if (!['DYNAMIC_EXECUTION_LEASE_STALE', 'DYNAMIC_EXECUTION_NOT_CURRENT'].includes(error.code)) throw error
-        }
-      }
+
       for (const task of await query('task.list')) void kickTask(task.taskId)
-      for await (const execution of executionIndex()) if (execution.drained && execution.status === 'queued') void kickExecution(execution.executionId)
+
       void schedulePending()
       await deliverNotifications()
       return { failures: [...failures.values()], recovery: pending }
@@ -1959,20 +1487,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (previousRecord?.status === 'completed') return requireTask(previousRecord.operations[0].taskId)
     if (!previous && task && (args.expectedRequirementRevision !== undefined && args.expectedRequirementRevision !== task.requirementRevision
       || args.expectedControlRevision !== undefined && args.expectedControlRevision !== task.controlRevision)) fail('DYNAMIC_TASK_REVISION_STALE')
-    if (kind === 'task-reopen' && args.maintenanceEvidence) {
-      if (task.archivedAt || task.status !== 'cancelled' || task.control !== 'cancelled' || !task.drained || task.recovering) fail('DYNAMIC_TASK_NOT_QUIESCENT')
-      const executions = await query('execution.list', { taskId: task.taskId })
-      for (const execution of executions.filter(item => !item.drained)) {
-        if (!execution.recovering || !execution.cancelRequested || !execution.drainFailure || executionBackend(execution) !== 'dsh'
-          || inflightExecutions.has(execution.executionId)) fail('DYNAMIC_TASK_NOT_QUIESCENT')
-        const binding = await query('execution.binding', { executionId: execution.executionId })
-        const proof = await executionSessions.recoverDrained({ binding, input: execution.input, drainFailure: execution.drainFailure, maintenanceEvidence: args.maintenanceEvidence })
-        if (!proof?.maintenanceDrainAudit) fail('DYNAMIC_EXECUTION_MAINTENANCE_UNPROVEN')
-        await command('execution.drained', { binding, maintenanceDrainAudit: proof.maintenanceDrainAudit }, `maintenance-drained:${execution.executionId}:${binding.leaseEpoch}:${args.maintenanceEvidence.expectedProposalDigest}`)
-        executionSessions.confirmDrained(binding)
-        failures.delete(execution.executionId)
-      }
-    }
+    if(kind==='task-reopen'&&args.maintenanceEvidence)fail('TASK_SPLIT_EXECUTION_REMOVED')
     const text = args.context?.trim() || args.objective || args.reason || ''
     const messageId = stableId('web', `${groupId}:${args.requestId}`)
     await refreshTasks()
@@ -2012,22 +1527,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       decisionSource: request.status === 'answered' ? request.replyChannel : undefined })))
     return page?{...page,items:result}:result
   }
-  async function verifiedExecutionPermission(execution) {
-    const correction = execution.permissionCorrection
-    if (!correction) return undefined
-    const task = await requireTask(execution.taskId), source = await query('source.get', { sourceId: correction.sourceId })
-    const { sourceId, recordedAt, ...accepted } = correction
-    if (executionBackend(execution) !== 'dsh' || correction.executionId !== execution.executionId
-      || !Number.isSafeInteger(correction.expectedInputVersion) || correction.expectedInputVersion < 1 || correction.expectedInputVersion > execution.inputVersion
-      || correction.requirementRevision !== task.requirementRevision || correction.controlRevision !== task.controlRevision
-      || !['read-only', 'workspace-write', 'danger-full-access'].includes(correction.mode) || !recordedAt
-      || source?.channel !== 'web' || source.actorId !== config.webActorId
-      || correction.actorId !== source.actorId || source.groupId !== task.groupId || !task.sourceRefs.includes(sourceId)
-      || !task.humanRequests?.some(request => request.requestId === source.requestIdentity?.humanRequestId
-        && request.status === 'answered' && request.audience === 'operator' && request.sourceId === sourceId && request.actorId === correction.actorId)
-      || hash(source.requestIdentity?.executionPermissionCorrection ?? null) !== hash(accepted)) fail('TASK_EXECUTION_PERMISSION_CORRECTION_SOURCE_INVALID')
-    return structuredClone(correction)
-  }
+
   async function respondHumanRequest(args) {
     if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
     if (!args.requestId?.trim() || !args.reply?.trim()) fail('TASK_HUMAN_REPLY_REQUIRED')
@@ -2190,11 +1690,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
    await observerGroupPage.ready()
   }catch(error){
     closed=true
-    clearTimeout(providerRetryTimer)
     stopInboxProjection?.()
-    await Promise.allSettled([topicCoordinator.close(),taskSessions.close(),executionSessions.close()])
+    await Promise.allSettled([topicCoordinator.close(),taskSessions.close()])
     stopObservation?.();await observationQueue.close()
-    await Promise.allSettled([persistence.close(),observerGroupPage?.close()])
+    await observerGroupPage?.close()
     if(!suppliedStore)await store.close()
     throw error
   }
@@ -2219,7 +1718,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     })
     return {...response,channelType:e.type,conversationId:e.conversationId}
   }
-  const detachIngress=singleExecution?ctx.get('channels').attachIngress(unifiedIngress):undefined
+  const detachIngress=ctx.get('channels').attachIngress(unifiedIngress)
   const api = {
     async retryNotification({ groupId, notificationId, expectedToken }) {
       const notification = typeof notificationId === 'string' && notificationId
@@ -2248,7 +1747,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     listObserverGroups:()=>residentStore.listGroups().map(({groupId,name,responsibility,residentSessionId})=>({groupId,name,responsibility,residentSessionId})),
     listAuthorizationRequests: listHumanRequests, respondHumanRequest, respondPrivateHumanReply,
     taskArchiveStatus:taskId=>({pending:archives?.tails.has(taskId)??false,error:archives?.errors.get(taskId)??null}),
-    store, ingest:singleExecution?unifiedIngress:ingest, recover, taskDetail, taskExecutions, isOwnNotification,
+    store, ingest:unifiedIngress, recover, taskDetail, taskExecutions, isOwnNotification,
     async taskIdentity(taskId) { return await query('task.get', { taskId }) ? { taskId, legacyReadonly: false } : null },
     messageProcessingRequests: groupId => topicCoordinator.messageProcessingRequests(groupId),
     async messageProcessingSources(groupId) {
@@ -2324,7 +1823,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         controlState: task.control, waitingReason: task.state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
         result: task.completion?.result ?? task.lastDecision ?? null, legacyReadonly: false,
         ...(task.archivedAt ? {} : { session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running',
-          workspaceDir: dirname(taskFilePath(root, task.taskId, 'work')), logPath: singleExecution?ctx.sessionPersistence.path(task.sessionId):taskSessionLogRoot(root, task.taskId) } }) })) }
+          workspaceDir: dirname(taskFilePath(root, task.taskId, 'work')), logPath: ctx.sessionPersistence.path(task.sessionId) } }) })) }
     },
     async taskDecisions(taskId, options = {}) { await requireTask(taskId); return query('task.decisions', { ...options, taskId }) },
     async reconcileWebTaskTopics(args) {
@@ -2334,7 +1833,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return residentStore.reconcileWebTaskTopics(args)
     },
     async createTask(args) {
-      if(!singleExecution)return taskDTO(await webTopicAction(args,null,'new-task'))
+
       if(!args.requestId||!args.objective?.trim())fail('TASK_SESSION_REQUEST_ID_REQUIRED')
       const channel=args.channel?ctx.get('channels').identity(args.channel):undefined
       const actorId=channel?.principal??config.webActorId
@@ -2376,7 +1875,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return receipt.result.message
     },
     async cancelTask(args) {
-      if(!singleExecution)return taskDTO(await webTopicAction(args,await requireTask(args.taskId),'task-cancel'))
+
       if(!args.requestId)fail('TASK_SESSION_REQUEST_ID_REQUIRED')
       const task=await requireTask(args.taskId)
       if(args.channel&&ctx.get('channels').identity(args.channel).principal!==task.ownerActorId)fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
@@ -2401,19 +1900,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       detachIngress?.()
       await reflection?.whenIdle()
       nativeDws.close()
-      clearTimeout(providerRetryTimer)
       const counts = () => ({ observationPending: observationQueue.pending, tasks: inflightTasks.size, executions: inflightExecutions.size, groups: inflightGroups.size,
         notifications: inflightNotifications.size, sourceProjections: sourceProjections.size,
         scheduling: !!scheduling, recovering: !!recovering, notificationScan: !!notificationScan })
       await observeClose(closeTrace, 'service.topic.close', () => topicCoordinator.close(), counts)
       await Promise.all([
         observeClose(closeTrace, 'service.owner.close', () => taskSessions.close(), counts),
-        observeClose(closeTrace, 'service.execution.close', () => executionSessions.close(), counts),
       ])
       await observeClose(closeTrace, 'service.inflight-settled', () => Promise.allSettled([scheduling, recovering, notificationScan, ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean)), counts)
       stopObservation?.()
       await observeClose(closeTrace, 'service.observation-tail', () => observationQueue.close(), counts)
-      await observeClose(closeTrace, 'service.persistence.close', () => persistence.close(), counts)
       stopInboxProjection?.()
       await observeClose(closeTrace, 'service.observer-page.close', () => observerGroupPage.close(), counts)
       if(archives){await archives.idle();if(store.healthy){for(const task of await query('task.list',{archived:'all'}))try{await archives.seal(task.taskId)}catch(error){archives.errors.set(task.taskId,error.code??error.message);archives.onFailure(task.taskId,error)}}}

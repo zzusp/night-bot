@@ -16,3 +16,10 @@ export function taskModelSelection(selection, config) {
   const effort = value.reasoningMode === 'inherit' ? inherited : value.reasoningMode === 'explicit' ? value.reasoningEffort : undefined
   return { ...rest, provider: value.provider, model: value.model, ...(effort === undefined ? {} : { reasoningEffort: effort }) }
 }
+
+// This is an exact native model id, not a display label or a provider alias.
+export function taskSessionModelSelection(selection, configuredModel, configuredProvider) {
+  if (configuredModel !== undefined && typeof configuredModel !== 'string') fail('TASK_SESSION_MODEL_INVALID')
+  if (configuredProvider !== undefined && typeof configuredProvider !== 'string') fail('TASK_SESSION_PROVIDER_INVALID')
+  return { ...selection, provider: configuredProvider?.trim() || 'openai-codex', model: configuredModel?.trim() || 'gpt-6-astra' }
+}
