@@ -1,7 +1,8 @@
 # Official Pi default runtime checkpoint
 
-Checkpoint: `9a925a6` (effect invocation identity and explicit new-action grants;
-independent comparison retirement at `6d4b718`).
+Core source checkpoint: `b573cb3` (official Single-only task service, read-only application metadata catalog, and pre-effect file-policy admission).
+Invocation identity/new-action grants were introduced at `9a925a6`; comparison retirement at `6d4b718`.
+Core delivery accepted using the full baseline and narrow final delta described below; historical results retain their own source checkpoints.
 This is not a completed removal of all DSH-derived code.
 No push, deployment or main merge has been performed.
 
@@ -12,7 +13,22 @@ resource budgets and shutdown ownership. No legacy Host LLM or child/delegation
 service is mounted. User-cancelled subagent product architecture was retired,
 with independent ownership, privacy, archive and drain safeguards preserved.
 
-## Verified integration
+## Core delivery acceptance
+
+- Default test phase: 1206/1206 at `b573cb3`, zero failures/cancellations/skips.
+  Its trailing source guard raced the in-progress Topic edit; the guard was rerun
+  successfully after the final source freeze. This is not represented as one exit-0 `pnpm test` command.
+- Runtime: 161/161 in 235.28 seconds, approved outer execution with application
+  bubblewrap enabled. Normal outer diagnostic failed 12 real process cases and
+  is retained separately, never counted as acceptance.
+- Routing: 47/47. Final Topic pending-input correction `b062c41`: 203/203 focused
+  cases and full domain 391/391; all source/import guards pass after freeze.
+- Real Linux Single/artifact/memory privacy safety cohort: 11/11. Standard frozen
+  install passed. These counts overlap and are not summed into a unique total.
+- `pi-core-delivery-evidence.json` stores exact log hashes, per-source scope and
+  committed summary files. No further source changes followed these validations.
+
+## Earlier verified integration
 
 - Final post-install stable `pnpm test`: 1197 passed, zero failures/cancellations; all
   source/import guards passed (421 runtime modules, zero external DSH imports).
@@ -53,7 +69,7 @@ See EFFECT-RECONCILIATION.md for the exact operator flow and proof limits.
 
 ## Runtime contracts and remaining migration
 
-The final complete runtime group passed 161 tests, zero failures, cancellations
+The earlier complete runtime group passed 161 tests, zero failures, cancellations
 or skips, using NIGHT_BOT_TEST_CONCURRENCY=2 and approved outer execution mode
 while application bubblewrap remained enabled. Follow/model, human, jobs, skills,
 progress, provider, persistence, service and live-supplement contracts use actual
@@ -84,6 +100,32 @@ skill sources remain attributed.
 The child-provider source and two dedicated test copies were verified absent;
 only its dedicated historical notice was removed. The distinct retained manager
 notice remains. Pure comparisons remain among the development dependencies;
-removing four root entries does not claim removal of that remaining code.
+removing comparison declarations does not claim removal of that remaining code.
 Portable non-Linux process privacy fails closed; Windows kernel isolation and
 real external provider/vendor effects have not been newly validated here.
+
+## Current core boundary
+
+The default Host no longer mounts NativeSessions. ApplicationSessionCatalog reads actual
+AgentSession metadata and persisted headers only; it owns no history, projection, writer,
+queue or inferred liveness. Recovery checks actual actors and native writer authority.
+The task service requires the official factory and fails closed for unsupported legacy
+operation rows; it does not import old plugin data.
+
+Known readonly/path refusals occur before a new mutation intent. One-time escalation
+is bound to the exact admitted invocation; real IO performs fresh path/policy/CAS checks.
+Real post-start failures remain unknown effects requiring reconciliation.
+
+Invalid-model creation may leave a cold metadata-only header. It leaves no model message,
+admitted input, effect intent, active actor or writer; existing session history remains unchanged.
+This is an explicit storage artifact, not a completed execution.
+
+The new Linux Single cold continuation/readonly/reopen-and-own-backup cases and memory
+privacy kernel cohort passed 11/11, application bubblewrap enabled. See
+SINGLE-ARTIFACT-KERNEL-VALIDATION.md for the exact pending Windows and Node RPC contracts.
+Old containment fixtures are not counted as passing. Optional codemode component probing
+was not integrated into the default runtime and is outside this core checkpoint.
+
+Retained DSH-derived filesystem/process/sandbox and legacy non-default modules, 25 direct
+DSH development declarations, and their corresponding notices remain. Removal is incomplete.
+Real newest 百部/钉钉 testing awaits coordination; no live vendor result is claimed.

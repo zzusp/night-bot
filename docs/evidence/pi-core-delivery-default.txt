@@ -1,0 +1,9 @@
+Source: b573cb3; test phase 1206/1206; trailing guard raced the separately tested b062c41 edit and was rerun after freeze
+ℹ tests 1206
+ℹ suites 0
+ℹ pass 1206
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 220088.411321

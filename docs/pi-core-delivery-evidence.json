@@ -1,0 +1,78 @@
+{
+  "sourceCheckpoint": "b062c41",
+  "completeDshRemoval": false,
+  "evidence": [
+    {
+      "name": "default",
+      "log": "/tmp/night-core-final-default.tap",
+      "sha256": "15af6b6a0e5f0e748f66c4ee27f9abd2e085aa08c8db4c6e2f0ca04215f32ed9",
+      "summary": "docs/evidence/pi-core-delivery-default.txt",
+      "source": "b573cb3; test phase 1206/1206; trailing guard raced the separately tested b062c41 edit and was rerun after freeze"
+    },
+    {
+      "name": "routing",
+      "log": "/tmp/night-core-final-routing.tap",
+      "sha256": "80084dcfe1a029c24d3c6865380c984dbcbc86757dc8ebd395dba8fd24090b6e",
+      "summary": "docs/evidence/pi-core-delivery-routing.txt",
+      "source": "b573cb3"
+    },
+    {
+      "name": "domain",
+      "log": "/tmp/night-core-final-domain-fixed.tap",
+      "sha256": "b90ce15bc92fcec5af751600c70f480c9b281fbc45a4f028e162f31a2e7c5e73",
+      "summary": "docs/evidence/pi-core-delivery-domain.txt",
+      "source": "b062c41"
+    },
+    {
+      "name": "topic-focused",
+      "log": "/tmp/night-topic-pending-focused-final.tap",
+      "sha256": "1cff7b8514bfb999c9706e142bad65b94503f687f7308e73766ffd3646c200ad",
+      "summary": "docs/evidence/pi-core-delivery-topic-focused.txt",
+      "source": "b062c41"
+    },
+    {
+      "name": "source-guards",
+      "log": "/tmp/night-topic-pending-check.tap",
+      "sha256": "545f6941179c283d5b33e35362229e966c891690f1807af13208a015f7b6847b",
+      "summary": "docs/evidence/pi-core-delivery-source-guards.txt",
+      "source": "b062c41"
+    },
+    {
+      "name": "linux-safety",
+      "log": "/tmp/night-core-delivery-safety.tap",
+      "sha256": "d2627b251b299dbc92e52857f86aaef89eaddbafae031cd9270c7a5cf18403d5",
+      "summary": "docs/evidence/pi-core-delivery-linux-safety.txt",
+      "source": "b573cb3 equivalent source; approved outer mode, application bubblewrap enabled"
+    },
+    {
+      "name": "frozen-install",
+      "log": "/tmp/night-core-delivery-frozen.tap",
+      "sha256": "efbdad196db159267fec27e6e6a6c9a3a5659e6d5b73b57842affd2eb23e4f9e",
+      "summary": "docs/evidence/pi-core-delivery-frozen-install.txt",
+      "source": "same package and lockfile as b062c41"
+    },
+    {
+      "name": "runtime",
+      "log": "/tmp/night-core-final-runtime-kernel.tap",
+      "sha256": "1885133878edd05bacd9b978db7ba490475f527a386e48484623f961146c3b7b",
+      "summary": "docs/evidence/pi-core-delivery-runtime.txt",
+      "source": "b573cb3 baseline plus separately verified b062c41 delta",
+      "passed": 161,
+      "failed": 0
+    }
+  ],
+  "notes": [
+    "Counts overlap. Full default/runtime/routing baselines and frozen topic delta/domain verification are separately identified.",
+    "Default test phase passed; command exit1 arose only in concurrent source-manifest guard, independently rerun after freeze.",
+    "Normal-outer runtime diagnostic is not acceptance: real nested kernel isolation requires the approved outer mode."
+  ],
+  "diagnostic": {
+    "log": "/tmp/night-core-final-runtime.tap",
+    "sha256": "ec04da7b4ba76a99a58adac63c96f1c67c469b84be4f34880e4cb44c8cedf35c",
+    "summary": "docs/evidence/pi-core-delivery-runtime-outer-diagnostic.txt",
+    "passed": 149,
+    "failed": 12,
+    "note": "Real process/kernel cases; approval-mode rerun retains application bwrap."
+  },
+  "coreAccepted": true
+}

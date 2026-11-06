@@ -1,0 +1,9 @@
+Diagnostic only: normal outer execution; nested sandbox process launch unavailable. Not an acceptance result.
+ℹ tests 161
+ℹ suites 0
+ℹ pass 149
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 363180.148625

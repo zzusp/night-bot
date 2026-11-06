@@ -8,9 +8,9 @@ old_string/new_string 不作参数翻译。`read_image` 仍走官方 read/image 
 
 NativeTools 保留真实权限、超时、独占写、业务效果账及源/结果策略。文件 IO
 使用当前保留预设的实际 filesystem/workingDirectory 能力，实际 mutation
-仍重新检查 canonical 路径、standing policy 与观察版本；预检不复用写授权。
+仍重新检查 canonical 路径、当前策略与观察版本。单次提权只绑定已经通过参数与权限接纳的同一个实际调用，预检与执行共享这一次审批，不产生长期授权。
 同任务的 materials/outputs/sessions/reviews 等 Host 区域在 PrivateFS 预检阶段
-拒绝，不能先留下模糊效果 intent。取消/关闭等待已经开始的真实 IO。
+拒绝；已知 readonly 拒绝也在新效果 intent 前完成。审批后和实际写入时重新解析路径；真实开始后的不确定失败仍进入未知效果对账。取消/关闭等待已经开始的真实 IO。
 
 ## 可配置资源政策
 

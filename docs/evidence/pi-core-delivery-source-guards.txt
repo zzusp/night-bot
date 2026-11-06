@@ -1,0 +1,4 @@
+Source: b062c41
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":48,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":422,"literalBareImports":214,"status":"declared-production-imports"}
+{"runtimeJsFiles":422,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":5,"historicalFormatFilesRemoved":9}
