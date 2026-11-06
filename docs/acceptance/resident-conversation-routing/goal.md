@@ -1,8 +1,8 @@
 # 常驻 Router 与事项直连
 
-> 状态：ACTIVE
+> 状态：COMPLETED
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-07T00:11:32+08:00
+> 最近维护：2026-11-07T00:15:28+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -43,28 +43,27 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 | ID | 子目标 | 完成判据 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | SG1 | 基线、分工、安装与 API 对齐 | 目录/分支/授权和依赖确认 | 完成 | 本文及安装终态 |
-| SG2 | 直接来源、依赖及完成评估账本 | 当前来源/权限/CAS、调度/claim 双守卫、重安排/归档实跑 | 本地完成；ledger22/升级3分批通过，当前guard与独立审查收口 | round-1.md、round-2.md、review.md |
-| SG3 | 分诊与常驻 Router 默认接线 | 四处置/隔离/≤15/溢出、A返工后释放B实际终态 | 本地完成，默认链路与受影响专项分批通过；不宣称新全量全绿 | round-1.md、round-2.md、matrix.csv |
+| SG2 | 直接来源、依赖及完成评估账本 | 当前来源/权限/CAS、调度/claim 双守卫、重安排/归档实跑 | 完成；ledger22/升级3分批通过，当前guard与最终独立审查均已核 | round-1.md、round-2.md、review.md |
+| SG3 | 分诊与常驻 Router 默认接线 | 四处置/隔离/≤15/溢出、A返工后释放B实际终态 | 完成；默认链路与受影响专项分批通过；不宣称新全量全绿 | round-1.md、round-2.md、matrix.csv |
 | SG4 | 空闲交接、换代与故障恢复 | native commit/CAS/冷恢复及非法摘要保留原代 | flow6/独立冷恢复2/非法摘要3通过 | round-1.md、round-2.md、review.md |
 | SG5 | 去 Topic、特殊入口、归档及升级 | 保留当前平台/文件/媒体合同，单任务归档和离线升级不重放 | 原链路、固定start冷续与默认旧v1归档迁接分批通过，生产守卫未放宽 | round-2.md、review.md |
 | SG6 | 回归、独立审查与修复 | 必要组及最后增量真实终态、当前源码guard、综合审查 | 完成；本地回归、两个真实业务及当前guard证据已核，最终review无确认残留阻断 | round-4.md、matrix.csv、review.md |
-| SG7 | 提交、push/PR 与最终核验 | 合理提交、无CI触发、正确base/head、gh独立回查 | 进行中；行尾及最终审查已核，仅剩本轮提交/push与原PR更新；PR #2为OPEN/MERGEABLE | 当前检查点、Git事实 |
+| SG7 | 提交、push/PR 与最终核验 | 合理提交、无CI触发、正确base/head、gh独立回查 | 完成；实现9f93e0d已提交/push，原PR #2正文与远端头独立核回为OPEN/MERGEABLE；无CI | 当前检查点、Git事实 |
 
 ## 当前检查点
 
 - 当前子目标：SG7
-- 当前阶段：SG6完成。真实Router verified-6与保留Web verified-3分别完整PASS；报告、矩阵历史、源码绑定、文件送达链、冷恢复、原guard及最终review均独立核证。入口仅CRLF→LF及报告一条版本说明已核精确转换；成员已交回产物、无在途操作，不重跑。
-- 唯一下一步：Lead核暂存blob/差异与Git前置，提交/push并更新原PR #2，独立回查Git/gh，回填交付事实后收口；不再调用模型、不重跑旧组。
-- 未闭环项：本轮提交、push及原PR更新尚未执行。verified-6中两次ROUTER_EVIDENCE_REFERENCE_INVALID后第三次成功，不宣称零工具错误；verified-4唯一通知失败原因、verified-5坏引用仍未知，不由本次PASS追认修复。新失败诊断分支未在真实坏ref上动态验收；原完整runtime/default、Linux/POSIX/live DWS等边界保留。
+- 当前阶段：SG1–SG7约定范围均已完成。脚本模型回归与两个分别受验的真实业务已核，最终review无确认残留阻断；实现/证据9f93e0d已push，原PR #2已更新并独立核回正文、base/head与远端实现SHA一致，OPEN/MERGEABLE，CI列表为空。本文最终提交仅回填交付事实，不改受验业务字节。
+- 唯一下一步：无本任务实施待办；后续CI、合并、部署、真实渠道发送或扩大验收范围均需用户另行授权。
+- 保留边界：verified-6的两次中间ROUTER_EVIDENCE_REFERENCE_INVALID后第三次成功，不宣称零工具错误；verified-4唯一通知失败原因、verified-5坏引用仍未知，不由本次PASS追认修复。新失败诊断分支未在真实坏ref上动态验收；非统一版本并发/非完整全量全绿，原runtime/default历史失败及Linux/POSIX/live DWS等未验边界保留，不作为已授权交付的新增门槛。
 - 并行执行：原tests唯一读取凭据/运行真实API；最初同runner原生concurrency=2，两case独立Host/root/SQLite，链内串行。Web通过后仅补Router；未开副本、dynamic workflow或新增场景。最后操作bcfyu5fir自然exit0，资源完整清理。
 
 ### Git交付与恢复
 
-- 前一阶段仓库 `zzusp/night-bot`；实现提交 `d38b6a795d4b3e8639ca8c5712de31f67b432a94`，75文件、3693新增/2698删除。Lead独立从该commit读取round-3的17项受验文件blob，SHA逐项精确一致；之后仅本文回填交付事实，不改业务源码或重跑验证。
-- [PR #2](https://github.com/zzusp/night-bot/pull/2)：`refactor: 以常驻 Router 直连事项并保留依赖与恢复边界`；base `refactor/pi-native-retirement` ← head `worktree-resident-conversation-routing`。前一阶段真实gh回查为`number=2 / state=OPEN / mergeable=MERGEABLE`，正文已自包含代码、证据和未验边界；远端分支与实现提交一致。最终仅交付文档提交的head以PR及交付回报为准，不循环写入文档自身SHA。
-- push/PR前已查准确分支PR状态、workflow=0/hooks=0、无本地非sample hook；创建后`gh run list --branch worktree-resident-conversation-routing`返回`[]`。未CI/合并/部署/真实外发。
-- 前一缺凭据等待期间已撤销旧cron d9df3c5c。真实验收恢复时沿原频率建立唯一30分钟检查090a304c（17,47 * * * *），仅本会话有效、7天自动过期；tests真实结果/一次性idle通知优先。未关闭成员会话或修改其它项目，旧脚本证据继续复用。
-
+- 仓库 `zzusp/night-bot`。前一实现提交 `d38b6a795d4b3e8639ca8c5712de31f67b432a94`，round-3的17项受验文件SHA与该提交blob逐一精确一致；本轮必要增量提交 `9f93e0d0bb46763560082243fd1a7dcbebd28486`，15文件、1129新增/106删除。Lead独立核暂存源码/测试/入口/报告/矩阵/最终JSON及实际工作树字节，再提交并独立核Git记录；实际运行入口与LF提交版的区别见下方及round-4。
+- [PR #2](https://github.com/zzusp/night-bot/pull/2)：`refactor: 以常驻 Router 直连事项并保留依赖与恢复边界`；base `refactor/pi-native-retirement` ← head `worktree-resident-conversation-routing`。本轮更新后真实gh回查：`number=2 / state=OPEN / mergeable=MERGEABLE / headRefOid=9f93e0d0bb46763560082243fd1a7dcbebd28486`，与独立ls-remote和本地HEAD一致；body与经过write-pr检查的同一UTF-8文件逐字相同（SHA256 6d54b8c7fac4010c5579428efb75ae0609b209c6a3985288ec0e38f37892558e）。最终仅交付文档提交的head以PR及最终回报为准，不循环写文档自身SHA。
+- push前已准确执行`gh pr view --json state,mergedAt`，为OPEN/null；fetch无incoming，workflowCount=0/hooks=[]、无本地非sample hook，HEAD无.github工作流。更新后`gh run list --branch worktree-resident-conversation-routing`返回`[]`。没有CI、合并、部署或真实外发。
+- 已按`--check`精确删除本次已发布且哈希一致的忽略PR草稿，并独立核不存在。唯一监管cron090a304c已撤销，CronList独立回查无任务；未关闭原成员窗口、未新建副本、未改其它项目。第1–4轮报告/矩阵历史及最后两份安全JSON保留。
 
 ### 当前证据及复用边界
 
