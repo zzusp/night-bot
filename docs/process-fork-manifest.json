@@ -88,6 +88,11 @@
       "path": "src/process/linux-observation.js",
       "role": "Application Linux process sampling and explicit alive/dead/unknown identity; non-atomic proc observation, not kernel ownership",
       "sha256": "65290b908cfc4111ca7442530e6fa633d85add4aeaaa73a5deea7678cf981c39"
+    },
+    {
+      "path": "src/runtime/managed-shell-execution.js",
+      "sha256": "3d3fc25d81970f69fed63be11f42b656d6ac12e4b71c56f792bce8c42050a7e3",
+      "role": "Application shell lifecycle over managed process ranges: direct settlement plus descendant drain, cancellation, output cursors and promotion; Windows kernel not validated"
     }
   ]
 }

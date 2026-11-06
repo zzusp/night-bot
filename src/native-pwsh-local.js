@@ -1,7 +1,8 @@
+import {runManagedShell} from './runtime/managed-shell-execution.js';
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-pwsh-local-MIT.txt. Application process/sandbox/jobs/policy services own effects.
 import z from "@deepseek-ai/schemastery";
 import { ShellExecutor } from "./native-shell.js";
-import { MAX_TIMER_DELAY_MS, clampTimeout, deadline } from "./runtime/deadlines.js";
+import { MAX_TIMER_DELAY_MS, clampTimeout } from "./runtime/deadlines.js";
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
 //#region lib/types/resolve.js
@@ -104,14 +105,7 @@ const DEFAULT_GRACE_MS = 3e3;
 /** Default per-stream spill cap (the `maxSpillBytes` config). */
 const DEFAULT_MAX_SPILL_BYTES = 64 * 1024 * 1024;
 /** Project a settled collect-mode reader into the final CollectedOutput shape. */
-function finalOutput(reader) {
-	const read = reader.readFrom(0);
-	return {
-		text: read.text,
-		truncated: read.lossy,
-		...read.spillPath !== void 0 ? { spillPath: read.spillPath } : {}
-	};
-}
+
 function assertPositiveFinite(name, value) {
 	if (!Number.isFinite(value) || value <= 0) throw new Error(`pwsh-local: ${name} must be a positive finite number`);
 }
@@ -253,170 +247,9 @@ var PwshLocalExecutor = class NativePwshLocalExecutor extends ShellExecutor {
 	*   killed while `result()` carries the same failure as its rejection.
 	*/
 	async executeArgv(spec, argvOrPrepare, onStarted) {
-		let spawnSignal;
-		let classify;
-		let disarm = () => {};
-		if (spec.onExpiry === "kill") {
-			const d = deadline(undefined, spec.timeoutMs, "BASH_TIMEOUT");
-			spawnSignal = spec.signal ? AbortSignal.any([spec.signal, d.signal]) : d.signal;
-			classify = () => {
-				const timedOut = d.signal.aborted && spawnSignal.reason === d.signal.reason;
-				return {
-					timedOut,
-					aborted: d.signal.aborted && !timedOut
-				};
-			};
-			disarm = () => {
-				d[Symbol.dispose]();
-			};
-		} else {
-			spawnSignal = spec.signal;
-			classify = () => ({
-				timedOut: false,
-				aborted: spec.signal?.aborted === true
-			});
-		}
-		let argv = [];
-		let preparationTimedOut = false;
-		if (typeof argvOrPrepare === "function") {
-			const signal = spawnSignal ?? new AbortController().signal;
-			const cancelled = Promise.withResolvers();
-			const abort = () => {
-				cancelled.reject(signal.reason);
-			};
-			signal.addEventListener("abort", abort, { once: true });
-   // Cancellation does not establish that an admitted confinement preparation exited.
-   const preparing = Promise.resolve().then(() => {
-    signal.throwIfAborted();
-    return argvOrPrepare(signal);
-   });
-			try {
-				argv = await Promise.race([preparing, cancelled.promise]);
-				signal.throwIfAborted();
-			} catch (error) {
-    await Promise.allSettled([preparing]);
-				if (!classify().timedOut) {
-					disarm();
-					throw error;
-				}
-				preparationTimedOut = true;
-			} finally {
-				signal.removeEventListener("abort", abort);
-			}
-		} else argv = argvOrPrepare;
-		let running;
-		let syncSpawnError;
-		try {
-			if (!preparationTimedOut) running = this.ctx.subprocess.spawn(this.spawnSpec(spec, spec.stdoutMaxBytes, spawnSignal, argv));
-		} catch (error) {
-			syncSpawnError = { error };
-		}
-		const emptyReader = { readFrom: () => ({
-			text: "",
-			lossy: false,
-			nextOffset: 0
-		}) };
-		const collected = running !== void 0 ? PwshLocalExecutor.collected(running) : {
-			stdout: emptyReader,
-			stderr: emptyReader
-		};
-		const spawnThrow = () => syncSpawnError.error;
-		const spawned = preparationTimedOut ? Promise.resolve({
-			exitCode: null,
-			signal: null
-		}) : running !== void 0 ? running.done : Promise.reject(spawnThrow());
-		let providerFailure;
-		let providerFailureReported = false;
-		const consumeProviderFailure = () => {
-			if (providerFailure === void 0 || providerFailureReported) return "";
-			providerFailureReported = true;
-			return providerFailure.note;
-		};
-		const observedStderr = { readFrom: (fromByte) => {
-			if (providerFailure === void 0) return collected.stderr.readFrom(fromByte);
-			const note = Buffer.from(providerFailure.note, "utf8");
-			return {
-				text: note.subarray(Math.min(fromByte, note.length)).toString("utf8"),
-				nextOffset: note.length,
-				lossy: false
-			};
-		} };
-		let stdoutOffset = 0;
-		let stderrOffset = 0;
-		let resultPromise;
-		const proc = {
-			status: "running",
-			exitCode: null,
-			signal: null,
-			observed: {
-				stdout: collected.stdout,
-				stderr: observedStderr
-			},
-			done: spawned.then((outcome) => {
-				if (proc.status === "running") proc.status = spawnSignal?.aborted === true || outcome.signal !== null ? "killed" : "completed";
-				proc.exitCode = outcome.exitCode;
-				proc.signal = outcome.signal;
-				this.onProcessDone(proc, collected.stderr.readFrom(0).text, false);
-				disarm();
-			}, (error) => {
-				if (running !== void 0 && (proc.status === "killed" || spawnSignal?.aborted === true)) {
-					proc.status = "killed";
-					this.onProcessDone(proc, collected.stderr.readFrom(0).text, false);
-					disarm();
-					return;
-				}
-				proc.status = "killed";
-				let detail = "unprintable provider failure";
-				try {
-					detail = String(error);
-				} catch {}
-				providerFailure = {
-					error,
-					note: `subprocess failed before reporting an outcome: ${detail}`
-				};
-				this.onProcessDone(proc, providerFailure.note, true, error);
-				disarm();
-			}),
-			readOutput: () => {
-				const out = collected.stdout.readFrom(stdoutOffset);
-				const err = collected.stderr.readFrom(stderrOffset);
-				stdoutOffset = out.nextOffset;
-				stderrOffset = err.nextOffset;
-				const providerFailure = consumeProviderFailure();
-				const failureSeparator = err.text.length > 0 && !err.text.endsWith("\n") ? "\n" : "";
-				const errText = err.text + (providerFailure.length > 0 ? `${failureSeparator}${providerFailure}` : "");
-				const separator = out.text.length > 0 && !out.text.endsWith("\n") ? "\n" : "";
-				return {
-					delta: out.text + (errText.length > 0 ? `${separator}[stderr]\n${errText}` : ""),
-					lossy: out.lossy || err.lossy,
-					...out.spillPath !== void 0 ? { stdoutSpillPath: out.spillPath } : {},
-					...err.spillPath !== void 0 ? { stderrSpillPath: err.spillPath } : {}
-				};
-			},
-			kill: () => {
-				if (proc.status !== "running") return false;
-				proc.status = "killed";
-				running?.terminate();
-				return true;
-			},
-			result: () => {
-				resultPromise ??= proc.done.then(() => {
-					if (providerFailure !== void 0) throw providerFailure.error;
-					return {
-						exitCode: proc.exitCode,
-						signal: proc.signal,
-						...classify(),
-						timeoutMs: spec.timeoutMs,
-						stdout: finalOutput(collected.stdout),
-						stderr: finalOutput(collected.stderr)
-					};
-				});
-				return resultPromise;
-			}
-		};
-		if (!preparationTimedOut) onStarted?.(proc);
-		return proc;
+		return runManagedShell({spec,prepare:argvOrPrepare,spawn:(argv,signal)=>this.ctx.subprocess.spawn(this.spawnSpec(spec, spec.stdoutMaxBytes, signal, argv)),onStarted,onSettled:(...args)=>this.onProcessDone(...args)});
 	}
+
 	/**
 	* Settlement hook for subclasses that attach execution facts to a process.
 	* The base implementation is intentionally empty. Mirrored from
