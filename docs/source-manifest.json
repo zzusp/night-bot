@@ -564,7 +564,7 @@
       "source": "model-context.js",
       "sourceSha256": "fb7275812c81b863eab6f838bc548a2a1bc65a52f7f61f96140118093dc5a752",
       "status": "adapted",
-      "sha256": "890c0cbe7dcc91ffdca958d71f4f2b78838c061eaf8dc9e6de15dbe7529e259f",
+      "sha256": "59511817761c25442f0628b471afe4c6685d32ab81de34c6bf2169613c64f202",
       "adaptation": "Business immutable file content index accepts exact official actor metadata without constructing a Session or projecting message history."
     },
     {
