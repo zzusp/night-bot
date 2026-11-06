@@ -1,6 +1,6 @@
 # Night Bot
 
-Night Bot 是基于 Pi 的无界面个人助理 Agent 初始化套件，任何人都可以初始化自己的助手。记忆、任务与技能为渠道无关的核心，钉钉只是可选接入渠道之一。Pi agent-core 负责模型/工具迭代，Pi SessionManager 负责当前会话历史与模型上下文；消息、常驻 Router、单任务执行、恢复、权限、通知和交付继续由应用维护。保留 HTTP 接口，DWS CLI 通过独立可选渠道插件接入，不包含可视化界面。
+Night Bot 是基于 Pi 的个人助理 Agent 初始化套件，任何人都可以初始化自己的助手。记忆、任务与技能为渠道无关的核心，钉钉只是可选接入渠道之一。Pi agent-core 负责模型/工具迭代，Pi SessionManager 负责当前会话历史与模型上下文；消息、常驻 Router、单任务执行、恢复、权限、通知和交付继续由应用维护。核心支持无界面运行，保留 HTTP 接口；DWS CLI 与 Web 控制台均通过独立可选渠道插件接入。
 
 生产依赖图已没有外部 `@deepseek-ai/dsh-*` 包。服务、工具、权限、进程、凭据、附件、技能和 workspace 均为仓库内实现。仍保留需署源的本地权限、平台进程、Windows ACL、技能 watcher 等实现。旧可变 Session、消息投影/查询服务、子代理产品和历史 v0–v4 数据导入均已退休；当前会话、消息和模型上下文由官方 Pi 维护。旧包名兼容入口在 `packages/capability-compat` 和 workspace 配置中公开记录，不能只复制 `src` 部署。
 
@@ -38,6 +38,10 @@ curl http://127.0.0.1:18998/health
 `chat` 与 `chat-room` 采用“轻量一级分诊 → 每 conversation 一个常驻 Router → 每事项一个执行会话”。一级分诊逐消息决定是否转交和是否简短回复，不拆分或创建事项；Router 理解原消息、关联和安排事项、评估结果。来源、权限、版本与任务依赖由 Host/SQLite 校验，任务自报完成不等于后续事项已获准执行。Router 的逻辑身份持久，空闲时以无工具交接安全更换 Pi generation，保留旧 journal。15 条批次、可靠转交和回复回读规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
 
 ## 验证
+
+可选 Web 控制台位于 `packages/web-console`，提供 BoardUI 风格的中文对话、任务执行信息和只读渠道消息。它有独立依赖及构建，默认不加载；不增加 Bot 展示字段或修改核心 schema，禁用后 Bot 仍能独立工作。生产插件用 Node 内置服务托管静态页面，聊天复用现有渠道入口，执行记录读取 Pi 已提交上下文。启用、认证和数据边界见 [Web 运维](docs/ops/web-console-local.md)，操作见 [使用说明](docs/manual/web-console.md)，验证见 [Web 验收](docs/acceptance/web-console/goal.md)。参考设计取自 [BoardUI 官方 MIT 源码](https://github.com/BoardUI/boardui)，许可保留在该包 `licenses/`。
+
+对话支持跨页面及登录恢复后核对原请求，不确定结果不自动重发；多标签会话变化可只读同步。任务展示采用显式字段投影，概览局部失败保留其余信息，原始 Bot 数据不变。
 
 ```sh
 pnpm install --frozen-lockfile
