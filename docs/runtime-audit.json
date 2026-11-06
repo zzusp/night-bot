@@ -1,187 +1,169 @@
 {
-  "status": "native-runtime-with-explicit-legacy-protocols",
-  "compatibilityAliases": [
+  "schema": 2,
+  "status": "official-pi-default-with-retained-derived-source",
+  "checkpoint": "e1d6cfadc61cc085d45b253e593d63afd9619825",
+  "completeDshSourceRemoval": false,
+  "dependencies": {
+    "productionDsh": [],
+    "developmentDsh": [],
+    "lockedDsh": []
+  },
+  "runtime": {
+    "modules": 407,
+    "externalDshImports": []
+  },
+  "authority": {
+    "sdk": "@earendil-works/pi-coding-agent",
+    "version": "1.5.0",
+    "session": "public AgentSession and SessionManager",
+    "metadata": "read-only application session catalog",
+    "business": "Night authorization, queues, task state and effect receipts"
+  },
+  "sourceAccounting": {
+    "retained": 195,
+    "retired": [
+      {
+        "source": "claude-execution-session.js",
+        "evidence": "docs/retired-workflow-session-contracts.md"
+      },
+      {
+        "source": "execution-session.js",
+        "evidence": "docs/retired-workflow-session-contracts.md"
+      },
+      {
+        "source": "storage-v8-schema.js",
+        "evidence": "docs/retired-predecessor-storage.md"
+      },
+      {
+        "source": "task-session-history.js",
+        "evidence": "docs/retired-predecessor-storage.md"
+      },
+      {
+        "source": "task-session.js",
+        "evidence": "docs/retired-workflow-session-contracts.md"
+      }
+    ],
+    "excludedUi": 3
+  },
+  "retainedNamespaceOverrides": [
     {
-      "requested": "@deepseek-ai/dsh-scope",
-      "target": "link:./packages/scope-compat",
-      "authority": "src/native-scope.js",
-      "reason": "one private scope graph across retained SDK peers; not an additional active service replacement"
+      "name": "@deepseek-ai/dsh-scope",
+      "target": "link:./packages/scope-compat"
     },
     {
-      "requested": "@deepseek-ai/dsh-web",
-      "target": "link:./packages/capability-compat/web",
-      "authority": "src/native-web.js + native-capability-errors.js",
-      "reason": "same canonical errors and native owner for trusted SDK consumers; no additional service removal credit"
+      "name": "@deepseek-ai/dsh-web",
+      "target": "link:./packages/capability-compat/web"
     },
     {
-      "requested": "@deepseek-ai/dsh-authorization",
-      "target": "link:./packages/capability-compat/authorization",
-      "authority": "src/native-authorization.js + native-capability-errors.js",
-      "reason": "same canonical errors and native owner for trusted SDK consumers; no additional service removal credit"
+      "name": "@deepseek-ai/dsh-authorization",
+      "target": "link:./packages/capability-compat/authorization"
     },
     {
-      "requested": "@deepseek-ai/dsh-workspace",
-      "target": "link:./packages/capability-compat/workspace",
-      "authority": "src/native-workspace.js + native-capability-errors.js",
-      "reason": "same canonical errors and native owner for trusted SDK consumers; no additional service removal credit"
+      "name": "@deepseek-ai/dsh-workspace",
+      "target": "link:./packages/capability-compat/workspace"
     },
     {
-      "requested": "@deepseek-ai/dsh-session-title",
-      "target": "link:./packages/capability-compat/session-title",
-      "authority": "src/native-session-title.js + native-capability-errors.js",
-      "reason": "same canonical errors and native owner for trusted SDK consumers; no additional service removal credit"
+      "name": "@deepseek-ai/dsh-fs",
+      "target": "link:./packages/capability-compat/fs"
     },
     {
-      "requested": "@deepseek-ai/dsh-fs",
-      "target": "link:./packages/capability-compat/fs",
-      "authority": "src/native-fs-protocol.js",
-      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+      "name": "@deepseek-ai/dsh-skill",
+      "target": "link:./packages/capability-compat/skill"
     },
     {
-      "requested": "@deepseek-ai/dsh-sandbox",
-      "target": "link:./packages/capability-compat/sandbox",
-      "authority": "src/native-sandbox-protocol.js",
-      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+      "name": "@deepseek-ai/dsh-sandbox",
+      "target": "link:./packages/capability-compat/sandbox"
     },
     {
-      "requested": "@deepseek-ai/dsh-skill",
-      "target": "link:./packages/capability-compat/skill",
-      "authority": "src/native-skills.js + native-skill-protocol.js",
-      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+      "name": "@deepseek-ai/dsh-session-projection",
+      "target": "link:./packages/capability-compat/session-projection"
     },
     {
-      "requested": "@deepseek-ai/dsh-session-projection",
-      "target": "link:./packages/capability-compat/session-projection",
-      "authority": "src/native-projections.js",
-      "reason": "native owner or local abstract capability/value protocol; no additional active replacement credit"
+      "name": "@deepseek-ai/dsh-llm",
+      "target": "link:./packages/capability-compat/llm"
     },
     {
-      "requested": "@deepseek-ai/dsh-llm",
-      "target": "link:./packages/capability-compat/llm",
-      "authority": "src/native-llm.js + native-llm-protocol.js + native-llm-errors.js",
-      "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
+      "name": "@deepseek-ai/dsh-tools",
+      "target": "link:./packages/capability-compat/tools"
     },
     {
-      "requested": "@deepseek-ai/dsh-tools",
-      "target": "link:./packages/capability-compat/tools",
-      "authority": "src/native-tools.js + native-tool-protocol.js",
-      "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
+      "name": "@deepseek-ai/dsh-session",
+      "target": "link:./packages/capability-compat/session"
     },
     {
-      "requested": "@deepseek-ai/dsh-subagent",
-      "target": "link:./packages/capability-compat/subagent",
-      "authority": "src/native-subagents.js + native-subagent-errors.js",
-      "reason": "native runtime owner and local canonical public protocol; old runtime classes excluded; no extra active replacement credit"
+      "name": "@deepseek-ai/dsh-session-persistence",
+      "target": "link:./packages/capability-compat/session-persistence"
     },
     {
-      "requested": "@deepseek-ai/dsh-session",
-      "target": "link:./packages/capability-compat/session",
-      "authority": "src/native-sessions.js + native-session-protocol.js",
-      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
-    },
-    {
-      "requested": "@deepseek-ai/dsh-session-persistence",
-      "target": "link:./packages/capability-compat/session-persistence",
-      "authority": "src/native-persistence-protocol.js",
-      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
-    },
-    {
-      "requested": "@deepseek-ai/dsh-sandbox-windows-acl",
-      "target": "link:./packages/capability-compat/sandbox-windows-acl",
-      "authority": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js",
-      "reason": "explicit local audit/format/platform compatibility; Pi remains current context and inference authority; no extra service credit"
+      "name": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "target": "link:./packages/capability-compat/sandbox-windows-acl"
     }
   ],
-  "externalFeatureAcceptanceComplete": false,
-  "compatibilityBoundary": "Local MIT-derived v4 audit/publication/inbox facade, released v0-v4 codecs/import I/O and Windows ACL; no external registry SDK runtime or old model/tool/session-store orchestrator. Real vendor/platform acceptance remains separate.",
-  "piVersions": {
-    "@earendil-works/pi-agent-core": "1.5.0",
-    "@earendil-works/pi-ai": "1.5.0",
-    "@earendil-works/pi-coding-agent": "1.5.0"
-  },
-  "unmountedPreparation": [],
-  "standaloneProcess": true,
-  "standaloneFromDshLibraries": true,
-  "piNative": [
-    "Pi coding-agent parseFrontmatter for ordinary skill headers, explicit legacy delimiter fallback; capability-aware discovery remains application-owned",
-    "agent-core.runAgentLoop iteration",
-    "Pi operational tool dispatch without placeholder input",
-    "Pi coding-agent SessionManager v3 journal and branch context authority",
-    "NativePiProvider: Pi Models.streamSimple, native catalog/auth/retry/discovery/login/event handling",
-    "Pi native event stream preserved on untransformed requests; explicit bounded/legacy/middleware-transform fallback, no redispatch"
+  "retainedDshNoticeFiles": [
+    "dsh-agent-MIT.txt",
+    "dsh-agent-instructions-MIT.txt",
+    "dsh-agent-preset-registry-MIT.txt",
+    "dsh-app-boot-MIT.txt",
+    "dsh-attachment-local-MIT.txt",
+    "dsh-authorization-MIT.txt",
+    "dsh-bash-local-MIT.txt",
+    "dsh-bash-sandbox-MIT.txt",
+    "dsh-credentials-MIT.txt",
+    "dsh-fs-MIT.txt",
+    "dsh-fs-local-MIT.txt",
+    "dsh-fs-observation-policy-MIT.txt",
+    "dsh-fs-sandbox-MIT.txt",
+    "dsh-http-proxy-MIT.txt",
+    "dsh-llm-MIT.txt",
+    "dsh-permission-presets-MIT.txt",
+    "dsh-pwsh-local-MIT.txt",
+    "dsh-pwsh-sandbox-MIT.txt",
+    "dsh-sandbox-MIT.txt",
+    "dsh-sandbox-windows-acl-MIT.txt",
+    "dsh-schedule-MIT.txt",
+    "dsh-scope-MIT.txt",
+    "dsh-session-MIT.txt",
+    "dsh-session-persistence-MIT.txt",
+    "dsh-session-projection-MIT.txt",
+    "dsh-session-title-MIT.txt",
+    "dsh-shell-MIT.txt",
+    "dsh-shell-env-MIT.txt",
+    "dsh-skill-MIT.txt",
+    "dsh-skill-filesystem-MIT.txt",
+    "dsh-spill-MIT.txt",
+    "dsh-spill-local-MIT.txt",
+    "dsh-subagent-MIT.txt",
+    "dsh-subprocess-local-MIT.txt",
+    "dsh-system-prompt-MIT.txt",
+    "dsh-tool-bash-MIT.txt",
+    "dsh-tool-call-timeout-policy-MIT.txt",
+    "dsh-tool-fs-search-MIT.txt",
+    "dsh-tool-jobs-MIT.txt",
+    "dsh-tool-pwsh-MIT.txt",
+    "dsh-tool-schedule-MIT.txt",
+    "dsh-tool-skill-MIT.txt",
+    "dsh-tool-todo-MIT.txt",
+    "dsh-tool-web-MIT.txt",
+    "dsh-tool-working-directory-MIT.txt",
+    "dsh-tools-MIT.txt",
+    "dsh-user-approval-MIT.txt",
+    "dsh-util-time-MIT.txt",
+    "dsh-util-values-MIT.txt",
+    "dsh-web-MIT.txt",
+    "dsh-web-fetch-http-MIT.txt",
+    "dsh-workspace-MIT.txt"
   ],
-  "applicationNative": [
-    "Native provider/auth/credentials, agent/session/projection lifetimes and Pi authority fencing",
-    "Native role/tool/scheduler/code transport, strict schema and output checks, durable effect receipts and cancellation drain",
-    "Native process/jobs/sandbox/ACL ownership, immutable workspace/artifact proofs and one-shot approvals",
-    "Native attachments/image transforms, scoped skills/workspaces/CWD, instructions/prompts/preset generations and child/cold-query lifecycle",
-    "Native title/Web/HTTP/proxy/timeout/spill operators and nonvisual configuration/auth CLIs",
-    "Native canonical errors, immutable messages, stream assembly and historical public namespace aliases; attributed source-derived algorithms are explicit",
-    "Local legacy format/import IO and isolated physical verifier without old model/tool/SessionStore orchestration"
+  "limits": [
+    "Zero external packages does not imply zero copied or derived implementation. Retained code and test copies require their notices.",
+    "Legacy Session/event compatibility and platform-derived backends remain separate migration work.",
+    "Effectful codemode stays disabled: official nested summaries are post-execution and bounded; abort/idle does not join host tools.",
+    "Windows kernel isolation and real vendor integration require separate verification."
   ],
-  "dshRemaining": [],
-  "retainedCompatibilityProtocols": [
-    "local v4 audit/publication/inbox and Agent/Session/RPC type-symbol vocabulary; Pi owns current history and model context",
-    "local released v0-v4 codecs, relationship checks, corruption refusal and import fencing; original golden bytes retained",
-    "local GenerateOptions/StreamChunk, tool schema/result/job receipt and plugin namespace contracts",
-    "local Windows ACL/Win32 process capability code with MIT provenance; actual platform acceptance remains separate",
-    "generic Cordis service/event extension substrate"
-  ],
-  "directRuntimeDshDependencies": [],
-  "developmentDependencyCount": 48,
-  "activeLiteralDshPluginRows": [],
-  "activeDynamicDshPluginRows": [],
-  "nativeReplacements": [
-    "bash/pwsh sandbox consumers and tool-bash/tool-pwsh -> attributed native shell/base/local executors and model tools; native timers/process/jobs/sandbox/policy owners, canonical sandbox/message/schema helpers retained",
-    "tool-fs/tool-fs-search -> attributed model file/image/CAS bindings and packaged argv-only ripgrep search; native deadline/output retention, canonical helpers remain",
-    "fs-sandbox/fs-observation-policy -> attributed native-fs-local/native-fs-sandbox/native-fs-observation-policy; canonical FsError/service and sandbox policy helpers retained",
-    "tool-jobs -> attributed local model controls/notices and native-output-retention; registry stays NativeJobs, brand helper was identity-only",
-    "tool-skill -> attributed local schema/catalog/invocation binding; visible catalog digest uses Pi hostMessages only, historical published boolean uses audit-only facade",
-    "tool-working-directory/tool-todo -> retained attributed model bindings; tool-subagent-control/tool-subagent source removed because the product architecture was cancelled, not replaced",
-    "tool-web -> src/native-tool-web.js; restored native-tool-timeout.js policy was absent and earns no replacement credit",
-    "web/web-fetch-http -> src/native-web.js + native-http-fetch.js + native-deadline.js; public canonical WebError and proxy overlay retained, global HTTP ownership avoids retained-preset duplicate registration",
-    "session-title -> src/native-session-title.js; public error identity remains canonical, query fold is local",
-    "subagent product service cancelled and absent from default Host; native-subagents.js remains only for explicit legacy runtime/namespace references, with MIT attribution retained",
-    "agent-preset-registry -> src/native-agent-presets.js + native-profile-preflight.js; explicit source-derived generation/preflight algorithms, Pi selection admission and failure fencing",
-    "agent-instructions -> src/native-agent-instructions.js; Pi hostMessages are the only visible-history authority, source-derived document algorithms explicitly attributed",
-    "shell-env -> src/native-shell-env.js; DSH_ script protocol retained; actual shell executor/tool wrappers remain explicit libraries",
-    "user-approval/permission-presets -> src/native-approval.js + src/native-permission-presets.js; durable one-call decisions and canonical permission facts, generic FS/shell wrappers still retained",
-    "subagent-spawn-in-process/subagent-fork-in-process -> cancelled without replacement; native-subagent-providers.js removed; legacy manager/error/catalog sources remain referenced by old core runtime and compatibility namespace",
-    "llm-retry -> src/native-llm-retry.js; Pi journal admission checks and bounded/unbounded recovery, no completed-tool replay",
-    "helper-only timeout row removed; not counted as an active service replacement",
-    "system-prompt -> src/native-system-prompt.js; ordered scoped assembly and admission refresh; old public render/scope helpers remain",
-    "workspace -> src/native-workspace.js; durable NativeDomain accounts and nonvisual archived-session admission; old public error identities retained",
-    "skill-filesystem -> src/native-skill-filesystem.js; Pi parser plus retained ACL/legacy roots; native-skill-watcher.js is an explicit MIT platform source fork",
-    "skill registry -> src/native-skills.js; filesystem discovery is now local; public rendering helpers remain explicit dependencies",
-    "attachment-local -> src/native-attachments.js + native-attachment storage/codec/errors; v1 and request-image-v6 protocol compatibility and MIT algorithm attribution retained",
-    "working-directory -> src/native-working-directory.js; filesystem capability backend remains guarded and unchanged",
-    "authorization -> src/native-authorization.js; attempt-scoped Pi login credentials and commit-phase cancellation fence",
-    "credentials-local -> src/native-credentials.js + credential-file.js; legacy document/lock protocol retained for interoperability",
-    "storage/storage-json/storage-domain runtime -> src/native-domain.js + src/native-state.js",
-    "agent-default-model/config-editor dependency -> durable native model selection",
-    "new session journal/context authority -> Pi SessionManager v3, checksummed commits, native branch retirement; historical DSH import removed",
-    "llm-pi-ai plugin -> src/native-pi-provider.js and native Pi provider modules; generic DSH LLM and attachment policies remain",
-    "session/session-projection services -> src/native-sessions.js + native-projections.js; legacy Session data facade retained explicitly",
-    "generated sandbox-policy patch -> src/native-policy.js; identical standing/one-shot/artifact boundary contract",
-    "non-plugin launch-environment row -> explicit native bootstrap snapshot; not counted as an active service replacement",
-    "llm runtime service -> src/native-llm.js; public message/projection helpers and RPC carrier remain",
-    "agent runtime service -> src/native-agents.js and native-agent-context.js; Pi-loop factory and session compatibility view remain",
-    "sandbox-local -> src/native-sandbox.js; native Linux/macOS profile/selection with Windows ACL capability library remaining",
-    "subprocess-local -> source-derived src/process backend; local contracts/bootstrap/output/FFI, shared proxy overlay now local",
-    "jobs-local -> src/native-jobs.js; process execution and durable task receipts remain separate",
-    "tools runtime service -> src/native-tools.js + native-code-transport.js; schema/scope helpers and capability backends remain"
-  ],
-  "protocols": {
-    "external": [
-      "original HTTP JSON routes",
-      "DWS CLI JSON"
-    ],
-    "internalRemaining": [
-      "Cordis service/events",
-      "DSH Agent/Session interfaces",
-      "DSH v4 event facade; no historical import",
-      "DSH LLM GenerateOptions/StreamChunk",
-      "DSH tool schema/result/job receipts"
-    ]
-  }
+  "evidence": [
+    "docs/retired-notice-copy-audit.json",
+    "docs/NODE-RPC-RETIREMENT.md",
+    "docs/retired-session-drivers.md",
+    "docs/FS-IO-MIGRATION.md",
+    "docs/SEARCH-IO-MIGRATION.md"
+  ]
 }
