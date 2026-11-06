@@ -17,7 +17,8 @@
   "files": [
     {
       "target": "src/native-schedule-protocol.js",
-      "sha256": "1015f458582629f222e0ad279d4eebeda8f91562aaba04d95514d0727b4c357a"
+      "sha256": "afd3f9f787d2fdb76b1a7e52e06654a3f38622324a6451edf84aa6f40d665b90",
+      "nativeOnlyAdaptation": "Identity casts local to scheduling; no mutable Session protocol dependency."
     },
     {
       "target": "src/native-schedule.js",
