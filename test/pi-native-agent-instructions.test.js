@@ -1,18 +1,16 @@
-import {SessionManager} from '@earendil-works/pi-coding-agent'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,mkdir,writeFile,rm,stat,readFile} from 'node:fs/promises'
+import {mkdtemp,mkdir,writeFile,rm,readFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {apply,loadBaselineInstructions,renderAgentInstructions,discoverBaselineInstructionFiles} from '../src/native-agent-instructions.js'
-import {createLaunchEnvironmentSnapshot} from '../src/native-environment.js'
+import {apply,inject,loadBaselineInstructions,renderAgentInstructions,discoverBaselineInstructionFiles,officialInstructionFiles} from '../src/native-agent-instructions.js'
+import {memoryHost} from './fixtures/memory-host.js'
 const fresh=async t=>{const root=await mkdtemp(join(tmpdir(),'night-instructions-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
-function fixture(t,{files=new Map(),signal,ensure,authority=[],projectionManager,config={}}={}){
- const handlers=new Map(),disposals=[],pending=[],session={},agent={id:'fixture',session,inbox:{nextStep:pending,prepend(_kind,m){pending.unshift(m)},remove(id){const i=pending.findIndex(m=>m.id===id);if(i>=0)pending.splice(i,1)},replace(id,m){pending.splice(pending.findIndex(v=>v.id===id),1,m)}}};Object.defineProperty(session,'surface',{get(){throw new Error('legacy surface must not be consulted')}})
- const fs={async resolve(path,{signal}={}){signal?.throwIfAborted();return path},async stat(path){const content=files.get(path);return content===undefined?undefined:{type:'file',version:content,size:Buffer.byteLength(content)}},async *streamText(path){yield files.get(path)}}
- const ctx={get:n=>n==='fs'?fs:n==='launchEnvironment'?createLaunchEnvironmentSnapshot([{source:'process',values:{DSH_HOME:'/fixture/home',DSH_AGENTS_HOME:'/fixture/shared'}}]):undefined,provide(n,v){this[n]=v},effect(f){disposals.push(f())},on(n,f){handlers.set(n,f);return()=>handlers.delete(n)},logger:{warn(){}},workingDirectory:{ensure:ensure??(async()=>'/fixture/work')},piAuthority:{context:(id,options)=>{assert.equal(id,agent.id);assert.deepEqual(options,{projectionOnly:true});const manager=projectionManager??SessionManager.inMemory();if(!projectionManager)for(const message of authority)manager.appendMessage({role:'user',content:message.content,timestamp:1,night:{event:{type:'user/message',data:message}}});return{projection:manager.buildSessionProjection(),get hostMessages(){throw Error('Host messages forbidden')}}}},sessionProjections:{stateOf:()=>({openTurnStartSeq:null})}}
- apply(ctx,{maxBytes:65536,...config});let closed=false;const close=async()=>{if(closed)return;closed=true;await Promise.all(disposals.map(fn=>fn?.()))};t.after(close)
- return{ctx,agent,fs,files,authority,handlers,close,step:async()=>{const messages=[{id:'input',source:{kind:'user'},content:[{type:'text',text:'test'}]}];return handlers.get('agent/pre-step')({agent,messages,step:1,signal:signal??new AbortController().signal},async()=>({kind:'continue',messages}))}}
+const prompt=body=>JSON.stringify(body.messages.filter(message=>message.role==='system'))
+async function fixture(t,decide){
+ const h=await memoryHost(t,body=>decide?.(body,h)??{text:'official resources verified'}),work=h.host.ctx.runtimePaths.workspaces,handle=await h.agent('native-instruction-proof');t.after(()=>handle.dispose())
+ let sequence=0;const actor=handle.actor,services=h.host.ctx.agentPresets
+ return {...h,work,handle,actor,fs:services.serviceFor(actor,'fs'),instructions:services.serviceFor(actor,'nativeAgentInstructions'),say:async text=>{const id='native-instruction-'+ ++sequence;await handle.enqueue({id,source:{kind:'user'},content:text});await handle.deliver(id);await handle.whenIdle();await h.host.ctx.memory.whenIdle()},saved:()=>h.host.ctx.sessionPersistence.readNative(actor.id,{requireComplete:true})}
 }
 test('explicit instruction roots retain precedence, duplicate suppression, UTF-8 byte budgets and safe framing',async t=>{
  const root=await fresh(t)
@@ -37,97 +35,55 @@ test('explicit instruction roots retain precedence, duplicate suppression, UTF-8
  assert.ok(!implicit.some(file=>file.absolutePath===join(root,'home/AGENTS.md')))
  assert.equal(await readFile(join(root,'home/AGENTS.md'),'utf8'),'GLOBAL_TOKEN')
 })
-test('removing an owned global instruction root refreshes Pi context without probing a project-global lookalike',async t=>{
- const files=new Map([['/fixture/owned/AGENTS.md','OWNED_GLOBAL_TOKEN'],['/fixture/work/AGENTS.md','PROJECT_TOKEN'],['/fixture/work/user-global/AGENTS.md','LOOKALIKE_TOKEN'],['/fixture/home/AGENTS.md','EXTERNAL_DSH_TOKEN']])
- const previous=fixture(t,{files,config:{instructionHome:'/fixture/owned',agentsHome:'/fixture/shared'}}),first=await previous.step(),baseline=first.messages.find(message=>message.source.kind==='agent-instructions')
- assert.ok(JSON.stringify(baseline).includes('OWNED_GLOBAL_TOKEN'))
- const oldBaseline=structuredClone(baseline)
- for(const change of oldBaseline.source.changes)change.path=change.path.replace('night-bot://instructions','$DSH_HOME').replace('night-bot://agents','$DSH_AGENTS_HOME')
- const oldIdentity=JSON.parse(oldBaseline.source.baselineIdentity);delete oldIdentity.instructionContextVersion;delete oldIdentity.instructionHome;delete oldIdentity.agentsHome
- oldBaseline.source.baselineIdentity=JSON.stringify(oldIdentity)
- const current=fixture(t,{files,authority:[oldBaseline],config:{agentsHome:'/fixture/shared'}}),paths=[],resolve=current.fs.resolve.bind(current.fs)
- current.fs.resolve=async(path,options)=>{paths.push(path);return resolve(path,options)}
- const result=await current.step(),next=result.messages.find(message=>message.source.kind==='agent-instructions')
- assert.ok(next);assert.match(JSON.stringify(next),/PROJECT_TOKEN/)
- assert.doesNotMatch(JSON.stringify(next),/OWNED_GLOBAL_TOKEN|LOOKALIKE_TOKEN|EXTERNAL_DSH_TOKEN/)
- assert.ok(!paths.some(path=>path.startsWith('/fixture/owned')||path.startsWith('/fixture/home')||path.startsWith('/fixture/work/user-global')))
- assert.notEqual(next.source.baselineIdentity,baseline.source.baselineIdentity)
+test('removing an owned instruction root refreshes current SDK resources without probing home lookalikes',async t=>{
+ const h=await fixture(t),owned=join(h.host.ctx.runtimePaths.harnessHome,'AGENTS.md'),lookalike=join(h.work,'user-global','AGENTS.md');await mkdir(join(h.work,'user-global'));await writeFile(owned,'OWNED_GLOBAL_TOKEN');await writeFile(join(h.work,'AGENTS.md'),'PROJECT_TOKEN');await writeFile(lookalike,'LOOKALIKE_TOKEN')
+ await h.say('inspect current authorized roots');assert.match(prompt(h.requests[0]),/OWNED_GLOBAL_TOKEN/);await rm(owned);await h.say('inspect removed root');assert.match(prompt(h.requests[1]),/PROJECT_TOKEN/);assert.doesNotMatch(prompt(h.requests[1]),/OWNED_GLOBAL_TOKEN|LOOKALIKE_TOKEN/)
 })
-test('Pi authority alone owns baseline visibility and change/removal reconciliation',async t=>{
- const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','first']])}),first=await h.step();const baseline=first.messages.find(m=>m.source.kind==='agent-instructions');assert.ok(baseline);assert.match(JSON.stringify(baseline.content),/first/);h.authority.push(baseline);assert.equal((await h.step()).messages.filter(m=>m.source.kind==='agent-instructions').length,0);h.files.set('/fixture/work/AGENTS.md','second');const updated=(await h.step()).messages.find(m=>m.source.kind==='agent-instructions');assert.equal(updated.source.changes[0].action,'replace');assert.match(JSON.stringify(updated.content),/second/);h.authority.push(updated);h.files.delete('/fixture/work/AGENTS.md');const removed=(await h.step()).messages.find(m=>m.source.kind==='agent-instructions');assert.equal(removed.source.changes[0].action,'remove');h.authority.push(removed);assert.equal((await h.step()).messages.length,1)
+test('official SDK resource refresh replaces and removes current files without a publication fold',async t=>{
+ const h=await fixture(t),path=join(h.work,'AGENTS.md');await writeFile(path,'FIRST_CURRENT_SOURCE');await h.say('first');assert.match(prompt(h.requests[0]),/FIRST_CURRENT_SOURCE/);await writeFile(path,'SECOND_CURRENT_SOURCE');await h.say('replace');assert.match(prompt(h.requests[1]),/SECOND_CURRENT_SOURCE/);assert.doesNotMatch(prompt(h.requests[1]),/FIRST_CURRENT_SOURCE/);await rm(path);await h.say('remove');assert.doesNotMatch(prompt(h.requests[2]),/FIRST_CURRENT_SOURCE|SECOND_CURRENT_SOURCE/);assert.equal(h.actor.session,undefined)
 })
-test('nested successful touches use token identity, dedupe pending context, and ignore errors/cancellation',async t=>{
- const h=fixture(t,{files:new Map([['/fixture/work/sub/AGENTS.md','nested instruction']])}),result=h.handlers.get('tools/result'),parent=Symbol('parent'),signal=new AbortController().signal
- const exec={token:Symbol('child'),parent,callId:'same',name:'read',arguments:{file_path:'sub/data'},agent:h.agent,signal};result(exec,{isError:false});assert.equal(h.agent.inbox.nextStep.length,0);result({token:parent,name:'code',signal},{isError:false});const entered=await h.step();const nested=entered.messages.find(m=>m.source.kind==='agent-instructions');assert.match(JSON.stringify(nested),/nested instruction/);h.authority.push(nested);assert.equal(h.agent.inbox.nextStep.length,0);assert.equal((await h.step()).messages.filter(m=>m.source.kind==='agent-instructions').length,0)
- // The first step consumed the successfully nested projection; no unrelated failed token may discover another directory.
- h.files.set('/fixture/work/denied/AGENTS.md','denied instruction');result({...exec,token:Symbol(),parent:undefined,arguments:{file_path:'denied/data'}},{isError:true});assert.doesNotMatch(JSON.stringify(await h.step()),/denied instruction/)
+test('only successful current-schema native file calls discover nested instructions; errors and cancellation do not',async t=>{
+ const h=await fixture(t,(_body,h)=>h.requests.length===1?{tool:'read',args:{path:'sub/data.txt'}}:h.requests.length===3?{tool:'read',args:{path:'denied/no-file.txt'}}:h.requests.length===5?{tool:'read',args:{path:'canceled/data.txt'}}:{text:'read verified'});for(const dir of ['sub','denied','canceled']){await mkdir(join(h.work,dir));await writeFile(join(h.work,dir,'AGENTS.md'),dir.toUpperCase()+'_NESTED_INSTRUCTION')}await writeFile(join(h.work,'sub/data.txt'),'public data');await writeFile(join(h.work,'canceled/data.txt'),'must not discover after cancellation')
+ await h.say('discover successful read');assert.match(prompt(h.requests[1]),/SUB_NESTED_INSTRUCTION/);await h.say('failed read is not discovery');assert.doesNotMatch(prompt(h.requests.at(-1)),/DENIED_NESTED_INSTRUCTION/)
+ let cancellation;h.actor.ctx.on('tools/pre-execute',(exec,next)=>{if(exec.name==='read'&&exec.arguments.path==='canceled/data.txt')cancellation=h.actor.piSession.abort();return next()})
+ await h.say('cancel before read').catch(error=>assert.match(error.message,/abort|cancel/i));await cancellation
+ assert.deepEqual(h.instructions.officialDiscoveredPaths(h.actor),[join(h.work,'sub/data.txt')]);const saved=await h.saved(),results=saved.context.piMessages.filter(message=>message.role==='toolResult'&&message.toolName==='read');assert.equal(results.length,3);assert.equal(results[0].isError,false);assert.equal(results[1].isError,true);assert.equal(results[2].isError,true)
 })
-test('instruction reads retain the capability provider and cannot fall back to raw filesystem on denial',async t=>{
- const root=await fresh(t);await writeFile(join(root,'AGENTS.md'),'must stay invisible');const h=fixture(t,{ensure:async()=>root});h.fs.resolve=async()=>{const error=new Error('denied');error.code='FS_NOT_FOUND';throw error};const decision=await h.step();assert.doesNotMatch(JSON.stringify(decision),/must stay invisible/)
+test('actual scoped instruction reader cannot fall back to raw filesystem after a provider denial',async t=>{
+ const h=await fixture(t),path=join(h.work,'AGENTS.md');await writeFile(path,'MUST_STAY_INVISIBLE');const resolve=h.fs.resolve;h.fs.resolve=async function(value,...args){if(value===path)throw Object.assign(Error('denied'),{code:'FS_NOT_FOUND'});return resolve.call(this,value,...args)}
+ await h.say('inspect provider-authorized files only');assert.doesNotMatch(prompt(h.requests[0]),/MUST_STAY_INVISIBLE/);assert.equal(await readFile(path,'utf8'),'MUST_STAY_INVISIBLE')
 })
-test('instruction shutdown aborts and drains admitted preparation without late inbox publication',async t=>{
- const entered=Promise.withResolvers(),release=Promise.withResolvers();let observed;const h=fixture(t,{ensure:async(_agent,signal)=>{observed=signal;entered.resolve();await release.promise;signal.throwIfAborted();return'/fixture/work'}});const work=h.step();const rejection=assert.rejects(work,/disposed/);await entered.promise;let finished=false;const close=h.close().then(()=>{finished=true});await new Promise(r=>setImmediate(r));assert.equal(observed.aborted,true);assert.equal(finished,false);release.resolve();await rejection;await close;assert.equal(h.agent.inbox.nextStep.length,0)
+test('actor shutdown cancels and joins an admitted official resource read before releasing its writer',{timeout:15000},async t=>{
+ const h=await fixture(t),path=join(h.work,'AGENTS.md');await writeFile(path,'LIFETIME_RESOURCE');const entered=Promise.withResolvers(),release=Promise.withResolvers(),stream=h.fs.streamText;let observed,closed=false;t.after(()=>release.resolve())
+ h.fs.streamText=async function(target,signal){if(String(target.targetKey)!==path)return stream.call(this,target,signal);observed=signal;return(async function*(){entered.resolve();await release.promise;signal.throwIfAborted();yield 'LIFETIME_RESOURCE'})()}
+ const pending=h.say('resource lifetime proof'),rejected=assert.rejects(pending);await Promise.race([entered.promise,pending.then(()=>{throw Error('Expected scoped resource read was not entered')})]);const closing=h.handle.dispose().then(()=>{closed=true});await new Promise(resolve=>setImmediate(resolve));assert.equal(observed.aborted,true);assert.equal(closed,false);release.resolve();await rejected;await closing;assert.equal(h.requests.length,0)
 })
-test('instruction cancellation and providerless mounting do not read or inject context',async t=>{
- const control=new AbortController();control.abort(new Error('fixture cancelled'));const h=fixture(t,{signal:control.signal});await assert.rejects(h.step(),/fixture cancelled/);const h2=fixture(t);h2.ctx.get=()=>undefined;assert.equal((await h2.step()).messages.length,1)
+test('pre-canceled resource discovery does not read; providerless mount registers no old step or inbox mechanism',async t=>{
+ const controller=new AbortController();controller.abort(Error('fixture canceled'));let reads=0
+ await assert.rejects(officialInstructionFiles({cwd:'/authorized',projectRoot:'/authorized',maxBytes:65536,signal:controller.signal},{resolve(){reads++;assert.fail('No read after cancellation')}}),/fixture canceled/);assert.equal(reads,0)
+ const names=[],disposals=[],ctx={workingDirectory:{},provide(name,value){this[name]=value},on:name=>names.push(name),effect:fn=>disposals.push(fn())};apply(ctx,{maxBytes:65536});assert.deepEqual(inject,['workingDirectory']);assert.deepEqual(names,['tools/result']);assert.equal(ctx.nativeAgentInstructions.contextAuthority,'pi-session-manager');for(const dispose of disposals)await dispose()
 })
-
 test('private instruction roots reject relative and tilde aliases instead of selecting another home',async t=>{
  const root=await fresh(t)
  for(const field of ['instructionHome','agentsHome'])for(const path of ['relative','~/outside'])await assert.rejects(discoverBaselineInstructionFiles({cwd:root,[field]:path}),error=>error.code==='NIGHT_INSTRUCTION_ROOT_INVALID')
 })
-
-function commitInstruction(manager,message) {
- return manager.appendMessage({role:'user',content:structuredClone(message.content),timestamp:1,night:{event:{type:'user/message',data:structuredClone(message)}}})
-}
-test('official context edits remove or alter instruction publication proof without Host history',async t=>{
- for(const replacement of [null,{content:[{type:'text',text:'EDITED_BODY_WITH_OLD_METADATA'}]}]) {
-  const manager=SessionManager.inMemory(),h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','NATIVE_SOURCE_INSTRUCTION']]),projectionManager:manager})
-  const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
-  const id=commitInstruction(manager,baseline)
-  assert.equal((await h.step()).messages.filter(message=>message.source.kind==='agent-instructions').length,0)
-  manager.appendContextEdit(id,replacement)
-  const restored=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
-  assert.ok(restored);assert.match(JSON.stringify(restored.content),/NATIVE_SOURCE_INSTRUCTION/)
-  assert.doesNotMatch(JSON.stringify(restored.content),/EDITED_BODY_WITH_OLD_METADATA/)
+test('official context edits cannot turn historical instruction text into current resource authorization',async t=>{
+ const h=await fixture(t),path=join(h.work,'AGENTS.md');await writeFile(path,'REAL_CURRENT_INSTRUCTION');await h.say('first');const manager=h.actor.piSession.sessionManager,id=manager.appendMessage({role:'user',content:'HISTORICAL_RESOURCE_CLAIM',timestamp:1});manager.appendContextEdit(id,{content:[{type:'text',text:'EDITED_RESOURCE_CLAIM'}]});await rm(path);await h.say('inspect actual current files');assert.doesNotMatch(prompt(h.requests.at(-1)),/REAL_CURRENT_INSTRUCTION|HISTORICAL_RESOURCE_CLAIM|EDITED_RESOURCE_CLAIM/);assert.ok((await h.saved()).entries.some(entry=>entry.type==='context_edit'))
+})
+test('official compaction, branch summaries and abandoned branches do not authorize removed instruction resources',async t=>{
+ for(const mode of ['compaction','summary','branch']){
+  const h=await fixture(t),path=join(h.work,'AGENTS.md');await writeFile(path,'ORIGINAL_CURRENT_RESOURCE');await h.say('first');const manager=h.actor.piSession.sessionManager,root=manager.appendMessage({role:'user',content:'ordinary branch root',timestamp:1});manager.appendMessage({role:'assistant',content:[{type:'text',text:'HISTORY_RESOURCE_CLAIM'}],api:'openai-completions',provider:'fixture',model:'m',stopReason:'stop',timestamp:1,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}})
+  if(mode==='compaction')manager.appendCompaction('HISTORY_RESOURCE_CLAIM',root,100);else if(mode==='summary')manager.branchWithSummary(root,'HISTORY_RESOURCE_CLAIM');else manager.branch(root)
+  await rm(path);await h.say('only current authorized resources');assert.doesNotMatch(prompt(h.requests.at(-1)),/ORIGINAL_CURRENT_RESOURCE|HISTORY_RESOURCE_CLAIM/)
  }
 })
-test('official compaction, branch summaries and abandoned branches do not prove visible instructions',async t=>{
- for(const mode of ['compaction','summary','branch']) {
-  const manager=SessionManager.inMemory(),root=manager.appendMessage({role:'user',content:'ordinary root input',timestamp:0})
-  const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','PUBLISH_AGAIN']]),projectionManager:manager})
-  const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions');commitInstruction(manager,baseline)
-  assert.equal((await h.step()).messages.filter(message=>message.source.kind==='agent-instructions').length,0)
-  if(mode==='compaction')manager.appendCompaction(JSON.stringify(baseline),null,100)
-  else if(mode==='summary')manager.branchWithSummary(root,JSON.stringify(baseline))
-  else manager.branch(root)
-  const fresh=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
-  assert.ok(fresh);assert.match(JSON.stringify(fresh.content),/PUBLISH_AGAIN/)
- }
+test('instruction observation rejects foreign and revoked actors without a writer/projection fallback',async t=>{
+ const h=await fixture(t);assert.throws(()=>h.instructions.officialDiscoveredPaths({...h.actor}),/PI_INSTRUCTION_ACTOR_REQUIRED/);await h.handle.dispose();assert.throws(()=>h.instructions.officialDiscoveredPaths(h.actor),/PI_INSTRUCTION_ACTOR_REQUIRED/);assert.ok(!inject.includes('sessionProjections'));assert.ok(!inject.includes('piAuthority'))
 })
-test('instruction projection rejects missing writer and malformed official context before publication',async t=>{
- const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','no publication']] )})
- for(const value of [undefined,{}, {projection:{entries:[],messages:null}}, {projection:{entries:[{}],messages:[]}}, {projection:{entries:[{sourceEntry:{type:'message',id:'bad'},messages:[]}],messages:[]}}]) {
-  h.ctx.piAuthority.context=()=>value
-  await assert.rejects(h.step(),/PI_INSTRUCTION_PROJECTION/)
-  assert.equal(h.agent.inbox.nextStep.length,0)
- }
- h.ctx.piAuthority.context=()=>{throw new Error('PI_SESSION_WRITER_REQUIRED:fixture')}
- await assert.rejects(h.step(),/PI_SESSION_WRITER_REQUIRED/)
+test('reloading current instructions creates no synthetic business input or duplicate model context',async t=>{
+ const h=await fixture(t),path=join(h.work,'AGENTS.md');await writeFile(path,'ONE_CURRENT_INSTRUCTION');await h.say('first');await h.say('second');assert.equal(prompt(h.requests.at(-1)).split('ONE_CURRENT_INSTRUCTION').length-1,1)
+ const saved=await h.saved(),inputs=saved.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input');assert.equal(inputs.length,2);assert.ok(inputs.every(entry=>entry.details.source.kind==='user'));assert.equal(saved.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued').length,2);assert.ok(!saved.audit.some(row=>row.domain==='agent-instructions'))
 })
-
-test('claimed instruction publication remains a local business fact without a shadow Pi message',async t=>{
- const h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','CLAIMED_INSTRUCTION']])})
- const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
- const messages=[{id:'claimed-user',source:{kind:'user'},content:[{type:'text',text:'continue'}]},baseline]
- const result=await h.handlers.get('agent/pre-step')({agent:h.agent,messages,step:2,signal:new AbortController().signal},async()=>({kind:'continue',messages}))
- assert.equal(result.messages.filter(message=>message.source.kind==='agent-instructions').length,1)
- assert.equal(result.messages.find(message=>message.source.kind==='agent-instructions'),baseline)
- assert.deepEqual(h.agent.inbox.nextStep,[])
-})
-test('changed instruction metadata body cannot prove the baseline while its native content differs',async t=>{
- const manager=SessionManager.inMemory(),h=fixture(t,{files:new Map([['/fixture/work/AGENTS.md','REAL_FILE_INSTRUCTION']]),projectionManager:manager})
- const baseline=(await h.step()).messages.find(message=>message.source.kind==='agent-instructions')
- manager.appendMessage({role:'user',content:[{type:'text',text:'unrelated native body'}],timestamp:1,source:baseline.source,night:{event:{type:'user/message',data:baseline}}})
- assert.ok((await h.step()).messages.some(message=>message.source.kind==='agent-instructions'))
+test('oversized current instruction source fails the real SDK request before provider dispatch rather than truncating authority',async t=>{
+ const h=await fixture(t),path=join(h.work,'AGENTS.md'),content='COMPLETE_SOURCE_MARKER '.repeat(5000);await writeFile(path,content);await assert.rejects(h.say('no budget downgrade'),{code:'PI_OFFICIAL_INSTRUCTION_BUDGET_EXCEEDED'});assert.equal(h.requests.length,0);assert.equal(await readFile(path,'utf8'),content)
 })

@@ -126,3 +126,8 @@ test('complete instruction budget refuses oversized authorized current file inst
  const resources=await f.resolve(f.a)
  await assert.rejects(resources.context.instructions(f.a.actor),{code:'PI_OFFICIAL_INSTRUCTION_BUDGET_EXCEEDED'})
 })
+test('a preset with no selected filesystem cannot fall back to a broader inherited resource filesystem',async t=>{
+ const f=await fixture(t);let reads=0;const original=f.fs.resolve;f.fs.resolve=(...args)=>{reads++;return original(...args)}
+ f.ctx.provide('agentPresets',{serviceFor:()=>undefined})
+ await assert.rejects(f.resolve(f.a),{code:'PI_OFFICIAL_RESOURCE_SERVICES_REQUIRED'});assert.equal(reads,0)
+})

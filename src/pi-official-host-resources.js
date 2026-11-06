@@ -49,7 +49,10 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   const agentDir=join(privateRoot,'pi-agents',hash(actor.id));await safePath(agentDir);await privateDirectory(agentDir);assertCurrent()
   if(!resolved.retrySettings)fail('PI_OFFICIAL_RETRY_SETTINGS_REQUIRED')
   const settingsManager=SettingsManager.inMemory({packages:[],retry:structuredClone(officialRetrySettings(resolved.retrySettings).retry)})
-  const registry=service(actorCtx,'tools'),systemPrompt=service(actorCtx,'systemPrompt'),skills=service(actorCtx,'skills'),memory=service(actorCtx,'memory'),fs=service(actorCtx,'fs')
+  const registry=service(actorCtx,'tools'),systemPrompt=service(actorCtx,'systemPrompt'),skills=service(actorCtx,'skills'),memory=service(actorCtx,'memory')
+  // A mounted preset's narrower FS is the resource capability too. If that
+  // selection is absent, never retry through a broader inherited filesystem.
+  const presets=service(actorCtx,'agentPresets'),fs=typeof presets?.serviceFor==='function'?presets.serviceFor(actor,'fs'):service(actorCtx,'fs')
   if(!registry||!systemPrompt||!skills||!fs)fail('PI_OFFICIAL_RESOURCE_SERVICES_REQUIRED')
   async function currentSkill(summary){
    assertCurrent()
