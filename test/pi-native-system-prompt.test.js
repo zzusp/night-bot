@@ -2,15 +2,48 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import {createScope} from '../src/native-scope.js'
-import {renderPrompt,renderContextSections,joinContextSections} from '../src/runtime/prompt-template.js'
-const renderSnapshot=assembly=>joinContextSections(renderContextSections(assembly))
 import NativePrompt from '../src/native-system-prompt.js'
-function fixture(t,Impl=NativePrompt,config={}){const ctx=new Context();t.after(()=>ctx.fiber.dispose());new Impl(ctx,{includeHarnessIdentity:false,...config});return ctx}
-async function contract(t,Impl){const ctx=fixture(t,Impl),root={},child={},a=createScope(ctx,root),b=createScope(ctx,child,{parent:root}),p=ctx.systemPrompt;let fact='before';p.variable('name',()=> 'global');p.section({name:'z',order:1,text:'global {{name}}'});p.section({name:'a',order:1,text:'first'});a.ctx.systemPrompt.section({name:'z',order:1,text:'parent {{name}}'});b.ctx.systemPrompt.variable('name',()=> 'child');p.context({name:'fact',order:100,required:true,text:()=>fact});p.tools(()=>({schemas:[{name:'z',description:'last',parameters:{type:'object'}},{name:'a',description:'first',parameters:{type:'object'}}]}));const assembly=await p.assemble({scope:child});fact='after';const refreshed=p.refreshContext(assembly,{scope:child});const result={assembly,prompt:renderPrompt(assembly),context:renderSnapshot(refreshed)};await b.dispose();await a.dispose();return result}
-test('native prompt scope precedence, ordering, dynamic context and rendering preserve legacy assembly',async t=>{const value=await contract(t,NativePrompt);assert.equal(value.prompt,'first\n\nparent child');assert.ok(value.context.endsWith('\n\nafter'));assert.equal(value.assembly.variables.name,'child');assert.deepEqual(value.assembly.tools.map(t=>t.name),['a','z'])})
-test('native prompt assembly and rendering match the legacy service',async t=>{const {default:OldPrompt}=await import('@deepseek-ai/dsh-system-prompt');assert.deepEqual(await contract(t,NativePrompt),await contract(t,OldPrompt))})
-test('prompt tool order preserves hidden known names, rest placement, copied parameters and rejects unknown names',async t=>{const ctx=fixture(t,NativePrompt,{toolOrder:['z','restricted','<unlisted-tools>','a']}),parameters={type:'object',properties:{x:{type:'string'}}};ctx.systemPrompt.tools(()=>({schemas:[{name:'a',parameters},{name:'middle',parameters},{name:'z',parameters}],knownNames:['z','a','restricted','middle']}));const a=await ctx.systemPrompt.assemble();assert.deepEqual(a.tools.map(t=>t.name),['z','middle','a']);a.tools[0].parameters.properties.x.type='number';assert.equal(parameters.properties.x.type,'string');const invalid=fixture(t,NativePrompt,{toolOrder:['unknown','<unlisted-tools>']});await assert.rejects(invalid.systemPrompt.assemble(),/unregistered/);assert.throws(()=>fixture(t,NativePrompt,{toolOrder:['a','a','<unlisted-tools>']}),/unique/);assert.throws(()=>fixture(t,NativePrompt,{toolOrder:['a']}),/unique/)})
-test('complete section remains authoritative after middleware and duplicates fail',async t=>{const ctx=fixture(t),p=ctx.systemPrompt;p.section({name:'complete',order:1,complete:true,text:'authoritative'});ctx.on('system-prompt/assemble',async(_a,_c,next)=>({...await next(),sections:[{name:'tamper',text:'replaced'}]}));assert.equal(renderPrompt(await p.assemble()),'authoritative');p.section({name:'second-complete',order:2,complete:true,text:'second'});await assert.rejects(p.assemble(),/complete/)})
-test('runtime suppression cannot remove required facts and admission refresh restores their current values without rerunning middleware',async t=>{const ctx=fixture(t),p=ctx.systemPrompt;let fact='before',waterfalls=0,sections=0;p.section({name:'count',order:1,text:()=>{sections++;return 'once'}});p.context({name:'required',order:2,required:true,text:()=>fact});p.context({name:'optional',order:3,text:'optional'});ctx.on('system-prompt/assemble',async(_a,_c,next)=>{waterfalls++;return{...await next(),contexts:[{name:'extension',text:'accepted'}]}});const a=await p.assemble();fact='after';p.suppressRuntimeContext();const b=p.refreshContext(a);assert.deepEqual(b.contexts,[{name:'required',text:'after'}]);assert.equal(waterfalls,1);assert.equal(sections,1);assert.deepEqual((await p.assemble()).contexts,[])})
-test('scoped suppression and contributions dispose independently and unrelated scopes stay separate',async t=>{const ctx=fixture(t),ak={},bk={},a=createScope(ctx,ak),b=createScope(ctx,bk);ctx.systemPrompt.context({name:'optional',order:1,text:'global'});const first=a.ctx.systemPrompt.suppressRuntimeContext(),second=a.ctx.systemPrompt.suppressRuntimeContext();assert.equal((await ctx.systemPrompt.assemble({scope:bk})).contexts.length,1);assert.equal((await ctx.systemPrompt.assemble({scope:ak})).contexts.length,0);first();assert.equal((await ctx.systemPrompt.assemble({scope:ak})).contexts.length,0);second();assert.equal((await ctx.systemPrompt.assemble({scope:ak})).contexts.length,1);await a.dispose();await b.dispose()})
-test('invalid registrations fail and detached tool schemas cannot mutate later assembly',async t=>{const ctx=fixture(t),p=ctx.systemPrompt;assert.throws(()=>p.section({name:'bad',order:Infinity,text:'bad'}),/finite/);assert.throws(()=>p.context({name:'bad',order:NaN,text:'bad'}),/finite/);assert.throws(()=>p.variable('__proto__',()=>''),/variable/);p.variable('name',()=> 'ok');assert.throws(()=>p.variable('name',()=> 'bad'),/registered/);p.tools(()=>({schemas:[{name:'<unlisted-tools>',parameters:{}}]}));await assert.rejects(p.assemble(),/reserved/)})
+function fixture(t,config={}){const ctx=new Context();t.after(()=>ctx.fiber.dispose());new NativePrompt(ctx,{includeHarnessIdentity:false,...config});return ctx}
+test('official business sections refresh model variables and dynamic instructions for each actor run',async t=>{
+ const ctx=fixture(t),actor={},other={},scope=createScope(ctx,actor);let model='first',instruction='before'
+ const provider=()=>{throw Error('legacy variable must not run')};provider.official=()=>model
+ ctx.systemPrompt.variable('model',provider)
+ scope.ctx.systemPrompt.section({name:'instruction',order:1,text:()=>{throw Error('legacy callback must not run')},officialText:()=>instruction+' {{model}}'})
+ assert.match(JSON.stringify(await ctx.systemPrompt.officialSections(actor)),/before first/)
+ model='second';instruction='after'
+ assert.match(JSON.stringify(await ctx.systemPrompt.officialSections(actor)),/after second/)
+ assert.doesNotMatch(JSON.stringify(await ctx.systemPrompt.officialSections(other)),/after/)
+ await scope.dispose();assert.doesNotMatch(JSON.stringify(await ctx.systemPrompt.officialSections(actor)),/after/)
+})
+test('official sections leave tool catalog and resource construction to Pi',async t=>{
+ const ctx=fixture(t);ctx.systemPrompt.tools(()=>{throw Error('legacy catalog provider must not run')})
+ const definition={name:'stable',order:1,text:'original'};ctx.systemPrompt.section(definition);definition.text='changed'
+ assert.deepEqual(Object.values(await ctx.systemPrompt.officialSections({})),['original'])
+})
+
+test('nearest scoped contributions override by name with deterministic instruction order',async t=>{
+ const ctx=fixture(t),parent={},child={},a=createScope(ctx,parent),b=createScope(ctx,child,{parent})
+ ctx.systemPrompt.section({name:'z',order:2,text:'global'});ctx.systemPrompt.section({name:'a',order:1,text:'first'})
+ a.ctx.systemPrompt.section({name:'z',order:2,text:'parent'});b.ctx.systemPrompt.section({name:'z',order:2,text:'child'})
+ assert.deepEqual(Object.values(await ctx.systemPrompt.officialSections(child)),['first','child'])
+ await b.dispose();assert.deepEqual(Object.values(await ctx.systemPrompt.officialSections(child)),['first','parent']);await a.dispose()
+})
+test('optional context suppression preserves required live policy and disposers are independent',async t=>{
+ const ctx=fixture(t),actor={},scope=createScope(ctx,actor);let value='before'
+ ctx.systemPrompt.context({name:'required',order:1,required:true,officialText:()=>value})
+ ctx.systemPrompt.context({name:'optional',order:2,text:'optional'})
+ const one=scope.ctx.systemPrompt.suppressRuntimeContext(),two=scope.ctx.systemPrompt.suppressRuntimeContext()
+ value='after';assert.deepEqual(Object.values(await ctx.systemPrompt.officialSections(actor)),['after'])
+ one();assert.deepEqual(Object.values(await ctx.systemPrompt.officialSections(actor)),['after']);two()
+ assert.deepEqual(Object.values(await ctx.systemPrompt.officialSections(actor)),['after','optional']);await scope.dispose()
+})
+test('registration rejects invalid and duplicate contributions; legacy complete prompt cannot override Pi',async t=>{
+ const ctx=fixture(t),p=ctx.systemPrompt
+ assert.throws(()=>p.section({name:'bad',order:Infinity,text:''}),/finite/)
+ assert.throws(()=>p.context({name:'bad',order:NaN,text:''}),/finite/)
+ assert.throws(()=>p.variable('__proto__',()=>''),/variable/)
+ p.section({name:'same',order:1,text:'first'});assert.throws(()=>p.section({name:'same',order:2,text:'second'}),/registered/)
+ p.section({name:'complete',order:3,complete:true,text:'override'});await assert.rejects(p.officialSections({}),{code:'PI_OFFICIAL_PROMPT_ADAPTER_REQUIRED'})
+ assert.equal(p.assemble,undefined);assert.equal(p.refreshContext,undefined)
+ assert.throws(()=>fixture(t,{toolOrder:['read']}),{code:'NIGHT_PROMPT_TOOL_ORDER_RETIRED'})
+})
