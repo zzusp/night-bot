@@ -28,7 +28,9 @@ export function createOperatorInteraction({input=process.stdin,output=process.st
    for(const [i,option]of prompt.options.entries())output.write(`${i+1}. ${option.label}\n`)
    const answer=await readLine({...prompt,kind:'text'}),index=/^[1-9][0-9]*$/.test(answer)?Number(answer)-1:-1
    if(index<0||index>=prompt.options.length)throw new OperatorAuthError('NIGHT_BOT_AUTH_SELECTION_INVALID')
-   return prompt.options[index].value
+   const id=prompt.options[index].id
+   if(typeof id!=='string'||!id)throw new OperatorAuthError('NIGHT_BOT_AUTH_SELECTION_INVALID')
+   return id
   },
   close(){if(closed)return;closed=true;lines.length=0;rl.close();sink.end()},
  }

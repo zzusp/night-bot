@@ -29,9 +29,9 @@ test('operator rejects extra secret argv, invalid references and inherited overw
  await assert.rejects(runAuthCommand(config,['set-ref','INVALID/REF'],options),e=>e.code==='NIGHT_BOT_AUTH_COMMAND_INVALID')
  await assert.rejects(runAuthCommand(config,['set-ref','FIXTURE_OPERATOR_KEY'],options),e=>e.code==='NIGHT_BOT_AUTH_REFERENCE_READ_ONLY');assert.equal(prompts,0)
 })
-test('operator input buffers piped answers, preserves selection values and rejects EOF without hanging',async()=>{
+test('operator input buffers piped answers, preserves official selection ids and rejects EOF without hanging',async()=>{
  const input=new PassThrough(),output=new PassThrough();let printed='';output.on('data',c=>printed+=c);const i=createOperatorInteraction({input,output});input.end('fixture-hidden\n2\n');await new Promise(r=>setImmediate(r))
- assert.equal(await i.prompt({kind:'secret',message:'Key'}),'fixture-hidden');assert.equal(await i.prompt({kind:'select',message:'Account',options:[{label:'One',value:'one'},{label:'Two',value:'two'}]}),'two');await assert.rejects(i.prompt({kind:'text',message:'Missing'}),e=>e.code==='NIGHT_BOT_AUTH_INPUT_CLOSED');assert.doesNotMatch(printed,/fixture-hidden/);i.close()
+ assert.equal(await i.prompt({kind:'secret',message:'Key'}),'fixture-hidden');assert.equal(await i.prompt({kind:'select',message:'Account',options:[{id:'one',label:'One'},{id:'two',label:'Two'}]}),'two');await assert.rejects(i.prompt({kind:'text',message:'Missing'}),e=>e.code==='NIGHT_BOT_AUTH_INPUT_CLOSED');assert.doesNotMatch(printed,/fixture-hidden/);i.close()
 })
 test('operator terminal hides secret keystrokes including early input and restores raw mode',async()=>{
  const input=new PassThrough(),output=new PassThrough(),modes=[];input.isTTY=output.isTTY=true;input.setRawMode=value=>modes.push(value);output.columns=80;let printed='';output.on('data',c=>printed+=c);const i=createOperatorInteraction({input,output});input.write('early-secret\r');await new Promise(r=>setImmediate(r));assert.equal(await i.prompt({kind:'secret',message:'Key'}),'early-secret');assert.doesNotMatch(printed,/early-secret/);i.close();assert.equal(modes.at(-1),false)
