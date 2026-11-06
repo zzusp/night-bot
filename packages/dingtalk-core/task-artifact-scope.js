@@ -14,32 +14,6 @@ export async function coordinationArtifactScope(root, { coordinationId, memberTa
   return Object.freeze({ version: 1, ownerId: coordinationId, coordinationId, artifactRoot, memberTaskIds: Object.freeze([...memberTaskIds]) })
 }
 
-/** A cancelled arrangement cannot silently discard an immutable native session binding. */
-export function assertTaskArtifactScopePresent(ctx, session, scope) {
-  const policy = ctx.get?.('sandboxPolicy') ?? ctx.sandboxPolicy
-  if (typeof policy?.bindArtifactRoot !== 'function') return
-  const projections = ctx.get?.('sessionProjections') ?? ctx.sessionProjections
-  const old = projections?.stateOf(session, 'sandboxArtifactRoot')
-  if (!scope && old) fail('TASK_ARTIFACT_PERSISTED_SCOPE_REQUIRES_REVIEW')
-}
-
-/** Bind the native durable per-session policy API; never replace shared service methods. */
-export async function bindTaskArtifactScope(ctx, { root, scope, taskId, session }) {
-  if (!scope || scope.version !== 1 || !identity(taskId) || !scope.memberTaskIds?.includes(taskId)
-    || !identity(scope.coordinationId) || scope.ownerId !== scope.coordinationId
-    || scope.artifactRoot !== taskFilePath(root, scope.coordinationId, 'outputs')
-    || !session || !identity(session.id)) fail('TASK_ARTIFACT_BINDING_INVALID')
-  await checkedTaskDirectory(scope.artifactRoot)
-  const policy = ctx.get?.('sandboxPolicy') ?? ctx.sandboxPolicy
-  if (typeof policy?.bindArtifactRoot !== 'function') fail('TASK_ARTIFACT_POLICY_API_REQUIRED')
-  const bound = policy.bindArtifactRoot(session, { ownerId: scope.ownerId, artifactRoot: scope.artifactRoot })
-  const resolved = policy.resolve({ session })
-  if (bound.ownerId !== scope.ownerId || bound.artifactRoot !== scope.artifactRoot
-    || bound.sessionCwd !== session.header.cwd || resolved.workspaceRoot !== scope.artifactRoot
-    || !['read-only', 'workspace-write', 'danger-full-access'].includes(resolved.mode)) fail('TASK_ARTIFACT_POLICY_BINDING_MISMATCH')
-  return bound
-}
-
 const taskCommand = action => action?.kind === 'task-command' ? action : action?.kind === 'read-query' ? action.onIncomplete : undefined
 
 // Recurrence changes instruction/slot identity, never the coordination's artifact owner.
