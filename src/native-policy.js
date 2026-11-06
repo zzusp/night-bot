@@ -3,6 +3,11 @@ import schema from '@deepseek-ai/schemastery'
 import {z} from 'zod'
 import {isAbsolute,resolve,dirname,basename,relative} from 'node:path'
 import {lstatSync,realpathSync} from 'node:fs'
+// Night business permission selection, not an operating-system sandbox.
+// Enforcement belongs to the file/process sandbox implementations.
+// The mode vocabulary and historical sandbox/mode projection contract remain
+// derived from dsh-sandbox-policy (MIT, Copyright (c) 2026 DeepSeek). Keep its
+// notice: independent permission selection does not erase retained provenance.
 const actorPolicies=new WeakMap()
 const unbound=()=>Object.assign(new Error('Official sandbox actor is not bound'),{code:'PI_SANDBOX_ACTOR_UNBOUND'})
 export function bindSandboxPolicyActor(actor,port){
@@ -25,6 +30,22 @@ export function checkedArtifactBinding(value){
  if(relative(root,realpathSync(root))!=='')throw new Error('ARTIFACT_POLICY_ROOT_LINK')
  return{ownerId:value.ownerId,artifactRoot:root,sessionCwd:value.sessionCwd}
 }
+/** Select an execution permission descriptor without changing standing authority.
+ * Callers decide whether a one-time grant is trusted. Official actors supply
+ * only their privately bound policy; request fields cannot elevate that grant.
+ */
+export function selectSandboxPermission({defaultMode='read-only',standingMode,oneTimeMode,initialDirectory,artifactRoot,sessionId}){
+ const directory=absolute(initialDirectory)
+ let workspaceRoot=directory
+ if(artifactRoot){
+  const binding=checkedArtifactBinding(artifactRoot)
+  if(binding.sessionCwd!==directory)throw new Error('ARTIFACT_POLICY_SESSION_CHANGED')
+  workspaceRoot=binding.artifactRoot
+ }
+ const candidates=[oneTimeMode,standingMode,defaultMode]
+ const selected=candidates.find(value=>value!==undefined&&value!==null)
+ return{mode:mode(selected),workspaceRoot,...sessionId===undefined?{}:{sessionId}}
+}
 function policyText(policy){
  if(policy.mode==='read-only')return'Current file policy: read-only. Available operations enforced by the file sandbox cannot modify files in the standing mode. Do not refuse a required modification from this policy alone: try an available tool normally and follow its denial and escalation guidance.'
  if(policy.mode==='workspace-write')return`Current file policy: workspace-write. Available operations enforced by the file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}. Some platform temporary areas may also be writable.`
@@ -41,6 +62,18 @@ export default class NativePolicy extends Service{
   ctx.inject(['systemPrompt'],scope=>scope.systemPrompt.context({name:'sandbox:policy',order:scope.systemPrompt.getContextOrder('SANDBOX_POLICY'),required:true,officialText:({actor})=>policyText(this.resolve({actor})),text:context=>context.agent?.session?policyText(this.resolve({session:context.agent.session})):''}))
  }
  overrideOf(session){return this.ctx.sessionProjections.stateOf(session,'sandboxMode')??undefined}
- resolve(request={}){const actor=request.actor??(request.agent?.piSession?request.agent:undefined);if(actor){const port=officialPolicy(actor),snapshot=port.readPolicy();if(!snapshot||typeof snapshot!=='object')throw new Error('Invalid official sandbox snapshot');const binding=snapshot.artifactRoot;if(binding){checkedArtifactBinding(binding);if(binding.sessionCwd!==port.initialDirectory)throw new Error('ARTIFACT_POLICY_SESSION_CHANGED')}return{mode:mode(snapshot.mode??this.defaultMode),workspaceRoot:binding?.artifactRoot??port.initialDirectory,sessionId:actor.id}}const session=request.session??request.agent?.session,binding=session?this.ctx.sessionProjections.stateOf(session,'sandboxArtifactRoot'):undefined;if(binding){checkedArtifactBinding(binding);if(session.header.cwd!==binding.sessionCwd)throw new Error('ARTIFACT_POLICY_SESSION_CHANGED')}return{mode:mode(request.mode??(session?this.overrideOf(session):undefined)??this.defaultMode),workspaceRoot:binding?.artifactRoot??absolute(session?.header.cwd??this.workspaceRoot),...session?{sessionId:session.id}:{}}}
+ resolve(request={}){
+  const actor=request.actor??(request.agent?.piSession?request.agent:undefined)
+  if(actor){
+   const port=officialPolicy(actor),snapshot=port.readPolicy()
+   if(!snapshot||typeof snapshot!=='object')throw new Error('Invalid official sandbox snapshot')
+   return selectSandboxPermission({defaultMode:this.defaultMode,standingMode:snapshot.mode,
+    initialDirectory:port.initialDirectory,artifactRoot:snapshot.artifactRoot,sessionId:actor.id})
+  }
+  const session=request.session??request.agent?.session
+  return selectSandboxPermission({defaultMode:this.defaultMode,standingMode:session?this.overrideOf(session):undefined,
+   oneTimeMode:request.mode,initialDirectory:session?.header.cwd??this.workspaceRoot,
+   artifactRoot:session?this.ctx.sessionProjections.stateOf(session,'sandboxArtifactRoot'):undefined,sessionId:session?.id})
+ }
  bindArtifactRoot(session,value){if(actorPolicies.has(session)||session?.piSession){const port=officialPolicy(session),binding=checkedArtifactBinding({...value,sessionCwd:port.initialDirectory}),snapshot=port.readPolicy(),previous=snapshot.artifactRoot;if(previous){checkedArtifactBinding(previous);if(JSON.stringify(previous)!==JSON.stringify(binding))throw new Error('ARTIFACT_POLICY_BINDING_CHANGED');return Promise.resolve(previous)}return Promise.resolve(port.appendPolicy({mode:mode(snapshot.mode??this.defaultMode),artifactRoot:binding})).then(()=>binding)}const binding=checkedArtifactBinding({...value,sessionCwd:session.header.cwd}),previous=this.ctx.sessionProjections.stateOf(session,'sandboxArtifactRoot');if(previous){if(JSON.stringify(previous)!==JSON.stringify(binding))throw new Error('ARTIFACT_POLICY_BINDING_CHANGED');return previous}session.append('sandbox/mode',{mode:this.overrideOf(session)??this.defaultMode,artifactRoot:binding});return binding}
 }
