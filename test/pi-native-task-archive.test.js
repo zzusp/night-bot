@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,appendFile} from 'node:fs/promises'
@@ -14,7 +15,7 @@ import {readNativeHistory} from '../packages/dingtalk-core/native-maintenance-dr
 import {inspectSession} from '../packages/dingtalk-core/session-persistence.js'
 
 async function fixture(t,{identity=true}={}){
- const root=await mkdtemp('/tmp/night-native-archive-'),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
+ const root=await mkdtemp(join(tmpdir(),'night-native-archive-')),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
  const config={installRoot:root,resident:{taskSessions:{instanceId:'native-archive',webActorId:'owner',initialize:true}}}
  const store=await openDynamicTaskStore({...config.resident.taskSessions,dbPath:join(paths.state,'tasks.sqlite')}),routes=new Map(),manager=new TaskArchives({paths,store,routes}),taskId='task'
  await store.command({id:'create',kind:'task.create',args:{taskId,request:'retain real native archive',ownerActorId:'owner'}})
@@ -41,7 +42,7 @@ test('native task archive seals, backs up and restores exact Pi bytes with held 
  await assert.rejects(inspectSession(f.backend,f.task.sessionId),{code:'SESSION_EVENT_API_RETIRED'})
  await f.ctx.fiber.dispose();await f.store.close()
  const destination=join(f.root,'backups','native');await backupTask(f.config,f.taskId,destination)
- const restoredRoot=await mkdtemp('/tmp/night-native-archive-restored-');t.after(()=>rm(restoredRoot,{recursive:true,force:true}))
+ const restoredRoot=await mkdtemp(join(tmpdir(),'night-native-archive-restored-'));t.after(()=>rm(restoredRoot,{recursive:true,force:true}))
  const result=await restoreTask({...f.config,installRoot:restoredRoot},destination);assert.equal(result.paused,true)
  const targetPaths=runtimePaths({installRoot:restoredRoot}),target=join(result.root,'sessions',archiveHash(f.task.sessionId)+'.pi.jsonl')
  assert.deepEqual(await readFile(target),original)

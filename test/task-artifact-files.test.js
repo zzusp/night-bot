@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, writeFile, mkdir, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTaskArtifactFiles } from '../packages/dingtalk-dsh-assistant/task-artifact-files.js'
+import { createTaskArtifactFiles } from '../packages/dingtalk-core/task-artifact-files.js'
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const input = (bytes = Buffer.from('报告\r\n'), fileName = '处理 报告.md') => ({

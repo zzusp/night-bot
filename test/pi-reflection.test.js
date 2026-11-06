@@ -12,9 +12,11 @@ import {createPiProjectionRequest} from '../src/runtime/pi-request-context.js'
 async function completed(store,id,groupId){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded local task',ownerActorId:'owner',...groupId?{groupId}:{}});const binding=(await command('task.claim',{taskId:id})).result.binding;return (await command('task.complete',{binding,summary:'Verified bounded task result'})).completionEvent}
 const lesson=input=>({text:JSON.stringify({lessons:[{key:'inspect-first',observation:'Read evidence before changing files',hypothesis:'Preflight may avoid detours for similar local tasks',shortcut:'Inspect current state before choosing a write',evidenceIds:[input.eventId],skill:{steps:['Inspect current state','Make the smallest authorized change','Read back the result'],reason:'Evidence from this bounded task is reusable',applicability:'Similar local evidence-first edits',evidenceBacked:true}}]})})
 test('real default Host learns completed SQLite task evidence, deduplicates, creates evidence-justified scoped skills without a fixed repetition threshold and cold reopens',async t=>{
+  let store,service,fixtureHost
+  t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
   let analyses=0
-  const f=await memoryHost(t,body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}})
-  let store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning',initialize:true});t.after(()=>store.close())
+  const f=fixtureHost=await memoryHost(t,body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}})
+  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning',initialize:true});
   await completed(store,'one');let detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle()
   const a=await f.agent('owner-session',{actorId:'owner'}),other=await f.agent('other-session',{actorId:'other'})
   assert.equal((await f.host.ctx.memory.read(a.agent,{topic:'experience'})).entries.length,1)
@@ -39,34 +41,40 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   detach();await f.close();await store.close();await f.boot();store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning'});detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle();assert.equal(analyses,2);detach()
 })
 test('invalid reflection evidence cannot invent memory or block committed task delivery; retry state is durable',async t=>{
-  const f=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:JSON.stringify({lessons:[{key:'bad',observation:'invented',hypothesis:'unknown',shortcut:'unknown',evidenceIds:['forged']}]})}:undefined)
-  const store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning-fail',initialize:true});t.after(()=>store.close());await completed(store,'bad','group-a')
+  let store,service,fixtureHost
+  t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
+  const f=fixtureHost=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:JSON.stringify({lessons:[{key:'bad',observation:'invented',hypothesis:'unknown',shortcut:'unknown',evidenceIds:['forged']}]})}:undefined)
+  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning-fail',initialize:true});;await completed(store,'bad','group-a')
   const detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await f.host.ctx.reflection.whenIdle()
   assert.equal((await store.query({kind:'task.get',taskId:'bad'})).status,'completed')
   const scope=memoryScope({actorId:'owner',groupId:'group-a',groupWrite:true},{scope:'group'}),state=await f.host.ctx.reflection.state(scope)
   assert.equal(Object.values(state.reviews)[0].code,'REFLECTION_EVIDENCE_INVALID');assert.equal((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries.length,0)
 })
 test('actual task service attaches the default Host reflection consumer and recovers preexisting durable completion events',async t=>{
+  let store,service,fixtureHost
+  t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
   let analyses=0
-  const f=await memoryHost(t,body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}}),ctx=f.host.ctx
-  const residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'service-learning',initialize:true});t.after(()=>store.close())
+  const f=fixtureHost=await memoryHost(t,body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}}),ctx=f.host.ctx
+  const residentStore=await openResidentStore(ctx.storageDomain);store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'service-learning',initialize:true});
   await completed(store,'already-delivered','group-a')
   const config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:store.info.dbPath,instanceId:'service-learning',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot'}
-  const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no real notifications')},readback:async()=>{throw Error('no real notifications')}}});t.after(()=>service.close())
+  service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no real notifications')},readback:async()=>{throw Error('no real notifications')}}});
   await ctx.reflection.whenIdle();assert.equal(analyses,1);assert.equal((await store.query({kind:'task.get',taskId:'already-delivered'})).status,'completed')
 })
 
 test('a real default Host task turn completes through the native submit tool and automatically schedules a review',{timeout:20000},async t=>{
+  let store,service,fixtureHost
+  t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
   let analyses=0,submits=0
-  const f=await memoryHost(t,body=>{
+  const f=fixtureHost=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}
     if(body.tools?.some(t=>t.function.name==='task_result')){submits++;return {tool:'task_result',args:{decision:{action:'complete',summary:'Literal local request resolved',evidence:[],limitations:[]}}}}
   }),ctx=f.host.ctx,residentStore=await openResidentStore(ctx.storageDomain)
   await residentStore.subscribe({groupId:'group-a',responsibility:'isolated test'})
-  const store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'live-learning',initialize:true});t.after(()=>store.close())
+  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'live-learning',initialize:true});
 
   const config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:store.info.dbPath,instanceId:'live-learning',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'model-default'}
-  const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external sends')},readback:async()=>{throw Error('no external sends')}}});t.after(()=>service.close())
+  service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external sends')},readback:async()=>{throw Error('no external sends')}}});
   const created=await service.createTask({requestId:'new-live-task',objective:'Reply with the literal word verified; no external work'}),taskId=created.taskId
   for(let n=0;n<160;n++){if((await store.query({kind:'task.get',taskId})).status==='completed')break;await new Promise(r=>setTimeout(r,25))}
   assert.equal((await store.query({kind:'task.get',taskId})).status,'completed',JSON.stringify({errors:f.errors,recovery:await service.recover(),task:await store.query({kind:'task.get',taskId}),requests:f.requests.map(r=>r.tools?.map(t=>t.function.name))}))

@@ -9,8 +9,8 @@ import { promisify } from 'node:util'
 import { mkdir, mkdtemp, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { taskDirectories, taskWorkspace, taskExecutionWorkspace, taskFilePath } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
-import { installTaskSessionPersistence, registerTaskSessionPersistence, taskSessionLogRoot } from '../packages/dingtalk-dsh-assistant/task-session-persistence.js'
+import { taskDirectories, taskWorkspace, taskExecutionWorkspace, taskFilePath } from '../packages/dingtalk-core/session-workspaces.js'
+import { installTaskSessionPersistence, registerTaskSessionPersistence, taskSessionLogRoot } from '../packages/dingtalk-core/task-session-persistence.js'
 import { findSessionLog } from './fixtures/session-persistence.js'
 
 const run = promisify(execFile)

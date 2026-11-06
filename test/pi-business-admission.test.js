@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -10,7 +11,7 @@ import PiPersistence from '../src/pi-session-persistence.js'
 import {createBusinessAdmission,admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-admission-'),ctx=new Context();await ctx.plugin(Authority)
+ const root=await mkdtemp(join(tmpdir(),'night-admission-')),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),options={auditKinds:admissionAuditKinds}
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  const store=await backend.createNative(nativeSessionHeader('admission',{cwd:root}),options)

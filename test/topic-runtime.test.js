@@ -8,12 +8,12 @@ import { tmpdir } from 'node:os'
 import { nativeRuntimeHost } from './fixtures/runtime-official-host.js'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
-import { coordinationTools } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
+import { coordinationTools } from '../packages/dingtalk-core/coordination-sessions.js'
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../packages/capability-compat/tools/index.js'
-import { openResidentStore, resolveTopicMessages } from '../packages/dingtalk-dsh-assistant/store.js'
-import { boundedTopicContext, createTopicCoordinator, projectTopicContext, TASK_REVIEW_MAX_CHARS } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
-import { visiblePromptRefs, visibleSectionLength, compactSectionValue } from '../packages/dingtalk-dsh-assistant/coordination-context.js'
-import { stagePlanFor } from '../packages/dingtalk-dsh-assistant/task-input-revision.js'
+import { openResidentStore, resolveTopicMessages } from '../packages/dingtalk-core/store.js'
+import { boundedTopicContext, createTopicCoordinator, projectTopicContext, TASK_REVIEW_MAX_CHARS } from '../packages/dingtalk-core/topic-runtime.js'
+import { visiblePromptRefs, visibleSectionLength, compactSectionValue } from '../packages/dingtalk-core/coordination-context.js'
+import { stagePlanFor } from '../packages/dingtalk-core/task-input-revision.js'
 
 async function setup(t, options = {}) {
   const snapshot = options.snapshot ?? { tables: {}, global: null }
@@ -2598,17 +2598,18 @@ test('原生 Pi 业务队列仍停放未接纳原请求时，恢复提醒不会�
 
 test('显式恢复递增持久epoch，不会被此前已消费提醒身份吞掉', async (t) => {
   const session = await visibilityFixture(t), messages = []
-  let exhausted
+  let exhausted, resume
   const stopped = new Promise((resolve) => { exhausted = resolve })
-  const h = await setup(t, { visibility:session, retryDelayMs: 2, maxRequestAttempts: 1, whenIdle: () => Promise.resolve(), onError: exhausted, onSteer(message) { messages.push(message) } })
+  const h = await setup(t, { visibility:session, retryDelayMs: 2, maxRequestAttempts: 1, whenIdle: () => Promise.resolve(), onError: exhausted, onSteer(message) { messages.push(message); resume?.() } })
   await ingest(h, 'retry-explicit'); await h.coordinator.schedule('g')
   const request = h.envelope('[GROUP_TOPIC_ROUTE]')
   let watchdog
   try { await Promise.race([stopped, new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error('exhaustion_timeout')), 1000) })]) }
   finally { clearTimeout(watchdog) }
   assert.equal(messages.length, 2)
+  const resumed = new Promise(resolve => { resume = resolve })
   await h.coordinator.retryRequest('g', request.requestId)
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  await Promise.race([resumed, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('resume_timeout')), 1000); t.after(() => clearTimeout(timer)) })])
   assert.equal(messages.length, 3)
   assert.equal(new Set(messages.map((message) => message.id)).size, 3)
   assert.equal(h.store.getCoordinationRequest('g', request.requestId).resumeEpoch, 1)

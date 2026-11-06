@@ -1,4 +1,6 @@
 {
+  "status": "historical-snapshot",
+  "note": "历史静态清单，包含已退休路径；不代表当前导入。当前证据见 runtime-audit.json 与 check-production-imports.mjs。",
   "scope": "bounded literal static import inventory, not a dynamic/transitive closure",
   "imports": {
     "@deepseek-ai/dsh-session-format-catalog/message-projections": [

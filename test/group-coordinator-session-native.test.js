@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm,readFile,appendFile} from 'node:fs/promises'
@@ -21,7 +22,7 @@ const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input
 const decision={message:'accepted'}
 const decisionSchema={type:'object',properties:{message:{type:'string'}},required:['message'],additionalProperties:false}
 async function fixture(t,respond,{root:existingRoot}={}){
- const root=existingRoot??await mkdtemp('/tmp/night-official-group-'),agentDir=join(root,'agent');await mkdir(agentDir,{recursive:true})
+ const root=existingRoot??await mkdtemp(join(tmpdir(),'night-official-group-')),agentDir=join(root,'agent');await mkdir(agentDir,{recursive:true})
  const ctx=new Context();new NativeAgents(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeTools(ctx);new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:root});ctx.provide('shell',{sandboxMode:'read-only'});new NativePermissions(ctx,{defaultPreset:'workspace-write'})
  await ctx.plugin(Authority);const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  const attachments=[];ctx.provide('workspaceRegistry',{resolveByPath:async()=>({attachSession:async id=>attachments.push(id)})})

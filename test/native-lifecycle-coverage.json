@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "basis": "f498d8538bb40252c7dec8e7787130b2c020d633",
-  "policy": "resource-only preparation 30000; unchanged explicit business deadline; cleanup 20000; unbounded native registrations gain business 30000",
+  "policy": "resource-only preparation 30000; Linux keeps explicit business deadlines; Windows integration fixture business budgets x2 by user authorization, except the 32-lease stress case uses a Windows 300000 base (600000 actual) with Linux 120000 unchanged; cleanup 20000; unbounded native registrations use base business 30000",
   "inventory": {
     "files": 44,
     "staticRegistrations": 250,

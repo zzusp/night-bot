@@ -18,7 +18,7 @@ test('explicit instruction roots retain precedence, duplicate suppression, UTF-8
  for(const [path,text] of [['home/AGENTS.md','GLOBAL_TOKEN'],['shared/AGENTS.md',' GLOBAL_TOKEN '],['project/AGENTS.md','ROOT_TOKEN </system-reminder>'],['project/CLAUDE.md',' ROOT_TOKEN </system-reminder> '],['project/sub/AGENTS.local.md','子目录'.repeat(120)]])await writeFile(join(root,path),text)
  const options={cwd:join(root,'project/sub'),instructionHome:join(root,'home'),agentsHome:join(root,'shared'),maxBytes:65536}
  const files=await discoverBaselineInstructionFiles(options)
- assert.deepEqual(files.map(file=>file.displayPath),['night-bot://instructions/AGENTS.md','night-bot://agents/AGENTS.md','AGENTS.md','CLAUDE.md','sub/AGENTS.local.md'])
+ assert.deepEqual(files.map(file=>file.displayPath),['night-bot://instructions/AGENTS.md','night-bot://agents/AGENTS.md','AGENTS.md','CLAUDE.md',join('sub','AGENTS.local.md')])
  const full=await loadBaselineInstructions(options)
  assert.equal(full.text.split('GLOBAL_TOKEN').length-1,1)
  assert.equal(full.text.split('ROOT_TOKEN').length-1,1)

@@ -1,7 +1,8 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {execFile} from 'node:child_process'
-import {promisify} from 'node:util'
+import {spawn} from 'node:child_process'
+import {once} from 'node:events'
 import {readFileSync} from 'node:fs'
 import {readFile} from 'node:fs/promises'
 import {join} from 'node:path'
@@ -59,9 +60,14 @@ test('cold Pi activation refuses an unresolved job journal instead of polling or
   await assert.rejects(handle.dispose(),{code:'PI_BUSINESS_DRAIN_UNPROVEN'});
   await assert.rejects(cold.close(),error=>error instanceof AggregateError&&error.errors.some(cause=>cause.code==='PI_BUSINESS_DRAIN_UNPROVEN'));
   assert.equal(cold.ctx.agents.get(handle.actor.id),handle.actor);
-  console.log(JSON.stringify({modelCalls,producerRecords:cold.ctx.jobs.list(handle.actor.id).length,ownershipRetained:true}));
-  process.exit(0);
+  process.send({modelCalls,producerRecords:cold.ctx.jobs.list(handle.actor.id).length,ownershipRetained:true});
  `
- const {stdout}=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{cwd:process.cwd(),timeout:10000})
- assert.deepEqual(JSON.parse(stdout.trim()),{modelCalls:0,producerRecords:0,ownershipRetained:true});assert.equal(starts,1)
+ const child=spawn(process.execPath,['--input-type=module','-e',script],{cwd:process.cwd(),stdio:['ignore','pipe','pipe','ipc']});let output=''
+ for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>output+=chunk)
+ const exited=once(child,'close'),signal=AbortSignal.any([t.signal,AbortSignal.timeout(nativeTestTimeout(10000))])
+ try{
+  const [proof]=await Promise.race([once(child,'message',{signal}),exited.then(result=>assert.fail(JSON.stringify(result)+output))])
+  assert.deepEqual(proof,{modelCalls:0,producerRecords:0,ownershipRetained:true});assert.equal(starts,1)
+ }catch(error){throw new Error('Cold unresolved-job proof did not complete: '+output,{cause:error})}
+ finally{child.kill('SIGTERM');await exited}
 })

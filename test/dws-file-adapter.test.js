@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
 
 const ok = value => ({ exitCode: 0, stdout: JSON.stringify(value) })
 const data = Buffer.from([0, 255, 128, 13, 10, 42])

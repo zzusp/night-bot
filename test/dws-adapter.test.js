@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { createDwsAdapter, dispatchOutbox, dwsIdempotencyKey, matchesOutbound } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
-import { assertGroupReply, persistedUuidSendRejectionProof, sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/group-message.js'
+import { createDwsAdapter, dispatchOutbox, dwsIdempotencyKey, matchesOutbound } from '../packages/dingtalk-core/dws-adapter.js'
+import { assertGroupReply, persistedUuidSendRejectionProof, sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
 
 test('DWS adapter 默认禁用且不会调用 runner', async () => {
   let calls = 0

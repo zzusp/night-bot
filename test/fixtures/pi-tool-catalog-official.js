@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createAgentSession,SessionManager,SettingsManager,DefaultResourceLoader,ModelRuntime} from '@earendil-works/pi-coding-agent'
@@ -5,7 +6,7 @@ import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventS
 export const usage={input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 export const catalogTool=name=>({name,label:name,description:'Execute '+name,parameters:{type:'object',properties:{value:{type:'string'}},additionalProperties:false},async execute(){return {content:[{type:'text',text:name}],details:{name}}}})
 export async function catalogSession(t,{resolved,active=['a'],tools=['a','b'].map(catalogTool),prepare,reply,compat={}}={}){
- const root=await mkdtemp('/tmp/night-tool-catalog-'),agentDir=join(root,'agent');await mkdir(agentDir)
+ const root=await mkdtemp(join(tmpdir(),'night-tool-catalog-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const manager=SessionManager.inMemory(root),requests=[]
  await prepare?.(manager)
  let runtime=resolved?.modelRuntime,model=resolved?.model

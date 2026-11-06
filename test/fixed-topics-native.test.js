@@ -9,16 +9,16 @@ import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeRuntimeHost as nativeTaskHost, latestInput, modelToolValues, waitUntil } from './fixtures/runtime-official-host.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { createFixedTopicHandler } from '../packages/dingtalk-dsh-assistant/fixed-topic-handler.js'
-import { createPlatformSchedules } from '../packages/dingtalk-dsh-assistant/platform-schedule.js'
-import { sessionWorkspace } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
-import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/group-message.js'
-import { taskNotificationRecovery } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
-import { fixedUnitRequestId } from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { createFixedTopicHandler } from '../packages/dingtalk-core/fixed-topic-handler.js'
+import { createPlatformSchedules } from '../packages/dingtalk-core/platform-schedule.js'
+import { sessionWorkspace } from '../packages/dingtalk-core/session-workspaces.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
+import { sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
+import { taskNotificationRecovery } from '../packages/dingtalk-core/notification-delivery.js'
+import { fixedUnitRequestId } from '../packages/dingtalk-core/fixed-topics.js'
 
 async function nativeSchedule(h) {
   if(h.ctx.get('schedule'))return true
@@ -205,6 +205,8 @@ test('rc2 native schedule tool remains visible and reports its delegated-session
 
 for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: ' + scenario, { ...({ skip: !available ? reason : false, timeout: 15000 }), timeout: nativeLifecycleTimeout(15000) }, nativeLifecycle(15000, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'platform-due-native-'))
+  // 固定测试时钟，冷启动与持久化耗时不能提前消耗提醒的等待时间。
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
   const restoreLate = scenario === 'late-bridge', superseded = scenario === 'superseded'
   let h, handler, originalTurns = 0, dueTurns = 0, taskTitle = '创建时旧事实', receiptFault = scenario === 'before-due'
   const errors = [], childHeaders = [], taskReads = [], scheduled = { title: '工作汇报', prompt: '汇报本群今天的工作成果' }
@@ -265,8 +267,9 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
   if (superseded) await t.step(async () => h.residentStore.ingest({ groupId: 'scheduled-group', messageId: 'scheduled-source', messageVersion: 2, senderOpenDingTalkId: 'original-actor', text: '撤回之前的汇报要求', occurredAt: new Date().toISOString() }))
   taskTitle = '到期时新事实'
   await t.step(async () => handler.close()); await t.step(async () => h.close())
-  if (restoreLate) await t.step(async () => waitUntil(() => Date.now() > Date.parse(scheduled.at), 'original target passes while Host is stopped'))
+  if (restoreLate) t.mock.timers.tick(2501)
   await t.step(async () => boot(restoreLate))
+  if (!restoreLate) { t.mock.timers.tick(2501); h.ctx.schedule.start() }
   await t.step(async () => waitUntil(() => h.residentStore.getPlatformSchedule(record.sessionId)?.outcome === (superseded ? 'superseded' : 'replied'), 'native reminder settles the original group report').catch(async error=>{t.diagnostic(JSON.stringify({tools:h.toolResults,errors:errors.map(e=>e.stack),dueTurns,originalTurns,catalog:await h.ctx.schedule.catalog(),binding:h.residentStore.getPlatformSchedule(record.sessionId),actor:h.ctx.agents.get(record.sessionId)?{id:record.sessionId,status:h.ctx.agents.get(record.sessionId).status,admission:h.ctx.agents.get(record.sessionId).admission.pending()}:null}));throw error}))
   // The Agent can settle before Schedule's separate inbox flush/status commit.
   // Await that durable boundary too; neither completion stands in for the other.

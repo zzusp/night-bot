@@ -1,8 +1,10 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import {runtimePaths} from '../src/runtime/paths.js'
 import {portablePaths} from '../src/runtime/portable.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,mkdir,readFile,writeFile,rename,symlink,link} from 'node:fs/promises'
+import {mkdtemp,rm,mkdir,readFile,writeFile,rename,link} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
@@ -12,7 +14,7 @@ import {readNativeHistory} from '../packages/dingtalk-core/native-maintenance-dr
 import {piJournalFilename} from '../src/runtime/pi-journal.js'
 
 async function fixture(t,{portable=false}={}){
- const root=await mkdtemp('/tmp/night-maintenance-pi-'),paths=runtimePaths({installRoot:root}),workspace=portable?paths.workspaces:root,row={taskId:'task',sessionId:'session'},directory=join(workspace,'tasks','task','.dsh','sessions')
+ const root=await mkdtemp(join(tmpdir(),'night-maintenance-pi-')),paths=runtimePaths({installRoot:root}),workspace=portable?paths.workspaces:root,row={taskId:'task',sessionId:'session'},directory=join(workspace,'tasks','task','.dsh','sessions')
  await mkdir(workspace,{recursive:true})
  const ctx=new Context();const pathCodec=portable?portablePaths(paths):undefined;if(pathCodec)ctx.provide('portablePaths',pathCodec);authority(ctx);const backend=new PiPersistence(ctx,{root:directory})
  t.after(async()=>{try{await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})
@@ -44,7 +46,7 @@ test('offline Pi evidence rejects changed records and unsupported headers withou
 })
 test('offline Pi evidence rejects symbolic/hard-linked files and a linked ancestor',async t=>{
  const f=await fixture(t),saved=f.path+'.saved';await rename(f.path,saved)
- await symlink(saved,f.path);assert.throws(()=>readNativeHistory(f.root,f.row),/DEPLOY_LOG_REPARSE_POINT/);await rm(f.path)
+ await symlink(process.platform==='win32'?f.root:saved,f.path,process.platform==='win32'?'junction':'file');assert.throws(()=>readNativeHistory(f.root,f.row),/DEPLOY_LOG_REPARSE_POINT/);await rm(f.path)
  await link(saved,f.path);assert.throws(()=>readNativeHistory(f.root,f.row),/DEPLOY_LOG_REPARSE_POINT/);await rm(f.path)
  await rename(saved,f.path);const moved=f.directory+'.saved';await rename(f.directory,moved);await symlink(moved,f.directory,'dir')
  assert.throws(()=>readNativeHistory(f.root,f.row),/DEPLOY_LOG_REPARSE_POINT/)

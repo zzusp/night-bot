@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-dsh-assistant/workflow-trusted-platforms.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 const sha='a'.repeat(40), target={id:'web-uat2',kind:'uat-deployment',repository:'HiQ-AI/dataset-web',environment:'uat',service:'dataset-web',runbookId:'web-uat2',branch:'feature/uat2-base',woodpecker:{baseUrl:'https://woodpecker.hiqdat.dev',repositoryId:2,cronName:'web-uat2'},kubernetes:{namespace:'hiqlcd-app-uat2',deployment:'dataset-web'},registry:{image:'registry.cn-sh1.ctyun.cn/hiq-ai/dataset-web'},entryUrl:'https://uat2.example.test'}
 function fixture(kind='uat-deployment'){
  const configuredTarget={...target,kind}

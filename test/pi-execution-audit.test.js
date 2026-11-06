@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -11,7 +12,7 @@ import {maintenanceAuditKinds} from '../src/tasks/native-maintenance-receipts.js
 import {executionInputAuditKinds,readNativeExecutionInputs} from '../src/tasks/execution-audit.js'
 
 async function fixture(t,{mutate=()=>{},omitBound=false,after=()=>{}}={}){
- const root=await mkdtemp('/tmp/night-execution-audit-'),ctx=new Context();authority(ctx)
+ const root=await mkdtemp(join(tmpdir(),'night-execution-audit-')),ctx=new Context();authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),binding={taskId:'task',executionId:'execution',sessionId:'session',requirementRevision:2,controlRevision:3,inputVersion:4,inputDigest:'digest',leaseEpoch:5}
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  const writer=await backend.createNative(nativeSessionHeader(binding.sessionId,{cwd:root}),{auditKinds:Object.fromEntries(Object.keys({...maintenanceAuditKinds,...executionInputAuditKinds}).map(key=>[key,()=>true]))})

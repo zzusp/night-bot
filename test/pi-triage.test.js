@@ -1,3 +1,4 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
@@ -9,15 +10,16 @@ const strings=body=>body.messages.flatMap(m=>typeof m.content==='string'?[m.cont
 function envelope(body){for(const text of strings(body).reverse()){const line=text.split('\n').find(line=>line.startsWith('Topic 请求：'));if(line)return JSON.parse(line.slice('Topic 请求：'.length))}}
 const has=(body,name)=>body.tools?.some(t=>t.function.name===name)
 async function until(fn){for(let n=0;n<700;n++){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,20))}throw Error('triage timeout')}
-async function serviceFor(f){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'triage',initialize:true,ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore(config),service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:['assistant']}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('wrong transport')},readback:async()=>{throw Error('wrong transport')}}});return {service,store,residentStore,async close(){await service.close();await store.close()}}}
+async function serviceFor(f){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'triage',initialize:true,ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore(config),service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:['assistant']}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('wrong transport')},readback:async()=>{throw Error('wrong transport')}}});let closed=false;return {service,store,residentStore,async close(){if(closed)return;closed=true;await service.close();await store.close();await residentStore.close()}}}
 const input=(id,type='chat-room')=>({type,channelId:'local-fixture',conversationId:'room',senderId:Number(id)%2?'alice':'bob',messageId:'source-'+id,text:(Number(id)%2?'A':'B')+' subject '+id})
 function feedback(env){return {tool:'group_topic_initial_reply',args:{requestId:env.requestId,replies:env.messages.map(m=>({topicKey:m.text.startsWith('A')?'subject-a':'subject-b',source:{messageId:m.messageId,messageVersion:m.messageVersion,quote:m.text},body:'可能需要核对 '+m.text+' 的具体范围；目前只是初步判断。',certainty:'tentative'})),silent:[]}}}
 function routes(env){return {tool:'group_topic_route_submit',args:{requestId:env.requestId,routes:env.messages.map(m=>({messageId:m.messageId,messageVersion:m.messageVersion,ignoredRefs:[],units:[{unitKey:'subject',summary:m.text,sourceRefs:[{quote:m.text}],topics:[{...([...env.topics??[],...env.relatedTopics??[],...env.recalledTopics??[]].find(t=>t.title===(m.text.startsWith('A')?'甲事项范围核对':'乙事项范围核对'))?{topicId:[...env.topics??[],...env.relatedTopics??[],...env.recalledTopics??[]].find(t=>t.title===(m.text.startsWith('A')?'甲事项范围核对':'乙事项范围核对')).topicId}:{newTopicKey:m.text.startsWith('A')?'subject-a':'subject-b',title:m.text.startsWith('A')?'甲事项范围核对':'乙事项范围核对'}),reason:'Separate subject with explicit context',candidateComparisons:[...(env.topics??[]),...(env.relatedTopics??[]),...(env.recalledTopics??[])].filter((v,i,a)=>a.findIndex(x=>x.topicId===v.topicId)===i).map(t=>({topicId:t.topicId,revision:t.revision,reason:'This message identifies its current subject'}))}]}]}))}}}
 function routeRead(body,env){const pages=strings(body).flatMap(text=>{try{return [JSON.parse(text)]}catch{return []}});for(const m of env.messages){if(m.metadataReadCall&&!pages.some(p=>p.section==='messageMetadata'&&p.requestId===env.requestId&&p.text?.includes('"messageId":"'+m.messageId+'"')))return {tool:'group_topic_route_context_get',args:m.metadataReadCall.arguments}}
 }
 
-test('real Pi first-tier steers arrivals into the same 15-message batch; 16 queues, topic replies quote exact sources before second-tier ends',{timeout:30000},async t=>{
-  const entered=Promise.withResolvers(),release=Promise.withResolvers(),decisionGate=Promise.withResolvers();let held=false,firstSentAt,secondEndedAt,modelErrors=[];const feedbackDone=new Set(),delivered=[],receipts=new Map()
+test('real Pi first-tier steers arrivals into the same 15-message batch; 16 queues, topic replies quote exact sources before second-tier ends',{timeout:nativeTestTimeout(30000)},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(),decisionGate=Promise.withResolvers();let held=false,firstSentAt,secondEndedAt,modelErrors=[],h;
+  t.after(async()=>{release.resolve();decisionGate.resolve();await h?.close()});const feedbackDone=new Set(),delivered=[],receipts=new Map()
   const f=await memoryHost(t,async body=>{
     const env=envelope(body)
     if(has(body,'group_topic_route_submit')){
@@ -31,7 +33,7 @@ test('real Pi first-tier steers arrivals into the same 15-message batch; 16 queu
     }
     if(has(body,'group_decision_submit')){await decisionGate.promise;secondEndedAt=Date.now();const pages=strings(body).flatMap(text=>{try{return [JSON.parse(text)]}catch{return []}});if(!pages.some(p=>p.topic?.topicId===env.topicId||p.topicId===env.topicId&&p.messages))return {tool:'group_topic_context_get',args:{}};return {tool:'group_decision_submit',args:{requestId:env.requestId,topicId:env.topicId,revision:env.revision,decision:{basisMessageIds:[...new Set(env.messages.map(m=>m.messageId))],basisUnitRefs:env.messages.map(m=>({unitId:m.unitId,unitRevision:m.unitRevision})),actions:[],reason:'No task requested; follow-up topic context retained',topicUpdate:{summary:'Topics await further facts; no business conclusion.'}}}}}
   })
-  const h=await serviceFor(f);t.after(async()=>{release.resolve();decisionGate.resolve();await h.close()})
+  h=await serviceFor(f)
   f.host.ctx.on('tools/result',(exec,result)=>{if(result.isError){modelErrors.push({name:exec.name,error:result.error})}})
   f.host.ctx.channels.registerTransport('local-fixture',{async send(envelope){firstSentAt??=Date.now();delivered.push(envelope);const receipt={messageId:'receipt-'+delivered.length};receipts.set(envelope.deliveryKey,receipt);return receipt},async readback(envelope){return {...receipts.get(envelope.deliveryKey),visible:true}}})
   await f.host.ctx.channels.receive(input(1));await entered.promise
@@ -49,14 +51,15 @@ test('real Pi first-tier steers arrivals into the same 15-message batch; 16 queu
   try{await until(()=>secondEndedAt)}catch(error){throw Error(JSON.stringify({modelErrors,tools:f.requests.slice(-4).map(r=>r.tools?.map(t=>t.function.name)),topics:h.residentStore.getGroup(groupId).topics,requests:h.residentStore.getGroup(groupId).coordinationRequests}))};assert.ok(firstSentAt<=secondEndedAt);assert.equal((await h.store.query({kind:'execution.list'})).length,0);t.diagnostic(JSON.stringify({firstTierSendBeforeSecondTierMs:secondEndedAt-firstSentAt,batchSizes:batches,delivered:delivered.length}));await h.service.whenIdle();assert.equal(f.host.ctx.agents.list().filter(actor=>actor.metadata?.runtimeOwner==='topic-coordinator').length,0,'completed coordination actors really release official ownership');await h.close()
 })
 
-test('cold recovery keeps the same triage session; an uncertain private-chat send is read back and never sent again',{timeout:30000},async t=>{
-  let mode='pause',feedbackSent=false,sendCalls=0,sendEnvelope;const receipts=new Map()
+test('cold recovery keeps the same triage session; an uncertain private-chat send is read back and never sent again',{timeout:nativeTestTimeout(30000)},async t=>{
+  let mode='pause',feedbackSent=false,sendCalls=0,sendEnvelope,h;
+  t.after(()=>h?.close());const receipts=new Map()
   const f=await memoryHost(t,body=>{
     const env=envelope(body)
     if(has(body,'group_topic_route_submit')){if(mode==='pause')return {text:'Continue classification after restart'};if(!feedbackSent){feedbackSent=true;return feedback(env)}const read=routeRead(body,env);if(read)return read;return routes(env)}
     if(has(body,'group_decision_submit')){const pages=strings(body).flatMap(text=>{try{return [JSON.parse(text)]}catch{return []}});if(!pages.some(p=>p.topic?.topicId===env.topicId||p.topicId===env.topicId&&p.messages))return {tool:'group_topic_context_get',args:{}};return {tool:'group_decision_submit',args:{requestId:env.requestId,topicId:env.topicId,revision:env.revision,decision:{basisMessageIds:env.messages.map(m=>m.messageId),basisUnitRefs:env.messages.map(m=>({unitId:m.unitId,unitRevision:m.unitRevision})),actions:[],reason:'No execution requested',topicUpdate:{summary:'Awaiting more facts.'}}}}}
   })
-  let h=await serviceFor(f);t.after(()=>h.close());const original=input(101,'chat')
+  h=await serviceFor(f);const original=input(101,'chat')
   await f.host.ctx.channels.receive(original)
   const groupId=f.host.ctx.channels.identity(original).sessionId
   const before=await until(()=>{const row=Object.values(h.residentStore.getGroup(groupId)?.coordinationRequests??{}).find(row=>row.triageBatch);return row&&f.host.ctx.agents.get(row.triageBatch.sessionId)?.status==='idle'&&row}).catch(error=>{throw new Error(JSON.stringify({cause:error.message,requests:f.requests.length,errors:f.errors.map(e=>e?.stack??String(e)),group:h.residentStore.getGroup(groupId)}))})
@@ -75,7 +78,9 @@ test('cold recovery keeps the same triage session; an uncertain private-chat sen
   await h.close()
 })
 
-test('triage startup admits the latest full batch when arrivals precede the first official delivery',{timeout:20000},async t=>{
+test('triage startup admits the latest full batch when arrivals precede the first official delivery',{timeout:nativeTestTimeout(20000)},async t=>{
+ let h
+ t.after(()=>h?.close())
  const observed=[],feedbackDone=new Set(),delivered=[]
  const f=await memoryHost(t,body=>{
   const env=envelope(body)
@@ -86,7 +91,7 @@ test('triage startup admits the latest full batch when arrivals precede the firs
   return routes(env)
  })
  const archived=await f.agent('unrelated-archived-session');await archived.dispose();await f.host.ctx.workspaceRegistry.archiveSession('unrelated-archived-session')
- const h=await serviceFor(f);t.after(()=>h.close())
+ h=await serviceFor(f)
  f.host.ctx.channels.registerTransport('local-fixture',{async send(envelope){delivered.push(envelope);return {messageId:'startup-'+delivered.length}},async readback(){return undefined}})
  await Promise.all([f.host.ctx.channels.receive(input(201)),f.host.ctx.channels.receive(input(202))])
  await until(()=>delivered.length===2)

@@ -5,17 +5,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import {openNativeDomains} from '../src/native-domain.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { createTopicFactHandler } from '../packages/dingtalk-dsh-assistant/topic-facts.js'
-import { createTopicCoordinator } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
-import { replyTopicForMessage } from '../packages/dingtalk-dsh-assistant/topic-model.js'
-import { projectTaskNotification } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
-import { deliverTaskNotification } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
-import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/group-message.js'
-import { verifyTaskNotificationReadback } from '../packages/dingtalk-dsh-assistant/task-notification-readback.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { createTopicFactHandler } from '../packages/dingtalk-core/topic-facts.js'
+import { createTopicCoordinator } from '../packages/dingtalk-core/topic-runtime.js'
+import { replyTopicForMessage } from '../packages/dingtalk-core/topic-model.js'
+import { projectTaskNotification } from '../packages/dingtalk-core/task-message-projections.js'
+import { deliverTaskNotification } from '../packages/dingtalk-core/notification-delivery.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
+import { sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
+import { verifyTaskNotificationReadback } from '../packages/dingtalk-core/task-notification-readback.js'
 
 async function fixture(t, { signature = '' } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'topic-facts-'))
@@ -134,7 +134,7 @@ test('完成与事实同事务，回复失败不影响完成；重启复用结�
   await assert.rejects(deliverTaskNotification({ notification: notice, command: f.commit, notifications }), /transport uncertain/)
   await f.reopen()
   await f.commit('notification.recovery.start', { notificationId: notice.id,
-    expectedToken: (await import('../packages/dingtalk-dsh-assistant/notification-delivery.js')).taskNotificationRecovery(await f.query('notification.get', { notificationId: notice.id })).expectedToken })
+    expectedToken: (await import('../packages/dingtalk-core/notification-delivery.js')).taskNotificationRecovery(await f.query('notification.get', { notificationId: notice.id })).expectedToken })
   await deliverTaskNotification({ notification: await f.query('notification.get', { notificationId: notice.id }), command: f.commit, notifications })
   const delivered = await f.query('notification.get', { notificationId: notice.id })
   assert.equal(sends, 1, 'unknown仅回查，不重新生成或发送')

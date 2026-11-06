@@ -1,6 +1,7 @@
+import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdir,writeFile,symlink} from 'node:fs/promises'
+import {mkdir,writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 import {enumerateSearchFiles} from '../src/native-tool-fs-search.js'
@@ -14,7 +15,7 @@ async function fixture(t){
  async function run(name,args){const callId='search-safety-'+ ++count;actor.piSession.sessionManager.appendMessage({role:'assistant',content:[{type:'toolCall',id:callId,name,arguments:args}],api:'openai-completions',provider:'fixture',model:'m',stopReason:'toolUse',timestamp:1,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}});return f.host.ctx.agents.withInitiator(actor,()=>actor.ctx.get('tools').execute({agent:actor,name,arguments:args,callId,businessAudit:actor.audit,signal:new AbortController().signal}))}
  return{...f,own,foreign,paths,actor,run,launched}
 }
-test('official find and safe grep authorize every file before dispatch; task, Host state and symlink escapes stay out of raw search',async t=>{
+test('official find and safe grep authorize every file before dispatch; task, Host state and symlink escapes stay out of raw search',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false},async t=>{
  const f=await fixture(t),own=join(f.own,'work','public.txt'),secret=join(f.foreign,'work','foreign.txt'),state=join(f.paths.state,'search-private.txt')
  await writeFile(own,'PUBLIC_SEARCH_MARKER');await writeFile(secret,'FORBIDDEN_SEARCH_MARKER');await writeFile(state,'FORBIDDEN_SEARCH_MARKER');await writeFile(join(f.own,'sessions','private.txt'),'FORBIDDEN_SEARCH_MARKER')
  await symlink(join(f.foreign,'work'),join(f.own,'work','foreign-link'));await symlink(f.paths.state,join(f.own,'work','state-link'))
@@ -36,7 +37,7 @@ test('safe search enumeration fails closed at entry/depth budgets before spawnin
  await assert.rejects(f.host.ctx.agents.withInitiator(f.actor,()=>enumerateSearchFiles(fs,'.',f.own,signal,{...caps,maxEntries:100,maxDepth:1})),e=>e.code==='SEARCH_ENUMERATION_LIMIT')
  assert.equal(f.launched.length,0)
 })
-test('actual packaged search starts producing matches, then cancellation joins its real process range', {timeout:15000},async t=>{
+test('actual packaged search starts producing matches, then cancellation joins its real process range', {skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:15000},async t=>{
  const f=await fixture(t),{open}=await import('node:fs/promises'),{runRipgrep}=await import('../src/native-tool-fs-search.js'),path=join(f.own,'work','cancel.txt'),file=await open(path,'w')
  try{const chunk='CANCEL_SEARCH_MARKER text line\n'.repeat(32768);for(let n=0;n<16;n++)await file.writeFile(chunk)}finally{await file.close()}
  const c=new AbortController(),started=Promise.withResolvers(),spawn=f.host.ctx.subprocess.spawn;let actual,drained=false,finished=false;t.after(()=>c.abort())

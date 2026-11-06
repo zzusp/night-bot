@@ -1,8 +1,10 @@
+import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {resolve,join} from 'node:path'
-import {mkdtemp,mkdir,rename,symlink,rm} from 'node:fs/promises'
+import {posix,join} from 'node:path'
+const {resolve}=posix
+import {mkdtemp,mkdir,rename,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {setImmediate} from 'node:timers/promises'
 import NativeSystemPrompt from '../src/native-system-prompt.js'

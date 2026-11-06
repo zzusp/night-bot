@@ -1,6 +1,7 @@
+import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {writeFile,readFile,symlink} from 'node:fs/promises'
+import {writeFile,readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 async function fixture(t){
@@ -28,7 +29,7 @@ test('actual official file tools keep actor observations private and enforce rea
  assert.equal(h.requests.length,0,'Host-level observation checks never invoke a model')
 })
 test('actual provider preserves digest/CAS staleness, concurrent guards and canonical symlink isolation',async t=>{
- const h=await fixture(t),path=join(h.root,'guarded.txt'),alias=join(h.root,'alias.txt');await writeFile(path,'original');await symlink(path,alias)
+ const h=await fixture(t),path=join(h.root,'guarded.txt'),aliasRoot=join(h.root,'alias'),alias=join(aliasRoot,'guarded.txt');await writeFile(path,'original');await symlink(h.root,aliasRoot,'dir')
  await h.run(h.owner,'read',{path:alias});await writeFile(path,'external')
  const stale=await h.run(h.owner,'edit',{path,edits:[{oldText:'original',newText:'stale'}]});assert.equal(stale.isError,true);assert.match(JSON.stringify(stale),/changed|version|stale/i);assert.equal(await readFile(path,'utf8'),'external')
  await h.run(h.owner,'read',{path})

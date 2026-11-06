@@ -22,7 +22,9 @@ if (!path || process.argv.includes('--help')) {
     host = await createHost(config, { environmentSnapshot, deferScheduledDelivery: true })
     await host.ctx.plugin({inject:applicationInject,apply:ctx=>applyApplication(ctx,config)})
     host.ctx.schedule.start()
-    for (const signal of ['SIGINT','SIGTERM']) process.once(signal, () => { close().catch(error => { console.error(error.message); process.exitCode = 1 }) })
+    const shutdown = () => { close().catch(error => { console.error(error.message); process.exitCode = 1 }).finally(() => { if(process.connected)process.disconnect() }) }
+    for (const signal of ['SIGINT','SIGTERM']) process.once(signal, shutdown)
+    if(process.send)process.on('message', message => { if(message?.type==='night-bot-shutdown')shutdown() })
   } catch (error) {
     console.error(error.message)
     try { await close() } catch (cleanup) { console.error('Cleanup failed:', cleanup.message) }

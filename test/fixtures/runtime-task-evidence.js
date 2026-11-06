@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises'
 import {join} from 'node:path'
@@ -8,7 +9,7 @@ export const decision=(action,summary,extra={})=>call('task_result',{decision:{a
 export const names=['alpha','bravo','charlie','delta','echo','foxtrot','golf'].map(name=>'personal-'+name)
 export const skillDoc=(name,body)=>`---\nname: ${name}\ndescription: Routing summary for ${name}.\n---\n${body}\nRead references/procedure.md only when needed.\n`
 export async function taskEvidenceFixture(t,decide,{skills=true}={}){
- const root=await mkdtemp('/tmp/runtime-task-evidence-'),skillRoot=join(root,'personal-assets');let h
+ const root=await mkdtemp(join(tmpdir(),'runtime-task-evidence-')),skillRoot=join(root,'personal-assets');let h
  if(skills)for(const name of names){await mkdir(join(skillRoot,name,'references'),{recursive:true});await writeFile(join(skillRoot,name,'SKILL.md'),skillDoc(name,'BODY_ONLY_'+name));await writeFile(join(skillRoot,name,'references/procedure.md'),'REFERENCE_ONLY_'+name)}
  const boot=async(initialize=true)=>{
   h=await nativeRuntimeHost(root,async(request,host)=>{const route=topicTaskCalls(request);if(route)return route;return decide(request,host)},{initialize,skillDirs:skills?[skillRoot]:[]})

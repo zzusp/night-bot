@@ -1,7 +1,10 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createServer,request as httpRequest} from 'node:http'
-import {mkdtemp,mkdir,writeFile,readFile,rm,chmod,symlink,link,lstat} from 'node:fs/promises'
+import {mkdtemp,mkdir,writeFile,readFile,rm,chmod,link,lstat} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
 import {spawn} from 'node:child_process'
@@ -15,23 +18,24 @@ async function until(fn){for(let n=0;n<400;n++){const result=await fn();if(resul
 async function post(port,path,body,headers={}){return new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port,path,method:'POST',headers:{'content-type':'application/json',...headers}},res=>{const chunks=[];res.on('data',chunk=>chunks.push(chunk));res.on('end',()=>resolve({status:res.statusCode,text:Buffer.concat(chunks).toString('utf8'),body:JSON.parse(Buffer.concat(chunks).toString('utf8'))}))});req.on('error',reject);req.end(JSON.stringify(body))})}
 async function cli(args){return new Promise((resolve,reject)=>{const child=spawn(process.execPath,['bin/night-bot-effects.js',...args],{cwd:new URL('..',import.meta.url),stdio:['ignore','pipe','pipe']}),chunks=[];child.stdout.on('data',c=>chunks.push(c));child.stderr.on('data',c=>chunks.push(c));child.on('error',reject);child.on('close',code=>resolve({code,text:Buffer.concat(chunks).toString('utf8')}))})}
 test('portable operator credential rejects unsafe files and legacy authority',async t=>{
- const root=await mkdtemp('/tmp/night-operator-token-');t.after(()=>rm(root,{recursive:true,force:true}));const secrets=join(root,'secrets');await mkdir(secrets,{mode:0o700});const paths={mode:'portable',secrets},file=join(secrets,EFFECT_OPERATOR_TOKEN_FILE),auth=await createEffectOperatorAuth(paths),token=await readEffectOperatorToken(paths)
- assert.equal(await auth.authorize({headers:{authorization:'Bearer '+token}}),true);assert.equal(await auth.authorize({headers:{authorization:'Bearer '+'0'.repeat(64)}}),false);assert.equal((await lstat(file)).mode&0o777,0o600)
- await chmod(file,0o644);assert.equal(await auth.authorize({headers:{authorization:'Bearer '+token}}),false);await assert.rejects(readEffectOperatorToken(paths),{code:'EFFECT_OPERATOR_SECRET_UNSAFE'});await chmod(file,0o600)
+ const root=await mkdtemp(join(tmpdir(),'night-operator-token-'));t.after(()=>rm(root,{recursive:true,force:true}));const secrets=join(root,'secrets');await mkdir(secrets,{mode:0o700});const paths={mode:'portable',secrets},file=join(secrets,EFFECT_OPERATOR_TOKEN_FILE),auth=await createEffectOperatorAuth(paths),token=await readEffectOperatorToken(paths)
+ assert.equal(await auth.authorize({headers:{authorization:'Bearer '+token}}),true);assert.equal(await auth.authorize({headers:{authorization:'Bearer '+'0'.repeat(64)}}),false);if(process.platform!=='win32')assert.equal((await lstat(file)).mode&0o777,0o600)
+ if(process.platform!=='win32'){await chmod(file,0o644);assert.equal(await auth.authorize({headers:{authorization:'Bearer '+token}}),false);await assert.rejects(readEffectOperatorToken(paths),{code:'EFFECT_OPERATOR_SECRET_UNSAFE'});await chmod(file,0o600)}
  await link(file,join(secrets,'second'));await assert.rejects(readEffectOperatorToken(paths),{code:'EFFECT_OPERATOR_SECRET_UNSAFE'});await rm(join(secrets,'second'));await rm(file)
- await symlink(join(secrets,'missing'),file);await assert.rejects(createEffectOperatorAuth(paths),{code:'EFFECT_OPERATOR_SECRET_UNSAFE'});await rm(file);await writeFile(file,'{"version":1,',{mode:0o600});await assert.rejects(createEffectOperatorAuth(paths),{code:'EFFECT_OPERATOR_SECRET_INVALID'})
+ await symlink(join(secrets,'missing'),file,process.platform==='win32'?'junction':'file');await assert.rejects(createEffectOperatorAuth(paths),{code:process.platform==='win32'?'EFFECT_OPERATOR_SECRET_UNAVAILABLE':'EFFECT_OPERATOR_SECRET_UNSAFE'});await assert.rejects(readEffectOperatorToken(paths),{code:'EFFECT_OPERATOR_SECRET_UNSAFE'});await rm(file);await writeFile(file,'{"version":1,',{mode:0o600});await assert.rejects(createEffectOperatorAuth(paths),{code:'EFFECT_OPERATOR_SECRET_INVALID'})
  assert.equal((await createEffectOperatorAuth({mode:'legacy'})).available,false);await assert.rejects(readEffectOperatorToken({mode:'legacy'}),{code:'EFFECT_OPERATOR_PRIVACY_UNAVAILABLE'})
 })
-test('actual portable Host refuses weak preexisting operator token before repairing permissions',async t=>{
+test('actual portable Host refuses weak preexisting operator token before repairing permissions',{skip:process.platform==='win32'?'POSIX chmod privacy bits do not exist on Windows; Windows ACL certification is separate':false},async t=>{
  const f=await memoryHost(t);await f.close();const file=join(f.root,'data/secrets',EFFECT_OPERATOR_TOKEN_FILE);await writeFile(file,JSON.stringify({version:1,token:'1'.repeat(64)})+'\n',{mode:0o644});await chmod(file,0o644)
  await assert.rejects(f.boot(),error=>error.code==='NIGHT_BOT_DATA_DIRECTORY_UNAVAILABLE'&&error.cause?.code==='EFFECT_OPERATOR_SECRET_UNSAFE');assert.equal((await lstat(file)).mode&0o777,0o644)
 })
-test('actual HTTP operator capability closes unknown effects paused and CLI never starts another model',{timeout:20000},async t=>{
- let effects=0
+test('actual HTTP operator capability closes unknown effects paused and CLI never starts another model',{timeout:nativeTestTimeout(20000)},async t=>{
+ let effects=0,service,store,residentStore
+ t.after(async()=>{await service?.close();await store?.close();await residentStore?.close?.()})
  const f=await memoryHost(t,body=>body.tools?.some(tool=>tool.function.name==='partial_operator_write')?{tool:'partial_operator_write',args:{}}:undefined),ctx=f.host.ctx
  ctx.get('tools').register({name:'partial_operator_write',description:'Fixture writes then fails',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'one effect');throw Error('lost response')}})
- const config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'operator-http',ownerActorId:'owner',webActorId:'real-operator',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize:true});let commands=0
- const service=await openTaskSessionService({ctx,config,store:{...store,command:command=>{commands++;return store.command(command)}},residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no sends')},readback:async()=>{throw Error('no readback')}}});t.after(async()=>{await service.close();await store.close();await residentStore.close?.()})
+ const config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'operator-http',ownerActorId:'owner',webActorId:'real-operator',agentPreset:'night-bot',reasoningMode:'inherit'};residentStore=await openResidentStore(ctx.storageDomain);store=await openDynamicTaskStore({...config,initialize:true});let commands=0
+ service=await openTaskSessionService({ctx,config,store:{...store,command:command=>{commands++;return store.command(command)}},residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no sends')},readback:async()=>{throw Error('no readback')}}})
  const task=await service.createTask({requestId:'unknown',objective:'Perform the authorized local effect once'});await until(async()=>!!(await service.taskDialogue(task.taskId)).error);await service.whenIdle()
  const row=await store.query({kind:'task.get',taskId:task.taskId}),native=await ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),intent=native.auditEntries.find(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-intent'),auth=await createEffectOperatorAuth(ctx.runtimePaths),token=await readEffectOperatorToken(ctx.runtimePaths),runtime={inspectTaskEffect:service.inspectTaskEffect,reconcileTaskEffect:service.reconcileTaskEffect}
  const server=createServer((req,res)=>handleRequest(req,res,runtime,{effectOperatorAuth:auth}).catch(()=>{res.writeHead(500);res.end('{}')}));await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));const port=server.address().port,path=`/tasks/${task.taskId}/effects/${intent.entryId}`,headers={authorization:'Bearer '+token},before=commands,modelRequests=f.requests.length

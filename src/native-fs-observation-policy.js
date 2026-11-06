@@ -1,3 +1,4 @@
+// Retains MIT-derived capability/observation contracts; see licenses/dsh-fs-observation-policy-MIT.txt.
 // Night's per-official-actor file observations. Pi owns edit matching and tool
 // iteration; these facts only authorize guarded Host IO, never model context.
 import {officialWorkingDirectoryOrigin} from './native-working-directory.js'

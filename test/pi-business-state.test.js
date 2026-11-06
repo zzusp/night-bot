@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -11,7 +12,7 @@ import NativePolicy,{setSandboxMode} from '../src/native-policy.js'
 import {createNativeBusinessState,nativeBusinessAuditKinds} from '../src/runtime/pi-business-state.js'
 
 test('business policy facts commit and restore independently of official conversation history',async t=>{
- const root=await mkdtemp('/tmp/night-business-state-'),ctx=new Context();await ctx.plugin(Authority)
+ const root=await mkdtemp(join(tmpdir(),'night-business-state-')),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  const config={auditKinds:nativeBusinessAuditKinds},header=nativeSessionHeader('state',{cwd:root})

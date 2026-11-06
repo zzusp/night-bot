@@ -41,15 +41,12 @@ disposal. These are Host IO facts, not a message/history projection.
 
 `fs-windows-security.js` retains the existing MIT-derived Windows DACL and
 ReplaceFileW bridge. It is explicitly attributed to `dsh-fs-local` and has not
-been rewritten or validated on Windows in this Linux environment. Therefore
+been independently rewritten. The later Windows IO/backup/resource cohort passes 42 cases; this is not complete Windows kernel/ACL isolation certification. See acceptance/pi-native-retirement-local/goal.md. Therefore
 `licenses/dsh-fs-local-MIT.txt` must remain. The sandbox policy implementation also
 remains attributed. This change does not claim all FS-derived code is gone.
 
 `test/fixtures/legacy-fs-interface.mjs` had no runtime or test import and was
-removed. Its stale reference-manifest entry must be retired by the integration
-owner. The protocol module and observation module were independently rewritten;
-removing their old package notices also requires the integration owner's full
-remaining-source/test-copy audit. No license files are removed in this slice.
+removed. The stale reference-manifest entry is retired. The protocol and observation modules retain adapted capability/error contracts and the owner/target observation-to-CAS algorithm, so their dedicated MIT notices remain. A missing continuous 40-token match does not establish independent provenance; manual Git-history comparison identified these retained portions. The session shared algorithm, Windows IO bridge and sandbox notices also remain. The original Linux slice itself removed no notices.
 
 ## Verification
 

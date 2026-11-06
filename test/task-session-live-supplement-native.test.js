@@ -13,7 +13,7 @@ const rootOf=(h,id)=>join(h.ctx.runtimePaths.workspaces,'tasks',id)
 async function preserve(h,id,text,requestId){const task=await h.query('task.get',{taskId:id});return h.service.appendTaskContext({taskId:id,requestId,progressImpact:'preserve',context:text,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision})}
 async function source(h,task,text){const sources=await Promise.all(task.sourceRefs.map(sourceId=>h.query('source.get',{sourceId})));const found=sources.filter(s=>s.text===text);assert.equal(found.length,1);assert.equal(found[0].channel,'web');assert.equal(found[0].actorId,'native-user');return found[0]}
 
-test('live preserve retains the exact SDK and original background producer, consumes exact source once',{timeout:25000},async t=>{
+test('live preserve retains the exact SDK and original background producer, consumes exact source once',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:25000},async t=>{
  const entered=deferred(),gate=deferred(),next=deferred(),finish=deferred();let step=0,signal
  t.after(()=>{gate.resolve();finish.resolve()})
  const text='Preserve original running producer. Additional exact source: 雪山 9182.'

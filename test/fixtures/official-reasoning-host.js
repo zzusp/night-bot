@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHost} from '../../src/host.js'
@@ -6,7 +7,7 @@ import {openResidentStore} from '../../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../../packages/dingtalk-core/task-session-service.js'
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 export async function officialReasoningHost(t,decide){
- const root=await mkdtemp('/tmp/night-official-reasoning-'),requests=[];let host,service,resident,sequence=0
+ const root=await mkdtemp(join(tmpdir(),'night-official-reasoning-')),requests=[];let host,service,resident,sequence=0
  const providers=Object.fromEntries(['primary','task-route'].map(provider=>[provider,{api:'openai-completions',baseURL:'http://127.0.0.1:1/never-dispatch',apiKeyEnv:'REASONING_FIXTURE_KEY',retry:{enabled:false,provider:{maxRetries:0}},models:[{id:provider==='primary'?'global-model':'task-model',reasoningEfforts:{off:null,low:'low',medium:'medium',high:'high'},contextWindow:32000,maxTokens:1024},{id:'high-only',reasoningEfforts:{high:'enabled'},contextWindow:32000,maxTokens:1024}]}]))
  const config={installRoot:root,model:{provider:'primary',model:'global-model',reasoningEffort:'low'},providers,memory:{background:false},reflection:{enabled:false},skillWatch:false,credentialsWatch:false}
  const boot=async()=>{

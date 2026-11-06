@@ -1,3 +1,4 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {createServer,request as httpRequest} from 'node:http'
 import {spawn} from 'node:child_process'
 import {handleRequest} from '../packages/dingtalk-core/http.js'
@@ -28,11 +29,12 @@ async function proposal(service,inspection){
 
 async function post(port,path,body,headers={}){return new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port,path,method:'POST',headers:{'content-type':'application/json',...headers}},res=>{const chunks=[];res.on('data',chunk=>chunks.push(chunk));res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(Buffer.concat(chunks).toString('utf8'))}))});req.on('error',reject);req.end(JSON.stringify(body))})}
 async function cli(args){return new Promise((resolve,reject)=>{const child=spawn(process.execPath,['bin/night-bot-effects.js',...args],{cwd:new URL('..',import.meta.url),stdio:['ignore','pipe','pipe']}),chunks=[];child.stdout.on('data',chunk=>chunks.push(chunk));child.stderr.on('data',chunk=>chunks.push(chunk));child.on('error',reject);child.on('close',code=>resolve({code,text:Buffer.concat(chunks).toString('utf8')}))})}
-for(const failure of [undefined,'after-source','after-revise','before-activate','after-activate'])test('operator explicitly authorizes a distinct same-args action after closure: '+(failure??'normal'),{timeout:25000},async t=>{
- let effects=0,phase='unknown',newCalls=0
+for(const failure of [undefined,'after-source','after-revise','before-activate','after-activate'])test('operator explicitly authorizes a distinct same-args action after closure: '+(failure??'normal'),{timeout:nativeTestTimeout(25000)},async t=>{
+ let effects=0,phase='unknown',newCalls=0,h
+ t.after(()=>h?.close())
  const f=await memoryHost(t,body=>{if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return;if(phase==='unknown')return {tool:'partial_write',args:{}};if(phase==='new'&&newCalls++===0)return {tool:'partial_write',args:{}};return {tool:'task_result',args:{decision:{action:!failure&&effects===2?'complete':'wait',summary:!failure&&effects===2?'Completed only the new separately authorized objective; the prior attempt remains failed with possible partial effects.':'New separately authorized action finished; prior closed attempt remains closed.',evidence:['new native invocation'],limitations:[]}}}})
  f.host.ctx.get('tools').register({name:'partial_write',description:'A real local fixture effect with loss of first response',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'actual effect '+effects);if(effects===1)throw Error('response lost');return {ok:true}}})
- let h=await open(f,{failAction:failure});t.after(()=>h.close())
+ h=await open(f,{failAction:failure})
  const created=await h.service.createTask({requestId:'initial',objective:'Perform a bounded original effect once'});await until(async()=>!!(await h.service.taskDialogue(created.taskId)).error);await h.service.whenIdle()
  const original=await h.store.query({kind:'task.get',taskId:created.taskId}),stored=await f.host.ctx.sessionPersistence.readNative(original.sessionId,{requireComplete:true}),intent=stored.auditEntries.find(row=>row.data.kind==='effect-intent'),inspection=await h.service.inspectTaskEffect({taskId:created.taskId,intentEntryId:intent.entryId})
  await h.service.reconcileTaskEffect(await proposal(h.service,inspection));let closed=await h.store.query({kind:'task.get',taskId:created.taskId})

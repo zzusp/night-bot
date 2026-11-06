@@ -7,14 +7,5 @@
     "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
     "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
     "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
-  },
-  {
-    "package": "@deepseek-ai/dsh-session-projection",
-    "originalSha256": "7dc2b212819baf4fc292751054d30b97afcbdee0a4733230abf92c6722e6550c",
-    "fixture": "test/fixtures/legacy-session-projection-interface.mjs",
-    "fixtureSha256": "29714f94327acbfd9289d84e5c65cf87a033fb6bcf515aafb5899d37b6df402e",
-    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
-    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
   }
 ]

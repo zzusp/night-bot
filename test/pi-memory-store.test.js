@@ -1,6 +1,8 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,readFile,readdir,symlink,writeFile} from 'node:fs/promises'
+import {mkdtemp,rm,readFile,readdir,writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
@@ -8,7 +10,7 @@ import {MarkdownMemoryStore} from '../src/memory/store.js'
 import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
 const scope=memoryScope({actorId:'alice'},{}),source=id=>({sessionId:'session',messageId:id}),item=(id,key,text)=>({topic:'preferences',key,text,source:source(id)})
-async function fixture(t,options){const root=await mkdtemp('/tmp/night-memory-store-');t.after(()=>rm(root,{recursive:true,force:true}));return {root,store:new MarkdownMemoryStore(root,options)}}
+async function fixture(t,options){const root=await mkdtemp(join(tmpdir(),'night-memory-store-'));t.after(()=>rm(root,{recursive:true,force:true}));return {root,store:new MarkdownMemoryStore(root,options)}}
 test('Markdown topic corrections retain identity/source/time, enforce revisions and survive reopen',async t=>{
   const {root,store}=await fixture(t),a=await store.remember(scope,item('1','style','Concise answers'))
   await store.remember(scope,{...item('2','style','Detailed answers'),expectedRevision:1})
@@ -72,6 +74,6 @@ test('symlinked scope content and modified Markdown checksums are rejected expli
   const {root,store}=await fixture(t);await store.remember(scope,item('1','style','original'))
   const path=join(store.directory(scope),'topics',hash('preferences')+'.md');await writeFile(path,(await readFile(path,'utf8')).replace('\noriginal\n','\ntampered\n'))
   await assert.rejects(store.read(scope,{topic:'preferences'}),/CONTENT_CHANGED/)
-  await rm(path);await symlink(join(root,'outside'),path)
+  await rm(path);await symlink(join(root,'outside'),path,process.platform==='win32'?'junction':'file')
   await assert.rejects(store.read(scope,{topic:'preferences'}),/PATH_UNSAFE/)
 })

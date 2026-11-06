@@ -1,3 +1,5 @@
+import {join} from 'node:path'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
@@ -8,7 +10,7 @@ import {openNativeDomains} from '../src/native-domain.js'
 import {visibilityFixture} from './fixtures/pi-coordination-visibility.js'
 
 async function retryFixture(t,{history,pending=false}){
- const root=await mkdtemp('/tmp/topic-shape-regression-')
+ const root=await mkdtemp(join(tmpdir(),'topic-shape-regression-'))
  const domains=await openNativeDomains({root}),store=await openResidentStore(domains)
  await store.subscribe({groupId:'g',responsibility:'isolated retry regression'});await store.setAgentNames(['助理'])
  const sent=[],errors=[],resumed=Promise.withResolvers()

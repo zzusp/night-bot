@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises'
@@ -6,7 +7,7 @@ import {openNativeDomains} from '../src/native-domain.js'
 import {residentDomainSpec,openResidentStore} from '../packages/dingtalk-core/store.js'
 
 test('Night resident v9 opens its own data and refuses predecessor versions without rewriting them',async t=>{
- const root=await mkdtemp('/tmp/night-resident-version-boundary-')
+ const root=await mkdtemp(join(tmpdir(),'night-resident-version-boundary-'))
  t.after(()=>rm(root,{recursive:true,force:true}))
  const file=join(root,residentDomainSpec.name+'.json')
  assert.equal(residentDomainSpec.version,9)

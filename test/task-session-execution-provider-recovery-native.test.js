@@ -5,12 +5,12 @@ import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {providerHost,taskRequest,result,latestInput,topicTaskCalls,modelToolValues} from './fixtures/provider-official-host.js'
 import {nativeRuntimeHost} from './fixtures/runtime-official-host.js'
-import {nativeLifecycle,nativeLifecycleTimeout,nativeTemporaryDirectory as mkdtemp,nativeRemove as rm} from './fixtures/native-lifecycle.js'
+import {nativeLifecycle,nativeLifecycleTimeout,nativeTestTimeout,nativeTemporaryDirectory as mkdtemp,nativeRemove as rm} from './fixtures/native-lifecycle.js'
 import {lifecycleStages} from './fixtures/lifecycle-stages.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {disabledExecutionSessions} from '../src/tasks/single-session.js'
-const test=(name,fn,options={})=>testRunner(name,{timeout:20000,...options},fn)
+const test=(name,fn,options={})=>testRunner(name,{timeout:nativeTestTimeout(20000),...options},fn)
 const transient='503 Service temporarily unavailable: native retry fixture'
 const effect={name:'provider_effect_once',args:{}}
 const sawEffect=request=>request.messages.some(message=>message.role==='toolResult'&&!message.isError&&JSON.stringify(message.content).includes('ORIGINAL_PROVIDER_EFFECT_RECEIPT'))
@@ -167,4 +167,4 @@ test('provider failure during actual group human review retains the source batch
  for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await h.service.recover();await h.service.whenIdle()}assert.equal(h.taskRequests().length,count);await h.close();failReview=false
  const cold=await f.host({initialize:false,route,decide,intercept});await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0);task=await cold.query('task.get',{taskId:task.taskId});for(const source of sources)assert.deepEqual(await cold.query('source.get',{sourceId:source.sourceId}),source)
  await cold.service.ingest({groupId:'native-group',messageId:'second-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，SECOND_REAL_ANSWER：仅确认UAT3只读目标，原有禁止实施的限制全部保留。',occurredAt:new Date().toISOString()});await cold.service.whenIdle();const after=await cold.stored(task.taskId);assert.equal(after.task.humanRequests[0].status,'answered');assert.equal(after.task.humanRequests[0].reviewFailures.length,1);assert.equal(reviewed.length,1);assert.equal(cold.effects,0);assert.equal(after.task.sessionId,before.task.sessionId)
-})
+},{timeout:nativeTestTimeout(30000)})

@@ -1,7 +1,10 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
-import {mkdtemp,readFile,readdir,writeFile,rm,cp,symlink} from 'node:fs/promises'
+import {mkdtemp,readFile,readdir,writeFile,rm,cp} from 'node:fs/promises'
 import {memoryHost} from './fixtures/memory-host.js'
 import {apply as applyApplication,inject} from '../src/application.js'
 import {createHost} from '../src/host.js'
@@ -23,9 +26,9 @@ async function fixture(t){
   await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,f.config)});const app=f.host.ctx.get('application')
   return {...f,get host(){return f.host},app,config:f.config,get reviews(){return reviews},close:async()=>{await app.close();await f.close()},boot:f.boot}
 }
-async function newRoot(t){const root=await mkdtemp('/tmp/night-task-archive-restored-');t.after(()=>rm(root,{recursive:true,force:true}));return root}
+async function newRoot(t){const root=await mkdtemp(join(tmpdir(),'night-task-archive-restored-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
 
-test('default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections',{timeout:30000},async t=>{
+test('default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections',{timeout:nativeTestTimeout(30000)},async t=>{
   const f=await fixture(t),tasks=await Promise.all(['alpha','beta'].map(requestId=>f.app.tasks.createTask({requestId,objective:'Create a local proof '+requestId})))
   await f.app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();await f.app.tasks.whenIdle()
   for(const task of tasks){const row=await f.app.tasks.store.query({kind:'task.get',taskId:task.taskId}),root=join(f.root,'data/workspaces/tasks',task.taskId);assert.equal(row.status,'completed');assert.equal(await readFile(join(root,'work/proof.txt'),'utf8'),'PROOF:'+task.taskId);const file=row.completion.result.artifactFiles[0].artifact;assert.equal(await readFile(join(root,'outputs',task.taskId,file.artifactId,'proof.txt'),'utf8'),'PROOF:'+task.taskId);assert.ok(f.host.ctx.sessionPersistence.path(row.sessionId).startsWith(join(root,'sessions')));assert.equal((await readdir(join(root,'sessions'))).filter(name=>name.endsWith('.pi.jsonl')).length,1);const review=JSON.parse(await readFile(join(root,'reviews',(await readdir(join(root,'reviews')))[0]),'utf8'));assert.equal(review.taskId,task.taskId);assert.equal(review.destinations[0].memory.topic,'experience');assert.ok(review.destinations[0].skill);assert.equal(f.app.tasks.taskArchiveStatus(task.taskId).error,null)}
@@ -43,16 +46,16 @@ test('default application archives two isolated tasks with local sessions, immut
 
 })
 
-test('sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun',{timeout:20000},async t=>{
+test('sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun',{timeout:nativeTestTimeout(20000)},async t=>{
   const f=await fixture(t),task=await f.app.tasks.createTask({requestId:'rebuild',objective:'Create the reconstruction proof'});await f.app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();await f.close()
   const source=join(f.root,'data/workspaces/tasks',task.taskId),root=await newRoot(t),copy=join(root,'data/workspaces/tasks',task.taskId);await cp(source,copy,{recursive:true});const config={...f.config,installRoot:root}
   const manifest=await validateTaskArchive(copy);assert.ok(manifest.manifest.files.every(file=>!file.path.startsWith('tmp/')))
   const corrupt=join(root,'corrupt');await cp(source,corrupt,{recursive:true});await writeFile(join(corrupt,'work/proof.txt'),'corrupt');await assert.rejects(validateTaskArchive(corrupt),/HASH_MISMATCH/)
-  await rm(join(corrupt,'work/proof.txt'));await symlink(join(source,'work/proof.txt'),join(corrupt,'work/proof.txt'));await assert.rejects(validateTaskArchive(corrupt),/UNSAFE/)
+  await rm(join(corrupt,'work/proof.txt'));await symlink(process.platform==='win32'?join(source,'work'):join(source,'work/proof.txt'),join(corrupt,'work/proof.txt'),process.platform==='win32'?'junction':'file');await assert.rejects(validateTaskArchive(corrupt),/UNSAFE/)
   await (await import('node:fs/promises')).mkdir(join(root,'data/state'),{recursive:true});await cp(join(f.root,'data/state/tasks.sqlite.initialized'),join(root,'data/state/tasks.sqlite.initialized'));const rebuilt=await rebuildTaskIndex(config);assert.deepEqual(rebuilt.reindexed,[task.taskId]);await inspectTaskArchive(config,task.taskId);await assert.rejects(rebuildTaskIndex(config),/DATABASE_EXISTS/);assert.equal(f.reviews,1);const marker=join(root,'data/runtime/task-restore.pending.json'),stage=join(root,'data/state/.task-index-abc123.sqlite'),fs=await import('node:fs/promises');await fs.rename(join(root,'data/state/tasks.sqlite.initialized'),stage+'.initialized');await cp(join(f.root,'data/state/tasks.sqlite.initialized'),join(root,'data/state/tasks.sqlite.initialized'));await writeFile(marker,JSON.stringify({version:1,kind:'index',phase:'prepared',stage,taskIds:[task.taskId]}));await assert.rejects(createHost(config),/TASK_ARCHIVE_RESTORE_INCOMPLETE/);assert.equal((await recoverTaskRestore(config)).recovered,true);await inspectTaskArchive(config,task.taskId)
 })
 
-test('task-required attachment bytes are local and independently restored without the original attachment store',{timeout:20000},async t=>{
+test('task-required attachment bytes are local and independently restored without the original attachment store',{timeout:nativeTestTimeout(20000)},async t=>{
   const f=await fixture(t),ref=await f.host.ctx.attachments.saveFile({name:'required.txt',data:new TextEncoder().encode('TASK_ATTACHMENT_PROOF')})
   await f.app.tasks.store.command({id:'attachment-source',kind:'source.acceptHistory',args:{sourceId:'attachment-source',groupId:'fixture-room',messageId:'original',actorId:'owner',text:'Use the attached file',resources:[ref],timestamp:new Date().toISOString(),authorizationRef:'message-retry:fixture-room:original:1'}})
   await f.app.tasks.store.command({id:'attachment-routed',kind:'source.routed',args:{sourceId:'attachment-source',receipt:{kind:'fixture-local-source'}}})
@@ -63,14 +66,14 @@ test('task-required attachment bytes are local and independently restored withou
   const other=await newRoot(t),config={...f.config,installRoot:other};await restoreTask(config,backup);const host=await createHost(config,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});try{const chunks=[];for await(const chunk of host.ctx.attachments.readFileStream(ref))chunks.push(chunk);assert.equal(Buffer.concat(chunks).toString(),'TASK_ATTACHMENT_PROOF')}finally{await host.close()}
 })
 
-test('a committed restore marker blocks startup, can be finalized idempotently, and does not resume work',{timeout:20000},async t=>{
+test('a committed restore marker blocks startup, can be finalized idempotently, and does not resume work',{timeout:nativeTestTimeout(20000)},async t=>{
   const f=await fixture(t),task=await f.app.tasks.createTask({requestId:'recovery',objective:'Create a local recovery proof'});await f.app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();await f.close();const backup=join(f.root,'backups','recovery');await backupTask(f.config,task.taskId,backup)
   const other=await newRoot(t),config={...f.config,installRoot:other};await restoreTask(config,backup);const original=(await validateTaskArchive(backup)).snapshot,root=join(other,'data/workspaces/tasks',task.taskId),marker=join(other,'data/runtime/task-restore.pending.json')
   await writeFile(marker,JSON.stringify({version:1,taskId:task.taskId,root,source:backup,stage:root+'.unused',sourceDigest:original.ledger.digest,phase:'committed',snapshot:original,rebuild:false}))
   await assert.rejects(createHost(config),/TASK_ARCHIVE_RESTORE_INCOMPLETE/);assert.equal((await recoverTaskRestore(config)).recovered,true);assert.equal((await recoverTaskRestore(config)).pending,false);await inspectTaskArchive(config,task.taskId)
 })
 
-test('default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact',{timeout:15000},async t=>{
+test('default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact',{timeout:nativeTestTimeout(15000)},async t=>{
   let step=0;const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
     if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
@@ -80,20 +83,20 @@ test('default task file tools cannot forge frozen outputs; a denied write does n
   });f.config.resident={port:0,taskSessions:{instanceId:'archive-file-boundary',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}};await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,f.config)});const app=f.host.ctx.get('application'),task=await app.tasks.createTask({requestId:'file-fence',objective:'Create a local file under the task archive rules'});await app.tasks.whenIdle();const row=await app.tasks.store.query({kind:'task.get',taskId:task.taskId});assert.equal(row.status,'completed');const history=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),results=history.context.piMessages.filter(message=>message.role==='toolResult');assert.equal(results[0].isError,true);assert.match(JSON.stringify(results[0].content),/sandbox: file access denied|FS_SANDBOX_DENIED|Task archive areas are Host-owned/);await assert.rejects(readFile(join(task.session.workspaceDir,'outputs/forged.txt')),error=>error.code==='ENOENT');assert.equal(await readFile(join(task.session.workspaceDir,'work/proof.txt'),'utf8'),'legitimate work');await app.close()
 })
 
-test('explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals',{timeout:15000},async t=>{
+test('explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals',{timeout:nativeTestTimeout(15000)},async t=>{
   const f=await fixture(t),task=await f.app.tasks.createTask({requestId:'owned-layout',objective:'Create a proof for owned data packing'});await f.app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();const row=await f.app.tasks.store.query({kind:'task.get',taskId:task.taskId});await f.close()
   const fs=await import('node:fs/promises'),root=join(f.root,'data/workspaces/tasks',task.taskId),session=join(root,'sessions',archiveHash(row.sessionId)+'.pi.jsonl'),original=await readFile(session),central=join(f.root,'data/state/sessions',archiveHash(row.sessionId)+'.pi.jsonl');await fs.rename(session,central)
   await fs.mkdir(join(f.root,'data/workspaces/delivery-files'),{recursive:true});await fs.rename(join(root,'outputs',task.taskId),join(f.root,'data/workspaces/delivery-files',task.taskId));for(const name of ['.task-session.json','task.json','archive.manifest.json'])await rm(join(root,name));await rm(join(root,'reviews'),{recursive:true})
   const result=await adoptTaskArchive(f.config,task.taskId);assert.equal(result.existingNightBotOnly,true);assert.deepEqual(await readFile(session),original);await assert.rejects(readFile(central),error=>error.code==='ENOENT');const archived=await validateTaskArchive(root);assert.equal(archived.snapshot.reviewCoverage[0].status,'done');assert.equal((await readdir(join(root,'reviews'))).length,1)
 })
 
-test('restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation',{timeout:15000},async t=>{
+test('restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation',{timeout:nativeTestTimeout(15000)},async t=>{
   const f=await fixture(t),task=await f.app.tasks.createTask({requestId:'held-facts',objective:'Create the held-facts proof'});await f.app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();const snapshot=await f.app.tasks.store.exportTaskArchive(task.taskId);await f.close()
   const {ledgerDigest}=await import('../src/tasks/ledger-archive.js');snapshot.tables.tasks[0].body.sourceRefs=['restored-source'];snapshot.tables.sources=[{id:'restored-source',body:{id:'restored-source',sourceId:'restored-source',groupId:'same-room',messageId:'same-message',actorId:'owner',text:'historical source',resources:[],version:1,routed:false}}];snapshot.tables.topic_facts=[{id:'held-topic-fact',body:{id:'held-topic-fact',taskId:task.taskId,groupId:'same-room',topicId:'same-topic',taskTitle:'proof',kind:'completed',state:'pending',sourceIds:['restored-source'],result:{summary:'historical completion',evidence:[],limitations:[]}}}];snapshot.tables.notifications=[{id:'held-notification',body:{id:'held-notification',taskId:task.taskId,state:'prepared',payload:{text:'historical delivery'}}}];snapshot.digest=ledgerDigest({version:1,taskId:snapshot.taskId,tables:snapshot.tables})
   const root=await newRoot(t),fs=await import('node:fs/promises');await fs.mkdir(join(root,'data/state'),{recursive:true});const store=await openDynamicTaskStore({...f.config.resident.taskSessions,dbPath:join(root,'data/state/tasks.sqlite'),initialize:true});try{await store.importTaskArchive(snapshot);assert.deepEqual(await store.query({kind:'topic.fact.pending',groupId:'same-room',topicId:'same-topic'}),[]);assert.deepEqual(await store.query({kind:'topic.fact.groups'}),[]);assert.equal(await store.query({kind:'topic.fact.unsettled',groupId:'same-room'}),false);assert.deepEqual(await store.query({kind:'source.list',unrouted:true}),[]);assert.equal((await store.query({kind:'source.get',sourceId:'restored-source'})).text,'historical source');await assert.rejects(store.command({id:'must-not-prepare',kind:'topic.fact.accept',args:{factIds:['held-topic-fact'],groupId:'same-room',topicId:'same-topic'}}),/TOPIC_FACT_STALE/);await assert.rejects(store.command({id:'must-not-send',kind:'notification.start',args:{notificationId:'held-notification'}}),/RESTORE_REVIEW_REQUIRED/)}finally{await store.close()}
 })
 
-test('an archive filesystem failure after a committed completion reports maintenance without reversing task state',{timeout:15000},async t=>{
+test('an archive filesystem failure after a committed completion reports maintenance without reversing task state',{timeout:nativeTestTimeout(15000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers();let first=true;const f=await memoryHost(t,async body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'};if(body.tools?.some(tool=>tool.function.name==='task_result')){if(first){first=false;entered.resolve();await release.promise}return {tool:'task_result',args:{decision:{action:'complete',summary:'durably completed despite archive maintenance',evidence:[],limitations:[]}}}}})
   f.config.resident={port:0,taskSessions:{instanceId:'archive-failure',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}};await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,f.config)});const app=f.host.ctx.get('application'),task=await app.tasks.createTask({requestId:'archive-failure',objective:'Return a literal local completion'})
   await entered.promise;for(let n=0;n<100&&app.tasks.taskArchiveStatus(task.taskId).pending;n++)await new Promise(resolve=>setTimeout(resolve,10));const root=task.session.workspaceDir;await rm(join(root,'task.json'),{force:true});await (await import('node:fs/promises')).mkdir(join(root,'task.json'));release.resolve();await app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();const row=await app.tasks.store.query({kind:'task.get',taskId:task.taskId});assert.equal(row.status,'completed');assert.equal(row.completion.summary,'durably completed despite archive maintenance');assert.ok(app.tasks.taskArchiveStatus(task.taskId).error);await rm(join(root,'task.json'),{recursive:true});await app.tasks.recover();await app.tasks.whenIdle();assert.equal(app.tasks.taskArchiveStatus(task.taskId).error,null);await app.close();await validateTaskArchive(root)

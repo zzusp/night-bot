@@ -143,7 +143,7 @@ test('DWS private credentials use supported roots; Windows defaults to the prote
   const {dwsEnvironment,dwsAccountPolicy}=await import('../src/channels/plugins/dws-environment.js')
   const options={platform:'linux',inherited:{PATH:'/fixture/bin',DWS_CONFIG_DIR:'/foreign',DWS_KEYCHAIN_DIR:'/foreign-keychain',DWS_CLIENT_SECRET:'fixture-secret',DWS_DISABLE_KEYCHAIN:'1',DWS_KEYCHAIN_TEST_NAMESPACE:'forbidden-production-namespace'}}
   const environment=dwsEnvironment({temp:'/fixture/temp'},'/fixture/private','/fixture/cache',options)
-  assert.equal(environment.DWS_CONFIG_DIR,'/fixture/private/config');assert.equal(environment.DWS_KEYCHAIN_DIR,'/fixture/private/keychain');assert.equal(environment.PATH,'/fixture/bin')
+  assert.equal(environment.DWS_CONFIG_DIR,join('/fixture/private','config'));assert.equal(environment.DWS_KEYCHAIN_DIR,join('/fixture/private','keychain'));assert.equal(environment.PATH,'/fixture/bin')
   for(const key of ['DWS_CLIENT_SECRET','DWS_DISABLE_KEYCHAIN','DWS_KEYCHAIN_TEST_NAMESPACE'])assert.equal(environment[key],undefined)
   const inherited={...options.inherited,HOME:'C:/Users/current',USERPROFILE:'C:/Users/current',LOCALAPPDATA:'C:/Users/current/AppData/Local'}
   const windows=dwsEnvironment({temp:'/fixture/temp'},'/fixture/private','/fixture/cache',{platform:'win32',inherited})

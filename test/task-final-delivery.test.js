@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
+import { symlink } from './fixtures/filesystem-link.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTaskArtifactFiles } from '../packages/dingtalk-dsh-assistant/task-artifact-files.js'
-import { freezeTaskDeliveryFiles, readTaskFileDelivery, withTaskFileNotifications } from '../packages/dingtalk-dsh-assistant/task-final-delivery.js'
+import { createTaskArtifactFiles } from '../packages/dingtalk-core/task-artifact-files.js'
+import { freezeTaskDeliveryFiles, readTaskFileDelivery, withTaskFileNotifications } from '../packages/dingtalk-core/task-final-delivery.js'
 
 test('final attachments freeze reported task files, retain original bytes and reject unrelated paths', async t => {
   const root = await mkdtemp(join(tmpdir(), 'final-delivery-'))
@@ -26,8 +27,9 @@ test('final attachments freeze reported task files, retain original bytes and re
   executions[0].result.payload.output.artifacts.push('../outside.png', 'link.png')
   await assert.rejects(freeze({ selected: [{ ...selected[0], path: '../outside.png' }] }), { code: 'TASK_DELIVERY_ARTIFACT_OUTSIDE_TASK' })
   await writeFile(join(root, 'outside.png'), 'outside')
-  await symlink(join(root, 'outside.png'), join(directory, 'link.png'))
-  await assert.rejects(freeze({ selected: [{ ...selected[0], path: 'link.png' }] }), { code: 'TASK_ARTIFACT_SCOPE_DENIED' })
+  await symlink(root, join(directory, 'outside-alias'))
+  executions[0].result.payload.output.artifacts.push('outside-alias/outside.png')
+  await assert.rejects(freeze({ selected: [{ ...selected[0], path: 'outside-alias/outside.png' }] }), { code: 'TASK_ARTIFACT_SCOPE_DENIED' })
   executions[0].drained = false
   await assert.rejects(freeze(), { code: 'TASK_DELIVERY_ARTIFACT_NOT_REPORTED' })
 })

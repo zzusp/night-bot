@@ -1,6 +1,7 @@
+import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {writeFile,readFile,mkdir,symlink} from 'node:fs/promises'
+import {writeFile,readFile,mkdir} from 'node:fs/promises'
 import fsPromises from 'node:fs/promises'
 import {syncBuiltinESMExports} from 'node:module'
 import {setImmediate} from 'node:timers/promises'
@@ -16,7 +17,7 @@ import {createAssistantMessageEventStream} from '@earendil-works/pi-ai'
 import {createPiFileTools} from '../src/pi-file-tools.js'
 async function fixture(t,options={}){
  const host=await memoryHost(t),sdk=await officialToolsFixture(t,async()=>{}),ctx=host.host.ctx,root=join(ctx.runtimePaths.workspaces,'pi-file-prototype');await mkdir(root)
- const actor={id:sdk.session.sessionId,piSession:sdk.session},scope=createScope(ctx,actor);actor.ctx=scope.ctx
+ const actor={id:sdk.session.sessionId,metadata:Object.freeze({id:sdk.session.sessionId}),piSession:sdk.session},scope=createScope(ctx,actor);actor.ctx=scope.ctx
  const detach=ctx.agents.enter(actor);t.after(async()=>{detach();await scope.dispose()})
  let mode='workspace-write'
  bindWorkingDirectoryActor(actor,{initialDirectory:root,isLive:()=>ctx.agents.get(actor.id)===actor,readDirectory:()=>root,appendChange(){throw Error('unused')},admitNotice(){}})
@@ -38,11 +39,11 @@ test('official native schemas + actual PrivateFS support read, multi-edit/fuzzy,
 test('Night CAS spans official edit read/computation/write and aliases; private/symlink/readonly denials survive',async t=>{
  const f=await fixture(t),path=join(f.root,'cas.txt');await writeFile(path,'original');await f.run('read',{path})
  await writeFile(path,'external');await assert.rejects(f.run('edit',{path,edits:[{oldText:'original',newText:'bad'}]}),/FS_STALE_VERSION/);assert.equal(await readFile(path,'utf8'),'external')
- await f.run('read',{path});const alias=join(f.root,'alias.txt');await symlink(path,alias)
+ await f.run('read',{path});const aliasRoot=join(f.root,'alias');await symlink(f.root,aliasRoot);const alias=join(aliasRoot,'cas.txt')
  const results=await Promise.allSettled(['one','two'].map(content=>f.run('write',{path:content==='one'?path:alias,content})))
  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);assert.equal(results.filter(result=>result.status==='rejected').length,1)
  const secret=join(f.ctx.runtimePaths.memory,'private-probe.txt');await writeFile(secret,'PRIVATE_TEST_MARKER');await assert.rejects(f.run('read',{path:secret}),error=>error.code==='FS_SANDBOX_DENIED')
- const escape=join(f.root,'private-link');await symlink(secret,escape);await assert.rejects(f.run('read',{path:escape}),error=>error.code==='FS_SANDBOX_DENIED')
+ const privateAlias=join(f.root,'private-link');await symlink(f.ctx.runtimePaths.memory,privateAlias);const escape=join(privateAlias,'private-probe.txt');await assert.rejects(f.run('read',{path:escape}),error=>error.code==='FS_SANDBOX_DENIED')
  f.setMode('read-only');await assert.rejects(f.run('write',{path:join(f.root,'blocked.txt'),content:'blocked'}),error=>error.code==='FS_SANDBOX_DENIED')
 })
 test('opaque operation names keep Pi internal Node access probes away from authorized file paths',async t=>{

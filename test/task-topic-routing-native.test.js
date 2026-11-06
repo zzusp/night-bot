@@ -4,16 +4,16 @@ import assert from 'node:assert/strict'
 import { convertToLlm } from '@earendil-works/pi-coding-agent'
 import { mkdir, readFile, rmdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { taskDirectories } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
+import { taskDirectories } from '../packages/dingtalk-core/session-workspaces.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resolveTopicMessages } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
-import { groupReplyScopeInstructions } from '../packages/dingtalk-dsh-assistant/group-message.js'
-import { taskIndexPage } from '../packages/dingtalk-dsh-assistant/task-topic-coordinator.js'
-import { fingerprint } from '../packages/dingtalk-dsh-assistant/topic-model.js'
-import { projectTaskNotification } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
+import { resolveTopicMessages } from '../packages/dingtalk-core/store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import { groupReplyScopeInstructions } from '../packages/dingtalk-core/group-message.js'
+import { taskIndexPage } from '../packages/dingtalk-core/task-topic-coordinator.js'
+import { fingerprint } from '../packages/dingtalk-core/topic-model.js'
+import { projectTaskNotification } from '../packages/dingtalk-core/task-message-projections.js'
 import { available, reason, nativeTaskHost, latestInput, waitUntil, modelToolValues, topicTaskCalls } from './fixtures/routing-official-host.js'
 
 const call = (name, args) => ({ name, args: name === 'group_decision_submit' ? { ...args, decision: { ...args.decision, topicUpdate: { summary: '围绕原始事项持续核对，当前结论以任务真实进展为准。' } } } : args })
@@ -1361,7 +1361,7 @@ testRunner('native proposal prompt preserves original authorization and asks wit
 testRunner('native Web reopen preserves task identity and rejects stale input; HTTP retry is idempotent', { ...({ timeout: 30000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   await t.beginBusiness()
   const { createServer } = await t.step(async () => import('node:http'))
-  const { handleRequest } = await t.step(async () => import('../packages/dingtalk-dsh-assistant/http.js'))
+  const { handleRequest } = await t.step(async () => import('../packages/dingtalk-core/http.js'))
   const h = await t.step(async () => extraHost(t, 'web-reopen-', async () => [call('task_result', { decision: { action: 'complete', summary: '原事项已核对', evidence: ['fixture'], limitations: [] } })]))
   const created = await t.step(async () => h.service.createTask({ requestId: 'original', groupId: 'native-group', title: '原PR', objective: '核对原PR', acceptanceCriteria: ['核对完成'] }))
   await t.step(async () => h.service.whenIdle())

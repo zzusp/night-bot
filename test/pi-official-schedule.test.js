@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm,readFile,writeFile} from 'node:fs/promises'
@@ -17,7 +18,7 @@ import {officialRetrySettings} from '../src/runtime/pi-official-settings.js'
 import {createEveryScheduleRecord,scheduleDomain} from '../src/native-schedule-protocol.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-official-schedule-');await mkdir(join(root,'agent'))
+ const root=await mkdtemp(join(tmpdir(),'night-official-schedule-'));await mkdir(join(root,'agent'))
  const ctx=new Context();await ctx.plugin(Authority);new NativeAgents(ctx)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0});new NativeTools(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),domains=await openNativeDomains({root:join(root,'domains')});ctx.provide('storageDomain',domains)

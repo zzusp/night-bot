@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
 import {join} from 'node:path'
@@ -11,7 +12,7 @@ import PiPersistence from '../../src/pi-session-persistence.js'
 import OfficialAgentFactory from '../../src/pi-official-agent-factory.js'
 import PiSessionNames,{sessionNameAuditKinds} from '../../src/pi-session-names.js'
 export async function namesFixture(t){
- const root=await mkdtemp('/tmp/night-session-names-');await mkdir(join(root,'agent'))
+ const root=await mkdtemp(join(tmpdir(),'night-session-names-'));await mkdir(join(root,'agent'))
  const ctx=new Context();await ctx.plugin(Authority);new NativeAgents(ctx)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0});new NativeTools(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})

@@ -1,3 +1,5 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, get, request } from 'node:http'
@@ -22,8 +24,8 @@ const jsonPut = (url, value) => new Promise((resolve, reject) => {
   }); req.on('error', reject); req.end(body)
 })
 
-test('Official AgentSession executes a real local OpenAI-compatible wire request, tool, and follow-up', { timeout: 20000 }, async t => {
-  const root = await mkdtemp('/tmp/night-pi-wire-'), requests = []
+test('Official AgentSession executes a real local OpenAI-compatible wire request, tool, and follow-up', { timeout: nativeTestTimeout(20000) }, async t => {
+  const root = await mkdtemp(join(tmpdir(),'night-pi-wire-')), requests = []
   let host
   const server = createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk
@@ -77,17 +79,18 @@ test('Official AgentSession executes a real local OpenAI-compatible wire request
   await handle.dispose()
 })
 
-test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled', { timeout: 20000 }, async t => {
-  const root = await mkdtemp('/tmp/night-pi-cli-')
+test('headless CLI starts, serves health, and drains through managed shutdown with DingTalk disabled', { timeout: 20000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(),'night-pi-cli-'))
   const portServer = createServer(); await new Promise(r => portServer.listen(0, '127.0.0.1', r))
   const port = portServer.address().port; await new Promise(r => portServer.close(r))
   const config = {installRoot:root,dataDir:'data',stateDir:join(root,'data','state'),workspaceDir:join(root,'data','workspaces'),model:{provider:'fixture',model:'first'}, providers: { fixture: { api: 'openai-completions', baseURL: 'http://127.0.0.1:1/v1', models: [{ id: 'first' }, { id: 'second' }] } },
     resident: { port, dws: { enabled: false, writesAuthorized: false }, taskSessions: { instanceId: 'cli-fixture', ownerActorId: 'fixture-owner', webActorId: 'fixture-owner', ingressEpoch: '2026-11-04T00:00:00Z', initialize: true } } }
   const path = join(root, 'config.json'); await writeFile(path, JSON.stringify(config))
-  let child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe'] })
+  let child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe','ipc'] })
   let output = ''; child.stdout.on('data', b => { output += b }); child.stderr.on('data', b => { output += b })
-  let exited = once(child, 'exit')
-  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); await exited; await rm(root, { recursive: true, force: true }) })
+  const stop=()=>process.platform==='win32'?child.send({type:'night-bot-shutdown'}):child.kill('SIGTERM')
+  let exited = once(child, 'close')
+  t.after(async () => { if (child.exitCode === null && child.signalCode === null) stop(); await exited; await rm(root, { recursive: true, force: true }) })
   let health
   const deadline = Date.now() + 12000
   while (Date.now() < deadline) {
@@ -99,10 +102,10 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
   assert.equal(health.transport,'channels')
   const saved = await jsonPut(`http://127.0.0.1:${port}/config/agent`, { provider: 'fixture', model: 'second' })
   assert.equal(saved.status, 200, JSON.stringify(saved.body)); assert.equal(saved.body.model, 'second')
-  child.kill('SIGTERM'); const [code] = await exited
+  stop(); const [code] = await exited
   assert.equal(code, 0, output)
-  child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe'] })
-  child.stdout.on('data', b => { output += b }); child.stderr.on('data', b => { output += b }); exited = once(child, 'exit')
+  child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe','ipc'] })
+  child.stdout.on('data', b => { output += b }); child.stderr.on('data', b => { output += b }); exited = once(child, 'close')
   let restored
   const restartDeadline = Date.now() + 10000
   while (Date.now() < restartDeadline) {
@@ -111,9 +114,9 @@ test('headless CLI starts, serves health, and drains on SIGTERM with DingTalk di
     await new Promise(r => setTimeout(r, 50))
   }
   assert.equal(restored?.model, 'second', output)
-  child.kill('SIGTERM'); const [restartedCode] = await exited; assert.equal(restartedCode, 0, output)
+  stop(); const [restartedCode] = await exited; assert.equal(restartedCode, 0, output)
 })
 test('headless Host refuses startup when the required native provider failed to mount',async t=>{
- const root=await mkdtemp('/tmp/night-pi-provider-startup-');t.after(()=>rm(root,{recursive:true,force:true}))
+ const root=await mkdtemp(join(tmpdir(),'night-pi-provider-startup-'));t.after(()=>rm(root,{recursive:true,force:true}))
  await assert.rejects(createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',streamIdleTimeoutMs:0,models:[{id:'m'}]}}}),/NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE/)
 })

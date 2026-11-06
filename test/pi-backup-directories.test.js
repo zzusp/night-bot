@@ -1,6 +1,8 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,mkdir,writeFile,readFile,lstat,readdir,rm,symlink} from 'node:fs/promises'
+import {mkdtemp,mkdir,writeFile,readFile,lstat,readdir,rm} from 'node:fs/promises'
 import fs from 'node:fs/promises'
 import {syncBuiltinESMExports} from 'node:module'
 import {join} from 'node:path'
@@ -11,7 +13,7 @@ import {createHost} from '../src/host.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
-async function temp(t){const root=await mkdtemp('/tmp/night-backup-dirs-');t.after(()=>rm(root,{recursive:true,force:true}));return root}
+async function temp(t){const root=await mkdtemp(join(tmpdir(),'night-backup-dirs-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
 async function snapshot(t){const root=await temp(t),config={installRoot:root},paths=runtimePaths(config);await prepareRuntimePaths(paths);await mkdir(join(paths.workspaces,'work/sub'),{recursive:true});await mkdir(join(paths.workspaces,'tasks/task/outputs'),{recursive:true});await mkdir(join(paths.workspaces,'credentials-empty'));await writeFile(join(paths.state,'record.json'),'retained');const backup=join(root,'backups/snapshot');await backupData(config,backup);return {root,config,paths,backup,manifest:JSON.parse(await readFile(join(backup,'manifest.json'),'utf8'))}}
 
 test('own backup restores real empty directories across roots with private permissions and exclusions',async t=>{

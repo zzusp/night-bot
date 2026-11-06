@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm,readFile,writeFile} from 'node:fs/promises'
@@ -10,7 +11,7 @@ const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input
 const ordinary={type:'object',required:['text'],properties:{text:{type:'string'}},additionalProperties:false}
 const union={anyOf:[{type:'object',required:['kind','rows'],properties:{kind:{const:'tuple'},rows:{type:'array',prefixItems:[{type:'string',minLength:1}],minItems:1,maxItems:1}},additionalProperties:false},{type:'object',required:['kind','values'],properties:{kind:{const:'record'},values:{type:'object',additionalProperties:{type:'number',exclusiveMinimum:0}}},additionalProperties:false}]}
 async function fixture(t,mode){
- const root=await mkdtemp('/tmp/night-official-codemode-');await mkdir(join(root,'agent'));await mkdir(join(root,'sessions'))
+ const root=await mkdtemp(join(tmpdir(),'night-official-codemode-'));await mkdir(join(root,'agent'));await mkdir(join(root,'sessions'))
  const entered=Promise.withResolvers(),release=Promise.withResolvers(),hostEnd=Promise.withResolvers(),childEnd=Promise.withResolvers();let session,prompt,requests=0,hostFinished=false,hostSignal
  t.after(async()=>{release.resolve();await prompt?.catch(()=>{});await session?.abort();session?.dispose();await rm(root,{recursive:true,force:true})})
  const runtime=await ModelRuntime.create({modelsPath:null,modelsStore:new InMemoryModelsStore(),credentials:new InMemoryCredentialStore(),refreshOnCreate:false,allowModelNetwork:false}),model=runtime.getModels()[0];await runtime.setRuntimeApiKey(model.provider,'script-only')

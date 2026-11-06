@@ -18,7 +18,7 @@ test('official custom messages follow all tool results, block behind durable com
  let held=true,gate
  const store={kind:'pi-native',manager:h.manager,async commit(){
   if(extras(h.manager).length&&held){entered.resolve();await release.promise}
-  const path=h.manager.getSessionFile();for(const item of [path,dirname(path)]){let file;try{file=await open(item,'r')}catch(error){if(error.code==='ENOENT'&&!extras(h.manager).length)continue;throw error}try{await file.sync()}finally{await file.close()}}
+  const path=h.manager.getSessionFile();for(const item of (process.platform==='win32'?[path]:[path,dirname(path)])){let file;try{file=await open(item,process.platform==='win32'?'r+':'r')}catch(error){if(error.code==='ENOENT'&&!extras(h.manager).length)continue;throw error}try{await file.sync()}finally{await file.close()}}
  },async close(){}}
  gate=bindOfficialDurability({session:h.session,store,tools:h.adapter})
  h.deferCleanup(()=>gate.close());bind(h,cause=>gate.fence(cause))

@@ -1,3 +1,4 @@
+import {nativeLifecycle,nativeLifecycleTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile,stat} from 'node:fs/promises'
@@ -11,17 +12,21 @@ import {registerTaskSession} from '../src/tasks/session-routes.js'
 const call=(tool,args)=>({tool,args})
 const wait=(summary,extra={})=>call('task_result',{decision:{action:'wait',summary,evidence:['original source and conditions read'],limitations:[],...extra}})
 const remember=()=>call('memory_remember',{topic:'preferences',key:'review-bypass',text:'must not be written',sourceMessageId:'forged-human',sourceQuote:'remember this'})
+const shell=process.platform==='win32'?'pwsh':'bash'
+const forbiddenShell=path=>call(shell,{command:shell==='pwsh'?`Set-Content -LiteralPath '${path}' -Value 'forbidden'`:`touch '${path}'`,description:'Must not run in dialogue or review'})
 
-test('actual Host human review and dialogue stay read-only, record real SQL source evidence, then resume standing authorization',{timeout:20000},async()=>{
- const cleanups=[],bodyCalls={write:0,bash:0,memory_remember:0},scopes=[],observations=[]
+test('actual Host human review and dialogue stay read-only, record real SQL source evidence, then resume standing authorization',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
+ const cleanups=[],bodyCalls={write:0,[shell]:0,memory_remember:0},scopes=[],observations=[]
  let stage='initial',step=0,requestId='business-question',candidate='fact-source',review,taskId='review-task',binding,sessions,store
+ t.after(async()=>{await sessions?.close();await store?.close();for(const cleanup of cleanups.reverse())await cleanup()})
+ t.onCancel(()=>sessions?.close())
  const f=await memoryHost({after:fn=>cleanups.push(fn)},body=>{
   if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
-  if(['dialogue','followup','answer'].includes(stage))for(const name of ['write','bash','memory_remember'])assert.ok(body.tools.some(tool=>tool.function.name===name),'review must deny an actual available tool: '+name)
+  if(['dialogue','followup','answer'].includes(stage))for(const name of ['write',shell,'memory_remember'])assert.ok(body.tools.some(tool=>tool.function.name===name),'review must deny an actual available tool: '+name)
   const n=step++
   if(stage==='initial')return call('task_result',{decision:{action:'blocked',summary:'Original work waits for the designated business owner’s conditions.',question:'Please confirm the UAT2-only scope and persistence condition.',audience:'requester',evidence:['original authorized objective'],limitations:[],attemptedActions:['Read the original scope']}})
-  if(stage==='dialogue')return [call('write',{path:'work/dialogue-forbidden.txt',content:'forbidden'}),call('bash',{command:'touch work/dialogue-shell-forbidden.txt',description:'Must not run in dialogue'}),remember(),wait('Current facts only; the original business question remains pending.')][n]
-  if(stage==='followup')return [call('write',{path:'work/review-forbidden.txt',content:'forbidden'}),call('bash',{command:'touch work/review-shell-forbidden.txt',description:'Must not run in review'}),remember(),wait('A fact reply cannot resolve the original business approval.',{replySourceId:'foreign-source'}),wait('Read evidence is necessary.',{replySourceId:candidate,evidence:[]}),wait('Only existing local evidence is known; no implementation approval was inferred.',{replySourceId:candidate})][n]
+  if(stage==='dialogue')return [call('write',{path:'work/dialogue-forbidden.txt',content:'forbidden'}),forbiddenShell('work/dialogue-shell-forbidden.txt'),remember(),wait('Current facts only; the original business question remains pending.')][n]
+  if(stage==='followup')return [call('write',{path:'work/review-forbidden.txt',content:'forbidden'}),forbiddenShell('work/review-shell-forbidden.txt'),remember(),wait('A fact reply cannot resolve the original business approval.',{replySourceId:'foreign-source'}),wait('Read evidence is necessary.',{replySourceId:candidate,evidence:[]}),wait('Only existing local evidence is known; no implementation approval was inferred.',{replySourceId:candidate})][n]
   if(stage==='answer')return [call('task_human_resolve',{requestId:'foreign-request',sourceId:candidate,reason:'not the current question',evidence:['not authority']}),call('task_human_resolve',{requestId,sourceId:'foreign-source',reason:'not a candidate',evidence:['not authority']}),call('task_human_resolve',{requestId,sourceId:candidate,reason:'empty evidence cannot authorize',evidence:[]}),call('task_human_resolve',{requestId,sourceId:candidate,reason:'business-person is designated by the original objective; the full reply answers this question and preserves the UAT2-only condition.',evidence:['business-person: UAT2 only; edits must persist on save. No other environment is approved.']}),call('write',{path:'work/after-resolve-forbidden.txt',content:'forbidden'}),remember(),wait('The original reply and all conditions were recorded; this review remains read-only.')][n]
   if(stage==='normal')return n===0?call('write',{path:'work/authorized.txt',content:'original authorized local work'}):call('task_result',{decision:{action:'complete',summary:'Original local work verified.',evidence:['work/authorized.txt'],limitations:[]}})
   throw Error('unexpected stage')
@@ -51,11 +56,11 @@ test('actual Host human review and dialogue stay read-only, record real SQL sour
   })
   assert.equal(result.status,'submitted');await finish(claimed)
  }
- try{
   store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'review-tasks.sqlite'),workspaceDir:ctx.runtimePaths.workspaces,instanceId:'review-test',ownerActorId:'owner',webActorId:'owner',initialize:true})
   const original='After business-person confirms the existing UAT2-only conditions, create the original local proof under work/. No other environment or objective is authorized.'
   await command('task.create',{taskId,groupId:'review-group',ownerActorId:'owner',objective:original,request:original})
   sessions=createSingleTaskSessions({ctx,isCurrent:async expected=>{const task=await row();return task.status==='active'&&task.control==='active'&&!task.drained&&task.leaseEpoch===expected.leaseEpoch&&task.requirementRevision===expected.requirementRevision&&task.controlRevision===expected.controlRevision&&(task.contextRevision??0)===(expected.contextRevision??0)},getWorkspaceDir:async()=>{const task=await row();await taskWorkspace(ctx.runtimePaths.workspaces,taskId);await registerTaskSession(ctx.runtimePaths,ctx.get('taskSessionRoutes'),task);return taskWorkspace(ctx.runtimePaths.workspaces,taskId)}})
+  await t.beginBusiness()
   await execute(await command('task.claim',{taskId}))
   const initial=await ctx.sessionPersistence.readNative((await row()).sessionId,{requireComplete:true}),standing=initial.audit.filter(receipt=>['permission','sandbox','approval'].includes(receipt.domain))
   assert.ok(standing.some(receipt=>receipt.domain==='permission'&&receipt.payload.sandbox==='workspace-write'))
@@ -74,9 +79,9 @@ test('actual Host human review and dialogue stay read-only, record real SQL sour
   await execute(answer,{humanReview:review})
   current=await row();assert.equal(current.humanRequests[0].status,'answered');assert.equal(current.humanRequests[0].sourceId,candidate);assert.equal(current.humanRequests[0].actorId,'business-person');assert.equal(current.humanRequests[0].reply,reply);assert.match(current.humanRequests[0].resolution.reason,/designated by the original objective/)
   assert.equal(observations.filter(value=>value.kind==='resolve').length,1,'foreign and empty evidence calls never invoke the SQL resolution capability')
-  assert.deepEqual(bodyCalls,{write:0,bash:0,memory_remember:0})
+  assert.deepEqual(bodyCalls,{write:0,[shell]:0,memory_remember:0})
   const beforeNormal=await ctx.sessionPersistence.readNative(current.sessionId,{requireComplete:true})
-  const denied=beforeNormal.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&['write','bash','memory_remember'].includes(entry.message.toolName)).map(entry=>entry.message)
+  const denied=beforeNormal.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&['write',shell,'memory_remember'].includes(entry.message.toolName)).map(entry=>entry.message)
   assert.equal(denied.length,8)
   assert.ok(denied.every(result=>result.isError&&result.content.some(block=>block.type==='text'&&/DYNAMIC_HUMAN_REVIEW_READ_ONLY|TASK_DIALOGUE_REPLY_ONLY/.test(block.text))),'valid advertised tools must be refused by the review boundary, not missing arguments or missing tools')
   assert.deepEqual(beforeNormal.audit.filter(receipt=>['permission','sandbox','approval'].includes(receipt.domain)),standing,'review overlays never rewrite standing policy facts')
@@ -86,7 +91,6 @@ test('actual Host human review and dialogue stay read-only, record real SQL sour
   stage='normal';step=0;await execute(await command('task.claim',{taskId}))
   current=await row();assert.equal(current.status,'completed');assert.equal(current.objective,original);assert.equal(current.requirementRevision,1);assert.equal(current.controlRevision,1)
   assert.equal(await readFile(join(beforeNormal.header.cwd,'work','authorized.txt'),'utf8'),'original authorized local work')
-  assert.deepEqual(bodyCalls,{write:1,bash:0,memory_remember:0})
+  assert.deepEqual(bodyCalls,{write:1,[shell]:0,memory_remember:0})
   assert.deepEqual(scopes.map(value=>[value.stage,value.mode,value.approval,value.preset,value.memoryWrite]),[['initial','workspace-write','never','workspace-write',true],['dialogue','read-only','never','read-only',false],['followup','read-only','never','read-only',false],['answer','read-only','never','read-only',false],['normal','workspace-write','never','workspace-write',true]])
- }finally{await sessions?.close();await store?.close();for(const cleanup of cleanups.reverse())await cleanup()}
-})
+}))

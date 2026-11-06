@@ -1,3 +1,4 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdir,writeFile} from 'node:fs/promises'
@@ -20,11 +21,12 @@ async function proposal(service,inspection){
  return {...Object.fromEntries(['taskId','intentEntryId','intentDigest','currentBinding','journalRevision','scopeDigest'].map(key=>[key,inspection[key]])),requestId:'operator-close',evidenceRefs:[{path,sha256}],outcome:'closed-with-possible-partial-effects',noReplay:true,operatorText:'I inspected the actual output and close this failed attempt with possible partial effects. Do not replay or continue.'}
 }
 
-test('closed partial effects cannot become completed through bare unpause and a tool-free completion',{timeout:20000},async t=>{
- let phase='unknown',effects=0
+test('closed partial effects cannot become completed through bare unpause and a tool-free completion',{timeout:nativeTestTimeout(20000)},async t=>{
+ let phase='unknown',effects=0,h
+ t.after(()=>h?.close())
  const f=await memoryHost(t,body=>{if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return;if(phase==='unknown')return {tool:'partial_write',args:{}};const action=phase==='wait'?'wait':'complete';phase='wait';return {tool:'task_result',args:{decision:{action,summary:action==='wait'?'Prior attempt remains closed with possible partial effects':'Claim completion without a new authorized objective',evidence:['retained original evidence'],limitations:[]}}}})
  f.host.ctx.get('tools').register({name:'partial_write',description:'A real local effect with an unknown result',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'actual partial effect');throw Error('response lost')}})
- const h=await open(f);t.after(()=>h.close())
+ h=await open(f)
  const created=await h.service.createTask({requestId:'initial',objective:'Perform one original bounded effect'});await until(async()=>!!(await h.service.taskDialogue(created.taskId)).error);await h.service.whenIdle()
  const original=await h.store.query({kind:'task.get',taskId:created.taskId}),stored=await f.host.ctx.sessionPersistence.readNative(original.sessionId,{requireComplete:true}),intent=stored.auditEntries.find(row=>row.data.kind==='effect-intent'),inspection=await h.service.inspectTaskEffect({taskId:created.taskId,intentEntryId:intent.entryId})
  await h.service.reconcileTaskEffect(await proposal(h.service,inspection))

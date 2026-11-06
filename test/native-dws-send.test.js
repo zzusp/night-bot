@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createNativeDwsObserver, nativeDwsCommands, nativeDwsObservation, nativeDwsStatus } from '../packages/dingtalk-dsh-assistant/native-dws-send.js'
+import { createNativeDwsObserver, nativeDwsCommands, nativeDwsObservation, nativeDwsStatus } from '../packages/dingtalk-core/native-dws-send.js'
 
 const binding = { sessionId: 'session' }
 const send = (type = 'file') => type === 'reply'
