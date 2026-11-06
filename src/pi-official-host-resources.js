@@ -38,7 +38,13 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   assertCurrent()
   const saved=mode==='resume'?store?.manager?.buildSessionProjection():undefined
   const restored=saved?.model?{provider:saved.model.provider,model:saved.model.modelId}:{}
-  const resolved=await provider.resolve({...primary,...restored,...route(options.agentOptions),...signal?{signal}:{}},{credentials})
+  const requested=route(options.agentOptions),defaults={...primary}
+  // An explicit route is a complete reasoning selection: omission delegates to
+  // Pi/profile defaults, rather than borrowing another route's global effort.
+  // On resume Pi restores and clamps its original thinking entry itself.
+  if(mode==='resume'||requested.provider!==undefined||requested.model!==undefined)delete defaults.reasoningEffort
+  const selected=await provider.resolve({...defaults,...restored,...requested,...signal?{signal}:{}},{credentials})
+  const resolved=mode==='resume'&&requested.reasoningEffort===undefined?{...selected,thinkingLevel:undefined}:selected
   assertCurrent()
   const agentDir=join(privateRoot,'pi-agents',hash(actor.id));await safePath(agentDir);await privateDirectory(agentDir);assertCurrent()
   if(!resolved.retrySettings)fail('PI_OFFICIAL_RETRY_SETTINGS_REQUIRED')

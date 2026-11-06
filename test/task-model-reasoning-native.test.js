@@ -1,102 +1,73 @@
-import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
-import { available, reason, nativeTaskHost, topicSummaryResponse, contextReadResponse, nativeVerificationTeam, latestInput } from './fixtures/task-session-native-host.js'
-import { createTaskSessions } from '../packages/dingtalk-dsh-assistant/task-session.js'
-import { taskModelSelection } from '../packages/dingtalk-dsh-assistant/task-model-config.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
-import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
+import {AgentSession} from '@earendil-works/pi-coding-agent'
+import {taskModelSelection} from '../packages/dingtalk-core/task-model-config.js'
+import {officialReasoningHost,send} from './fixtures/official-reasoning-host.js'
 
-function installModel(ctx, providers, decide, requests) {
-  const profile = createRequire(pathToFileURL(resolve(process.env.DSH_NATIVE_TEST_PROFILE)))
-  const native = createRequire(profile.resolve('@deepseek-ai/dsh-base'))
-  const { LlmAdapter } = native('@deepseek-ai/dsh-llm')
-  let sequence = 0
-  const auxiliaryRequests = []
-  class ReasoningModel extends LlmAdapter {
-    resolveModel(provider, model) { return { provider, id: model, name: model,
-      reasoning: { efforts: ['low','medium','high'].map(id => ({ id, name:id })), defaultEffort: 'medium' } } }
-    async *stream(request) {
-      if (yield* topicSummaryResponse(request, auxiliaryRequests)) return
-      if (yield* contextReadResponse(request)) return
-      requests.push(structuredClone(request))
-      const calls = await decide(request)
-      for (const [index,call] of calls.entries()) {
-        const id = `reasoning-${++sequence}`, args = JSON.stringify(call.args)
-        yield { type:'block-start', index, blockType:'tool-call' }
-        yield { type:'tool-call-delta', index, id, name:call.name, argumentsDelta:args }
-        yield { type:'block-end', index, block:{ type:'tool-call', id, name:call.name, arguments:args } }
-      }
-      yield { type:'finish', reason:{ kind:calls.length ? 'tool-calls' : 'stop' } }
-    }
-  }
-  ctx.llm.registerAdapter(providers,new ReasoningModel())
-}
-const decision = action => ({ name:'task_session_submit', args:{ decision:{ action,summary:'核对原任务结果',evidence:[],limitations:[] } } })
+// Owner/delegated routing was cancelled with the split execution architecture.
+// Former Owner depth becomes official session route/default/lifetime evidence.
+// Former delegated isolation becomes sole-task versus an independent actor;
+// it does not assert that a child execution or an Owner role still exists.
+test('official actor snapshots inherited reasoning in flight and applies explicit changes only on same-session resume',{timeout:15000},async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();let first=true
+ const f=await officialReasoningHost(t,async()=>{if(first){first=false;entered.resolve();await release.promise}return {text:'route verified'}})
+ const global={provider:'primary',model:'global-model',reasoningEffort:'low'},configured={provider:'task-route',model:'task-model',reasoningMode:'inherit'}
+ let handle=await f.agent('reasoning-binding',taskModelSelection(global,configured));t.after(()=>handle.dispose());assert.ok(handle.session instanceof AgentSession)
+ const running=send(handle,'first');await entered.promise
+ configured.reasoningMode='explicit';configured.reasoningEffort='high';release.resolve();await running
+ assert.equal(f.requests[0].provider,'task-route');assert.equal(f.requests[0].model,'task-model');assert.equal(f.requests[0].reasoning,'low');assert.equal(handle.session.thinkingLevel,'low')
+ await handle.dispose();handle=await f.agent('reasoning-binding',taskModelSelection(global,configured),true);await send(handle,'second')
+ assert.equal(handle.session.thinkingLevel,'high');assert.equal(f.requests.at(-1).reasoning,'high');assert.equal(f.requests.length,2);assert.equal(global.reasoningEffort,'low')
+ const before=await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true});await handle.dispose()
+ configured.reasoningEffort='ultra';await assert.rejects(f.agent('reasoning-binding',taskModelSelection(global,configured),true),{code:'UNSUPPORTED_REASONING_EFFORT'})
+ assert.deepEqual((await f.host.ctx.sessionPersistence.readNative('reasoning-binding',{requireComplete:true})).entries,before.entries)
+})
 
-test('native owner inherits old depth, keeps in-flight depth and switches only on same-session resume; model default and unsupported differ',
-  { ...({skip:!available ? reason : false,timeout:30000}), timeout: nativeLifecycleTimeout(30000) },nativeLifecycle(30000, async (t) => {
-    const root = await mkdtemp(join(tmpdir(),'task-reasoning-native-'))
-    const h = await nativeTaskHost(root,async()=>[],{resident:true})
-    await t.beginBusiness()
+test('model-default reasoning is selected by official SDK support, independently of global low',{timeout:15000},async t=>{
+ const f=await officialReasoningHost(t,()=>({text:'official default verified'})),selection=taskModelSelection(f.config.model,{provider:'task-route',model:'high-only',reasoningMode:'model-default'})
+ assert.equal(selection.reasoningEffort,undefined)
+ const handle=await f.agent('official-model-default',selection);t.after(()=>handle.dispose());assert.equal(handle.session.thinkingLevel,'high');await send(handle,'default-input')
+ assert.equal(f.requests[0].reasoning,'high');assert.equal(f.requests[0].model,'high-only');assert.equal(f.config.model.reasoningEffort,'low')
+})
 
-    const cwd = join(root,'tasks','owner'); await t.step(async () => mkdir(cwd,{recursive:true}))
-    const manager = createTaskSessions({ctx:h.ctx,isCurrent:async()=>true,getWorkspaceDir:async()=>cwd})
-    t.after(async()=>{try{await manager.close();await h.close()}finally{await rm(root,{recursive:true,force:true})}})
-    const requests=[], entered=Promise.withResolvers(), release=Promise.withResolvers()
-    installModel(h.ctx,['reasoning-test'],async()=>{
-      if(requests.length===1){entered.resolve();await release.promise}
-      return [decision('wait')]
-    },requests)
-    const global={provider:'executor',model:'sol',reasoningEffort:'low'}, config={provider:'reasoning-test',model:'astra'}
-    const run=leaseEpoch=>manager.run({binding:{kind:'task-session',taskId:'owner',sessionId:'original-owner',leaseEpoch,sessionBound:leaseEpoch>1},
-      ...taskModelSelection(global,config),agentPreset:'native-test',input:{task:{title:'原任务',objective:'核对配置'},wakes:[]},
-      onSessionBound:async()=>{},submit:async()=>({accepted:true})})
-    const first=run(1); await t.step(async () => entered.promise)
-    config.reasoningEffort='high';release.resolve();assert.equal((await t.step(async () => first)).status,'submitted')
-    assert.equal(requests[0].reasoningEffort,'low','in-flight request keeps its original selection')
-    assert.equal((await t.step(async () => run(2))).status,'submitted');assert.equal(requests.at(-1).reasoningEffort,'high')
-    config.reasoningEffort=null
-    assert.equal((await t.step(async () => run(3))).status,'submitted');assert.equal(requests.at(-1).reasoningEffort,'medium','native adapter model default differs from global low')
-    const before=await t.step(async () => inspectSession(h.ctx.sessionPersistence,'original-owner'))
-    config.reasoningEffort='ultra'
-    await t.step(async () => assert.rejects(run(4),{code:'TASK_SESSION_REASONING_EFFORT_UNSUPPORTED'}))
-    assert.deepEqual((await t.step(async () => inspectSession(h.ctx.sessionPersistence,'original-owner'))).events,before.events)
-    assert.equal(before.events.filter(x=>x.type==='plugin:dingtalk/task-session').length,1)
-    assert.equal(requests.length,3);assert.equal(global.reasoningEffort,'low')
-  }))
+test('cancel and a full cold resume preserve exact session model identity without reusing a cancelled request',{timeout:15000},async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();let hold=true
+ const f=await officialReasoningHost(t,async()=>{if(hold){entered.resolve();await release.promise}return {text:'cold route verified'}})
+ let handle=await f.agent('cancelled-model',{provider:'task-route',model:'task-model',reasoningEffort:'high'});t.after(()=>handle.dispose())
+ const running=send(handle,'cancelled-request'),outcome=running.catch(error=>error);await entered.promise
+ const cancelling=handle.cancel();release.resolve();await cancelling;await outcome;assert.equal(f.requests[0].signal.aborted,true)
+ await handle.dispose();hold=false;await f.cold()
+ // No model override: official persisted model/thinking entries are authority.
+ handle=await f.agent('cancelled-model',{},true);assert.equal(handle.session.model.provider,'task-route');assert.equal(handle.session.model.id,'task-model');assert.equal(handle.session.thinkingLevel,'high')
+ const count=f.requests.length;await send(handle,'fresh-after-cold');assert.equal(f.requests.length,count+1);assert.equal(f.requests.at(-1).provider,'task-route');assert.equal(f.requests.at(-1).reasoning,'high')
+})
 
-test('native service sends explicit owner depth while delegated execution and its provider retain the global selection',
-  { ...({skip:!available ? reason : false,timeout:30000}), timeout: nativeLifecycleTimeout(30000) },nativeLifecycle(30000, async (t) => {
-    const root=await mkdtemp(join(tmpdir(),'task-depth-isolation-')),requests=[]
-    let h,delegated=false
-    const verification = nativeVerificationTeam()
-    t.after(async()=>{try{await h?.close()}finally{await rm(root,{recursive:true,force:true})}})
-    await t.beginBusiness()
-    h=await t.step(async () => nativeTaskHost(root,async()=>[],{agentConfig:{provider:'executor-test',model:'sol',reasoningEffort:'low',
-      taskSessionModel:{provider:'owner-test',model:'astra',reasoningMode:'explicit',reasoningEffort:'high'}},
-      serviceFactory:async options=>{
-        installModel(options.ctx,['executor-test','owner-test'],async request=>{
-          if(request.tools.some(x=>x.name==='task_delegate')){
-            const input=latestInput(request), primary=input.executions.find(x=>x.key==='depth-isolation'), done=primary?.status==='succeeded'&&primary.drained
-            const review=verification.owner(input,primary); if(review)return review
-            const calls=delegated?[]:[{name:'task_delegate',args:{key:'depth-isolation',objective:'独立执行核对'}}]
-            delegated=true;return [...calls,decision(done?'complete':'wait')]
-          }
-          return verification.execute(request,latestInput(request)) ?? [{name:'execution_submit',args:{output:{status:'completed',summary:'已核对',evidence:[],limitations:[],artifacts:[]}}}]
-        },requests)
-        return openTaskSessionService(options)
-      }}))
-    const task=await t.step(async () => h.service.createTask({groupId:'native-group',requestId:'depth-isolation',objective:'核对独立推理深度'}))
-    await t.step(async () => h.service.whenIdle())
-    assert.equal((await t.step(async () => h.query('task.get',{taskId:task.taskId}))).status,'completed',JSON.stringify(h.service.listAlerts()))
-    const owners=requests.filter(x=>x.tools.some(t=>t.name==='task_delegate')),executors=requests.filter(x=>x.tools.some(t=>t.name==='execution_submit'))
-    assert.ok(owners.length>=2);assert.ok(executors.length)
-    assert.ok(owners.every(x=>x.provider==='owner-test'&&x.model==='astra'&&x.reasoningEffort==='high'))
-    assert.ok(executors.every(x=>x.provider==='executor-test'&&x.model==='sol'&&x.reasoningEffort==='low'))
-  }))
+test('Single task uses its explicit model/depth while an independent official actor retains the global route',{timeout:15000},async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();let held=false
+ const f=await officialReasoningHost(t,async request=>{
+  if(request.provider==='task-route'){if(!held){held=true;entered.resolve();await release.promise}return {calls:[{name:'task_result',args:{decision:{action:'wait',summary:'Verified the sole task model route',evidence:[],limitations:[]}}}]}}
+  return {text:'independent global route verified'}
+ })
+ const agentConfig={...f.config.model,agentPreset:'night-bot',taskSessionModel:{provider:'task-route',model:'task-model',reasoningMode:'explicit',reasoningEffort:'high'}},service=await f.service(agentConfig)
+ const task=await service.createTask({requestId:'single-model-route',objective:'Verify the sole task model and depth'})
+ await entered.promise;agentConfig.taskSessionModel.reasoningEffort='low';release.resolve();await service.whenIdle()
+ assert.equal(f.requests.filter(request=>request.provider==='task-route').length,1);assert.equal(f.requests.find(request=>request.provider==='task-route').reasoning,'high')
+ const global=await f.agent('independent-global',f.config.model);try{await send(global,'global-input');assert.equal(f.requests.at(-1).provider,'primary');assert.equal(f.requests.at(-1).model,'global-model');assert.equal(f.requests.at(-1).reasoning,'low')}finally{await global.dispose()}
+ await service.sendTaskDialogue({taskId:task.taskId,requestId:'next-depth',text:'Verify the current configured task depth without new effects'});await service.whenIdle()
+ const taskRequests=f.requests.filter(request=>request.provider==='task-route');assert.equal(taskRequests.length,2);assert.equal(taskRequests[1].reasoning,'low')
+ const stored=await f.host.ctx.sessionPersistence.readNative(task.session.sessionId,{requireComplete:true});assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='identity').length,1);assert.equal((await service.store.query({kind:'execution.list'})).length,0)
+})
+
+
+test('an explicit same-model route with no effort uses direct official SDK defaults rather than deployment low',{timeout:15000},async t=>{
+ const {createAgentSession,SessionManager,SettingsManager,DefaultResourceLoader}=await import('@earendil-works/pi-coding-agent')
+ const {mkdir}=await import('node:fs/promises'),{join}=await import('node:path')
+ const f=await officialReasoningHost(t,()=>({text:'same-model default verified'})),route={provider:'primary',model:'global-model'}
+ const resolved=await f.host.ctx.get('nativePiProvider').official.resolve(route),agentDir=join(f.root,'official-default-reference');await mkdir(agentDir)
+ const settings=SettingsManager.inMemory(),loader=new DefaultResourceLoader({cwd:f.root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
+ const {session}=await createAgentSession({cwd:f.root,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,sessionManager:SessionManager.inMemory(f.root),settingsManager:settings,resourceLoader:loader,noTools:'all'})
+ const expected=session.thinkingLevel;session.dispose()
+ const handle=await f.agent('same-model-default',route);t.after(()=>handle.dispose())
+ assert.equal(handle.session.thinkingLevel,expected);assert.equal(f.requests.length,0)
+ await send(handle,'same-model-input');assert.equal(f.requests[0].reasoning,expected)
+})
