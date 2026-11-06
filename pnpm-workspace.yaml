@@ -1,6 +1,4 @@
 allowBuilds:
-  # Remaining legacy PTC test peer: reviewed node-pty helper chmod only.
-  '@deepseek-ai/dsh-subprocess-local': true
   # Published JS is used; the no-op/version-warning install hooks are unnecessary.
   '@google/genai': false
   # Pinned native packages use their reviewed prebuild/install paths.

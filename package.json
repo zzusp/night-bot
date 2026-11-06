@@ -51,7 +51,6 @@
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-timer": "1.1.7",
     "@deepseek-ai/cosmokit": "1.8.6-alpha.1",
-    "@deepseek-ai/dsh-ptc-runtime-node": "0.2.1-alpha.2",
     "@deepseek-ai/node-addon-system-darwin-arm64": "0.1.2",
     "@deepseek-ai/node-addon-system-darwin-x64": "0.1.2",
     "@deepseek-ai/node-addon-system-linux-arm64": "0.1.2",

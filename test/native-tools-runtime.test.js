@@ -1,41 +1,65 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,readFile,access,writeFile} from 'node:fs/promises'
-import {join,dirname,basename} from 'node:path'
-import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
-import {createHost} from '../src/host.js'
-test('native code transport uses a real isolated Node RPC worker and enforces workspace writes', {timeout:20000}, async t=>{
- const root=await mkdtemp('/tmp/night-native-code-worker-'),work=join(root,'work'),outside=join(dirname(process.cwd()),'.night-code-denied-'+basename(root)+'.txt');let host,handle
- t.after(async()=>{try{await handle?.dispose();await host?.close()}finally{await rm(root,{recursive:true,force:true});await rm(outside,{force:true})}})
- host=await createHost({stateDir:join(root,'state'),workspaceDir:work,model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',models:[{id:'m'}]}}})
- await host.ctx.plugin(NodePtcRuntime,{timeoutMs:5000,maxTimeoutMs:10000})
- assert.ok(host.ctx.get('ptcRuntime'))
- handle=await host.ctx.agents.create({sessionId:'native-code-rpc',meta:{cwd:work},setup:async ctx=>{
-  await host.ctx.agentPresets.mount(ctx,'night-bot')
-  ctx.tools.presentAs('ptc');ctx.tools.register({name:'echo',description:'Echo a structured RPC value',parameters:{type:'object',required:['text'],properties:{text:{type:'string'}},additionalProperties:false},output:{schema:{type:'object',required:['text'],properties:{text:{type:'string'}},additionalProperties:false},render:(_args,value)=>[{type:'text',text:value.text}]},execute:async args=>args})
- }})
- // The application sandbox deliberately permits the host temporary directory.
- // Prove a parent-directory path is ordinarily writable before testing denial.
- await writeFile(outside,'baseline host permission');await rm(outside)
- const code=`const fs = await import('node:fs/promises'); await fs.writeFile('inside.txt', 'within workspace'); await tools.write({ file_path: 'rpc-inside.txt', content: 'nested filesystem tool' }); let denied = false; try { await fs.writeFile(${JSON.stringify(outside)}, 'must fail'); } catch { denied = true; } return { rpc: await tools.echo({ text: 'REAL_NODE_RPC' }), denied, emptyEnvironment: Object.keys(process.env).length === 0 };`
- const result=await handle.agent.ctx.tools.execute({callId:'actual-code-rpc',name:'run_code',arguments:{description:'Verify isolated RPC and workspace policy',code},agent:handle.agent,signal:new AbortController().signal})
- assert.equal(result.isError,false,JSON.stringify(result));assert.equal(result.value.result.rpc.text,'REAL_NODE_RPC');assert.equal(result.value.result.denied,true,'outside write denied: '+JSON.stringify(result));assert.equal(result.value.result.emptyEnvironment,true,'empty worker environment: '+JSON.stringify(result));assert.equal(await readFile(join(work,'inside.txt'),'utf8'),'within workspace');assert.equal(await readFile(join(work,'rpc-inside.txt'),'utf8'),'nested filesystem tool');await assert.rejects(access(outside),e=>e.code==='ENOENT');const events=handle.agent.session.snapshotEvents();assert.equal(events.filter(e=>e.type==='tool/ptc-dispatch-start').length,2);assert.equal(events.filter(e=>e.type==='tool/ptc-dispatch').length,2)
+import {mkdtemp,mkdir,rm,readFile,writeFile} from 'node:fs/promises'
+import {join} from 'node:path'
+import {pathToFileURL} from 'node:url'
+import {createAgentSession,ModelRuntime,SessionManager,SettingsManager,DefaultResourceLoader,createCodemodeExtension} from '@earendil-works/pi-coding-agent'
+import {InMemoryModelsStore,InMemoryCredentialStore,createAssistantMessageEventStream} from '@earendil-works/pi-ai'
+import {memoryHost} from './fixtures/memory-host.js'
+const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
+const ordinary={type:'object',required:['text'],properties:{text:{type:'string'}},additionalProperties:false}
+const union={anyOf:[{type:'object',required:['kind','rows'],properties:{kind:{const:'tuple'},rows:{type:'array',prefixItems:[{type:'string',minLength:1}],minItems:1,maxItems:1}},additionalProperties:false},{type:'object',required:['kind','values'],properties:{kind:{const:'record'},values:{type:'object',additionalProperties:{type:'number',exclusiveMinimum:0}}},additionalProperties:false}]}
+async function fixture(t,mode){
+ const root=await mkdtemp('/tmp/night-official-codemode-');await mkdir(join(root,'agent'));await mkdir(join(root,'sessions'))
+ const entered=Promise.withResolvers(),release=Promise.withResolvers(),hostEnd=Promise.withResolvers(),childEnd=Promise.withResolvers();let session,prompt,requests=0,hostFinished=false,hostSignal
+ t.after(async()=>{release.resolve();await prompt?.catch(()=>{});await session?.abort();session?.dispose();await rm(root,{recursive:true,force:true})})
+ const runtime=await ModelRuntime.create({modelsPath:null,modelsStore:new InMemoryModelsStore(),credentials:new InMemoryCredentialStore(),refreshOnCreate:false,allowModelNetwork:false}),model=runtime.getModels()[0];await runtime.setRuntimeApiKey(model.provider,'script-only')
+ const manager=SessionManager.create(root,join(root,'sessions')),before=[],events=[]
+ const code=mode==='union'?'const failures=[];for(const args of [{kind:"tuple",rows:[]},{kind:"tuple",rows:["ok","extra"]},{kind:"record",values:{x:0}}]){try{await tools.echo(args)}catch(error){failures.push(String(error))}}const value=await tools.echo({kind:"record",values:{x:2}});return {failures,value,process:typeof process,require:typeof require,fetch:typeof fetch}':mode==='large'?'return await tools.echo({text:"x".repeat(9000)})':'return await tools.echo({text:"NESTED_PROOF"})'
+ const parentCall={type:'toolCall',id:'parent-'+mode,name:'codemode',arguments:{code},thoughtSignature:'opaque-scripted-signature'}
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple(){const stream=createAssistantMessageEventStream(),first=++requests===1,message={role:'assistant',api:model.api,provider:model.provider,model:model.id,usage,timestamp:Date.now(),stopReason:first?'toolUse':'stop',content:first?[structuredClone(parentCall)]:[{type:'text',text:'done'}]};queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream}})
+ const custom=pi=>{pi.registerTool({name:'echo',label:'echo',description:'Pure fixture echo, no filesystem or external effects',parameters:mode==='union'?union:ordinary,async execute(id,args,signal){
+  const disk=(await readFile(manager.getSessionFile(),'utf8')).trim().split('\n').map(line=>JSON.parse(line))
+  before.push({id,args:structuredClone(args),assistantCalls:disk.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').flatMap(entry=>entry.message.content).filter(block=>block.type==='toolCall')})
+  hostSignal=signal;entered.resolve();if(mode==='cancel')await release.promise;hostFinished=true;hostEnd.resolve();return {content:[{type:'text',text:args.text??JSON.stringify(args)}],details:{pure:true}}
+ }});pi.on('tool_call',event=>events.push({type:event.type,id:event.toolCallId,parent:event.parentToolCallId}))}
+ const settings=SettingsManager.inMemory({retry:{enabled:false},compaction:{enabled:false},cacheWarming:'off'}),loader=new DefaultResourceLoader({cwd:root,agentDir:join(root,'agent'),settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,extensionFactories:[createCodemodeExtension({models:false}),custom]});await loader.reload()
+ ;({session}=await createAgentSession({cwd:root,agentDir:join(root,'agent'),modelRuntime:runtime,model,sessionManager:manager,settingsManager:settings,resourceLoader:loader,noTools:'builtin',tools:['codemode','echo']}))
+ session.subscribe(event=>{if(event.type.startsWith('tool_execution')){events.push({type:event.type,id:event.toolCallId,parent:event.parentToolCallId});if(event.type==='tool_execution_end'&&event.parentToolCallId)childEnd.resolve()}})
+ let promptDone=false;prompt=session.prompt('Run the pure fixture').then(()=>{promptDone=true})
+ return {session,manager,events,before,parentCall,entered,release,hostEnd,childEnd,get hostFinished(){return hostFinished},get hostSignal(){return hostSignal},get promptDone(){return promptDone},async finish(){await prompt;return manager.getEntries()},cold(){return SessionManager.open(manager.getSessionFile(),join(root,'sessions')).getEntries()}}
+}
+const messages=entries=>entries.filter(entry=>entry.type==='message').map(entry=>entry.message)
+const parentResult=entries=>messages(entries).find(message=>message.role==='toolResult')
+function preserved(f,entries){assert.deepEqual(messages(entries).find(message=>message.role==='assistant').content,[f.parentCall]);assert.deepEqual(f.cold(),JSON.parse(JSON.stringify(entries)))}
+
+test('official SDK codemode persists parent signatures and bounded nested evidence without fabricating child assistant calls',{timeout:15000},async t=>{
+ const f=await fixture(t,'normal'),entries=await f.finish();preserved(f,entries)
+ assert.equal(f.before[0].id,'parent-normal/1');assert.deepEqual(f.before[0].assistantCalls,[f.parentCall],'before nested body only the unchanged parent call is durably present')
+ const nested=parentResult(entries).nestedCalls;assert.equal(nested.complete,true);assert.equal(nested.calls[0].id,'parent-normal/1');assert.equal(nested.calls[0].name,'echo');assert.deepEqual(nested.calls[0].arguments,{text:'NESTED_PROOF'})
+ assert.equal(messages(entries).filter(message=>message.role==='toolResult').length,1);assert.ok(f.events.some(event=>event.type==='tool_call'&&event.parent==='parent-normal'&&event.id==='parent-normal/1'))
 })
-test('real Node PTC calls exact anyOf contracts and rejects malformed union arguments before effects',{timeout:20000},async t=>{
- const {z}=await import('zod'),{toToolObjectJsonSchema}=await import('../packages/dingtalk-core/tool-schema.js')
- const root=await mkdtemp('/tmp/night-exact-code-worker-'),work=join(root,'work');let host,handle,effects=0,wrappers=0
- t.after(async()=>{try{await handle?.dispose();await host?.close()}finally{await rm(root,{recursive:true,force:true})}})
- host=await createHost({stateDir:join(root,'state'),workspaceDir:work,model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',models:[{id:'m'}]}}})
- await host.ctx.plugin(NodePtcRuntime,{timeoutMs:5000,maxTimeoutMs:10000})
- const parameters=toToolObjectJsonSchema(z.union([z.strictObject({kind:z.literal('tuple'),rows:z.tuple([z.string().min(1)])}),z.strictObject({kind:z.literal('record'),values:z.record(z.string(),z.number().positive())})]))
- handle=await host.ctx.agents.create({sessionId:'exact-code-rpc',meta:{cwd:work},setup:async ctx=>{
-  await host.ctx.agentPresets.mount(ctx,'night-bot');ctx.tools.presentAs('ptc')
-  ctx.tools.register({name:'exact',description:'Exact union contract',parameters,output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute:async args=>{effects++;return args}})
- }})
- host.ctx.on('tools/execute',(exec,next)=>{if(exec.name==='exact')wrappers++;return next()})
- const code=`const failures=[];for(const args of [{kind:'tuple',rows:[]},{kind:'tuple',rows:['ok','extra']},{kind:'record',values:{x:0}}]){try{await tools.exact(args);throw new Error('invalid input reached body')}catch(error){failures.push({toolName:error.toolName,message:error.message})}}const value=await tools.exact({kind:'record',values:{x:2}});return{failures,value};`
- const result=await handle.agent.ctx.tools.execute({callId:'exact-code-rpc',name:'run_code',arguments:{description:'Check exact RPC arguments',code},agent:handle.agent,signal:new AbortController().signal})
- assert.equal(result.isError,false,JSON.stringify(result));assert.equal(result.value.result.failures.length,3)
- for(const failure of result.value.result.failures){assert.equal(failure.toolName,'exact');assert.match(failure.message,/invalid arguments/)}
- assert.deepEqual(result.value.result.value,{kind:'record',values:{x:2}});assert.equal(effects,1);assert.equal(wrappers,1)
+test('official nested journal omits 9000-byte arguments and marks the evidence incomplete',{timeout:15000},async t=>{
+ const f=await fixture(t,'large'),entries=await f.finish();preserved(f,entries)
+ assert.equal(f.before[0].args.text.length,9000);const nested=parentResult(entries).nestedCalls;assert.equal(nested.complete,false);assert.equal(nested.calls[0].arguments,undefined);assert.equal(nested.calls[0].argumentsBytes,9011)
+})
+test('official codemode validates exact union arguments before pure host calls and exposes no Node globals',{timeout:15000},async t=>{
+ const f=await fixture(t,'union'),entries=await f.finish();preserved(f,entries)
+ assert.equal(f.before.length,1);assert.deepEqual(f.before[0].args,{kind:'record',values:{x:2}})
+ const nested=parentResult(entries).nestedCalls;assert.equal(nested.calls.length,4);assert.deepEqual(nested.calls.map(call=>call.status),['error','error','error','ok'])
+ const text=parentResult(entries).content.map(block=>block.text??'').join('\n');for(const name of ['process','require','fetch'])assert.match(text,new RegExp('"'+name+'":\\s*"undefined"'))
+})
+test('official extension abort and idle are not host-tool join or complete nested evidence',{timeout:15000},async t=>{
+ const f=await fixture(t,'cancel');await f.entered.promise
+ await f.session.abort();await f.session.waitForIdle();assert.equal(f.promptDone,true);assert.equal(f.hostFinished,false);assert.equal(f.hostSignal.aborted,true)
+ const before=await f.finish();assert.equal(parentResult(before).nestedCalls.complete,false);assert.equal(parentResult(before).nestedCalls.calls[0].status,'unfinished')
+ f.release.resolve();await f.hostEnd.promise;await f.childEnd.promise;preserved(f,f.manager.getEntries());assert.equal(f.hostFinished,true)
+ assert.ok(f.events.findIndex(event=>event.type==='tool_execution_end'&&!event.parent)<f.events.findIndex(event=>event.type==='tool_execution_end'&&event.parent))
+})
+test('actual default Host keeps codemode and run_code off and refuses the retired DSH Node plugin before evaluation',{timeout:15000},async t=>{
+ const f=await memoryHost(t);await f.close();const directory=join(f.root,'retired-plugin');await mkdir(directory)
+ const marker=join(directory,'evaluated'),entry=join(directory,'index.js');await writeFile(join(directory,'package.json'),JSON.stringify({name:'@deepseek-ai/dsh-ptc-runtime-node',version:'0.2.1-alpha.2',type:'module'}));await writeFile(entry,`import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(marker)},'must not run');export function apply(){throw Error('retired plugin must not load')}`)
+ f.config.plugins=[{name:pathToFileURL(entry).href}];await f.boot();const handle=await f.agent('default-no-code');t.after(()=>handle.dispose())
+ assert.equal(f.host.ctx.get('ptcRuntime'),undefined);for(const name of ['codemode','run_code']){assert.equal(handle.session.getActiveToolNames().includes(name),false);assert.equal(f.host.ctx.get('tools').get(name,handle.agent),undefined)}
+ await assert.rejects(readFile(marker),{code:'ENOENT'});assert.equal(f.requests.length,0)
 })

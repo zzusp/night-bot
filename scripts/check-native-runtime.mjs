@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto'
 import {resolve,dirname} from 'node:path'
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex')
 const manifest=JSON.parse(await readFile('package.json','utf8'))
+if(Object.keys(manifest.devDependencies??{}).some(name=>name.startsWith('@deepseek-ai/dsh-')))throw new Error('Retired DSH development dependency reintroduced')
 if(Object.keys(manifest.dependencies??{}).some(name=>name.startsWith('@deepseek-ai/dsh-')))throw new Error('Registry SDK runtime dependency reintroduced')
 // Retired source copies and their differential-only direct dependencies must not
 // silently become part of a later install or validation path again.
