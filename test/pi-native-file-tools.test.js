@@ -1,11 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as search from '../src/native-tool-fs-search.js'
-import * as files from '../src/native-tool-fs.js'
-function fileFixture(impl){const tools=new Map(),ctx={get(name){return this[name]},tools:{register:t=>tools.set(t.name,t)},fs:{sandboxMode:undefined},systemPrompt:{section(){},getSectionOrder:()=>1},inject(){},on(){}};impl.apply(ctx,{readLimit:100,readMaxLineLength:1000,readMaxBytes:10000,readStreamMinSize:10000});return tools}
-test('file tool schemas and search argv preserve literal paths and independent UTF-8 preview limits',()=>{
- const tools=fileFixture(files);assert.deepEqual([...tools.keys()],['read','write','edit'])
- for(const [name,required]of [['read',['file_path']],['write',['file_path','content']],['edit',['file_path','old_string','new_string']]]){const tool=tools.get(name);assert.equal(tool.parameters.type,'object');assert.deepEqual(tool.parameters.required,required);assert.equal(tool.output.schema.type,'object');assert.equal(tool.parameters.properties.file_path.type,'string')}
+test('search argv preserves literal paths and independent UTF-8 preview limits',()=>{
  for(const args of [{pattern:'*.js'},{pattern:'**/*.txt',path:'dir with spaces'},{pattern:'$(touch marker);*',path:'--strange'}]){
   const parsed=search.parseGlobArgs(args),argv=search.buildGlobCommand(parsed);assert.equal(parsed.pattern,args.pattern);assert.equal(argv[0],'--files');assert.ok(argv.includes('--glob='+args.pattern));if(args.path!==undefined)assert.deepEqual(argv.slice(-2),['--',args.path]);else assert.equal(argv.includes('--'),false);assert.ok(argv.includes('--hidden'));assert.ok(argv.includes('--glob=!**/.git/**'))
  }

@@ -51,6 +51,6 @@ PI_FILE_EFFECT_COMMITTED_RESULT_FAILED；任务保留未知效果、禁止自动
 该工具不是 OS 内核隔离替代。legacy 显式路径模式与 Windows 的既有平台
 限制继续适用，不能由一次工具测试宣称完整平台隔离。
 
-旧 native-tool-fs 源及少量 legacy fixture 暂留，不在默认工具链；其 notice
+旧 native-tool-fs 及仅供其使用的 code-language 源已完整退休，旧 schema 断言被官方工具契约覆盖；独立搜索与安全测试保留。其两个独有 notice 已按 retired-file-tools-source-manifest.json 核查删除。其它仍保留的派生代码 notice
 仍需保留。文件搜索/底层 FS/观察策略/进程等尚有各自来源，不以本次官方
 read/write/edit 切换宣称全部 DSH 代码已消失。

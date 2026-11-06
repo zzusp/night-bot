@@ -1,0 +1,40 @@
+{
+  "status": "removed-non-default-redundant-file-tools",
+  "sourceCheckpoint": "457270acb2fb48b12c6c88f70258c3a9190f7ea3",
+  "reason": "Default tools already use public pinned Pi read/write/edit; old file_path/old_string schemas have no production callers. Night guarded IO remains a distinct capability.",
+  "removedSources": [
+    {
+      "path": "src/native-tool-fs.js",
+      "sha256": "868bde9a4738aeb1530d501eb93545236c7b5c11048e6b00c6987a763ea1158f"
+    },
+    {
+      "path": "src/native-code-language.js",
+      "sha256": "28bdade3535f2d8aae95c32e32791aba14fce342d4e260ce12157aa913aac45a"
+    }
+  ],
+  "removedNotices": [
+    "licenses/dsh-tool-fs-MIT.txt",
+    "licenses/dsh-util-code-language-MIT.txt"
+  ],
+  "copyReview": {
+    "parsedApplicationTestScriptModules": 1065,
+    "parseFailures": [],
+    "continuous40TokenMatches": [],
+    "note": "Token scan complements caller and source review; it is not a general copyright determination."
+  },
+  "retiredTests": [
+    "Obsolete file_path and old_string/new_string schema assertions",
+    "Code-language highlighting hints used solely by removed old formatter"
+  ],
+  "retainedTests": [
+    "All argv-only search, UTF-8 bounds, malformed output and cancellation assertions in pi-native-file-tools",
+    "Actual official Pi file tools and registration tests",
+    "All HTTP proxy lifecycle/policy tests"
+  ],
+  "validation": {
+    "command": "node --test test/pi-native-file-tools.test.js test/pi-native-http-proxy.test.js test/pi-file-tools.test.js test/pi-file-tool-registration.test.js",
+    "passed": 40,
+    "failed": 0,
+    "logSha256": "60690e8d56b2da6c77ffb336e127e8b39805e95ae7b28cf1b8bc9d0455f65670"
+  }
+}
