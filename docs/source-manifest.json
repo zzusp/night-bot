@@ -730,9 +730,11 @@
     {
       "source": "resident.js",
       "sourceSha256": "493dacb1129ed7559400bd190fed44c4a639dcfdab14403738411faa2b70b4ed",
-      "status": "adapted",
-      "sha256": "6b6ee6ef97d1c8d328136ea5f58a9ec55795bb9bb59b7d1bbcca54fc021b7a40",
-      "adaptation": "Require the official Pi application factory service rather than the retired DSH-derived loop service."
+      "status": "retired-driver",
+      "adaptation": "Require the official Pi application factory service rather than the retired DSH-derived loop service.",
+      "lastRetainedSha256": "6b6ee6ef97d1c8d328136ea5f58a9ec55795bb9bb59b7d1bbcca54fc021b7a40",
+      "retirementEvidence": "docs/retired-resident-entry.md",
+      "retirementReason": "Unused predecessor plugin entry retired; current application/HTTP/credentials and business scope contracts retained."
     },
     {
       "source": "resource-close.js",
@@ -824,8 +826,9 @@
     {
       "source": "task-artifact-scope.js",
       "sourceSha256": "3c120862714957df17bd04fc4a271c375aaf63a28db2d6fd57896c15572be285",
-      "status": "retained",
-      "sha256": "3c120862714957df17bd04fc4a271c375aaf63a28db2d6fd57896c15572be285"
+      "status": "adapted",
+      "sha256": "eba954e38b7bbb477f59a364f89649852bd1a832425bff2d11424d7b751f301b",
+      "adaptation": "Retired zero-caller Session artifact adapters; current task archive scope resolver retained."
     },
     {
       "source": "task-artifact-write.js",
