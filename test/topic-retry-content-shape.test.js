@@ -5,17 +5,19 @@ import {createTopicCoordinator} from '../packages/dingtalk-core/topic-runtime.js
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {openNativeDomains} from '../src/native-domain.js'
+import {visibilityFixture} from './fixtures/pi-coordination-visibility.js'
 
 async function retryFixture(t,{history,pending=false}){
  const root=await mkdtemp('/tmp/topic-shape-regression-')
  const domains=await openNativeDomains({root}),store=await openResidentStore(domains)
  await store.subscribe({groupId:'g',responsibility:'isolated retry regression'});await store.setAgentNames(['助理'])
  const sent=[],errors=[],resumed=Promise.withResolvers()
- let messages=[],idle=0,coordinator
- const agent={id:'shape-regression',ctx:{get:name=>name==='piAuthority'?{context:()=>({projection:{entries:[],messages}})}:undefined},inbox:{nextStep:[],nextTurn:[]},whenIdle:()=>++idle===1?Promise.resolve():new Promise(()=>{})}
+ let idle=0,coordinator
+ const visibility=await visibilityFixture(t),agent=visibility.actor
+ agent.whenIdle=()=>++idle===1?Promise.resolve():new Promise(()=>{})
  coordinator=createTopicCoordinator({store,reviewCandidates:()=>[],getAgent:()=>agent,assertSession(){},serializeTasks:fn=>fn(),isClosing:()=>false,retryDelayMs:1,maxRequestAttempts:2,onError:(_group,error)=>{errors.push(error);resumed.reject(error)},async dispatchRequest(_request,message){
   sent.push(message)
-  if(sent.length===1){messages=history(message);if(pending)agent.inbox.nextStep.push(message)}else resumed.resolve(message)
+  if(sent.length===1){for(const entry of history(message))if(entry&&typeof entry==='object'&&!Array.isArray(entry))visibility.manager.appendMessage({...entry,timestamp:1});if(pending){visibility.packets.set(message.id,message);visibility.pendingIds.push(message.id)}}else resumed.resolve(message)
   return agent
  }})
  t.after(async()=>{await coordinator.close();await store.close();await domains.closeAll();await rm(root,{recursive:true,force:true})})

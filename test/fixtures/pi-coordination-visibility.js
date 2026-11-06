@@ -1,23 +1,36 @@
-import {SessionManager} from '@earendil-works/pi-coding-agent'
-import {tmpdir} from 'node:os'
-const managers=new WeakMap()
-const zeroUsage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
-export function visibilityManager(session){
- if(!managers.has(session))managers.set(session,SessionManager.inMemory(tmpdir()))
- return managers.get(session)
+import {createAgentSession,SessionManager} from '@earendil-works/pi-coding-agent'
+import {officialToolsFixture} from './pi-official-tools.js'
+import {bindBusinessInputAuthority} from '../../src/runtime/pi-business-inputs.js'
+const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
+
+// A real SDK session and native entries only. This fixture does not implement
+// Session.append, event publication, a surface or a projection reader.
+export async function visibilityFixture(t,snapshot){
+ const f=await officialToolsFixture(t,()=>{})
+ let manager=f.manager,session=f.session
+ if(snapshot){
+  manager=SessionManager.inMemory(f.root,undefined,structuredClone(snapshot.entries))
+  ;({session}=await createAgentSession({cwd:f.root,agentDir:f.agentDir,modelRuntime:f.runtime,model:f.model,settingsManager:f.settings,resourceLoader:f.loader,sessionManager:manager,noTools:'all'}))
+  t.after(()=>session.dispose())
+ }
+ const pendingIds=[],packets=new Map(snapshot?.packets??[]),actor={id:session.sessionId,piSession:session}
+ const unbind=bindBusinessInputAuthority(actor,{lookupPacket:id=>packets.get(id),isLive:value=>value===actor,pending:()=>pendingIds})
+ t.after(unbind)
+ actor.admission={status:id=>packets.has(id)?'admitted':undefined}
+ return {actor,manager,session,packets,pendingIds}
 }
-export function visibilityAuthority(session){return {context(){const projection=visibilityManager(session).buildSessionProjection();return {projection,piMessages:projection.messages}}}}
-export function visibilityContext(messages){
- const session={};for(const message of messages)appendVisible(session,message)
- return visibilityAuthority(session).context()
-}
-export function visibilityAgent(session){return {id:session.id,session,ctx:{get:name=>name==='piAuthority'?visibilityAuthority(session):undefined}}}
-export function appendVisible(session,message){
- const content=message.content.map(block=>block.type==='tool-call'?{type:'toolCall',id:block.id,name:block.name,arguments:JSON.parse(block.arguments)}:block.type==='reasoning'?{type:'thinking',thinking:block.text}:block)
- const value={...message,role:message.role==='tool'?'toolResult':message.role,content,night:{event:{type:message.role==='user'?'user/message':message.role==='assistant'?'assistant/message':'tool/result',data:message.role==='user'?message:{message}}},timestamp:Date.now()}
- if(value.role==='assistant')Object.assign(value,{api:'openai-completions',provider:'fixture',model:'m',usage:zeroUsage,stopReason:content.some(b=>b.type==='toolCall')?'toolUse':'stop'})
+export function appendVisible(f,message){
+ if(message.role==='user'){
+  const id=message.id??'visible-'+f.manager.getEntries().length,source=structuredClone(message.source??{kind:'coordinator'}),content=structuredClone(message.content)
+  f.packets.set(id,{id,source,content})
+  return f.manager.appendCustomMessageEntry('night.business-input',content,false,{packetId:id,source})
+ }
+ const content=message.content.map(block=>block.type==='tool-call'?{type:'toolCall',id:block.id,name:block.name,arguments:JSON.parse(block.arguments)}:block)
+ const value={...message,role:message.role==='tool'?'toolResult':message.role,content,timestamp:Date.now()}
+ if(value.role==='assistant')Object.assign(value,{api:'openai-completions',provider:'fixture',model:'m',usage,stopReason:content.some(block=>block.type==='toolCall')?'toolUse':'stop'})
  if(value.role==='toolResult')value.toolName='fixture'
- return visibilityManager(session).appendMessage(value)
+ return f.manager.appendMessage(value)
 }
-export function compactVisible(session){return visibilityManager(session).appendCompaction('之前曾经读取正文，此摘要没有原文。',null,0)}
-export function restoreVisibility(source,target){managers.set(target,SessionManager.inMemory(tmpdir(),undefined,structuredClone(visibilityManager(source).getEntries())))}
+export function compactVisible(f){const anchor=f.manager.appendMessage({role:'user',content:'COMPACTION_ANCHOR',timestamp:Date.now()});return f.manager.appendCompaction('Summary does not retain the original body.',anchor,0)}
+export function restoreVisibility(f,t){return visibilityFixture(t,{entries:f.manager.getEntries(),packets:[...f.packets]})}
+export const visibilityAgent=f=>f.actor

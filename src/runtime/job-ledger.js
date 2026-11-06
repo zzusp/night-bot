@@ -1,7 +1,6 @@
 import {z} from 'zod'
 import {officialWorkingDirectoryOrigin} from '../native-working-directory.js'
 import {HarnessError} from '../native-llm-errors.js'
-import {appendPluginRecord,isApplicationSession} from '../native-session-protocol.js'
 
 export const JOB_REGISTERED='plugin:night-bot/job-registered'
 export const JOB_SETTLED='plugin:night-bot/job-settled'
@@ -62,34 +61,9 @@ async function prepareOfficialJobJournal(ctx,exec,spec,{id,startedAt},identity){
  * result may mark producerReported; teardown errors never acquire that fact.
  */
 export async function prepareJobJournal(ctx,exec,spec,{id,startedAt}){
- const identity=ctx.get('tools')?.executionIdentity(exec),owner=exec?.agent
- if(owner?.piSession){if(!identity)throw failure('NIGHT_JOB_CALL_OWNERSHIP_REQUIRED');return prepareOfficialJobJournal(ctx,exec,spec,{id,startedAt},identity)}
- const session=owner?.session,sessions=ctx.get('sessions')
- if(!identity||!owner||identity.owner!==spec.owner||!isApplicationSession(session)||sessions?.get(spec.owner)!==session
-   ||ctx.get('agents')?.get(spec.owner)!==owner)throw failure('NIGHT_JOB_CALL_OWNERSHIP_REQUIRED')
- const bound={version:1,jobId:id,owner:spec.owner,kind:spec.kind,label:spec.label,startedAt,
-  toolCall:{callId:identity.callId,rootCallId:identity.rootCallId,toolName:identity.name}}
- const flush=async()=>{let accepted;try{accepted=await sessions.flush(session)}catch(cause){throw failure('NIGHT_JOB_JOURNAL_UNCERTAIN',cause)}if(accepted!==true)throw failure('NIGHT_JOB_PERSISTENCE_REQUIRED')}
- // A missing sink must be refused before even accepting a registration event.
- await flush()
- exec.signal.throwIfAborted()
- if(!ctx.get('tools')?.executionIdentity(exec))throw failure('NIGHT_JOB_CALL_OWNERSHIP_REQUIRED')
- const write=async(type,data)=>{
-  try{appendPluginRecord(session,type,{...bound,...data});await flush()}
-  catch(cause){throw failure('NIGHT_JOB_JOURNAL_UNCERTAIN',cause)}
- }
- await write(JOB_REGISTERED,{state:'admitted'})
- let terminal=false
- return{
-  registered:bound,
-  async notStarted(reason){if(terminal)return;terminal=true;await write(JOB_NOT_STARTED,{reason})},
-  async startUncertain(error){if(terminal)return;terminal=true;await write(JOB_START_UNCERTAIN,{reason:String(error?.message??error),externalEffectsPossible:true})},
-  async settle(outcome,cause,{producerReported,finishedAt}){
-   if(terminal)throw failure('NIGHT_JOB_JOURNAL_TERMINAL_DUPLICATE')
-   terminal=true
-   await write(JOB_SETTLED,{status:outcome.status,...outcome.detail===undefined?{}:{detail:outcome.detail},cause,producerReported,finishedAt})
-  },
- }
+ const identity=ctx.get('tools')?.executionIdentity(exec)
+ if(!identity||!exec?.agent?.piSession)throw failure('NIGHT_JOB_CALL_OWNERSHIP_REQUIRED')
+ return prepareOfficialJobJournal(ctx,exec,spec,{id,startedAt},identity)
 }
 
 const sameBinding=(a,b)=>a?.version===1&&b?.version===1&&['jobId','owner','kind','label','startedAt'].every(key=>a[key]===b[key])

@@ -15,10 +15,10 @@ import {jobReceiptKinds,unresolvedNativeJobReceipts} from '../src/runtime/job-le
 import {admissionAuditKinds,createBusinessAdmission} from '../src/runtime/pi-business-admission.js'
 import {bindBusinessNotices} from '../src/runtime/pi-business-notices.js'
 import {apply as applyJobTools,reconcileJobCompletionNotices} from '../src/native-tool-jobs.js'
-async function fixture(t,register,{notices=false}={}){
+async function fixture(t,register,{notices=false,maxConcurrentJobsPerOwner}={}){
  let store,backend,starts=0,expectUnknown=false,publish;const settlement=Promise.withResolvers()
  const h=await officialToolsFixture(t,async({ctx,owner,root})=>{
-  ctx.logger={warn(){},error(){}};new NativeProjections(ctx);new NativeAgents(ctx);new NativeJobs(ctx,{pumpPollMs:1});new NativePolicy(ctx,{mode:'workspace-write',workspaceRoot:root});authority(ctx)
+  ctx.logger={warn(){},error(){}};new NativeProjections(ctx);new NativeAgents(ctx);new NativeJobs(ctx,{pumpPollMs:1,...maxConcurrentJobsPerOwner===undefined?{}:{maxConcurrentJobsPerOwner}});new NativePolicy(ctx,{mode:'workspace-write',workspaceRoot:root});authority(ctx)
   backend=new PiPersistence(ctx,{root:join(root,'durable-jobs')});store=await backend.createNative({version:4,id:owner.id,createdAt:Date.now(),isSeeded:false,cwd:root},{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}})
   owner.receipts={append:receipt=>store.appendAudit(receipt),commit:()=>store.commit(),read:()=>store.readAudit(),readEntries:()=>store.readAuditEntries()}
   bindWorkingDirectoryActor(owner,{initialDirectory:root,isLive:()=>ctx.agents.get(owner.id)===owner,readDirectory:()=>root,appendChange(){throw Error('not changing cwd')},admitNotice(){}})
@@ -29,7 +29,7 @@ async function fixture(t,register,{notices=false}={}){
  })
  const detach=h.ctx.agents.enter(h.owner)
  if(publish)h.deferCleanup(bindBusinessNotices(h.owner,{enqueue:publish,isLive:actor=>h.ctx.agents.get(actor.id)===actor}))
- h.deferCleanup(async()=>{try{await h.ctx.jobs.drainOwner(h.owner)}catch(error){if(!expectUnknown||error.code!=='NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY')throw error}finally{detach();await store.close()}})
+ h.deferCleanup(async()=>{try{await h.ctx.jobs.drainOwner(h.owner)}catch(error){if(!expectUnknown||!(error.code==='NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'||error instanceof AggregateError&&error.errors.length&&error.errors.every(item=>['NIGHT_JOB_JOURNAL_UNCERTAIN','NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN'].includes(item.code??item.message))))throw error}finally{detach();await store.close()}})
  return {...h,get store(){return store},backend,settlement:settlement.promise,async reopenReceipts(){await store.close();store=await backend.openNative(h.owner.id,{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}})},get starts(){return starts},expectUnknown:()=>{expectUnknown=true}}
 }
 test('real official SDK starts producer only after native typed registration commit and settles with no Session facade',async t=>{
@@ -162,4 +162,47 @@ test('committed pending decision is not suppressed by a waiter arriving during t
  await h.run([{id:'frozen-choice',name:'launch'}]);await entered.promise
  const waiting=h.ctx.jobs.wait(jobId,10000,h.owner.id);release.resolve();await waiting;await notified.promise
  assert.equal((await h.store.readAudit()).find(receipt=>receipt.kind==='settled').payload.completionNotice,'pending');assert.equal(h.owner.admission.pending().length,1)
+})
+
+test('official job terminal commit failure keeps outcome uncertain and never publishes success',async t=>{
+ const done=Promise.withResolvers();let jobId,terminal=false
+ const h=await fixture(t,({ctx,owner,started})=>{
+  const original=owner.receipts
+  owner.receipts={...original,append(receipt){if(receipt.kind==='settled')terminal=true;return original.append(receipt)},async commit(){if(terminal)throw Error('terminal commit failed');return original.commit()}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'uncertain terminal',owner:owner.id,run(){started();return{done:done.promise,cancel(){done.resolve({status:'killed'})}}}},exec)})))
+ })
+ h.expectUnknown()
+ const published=[];h.ctx.jobs.events.subscribe({owner:h.owner.id},event=>{if(event.type==='settled')published.push(event)})
+ await h.run([{id:'uncertain-terminal',name:'launch'}])
+ const waiting=h.ctx.jobs.wait(jobId,1000,h.owner.id),rejected=assert.rejects(waiting,/NIGHT_JOB_JOURNAL_UNCERTAIN/)
+ done.resolve({status:'completed'});await rejected
+ assert.equal(h.starts,1);assert.deepEqual(published,[])
+ assert.equal(h.ctx.jobs.get(jobId,h.owner.id).status,'stopping')
+})
+
+test('official parallel job admission reserves capacity while registration commit is pending',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers(),done=Promise.withResolvers();let registration=false
+ t.after(()=>release.resolve())
+ const h=await fixture(t,({ctx,owner,started})=>{
+  const original=owner.receipts
+  owner.receipts={...original,append(receipt){if(receipt.kind==='registered')registration=true;return original.append(receipt)},async commit(){if(registration){registration=false;entered.resolve();await release.promise}return original.commit()}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'reserved slot',owner:owner.id,run(){started();return{done:done.promise,cancel(){done.resolve({status:'killed'})}}}},exec)}),{isConcurrencySafe:()=>true}))
+ },{maxConcurrentJobsPerOwner:1})
+ const running=h.run([{id:'first-slot',name:'launch'},{id:'excess-slot',name:'launch'}])
+ await entered.promise
+ for(let tick=0;tick<50&&!h.results.some(result=>result.toolCallId==='excess-slot');tick++)await setImmediate()
+ assert.equal(h.starts,0)
+ assert.equal(h.results.find(result=>result.toolCallId==='excess-slot').isError,true)
+ release.resolve();await running;assert.equal(h.starts,1)
+ done.resolve({status:'completed'});await h.settlement
+})
+
+test('official teardown cancellation failure is not a producer exit or successful terminal proof',async t=>{
+ const h=await fixture(t,({ctx,owner,started})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'uncertain cancel',owner:owner.id,run(){started();return{done:new Promise(()=>{}),cancel(){throw Error('cancel proof unavailable')}}}},exec)}))))
+ h.expectUnknown()
+ await h.run([{id:'uncertain-cancel',name:'launch'}])
+ await assert.rejects(h.ctx.jobs.disposeAll(),/Job drain proof is uncertain/)
+ const settled=(await h.store.readAudit()).filter(receipt=>receipt.kind==='settled')
+ assert.equal(settled.length,1);assert.equal(settled[0].payload.producerReported,false)
+ assert.equal(settled[0].payload.cause,'teardown');assert.equal(settled[0].payload.status,'failed')
 })

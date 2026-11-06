@@ -1,21 +1,15 @@
 import { fingerprint } from './topic-model.js'
 import { z } from 'zod'
-import {isApplicationSession} from '../../src/native-session-protocol.js'
 import {officialBusinessProjection,visibleBusinessInputs} from '../../src/runtime/pi-business-inputs.js'
 
-// Pure composition fakes have no execution context or branded application session.
-// A production agent must read its live Pi writer; errors never fall back to audit.
+// Only the actual official SDK session supplies model-context history. A legacy
+// session shape or an injected context reader never grants projection authority.
 function coordinationProjection(agent) {
   if(!agent||typeof agent!=='object')throw new Error('COORDINATION_PI_AGENT_REQUIRED')
+  if('session' in agent)throw new Error('COORDINATION_PI_AUTHORITY_REQUIRED')
   if(agent.piSession)return officialBusinessProjection(agent)
-  const authority=agent?.ctx?.get?.('piAuthority')
-  if(!authority){
-    if(agent?.ctx||isApplicationSession(agent?.session))throw new Error('COORDINATION_PI_AUTHORITY_REQUIRED')
-    return undefined
-  }
-  const context=authority.context(agent.id,{projectionOnly:true})
-  if(!Array.isArray(context?.projection?.entries)||!Array.isArray(context.projection.messages))throw new Error('COORDINATION_PI_CONTEXT_INVALID')
-  return context.projection
+  if('ctx' in agent)throw new Error('COORDINATION_PI_AUTHORITY_REQUIRED')
+  return undefined
 }
 
 export function coordinationMessages(agent){return coordinationProjection(agent)?.messages}
@@ -51,14 +45,10 @@ export function visibleSectionLength(agent, text) {
 }
 
 export function visibleCoordinatorText(agent, text) {
+  coordinationProjection(agent)
   if(agent?.piSession)return visibleBusinessInputs(agent).some(input=>input.source?.kind==='coordinator'
     &&(typeof input.content==='string'?input.content===text:input.content?.some(part=>part.type==='text'&&part.text===text)))
-  const projection=coordinationProjection(agent)
-  return projection?.entries.some(({sourceEntry,messages})=>{
-    const event=sourceEntry.type==='message'&&sourceEntry.message.role==='user'?sourceEntry.message.night?.event:undefined
-    return event?.type==='user/message'&&event.data.source?.kind==='coordinator'
-      &&messages.some(message=>message.role==='user'&&(typeof message.content==='string'?message.content===text:message.content?.some(part=>part.type==='text'&&part.text===text)))
-  })??false
+  return false
 }
 
 // 仅在同一请求的首包内去重；原 section 保持完整，分页及当前 surface 校验仍读取原文。

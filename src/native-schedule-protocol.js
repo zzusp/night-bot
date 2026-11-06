@@ -3,10 +3,11 @@
 // Calendar/format algorithms only; native Host storage and Pi own active lifecycles.
 import {Temporal} from '@js-temporal/polyfill'
 import {z as z$1} from 'zod'
-import {SessionId,SessionLogOffset} from './native-session-protocol.js'
 import {MessageId} from './native-message-protocol.js'
 import {defineDomain,domainTable} from './native-domain.js'
 import {isDeepStrictEqual} from 'node:util'
+// Schedule target IDs are strings validated by this module, with no Session runtime.
+const scheduleSessionId=value=>value
 //#region lib/types/domain.js
 /**
 * Strict Schedule decoding, replay, time validation, and framing.
@@ -912,7 +913,7 @@ function applyScheduleChanges(folded, changes) {
 * @param inheritedEventCount - Inherited prefix length excluded from child ownership.
 * @returns Active records and all previously used ids.
 */
-function foldScheduleEvents(events, inheritedEventCount = SessionLogOffset(0)) {
+function foldScheduleEvents(events, inheritedEventCount = 0) {
 	if (!Number.isSafeInteger(inheritedEventCount) || inheritedEventCount < 0 || inheritedEventCount > events.length) throw new ScheduleLogError("schedule inheritedEventCount must be within the supplied event log");
 	const initial = Object.freeze({
 		active: Object.freeze([]),
@@ -1515,13 +1516,13 @@ const scheduleDomain = defineDomain({
 	name: "schedule",
 	version: 1,
 	tables: { deliveries: domainTable(z$1.object({
-        sessionId:z$1.string().min(1).transform(SessionId),
+        sessionId:z$1.string().min(1).transform(scheduleSessionId),
         acceptedAt:instantSchema,
         queued:z$1.boolean(),
         cancelled:z$1.boolean().optional(),
         packet:z$1.object({id:z$1.string().min(1),source:z$1.object({kind:z$1.literal('schedule'),occurrences:z$1.array(z$1.object({id:z$1.string().min(1),target:instantSchema,occurrenceAt:instantSchema,nextScheduledAt:instantSchema.optional()}).strict()).min(1)}).strict(),content:z$1.array(z$1.object({type:z$1.literal('text'),text:z$1.string()}).strict()).min(1)}).strict()
     }).strict()), tasks: domainTable(z$1.object({
-		sessionId: z$1.string().min(1).transform(SessionId),
+		sessionId: z$1.string().min(1).transform(scheduleSessionId),
 		record: recordSchema,
 		status: z$1.enum(["active", "inactive"]).default("active"),
 		lastDelivery: deliveryReceiptSchema.optional(),

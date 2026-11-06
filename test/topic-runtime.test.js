@@ -1,5 +1,5 @@
 import {pendingBusinessInputs} from '../src/runtime/pi-business-inputs.js'
-import {visibilityAuthority,visibilityAgent,visibilityContext,appendVisible,compactVisible,restoreVisibility} from './fixtures/pi-coordination-visibility.js'
+import {visibilityFixture,visibilityAgent,appendVisible,compactVisible,restoreVisibility} from './fixtures/pi-coordination-visibility.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { nativeRuntimeHost } from './fixtures/runtime-official-host.js'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
-import { Session } from '../packages/capability-compat/session/index.js'
 import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { coordinationTools } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../packages/capability-compat/tools/index.js'
@@ -24,8 +23,10 @@ async function setup(t, options = {}) {
   if (!store.getGroup('g')) await store.subscribe({ groupId: 'g', responsibility: '处理测试任务' })
   await store.setAgentNames(['助理'])
   const sent = [], errors = [], tools = new Map(), applications = []
-  const consumedEvents = []
-  const agent = { id:options.session?.id??'topic-fixture', ...(options.piAuthority?{ctx:{get:name=>name==='piAuthority'?options.piAuthority:undefined}}:options.session instanceof Session?{ctx:{get:name=>name==='piAuthority'?visibilityAuthority(options.session):undefined}}:{}), session: options.session ?? { snapshotEvents: () => consumedEvents }, inbox: options.inbox, steer(message) { if(options.session instanceof Session)appendVisible(options.session,message); consumedEvents.push({ type: 'user/message', data: message }); sent.push(message.content[0].text); options.onSteer?.(message) }, whenIdle: options.whenIdle ?? (() => new Promise(() => {})) }
+  const visibility=options.visibility
+  const agent=visibility?visibility.actor:{id:'topic-fixture'}
+  agent.whenIdle=options.whenIdle??(()=>new Promise(()=>{}))
+  agent.steer=message=>{if(visibility&&!options.deferVisibility?.(message))appendVisible(visibility,message);sent.push(message.content[0].text);options.onSteer?.(message)}
   const coordinator = createTopicCoordinator({
     taskFacts: options.taskFacts, fixedTopicsEnabled: options.fixedTopicsEnabled, workflowPromptsEnabled: options.workflowPromptsEnabled, dispatchRequest: options.dispatchRequest, checkStartupRecovery: options.checkStartupRecovery, quotedReminderContext: options.quotedReminderContext,
     store, getAgent: () => agent, assertSession(exec, groupId) { if (exec?.groupId !== groupId) throw new Error('wrong_session') },
@@ -614,7 +615,8 @@ async function complete(h, request, patch = {}) {
 }
 
 test('Topic 决策信封受字符预算约束，缺失增量读完后才可提交', async (t) => {
-  const h = await setup(t)
+  const visibility=await visibilityFixture(t)
+  const h = await setup(t,{visibility})
   await ingest(h, 'large-0', { text: '测'.repeat(12_000) })
   const first = (await route(h)).pendingDecisions[0]
   for (let index = 1; index < 10; index++) {
@@ -633,6 +635,7 @@ test('Topic 决策信封受字符预算约束，缺失增量读完后才可提�
   let offset = 0, text = '', page
   do {
     page = await h.call('group_decision_context_get', { requestId: request.requestId, section: 'messages', offset })
+    visibleTool(visibility,'group_decision_context_get',page)
     assert.ok(Buffer.byteLength(JSON.stringify(page), 'utf8') <= 12 * 1024)
     text += page.text; offset = page.nextOffset
   } while (page.hasMore)
@@ -732,18 +735,18 @@ test('拆分确认和条件后，各话题仍能读取完整同条原文且不�
 })
 
 test('压缩移除已见决策正文后需重新取得必要增量', async (t) => {
-  let visible = []
-  const h = await setup(t, { piAuthority: {context:()=>visibilityContext(visible)} })
+  const visibility=await visibilityFixture(t)
+  const h = await setup(t, { visibility })
   await ingest(h, 'surface')
   const request = (await route(h)).pendingDecisions[0]
   const body = h.sent.findLast((item) => item.startsWith('[GROUP_TOPIC_DECISION]'))
-  visible = [{ role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text', text: body }] }]
+  appendVisible(visibility,{role:'user',source:{kind:'coordinator'},content:[{type:'text',text:body}]})
   const args = { requestId: request.requestId, topicId: request.topicId, revision: request.revision,
     decision: { basisMessageIds: ['surface'], actions: [], reply: '正在核对', replyToMessageId: 'surface' } }
   assert.equal((await h.call('group_decision_submit', args)).status, 'review-required')
-  visible = []
+  for(const entry of visibility.manager.getEntries())if(entry.type==='custom_message'&&entry.content?.some(part=>part.text===body))visibility.manager.appendContextEdit(entry.id,null)
   await assert.rejects(h.call('group_decision_submit', args), /topic_decision_delta_unread/)
-  visible = [{ role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text', text: body }] }]
+  appendVisible(visibility,{role:'user',source:{kind:'coordinator'},content:[{type:'text',text:body}]})
   assert.equal((await h.call('group_decision_submit', { ...args, decision: { ...args.decision,
     replyReview: { kind: 'substantive', reviewedOutboundIds: [], sameMatterOutboundIds: [], replaceOutboundIds: [] } } })).status, 'accepted')
 })
@@ -841,7 +844,7 @@ test('引用已送达助手回复的对象纠正可以沟通而不变更任务',
 })
 
 test('连续话题版本刷新关联Task状态摘要，保留未答来源并拒绝旧决策', async t => {
-  const h = await setup(t)
+  const h = await setup(t,{visibility:await visibilityFixture(t)})
   const { task, request } = await taskFixture(h)
   await ingest(h, 'follow-317')
   const pending = (await route(h, { 'follow-317': request.topicId })).pendingDecisions[0]
@@ -1062,8 +1065,8 @@ test('待归类输入不阻止已准备的其他 Topic 决策进入公平队列'
 })
 
 test('待路由的新建任务草稿遇同话题撤销时失效，不能自动补建', async t => {
-  const session = Session.create('same-round-cancel')
-  const h = await setup(t, { session, onSteer: message => session.append('user/message', message, { surfaceOp: 'append' }) })
+  const session = await visibilityFixture(t)
+  const h = await setup(t, { visibility:session, onSteer: () => {} })
   await ingest(h, 'request-task')
   const a = (await route(h)).pendingDecisions[0]
   await ingest(h, 'cancel-task', { text: '@助理 先不要执行这个任务' })
@@ -2311,15 +2314,13 @@ test('模型停稳后仅有限次提醒，同一归类请求仍可提交', async
 })
 
 function visibleTool(session, name, result) {
-  const id = `call-${session.snapshotEvents().length}`
-  session.append('assistant/message', { turn: 1, step: 1, stream: [], message: { id: `assistant-${id}`, role: 'assistant', source: { kind: 'model', provider: 'fixture', model: 'fixture' }, content: [{ type: 'tool-call', id, name, arguments: '{}' }] } }, { surfaceOp: 'append' })
-  session.append('tool/result', { turn: 1, step: 1, message: { ...createToolResultMessage({ callId: id, isError: false, content: [{ type: 'text', text: JSON.stringify(result) }] }), id: `result-${id}` } }, { surfaceOp: 'append' })
-  appendVisible(session,{role:'assistant',content:[{type:'tool-call',id,name,arguments:'{}'}]})
-  appendVisible(session,createToolResultMessage({callId:id,isError:false,content:[{type:'text',text:JSON.stringify(result)}]}))
+  const id = `call-${session.manager.getEntries().length}`
+  appendVisible(session,{role:'assistant',content:[{type:'toolCall',id,name,arguments:{}}]})
+  appendVisible(session,{role:'toolResult',toolCallId:id,toolName:name,isError:false,content:[{type:'text',text:JSON.stringify(result)}]})
 }
 
 test('材料清单从当前surface分页形成，跨请求与压缩摘要不冒充正文', async t => {
-  const session = Session.create('manifest-session'), h = await setup(t, { session }), { task } = await taskFixture(h)
+  const session = await visibilityFixture(t), h = await setup(t, { visibility:session }), { task } = await taskFixture(h)
   const pending = h.coordinator.requestReview('checkpoint', task, { kind: 'plan-confirmed', summary: '材料'.repeat(3000) }).catch(() => {})
   const requestId = h.envelope('[TASK_CHECKPOINT_REVIEW]', '审阅请求').requestId
   const manifest = () => h.call('group_task_review_context_get', { requestId, section: 'manifest' })
@@ -2432,14 +2433,10 @@ test('审阅身份忽略提交时间，但流程引用、最后检查点和Topic
   h.coordinator.requestReview('checkpoint', task, value).catch(() => {})
   assert.notEqual(h.envelope('[TASK_CHECKPOINT_REVIEW]', '审阅请求').requestId, firstId)
 })
-function compactSurface(session) {
-  compactVisible(session)
-  const nodes = [...session.surface.nodes]
-  session.append('user/message', { id: `summary-${session.snapshotEvents().length}`, role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text', text: '之前曾经读取流程和原文；此摘要不保留完整正文。' }] }, { surfaceOp: { op: 'replace', startSeq: nodes[0], endSeq: nodes.at(-1) }, sourceEventSeqs: nodes })
-}
+function compactSurface(session) { compactVisible(session) }
 
-test('原生 surface 流程正文与连续页跨请求复用，压缩后历史日志不能冒充可见', () => {
-  const session = Session.create('session-visible-context'), agent = visibilityAgent(session)
+test('原生 surface 流程正文与连续页跨请求复用，压缩后历史日志不能冒充可见', async t => {
+  const session = await visibilityFixture(t), agent = visibilityAgent(session)
   const prompt = { id: 'release', revision: 1, name: '发布', description: '发布校验', prompt: '核对批准原文' }
   visibleTool(session, 'pwsh', { prompts: [prompt] })
   assert.deepEqual(visiblePromptRefs(agent, [prompt]), [])
@@ -2451,17 +2448,16 @@ test('原生 surface 流程正文与连续页跨请求复用，压缩后历史�
   assert.equal(visibleSectionLength(agent, text), 0)
   visibleTool(session, 'group_task_review_context_get', { requestId: 'old', section: 'messages', offset: 0, nextOffset: 4, text: text.slice(0, 4) })
   assert.equal(visibleSectionLength(agent, text), text.length)
-  const reopened = Session.fromRestore(session.id, JSON.parse(JSON.stringify(session.snapshotEvents())), JSON.parse(JSON.stringify(session.header)), 0, 'detached')
-  restoreVisibility(session,reopened)
+  const reopened = await restoreVisibility(session,t)
   assert.equal(visiblePromptRefs(visibilityAgent(reopened), [prompt]).length, 1)
   compactSurface(reopened)
-  assert.ok(reopened.snapshotEvents().some((event) => event.type === 'tool/result'))
+  assert.ok(reopened.manager.getEntries().some(entry=>entry.type==='message'&&entry.message.role==='toolResult'))
   assert.deepEqual(visiblePromptRefs(visibilityAgent(reopened), [prompt]), [])
   assert.equal(visibleSectionLength(visibilityAgent(reopened), text), 0)
 })
 
 test('审阅复用当前流程正文，压缩或禁用后重新门禁而不是沿用已读标记', async (t) => {
-  const session = Session.create('session-review-visible'), h = await setup(t, { session }), fixture = await taskFixture(h)
+  const session = await visibilityFixture(t), h = await setup(t, { visibility:session }), fixture = await taskFixture(h)
   await h.store.setTaskPrompts([reviewPrompt('delivery')], 0)
   const task = await h.store.updateTask(fixture.task.taskId, (current) => ({ ...current, taskPromptRefs: [{ id: 'delivery', revision: 1 }] }))
   visibleTool(session, 'group_task_prompt_get', { prompts: h.store.getTaskPrompts() })
@@ -2488,16 +2484,15 @@ test('审阅复用当前流程正文，压缩或禁用后重新门禁而不是�
 })
 
 test('稳定请求跨重启识别已消费消息，原文可见时恢复只发送短提醒', async (t) => {
-  const session = Session.create('session-request-restart')
-  const h = await setup(t, { session, onSteer: (message) => session.append('user/message', message, { surfaceOp: 'append' }) })
+  const session = await visibilityFixture(t)
+  const h = await setup(t, { visibility:session, onSteer: () => {} })
   await ingest(h, 'restart'); await h.coordinator.schedule('g')
   const request = h.envelope('[GROUP_TOPIC_ROUTE]')
   await h.coordinator.close(); await h.store.close()
-  const restored = Session.fromRestore(session.id, JSON.parse(JSON.stringify(session.snapshotEvents())), JSON.parse(JSON.stringify(session.header)), 0, 'detached')
-  restoreVisibility(session,restored)
+  const restored = await restoreVisibility(session,t)
   let resume, idleCalls = 0
   const reminder = new Promise((resolve) => { resume = resolve })
-  const reopened = await setup(t, { snapshot: h.snapshot, session: restored, retryDelayMs: 5, whenIdle: () => ++idleCalls === 1 ? Promise.resolve() : new Promise(() => {}), onSteer: resume })
+  const reopened = await setup(t, { snapshot: h.snapshot, visibility: restored, retryDelayMs: 5, whenIdle: () => ++idleCalls === 1 ? Promise.resolve() : new Promise(() => {}), onSteer: resume })
   await reopened.coordinator.recover()
   assert.equal(reopened.sent.length, 0)
   let watchdog
@@ -2602,10 +2597,10 @@ test('原生 Pi 业务队列仍停放未接纳原请求时，恢复提醒不会�
 })
 
 test('显式恢复递增持久epoch，不会被此前已消费提醒身份吞掉', async (t) => {
-  const session = Session.create('session-explicit-retry'), messages = []
+  const session = await visibilityFixture(t), messages = []
   let exhausted
   const stopped = new Promise((resolve) => { exhausted = resolve })
-  const h = await setup(t, { session, retryDelayMs: 2, maxRequestAttempts: 1, whenIdle: () => Promise.resolve(), onError: exhausted, onSteer(message) { messages.push(message); session.append('user/message', message, { surfaceOp: 'append' }) } })
+  const h = await setup(t, { visibility:session, retryDelayMs: 2, maxRequestAttempts: 1, whenIdle: () => Promise.resolve(), onError: exhausted, onSteer(message) { messages.push(message) } })
   await ingest(h, 'retry-explicit'); await h.coordinator.schedule('g')
   const request = h.envelope('[GROUP_TOPIC_ROUTE]')
   let watchdog
@@ -3169,11 +3164,10 @@ for (const atCommit of [false, true]) test('changed relevant person identity fen
 })
 
 test('same-round latest input must be consumed; stale and queued submissions cannot commit; restart keeps accepted receipt', async t => {
-  const events = [], inbox = { nextStep: [], nextTurn: [] }
-  const h = await setup(t, { session: { snapshotEvents: () => events }, inbox, onSteer(message) {
-    if (message.id.includes('-revision-')) inbox.nextStep.push(message)
-    else events.push({ type: 'user/message', data: message })
-  } })
+  const visibility=await visibilityFixture(t),queued=[]
+  const h = await setup(t, {visibility,deferVisibility:message=>message.id.includes('-revision-'),onSteer(message){
+    if(message.id.includes('-revision-')){queued.push(message);visibility.packets.set(message.id,message);visibility.pendingIds.push(message.id)}
+  }})
   await ingest(h, 'round-one'); const first = (await route(h)).pendingDecisions[0]
   await ingest(h, 'round-two'); const current = (await route(h, { 'round-two': first.topicId })).pendingDecisions[0]
   assert.equal(first.requestId, current.requestId)
@@ -3183,9 +3177,9 @@ test('same-round latest input must be consumed; stale and queued submissions can
   const count = h.sent.length
   await h.coordinator.schedule('g'); await h.coordinator.schedule('g')
   assert.equal(h.sent.length, count)
-  events.push({ type: 'user/message', data: inbox.nextStep[0] })
+  appendVisible(visibility,queued[0])
   assert.equal((await h.call('group_decision_submit', submission(current))).status, 'decision-update-unread', 'durable body alone is insufficient while still pending')
-  inbox.nextStep.length = 0
+  visibility.pendingIds.length = 0
   assert.equal((await h.call('group_decision_submit', submission(current))).status, 'accepted')
   await h.coordinator.drain('g')
   const recovered = await setup(t, { snapshot: h.snapshot })
@@ -3290,13 +3284,13 @@ test('historical presentation folds omitted fields and explicit clears across re
   assert.deepEqual(h.store.getTopic('g', first.topicId).openQuestions, [])
 })
 test('Pi writer failure blocks decision validation instead of skipping visibility gates',async t=>{
- let broken=false
  const failure=new Error('PI_SESSION_WRITER_REQUIRED:topic-fixture')
- const h=await setup(t,{piAuthority:{context(){if(broken)throw failure;return visibilityContext([])}}})
+ const visibility=await visibilityFixture(t)
+ const h=await setup(t,{visibility})
  await ingest(h,'writer-lost')
  const request=(await route(h)).pendingDecisions[0]
  const before=h.store.getGroup('g').outbox.length
- broken=true
+ t.mock.method(visibility.manager,'buildSessionProjection',()=>{throw failure})
  await assert.rejects(h.call('group_decision_submit',{requestId:request.requestId,topicId:request.topicId,revision:request.revision,
   decision:{basisMessageIds:['writer-lost'],actions:[],reason:'must fail closed'}}),error=>error===failure)
  assert.equal(h.store.getGroup('g').outbox.length,before)
