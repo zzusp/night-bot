@@ -1,18 +1,19 @@
+import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import {SessionStore} from '../packages/capability-compat/session/index.js'
+
 import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {createBusinessAdmission,admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-admission-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
+ const root=await mkdtemp('/tmp/night-admission-'),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),options={auditKinds:admissionAuditKinds}
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
- const store=await backend.createNative(ctx.sessions.prepare('admission',{meta:{cwd:root}}).header,options)
+ const store=await backend.createNative(nativeSessionHeader('admission',{cwd:root}),options)
  return {store,backend,options}
 }
 const packet={id:'input',source:{kind:'coordinator',taskId:'task'},content:'work'}

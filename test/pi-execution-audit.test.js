@@ -1,19 +1,20 @@
+import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm,appendFile,readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import NativeSessions from '../src/native-sessions.js'
+
 import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as authority} from '../src/pi-authority.js'
 import {maintenanceAuditKinds} from '../src/tasks/native-maintenance-receipts.js'
 import {executionInputAuditKinds,readNativeExecutionInputs} from '../src/tasks/execution-audit.js'
 
 async function fixture(t,{mutate=()=>{},omitBound=false,after=()=>{}}={}){
- const root=await mkdtemp('/tmp/night-execution-audit-'),ctx=new Context();new NativeSessions(ctx);authority(ctx)
+ const root=await mkdtemp('/tmp/night-execution-audit-'),ctx=new Context();authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),binding={taskId:'task',executionId:'execution',sessionId:'session',requirementRevision:2,controlRevision:3,inputVersion:4,inputDigest:'digest',leaseEpoch:5}
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
- const writer=await backend.createNative(ctx.sessions.prepare(binding.sessionId,{meta:{cwd:root}}).header,{auditKinds:Object.fromEntries(Object.keys({...maintenanceAuditKinds,...executionInputAuditKinds}).map(key=>[key,()=>true]))})
+ const writer=await backend.createNative(nativeSessionHeader(binding.sessionId,{cwd:root}),{auditKinds:Object.fromEntries(Object.keys({...maintenanceAuditKinds,...executionInputAuditKinds}).map(key=>[key,()=>true]))})
  const start=writer.manager.getLeafId()
  if(!omitBound)writer.appendAudit({version:1,domain:'execution',kind:'bound',payload:{binding}})
  const entryId=writer.manager.appendCustomMessageEntry('night.business-input',[{type:'text',text:'authored business input'}],false,{packetId:'input-one',source:{kind:'coordinator',executionSession:{sessionId:'session',inputVersion:4,inputDigest:'digest',leaseEpoch:5}}})

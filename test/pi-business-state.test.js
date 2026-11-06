@@ -1,19 +1,20 @@
+import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import {SessionStore} from '../packages/capability-compat/session/index.js'
+
 import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import NativePolicy,{setSandboxMode} from '../src/native-policy.js'
 import {createNativeBusinessState,nativeBusinessAuditKinds} from '../src/runtime/pi-business-state.js'
 
 test('business policy facts commit and restore independently of official conversation history',async t=>{
- const root=await mkdtemp('/tmp/night-business-state-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
+ const root=await mkdtemp('/tmp/night-business-state-'),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
- const config={auditKinds:nativeBusinessAuditKinds},header=ctx.sessions.prepare('state',{meta:{cwd:root}}).header
+ const config={auditKinds:nativeBusinessAuditKinds},header=nativeSessionHeader('state',{cwd:root})
  let store=await backend.createNative(header,config),state=await createNativeBusinessState(store)
  const actor={id:'state',piSession:{},ctx},policy=Object.create(NativePolicy.prototype);policy.defaultMode='read-only'
  let live=true,notices=0

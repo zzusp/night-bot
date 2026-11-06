@@ -5,37 +5,34 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm,mkdir,readFile,writeFile,rename,symlink,link} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import NativeSessions from '../src/native-sessions.js'
+import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as authority} from '../src/pi-authority.js'
-import {createUserMessage} from '../src/native-message-protocol.js'
 import {readNativeHistory} from '../packages/dingtalk-core/native-maintenance-drain.js'
 import {piJournalFilename} from '../src/runtime/pi-journal.js'
 
 async function fixture(t,{portable=false}={}){
  const root=await mkdtemp('/tmp/night-maintenance-pi-'),paths=runtimePaths({installRoot:root}),workspace=portable?paths.workspaces:root,row={taskId:'task',sessionId:'session'},directory=join(workspace,'tasks','task','.dsh','sessions')
  await mkdir(workspace,{recursive:true})
- const ctx=new Context();const pathCodec=portable?portablePaths(paths):undefined;if(pathCodec)ctx.provide('portablePaths',pathCodec);new NativeSessions(ctx);authority(ctx);const backend=new PiPersistence(ctx,{root:directory})
+ const ctx=new Context();const pathCodec=portable?portablePaths(paths):undefined;if(pathCodec)ctx.provide('portablePaths',pathCodec);authority(ctx);const backend=new PiPersistence(ctx,{root:directory})
  t.after(async()=>{try{await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})
- const session=ctx.sessions.prepare(row.sessionId,{meta:{cwd:workspace}})
- session.append('user/message',createUserMessage({source:{kind:'user'},content:[{type:'text',text:'ORIGINAL_EVIDENCE'}]}),{surfaceOp:'append'})
- if(portable)session.append('working-directory/change',{cwd:workspace})
- const writer=await backend.create(session.header);await writer.append(session.snapshotEvents());await writer.close()
+ const message={role:'user',content:[{type:'text',text:'ORIGINAL_EVIDENCE'}],timestamp:1}
+ const writer=await backend.createNative(nativeSessionHeader(row.sessionId,{cwd:workspace}));writer.manager.appendMessage(message);await writer.close()
  const path=join(directory,piJournalFilename(row.sessionId)),bytes=await readFile(path)
- return{root,workspace,pathCodec,row,directory,path,bytes,backend,events:session.snapshotEvents()}
+ return{root,workspace,pathCodec,row,directory,path,bytes,backend,messages:[message]}
 }
 test('offline maintenance reads exact committed Pi history without taking a writer lease',async t=>{
  const f=await fixture(t),first=readNativeHistory(f.root,f.row),second=readNativeHistory(f.root,f.row)
- assert.deepEqual(first.events,f.events);assert.equal(first.header.id,f.row.sessionId);assert.equal(first.format,'pi-jsonl-v3');assert.equal(first.digest,second.digest)
+ assert.deepEqual(first.context.piMessages,f.messages);assert.equal(first.header.id,f.row.sessionId);assert.equal(first.format,'pi-native-v1');assert.equal(first.digest,second.digest)
  assert.deepEqual(await readFile(f.path),f.bytes)
  assert.throws(()=>readNativeHistory(f.root,{...f.row,taskId:'../escape'}),/TASK_DIRECTORY_INVALID/)
 })
 test('offline proof rejects uncommitted Pi tails while ordinary read-only inspection leaves them untouched',async t=>{
  const f=await fixture(t),last=JSON.parse(f.bytes.toString().trim().split('\n').at(-1))
- for(const tail of ['{"torn":',JSON.stringify({type:'custom',customType:'pending',id:'pending-entry',parentId:last.id,data:{}})+'\n']){
+ for(const tail of ['{"torn":',JSON.stringify({type:'custom',customType:'pending',id:'pending-entry',parentId:last.id,timestamp:new Date().toISOString(),data:{}})+'\n']){
   await writeFile(f.path,Buffer.concat([f.bytes,Buffer.from(tail)]))
   assert.throws(()=>readNativeHistory(f.root,f.row),{code:'PI_SESSION_UNCOMMITTED_TAIL'})
-  const reader=await f.backend.open(f.row.sessionId,'read');assert.deepEqual((await reader.read()).events,f.events);await reader.close()
+  assert.deepEqual((await f.backend.readNative(f.row.sessionId)).context.piMessages,f.messages)
   assert.equal((await readFile(f.path)).toString(),f.bytes.toString()+tail)
  }
 })
@@ -63,7 +60,7 @@ test('portable maintenance uses the same explicit controlled-path codec as live 
  const f=await fixture(t,{portable:true})
  assert.throws(()=>readNativeHistory(f.workspace,f.row),/PI_SESSION_PATH_CODEC_REQUIRED/)
  const stored=readNativeHistory(f.workspace,f.row,{pathCodec:f.pathCodec})
- assert.deepEqual(stored.events,f.events);assert.equal(stored.header.cwd,f.workspace)
- const reader=await f.backend.open(f.row.sessionId,'read');try{assert.deepEqual(stored.events,(await reader.read()).events)}finally{await reader.close()}
+ assert.deepEqual(stored.context.piMessages,f.messages);assert.equal(stored.header.cwd,f.workspace)
+ assert.deepEqual(stored.context.piMessages,(await f.backend.readNative(f.row.sessionId,{requireComplete:true})).context.piMessages)
  assert.deepEqual(await readFile(f.path),f.bytes)
 })

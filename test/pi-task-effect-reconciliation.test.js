@@ -1,10 +1,11 @@
+import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {mkdtemp,mkdir,rm,readFile,writeFile,appendFile,symlink,link} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import {SessionStore} from '../packages/capability-compat/session/index.js'
+
 import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {singleTaskAuditKinds} from '../src/tasks/single-session.js'
@@ -16,13 +17,13 @@ const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input
 // verify strict native storage and business evidence binding, never kernel exit
 // or that a production factory already emits an authentic drain attestation.
 async function fixture(t,{mutate=async()=>{},withDrain=true,intentVersion=1,alterIntent=()=>{}}={}){
- const root=await mkdtemp('/tmp/night-effect-reconcile-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
+ const root=await mkdtemp('/tmp/night-effect-reconcile-'),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),bindings={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1}
  const task={...bindings,status:'active',control:'active',drained:true,recovering:false,ownerActorId:'owner',groupId:'group'},scope={taskId:'task',sessionId:'session',taskRoot:root,workingDirectory:root,ownerActorId:'owner',groupId:'group',channelDigest:taskEffectDigest({channel:'fixture'}),authorizationDigest:taskEffectDigest({mode:'workspace-write',memory:'fixture-group'})}
  const state={task,scope,live:false,operators:new Map()},auditKinds={...singleTaskAuditKinds,...admissionAuditKinds,...effectReconciliationAuditKinds,'directory/changed':()=>true}
  // Malformed payload tests require a permissive fixture writer so the real
  // independent reader, rather than the producer's schema, must reject them.
- const writer=await backend.createNative(ctx.sessions.prepare('session',{meta:{cwd:root}}).header,{auditKinds:Object.fromEntries(Object.keys(auditKinds).map(name=>[name,()=>true]))})
+ const writer=await backend.createNative(nativeSessionHeader('session',{cwd:root}),{auditKinds:Object.fromEntries(Object.keys(auditKinds).map(name=>[name,()=>true]))})
  const receipt=(kind,payload,domain='task')=>writer.appendAudit({version:1,domain,kind,payload})
  receipt('identity',{taskId:'task',sessionId:'session'})
  const packet={id:'input',source:{kind:'task-input',taskSession:bindings},content:[{type:'text',text:'Only the original scoped objective is authorized.'}]}

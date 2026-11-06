@@ -1,16 +1,17 @@
+import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {Context} from '@deepseek-ai/cordis'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
-import {SessionStore} from '../packages/capability-compat/session/index.js'
+
 import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
 import {taskToolInputOrigin,committedLiveSupplementAdmissions} from '../src/tasks/input-origin.js'
 import {taskEffectDigest} from '../src/tasks/effect-reconciliation.js'
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
-async function fixture(t){const root=await mkdtemp('/tmp/night-input-origin-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority);const persistence=new PiPersistence(ctx,{root}),writer=await persistence.createNative(ctx.sessions.prepare('session',{meta:{cwd:root}}).header,{auditKinds:admissionAuditKinds});t.after(async()=>{await writer.close();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})});const binding={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1};function append(packet,{admitted=true}={}){writer.appendAudit({version:1,domain:'admission',kind:'enqueued',payload:packet});const entryId=writer.manager.appendCustomMessageEntry('night.business-input',packet.content,false,{packetId:packet.id,source:packet.source});if(admitted)writer.appendAudit({version:1,domain:'admission',kind:'admitted',payload:{id:packet.id,entryId}});return entryId}return{writer,persistence,binding,append}}
+async function fixture(t){const root=await mkdtemp('/tmp/night-input-origin-'),ctx=new Context();await ctx.plugin(Authority);const persistence=new PiPersistence(ctx,{root}),writer=await persistence.createNative(nativeSessionHeader('session',{cwd:root}),{auditKinds:admissionAuditKinds});t.after(async()=>{await writer.close();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})});const binding={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1};function append(packet,{admitted=true}={}){writer.appendAudit({version:1,domain:'admission',kind:'enqueued',payload:packet});const entryId=writer.manager.appendCustomMessageEntry('night.business-input',packet.content,false,{packetId:packet.id,source:packet.source});if(admitted)writer.appendAudit({version:1,domain:'admission',kind:'admitted',payload:{id:packet.id,entryId}});return entryId}return{writer,persistence,binding,append}}
 test('an original tool call keeps its official input binding after a later source is admitted',async t=>{
  const f=await fixture(t),args={path:'work/exact',content:'original'},source={kind:'task-input',taskSession:f.binding};f.append({id:'original',source,content:[{type:'text',text:'Original authority'}]})
  const callEntryId=f.writer.manager.appendMessage({role:'assistant',content:[{type:'toolCall',id:'call',name:'write',arguments:args}],api:'openai-completions',provider:'fixture',model:'fixture',usage,stopReason:'toolUse',timestamp:1})
