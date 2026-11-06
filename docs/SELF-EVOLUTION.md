@@ -20,8 +20,10 @@ event stream, requests a scan after a committed completion and on normal recover
 and scans existing completion events at startup. A review is separate background
 work, after task completion has committed. It cannot undo that state, block the
 completion receipt or execute tools. A channel installation is not a prerequisite.
-The task service binds owner and native execution sessions to ledger owner/group
-principals; other integrations must supply authenticated bindings explicitly.
+The task service binds task execution sessions to ledger actor/group principals;
+other conversational integrations require explicit authenticated bindings. Router
+result assessment is separate from this tool-free retrospective: learning neither
+releases dependencies nor creates authority for a follow-up task.
 
 Each review receives bounded completion, execution and operation facts with stable
 IDs, not entire chats or raw command bodies. The configured model proposes at most

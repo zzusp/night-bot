@@ -8,13 +8,31 @@ import {createHost} from '../src/host.js'
 import {backupData,restoreData} from '../src/runtime/backup.js'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
+import {requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 async function until(fn){for(let n=0;n<500;n++){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,20))}throw Error('single task timeout')}
-async function serviceFor(f,initialize=true){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'single-test',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize});const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external notifications')},readback:async()=>{throw Error('no external notifications')}}});return {service,store,async close(){await service.close();await store.close();await residentStore.close()}}}
+async function closeAll(steps){
+  const errors=[]
+  for(const close of steps){try{await close()}catch(error){errors.push(error)}}
+  if(errors.length)throw new AggregateError(errors,'Single task fixture cleanup failed')
+}
+function cleanupContext(t){
+  const steps=[]
+  // Node 在前一个 after 失败后不会执行后续 after；统一释放资源并保留全部原始错误。
+  t.after(async()=>{
+    try{await closeAll(steps)}catch(error){
+      const detail=value=>({message:value?.message,code:value?.code,stack:value?.stack,cause:value?.cause&&detail(value.cause),errors:value?.errors?.map(detail)})
+      t.diagnostic(JSON.stringify({singleTaskCleanup:detail(error)}));throw error
+    }
+  })
+  return {after:close=>steps.push(close)}
+}
+async function serviceFor(f,initialize=true){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'single-test',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize});const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external notifications')},readback:async()=>{throw Error('no external notifications')}}});return {service,store,async close(){await closeAll([()=>service.close(),()=>store.close(),()=>residentStore.close()])}}}
 const result={tool:'task_result',args:{decision:{action:'complete',summary:'Read back local result',evidence:['local file evidence'],limitations:[]}}}
 test('one task preserves its effect through a held missing result and explicit cold continuation, then completes and reflects',{timeout:nativeTestTimeout(20000)},async t=>{
+  t=cleanupContext(t)
   let phase='write',readBack=false,reviews=0,h
   t.after(()=>h?.close())
   const f=await memoryHost(t,body=>{
@@ -52,6 +70,7 @@ test('one task preserves its effect through a held missing result and explicit c
   const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
 test('single task cancellation aborts the active turn, drains it and never creates a replacement execution',{timeout:nativeTestTimeout(15000)},async t=>{
+  t=cleanupContext(t)
   let h;t.after(()=>h?.close())
   const entered=Promise.withResolvers(),release=Promise.withResolvers()
   const f=await memoryHost(t,async body=>{if(body.tools?.some(t=>t.function.name==='task_result')){entered.resolve();await release.promise;return result}})
@@ -63,14 +82,25 @@ test('single task cancellation aborts the active turn, drains it and never creat
 })
 
 test('chat and chat-room task creation binds the correct memory scope without creating a coordinator',{timeout:nativeTestTimeout(15000)},async t=>{
+  t=cleanupContext(t)
   let h;t.after(()=>h?.close())
-  const f=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:'{"lessons":[]}'}:body.tools?.some(t=>t.function.name==='task_result')?result:undefined);h=await serviceFor(f)
+  const f=await memoryHost(t,body=>{
+    if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
+    if(requestTools(body).includes('task_result'))return result
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=requestEnvelope(body,'Router 请求：')
+      return body.messages.at(-1)?.role==='tool'?{text:'本批任务事件已可靠结清'}:{tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'scope-settle:'+input.events.map(event=>event.id).join(',')}}
+    }
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(handoff&&!requestTools(body).length)return {text:JSON.stringify({currentIntent:'按当前会话与事项账本继续，不创建协调任务',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+  });h=await serviceFor(f)
   for(const type of ['chat','chat-room']){
     const task=await h.service.createTask({requestId:'scope-'+type,objective:'Return the literal word verified',channel:{type,channelId:'local-adapter',conversationId:'conversation',senderId:'person',messageId:'request-'+type,text:'Return the literal word verified'}})
     const row=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained&&row})
     const binding=f.host.ctx.memory.bindings.get(row.sessionId);assert.equal(!!binding.groupId,type==='chat-room');assert.equal(row.metadata.channelType,type);assert.equal(row.metadata.senderId,'person')
     assert.equal((await h.store.query({kind:'execution.list',taskId:row.taskId})).length,0)
   }
+  await h.service.whenIdle()
   assert.equal((await f.host.ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,2)
 })
 
@@ -110,12 +140,12 @@ test('an uncertain default task effect releases its physically drained actor and
     assert.equal(effects,1);assert.equal(f.requests.length,1)
   }finally{
     const id=task?.session?.sessionId
-    await (id?ctx.agents.get(id)?.dispose():undefined)
-    await h?.close();for(const cleanup of cleanups.reverse())await cleanup()
+    await closeAll([()=>id?ctx.agents.get(id)?.dispose():undefined,()=>h?.close(),...cleanups.reverse()])
   }
 })
 
 test('a task rejects forged archive output and can still submit a legitimate work artifact',{timeout:nativeTestTimeout(15000)},async t=>{
+  t=cleanupContext(t)
   let step=0,h;t.after(()=>h?.close())
   const f=await memoryHost(t,body=>{
     if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}

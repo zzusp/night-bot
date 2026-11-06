@@ -8,10 +8,17 @@ DingTalk DWS CLI belongs in the optional channel plugin, never default core
 composition, startup probes or core acceptance prerequisites. Preserve plugin
 capabilities and report live vendor integration separately.
 Each task has one execution session; no separate task Owner/coordinator or split
-execution team. Topic dialogue and tool-free retrospectives are separate roles.
-First-tier triage owns tentative quoted feedback and same-session steer intake,
-with at most 15 messages per batch; overflow queues. Keep source/version links,
-durable delivery deduplication and unknown-send readback.
+execution team. First-tier triage only decides per-source handling and optional
+short replies; it never splits, creates or controls tasks. Each authenticated
+conversation has one durable Router identity for task arrangement and result
+assessment, separate from task execution and tool-free retrospectives. Keep both
+triage and Router user-message batches at most 15; overflow queues. Preserve
+same-session steer, direct source/version/actor links, durable delivery
+deduplication and unknown-send readback. Task dependencies are Host-enforced;
+completion alone grants neither authorization nor dependent-task execution.
+Router handoff is tool-free; Pi generation rotation must preserve committed
+history, one business owner and durable pending inputs. Topic is historical audit,
+not an active routing entity. See docs/CHANNELS.md.
 Do not turn repetition counts into a universal gate for skill creation: the model
 assesses evidence/value/applicability, including strong single-task lessons; program
 code enforces scope, permissions, deduplication and traceability.

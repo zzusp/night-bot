@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto'
 // Scripted routing model readers; all history and tool execution stay in the official SDK.
 const modelMessageParts = message => typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content ?? []
 
@@ -28,6 +29,7 @@ export function latestInput(request) {
       if (part.text.startsWith('[AGENT_PLATFORM_QUERY]\n')) return JSON.parse(part.text.slice('[AGENT_PLATFORM_QUERY]\n'.length))
       if (part.text.startsWith('[SCHEDULE REMINDER]')) return { schedule: part.text }
       try { const parsed = JSON.parse(part.text); if (parsed.task || parsed.sources || parsed.contextReadRequired || parsed.reservationId && parsed.source) return resolveContextInput(request, inline(parsed)) } catch (error) { if (error.contextReads) throw error }
+      for(const prefix of ['一级分诊请求：','Router 请求：','Router 交接请求：']){const line=part.text.split(String.fromCharCode(10)).find(line=>line.startsWith(prefix));if(line)return JSON.parse(line.slice(prefix.length))}
       const topicLine = part.text.split('\n').find(line => line.startsWith('Topic 请求：'))
       if (topicLine) return JSON.parse(topicLine.slice('Topic 请求：'.length))
     }
@@ -88,8 +90,37 @@ export async function waitUntil(read, description, timeoutMs = 10000) {
   throw new Error('Timed out: ' + description)
 }
 
-export function topicTaskCalls(request, { title = '原消息交办', objective } = {}) {
+export function topicTaskCalls(request, { title = '原消息交办', objective, task, signature = '', replyRecipients } = {}) {
   const input = latestInput(request), names = request.tools.map(tool => tool.name)
+  if(names.includes('channel_triage_submit'))return [{name:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'This execution scenario requests original business handling'}))}}]
+  if(names.includes('resident_router_settle')){
+    const lastInput=request.messages.findLastIndex(message=>message.role==='user'&&modelMessageParts(message).some(part=>part.type==='text'&&part.text.startsWith('Router ')))
+    const current=request.messages.slice(lastInput+1),accepted=new Set(current.filter(message=>message.role==='toolResult'&&!message.isError).map(message=>message.toolCallId))
+    const calls=current.filter(message=>message.role==='assistant').flatMap(message=>modelMessageParts(message)).filter(part=>part.type==='toolCall'&&accepted.has(part.id))
+    if(calls.some(call=>call.name==='resident_router_settle'))return []
+    const sourceEvents=input.events.filter(event=>event.source)
+    const completed=input.events.find(event=>event.taskEvent?.kind==='task.completed'&&!calls.some(call=>call.name==='resident_router_reply'&&call.arguments.operationId==='fixture-completion:'+event.taskEventId))
+    if(!sourceEvents.length&&completed){
+      const values=modelToolValues(request),row=values.findLast(value=>value.task?.taskId===completed.taskId&&value.task.requirementRevision===completed.taskEvent.requirementRevision)?.task
+      if(!calls.some(call=>call.name==='resident_task_query'&&call.arguments.taskId===completed.taskId))return [{name:'resident_task_query',args:{taskId:completed.taskId}}]
+      if(!row)throw Error('Completion reply requires the actual current task result')
+      const sourceId=row.sourceRefs[0],source=values.findLast(value=>value.sourceId===sourceId)
+      if(!calls.some(call=>call.name==='resident_source_get'&&call.arguments.sourceId===sourceId))return [{name:'resident_source_get',args:{sourceId}}]
+      if(!source)throw Error('Completion reply requires the authenticated original source')
+      return [{name:'resident_router_reply',args:{operationId:'fixture-completion:'+completed.taskEventId,sourceId:source.sourceId,messageVersion:source.version,text:(row.completion?.result?.summary??row.completion?.summary)+signature,...(replyRecipients?{atOpenDingTalkIds:replyRecipients}:{}),...(row.completion?.result?.artifactFiles?.length?{taskDelivery:{taskId:row.taskId,requirementRevision:row.requirementRevision,artifactIds:row.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}:{})}}]
+    }
+    if(task){
+      const next=sourceEvents.find(event=>!calls.some(call=>call.name==='resident_task_action'&&call.arguments.sourceId===event.source.sourceId))
+      if(next)return [{name:'resident_task_action',args:{operationId:'fixture-context:'+next.source.sourceId,sourceId:next.source.sourceId,messageVersion:next.source.version,kind:'supplement',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,text:next.source.text}}]
+      return [{name:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'fixture-settle:'+input.events.map(event=>event.id).join(',')}}]
+    }
+    if(sourceEvents.length&&!calls.some(call=>call.name==='resident_task_plan'))return [{name:'resident_task_plan',args:{operationId:'fixture-plan:'+sourceEvents.map(event=>event.source.sourceId).join(','),sourceId:sourceEvents[0].source.sourceId,messageVersion:sourceEvents[0].source.version,
+      tasks:sourceEvents.map(event=>({taskId:'fixture-task-'+createHash('sha256').update(event.source.sourceId).digest('hex').slice(0,24),title,objective:objective??event.source.text,requirements:['Complete the original request and retain evidence'],quote:event.source.text})),dependencies:[]}}]
+    const confirmation=sourceEvents.find(event=>!calls.some(call=>call.name==='resident_router_reply'&&call.arguments.sourceId===event.source.sourceId))
+    if(confirmation)return [{name:'resident_router_reply',args:{operationId:'fixture-confirmation:'+confirmation.source.sourceId,sourceId:confirmation.source.sourceId,messageVersion:confirmation.source.version,text:'已接收原交办，按当前要求核查。'+signature}}]
+    return [{name:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'fixture-settle:'+input.events.map(event=>event.id).join(',')}}]
+  }
+
   if (input.trigger === 'task-facts') return [{ name: 'group_decision_submit', args: {
     requestId: input.requestId, topicId: input.topicId, revision: input.revision,
     decision: { actions: [], topicUpdate: { summary: input.facts.map(fact => fact.summary).join('\n') },

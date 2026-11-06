@@ -68,7 +68,7 @@ test('three explicit bounded reviews survive restart without autonomous retries 
  const f=await roots(t);let h=await f.host({decide:()=>[result()]});const id=await h.create();await h.service.whenIdle();const first=await h.stored(id)
  for(let review=1;review<=3;review++){await h.close();h=await f.host({initialize:false,decide:()=>[result()]});await h.service.recover();await h.service.whenIdle();assert.equal(h.taskRequests().length,0);await h.service.appendTaskContext({taskId:id,requestId:'real-review-'+review,progressImpact:'replan',context:'Explicit bounded review '+review+'; do not execute any original effect.'});await h.service.whenIdle();assert.equal(h.taskRequests().length,1);assert.equal(h.events.length,0);assert.equal(h.effects,0)}
  const stored=await h.stored(id);assert.equal(stored.task.sessionId,first.task.sessionId);assert.equal(stored.task.completion??null,null);assert.equal(stored.task.humanRequests.length,0);assert.equal(stored.entries.filter(e=>e.type==='custom_message'&&e.customType==='night.business-input'&&e.details.source.kind==='task-input').length,4);const before=h.taskRequests().length;for(let i=0;i<4;i++){await h.service.recover();await h.service.whenIdle()}assert.equal(h.taskRequests().length,before)
-})
+}, {timeout:nativeTestTimeout(40000)})
 test('lifecycle timeout drains an acquired native host before removing its workspace', async t => {
   let root, rootReady, opening, h, release, closed = false, continued = false
   const blocked = new Promise(resolve => { release = resolve })
@@ -153,13 +153,7 @@ for(const mode of ['provider-error','successful-text-without-task-result'])test(
 test('provider failure during actual group human review retains the source batch, holds across time and cold restore, then admits a new real answer',async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
  let task,failReview=true,reviewed=[]
- const route=request=>{
-  const input=latestInput(request),routed=topicTaskCalls(request),names=request.tools.map(tool=>tool.name)
-  if(input.trigger==='task-facts')return routed
-  if(names.includes('group_topic_route_submit')&&task)for(const route of routed[0].args.routes)for(const unit of route.units)unit.topics=[{topicId:task.topicRefs[0].topicId,reason:'The exact original business question and answer'}]
-  if(names.includes('group_decision_submit')&&task){const review=modelToolValues(request).find(value=>Array.isArray(value.candidates));if(!review)return [{name:'group_reply_review_get',args:{requestIds:[input.requestId]}}];const args=routed[0].args;args.decision.actions=[{kind:'task-context',taskId:task.taskId,inputVersion:task.requirementRevision,runSequence:task.runSequence??1,context:'Read the actual complete business reply without widening scope',progressImpact:'preserve',topicRefs:[{topicId:args.topicId,revision:args.revision}],basisUnitRefs:args.decision.basisUnitRefs}];args.decision.reply='已记录同一事项的完整来源，保持原授权边界。';args.decision.replyReview={kind:'substantive',reviewedOutboundIds:review.candidates.map(row=>row.outboundId),sameMatterOutboundIds:review.candidates.map(row=>row.outboundId),replaceOutboundIds:[]}}
-  return routed
- }
+ const route=request=>topicTaskCalls(request,{task})
  const decide=request=>{const input=latestInput(request);if(!input.task.humanRequests.length)return [{name:'task_result',args:{decision:{action:'blocked',summary:'The business target must be confirmed',question:'请业务负责人确认原事项的只读目标。',audience:'requester',evidence:[],limitations:[]}}}];if(input.humanReview){const source=input.sources.find(source=>input.humanReview.sourceIds.includes(source.sourceId)&&source.text.includes('SECOND_REAL_ANSWER'));assert.ok(source);reviewed.push(source.sourceId);return [{name:'task_human_resolve',args:{requestId:input.humanReview.requestId,sourceId:source.sourceId,reason:'The actual business answer confirms only the bounded read-only target',evidence:[source.text]}},result()]}return [result()]}
  const intercept=request=>taskRequest(request)&&latestInput(request).humanReview&&failReview?{stopReason:'error',errorMessage:transient}:undefined
  const f=await roots(t),h=await f.host({route,decide,intercept});await h.service.ingest({groupId:'native-group',messageId:'review-origin',senderOpenDingTalkId:'native-user',text:'测试助手，等业务负责人确认原事项的UAT3只读目标，不要实施变更。',occurredAt:new Date().toISOString()});await h.service.whenIdle();task=(await h.query('task.list'))[0]

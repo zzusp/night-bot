@@ -37,8 +37,9 @@ export async function nativeTaskHost(root,decide,options={}){
      let input;try{input=latestInput(request)}catch(error){if(!error.contextReads)throw error}
      const auxiliary=input?.requestId?.startsWith('coord-summary-')===true
      ;(auxiliary?auxiliaryRequests:requests).push(structuredClone(request))
-     let calls=contextReadCalls(request)
-     if(!calls&&auxiliary)calls=topicTaskCalls(request)
+     const handoffText=input?.handoffId&&request.tools.length===0?JSON.stringify({currentIntent:'Preserve the original task intent and current ledger references',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff}):undefined
+     let calls=handoffText?[]:contextReadCalls(request)
+     if(!calls&&(auxiliary||request.tools.some(tool=>tool.name==='resident_router_settle')&&input.events.every(event=>!event.source)))calls=topicTaskCalls(request,{replyRecipients:options.routerReplyRecipients,signature:options.agentConfig?.replySignature?String.fromCharCode(10,10)+options.agentConfig.replySignature:''})
      if(!calls){
       // These routing scenarios request no preliminary send. Explicit silence
       // is a valid first-tier disposition; the real tool validates every source.
@@ -51,7 +52,7 @@ export async function nativeTaskHost(root,decide,options={}){
       callOptions.signal?.throwIfAborted()
      }
      const failure=options.providerError?.(request)
-     result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:failure?[]:calls.map(call=>({type:'toolCall',id:'routing-call-'+(++sequence),name:call.name,arguments:call.args})),usage,timestamp:Date.now(),stopReason:failure?'error':calls.length?'toolUse':'stop',...failure?{errorMessage:failure.message??String(failure)}:{}}
+     result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:failure?[]:handoffText?[{type:'text',text:handoffText}]:calls.map(call=>({type:'toolCall',id:'routing-call-'+(++sequence),name:call.name,arguments:call.args})),usage,timestamp:Date.now(),stopReason:failure?'error':calls.length?'toolUse':'stop',...failure?{errorMessage:failure.message??String(failure)}:{}}
      }
     }catch(error){if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('ROUTING_MODEL_ERROR',error);result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:[],usage,timestamp:Date.now(),stopReason:callOptions.signal?.aborted?'aborted':'error',errorMessage:error.stack??error.message}}
     if(options.estimateUsage===true){

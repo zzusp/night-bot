@@ -77,7 +77,7 @@ export class OfficialAgentFactory {
   const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,effectReconciliationAuditKinds,sessionNameAuditKinds,ports.auditKinds,options.auditKinds)
   const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
   const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
-  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[]
+  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false
   const cancellationError=fail('PI_OFFICIAL_ACTOR_NOT_LIVE')
   const lifecycle=new AbortController(),deliveryContext=new AsyncLocalStorage(),pending=new Set()
   const requestGuards=new Set()
@@ -97,6 +97,10 @@ export class OfficialAgentFactory {
   try{
    if(mode==='resume'&&options.initialReceipts?.length)throw fail('PI_OFFICIAL_RESUME_INITIAL_RECEIPTS_UNSUPPORTED')
    for(const receipt of options.initialReceipts??[])store.appendAudit(receipt)
+   if(options.routerHandoff){
+    if(mode!=='create'||options.routerHandoff.conversationId!==options.meta?.conversationId)throw fail('PI_ROUTER_HANDOFF_SCOPE')
+    store.manager.appendCustomMessageEntry('night.router-handoff',JSON.stringify(options.routerHandoff),false,{handoffId:options.routerHandoff.handoffId,conversationId:options.routerHandoff.conversationId})
+   }
    await store.commit()
    let publishInternal
    const admission=await createBusinessAdmission({store,authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
@@ -118,7 +122,7 @@ export class OfficialAgentFactory {
       if(!entry)throw fail('PI_DIRECTORY_NOTICE_RECEIPT_REQUIRED')
       await publishInternal({id:`directory:${entry.id}`,source:{kind:'directory-change'},content:`Working directory changed to ${change.cwd}`})
      }})
-     actor.ctx.get('tools')?.guard(()=>published&&live()&&!closing&&!cancelled&&!admission.paused?undefined:'Agent is not admitting effects')
+     actor.ctx.get('tools')?.guard(()=>published&&live()&&!closing&&!cancelled&&!routerFrozen&&!admission.paused?undefined:'Agent is not admitting effects')
      await ports.mount?.(actor.ctx,actor,options)
      await options.setup?.(actor.ctx,actor)
      await ports.prepareTools?.(actor.ctx,actor,options)
@@ -173,10 +177,52 @@ export class OfficialAgentFactory {
    }
    const thisFactory=this
    const handle={actor,agent:actor,session:bundle.session,
-    enqueue:packet=>{active();return admission.enqueue(packet)},
+    enqueue:packet=>{active();if(routerFrozen)throw fail('PI_ROUTER_FROZEN');return admission.enqueue(packet)},
     deliver:(packetId,deliveryOptions)=>{
-     active();const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
+     active();if(routerFrozen)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
     },whenIdle,cancel,
+    async routerCommitProof(){
+     active();await whenIdle();await store.commit()
+     const entries=store.manager.getEntries(),commit=entries.at(-1)
+     if(commit?.type!=='custom'||commit.customType!=='night.commit')throw fail('PI_ROUTER_COMMIT_REQUIRED')
+     return {sessionId:id,commitId:commit.id,revision:store.snapshot().revision,nativeEntryCount:entries.length}
+    },
+    async routerRecoveryProof(handoffId){
+     active();routerFrozen=true
+     await whenIdle();const recoveryHold=await drain('maintenance')
+     if(bundle.session.pendingMessageCount||bundle.session.isRetrying)throw fail('PI_ROUTER_INPUT_PENDING')
+     for(const packetId of admission.pending()){
+      const packet=admission.lookupPacket(packetId)
+      if(packet?.source.kind!=='router-handoff'||packet.source.handoffId!==handoffId)throw fail('PI_ROUTER_RECOVERY_INPUT_UNRESOLVED')
+      await admission.cancelInternal(packetId,'router-handoff-recovery')
+     }
+     check();await store.commit();await recoveryHold.resume?.();routerFrozen=false
+     return handle.routerCommitProof()
+    },
+    async runToolFreeHandoff(packet,validate){
+     active();if(routerFrozen||maintenanceCount||admission.paused)throw fail('PI_ROUTER_HANDOFF_BUSY')
+     routerFrozen=true
+     await whenIdle();const handoffHold=await drain('maintenance');await handoffHold.resume?.()
+     if(admission.pending().length||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.isStreaming||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_INPUT_PENDING')
+     routerFrozen=true
+     const tools=bundle.session.getActiveToolNames();bundle.session.setActiveToolsByName([])
+     try{
+      await publishInternal(packet)
+      await bundle.deliver(packet.id)
+      await whenIdle()
+      const last=bundle.session.messages.findLast(message=>message.role==='assistant')
+      if(last?.stopReason!=='stop'||last.content?.some(item=>item.type==='toolCall'))throw fail('PI_ROUTER_HANDOFF_INCOMPLETE')
+      const text=last.content.filter(item=>item.type==='text').map(item=>item.text).join('\n')
+      const handoff=await validate(text)
+      await store.commit()
+      return {handoff,commitProof:await handle.routerCommitProof()}
+     }catch(error){
+      // 存储或owner异常不恢复业务；普通模型/schema失败可安全回原代。
+      try{check();active();const hold=await drain('maintenance');await hold.resume?.();bundle.session.setActiveToolsByName(tools);routerFrozen=false;error.routerSafeToResume=true}catch{}
+      throw error
+     }
+    },
+    routerResumeAfterHandoffFailure(){active();check();if(maintenanceFailed||admission.paused)throw fail('PI_ROUTER_RECOVERY_BLOCKED');routerFrozen=false},
     runMaintenance(action){
      if(deliveryContext.getStore()===actor)return Promise.reject(fail('PI_MAINTENANCE_REENTRANT'))
      if(typeof action!=='function')return Promise.reject(new TypeError('Maintenance callback required'))

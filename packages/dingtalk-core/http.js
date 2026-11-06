@@ -64,7 +64,7 @@ function topicSummary(topic) {
   const unfinished = topic.decisions?.findLast(isPendingDecision)
   const pendingUnits = new Set(topic.entries.filter((entry) => entry.revision > topic.processedRevision).map((entry) => entry.unitId ?? `legacy:${entry.messageId}`))
   return {
-    topicId: topic.topicId, groupId: topic.groupId, title: topic.title,
+    legacyReadonly: true, topicId: topic.topicId, groupId: topic.groupId, title: topic.title,
     revision: topic.revision, processedRevision: topic.processedRevision, status: topic.status,
     ...(topic.mergedInto ? { mergedInto: topic.mergedInto, mergeReceipt: topic.mergeReceipt } : {}),
     summary: String(topic.summary ?? '').slice(0, 1000),
@@ -78,7 +78,7 @@ function topicSummary(topic) {
 }
 // The daily overview does not inspect message ownership or decision history.
 function topicOverview(topic, { list = false } = {}) {
-  return { topicId: topic.topicId, groupId: topic.groupId, title: topic.title,
+  return { legacyReadonly: true, topicId: topic.topicId, groupId: topic.groupId, title: topic.title,
     revision: topic.revision, summaryRevision: topic.summaryRevision, status: topic.status,
     summary: list ? String(topic.summary ?? '').slice(0, 240) : topic.summary,
     updatedAt: topic.updatedAt, ...(topic.mergedInto ? { mergedInto: topic.mergedInto } : {}) }
@@ -160,7 +160,7 @@ export function residentErrorStatus(error) {
   if (message === 'DYNAMIC_NOT_FOUND') return 404
   if (/TASK_(?:REQUIREMENT|CONTROL|REQUEST|SESSION).*?(?:CONFLICT|STALE|BUSY)|TASK_SESSION_TERMINAL/.test(message)) return 409
   if (/TASK_(?:(?:SESSION|NOTIFICATION)_)?NOT_FOUND/.test(message)) return 404
-  if (/LEGACY_TASK_READONLY|WORKFLOW_RETIRED/.test(message)) return 410
+  if (/LEGACY_TASK_READONLY|WORKFLOW_RETIRED|TOPIC_ROUTING_RETIRED/.test(message)) return 410
   return /^(group_has_(active_tasks|referenced_topics|pending_decisions|pending_outbox|pending_topic_facts)|task-stale|task_input_version_(conflict|stale)|task_request_identity_conflict|task_input_pending|task_topic_version_invalid|task_result_context_changed|task_prompts_version_conflict|task_web_(task-stale|topic-stale|routing-required)|web_task_version_conflict)(:|$)/u.test(message) ? 409 : 400
 }
 
@@ -172,6 +172,7 @@ async function submitWebTask(request, response, runtime, kind, taskId) {
       if (task?.legacyReadonly || !task && await runtime.isWorkflowTask?.(taskId)) return send(response, 410, { error: 'LEGACY_TASK_READONLY' })
     }
     const body = await readJson(request)
+    if(Object.hasOwn(body,'topicId')||Object.hasOwn(body,'topicRefs'))return send(response,410,{error:'TOPIC_ROUTING_RETIRED'})
     const parsed = (kind === 'createTask' ? createTaskInputSchema : kind === 'cancelTask' ? cancelTaskInputSchema : kind === 'reopenTask' ? reopenTaskInputSchema : contextTaskInputSchema).safeParse(body)
     if (!parsed.success) return send(response, 400, { error: 'web_task_request_invalid', issues: parsed.error.issues.map(({ path, message }) => ({ path, message })) })
     const value = await runtime[kind]({ ...parsed.data, ...(taskId ? { taskId } : {}) })
@@ -184,6 +185,13 @@ export async function handleRequest(request, response, store, { testApiEnabled =
   const url = new URL(request.url ?? '/', 'http://localhost')
   // 浏览器预检不执行业务操作，须先于旧写入口清退规则响应。
   if (request.method === 'OPTIONS') return send(response, 204, null)
+  const retiredTopicWrite=request.method!=='GET'&&( /\/(?:topics|fixed-topics)(?:\/|$)/u.test(url.pathname)||/\/routing-hold$/u.test(url.pathname)||url.pathname.startsWith('/runtime/task-topics/'))
+  if(retiredTopicWrite||url.searchParams.has('topicId')&&/^\/(?:state\/)?tasks(?:\/|$)/u.test(url.pathname)){
+    response.setHeader('cache-control','no-store')
+    return send(response,410,{error:'TOPIC_ROUTING_RETIRED',message:'活动 Topic 路由已退休；请使用原消息来源与事项接口。历史 Topic 仅供审计读取。'})
+  }
+  if(request.method==='GET'&&/^\/state\/(?:topics|fixed-topics)(?:\/|$)/u.test(url.pathname))response.setHeader('x-night-bot-legacy-readonly','true')
+
   const effectRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/([^/]+)\/(inspect|close)$/u.exec(url.pathname)
   const effectActionRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/new-action$/u.exec(url.pathname)
   if (effectRoute || effectActionRoute) {
@@ -224,7 +232,8 @@ export async function handleRequest(request, response, store, { testApiEnabled =
         z.strictObject({ ...identity, resume: z.literal(true) }),
         z.strictObject({ ...identity, scope: z.array(z.string().trim().min(1).max(200)).min(1).max(100).refine(values => new Set(values).size === values.length), confirmClosedScope: z.literal(true) }),
       ])
-      const parsed = schema.safeParse(await readJson(request))
+      const body=await readJson(request)
+      const parsed = schema.safeParse(body)
       if (!parsed.success) return send(response, 400, { error: 'routing_hold_request_invalid' })
       const { confirmClosedScope, ...input } = parsed.data
       const result = await store.updateMessageRoutingHold({ groupId: decodeURIComponent(routingHold[1]), messageId: decodeURIComponent(routingHold[2]), ...input })
@@ -632,12 +641,11 @@ export async function handleRequest(request, response, store, { testApiEnabled =
     try {
       if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
       const token = z.string().regex(/^[a-f0-9]{64}$/u)
-      const schema = messageRetry ? z.strictObject({ messageVersion: z.number().int().positive(),
-        activeUnitRefs: z.array(z.strictObject({ unitId: requiredText, unitRevision: z.number().int().positive() }))
-          .refine(refs => new Set(refs.map(ref => JSON.stringify([ref.unitId, ref.unitRevision]))).size === refs.length),
-        phase: z.enum(['routing', 'decision', 'host']), requestId: requiredText, token })
+      const schema = messageRetry ? z.strictObject({sourceId:requiredText,messageVersion:z.number().int().positive(),phase:z.enum(['triage','router'])})
         : z.strictObject({ expectedToken: token })
-      const parsed = schema.safeParse(await readJson(request))
+      const body=await readJson(request)
+      if(messageRetry&&['routing','decision','host'].includes(body.phase))return send(response,410,{error:'TOPIC_ROUTING_RETIRED'})
+      const parsed = schema.safeParse(body)
       if (!parsed.success) return send(response, 400, { error: 'MESSAGE_RECOVERY_REQUEST_INVALID' })
       const match = messageRetry ?? notificationRetry
       const identity = { groupId: decodeURIComponent(match[1]), [messageRetry ? 'messageId' : 'notificationId']: decodeURIComponent(match[2]) }

@@ -1,3 +1,4 @@
+import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
 import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
@@ -26,7 +27,7 @@ import { isAbsolute, dirname, basename } from 'node:path'
 
 // This ledger belongs to the trusted Host. None of its write commands are model tools.
 // SQLite transactions commit command receipts and causal wakes together, before dispatch.
-const VERSION = 2
+const VERSION = 4
 const APPLICATION = 0x44535453
 const livePaths = new Set()
 const terminalOperations = new Set(['succeeded', 'failed', 'cancelled'])
@@ -124,7 +125,7 @@ function durableMarker(path, value, initial = false) {
 
 /** New-instance initialization is explicit. An ingress epoch can only be bound to a new ledger.
  * Current Night ledgers upgrade in place only through their own explicit schema gates. */
-export async function openDynamicTaskStore({ dbPath, instanceId, initialize = false, migrate = false, migrationExpectedDigest, paginationMigrate = false, ingressEpoch, webActorId, resourceCatalog: configuredResourceCatalog, startupObserver, ...unsupported } = {}) {
+export async function openDynamicTaskStore({ dbPath, instanceId, initialize = false, migrate = false, migrationExpectedDigest, paginationMigrate = false, ingressEpoch, webActorId, ownerActorId, resourceCatalog: configuredResourceCatalog, startupObserver, ...unsupported } = {}) {
   if (Object.hasOwn(unsupported, 'legacyDbPath')) fail('DYNAMIC_LEGACY_IMPORT_RETIRED')
   const startup = createStartupMetrics(startupObserver)
   if (migrationExpectedDigest !== undefined && !/^[a-f0-9]{64}$/.test(migrationExpectedDigest)) fail('DYNAMIC_ARGUMENT_INVALID', 'migrationExpectedDigest')
@@ -238,7 +239,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
   }
   const executionCurrent = execution => {
     const task = get('dynamic_tasks', execution.taskId)
-    return !task.archivedAt && !execution.recovering && task.status === 'active' && task.control === 'active' && execution.requirementRevision === task.requirementRevision
+    return !task.archivedAt && routerLedger.dependenciesReady(task) && !execution.recovering && task.status === 'active' && task.control === 'active' && execution.requirementRevision === task.requirementRevision
       && execution.controlRevision === task.controlRevision && !execution.cancelRequested && !executionCoordinationWait(task, execution.executionId)
   }
   const blockers = taskId => ({
@@ -388,19 +389,23 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         CREATE TABLE dynamic_resource_locks(resource_key TEXT PRIMARY KEY,holder TEXT NOT NULL);
         ${coordinationSchema}
         ${scheduleSchema}
+        ${routerSchema}
         CREATE UNIQUE INDEX dynamic_execution_key ON dynamic_executions(json_extract(body,'$.taskId'),json_extract(body,'$.key'));
         CREATE UNIQUE INDEX dynamic_operation_key ON dynamic_operations(json_extract(body,'$.taskId'),json_extract(body,'$.key'));
         CREATE UNIQUE INDEX dynamic_notification_revision ON dynamic_notifications(json_extract(body,'$.taskId'),json_extract(body,'$.requirementRevision')) WHERE json_extract(body,'$.kind')='completion';
         `)
+      db.prepare('INSERT INTO dynamic_meta(key,value) VALUES (?,?)').run('router_schema', routerSchemaVersion)
       db.prepare('INSERT INTO dynamic_meta(key,value) VALUES (?,?)').run('instanceId', instanceId)
       db.prepare('INSERT INTO dynamic_meta(key,value) VALUES (?,?)').run('initToken', marker.initToken)
       if (configuredIngressEpoch) db.prepare('INSERT INTO dynamic_meta(key,value) VALUES (?,?)').run('ingressEpoch', configuredIngressEpoch)
       db.exec('COMMIT')
-    } else if (!([1, VERSION].includes(version) || version === 3 && tables.some(row => row.name === 'dynamic_meta') && db.prepare("SELECT value FROM dynamic_meta WHERE key='taskArchiveSchema'").get()?.value === '1') || db.prepare('PRAGMA application_id').get().application_id !== APPLICATION) fail('DYNAMIC_SCHEMA_INVALID')
+    } else if ([1,2,3].includes(version)) fail('ROUTER_SCHEMA_UPGRADE_REQUIRED')
+    else if (!([VERSION].includes(version) || version === 3 && tables.some(row => row.name === 'dynamic_meta') && db.prepare("SELECT value FROM dynamic_meta WHERE key='taskArchiveSchema'").get()?.value === '1') || db.prepare('PRAGMA application_id').get().application_id !== APPLICATION) fail('DYNAMIC_SCHEMA_INVALID')
     if (version === 1 && !migrate) fail('DYNAMIC_MIGRATION_REQUIRED', 'Offline v1 to v2 migration requires explicit migrate=true after draining writers.')
+    if(db.prepare("SELECT value FROM dynamic_meta WHERE key='router_schema'").get()?.value !== routerSchemaVersion) fail('ROUTER_SCHEMA_UPGRADE_REQUIRED')
     const initToken = db.prepare("SELECT value FROM dynamic_meta WHERE key='initToken'").get()?.value
     if (marker && initToken !== marker.initToken) fail('DYNAMIC_INITIALIZATION_MARKER_MISMATCH')
-    const requiredTables = ['meta','tasks','executions','operations','wakes','notifications','legacy_blockers','sources','groups','receipts','resource_locks'].map(name => `dynamic_${name}`)
+    const requiredTables = ['meta','tasks','executions','operations','wakes','notifications','legacy_blockers','sources','groups','receipts','resource_locks',...routerTables].map(name => `dynamic_${name}`)
     if (requiredTables.some(table => !db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))) fail('DYNAMIC_SCHEMA_INVALID')
     // Fail closed on an unexpected schema or a different installation's file.
     if (db.prepare('SELECT value FROM dynamic_meta WHERE key=\'instanceId\'').get()?.value !== instanceId) fail('DYNAMIC_INSTANCE_MISMATCH')
@@ -507,7 +512,44 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     return { events, nextCursor: events.at(-1)?.sequence ?? after, hasMore: rows.length > limit }
   }
   const topicFacts = topicFactLedger({ db, get: (table, id) => get(table, id, true), put })
+  const routerLedger = createRouterLedger({db,get,put,all,reduce,wake,saveTask,blockers,taskHumanWait,digest,operatorActorIds:[ownerActorId,webActorId].filter(Boolean)})
+  function assertTaskDelivery(notification,{allowArchived=true}={}) {
+    const p=record(notification.payload),selection=record(p.taskDelivery),task=get('dynamic_tasks',notification.taskId)
+    if(notification.kind!=='status'||selection.taskId!==task.taskId||digest(p.taskIds??[])!==digest([task.taskId]))fail('DYNAMIC_TASK_DELIVERY_INVALID')
+    if(task.status!=='completed'||task.control!=='active'||task.requirementRevision!==notification.requirementRevision
+      ||selection.requirementRevision!==task.requirementRevision||task.completion?.requirementRevision!==task.requirementRevision
+      ||task.archiveRestore?.reviewRequired||notification.archiveRestoreHold)fail('DYNAMIC_TASK_DELIVERY_STALE')
+    if(task.archivedAt&&!allowArchived)fail('DYNAMIC_TASK_DELIVERY_ARCHIVED')
+    const source=get('dynamic_sources',text(p.sourceId,'sourceId')),ref=record(p.sourceRef)
+    if(source.groupId!==task.groupId||p.conversationId!==task.groupId||!task.sourceRefs.includes(source.sourceId)
+      ||p.sourceVersion!==source.version||digest(ref)!==digest({messageId:source.messageId,messageVersion:source.version,actorId:source.actorId})
+      ||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold
+      ||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TASK_DELIVERY_SOURCE_INVALID')
+    const ids=array(selection.artifactIds),frozen=task.completion?.result?.artifactFiles??[]
+    if(!ids.length||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!id))fail('DYNAMIC_TASK_DELIVERY_INVALID')
+    const selected=ids.map(id=>{
+      const matches=frozen.filter(file=>file.artifact?.artifactId===id)
+      if(matches.length!==1||matches[0].artifact.taskId!==task.taskId||matches[0].artifact.requirementRevision!==task.requirementRevision
+        ||typeof matches[0].caption!=='string'||!matches[0].caption.trim())fail('DYNAMIC_TASK_DELIVERY_INVALID')
+      return matches[0]
+    })
+    if(p.artifact!==undefined) {
+      const parent=get('dynamic_notifications',text(p.deliveryId,'deliveryId')),parentPayload=parent.payload
+      const index=selected.findIndex(file=>file.artifact.artifactId===p.artifact.artifactId),file=selected[index]
+      if(!file)fail('DYNAMIC_TASK_DELIVERY_INVALID')
+      const expectedAfter=index===0?parent.id:parent.id+':file:'+selected[index-1].artifact.artifactId
+      if(parent.kind!=='status'||parent.taskId!==task.taskId||parent.requirementRevision!==task.requirementRevision
+        ||parentPayload.artifact!==undefined||digest(parentPayload.taskDelivery??null)!==digest(selection)
+        ||digest(parentPayload.artifactFiles??[])!==digest(selected)||parentPayload.sourceId!==source.sourceId
+        ||parentPayload.sourceVersion!==source.version||digest(parentPayload.sourceRef??null)!==digest(ref)
+        ||digest(p.atOpenDingTalkIds??null)!==digest(parentPayload.atOpenDingTalkIds??null)||p.atAll!==parentPayload.atAll
+        ||digest(p.artifact)!==digest(file.artifact)||p.artifactFiles!==undefined||p.text!==file.artifact.fileName+'：'+file.caption
+        ||notification.id!==parent.id+':file:'+file.artifact.artifactId||p.afterNotificationId!==expectedAfter)fail('DYNAMIC_TASK_DELIVERY_INVALID')
+    } else if(p.deliveryId!==notification.id||p.afterNotificationId!==undefined||digest(p.artifactFiles??[])!==digest(selected))fail('DYNAMIC_TASK_DELIVERY_INVALID')
+  }
   function reduce(kind, a, commandId) {
+    const routerResult = routerLedger.command(kind,a,commandId)
+    if(routerResult !== undefined)return routerResult
     const heldTaskId=a.taskId??a.binding?.taskId
     if(heldTaskId&&kind.startsWith('task.')&&!kind.startsWith('task.effect-reconciliation.')&&kind!=='task.drained'
       &&get('dynamic_tasks',heldTaskId,true)?.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
@@ -526,7 +568,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (a.coordinationHold) fail('INDEPENDENT_COORDINATION_RETIRED')
       const taskId = text(a.taskId, 'taskId')
       if (get('dynamic_tasks', taskId, true)) fail('DYNAMIC_TASK_EXISTS')
-      const task = { id: taskId, taskId, sessionId: `task-session-${randomUUID()}`, groupId: a.groupId ?? null,
+      const task = { id: taskId, taskId, sessionId: `task-session-${randomUUID()}`, groupId: a.groupId ?? null, conversationId:a.conversationId ?? a.groupId ?? null,
         sourceRefs: a.sourceRefs ?? [], topicRefs: a.topicRefs ?? [], appliedOperations: a.operationId ? [a.operationId] : [], runSequence: 1, ownerActorId: a.ownerActorId ?? null, title: a.title ?? a.objective ?? a.request ?? taskId,
         objective: a.objective ?? a.request ?? '', request: a.request ?? a.objective ?? '', requirements: a.requirements ?? [], metadata: a.metadata ?? {},
         requirementRevision: 1, controlRevision: 1, status: 'active', control: 'active', leaseEpoch: 0, sessionBound: false, drained: true,
@@ -706,6 +748,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const task = get('dynamic_tasks', a.taskId)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
+      const previousRequirementRevision=task.requirementRevision
+      if(a.sameGoal===true&&(kind!=='task.reopen'||['objective','title','requirements'].some(key=>a[key]!==undefined&&digest(a[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
       if(kind!=='task.control'||a.control==='active')clearDisabledTaskRetry(task)
       if (kind === 'task.revise' || kind === 'task.reopen') {
         if (a.expectedRequirementRevision !== undefined && a.expectedRequirementRevision !== task.requirementRevision
@@ -718,7 +762,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           task.status = 'active'; task.control = 'active'; task.controlRevision++; task.runSequence = (task.runSequence ?? 1) + 1; task.completion = null
         } else if (task.status === 'completed' || task.control === 'cancelled') fail('DYNAMIC_TASK_TERMINAL')
         task.requirementRevision++
-        for (const field of ['request','objective','title','requirements','sourceRefs','topicRefs']) if (a[field] !== undefined) task[field] = clone(a[field])
+        for (const field of ['request','objective','title','requirements','topicRefs']) if (a[field] !== undefined) task[field] = clone(a[field])
         if (a.replyBindings !== undefined) task.replyBindings = topicFacts.bindings(task, a.replyBindings)
         if (a.request !== undefined) text(a.request, 'request')
       } else {
@@ -728,6 +772,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         task.controlRevision++; task.control = a.control
         if (a.control === 'cancelled') { task.status = 'cancelled'; task.cancelledAt ??= stamp }
       }
+      if (a.sourceRefs !== undefined) task.sourceRefs = clone(array(a.sourceRefs))
       if (a.topicRefs !== undefined) task.topicRefs = clone(array(a.topicRefs))
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), text(a.operationId, 'operationId')])]
       for (const request of task.humanRequests ?? []) if (request.status === 'waiting-reply') { request.status = 'superseded'; request.supersededAt = stamp }
@@ -739,7 +784,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       for (const operation of ops(task.taskId)) if (operation.state === 'prepared') {
         operation.state = 'cancelled'; put('dynamic_operations', operation); releaseOperation(operation)
       }
-      saveTask(task); wake(task.taskId, kind, { requirementRevision: task.requirementRevision, controlRevision: task.controlRevision }, `wake:${commandId}`)
+      saveTask(task);routerLedger.taskMutation(kind,task,{sameGoal:a.sameGoal,previousRequirementRevision})
+      wake(task.taskId, kind, { requirementRevision: task.requirementRevision, controlRevision: task.controlRevision }, `wake:${commandId}`)
       return changed({ task })
     }
     if(kind==='task.effect-reconciliation.prepare'){
@@ -768,6 +814,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       saveTask(task);return changed({task,reconciliation})
     }
     if (kind === 'task.claim') {
+      if(!routerLedger.dependenciesReady(get('dynamic_tasks',a.taskId)))fail('ROUTER_DEPENDENCY_PENDING')
       if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
@@ -844,9 +891,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if (task.status !== 'active' || task.control !== 'active' || source.groupId !== task.groupId || source.channel !== 'im'
           || !task.sourceRefs.includes(source.sourceId) || !(Date.parse(source.timestamp) >= Date.parse(request.createdAt) && Date.parse(source.timestamp) <= Date.parse(stamp))) fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
         const payload = a.topicFacts === true ? null : clone(record(a.humanReply.notification))
-        if (payload && (payload.conversationId !== source.groupId || payload.sourceMessageId !== source.messageId || payload.actorId !== source.actorId
-          || payload.sourceId !== source.sourceId || payload.sourceVersion !== source.version || payload.replyToMessageId !== source.messageId
-          || payload.replyToSenderOpenDingTalkId !== source.actorId || digest(payload.atOpenDingTalkIds ?? []) !== digest([source.actorId]))) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
+        if (payload) {
+          const quoteFields=[payload.sourceMessageId,payload.actorId,payload.replyToMessageId,payload.replyToSenderOpenDingTalkId]
+          const quoted=quoteFields.every((value,index)=>value===[source.messageId,source.actorId,source.messageId,source.actorId][index])
+          const sourceIdentity=payload.sourceRef===undefined?quoted:digest(payload.sourceRef)===digest({messageId:source.messageId,messageVersion:source.version,actorId:source.actorId})&&(quoted||quoteFields.every(value=>value==null))
+          if(payload.conversationId!==source.groupId||payload.sourceId!==source.sourceId||payload.sourceVersion!==source.version||!sourceIdentity||payload.atAll||digest(payload.atOpenDingTalkIds??[])!==digest([source.actorId]))fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
+        }
         const evidence = array(a.evidence).map(item => text(item, 'evidence'))
         if (!evidence.length) fail('DYNAMIC_ARGUMENT_INVALID', 'evidence')
         const id = `human-followup:${task.taskId}:${request.requestId}:${source.sourceId}`
@@ -1587,12 +1637,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'notification.prepare') {
       if (a.kind === 'coordination') fail('INDEPENDENT_COORDINATION_RETIRED')
-      const task = ['triage-reply','topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
-      if (!['question','status','triage-reply','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
+      const task = ['triage-reply','router-reply','platform-reply','topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
+      if (!['question','status','triage-reply','router-reply','platform-reply','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
       integer(a.requirementRevision, 'requirementRevision')
-      if(a.kind==='triage-reply'){
-        const p=record(a.payload),ref=record(p.sourceRef),lesson=record(p.triage),source=get('dynamic_sources',text(p.sourceId,'sourceId'))
-        if(a.taskId||p.taskIds?.length||p.topicRefs?.length||p.artifactFiles?.length||p.atAll||p.replyKind!=='confirmation'||!p.text.startsWith('初步判断，尚待结合话题进一步核实：')||source.groupId!==p.conversationId||source.messageId!==ref.messageId||source.version!==ref.messageVersion||source.actorId!==ref.actorId||p.sourceMessageId!==ref.messageId||p.actorId!==ref.actorId||p.replyToMessageId!==ref.messageId||p.replyToSenderOpenDingTalkId!==ref.actorId||typeof lesson.quote!=='string'||!lesson.quote||source.text.split(lesson.quote).length!==2||id!=='triage-'+digest([source.groupId,source.messageId,source.version,text(lesson.topicKey,'topicKey')]))fail('DYNAMIC_TRIAGE_SOURCE_INVALID')
+      if(['triage-reply','router-reply','platform-reply'].includes(a.kind)){
+        const p=record(a.payload),ref=record(p.sourceRef),source=get('dynamic_sources',text(p.sourceId,'sourceId'))
+        if(a.taskId||p.atAll&&a.kind!=='platform-reply'||source.groupId!==p.conversationId||source.messageId!==ref.messageId||source.version!==ref.messageVersion||source.actorId!==ref.actorId||typeof p.text!=='string'||!p.text.trim()||source.authorizationRevoked)fail('DYNAMIC_DIRECT_SOURCE_INVALID')
+        if(a.kind==='triage-reply'&&(p.artifactFiles?.length||p.taskIds?.length))fail('DYNAMIC_DIRECT_SOURCE_INVALID')
       }
       if (a.kind === 'topic-reply' && (!Array.isArray(a.payload?.fact?.topicRefs) || !a.payload.fact.topicRefs.length)) fail('DYNAMIC_ARGUMENT_INVALID', 'topicRefs')
       if (a.kind === 'fixed-topic-reply') {
@@ -1646,7 +1697,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const prior = get('dynamic_notifications', id, true)
       if (prior) { if (prior.payloadDigest !== digest(body)) fail('DYNAMIC_NOTIFICATION_ID_CONFLICT'); return changed({ notification: prior }) }
       const notification = { id, notificationId: id, ...body, payloadDigest: digest(body), state: 'prepared', createdAt: stamp, updatedAt: stamp }
+      if(notification.payload.taskDelivery!==undefined)assertTaskDelivery(notification,{allowArchived:false})
       const notifications = groupNotificationParts(notification, a.payload.artifactFiles)
+      if(notification.payload.taskDelivery!==undefined) {
+        // 子件与父件同事务产生；先发布父件供身份核对，任一子件失败会整体回滚。
+        put('dynamic_notifications',notification)
+        for(const child of notifications.slice(1))assertTaskDelivery(child,{allowArchived:false})
+      }
       for (const part of notifications) put('dynamic_notifications', part)
       return changed({ notification, notifications })
     }
@@ -1730,13 +1787,14 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if (kind === 'notification.start' || kind === 'notification.receipt' || kind === 'notification.delivered' || kind === 'notification.reconcile') {
       const notification = get('dynamic_notifications', a.notificationId)
       if (kind === 'notification.start') {
-      if(get('dynamic_notifications',a.notificationId).archiveRestoreHold)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
         if (notification.state !== 'prepared') return changed({ notification })
+        if(notification.archiveRestoreHold)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
+        if(notification.payload.taskDelivery!==undefined)assertTaskDelivery(notification)
         if (notification.payload.afterNotificationId
           && get('dynamic_notifications', notification.payload.afterNotificationId, true)?.state !== 'delivered')
           return { result: { notification }, dispatchEligible: false }
         if (notification.kind === 'coordination') fail('INDEPENDENT_COORDINATION_RETIRED')
-        if(notification.kind==='triage-reply'){const p=notification.payload,source=get('dynamic_sources',p.sourceId);if(source.version!==p.sourceRef.messageVersion||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TRIAGE_SOURCE_STALE')}
+        if(['triage-reply','router-reply','platform-reply'].includes(notification.kind)){const p=notification.payload,source=get('dynamic_sources',p.sourceId);if(source.version!==p.sourceRef.messageVersion||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TRIAGE_SOURCE_STALE')}
         if (notification.kind === 'topic-reply' && notification.payload.humanRequests?.some(ref => {
           const task = get('dynamic_tasks', ref.taskId, true)
           const request = task?.humanRequests?.find(item => item.requestId === ref.requestId)
@@ -1747,7 +1805,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           put('dynamic_notifications', notification)
           return changed({ notification, topicFacts: topicFacts.requeueUnsent(notification) })
         }
-        const task = ['triage-reply','topic-reply','fixed-topic-reply','routing-clarification','coordination'].includes(notification.kind) ? null : get('dynamic_tasks', notification.taskId)
+        const task = ['triage-reply','router-reply','platform-reply','topic-reply','fixed-topic-reply','routing-clarification','coordination'].includes(notification.kind) ? null : get('dynamic_tasks', notification.taskId)
         const request = notification.kind === 'question' && task.humanRequests?.find(item => item.requestId === notification.payload.humanRequestId)
         if (notification.kind === 'question' && (notification.requirementRevision !== task.requirementRevision || task.status !== 'active' || task.control !== 'active'
           || !request || request.status !== 'waiting-reply' || request.requirementRevision !== task.requirementRevision
@@ -1805,7 +1863,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (epochGated && !eventTimestamp) return changed({ ignored: true, reason: 'invalid-ingress-timestamp', source: null })
       if (epochGated && Date.parse(eventTimestamp) < Date.parse(boundIngressEpoch)) return changed({ ignored: true, reason: 'before-ingress-epoch', source: null })
       if (prior) {
-        const { routed: _routed, routedAt: _routedAt, receivedAt: _receivedAt, routeReceipt: _receipt, routeDecision: _decision, routePreparedAt: _prepared, processingCompleted: _processing, processingHistory: _history, processingPending: _pending, activeUnitRefs: _activeRefs, stages: _stages, ...previous } = prior
+        const { routed: _routed, routedAt: _routedAt, receivedAt: _receivedAt, routeReceipt: _receipt, routeDecision: _decision, routePreparedAt: _prepared, processingCompleted: _processing, processingHistory: _history, processingPending: _pending, activeUnitRefs: _activeRefs, stages: _stages, triageHold:_triageHold, routingUpgrade:_routingUpgrade, archiveRestoreHold:_archiveRestoreHold, authorizationRevoked:_authorizationRevoked, coordinationRetirement:_coordinationRetirement, ...previous } = prior
         const { receivedAt: _incomingReceivedAt, ...incoming } = source
         if (digest(previous) !== digest(incoming)) fail('DYNAMIC_SOURCE_CONFLICT')
         return changed({ source: prior })
@@ -1960,12 +2018,20 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     async command(command) {
       record(command); const id = text(command.id, 'id'), kind = text(command.kind, 'kind'), args = record(command.args ?? {})
       if (kind.startsWith('coordination.') || kind.startsWith('task.coordination.')) fail('INDEPENDENT_COORDINATION_RETIRED')
-      const requestDigest = digest({ kind, args })
+      const businessArgs=['router.plan','router.task-action','router.evaluate','router.settle'].includes(kind)?Object.fromEntries(Object.entries(args).filter(([key])=>!['generation','sessionId','agent','hostLiveBinding'].includes(key))):args
+      const requestDigest = digest({ kind, args:businessArgs })
       return clone(transaction(() => {
         const previous = readReceiptRow(db, id)
+        let reassessStart=false
         if (previous) {
           if (previous.digest !== requestDigest) fail('DYNAMIC_COMMAND_ID_CONFLICT')
-          return { ...JSON.parse(previous.body), replayed: true, dispatchEligible: false }
+          const recorded=JSON.parse(previous.body),priorNotification=recorded.result?.notification
+          if(kind==='notification.start'&&recorded.dispatchEligible===false&&priorNotification?.id===args.notificationId&&priorNotification.payload?.afterNotificationId) {
+            const current=get('dynamic_notifications',args.notificationId)
+            const neverGranted=row=>row?.state==='prepared'&&(row.sendAttemptCount??0)===0&&!row.sendPermit&&!row.dispatchToken&&!row.sendStartedAt&&!row.ack&&!row.receipt
+            reassessStart=neverGranted(priorNotification)&&neverGranted(current)&&digest(priorNotification.payload)===digest(current.payload)
+          }
+          if(!reassessStart)return { ...recorded, replayed: true, dispatchEligible: false }
         }
         // 与任务状态在同一事务保存完整决定；失败命令不留伪决定，同一命令重试不重复追加。
         const recordsDecision = ['task.wait', 'task.complete', 'task.dialogue.reply'].includes(kind)
@@ -1992,6 +2058,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
               instructionCoverage, result: clone(task.completion.result), recordedAt: now() }
             const inserted = db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id, canonical(event))
             value.completionEvent = { ...event, sequence: Number(inserted.lastInsertRowid) }
+            routerLedger.taskEvent(event)
 
           }
         }
@@ -2012,13 +2079,20 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           saveTask(task)
           value.result.task = task
         }
-        insertReceipt(db, id, requestDigest, canonical(value), value)
+        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?'task.waiting':'task.changed',taskId:value.result.task.taskId,commandId:id})
+        if(reassessStart) {
+          // 未授许可的父件等待可按原 ID 重评估；保留热/冷收据序号，授过许可后永不重发。
+          const table=db.prepare('SELECT 1 FROM dynamic_archived_receipts WHERE id=?').get(id)?'dynamic_archived_receipts':'dynamic_receipts'
+          db.prepare(`UPDATE ${table} SET body=? WHERE id=?`).run(canonical(value),id)
+        } else insertReceipt(db, id, requestDigest, canonical(value), value)
         return value
       }))
     },
     async query(q) {
       if (closed) fail('DYNAMIC_STORE_CLOSED')
       record(q)
+      const routerValue=routerLedger.query(q)
+      if(routerValue!==undefined)return clone(routerValue)
       let value
       if (q.kind.startsWith('topic.fact.')) {const result=clone(topicFacts.query(q));return Array.isArray(result)?result.filter(item=>!item?.archiveRestoreHold):result}
       if(q.kind==='observer.work-metadata')return observerWorkMetadata(db,q)
@@ -2060,7 +2134,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       else if (q.kind === 'coordination.occurrence.list') value = all('dynamic_coordination_occurrences').filter(o => !q.coordinationId || o.coordinationId === q.coordinationId)
       else if (q.kind === 'coordination.occurrence.get') value = get('dynamic_coordination_occurrences', q.occurrenceId)
       else if (q.kind === 'coordination.job.list') value = all('dynamic_coordination_jobs')
-      else if (q.kind === 'task.get') value = get('dynamic_tasks', q.taskId, true)
+      else if (q.kind === 'task.dependencies-ready') value = routerLedger.dependenciesReady(get('dynamic_tasks',q.taskId))
+      else if (q.kind === 'task.get') {value = get('dynamic_tasks', q.taskId, true);if(value)value={...value,dependencies:routerLedger.query({kind:'router.dependencies',taskId:q.taskId}),dependenciesReady:routerLedger.dependenciesReady(value)}}
       else if (q.kind === 'task.decisions') {
         get('dynamic_tasks', q.taskId)
         const before = q.before ?? Number.MAX_SAFE_INTEGER, limit = q.limit ?? 20
@@ -2132,7 +2207,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         notifications: all('dynamic_notifications', "WHERE coalesce(json_extract(body,'$.state'),'') NOT IN ('delivered','failed')").filter(item => !['delivered','failed'].includes(item.state)), legacy: legacy() }
       else fail('DYNAMIC_QUERY_UNKNOWN', q.kind)
       if (q.kind === 'task.get' && value && restartReopenEligible(value)) value = { ...value, restartRecoveryEligible: true }
-      if (q.kind === 'task.list') value = value.map(task => restartReopenEligible(task) ? { ...task, restartRecoveryEligible: true } : task)
+      if (q.kind === 'task.list') value = value.map(task => ({...(restartReopenEligible(task) ? { ...task, restartRecoveryEligible: true } : task), dependenciesReady:routerLedger.dependenciesReady(task)}))
       // 这些查询的全部嵌套值已由 SQLite 正文新解析；不再为隔离副本重复展开历史。
       if (['task.list', 'execution.list', 'source.list', 'recovery.pending'].includes(q.kind)) return value
       return clone(value)

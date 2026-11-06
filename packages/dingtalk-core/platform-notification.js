@@ -21,7 +21,7 @@ export function platformNotificationContext(group, message) {
 /** Platform-only source admission; all formatting, parts and transport are shared. */
 export function createPlatformNotifier({ store, root, appendOutbox }) {
   const files = createTaskArtifactFiles({ root: join(root, 'delivery-files') })
-  return async ({ groupId, outboundId, message, unit, decision, sessionId, preflight }) => {
+  return async ({ groupId, outboundId, message, unit, directSource, decision, sessionId, preflight }) => {
     const previous = store.getGroup(groupId).outbox.find(item => item.outboundId === outboundId)
     let content
     if (previous) content = { text: previous.text, replyToMessageId: previous.replyToMessageId,
@@ -35,7 +35,7 @@ export function createPlatformNotifier({ store, root, appendOutbox }) {
       const { recipients, atAll } = finalNotificationRouting(store.getGroup(groupId).messages, decision)
       const artifactFiles = [], directory = await sessionWorkspace(root, 'platform')
       const platformSource = { requestId: outboundId, sessionId, groupId, messageId: message.messageId, messageVersion: message.messageVersion,
-        unitId: unit.unitId, unitRevision: unit.unitRevision }
+        ...(directSource?{sourceId:directSource.sourceId}:{unitId:unit.unitId,unitRevision:unit.unitRevision}) }
       for (const item of decision.files ?? []) {
         const path = resolve(directory, item.path), relativePath = relative(directory, path)
         if (!relativePath || isAbsolute(relativePath) || relativePath.split(/[\\/]/u).includes('..')) throw new Error('PLATFORM_DELIVERY_ARTIFACT_OUTSIDE_SESSION')
@@ -49,8 +49,8 @@ export function createPlatformNotifier({ store, root, appendOutbox }) {
         sourceRef: { messageId: message.messageId, actorId: message.senderOpenDingTalkId, messageVersion: message.messageVersion } }
     }
     return appendOutbox({ groupId, outboundId, sourceMessageId: outboundId, topicRefs: [], taskIds: [],
-      fixedTopic: unit.fixedTopic, sourceVersion: message.messageVersion, preflight,
-      matterSourceMessageIds: [message.messageId], matterUnitRefs: [{ unitId: unit.unitId, unitRevision: unit.unitRevision }],
+      ...(directSource?{directSource}:{fixedTopic:unit.fixedTopic}), sourceVersion: message.messageVersion, frozen: !!previous, preflight,
+      matterSourceMessageIds: [message.messageId], matterUnitRefs: [{ ...(directSource?{sourceId:directSource.sourceId}:{unitId:unit.unitId,unitRevision:unit.unitRevision}) }],
       replyKind: 'substantive', ...content })
   }
 }

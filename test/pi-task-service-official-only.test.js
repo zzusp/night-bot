@@ -1,3 +1,4 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
@@ -19,7 +20,7 @@ test('pure task model selection preserves exact ids, trimmed defaults and typed 
  assert.throws(()=>taskSessionModelSelection({},'model',12),error=>error.code==='TASK_SESSION_PROVIDER_INVALID')
 })
 
-test('Night own retained SQL operation stays held after cold restart without rebuilding history or dispatching',{timeout:20000},async t=>{
+test('Night own retained SQL operation stays held after cold restart without rebuilding history or dispatching',{timeout:nativeTestTimeout(20000)},async t=>{
  const {providerHost,result,latestInput}=await import('./fixtures/provider-official-host.js'),{mkdtemp,rm,readFile}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path')
  const root=await mkdtemp(join(tmpdir(),'night-own-operations-'));let first,cold;t.after(async()=>{await cold?.close();await first?.close();await rm(root,{recursive:true,force:true})})
  first=await providerHost(t,{root,decide:()=>[result()]});const id=await first.create('night-own-operation-hold');await first.service.whenIdle();const original=await first.stored(id),originalBytes=await readFile(first.ctx.sessionPersistence.path((await first.query('task.get',{taskId:id})).sessionId)),source=await first.query('source.get',{sourceId:original.task.sourceRefs[0]})

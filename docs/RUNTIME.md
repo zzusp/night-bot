@@ -53,6 +53,14 @@ Default Host startup now checks every mandatory service read by the retained cor
 refuses that special proof path; it is not permission to fabricate process proof.
 All other optional provider integrations retain their own explicit admission.
 
+## 常驻 Router 与执行边界
+
+当前消息入口按“认证来源 → 轻量一级分诊 → conversation Router → 唯一任务执行会话”分工。分诊只决定转交/短回复；Router 通过受控动作安排事项并评估结果，不能直接执行业务脚本。Topic 不再作为活动路由实体，旧 Owner/团队路径不因更换会话而恢复。
+
+Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 空闲交接时先通过 admission 完成无工具总结及 Pi 提交，再维护、准备新代并 CAS 发布；禁止在暂停 admission 后才请求模型，禁止绕过 admission 直接投递 custom message。旧 journal、未知效果阻断和严格提交证明继续保留。
+
+完整职责与失败恢复见 [CHANNELS](CHANNELS.md)，本次版本的实际验收见 [任务入口](acceptance/resident-conversation-routing/goal.md)；此前阶段计数和 Topic 测试不替代本轮证据。
+
 ## Current portable application composition
 
 The supported CLI starts `src/application.js` with channel-neutral resource and
@@ -62,7 +70,7 @@ DWS is loaded only by `src/channels/plugins/dingtalk-dws.js` when enabled. The
 historical DWS resident remains attributed reference code, not the CLI entry.
 
 The installation layout, scoped Markdown memory, durable task retrospectives,
-single task execution session and first-tier tentative feedback are documented in
+single task execution session and handling/reply-only first-tier triage are documented in
 [DATA-LAYOUT](DATA-LAYOUT.md), [MEMORY](MEMORY.md), [SELF-EVOLUTION](SELF-EVOLUTION.md),
 [SINGLE-TASK](SINGLE-TASK.md) and [CHANNELS](CHANNELS.md). Reference-domain tests still
 cover historical API contracts; current default wiring has separate portable Host

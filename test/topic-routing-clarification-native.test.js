@@ -1,245 +1,104 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory, nativeRemove } from './fixtures/native-lifecycle.js'
-import { available, reason, nativeTaskHost, latestInput } from './fixtures/routing-official-host.js'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
+import {taskNotificationRecovery} from '../packages/dingtalk-core/notification-delivery.js'
 
-const message = (id, text, extra = {}) => ({ groupId: 'native-group', messageId: id, text, senderName: '测试用户', senderOpenDingTalkId: 'native-user',
-  sourceKind: 'dingtalk', occurredAt: '2026-10-13T10:00:00Z', ...extra })
-const question = '请说明要核查哪一张发票？'
-function hold(request, clarify = true) {
-  const input = latestInput(request)
-  assert.ok(request.tools.some(tool => tool.name === 'group_topic_route_submit'))
-  return [{ name: 'group_topic_route_submit', args: { requestId: input.requestId, routes: input.messages.map(item => ({
-    messageId: item.messageId, messageVersion: item.messageVersion, deferred: { reason: '事项对象不明确', ...(clarify ? { clarification: {
-      question, assignmentQuote: item.text, replyReview: { kind: 'substantive',
-        reviewedOutboundIds: (input.clarificationReviewCandidates ?? []).map(item => item.outboundId), sameMatterOutboundIds: [], replaceOutboundIds: [] },
-    } } : {}) },
-  })) } }]
-}
+// The former Topic hold/epoch is retired. Clarification is a source-bound
+// Router reply; a later authenticated source resumes the same logical Router.
+for(const unknown of [false,true])test(`Router clarification retains exact source identity through cold recovery without self-echo or duplicate sends: unknown=${unknown}`,{timeout:nativeTestTimeout(50000)},async t=>{
+ let h,readable=!unknown,modelCalls=0
+ const question='请说明要核查哪张发票？'
+ h=await residentRouterHost(t,body=>{
+  modelCalls++
+  const names=requestTools(body)
+  if(names.includes('channel_triage_submit')){
+   const input=requestEnvelope(body,'一级分诊请求：')
+   return{tool:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'原交办需要明确核查对象'}))}}
+  }
+  if(names.includes('resident_router_settle')){
+   const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source
+   const accepted=h.results.filter(row=>!row.result.isError&&row.name==='resident_router_reply').map(row=>row.result.value?.notification?.payload?.sourceId??row.result.value?.payload?.sourceId)
+   const settled=h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError
+   if(body.messages.at(-1)?.role==='tool'&&settled)return{text:'本批处置已提交'}
+   if(source&&!accepted.includes(source.sourceId))return{tool:'resident_router_reply',args:{operationId:'clarify:'+source.sourceId,sourceId:source.sourceId,messageVersion:source.version,text:source.messageId==='clarify'?question:'收到明确对象，后续按该发票核查。'}}
+   return{tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+  }
+  const input=requestEnvelope(body,'Router 交接请求：')
+  return{text:JSON.stringify({currentIntent:'原问题对象未明确，不创建空任务；后续只认新原文',unresolvedQuestions:[question],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff})}
+ },{send:async()=>{if(unknown&&!readable)throw Error('lost send acknowledgement');return{messageId:'clarification-visible'}},readback:async()=>{if(!readable)throw Error('readback unavailable');return{messageId:'clarification-visible',visible:true}}})
+ const original=channelMessage('clarify',{text:'assistant，请核查那张发票。'})
+ await h.receive(original);await h.service.whenIdle()
+ let notice=(await h.query('notification.list'))[0]
+ assert.ok(notice);assert.equal(notice.kind,'router-reply');assert.equal(notice.taskId,null);assert.equal(notice.payload.text,question)
+ assert.deepEqual(notice.payload.sourceRef,{messageId:'clarify',messageVersion:1,actorId:h.host.ctx.channels.identity(original).principal});assert.equal(h.sent[0].senderId,'alice');assert.deepEqual(notice.payload.topicRefs,[])
+ assert.equal(notice.state,unknown?'unknown':'delivered');assert.equal(h.sent.length,1);assert.deepEqual(await h.query('task.list'),[])
+ const state=await h.query('router.get',{conversationId:notice.payload.conversationId})
+ const source=await h.query('source.get',{sourceId:notice.payload.sourceId});assert.equal(source.routed,true)
+ const requests=modelCalls
+ readable=true;await h.restart();await h.service.whenIdle()
+ notice=await h.query('notification.get',{notificationId:notice.id})
+ if(notice.state!=='delivered'){await h.service.retryNotification({groupId:notice.payload.conversationId,notificationId:notice.id,expectedToken:taskNotificationRecovery(notice).expectedToken});await h.service.whenIdle()}
+ assert.equal((await h.query('notification.get',{notificationId:notice.id})).state,'delivered');assert.equal(h.sent.length,1);assert.equal(modelCalls,requests)
+ const echo=await h.receive(channelMessage('clarification-visible',{text:question}));assert.equal(echo.reason,'own-notification')
+ await h.receive(original);await h.service.whenIdle();assert.equal(h.sent.length,1);assert.equal(modelCalls,requests)
+ await h.receive(channelMessage('clarify-answer',{text:'assistant，是本月新开的发票。'}));await h.service.whenIdle()
+ const current=await h.query('router.get',{conversationId:notice.payload.conversationId});assert.equal(current.id,state.id);assert.ok(current.cursor>state.cursor)
+ assert.equal((await h.query('notification.list')).length,2);assert.equal(h.sent.length,2);assert.deepEqual(await h.query('task.list'),[])
+})
 
-test('明确交办的澄清沿真实通知账送达；待判来源不结清，冷恢复不重问且自身回声不解锁',
-  { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-    assert.ok(available, reason)
-    const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-native-'))
-    let host
-    t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-    host = await t.step(() => nativeTaskHost(root, request => hold(request)))
-    await t.beginBusiness()
-    await t.step(() => host.service.ingest(message('clarify', '@测试助手 请核查那张发票。')))
-    await t.step(() => host.service.whenIdle())
-    const notification = (await t.step(() => host.query('notification.list')))[0]
-    assert.ok(notification, JSON.stringify(host.service.listAlerts()))
-    assert.equal(notification.kind, 'routing-clarification')
-    assert.equal(notification.state, 'delivered')
-    assert.equal(notification.taskId, null)
-    assert.deepEqual(notification.payload.topicRefs, [])
-    assert.equal(notification.payload.text, question)
-    assert.equal(host.sent.length, 1)
-    const held = host.residentStore.getGroup('native-group').messages.find(item => item.messageId === 'clarify')
-    assert.equal(held.routingStatus, 'needs-context')
-    const source = (await t.step(() => host.query('source.list')))[0]
-    assert.equal(source.routed, undefined)
-    assert.equal(source.processingCompleted, undefined)
-    assert.equal((await t.step(() => host.query('task.list'))).length, 0)
-    assert.equal(host.residentStore.listTopics('native-group').length, 0)
-    await t.step(() => host.service.ingest(message(notification.receipt.messageId, question, { quotedMessage: { messageId: 'clarify' } })))
-    assert.equal(host.residentStore.getGroup('native-group').messages.find(item => item.messageId === 'clarify').routingStatus, 'needs-context')
-    await t.step(() => host.close())
-    host = await t.step(() => nativeTaskHost(root, () => assert.fail('冷恢复不得重新调用模型'), { initialize: false }))
-    await t.step(() => host.service.recover())
-    await t.step(() => host.service.whenIdle())
-    assert.equal(host.sent.length, 0)
-    assert.equal((await t.step(() => host.query('notification.list'))).length, 1)
-    assert.equal((await t.step(() => host.query('notification.list')))[0].state, 'delivered')
-    assert.equal(host.residentStore.getGroup('native-group').messages.find(item => item.messageId === 'clarify').routingStatus, 'needs-context')
-    assert.equal((await t.step(() => host.query('source.list')))[0].processingCompleted, undefined)
-  }))
-
-for (const [name, text, extra, clarify] of [
-  ['普通讨论不追问', '小王，那张发票的情况大家再讨论一下。', {}, true],
-  ['未声明需要澄清的交办不自动发问', '测试助手，请核查那张发票。', {}, false],
-  ['其他助手通知不追问', '测试助手，请核查那张发票。', { messageAiSendFlag: 'DWS' }, true],
-  ['正文仅提到助手不算向助手交办', '小王，请看测试助手之前说的那张发票。', { mentionedAgent: false }, true],
-]) test(name, { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-  assert.ok(available, reason)
-  const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-silent-'))
-  let host
-  t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-  host = await t.step(() => nativeTaskHost(root, request => hold(request, clarify)))
-  await t.beginBusiness()
-  await t.step(() => host.service.ingest(message('silent', text, extra)))
-  await t.step(() => host.service.whenIdle())
-  assert.equal(host.sent.length, 0)
-  assert.deepEqual(await t.step(() => host.query('notification.list')), [])
-  assert.equal(host.residentStore.getGroup('native-group').messages[0].routingStatus, 'needs-context')
-}))
-
-test('旧epoch澄清发送前失效；新epoch明确defer且不继承旧问题，不产生网络发送',
-  { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-    assert.ok(available, reason)
-    const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-race-'))
-    let host, disclosed = false, sends = 0, sentState
-    t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-    host = await t.step(() => nativeTaskHost(root, request => hold(request,!disclosed), { notifications: {
-      async canDisclose() {
-        if (!disclosed) {
-          disclosed = true
-          const source = host.residentStore.getGroup('native-group').messages[0]
-          await host.residentStore.updateRoutingHold({ groupId: 'native-group', messageId: source.messageId,
-            messageVersion: source.messageVersion, epoch: source.routingHold.epoch, resume: true })
-        }
-        return true
-      },
-      async send(notification) { sends++;sentState={notification,source:host.residentStore.getGroup('native-group').messages[0]};assert.fail('过期澄清不得外发') },
-    } }))
-    await t.beginBusiness()
-    await t.step(() => host.service.ingest(message('race', '测试助手，请核查那张发票。')))
-    await t.step(() => host.service.whenIdle())
-    assert.ok(disclosed)
-    assert.equal(sends, 0,JSON.stringify(sentState))
-    const notification = (await t.step(() => host.query('notification.list')))[0]
-    assert.equal(notification.state, 'prepared')
-    assert.equal(notification.sendAttemptCount, undefined)
-    const current=host.residentStore.getGroup('native-group').messages[0]
-    assert.equal(current.routingStatus,'needs-context')
-    assert.ok(current.routingHold.epoch>notification.payload.fact.epoch)
-    assert.equal(current.routingHold.clarification,undefined,'the new classification cannot inherit the stale question')
-  }))
-
-test('只有冻结出箱尚未prepare的冷启动沿原正文恢复一次，不重调模型',
-  { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-    assert.ok(available, reason)
-    const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-gap-'))
-    let host
-    t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-    host = await t.step(() => nativeTaskHost(root, request => hold(request)))
-    const original = host.residentStore.appendOutbox
-    let stopped = false
-    host.residentStore.appendOutbox = async args => {
-      const result = await original(args)
-      if (!stopped && args.outboundId?.startsWith('routing-clarification-')) { stopped = true; throw new Error('fixture-stop-after-durable-outbox') }
-      return result
-    }
-    await t.beginBusiness()
-    await t.step(() => host.service.ingest(message('gap', '测试助手，请核查那张发票。')))
-    await t.step(() => host.service.whenIdle())
-    assert.ok(stopped)
-    assert.equal(host.sent.length, 0)
-    assert.deepEqual(await t.step(() => host.query('notification.list')), [])
-    const frozen = structuredClone(host.residentStore.getGroup('native-group').outbox[0])
-    assert.equal(frozen.text, question)
-    await t.step(() => host.close())
-    host = await t.step(() => nativeTaskHost(root, () => assert.fail('恢复冻结问句不重调模型'), { initialize: false }))
-    await t.step(() => host.service.recover())
-    await t.step(() => host.service.whenIdle())
-    assert.equal(host.sent.length, 1)
-    const notification = (await t.step(() => host.query('notification.list')))[0]
-    assert.equal(notification.id, frozen.outboundId)
-    assert.equal(notification.payload.text, frozen.text)
-    assert.equal(notification.state, 'delivered')
-    assert.equal((await t.step(() => host.query('source.list')))[0].processingCompleted, undefined)
-  }))
-
-test('未知澄清发送冷恢复仅只读核验，hold继续等待且不重发',
-  { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-    assert.ok(available, reason)
-    const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-unknown-'))
-    let host, sends = 0, reads = 0
-    t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-    host = await t.step(() => nativeTaskHost(root, request => hold(request), { notifications: {
-      async send() { sends++; throw new Error('fixture-ambiguous-send') },
-    } }))
-    await t.beginBusiness()
-    await t.step(() => host.service.ingest(message('unknown', '测试助手，请核查那张发票。')))
-    await t.step(() => host.service.whenIdle())
-    const original = (await t.step(() => host.query('notification.list')))[0]
-    assert.equal(original.state, 'unknown')
-    assert.equal(sends, 1)
-    await t.step(() => host.close())
-    host = await t.step(() => nativeTaskHost(root, () => assert.fail('未知发送不重调模型'), { initialize: false, notifications: {
-      async send() { sends++; assert.fail('未知发送只许回读') },
-      async readback(notification) { reads++; assert.equal(notification.id, original.id); return { messageId: 'confirmed-clarification', visible: true } },
-    } }))
-    const detail = host.residentStore.getGroup('native-group').outbox.find(item => item.outboundId === original.id)
-    await t.step(() => host.service.retryNotification({ groupId: 'native-group', notificationId: original.id, expectedToken: detail.notificationRecovery.expectedToken }))
-    await t.step(() => host.service.whenIdle())
-    assert.equal(sends, 1)
-    assert.equal(reads, 1)
-    assert.equal((await t.step(() => host.query('notification.list')))[0].state, 'delivered')
-    assert.equal(host.residentStore.getGroup('native-group').messages[0].routingStatus, 'needs-context')
-    assert.equal((await t.step(() => host.query('source.list')))[0].processingCompleted, undefined)
-  }))
-
-for (const [name, text, mentionedAgent] of [
-  ['cc前缀', '  cc: 请核查那张发票。', false],
-  ['带前置空白的点名', '  @测试助手 请核查那张发票。', false],
-]) test(`明确交办${name}不被无@元数据误否决`, { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-  assert.ok(available, reason)
-  const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-direction-'))
-  let host
-  t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-  host = await t.step(() => nativeTaskHost(root, request => hold(request)))
-  await t.beginBusiness()
-  await t.step(() => host.service.ingest(message('directed', text, { mentionedAgent })))
-  await t.step(() => host.service.whenIdle())
-  assert.equal(host.sent.length, 1, JSON.stringify(host.service.listAlerts()))
-  assert.equal((await t.step(() => host.query('notification.list')))[0].state, 'delivered')
-  assert.equal(host.residentStore.getGroup('native-group').messages[0].routingStatus, 'needs-context')
-}))
-
-async function scopeTopic(host) {
-  await host.residentStore.ingest(message('scope-matter', '独立范围事项。'))
-  const result = await host.residentStore.routeMessages({ groupId: 'native-group', routeId: 'scope-matter-route',
-    routingRevision: host.residentStore.getGroup('native-group').routingRevision, routes: [{ messageId: 'scope-matter', messageVersion: 1,
-      topics: [{ newTopicKey: 'scope', title: '独立范围事项', reason: '独立目标，无相关候选', candidateComparisons: [] }] }] })
-  const topicId = result.topicIdsByKey.scope
-  await host.residentStore.acceptTopicDecision({ groupId: 'native-group', topicId, revision: 1, decisionId: 'scope-matter-decision', decision: { actions: [], reason: '仅记录范围上下文' } })
-  await host.residentStore.completeTopicDecision({ groupId: 'native-group', topicId, decisionId: 'scope-matter-decision' })
-  return topicId
-}
-
-for (const beforeSend of [false, true]) test(`范围声明只更新屏障CAS，不改变澄清通知身份：发送前=${beforeSend}`,
-  { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-    assert.ok(available, reason)
-    const root = await nativeTemporaryDirectory(join(tmpdir(), 'routing-clarification-scope-'))
-    let host, scope, changed = false, sends = 0
-    t.after(async () => { await host?.close(); await nativeRemove(root, { recursive: true, force: true }) })
-    host = await t.step(() => nativeTaskHost(root, request => hold(request), { notifications: {
-      async canDisclose() {
-        if (beforeSend && !changed) {
-          changed = true
-          const held = host.residentStore.getGroup('native-group').messages.find(item => item.messageId === 'scope-clarify')
-          await host.residentStore.updateRoutingHold({ groupId: 'native-group', messageId: held.messageId,
-            messageVersion: held.messageVersion, epoch: held.routingHold.epoch, scope: [scope] })
-        }
-        return true
-      },
-      async send() { sends++; return { messageId: 'scope-question-delivered' } },
-      async readback(notification) { return { messageId: notification.ack.messageId, visible: true } },
-    } }))
-    scope = await t.step(() => scopeTopic(host))
-    await t.beginBusiness()
-    await t.step(() => host.service.ingest(message('scope-clarify', '测试助手，请核查那张发票。')))
-    await t.step(() => host.service.whenIdle())
-    const first = (await t.step(() => host.query('notification.list')))[0]
-    assert.equal(first.state, 'delivered')
-    if (!beforeSend) {
-      const held = host.residentStore.getGroup('native-group').messages.find(item => item.messageId === 'scope-clarify')
-      await t.step(() => host.service.updateMessageRoutingHold({ groupId: 'native-group', messageId: held.messageId,
-        messageVersion: held.messageVersion, epoch: held.routingHold.epoch, scope: [scope] }))
-      await t.step(() => host.service.whenIdle())
-      await t.step(() => host.service.recover())
-      await t.step(() => host.service.whenIdle())
-    }
-    assert.equal(sends, 1)
-    const notices = await t.step(() => host.query('notification.list'))
-    assert.equal(notices.length, 1)
-    assert.equal(notices[0].id, first.id)
-    const held = host.residentStore.getGroup('native-group').messages.find(item => item.messageId === 'scope-clarify')
-    assert.equal(held.routingStatus, 'needs-context')
-    assert.ok(held.routingHold.epoch > held.routingHold.clarification.epoch)
-    assert.equal(first.payload.fact.epoch, held.routingHold.clarification.epoch)
-    assert.ok(!JSON.stringify(host.service.listAlerts()).includes('routing_clarification_stale'))
-  }))
+for(const firstState of ['prepared','unknown'])test(`a newer authenticated message version fences an old ${firstState} Router reply without granting another send`,{timeout:nativeTestTimeout(50000)},async t=>{
+ let h,hold=firstState==='prepared',readable=false
+ h=await residentRouterHost(t,body=>{
+  const names=requestTools(body)
+  if(names.includes('channel_triage_submit')){
+   const input=requestEnvelope(body,'一级分诊请求：')
+   return{tool:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'按当前认证版本处理澄清'}))}}
+  }
+  if(names.includes('resident_router_settle')){
+   const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source
+   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return{text:'已结清本批'}
+   const accepted=h.results.some(row=>row.name==='resident_router_reply'&&!row.result.isError&&row.result.value?.notification?.payload?.sourceId===source?.sourceId)
+   if(source&&!accepted)return{tool:'resident_router_reply',args:{operationId:'versioned-clarification:'+source.sourceId,sourceId:source.sourceId,messageVersion:source.version,text:source.version===1?'旧版对象尚未明确，请补充。':'按新版明确对象继续核查。'}}
+   return{tool:'resident_router_settle',args:{operationId:'versioned-settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+  }
+  const input=requestEnvelope(body,'Router 交接请求：')
+  return{text:JSON.stringify({currentIntent:'只认当前来源版本，未知发送仅回读旧收据',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff})}
+ },{wrapStore:store=>({...store,command:async command=>{
+   if(hold&&command.kind==='notification.start')throw Object.assign(Error('fixture holds dispatch before start'),{code:'DYNAMIC_NOTIFICATION_SOURCE_PENDING'})
+   return store.command(command)
+  }}),send:async envelope=>{
+   const notice=await h.query('notification.get',{notificationId:envelope.deliveryKey})
+   if(notice.payload.sourceRef.messageVersion===1&&firstState==='unknown')throw Error('lost original acknowledgement')
+   return{messageId:'visible-version-'+notice.payload.sourceRef.messageVersion}
+  },readback:async envelope=>{
+   const notice=await h.query('notification.get',{notificationId:envelope.deliveryKey})
+   if(notice.payload.sourceRef.messageVersion===1&&!readable)throw Error('original readback unavailable')
+   return{messageId:'visible-version-'+notice.payload.sourceRef.messageVersion,visible:true}
+  }})
+ const original=channelMessage('edited-clarification',{messageVersion:1,text:'assistant，核查那张发票。'})
+ await h.receive(original);await h.service.whenIdle()
+ const old=(await h.query('notification.list')).find(row=>row.payload.sourceRef.messageVersion===1)
+ assert.ok(old);assert.equal(old.state,firstState)
+ assert.equal(h.sent.filter(envelope=>envelope.deliveryKey===old.id).length,firstState==='unknown'?1:0)
+ // Hold before notification.start, never after a transport effect, then admit v2.
+ hold=false
+ await h.receive({...original,messageVersion:2,text:'assistant，改为核查本月新开的发票。'});await h.service.whenIdle()
+ const latest=(await h.query('notification.list')).find(row=>row.payload.sourceRef.messageVersion===2)
+ assert.ok(latest);assert.equal(latest.state,'delivered');assert.notEqual(latest.payload.sourceId,old.payload.sourceId)
+ await h.service.recover();await h.service.whenIdle()
+ assert.equal(h.sent.filter(envelope=>envelope.deliveryKey===old.id).length,firstState==='unknown'?1:0)
+ if(firstState==='prepared'){
+  await assert.rejects(h.store.command({id:'force-old-prepared-start',kind:'notification.start',args:{notificationId:old.id}}),{code:'DYNAMIC_TRIAGE_SOURCE_STALE'})
+  assert.equal((await h.query('notification.get',{notificationId:old.id})).state,'prepared')
+ }else{
+  readable=true
+  const pending=await h.query('notification.get',{notificationId:old.id})
+  const retry=await h.service.retryNotification({groupId:pending.payload.conversationId,notificationId:pending.id,expectedToken:taskNotificationRecovery(pending).expectedToken})
+  assert.equal(retry.action,'readback');assert.equal((await h.query('notification.get',{notificationId:old.id})).state,'delivered')
+  assert.ok(h.readbacks.some(envelope=>envelope.deliveryKey===old.id))
+ }
+ assert.equal(h.sent.filter(envelope=>envelope.deliveryKey===old.id).length,firstState==='unknown'?1:0)
+ assert.equal(h.sent.filter(envelope=>envelope.deliveryKey===latest.id).length,1)
+ assert.deepEqual(await h.query('task.list'),[])
+})

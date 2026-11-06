@@ -102,6 +102,14 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
     return ids
    })
   },
+  cancelInternal(id,reason){
+   return serialize(async()=>{
+    if(!internalPackets.has(id)||inflight.has(id))throw fail('PI_INTERNAL_CANCEL_DENIED')
+    await acknowledge()
+    if(admitted.has(id)||cancelled.has(id))return
+    append('cancelled',{id,reason});await commit();cancelled.add(id)
+   })
+  },
   async deliver(session,id,{deliverAs='steer'}={}){
    healthy();if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(!['steer','followUp'].includes(deliverAs))throw fail('PI_BUSINESS_ADMISSION_MODE_INVALID')

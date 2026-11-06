@@ -19,7 +19,7 @@ test('Single create preserves actual initial context/source refs through SQL, ma
 for(const action of ['complete','blocked'])test('direct Single '+action+' without any topic binding creates no synthetic topic fact or missing-binding alert',async t=>{
  const h=await fixture(t,()=>result(action)),created=await h.service.createTask({requestId:'direct-'+action,objective:'Return the verified business result'});await h.service.whenIdle()
  const task=await h.query('task.get',{taskId:created.taskId});assert.equal(task.lastDecision?.action??task.completion?.result.action,action);assert.deepEqual(task.topicRefs,[]);assert.deepEqual(task.replyBindings,[])
- assert.equal((await h.service.listAlerts()).some(alert=>alert.detail==='TOPIC_FACT_REPLY_BINDING_MISSING'),false);assert.equal((await h.service.store.exportTaskArchive(task.taskId)).tables.topic_facts.length,0)
+ assert.equal((await h.service.listAlerts()).some(alert=>alert.detail==='TOPIC_FACT_REPLY_BINDING_MISSING'),false);assert.equal((await h.service.store.exportTaskArchive(task.taskId)).tables.historical_topic_facts.length,0)
  if(action==='blocked')assert.equal(task.humanRequests[0].status,'waiting-reply')
 })
 

@@ -12,7 +12,17 @@ Pi agent-core1.5.0 负责推理/工具迭代，Pi SessionManager 负责当前历
 源固定于 HiQ-AI/dingtalk-dsh-assistant@93e431a，200 个模块保留、3 个 UI
 模块排除、26 个适配记录原始/目标哈希。文件与路由守恒不是外部业务验收证明。
 
-## 功能与迁移映射
+## 当前常驻 Router 边界
+
+渠道认证消息先进入轻量一级分诊；一级分诊只输出是否处理及可选短回复，原消息按需转入该 conversation 的常驻 Router。Router 拆分/关联和安排任务、评估执行结果，每个任务仍只有一个执行会话，不恢复任务 Owner、协调团队或子代理产品。活动路由不再依赖 Topic。
+
+直接来源保存消息身份、版本、作者和准确引用；任务动作、依赖满足与结果认可仍经 Host/SQLite 的当前权限、版本和效果校验。Router 的 Pi generation 可在真正空闲时通过无工具交接更换，旧 journal 保留，摘要不成为权限或状态权威。职责与恢复边界见 [CHANNELS](CHANNELS.md)。
+
+已有 Night Bot 数据需停机排空、离线备份、显式 `--check` 检查和升级；旧 Topic 只读留作审计，未处理/不确定来源不能丢弃或整体重放。新 schema 回退必须恢复匹配的旧代码与离线数据，不能让旧代码读取新账本。具体命令见 [Windows 运维](ops/windows-local-runtime.md)，单任务档案版本与恢复边界见 [TASK-ARCHIVE](TASK-ARCHIVE.md)。这不是 DSH 数据导入或外部路径转换。
+
+本轮实际交付与未验范围以 [常驻 Router 验收入口](acceptance/resident-conversation-routing/goal.md) 为准，历史结果不表示本次工作树通过。
+
+## 历史功能与迁移映射（非当前能力清单）
 
 | 功能 | 保留实现 | Pi 下的验证入口 |
 |---|---|---|

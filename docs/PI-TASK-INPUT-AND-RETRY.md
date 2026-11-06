@@ -6,8 +6,11 @@ source authentication, task revisions, permissions and durable effect receipts.
 
 Initial task context is retained in the authenticated source/material and the
 actual native task input. Missing or foreign source references fail before task
-creation. Tasks without Topic references do not invent Topic facts; actual Topic
-references still require their normal scope and version checks.
+creation. Router actions bind tasks directly to authenticated source versions,
+authors and exact quotes. Topic fields retained in old archives are audit evidence,
+not an active routing or authorization path; handoff summaries cannot supply a
+missing source or grant permissions. Dependencies are checked at scheduling and
+claim, separately from ordinary task pause/control state. See CHANNELS.md.
 
 ## Preserve inputs
 

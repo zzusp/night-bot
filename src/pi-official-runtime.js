@@ -35,6 +35,8 @@ export function apply(ctx,config={}){
    await actorCtx.get('permissionPresets').pinInitialPermission(actor)
   },
   prepareTools(actorCtx,actor){
+   // 分诊与Router不持有业务文件能力；作用域内新注册的工具不受继承mask过滤。
+   if(['channel-triage','conversation-router'].includes(actor.metadata.runtimeOwner))return
    const presets=actorCtx.get('agentPresets')
    // A preset without its own file capability does not gain model file tools.
    if(!presets.serviceFor(actor,'fs'))return

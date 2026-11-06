@@ -1,6 +1,6 @@
 # Night Bot
 
-Night Bot 是基于 Pi 的无界面个人助理 Agent 初始化套件，任何人都可以初始化自己的助手。记忆、任务与技能为渠道无关的核心，钉钉只是可选接入渠道之一。Pi agent-core 负责模型/工具迭代，Pi SessionManager 负责当前会话历史与模型上下文；消息、Topic、单任务执行、恢复、权限、通知和交付继续由应用维护。保留 HTTP 接口，DWS CLI 通过独立可选渠道插件接入，不包含可视化界面。
+Night Bot 是基于 Pi 的无界面个人助理 Agent 初始化套件，任何人都可以初始化自己的助手。记忆、任务与技能为渠道无关的核心，钉钉只是可选接入渠道之一。Pi agent-core 负责模型/工具迭代，Pi SessionManager 负责当前会话历史与模型上下文；消息、常驻 Router、单任务执行、恢复、权限、通知和交付继续由应用维护。保留 HTTP 接口，DWS CLI 通过独立可选渠道插件接入，不包含可视化界面。
 
 生产依赖图已没有外部 `@deepseek-ai/dsh-*` 包。服务、工具、权限、进程、凭据、附件、技能和 workspace 均为仓库内实现。仍保留需署源的本地权限、平台进程、Windows ACL、技能 watcher 等实现。旧可变 Session、消息投影/查询服务、子代理产品和历史 v0–v4 数据导入均已退休；当前会话、消息和模型上下文由官方 Pi 维护。旧包名兼容入口在 `packages/capability-compat` 和 workspace 配置中公开记录，不能只复制 `src` 部署。
 
@@ -33,7 +33,7 @@ curl http://127.0.0.1:18998/health
 
 这些核心能力可以通过本机 HTTP、隔离文件和本地模型协议测试验收，不依赖安装 DWS CLI。钉钉、其他消息渠道及业务系统分别做集成验收。
 
-`chat` 与 `chat-room` 的统一接入、一级初步反馈和 15 条批次规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
+`chat` 与 `chat-room` 采用“轻量一级分诊 → 每 conversation 一个常驻 Router → 每事项一个执行会话”。一级分诊逐消息决定是否转交和是否简短回复，不拆分或创建事项；Router 理解原消息、关联和安排事项、评估结果。来源、权限、版本与任务依赖由 Host/SQLite 校验，任务自报完成不等于后续事项已获准执行。Router 的逻辑身份持久，空闲时以无工具交接安全更换 Pi generation，保留旧 journal。15 条批次、可靠转交和回复回读规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
 
 ## 验证
 
@@ -49,7 +49,7 @@ pnpm audit:runtime
 
 `pnpm check` 检查源文件/HTTP 路由守恒、生产依赖声明、本地兼容源码哈希，以及没有外部 SDK 导入或旧模型/工具/SessionStore 编排器。默认和分组测试均复用同一调度器，默认单文件并发；`NIGHT_BOT_TEST_CONCURRENCY=2` 可并行隔离文件，不改变测试内部并发和安全断言。真实隔离测试需要宿主内核支持，不能通过关闭应用沙箱使测试通过。
 
-验证与证据见 [VALIDATION](docs/VALIDATION.md)，功能映射见 [MIGRATION](docs/MIGRATION.md)，当前架构见 [RUNTIME](docs/RUNTIME.md)，来源与许可见 [THIRD_PARTY](THIRD_PARTY.md)。
+常驻 Router 重构的当前范围与验收状态见 [验收入口](docs/acceptance/resident-conversation-routing/goal.md)；此前 Topic/Owner 验收记录仅作历史证据。验证与证据见 [VALIDATION](docs/VALIDATION.md)，功能映射见 [MIGRATION](docs/MIGRATION.md)，当前架构见 [RUNTIME](docs/RUNTIME.md)，来源与许可见 [THIRD_PARTY](THIRD_PARTY.md)。
 
 本轮 Windows 验证与明确阻断见 [本机验收目标](docs/acceptance/pi-native-retirement-local/goal.md)，保留数据的启动/停止流程见 [Windows 本机运维](docs/ops/windows-local-runtime.md)。现有 `undici` 与固定 Pi SDK 对齐为 8.12.3，避免 SDK 导入覆盖旧版全局代理；HTTP 代理继续使用 CONNECT 隧道。真实 DWS/业务系统及 Windows/macOS 内核仍需在对应部署环境验收；可选 Claude CLI 和额外浏览器、数据库、搜索插件需要实际安装与授权。原部署和验收脚本保留为源实现参考，不能直接作为 Night Bot 的部署入口。没有迁移生产数据或执行真实外发、合并、部署。
 

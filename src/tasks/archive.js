@@ -2,7 +2,7 @@ import {resolveTaskMaterialPaths} from './material-paths.js'
 import {validateTaskIdentity} from './session-audit.js'
 import {createTaskArtifactFiles} from '../../packages/dingtalk-core/task-artifact-files.js'
 import {memoryScope} from '../memory/scope.js'
-import {ledgerDigest} from './ledger-archive.js'
+import {validateTaskLedger} from './ledger-archive.js'
 import {DatabaseSync} from 'node:sqlite'
 import {validatePiArchiveSession} from '../pi-session-persistence.js'
 import {join,resolve,relative,dirname,isAbsolute} from 'node:path'
@@ -62,7 +62,7 @@ export class TaskArchives{
           if(saved){const report=JSON.parse(saved);if(report.taskId!==taskId||report.eventId!==event.id)throw failure('TASK_ARCHIVE_REVIEW_SCOPE_INVALID');if(!report.destinations)report.destinations=(report.lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:'task-'+id.slice(0,12)+'-'+lesson.key},...lesson.skill?{skill:{scope,key:lesson.key,status:'historical-reference-not-revalidated'}}:{}}));await atomicWrite(destination,json(report))}}
         const report=JSON.parse(await readRegular(destination)??'null');reviewCoverage.push({eventId:event.id,status:report?.status??'not-recorded',...report?{path:'reviews/'+id+'.json'}:{}})
       }
-      const body={version:1,kind:'night-bot-task-archive',taskId,sessionId:task.sessionId,sourceInstallRoot:this.paths.installRoot,taskDirectoryRelative:relative(this.paths.installRoot,root).split('\\').join('/'),ledger:current,attachments,reviewCoverage,publicScopeCollectionsIncluded:false,consistency:'live-projection',capturedAt:new Date().toISOString(),authority:'SQLite is authoritative while installed; this file is an export, never polled as commands.'}
+      const body={version:2,kind:'night-bot-task-archive',taskId,sessionId:task.sessionId,sourceInstallRoot:this.paths.installRoot,taskDirectoryRelative:relative(this.paths.installRoot,root).split('\\').join('/'),ledger:current,attachments,reviewCoverage,publicScopeCollectionsIncluded:false,consistency:'live-projection',capturedAt:new Date().toISOString(),authority:'SQLite is authoritative while installed; this file is an export, never polled as commands.'}
       await atomicWrite(join(root,'task.json'),json(body));return body
     })
   }
@@ -84,7 +84,7 @@ export async function validateTaskArchive(root){
   if(typeof snapshot?.taskId!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(snapshot.taskId)||/[.]$/.test(snapshot.taskId)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(snapshot.taskId)||typeof snapshot.sourceInstallRoot!=='string'||!isAbsolute(snapshot.sourceInstallRoot)||manifest?.version!==1||manifest.kind!=='night-bot-task-seal'||!Array.isArray(manifest.files)||snapshot?.kind!=='night-bot-task-archive'||snapshot.consistency!=='offline-sealed'||manifest.taskId!==snapshot.taskId||manifest.ledgerDigest!==snapshot.ledger?.digest)throw failure('TASK_ARCHIVE_MANIFEST_INVALID')
   const seen=new Set();for(const file of manifest.files){if(!safeRelative(file.path)||seen.has(file.path)||file.path==='archive.manifest.json'||file.path.startsWith('tmp/'))throw failure('TASK_ARCHIVE_MANIFEST_INVALID');seen.add(file.path);const value=await bytes(join(root,file.path));if(value.length!==file.bytes||archiveHash(value)!==file.sha256)throw failure('TASK_ARCHIVE_HASH_MISMATCH')}
   const actual=await filesUnder(root,{excludeTmp:true});if(JSON.stringify(actual)!==JSON.stringify(manifest.files)||!seen.has('task.json')||!seen.has('.task-session.json'))throw failure('TASK_ARCHIVE_MANIFEST_INCOMPLETE')
-  if(snapshot.ledger.digest!==ledgerDigest({version:snapshot.ledger.version,taskId:snapshot.ledger.taskId,tables:snapshot.ledger.tables}))throw failure('TASK_ARCHIVE_LEDGER_INVALID')
+  if(![1,2].includes(snapshot.version))throw failure('TASK_ARCHIVE_LEDGER_INVALID');validateTaskLedger(snapshot.ledger)
   const owner=JSON.parse(await readRegular(join(root,'.task-session.json')));if(owner.taskId!==snapshot.taskId||owner.sessionId!==snapshot.sessionId||snapshot.taskDirectoryRelative!=='data/workspaces/tasks/'+snapshot.taskId)throw failure('TASK_ARCHIVE_IDENTITY_INVALID')
   const task=snapshot.ledger?.tables?.tasks?.[0]?.body;if(task?.taskId!==snapshot.taskId||task?.sessionId!==snapshot.sessionId)throw failure('TASK_ARCHIVE_IDENTITY_INVALID');const sessionPath='sessions/'+archiveHash(snapshot.sessionId)+'.pi.jsonl';if(task?.sessionBound){if(!seen.has(sessionPath))throw failure('TASK_ARCHIVE_SESSION_MISSING');const session=await validatePiArchiveSession(join(root,sessionPath),snapshot.sessionId);if(session.header.portableCwd!==snapshot.taskDirectoryRelative||!ownsTaskSession(session,snapshot.taskId,snapshot.sessionId)||session.committedBytes!==session.totalBytes)throw failure('TASK_ARCHIVE_SESSION_IDENTITY_INVALID')}
   const selected=task.completion?.result?.artifactFiles??[];if(selected.length){const artifacts=createTaskArtifactFiles({root:join(root,'outputs'),getTaskDirectories:id=>{if(id!==snapshot.taskId)throw failure('TASK_ARCHIVE_ARTIFACT_SCOPE_INVALID');return {outputs:join(root,'outputs')}}});await artifacts.validateManifest(selected.map(file=>file.artifact),task)}
