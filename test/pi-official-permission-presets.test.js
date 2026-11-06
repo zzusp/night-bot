@@ -4,12 +4,11 @@ import {Context} from '@deepseek-ai/cordis'
 import NativePresets,{bindPermissionPresetActor} from '../src/native-permission-presets.js'
 import NativeApproval,{bindApprovalAudit} from '../src/native-approval.js'
 import NativePolicy,{bindSandboxPolicyActor} from '../src/native-policy.js'
-import NativeProjections from '../src/native-projections.js'
 import NativeSystemPrompt from '../src/native-system-prompt.js'
 import {memoryWriteAuthorization} from '../src/memory/tools.js'
 const table={read:{sandbox:'read-only',approval:'ask'},write:{sandbox:'workspace-write',approval:'ask'},wide:{sandbox:'danger-full-access',approval:'never'}}
 async function fixture(t,{commit}={}){
- const ctx=new Context(),commands=[];new NativeProjections(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:'/workspace/one'});ctx.provide('shell',{sandboxMode:'read-only'});ctx.provide('commands',{register:command=>commands.push(command)});new NativePresets(ctx,{presets:table,defaultPreset:'read'});t.after(()=>ctx.fiber.dispose());await ctx.fiber.await()
+ const ctx=new Context(),commands=[];new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:'/workspace/one'});ctx.provide('shell',{sandboxMode:'read-only'});ctx.provide('commands',{register:command=>commands.push(command)});new NativePresets(ctx,{presets:table,defaultPreset:'read'});t.after(()=>ctx.fiber.dispose());await ctx.fiber.await()
  const actor={id:'official-permissions',ctx,piSession:{}},foreign={...actor};let live=true,state={preset:'read',sandbox:'read-only',approval:'ask',seeded:false},calls=0
  bindApprovalAudit(actor,{isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=>state.approval,append(){throw Error('preset must use one composite commit')},flush:async()=>{}})
  bindSandboxPolicyActor(actor,{initialDirectory:'/workspace/one',isLive:()=>live,readPolicy:()=>({mode:state.sandbox,artifactRoot:null}),appendPolicy(){throw Error('preset must use one composite commit')}})
@@ -52,7 +51,7 @@ test('official Auto still requires live synchronous admission before composite p
 
 test('real Host scoped permission service resolves actual sandbox/approval capabilities for an official SDK actor',async t=>{
  const {memoryHost}=await import('./fixtures/memory-host.js'),{officialToolsFixture}=await import('./fixtures/pi-official-tools.js'),{createScope}=await import('../src/native-scope.js'),{bindWorkingDirectoryActor}=await import('../src/native-working-directory.js')
- const host=await memoryHost(t),sdk=await officialToolsFixture(t,async()=>{}),ctx=host.host.ctx,actor={id:sdk.owner.id,piSession:sdk.session};const scope=createScope(ctx,actor);actor.ctx=scope.ctx
+ const host=await memoryHost(t),sdk=await officialToolsFixture(t,async()=>{}),ctx=host.host.ctx,actor={id:sdk.owner.id,metadata:Object.freeze({id:sdk.owner.id}),piSession:sdk.session};const scope=createScope(ctx,actor);actor.ctx=scope.ctx
  const detach=ctx.agents.enter(actor);t.after(async()=>{detach();await scope.dispose()})
  const initial=ctx.permissionPresets.resolve('workspace-write');let state={preset:'workspace-write',sandbox:initial.sandbox,approval:initial.approval,seeded:false}
  const live=()=>ctx.agents.get(actor.id)===actor,origin=ctx.runtimePaths.workspaces

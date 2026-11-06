@@ -23,12 +23,8 @@ test('canonical model errors retain strict trusted identity and validated detach
  assert.equal(llm.isHarnessError(current),true);assert.equal(llm.isHarnessError({message:'fake',code:'RATE_LIMIT'}),false)
  for(const invalid of [{status:99},{status:600},{providerRetryAfterMs:0},{requestId:''}])assert.throws(()=>new llm.LlmError('fixture','CODE',invalid))
 })
-test('historical Session and model namespaces expose canonical native implementations',async()=>{
- const session=await import('../packages/capability-compat/session/index.js')
- const protocol=await import('../src/native-session-protocol.js')
+test('model helper namespace preserves canonical errors without a legacy runtime',async()=>{
  const api=await import('../packages/capability-compat/llm/index.js')
- assert.equal(session.Session,protocol.Session)
- assert.equal(session.snapshotSessionEvent,protocol.snapshotSessionEvent)
  assert.equal(api.HarnessError,llm.HarnessError);assert.equal(api.LlmError,llm.LlmError)
  const request={};api.markAgentLoopRequest(request);assert.equal(llm.isAgentLoopRequest(request),true)
 })

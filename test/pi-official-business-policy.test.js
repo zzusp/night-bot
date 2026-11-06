@@ -8,10 +8,9 @@ import {setImmediate} from 'node:timers/promises'
 import NativeSystemPrompt from '../src/native-system-prompt.js'
 import NativeWorkingDirectory,{bindWorkingDirectoryActor} from '../src/native-working-directory.js'
 import NativePolicy,{bindSandboxPolicyActor,setSandboxMode} from '../src/native-policy.js'
-import NativeProjections from '../src/native-projections.js'
 function fixture(t){
  const ctx=new Context(),directories=new Set(['/project','/project/sub','/other']),notices=[],facts=[]
- new NativeProjections(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false})
+ new NativeSystemPrompt(ctx,{includeHarnessIdentity:false})
  ctx.provide('fs',{resolve:async(path,{cwd='/project',signal}={})=>{signal?.throwIfAborted();return resolve(cwd,path)},stat:async path=>directories.has(path)?{type:'directory'}:undefined,processPath:path=>path})
  new NativeWorkingDirectory(ctx,{defaultDirectory:'/project'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:'/project'})
  t.after(()=>ctx.fiber.dispose())

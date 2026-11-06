@@ -5,8 +5,6 @@ import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
 import {ModelRuntime,SettingsManager} from '@earendil-works/pi-coding-agent'
 import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventStream} from '@earendil-works/pi-ai'
-import NativeSessions from '../src/native-sessions.js'
-import NativeProjections from '../src/native-projections.js'
 import NativeAgents from '../src/native-agents.js'
 import NativeSystemPrompt from '../src/native-system-prompt.js'
 import NativeTools from '../src/native-tools.js'
@@ -24,7 +22,7 @@ const decision={message:'accepted'}
 const decisionSchema={type:'object',properties:{message:{type:'string'}},required:['message'],additionalProperties:false}
 async function fixture(t,respond,{root:existingRoot}={}){
  const root=existingRoot??await mkdtemp('/tmp/night-official-group-'),agentDir=join(root,'agent');await mkdir(agentDir,{recursive:true})
- const ctx=new Context();new NativeSessions(ctx);new NativeProjections(ctx);new NativeAgents(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeTools(ctx);new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:root});ctx.provide('shell',{sandboxMode:'read-only'});new NativePermissions(ctx,{defaultPreset:'workspace-write'})
+ const ctx=new Context();new NativeAgents(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeTools(ctx);new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:root});ctx.provide('shell',{sandboxMode:'read-only'});new NativePermissions(ctx,{defaultPreset:'workspace-write'})
  await ctx.plugin(Authority);const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  const attachments=[];ctx.provide('workspaceRegistry',{resolveByPath:async()=>({attachSession:async id=>attachments.push(id)})})
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false}),model=runtime.getModels().find(m=>m.provider==='openai')??runtime.getModels()[0]
