@@ -57,7 +57,7 @@ test('Official AgentSession executes a real local OpenAI-compatible wire request
   assert.equal(host.ctx.tools.constructor.name, 'NativeTools')
   assert.equal(host.ctx.get('llm'),undefined)
   assert.equal(host.ctx.agents.constructor.name, 'NativeAgents')
-  assert.equal(host.ctx.sessionProjections.constructor.name, 'NativeProjections')
+  assert.equal(host.ctx.get('sessionProjections'), undefined)
   assert.equal(host.ctx.get('sessions'),undefined)
   assert.equal(host.ctx.sessionCatalog.constructor.name,'ApplicationSessionCatalog')
   assert.equal(host.ctx.sandboxPolicy.constructor.name, 'NativePolicy')

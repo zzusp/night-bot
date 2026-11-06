@@ -34,7 +34,20 @@ stop constructing the unused Session/projection services. The group coordinator
 retains its genuine SDK attempt, 15-source batching, source/file identity,
 read-only tool, cold recovery, cancellation and >32 feedback contracts.
 
-Projection registry retirement is a separate coordinated step: its last old
-instruction consumer and Host/application service declarations must be removed
-before deleting the registry. No projection shim is installed to keep the old
-class surface available.
+Projection registry retirement followed the final instructions consumer migration
+and removed the Host/application service declarations. No projection shim keeps
+the old class surface available.
+
+## Generic audit projections
+
+`NativeProjections`, its capability re-export and `pi-native-projections.test.js`
+are retired after the final instructions consumer moved to official resources.
+Their registration, mutable checkpoint, fold replay and generic event ABI are
+removed contracts, not passing equivalents of Pi history. Current business
+receipts use private native actor ports and strict committed audit snapshots;
+`pi-business-state`, `pi-native-storage-boundary`, `pi-session-authority` and
+`pi-maintenance-journal` retain snapshot detachment, strict prefix/tail,
+checksum and ownership verification. Official projection ordering and provenance
+remain covered by `pi-native-store` and official-session tests.
+
+The Host no longer installs a projection service; `pi-wire` asserts its absence.
