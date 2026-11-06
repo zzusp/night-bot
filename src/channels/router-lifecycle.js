@@ -105,7 +105,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     if(handle.session.pendingMessageCount||handle.session.isRetrying||handle.session.isStreaming)fail('ROUTER_NOT_IDLE')
     const begun=await command('router.handoff.begin',{conversationId:row.id,generation:row.generation,handoffId})
     const requiredSourceIds=begun.result.rotation.requiredSourceIds
-    const packet={id:handoffId,source:{kind:'router-handoff',conversationId:row.id,generation:row.generation,handoffId},content:[{type:'text',text:'Router 交接请求：'+JSON.stringify({conversationId:row.id,generation:row.generation,handoffId,cutoff:row.cursor,requiredSourceIds,limits:routerHandoffLimits})+'\n仅输出JSON {currentIntent,unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:[{sourceId或taskId}],cutoff}。覆盖本代最后一批与前代交接中仍有效的意图、未决问题、指代和假设；引用必须存在，推测只进assumptions。不要工具、不要复制日志/附件/Skill/长期记忆全文。'}]}
+    const packet={id:handoffId,source:{kind:'router-handoff',conversationId:row.id,generation:row.generation,handoffId},content:[{type:'text',text:'Router 交接请求：'+JSON.stringify({conversationId:row.id,generation:row.generation,handoffId,cutoff:row.cursor,requiredSourceIds,limits:routerHandoffLimits})+'\n仅输出JSON {currentIntent,unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:[{sourceId或taskId}],cutoff}。unresolvedQuestions、referents、assumptions 必须是字符串数组，每个元素须为非空字符串（例如 ["A 指前置核验事项"]），没有内容时用 []，不得用对象作元素。覆盖本代最后一批与前代交接中仍有效的意图、未决问题、指代和假设；引用必须存在，推测只进assumptions。不要工具、不要复制日志/附件/Skill/长期记忆全文。'}]}
     let summarized=false
     try{
       const result=await handle.runToolFreeHandoff(packet,text=>validateHandoff(text,row,requiredSourceIds))

@@ -220,9 +220,64 @@ Lead 当前 goal 已明确 runtime 从 cf6 加载后 store 改 d1，不能把旧
 
 此结论的真实盲点：没有再跑当前版本的完整 runtime/default，原 139/9/2/12 与 1172/4/2/26 的失败/取消及准确 worker 强停/afterHook 排空历史不抹除；不能将 12/10 定向 PASS 说成新完整组全绿。真实模型仍因已授权引用凭据缺失而未调用；Windows 跳过的 Linux/POSIX 隔离/进程路径及 live DWS 厂商集成仍未验，fake 渠道不代替实际送达。Git 提交、push、PR、CI、合并、部署和真实消息均不是本会话审查已执行事项。
 
+## 真实模型入口增量审查（已收口）
+
+SG6 在既有目标上恢复真实模型验收。本次只读新增 scripts/real-model-router.mjs 和其实际 Host/store/service 合同；本会话不运行模型、不读取秘密或修改产品/脚本，仅维护本 review。此前 round-3 综合结论及凭据阻断是当时阶段记录，不能覆盖本次新入口的结果。当前 HEAD 为 82a5ae59951034f65054da8fa4e71452809a6225，新脚本尚未提交。
+
+已独立回读原宿主 tasks/b4ps4huyd.output 与两份安全 JSON：两个 case 在同一 PID、相隔 2ms 启动，分别隔离 Host/根目录，均 passed:false，cleanup.closed 与 isolatedRootRemoved 均为 true，wrapper 自然 exit 1。此运行脚本 SHA 为 7090656858cf046410367522e88447f18ea9a86ee460f179feaaf94f118496ef，四项生产 SHA 起止一致；不能把随后补诊断的当前脚本 23967c4da862728ecf14bf6d933763c33c99fccdc7d0407c854c40969d83a09e 当其已受验版本。原 router-result.json SHA 为 9d29474b267c420c9fd9a912ad33985ea0baee7d3deb0f0ac6208c661165cc71，web-continuation-result.json 为 7a64f276759e6ab7b61e15fe470144ad5fa95712b517f23813a25bd405c569d0；只记录 Error/ZodError 类型，尚不足以判原业务失败根因。
+
+入口首轮 23967c4d 静态确认的问题已直接交 tests 并同步 Lead；以下保留首次发现，修复状态见本节后续集中核证：
+
+- RM1，Web 创建/续办合同不兼容。脚本:103 无 channel/groupId 创建任务，:109–110 又无 groupId 续办，且未 subscribe。service:1667 允许无群创建，但 :1328–1329 的 webTopicAction 要求 task.groupId 或 args.groupId 对应真实订阅，否则 group_not_subscribed。因此脚本到 web-append 会先被现有接口拒绝，不能归因模型。若目标为既有带合成订阅 group 的 Web 来源续办，应明确按该合同布置；若目标为无群个人 Web 续办，则现有两入口的真实缺口须由 Lead 按目标处理，不能悄悄造来源或放宽守卫来通过。
+- RM2，配置解析失败的输出可带秘密原行。脚本:161 的 yaml.parse 早于 :178 redactions 注册；:188 外层 errorInfo 会输出解析异常 message。已只读核当前 yaml/dist/errors.js:29–55 会把原输入行拼入 message，密钥行语法错误时可能将其输出。配置解析阶段应仅报受控 code/name，不传播自由 message/issues/cause；不以真实凭据做故障实验。尚未发现本次安全结果中有实际泄密，本项是明确的失败路径漏洞。
+- RM3，依赖评估先于 B 开始的断言只观察完成顺序。脚本:56 记录 tools/result，:79–80 比较成功评估完成与 B 首个工具完成，无法排除 B 先开始、后完成。可用现有 tools/execute 的 next 前入点或 Host claim/事件序列，绑定目标依赖当前评估与 B 首次执行开始；不能以完成序列直接写 evaluationBeforeBTool:true。
+- RM4，目标文件被模型读回的断言未绑定目标。脚本:84–86 虽由 Host 独立核最终目标字节，却只要求 journal 有任意成功 read；读取其它路径也可满足 filesReadBack:true。若交付该结论，应关联目标 proof/report 路径的 native read toolCall 与对应成功 toolResult，不用无关 read 代替。此项不否定现有 Host 字节验证本身。
+
+已核反证：raw store.query 在 dynamic-task-store.js:2094 直接委派 routerLedger.query；其 :255/:258 接受 router.dependencies/evaluations 的 taskId 过滤，没有必填 conversationId 的 Zod 边界。因此当前两个 query 用法有效，原 ZodError 不能在无实际 stage/issues 证据时归到它们。当时的 bn3bum3oj 由原 tests 补诊断，随后已自然 exit 1，版本与结果见下方集中核证；本会话未停止、修改其加载源码或另开副本，未重审旧全仓或将未齐证据记 PASS。
+
+### 修后增量集中核证（运行入口 503d94b5，提交版 3c466e00）
+
+本检查点仍基于 HEAD 82a5ae59951034f65054da8fa4e71452809a6225 及共享未提交工作树，不以 HEAD 代替实际文件。已独立读取并绑定的 verified-6 实际运行入口 SHA256 为 503d94b5034f0989d2a5ec61045835062c6f64967097942fd2c5d851625b852a；提交版仅将 297 处 CRLF 归一化为 LF，SHA256 为 3c466e00d549a7b00d02e4e2a9475759a47c034713d09b93cdf423041985a57a，逆转行尾后精确恢复运行版 SHA；service 为 e319fdcf6538df875a385f6e2b54fb728ec8077e696916df5cd1de0e6ab99782；Router lifecycle 为 69d3f2b1e20c26cb67e1fbb99901a31805260e687ca89dd0055376b606a7c0d7。以下是本次必要增量的集中静态结论；实际运行终态及最终报告核证见后文，不重审 round-3 全仓或追加测试组。
+
+- RM1 的无群 Web 缺口已在 service:1360 修复：沿创建时的 task:<taskId> 来源作用域，sourceId/operationId 含任务作用域，同 requestId 跨个人任务不碰撞；不注册伪群，不采 args.groupId 改写个人任务归属。有群仍校验原订阅，原版本 CAS、冻结 request/kind/action/receipt 与原执行 session 不变。已独立读 b3qjurib1 无群定向 1 PASS/0 FAIL、自然 exit 0；保留 b9jlz4xwd 初始 null/undefined 断言 FAIL。下表 verified-3 的真实 Web 运行另外证明 e319 版本的实际续办、冷恢复及零外发。
+- 依赖证据入模缺口已在 service:931–958、:986 和两个实时 supplement 调用点修复。仅构造当前任务入边，关联其原 evaluation、授权来源身份/版本、当前前置 completion 及原 completion receipt 的事件；要求 requirement/control/arrangement/condition 等一致，末尾仍以原 task.dependencies-ready 封口。不复制前置 session、全部来源正文或全图。single-session 原序列化保留该字段，无另造上下文。Lead 指定的清依赖反例已排除：router-ledger:76–89 将旧边/旧评估冻结到 task.arranged 后从活动表删除，:255/:258 查询不回读审计，空入边合法返回 []。已独立核 b12uxzj56：1 PASS/0 FAIL/0 CANCEL/0 SKIP，自然 exit 0，service e319 与测试 b07c24091b1aa86aedd146cf44d680419c2adcf3fa3988f10c6d1fc34cee3e4f 起止相同；B 的真实模型请求及持久输入只含 A 当前 req2 的证据，原 req1 preliminary 不进入 B。保留 be3089how 将已认证 actor 错断为 alice 的旧断言 FAIL，不覆盖该次结果。
+- RM2–RM4 已在最终入口静态闭合。配置完成并注册 redactions 前仅输出固定 Error/LIVE_CONFIGURATION_INVALID；成功目标依赖 satisfied 结果序号早于 B 首个 tools/execute 的 next 前开始序号；目标 read 以规范路径、native callId 和对应成功 toolResult 关联，Web 续办仅检查初始 journal 切点之后。Tests 自报的合成坏 YAML 零模型请求/输入未披露检查，不冒充本会话执行或真实秘密故障实验。
+- 交接类型提示的最小修复仅在 router-lifecycle:108 明确三个 section 均为非空字符串数组、空内容 []、禁止对象元素。schema、预算、引用验证、tool-free、native commit、CAS publish 和失败 abort 均未放宽。测试 06cccbb2fc1f084169f1e653d81c0d78e59a5547dee5e288e476d84e8dd8dc6c 的 referents-object 负例沿真实 Host/Pi 路径要求 aborted 持久终态、原 generation/commit、无 candidate、无旧消息重放；已独立回读 bg8ba8zty 原正式输出：正向四处置/unknown 短回复/冷去重及 referents-object 负向共 2 PASS/0 FAIL/0 CANCEL/0 SKIP，总 52252.6886ms，自然 exit 0；lifecycle 69d3 与测试 06cc 起止相同。没有重跑其它 flow/Web 或完整组。
+
+已独立接回的真实运行终态：
+
+| 宿主操作 | 实际加载入口 / lifecycle | 已证终态与未证边界 |
+| --- | --- | --- |
+| bn3bum3oj / diagnostic-2 | 23967c4d / fb0f4029，service 仍 da4f819d | 两个 case FAIL，自然 exit 1；Web 在 web-append 被 group_not_subscribed 拒绝；Router A completed/drained，B active/drained wait。两 cleanup 成功；不能当 e319 修后结果。 |
+| bnl1z3gp9 / verified-3 | a04246cc / fb0f4029，service e319 | Web PASS，68878.1696ms：同 session、原字节/历史前缀保留、冻结产物、零渠道外发，冷恢复/同请求重放不增加模型/工具/发送。Router FAIL，357843.0346ms：A/B completed/drained，但 router-idle 的 referents 两元素为 object，未通过既有 string schema。wrapper 自然 exit 1，两个 cleanup 成功，7 项 SHA 起止一致。 |
+| bs42r1j18 / verified-4 | 7bb8ae39 / 69d3f2b1，service e319 | Router FAIL，205156.6695ms，自然 exit 1；已越过交接及任务/文件/native 输入断言，失败于原复合 LIVE_FAKE_DELIVERY_NOT_TERMINAL。原 fake 仅 send/readback，缺文件能力已静态确认；该次未保存 notice 细节，不能武断认定是唯一失败原因。7 项 SHA 起止一致，cleanup 成功。 |
+| bgyk4w4fi / verified-5 | 7a448ddc / 69d3f2b1，service e319 | Router FAIL，253201.6017ms，自然 exit 1，ROUTER_HANDOFF_REFERENCE_INVALID；A/B completed/drained，7 项 SHA 起止一致，cleanup 成功。未到附件断言，没有可复用的逐文件交付链；原 offending refs/同代输入/行状态未保留且隔离根已清，引用失败根因未收敛。 |
+| bcfyu5fir / verified-6 | 503d94b5 / 69d3f2b1，service e319 | Router PASS，221114.6355ms；Node 2 PASS/0 FAIL 含父容器，总 221128.6868ms，GROUP_EXIT:real-model-router-verified-6:0，自然 exit 0。7 项 SHA 起止/受验文件相同；当前依赖证据、逐 A/B 冻结文件交付、generation 4、冷恢复与 cleanup 均通过，具体核证见后文。 |
+
+verified-5 原输出 :34 记录失败，:36/:37 才出现两次 reply；catch 的 delivery 快照在 finally close 排空之前，末尾 toolCounts 在 cleanup 之后。因此零 notice 与后来回复不矛盾，不能据此认定生产 prepare/通知接线缺陷，也不能补推回复必含 taskDelivery 或文件已送达。不存在源引用、跨作用域/held 来源、任务引用不存在/跨作用域等候选尚无法由旧结果区分；不据错误码认定模型编造、输入缺失或合法行误拒。
+
+文件交付补证新增 RM5：7a448 的文本 send/readback 计数及全部 notice delivered/cancelled 仍允许“文件全 cancelled”或“同 A 重复、B 漏交”通过。最终入口:33–48、:200 已改为逐当前 A/B 的完整冻结 descriptor，要求唯一同 task/req 子通知、父 taskDelivery 选择与父/子 delivered、真实冻结文件字节 SHA/size、单次 sendFile、同 deliveryKey/messageId 回读、持久 ack/receipt 及 descriptor 哈希全匹配。已核真实 Channels 签名、notification-delivery 的 ack/receipt 持久字段及 safeNotificationDetail 会保留所用证明。只记录受控 ID/hash/size，不保存文件路径、正文或秘密。Tests 的纯断言反例自报仅说明断言能拒 cancelled/重复漏交/旧版本/错 messageId，不冒充真实 Host/fake 文件发送或业务通过。
+
+最终入口:49–86 的引用诊断在 close/rm 前按 aborted rotation 的固定安全 abortCode、handoffId、oldSessionId/generation/cutoff 关联：严格核 native.header 身份；同 ID internal admission；唯一 source/content 全等的 native business input；实际请求首行 JSON 的身份、cutoff、requiredSourceIds 与 rotation 一致；取其后首条 assistant，遇其它 business input 即缺证，不取最后一条回复补猜。响应 cutoff 只保留安全整数及 matches；refs 仅保留 lookup exists/scope/hold/version，同作用域的受控 ID 与非法引用哈希，不复制外会话正文/私有路径。诊断自身失败单列固定 diagnosticError，不覆盖原 report.errors；快照序号和最终 reply 通知 ID/状态区分观测时点。未见剩余安全、配对或 receipt 字段的静态阻断。最终成功运行没有触发该失败诊断分支，故这里只确认限定静态合同，不宣称已用真实坏 ref 动态验收该分支，也不追认旧引用失败的根因。
+
+### 最终业务及阶段报告核证
+
+已独立完整读取 bcfyu5fir 原宿主输出及最终安全 JSON，不以成员自报或工具成功回执替代业务证据。verified-6 的 7 项起止指纹一致，实际运行入口为 503d94b5；Router 业务 PASS 221114.6355ms，Node 2 PASS/0 FAIL 含父容器，原 wrapper 自然 exit 0。提交版 3c466e00 的差异仅为上文已逐字节核证的行尾转换，没有重新调用 API 或业务测试。
+
+- A/B 分别 completed/drained 且 session 不同；成功目标依赖评估结果 sequence=27，B 首个实际 tools/execute 开始 sequence=28，原生入模证据绑定当前 A completion/evaluation，不用 B 工具完成时刻推测先后。
+- 已逐 A/B 核当前 task/requirementRevision/完整冻结 descriptor、唯一子通知与父 taskDelivery、真实文件 bytes SHA/size、单次 sendFile、同 deliveryKey/messageId 回读及持久 ACK/receipt。A 文件 6 bytes，四处消息身份均 fake-visible-2；B 文件 69 bytes，均 fake-visible-4；父子四通知全部 delivered，不以汇总计数、文本或 cancelled 代替文件完成。完整 artifact/content/descriptor 哈希及身份链保留在 round-4.md 和最终 JSON，不在本 review 重复完整证据表。
+- Router generation=4、phase=active、pendingInputs=0；原认证消息冷重投不新增任务、任务 journal 字节、assistant 总数 29、工具或 fake 交付；cleanup.closed 与 isolatedRootRemoved 均 true。原输出的两次中间 ROUTER_EVIDENCE_REFERENCE_INVALID 后第三次 satisfied 才成功，不能表述为零工具错误。
+- verified-3 的真实 Web PASS 继续复用：原执行 session、原进度字节/journal 前缀、精确新 Web 来源和追加/实际 read、completed/drained、冻结产物及零渠道外发，冷恢复/重放没有模型或交付增长。该次为 a04246cc/e319/L0，与最终 Router 的 503d94b5/e319/L1 分别受验；不是统一版本两 case 并发全绿。
+
+最终 round-4.md SHA256=98b60062a3322c2f2160710ee433ef92a9a7315d369a55d299bdaca1ea9e60b4，matrix.csv SHA256=b6abbee95228819b9ab80982074eba408e04f2e65b88677fdd529290a5d760ad。已完整回读阶段报告并用标准 CSV 逐格核对 HEAD 原矩阵 b7feb242：原 54 数据行的行序、原字段及 round_1/2/3 全不变，只增 round_4 和 6 行，新行旧轮均 NOT_RUN，无重复 case_id。报告保留两次测试自身断言 FAIL、六批版本化真实终态、中间引用拒绝及未知根因，没有改写历史全量失败。最后的行尾修正独立证明只含原末两行 CRLF→LF 及一条明确区分运行/提交 SHA 的说明；去掉新增说明并还原这两行行尾后，精确恢复原报告 65baa8f5；此前核过的业务正文与矩阵未变。
+
+最终证据目录已独立确认仅两文件：round-4/verified-6-router-result.json SHA256=a5879141ccdcdfbad70627f56a69ce24dd16e1ef1419338dffede7d803affe7e，round-4/verified-3-web-continuation-result.json SHA256=fe9802aa4e669aba740f90d213145bd4e22eb2638a4ed6896ff0e10a9211f72e。本节上方引用的 initial、diagnostic-2、verified-3 Router、verified-4/5 共七份旧 JSON 已由原 Tests 清理；历史结果、版本和必要文字摘要由本 review/round-4 保留，不能再将已清附件当作当前可回读证据。未保留旧附件备份、运行库、完整 journal、业务文件或秘密；本会话未执行删除。
+
+最终 S2/L1 的 pnpm check 已独立按原前台 tool_use_id=call_cbb9a15357e24c5da760af44f5ea5a2c 提取唯一原命令/结果（2026-11-06T15:05:04.684Z），不是后台 task：set -e 链核 69d3 后执行 pnpm check 与 git diff --check，原结果无错误、stderr 为空且未中断。实际输出为 194 retained/53 adapted、404 production/runtime JS、190 imports、0 external SDK/旧编排定义、历史源校验 5/旧格式清除 9；与本轮报告及当前受验源匹配。manifest 保留上游 sourceSha256，守卫未放宽；本会话没有重复运行 guard。
+
 ## 当前收口边界
 
-- 独立审查已完成，未确认残留阻断问题；最后 12/10 定向、当前 guard 和 round-3/matrix 的版本及证据边界已核实。
-- 真实模型凭据阻断、当前完整组未重跑、平台条件跳过及厂商 live 集成未验单列保留；不宣称统一版本全绿或真实模型/生产验收完成。
-- 当前为团队共享未提交工作树，最终交付和目标线核对由 Lead 负责；仅修改本 review.md，未执行 Git 写操作、CI、合并、部署或真实发送。
-- 没有额外 agent/workflow；此前 skill 意外启动的后台审查 a6ed648af3757c842 已立即停止，未采用其输出。后续均为本会话直接核证，未重复已收口专项。
+- 基于 HEAD 82a5ae59951034f65054da8fa4e71452809a6225 加本轮明确 SHA 的未提交工作树，round-3 已收口审查及本次必要增量均未发现已确认且未处理的阻断问题；RM1–RM5 已处理，两个既定真实业务分别取得完整 PASS。SG6 独立审查可收口，交 Lead 按既定授权完成 Git 交付，不追加全仓/整轮或重复付费模型门槛。
+- verified-4 的唯一通知失败原因、verified-5 的具体坏引用仍未收敛；最终成功不解释或追认修复这些历史原因，不证明模型稳定性。安全失败诊断分支仅静态核，合成坏 YAML/文件谓词负检查不冒充本会话实跑或真实坏 ref 动态验收；旧失败与清理记录均保留。
+- 当前完整 runtime/default 未重新全量跑，Windows 条件跳过的 Linux/POSIX 隔离/进程路径和 live DWS 集成仍未验；不能将分批定向与真实 case PASS 写成当前统一版本全套全绿。真实模型配 fake 渠道，不代表真实消息送达或上游部署身份认证。
+- 仅本 review.md 由本会话写入；未执行模型、读取秘密、修改产品/测试/入口/报告/矩阵、Git 写操作、CI、合并、部署或真实发送，也未新开 agent/workflow。本次提交、push 和原 PR 更新仍由 Lead 处理，本审查不声称已完成这些后续动作。

@@ -22,7 +22,11 @@ changes control, aborts the live turn, drains it and never creates a replacement
 Restart uses the existing task session ID and Pi journal. Task sessions are not
 resumed by the ordinary conversation/reminder controller.
 
+执行输入 `packet.task.dependencies` 仅包含当前任务的真实入边：依赖条件、匹配的当前前置完成记录、原完成事件引用与评估，以及授权来源的 `sourceId` / `messageVersion` / `actorId`。Host 在入模前核对要求、控制、安排及前置完成版本和事件一致性，拒绝旧评估或版本错配；首次执行与 Router、Web 两条实时补充路径复用同一构造器。该依赖字段不复制前置任务会话、完整来源正文或全依赖图；上下文说明不创造授权，调度、claim 与 CAS 仍由 Host 强制校验。
+
 仅有 Web 来源的 `createTask` 即使关联 `groupId`，也允许在任务内持久保存 `requester` / `waiting-reply` 问题；`groupId` 不创造真实 IM 来源、引用、成员身份或群交付许可。没有真实群来源时不发群、不回退操作者私聊，也不能宣称已通知；旧 Topic 错误码不构成拒绝整个 Web 提问的合同。有权 Web 答复仍校验已认证 `webActor`、原任务及 `humanRequestId`、当前要求/控制版本 CAS，持久记录真实新来源后沿原执行 session 续办。
+
+未关联 `groupId` 的 Web 任务也可由配置的 `webActor` 补充上下文、修订或重开：新输入沿用创建时的 `task:<taskId>` 来源作用域，不要求订阅群，也不将该作用域注册为渠道群。关联 `groupId` 的任务仍校验原群订阅；版本 CAS、稳定请求去重和原执行 session 续办规则不变，取消仍直接走任务控制；这些入口均不创造 IM 来源、群身份或外发许可。
 
 Task workspaces are `data/workspaces/tasks/<task-id>/`, with materials, work,
 outputs and temporary task-local material separated inside that owner directory.

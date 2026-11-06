@@ -747,7 +747,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(args.kind==='supplement'&&taskSessions.liveBinding?.(task.taskId)){
         const sources=(await Promise.all(current.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean)
         const materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
-        await taskSessions.supplement({task:current,sources,materials})
+        await taskSessions.supplement({task:await taskInputWithDependencies(current),sources,materials})
       }
       void hostScheduler(()=>schedulePending());return receipt
     })
@@ -928,6 +928,35 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     } finally { loopDelay.disable() }
   }
 
+  async function taskInputWithDependencies(task) {
+    const dependencies=(await query('router.dependencies',{taskId:task.taskId})).filter(row=>row.taskId===task.taskId)
+    const inputs=[]
+    const evaluations=dependencies.length?await query('router.evaluations',{taskId:task.taskId}):[]
+    for(const dependency of dependencies){
+      const evaluation=evaluations.find(row=>row.id===dependency.evaluationId)
+      const prerequisite=await query('task.get',{taskId:dependency.prerequisiteTaskId})
+      const completion=prerequisite?.completion
+      const receipt=completion?await query('receipt.get',{id:completion.commandId}):null
+      const event=receipt?.completionEvent
+      const authorization=await query('source.get',{sourceId:dependency.authorizationSourceId})
+      // 只交接真实入边当前完成版本及其原评估，不把旧结果或全会话复制为新授权。
+      if(dependency.state!=='satisfied'||!evaluation||evaluation.decision!=='satisfied'
+        ||['taskId','conversationId','prerequisiteTaskId','prerequisiteRequirementRevision','requirementRevision','controlRevision','arrangementRevision','condition'].some(key=>evaluation[key]!==dependency[key])
+        ||dependency.requirementRevision!==task.requirementRevision||dependency.controlRevision!==task.controlRevision||dependency.arrangementRevision!==(task.arrangementRevision??1)
+        ||dependency.conversationId!==task.conversationId||prerequisite?.conversationId!==task.conversationId
+        ||!completion||completion.requirementRevision!==dependency.prerequisiteRequirementRevision||prerequisite.requirementRevision!==dependency.prerequisiteRequirementRevision
+        ||!event||event.id!==evaluation.completionEventId||event.kind!=='task.completed'||event.taskId!==prerequisite.taskId
+        ||event.commandId!==completion.commandId||event.requirementRevision!==completion.requirementRevision||event.controlRevision!==completion.controlRevision||hash(event.result)!==hash(completion.result)
+        ||!authorization||authorization.groupId!==dependency.conversationId||authorization.version!==dependency.authorizationSourceVersion)fail('ROUTER_EVALUATION_STALE')
+      inputs.push({...dependency,evaluation,
+        authorization:{sourceId:authorization.sourceId,messageVersion:authorization.version,actorId:authorization.actorId},
+        prerequisite:{taskId:prerequisite.taskId,requirementRevision:prerequisite.requirementRevision,completion},
+        completionEvent:{id:event.id,kind:event.kind,taskId:event.taskId,requirementRevision:event.requirementRevision,controlRevision:event.controlRevision,recordedAt:event.recordedAt}})
+    }
+    if(dependencies.length&&!await query('task.dependencies-ready',{taskId:task.taskId}))fail('ROUTER_DEPENDENCY_PENDING')
+    return {...task,dependencies:inputs}
+  }
+
   function kickTask(taskId) {
     if (closed || admissionHolds.has(taskId) || !retryReady(taskId) || !reserveTask(taskId)) return Promise.resolve()
     return track(inflightTasks, taskId, async () => {
@@ -954,7 +983,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const executions = await query('execution.list',{taskId})
         if(executions.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
         await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:task.ownerActorId??config.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}})
-        const runResult = await taskSessions.run({ binding, input: { task, artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: _body, ...resource }) => resource) })), wakes, executions,
+        const runResult = await taskSessions.run({ binding, input: { task:await taskInputWithDependencies(task), artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: _body, ...resource }) => resource) })), wakes, executions,
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
           blockers: await query('task.blockers', { taskId }) }, ...taskModelSelection(models(), legacy.getAgentConfig().taskSessionModel ?? config), agentPreset: legacy.getAgentConfig().agentPreset,
@@ -1325,9 +1354,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(!args.requestId)fail('TASK_SESSION_REQUEST_ID_REQUIRED')
     if(args.topicRefs?.length)fail('TOPIC_ROUTING_RETIRED')
     if(kind==='task-context')assertTaskContextSemantics(args)
-    const groupId=task?.groupId??args.groupId
-    if(!groupId||!residentStore.getGroup(groupId))fail('group_not_subscribed')
     if(!task)fail('TASK_WEB_CREATE_USE_DIRECT_ENTRY')
+    // 无群 Web 输入沿用建任务时的来源作用域，不将其注册为渠道群。
+    const groupId=task.groupId??'task:'+task.taskId
+    if(task.groupId&&!residentStore.getGroup(task.groupId))fail('group_not_subscribed')
     const sourceId='web:'+hash([config.webActorId,groupId,args.requestId]),text=args.context?.trim()||args.objective||args.reason||''
     const request=clean(args),operationId=residentOperationId(groupId,args.requestId)
     await admitTask(task.taskId,async(oldTask,oldExecutions)=>{
@@ -1356,7 +1386,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const latest=await requireTask(task.taskId);taskCache.set(task.taskId,topicTaskView(latest))
       if(action.kind==='task.supplement'&&taskSessions.liveBinding?.(task.taskId)){
         const sources=(await Promise.all(latest.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean),materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
-        await taskSessions.supplement({task:latest,sources,materials})
+        await taskSessions.supplement({task:await taskInputWithDependencies(latest),sources,materials})
       }
     })
     void hostScheduler(()=>schedulePending());return requireTask(task.taskId)

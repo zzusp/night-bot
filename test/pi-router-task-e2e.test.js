@@ -16,9 +16,21 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
     if(!names.length&&handoff)return {text:JSON.stringify({currentIntent:'Verify A before B; preliminary evidence is not accepted; retain the original authorization',unresolvedQuestions:[],referents:['A is verification; B is the dependent result'],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
     if(names.includes('task_result')){
       const input=taskInput(body),task=input.task;taskTurns.push({taskId:task.taskId,revision:task.requirementRevision})
+      if(task.taskId==='a-e2e')assert.deepEqual(task.dependencies,[],'A outgoing dependencies must not become its input evidence')
       if(task.taskId==='a-e2e')return call('task_result',{decision:{action:'complete',summary:task.requirementRevision===1?'Preliminary investigation only':'Verification evidence accepted',evidence:[task.requirementRevision===1?'proof:preliminary':'proof:verified'],limitations:task.requirementRevision===1?['Verification incomplete']:[]}})
-      const a=await h.query('task.get',{taskId:'a-e2e'}),dependency=(await h.query('router.dependencies',{taskId:'b-e2e'}))[0]
-      bStarts.push({aRevision:a.requirementRevision,dependencyState:dependency.state,aSession:a.sessionId})
+      assert.equal(task.dependencies.length,1,'B receives only its actual incoming dependency')
+      const dependency=task.dependencies[0],prior=dependency.prerequisite
+      assert.equal(dependency.taskId,task.taskId);assert.equal(prior.taskId,'a-e2e');assert.equal(prior.requirementRevision,2)
+      assert.equal(dependency.state,'satisfied');assert.equal(dependency.prerequisiteRequirementRevision,2)
+      assert.equal(dependency.evaluation.decision,'satisfied');assert.equal(dependency.evaluation.prerequisiteRequirementRevision,2)
+      assert.equal(dependency.evaluation.requirementRevision,task.requirementRevision);assert.equal(dependency.evaluation.controlRevision,task.controlRevision)
+      assert.equal(dependency.completionEvent.kind,'task.completed');assert.equal(dependency.completionEvent.taskId,prior.taskId);assert.equal(dependency.completionEvent.requirementRevision,2)
+      assert.equal(dependency.evaluation.completionEventId,dependency.completionEvent.id)
+      assert.equal(prior.completion.result.summary,'Verification evidence accepted');assert.deepEqual(prior.completion.result.evidence,['proof:verified']);assert.deepEqual(prior.completion.result.limitations,[])
+      assert.equal(prior.sessionId,undefined);assert.equal(dependency.authorization.actorId,task.ownerActorId);assert.match(dependency.authorization.actorId,/^channel-actor-/);assert.equal(dependency.authorization.messageVersion,1)
+      assert.ok(input.sources.some(source=>source.sourceId===dependency.authorization.sourceId&&source.version===dependency.authorization.messageVersion&&source.actorId===dependency.authorization.actorId))
+      assert.ok(!JSON.stringify(dependency).includes('proof:preliminary'),'Rejected old completion evidence must not enter B input')
+      bStarts.push({aRevision:prior.requirementRevision,dependencyState:dependency.state,dependency:structuredClone(dependency)})
       return call('task_result',{decision:{action:'complete',summary:'B uses the verified current A evidence',evidence:['proof:b'],limitations:[]}})
     }
     if(names.includes('resident_router_settle')){
@@ -60,6 +72,12 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   assert.deepEqual(evaluations,[{revision:1,decision:'continue'},{revision:2,decision:'satisfied'}])
   assert.equal(bStarts.length,1);assert.equal(bStarts[0].aRevision,2);assert.equal(bStarts[0].dependencyState,'satisfied')
   assert.equal(taskTurns.filter(turn=>turn.taskId==='b-e2e').length,1)
+  const stored=await h.host.ctx.sessionPersistence.readNative(b.sessionId,{requireComplete:true})
+  const packet=stored.audit.find(row=>row.domain==='admission'&&row.kind==='enqueued'&&row.payload.source.kind==='task-input')?.payload
+  assert.ok(packet,'B evidence is retained in the real official admission packet')
+  const admitted=JSON.parse(packet.content.find(part=>part.type==='text').text)
+  assert.deepEqual(admitted.task.dependencies,[bStarts[0].dependency])
+  assert.equal(admitted.task.sessionId,b.sessionId)
   assert.deepEqual(await h.query('execution.list'),[],'one task keeps one direct execution session, not a split team')
   assert.equal((await h.query('wake.list',{taskId:'b-e2e'})).filter(wake=>wake.kind==='dependency.satisfied').length,1)
   assert.ok(h.results.some(row=>row.name==='resident_task_query'&&!row.result.isError),'Router reads current execution evidence through the actual tool')

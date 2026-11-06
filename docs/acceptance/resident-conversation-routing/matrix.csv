@@ -1,55 +1,61 @@
-case_id,scenario,round_1,round_2,round_3
-triage-schema,四处置/完整覆盖/旧版越界/15条合同,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-host-silent-reply,默认attachIngress静默与仅回复不唤醒Router且回复去重,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-host-invalid,官方Pi schema拒绝不完整分诊且来源仍待处理,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-host-isolation,群共享/私聊发送人/渠道命名空间隔离,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-host-four-dispositions,原文完整转交且unknown短回复不阻止Router/交接/冷去重,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-host-overflow,同代15条steer及第16条持久排队/Router批次上限,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-handoff-late,tool-free摘要期间迟到输入只投新代且不丢不双投,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-handoff-candidate-crash,新代native已提交/候选账本提交失败后冷启唯一发布,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-handoff-cas-crash,候选已提交/发布CAS失败后冷启唯一发布,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-handoff-context,四轮短交接不重载旧原文且无空闲自触发循环,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-ledger-dependencies,完成非认可/当前证据/旧版/取消/多前置/环原子性/同目标返工,PASS,PASS,PASS_ROUTING_CF6
-ledger-scope,跨群来源拒绝/同群非owner取消拒绝/来源新版撤授权,PASS,PASS,PASS_ROUTING_CF6
-ledger-idempotence,unknown通知独立/虚构证据拒绝/跨物理session幂等/重复settle游标一次,PASS,PASS,PASS_ROUTING_CF6
-archive-task-only,v2单任务B不含A正文或Router历史/脱离A恢复held/claim拒绝,PASS,PASS,PASS_ROUTING_CF6
-archive-v1,旧v1仅held历史审计/无分诊重放/未复核claim拒绝,PASS,PASS,PASS_ROUTING_CF6_AND_DEFAULT_FOLLOWUP
-archive-tamper,重算digest仍拒绝foreign行/缺来源/额外Router表,PASS,PASS,PASS_ROUTING_CF6
-archive-prerequisite,前置A归档后完成事件热冷身份与原证据仍供B评估,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6
-upgrade-check,旧version3无marker的check文件集合与sha零变化/无WAL-SHM写入,PASS,PASS,PASS_ROUTING_CF6
-upgrade-execute,原生离线备份后v4-marker1/可靠pending转交/模糊与无源held/身份不变/重执行无重放,PASS,PASS,PASS_ROUTING_CF6
-upgrade-reject,缺备份/状态漂移/unknown效果均拒绝,PASS,PASS,PASS_ROUTING_CF6
-runtime-regression,pnpm test:runtime完整回归,RUNNING,NOT_PASSED_DIAGNOSTIC,FAIL_9_CANCEL_2_THEN_FOLLOWUP_12_PASS
-all-required-regressions,pnpm test及test:routing/domain/containment/journal/native guards,NOT_RUN,PARTIAL,PARTIAL_FULL_GROUP_FAILURES_FOLLOWUPS_PASS
-real-model,真实大模型业务效果独立于脚本模型,NOT_RUN,NOT_RUN,BLOCKED_MISSING_CREDENTIAL
-router-task-e2e,真实默认Router创建A-B并在新版本证据下自动释放B,NOT_RUN,PASS,PASS_ROUTING_CF6
-handoff-recovery-review,独立审查实跑空inbox冷恢复与未决handoff输入,PASS_REVIEW,RETAINED_ROUND_1,RETAINED_ROUND_2
-vendor-platform,真实DWS发送/部署/CI/合并,NOT_AUTHORIZED,NOT_AUTHORIZED,NOT_AUTHORIZED
-handoff-invalid,空intent/缺引用/UTF-8超预算拒绝且原代与游标保留,NOT_RUN,PASS,PASS_ROUTING_CF6
-triage-recovery-current,轻量分诊短回复先送达/未提交来源冷恢复/unknown只回读,NOT_RUN,PASS,RETAINED_ROUND_2
-human-source-replies,事实追问精确作者和来源/新补充不解除原批准问题/冷不重发,NOT_RUN,PASS,RETAINED_ROUND_2
-human-provider-review,provider失败保留人工复核来源/冷不自重试/新真实答复恢复,NOT_RUN,PASS,RETAINED_ROUND_2
-web-preserved-regressions,claim前后fencing/串行/材料/排空/CAS/reopen当前直接入口,NOT_RUN,PASS_SPLIT_RUNS,PASS_ROUTING_CF6
-router-clarification-cold,delivered及unknown澄清冷恢复/自回声/原source去重,NOT_RUN,PASS,PASS_ROUTING_CF6
-source-version-send-fence,认证v2拒v1 prepared新发送/unknown仅原收据回读,NOT_RUN,PASS,PASS_ROUTING_CF6
-retired-topic-http,退役Topic/hold/retry写入410且runtime零调用,NOT_RUN,PASS,PASS_DEFAULT_D1
-task-notice-retirement,历史冻结未发送confirmation随真实任务完成退休且不重派,NOT_RUN,PASS,RETAINED_ROUND_2
-service-close-fault,早期清理抛错仍排空真实任务/observer/SQLite且保留AggregateError,NOT_RUN,PASS,RETAINED_ROUND_2
-notification-unknown-cooldown,固定Date实证冷恢复cooldown/到期只回读/业务不重跑,NOT_RUN,PASS,RETAINED_ROUND_2
-task-attachments-current,完成查询冻结ID/taskDelivery/父子双受众/归档冷续/unknown不重发,NOT_RUN,PASS_SOURCE_DRIFT,PASS_RUNTIME_FOLLOWUP_STABLE_D1
-platform-due-attachments,all与members到期fresh query/父子全送达/冷恢复唯一发送,NOT_RUN,PASS_SOURCE_DRIFT,PASS_RUNTIME_SOURCE_DRIFT
-media-enrichment-current,首次读取失败/成功富化新版/取消旧分诊/重复复用真实source,NOT_RUN,PASS_SOURCE_DRIFT,PASS_RUNTIME_SOURCE_DRIFT
-execution-only-count,唯一执行model请求且live actor仅当前账本Router,NOT_RUN,PASS,RETAINED_ROUND_2
-native-windows-budgets,七例跨进程/复核/provider冷恢复原断言按Windows预算复验,NOT_RUN,PASS,PASS_RUNTIME_SOURCE_DRIFT
-domain-regression,domain391全通过与受影响11补验/计数重叠不相加,NOT_RUN,PASS_WITH_FOLLOWUP,RETAINED_ROUND_2
-containment-regression,Windows5通过17Linux条件跳过/不冒充Linux隔离已验,NOT_RUN,PASS_5_SKIP_17,RETAINED_ROUND_2
-source-import-native-guard,Lead集中刷新manifest后check53适配404模块零旧编排,NOT_RUN,PASS_LEAD,PASS_CURRENT_CHECK
-routing-regression,正式routing59通过/零跳过/聚合34930起止一致且store为cf6,NOT_RUN,NOT_RUN,PASS_59_STABLE_CF6
-default-regression,原default1172通过4失败2取消26跳过/准确遗留worker强停后释放报告,NOT_RUN,NOT_RUN,FAIL_4_CANCEL_2_THEN_FOLLOWUP_10_PASS
-runtime-affected-followup,原runtime11问题例及固定start附件冷恢复共12例/聚合3e952ffb起止相同,NOT_RUN,NOT_RUN,PASS_12_STABLE_SOURCE
-default-affected-followup,原default6问题例及同文件清理影响4例/15项源码起止相同,NOT_RUN,NOT_RUN,PASS_10_STABLE_SOURCE
-notification-fixed-start-cold,原ID负收据在父delivered及归档冷启后只授首次许可/unknown仅回读,NOT_RUN,NOT_RUN,PASS_RUNTIME_FOLLOWUP
-web-human-no-channel-authority,Web内部待答保存/真实答复实际续办原session/无群或operator外发,NOT_RUN,NOT_RUN,PASS_2_RUNTIME_FOLLOWUP
-continuations-native-32,32真实来源续办和原生压缩/遥测剔除/唯一副作用不重放,NOT_RUN,NOT_RUN,PASS_RUNTIME_FOLLOWUP
-default-cleanup-complete,原Router未settle错误不吞/完整释放Host及HTTP/修模型后受影响原用例通过,NOT_RUN,NOT_RUN,FAILURE_PRESERVED_THEN_PASS
-default-windows-budgets,两例多轮输入与Host冷启动用既有Windows预算/原效果及held-noReplay合同保留,NOT_RUN,NOT_RUN,PASS_2_DEFAULT_FOLLOWUP
+case_id,scenario,round_1,round_2,round_3,round_4
+triage-schema,四处置/完整覆盖/旧版越界/15条合同,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+host-silent-reply,默认attachIngress静默与仅回复不唤醒Router且回复去重,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+host-invalid,官方Pi schema拒绝不完整分诊且来源仍待处理,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+host-isolation,群共享/私聊发送人/渠道命名空间隔离,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+host-four-dispositions,原文完整转交且unknown短回复不阻止Router/交接/冷去重,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+host-overflow,同代15条steer及第16条持久排队/Router批次上限,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+handoff-late,tool-free摘要期间迟到输入只投新代且不丢不双投,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+handoff-candidate-crash,新代native已提交/候选账本提交失败后冷启唯一发布,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+handoff-cas-crash,候选已提交/发布CAS失败后冷启唯一发布,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+handoff-context,四轮短交接不重载旧原文且无空闲自触发循环,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+ledger-dependencies,完成非认可/当前证据/旧版/取消/多前置/环原子性/同目标返工,PASS,PASS,PASS_ROUTING_CF6,PASS_A_REWORK_B_NATIVE_INPUT_ONLY
+ledger-scope,跨群来源拒绝/同群非owner取消拒绝/来源新版撤授权,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+ledger-idempotence,unknown通知独立/虚构证据拒绝/跨物理session幂等/重复settle游标一次,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+archive-task-only,v2单任务B不含A正文或Router历史/脱离A恢复held/claim拒绝,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+archive-v1,旧v1仅held历史审计/无分诊重放/未复核claim拒绝,PASS,PASS,PASS_ROUTING_CF6_AND_DEFAULT_FOLLOWUP,NOT_RERUN
+archive-tamper,重算digest仍拒绝foreign行/缺来源/额外Router表,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+archive-prerequisite,前置A归档后完成事件热冷身份与原证据仍供B评估,PASS,RETAINED_ROUND_1,PASS_ROUTING_CF6,NOT_RERUN
+upgrade-check,旧version3无marker的check文件集合与sha零变化/无WAL-SHM写入,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+upgrade-execute,原生离线备份后v4-marker1/可靠pending转交/模糊与无源held/身份不变/重执行无重放,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+upgrade-reject,缺备份/状态漂移/unknown效果均拒绝,PASS,PASS,PASS_ROUTING_CF6,NOT_RERUN
+runtime-regression,pnpm test:runtime完整回归,RUNNING,NOT_PASSED_DIAGNOSTIC,FAIL_9_CANCEL_2_THEN_FOLLOWUP_12_PASS,NOT_RERUN
+all-required-regressions,pnpm test及test:routing/domain/containment/journal/native guards,NOT_RUN,PARTIAL,PARTIAL_FULL_GROUP_FAILURES_FOLLOWUPS_PASS,PARTIAL_PRIOR_FULL_FAILURES_NOT_RERUN
+real-model,真实大模型业务效果独立于脚本模型,NOT_RUN,NOT_RUN,BLOCKED_MISSING_CREDENTIAL,PASS_SEPARATE_CASE_VERSIONS_HISTORY_RETAINED
+router-task-e2e,真实默认Router创建A-B并在新版本证据下自动释放B,NOT_RUN,PASS,PASS_ROUTING_CF6,NOT_RERUN
+handoff-recovery-review,独立审查实跑空inbox冷恢复与未决handoff输入,PASS_REVIEW,RETAINED_ROUND_1,RETAINED_ROUND_2,NOT_RERUN
+vendor-platform,真实DWS发送/部署/CI/合并,NOT_AUTHORIZED,NOT_AUTHORIZED,NOT_AUTHORIZED,NOT_RERUN
+handoff-invalid,空intent/缺引用/UTF-8超预算拒绝且原代与游标保留,NOT_RUN,PASS,PASS_ROUTING_CF6,PASS_OBJECT_ONLY_OTHERS_NOT_RERUN
+triage-recovery-current,轻量分诊短回复先送达/未提交来源冷恢复/unknown只回读,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+human-source-replies,事实追问精确作者和来源/新补充不解除原批准问题/冷不重发,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+human-provider-review,provider失败保留人工复核来源/冷不自重试/新真实答复恢复,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+web-preserved-regressions,claim前后fencing/串行/材料/排空/CAS/reopen当前直接入口,NOT_RUN,PASS_SPLIT_RUNS,PASS_ROUTING_CF6,PASS_PERSONAL_SCOPE_ONLY_OTHERS_NOT_RERUN
+router-clarification-cold,delivered及unknown澄清冷恢复/自回声/原source去重,NOT_RUN,PASS,PASS_ROUTING_CF6,NOT_RERUN
+source-version-send-fence,认证v2拒v1 prepared新发送/unknown仅原收据回读,NOT_RUN,PASS,PASS_ROUTING_CF6,NOT_RERUN
+retired-topic-http,退役Topic/hold/retry写入410且runtime零调用,NOT_RUN,PASS,PASS_DEFAULT_D1,NOT_RERUN
+task-notice-retirement,历史冻结未发送confirmation随真实任务完成退休且不重派,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+service-close-fault,早期清理抛错仍排空真实任务/observer/SQLite且保留AggregateError,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+notification-unknown-cooldown,固定Date实证冷恢复cooldown/到期只回读/业务不重跑,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+task-attachments-current,完成查询冻结ID/taskDelivery/父子双受众/归档冷续/unknown不重发,NOT_RUN,PASS_SOURCE_DRIFT,PASS_RUNTIME_FOLLOWUP_STABLE_D1,NOT_RERUN
+platform-due-attachments,all与members到期fresh query/父子全送达/冷恢复唯一发送,NOT_RUN,PASS_SOURCE_DRIFT,PASS_RUNTIME_SOURCE_DRIFT,NOT_RERUN
+media-enrichment-current,首次读取失败/成功富化新版/取消旧分诊/重复复用真实source,NOT_RUN,PASS_SOURCE_DRIFT,PASS_RUNTIME_SOURCE_DRIFT,NOT_RERUN
+execution-only-count,唯一执行model请求且live actor仅当前账本Router,NOT_RUN,PASS,RETAINED_ROUND_2,NOT_RERUN
+native-windows-budgets,七例跨进程/复核/provider冷恢复原断言按Windows预算复验,NOT_RUN,PASS,PASS_RUNTIME_SOURCE_DRIFT,NOT_RERUN
+domain-regression,domain391全通过与受影响11补验/计数重叠不相加,NOT_RUN,PASS_WITH_FOLLOWUP,RETAINED_ROUND_2,NOT_RERUN
+containment-regression,Windows5通过17Linux条件跳过/不冒充Linux隔离已验,NOT_RUN,PASS_5_SKIP_17,RETAINED_ROUND_2,NOT_RERUN
+source-import-native-guard,Lead集中刷新manifest后check53适配404模块零旧编排,NOT_RUN,PASS_LEAD,PASS_CURRENT_CHECK,PASS_LEAD_S2_L1
+routing-regression,正式routing59通过/零跳过/聚合34930起止一致且store为cf6,NOT_RUN,NOT_RUN,PASS_59_STABLE_CF6,NOT_RERUN
+default-regression,原default1172通过4失败2取消26跳过/准确遗留worker强停后释放报告,NOT_RUN,NOT_RUN,FAIL_4_CANCEL_2_THEN_FOLLOWUP_10_PASS,NOT_RERUN
+runtime-affected-followup,原runtime11问题例及固定start附件冷恢复共12例/聚合3e952ffb起止相同,NOT_RUN,NOT_RUN,PASS_12_STABLE_SOURCE,NOT_RERUN
+default-affected-followup,原default6问题例及同文件清理影响4例/15项源码起止相同,NOT_RUN,NOT_RUN,PASS_10_STABLE_SOURCE,NOT_RERUN
+notification-fixed-start-cold,原ID负收据在父delivered及归档冷启后只授首次许可/unknown仅回读,NOT_RUN,NOT_RUN,PASS_RUNTIME_FOLLOWUP,NOT_RERUN
+web-human-no-channel-authority,Web内部待答保存/真实答复实际续办原session/无群或operator外发,NOT_RUN,NOT_RUN,PASS_2_RUNTIME_FOLLOWUP,NOT_RERUN
+continuations-native-32,32真实来源续办和原生压缩/遥测剔除/唯一副作用不重放,NOT_RUN,NOT_RUN,PASS_RUNTIME_FOLLOWUP,NOT_RERUN
+default-cleanup-complete,原Router未settle错误不吞/完整释放Host及HTTP/修模型后受影响原用例通过,NOT_RUN,NOT_RUN,FAILURE_PRESERVED_THEN_PASS,NOT_RERUN
+default-windows-budgets,两例多轮输入与Host冷启动用既有Windows预算/原效果及held-noReplay合同保留,NOT_RUN,NOT_RUN,PASS_2_DEFAULT_FOLLOWUP,NOT_RERUN
+real-router-complete-delivery,真实Router原子A到B/当前证据入模/逐文件送达/换代/冷去重,NOT_RUN,NOT_RUN,NOT_RUN,PASS_VERIFIED_6_HISTORY_FAIL_PRESERVED
+real-web-preserve-cold,真实无群Web原会话preserve与精确新来源/零外发/冷去重,NOT_RUN,NOT_RUN,NOT_RUN,PASS_VERIFIED_3_REUSED_NOT_RERUN
+personal-web-task-scope,无群scope/同session续办/请求重放冲突/reopen/cancel/有群订阅守卫,NOT_RUN,NOT_RUN,NOT_RUN,PASS_1_LOCAL_S1_INITIAL_ASSERT_FAIL_PRESERVED
+handoff-section-types,L1正向四处置换代冷去重及referents对象拒绝保留原代,NOT_RUN,NOT_RUN,NOT_RUN,PASS_2_LOCAL_L1
+live-config-parse-redaction,纯合成坏YAML受控失败且不泄露原输入并清理临时文件,NOT_RUN,NOT_RUN,NOT_RUN,PASS_ZERO_API
+live-file-proof-negative-check,纯谓词拒绝全取消/A重复B漏/stale版本/持久messageId错,NOT_RUN,NOT_RUN,NOT_RUN,PASS_ZERO_API_NOT_BUSINESS_DELIVERY

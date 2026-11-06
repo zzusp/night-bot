@@ -178,7 +178,7 @@ test('successive idle cycles retain the short handoff without reloading old payl
   const count=h.requests.length;await h.service.whenIdle();assert.equal(h.requests.length,count,'seed creation and settled summary cannot recursively trigger another handoff')
 })
 
-for(const invalid of ['blank-intent','missing-source','utf8-budget'])test(`invalid tool-free handoff retains the current native generation without publishing a candidate: ${invalid}`,{timeout:nativeTestTimeout(40000)},async t=>{
+for(const invalid of ['blank-intent','missing-source','utf8-budget','referents-object'])test(`invalid tool-free handoff retains the current native generation without publishing a candidate: ${invalid}`,{timeout:nativeTestTimeout(40000)},async t=>{
   let summaries=0
   const h=await residentRouterHost(t,body=>{
     const input=requestEnvelope(body,'Router 交接请求：')
@@ -186,6 +186,7 @@ for(const invalid of ['blank-intent','missing-source','utf8-budget'])test(`inval
       summaries++
       const value={currentIntent:'Preserve the original request',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff}
       if(invalid==='blank-intent')value.currentIntent='   '
+      if(invalid==='referents-object')value.referents=[{name:'A',meaning:'Object elements remain forbidden'}]
       if(invalid==='missing-source')value.evidenceRefs=[]
       if(invalid==='utf8-budget')value.assumptions=Array(16).fill('中'.repeat(800))
       return {text:JSON.stringify(value)}
