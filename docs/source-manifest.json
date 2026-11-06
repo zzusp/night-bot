@@ -766,7 +766,7 @@
       "source": "session-skill-refresh.js",
       "sourceSha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32",
       "status": "adapted",
-      "sha256": "eaafa3c33522e6490885733d8cef267dcf2ec2cebfcf1905f7fd69081c6e9514",
+      "sha256": "5742a4f221077d013a7a813f0e58a7b523e15a5cf7c69a46aaab074617938c0f",
       "adaptation": "Official Pi successful native result/version receipts with exact NativeTools execution observations, path/read_window references, cold committed evidence and no duplicate history."
     },
     {
