@@ -40,6 +40,9 @@ export async function runRipgrep(ctx,exec,toolName,argv,maxBytes,graceMs,stderrM
  const stdout=handle.collected.stdout?.readFrom(0),stderr=handle.collected.stderr?.readFrom(0)
  if(!stdout||!stderr)throw fail('SEARCH_FAILED','Search output capture missing')
  if(outcome.signal!==null||outcome.exitCode===null)throw fail('SEARCH_FAILED','Search process terminated unexpectedly')
+ // Exit 1 is ripgrep's clean no-match status, but a containing process
+ // (including isolation startup) can return the same code with diagnostics.
+ if(outcome.exitCode===1&&(stderr.text.length>0||stderr.lossy||stderr.nextOffset>0))throw fail('SEARCH_FAILED','Search process reported diagnostics instead of a clean no-match result')
  if(![0,1].includes(outcome.exitCode))throw fail(/regex parse error|error parsing glob/i.test(stderr.text)?'SEARCH_INVALID_PATTERN':'SEARCH_FAILED',`Search pattern/process rejected: ${stderr.text}`)
  if(stdout.lossy||Buffer.byteLength(stdout.text)>maxBytes||stdout.nextOffset>maxBytes)throw fail('SEARCH_RAW_OUTPUT_OVERFLOW','Complete search exceeds raw byte cap; narrow the search')
  return {stdout:stdout.text,noMatches:outcome.exitCode===1,workdir:cwd}

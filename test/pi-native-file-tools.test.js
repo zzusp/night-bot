@@ -26,3 +26,16 @@ test('independent search cancellation waits for real range-drain completion, inc
  }
  const c=new AbortController();c.abort();let starts=0;await assert.rejects(search.runRipgrep({subprocess:{spawn(){starts++}}},{signal:c.signal},'grep',[],100,10,100),e=>e.code==='SEARCH_ABORTED');assert.equal(starts,0)
 })
+test('search exit one is no-match only with complete empty diagnostics and no termination signal',async()=>{
+ const signal=new AbortController().signal,clean=handle();clean.done=Promise.resolve({exitCode:1,signal:null});clean.collected.stdout=stream('')
+ assert.equal((await search.runRipgrep(mock(clean),{signal},'grep',[],100,10,64)).noMatches,true)
+ for(const diagnostic of ['bwrap: setting up uid map: Read-only file system\n','unrelated isolation/runner failure /private/fixture token=FIXTURE_SECRET',' ']){
+  const failed=handle();failed.done=Promise.resolve({exitCode:1,signal:null});failed.collected.stderr=stream(diagnostic);const ctx=mock(failed)
+  await assert.rejects(search.runRipgrep(ctx,{signal},'grep',[],100,10,64),e=>{assert.equal(e.code,'SEARCH_FAILED');assert.equal(e.message,'Search process reported diagnostics instead of a clean no-match result');assert.doesNotMatch(e.message,/FIXTURE_SECRET|\/private\/fixture/);return true})
+  assert.equal(ctx.subprocess.spec.stdio.stderr.maxBytes,64)
+ }
+ const lost=handle();lost.done=Promise.resolve({exitCode:1,signal:null});lost.collected.stderr=stream('',true)
+ await assert.rejects(search.runRipgrep(mock(lost),{signal},'grep',[],100,10,64),e=>e.code==='SEARCH_FAILED')
+ const terminated=handle();terminated.done=Promise.resolve({exitCode:1,signal:'SIGTERM'})
+ await assert.rejects(search.runRipgrep(mock(terminated),{signal},'grep',[],100,10,64),e=>e.code==='SEARCH_FAILED')
+})

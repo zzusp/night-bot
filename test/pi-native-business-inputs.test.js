@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {officialToolsFixture} from './fixtures/pi-official-tools.js'
 import {bindBusinessInputAuthority,visibleBusinessInputs,retireBusinessInputs} from '../src/runtime/pi-business-inputs.js'
 import {coordinationMessages,visibleCoordinatorText,visibleToolOutputs} from '../packages/dingtalk-core/coordination-context.js'
-import {retireTaskContext} from '../packages/dingtalk-core/task-session.js'
 
 async function fixture(t){
  const f=await officialToolsFixture(t,()=>{}),actor={...f.owner,piSession:f.session},packets=new Map()
@@ -61,10 +60,12 @@ test('task context retirement uses public context_edit on matching authenticated
  const f=await fixture(t),binding={taskId:'task',sessionId:f.actor.id}
  const selected=await f.input('selected',{kind:'coordinator',taskSession:binding},'OLD_CONTEXT')
  const other=await f.input('other',{kind:'coordinator',taskSession:{taskId:'other',sessionId:f.actor.id}},'OTHER_CONTEXT')
+ const differentSession=await f.input('different-session',{kind:'coordinator',taskSession:{taskId:'task',sessionId:'another-session'}},'DIFFERENT_SESSION')
+ const differentKind=await f.input('different-kind',{kind:'user',taskSession:binding},'DIFFERENT_SOURCE_KIND')
  const assistant=f.manager.appendMessage({role:'assistant',content:[{type:'text',text:'signed response',textSignature:'opaque-signature'}],responseId:'opaque-response',api:'openai-responses',provider:'fixture',model:'m',timestamp:1,stopReason:'stop',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}})
  const raw=structuredClone(f.manager.getEntry(assistant))
- assert.deepEqual(retireTaskContext(f.actor,binding),[selected])
- assert.deepEqual(visibleBusinessInputs(f.actor).map(row=>row.entryId),[other])
+ assert.deepEqual(retireBusinessInputs(f.actor,input=>input.source?.kind==='coordinator'&&input.source.taskSession?.taskId===binding.taskId&&input.source.taskSession.sessionId===binding.sessionId),[selected])
+ assert.deepEqual(visibleBusinessInputs(f.actor).map(row=>row.entryId),[other,differentSession,differentKind])
  assert.deepEqual(f.manager.getEntry(assistant),raw)
  assert.equal(f.manager.getEntries().at(-1).type,'context_edit')
  assert.equal(f.manager.getEntries().at(-1).targetId,selected)
