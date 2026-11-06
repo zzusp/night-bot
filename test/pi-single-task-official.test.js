@@ -46,7 +46,7 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
    official=await createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxRetries:0}},settingsManager:SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}}),admission,
     createAudit:()=>({isLive:()=>!disposed&&ctx.agents.get(id)===actor,isTurnOpen:()=>official?.session.isStreaming===true,approvalPolicy:()=> 'never',append(){throw Error('approval not expected')},flush:receipts.commit}),
     context:{systemPrompt:ctx.systemPrompt},beforeRequest:async()=>{await admission.beforeRequest();await options.beforeRequest(actor)},
-    prepareActor:async value=>{actor=value;actor.receipts=receipts;scope=createScope(ctx,actor);actor.ctx=scope.ctx;await options.setup(scope.ctx,actor)},
+    prepareActor:async value=>{actor=value;actor.metadata=Object.freeze({...store.header});actor.receipts=receipts;scope=createScope(ctx,actor);actor.ctx=scope.ctx;await options.setup(scope.ctx,actor)},
     beforeStoreClose:async()=>{admission.pause();await options.drainBusiness(actor)},
    })
    actor.piSession=official.session;detach=ctx.agents.enter(actor,undefined);actors.push(actor)

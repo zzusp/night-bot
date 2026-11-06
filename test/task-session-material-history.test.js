@@ -7,7 +7,7 @@ import { mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/pr
 import { join, resolve, sep } from 'node:path'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
 import { nativeTaskHost, latestInput, topicTaskCalls } from './fixtures/task-session-native-host.js'
-import { createModelContentIndex } from '../packages/dingtalk-dsh-assistant/model-context.js'
+import { createOfficialModelContentIndex, modelContentScope } from '../packages/dingtalk-dsh-assistant/model-context.js'
 import { canonicalExecutionJson } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 
@@ -68,9 +68,9 @@ async function service(root, options = {}) {
     if (topicCalls) return topicCalls
     const input = latestInput(request)
     if (input.materials?.contextPath) {
-      const message = request.messages.find(message => message.source?.taskSession)
-      const session = host.ctx.sessions.get(message.source.taskSession.sessionId)
-      const index = createModelContentIndex(session)
+      const owners=host.ctx.agents.list().filter(actor=>actor.metadata&&input.contextRef?.startsWith(modelContentScope(actor.metadata)+':'))
+      assert.equal(owners.length,1,'content belongs to one exact live official actor')
+      const index = createOfficialModelContentIndex(owners[0])
       const page = index.read({ contentRef: input.contextRef, path: input.materials.contextPath, limit: 16000 })
       assert.equal(page.nextOffset, null)
       inputs.push({ ...input, materials: JSON.parse(page.text) })
