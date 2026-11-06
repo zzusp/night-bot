@@ -431,7 +431,13 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
           if (!current()) return
           const id = `message-${request.requestId}-resume-${request.resumeEpoch}-${request.attempt}`
           const pending = pendingInputs(agent)
-          const hasBody = (message) => message.id === request.messageId || (message.content ?? []).some((part) => part.type === 'text' && part.text === request.text)
+          const hasBody = (message) => {
+            if (!message || typeof message !== 'object' || Array.isArray(message)) return false
+            if (message.id === request.messageId) return true
+            const content = message.content
+            if (typeof content === 'string') return content === request.text
+            return Array.isArray(content) && content.some((part) => part?.type === 'text' && typeof part.text === 'string' && part.text === request.text)
+          }
           const visible = pending.some(hasBody) || coordinationMessages(agent)?.some(hasBody)
           // 原文仍在 surface 时仅发送短提醒；压缩已移出则恢复正文，不能靠历史已消费记录假定可见。
           const text = visible ? `[COORDINATION_RESUME]\n请求 ${request.requestId} 仍待提交；继续处理当前可见的原请求，不重复执行已完成的外部动作。` : request.text

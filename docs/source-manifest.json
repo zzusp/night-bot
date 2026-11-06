@@ -1129,7 +1129,7 @@
       "source": "topic-runtime.js",
       "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
       "status": "adapted",
-      "sha256": "4dd448d1ba544b15f859d92d96117b7502b3cb4567af9886c834e0b87eed6233",
+      "sha256": "0b45c0eead57d7c6a390c697e79c60b51dbd3a21f16718d0d81ebbf915fd51d4",
       "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body. Topic visibility, body retries and read provenance use live Pi model context; writer/authority failures propagate. Exact decision-schema admission returns declared structured correction before dispatch; issue scope is arguments rather than invented field-specific diagnostics."
     },
     {
