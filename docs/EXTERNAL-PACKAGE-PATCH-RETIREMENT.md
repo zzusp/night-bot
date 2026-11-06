@@ -23,3 +23,5 @@ hashes its manifest as release evidence. The former branch can be retired while
 retaining `verifyOfficialPi()`; removing the fixture also requires an explicit
 release evidence schema/test update. This patch does neither. Package, lockfile,
 suite inventory and provenance manifest changes are coordinated separately.
+
+The old DSH browser registry test and `scripts/build-web-client.mjs` are also retired: the initial generic core migration explicitly excluded `client.js` and `web-client.js`, and neither current start/init nor package scripts invoke that builder. Those three historical UI/build assertions already referenced absent source artifacts; they are not counted as passing browser validation. No current application UI or HTTP API is removed by this retirement.
