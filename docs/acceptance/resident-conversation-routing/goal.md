@@ -1,8 +1,8 @@
 # 常驻 Router 与事项直连
 
-> 状态：ACTIVE
+> 状态：WAITING_INPUT
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-06T21:53:45+08:00
+> 最近维护：2026-11-06T21:58:23+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -48,25 +48,33 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 | SG4 | 空闲交接、换代与故障恢复 | native commit/CAS/冷恢复及非法摘要保留原代 | flow6/独立冷恢复2/非法摘要3通过 | round-1.md、round-2.md、review.md |
 | SG5 | 去 Topic、特殊入口、归档及升级 | 保留当前平台/文件/媒体合同，单任务归档和离线升级不重放 | 原链路、固定start冷续与默认旧v1归档迁接分批通过，生产守卫未放宽 | round-2.md、review.md |
 | SG6 | 回归、独立审查与修复 | 必要组及最后增量真实终态、当前源码guard、综合审查 | runtime受影响12例与default受影响10例修后全过；末段guard及独立审查完成；本地收口，真实模型缺凭据 | 当前检查点、matrix.csv、review.md |
-| SG7 | 提交、push/PR 与最终核验 | 合理提交、无CI触发、正确base/head、gh独立回查 | 执行中：已核目标线/最终审查，提交与PR待真实回查 | 本轮git/gh输出 |
+| SG7 | 提交、push/PR 与最终核验 | 合理提交、无CI触发、正确base/head、gh独立回查 | 完成：实现d38b6a7已push；PR #2 OPEN / MERGEABLE，正确base/head已独立回查 | 本轮git/gh输出 |
 
 ## 当前检查点
 
-- 当前子目标：SG7
-- 唯一下一步：Lead提交冻结实现与验收记录，push当前feature分支，创建base为refactor/pi-native-retirement的PR，并独立回查远端头/正文/状态。完成后集中回填Git事实；无新测试或审查任务。
-- 未闭环项：提交与PR真实回查；真实模型仍缺所引用凭据。所有已知本地失败已有修后定向终态；原完整组失败、取消、漂移和强停事实保留，不冒充新完整组全绿。
+- 当前子目标：SG6真实模型待输入；SG1–SG5本地实现/必要验证、SG6本地验证/审查及SG7 Git交付已收口
+- 唯一下一步：用户在tests执行环境配置已授权配置所引用的凭据，或明确授权准确密钥来源后，由原tests唯一执行者恢复真实模型预检/必要验收。没有凭据时不重复读取秘密、搜索旁路或请求端点，不再空轮询。无需重开实施/审查或重复已通过专项。
+- 未闭环项：真实模型验收仍BLOCKED_MISSING_CREDENTIAL；当前完整runtime/default未重新全量跑、Linux/POSIX条件路径及live DWS未验，均保留为边界，不伪称已通过。所有已知本地失败已有修后定向终态；实现、必要本地验证、独立审查及PR交付完成，未合并/部署/真实发送/触发CI。
+
+### Git交付与恢复
+
+- 仓库 `zzusp/night-bot`；实现提交 `d38b6a795d4b3e8639ca8c5712de31f67b432a94`，75文件、3693新增/2698删除。Lead独立从该commit读取round-3的17项受验文件blob，SHA逐项精确一致；之后仅本文回填交付事实，不改业务源码或重跑验证。
+- [PR #2](https://github.com/zzusp/night-bot/pull/2)：`refactor: 以常驻 Router 直连事项并保留依赖与恢复边界`；base `refactor/pi-native-retirement` ← head `worktree-resident-conversation-routing`。本轮真实gh回查为`number=2 / state=OPEN / mergeable=MERGEABLE`，正文已自包含代码、证据和未验边界；远端分支与实现提交一致。最终仅交付文档提交的head以PR及交付回报为准，不循环写入文档自身SHA。
+- push/PR前已查准确分支PR状态、workflow=0/hooks=0、无本地非sample hook；创建后`gh run list --branch worktree-resident-conversation-routing`返回`[]`。未CI/合并/部署/真实外发。
+- 本地/Git可独立工作已完成，仅余外部凭据输入；本任务30分钟cron `d9df3c5c`已撤销并独立CronList确认无任务，避免无进展轮询。未关闭成员会话或修改其它项目。恢复时先读本文和最新round-3/review；没有业务源码变化就复用已有证据。
+
 
 ### 当前源码及在途操作
 
 - 最后实际源码：store `d1c165197602825c0b6f800160c4327dbc163b6c89da9745c7cc6b3dfd2526db`，service `da4f819d`、business `82e3fa26`、group-notification `1f7cc8fa`、platform-notification `9c662dfb`；生产/测试身份以 [round-3.md](round-3.md#最后定向的起止-sha-256) 为准，不能用验收基线HEAD替代受验工作树。Lead独立确认报告17项SHA全匹配当前工作树，54行matrix前45行重建round1/2精确得原`d319d8c3`。
-- S6阶段交付已核：round-3 `9749773eaeac484cd5e122b24f8761538798d2713887b68e23e0c15c0c400526`；matrix `b7feb242fd26ef8c8c2829e3727d43abfed1d1869b7fdef78a5ecb170ba70f6f`。`b0ygn56vz`受影响runtime12/12、465.94s、聚合`3e952ffb…`起止同；`beilfcapo`受影响default10/10、50.68s、15项起止/当前SHA相同，均自然exit0。当前无测试在途，源码/测试冻结。
+- S6阶段交付已核：round-3 `9749773eaeac484cd5e122b24f8761538798d2713887b68e23e0c15c0c400526`；matrix `b7feb242fd26ef8c8c2829e3727d43abfed1d1869b7fdef78a5ecb170ba70f6f`。`b0ygn56vz`受影响runtime12/12、465.94s、聚合`3e952ffb…`起止同；`beilfcapo`受影响default10/10、50.68s、15项起止/当前SHA相同，均自然exit0。当前无测试在途，源码/测试冻结并已提交。
 - Lead已读最后`bcxuy7xnh`原输出：post-default `pnpm check`自然exit0，194 retained/53 adapted、404生产与runtime JS/190 imports、0 external SDK/旧编排定义。manifest已保留上游原始hash并登记d1适配，guard未放宽。
 - 原完整串行`bui9nxa82`：routing59PASS且cf6稳定；runtime139PASS/9FAIL/2CANCEL/12SKIP、cf6→d1漂移；default1172PASS/4FAIL/2CANCEL/26SKIP，原wrapper exit1。准确worker86068强停/端口消失/父runner自行退出及`bku4phlr9`保留原错自然exit1均见round-3，不改写为原全量通过。旧模型不处理Router settle是关闭最深cause；补合法模型合同与完整cleanup，生产drain/授权/归档守卫未放宽。
 - review最后增量及综合审查已完成，Lead独立读review.md:206–228并核SHA `a06a7bdf35d5500c209e4ef54826faa4929244444b98e24a9bb8e008542e8e8d`。未确认残留阻断问题，可继续Git交付；真实模型/平台跳过/新全量未重跑等盲点完整保留，不新增重复门槛。
 - 首次暂存纳入新文件后发现三文件混合行尾；原负责人仅规范review.md、pi-resident-router-flow.test.js、pi-resident-router.test.js的CRLF→LF。Lead逐字节确认新内容等于原index仅替换CRLF，正文/代码/断言未变；round-3的17项受验指纹未受影响，不新增业务运行。
-- Git前置已fetch核对：验收基线HEAD...origin/refactor/pi-native-retirement为0/0，准确当前worktree分支无PR且无双重前缀；远端workflow=0/hooks=0、仓库无.github文件、本地无非sample hook。75候选无越界/运行数据/大binary，有限常见密钥格式扫描未命中；diff --check、PR正文结构及goal结构检查通过。未commit/push/开PR。
+- Git前置已fetch核对：验收基线HEAD...origin/refactor/pi-native-retirement为0/0，准确当前worktree分支无PR且无双重前缀；远端workflow=0/hooks=0、仓库无.github文件、本地无非sample hook。75候选无越界/运行数据/大binary，有限常见密钥格式扫描未命中；diff --check、PR正文结构及goal结构检查通过。实现已commit/push并开PR，真实状态见上方Git交付与恢复。
 - 真实模型仍为BLOCKED_MISSING_CREDENTIAL：已授权配置只有apiKeyEnv引用，tests执行环境缺对应值；未请求端点、输出标量/密钥、改秘密文件或取旁路凭据。恢复需用户配置该执行环境对应凭据，或真人另授准确来源；已告知用户，不阻断独立本地交付。
-- 30分钟续跑`d9df3c5c`（17,47 * * * *）沿用，仅本会话有效、7天自动过期；成员终态通知优先。无新增成员/测试/workflow，未CI/真实发送/合并/部署。
+- 原30分钟续跑已停止，当前无测试/审查在途；仅等待上述凭据输入。没有新增成员/测试/workflow，未CI/真实发送/合并/部署。
 
 ### 已归档阶段证据与复用边界
 
