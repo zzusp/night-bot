@@ -24,7 +24,7 @@ export async function preflightPiFileMutation(exec,definition){
  if(!port)return
  if(exec.agent!==port.actor||exec.name!==definition.name||port.registry.get(exec.name,exec.agent)!==definition)throw fail('PI_FILE_DEFINITION_REQUIRED')
  if(!['write','edit'].includes(exec.name))return
- await port.bundle.preflightMutation(port.native,exec.arguments,exec.signal)
+ await port.bundle.preflightMutation(port.native,exec.arguments,exec.signal,exec)
 }
 
 /** Register Pi implementations inside the existing business tool pipeline.
@@ -49,6 +49,7 @@ export function registerPiFileTools({ctx,actor,sourceConfig,services,imageBudget
   const definition={name:native.name,description:native.description,parameters,
    ...timeoutMs===undefined?{}:{timeoutMs},
    isConcurrencySafe:()=>!['write','edit'].includes(native.name),
+   prepareExecution:async(_args,exec)=>preflightPiFileMutation(exec,definition),
    output:{schema:{type:'object',required:['text','images'],properties:{text:{type:'string'},images:{type:'array',items:{type:'object'}}},additionalProperties:true},render:(_args,value)=>value.text?[{type:'text',text:value.text}]:[]},
    projectContent(exec,result){const content=contents.get(exec);contents.delete(exec);return result.isError?undefined:content},
    async execute(args,exec){
@@ -63,7 +64,5 @@ export function registerPiFileTools({ctx,actor,sourceConfig,services,imageBudget
   registrations.set(definition,{actor,registry,bundle,native})
   registry.register(definition);definitions.push(definition)
  }
- const owned=new Set(definitions)
- if(owned.size)ctx.on('tools/pre-execute',async(exec,next)=>{const definition=registry.get(exec.name,exec.agent);if(owned.has(definition)&&registrations.get(definition)?.actor===actor)await preflightPiFileMutation(exec,definition);return next()})
  return Object.freeze({definitions:Object.freeze(definitions),tools:bundle.tools,sourceConfig:bundle.sourceConfig,sourceConfigComparison:bundle.sourceConfigComparison,capabilities:Object.freeze({...bundle.capabilities,registered:true,ready:false,actorScopedRegistration:true,requiresFactoryBudgetOwnership:true,readyForHost:false}),close:()=>bundle.close()})
 }

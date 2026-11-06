@@ -154,8 +154,11 @@ var SandboxedFileSystem = class NativeSandboxedFileSystem extends LocalFileSyste
 	/** Resolve a mutation's canonical target without changing files or granting
      * authority. The actual mutation still performs its fresh mode/root check.
      * PrivateFileSystem additionally enforces Host-owned archive boundaries. */
-    async preflightMutation(path,{cwd,signal}={}) {
-        signal?.throwIfAborted();await this.resolve(path,{cwd,signal});signal?.throwIfAborted();
+    async preflightPath(path,{cwd,signal}={}) {
+        signal?.throwIfAborted();const target=await this.resolve(path,{cwd,signal});signal?.throwIfAborted();return target;
+    }
+    async preflightMutation(path,{cwd,signal,sandboxPolicy}={}) {
+        await this.checkedTarget(await this.preflightPath(path,{cwd,signal}),sandboxPolicy);signal?.throwIfAborted();
     }
 	async checkedTarget(target, sandboxPolicy) {
 		const policy = sandboxPolicy ?? this.ctx.sandboxPolicy.resolve();

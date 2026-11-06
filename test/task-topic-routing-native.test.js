@@ -717,58 +717,57 @@ testRunner('native Topic handoff keeps the explicit requester as task and comple
   assert.ok(h.sent.some(item => item.id === completion.id && item.payload.atOpenDingTalkIds.includes('native-user')))
 }))
 
-for (const committed of [false, true]) testRunner(`replan fences an execution claim ${committed ? 'after commit' : 'before commit'}`, { ...({ timeout: 30000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'execution-claim-gate-'))
-  const gate = Promise.withResolvers()
-t.onCancel(() => gate.resolve())
-
-  let host, store, entered = false, revised = false, ownerDone = false, claimError, current, claims = 0, executionRuns = 0, cancels = 0, ownerRuns = 0
-  const sessions = {
-    async run({ delegate, submit }) {
-      ownerRuns++
-      if (ownerRuns === 1) await delegate({ key: 'first', objective: '检查隔离测试' })
-      await submit({ action: 'wait', summary: '等待输入', evidence: [], limitations: [] })
-      if (ownerRuns === 1) ownerDone = true
-      return { status: 'submitted' }
-    },
-    async cancel() {}, async close() {},
-  }
-  const executionSessions = {
-    async run({ binding }) { executionRuns++; current = await store.query({ kind: 'execution.current', binding }); return { status: 'stale' } },
-    async cancel() { cancels++ }, async feedback() {}, async close() {},
-  }
-  t.after(async () => { gate.resolve(); await host?.close(); await store?.close(); await rm(root, { recursive: true, force: true }) })
+for (const committed of [false, true]) testRunner(`replan fences a Single task claim ${committed ? 'after commit' : 'before commit'}`, {timeout:nativeLifecycleTimeout(30000)}, nativeLifecycle(30000, async t => {
+  const root=await mkdtemp(join(tmpdir(),'single-task-claim-gate-')),gate=Promise.withResolvers()
+  t.onCancel(()=>gate.resolve())
+  let host,store,entered=false,revised=false,blocked=false,claimError
+  const claims=[],modeled=[]
+  t.after(async()=>{gate.resolve();await host?.close();await store?.close();await rm(root,{recursive:true,force:true})})
   await t.beginBusiness()
-  host = await t.step(async () => nativeTaskHost(root, async () => { throw new Error('Unexpected native model call') }, { serviceFactory: async args => {
-    store = await openDynamicTaskStore({ dbPath: args.config.dbPath, instanceId: args.config.instanceId, initialize: true, webActorId: args.config.webActorId })
-    const proxy = { ...store, async command(request) {
-      if (request.kind === 'execution.claim') { claims++; if (!committed) { entered = true; await gate.promise } }
-      let result
-      try { result = await store.command(request) } catch (error) { if (request.kind === 'execution.claim') claimError = error.code ?? error.message; throw error }
-      if (request.kind === 'execution.claim' && committed) { entered = true; await gate.promise }
-      if (request.kind === 'task.revise') revised = true
-      return result
-    } }
-    return openTaskSessionService({ ...args, store: proxy, taskSessions: sessions, executionSessions })
-  } }))
-  const task = await t.step(async () => host.service.createTask({ groupId: 'native-group', requestId: 'claim-create', title: '领取竞态', objective: '检查任务' }))
-  await t.step(async () => waitUntil(() => entered && ownerDone, '旧 execution claim 与 Owner 已到达门闩', 10000))
-  await t.step(async () => waitUntil(async () => (await host.query('task.get', { taskId: task.taskId })).drained, '旧 Owner 已排空', 5000))
-  const before = await t.step(async () => host.query('task.get', { taskId: task.taskId }))
-  let accepted = false
-  const pending = host.service.appendTaskContext({ taskId: task.taskId, requestId: 'claim-replan', progressImpact: 'replan',
-    expectedRequirementRevision: before.requirementRevision, expectedControlRevision: before.controlRevision, context: '更新要求' }).then(value => { accepted = true; return value })
-  await t.step(async () => waitUntil(() => revised, '任务修订已提交', 5000))
-  if (committed) await t.step(async () => waitUntil(() => cancels === 1, '已领取 execution 已收到取消', 5000))
-  assert.equal(accepted, false)
-  assert.equal(claims, 1)
-  gate.resolve()
-  await t.step(async () => pending)
-  await t.step(async () => host.service.whenIdle())
-  if (committed) { assert.equal(executionRuns, 1); assert.equal(current, false) }
-  else { assert.equal(executionRuns, 0); assert.equal(claimError, 'DYNAMIC_EXECUTION_BUSY') }
-  assert.equal((await t.step(async () => host.query('task.get', { taskId: task.taskId }))).requirementRevision, before.requirementRevision + 1)
-  assert.equal(ownerRuns, 2)
+  host=await nativeTaskHost(root,request=>{
+    const routes=topicTaskCalls(request);if(routes)return routes
+    const input=latestInput(request);modeled.push(structuredClone(input))
+    if(input.task.requirementRevision!==2)return[{name:'write',args:{path:'work/stale-generation.txt',content:'must never execute'}}]
+    const successfulWrite=request.messages.some(message=>message.role==='toolResult'&&message.toolName==='write'&&!message.isError)
+    if(!successfulWrite)return[{name:'write',args:{path:'work/current-generation.txt',content:JSON.stringify({revision:input.task.requirementRevision,sources:input.sources.map(source=>({sourceId:source.sourceId,version:source.version,text:source.text}))})}}]
+    return[{name:'task_result',args:{decision:{action:'wait',summary:'Only the current revision executed with its actual sources',evidence:['current-generation.txt'],limitations:[]}}}]
+  },{serviceFactory:async args=>{
+    store=await openDynamicTaskStore({dbPath:args.config.dbPath,instanceId:args.config.instanceId,initialize:true,webActorId:args.config.webActorId})
+    return openTaskSessionService({...args,store:{...store,async command(request){
+      const hold=request.kind==='task.claim'&&!blocked
+      if(hold){blocked=true;if(!committed){entered=true;await gate.promise}}
+      let receipt
+      try{receipt=await store.command(request)}catch(error){if(request.kind==='task.claim')claimError=error.code;throw error}
+      if(request.kind==='task.claim')claims.push(structuredClone(receipt.result.binding))
+      if(hold&&committed){entered=true;await gate.promise}
+      if(request.kind==='task.revise')revised=true
+      return receipt
+    }}})
+  }})
+  try{
+    const task=await host.service.createTask({groupId:'native-group',requestId:'claim-create',title:'领取竞态',objective:'检查任务，按真实后续修订执行'})
+    await waitUntil(()=>entered,'Actual task.claim reaches the commit boundary',10000)
+    const before=await host.query('task.get',{taskId:task.taskId}),originalSources=await Promise.all(before.sourceRefs.map(sourceId=>host.query('source.get',{sourceId})))
+    assert.equal(before.requirementRevision,1);assert.equal(before.drained,!committed);assert.equal(modeled.length,0)
+    let accepted=false
+    const pending=host.service.appendTaskContext({taskId:task.taskId,requestId:'claim-replan',progressImpact:'replan',expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision,context:'更新要求：仅按版本二核对并保存真实来源。'}).then(value=>{accepted=true;return value})
+    await waitUntil(()=>revised,'Actual task.revise commits while the old claim response is gated',5000)
+    assert.equal(accepted,false,'Replan cannot return before the inflight old claim drains');assert.equal(modeled.length,0)
+    gate.resolve();await pending;await host.service.whenIdle()
+    const after=await host.query('task.get',{taskId:task.taskId});assert.equal(after.requirementRevision,2);assert.equal(after.sessionId,before.sessionId);assert.equal(after.drained,true);assert.equal(claimError,undefined)
+    assert.ok(modeled.length>=2);assert.ok(modeled.every(input=>input.task.requirementRevision===2),'No stale revision may reach the actual SDK provider')
+    assert.equal(claims[0].requirementRevision,committed?1:2)
+    if(committed){assert.ok(claims.some(binding=>binding.requirementRevision===2));assert.equal(claims.at(-1).leaseEpoch,claims[0].leaseEpoch+1)}
+    else assert.equal(claims.length,1,'Before-commit replan is consumed by the original current claim')
+    const sourceRows=await Promise.all(after.sourceRefs.map(sourceId=>host.query('source.get',{sourceId}))),revisionSource=sourceRows.find(source=>source.requestIdentity?.request?.args?.requestId==='claim-replan')
+    assert.ok(revisionSource);assert.equal(revisionSource.actorId,'native-user');assert.equal(revisionSource.channel,'web');assert.match(revisionSource.text,/更新要求/)
+    for(const source of originalSources)assert.deepEqual(await host.query('source.get',{sourceId:source.sourceId}),source)
+    for(const input of modeled){assert.ok(input.sources.some(source=>source.sourceId===revisionSource.sourceId&&source.version===revisionSource.version&&source.text===revisionSource.text));for(const source of originalSources)assert.ok(input.sources.some(row=>row.sourceId===source.sourceId&&row.version===source.version&&row.text===source.text))}
+    const saved=await host.ctx.sessionPersistence.readNative(after.sessionId,{requireComplete:true}),intents=saved.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent')
+    assert.equal(intents.length,1);assert.equal(intents[0].payload.name,'write');assert.equal(intents[0].payload.invocation.originBinding.requirementRevision,2);assert.equal(saved.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result').length,1)
+    const output=JSON.parse(await readFile(join(saved.header.cwd,'work/current-generation.txt'),'utf8'));assert.equal(output.revision,2);assert.ok(output.sources.some(source=>source.sourceId===revisionSource.sourceId))
+    await assert.rejects(readFile(join(saved.header.cwd,'work/stale-generation.txt')),{code:'ENOENT'});assert.deepEqual(await host.query('execution.list'),[])
+  }finally{gate.resolve()}
 }))
 
 testRunner('concurrent same-topic revision is busy while a different task makes progress', { ...({ timeout: 30000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {

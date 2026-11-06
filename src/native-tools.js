@@ -134,6 +134,13 @@ export default class NativeTools extends Service {
     ||exec.name!==identity.name||exec.arguments!==state.arguments)return
   return Object.freeze({callId:identity.callId,rootCallId:identity.rootCallId,name:identity.name,owner:identity.agent?.id})
  }
+ admissionIdentity(exec){
+  const state=this.states.get(exec),identity=state?.identity
+  if(!identity||!state.admitted||state.finished||state.callerSignal.aborted||exec.signal.aborted
+    ||exec.token!==identity.token||exec.agent!==identity.agent||exec.callId!==identity.callId||exec.rootCallId!==identity.rootCallId
+    ||exec.name!==identity.name||exec.arguments!==state.arguments)return
+  return Object.freeze({callId:identity.callId,rootCallId:identity.rootCallId,name:identity.name,owner:identity.agent?.id})
+ }
  async prepare(input){
   const state={callerSignal:input.signal,businessAudit:input.businessAudit,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
   const exec={token:Symbol('night.tool.execution'),callId:input.callId,rootCallId:input.rootCallId??input.callId,name:input.name,signal:input.signal,...input.agent===undefined?{}:{agent:input.agent},...input.parent===undefined?{}:{parent:input.parent},...input.schema===undefined?{}:{schema:input.schema},deferContext:context=>state.deferred.push(context),concludeTurn:()=>{state.concluded=true}}
@@ -161,6 +168,9 @@ export default class NativeTools extends Service {
     if(rejection!==undefined)return{kind:'post-result',exec,result:this.success(exec,admitted,rejection)}
     throw new ToolArgsError(violations)
    }
+   state.admitted=true
+   if(typeof admitted.prepareExecution==='function')await admitted.prepareExecution(exec.arguments,exec)
+   if(state.callerSignal.aborted)return{kind:'post-result',exec,result:aborted(false)}
    return{kind:'dispatch',exec}
   }catch(error){return{kind:'final-result',exec,result:failure(error)}}
  }

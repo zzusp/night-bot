@@ -32,7 +32,9 @@ test('single native task create and resume use the current exact model on one or
  assert.equal(before.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1)
  await assert.rejects(run('missing',4),{code:'UNKNOWN_MODEL'})
  await assert.rejects(run('missing',4,false,'never-created'),{code:'UNKNOWN_MODEL'})
- assert.equal(h.ctx.agents.get('never-created'),undefined);assert.equal(h.ctx.sessions.get('never-created'),undefined)
+ assert.equal(h.ctx.agents.get('never-created'),undefined);assert.equal(h.ctx.get('sessions'),undefined);assert.equal(h.ctx.piAuthority.describe('never-created'),undefined);// A failed new factory startup can leave committed application metadata;
+ // catalog presence is never live ownership or proof of a model/tool action.
+ const failed=await h.ctx.sessionPersistence.readNative('never-created',{requireComplete:true});assert.equal((await h.ctx.sessionCatalog.header('never-created')).id,'never-created');assert.ok(!failed.entries.some(entry=>['message','custom_message'].includes(entry.type)));assert.ok(!failed.audit.some(receipt=>receipt.domain==='admission'||receipt.domain==='task'&&receipt.kind==='effect-intent'))
  await assert.rejects(run('controlled',4,true,'original-model-session','missing-provider'),{code:'NO_ADAPTER'})
  await assert.rejects(run('controlled',4,true,'original-model-session','native-task-test','high'),{code:'UNSUPPORTED_REASONING_EFFORT'})
  const after=await h.ctx.sessionPersistence.readNative('original-model-session')

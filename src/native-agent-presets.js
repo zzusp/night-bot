@@ -349,7 +349,7 @@ function mountedCompositionRows(tree) {
 //#endregion
 //#region lib/types/index.js
 export default class NativeAgentPresets extends Service {
-static inject = ["loader", "sessionProjections", "sessions", "piAuthority", "agents"];
+static inject = ["loader", "sessionProjections", "piAuthority", "agents"];
 static Config = z.object({
 	default: z.string().required(),
 	selectedDefault: z.string().volatile()
@@ -368,7 +368,7 @@ constructor(ctx, config) {
 	super(ctx, "agentPresets");
 	this.config = config;
 	this.owner = ctx;
-		this.sessionWriter=ctx.sessions[symbols.original]??ctx.sessions;
+		this.sessionWriter=ctx.get("sessions");this.sessionWriter=this.sessionWriter?.[symbols.original]??this.sessionWriter;
 		this.authority=ctx.piAuthority;
 		ctx.effect(()=>async()=>{this.closing=true;await Promise.allSettled([...this.switches].filter(([id])=>id!==this.selectionCalls.getStore()).map(([,pending])=>pending))},'native preset selection drain');
 		ctx.on('agent/pre-step',async({agent},next)=>{await this.switches.get(agent.id);if(this.commitFailures.has(agent))throw this.commitFailures.get(agent);return next()});

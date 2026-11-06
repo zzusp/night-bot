@@ -1434,7 +1434,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       // A process restart cannot prove detached external operations stopped. Recover only native handles known absent;
       // unfinished operation rows remain unknown and fence execution until explicit readback reconciliation.
       const pending = await query('recovery.pending')
-      for (const task of pending.tasks) if (task.recovering && !ctx.agents.get(task.sessionId) && !ctx.sessions.get(task.sessionId)){
+      for (const task of pending.tasks) if (task.recovering && !ctx.agents.get(task.sessionId) && !ctx.piAuthority.describe(task.sessionId)){
         if(task.liveSupplements?.some(row=>row.state==='pending'&&row.leaseEpoch===task.leaseEpoch)){
           const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
           const manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries))
@@ -1442,7 +1442,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         }
         await command('task.drained', { binding: await query('task.binding', { taskId: task.taskId }) })
       }
-      for (const group of pending.groups ?? []) if (group.recovering && !ctx.agents.get(group.sessionId) && !ctx.sessions.get(group.sessionId))
+      for (const group of pending.groups ?? []) if (group.recovering && !ctx.agents.get(group.sessionId) && !ctx.piAuthority.describe(group.sessionId))
         await command('group.drained', { binding: { kind: 'group-session', groupId: group.groupId, sessionId: group.sessionId, leaseEpoch: group.leaseEpoch, sessionBound: group.sessionBound } })
 
       await refreshTasks()

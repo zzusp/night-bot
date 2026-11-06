@@ -100,3 +100,22 @@ test('onlyMissing preserves trusted custom tools and does not certify same-name 
  await preflightPiFileMutation({agent:f.actor,name:'read',callId:'not-native',arguments:{path:'unrelated'},signal:new AbortController().signal},custom)
  await f.start();await f.handle.whenIdle();assert.equal(customCalls,1);assert.equal(await readFile(join(f.root,'installed.txt'),'utf8'),'missing tool installed')
 })
+
+test('registered readonly write uses one exact allowed-once approval without granting the next invocation',{timeout:15000},async t=>{
+ let step=0,prompts=0,intents=0
+ const f=await fixture(t,()=>step++===0?{tool:'write',args:{path:'approved-once.txt',content:'one approved effect',sandbox_permissions:'workspace-write',justification:'Approve only this exact local fixture write'}}:step===2?{tool:'write',args:{path:'no-standing-grant.txt',content:'must not write'}}:{text:'One grant was consumed; readonly remains effective'},{async configure(ctx,actor,registration){
+  await ctx.get('permissionPresets').set(actor,'read-only');ctx.get('approval').setPolicy(actor,'ask');assert.equal(ctx.get('approval').policyForActor(actor),'ask')
+  ctx.on('approval/request',req=>{assert.equal(req.agent,actor);assert.equal(req.toolName,'write');prompts++;return'allowed-once'})
+  const definition=registration.definitions.find(tool=>tool.name==='write')
+  ctx.on('tools/execute',async(exec,next)=>{if(exec.name==='write'){intents++;await preflightPiFileMutation(exec,definition);await preflightPiFileMutation(exec,definition)}return next()})
+ }})
+ await f.start();await f.handle.whenIdle()
+ assert.equal(prompts,1,JSON.stringify((await f.history()).filter(e=>e.type==='message'&&e.message.role==='toolResult').map(e=>({name:e.message.toolName,content:e.message.content}))));assert.equal(intents,1,'Unapproved second write never enters effect middleware');assert.equal(await readFile(join(f.root,'approved-once.txt'),'utf8'),'one approved effect');await assert.rejects(stat(join(f.root,'no-standing-grant.txt')),{code:'ENOENT'});assert.equal(f.actor.ctx.get('permissionPresets').permissionState(f.actor).sandbox,'read-only')
+ const outcomes=(await f.history()).filter(entry=>entry.type==='message'&&entry.message.role==='toolResult').map(entry=>entry.message);assert.equal(outcomes.length,2);assert.equal(outcomes[0].isError,false,JSON.stringify(outcomes[0].content));assert.equal(outcomes[1].isError,true);assert.equal(outcomes[1].details.nativeResult.error.info.code,'FS_SANDBOX_DENIED')
+})
+
+test('registered private-path escalation is refused before asking an approval answerer',{timeout:15000},async t=>{
+ let step=0,prompts=0,intents=0,path
+ const f=await fixture(t,()=>step++===0?{tool:'write',args:{path,content:'must never write',sandbox_permissions:'danger-full-access',justification:'Even an escalation cannot authorize private storage'}}:{text:'Private path refused without prompting'},{async configure(ctx,actor){await ctx.get('permissionPresets').set(actor,'read-only');ctx.get('approval').setPolicy(actor,'ask');assert.equal(ctx.get('approval').policyForActor(actor),'ask');ctx.on('approval/request',()=>{prompts++;return'allowed-once'});ctx.on('tools/execute',async(exec,next)=>{if(exec.name==='write')intents++;return next()})}})
+ path=join(f.ctx.runtimePaths.memory,'escalation-forbidden.txt');await f.start();await f.handle.whenIdle();assert.equal(prompts,0,'A forbidden path must not solicit a meaningless grant');assert.equal(intents,0);await assert.rejects(stat(path),{code:'ENOENT'});assert.equal((await f.history()).find(e=>e.type==='message'&&e.message.role==='toolResult').message.details.nativeResult.error.info.code,'FS_SANDBOX_DENIED');assert.equal(f.actor.ctx.get('permissionPresets').permissionState(f.actor).sandbox,'read-only')
+})

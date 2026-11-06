@@ -23,7 +23,7 @@ function fold(state,event){switch(event.type){case'permission/preset':return{...
 /** Application-owned preset math/publication. Canonical knob setters retain
  * event compatibility; a live Auto integration must admit before any write. */
 export default class NativePermissionPresets extends Service {
- static inject=['shell','approval','sandboxPolicy','sessions','sessionProjections']
+ static inject=['shell','approval','sandboxPolicy','sessionProjections']
  static Config=schema.object({presets:schema.dict(schema.object({sandbox:schema.union([...SANDBOX_MODES]).required(),approval:schema.union([...APPROVAL_POLICIES]).required(),name:schema.string(),description:schema.string()})).default(defaults()),defaultPreset:schema.string().volatile()})
  constructor(ctx,config={}){
   super(ctx,'permissionPresets');this.host=ctx;this.officialTails=new WeakMap();this.closed=false;this.auto=undefined;this.presets=config.presets??defaults();this.selectedDefault=typeof config.defaultPreset?.get==='function'?()=>config.defaultPreset.get():()=>config.defaultPreset
@@ -35,7 +35,9 @@ export default class NativePermissionPresets extends Service {
   ctx.effect(()=>()=>{this.closed=true},'native permission preset teardown')
   ctx.inject(['settings'],child=>child.effect(()=>child.settings.configure({auto:false},ctx.fiber)))
   ctx.sessionProjections.register({key:'permissions',stateVersion:2,stateSchema:permissionSchema,init:empty,apply:fold,wire:{viewSchema:z.object({currentValue:z.string().min(1)}),view:state=>({currentValue:this.derive(state)})}})
-  ctx.on('session/created',session=>this.pinInitialPermission(session));for(const session of ctx.sessions.list())this.pinInitialPermission(session)
+  // Explicit legacy installations retain their own event publication. The
+  // default official Host has no Session facade or legacy lifecycle listener.
+  const legacySessions=ctx.get('sessions');if(legacySessions){ctx.on('session/created',session=>this.pinInitialPermission(session));for(const session of legacySessions.list())this.pinInitialPermission(session)}
   ctx.inject(['commands'],child=>child.commands.register({definitionId:'@deepseek-ai/dsh-permission-presets',name:'permission',description:'Switch the permission preset (sandbox mode + approval policy)',input:{hint:'<preset>'},handler:({agent,rawInput})=>{const target=agent.piSession?agent:agent.session,name=rawInput.trim();if(!name)return{kind:'success',text:`current preset ${this.current(target)} (available: ${this.names.join(', ')})`};if(!this.names.includes(name))return{kind:'error',text:`unknown preset "${name}" (available: ${this.names.join(', ')})`};const result=this.apply(target,name,policy=>this.ctx.approval.setPolicy(agent,policy));const reply={kind:'success',text:`preset ${name}`};return result&&typeof result.then==='function'?result.then(()=>reply):reply}}))
  }
  assertOpen(){if(this.closed)throw new Error('Permission preset service disposed')}

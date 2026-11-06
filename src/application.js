@@ -7,7 +7,7 @@ import {openTaskSessionService} from '../packages/dingtalk-core/task-session-ser
 import {handleRequest,applyResidentCorsHeaders,residentErrorStatus} from '../packages/dingtalk-core/http.js'
 /** Channel-neutral composition. Attributed Topic/HTTP domain code is reused;
  * this entry does not construct a vendor client, probe CLI login or start DWS. */
-export const inject=['runtimePaths','storage','storageDomain','credentials','agents','agentDefaultModel','agentPresets','permissionPresets','officialAgentFactory','sessions','sessionPersistence','sessionProjections','workspaceRegistry','tools','nativeModelRoutes','systemPrompt','attachments','channels','jobs','subprocess']
+export const inject=['runtimePaths','storage','storageDomain','credentials','agents','agentDefaultModel','agentPresets','permissionPresets','officialAgentFactory','sessionCatalog','sessionPersistence','sessionProjections','workspaceRegistry','tools','nativeModelRoutes','systemPrompt','attachments','channels','jobs','subprocess']
 export async function apply(ctx,config){
   const paths=ctx.get('runtimePaths'),resident=config.resident??{},taskConfig={...config.model,...resident.taskSessions,workspaceDir:paths.workspaces,dbPath:join(paths.state,'tasks.sqlite')}
   for(const field of ['instanceId','ownerActorId','webActorId'])if(typeof taskConfig[field]!=='string'||!taskConfig[field].trim())throw Error('TASK_SESSION_CONFIGURATION_REQUIRED:'+field)

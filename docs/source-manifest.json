@@ -1032,7 +1032,7 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "97c31cca21c20250020ddafb88f4e93c4c96e8c85fcd6431e0e35393f8e7da98",
+      "sha256": "453f29a6ce72344a9588c152206aae9cc2643634cbda9f6adcbe34c59172abb9",
       "adaptation": "Official Single-only service; rejects absent factory and split execution state, removes legacy driver dispatch and Host provider retry while retaining effect reconciliation, source-bound live admissions, archive holds and official Topic routing."
     },
     {

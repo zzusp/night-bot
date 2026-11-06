@@ -41,7 +41,7 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
  if(!services||typeof services!=='object'||Array.isArray(services)||Object.keys(services).some(name=>!names.has(name)))throw fail('PI_FILE_SERVICE_CAPABILITIES_INVALID')
  const get=name=>names.has(name)?services[name]??ctx.get(name):ctx.get(name),fs=get('fs'),agents=get('agents'),directory=get('workingDirectory'),sandbox=get('sandboxPolicy'),attachments=get('attachments'),approval=get('approval')
  if(!actor||!fs||!agents||!directory||!sandbox||fs.sandboxMode===undefined)throw fail('PI_FILE_CAPABILITIES_REQUIRED')
- const origin=officialWorkingDirectoryOrigin(actor),tokens=new Map(),validators=new WeakMap(),bridges=new WeakMap(),active=new Set(),lifetime=new AbortController();let closed=false,sessionIdentity
+ const origin=officialWorkingDirectoryOrigin(actor),tokens=new Map(),validators=new WeakMap(),bridges=new WeakMap(),mutationPolicies=new WeakMap(),active=new Set(),lifetime=new AbortController();let closed=false,sessionIdentity
  const privateBoundary=typeof fs.boundary==='function'
  const capabilities=Object.freeze({privateBoundary,officialRead:true,officialWrite:true,officialEdit:true,boundedWindow:true,explicitApproval:typeof approval?.request==='function',aggregateImageBudget:typeof imageBudget?.accept==='function',requiresBusinessToolAdmission:true,requiresScopedCloseBinding:true,readyForHost:false,transportBudget:typeof transportBudget?.accept==='function',ready:privateBoundary&&typeof approval?.request==='function'&&typeof imageBudget?.accept==='function'&&typeof transportBudget?.accept==='function',registered:false})
  function authority(){
@@ -96,6 +96,16 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
   if(args.sandbox_permissions!==undefined)granted=await approveEscalation({requestedMode:args.sandbox_permissions,effectiveMode:initial.mode,justification:args.justification,subject:'operation'},{approver:approval,agent:actor,callId,toolName:kind,signal})
   return()=>{const current=authority();if(granted!==undefined&&(current.mode!==initial.mode||current.workspaceRoot!==initial.workspaceRoot))throw fail('PI_FILE_POLICY_CHANGED');return granted===undefined?current:{...current,mode:granted}}
  }
+ async function preparedMutationPolicy(exec,kind,input,args,callId,signal,preflight=false){
+  if(!exec)return mutationPolicy(kind,args,callId,signal)
+  const registry=actor.ctx.get('tools'),identity=preflight?registry.admissionIdentity(exec):registry.executionIdentity(exec)
+  if(!identity&&preflight&&args.sandbox_permissions===undefined)return mutationPolicy(kind,args,callId,signal)
+  if(exec.agent!==actor||identity?.owner!==actor.id||identity.name!==kind||identity.callId!==callId||exec.arguments!==input)throw fail('PI_FILE_NATIVE_EXECUTION_REQUIRED')
+  let record=mutationPolicies.get(exec)
+  if(record){if(record.kind!==kind||record.input!==input||record.callId!==callId)throw fail('PI_FILE_NATIVE_EXECUTION_REQUIRED')}
+  else{record={kind,input,callId,pending:Promise.resolve().then(()=>mutationPolicy(kind,args,callId,signal))};mutationPolicies.set(exec,record)}
+  return record.pending
+ }
  function execution(kind,callId,signal,bridge){
   const businessExec=bridges.get(bridge)
   if(businessExec===undefined)return {agent:actor,name:kind,callId,signal}
@@ -107,7 +117,7 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
   const factory=kind==='write'?createWriteTool:kind==='edit'?createEditTool:createReadTool,base=factory(origin),parameters=schema(base.parameters,kind)
   const description=kind==='read_image'?'Read an authorized image through Pi and the current SDK model, within attachment and aggregate request limits.':base.description+(kind==='read'?' For large text or long lines use read_window; use read_image for image-specific limits.':kind==='edit'?' Read the current file before editing; prior observation and atomic version checks are required.':' Existing files must be read before replacement.')
   return {...base,name:kind,label:kind,description,parameters,prepareArguments:input=>prepare(parameters,input),execute:(callId,input,signal,_onUpdate,_sdkContext,bridge)=>launch(kind,parameters,callId,input,signal,async(args,control)=>{
-   const exec=execution(kind,callId,control,bridge),policy=(kind==='write'||kind==='edit')?await mutationPolicy(kind,args,callId,control):undefined
+   const exec=execution(kind,callId,control,bridge),policy=(kind==='write'||kind==='edit')?await preparedMutationPolicy(bridges.get(bridge),kind,input,args,callId,control):undefined
    if(kind==='write'&&Buffer.byteLength(args.content)>config.maxWriteBytes)throw fail('PI_FILE_WRITE_LIMIT')
    if(kind==='read_image'&&typeof imageBudget?.accept!=='function')throw fail('PI_FILE_IMAGE_BUDGET_REQUIRED')
    const {cwd,target}=await targetFor(args.path,control)
@@ -197,12 +207,17 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
   if(!tools.includes(tool)||exec.agent!==actor||identity?.owner!==actor.id||identity.name!==tool.name||identity.callId!==exec.callId||input!==exec.arguments)throw fail('PI_FILE_NATIVE_EXECUTION_REQUIRED')
   const bridge={};bridges.set(bridge,exec)
   try{return await tool.execute(exec.callId,input,exec.signal,undefined,undefined,bridge)}finally{bridges.delete(bridge)}
- },async preflightMutation(tool,input,signal){
+ },async preflightMutation(tool,input,signal,exec){
   if(!tools.includes(tool)||!['write','edit'].includes(tool.name))throw fail('PI_FILE_DEFINITION_REQUIRED')
   return launch(tool.name,tool.parameters,'preflight',input,signal,async(args,control)=>{
    const cwd=directory.get(actor)
    if(typeof fs.preflightMutation!=='function')throw fail('PI_FILE_PREFLIGHT_REQUIRED')
-   await fs.preflightMutation(args.path,{cwd,signal:control})
+   // Task/privacy paths are forbidden regardless of a wider mode. Refuse those
+   // before asking for one-time escalation, then resolve again after approval.
+   if(typeof fs.preflightPath==='function')await fs.preflightPath(args.path,{cwd,signal:control})
+   if(args.sandbox_permissions!==undefined&&!exec)throw fail('PI_FILE_NATIVE_EXECUTION_REQUIRED')
+   const policy=await preparedMutationPolicy(exec,tool.name,input,args,exec?.callId??'preflight',control,true)
+   await fs.preflightMutation(args.path,{cwd,signal:control,sandboxPolicy:policy()})
    control.throwIfAborted()
   })
  },sourceConfig:Object.freeze(config),sourceConfigComparison:PI_FILE_SOURCE_COMPARISON,capabilities,async close(){closed=true;lifetime.abort(fail('PI_FILE_TOOLS_CLOSED'));await Promise.allSettled([...active])}})
