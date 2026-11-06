@@ -1,0 +1,6 @@
+# Web 的依赖图与 Bot 默认生产安装独立。
+packages: []
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - playwright-core@1.65.0
