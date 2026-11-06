@@ -188,3 +188,11 @@ from user content. The existing offline sealed task archive restore path has its
 own verified manifest/source root and explicit operator-review requirement; it
 remains the supported route for those task archives. Unknown effects still require
 the separate operator reconciliation and authorization workflow, never replay.
+
+The real offline own-backup regression also submits a fresh operator dialogue to
+an uncertain restored task: typed materials pass validation, the existing unknown
+effect remains blocked, and no model/tool request is replayed. The current dialogue
+API reports `TASK_DIALOGUE_NO_REPLY` for that held attempt, rather than exposing the
+unknown-effect reason directly. An unmarked historical packet reports
+`TASK_MATERIAL_SOURCE_MISMATCH`. These are distinct refusals; material portability
+does not resolve, authorize or hide an unknown external effect.

@@ -5,11 +5,14 @@ const leaf = value => typeof value === 'string' && value !== '.' && value !== '.
 // Only Host-owned material filenames are relocatable. Source text, resource
 // identities, provider messages, authorization and effect evidence stay opaque.
 export function bindTaskMaterialPaths(material, materialsDirectory) {
+  if (!material || typeof material.path !== 'string' || !Array.isArray(material.resources)) fail()
   const origin = resolve(materialsDirectory)
   const fields = {path:basename(material.path)}
   if (dirname(material.path) !== origin || !/^source-[a-f0-9]{32}\.json$/.test(fields.path)) fail()
   for (const [index, resource] of (material.resources ?? []).entries()) {
+    if (!resource || typeof resource !== 'object') fail()
     if (resource.status !== 'read') continue
+    if (typeof resource.path !== 'string') fail()
     if (dirname(resource.path) !== origin || !/^resource-[a-f0-9]{16}-[a-f0-9]{16}\.(txt|png|jpg|webp|gif|bin)$/.test(basename(resource.path))) fail()
     fields[`resources.${index}.path`] = basename(resource.path)
     if (resource.value?.image) {
