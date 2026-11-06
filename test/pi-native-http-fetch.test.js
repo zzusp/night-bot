@@ -102,3 +102,11 @@ test('HTTP cancellation drains body cleanup and transport closure before settlin
  transportReleased.resolve();await rejected
  assert.equal(f.closed.length,1);assert.equal(body.locked,false)
 })
+
+test('HTTP content policy distinguishes origin, MIME and quoted charset parameters',()=>{
+ assert.equal(httpPolicy.isSameOrigin(new URL('https://fixture.example:443/a'),new URL('https://fixture.example/b')),true)
+ assert.equal(httpPolicy.isSameOrigin(new URL('https://fixture.example/'),new URL('http://fixture.example/')),false)
+ for(const [header,kind] of [[' TEXT/HTML ; charset=utf-8','html'],['application/problem+json','text'],['application/xhtml+xml','html'],['image/png',undefined],[null,undefined]])assert.equal(httpPolicy.classifyContentType(header),kind)
+ for(const [header,charset] of [['text/plain; CHARSET="Windows-1252"','windows-1252'],["text/plain; charset='UTF-8'",'utf-8'],['text/plain; filename="x;charset=bogus";charset=utf-8','utf-8'],['text/plain',undefined]])assert.equal(httpPolicy.parseCharset(header),charset)
+ for(const input of [null,{},12,'file:///etc/passwd','https://user:password@fixture.example'])assert.throws(()=>httpPolicy.validateFetchUrl(input))
+})

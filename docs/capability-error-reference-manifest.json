@@ -1,15 +1,5 @@
 [
   {
-    "package": "@deepseek-ai/dsh-web",
-    "sourceVersion": "0.2.1-alpha.2",
-    "originalSha256": "21d6d99d6b826937e6aabbcb0b32c91bd1f214586c6fd3ada538f15737eec8d7",
-    "fixture": "test/fixtures/legacy-web-interface.mjs",
-    "fixtureSha256": "722c90717c15dcc2630d3114e55025f6e08bf6d7057e9c6d82598d195dcc13af",
-    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
-    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
-  },
-  {
     "package": "@deepseek-ai/dsh-authorization",
     "sourceVersion": "0.2.1-alpha.2",
     "originalSha256": "cfe0784f14f5cc55e0e1c18fc82290967e41e48afb964dc4f6384f84e4bab1ef",

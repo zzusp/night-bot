@@ -1,9 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createRequire} from 'node:module'
-import {pathToFileURL} from 'node:url'
 import * as errors from '../src/native-capability-errors.js'
-const packages=['web','authorization','workspace','session-title']
+const packages=['authorization','workspace','session-title']
 const samples={WebError:['fixture','WEB_ABORTED',{cause:new Error('cause')}],AuthorizationError:['fixture','ABORTED',{cause:new Error('cause')}],AuthorizationDeclinedError:[],WorkspaceMoveInvalidError:['fixture'],WorkspaceUnknownSessionError:['session','archive'],WorkspaceActiveSessionError:['session',[{kind:'tool'}]],WorkspaceArchivedSessionPinError:['session'],WorkspaceOrderInvalidError:['workspace'],SessionTitleInvalidError:['fixture']}
 test('canonical capability errors preserve independent original names, codes, facts and causes',async()=>{
  for(const pkg of packages){
@@ -29,10 +27,13 @@ test('historical namespaces expose the native owners, shared constructors and co
   for(const name of Object.keys(original).filter(n=>n.endsWith('Error')))assert.equal(alias[name],errors[name])
  }
 })
-test('development SDK peer resolves the same canonical web error before a real legacy provider call',async()=>{
- const root=createRequire(import.meta.url),peer=createRequire(root.resolve('@deepseek-ai/dsh-web-fetch-http'))
- const api=await import(pathToFileURL(peer.resolve('@deepseek-ai/dsh-web')))
+test('native HTTP and the public web namespace share canonical error identity',async()=>{
+ const api=await import('../packages/capability-compat/web/index.js')
+ const native=await import('../src/native-web.js')
+ assert.equal(api.default,native.default)
  assert.equal(api.WebError,errors.WebError)
- const {HttpFetchProvider}=await import('@deepseek-ai/dsh-web-fetch-http')
+ const cause=new Error('fixture cause'),error=new api.WebError('fixture','WEB_ABORTED',{cause})
+ assert.equal(error.message,'fixture');assert.equal(error.code,'WEB_ABORTED');assert.equal(error.cause,cause)
+ const {HttpFetchProvider}=await import('../src/native-http-fetch.js')
  await assert.rejects(new HttpFetchProvider({maxResponseBytes:1024,timeoutMs:1000,maxRedirects:1}).fetch({url:'file:///fixture'}),errors.WebError)
 })
