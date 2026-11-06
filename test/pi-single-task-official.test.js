@@ -6,7 +6,6 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {Context} from '@deepseek-ai/cordis'
 import {SettingsManager,ModelRuntime} from '@earendil-works/pi-coding-agent'
 import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventStream} from '@earendil-works/pi-ai'
-import NativeSessions from '../src/native-sessions.js'
 import NativeAgents from '../src/native-agents.js'
 import NativeTools from '../src/native-tools.js'
 import NativeJobs from '../src/native-jobs.js'
@@ -24,7 +23,7 @@ const decision={action:'complete',summary:'Verified',evidence:['scripted tool re
 const definition=(name,execute)=>({name,description:name,parameters:{type:'object',properties:{a:{type:'integer'},b:{type:'integer'}},additionalProperties:false},output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute})
 async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>true}={}){
  const root=await mkdtemp('/tmp/night-single-official-'),agentDir=join(root,'agent');await mkdir(agentDir)
- const ctx=new Context();new NativeSessions(ctx);new NativeAgents(ctx);new NativeSystemPrompt(ctx,{});new NativeTools(ctx);new NativeJobs(ctx);authority(ctx)
+ const ctx=new Context();new NativeAgents(ctx);new NativeSystemPrompt(ctx,{});new NativeTools(ctx);new NativeJobs(ctx);authority(ctx)
  const persistence=new PiPersistence(ctx,{root:join(root,'sessions')}),requests=[],actors=[];let effects=0
  ctx.provide('sandboxPolicy',{resolve:({actor})=>{assert.equal(ctx.agents.get(actor.id),actor);return{mode:'workspace-write',workspaceRoot:root,sessionId:actor.id}}})
  ctx.provide('agentPresets',{async mount(scope,id){assert.equal(id,'night-bot-task');scope.tools.register(definition('write',async(_args,exec)=>{effects++;return effect({ctx,exec})}))}})
@@ -38,7 +37,7 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
  // This fixture supplies the narrow application factory contract; execution and
  // history are the real public SDK, native durability and NativeTools services.
  async function build(options,resume){
-  const id=options.sessionId??options.resumeSessionId,store=resume?await persistence.openNative(id,{auditKinds:{...admissionAuditKinds,...options.auditKinds}}):await persistence.createNative(ctx.sessions.prepare(id,{meta:options.meta}).header,{auditKinds:{...admissionAuditKinds,...options.auditKinds}})
+  const id=options.sessionId??options.resumeSessionId,store=resume?await persistence.openNative(id,{auditKinds:{...admissionAuditKinds,...options.auditKinds}}):await persistence.createNative({...options.meta,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds:{...admissionAuditKinds,...options.auditKinds}})
   for(const receipt of options.initialReceipts??[])store.appendAudit(receipt)
   let actor,scope,official,detach,unbindDirectory,running=Promise.resolve(),disposed=false
   const admission=await createBusinessAdmission({store,authorize:packet=>options.authorizeInput(packet,actor)})

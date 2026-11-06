@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,appendFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import NativeSessions from '../src/native-sessions.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as authority} from '../src/pi-authority.js'
 import {runtimePaths,prepareRuntimePaths} from '../src/runtime/paths.js'
@@ -21,8 +20,8 @@ async function fixture(t,{identity=true}={}){
  await store.command({id:'create',kind:'task.create',args:{taskId,request:'retain real native archive',ownerActorId:'owner'}})
  const binding=(await store.command({id:'claim',kind:'task.claim',args:{taskId}})).result.binding
  const task=await store.query({kind:'task.get',taskId}),{root:taskRoot}=await manager.register(task)
- const ctx=new Context();ctx.provide('taskSessionRoutes',routes);ctx.provide('portablePaths',portablePaths(paths));new NativeSessions(ctx);authority(ctx)
- const backend=new PiPersistence(ctx,{root:join(paths.state,'sessions')}),header=ctx.sessions.prepare(task.sessionId,{meta:{cwd:taskRoot,agentPreset:'night-bot-task'}}).header
+ const ctx=new Context();ctx.provide('taskSessionRoutes',routes);ctx.provide('portablePaths',portablePaths(paths));authority(ctx)
+ const backend=new PiPersistence(ctx,{root:join(paths.state,'sessions')}),header={version:4,id:task.sessionId,createdAt:Date.now(),isSeeded:false,cwd:taskRoot,agentPreset:'night-bot-task'}
  const writer=await backend.createNative(header,{auditKinds:taskAuditKinds})
  if(identity)writer.appendAudit({version:1,domain:'task',kind:'identity',payload:{taskId,sessionId:task.sessionId}})
  writer.manager.appendMessage({role:'user',content:[{type:'text',text:'native retained context'}],timestamp:Date.now()});await writer.close()

@@ -5,7 +5,6 @@ import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
 import {ModelRuntime,SettingsManager} from '@earendil-works/pi-coding-agent'
 import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventStream} from '@earendil-works/pi-ai'
-import {SessionStore} from '../packages/capability-compat/session/index.js'
 import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import NativeTools from '../src/native-tools.js'
@@ -16,7 +15,7 @@ import {createBusinessAdmission,admissionAuditKinds} from '../src/runtime/pi-bus
 
 test('real official components execute, commit, cold-read and reopen with no Host session facade',async t=>{
  const root=await mkdtemp('/tmp/night-official-session-'),agentDir=join(root,'agent');await mkdir(agentDir)
- const ctx=new Context();new SessionStore(ctx);new NativeAgents(ctx);await ctx.plugin(Authority)
+ const ctx=new Context();new NativeAgents(ctx);await ctx.plugin(Authority)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
  new NativeTools(ctx)
  let active,live=true,effects=0,policyFailure
@@ -33,7 +32,7 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  }})
  ctx.tools.register(definition('effect',async()=>{effects++;return{ok:true}}))
  const options={auditKinds:{...admissionAuditKinds,'effect/receipt':v=>v.callId==='effect-one'&&v.state==='settled'}}
- let store=await backend.createNative(ctx.sessions.prepare('official',{meta:{cwd:root}}).header,options)
+ let store=await backend.createNative({version:4,id:'official',createdAt:Date.now(),isSeeded:false,cwd:root},options)
  let admission=await createBusinessAdmission({store,authorize:packet=>packet.source.kind==='coordinator'})
  ctx.on('tools/execute',async(exec,next)=>{const result=await next();store.appendAudit({version:1,domain:'effect',kind:'receipt',payload:{callId:exec.callId,state:'settled'}});await exec.agent.audit.flush();return result})
  const settings=()=>SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}})

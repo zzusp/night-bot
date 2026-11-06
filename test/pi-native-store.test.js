@@ -7,13 +7,12 @@ import {buildSessionProjection} from '@earendil-works/pi-coding-agent'
 import PiPersistence from '../src/pi-session-persistence.js'
 import * as Authority from '../src/pi-authority.js'
 import {decodePiJournal} from '../src/runtime/pi-journal.js'
-import {SessionStore} from '../packages/capability-compat/session/index.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-native-store-'),ctx=new Context();new SessionStore(ctx);await ctx.plugin(Authority)
+ const root=await mkdtemp('/tmp/night-native-store-'),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
- return {root,ctx,backend,header:id=>ctx.sessions.prepare(id,{meta:{cwd:root}}).header}
+ return {root,ctx,backend,header:id=>({version:4,id,createdAt:Date.now(),isSeeded:false,cwd:root})}
 }
 const message=text=>({role:'user',content:[{type:'text',text}],timestamp:Date.now()})
 test('official native entries persist directly with branch leaf and no Host history',async t=>{
@@ -103,8 +102,8 @@ test('native portable copy restores logical cwd without rewriting original Pi by
  const {runtimePaths}=await import('../src/runtime/paths.js'),{portablePaths}=await import('../src/runtime/portable.js')
  const root=await mkdtemp('/tmp/night-native-portable-'),contexts=[]
  t.after(async()=>{for(const ctx of contexts)await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
- async function setup(installRoot){const paths=runtimePaths({installRoot});await mkdir(paths.workspaces,{recursive:true});const ctx=new Context();contexts.push(ctx);new SessionStore(ctx);ctx.provide('portablePaths',portablePaths(paths));await ctx.plugin(Authority);return {paths,ctx,backend:new PiPersistence(ctx,{root:join(paths.state,'sessions')})}}
- const source=await setup(join(root,'source')),header=source.ctx.sessions.prepare('portable',{meta:{cwd:source.paths.workspaces}}).header
+ async function setup(installRoot){const paths=runtimePaths({installRoot});await mkdir(paths.workspaces,{recursive:true});const ctx=new Context();contexts.push(ctx);ctx.provide('portablePaths',portablePaths(paths));await ctx.plugin(Authority);return {paths,ctx,backend:new PiPersistence(ctx,{root:join(paths.state,'sessions')})}}
+ const source=await setup(join(root,'source')),header={version:4,id:'portable',createdAt:Date.now(),isSeeded:false,cwd:source.paths.workspaces}
  const h=await source.backend.createNative(header);h.manager.appendMessage(message(source.paths.workspaces));await h.close()
  const bytes=await readFile(source.backend.path('portable'));await source.ctx.fiber.dispose();await cp(source.paths.installRoot,join(root,'target'),{recursive:true})
  const target=await setup(join(root,'target')),read=await target.backend.readNative('portable')

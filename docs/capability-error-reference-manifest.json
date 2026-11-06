@@ -19,15 +19,5 @@
     "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
     "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent",
     "primitiveSupportAdaptation": "Inlined the pure identity cast instead of keeping a separate nominal-brand source copy; registry/lifecycle algorithms unchanged."
-  },
-  {
-    "package": "@deepseek-ai/dsh-session-title",
-    "sourceVersion": "0.2.1-alpha.2",
-    "originalSha256": "eb814490ca3d0aaabf8f6ddc705a031f99a98709c484c1502c5f28f101cf0eeb",
-    "fixture": "test/fixtures/legacy-session-title-interface.mjs",
-    "fixtureSha256": "3fac827718c538acc106692cdcc43aeb9802b81afaa0ecb36befac413527da6a",
-    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
-    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
-    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
   }
 ]

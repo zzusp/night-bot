@@ -4,7 +4,6 @@ import assert from 'node:assert/strict'
 import {join} from 'node:path'
 import {setImmediate} from 'node:timers/promises'
 import {definition,officialToolsFixture} from './fixtures/pi-official-tools.js'
-import NativeSessions from '../src/native-sessions.js'
 import NativeProjections from '../src/native-projections.js'
 import NativeAgents from '../src/native-agents.js'
 import NativeJobs from '../src/native-jobs.js'
@@ -19,8 +18,8 @@ import {apply as applyJobTools,reconcileJobCompletionNotices} from '../src/nativ
 async function fixture(t,register,{notices=false}={}){
  let store,backend,starts=0,expectUnknown=false,publish;const settlement=Promise.withResolvers()
  const h=await officialToolsFixture(t,async({ctx,owner,root})=>{
-  ctx.logger={warn(){},error(){}};new NativeSessions(ctx);new NativeProjections(ctx);new NativeAgents(ctx);new NativeJobs(ctx,{pumpPollMs:1});new NativePolicy(ctx,{mode:'workspace-write',workspaceRoot:root});authority(ctx)
-  backend=new PiPersistence(ctx,{root:join(root,'durable-jobs')});store=await backend.createNative(ctx.sessions.prepare(owner.id,{meta:{cwd:root}}).header,{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}})
+  ctx.logger={warn(){},error(){}};new NativeProjections(ctx);new NativeAgents(ctx);new NativeJobs(ctx,{pumpPollMs:1});new NativePolicy(ctx,{mode:'workspace-write',workspaceRoot:root});authority(ctx)
+  backend=new PiPersistence(ctx,{root:join(root,'durable-jobs')});store=await backend.createNative({version:4,id:owner.id,createdAt:Date.now(),isSeeded:false,cwd:root},{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}})
   owner.receipts={append:receipt=>store.appendAudit(receipt),commit:()=>store.commit(),read:()=>store.readAudit(),readEntries:()=>store.readAuditEntries()}
   bindWorkingDirectoryActor(owner,{initialDirectory:root,isLive:()=>ctx.agents.get(owner.id)===owner,readDirectory:()=>root,appendChange(){throw Error('not changing cwd')},admitNotice(){}})
   bindSandboxPolicyActor(owner,{initialDirectory:root,isLive:()=>ctx.agents.get(owner.id)===owner,readPolicy:()=>({mode:'workspace-write',artifactRoot:null}),appendPolicy(){throw Error('not changing policy')}})

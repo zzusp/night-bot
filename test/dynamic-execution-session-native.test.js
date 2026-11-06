@@ -4,7 +4,6 @@ import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as installPiAuthority} from '../src/pi-authority.js'
 import { captureModelRequest, modelMessageSource, providerContentMessages, providerRequestView, requestSystemText, findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
-import NativeSessionTitle from '../src/native-session-title.js'
 import { sessionWorkspace, taskDirectories, taskFilePath } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
 import assert from 'node:assert/strict'
 import testRunner, { after } from 'node:test'
@@ -65,7 +64,6 @@ async function host({ root, script = [submit('done')], isCurrent = async () => t
   root ??= await temp()
   const ctx = new Context()
   new NativeAgents(ctx); new NativeSessions(ctx); new NativeProjections(ctx)
-  new NativeSessionTitle(ctx, { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 })
   new NativeSystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
   new NativeLlm(ctx); new NativeTools(ctx)
   installPiAuthority(ctx);new PiPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })

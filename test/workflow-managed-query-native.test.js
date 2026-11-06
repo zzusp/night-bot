@@ -16,7 +16,6 @@ import { SessionStore } from '../packages/capability-compat/session/index.js'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
-import SessionTitleService from '@deepseek-ai/dsh-session-title'
 import { openWorkflowService } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
 import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
 import { createWorkflowConfiguration } from '../packages/dingtalk-dsh-assistant/workflow-configuration.js'
@@ -87,7 +86,6 @@ test('工程v26正式服务通过原生节点工具消费冻结配置，移动�
   async function open() {
     turns = 0; ctx = new Context()
     new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
-    new SessionTitleService(ctx, { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 })
     new SystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false }); new LlmRuntime(ctx); new ToolRuntime(ctx)
     new JsonlSessionPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
     await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })

@@ -4,13 +4,12 @@ import {Context} from '@deepseek-ai/cordis'
 import NativePresets,{bindPermissionPresetActor} from '../src/native-permission-presets.js'
 import NativeApproval,{bindApprovalAudit} from '../src/native-approval.js'
 import NativePolicy,{bindSandboxPolicyActor} from '../src/native-policy.js'
-import NativeSessions from '../src/native-sessions.js'
 import NativeProjections from '../src/native-projections.js'
 import NativeSystemPrompt from '../src/native-system-prompt.js'
 import {memoryWriteAuthorization} from '../src/memory/tools.js'
 const table={read:{sandbox:'read-only',approval:'ask'},write:{sandbox:'workspace-write',approval:'ask'},wide:{sandbox:'danger-full-access',approval:'never'}}
 async function fixture(t,{commit}={}){
- const ctx=new Context(),commands=[];new NativeSessions(ctx);new NativeProjections(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:'/workspace/one'});ctx.provide('shell',{sandboxMode:'read-only'});ctx.provide('commands',{register:command=>commands.push(command)});new NativePresets(ctx,{presets:table,defaultPreset:'read'});t.after(()=>ctx.fiber.dispose());await ctx.fiber.await()
+ const ctx=new Context(),commands=[];new NativeProjections(ctx);new NativeSystemPrompt(ctx,{includeHarnessIdentity:false});new NativeApproval(ctx,{policy:'ask'});new NativePolicy(ctx,{mode:'read-only',workspaceRoot:'/workspace/one'});ctx.provide('shell',{sandboxMode:'read-only'});ctx.provide('commands',{register:command=>commands.push(command)});new NativePresets(ctx,{presets:table,defaultPreset:'read'});t.after(()=>ctx.fiber.dispose());await ctx.fiber.await()
  const actor={id:'official-permissions',ctx,piSession:{}},foreign={...actor};let live=true,state={preset:'read',sandbox:'read-only',approval:'ask',seeded:false},calls=0
  bindApprovalAudit(actor,{isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=>state.approval,append(){throw Error('preset must use one composite commit')},flush:async()=>{}})
  bindSandboxPolicyActor(actor,{initialDirectory:'/workspace/one',isLive:()=>live,readPolicy:()=>({mode:state.sandbox,artifactRoot:null}),appendPolicy(){throw Error('preset must use one composite commit')}})

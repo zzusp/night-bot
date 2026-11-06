@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,appendFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import NativeSessions from '../src/native-sessions.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {apply as authority} from '../src/pi-authority.js'
 import {maintenanceAuditKinds,readNativeDrainReceipts} from '../src/tasks/native-maintenance-receipts.js'
@@ -13,8 +12,8 @@ import {isolationDigest as hash} from '../packages/dingtalk-core/native-restart-
 // that the production factory can observe/process-drain or emit a terminal yet.
 async function fixture(t,{mutate=()=>{},afterTerminal=false,branchBeforeTerminal=false,unknown=true}={}){
  const root=await mkdtemp('/tmp/night-native-drain-'),binding={taskId:'task',executionId:'execution',sessionId:'session',requirementRevision:2,controlRevision:3,inputVersion:4,inputDigest:'input-digest',leaseEpoch:5}
- const ctx=new Context();new NativeSessions(ctx);authority(ctx)
- const backend=new PiPersistence(ctx,{root:join(root,'tasks','task','.dsh','sessions')}),header=ctx.sessions.prepare(binding.sessionId,{meta:{cwd:root}}).header
+ const ctx=new Context();authority(ctx)
+ const backend=new PiPersistence(ctx,{root:join(root,'tasks','task','.dsh','sessions')}),header={version:4,id:binding.sessionId,createdAt:Date.now(),isSeeded:false,cwd:root}
  // The permissive fixture writer deliberately allows malformed domain payloads
  // so that the independently strict consumer must reject committed bad records.
  const writer=await backend.createNative(header,{auditKinds:Object.fromEntries(Object.keys(maintenanceAuditKinds).map(key=>[key,()=>true]))})

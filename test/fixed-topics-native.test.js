@@ -1,5 +1,4 @@
 import {isDeepStrictEqual} from 'node:util'
-import NativeSessionQuery from '../src/native-session-query.js'
 import NativeSessionController from '../src/native-session-controller.js'
 import NativeSchedule from '../src/native-schedule.js'
 import * as scheduleTools from '../src/native-tool-schedule.js'
@@ -23,7 +22,6 @@ import { fixedUnitRequestId } from '../packages/dingtalk-dsh-assistant/fixed-top
 
 async function nativeSchedule(h) {
   if(h.ctx.get('schedule'))return true
-  if(!h.ctx.get('sessionQuery'))await h.ctx.plugin(NativeSessionQuery)
   if(!h.ctx.get('sessionController'))await h.ctx.plugin(NativeSessionController)
   await h.ctx.plugin(NativeSchedule,{})
   await h.ctx.plugin(scheduleTools)

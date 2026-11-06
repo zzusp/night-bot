@@ -1,6 +1,5 @@
 import { findSessionLog, sessionPersistenceFixture } from './fixtures/session-persistence.js'
 import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
-import SessionTitleService from '@deepseek-ai/dsh-session-title'
 import { sessionWorkspace, taskDirectories, taskFilePath } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
 import assert from 'node:assert/strict'
 import testRunner from 'node:test'
@@ -44,7 +43,6 @@ async function host({ root, script = [submit('done')], isCurrent = async () => t
   root ??= await temp()
   const ctx = new Context()
   new AgentRegistry(ctx); new SessionStore(ctx); new SessionProjectionRegistry(ctx)
-  new SessionTitleService(ctx, { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 })
   new SystemPrompt(ctx, { includeRuntimeContext: false, includeHarnessIdentity: false })
   new LlmRuntime(ctx); new ToolRuntime(ctx)
   new JsonlSessionPersistence(ctx, { root: join(root, 'sessions'), packChunks: false, compression: 'none', writeBatchMaxDelayMs: 1 })
@@ -343,7 +341,7 @@ if (process.argv[2] === '--execution-session-child') {
     await assert.rejects(drive(h, { binding: binding({ sessionBound: true }) }), { code: 'execution_session_missing' })
     assert.equal(h.ctx.sessions.get(binding().sessionId), undefined)
     const foreign = await h.ctx.agents.create({ sessionId: binding().sessionId })
-    h.ctx.sessionTitle.rename(foreign.agent.session, 'unrelated')
+    foreign.agent.piSession.setSessionName('unrelated')
     await h.ctx.sessions.flush(foreign.agent.session); await foreign.dispose()
     await assert.rejects(drive(h), { code: 'execution_session_identity_mismatch' })
     assert.equal(h.requests.length, 0)

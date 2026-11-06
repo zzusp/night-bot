@@ -72,7 +72,7 @@ export async function nativeTaskHost(root, decide, options = {}) {
     ...(options.promoteOnTimeout ? [{ name: new URL('../../src/native-jobs.js', import.meta.url).href }, row('tool-jobs')] : []),
     { name: new URL('../../src/process/index.js', import.meta.url).href }, { name: new URL('../../src/native-sandbox.js', import.meta.url).href }, policyRow, row(nativeShell + '-sandbox', { cwd: root }),
     { name: new URL('../../src/native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: { 'workspace-write': { sandbox: 'workspace-write', approval: 'ask' }, 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } } },
-    { name: new URL('../../src/native-session-title.js', import.meta.url).href, config: { fallbackMaxWords: 10, fallbackMaxBytes: 120, maxTitleBytes: 200 } }, { name: pathToFileURL(resolve('src/pi-authority.js')).href }, { name: pathToFileURL(resolve('src/pi-session-persistence.js')).href, config: { root: join(root, 'legacy-sessions'), compression: 'none' } },
+    { name: pathToFileURL(resolve('src/pi-authority.js')).href }, { name: pathToFileURL(resolve('src/pi-session-persistence.js')).href, config: { root: join(root, 'legacy-sessions'), compression: 'none' } },
     { name: pathToFileURL(resolve('src/native-state.js')).href, config: { root: join(root, 'storage'), model: { provider: 'native-task-test', model: 'controlled' } } },
     { name: new URL('../../src/native-workspace.js', import.meta.url).href }, { name: pathToFileURL(resolve('src/pi-loop.js')).href, config: { agents: [], maxParallelToolCalls: 4 } },
     ...(options.skillDirs ? [{ name: new URL('../../src/native-skills.js', import.meta.url).href }] : []),
