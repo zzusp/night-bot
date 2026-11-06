@@ -58,3 +58,9 @@ Windows 11、Node.js 24.19.0、pnpm 11.25.0。验证时为指定基线 `74169643
 ## 证据保留
 
 历史 round-1 与 matrix 旧轮列保留；本轮摘要自包含关键失败、复验及真实任务哈希。不提交原始业务任务、模型会话、凭据或运行数据。旧临时诊断按本任务明确清单清理，保留结构化摘要、当前 runtime/锁专项和冷重启必要本机证据；运行中的监督器及其文件不清理。
+
+## 交付回查
+
+- 源码提交：`b59daa34137226fcc270e30c0dade00fabc6bdcd`，工作分支 `worktree-pi-native-retirement-local`；`git ls-remote` 已独立核对该 SHA。
+- 仓库 `zzusp/night-bot`，PR [#1](https://github.com/zzusp/night-bot/pull/1)：OPEN / Draft / MERGEABLE；base `refactor/pi-native-retirement` ← head `worktree-pi-native-retirement-local`。未合并 main。
+- 本节和 goal/matrix 的交付状态为后续仅文档提交，不改变已验证源码。最终文档提交 SHA 由交付回复提供，不循环回填自身 SHA。

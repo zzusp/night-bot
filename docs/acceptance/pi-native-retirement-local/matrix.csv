@@ -15,7 +15,7 @@ real-codex-task,官方OAuth推理与文件任务终态,PASS,PASS
 cold-restart-no-replay,同一任务文件和journal哈希不变,PASS,PASS
 real-api-key,环境引用缺少实际值,BLOCKED,BLOCKED
 windows-model-process-privacy,模型子进程隐私namespace,SKIP,SKIP
-commit-and-push,冻结验证后提交推送工作分支,PENDING,PENDING
+commit-and-push,冻结验证后提交推送工作分支,PENDING,PASS
 directory-transaction-queue,活 owner/死亡回收/16 写者及 15+1 入站,NOT_RUN,PASS
 transaction-failure-and-live-backup,异常后队列释放与在线备份拒绝,NOT_RUN,PASS
 final-default-full-rerun,最终源码默认全量重跑,NOT_RUN,NOT_RUN
