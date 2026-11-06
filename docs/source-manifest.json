@@ -522,8 +522,9 @@
     {
       "source": "message-agent.js",
       "sourceSha256": "117efd0fcf002c4c204ddc6abd1dc07db8c018956d4eb7498bb036c68030e7fc",
-      "status": "retained",
-      "sha256": "117efd0fcf002c4c204ddc6abd1dc07db8c018956d4eb7498bb036c68030e7fc"
+      "status": "adapted",
+      "sha256": "fc2d17ee31a0453814f82397701eb95c47ff111c8d19cd2a6780d19dce9a4bf5",
+      "adaptation": "Application SQL business controller requires explicit execution/evidence ports; legacy default session driver removed."
     },
     {
       "source": "message-context.js",

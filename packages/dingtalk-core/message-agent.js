@@ -1,10 +1,7 @@
-import { inspectSession } from './session-persistence.js'
 import { assertGroupReply } from './workflow-notifications.js'
 import { randomUUID } from 'node:crypto'
-import { createExecutionSessions } from './execution-session.js'
 import { executionDigest, executionError } from './execution-artifacts.js'
 import { agentWorkDefinition, validateAgentWorkResult, classifyAgentWorkOutputError } from './agent-work.js'
-import { readExecutedAgentQueryRefs } from './agent-query-tools.js'
 
 const bindingOf = entry => ({ kind: 'message-unit', runId: entry.runId, unitId: entry.unitId,
   inputVersion: entry.inputVersion, inputDigest: entry.inputDigest, sessionId: entry.sessionId,
@@ -12,9 +9,11 @@ const bindingOf = entry => ({ kind: 'message-unit', runId: entry.runId, unitId: 
 const commandBinding = entry => Object.fromEntries(['commandId', 'commandLeaseEpoch', 'leaseEpoch',
   'inputVersion', 'inputDigest', 'sessionId'].map(key => [key, entry[key]]))
 
-/** 消息控制器拥有执行记录；共用原生会话基础，不创建业务 Task 或平行调度器。 */
-export function createMessageAgentController({ ctx, store, artifacts, tools, modelConfig,
-  prepareInput, verifyEvidence, ownerActorId, getWorkspaceDir, sessionRunner, selectTools, onCommandSettled }) {
+/** Explicit business-state controller. No agent, history, or default session driver. */
+export function createMessageAgentController({ store, artifacts, tools, modelConfig,
+  prepareInput, verifyEvidence, readExecutedQueryRefs, ownerActorId, sessionRunner, selectTools, onCommandSettled }) {
+  if (!['run','cancel','close'].every(key => typeof sessionRunner?.[key] === 'function')
+    || typeof readExecutedQueryRefs !== 'function') throw executionError('MESSAGE_AGENT_BUSINESS_PORTS_REQUIRED')
   const flights = new Map()
   let closed = false
   const read = commandId => store.query({ kind: 'message.agent.execution', commandId })
@@ -26,14 +25,15 @@ export function createMessageAgentController({ ctx, store, artifacts, tools, mod
       && entry.inputVersion === binding.inputVersion && entry.inputDigest === binding.inputDigest
       && entry.leaseEpoch === binding.leaseEpoch
   }
-  const sessions = sessionRunner ?? createExecutionSessions({ ctx, tools, isCurrent, getWorkspaceDir })
+  const sessions = sessionRunner
 
   const validateOutput = async (entry, input, result) => {
-    const live = ctx.sessions.get(entry.sessionId)
-    const events = live ? live.snapshotEvents() : (await inspectSession(ctx.sessionPersistence, entry.sessionId)).events
+    const executedQueryRefs = await readExecutedQueryRefs({ entry, binding: bindingOf(entry), toolNames: tools.map(tool => tool.name) })
+    if (!Array.isArray(executedQueryRefs) || executedQueryRefs.some(ref => typeof ref !== 'string' || !ref))
+      throw executionError('MESSAGE_AGENT_QUERY_EVIDENCE_INVALID')
     const accepted = await validateAgentWorkResult(result, {
       sourceRefs: input.sourceRefs ?? [],
-      executedQueryRefs: readExecutedAgentQueryRefs(events, tools.map(tool => tool.name)),
+      executedQueryRefs,
       verifyEvidence: refs => verifyEvidence({ refs, entry, binding: bindingOf(entry), input }),
     })
     assertGroupReply(accepted.summary, [entry.runId, entry.unitId, entry.sessionId])

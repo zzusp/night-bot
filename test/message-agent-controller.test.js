@@ -1,20 +1,9 @@
-import { sessionPersistenceFixture } from './fixtures/session-persistence.js'
-import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
-import { Context } from '@deepseek-ai/cordis'
-import { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { AgentLoop } from '@deepseek-ai/dsh-agent-loop'
-import { SessionStore } from '../packages/capability-compat/session/index.js'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { LlmRuntime, LlmAdapter } from '../packages/capability-compat/llm/index.js'
-import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { ToolRuntime } from '../packages/capability-compat/tools/index.js'
 import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
 import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
 import { createMessageAgentController } from '../packages/dingtalk-dsh-assistant/message-agent.js'
@@ -36,14 +25,13 @@ async function fixture(t, overrides={}) {
  await call('split',{runId:'m',units:[{unitId:'u'}]})
  await call('accept',{runId:'m',unitId:'u',commands:[{commandId:'c',kind:'answer',args:{}}]})
  const controllers=[]
- const events=[]
- const queryReceipt=ref=>{const seq=events.length,callId=`query-${seq}`;events.push(
-  {type:'tool/call',seq,data:{name:'query_fixture',callId}},
-  {type:'tool/result',seq:seq+1,sourceEventSeqs:[seq],data:{message:{source:{callId},content:[{type:'tool-result',toolCallId:callId,isError:false,content:[{type:'text',text:JSON.stringify({evidenceRef:ref})}]}]}}})}
- const controller=(extra={})=>{const c=createMessageAgentController({ctx:{sessions:{get:()=>({snapshotEvents:()=>events})}},store,artifacts,tools:[{name:'query_fixture'}],modelConfig:async()=>({provider:'p',model:'m'}),prepareInput:async()=>({request:'查一下',sourceRefs:['source'],scope:{conversationId:'g',actorId:'a'}}),verifyEvidence:async()=>true,ownerActorId:'owner',sessionRunner:sessions,...overrides,...extra});controllers.push(c);return c}
+ // Explicit domain evidence port. These tests do not claim SDK transcript proof.
+ const queryRefs=[]
+ const queryReceipt=ref=>queryRefs.push(ref)
+ const controller=(extra={})=>{const c=createMessageAgentController({readExecutedQueryRefs:async()=>[...queryRefs],store,artifacts,tools:[{name:'query_fixture'}],modelConfig:async()=>({provider:'p',model:'m'}),prepareInput:async()=>({request:'查一下',sourceRefs:['source'],scope:{conversationId:'g',actorId:'a'}}),verifyEvidence:async()=>true,ownerActorId:'owner',sessionRunner:sessions,...overrides,...extra});controllers.push(c);return c}
  const claim=async()=>({commandId:'c',commandLeaseEpoch:(await call('command.claim',{commandId:'c'})).result.command.leaseEpoch})
  t.after(async()=>{for(const c of controllers)await c.close().catch(()=>{});await store.close();await rm(dir,{recursive:true,force:true})})
- return {dir,get store(){return store},call,artifacts,sessions,events,queryReceipt,controller,claim,reopen:async()=>{await store.close();store=await openExecutionStore(options)}}
+ return {dir,get store(){return store},call,artifacts,sessions,queryRefs,queryReceipt,controller,claim,reopen:async()=>{await store.close();store=await openExecutionStore(options)}}
 }
 
 test('start 在会话未完成时返回，真实 ledger 承接结果与工具证据',async t=>{
@@ -72,7 +60,7 @@ test('问答截短或构造查询引用先反馈纠正，原样引用持久回�
  const ref=`tasks/task-a/sha256-${'a'.repeat(64)}.json`
  const f=await fixture(t,{verifyEvidence:async({refs})=>{reads++;assert.deepEqual(refs,[ref]);return true}})
  f.queryReceipt(ref)
- const c=f.controller({ctx:{sessions:{get:()=>null},sessionPersistence:sessionPersistenceFixture(async id=>{inspected++;assert.equal(id,f.sessions.calls[0].binding.sessionId);return {events:f.events}})}})
+ const c=f.controller({readExecutedQueryRefs:async({binding})=>{inspected++;assert.equal(binding.sessionId,f.sessions.calls[0].binding.sessionId);return [...f.queryRefs]}})
  await c.start({},await f.claim())
  const call=f.sessions.calls[0]
  for(const invalid of [ref.split('/').at(-1),'invented-evidence']) {
@@ -156,41 +144,6 @@ test('结果已落盘但 command 未 complete 的重启仅返回缓存给新 lea
  assert.equal((await f.store.query({kind:'message.run',runId:'m'})).commands[0].status,'applied')
 })
 
-test('真实原生 Loop 与持久会话完成等待补充后同 session 续行',async t=>{
- const ctx=new Context(),requireLoop=createRequire(import.meta.resolve('@deepseek-ai/dsh-agent-loop'))
- const {SessionProjectionRegistry}=requireLoop('@deepseek-ai/dsh-session-projection')
- new AgentRegistry(ctx);new SessionStore(ctx);new SessionProjectionRegistry(ctx)
- new SystemPrompt(ctx,{includeRuntimeContext:false,includeHarnessIdentity:false});new LlmRuntime(ctx);new ToolRuntime(ctx)
- const f=await fixture(t)
- new JsonlSessionPersistence(ctx,{root:join(f.dir,'sessions'),packChunks:false,compression:'none',writeBatchMaxDelayMs:1})
- await ctx.plugin(AgentLoop, {agents:[],maxParallelToolCalls:1})
- let calls=0
- class Scripted extends LlmAdapter {
-  async *stream(){
-   const output=++calls===1?result({outcome:'needs_input',question:'哪个环境'}):result()
-   const args=JSON.stringify({output}),id='submit-'+calls
-   yield {type:'block-start',index:0,blockType:'tool-call'}
-   yield {type:'tool-call-delta',index:0,id,name:'execution_node_submit',argumentsDelta:args}
-   yield {type:'block-end',index:0,block:{type:'tool-call',id,name:'execution_node_submit',arguments:args}}
-   yield {type:'finish',reason:{kind:'tool-calls'}}
-  }
- }
- ctx.llm.registerAdapter(['p'],new Scripted())
- const c=f.controller({ctx,tools:[],sessionRunner:undefined})
- try {
-  await c.start({},await f.claim());await c.idle()
-  const data=await f.store.query({kind:'message.run',runId:'m'})
-  assert.equal(data.executions[0].status,'waiting_user');assert.equal(data.executions[0].sessionBound,true)
-  await c.resume({request:data.requests[0],data,identity:{actorId:'a'},eventId:'native-answer',answer:'uat2'})
-  await c.start({},await f.claim());await c.idle()
-  const final=await f.store.query({kind:'message.run',runId:'m'})
-  assert.equal(final.executions[0].status,'succeeded');assert.equal(final.commands[0].status,'applied');assert.equal(calls,2)
-  const persisted=await inspectSession(ctx.sessionPersistence, final.executions[0].sessionId)
-  const versions=persisted.events.filter(e=>e.type==='user/message').map(e=>e.data.source?.executionSession?.inputVersion).filter(Boolean)
-  assert.deepEqual(versions,[1,2])
- } finally {await c.close();await ctx.fiber.dispose()}
-})
-
 test('真实工件内容与已登记 inputDigest 不一致时不启动会话',async t=>{
  const f=await fixture(t),c=f.controller()
  await c.start({},await f.claim())
@@ -244,7 +197,7 @@ test('取消不能证明排空时保留 busy，不把失败当作取消完成',a
 
 test('结果结算唤醒在session run释放之后，启动冲突可经真实排空证明取消',async t=>{
  const f=await fixture(t);let released=false,settled=false
- const c=f.controller({sessionRunner:{async run(args){await args.onSessionBound();await args.onResult(result());assert.equal(settled,false);released=true;return {status:'submitted'}},async close(){}},onCommandSettled:async()=>{assert.equal(released,true);settled=true}})
+ const c=f.controller({sessionRunner:{async run(args){await args.onSessionBound();await args.onResult(result());assert.equal(settled,false);released=true;return {status:'submitted'}},async cancel(){assert.fail('completed domain runner must not be cancelled')},async close(){}},onCommandSettled:async()=>{assert.equal(released,true);settled=true}})
  await c.start({},await f.claim());await c.idle();assert.equal(settled,true)
 })
 
@@ -287,4 +240,10 @@ test('问答公开正文不能携带内部绑定，校验失败后可提交业�
  const state=await f.store.query({kind:'message.run',runId:'m'})
  assert.equal(state.commands[0].result.reply,'查询已完成，结果如下。')
  assert.equal(state.executions[0].sessionId,call.binding.sessionId)
+})
+
+
+test('domain controller requires explicit business runner and evidence capabilities without opening a default session',()=>{
+ assert.throws(()=>createMessageAgentController({}),{code:'MESSAGE_AGENT_BUSINESS_PORTS_REQUIRED'})
+ assert.throws(()=>createMessageAgentController({sessionRunner:runner()}),{code:'MESSAGE_AGENT_BUSINESS_PORTS_REQUIRED'})
 })
