@@ -1,16 +1,18 @@
 // MIT source-derived model tool binding; see licenses/dsh-tool-todo-MIT.txt. Active lifecycle belongs to native services and Pi.
+import {AgentSession} from '@earendil-works/pi-coding-agent';
+import {scopeOf} from './native-scope.js';
 import z from "@deepseek-ai/schemastery";
 import { z as z$1 } from "zod";
 import { defineTool } from "./native-tool-protocol.js";
 //#region lib/types/index.js
 /**
-* Model-facing whole-list replacement. Each call appends a `todo/write` snapshot to the calling
-* agent's session; replay is last-write-wins, and UIs render from session events. A non-agent
-* caller has no owning list and is rejected. Named exports preserve loader injection metadata.
+* Model-facing whole-list replacement recorded as typed Night planning receipts.
+* Pi owns conversation history; no Session projection or turn event owns this list.
+* Only the exact live official actor can update its own business receipts.
 * @module @deepseek-ai/dsh-tool-todo
 */
 const name = "night-native-tool-todo";
-const inject = ["tools", "sessionProjections"];
+const inject = ["tools", "agents"];
 /** The valid {@link TodoItem} statuses, as a runtime set for input narrowing. */
 const STATUSES = [
 	"pending",
@@ -61,38 +63,9 @@ function toTodoList(raw, allowParallel) {
 	if (!allowParallel && active > 1) throw new Error(`invalid todos: at most one task may be in_progress (got ${active})`);
 	return todos;
 }
-/** Wire payload schema of the `todos` projection (whole list or pre-first-write null). */
-const todosProjectionSchema = z$1.union([z$1.array(z$1.object({
-	content: z$1.string(),
-	status: z$1.union([
-		z$1.literal("pending"),
-		z$1.literal("in_progress"),
-		z$1.literal("completed")
-	])
-})), z$1.null()]);
-/**
-* Register the `todo_write` tool on `ctx.tools` and the `todos` unit on
-* `ctx.sessionProjections`.
-* @param ctx - registrant context carrying the tool and session-projection registries.
-* @param config - deployment's explicit todo policy.
-*/
+/** Register the planning tool; typed business receipts own its durable facts. */
 function apply(ctx, config) {
 	const allowParallel = config.allowParallelInProgress;
-	ctx.sessionProjections.register({
-		key: "todos",
-		stateSchema: todosProjectionSchema,
-		init: () => null,
-		apply: (state, event) => {
-			if (event.type === "todo/write") return event.data.todos;
-			if (event.type === "turn/start") return null;
-			return state;
-		},
-		wire: {
-			viewSchema: todosProjectionSchema,
-			view: (state) => state
-		},
-		stateVersion: 2
-	});
 	ctx.tools.register(defineTool({
 		name: "todo_write",
 		description: describe(allowParallel),
@@ -171,10 +144,11 @@ function apply(ctx, config) {
 		async execute(args, exec) {
 			const todos = toTodoList(args.todos, allowParallel);
 			if (!exec.agent) throw new Error("todo_write requires an owning agent session");
-			if(exec.agent.piSession){
-				if(typeof exec.agent.receipts?.append!=='function'||typeof exec.agent.receipts.commit!=='function')throw new Error('PI_TODO_BUSINESS_RECEIPTS_REQUIRED');
-				exec.agent.receipts.append({version:1,domain:'planning',kind:'todos',payload:{todos}});await exec.agent.receipts.commit();
-			}else exec.agent.session.append("todo/write", { todos });
+			const actor=exec.agent;
+			if(!(actor.piSession instanceof AgentSession)||scopeOf(actor.ctx)!==actor||ctx.agents.get(actor.id)!==actor||actor.lifecycle?.isLive()!==true)throw new Error('PI_TODO_ACTOR_REQUIRED');
+			exec.signal?.throwIfAborted();actor.lifecycle.signal.throwIfAborted();
+			if(typeof actor.receipts?.append!=='function'||typeof actor.receipts.commit!=='function')throw new Error('PI_TODO_BUSINESS_RECEIPTS_REQUIRED');
+			actor.receipts.append({version:1,domain:'planning',kind:'todos',payload:{todos}});await actor.receipts.commit();
 			const count = (status) => todos.filter((t) => t.status === status).length;
 			return Promise.resolve({
 				todos: todos.map((todo) => ({

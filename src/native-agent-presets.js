@@ -1,13 +1,11 @@
 // MIT source-derived preset generation, scope and Loader audit algorithms; see THIRD_PARTY.md.
 import {AgentSession} from '@earendil-works/pi-coding-agent';
-import {AsyncLocalStorage} from "node:async_hooks";
 import z from "@deepseek-ai/schemastery";
 import {ControlError} from './runtime/control-error.js'
 import { bindScopeParent, createScope, scopeOf, scopeParentOf } from "./native-scope.js";
 import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
 import { dump } from "js-yaml";
-import { z as z$1 } from "zod";
-import { Context, Service, symbols } from "@deepseek-ai/cordis";
+import { Context, Service } from "@deepseek-ai/cordis";
 import { EntryTree, isJsExpr } from "@deepseek-ai/cordis-plugin-loader";
 import {prepareProfileEntries} from "./native-profile-preflight.js";
 //#region lib/types/definition.js
@@ -29,36 +27,6 @@ function entryListProblem(rows, at = "") {
 		}
 	}
 }
-//#endregion
-//#region lib/types/session.js
-/**
-* The session-log record of which preset a session actually runs.
-*
-* The creation header names the preset a session STARTED with, and it is
-* deep-frozen because that is a creation fact. A session may still change
-* preset while it is blank, and the effect of that change outlives the blank
-* window: the first turn — and every turn after it — runs under the newly
-* mounted composition. Recording the change is what keeps the log honest, and
-* it is required outright by the repo's model-visible ⟺ logged rule, since the
-* preset decides the tool schemas and prompt sections the model sees.
-*
-* Reconstruction reads the `agentPreset` Session projection, never the header
-* alone.
-* @module @deepseek-ai/dsh-agent-preset-registry/session
-*/
-const agentPresetSchema = z$1.union([z$1.string(), z$1.null()]);
-/** Current Session preset, initialized from its header and advanced by selection events. */
-const agentPresetProjectionDefinition = {
-	key: "agentPreset",
-	stateSchema: agentPresetSchema,
-	init: (header) => header.agentPreset ?? null,
-	apply: (state, event) => event.type === "agent-preset/selected" ? event.data.agentPreset : state,
-	wire: {
-		viewSchema: agentPresetSchema,
-		view: (state) => state
-	},
-	stateVersion: 1
-};
 //#endregion
 //#region lib/types/mount.js
 /** Runtime plugin trees shared by Agents selecting one preset revision. */
@@ -349,7 +317,7 @@ function mountedCompositionRows(tree) {
 //#endregion
 //#region lib/types/index.js
 export default class NativeAgentPresets extends Service {
-static inject = ["loader", "sessionProjections", "piAuthority", "agents"];
+static inject = ["loader", "agents"];
 static Config = z.object({
 	default: z.string().required(),
 	selectedDefault: z.string().volatile()
@@ -358,27 +326,18 @@ owner;
 definitions = /* @__PURE__ */ new Map();
 generations = /* @__PURE__ */ new Map();
 bindings = /* @__PURE__ */ new WeakMap();
-switches = /* @__PURE__ */ new Map();
-commitFailures=new WeakMap();
 sealedCompositions=new WeakMap();
 inheritedCompositions=new WeakMap();
 closing=false;
-selectionCalls=new AsyncLocalStorage();
 constructor(ctx, config) {
 	super(ctx, "agentPresets");
 	this.config = config;
 	this.owner = ctx;
-		this.sessionWriter=ctx.get("sessions");this.sessionWriter=this.sessionWriter?.[symbols.original]??this.sessionWriter;
-		this.authority=ctx.piAuthority;
-		ctx.effect(()=>async()=>{this.closing=true;await Promise.allSettled([...this.switches].filter(([id])=>id!==this.selectionCalls.getStore()).map(([,pending])=>pending))},'native preset selection drain');
-		ctx.on('agent/pre-step',async({agent},next)=>{await this.switches.get(agent.id);if(this.commitFailures.has(agent))throw this.commitFailures.get(agent);return next()});
-	ctx.sessionProjections.register(agentPresetProjectionDefinition);
+	ctx.effect(()=>()=>{this.closing=true},'native preset registry close');
 	ctx.inject(["settings"], (child) => {
 		child.effect(() => child.settings.configure({ auto: false }, ctx.fiber));
 	});
-	ctx.on("session/event", (session, event) => {
-		if (event.type === "agent-preset/selected") ctx.emit("agent-preset/selected", session.id, event.data.agentPreset);
-	});
+
 }
 /** Default preset for a subsequently created session. */
 get defaultId() {
@@ -687,28 +646,16 @@ async recompose(ctx, id, validate) {
 	}
 	return preset;
 }
-/** Select a preset before a session starts its first turn.
-* @param agent Target Agent.
-* @param agentPreset Requested identity.
-* @returns Committed preset identity.
+/** Official actor composition is immutable after creation.
+* Choose the preset through creation metadata/defaults and the startup mount,
+* never by rewriting a session record or switching a published actor.
 */
 async select(agent, agentPreset) {
-	if(agent?.piSession instanceof AgentSession||this.sealedCompositions.has(agent))throw new ControlError('agent-preset/locked','Official SDK presets are selected during session creation',{sessionId:agent.id,agentPreset});
-	const turn = (this.switches.get(agent.id) ?? Promise.resolve()).then(() => this.selectionCalls.run(agent.id,async () => {
-		const assertBlank=()=>{if(this.owner.agents.get(agent.id)!==agent)throw new Error('NATIVE_PRESET_LIVE_AGENT_REQUIRED');if(this.closing)throw new Error('NATIVE_PRESET_REGISTRY_CLOSED');if(this.commitFailures.has(agent))throw this.commitFailures.get(agent);const boundary=this.owner.sessionProjections.stateOf(agent.session,'turnBoundary');if(boundary===undefined)throw new Error('NATIVE_PRESET_TURN_PROJECTION_REQUIRED');if(boundary.openTurnStartSeq!==null||boundary.lastTurn>0)throw new ControlError('agent-preset/locked','This session has already started',{sessionId:agent.id,agentPreset})};
-		assertBlank();
-		const preset=await this.recompose(agent.ctx,agentPreset,assertBlank);
-		try{agent.session.append('agent-preset/selected',{agentPreset:preset.id});const through=agent.session.seq,flushed=await this.sessionWriter.flush(agent.session),proof=this.authority.describe(agent.id);if(!flushed||proof?.engine!=='pi-session-manager'||!Number.isSafeInteger(proof.events)||proof.events<through)throw new Error('NATIVE_PRESET_PI_COMMIT_REQUIRED')}catch(cause){const failure=new Error('NATIVE_PRESET_SELECTION_COMMIT_FAILED',{cause});this.commitFailures.set(agent,failure);throw failure}
-		return preset.id;
-	}));
-	const guard = turn.catch(() => void 0);
-	this.switches.set(agent.id, guard);
-	try {
-		return await turn;
-	} finally {
-		if (this.switches.get(agent.id) === guard) this.switches.delete(agent.id);
-	}
+	if(this.closing)throw new Error('NATIVE_PRESET_REGISTRY_CLOSED');
+	if(!(agent?.piSession instanceof AgentSession)||scopeOf(agent.ctx)!==agent||this.owner.agents.get(agent.id)!==agent||agent.lifecycle?.isLive()!==true)throw new Error('NATIVE_PRESET_LIVE_AGENT_REQUIRED');
+	throw new ControlError('agent-preset/locked','Official SDK presets are selected during session creation',{sessionId:agent.id,agentPreset});
 }
+
 /** Read current registrations for cold transcript presentation.
 * @param id Preset identity or the default.
 * @returns A revision lease; dispose it after the scoped read completes.
@@ -748,4 +695,4 @@ compositionInventory() {
 }
 }
 
-export {NativeAgentPresets,agentPresetProjectionDefinition,auditRows,entryListProblem,leakedServices}
+export {NativeAgentPresets,auditRows,entryListProblem,leakedServices}

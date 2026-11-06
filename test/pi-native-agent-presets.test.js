@@ -93,3 +93,19 @@ test('declared header and actual startup preset must agree; impostor parents gra
 test('preset roster exposes failed imports, missing services and root service leaks without admitting them',{timeout:20000},async t=>{
  const f=await fixture(t),leak=join(f.root,'leak.mjs'),missing=join(f.root,'missing.mjs');await writeFile(leak,"export function apply(ctx){ctx.provide('leakedFixture',{})}");await writeFile(missing,"export const inject=['missingFixture'];export function apply(){}");for(const [id,name]of [['leak',pathToFileURL(leak).href],['missing',pathToFileURL(missing).href],['broken',pathToFileURL(join(f.root,'absent.mjs')).href]])f.unregister.push(await f.registry.register({id,plugins:[{name}]}));const rows=await f.registry.list();assert.match(rows.find(r=>r.id==='leak').broken,/isolate realms/);assert.match(rows.find(r=>r.id==='missing').broken,/waiting for missingFixture/);assert.ok(rows.find(r=>r.id==='broken').broken);assert.equal(f.host.ctx.get('leakedFixture'),undefined);for(const id of ['leak','missing','broken'])await assert.rejects(f.registry.acquireScope(id));assert.ok((await f.registry.compositionInventory()).find(r=>r.id==='broken').broken);await assert.rejects(f.registry.register({id:'night-bot',plugins:[]}),/Duplicate/)
 })
+
+test('preset selection has no legacy blank-session fallback or projection dependency',async t=>{
+ const f=await fixture(t),handle=await f.agent('preset-selection-boundary')
+ assert.equal(f.host.ctx.get('sessions'),undefined)
+ assert.equal(f.raw.constructor.inject.includes('sessionProjections'),false)
+ assert.equal(f.raw.constructor.inject.includes('sessions'),false)
+ await assert.rejects(f.registry.select({...handle.actor},'night-bot'),/NATIVE_PRESET_LIVE_AGENT_REQUIRED/)
+ let appended=0
+ await assert.rejects(f.registry.select({id:handle.actor.id,session:{append(){appended++}},ctx:handle.actor.ctx},'night-bot'),/NATIVE_PRESET_LIVE_AGENT_REQUIRED/)
+ await assert.rejects(f.registry.select(handle.actor,'night-bot'),error=>error.code==='agent-preset/locked')
+ assert.equal(appended,0)
+ const before=await f.saved(handle.actor.id)
+ await handle.dispose()
+ await assert.rejects(f.registry.select(handle.actor,'night-bot'),/NATIVE_PRESET_LIVE_AGENT_REQUIRED/)
+ assert.deepEqual((await f.saved(handle.actor.id)).entries,before.entries)
+})
