@@ -16,7 +16,7 @@ export async function officialToolsFixture(t,register){
  const ctx=new Context(),requests=[],receipts=[],results=[],cleanups=[]
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
  new NativeTools(ctx)
- const manager=SessionManager.create(root,join(root,'sessions')),owner={id:manager.getSessionId(),ctx}
+ const manager=SessionManager.create(root,join(root,'sessions')),owner={id:manager.getSessionId(),metadata:Object.freeze({id:manager.getSessionId()}),ctx}
  const businessAudit={isLive:()=>true,flush:async()=>{}}
  let adapter,session,plan,served
  t.after(async()=>{try{for(const cleanup of cleanups.toReversed())await cleanup();await adapter?.close();session?.dispose();await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})

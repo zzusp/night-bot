@@ -34,8 +34,9 @@ export default class NativeAgents extends Service{
  async resume(options){const owner=this.ctx,target=this.requireFactory();return Reflect.apply(target.resume,getTraceable(owner,target),[owner,options])}
  register(agent){return this.ctx.effect(async function*(){yield this.enter(agent,undefined);await this.announce(agent,'startup')}.bind(this),'native agents registration')}
  enter(agent,owner){
-  const sessionId=agent.piSession instanceof AgentSession?agent.piSession.sessionId:agent.session?.id
-  if(typeof sessionId!=='string'||agent.id!==sessionId||agent.piSession&&!(agent.piSession instanceof AgentSession))throw new Error('agent identity must match its session')
+  let sessionId
+  try{if(agent?.piSession instanceof AgentSession)sessionId=agent.piSession.sessionId}catch{}
+  if(!agent||typeof agent!=='object'||'session' in agent||typeof sessionId!=='string'||agent.id!==sessionId||agent.metadata?.id!==sessionId)throw new Error('agent identity must match its official session and metadata')
   if(this.entries.has(agent.id))throw new Error(`agent "${agent.id}" is already registered`)
   const entry={id:agent.id,agent,owner,carrier:scopeTarget(agent,agent),announced:false,announcing:false,pendingDetach:false};this.entries.set(agent.id,entry);let attached=true
   return()=>{if(!attached)return;attached=false;if(entry.announcing)entry.pendingDetach=true;else this.detach(entry)}

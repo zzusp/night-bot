@@ -38,6 +38,8 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  const settings=()=>SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}})
  const create=()=>createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxTokens:31,maxRetries:0}},settingsManager:settings(),admission,beforeRequest:()=>admission.beforeRequest(),context:{systemPrompt:{officialSections(){if(policyFailure)throw policyFailure;return{}}}},createAudit:()=>({isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=> 'never',append(){throw Error('no approval expected')},flush:()=>store.commit()})})
  active=await create();assert.equal(active.actor.session,undefined)
+ assert.throws(()=>ctx.agents.enter(active.actor,undefined),/metadata/)
+ active.actor.metadata=Object.freeze({id:store.id})
  const detach=ctx.agents.enter(active.actor,undefined)
  assert.equal(ctx.agents.get('official'),active.actor)
  assert.throws(()=>ctx.agents.enter({id:'forged',piSession:{sessionId:'forged'}},undefined),/identity/)
