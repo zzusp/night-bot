@@ -51,7 +51,7 @@ Pi agent-core1.5.0 负责推理/工具迭代，Pi SessionManager 负责当前历
 - 原大型 verifier bundle 已替换为共享本地验证函数的隔离 ESM worker。
 - Windows ACL 支撑代码保留来源和约束；重启恢复探针默认绑定 Native provider
   路径及固定哈希，旧部署入口必须显式选择。拒绝条件和不重放边界保留。
-- 不提供可视化；HTTP 仅监听 loopback；未迁移生产数据。旧部署脚本仅作来源
+- 核心无可视化依赖；独立可选 Web 渠道插件见 [Web 运维](ops/web-console-local.md)，不改变核心 schema 或默认组合。HTTP 仅监听 loopback；未迁移生产数据。旧部署脚本仅作来源
   参考，不是 Night Bot 的部署入口。真实平台、DWS、厂商和可选插件需另行验收。
 
 当前架构见 RUNTIME.md，结果与平台限制见 VALIDATION.md。分阶段记录保存在

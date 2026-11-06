@@ -1,0 +1,12 @@
+case,scope,round-1,round-2
+optional-boundary,默认核心无Web依赖与schema变更,PASS,PASS
+web-server,认证同源持久回执和真实Host集成,PASS_20,PASS_21
+browser-flows,完整浏览器及最终源码复验,PASS_10_PLUS_4,PASS_14
+pending-receipt,处理中回执不冒充已接纳且草稿保留,FAIL,PASS
+task-blockers,真实核心阻断对象在Web白名单投影展示,FAIL,PASS
+visual-accessibility,桌面手机浅深色与五路由axe,PASS,PASS
+build,独立依赖安装TypeScript和生产构建,PASS,PASS
+core-regression,原始全量1失败与Windows断言修复后文件全量通过详见报告,RUNNING,FAIL_THEN_TARGETED_PASS
+source-guards,源码导入哈希及独立依赖边界,NOT_RUN,PASS
+live-vendor,真实模型与厂商渠道验收,NOT_RUN,NOT_RUN
+release,合并部署和公网环境验收,NOT_RUN,NOT_RUN
