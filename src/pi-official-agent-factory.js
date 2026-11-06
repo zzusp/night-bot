@@ -144,7 +144,7 @@ export class OfficialAgentFactory {
    actor.options=deepFreeze({...actor.options,...bundle.session.model?{provider:bundle.session.model.provider,model:bundle.session.model.id}:{},reasoningEffort:bundle.session.thinkingLevel})
    Object.defineProperty(actor,'status',{enumerable:true,get:()=>bundle.session.isStreaming?'running':'idle'})
    admission.bindSession(bundle.session,{signal:actor.lifecycle.signal})
-   unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,isLive:live})
+   unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,pending:admission.pending,isLive:live})
    unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live})
    options.signal.throwIfAborted();await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true
    await ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming})

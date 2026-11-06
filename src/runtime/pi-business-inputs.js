@@ -17,7 +17,7 @@ export function bindBusinessInputAuthority(actor,port){
  if(typeof port?.lookupPacket!=='function'||typeof port.isLive!=='function')throw new TypeError('Durable admission lookup and live actor capability required')
  const previous=bindings.get(actor)
  if(previous){if(previous.port!==port)throw fail('BUSINESS_INPUT_AUTHORITY_ALREADY_BOUND');return()=>{}}
- const bound={port,lookupPacket:port.lookupPacket.bind(port),isLive:port.isLive.bind(port),lookupCommandEntry:port.lookupCommandEntry?.bind(port)}
+ const bound={port,lookupPacket:port.lookupPacket.bind(port),isLive:port.isLive.bind(port),lookupCommandEntry:port.lookupCommandEntry?.bind(port),pending:port.pending?.bind(port)}
  bindings.set(actor,bound)
  return()=>{if(bindings.get(actor)===bound)bindings.delete(actor)}
 }
@@ -60,4 +60,16 @@ export function retireBusinessInputs(actor,matches){
  const selected=visibleBusinessInputs(actor).filter(matches)
  for(const entry of selected)actor.piSession.sessionManager.appendContextEdit(entry.entryId,null)
  return selected.map(entry=>entry.entryId)
+}
+
+/** Queued Night business packets are not Pi transcript messages. Read only
+ * the exact live factory-bound admission port, never a model-supplied queue. */
+export function pendingBusinessInputs(actor){
+ officialBusinessProjection(actor)
+ const bound=bindings.get(actor)
+ if(!bound||bound.isLive(actor)!==true)throw fail('BUSINESS_INPUT_ACTOR_NOT_LIVE')
+ if(typeof bound.pending!=='function')throw fail('BUSINESS_INPUT_PENDING_AUTHORITY_REQUIRED')
+ const ids=bound.pending()
+ if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)throw fail('BUSINESS_INPUT_PENDING_INVALID')
+ return ids.map(id=>{const packet=bound.lookupPacket(id);if(!packet||packet.then||packet.id!==id)throw fail('BUSINESS_INPUT_PENDING_INVALID');return structuredClone(packet)})
 }

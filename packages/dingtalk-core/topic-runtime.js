@@ -1,3 +1,4 @@
+import {pendingBusinessInputs} from '../../src/runtime/pi-business-inputs.js'
 import {TRIAGE_BATCH_LIMIT,triageState,appendTriagePacket,createTriageFeedback,feedbackParameters} from '../../src/channels/triage.js'
 import { acceptanceCriteriaSchema } from './task-input-contract.js'
 import { randomUUID } from 'node:crypto'
@@ -17,6 +18,7 @@ import { assertCurrentTaskPrompts, isDiagnosticCheckpoint } from './task-result.
 import { compactReplyReviewCandidates, blockTaskDecisionForUnavailableMedia, groupDecisionSubmissionSchema, groupDecisionSubmissionJsonSchema, legacyGroupDecisionSubmissionSchema, legacyGroupDecisionSubmissionJsonSchema, topicRouteSubmissionSchema, topicRouteSubmissionJsonSchema, replyReviewJsonSchema, TOPIC_TITLE_MAX_CHARS, collectDecisionIssues, isSilentTaskFactFeedback } from './decision.js'
 
 const textMessage = (text, images = []) => Object.freeze({ id: randomUUID(), role: 'user', source: { kind: 'coordinator' }, content: [{ type: 'text', text }, ...images.map((attachment) => ({ type: 'image', attachment }))] })
+const pendingInputs=agent=>agent?.piSession?pendingBusinessInputs(agent):[...(agent?.inbox?.nextStep??[]),...(agent?.inbox?.nextTurn??[])]
 const DECISION_SECTIONS = ['messages', 'summary', 'removedUnitRefs', 'rejectedDecisions', 'ownership', 'quotedMessages', 'sourceMessages', 'promptIndex']
 const objectOutput = { schema: { type: 'object' }, render: (_args, out) => [{ type: 'text', text: JSON.stringify(out) }] }
 const jsonOutput = (value) => {
@@ -377,7 +379,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
     const state = store.getCoordinationRequest?.(groupId, request.requestId)
     if (state?.status === 'exhausted') { request.exhausted = true; return agent }
     if (dispatchRequest) return dispatchRequest(request, Object.freeze({ ...textMessage(text, images), id: messageId }))
-    const pending = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])]
+    const pending = pendingInputs(agent)
     const recorded = pending.some((message) => message.id === messageId) || (agent.piSession?agent.admission.status(messageId)==='admitted':agent.session?.snapshotEvents?.().some((event) => event.type === 'user/message' && event.data?.id === messageId))
     if (!recorded) agent.steer(Object.freeze({ ...textMessage(text, images), id: messageId }))
     return agent
@@ -428,7 +430,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
           await persist({ attempt: request.attempt, nextRetryAt: undefined })
           if (!current()) return
           const id = `message-${request.requestId}-resume-${request.resumeEpoch}-${request.attempt}`
-          const pending = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])]
+          const pending = pendingInputs(agent)
           const hasBody = (message) => message.id === request.messageId || (message.content ?? []).some((part) => part.type === 'text' && part.text === request.text)
           const visible = pending.some(hasBody) || coordinationMessages(agent)?.some(hasBody)
           // 原文仍在 surface 时仅发送短提醒；压缩已移出则恢复正文，不能靠历史已消费记录假定可见。
@@ -1143,7 +1145,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
         const agent = getAgent(groupId, request)
         // Derive from the current revision even while its async envelope is being built.
         const updateMessageId = `message-${request.requestId}-revision-${request.revision}`
-        const pending = [...(agent?.inbox?.nextStep ?? []), ...(agent?.inbox?.nextTurn ?? [])]
+        const pending = pendingInputs(agent)
         const consumed = (agent?.piSession?agent.admission.status(updateMessageId)==='admitted':agent?.session?.snapshotEvents?.().some(event => event.type === 'user/message' && event.data.id === updateMessageId))
         if (!consumed || pending.some(message => message.id === updateMessageId))
           return { status: 'decision-update-unread', revision: request.revision, nextAction: 'consume-current-update' }

@@ -1,10 +1,11 @@
+import {pendingBusinessInputs} from '../src/runtime/pi-business-inputs.js'
 import {visibilityAuthority,visibilityAgent,visibilityContext,appendVisible,compactVisible,restoreVisibility} from './fixtures/pi-coordination-visibility.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { nativeTaskHost } from './fixtures/task-session-native-host.js'
+import { nativeRuntimeHost } from './fixtures/runtime-official-host.js'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { Session } from '../packages/capability-compat/session/index.js'
 import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
@@ -2570,23 +2571,39 @@ test('只读快路径拒绝动作和候选变化，Task事实在真实提交临�
   assert.equal(h.store.listTasks().length, 0)
 })
 
-test('原生 Inbox 仍停放原请求时，恢复提醒不会再排入第二份正文', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'topic-pi-pending-inbox-'))
+test('原生 Pi 业务队列仍停放未接纳原请求时，恢复提醒不会再排入第二份正文', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'topic-pi-pending-input-'))
   let native, handle
   t.after(async () => { try { await handle?.dispose(); await native?.close() } finally { await rm(root, { recursive: true, force: true }) } })
-  native = await nativeTaskHost(root, async () => { throw new Error('parked inbox must not start inference') }, { resident: true })
-  handle = await native.ctx.agents.create({ sessionId: 'session-pending-body' })
-  const { session, inbox } = handle.agent
-  let finish, idleCalls = 0
-  const reminder = new Promise((resolve) => { finish = resolve })
-  const h = await setup(t, { session, inbox, retryDelayMs: 2, whenIdle: () => ++idleCalls === 1 ? Promise.resolve() : new Promise(() => {}), onSteer(message) { handle.agent.inject(message); if (message.content[0].text.startsWith('[COORDINATION_RESUME]')) finish() } })
+  native = await nativeRuntimeHost(root, async () => { throw new Error('parked official input must not start inference') }, { resident: true })
+  handle = await native.ctx.agents.create({ sessionId: 'session-pending-body',meta:{cwd:native.ctx.runtimePaths.workspaces,agentPreset:'night-bot'},authorizeInput:packet=>packet.source.kind==='coordinator' })
+  const actor=handle.actor;assert.equal(actor.session,undefined);assert.equal(actor.inbox,undefined)
+  const reminder=Promise.withResolvers(),dispatches=[]
+  const h = await setup(t, { retryDelayMs: 2, async dispatchRequest(_request,message) {
+    const packet={id:message.id,source:structuredClone(message.source),content:structuredClone(message.content)}
+    await handle.enqueue(packet)
+    dispatches.push(packet)
+    if(packet.content[0].text.startsWith('[COORDINATION_RESUME]'))reminder.resolve()
+    return actor
+  } })
   await ingest(h, 'parked'); await h.coordinator.schedule('g')
   let watchdog
-  try { await Promise.race([reminder, new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error('pending_reminder_timeout')), 1000) })]) }
-  finally { clearTimeout(watchdog) }
-  assert.equal(inbox.nextStep.length, 2)
-  assert.equal(inbox.nextStep.filter((message) => message.content[0].text.startsWith('[GROUP_TOPIC_ROUTE]')).length, 1)
-  assert.equal(native.requests.length, 0, 'Pi keeps the injected original and reminder parked without a model turn')
+  try { await Promise.race([reminder.promise, new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error('pending_reminder_timeout:'+h.errors.map(error=>error.message).join(','))), 1000) })]) }
+  finally { clearTimeout(watchdog);await h.coordinator.close() }
+  const stored=await native.ctx.sessionPersistence.readNative(actor.id,{requireComplete:true}),inputs=actor.admission.pending().map(id=>actor.admission.lookupPacket(id))
+  assert.equal(dispatches.length,2);assert.equal(inputs.length,2)
+  assert.equal(inputs.filter(entry=>entry.content[0].text.startsWith('[GROUP_TOPIC_ROUTE]')).length,1)
+  assert.equal(inputs.filter(entry=>entry.content[0].text.startsWith('[COORDINATION_RESUME]')).length,1)
+  assert.equal(stored.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted').length,0);assert.equal(stored.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input').length,0);assert.deepEqual(stored.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued').map(row=>row.payload.id),dispatches.map(packet=>packet.id))
+  assert.equal(native.requests.length, 0, 'The durable business queue keeps the unadmitted original and reminder without a model turn')
+  assert.throws(()=>pendingBusinessInputs({...actor}),{code:'BUSINESS_INPUT_ACTOR_NOT_LIVE'})
+  for(const packet of inputs)await actor.piSession.sendCustomMessage({customType:'night.business-input',content:packet.content,display:false,details:{packetId:packet.id,source:packet.source}},{triggerTurn:false})
+  await handle.deliver(inputs[0].id) // repairs the public SDK-entry / durable-ack gap without redelivery
+  assert.deepEqual(pendingBusinessInputs(actor),[],'only committed Pi admission removes a packet from the business pending view')
+  const admitted=await native.ctx.sessionPersistence.readNative(actor.id,{requireComplete:true}),official=admitted.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
+  assert.equal(official.length,2);assert.equal(official.filter(entry=>entry.content[0].text.startsWith('[GROUP_TOPIC_ROUTE]')).length,1);assert.equal(official.filter(entry=>entry.content[0].text.startsWith('[COORDINATION_RESUME]')).length,1)
+  assert.deepEqual(admitted.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted').map(row=>row.payload.id),dispatches.map(packet=>packet.id));assert.equal(native.requests.length,0)
+
 })
 
 test('显式恢复递增持久epoch，不会被此前已消费提醒身份吞掉', async (t) => {
