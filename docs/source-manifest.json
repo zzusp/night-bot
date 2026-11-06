@@ -77,7 +77,7 @@
       "source": "coordination-context.js",
       "sourceSha256": "3574c57fc954f47af84e0ff1a8d2da47a3f172b031d2d933cff46734f8beba43",
       "status": "adapted",
-      "sha256": "bf78aa713a93340b640b7ee3af5ef9e830955ce2f724d2fed713833a11c3cfef",
+      "sha256": "54879e29dc0b1529c2548356633ac505409cbb7ce6bae2ba43a6641f8b00cd8c",
       "adaptation": "Read the official actor SessionManager projection and private source-bound business inputs directly."
     },
     {
