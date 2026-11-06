@@ -5,7 +5,7 @@ import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {FIXTURE_TOKEN} from './preview.mjs'
 
-const evidence = fileURLToPath(new URL('../../../docs/acceptance/web-console/round-2/', import.meta.url))
+const evidence = fileURLToPath(new URL('../../../docs/acceptance/web-console/round-3/', import.meta.url))
 async function screenshot(page: Page, name: string) {
   await mkdir(evidence, {recursive: true})
   await page.screenshot({path: join(evidence, name + '.png'), fullPage: true, animations: 'disabled'})
@@ -326,4 +326,118 @@ test('深色聊天、任务、执行上下文与渠道通过 axe WCAG AA', async
     const results = await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze()
     expect(results.violations, `dark ${route}: ${JSON.stringify(results.violations.map(item => ({id: item.id, nodes: item.nodes.map(node => node.target)})))}`).toEqual([])
   }
+})
+
+test('初次读取失败与真实空数据分开显示，恢复路径只有一个重试入口', async ({page}) => {
+  await login(page)
+  await page.route('**/api/tasks?**', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
+  await page.goto('/#/tasks')
+  await expect(page.getByRole('heading', {name: '任务列表暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '这里还没有任务', exact: true})).toHaveCount(0)
+  await expect(page.locator('.tasks-page').getByRole('button', {name: '重新获取', exact: true})).toHaveCount(1)
+  await page.unroute('**/api/tasks?**')
+  await page.locator('.tasks-page').getByRole('button', {name: '重新获取', exact: true}).click()
+  await expect(page.locator('.task-table tbody tr')).toHaveCount(20)
+
+  await page.route('**/api/channels', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
+  await page.route('**/api/conversations', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
+  await page.goto('/#/channels')
+  await expect(page.getByRole('heading', {name: '渠道配置暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '渠道会话暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '还没有配置渠道', exact: true})).toHaveCount(0)
+  await expect(page.getByRole('heading', {name: '等待第一条消息', exact: true})).toHaveCount(0)
+  await page.unroute('**/api/channels')
+  await page.unroute('**/api/conversations')
+
+  await page.route('**/api/conversations/room-empty/messages?**', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
+  await page.goto('/#/channels/room-empty')
+  await expect(page.getByRole('heading', {name: '消息记录暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '暂无消息', exact: true})).toHaveCount(0)
+  await expect(page.locator('.channel-chat').getByRole('button', {name: '重新获取', exact: true})).toHaveCount(1)
+  await page.unroute('**/api/conversations/room-empty/messages?**')
+  await page.locator('.channel-chat').getByRole('button', {name: '重新获取', exact: true}).click()
+  await expect(page.getByRole('heading', {name: '暂无消息', exact: true})).toBeVisible()
+
+  await page.route('**/api/tasks/task-research/session?**', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
+  await page.goto('/#/tasks/task-research')
+  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await expect(page.getByRole('heading', {name: '执行记录暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '暂无可展示的执行记录', exact: true})).toHaveCount(0)
+  await expect(page.locator('.task-dialogue').getByRole('button', {name: '重新获取', exact: true})).toHaveCount(1)
+})
+
+test('窄屏长发送者与工具名不撑宽消息区，未知来源不冒称当前用户', async ({page}) => {
+  await page.setViewportSize({width: 390, height: 844})
+  await login(page)
+  const longMarkdown = '技术内容应在自己的区域滚动。\n\n```text\n' + 'long_identifier_'.repeat(50) + '\n```\n\n| 字段 | 内容 |\n| --- | --- |\n| 来源 | ' + 'x'.repeat(180) + ' |'
+  const messages = [
+    {id: 'long-sender', role: 'user', senderName: 'sender_' + 'x'.repeat(180), text: longMarkdown, taskIds: Array.from({length: 8}, (_, i) => 'task-' + i)},
+    {id: 'unknown-sender', role: 'user', text: '未提供发送者姓名的渠道原始消息。'},
+  ]
+  await page.route('**/api/conversations', async route => {
+    const response = await route.fetch()
+    const data = await response.json()
+    await route.fulfill({json: {items: data.items.map((item: {id: string}) => item.id === 'room-product' ? {...item, type: null} : item)}})
+  })
+  await page.route('**/api/conversations/room-product/messages?**', route => route.fulfill({json: {items: messages, pages: {messages: {nextOffset: null, total: 2}, outbox: {nextOffset: null, total: 0}}}}))
+  await page.goto('/#/channels/room-product')
+  await expect(page.locator('.message-meta strong').last()).toHaveText('渠道成员')
+  await expect(page.locator('.channel-chat-header')).toContainText('会话类型未记录')
+  const transcript = page.getByRole('region', {name: '消息记录', exact: true})
+  expect(await transcript.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+  expect(await page.locator('.markdown pre').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  expect(await page.locator('.message-links a').count()).toBe(8)
+  await screenshot(page, 'mobile-long-channel')
+
+  await page.route('**/api/tasks/task-research/session?**', route => route.fulfill({json: {status: 'ready', scope: 'current-session-context', items: [
+    {id: 'source-user', role: 'user', text: '来自任务原始来源的输入。', kind: 'source'},
+    {id: 'long-tool', role: 'tool', toolName: 'tool_' + 'x'.repeat(120), kind: 'tool-result', text: longMarkdown, status: 'completed'},
+  ], total: 2, nextOffset: null}}))
+  await page.goto('/#/tasks/task-research')
+  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await expect(page.locator('.message-user .message-meta strong')).toHaveText('用户')
+  const summary = page.locator('.tool-message summary')
+  await summary.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.tool-message')).toHaveAttribute('open', '')
+  expect(await transcript.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await screenshot(page, 'mobile-long-execution')
+})
+
+test('任务阻断状态中文可读，未开始的执行与提交中的记录分开提示', async ({page}) => {
+  await login(page)
+  const states = [['prepared', '已准备'], ['recovering', '恢复中'], ['stopping', '停止中'], ['succeeded', '已成功'], ['stale', '已失效'], ['not_started', '未开始']]
+  await page.route('**/api/tasks/task-schedule', async route => {
+    const response = await route.fetch()
+    const data = await response.json()
+    await route.fulfill({json: {...data, blockers: states.map(([status], index) => ({kind: 'execution', id: `state-${index}`, title: `执行项 ${index + 1}`, status}))}})
+  })
+  await page.goto('/#/tasks/task-schedule')
+  for (const [, label] of states) await expect(page.locator('.blockers').getByText(label, {exact: true})).toBeVisible()
+  await page.route('**/api/tasks/task-schedule/session?**', route => route.fulfill({json: {status: 'pending', reason: 'SESSION_NOT_STARTED', scope: 'current-session-context', items: [], total: 0, nextOffset: null}}))
+  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await expect(page.getByRole('heading', {name: '执行尚未开始', exact: true})).toBeVisible()
+  await expect(page.locator('.task-dialogue')).not.toContainText('正在保存记录')
+})
+
+test('上翻历史后后台消息不拉回底部，键盘可回到最新消息', async ({page}) => {
+  await login(page)
+  const messages = Array.from({length: 20}, (_, index) => ({id: `scroll-${index}`, role: index % 2 ? 'assistant' : 'user', text: `第 ${index + 1} 条历史消息。\n\n` + '保留当前阅读位置。'.repeat(12)}))
+  await page.route('**/api/conversations/room-product/messages?**', route => route.fulfill({json: {items: messages, pages: {messages: {nextOffset: null, total: messages.length}, outbox: {nextOffset: null, total: 0}}}}))
+  await page.goto('/#/channels/room-product')
+  const transcript = page.getByRole('region', {name: '消息记录', exact: true})
+  await expect(page.locator('.message')).toHaveCount(20)
+  await expect.poll(() => transcript.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(1)
+  await transcript.focus()
+  await page.keyboard.press('Home')
+  await expect.poll(() => transcript.evaluate(el => el.scrollTop)).toBe(0)
+  messages.push({id: 'scroll-new', role: 'assistant', text: '后台新增的消息。'})
+  await expect(page.locator('.message')).toHaveCount(21, {timeout: 12_000})
+  expect(await transcript.evaluate(el => el.scrollTop)).toBe(0)
+  const latest = page.getByRole('button', {name: '回到最新消息', exact: true})
+  await latest.focus()
+  await page.keyboard.press('Enter')
+  await expect.poll(() => transcript.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(1)
+  await expect(latest).toHaveCount(0)
 })

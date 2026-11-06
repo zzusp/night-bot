@@ -24,9 +24,12 @@ export async function openWebLedger(directory) {
     return row && {requestId: row.id, conversationId: row.conversation, groupId: row.group_id, status: row.status}
   }
   const messages = conversation => [
-    ...db.prepare('SELECT * FROM requests WHERE conversation=? ORDER BY created_at DESC,id DESC LIMIT 501').all(conversation).map(row => ({id: row.id, requestId: row.id, role: 'user', text: row.text, createdAt: row.created_at, status: row.status})),
-    ...db.prepare('SELECT * FROM replies WHERE conversation=? ORDER BY created_at DESC,id DESC LIMIT 501').all(conversation).map(row => ({id: row.message_id, role: 'assistant', text: row.text, createdAt: row.created_at, status: 'delivered'})),
-  ].sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+    ...db.prepare('SELECT rowid AS sequence,* FROM requests WHERE conversation=? ORDER BY created_at DESC,rowid DESC LIMIT 501').all(conversation).map(row => ({sequence: row.sequence, id: row.id, requestId: row.id, role: 'user', text: row.text, createdAt: row.created_at, status: row.status})),
+    ...db.prepare('SELECT rowid AS sequence,* FROM replies WHERE conversation=? ORDER BY created_at DESC,rowid DESC LIMIT 501').all(conversation).map(row => ({sequence: row.sequence, id: row.message_id, role: 'assistant', text: row.text, createdAt: row.created_at, status: 'delivered'})),
+  // 相同时间先显示用户消息，再显示回复；各表内保留真实插入顺序，不把随机 ID 当作时间。
+  ].sort((left, right) => left.createdAt.localeCompare(right.createdAt)
+    || (left.role === right.role ? left.sequence - right.sequence : left.role === 'user' ? -1 : 1))
+    .map(({sequence, ...message}) => message)
   return {
     reserve({requestId, conversationId, groupId, text, senderId, channelId}) {
       const payload = JSON.stringify([conversationId, groupId, text, senderId, channelId])
@@ -47,8 +50,8 @@ export async function openWebLedger(directory) {
       const total = db.prepare('SELECT COUNT(DISTINCT conversation) AS n FROM requests').get().n
       const rows = db.prepare('SELECT conversation,MAX(created_at) AS updated_at FROM (SELECT conversation,created_at FROM requests UNION ALL SELECT conversation,created_at FROM replies) GROUP BY conversation ORDER BY updated_at DESC,conversation LIMIT ? OFFSET ?').all(limit, offset)
       const items = rows.map(row => {
-        const first = db.prepare('SELECT text FROM requests WHERE conversation=? ORDER BY created_at,id LIMIT 1').get(row.conversation)
-        const latest = db.prepare('SELECT status FROM requests WHERE conversation=? ORDER BY created_at DESC,id DESC LIMIT 1').get(row.conversation)
+        const first = db.prepare('SELECT text FROM requests WHERE conversation=? ORDER BY rowid LIMIT 1').get(row.conversation)
+        const latest = db.prepare('SELECT status FROM requests WHERE conversation=? ORDER BY rowid DESC LIMIT 1').get(row.conversation)
         return {id: row.conversation, title: first.text.slice(0, 80), updatedAt: row.updated_at, status: latest.status === 'accepted' ? 'ready' : latest.status}
       }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       return {items, total, nextOffset: offset + items.length < total ? offset + items.length : null}
@@ -57,7 +60,7 @@ export async function openWebLedger(directory) {
       const total = db.prepare('SELECT COUNT(*) AS n FROM requests WHERE conversation=?').get(conversationId).n
       if (!total) return null
       const rows = messages(conversationId)
-      const latest = db.prepare('SELECT status FROM requests WHERE conversation=? ORDER BY created_at DESC,id DESC LIMIT 1').get(conversationId)
+      const latest = db.prepare('SELECT status FROM requests WHERE conversation=? ORDER BY rowid DESC LIMIT 1').get(conversationId)
       return {conversationId, messages: rows.slice(-500), truncated: rows.length > 500, status: latest.status === 'accepted' ? 'ready' : latest.status}
     },
     transport(channelId, senderId) {

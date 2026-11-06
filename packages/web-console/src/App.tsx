@@ -4,7 +4,7 @@ import { api, errorText, setSession, type ChatSummary, type Overview, type Page,
 import { dateTime, navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
 import { Loading, Notice, Status } from './components/Shared';
-import ChatPage, { type Drafts } from './ChatPage';
+import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
 import ChannelsPage from './ChannelsPage';
 
@@ -38,7 +38,7 @@ class PageBoundary extends Component<{ children: ReactNode; resetKey: string }, 
   render() { return this.state.failed ? <EmptyState title="这个页面暂时无法显示" description="请重新获取页面，或从侧栏进入其他页面。" action={<Button variant="secondary" onClick={() => this.setState({ failed: false })}>重新显示</Button>} /> : this.props.children; }
 }
 
-function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: () => void; drafts: Drafts }) {
+function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: () => Promise<void>; drafts: Drafts }) {
   const route = useRoute();
   const segments = route.pathname.split('/').filter(Boolean);
   const section = segments[0] || 'chat';
@@ -64,7 +64,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   };
   const logout = async () => {
     if (logoutBusy) return; setLogoutBusy(true); setLogoutError(null);
-    try { await api('/logout', { method: 'POST', body: {} }); onLogout(); }
+    try { await onLogout(); }
     catch (err) { setLogoutError(err); }
     finally { setLogoutBusy(false); }
   };
@@ -76,7 +76,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
     <div className="sidebar-history"><div className="sidebar-label"><span>最近对话</span><span>{chats.data?.total ?? ''}</span></div>
       {currentChats.error && <button className="sidebar-retry" onClick={currentChats.refresh}>读取失败，点击刷新</button>}
-      {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/chat/${encodeURIComponent(chat.id)}`} key={chat.id} aria-current={section === 'chat' && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}><RiChat3Line size={16} /><span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">从第一段对话开始</p>}
+      {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/chat/${encodeURIComponent(chat.id)}`} key={chat.id} aria-current={section === 'chat' && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}><RiChat3Line size={16} /><span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">{currentChats.error && !currentChats.data ? '对话列表暂不可读' : '从第一段对话开始'}</p>}
       {(historyOffset > 0 || currentChats.data?.nextOffset != null) && <div className="history-pagination">{historyOffset > 0 && <button onClick={() => setHistoryOffset(Math.max(0, historyOffset - 20))}>上一页</button>}{currentChats.data?.nextOffset != null && <button onClick={() => setHistoryOffset(currentChats.data!.nextOffset!)}>更早对话</button>}</div>}
     </div>
     <div className="sidebar-bottom"><div className="workspace-note"><span className="workspace-dot" /><div><strong>你的专属工作空间</strong><span>任务持续运行，对话随时继续</span></div></div>
@@ -95,13 +95,14 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </PageBoundary></main>
       {section === 'chat' && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
+        {!!Object.keys(overview.data?.sectionErrors || {}).length && <p className="rail-empty" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
         {!overview.data && overview.loading ? <Loading /> : <>
           <div className="activity-counts"><a href="#/tasks?state=running"><span>执行中</span><strong>{overview.data?.running?.total ?? '—'}</strong><span className="count-dot info" /></a><a href="#/tasks?state=waiting"><span>等待中</span><strong>{overview.data?.waiting?.total ?? '—'}</strong><span className="count-dot warning" /></a></div>
           <section className="rail-section"><div className="rail-section-title"><h3>最近任务</h3><a href="#/tasks">查看全部<RiArrowRightLine size={14} /></a></div>
-            {overview.data?.tasks?.items.length ? overview.data.tasks.items.slice(0, 5).map(task => <a className="rail-task" key={task.taskId} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><div><Status value={task.state} /><time>{dateTime(task.updatedAt || task.createdAt)}</time></div><strong>{task.title || task.objective || '未命名任务'}</strong></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.tasks ? '暂时无法读取任务，请刷新。' : '暂无任务，开始对话来安排第一项工作。'}</p>}
+            {overview.data?.tasks?.items.length ? overview.data.tasks.items.slice(0, 5).map(task => <a className="rail-task" key={task.taskId} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><div><Status value={task.state} /><time>{dateTime(task.updatedAt || task.createdAt)}</time></div><strong>{task.title || task.objective || '未命名任务'}</strong></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.tasks || (overview.error && !overview.data) ? '暂时无法读取任务，请刷新。' : '暂无任务，开始对话来安排第一项工作。'}</p>}
           </section>
           <section className="rail-section"><div className="rail-section-title"><h3>已配置渠道</h3><a href="#/channels">查看<RiArrowRightLine size={14} /></a></div>
-            {overview.data?.channels?.length ? overview.data.channels.slice(0, 5).map(item => <a className="rail-channel" key={item.channelId} href="#/channels"><span><RiGlobalLine size={18} /></span><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.enabled ? 'success' : 'neutral'}>{item.enabled ? '已启用' : '未启用'}</Badge></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.channels ? '暂时无法读取渠道，请刷新。' : '尚未配置渠道'}</p>}
+            {overview.data?.channels?.length ? overview.data.channels.slice(0, 5).map(item => <a className="rail-channel" key={item.channelId} href="#/channels"><span><RiGlobalLine size={18} /></span><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.enabled ? 'success' : 'neutral'}>{item.enabled ? '已启用' : '未启用'}</Badge></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.channels || (overview.error && !overview.data) ? '暂时无法读取渠道，请刷新。' : '尚未配置渠道'}</p>}
           </section>
         </>}<div className="rail-footer"><RiShieldCheckLine size={14} /><span>状态来自 Bot 的实际记录</span></div>
       </aside>}
@@ -115,15 +116,33 @@ export default function App() {
   const [checking, setChecking] = useState(true);
   const [expired, setExpired] = useState(false);
   const [startupError, setStartupError] = useState<unknown>(null);
-  const drafts = useRef<Drafts>({ values: new Map(), attempts: new Map() });
-  const login = (value: Session) => { setSession(value); updateSession(value); setExpired(false); };
+  const [drafts, replaceDrafts] = useState(createDrafts);
+  const loggingOut = useRef(false), expiredDuringLogout = useRef(false);
+  const login = (value: Session) => { setSession(value); updateSession(value); setExpired(false); setStartupError(null); };
+  const logout = async () => {
+    if (loggingOut.current) return;
+    loggingOut.current = true; expiredDuringLogout.current = false;
+    try {
+      await api('/logout', { method: 'POST', body: {} });
+      setSession(null); updateSession(null); replaceDrafts(createDrafts()); setExpired(false);
+    } catch (error) {
+      if (expiredDuringLogout.current) { setSession(null); updateSession(null); setExpired(true); }
+      throw error;
+    } finally { loggingOut.current = false; }
+  };
   useEffect(() => {
     let disposed = false;
     api<Session>('/session').then(value => { if (!disposed) login(value); }).catch(err => { if (!disposed && err?.status !== 401) setStartupError(err); }).finally(() => { if (!disposed) setChecking(false); });
-    const expire = () => { setSession(null); updateSession(null); setExpired(true); };
+    const expire = () => {
+      // 等退出响应的 Set-Cookie 落定后才允许重登，避免迟到退出删除新 cookie。
+      if (loggingOut.current) { expiredDuringLogout.current = true; return; }
+      setSession(null); updateSession(null); setExpired(true);
+    };
+    const refreshed = (event: Event) => { expiredDuringLogout.current = false; updateSession((event as CustomEvent<Session>).detail); setExpired(false); setStartupError(null); };
     window.addEventListener('night-session-expired', expire);
-    return () => { disposed = true; window.removeEventListener('night-session-expired', expire); };
+    window.addEventListener('night-session-refreshed', refreshed);
+    return () => { disposed = true; window.removeEventListener('night-session-expired', expire); window.removeEventListener('night-session-refreshed', refreshed); };
   }, []);
   if (checking) return <div className="startup"><Logo /><Loading>正在连接工作空间…</Loading></div>;
-  return session ? <Workspace session={session} drafts={drafts.current} onLogout={() => { setSession(null); updateSession(null); drafts.current.values.clear(); drafts.current.attempts.clear(); }} /> : <>{startupError && <div className="startup-notice" role="alert">{errorText(startupError)}</div>}<Login onLogin={login} expired={expired} /></>;
+  return session ? <Workspace session={session} drafts={drafts} onLogout={logout} /> : <>{startupError && <div className="startup-notice" role="alert">{errorText(startupError)}</div>}<Login onLogin={login} expired={expired} /></>;
 }

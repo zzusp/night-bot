@@ -1,7 +1,7 @@
 import {digest, fail} from './security.js'
 
 // 仅显示业务文字；原始参数、系统指令、思考块与审计对象不进入浏览器。
-function visibleText(value, secrets) {
+export function visibleText(value, secrets = [], {maxLength = 16000} = {}) {
   const original = String(value ?? '')
   let text = original, redacted = false
   // 工具的文字块可能是 JSON；先移除结构化私有字段，再处理普通文本。
@@ -18,8 +18,8 @@ function visibleText(value, secrets) {
   text = text.replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [已隐藏]')
     .replace(/((?:access[_-]?token|refresh[_-]?token|api[_-]?key|authorization|password|secret|credentials?|permission[_-]?token|dispatch[_-]?token|token)["']?\s*[:=]\s*["']?)(?!\[已隐藏\])[^\s"'&,}\]]+/gi, '$1[已隐藏]')
     .replace(/(^|[\s"'=(\[{])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s"'<>)}\]]+/g, '$1[路径已隐藏]')
-  const truncated = text.length > 16000
-  return {text: text.slice(0, 16000), redacted: redacted || text !== before, ...(truncated ? {truncated: true} : {})}
+  const truncated = text.length > maxLength
+  return {text: text.slice(0, maxLength), redacted: redacted || text !== before, ...(truncated ? {truncated: true} : {})}
 }
 
 const texts = content => typeof content === 'string' ? content

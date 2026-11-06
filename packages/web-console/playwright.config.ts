@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url'
 
 export default defineConfig({
   testDir: './test',
-  testMatch: 'browser.spec.ts',
+  testMatch: '*.spec.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,

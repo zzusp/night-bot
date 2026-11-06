@@ -185,6 +185,62 @@ test('partial overview failure preserves other sections without reflecting inter
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_INTERNAL_ERROR/)
 })
 
+test('overview isolates throwing channel health and conversation reads from healthy task sections', async t => {
+  const f = await fixture(t); await f.login()
+  f.channels.plugins.set('team-chat', {get health() {throw new Error('PRIVATE_CHANNEL_FAILURE')}})
+  let result = await f.fetchApi('/api/overview')
+  assert.equal(result.status, 200)
+  assert.equal(result.body.channels, null)
+  assert.deepEqual(result.body.sectionErrors, {channels: 'SECTION_UNAVAILABLE'})
+  assert.equal(result.body.conversations.length, 1)
+  assert.equal(result.body.running.total, 1)
+  f.app.tasks.listObserverGroups = () => {throw new Error('PRIVATE_CONVERSATION_FAILURE')}
+  result = await f.fetchApi('/api/overview')
+  assert.equal(result.status, 200)
+  assert.equal(result.body.conversations, null)
+  assert.deepEqual(result.body.sectionErrors, {channels: 'SECTION_UNAVAILABLE', conversations: 'SECTION_UNAVAILABLE'})
+  assert.equal(result.body.tasks.total, 1)
+  assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_/)
+})
+
+test('task details and dialogue whitelist nested facts and redact displayed credentials and paths', async t => {
+  const f = await fixture(t); await f.login()
+  const token = (await readFile(f.web.credentialPath, 'utf8')).trim()
+  const task = await f.app.tasks.taskDetail('task-one')
+  task.objective = '业务原话'.repeat(5000) + '保留末尾'
+  task.result = {action: 'complete', summary: '结果可见 ' + token, question: '需要确认吗？', evidence: ['已核对 /private/evidence.txt', {text: 'PRIVATE_NESTED_EVIDENCE'}],
+    limitations: ['尚未线上验收'], artifactFiles: [{artifact: {logicalPath: 'PRIVATE_ARTIFACT', localPath: 'PRIVATE_LOCAL'}}],
+    arguments: {command: 'PRIVATE_COMMAND'}, credential: 'PRIVATE_CREDENTIAL', unknownFutureField: 'PRIVATE_FUTURE'}
+  task.timeline = {version: 1, privateFuture: 'PRIVATE_TIMELINE', task: {status: 'active', complete: true,
+    events: [{kind: 'created', at: '2026-11-07T01:00:00Z', sequence: 1, authorization: 'PRIVATE_EVENT'}]},
+    executions: [{id: 'run-one', title: '执行记录', status: 'completed', privateFuture: 'PRIVATE_TRACK',
+      milestones: [{id: 'm1', summary: '构建已完成', at: '2026-11-07T01:00:01Z', input: {password: 'PRIVATE_INPUT'}}],
+      conclusions: [{id: 'c1', summary: '已核对', evidence: ['确认成功'], artifacts: ['PRIVATE_ARTIFACT_PATH']}]}],
+    human: {segments: [{id: 'h1', status: 'waiting-reply', description: '请确认下一步 token=PRIVATE_INLINE', startedAt: '2026-11-07T01:00:01Z', permission: 'PRIVATE_PERMISSION'}]}}
+  f.app.tasks.taskDialogue = async () => ({taskId: task.taskId, sessionId: 'pi-one', writable: true, error: 'PRIVATE_ERROR', messages: [{
+    id: 'd1', text: '确认继续', actorId: 'PRIVATE_ACTOR', receivedAt: '2026-11-07T01:00:00Z', reply: '已收到',
+    replyError: {message: 'PRIVATE_STACK', token}, internal: 'PRIVATE_DIALOGUE',
+  }]})
+  const original = JSON.stringify(task)
+  const detail = await f.fetchApi('/api/tasks/task-one')
+  assert.equal(detail.status, 200)
+  assert.equal(detail.body.objective, task.objective, 'business fields are not silently truncated using the execution-log limit')
+  assert.equal(detail.body.result.action, 'complete')
+  assert.equal(detail.body.result.question, '需要确认吗？')
+  assert.deepEqual(detail.body.result.limitations, ['尚未线上验收'])
+  assert.deepEqual(detail.body.result.evidence, ['已核对 [路径已隐藏]'])
+  assert.deepEqual(detail.body.timeline.task.events, [{kind: 'created', sequence: 1, at: '2026-11-07T01:00:00Z'}])
+  assert.equal(detail.body.timeline.executions[0].milestones[0].summary, '构建已完成')
+  assert.match(detail.body.timeline.human.segments[0].description, /请确认下一步/)
+  const dialogue = await f.fetchApi('/api/tasks/task-one/dialogue')
+  assert.deepEqual(dialogue.body.messages, [{id: 'd1', text: '确认继续', receivedAt: '2026-11-07T01:00:00Z', reply: '已收到'}])
+  assert.equal(dialogue.body.error, 'TASK_DIALOGUE_UNAVAILABLE'); assert.equal(dialogue.body.writable, false)
+  const serialized = JSON.stringify([detail.body, dialogue.body, (await f.fetchApi('/api/tasks')).body])
+  assert.doesNotMatch(serialized, /PRIVATE_|\/private\/|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
+  assert.equal(serialized.includes(token), false)
+  assert.equal(JSON.stringify(task), original, 'read projection never alters the authoritative task')
+})
+
 test('task blocker HTTP projection flattens all three real collections and excludes their private payloads', async t => {
   const blockers = {
     executions: [{executionId: 'execution-one', status: 'running', drained: false, recovering: true,
@@ -243,6 +299,30 @@ test('pending ledger admission becomes unknown after reopening', async t => {
   ledger.reserve({requestId: 'pending', conversationId: 'chat', groupId: 'group', text: 'hello', senderId: 'operator', channelId: 'web'})
   ledger.close(); ledger = await openWebLedger(root)
   try {assert.equal(ledger.request('pending').status, 'unknown')} finally {ledger.close()}
+})
+
+test('conversation title and admission state follow durable insertion order across equal timestamps and clock rollback', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-ledger-order-'))
+  let ledger = await openWebLedger(root)
+  t.after(async () => {ledger.close(); await rm(root, {recursive: true, force: true})})
+  t.mock.timers.enable({apis: ['Date'], now: Date.parse('2026-11-07T01:00:00Z')})
+  const reserve = (requestId, text) => ledger.reserve({requestId, conversationId: 'chat', groupId: 'group', text, senderId: 'operator', channelId: 'web'})
+  reserve('z-first', '第一条消息'); ledger.settle('z-first', 'accepted')
+  await ledger.transport('web', 'operator').send({type: 'chat', channelId: 'web', senderId: 'operator', conversationId: 'chat',
+    deliveryKey: 'first-reply', replyToMessageId: 'z-first', text: '第一条回复'})
+  reserve('a-second', '第二条消息'); ledger.settle('a-second', 'rejected')
+  assert.equal(ledger.chats().items[0].title, '第一条消息')
+  assert.equal(ledger.chats().items[0].status, 'rejected')
+  assert.equal(ledger.chat('chat').status, 'rejected')
+  assert.deepEqual(ledger.chat('chat').messages.map(message => message.text), ['第一条消息', '第二条消息', '第一条回复'])
+  assert.ok(ledger.chat('chat').messages.every(message => !Object.hasOwn(message, 'sequence')))
+  t.mock.timers.setTime(Date.parse('2026-11-07T00:59:59Z'))
+  reserve('m-last', '回拨后的第三条消息')
+  assert.equal(ledger.chats().items[0].title, '第一条消息')
+  assert.equal(ledger.chat('chat').status, 'pending')
+  ledger.close(); ledger = await openWebLedger(root)
+  assert.equal(ledger.chat('chat').status, 'unknown')
+  assert.equal(ledger.chats().items[0].status, 'unknown')
 })
 
 test('credential reads reject hard links and malformed oversized files without replacing them', async t => {

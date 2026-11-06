@@ -39,6 +39,8 @@ curl http://127.0.0.1:18998/health
 
 可选 Web 控制台位于 `packages/web-console`，提供 BoardUI 风格的中文对话、任务执行信息和只读渠道消息。它有独立依赖及构建，默认不加载；不增加 Bot 展示字段或修改核心 schema，禁用后 Bot 仍能独立工作。生产插件用 Node 内置服务托管静态页面，聊天复用现有渠道入口，执行记录读取 Pi 已提交上下文。启用、认证和数据边界见 [Web 运维](docs/ops/web-console-local.md)，操作见 [使用说明](docs/manual/web-console.md)，验证见 [Web 验收](docs/acceptance/web-console/goal.md)。参考设计取自 [BoardUI 官方 MIT 源码](https://github.com/BoardUI/boardui)，许可保留在该包 `licenses/`。
 
+对话支持跨页面及登录恢复后核对原请求，不确定结果不自动重发；多标签会话变化可只读同步。任务展示采用显式字段投影，概览局部失败保留其余信息，原始 Bot 数据不变。
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm test

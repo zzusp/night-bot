@@ -16,6 +16,8 @@ const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'dange
   processed: ['已处理', 'neutral'], rejected: ['未接纳', 'warning'], recorded: ['已记录', 'neutral'], paused: ['已暂停', 'warning'],
   'waiting-reply': ['待答复', 'warning'], answered: ['已答复', 'success'], superseded: ['已失效', 'neutral'], closed: ['已关闭', 'neutral'],
   stop: ['已回复', 'neutral'], toolUse: ['调用工具', 'info'], length: ['达到长度限制', 'warning'], aborted: ['已中止', 'neutral'],
+  prepared: ['已准备', 'neutral'], recovering: ['恢复中', 'info'], stopping: ['停止中', 'warning'],
+  succeeded: ['已成功', 'success'], stale: ['已失效', 'warning'], not_started: ['未开始', 'neutral'],
 };
 export function Status({ value }: { value?: string }) {
   const [label, tone] = states[value ?? ''] ?? [value || '未记录', 'neutral'];
@@ -58,7 +60,7 @@ function CopyButton({ text }: { text: string }) {
   };
   return <span className="copy-action"><IconButton label="复制消息" onClick={copy}>{state === '已复制' ? <RiCheckLine size={15} /> : <RiFileCopyLine size={15} />}</IconButton><span role="status">{state}</span></span>;
 }
-export function MessageList({ messages, pending, empty, footer }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode }) {
+export function MessageList({ messages, pending, empty, footer, userLabel = '你' }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
@@ -74,8 +76,8 @@ export function MessageList({ messages, pending, empty, footer }: { messages: Me
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
       {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : messages.map(message =>
         <article className={`message message-${message.role}`} key={message.id}>
-          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? 'N' : (message.senderName?.slice(0, 1) || '你')}</span>
-            <strong>{message.senderName || (message.role === 'assistant' ? 'Night Bot' : message.role === 'tool' ? message.toolName || '工具' : '你')}</strong>
+          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? 'N' : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
+            <strong>{message.senderName || (message.role === 'assistant' ? 'Night Bot' : message.role === 'tool' ? message.toolName || '工具' : userLabel)}</strong>
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>

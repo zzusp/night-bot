@@ -45,6 +45,8 @@
 
 ## 最终证据与未验边界
 
+本轮附件已在第三轮最终证据落盘核对后清理，下面链接仅保留原轮次归档位置及结果追溯。最新可查看截图见 [第三轮](round-3.md)，不把新截图冒充本轮原图。
+
 最终截图：[桌面首页](round-2/desktop-overview.png)、[对话](round-2/chat.png)、[任务](round-2/tasks.png)、[执行信息](round-2/task-detail.png)、[执行上下文](round-2/execution-context.png)、[阻断记录](round-2/task-blockers.png)、[渠道](round-2/channels.png)、[渠道聊天](round-2/channel-chat.png)、[手机对话](round-2/mobile-chat.png)、[手机任务](round-2/mobile-tasks.png)、[深色](round-2/dark-chat.png)。截图为隔离样例，不是线上数据。
 
 第一轮图片/JSON 已逐项删除，第一轮文字报告与 matrix 历史保留；浏览器中间 trace 和测试数据已清理。参考克隆 `docs/tmp/boardui-reference` 的递归删除被自动审批拒绝（仅返回 `blocked by policy`），它仍在 Git 忽略目录，不纳入交付源码。

@@ -31,9 +31,11 @@ export class ApiError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }
 let csrfToken = '';
-export function setSession(session: Session | null) { csrfToken = session?.csrfToken ?? ''; }
+let sessionVersion = 0;
+export function setSession(session: Session | null) { csrfToken = session?.csrfToken ?? ''; sessionVersion += 1; }
 
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+  const requestVersion = sessionVersion;
   const signal = AbortSignal.any([AbortSignal.timeout(20000), ...(options.signal ? [options.signal] : [])]);
   const response = await fetch('/api' + path, {
     method: options.method ?? 'GET', credentials: 'same-origin', cache: 'no-store', signal,
@@ -43,7 +45,18 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    if (response.status === 401 && path !== '/login' && path !== '/session') window.dispatchEvent(new Event('night-session-expired'));
+    const current = () => requestVersion === sessionVersion && !signal.aborted;
+    if (response.status === 401 && path !== '/login' && path !== '/session' && current()) window.dispatchEvent(new Event('night-session-expired'));
+    // 同浏览器另一标签登录会替换共享 cookie。只读同步新会话，不重放被拒绝的写操作。
+    if (response.status === 403 && data?.error === 'CSRF_INVALID' && current()) {
+      try {
+        const check = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
+        if (!check.ok) throw new Error('SESSION_REFRESH_FAILED');
+        const session = await check.json() as Session;
+        if (current()) { setSession(session); window.dispatchEvent(new CustomEvent('night-session-refreshed', { detail: session })); }
+      } catch { if (current()) window.dispatchEvent(new Event('night-session-expired')); }
+      throw new ApiError(403, 'SESSION_CHANGED');
+    }
     throw new ApiError(response.status, data?.error ?? 'REQUEST_FAILED');
   }
   if (data === null) throw new ApiError(502, 'INVALID_RESPONSE');
@@ -52,12 +65,14 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'SESSION_CHANGED') return '连接状态已变化，内容已保留。请重新确认连接后重试刚才的操作。';
     if (error.status === 401) return '登录已失效，请重新连接。';
     if (error.status === 403) return '当前连接没有访问权限，请重新登录或联系管理员。';
     if (error.status === 404) return '这条记录不存在，或已不再可用。';
     if (error.status === 409) return '记录已变化，请刷新后查看最新状态。';
     if (error.status === 429) return '请求过于频繁，请稍后重试。';
     if (error.status === 400) return '输入未被接纳，请检查内容后重试。';
+    if (error.status === 413) return '内容过大，请缩短消息后重试。';
   }
   if (error instanceof DOMException && error.name === 'TimeoutError') return '连接超时，已保留当前内容。请检查连接后刷新。';
   return '暂时无法连接 Bot，已保留当前内容。请检查服务后刷新。';

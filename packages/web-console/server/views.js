@@ -1,9 +1,37 @@
 import {digest, fail} from './security.js'
+import {visibleText} from './session-view.js'
 
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]))
-const privateKeys = new Set(['workspaceDir', 'logPath', 'path', 'directory', 'absolutePath', 'dispatchToken', 'sendPermit', 'payloadDigest', 'apiKey', 'accessToken', 'authorization'])
-const publicDetail = value => Array.isArray(value) ? value.map(publicDetail)
-  : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([key]) => !privateKeys.has(key)).map(([key, item]) => [key, publicDetail(item)])) : value
+// 任务业务字段由原合同限制长度；这里仅脱敏，不沿用执行日志的单条截断策略。
+const displayText = (value, secrets) => visibleText(value, secrets, {maxLength: Infinity}).text
+// 展示字段按现有结果/时间线合同逐层选取；新增领域字段不会自动穿透到浏览器。
+const displayFields = (value, keys, secrets) => Object.fromEntries(keys.flatMap(key => {
+  const item = value?.[key]
+  if (typeof item === 'string') return [[key, displayText(item, secrets)]]
+  if (item === null || typeof item === 'boolean' || typeof item === 'number' && Number.isFinite(item)) return [[key, item]]
+  return []
+}))
+const displayLists = (value, keys, secrets) => Object.fromEntries(keys.filter(key => Array.isArray(value?.[key]))
+  .map(key => [key, value[key].filter(item => typeof item === 'string').map(item => displayText(item, secrets))]))
+const resultView = (value, secrets) => typeof value === 'string' ? displayText(value, secrets) : {
+  ...displayFields(value, ['action', 'status', 'summary', 'question'], secrets),
+  ...displayLists(value, ['evidence', 'limitations'], secrets),
+}
+const timelineEntry = (value, secrets) => ({
+  ...displayFields(value, ['id', 'kind', 'sequence', 'executionId', 'inputVersion', 'leaseEpoch', 'at', 'startedAt', 'endedAt', 'active', 'status', 'label', 'description', 'summary', 'activity'], secrets),
+  ...displayLists(value, ['evidence', 'limitations'], secrets),
+})
+const timelineTrack = (value, secrets) => ({
+  ...displayFields(value, ['id', 'title', 'status', 'complete', 'startedAt', 'endedAt', 'active'], secrets),
+  ...Object.fromEntries(['events', 'segments', 'milestones', 'conclusions'].filter(key => Array.isArray(value?.[key]))
+    .map(key => [key, value[key].map(item => timelineEntry(item, secrets))])),
+})
+const timelineView = (value, secrets) => ({
+  ...displayFields(value, ['version'], secrets),
+  ...(value.task ? {task: timelineTrack(value.task, secrets)} : {}),
+  ...(Array.isArray(value.executions) ? {executions: value.executions.map(item => timelineTrack(item, secrets))} : {}),
+  ...(value.human ? {human: timelineTrack(value.human, secrets)} : {}),
+})
 
 const blockerStates = new Set(['queued', 'pending', 'prepared', 'running', 'stopping', 'waiting', 'blocked', 'recovering', 'unknown', 'succeeded', 'failed', 'cancelled', 'stale', 'not_started'])
 const blockerTitle = value => typeof value === 'string' && value.trim()
@@ -25,15 +53,21 @@ function blockerViews(value) {
   ]
 }
 
-export function taskView(task) {
+export function taskView(task, secrets = []) {
   return {
-    ...pick(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'waitingReason']),
-    ...(task.result ? {result: publicDetail(task.result)} : {}),
+    ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'waitingReason'], secrets),
+    ...(task.result ? {result: resultView(task.result, secrets)} : {}),
     ...(task.session ? {session: pick(task.session, ['role', 'sessionId', 'sessionBound', 'status'])} : {}),
-    ...(task.timeline ? {timeline: publicDetail(task.timeline)} : {}),
+    ...(task.timeline ? {timeline: timelineView(task.timeline, secrets)} : {}),
     ...(task.blockers !== undefined ? {blockers: blockerViews(task.blockers)} : {}),
-    ...(task.notifications ? {notifications: task.notifications.map(value => ({...pick(value, ['id', 'state', 'kind', 'updatedAt', 'createdAt']), text: value.payload?.text ?? ''}))} : {}),
+    ...(task.notifications ? {notifications: task.notifications.map(value => ({...pick(value, ['id', 'state', 'kind', 'updatedAt', 'createdAt']), text: displayText(value.payload?.text, secrets)}))} : {}),
   }
+}
+
+export function taskDialogueView(value, secrets = []) {
+  return {taskId: value.taskId, sessionId: value.sessionId,
+    messages: value.messages.map(message => displayFields(message, ['id', 'text', 'receivedAt', 'reply', 'repliedAt', 'replyFailedAt'], secrets)),
+    writable: false, error: value.error ? 'TASK_DIALOGUE_UNAVAILABLE' : null}
 }
 
 export function configuredChannels(application, channels) {

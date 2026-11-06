@@ -5,7 +5,7 @@ import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {randomUUID} from 'node:crypto'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest} from './security.js'
 import {openWebLedger} from './ledger.js'
-import {configuredChannels, conversationMessages, conversations, taskView} from './views.js'
+import {configuredChannels, conversationMessages, conversations, taskDialogueView, taskView} from './views.js'
 import {taskSessionView} from './session-view.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
@@ -74,7 +74,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
   }
   const tasks = async options => {
     const value = await application().tasks.boardTasks(options)
-    return {...value, items: value.items.map(taskView)}
+    return {...value, items: value.items.map(task => taskView(task, [credential.token]))}
   }
   async function route(request, response) {
     headers(response)
@@ -96,17 +96,23 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if (request.method === 'GET' && path === '/api/conversations') return send(response, 200, conversations(application(), channels))
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))
     if (request.method === 'GET' && path === '/api/overview') {
-      const outcomes = await Promise.allSettled([
-        tasks({offset: 0, limit: 12, archived: false}), tasks({offset: 0, limit: 8, state: 'running', archived: false}), tasks({offset: 0, limit: 8, state: 'waiting', archived: false}),
-      ])
-      const values = Object.fromEntries(['tasks', 'running', 'waiting'].map((key, index) => [key, outcomes[index].status === 'fulfilled' ? outcomes[index].value : null]))
-      const sectionErrors = Object.fromEntries(['tasks', 'running', 'waiting'].flatMap((key, index) => outcomes[index].status === 'rejected' ? [[key, 'SECTION_UNAVAILABLE']] : []))
-      return send(response, 200, {status: 'connected', timestamp: new Date().toISOString(), channels: configuredChannels(application(), channels).items, ...values, sectionErrors, conversations: conversations(application(), channels).items})
+      const app = application()
+      const sections = {
+        tasks: () => tasks({offset: 0, limit: 12, archived: false}),
+        running: () => tasks({offset: 0, limit: 8, state: 'running', archived: false}),
+        waiting: () => tasks({offset: 0, limit: 8, state: 'waiting', archived: false}),
+        channels: () => configuredChannels(app, channels).items,
+        conversations: () => conversations(app, channels).items,
+      }
+      const keys = Object.keys(sections), outcomes = await Promise.allSettled(Object.values(sections).map(read => Promise.resolve().then(read)))
+      const values = Object.fromEntries(keys.map((key, index) => [key, outcomes[index].status === 'fulfilled' ? outcomes[index].value : null]))
+      const sectionErrors = Object.fromEntries(keys.flatMap((key, index) => outcomes[index].status === 'rejected' ? [[key, 'SECTION_UNAVAILABLE']] : []))
+      return send(response, 200, {status: 'connected', timestamp: new Date().toISOString(), ...values, sectionErrors})
     }
     const task = /^\/api\/tasks\/([^/]+)(?:\/(dialogue|executions|session))?$/.exec(path)
     if (request.method === 'GET' && task) {
       const id = decodeURIComponent(task[1]), app = application()
-      if (task[2] === 'dialogue') return send(response, 200, publicDialogue(await app.tasks.taskDialogue(id)))
+      if (task[2] === 'dialogue') return send(response, 200, taskDialogueView(await app.tasks.taskDialogue(id), [credential.token]))
       if (task[2] === 'executions') return send(response, 200, await app.tasks.taskExecutions(id, {...page(url.searchParams), summary: true}))
       const value = await app.tasks.taskDetail(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
@@ -116,7 +122,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
           offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50),
           revision: url.searchParams.get('revision'), secrets: [credential.token]}))
       }
-      return send(response, 200, taskView(value))
+      return send(response, 200, taskView(value, [credential.token]))
     }
     const conversation = /^\/api\/conversations\/([^/]+)\/messages$/.exec(path)
     if (request.method === 'GET' && conversation) {
@@ -202,10 +208,6 @@ export async function createWebConsole({channels, paths, config, getApplication,
       })()
     },
   }
-}
-
-function publicDialogue(value) {
-  return {taskId: value.taskId, sessionId: value.sessionId, messages: value.messages, writable: false, error: value.error}
 }
 
 export async function apply(ctx, config) {
