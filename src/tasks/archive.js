@@ -1,3 +1,4 @@
+import {resolveTaskMaterialPaths} from './material-paths.js'
 import {validateTaskIdentity} from './session-audit.js'
 import {createTaskArtifactFiles} from '../../packages/dingtalk-core/task-artifact-files.js'
 import {memoryScope} from '../memory/scope.js'
@@ -122,7 +123,7 @@ export async function inspectTaskArchive(config,taskId){return offline(config,as
 async function rebindMaterials(snapshot,root,manifest){
   // Never rewrite chat text, tool arguments or effect receipts.
     const priorRoot=resolve(snapshot.sourceInstallRoot,snapshot.taskDirectoryRelative)
-    for(const file of manifest.files.filter(f=>/^materials\/source-[a-f0-9]+\.json$/.test(f.path))){const value=JSON.parse(await readRegular(join(root,file.path)));const rebind=path=>typeof path==='string'&&inside(priorRoot,path)?join(root,relative(priorRoot,path)):path;value.path=rebind(value.path);value.textPath=rebind(value.textPath);for(const resource of value.resources??[]){resource.path=rebind(resource.path);if(resource.value?.image)resource.value.image.path=rebind(resource.value.image.path)}await atomicWrite(join(root,file.path),json(value))}
+    for(const file of manifest.files.filter(f=>/^materials\/source-[a-f0-9]+\.json$/.test(f.path))){const value=JSON.parse(await readRegular(join(root,file.path)));if(value.pathBindings){resolveTaskMaterialPaths(value,join(root,'materials'),join(root,file.path));continue}const rebind=path=>typeof path==='string'&&inside(priorRoot,path)?join(root,relative(priorRoot,path)):path;value.path=rebind(value.path);value.textPath=rebind(value.textPath);for(const resource of value.resources??[]){resource.path=rebind(resource.path);if(resource.value?.image)resource.value.image.path=rebind(resource.value.image.path)}await atomicWrite(join(root,file.path),json(value))}
 }
 
 export async function recoverTaskRestore(config){const early=await recoverIndexPublication(config);if(early)return early;return offline(config,async options=>{

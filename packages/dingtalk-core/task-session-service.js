@@ -1,3 +1,4 @@
+import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
 import {committedLiveSupplementAdmissions} from '../../src/tasks/input-origin.js'
 import {assertPiTaskBackend} from '../../src/runtime/pi-task-backend.js'
@@ -531,6 +532,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (!info.isFile() || info.isSymbolicLink()) fail('TASK_MATERIAL_PATH_INVALID')
       let material
       try { material = JSON.parse(await readFile(target, 'utf8')) } catch { fail('TASK_MATERIAL_SNAPSHOT_INVALID') }
+      material = resolveTaskMaterialPaths(material, directories.materials, target)
       if (!material || material.sourceId !== source.sourceId || material.path !== target || material.taskId !== undefined && material.taskId !== taskId
         || material.version !== undefined && material.version !== source.version || material.actorId !== source.actorId || material.messageId !== source.messageId || material.text !== source.text
         || hash(material.quote ?? null) !== hash(source.quote ?? null) || !Array.isArray(material.resources)
@@ -599,7 +601,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     const material = clean({ taskId, sourceId: source.sourceId, version: source.version, actorId: source.actorId, messageId: source.messageId,
       text: source.text, quote: source.quote, resources, path: target })
-    await publish(target, Buffer.from(JSON.stringify(material)))
+    await publish(target, Buffer.from(JSON.stringify(bindTaskMaterialPaths(material,directories.materials))))
     return readSnapshot()
   }
   async function cancelLiveTask(taskId, oldTask, oldExecutions) {

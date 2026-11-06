@@ -169,3 +169,22 @@ They intentionally do not package `data/secrets`, credentials or shared account
 homes; nevertheless, secrets pasted into task text/files can remain in its audit.
 Git ignores task data and backups. Do not run git clean -fdx or replace data on
 upgrade. There is no automatic temp/log cleanup while tasks are active.
+
+### Typed material paths in Night backups
+
+New Host material snapshots include `pathBindings.version: 1` with kind
+`task-material-relative`. The closed field list covers the source JSON filename,
+retained resource filenames and their matching image descriptor paths. Reading a
+snapshot validates its original absolute paths and exact field list, then resolves
+only those leaves under the current task's materials directory. The source ID,
+version, actor, message, text, quote, resource identity, byte length and SHA-256
+checks still apply. No stored packet, Pi history, signature, tool argument or effect
+receipt is rewritten, and relocating material evidence grants no execution rights.
+Task archive restore validates these marked packets without rewriting their paths.
+
+Older unmarked material packets remain bound to their recorded root. A cross-root
+whole-install restore of those packets stays held; do not edit JSON or infer paths
+from user content. The existing offline sealed task archive restore path has its
+own verified manifest/source root and explicit operator-review requirement; it
+remains the supported route for those task archives. Unknown effects still require
+the separate operator reconciliation and authorization workflow, never replay.
