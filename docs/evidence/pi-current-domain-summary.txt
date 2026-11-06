@@ -1,5 +1,5 @@
-Source checkpoint: 4568d3f
-391 tests; task/business source unchanged since this run.
+Source checkpoint: 9a925a6
+Full existing domain group after SQL/operator authorization changes.
 ℹ tests 391
 ℹ suites 0
 ℹ pass 391
@@ -7,4 +7,4 @@ Source checkpoint: 4568d3f
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 18396.39573
+ℹ duration_ms 11419.093156

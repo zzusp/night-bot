@@ -1,5 +1,5 @@
-Source checkpoint: 4568d3f
-47 tests; final production source and frozen shared official fixture.
+Source checkpoint: 9a925a6
+Full existing routing group after invocation changes.
 ℹ tests 47
 ℹ suites 0
 ℹ pass 47
@@ -7,4 +7,4 @@ Source checkpoint: 4568d3f
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 99436.058364
+ℹ duration_ms 68445.589323

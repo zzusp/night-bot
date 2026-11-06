@@ -1,28 +1,28 @@
 {
-  "checkpoint": "ae2b5bd",
+  "checkpoint": "9a925a6",
   "complete": false,
   "resultsOverlap": true,
   "evidence": [
     {
       "name": "default",
       "target": "docs/evidence/pi-current-default-summary.txt",
-      "sourceCheckpoint": "ae2b5bd",
-      "logSha256": "9b257c3ed583139bfd35e14ce959de10d28778ea9582b441703a976059138dfc",
-      "note": "Final stable full default run after clean frozen installation, four dependency retirements and independent control-tool contracts."
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "164b025a7a7c82b490fcf1f3b1183ebdf12a4b56b8e497c01809f7dc58db9bb1",
+      "note": "Full stable default run after invocation identity, new-action authorization and seven further dependency retirements."
     },
     {
       "name": "domain",
       "target": "docs/evidence/pi-current-domain-summary.txt",
-      "sourceCheckpoint": "4568d3f",
-      "logSha256": "ced205399211a9c27eba128b8952b580752ce04de8b92b2bb316e195659fe822",
-      "note": "391 tests; task/business source unchanged since this run."
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "7dd6bd437345cb45b3d4fdd9f54dabbf5071c2ef540257df18c389eb56719451",
+      "note": "Full existing domain group after SQL/operator authorization changes."
     },
     {
       "name": "routing",
       "target": "docs/evidence/pi-current-routing-summary.txt",
-      "sourceCheckpoint": "4568d3f",
-      "logSha256": "cbbcd69ad7b9d04a3191c3aed3531f96ff4375e982bab795ce1b550641eeeae8",
-      "note": "47 tests; final production source and frozen shared official fixture."
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "44b4521dbdf43d33fa8578dc21701491cdf37011fc7813b74974314d18ba8e0a",
+      "note": "Full existing routing group after invocation changes."
     },
     {
       "name": "runtime-diagnostic",
@@ -85,9 +85,9 @@
     {
       "name": "runtime",
       "target": "docs/evidence/pi-current-runtime-summary.txt",
-      "sourceCheckpoint": "ae2b5bd",
-      "logSha256": "045daed160355d0f39ea68f5f35b97cf1058d536118855bbfd80eac706d52f92",
-      "note": "Full runtime group, concurrency 2; approved outer execution; application bwrap retained."
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "271b0b88bf6101e72d690240dda47112c981d89b56ecd661aac7695757c2775b",
+      "note": "Full runtime group, concurrency 2; actual application bubblewrap retained."
     },
     {
       "name": "cold-install-smoke",
@@ -106,9 +106,9 @@
     {
       "name": "frozen-install",
       "target": "docs/evidence/pi-current-frozen-install-summary.txt",
-      "sourceCheckpoint": "ae2b5bd",
-      "logSha256": "26495c4a4ab1e27eab11382cfddeb4aa5e3ee73120358fe7d2ef5d9c2c14a527",
-      "note": "Standard frozen install after explicit native-build allow/deny policy; supply-chain checks enabled."
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "08a08c2d877c3cddd48283011aa2f27d792943889adb932d432a9970887f8d22",
+      "note": "Standard frozen install after root dependency retirement to 25; no registry or build-policy bypass."
     }
   ]
 }

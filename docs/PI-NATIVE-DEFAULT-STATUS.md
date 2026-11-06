@@ -1,7 +1,7 @@
 # Official Pi default runtime checkpoint
 
-Checkpoint: `ae2b5bd` (production task boundary at `4568d3f`, following official
-file/tool wiring at `1cc6ebf`; clean dependency installation at `d766965`).
+Checkpoint: `9a925a6` (effect invocation identity and explicit new-action grants;
+independent comparison retirement at `6d4b718`).
 This is not a completed removal of all DSH-derived code.
 No push, deployment or main merge has been performed.
 
@@ -14,7 +14,7 @@ with independent ownership, privacy, archive and drain safeguards preserved.
 
 ## Verified integration
 
-- Final post-install stable `pnpm test`: 1174 passed, zero failures/cancellations; all
+- Final post-install stable `pnpm test`: 1197 passed, zero failures/cancellations; all
   source/import guards passed (421 runtime modules, zero external DSH imports).
 - `pnpm test:domain`: 391 passed. `pnpm test:routing`: 47 passed.
 - Current effect reconciliation core/real Host recovery: 44 passed.
@@ -32,8 +32,8 @@ with independent ownership, privacy, archive and drain safeguards preserved.
   14 passed. Automatic naming defaults off; explicit opt-in sends approved labels
   only, with no main conversation or tool bodies.
 - Clean standard frozen installation passed after explicit pnpm 11 build policy.
-  Four direct DSH development declarations were removed; 32 remain (six local
-  aliases, 26 registry packages). Transitive development packages remain through
+  Eleven direct DSH development declarations have now been removed across the
+  last two waves; 25 remain (six local aliases, 19 registry packages). Transitive development packages remain through
   dsh-base. Production declarations and external runtime imports remain zero.
 
 Counts overlap. pi-default-checkpoint-evidence.json records source checkpoints,
@@ -73,12 +73,14 @@ The file cohort passed 51 tests and separate actual Linux boundary checks passed
 Task context and preserve delivery now retain real authenticated source and use
 the same official AgentSession steer queue. Night no longer restarts its own
 provider retry budget after native exhaustion. Unknown effects retain strict
-original-input drain/closure proofs. See PI-TASK-INPUT-AND-RETRY.md, including the
-existing same-input intentional-repeat limitation; equal arguments across new
-authenticated sources are not globally deduplicated.
+original-input drain/closure proofs. See PI-TASK-INPUT-AND-RETRY.md, including v2 call identity, exact source proofs and safe Night v1 receipt reads.
+Equal arguments are not used as a global replay identity.
 
 Some legacy source aliases, manager modules and test copies remain. Their DSH
 notices stay until all corresponding retained code and copies are removed.
+The unused private core manifest no longer declares external DSH or React
+packages. The zero-caller legacy skill comparison fixture was removed; production
+skill sources remain attributed.
 The child-provider source and two dedicated test copies were verified absent;
 only its dedicated historical notice was removed. The distinct retained manager
 notice remains. Pure comparisons remain among the development dependencies;
