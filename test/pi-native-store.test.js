@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,readFile,appendFile,mkdir,cp} from 'node:fs/promises'
+import {mkdtemp,rm,readFile,appendFile,mkdir,cp,writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
-import {buildSessionProjection} from '@earendil-works/pi-coding-agent'
+import {SessionManager,buildSessionProjection} from '@earendil-works/pi-coding-agent'
 import PiPersistence from '../src/pi-session-persistence.js'
 import * as Authority from '../src/pi-authority.js'
 import {decodePiJournal} from '../src/runtime/pi-journal.js'
@@ -44,13 +44,17 @@ test('native open rejects uncommitted tails without mutation and rejects legacy 
  const path=f.backend.path('tail');await appendFile(path,'{"torn":');const bytes=await readFile(path)
  await assert.rejects(f.backend.openNative('tail'),{code:'PI_SESSION_UNCOMMITTED_TAIL'})
  assert.deepEqual(await readFile(path),bytes)
- const old=await f.backend.create(f.header('old'));await old.append([]);await old.close()
- await assert.rejects(f.backend.openNative('old'),{code:'PI_SESSION_NATIVE_UPGRADE_REQUIRED'})
+ const foreign=SessionManager.inMemory(f.root);foreign.newSession({id:'old'});foreign.appendCustomEntry('night.header',{header:f.header('old'),inheritedEventCount:0})
+ await writeFile(f.backend.path('old'),[foreign.getHeader(),...foreign.getEntries()].map(entry=>JSON.stringify(entry)).join('\n')+'\n')
+ const before=await readFile(f.backend.path('old'))
+ await assert.rejects(f.backend.openNative('old'),{code:'PI_SESSION_FORMAT_UNSUPPORTED'})
+ assert.deepEqual(await readFile(f.backend.path('old')),before)
+ assert.equal(f.backend.create,undefined);assert.equal(f.backend.open,undefined)
 })
 test('native owner shares lease with old writer and abort never publishes',async t=>{
  const f=await fixture(t),h=await f.backend.createNative(f.header('lease'))
  await assert.rejects(f.backend.openNative('lease'))
- await assert.rejects(f.backend.create(f.header('lease')),{name:'SessionAlreadyOwnedError'})
+ await assert.rejects(f.backend.createNative(f.header('lease')),{name:'SessionAlreadyOwnedError'})
  const controller=new AbortController();controller.abort()
  await assert.rejects(h.commit({signal:controller.signal}),{name:'AbortError'})
  h.manager.appendMessage(message('after abort'));await h.close()

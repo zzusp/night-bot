@@ -1,17 +1,7 @@
-// Read-only handles do not claim the resident Agent's write ownership.
-// Always close them, including when validation or storage reads fail.
+// The generic Session-event format is retired. Read official committed entries
+// and typed business audit through readNative; never synthesize a legacy event view.
 export async function inspectSession(persistence, sessionId, options) {
-  const metadata = await persistence.stat(sessionId, options)
-  if (metadata?.format === 'pi-native-v1') {
-    throw Object.assign(new Error('SESSION_NATIVE_AUDIT_REQUIRED'), { code: 'SESSION_NATIVE_AUDIT_REQUIRED', format: metadata.format })
-  }
-  const handle = await persistence.open(sessionId, 'read', options)
-  try {
-    const { events } = await handle.read(undefined, undefined, options)
-    return { meta: handle.header, inheritedEventCount: handle.inheritedEventCount, events }
-  } finally {
-    await handle.close()
-  }
+  throw Object.assign(new Error('SESSION_EVENT_API_RETIRED'), {code:'SESSION_EVENT_API_RETIRED'})
 }
 
 export function inboxHasPending(inbox) {

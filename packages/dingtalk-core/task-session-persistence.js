@@ -9,7 +9,7 @@ const JsonlSessionPersistence = JsonlSessionPersistenceModule.default ?? JsonlSe
 const writerScope = new AsyncLocalStorage()
 const installations = new Map()
 const installing = new Map()
-const methods = ['create', 'open', 'createNative', 'openNative', 'readNative', 'stat', 'list', 'flush']
+const methods = ['createNative', 'openNative', 'readNative', 'stat', 'list', 'flush']
 const failure = code => Object.assign(new Error(code), { code })
 const within = (parent, child) => {
   const path = relative(parent, child)
@@ -241,31 +241,6 @@ async function install(ctx, { root, compression } = {}) {
     },
   }
   const wrappers = {
-    async create(header, options) {
-      assertOpen(); options?.signal?.throwIfAborted()
-      const route = await routeFor(header.id)
-      if (!route) {
-        if (header.cwd && within(join(root, 'tasks'), resolve(header.cwd))) throw failure('TASK_SESSION_BINDING_REQUIRED')
-        return legacy.create(header, options)
-      }
-      if (header.cwd !== route.cwd) throw failure('TASK_SESSION_CWD_MISMATCH')
-      assertWriter(route)
-      await legacyConflict(header.id)
-      return (await backendFor(route.taskId)).create(header, options)
-    },
-    async open(id, access, options) {
-      assertOpen(); options?.signal?.throwIfAborted()
-      const route = await routeFor(id)
-      if (!route) return legacy.open(id, access, options)
-      if (access !== 'read') assertWriter(route)
-      await legacyConflict(id)
-      const handle = await (await backendFor(route.taskId)).open(id, access, options)
-      if (handle.header.cwd !== route.cwd) {
-        await handle.close()
-        throw failure('TASK_SESSION_CWD_MISMATCH')
-      }
-      return handle
-    },
     async createNative(header, options) {
       assertOpen(); options?.signal?.throwIfAborted()
       const route=await routeFor(header.id)
@@ -337,8 +312,7 @@ async function install(ctx, { root, compression } = {}) {
     const sessionId = name === 'create' ? options.sessionId : options.resumeSessionId
     let header = options.meta
     if (name === 'resume') {
-      const reader = await persistence.open(sessionId, 'read')
-      try { header = reader.header } finally { await reader.close() }
+      header = (await persistence.readNative(sessionId,{requireComplete:true,signal:options.signal})).header
     }
     if (header?.origin !== 'subagent' || header.parentSession !== parent.id || header.cwd !== route.cwd) throw failure('TASK_SESSION_BINDING_REQUIRED')
     options.signal?.throwIfAborted()

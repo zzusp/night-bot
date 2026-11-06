@@ -38,7 +38,7 @@ test('native task archive seals, backs up and restores exact Pi bytes with held 
  assert.throws(()=>readNativeHistory(f.paths.workspaces,{taskId:f.taskId,sessionId:f.task.sessionId}),/PI_SESSION_PATH_CODEC_REQUIRED/)
  const stored=readNativeHistory(f.paths.workspaces,{taskId:f.taskId,sessionId:f.task.sessionId},{pathCodec:portablePaths(f.paths)})
  assert.equal(stored.format,'pi-native-v1');assert.equal('events' in stored,false);assert.equal(stored.context.piMessages[0].content[0].text,'native retained context');assert.equal(stored.audit[0].payload.taskId,f.taskId)
- await assert.rejects(inspectSession(f.backend,f.task.sessionId),{code:'SESSION_NATIVE_AUDIT_REQUIRED'})
+ await assert.rejects(inspectSession(f.backend,f.task.sessionId),{code:'SESSION_EVENT_API_RETIRED'})
  await f.ctx.fiber.dispose();await f.store.close()
  const destination=join(f.root,'backups','native');await backupTask(f.config,f.taskId,destination)
  const restoredRoot=await mkdtemp('/tmp/night-native-archive-restored-');t.after(()=>rm(restoredRoot,{recursive:true,force:true}))
