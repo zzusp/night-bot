@@ -261,3 +261,25 @@ flowchart TD
 实施后按影响运行 `pnpm test`、`pnpm test:runtime`、`pnpm test:routing`，并覆盖本次受影响的 domain/containment、严格 journal/归档以及 native source/hash/import guard。使用隔离目录、本地脚本模型和假渠道验证默认接线；真实模型效果、Windows/Linux 平台限制、真实 DWS 发送单独报告。本文的源码/API核验不算这些测试通过。
 
 最终完成的判据：默认消息路径不再创建或依赖 Topic；一级分诊只快速判断处理/回复且不拆事项；每个 conversation 的 Router 职责可跨重启和换代延续；事项拆分与安排由 Router 负责，任务保持唯一执行会话；A→B 在当前授权和证据条件下可靠推进；无丢消息、重复执行、越权或归档扩散；Router 空闲交接失败不损坏已完成业务。
+
+
+## 13. 2026-11-07 钉钉产品闭环追加快照
+
+追加基线：原PR #2仍OPEN，head `d27350972df888bf864186eabe64513c12460382`。原重构交付及轮次保留；当前目标从代码接线验收推进为指定测试群的完整产品闭环，不以全量回归作为新门槛。唯一进度仍在原goal，本文只保存本次实施前取舍，不复制后续流水。
+
+### 已核缺口与最小方案
+
+- DWS保持可选渠道插件，配置groups驱动真实订阅；当前统一入站首次订阅使用硬编码通用responsibility，triage未接配置职责，Router/task已有责任字段，reflection只有无工具复盘规则。需要把可信渠道配置接入这条真实链，不能只在示例中增加字段。
+- 采用一条可信prompt/责任配置，沿现有responsibility使用：按认证channel与conversation精确解析，会话配置优先于渠道默认；未配置保留既有职责/通用默认。配置入口使用参数，不从消息正文/envelope或环境变量推断角色职责，不引入角色prompt矩阵或第二套权限权威。
+- 已定接口为`channels.responsibility(sessionId)`；`undefined`保留既有resident职责/首次通用默认，空字符串明确清空；启动快照，配置修改重启生效。Core对四角色共用resolver，并仅对已明确配置的既有群同步，不以真值判断吞掉空字符串。
+- 分诊、Router、单任务执行和无工具复盘各保留原角色限制；prompt承载职责、设定和行为规范，不能生成发送许可、放宽任务/记忆scope或绕过来源/版本/收据守卫。配置更新/已有会话生效规则由实现明确，文档按实际行为说明，不虚称热更新。
+- Windows沿现有system账号策略和显式profile，不复制凭据或改变CLI全局选择；使用独立本机运行数据与空闲loopback端口，不替换其它安装。真实目标标识/账号只在私有配置，源码和文档均为占位符。
+
+### 验证与实际接入边界
+
+- 先用现有Host/脚本模型/假渠道能力做最短定向证明：prompt按群隔离、四角色实际输入、配置入站身份不可伪造；相关旧case依据当前合同调整，不逐个修整批历史测试，不跑全量。
+- 指定群的最终验证必须来自真实DWS订阅/回填路径，保留可关联的来源、Router事项、执行session、群内消息/附件readback与持久review；注入不算监听，健康或队列idle不算产品完成。
+- 单成员同账号：现有bridge在task-session模式先交Host入站，旧按显示名匹配outbox的分支不参与；是否保留人工消息并拒绝自动回声必须按实际监听事实核，不通过放宽automated/own-notification检查凑通过。
+- 当前会话仍受原真实外发禁令约束，主控转达尚未由本会话真人解除；只准备隔离实例，不连接或发送，也不让别的执行者绕过。没有新CI、合并或生产部署授权。
+
+实施分工以goal的本次单写增量为准；Core/Platform直接对齐可信resolver，原Tests唯一运行，Docs补操作说明，Review核实际diff，Lead回收证据并更新原PR。不新建团队/会话/定时器。

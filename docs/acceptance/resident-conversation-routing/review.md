@@ -281,3 +281,128 @@ verified-5 原输出 :34 记录失败，:36/:37 才出现两次 reply；catch �
 - verified-4 的唯一通知失败原因、verified-5 的具体坏引用仍未收敛；最终成功不解释或追认修复这些历史原因，不证明模型稳定性。安全失败诊断分支仅静态核，合成坏 YAML/文件谓词负检查不冒充本会话实跑或真实坏 ref 动态验收；旧失败与清理记录均保留。
 - 当前完整 runtime/default 未重新全量跑，Windows 条件跳过的 Linux/POSIX 隔离/进程路径和 live DWS 集成仍未验；不能将分批定向与真实 case PASS 写成当前统一版本全套全绿。真实模型配 fake 渠道，不代表真实消息送达或上游部署身份认证。
 - 仅本 review.md 由本会话写入；未执行模型、读取秘密、修改产品/测试/入口/报告/矩阵、Git 写操作、CI、合并、部署或真实发送，也未新开 agent/workflow。本次提交、push 和原 PR 更新仍由 Lead 处理，本审查不声称已完成这些后续动作。
+
+## SG8 渠道职责贯通增量审查（本地阶段收口）
+
+本段为 2026-11-07 新增范围，独立追加，不修改此前 SG1–SG7 审查结论或第1–4轮历史。基线 HEAD 为 d27350972df888bf864186eabe64513c12460382，结论绑定本轮未提交工作树；Core 五文件、Platform 四文件及唯一新增测试的完整 SHA 以 [round-5.md](round-5.md#受验源码指纹) 为一处证据表。本会话已从正式输出独立核十项起止与当前字节全部相同，其中 service 为 866966b8、channels 为 bdb1a84d、reflection 为 8876dfc8、测试完整 SHA256=73a660becabfa2cf9e04c5d571409773866846ab96474d84b2fcb9d0f16f85d0；不以 HEAD 代替实际受验源码。
+
+### 已证缺口及实际修复
+
+初查已证：统一入站首次订阅硬编码通用职责，已有群跳过该分支；一级分诊与独立复盘未消费职责。Router/执行原有群职责输入，不能概括为全链丢失。对“配置未到订阅”“角色未消费”“模型未遵循”三个候选，前两由源码确认，第三无运行证据，未将输入缺口归因模型。
+
+- 可信配置：channels/service:9–17 校验群项/默认职责，群显式字符串（含空字符串）优先插件默认，默认只映射已列群。DWS plugin:65 按 chat-room、自身 channelId 和精确原 conversationId 查启动快照；channels:25–26 由已注册可信插件解析，不把消息 text、quote、platformFlags、摘要或最近群提升为配置。原 strict envelope、会话身份 hash、私聊/群隔离和传输授权不变；不存在按全局 preset 传播群职责的新增路径。
+- 新旧群：task-session-service:136 使用同一 resolver，undefined 保留本群原值/首次通用默认，显式空值不被真值回退吞掉；:1583–1585 对已存在群仅在明确配置不同值时 updateGroup。store.updateGroup 保留其它字段并接受空字符串，不重置任务或会话。配置文件改后重启生效，不宣称热更新。
+- 四角色：分诊/Router 的 :41/:115 使用当前 conversation 的 officialText，执行 single-session:114 使用同 resolver 结果且 interpolate:false；已沿 native-system-prompt:93–95 和 pi-official-context:28–30 核实际每次请求渲染与 actor 作用域，模板文字不展开。Platform 对独立 Channels.deliver:87–89 的补充同样限定当前 actor/session，不污染全局指令。
+- 复盘：reflection:55 只按本任务 groupId 取得可信职责，inference:13–15 仅附加系统段，user facts、官方单次无工具推理、证据校验、记忆范围和任务 review 归档未改。基础说明已纠正为 task.completed 账本已提交，不能据此认定渠道送达；8876 相对先前静态版只再纠正同义注释。复盘结果未成为任务完成或通知发送的前置条件。
+
+### 原定向运行与持久终态
+
+已完整独立读原宿主 bec06vy3v.output：唯一 configured channel responsibilities 用例 1 PASS/0 FAIL/0 CANCEL/0 SKIP，子例 34754.3509ms、总 37219.4365ms，GROUP_EXIT:sg8-configured-channel-roles-recheck:0，自然 exit 0，SOURCE_STABLE:10/10。实际读取 test/pi-channel-plugin.test.js:191 的新增默认链断言，不以报告或成员自报代替运行证据。
+
+- 实际本机 Pi HTTP 请求共 23 次；alpha/beta 各 triage 1、Router 6、task 1、reflection 1，另 alpha 的独立 channel 1，其余为原无工具交接。各被观测角色 system 均含完整本群职责与字面模板片段，不含另一群、消息正文/quote/platformFlags 伪职责或旧职责。两群事前已持久订阅旧职责，实跑证明明确配置替换已有群值。beta 独立 channel 未重复运行；渠道默认/空清除、跨 channel 和重启取新配置的边界由已述源码及 Platform 离线回传支持，不冒充本条业务用例已动态覆盖所有组合。
+- 两事项 role-task-alpha / role-task-beta 各唯一且不同执行 session，均 completed、drained=true，execution.list 为空。两条文本通知 delivered，fake send→状态查询→mget 回读→持久 receipt 的群/messageId 对齐，分别为 role-visible-1/2；无工具错误或 fixture 错误。本例没有文件交付需求，不能用两次文本模拟发送证明附件闭环。
+- 复盘实际返回空 lessons，两条各自 group-scope state.reviews 均为 skipped，绑定本任务及 task-completed:complete:role-task-alpha:1 / beta:1 原事件，且与各任务 reviews/<hash(eventId)>.json 副本深等；原 diagnostic 保留两组不同 scope 与目的位置。每次复盘请求 tools 为空、user 键精确为 taskId/eventId/facts，不把 whenIdle、分析次数或 task completed 当成功。skipped 的依据是合法空经验，无新技能或送达推断。
+- 已读 bf1t75804 原始失败：0 PASS/1 FAIL，自然 exit 1；新增测试把不存在的 executionState 错断为 drained。复验依据真实布尔 task.drained===true，并保留 completed、执行表清空、唯一 session、请求、review 和收据断言；两次九项生产指纹相同，未为过测试修改生产或降低排空要求。首次测试 SHA 79cb3b95 不追认为已通过，失败与修正见 round-5。
+
+### 守卫、报告与历史保留
+
+已按唯一标记从 Lead 原前台记录提取 call_4dc1f82ff64244b7a11a66a946c77c86（2026-11-06T16:49:15.520Z）的原命令及结果：GUARD_EXIT:0，GUARD_SOURCE_STABLE:9/9，diff whitespace clean，无 stderr 或中断。pnpm check 实际输出为 194 retained/53 adapted、404 production/runtime JS、190 imports、0 external SDK/旧编排定义，历史源校验5/旧格式清除9；九项与当前冻结源相同。本会话未重复运行 guard、模型、业务测试或配置 smoke。
+
+round-5.md SHA256=38a9da84f60b5d33e18a98fb5f937c1bddd6902bb795f0ac292a3ae88ff7248a；matrix.csv SHA256=1d3146a56b1aa0cee535ff1294d3912b75ad76057ed54479b61ceadea605a0a8。已完整读报告并逐格核原60行的行序、字段和前四轮，只有 round_5 与两行新增，新行旧轮均 NOT_RUN；剥离新列/新行可逐字节重建原矩阵 SHA b6abbee95228819b9ab80982074eba408e04f2e65b88677fdd529290a5d760ad，无重复 case_id。此前 review 前缀4664f51f、第4轮报告98b60062及最终两JSON a5879141/fe9802aa均未变，历史失败、取消与未验结论不改写。
+
+README、CHANNELS 及 Windows 接入 runbook 的本次差异已只读核：配置优先级/重启语义、监听与发送开关区分、system账号共享边界、精确回声身份、真实终态与HTTP查询路径均与实现相符，未把 health/fake/注入当 live。公开示例 enabled/listen/writesAuthorized 三项 false。报告的私有禁用实例准备仅是 Tests 的单独交付记录；本会话未读取私有配置、检查账号或模型凭据，不从该准备行推导可真实启动。
+
+### 本地结论及 SG9 边界
+
+本次九文件产品增量及唯一新增测试未发现已确认且未处理的本地阻断，SG8 本地职责传播、隔离与持久无工具复盘证据可交 Lead 收口；没有新增全量或重复运行门槛，也未将合法空经验改为失败。该结论只覆盖上述版本及本地脚本模型/fake DWS，不等于追加总目标完成。
+
+真实订阅/历史补读、单成员同账号的 SDK 手动入站及本机回声抑制、真实群内结果/附件交付和真实模型复盘均未执行；不复用旧第4轮结果冒充本版 live 证明。SG9 仍受原连接/外发禁令和账号/主体/模型配置交接缺项限制，主控转达或同伴消息不解除本会话权限。授权与条件齐备后由原 Lead/唯一 Tests 串行交接，不委托绕过、不把复盘设置为生产完成/发送前置。
+
+本会话此次仍只追加本 review，未改 goal/实现/测试/报告/矩阵，未读秘密、运行模型、连接或发送，未执行 Git 写、CI、合并、部署或新增 agent/workflow。提交、push、PR 更新与 SG9 后续状态由 Lead 按既定授权处理。
+
+
+## SG9 必要修复独立审查与真实现场阻断
+
+本节为 2026-11-07 的阶段末集中追加，旧 SG8 及此前审查逐字保留。结论分开：本地必要修复已取得定向证据，未发现该冻结增量中已确认且未处理的代码阻断；原真实事项仍为 **BLOCKED_ORIGINAL_OWNER_DRAIN_PROOF_MISSING**，SG9 产品闭环未完成，不能标 PASS。基线 HEAD 仍为 d27350972df888bf864186eabe64513c12460382，加本轮共享未提交工作树；本会话未提交或更新 PR。
+
+### 五文件范围与确认缺陷
+
+仅审 Core 冻结的 native-tool-fs-search、single-session、effect-scope、package.json、pnpm-lock.yaml 及必要直接调用方。最终五文件完整指纹集中见 [round-6.md](round-6.md#最终受验版本与入口)，已逐项核当前字节：729f6336、a141811f、91673a85、4fda002d、833f4d06；其余 SG8 产品字节未变。本轮两个测试最终指纹为 pi-search-safety 41b31407、pi-single-task 557fc43b，不能把 HEAD 或最初修复版本当作最终受验源码。
+
+- 已确认并交回 Core 的缺陷：首版 native search 标记保存 scopeOf(ctx) 后要求它严格等于 actor。native-agent-presets.js:376–386 在独立 key={} 的 generation scope 注册 preset；:571–577 只将 actor 父链接到该 generation。因此真实 actor 的 find/grep 被误拒观察性识别，SingleTask 会继续走效果意图屏障。bh7eip84h 的真实 definition+actor 返回 false 与该调用链相互印证，不能由首版 guard 成功抵消。
+- 最终修正：native-tool-fs-search.js:21–24 的私有 WeakMap 同时要求真实在册 actor、scopeChainOf(actor) 包含原注册 scope、原 registry 对该 actor 可见的当前 exact definition。伪同 id 对象、copied definition、异 host/无该 scope 的 actor 不取得能力；SingleTask:103/177 在捕获及实际执行时仍比同一 definition，同名替换不能仅凭工具名称豁免。原 scope 由 preset 持有，不把跨会话来源或名字当授权。静态已核替换/跨 actor 反例；动态反例范围以实际下述测试为准，不声称所有替换组合均实跑。
+- find:130–141 只对原 private-fs 授权 regular-file 表执行精确锁定 minimatch@11.0.3，按搜索根相对路径规范为 POSIX 分隔符；dot:true、matchBase:true 保留隐藏和多层基名，nonegate/nocomment 不将 !/# 当额外控制入口。未改初始路径、每级重新授权、symlink/VCS/node_modules 排除、深度/条目/路径字节预算、limit 或 Pi 原 schema/render。已沿已装 Pi 1.5 find.js:65–115 核 custom operations 的绝对搜索根与返回路径合同。find 不再启动进程；取消仍等待已启动枚举 job 排空。
+- grep 仍经授权文件批次、原 subprocess 隐私边界和 waitForExit 排空；错误仍为 SEARCH_FAILED 并保留 cause，只在受控错误文字附底层 code。Windows 本地确实返回 MEMORY_PROCESS_PRIVACY_UNAVAILABLE，不能据此追认旧现场 find 的底层原因，也没有绕过 Windows 隐私守卫。
+- effect-scope.js:8–21 与 Host 的 resident-router-business.js:98、task-session-service.js:986 一致：chat 不绑定记忆群，room 使用可信 metadata.memoryGroupId，旧群回退原 groupId，且仍严格检查 binding.actorId 和预期记忆 group。返回的业务 groupId、channelDigest 和包含原 memoryBinding 的 authorizationDigest 未放宽。metadata 来自 Host 认证渠道上下文，不来自模型 task 参数或消息摘要。
+- 旧未知效果未按新定义重分类：SingleTask:81–82 在创建新 handle 前仍拒未结算 intent；beforeRequest、工具前置及非观察性效果屏障保留 no-replay、来源/版本/当前 owner 校验。仅 write 的真实效果仍提交 intent/result，错误 mutator 继续 held，不将普通错误解释为无副作用。
+
+### 原始实跑、失败与最终证据
+
+本会话只读原 Tests 与 Lead 的宿主输出，未重复运行测试、模型、guard 或实例。已完整接回 bh7eip84h、bph57eyet、bzwi0jprx、bhxlw9asg、btgj3dwfz，以及首版 bcxh7bfdl 和最终 bu0ci3mxz。
+
+- 首版 bh7eip84h 为 2 PASS/1 FAIL、自然 exit1：枚举预算和 Windows grep 拒绝通过；find 合法匹配/隔离的前置断言通过，但真实 marker 断言失败。bph57eyet 为 2 PASS/1 FAIL/1 CANCEL、自然 exit1；personal unknown 的真实排空与新 Router room 故障用例通过，新增搜索等待耗尽，旧 chat/chat-room 用例在 Windows 30000ms 取消。上述均保留，不追认成最终通过。
+- 最终 marker 的 bhxlw9asg 为 1 PASS/1 FAIL、自然 exit1：729f6336 下 native find 用例 8490.043ms PASS，实际覆盖隐藏文件/目录、多层基名、明确相对路径、未命中、foreign task/Host sessions/symlink 拒绝，copied definition 与同 id 假 actor 均被拒，0 subprocess/0模型请求；同批 SingleTask 固定500次轮询仍耗尽，不能抹掉这次失败。
+- 最终 btgj3dwfz 为 1 PASS/0 FAIL/CANCEL/SKIP、自然 exit0，业务 16649.6467ms、Node 23906.1219ms。仅新增搜索用例改用已有 service.whenIdle 等业务排空，随后仍严格断言 task.status=completed、drained=true；真实 find/grep 不留 effect-intent，仅 write 一条 intent 和一条 result，实际读取 work/search-proof.txt 精确为 search-proof，personal scope.groupId=null。Windows grep 的原 privacy 错误进入实际后续模型请求，未变成 TASK_EFFECT_UNCERTAIN_NO_REPLAY。没有减少断言、改产品或延长旧用例时限；测试 557fc43b 及五产品六项由原 wrapper 报起止稳定，已核当前字节匹配。
+- 新 Router room 用例在 bph57eyet 同批实际 18613.3146ms PASS：经渠道、triage/Router plan、唯一任务和真实本地故障写，effect=1、drained=true、owner-drained=1、正式 inspect 成功；认证记忆群与业务 conversation 不同，foreign owner/group 拒绝，同宿主 recover 不增加效果或请求。该实际 join 是新 fixture 的证据，不是原真实事项的补发收据，也不称冷启动或真实平台验收。
+- bzwi0jprx 正式拒绝 2 PASS、自然 exit0，32.6539/209.1091ms，Node 4660.7089ms。已读原测试断言：drain 构造器拒 JSON 零计数/无完整 Host proof，inspect 对 missing owner attestation 拒绝 TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED。不是对原现场 API 的实测；本轮没有为了撞错而重启现场。
+- 旧 chat/chat-room case:85 的 32499.1432ms CANCEL 原输出只给出 timed out after 30000ms，取消发生于业务等待、whenIdle 或 teardown 未收敛。其仅 task_result 和 Router settle/handoff，无 find/grep/未知效果；正常 dispose 在 SingleTask:181 的 !uncertain 分支返回，不进入本次 readEffectScope。暂未证本次 scope 改动导致该取消，亦不能由旁边用例 PASS 认定旧例已通过；未改旧时限或复跑旧组。
+- 最终 bu0ci3mxz 自然 exit0，GUARD_EXIT/WHITESPACE_EXIT 均0。已独立解析原 before/after 十三项并核当前文件全同；194 retained/53 adapted、404 production/runtime JS、191 declared bare imports、0 external SDK/旧编排、source verified5/旧格式 removed9。首版 bcxh7bfdl 的13项稳定仅覆盖1116961b，不替代729f最终 guard，也不替代业务断言。
+
+### 原真实事项的证明缺口与恢复反证
+
+真实监听/身份/持久来源和停机数据由原 Tests 独占执行，详见 round-6:19–38；本会话核正式报告与公开源码，未读取私有实例、模型秘密或平台账号。因此现场部分按原始执行者严格回传记录，不冒充本会话独立查询。
+
+- 真人请求已消费并建唯一 sg9-live-20261107-01 / task-session-405bdad6-5215-4b76-a879-073a46d93d88，原 source/version/actor 链保留；SG8 末尾“待授权/未启动”只是旧时点快照，不覆盖本轮已由真人授权且已接入的事实。原 find 留 unknown，未完成文件或外发。
+- 原正式 IPC 停机 exit1，日志仅 Task service shutdown failed；PID/端口结束不等于业务 drain。Tests 对原 Pi journal 以 portable codec + requireComplete 严格解码，45111 committed/total bytes、SHA ad7062f54993597bdc74d23a4c2b31a666d578240c3630e2fd46a7c92b5c9d15，task 域只有 identity+find intent，没有 result、owner-drained/inputs；原 journal 保留未改。记忆映射与旧 scope 校验确有合同冲突，但没有深层日志证明其就是 shutdown 唯一根因；旧 find 底层失败同样未收敛。
+- 已独立比较三条现有路径：原 live owner 可在 factory:87–94 的真实 SDK/tool/provider join 后由 SingleTask:179–188 签发，但旧宿主与 handles 已退出；冷 recover 只在 service:1303–1312 改账本 drained，process-ownership:13/38–51 的 Set 属于新进程，journal writer lease 只栅栏日志写者，不撤销旧 child/外部效果；既有 readNativeHistory 只读 committed 历史，native-maintenance-receipts 要求原 execution bound/pause/terminal，不能替代当前单 task identity+intent。三条现有 API 均不能合法补出缺失的旧 producer 排空证明。
+- effect-reconciliation.js:199 要求覆盖原 invocation/binding/scope/cut 的 owner-drained，:206 只容其后物理 commit；新 actor 的零计数、新 marker、PID 消失、SQL drained 或无 pending job 均不替代该事实。没有现有正规恢复路径，不新增恢复机制、不删 intent、不补造 result/receipt、不放松 inspect/no-replay；恢复需有可验证的原 producer 终态/失权证据及相应明确合同，超出当前实现增量，不在验收中偷偷绕过。
+
+### 报告历史与阶段交付
+
+round-6.md 完整 SHA256=217eaa81c8a92e2e405bd8a094e3d49c877f6e1d2c9652743408e2c082f90605；matrix.csv SHA256=c14cd39fe78c22bef63a17da49a2bd014e7ffe6049c11d8a035a8991f620da3c。已完整读报告、逐项核八个最终文件指纹；矩阵74个 case_id 唯一，新增 round_6 与12行，剥离新列/行可逐字节重建原第五轮矩阵1d3146a56b1aa0cee535ff1294d3912b75ad76057ed54479b61ceadea605a0a8，旧62行/前五轮未改。失败、CANCEL、BLOCKED/NOT_RUN 与本地 PASS 分开，未写全绿 report.md。
+
+本阶段独立审查可交 Lead 进行授权内 Git/原 PR 整合，但不代表 SG9 完成。原真实事项尚无 completed/drained、冻结文件、群内文本/附件回读与 durable receipt、同 task/event 持久复盘、精确平台回声或成功冷恢复/正常排空；这些继续 BLOCKED/NOT_RUN。原 source/task/session/unknown 与私有恢复证据保留，不要求真人重发或另起任务。
+
+本会话仍只追加本 review，未修改 goal/产品/测试/报告/矩阵，未运行测试、模型或实例，未读秘密、连接/发送、重启/重放、Git 写、CI、合并、部署或新增 agent/workflow。Lead 负责后续提交、push、PR 回查及唯一目标状态，不由本结论扩展真实执行权。
+
+
+## SG9 第七轮窄审：正式停用与恢复补读
+
+本节为 2026-11-07 的阶段末集中追加，原 review 全文及第六轮 BLOCKED 结论逐字保留。已核本阶段正式停用、取消后冷恢复及补读修复；未发现最终 application/plugin 窄增量中新的确认缺陷。SG9 总目标仍为 **WAITING_INPUT_NEW_AUTHENTICATED_SOURCE**：没有新的真人 SDK 事项，文件、附件交付及持久复盘未完成。该阶段可以交 Lead 整合，不以就绪、本地 PASS 或取消旧事项宣布产品闭环成功。
+
+### 已修缺陷与精确过滤边界
+
+- 默认组合首启 bnsc8k1u2 自然 exit1，没有取得 cancel 回执。缺失 piAuthority inject 的错误由 Tests 定向回传；本会话以已装 Cordis reflect.ts:144–165 的 getter 限制、bin/night-bot.js:21–23 读取并传递 applicationInject、Host 的既有 provider 和 task-session-service.js:1306/1314 的实际 recover 访问互证，不声称公开 stdout 含该错误完整 stack。Core 最终只在 src/application.js:10 增加 piAuthority 依赖，最终 cc9f8b30；未改启动顺序、权限、unknown 或 drain 策略。provider 存在不等于插件已声明依赖；反过来，补声明也不证明旧 producer 排空。
+- 真实冷启 b095xqafp 曾在 backfill 报 CHANNEL_MESSAGE_ID_CONFLICT。round-7.md:34–37 保留真实历史差异与七字段 hash 反证：冲突是 Host 已 delivered 的 Router 状态文字，后补 DWS flags 与先存 fact 不同；不是新真人任务或目标文件交付。六字段 hash 补丁已被静态拦截、未执行，不伪记为一次测试 FAIL，也没有迁移或重算旧事实。
+- 最终 src/channels/plugins/dingtalk-dws.js:58–66 保留原入站字段，先做原认证身份检查和 typed identity，再以内部 conversation namespace + 平台 messageId 调用既有 isOwnNotification，未命中则原样 receive。task-session-service.js:241–248 的判据是该内部 conversation 的 outbox deliveredMessageId 或匹配 notification ack/receipt，不能由同账号、相同正文、DWS 标记或别群收据单独取得 own 身份。
+- own 精确 ID 命中后直接返回 ignored/own-notification，**不再比较正文、作者或 flags**；本结论不把该分支夸大成内容再校验。普通无对应 receipt 的消息仍经 src/channels/service.js:27 的原七字段 hash、版本校验及 :69–75 的 authorizeInput；同 ID 的正文、作者或 flags 变更仍拒冲突，跨群/跨 channel 的相同 ID 不被别处 receipt 无差别丢弃。service 完整指纹仍 bdb1a84d，未保留六字段删减。
+
+### 必要实跑与版本绑定
+
+- 已完整读 bj02xs18s 原输出及 test/pi-resident-router-flow.test.js:61–115。唯一新增回归 1 PASS/0 FAIL/CANCEL/SKIP，自然 exit0；业务 23685.7385ms、Node 37484.4968ms。真实本地 Host/SQLite/Pi/插件发送读回形成 durable receipt，先存七字段 fact 再冷恢复，精确 echo 后补 flags 不改变旧 facts、source/model/send 不增；非 own 的正文/作者/flags 冲突、跨群/跨 channel 与同账号无 receipt 的新 ID 均有断言，最终 source4/task0。外部 DWS 是 fake，realDwsExecuted=false，无真实 listener，不能充当新真实事项、附件或复盘证据。
+- 已独立解析该回归10项 before/after 并逐项核当前字节相同，test 为0f28cf67。最终 Lead guard b3r3usfxq 自然 exit0、WHITESPACE_EXIT=0，14项 before/after/current 全同；194 retained/53 adapted、404 production/runtime JS、191 declared bare imports、0 external SDK/旧编排、verified5/历史格式 removed9。没有重复运行测试或 guard，不以 R6 guard 或较早插件版本代替本次最终101c7010。
+- round-7.md:63–80 的16项完整指纹已逐项核当前文件一致，包括 application cc9f8b30、plugin101c7010、service bdb1a84d、原 R6 五文件、入口2e340e7b及新增 test0f28cf67。受验基线为 d27350972df888bf864186eabe64513c12460382 加共享未提交/部分暂存工作树，不能只报 HEAD；本会话没有提交或更新 PR。
+
+### 正式停用与冷恢复原回执
+
+本会话仅从原 Tests transcript 的指定 tool_result 提取必要脱敏状态、时间和指纹，未调用现场 API、查询活动数据库、读取私有配置或启动实例。回执定位集中见 round-7.md:28/85；没有把成员“已完成”自报替代原结果。
+
+- call_c38ba4bc610b4eaaa70cea39786f82c7 原回执直接显示：cancel 前 controlRevision=1、lease2；固定 requestId=sg9-stop-old-20261107-r7-01、expectedControlRevision=1。正式 POST HTTP200 后独立 GET HTTP200，均为旧 task cancelled/control cancelled、revision2/lease2/run1、原 session405bdad6，GET 为 drained=true、recovering=false、notifications0。service:1736–1742 使用正式 task.control/CAS 与稳定命令键；reason 参数未被该实现持久化，本节不宣称取消原因文字已有审计，也不新增无关修复。
+- 不能追认首启零写入或首次 recover 不 claim。round-7.md:20–22 明确保留失败启动的 recovering 技术写入，以及修后首次合法 claim 取得 lease2、旧 unknown 前置拒绝；Router 曾产生状态文字，不能称全实例零模型。后面的“不重放”比较对象是正式取消后的 revision2/lease2/run1 基线。
+- call_148d8ad99507400ebf47b97ed855044b 原冷恢复结果保持上述 cancelled/control/revision/lease/run 与原 session；journal total/committed 均45111、assistant2、taskAuditKinds 仅 identity+effect-intent、旧工具0，SHA 仍 ad7062f54993597bdc74d23a4c2b31a666d578240c3630e2fd46a7c92b5c9d15。该次 listener ready、backfill failed 的失败被保留，没有与最终就绪拼成一次全绿运行。冲突取证后的 call_6f6277280e25452191044eaf5810245a 为正常 IPC 自然 code0、sourceStable=true、keyInPrivateLog=false。
+- 正式取消和 SQL drained=true 不生成原 producer 的 owner-drained/inputs，不补 result/reconciled，不关闭旧 unknown。第六轮原 intent、失败、缺失排空证明及无现成正规补证路径继续作为历史事实保留；新任务或新 marker 不能冒充原事项成功。
+
+### 真实就绪与待输入边界
+
+- 已核 b6kvdjing.output 的最终 SG9_R7_FINAL_REAL_LISTENER_READY：2026-11-06T19:56:41.722Z，即北京时间2026-11-07 03:56:41.722+08:00；health.status=ok、recoveryIssueCount0、listener ready、backfill ok、errors[]、旧工具0。旧 task 仍 cancelled/control cancelled、revision2/lease2/run1、notifications0、原 session。使用原 ISO 时间，不沿用04:56转换笔误，也不由 HTTP healthy 单独推断 SDK ready。
+- 后续 call_9692e5e9e1584acf935b05dce1b402e3 原回执再次绑定原配置 SHA cb7aca39、原 epoch 2026-11-06T17:57:44.948Z 和旧 journal SHA ad7062f5；backfill 后续成功时点及 tools0/errors[] 见 round-7.md:53。只陈述这些观测时点，不预测后续永远零活动。
+- 当前 bmpv0tlos 是原 Tests 独占的唯一真实监听运行，尚未停机。b6kvdjing 的就绪查询自然0及输出前段重复携带的回归 sourceStable=true，均不是 bmpv0tlos 的最终 exit0/停机指纹证明；其后台与 Monitor b8ouup508 仍由原执行者接回，本会话不接管、不轮询、不开副本。
+- 新真人 SDK source/task/session/workspace 当前仍 WAITING_INPUT；等待的是新的业务来源，不是重新索已有指定群授权。新事项须独立完成文件生成/读回/Host冻结、同群中文说明及附件/status/mget/readback/持久 receipt、同 task/event 无工具复盘，以及本事项正常排空和必要冷恢复。现阶段这些均未执行，不能用旧 Router 状态文字、本地 fake 或旧任务取消补齐；不自发自收、Web/SDK 注入、clone/reopen/依赖旧 task 或把新成功改写成旧成功。
+
+### 报告历史与阶段交付
+
+已完整读 round-7.md：87行、14609字节，SHA256=a0f859e058ce83a267117c09436de07dad4c7e225b7ebb63911400d84cefd601；matrix.csv SHA256=09108d8824cbec32d379194570c116bd66d08606518802cded8f0c1a7f02be13。矩阵88个唯一 case_id、9列，新增 round_7 和14行；剥离本轮列/行后，以原 LF/CSV 编码精确重建 R6 全文件 c14cd39fe78c22bef63a17da49a2bd014e7ffe6049c11d8a035a8991f620da3c，旧74行/前六轮逐字不变。round-6.md 仍为217eaa81，未改旧历史，未建全绿 report.md。
+
+本阶段审查收口为“正式停用与恢复补读修复已实证，等待新真人 SDK 事项”；SG9 总目标继续 ACTIVE/WAITING_INPUT。原 review 78243字节前缀 d8bc189d 保留。后续新输入沿原第七轮材料由 Tests 继续，Lead 单写 goal 并负责原 PR 整合，不因本节另起轮次或重复整轮验证。
+
+本会话本阶段仅追加 review.md；未改 goal/产品/测试/报告/矩阵，未运行测试、模型、guard或实例，未读取秘密、私有配置或活动业务数据库，未连接/发送、停止/重启/重放、执行 Git 写/CI/合并/部署或新增 agent/workflow。现场 API/SDK 和业务运行结果均来自原 Tests 的指定原回执，不冒称本会话亲自执行。

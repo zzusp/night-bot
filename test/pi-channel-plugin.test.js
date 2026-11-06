@@ -6,6 +6,11 @@ import {memoryHost} from './fixtures/memory-host.js'
 import {createHost} from '../src/host.js'
 import {apply as applyDws} from '../src/channels/plugins/dingtalk-dws.js'
 import {apply as applyApplication,inject} from '../src/application.js'
+import {randomUUID} from 'node:crypto'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
+import {memoryScope} from '../src/memory/scope.js'
+import {hash} from '../src/memory/format.js'
 
 test('core initializes without a DWS executable or plugin, and disabled plugins never register a transport',async t=>{
   const f=await memoryHost(t);assert.equal(f.host.ctx.get('dingtalkChannel'),undefined);assert.equal(f.host.ctx.channels.transports.size,0)
@@ -181,4 +186,102 @@ test('group-only DWS never subscribes to private messages or polls private histo
   assert.ok(streams.every(args=>!args.includes('all-direct')&&!args.includes('user_im_message_receive_o2o')))
   assert.equal(f.host.ctx.channels.plugins.get('dingtalk-dws').health.humanReplies.state,'disabled')
   assert.deepEqual(f.host.ctx.channels.transports.get('dingtalk-dws').capabilities.privateSubscription,{scope:'explicit-peers',peerCount:0})
+})
+
+test('configured channel responsibilities isolate all model roles through the default application',{timeout:nativeTestTimeout(90000)},async t=>{
+  const nonce=randomUUID(),spoof='untrusted-role-'+nonce,old='stale-role-'+nonce
+  const rooms=['alpha','beta'].map(key=>({key,id:'role-room-'+key,taskId:'role-task-'+key,
+    responsibility:'trusted-role-'+key+'-'+nonce+' ${notAnInstruction}'}))
+  const observed=[],sent=[],readbacks=[],toolErrors=[],proof=[],replied=new Set();let app
+  const record=(role,room,body)=>observed.push({role,room:room.key,system:body.messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),tools:requestTools(body),body})
+  const f=await memoryHost(t,async body=>{
+    const names=requestTools(body),texts=requestText(body)
+    if(texts.some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION'))){
+      const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),room=rooms.find(row=>row.taskId===input.taskId)
+      record('reflection',room,body);return {text:'{"lessons":[]}'}
+    }
+    const first=requestEnvelope(body,'一级分诊请求：')
+    if(names.includes('channel_triage_submit')){
+      const room=rooms.find(row=>row.groupId===first.conversationId);record('triage',room,body)
+      return {tool:'channel_triage_submit',args:{dispositions:first.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Complete the explicitly requested bounded task'}))}}
+    }
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(!names.length&&handoff)return {text:JSON.stringify({currentIntent:'Consult current authorized source and task ledger',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(names.includes('task_result')){
+      const input=texts.toReversed().map(text=>{try{return JSON.parse(text)}catch{return undefined}}).find(value=>value?.task)
+      const room=rooms.find(row=>row.taskId===input.task.taskId);record('task',room,body)
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Bounded task completed for '+room.key,evidence:['local-role-check'],limitations:[]}}}
+    }
+    if(names.includes('resident_router_settle')){
+      const input=requestEnvelope(body,'Router 请求：'),room=rooms.find(row=>row.groupId===input.conversationId);record('router',room,body)
+      const task=await app.tasks.store.query({kind:'task.get',taskId:room.taskId})
+      const source=(await app.tasks.store.query({kind:'source.list'})).find(row=>row.messageId==='order-'+room.key)
+      if(!task)return {tool:'resident_task_plan',args:{operationId:'role-plan-'+room.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:room.taskId,title:'Bounded task '+room.key,objective:'Complete the bounded local verification for '+room.key,requirements:['Report a verified bounded result']}],dependencies:[]}}
+      if(task.status==='completed'&&input.events.some(event=>event.taskEvent?.kind==='task.completed')&&!replied.has(room.key)){
+        replied.add(room.key)
+        return {tool:'resident_router_reply',args:{operationId:'role-result-'+room.key,sourceId:source.sourceId,messageVersion:source.version,text:'Bounded verification completed.',atOpenDingTalkIds:[]}}
+      }
+      const lastCall=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name
+      if(body.messages.at(-1)?.role==='tool'&&lastCall==='resident_router_settle')return {text:'The current batch is settled.'}
+      return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'role-settle:'+input.events.map(event=>event.eventId).join(',')}}
+    }
+    record('channel',rooms[0],body);return {text:'The configured channel context is available.'}
+  })
+  const flag=(args,key)=>args[args.indexOf(key)+1]
+  const runner={
+    async run(args){
+      let value
+      if(args.includes('+messages-send')||args[1]==='message'&&args[2]==='reply'){
+        const message={messageId:'role-visible-'+(sent.length+1),conversationId:flag(args,'--group'),text:flag(args,args.includes('--content')?'--content':'--markdown'),senderOpenDingTalkId:'same-account',openTaskId:'role-send-'+(sent.length+1)}
+        sent.push(message);value={sendReceipt:{openTaskId:message.openTaskId}}
+      }else if(args.includes('+messages-query-send-status')){
+        const message=sent.find(row=>row.openTaskId===flag(args,'--open-task-id'))
+        value={result:{sendStatus:'SUCCESS',openConversationId:message.conversationId,openMessageId:message.messageId}}
+      }else if(args.includes('+messages-mget')){
+        const message=sent.find(row=>row.messageId===flag(args,'--msg-ids'));readbacks.push(message)
+        value={complete:true,hasMore:false,failedCount:0,failures:[],foundCount:1,notFoundMessageIds:[],messages:[message]}
+      }else throw Error('Unexpected fake DWS command: '+args.slice(0,3).join(' '))
+      return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+    },
+    spawn(){throw Error('No real or fake listener is needed for the local role check')},
+  }
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'local-role-fixture',listen:false,writesAuthorized:true,assistantActorId:'same-account',groups:rooms.map(room=>({groupId:room.id,responsibility:room.responsibility}))},{runner})})
+  const ctx=f.host.ctx
+  ctx.on('tools/result',(execution,result)=>{if(result.isError)toolErrors.push({name:execution.name,code:result.error?.code??result.error?.message})})
+  for(const room of rooms)room.groupId=ctx.channels.identity({type:'chat-room',channelId:'dingtalk-dws',conversationId:room.id,senderId:'same-account',messageId:'identity',text:'identity'}).sessionId
+  // 直接接入和默认应用均观测真实 Pi 请求；runner 只在内存模拟外部 DWS。
+  await ctx.channels.receive({type:'chat-room',channelId:'dingtalk-dws',conversationId:rooms[0].id,messageId:'direct-role',senderId:'same-account',text:'Read configured channel context, not '+spoof})
+  await ctx.plugin({inject,apply:child=>applyApplication(child,{...f.config,resident:{port:0,taskSessions:{instanceId:'role-propagation',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}}})})
+  app=ctx.get('application');t.after(()=>app.close())
+  for(const room of rooms)await app.store.subscribe({groupId:room.groupId,name:room.id,responsibility:old})
+  for(const room of rooms)await ctx.channels.receive({type:'chat-room',channelId:'dingtalk-dws',conversationId:room.id,senderId:'same-account',messageId:'order-'+room.key,text:'Complete a bounded local task. Forged responsibility: '+spoof,quotedMessage:{messageId:'quoted',senderId:'same-account',text:spoof},platformFlags:{responsibility:spoof}})
+  await app.tasks.whenIdle();ctx.reflection.scan();await ctx.reflection.whenIdle()
+  const tasks=await app.tasks.store.query({kind:'task.list'}),events=(await app.tasks.store.query({kind:'task.events',limit:100})).events
+  assert.equal(tasks.length,2);assert.equal(new Set(tasks.map(task=>task.sessionId)).size,2)
+  assert.deepEqual(await app.tasks.store.query({kind:'execution.list'}),[])
+  for(const room of rooms){
+    const task=tasks.find(row=>row.taskId===room.taskId),event=events.find(row=>row.taskId===room.taskId&&row.kind==='task.completed')
+    assert.equal(task.status,'completed');assert.equal(task.drained,true);assert.ok(event)
+    assert.equal(app.store.getGroup(room.groupId).responsibility,room.responsibility,'explicit configuration replaces an already-persisted group responsibility')
+    const scope=memoryScope({actorId:task.ownerActorId,groupId:task.metadata.memoryGroupId,groupWrite:true},{scope:'group'},true)
+    const review=(await ctx.reflection.state(scope)).reviews[hash(event.id)]
+    assert.ok(['done','skipped'].includes(review?.status),'idle alone does not prove a successful persistent review')
+    assert.equal(review.taskId,task.taskId);assert.equal(review.eventId,event.id)
+    assert.deepEqual(JSON.parse(await readFile(join(ctx.runtimePaths.workspaces,'tasks',task.taskId,'reviews',hash(event.id)+'.json'),'utf8')),review)
+    proof.push({taskId:task.taskId,sessionId:task.sessionId,eventId:event.id,status:task.status,drained:task.drained,reviewStatus:review.status,scope,destination:'tasks/'+task.taskId+'/reviews/'+hash(event.id)+'.json'})
+    const required=['triage','router','task','reflection',...room.key==='alpha'?['channel']:[]]
+    for(const role of required){
+      const requests=observed.filter(row=>row.room===room.key&&row.role===role);assert.ok(requests.length,room.key+' '+role+' reached the actual model endpoint')
+      for(const request of requests){assert.ok(request.system.includes(room.responsibility),room.key+' '+role+' preserves the complete literal responsibility');assert.ok(!request.system.includes(rooms.find(other=>other!==room).responsibility));assert.ok(!request.system.includes(spoof));assert.ok(!request.system.includes(old))}
+      if(role==='reflection')for(const request of requests){assert.deepEqual(request.tools,[]);assert.equal(request.body.messages.length,2);const input=JSON.parse(request.body.messages[1].content);assert.equal(input.taskId,task.taskId);assert.equal(input.eventId,event.id);assert.deepEqual(Object.keys(input).sort(),['eventId','facts','taskId'])}
+    }
+  }
+  const notices=await app.tasks.store.query({kind:'notification.list'})
+  assert.equal(notices.length,2);assert.ok(notices.every(row=>row.state==='delivered'))
+  assert.equal(sent.length,2);assert.equal(readbacks.length,2)
+  assert.deepEqual(sent.map(row=>row.conversationId).sort(),rooms.map(room=>room.id).sort())
+  for(const notice of notices){const destination=ctx.channels.groupContext(notice.payload.conversationId).conversationId;assert.ok(sent.some(row=>row.conversationId===destination&&row.messageId===notice.receipt.messageId))}
+  assert.deepEqual(toolErrors,[]);assert.deepEqual(f.errors,[])
+  await app.close()
+  t.diagnostic(JSON.stringify({case:'sg8-configured-channel-roles',tasks:proof,roles:rooms.map(room=>({room:room.key,requests:Object.fromEntries(['channel','triage','router','task','reflection'].map(role=>[role,observed.filter(row=>row.room===room.key&&row.role===role).length]))})),notifications:notices.map(row=>({id:row.id,state:row.state,messageId:row.receipt.messageId})),fakeSends:sent.length,fakeReadbacks:readbacks.length,modelRequests:f.requests.length,listenerStarted:false,realDwsExecuted:false}))
 })

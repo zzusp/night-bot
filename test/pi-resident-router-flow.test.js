@@ -58,6 +58,63 @@ test('all four default dispositions keep original handling independent of an unk
   assert.equal(h.requests.length,requestCount,'committed dispositions and Router actions are not replayed after cold restart')
 })
 
+test('durable receipt echoes tolerate later DWS flags without replacing existing message facts',{timeout:nativeTestTimeout(40000)},async t=>{
+  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{hash}=await import('../src/memory/format.js'),{apply:applyDws}=await import('../src/channels/plugins/dingtalk-dws.js')
+  const sent=[],readbacks=[],at=new Date().toISOString(),flag=(args,key)=>args[args.indexOf(key)+1]
+  const h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),source=>({needsHandling:false,...source.text==='Original request receipt-original'?{reply:'Bounded synthetic reply'}:{}}))
+    return {text:'No additional business work'}
+  })
+  const runner={async run(args){
+    let value
+    if(args.includes('+messages-send')||args[1]==='message'&&args[2]==='reply'){
+      const message={messageId:'synthetic-visible-'+(sent.length+1),conversationId:flag(args,'--group'),text:flag(args,args.includes('--content')?'--content':'--markdown'),senderOpenDingTalkId:'same-account',openTaskId:'synthetic-send-'+(sent.length+1)}
+      sent.push(message);value={sendReceipt:{openTaskId:message.openTaskId}}
+    }else if(args.includes('+messages-query-send-status')){
+      const message=sent.find(row=>row.openTaskId===flag(args,'--open-task-id'));value={result:{sendStatus:'SUCCESS',openConversationId:message.conversationId,openMessageId:message.messageId}}
+    }else if(args.includes('+messages-mget')){
+      const message=sent.find(row=>row.messageId===flag(args,'--msg-ids'));readbacks.push(message);value={complete:true,hasMore:false,failedCount:0,failures:[],foundCount:1,notFoundMessageIds:[],messages:[message]}
+    }else throw Error('Unexpected synthetic DWS command: '+args.slice(0,3).join(' '))
+    return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+  },spawn(){throw Error('No listener in the local receipt regression')}}
+  async function mount(channelId='dingtalk-dws'){
+    const ctx=h.host.ctx
+    await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,{enabled:true,channelId,profile:'synthetic-profile',listen:false,writesAuthorized:true,assistantActorId:'same-account',groups:['shared-room','other-room']},{runner})})
+    await ctx.parallel('night/ready',{runtime:{},tasks:h.service})
+    return ctx.channels.plugins.get(channelId)
+  }
+  let plugin=await mount()
+  const receive=(input,target=plugin)=>target.acceptHistoryMessage({groupId:input.conversationId,messageId:input.messageId,senderOpenDingTalkId:input.senderId,text:input.text,occurredAt:at,...input.platformFlags?.messageAiSendFlag?{messageAiSendFlag:input.platformFlags.messageAiSendFlag}:{}})
+  const original=channelMessage('receipt-original',{channelId:'dingtalk-dws'}),channels=h.host.ctx.channels,identity=channels.identity(original)
+  await receive(original);await h.service.whenIdle()
+  const notices=await h.query('notification.list'),notice=notices.find(row=>row.state==='delivered')
+  assert.ok(notice);assert.equal(sent.length,1);assert.equal(readbacks.length,1)
+  const echo=channelMessage(notice.receipt.messageId,{channelId:'dingtalk-dws',senderId:'same-account',text:sent[0].text})
+  // 复现原部署在精确回声过滤前已持久登记的事实，必须保留七字段摘要。
+  await channels.registerConversation(echo)
+  const file=join(h.host.ctx.runtimePaths.state,'channels','contexts.json'),saved=JSON.parse(await readFile(file,'utf8'))
+  for(const input of [original,echo])assert.equal(saved[identity.sessionId].messageFacts[input.messageId].payloadHash,hash(JSON.stringify([channels.identity(input).principal,input.text,[],null,null,[],{}])))
+  const beforeFacts=structuredClone(saved[identity.sessionId].messageFacts),requests=h.requests.length,sends=sent.length
+  await h.restart();plugin=await mount()
+  await receive(original)
+  assert.equal((await receive({...echo,platformFlags:{messageAiSendFlag:'DWS',automated:true}})).reason,'own-notification')
+  await h.service.whenIdle()
+  assert.equal(h.requests.length,requests);assert.equal(sent.length,sends)
+  assert.equal((await h.query('source.list')).length,1);assert.equal((await h.query('task.list')).length,0)
+  assert.deepEqual(JSON.parse(await readFile(file,'utf8'))[identity.sessionId].messageFacts,beforeFacts,'cold replay and receipt echo preserve existing facts')
+  for(const change of [{text:'Changed actual content'},{senderId:'foreign-actor'},{platformFlags:{messageAiSendFlag:'DWS',automated:true}}])await assert.rejects(receive({...original,...change}),error=>error.code==='CHANNEL_MESSAGE_ID_CONFLICT')
+  const fresh={...echo,messageId:'fresh-same-account',platformFlags:{messageAiSendFlag:'DWS',automated:true}}
+  assert.notEqual((await receive(fresh)).reason,'own-notification')
+  assert.notEqual((await receive({...echo,conversationId:'other-room'})).reason,'own-notification')
+  const other=await mount('other-dws')
+  assert.notEqual((await receive(echo,other)).reason,'own-notification')
+  await h.service.whenIdle()
+  assert.equal((await h.query('source.list')).length,4,'only exact conversation/message receipts are echoes; account, flags and text alone are insufficient')
+  assert.equal(sent.length,sends);assert.equal((await h.query('task.list')).length,0)
+  t.diagnostic(JSON.stringify({case:'existing-fact-dws-echo',coldFactsUnchanged:true,preciseEchoIgnored:true,changedContentActorFlagsRejected:true,crossChannelAndConversationKept:true,receiptlessSameAccountKept:true,realDwsExecuted:false}))
+})
+
 test('in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued',{timeout:nativeTestTimeout(45000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers(),batches=[],business=[];let paused=false
   t.after(()=>release.resolve())

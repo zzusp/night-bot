@@ -30,6 +30,14 @@ it does not claim integrations with all messaging platforms or install accounts.
 The retained internal transport facade has historical DingTalk field names, while
 the public typed protocol and adapter delivery envelopes remain channel-neutral.
 
+## 渠道职责配置
+
+职责、助手设定和工作规范由可信部署配置提供，不从入站消息或任务摘要提取为配置。DWS 使用 `channelPlugins[].config.groups` 列出群，每项可为群 ID 字符串或 `{groupId,responsibility}`；`config.responsibility` 是该插件已列群的可选默认职责。解析顺序为本群显式字符串 → 本插件默认字符串 → 未指定；空字符串 `""` 明确清空，未指定时保留本群原职责，新群采用通用默认。重复群 ID、空群 ID 或非字符串职责拒绝。
+
+配置只匹配已认证的 `chat-room` / `channelId` / `conversationId`，不借用其它群或其它渠道的职责，也不将群配置套给 `chat` 或未列群。插件启动时读取配置快照；文件修改后须正常停止并重启。已存在的认证会话同样解析本次配置，入站时仅明确配置值变化才更新 resident 群记录，不限于首次订阅。
+
+标准任务服务把同一会话职责传入四个角色的系统指令：一级分诊 `channel-triage-scope`、Router `resident-conversation-scope`、执行会话 `task:group-responsibility`，以及按任务所属群解析的独立无工具复盘。分诊与 Router 在每次系统指令编译时解析，执行和复盘在本次调用时取值；配置文字不进行模板插值，不混入用户事实，也不产生任务控制权、外发许可或跨会话记忆权限。职责配置不改变四角色分工、任务版本与依赖守卫。`task.completed` 只证明任务账本完成，不证明群消息或附件送达；复盘保留该证据边界。
+
 ## 轻量一级分诊
 
 一级分诊只用本批原消息、已附带的引用/提及、认证身份及快速可得的本地信息判断是否需要处理、是否需要回复。它不拉长历史、不解析大附件、不拆分事项、不选择 taskId、不创建或控制任务。信息不足且需要进一步业务判断时转交 Router，不把未知记成无需处理。
@@ -122,13 +130,17 @@ capabilities, multi-account isolation and DWS source evidence are specified in
 
 The standard CLI composes `src/application.js`, not the historical DWS resident.
 Initialization uses `channelPlugins: []`. Disabled rows do not load the adapter,
-register a transport, probe a binary, subscribe or create an account home. To opt in:
+register a transport, probe a binary, subscribe or create an account home. The repository example is disabled; this registration-only example also disables listening and sending:
 
 ```json
-{"channelPlugins":[{"type":"dingtalk-dws","enabled":true,"config":{
-  "profile":"YOUR_PROFILE","writesAuthorized":false,"groups":["YOUR_ROOM_ID"]
+{"channelPlugins":[{"type":"dingtalk-dws","enabled":true,"channelId":"dingtalk-dws","config":{
+  "profile":"YOUR_PROFILE","accountMode":"system","listen":false,"writesAuthorized":false,
+  "responsibility":"仅处理本渠道已配置群中明确授权的请求。",
+  "groups":[{"groupId":"YOUR_ROOM_ID","responsibility":"填写该群职责、助手设定和工作规范。"}]
 }}]}
 ```
+
+`enabled:true` 会注册插件；`listen:false` 阻止自动监听，并不表示未加载插件。省略 `listen` 会在 `night/ready` 启动群订阅和历史补读，即使 `writesAuthorized:false`。后者只控制渠道发送，不替代连接授权或单条业务授权。真实接入前核对所列群和显式 profile，按 [Windows 接入流程](ops/windows-local-runtime.md#指定钉钉群接入) 分别启用监听和交付；本示例不会自动执行这些步骤。
 
 Windows defaults to `accountMode:"system"`, using the current user's existing DWS
 login with its DPAPI/HKCU protection. This does not copy credentials or claim
@@ -147,6 +159,8 @@ Optional operator notifications require explicit plugin configuration and actual
 operator/account identity validation. General private-chat ingress is separately
 opt-in via `directChats`, `directPeers` and `assistantActorId`; it supports native
 quoted text replies, not private-chat file delivery or general history catch-up.
+
+群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。这不证明当前 DWS/profile 会推送同账号在单成员群中的原始消息，也不证明真实回声已被正确抑制。`listen:false` 下的 `acceptHistoryMessage`、SDK 注入和 fake 仅验证本地链路；真实订阅、原始入站、群内交付/回读和复盘须分项留证。
 
 `test/pi-channel-plugin.test.js` checks disabled/registered modes and the actual
 standard application without any channel installed. Local adapter/domain contracts

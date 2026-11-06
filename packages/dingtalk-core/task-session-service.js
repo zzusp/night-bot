@@ -133,8 +133,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const query = (kind, args = {}) => store.query({ kind, ...args })
   if((await query('execution.list')).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
   const archives=new TaskArchives({paths:ctx.get('runtimePaths'),store,routes:ctx.get('taskSessionRoutes'),onSuccess:taskId=>failures.delete('task-archive:'+taskId),onFailure:(taskId,error)=>{failures.set('task-archive:'+taskId,{id:taskId,code:error.code??'TASK_ARCHIVE_CAPTURE_FAILED'});ctx.logger?.warn?.('task archive '+taskId+': '+(error.code??'TASK_ARCHIVE_CAPTURE_FAILED'))}})
+  const responsibilityFor=conversationId=>ctx.get('channels').responsibility(conversationId)??residentStore.getGroup(conversationId)?.responsibility??''
   const reflection=ctx.get?.('reflection')
-  const stopReflection=reflection?.attachStore(store,{ownerActorId:config.ownerActorId,onReview:archives?(taskId,report)=>archives.recordReview(taskId,report):undefined,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
+  const stopReflection=reflection?.attachStore(store,{ownerActorId:config.ownerActorId,responsibilityFor,onReview:archives?(taskId,report)=>archives.recordReview(taskId,report):undefined,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
 
   if (residentStore.retireIndependentCoordination)
     await residentStore.retireIndependentCoordination(await query('coordination.retirement'))
@@ -824,7 +825,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,models,legacy,commit:async(groupId,decision)=>{
+  const triage=createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit:async(groupId,decision)=>{
     const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))
     for(const notification of receipt.result?.notifications??[])notificationCache.set(notification.id,notification)
     void deliverNotifications()
@@ -833,8 +834,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }})
   residentRouter=await openRouterLifecycle({ctx,store,root,models,agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
-    return registerResidentRouterTools(agentCtx,{...binding,responsibility:residentStore.getGroup(binding.conversationId)?.responsibility??''},{
-    query,command,applyTaskAction:applyDirectTaskAction,prepareReply:args=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args)},
+    return registerResidentRouterTools(agentCtx,binding,{
+    query,command,responsibilityFor,applyTaskAction:applyDirectTaskAction,prepareReply:args=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)
@@ -844,7 +845,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       snapshot.consumed=Math.max(snapshot.consumed,page.nextOffset);snapshot.total=page.total
       return page
     },
-    platformConfig:groupId=>({responsibility:residentStore.getGroup(groupId)?.responsibility??'',timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,model:models(),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
+    platformConfig:groupId=>({responsibility:responsibilityFor(groupId),timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,model:models(),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
     platformSchedule:args=>platformSchedules.submit({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},args),
   })}})
   const rerouteGroups=new Set()
@@ -987,7 +988,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
           blockers: await query('task.blockers', { taskId }) }, ...taskModelSelection(models(), legacy.getAgentConfig().taskSessionModel ?? config), agentPreset: legacy.getAgentConfig().agentPreset,
-          groupResponsibility: residentStore.getGroup(task.groupId)?.responsibility ?? '',
+          groupResponsibility: responsibilityFor(task.groupId),
           authorizeEffectInvocation,
           readDecisions: (args, current) => query('task.decisions', { ...args, taskId: current.taskId }),
           onSupplementAdmitted:async({messageId,entryId,packetId,binding:nextBinding})=>{
@@ -1579,7 +1580,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const unifiedIngress=async input=>{
     if(!['chat','chat-room'].includes(input?.type))return ingest(input)
     const channel=await ctx.get('channels').registerConversation(input),e=channel.envelope
-    if(!residentStore.getGroup(channel.sessionId))await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationId,responsibility:'Respect authenticated channel participants and the current user request.'})
+    const group=residentStore.getGroup(channel.sessionId),configuredResponsibility=ctx.get('channels').responsibility(channel.sessionId)
+    if(!group)await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationId,responsibility:configuredResponsibility??'Respect authenticated channel participants and the current user request.'})
+    else if(configuredResponsibility!==undefined&&group.responsibility!==configuredResponsibility)await residentStore.updateGroup({groupId:channel.sessionId,responsibility:configuredResponsibility})
     const channels=ctx.get('channels'),principal=senderId=>channels.identity({...e,senderId}).principal
     const occurredAt=channels.groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt
     const response=await ingest({

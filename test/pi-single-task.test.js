@@ -8,7 +8,8 @@ import {createHost} from '../src/host.js'
 import {backupData,restoreData} from '../src/runtime/backup.js'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
-import {requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
+import {requestEnvelope,requestTools,residentRouterHost,channelMessage,eventually} from './fixtures/resident-router-host.js'
+import {readTaskEffectScope} from '../src/tasks/effect-scope.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
@@ -162,4 +163,42 @@ test('a task rejects forged archive output and can still submit a legitimate wor
   await assert.rejects(stat(join(task.session.workspaceDir,'outputs/forged.txt')),{code:'ENOENT'})
   assert.equal(await readFile(join(task.session.workspaceDir,'work/proof.txt'),'utf8'),'legitimate work')
   assert.equal(row.completion.result.artifactFiles.length,1)
+})
+test('single task native searches stay observational while a real write retains its effect receipts',async t=>{
+ t=cleanupContext(t);let h,step=0;t.after(()=>h?.close())
+ const calls=[{tool:'find',args:{pattern:'missing.txt'}},{tool:'write',args:{path:'work/search-proof.txt',content:'search-proof'}},{tool:'find',args:{pattern:'work/*.txt'}},...(process.platform==='win32'?[{tool:'grep',args:{pattern:'proof',path:'work'}}]:[]),{tool:'read',args:{path:'work/search-proof.txt'}},result]
+ const f=await memoryHost(t,body=>requestTools(body).includes('task_result')?calls[step++]:{text:'{"lessons":[]}'})
+ h=await serviceFor(f);const created=await h.service.createTask({requestId:'native-search-effects',objective:'Discover local files, observe any search refusal, then create and read back the bounded proof'})
+ await h.service.whenIdle();const row=await h.store.query({kind:'task.get',taskId:created.taskId});assert.equal(row.status,'completed',JSON.stringify({status:row.status,drained:row.drained,step,decision:row.lastDecision,error:(await h.service.taskDialogue(row.taskId)).error,modelRequests:f.requests.length}));assert.equal(row.drained,true)
+ const stored=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),effects=stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent')
+ assert.deepEqual(effects.map(r=>r.payload.name),['write']);assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,1);assert.equal((await readTaskEffectScope(f.host.ctx,row,stored)).groupId,null)
+ assert.equal(await readFile(join(stored.header.cwd,'work/search-proof.txt'),'utf8'),'search-proof')
+ if(process.platform==='win32'){assert.match(JSON.stringify(f.requests),/MEMORY_PROCESS_PRIVACY_UNAVAILABLE/);assert.doesNotMatch(JSON.stringify(f.requests),/TASK_EFFECT_UNCERTAIN_NO_REPLAY/)}
+})
+test('Router room unknown effect drains and inspects with distinct conversation and memory groups',async t=>{
+ let f,effects=0
+ f=await residentRouterHost(t,async body=>{
+  const names=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：')
+  if(names.includes('channel_triage_submit'))return {tool:'channel_triage_submit',args:{dispositions:triage.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Perform the explicitly requested bounded local action'}))}}
+  const handoff=requestEnvelope(body,'Router 交接请求：')
+  if(!names.length&&handoff)return {text:JSON.stringify({currentIntent:'Retain authorized task evidence',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+  if(names.includes('task_result'))return {tool:'room_partial_effect',args:{}}
+  if(names.includes('resident_router_settle')){
+   const input=requestEnvelope(body,'Router 请求：'),task=await f.query('task.get',{taskId:'room-effect-scope'})
+   if(!task){const source=(await f.query('source.list')).find(source=>source.messageId==='scope-request');return {tool:'resident_task_plan',args:{operationId:'scope-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'room-effect-scope',title:'Bounded room effect',objective:'Perform one local action without replay',requirements:[]}],dependencies:[]}}}
+   if(body.messages.at(-1)?.role==='tool'&&body.messages.findLast(m=>m.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle')return {text:'Current batch settled'}
+   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'scope-settle:'+input.events.map(event=>event.id).join(',')}}
+  }
+ })
+ f.host.ctx.tools.register({name:'room_partial_effect',description:'Write one isolated proof then lose its response',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/unknown.txt'),'one bounded partial effect');throw Error('response lost after local write')}})
+ await f.receive(channelMessage('scope-request',{text:'Perform the bounded local scope verification'}))
+ const row=await eventually(async()=>{const row=await f.query('task.get',{taskId:'room-effect-scope'});return row?.drained&&row.lastDecision?.limitations?.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY')&&row},'room unknown effect drain')
+ await f.service.whenIdle();const stored=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),intent=stored.auditEntries.find(e=>e.data.domain==='task'&&e.data.kind==='effect-intent')
+ const binding=f.host.ctx.memory.bindings.get(row.sessionId);assert.equal(binding.actorId,row.ownerActorId);assert.equal(binding.groupId,row.metadata.memoryGroupId);assert.notEqual(binding.groupId,row.groupId)
+ assert.equal(effects,1);assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='owner-drained').length,1)
+ const inspection=await f.service.inspectTaskEffect({taskId:row.taskId,intentEntryId:intent.entryId});assert.equal(inspection.scope.groupId,row.groupId)
+ await assert.rejects(readTaskEffectScope(f.host.ctx,{...row,ownerActorId:'foreign-owner'},stored),{code:'TASK_EFFECT_MEMORY_SCOPE_MISMATCH'})
+ await assert.rejects(readTaskEffectScope(f.host.ctx,{...row,metadata:{...row.metadata,memoryGroupId:'foreign-memory'}},stored),{code:'TASK_EFFECT_MEMORY_SCOPE_MISMATCH'})
+ const count=f.requests.length;await f.service.recover();await f.service.whenIdle();assert.equal(effects,1);assert.equal(f.requests.length,count)
+ t.diagnostic(JSON.stringify({case:'router-room-effect-scope',taskId:row.taskId,drained:row.drained,distinctMemoryGroup:true,ownerDrained:1,inspectSucceeded:true,effects}))
 })

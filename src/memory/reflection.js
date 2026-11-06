@@ -7,7 +7,7 @@ import {checkedText,hash} from './format.js'
 import {atomicWrite,readRegular,withLock,failure} from '../runtime/files.js'
 const validKey=value=>typeof value==='string'&&/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)&&value.length<=60
 const brief=value=>checkedText(String(value??'').slice(0,1800))
-/** Tool-free post-delivery learning. The task ledger remains authoritative. */
+/** 任务完成后的无工具复盘；任务账本仍是权威，完成不代表渠道已送达。 */
 export default class Reflection extends Service {
   static inject=['memory','skills','agents','nativePiProvider','runtimePaths']
   constructor(ctx,config={}){
@@ -15,9 +15,9 @@ export default class Reflection extends Service {
     ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope)}))
     ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.whenIdle()},'reflection drain')
   }
-  attachStore(store,{ownerActorId,model,credentials,onReview}={}){
+  attachStore(store,{ownerActorId,model,credentials,onReview,responsibilityFor}={}){
     if(this.config.enabled===false)return
-    const source={store,ownerActorId,model,credentials,onReview};this.sources.add(source);void this.scanSource(source)
+    const source={store,ownerActorId,model,credentials,onReview,responsibilityFor};this.sources.add(source);void this.scanSource(source)
     return ()=>this.sources.delete(source)
   }
   scan(){for(const source of this.sources)void this.scanSource(source)}
@@ -52,7 +52,7 @@ export default class Reflection extends Service {
         const official=this.host.get('nativePiProvider')?.official
         if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
         const resolved=await official.resolve({...source.model,signal},source.credentials===undefined?undefined:{credentials:source.credentials})
-        const raw=await officialReflectionText(resolved,input,{signal})
+        const raw=await officialReflectionText(resolved,input,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??''})
         const output=JSON.parse(raw);if(!Array.isArray(output.lessons)||output.lessons.length>3)throw failure('REFLECTION_INVALID')
         const lessons=output.lessons.map(lesson=>{
           if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')

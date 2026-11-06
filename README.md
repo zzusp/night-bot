@@ -23,6 +23,8 @@ curl http://127.0.0.1:18998/health
 
 默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，外部渠道的目录发现、生命周期和能力接口见 [插件接口](docs/CHANNEL-PLUGINS.md)。钉钉使用 `channelPlugins` 的 `dingtalk-dws` 配置；Windows 默认直接使用当前用户受系统保护的 DWS 登录态，不复制凭据；多个实例可能共享账号存储，不能用 HOME/config 目录宣称独立账号；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。保留原工具的权限 preset 与业务授权规则。HTTP 仅监听 loopback；需要远程访问时使用经过鉴权的运维通道。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
 
+指定钉钉群的职责、助手设定和规范通过私有配置 `channelPlugins[].config.groups[].responsibility` 传入；`config.responsibility` 可作该插件所列群的默认值。配置贯通一级分诊、常驻 Router、事项执行与独立无工具复盘，不改变原消息授权或跨群隔离。修改后须正常停止并重启；未获真实连接/发送授权时保持 `listen:false`、`writesAuthorized:false`。配置优先级见 [渠道职责](docs/CHANNELS.md#渠道职责配置)，Windows 账号、隔离准备和真实终态核对见 [接入流程](docs/ops/windows-local-runtime.md#指定钉钉群接入)。
+
 `/config/agent` 保存的默认模型选择持久化于 `stateDir/storage/night_model_selection.json`，重启后优先于初始 JSON 配置中的默认选择；provider 声明仍由启动配置提供。
 
 `providers` 由本地 NativePiProvider 处理，兼容原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为安装目录内的额外技能目录；默认加载 `data/config/skills` 和受控指令目录。技能与指令发现不通过 `DSH_*` 环境变量选择目录，技能也不隐式读取外部 `.dsh/skills`；显式绝对 state/workspace 模式使用 state 内受控的 `runtime/configured-agents`、`runtime/configured-harness`，不扫描操作系统用户 home。技能文件默认开启监听，外部编辑后会在下次模型步骤提醒重读；`skillWatch: false` 可显式关闭后台监听，原生写入/编辑仍会使技能目录失效刷新。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。凭据与附件不会回退到外部 DSH 目录；旧扁平凭据会拒绝并保留原文件。终端默认只提供 `NIGHT_BOT_SHELL` 和 `NIGHT_BOT_SESSION_ID` 执行事实，不提供 DSH home/profile；安装目录模式继续过滤非标准扩展环境值。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和单会话任务执行；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。

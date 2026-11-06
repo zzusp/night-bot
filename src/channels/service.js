@@ -5,13 +5,25 @@ import {hash} from '../memory/format.js'
 import {isDeepStrictEqual} from 'node:util'
 import {failure,privateDirectory,readRegular,atomicWrite,withLock} from '../runtime/files.js'
 const envelopeSchema=z.object({type:z.enum(['chat','chat-room']),channelId:z.string().min(1).max(128),conversationId:z.string().min(1).max(256),senderId:z.string().min(1).max(256),messageId:z.string().min(1).max(256),messageVersion:z.number().int().positive().optional(),text:z.string().min(1).max(32000),sentAt:z.string().optional(),mentionedAgent:z.boolean().optional(),mentions:z.array(z.string().min(1).max(256)).max(256).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),resourceRefs:z.array(z.record(z.string(),z.unknown())).max(32).optional(),quotedMessage:z.object({messageId:z.string(),senderId:z.string().optional(),text:z.string().optional()}).strict().optional()}).strict()
+/** 仅解析可信插件配置；职责不来自入站消息。 */
+export function channelGroupResponsibilities(groups=[],responsibility){
+  if(!Array.isArray(groups)||responsibility!==undefined&&typeof responsibility!=='string')throw failure('CHANNEL_GROUP_CONFIGURATION_INVALID')
+  const responsibilities=new Map()
+  for(const group of groups){
+    const object=group!==null&&typeof group==='object'&&!Array.isArray(group),groupId=typeof group==='string'?group:object?group.groupId:undefined
+    if(typeof groupId!=='string'||!groupId.trim()||responsibilities.has(groupId)||object&&group.responsibility!==undefined&&typeof group.responsibility!=='string')throw failure('CHANNEL_GROUP_CONFIGURATION_INVALID')
+    responsibilities.set(groupId,object&&group.responsibility!==undefined?group.responsibility:responsibility)
+  }
+  return responsibilities
+}
 /** Trusted adapter ingress, not an unauthenticated network endpoint. */
 export default class Channels extends Service {
   static inject=['agents','sessionPersistence','agentPresets','agentDefaultModel','memory','runtimePaths']
   constructor(ctx){super(ctx,'channels');this.host=ctx;this.tails=new Map();this.handles=new Map();this.closed=false;this.contexts=new Map();this.transports=new Map();this.plugins=new Map();this.observers=new Map();this.ready=this.loadContexts();ctx.effect(()=>async()=>{this.closed=true;const pending=await Promise.allSettled([...this.tails.values()]);const disposed=await Promise.allSettled([...this.handles.values()].map(handle=>handle.dispose()));const errors=[...pending,...disposed].filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Channel drain failed')},'channel drain')}
   async [Service.init](){await this.ready}
   async loadContexts(){for(const [key,value]of Object.entries(JSON.parse(await readRegular(join(this.host.runtimePaths.state,'channels','contexts.json'))??'{}')))this.contexts.set(key,value)}
-  groupContext(id){return this.contexts.get(id)}
+  groupContext(id){const context=this.contexts.get(id);if(!context)return;const responsibility=this.plugins.get(context.channelId)?.responsibility?.(context);return {...context,...responsibility!==undefined?{responsibility}:{}}}
+  responsibility(id){return this.groupContext(id)?.responsibility}
   async registerConversation(input){await this.ready;const identity=this.identity(input),e=identity.envelope,path=join(this.host.runtimePaths.state,'channels','contexts.json');await withLock(path+'.lock',async()=>{const saved=JSON.parse(await readRegular(path)??'{}'),prior=saved[identity.sessionId],payloadHash=hash(JSON.stringify([identity.principal,e.text,e.resourceRefs??[],e.quotedMessage??null,e.mentionedAgent??null,e.mentions??[],e.platformFlags??{}])),priorMessage=prior?.messageFacts?.[e.messageId];const version=e.messageVersion??1;if(priorMessage&&(priorMessage.version??1)>version)throw failure('CHANNEL_MESSAGE_VERSION_STALE');if(priorMessage&&(priorMessage.version??1)===version&&priorMessage.payloadHash!==payloadHash)throw failure('CHANNEL_MESSAGE_ID_CONFLICT');const fact=priorMessage&&(priorMessage.version??1)===version?priorMessage:{payloadHash,version,occurredAt:e.sentAt??new Date().toISOString()};saved[identity.sessionId]={type:e.type,channelId:e.channelId,conversationId:e.conversationId,memoryBinding:identity.binding,...identity.binding.groupId?{memoryGroupId:identity.binding.groupId}:{},messageFacts:{...prior?.messageFacts,[e.messageId]:fact},participants:{...prior?.participants,[identity.principal]:e.senderId}};await atomicWrite(path,JSON.stringify(saved,null,2)+'\n');this.contexts.set(identity.sessionId,saved[identity.sessionId])});return identity}
   attachIngress(handler){this.ingress=handler;return ()=>{if(this.ingress===handler)this.ingress=undefined}}
   registerOperationObserver(id,factory){if(this.observers.has(id))throw failure('CHANNEL_OBSERVER_EXISTS');this.observers.set(id,factory);return ()=>this.observers.delete(id)}
@@ -72,7 +84,10 @@ export default class Channels extends Service {
           const skills=actor.ctx.get('skills');if(!skills)return false
           const skill=await this.host.agents.withInitiator(actor,()=>skills.get(name,{scope:actor,cwd:actor.ctx.get('workingDirectory')?.get(actor)??actor.metadata.cwd,signal:actor.lifecycle.signal}))
           return skill?.invocation?.userInvocable===true
-        }}:{},setup:async ctx=>{await this.host.agentPresets.mount(ctx,'night-bot')}}
+        }}:{},setup:async ctx=>{
+          await this.host.agentPresets.mount(ctx,'night-bot')
+          ctx.get('systemPrompt').section({name:'channel-conversation-responsibility',order:151,interpolate:false,officialText:()=>{const responsibility=this.responsibility(sessionId);return responsibility===undefined?'':'当前会话配置职责：'+responsibility+'。仅适用于当前认证会话，不创造发送许可、任务授权或跨会话访问权限。'}})
+        }}
       handle=existing?await this.host.agents.resume({...options,resumeSessionId:sessionId}):await this.host.agents.create({...options,sessionId,meta:{cwd:workspace,agentPreset:'night-bot'}})
       this.handles.set(sessionId,handle)
     }
