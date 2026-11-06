@@ -78,3 +78,30 @@ test('unknown effect remains fenced across official retries and later prompts wi
  await f.session.prompt('later request remains fenced')
  assert.equal(effects,1);assert.equal(f.calls,1);assert.equal(JSON.stringify(f.manager.getEntry(receipt)),original);assert.equal(await readFile(join(f.root,'uncertain-effect.txt'),'utf8'),'uncertain write\n')
 })
+
+test('official finite retry budgets reset for later prompts and are isolated between sessions',async t=>{
+ const settings={enabled:true,maxRetries:1,baseDelayMs:1,maxAgentDelayMs:1,provider:{maxRetries:0}}
+ const first=await fixture(t,settings,()=>({error:'503 server error'})),second=await fixture(t,settings,()=>({error:'503 server error'}))
+ await first.session.prompt('first exhausted budget')
+ assert.equal(first.calls,2);assert.equal(second.calls,0)
+ await second.session.prompt('independent session budget')
+ assert.equal(second.calls,2)
+ await first.session.prompt('fresh prompt has its own finite budget')
+ assert.equal(first.calls,4)
+ assert.deepEqual(first.events.filter(event=>event.type==='auto_retry_start').map(event=>event.attempt),[1,1])
+ assert.equal(first.session.retryAttempt,0);assert.equal(second.session.retryAttempt,0)
+})
+
+test('aborting official backoff drains it and leaves a later prompt usable without stale retry work',async t=>{
+ let recovered=false
+ const f=await fixture(t,{enabled:true,maxRetries:2,baseDelayMs:10000,maxAgentDelayMs:10000,provider:{maxRetries:0}},()=>recovered?{text:'fresh prompt completed'}:{error:'503 server error'})
+ const entered=Promise.withResolvers()
+ const off=f.session.subscribe(event=>{if(event.type==='auto_retry_start')entered.resolve()})
+ const prompt=f.session.prompt('cancel this backoff')
+ await entered.promise;await f.session.abort();await prompt;off()
+ assert.equal(f.calls,1);assert.equal(f.session.isRetrying,false);assert.equal(f.session.retryAttempt,0)
+ recovered=true
+ await f.session.prompt('new prompt after cancellation')
+ assert.equal(f.calls,2);assert.equal(f.session.getLastAssistantText(),'fresh prompt completed')
+ assert.equal(f.events.filter(event=>event.type==='auto_retry_start').length,1)
+})
