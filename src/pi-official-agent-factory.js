@@ -139,6 +139,7 @@ export class OfficialAgentFactory {
      await options.beforeRequest?.(actor)
      for(const guard of requestGuards)await guard({actor,signal:lifecycle.signal})
     },
+    onToolResult:options.onToolResult,
     beforeStoreClose:async()=>{await ownerCtx.get('sessionNames')?.closeActor(actor);await skillRefresh?.close();if(published)await drain('dispose');await admission.close()},
    })
    actor.options=deepFreeze({...actor.options,...bundle.session.model?{provider:bundle.session.model.provider,model:bundle.session.model.id}:{},reasoningEffort:bundle.session.thinkingLevel})

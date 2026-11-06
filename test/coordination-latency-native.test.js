@@ -3,21 +3,11 @@ import test from 'node:test'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import PiPersistence from '../src/pi-session-persistence.js'
-import NativeAttachments from '../src/native-attachments.js'
 import sharp from 'sharp'
-import {apply as installPiAuthority} from '../src/pi-authority.js'
-import { Context } from '@deepseek-ai/cordis'
-import NativeAgents from '../src/native-agents.js'
-import NativeSessions from '../src/native-sessions.js'
-import PiLoop from '../src/pi-loop.js'
-import NativeLlm from '../src/native-llm.js'
-import {LlmAdapter} from '../src/native-llm-protocol.js'
-import NativeSystemPrompt from '../src/native-system-prompt.js'
-import NativeTools from '../src/native-tools.js'
-import NativeProjections from '../src/native-projections.js'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
-import { createCoordinationSessions, createCoordinationStepGate } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
+import {isDeepStrictEqual} from 'node:util'
+import {nativeTaskHost,latestInput} from './fixtures/task-session-native-host.js'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
+import { createCoordinationSessions } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
 import { createTopicCoordinator } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 
@@ -26,41 +16,32 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 // 确定性模型只决定调用序列；消息路由、工具校验、调度、决策和 Task 落库均走真实实现。
 test('真实协调器中九次非法旧决策不挡住新图文任务，公平续行不消耗请求重试次数', { timeout: 10000 }, async t => {
   const snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'native-latency-test' })
-  const store = await openResidentStore(facility)
+  const domain=await nativeResidentSnapshot(snapshot)
+  const store=await openResidentStore(domain.domains)
+  t.after(()=>domain.close())
   await store.subscribe({ groupId: 'g', responsibility: '响应明确发给小小鹏的排查请求' })
   await store.setAgentNames(['小小鹏'])
   await store.ingest({ groupId: 'g', messageId: 'old', text: '小小鹏，上次盘点不要接。', occurredAt: '2026-09-22T08:26:00Z' })
   await store.routeMessages({ groupId: 'g', routeId: 'seed-old-topic', routingRevision: 0,
     routes: [{ messageId: 'old', messageVersion: 1, topics: [{ newTopicKey: 'old', title: '代理越界接活' }] }] })
   const oldTopicId = store.listTopics('g')[0].topicId
-  const ctx = new Context()
-  if(process.env.NIGHT_BOT_TEST_DEBUG)ctx.on('agent/error',event=>console.error('PI_ERROR',event.error))
-  if(process.env.NIGHT_BOT_TEST_DEBUG)ctx.on('tools/result',(exec,result)=>{if(result.isError)console.error('TOOL_ERROR',exec.name,result.error?.message)})
-  new NativeAgents(ctx); new NativeSessions(ctx); new NativeProjections(ctx)
-  new NativeSystemPrompt(ctx, { includeRuntimeContext: false }); new NativeLlm(ctx); new NativeTools(ctx)
   const root=await mkdtemp(join(tmpdir(),'coord-latency-pi-'))
-  installPiAuthority(ctx);new PiPersistence(ctx,{root})
-  await ctx.plugin(PiLoop, { agents: [], maxParallelToolCalls: 1 })
-  new NativeAttachments(ctx,{storageRoot:join(root,'attachments')})
+  let decide
+  const host=await nativeTaskHost(root,request=>decide(request),{resident:true}),ctx=host.ctx
+  ctx.nativePiProvider.profiles().get('native-task-test').models[0].input=['text','image']
   const image=await ctx.attachments.saveImage({data:await sharp({create:{width:720,height:335,channels:3,background:'#f4f4f4'}}).jpeg().toBuffer(),mediaType:'image/jpeg'})
   const incoming = { groupId: 'g', messageId: 'msg5oChb4j8c29-fixture', text: '小小鹏看下这个：任一专家已经开始审核后不可撤回；一个专家审核完了，为啥可以撤回，如下图',
     occurredAt: '2026-09-22T08:26:18.310Z', imageRefs: [image] }
 
-  const loop = ctx.agentLoop
   const firstEntered = Promise.withResolvers(), releaseFirst = Promise.withResolvers(), taskCreated = Promise.withResolvers()
   const oldFinished = Promise.withResolvers(), newFinished = Promise.withResolvers()
   const calls = new Map(), agents = new Map(), requests = new Map(), acceptedOrder = [], applicationIds = [], errors = [], imagesSeen = []
   let coordinator, manager, oldRequest, newRequest, taskCreatedWhileOldPending = false
 
-  class Model extends LlmAdapter {
-    constructor(entry) { super(); this.entry = entry }
-    async *stream(options) {
-      const { request, role } = this.entry
+  decide = async options => {
+      const input=latestInput(options),request=requests.get(input.requestId)
+      assert.ok(request,'actual SDK request must map to its exact authorized Host request')
+      const role=request.requestId.startsWith('coord-decision-')?'decision':'route'
       const count = (calls.get(request.requestId) ?? 0) + 1
       calls.set(request.requestId, count)
       const isOld = request.topicId === oldTopicId
@@ -87,7 +68,7 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
           decision: { basisMessageIds: ['old'], actions: [], reason: '停止承接盘点。', ...(count <= 9 ? { reply: '本次不会继续处理。' } : {}) } }
       } else {
         assert.ok(count <= 2, '任务决策不应因其他话题错误重复生成')
-        imagesSeen.push((options.messages ?? []).flatMap(message => message.content ?? []).filter(part => part.type === 'image').map(part => part.attachment))
+        imagesSeen.push((options.messages ?? []).flatMap(message => message.content ?? []).filter(part => part.type === 'image').map(part => ({data:part.data,mimeType:part.mimeType})))
         if (count === 1) {
           name = 'group_decision_context_get'
           args = { requestId: request.requestId, section: 'messages', offset: 0 }
@@ -99,23 +80,31 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
             reply: '收到，我会排查原因。', replyReview: { kind: 'confirmation', reviewedOutboundIds: [], sameMatterOutboundIds: [], replaceOutboundIds: [] } } }
         }
       }
-      const id = request.requestId + '-' + count, json = JSON.stringify(args)
-      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
-      yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: json }
-      yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: json } }
-      yield { type: 'finish', reason: { kind: 'tool-calls' } }
-    }
+      return [{name,args}]
   }
 
   manager = createCoordinationSessions({ eventPrefix: null, isCurrent: request => coordinator.isCurrentRequest(request), onError: error => errors.push(error), create: async entry => {
     requests.set(entry.request.requestId, entry.request)
     if (entry.role === 'decision' && entry.request.topicId === oldTopicId) oldRequest = entry.request
     else if (entry.role === 'decision') newRequest = entry.request
-    ctx.llm.registerAdapter([entry.sessionId], new Model(entry))
-    const handle = await loop.createAgent(ctx, { sessionId: entry.sessionId, agentOptions: { provider: entry.sessionId, model: 'fixture' }, setup(agentCtx) {
-      agentCtx.on('agent/pre-step', createCoordinationStepGate(entry, request => coordinator.isCurrentRequest(request)))
-      coordinator.register(agentCtx, 'g', entry.request)
-    } })
+    const handle=await ctx.agents.create({sessionId:entry.sessionId,meta:{cwd:ctx.runtimePaths.workspaces,agentPreset:'night-bot'},agentOptions:{provider:'native-task-test',model:'controlled'},
+      authorizeInput:packet=>entry.active&&coordinator.isCurrentRequest(entry.request)&&isDeepStrictEqual(entry.authorizedPackets.get(packet.id),packet),
+      beforeRequest:()=>{if(!entry.active||!coordinator.isCurrentRequest(entry.request))throw Error('coordination_request_inactive')},
+      onToolResult:actor=>{
+        assert.equal(agents.get(entry.request.requestId),actor)
+        entry.sliceSteps=(entry.sliceSteps??0)+1
+        const yieldNow=!entry.active||!coordinator.isCurrentRequest(entry.request)||entry.yieldRequested||entry.request.routingPaused||entry.hasContenders?.()&&entry.sliceSteps>=(entry.role==='route'?1:3)
+        if(yieldNow)entry.sliceYielded=entry.active&&!entry.request.routingPaused
+        return !!yieldNow
+      },
+      setup(agentCtx){
+        coordinator.register(agentCtx,'g',entry.request)
+        agentCtx.on('tools/execute',async(exec,next)=>{const result=await next()
+          if(!entry.active||!coordinator.isCurrentRequest(entry.request)){exec.concludeTurn();return result}
+          if(entry.yieldRequested||entry.request.routingPaused||entry.hasContenders?.()&&entry.sliceSteps>=(entry.role==='route'?1:3)){entry.sliceYielded=!entry.request.routingPaused;exec.concludeTurn()}
+          return result
+        })
+      }})
     agents.set(entry.request.requestId, handle.agent)
     return handle
   } })
@@ -138,7 +127,7 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
       taskCreated.resolve()
     },
   })
-  t.after(async () => { releaseFirst.resolve(); try { await coordinator.close(); await manager.close(); await store.close() } finally { try { await ctx.fiber.dispose() } finally { await rm(root,{recursive:true,force:true}) } } })
+  t.after(async () => { releaseFirst.resolve(); try { await coordinator.close(); await manager.close(); await store.close() } finally { try { await host.close() } finally { await rm(root,{recursive:true,force:true}) } } })
   await coordinator.schedule('g')
   await firstEntered.promise
   await store.ingest(incoming)
@@ -149,16 +138,17 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
   assert.ok(calls.get(oldRequest.requestId) < 10)
   assert.ok(acceptedOrder.includes(newRequest.requestId))
   assert.equal(acceptedOrder.includes(oldRequest.requestId), false)
-  assert.ok(imagesSeen.some(refs => refs.some(ref => ref.attachmentId === image.attachmentId)), '真实原生模型上下文保留图片附件')
+  assert.ok(imagesSeen.some(refs => refs.some(ref => typeof ref.data==='string'&&ref.data.length>0&&ref.mimeType==='image/jpeg')), '真实原生模型上下文保留图片附件')
   await oldFinished.promise
   await Promise.all([...requests.values()].map(request => manager.whenSettled(request)))
   await coordinator.drain('g'); await tick()
   assert.equal(calls.get(oldRequest.requestId), 10)
   assert.equal(calls.get(newRequest.requestId), 2)
-  const results = agents.get(oldRequest.requestId).session.snapshotEvents().filter(event => event.type === 'tool/result')
-    .map(event => JSON.parse(event.data.message.content[0].text))
-  assert.equal(results.filter(result => result.status === 'invalid-arguments').length, 9)
-  assert.ok(results.slice(0, 9).every(result => result.nextAction === 'correct-arguments' && result.issues.some(issue => issue.field === 'arguments' && issue.code === 'decision_schema_invalid')), 'schema admission rejects all nine malformed decision unions before business execution')
+  const history=await ctx.sessionPersistence.readNative(agents.get(oldRequest.requestId).id,{requireComplete:true})
+  const results=history.context.piMessages.filter(message=>message.role==='toolResult'&&message.toolName==='group_decision_submit')
+  assert.equal(results.filter(result => result.isError).length, 9)
+  assert.ok(results.slice(0,9).every(result=>result.isError&&result.content.some(part=>part.type==='text'&&/invalid arguments/i.test(part.text))), 'official prepareArguments rejects all nine malformed decisions before business execution')
+  assert.equal(results.at(-1).isError,false)
   assert.equal(store.listTasks().length, 1)
   const [task] = store.listTasks()
   const committed = store.getTopic('g', newRequest.topicId).decisions.find(record => record.revision === newRequest.revision)
@@ -182,12 +172,9 @@ test('真实协调器中九次非法旧决策不挡住新图文任务，公平�
 
 test('Host 动作阻塞保留后续同话题消息，不能提前完成或当成模型处理', async t => {
   const snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'native-blocked-test' })
-  const store = await openResidentStore(facility)
+  const domain=await nativeResidentSnapshot(snapshot)
+  const store=await openResidentStore(domain.domains)
+  t.after(()=>domain.close())
   let coordinator
   t.after(async () => { await coordinator?.close(); await store.close() })
   await store.subscribe({ groupId: 'g' })

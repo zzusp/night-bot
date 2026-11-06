@@ -1,3 +1,4 @@
+import {bindBusinessTurnYield} from './pi-business-turn-yield.js'
 import {bindPiToolCallBatchGuard} from './pi-tool-call-batch.js'
 import {bindPiRequestImageBudget} from './pi-request-image-budget.js'
 import {createAgentSession} from '@earendil-works/pi-coding-agent'
@@ -10,7 +11,7 @@ import {bindApprovalAudit} from '../native-approval.js'
  * No global/home resources, alternate message model or model loop is installed.
  * The application must durably admit work before calling session.prompt/steer.
  */
-export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false}) {
+export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false,onToolResult}) {
  if(store?.kind!=='pi-native'||!admission||typeof createAudit!=='function')throw new TypeError('Explicit native store and business admission required')
  const actorAdmission=Object.fromEntries(['enqueue','has','status','lookupPacket','pending','current'].filter(key=>typeof admission[key]==='function').map(key=>[key,admission[key].bind(admission)]))
  Object.defineProperty(actorAdmission,'paused',{enumerable:true,get:()=>admission.paused});Object.freeze(actorAdmission)
@@ -27,7 +28,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
  const unbindApproval=bindApprovalAudit(actor,audit)
- let session,imageBudget,toolBatchGuard
+ let session,imageBudget,toolBatchGuard,businessYield
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
@@ -54,6 +55,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    const maxTokens=configured.maxTokens===undefined?options?.maxTokens:Math.min(configured.maxTokens,options?.maxTokens??configured.maxTokens)
    return stream(model,request,{...options,...configured,...maxTokens===undefined?{}:{maxTokens}})
   }
+  if(onToolResult!==undefined)businessYield=bindBusinessTurnYield({session,actor,onToolResult,fence})
   durability=bindOfficialDurability({session,store,tools,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure}})
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
@@ -83,10 +85,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
-   async close(){await durability.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
+   async close(){await durability.close();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
   }
  }catch(cause){
-  unbindApproval();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
+  unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
   // No SDK execution has been admitted during construction. Preserve any
   // independently owned store for its caller to inspect and close explicitly.
   throw cause

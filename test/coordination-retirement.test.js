@@ -1,10 +1,11 @@
 import test from 'node:test'
+import {memoryHost} from './fixtures/memory-host.js'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { retiredSourceOwnership, COORDINATION_RETIRED_REASON } from '../packages/dingtalk-dsh-assistant/coordination-retirement.js'
@@ -78,12 +79,10 @@ test('upgrade retires only independent coordination; old questions/receipts surv
 
 test('resident retirement settles exact old ownership idempotently; list/detail agree and other pending Topic stays pending', async t => {
   const snapshot = { tables: {}, global: null }
-  const facility = () => new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { open: async () => ({
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    putRecord: async (table,key,value) => { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    deleteRecord: async (table,key) => { delete snapshot.tables[table][key] },
-  }) } }) } } }, { backend: 'retirement-test' })
-  let store = await openResidentStore(facility())
+  const resources=[]
+  const facility=async()=>{const resource=await nativeResidentSnapshot(snapshot);resources.push(resource);return resource.domains}
+  t.after(async()=>{for(const resource of resources)await resource.close()})
+  let store = await openResidentStore(await facility())
   await store.subscribe({ groupId: 'g', responsibility: 'Business' }); await store.close()
   const at = '2026-10-29T00:01:00Z', retirement = { kind: 'feature-removed', reason: COORDINATION_RETIRED_REASON, at }
   const unit = { unitId: 'u', unitRevision: 1, unitKey: 'u', dispatchOwner: 'coordination', summary: 'Old clarification', sourceRanges: [{ start: 0, end: 3, quote: 'Old' }] }
@@ -92,7 +91,7 @@ test('resident retirement settles exact old ownership idempotently; list/detail 
   group.routingRevision = 1
   group.messages = [message]
   group.sourceDispatchOwnership = [{ reservationId: 'r', unitId: 'u', unitRevision: 1, generation: 1, dispatchOwner: 'coordination', semanticState: 'needs_clarification', settled: false, clarification: 'Old question', sourceSnapshot: { messageId: 'm', messageVersion: 1 }, history: [], createdAt: at, updatedAt: at }]
-  store = await openResidentStore(facility()); t.after(() => store.close())
+  store = await openResidentStore(await facility()); t.after(() => store.close())
   await store.retireIndependentCoordination(retirement)
   const once = structuredClone(store.getGroup('g'))
   await store.retireIndependentCoordination(retirement)
@@ -120,11 +119,10 @@ test('resident retirement settles exact old ownership idempotently; list/detail 
   // Recovery must settle the durable source fence too, without a model or send.
   const root = await mkdtemp(join(tmpdir(), 'retired-orphan-'))
   const noop = async () => {}, forbidden = async () => assert.fail('retirement must not run a model, task or notification')
-  const service = await openTaskSessionService({ ctx: { agents: { get() {} }, sessions: { get() {} } }, residentStore: store,
+  const native=await memoryHost(t)
+  const service = await openTaskSessionService({ ctx:native.host.ctx, residentStore: store,
     legacy: { getGroup: id => store.getGroup(id), getAgentConfig: () => ({ workspaceDir: root }) },
     config: { dbPath: join(root, 'ledger.sqlite'), workspaceDir: root, instanceId: 'retired-orphan', initialize: true },
-    persistence: { register: noop, close: noop }, groupSessions: { run: forbidden, close: noop },
-    taskSessions: { run: forbidden, close: noop, cancel: noop }, executionSessions: { run: forbidden, close: noop, cancel: noop },
     notifications: { send: forbidden, readback: forbidden } })
   try {
     await service.store.command({ id: 'record-orphan', kind: 'source.record', args: { sourceId: 'orphan', groupId: 'g', messageId: 'm', version: 1, actorId: 'example', text: 'Old question' } })
@@ -135,6 +133,7 @@ test('resident retirement settles exact old ownership idempotently; list/detail 
     assert.equal(settled.processingPending, false); assert.equal(settled.routed, true)
     assert.deepEqual(settled.coordinationRetirement.units, message.activeUnitRefs)
     await service.recover(); await service.whenIdle()
+    assert.equal(native.requests.length,0)
     assert.deepEqual((await service.store.query({ kind: 'source.get', sourceId: 'orphan' })).processingCompleted, settled.processingCompleted)
     assert.deepEqual(await service.store.query({ kind: 'task.list' }), [])
     assert.deepEqual(await service.store.query({ kind: 'notification.list' }), [])

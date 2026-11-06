@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import test, {after} from 'node:test'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { openResidentStore, reconcileReplacementGraph } from '../packages/dingtalk-dsh-assistant/store.js'
 import { stagePlanFor } from '../packages/dingtalk-dsh-assistant/task-input-revision.js'
 
-// 使用真实 DomainFacility 的验证与串行持久化链；只有介质写入被隔离为内存。
-function facility(snapshot = { tables: {}, global: null }, beforePut = () => {}) {
-  return new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { beforePut(table, key, value); (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'isolated' })
+const domainResources=[]
+after(async()=>{for(const resource of domainResources)await resource.close()})
+async function facility(snapshot={tables:{},global:null},beforePut=()=>{}){
+ const resource=await nativeResidentSnapshot(snapshot,{beforeCommit:({change})=>beforePut(change.table,change.key,change.value)})
+ domainResources.push(resource);return resource.domains
 }
 async function setup() {
   const snapshot = { tables: {}, global: null }
-  const storage = facility(snapshot), store = await openResidentStore(storage)
+  const storage = await facility(snapshot), store = await openResidentStore(storage)
   await store.subscribe({ groupId: 'g' })
   return { snapshot, storage, store }
 }
@@ -44,7 +42,7 @@ test('待判持久化、受信范围和恢复代次保持接纳屏障', async ()
   assert.equal(store.getGroup('g').messages.at(-1).routingStatus, 'needs-context')
   assert.equal((await store.acceptTopicDecision(decision('blocked', topics.b, 1))).status, 'routing-required')
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   const hold = reopened.getGroup('g').messages.at(-1).routingHold
   assert.equal(hold.reason, '范围不明')
   await reopened.updateRoutingHold({ groupId: 'g', messageId: 'uncertain', messageVersion: 1, epoch: hold.epoch, scope: [topics.a] })
@@ -97,7 +95,7 @@ test('可信引用只恢复原待判并要求答复与原文共同路由', async
 test('首次完成时钟不可变，重复complete与通知送达/重启不改语义终态', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-27T05:36:12Z') })
   const snapshot = { tables: {}, global: null }
-  let writes = 0, store = await openResidentStore(facility(snapshot, () => { writes++ }))
+  let writes = 0, store = await openResidentStore(await facility(snapshot, () => { writes++ }))
   t.after(() => store.close())
   await store.subscribe({ groupId: 'g' }); await ingest(store, 'message-320')
   const topicId = (await route(store, 'route-320', [['message-320', { newTopicKey: 'case-320', title: '消息承接' }]])).topicIdsByKey['case-320']
@@ -113,7 +111,7 @@ test('首次完成时钟不可变，重复complete与通知送达/重启不改�
   await store.acknowledge({ groupId: 'g', outboundId: 'notification-320', deliveredMessageId: 'sent-320' })
   assert.deepEqual(await store.completeTopicDecision(target), first)
   assert.deepEqual(store.getTopic('g', topicId), completedTopic)
-  await store.close(); store = await openResidentStore(facility(snapshot))
+  await store.close(); store = await openResidentStore(await facility(snapshot))
   t.mock.timers.tick(60_000)
   assert.deepEqual(await store.completeTopicDecision(target), first)
   assert.equal(store.getTopic('g', topicId).decisions[0].completedAt, first.completedAt)
@@ -129,7 +127,7 @@ test('历史已完成但缺少首次时钟不以重试当前时间或updatedAt�
   await store.close()
   const record = snapshot.tables.groups.g.topics[0].decisions[0]
   delete record.completedAt; record.updatedAt = '2026-10-27T05:37:09Z'
-  const reopened = await openResidentStore(facility(snapshot)); t.after(() => reopened.close())
+  const reopened = await openResidentStore(await facility(snapshot)); t.after(() => reopened.close())
   assert.deepEqual(await reopened.completeTopicDecision(target), record)
   assert.equal(reopened.getTopic('g', topicId).decisions[0].completedAt, undefined)
 })
@@ -144,7 +142,7 @@ test('明确发送阻塞重启保留，普通错误不清阻塞，真实晚回�
   }
   await store.appendOutbox({ groupId: 'g', outboundId: 'correction', sourceMessageId: 'correction', text: '纠正', replacesOutboundIds: ['replaced'] })
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   for (const id of ['blocked', 'replaced']) {
     const before = reopened.getGroup('g').outbox.find(item => item.outboundId === id)
     assert.ok(before.deliveryBlockedAt)
@@ -161,7 +159,7 @@ test('明确发送阻塞重启保留，普通错误不清阻塞，真实晚回�
 test('替换图在决策接纳前拒绝未知目标，重复协调不产生持久写入', async () => {
   const snapshot = { tables: {}, global: null }
   let writes = 0
-  const store = await openResidentStore(facility(snapshot, () => { writes += 1 }))
+  const store = await openResidentStore(await facility(snapshot, () => { writes += 1 }))
   await store.subscribe({ groupId: 'g' }); await ingest(store, 'a')
   const topicId = (await route(store, 'r', [['a', { newTopicKey: 'a', title: 'A' }]])).topicIdsByKey.a
   const before = structuredClone(store.getGroup('g'))
@@ -198,7 +196,7 @@ test('替换pending原子停止旧发送，发送领取与替换串行且晚回�
   await store.updateOutboundRecall({ groupId: 'g', outboundId: 'a', status: 'requested' })
   await store.updateOutboundRecall({ groupId: 'g', outboundId: 'a', status: 'failed', error: '失败', retryAt: '2026-09-12T00:00:00Z' })
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   const restored = reopened.getGroup('g').outbox.find(item => item.outboundId === 'a')
   assert.equal(restored.status, 'superseded'); assert.equal(restored.recallAttemptCount, 1); assert.ok(restored.recallRetryAt)
   await reopened.updateOutboundRecall({ groupId: 'g', outboundId: 'a', status: 'recalled' })
@@ -215,7 +213,7 @@ test('历史替换图先完整校验，拒绝环与分叉且保留已有有效�
     b.replacesOutboundIds = ['a']; c.replacesOutboundIds = mode === 'fork' ? ['a'] : ['b', 'a']
     if (mode === 'cycle') a.replacesOutboundIds = ['c']
     if (mode === 'chain') a.supersededByOutboundId = 'b'
-    const reopened = await openResidentStore(facility(snapshot))
+    const reopened = await openResidentStore(await facility(snapshot))
     const before = structuredClone(reopened.getGroup('g'))
     if (mode === 'chain') {
       await reopened.reconcileOutboxReplacements({ groupId: 'g' })
@@ -308,7 +306,7 @@ test('拒绝旧决策的持久写入失败时不释放预约，不把内存结�
   await store.acceptTopicDecision(input); await store.close()
   snapshot.tables.groups.g.topics.find(topic => topic.topicId === topicId).decisions[0].decision.actions[0].impactEvidence.affectedStageIds = ['bad-id']
   let fail = false
-  const reopened = await openResidentStore(facility(snapshot, table => { if (fail && table === 'groups') throw new Error('durable-failure') }))
+  const reopened = await openResidentStore(await facility(snapshot, table => { if (fail && table === 'groups') throw new Error('durable-failure') }))
   const before = structuredClone(reopened.getGroup('g'))
   const persistedBefore = structuredClone(snapshot.tables.groups.g)
   fail = true
@@ -330,7 +328,7 @@ test('重开旧坏决策仅释放自己的预约，保留输入、Task和Outbox�
   record.status = 'failed'
   record.decision.actions[0].impactEvidence.affectedStageIds = ['历史错误阶段']
   group.taskReservations.push({ taskId: 'another-task', inputVersion: 1, runSequence: 1, decisionId: 'another-decision', topicId })
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   const before = structuredClone(reopened.getGroup('g'))
   const target = { groupId: 'g', topicId, decisionId: input.decisionId }
   assert.equal(await reopened.rejectInvalidTopicDecision(target), true)
@@ -343,7 +341,7 @@ test('重开旧坏决策仅释放自己的预约，保留输入、Task和Outbox�
   await assert.rejects(reopened.completeTopicDecision(target), /topic_decision_rejected/)
   assert.equal(reopened.getTopic('g', topicId).processedRevision, 0)
   await reopened.close()
-  const again = await openResidentStore(facility(snapshot))
+  const again = await openResidentStore(await facility(snapshot))
   assert.equal(again.getTopic('g', topicId).decisions[0].status, 'rejected')
   await again.close()
 })
@@ -364,7 +362,7 @@ test('旧坏决策出现已执行账本、部分应用、取消副作用或版�
       record.operations.push({ operationId: 'cancel-operation', actionIndex: 1, taskId: 'another-task', status: 'pending' })
     }
     if (scenario === 'version-changed') storedTask.inputVersion += 1
-    const reopened = await openResidentStore(facility(snapshot))
+    const reopened = await openResidentStore(await facility(snapshot))
     const before = structuredClone(reopened.getGroup('g'))
     assert.equal(await reopened.rejectInvalidTopicDecision({ groupId: 'g', topicId, decisionId: input.decisionId }), false, scenario)
     assert.deepEqual(reopened.getGroup('g'), before, scenario)
@@ -434,7 +432,7 @@ test('附件与身份补齐产生新事实版本，重开仍可读取旧Topic快
   assert.equal(store.getTopic('g', a).revision, 2)
   assert.equal(store.getTopicContext({ groupId: 'g', topicId: a, revision: 1 }).messages[0].mediaUnavailable[0], 'image fetch failed')
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   assert.equal(reopened.getTopicContext({ groupId: 'g', topicId: a, revision: 2 }).messages[0].imageRefs[0].id, 'attachment-a')
   assert.equal(reopened.getGroup('g').messages[0].routingStatus, 'pending')
 })
@@ -457,7 +455,7 @@ test('决策固定动作身份、失败后重开恢复、Task变更恰好一次'
   assert.equal((await store.createTask(taskInput)).created, true)
   await store.updateTopicDecision({ groupId: 'g', topicId: a, decisionId: 'durable', patch: { status: 'failed', error: '故障注入' } })
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   assert.equal((await reopened.acceptTopicDecision(input)).status, 'duplicate')
   assert.equal((await reopened.createTask(taskInput)).created, false)
   assert.equal(reopened.listTasks().length, 1)
@@ -543,7 +541,9 @@ test('固定版本不暴露后来摘要，旧决策完成不关闭已收到新�
   await store.completeTopicDecision({ groupId: 'g', topicId: a, decisionId: 'second' })
   const previous = store.getTopicContext({ groupId: 'g', topicId: a, revision: 1 })
   assert.equal(previous.topic.revision, 1)
-  assert.equal(previous.topic.summary, '')
+  assert.equal(previous.topic.summary, '第一版')
+  assert.notEqual(previous.topic.summary, '后来的第二版')
+  assert.equal(JSON.stringify(previous).includes('后来问题'), false)
   assert.equal(previous.topic.decisions.length, 1)
   assert.deepEqual(previous.topic.openQuestions, [])
 })
@@ -561,7 +561,7 @@ test('不同Topic不能同时接受撤回同一Outbox的意图', async () => {
 test('Web输入与Topic决策一次写入，持久失败零副作用且重试固定身份', async () => {
   const snapshot = { tables: {}, global: null }
   let fail = false
-  const store = await openResidentStore(facility(snapshot, (table) => { if (fail && table === 'groups') { fail = false; throw new Error('injected-durable-write-failure') } }))
+  const store = await openResidentStore(await facility(snapshot, (table) => { if (fail && table === 'groups') { fail = false; throw new Error('injected-durable-write-failure') } }))
   await store.subscribe({ groupId: 'g' })
   const request = { groupId: 'g', requestId: 'web-create', text: '从管理页面创建任务', action: { kind: 'new-task', title: 'Web任务', objective: '执行页面要求', acceptanceCriteria: ['结果可核验'] }, topicRefs: [] }
   const before = structuredClone(store.getGroup('g'))
@@ -579,7 +579,7 @@ test('Web输入与Topic决策一次写入，持久失败零副作用且重试固
   const task = await store.createTask({ groupId: 'g', ...accepted.record.decision.actions[0], taskId: operation.taskId, operationId: operation.operationId })
   assert.equal(task.created, true)
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   await ingest(reopened, 'arrived-after-web')
   const duplicate = await reopened.submitWebTaskInput(request)
   assert.equal(duplicate.status, 'duplicate')
@@ -649,7 +649,7 @@ test('新Outbox结果指纹通过真实domain schema保存且重开可查询', a
   const { store, snapshot } = await setup()
   await store.appendOutbox({ groupId: 'g', sourceMessageId: 'task-result:example', text: '结果', resultFingerprint: 'canonical-result-fingerprint', taskIds: ['task-example'] })
   await store.close()
-  const reopened = await openResidentStore(facility(snapshot))
+  const reopened = await openResidentStore(await facility(snapshot))
   assert.equal(reopened.getGroup('g').outbox[0].resultFingerprint, 'canonical-result-fingerprint')
   assert.deepEqual(reopened.getGroup('g').outbox[0].taskIds, ['task-example'])
 })
@@ -718,7 +718,7 @@ test('历史Web续办只归并明确原任务关系，保留原来源/决策/操
  assert.equal((await store.reconcileWebTaskTopics({groupId:'g',requestId:'merge-old-web',expectedDigest:check.expectedDigest})).replayed,true)
  await assert.rejects(store.reconcileWebTaskTopics({groupId:'g',requestId:'merge-old-web',expectedDigest:'different'}),/identity_conflict/)
  await store.close()
- const reopened=await openResidentStore(facility(snapshot));assert.equal(reopened.getTopic('g',source).mergedInto,target);await reopened.close()
+ const reopened=await openResidentStore(await facility(snapshot));assert.equal(reopened.getTopic('g',source).mergedInto,target);await reopened.close()
 })
 
 test('历史归并拒绝活跃任务与未完成决策，不以相同标题合并独立群事项',async()=>{
@@ -790,7 +790,7 @@ test('restart recovers only current inputs skipped by Web completion and preserv
  const topic=snapshot.tables.groups.g.topics.find(item=>item.topicId===target)
  topic.processedRevision=topic.revision
  const before=structuredClone(snapshot.tables.groups.g),taskRows=structuredClone(snapshot.tables.tasks)
- let reopened=await openResidentStore(facility(snapshot));t.after(()=>reopened.close())
+ let reopened=await openResidentStore(await facility(snapshot));t.after(()=>reopened.close())
  let recovered=reopened.getTopic('g',target)
  const latest=recovered.entries.findLast(entry=>entry.messageId==='pending-version')
  assert.equal(latest.messageVersion,2)
@@ -798,11 +798,11 @@ test('restart recovers only current inputs skipped by Web completion and preserv
  assert.deepEqual(recovered.decisions,topic.decisions,'all effects, intent identities and completion clocks remain intact')
  assert.deepEqual(reopened.getGroup('g').taskReservations,before.taskReservations)
  assert.deepEqual(snapshot.tables.tasks,taskRows)
- await reopened.close();reopened=await openResidentStore(facility(snapshot))
+ await reopened.close();reopened=await openResidentStore(await facility(snapshot))
  assert.deepEqual(reopened.getTopic('g',target),recovered,'repeated startup is idempotent')
  await reopened.acceptTopicDecision(decision('review-recovered-input',target,recovered.revision,{decision:{actions:[],basisMessageIds:['pending-version'],reason:'更新后的要求已核对'}}))
  await reopened.completeTopicDecision({groupId:'g',topicId:target,decisionId:'review-recovered-input'})
- await reopened.close();reopened=await openResidentStore(facility(snapshot))
+ await reopened.close();reopened=await openResidentStore(await facility(snapshot))
  recovered=reopened.getTopic('g',target)
  assert.equal(recovered.processedRevision,recovered.revision,'a real Topic judgment covers its snapshot without citing every historical source')
 })

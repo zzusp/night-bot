@@ -9,12 +9,12 @@ import {residentDomainSpec} from '../../packages/dingtalk-core/store.js'
 // reads, writes, serialization, commit and rollback run in openNativeDomains.
 // Existing corruption/recovery cases edit this detached committed document and
 // seed a NEW directory; native schema validation still decides whether it opens.
-export async function nativeResidentSnapshot(snapshot={tables:{},global:null}){
+export async function nativeResidentSnapshot(snapshot={tables:{},global:null},{beforeCommit}={}){
  const root=await mkdtemp(join(tmpdir(),'night-domain-snapshot-'))
  const file=join(root,residentDomainSpec.name+'.json')
  await writeFile(file,JSON.stringify({unit:{name:residentDomainSpec.name,version:residentDomainSpec.version},...structuredClone(snapshot)}),{mode:0o600})
  let pending=0,commits=0
- const domains=await openNativeDomains({root,beforeCommit(){pending++},onChange(){
+ const domains=await openNativeDomains({root,async beforeCommit(event){await beforeCommit?.(event);pending++},onChange(){
   pending--;commits++
   const saved=JSON.parse(readFileSync(file,'utf8'))
   snapshot.tables=saved.tables;snapshot.global=saved.global

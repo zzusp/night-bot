@@ -27,16 +27,15 @@
       "removedNotice": "licenses/dsh-subagent-providers-MIT.txt",
       "removalEvidence": {
         "sourceRemovalCommit": "e14acec",
-        "removedTests": ["test/pi-native-subagent-providers.test.js", "test/pi-subagent-provider-wire.test.js"],
+        "removedTests": [
+          "test/pi-native-subagent-providers.test.js",
+          "test/pi-subagent-provider-wire.test.js"
+        ],
         "review": "Former local source and upstream spawn/fork implementations inspected; no provider definitions or continuous 40-token copies in 1049 parsed application/test/script modules. Shared test fixture contains consumers, not provider implementations. Distinct manager source and its notice remain."
       }
     }
   ],
-  "remainingReferences": [
-    "packages/dingtalk-core/runtime.js:8 imports snapshotSubagentDescriptor; :290 writes the legacy descriptor",
-    "packages/capability-compat/subagent/index.js retains manager namespace export",
-    "src/native-subagents.js still uses native-subagent-errors.js and runtime/child-catalog.js"
-  ],
+  "remainingReferences": [],
   "acceptance": "test/pi-retired-subagent-tools.test.js",
   "safetyMapping": "docs/SUBAGENT-RETIREMENT.md",
   "retiredUtilities": [
@@ -45,5 +44,16 @@
       "priorLocalSha256": "9b1b530e37edd28fb1f5776f6094661fe6d7ee82919ac67e7c9c0403b735ce06",
       "reason": "Cancelled subagent descriptor repair over DSH session.jsonl/seq; not an official Pi archive repair capability."
     }
-  ]
+  ],
+  "managerRetirement": {
+    "status": "removed-with-predecessor-driver",
+    "sources": [
+      "src/native-subagents.js",
+      "src/native-subagent-errors.js",
+      "src/runtime/child-catalog.js",
+      "packages/capability-compat/subagent/index.js"
+    ],
+    "evidence": "docs/retired-session-drivers.md",
+    "noticeReview": "Separate retained notices remain until source/copy audit confirms exclusive code removal."
+  }
 }

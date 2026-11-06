@@ -123,12 +123,12 @@ function durableMarker(path, value, initial = false) {
 
 
 /** New-instance initialization is explicit. An ingress epoch can only be bound to a new ledger.
- * legacyDbPath is an offline, read-only inspection API, not a production compatibility path. */
-export async function openDynamicTaskStore({ dbPath, instanceId, initialize = false, migrate = false, migrationExpectedDigest, paginationMigrate = false, legacyDbPath, ingressEpoch, webActorId, resourceCatalog: configuredResourceCatalog, startupObserver } = {}) {
+ * Current Night ledgers upgrade in place only through their own explicit schema gates. */
+export async function openDynamicTaskStore({ dbPath, instanceId, initialize = false, migrate = false, migrationExpectedDigest, paginationMigrate = false, ingressEpoch, webActorId, resourceCatalog: configuredResourceCatalog, startupObserver, ...unsupported } = {}) {
+  if (Object.hasOwn(unsupported, 'legacyDbPath')) fail('DYNAMIC_LEGACY_IMPORT_RETIRED')
   const startup = createStartupMetrics(startupObserver)
   if (migrationExpectedDigest !== undefined && !/^[a-f0-9]{64}$/.test(migrationExpectedDigest)) fail('DYNAMIC_ARGUMENT_INVALID', 'migrationExpectedDigest')
-  if (!isAbsolute(dbPath ?? '') || !text(instanceId, 'instanceId') || typeof initialize !== 'boolean'
-    || legacyDbPath !== undefined && !isAbsolute(legacyDbPath)) fail('DYNAMIC_STORE_OPTIONS_INVALID')
+  if (!isAbsolute(dbPath ?? '') || !text(instanceId, 'instanceId') || typeof initialize !== 'boolean') fail('DYNAMIC_STORE_OPTIONS_INVALID')
   const configuredIngressEpoch = ingressEpoch === undefined ? null : ingressTimestamp(ingressEpoch, false)
   if (ingressEpoch !== undefined && !configuredIngressEpoch) fail('DYNAMIC_INGRESS_EPOCH_INVALID', 'ingressEpoch must be an ISO timestamp with a timezone.')
   let boundIngressEpoch = null
@@ -372,34 +372,6 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       throw error
     }
   }
-  const importLegacy = () => {
-    if (!legacyDbPath) return
-    if (!existsSync(legacyDbPath)) fail('DYNAMIC_LEGACY_STORE_MISSING')
-    const old = new DatabaseSync(legacyDbPath, { readOnly: true })
-    try {
-      const has = table => !!old.prepare('SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=?').get(table)
-      if (has('task_events')) for (const event of old.prepare("SELECT * FROM task_events WHERE event_type='native.recorded'").all()) {
-        const id = `legacy-native:${digest({ path: realpathSync(legacyDbPath), taskId: event.task_id })}`
-        if (get('dynamic_legacy_blockers', id, true)) continue
-        put('dynamic_legacy_blockers', { id, kind: 'owner-native-evidence', taskId: event.task_id, state: 'unreviewed', resourceKeys: [], resolved: false, evidenceRef: event.payload_ref, source: realpathSync(legacyDbPath), importedAt: now() })
-      }
-      if (has('execution_nodes')) for (const node of old.prepare("SELECT * FROM execution_nodes WHERE drained=0").all()) {
-        const id = `legacy-node:${digest({ path: realpathSync(legacyDbPath), nodeRunId: node.node_run_id })}`
-        if (get('dynamic_legacy_blockers', id, true)) continue
-        const taskId = has('execution_runs') ? old.prepare('SELECT task_id FROM execution_runs WHERE run_id=?').get(node.run_id)?.task_id ?? null : null
-        put('dynamic_legacy_blockers', { id, kind: 'native-session', nodeRunId: node.node_run_id, sessionId: node.session_id, taskId, state: node.status, resourceKeys: [], resolved: false, source: realpathSync(legacyDbPath), importedAt: now() })
-      }
-      if (!has('execution_effects')) return
-      for (const effect of old.prepare("SELECT * FROM execution_effects WHERE state NOT IN ('succeeded','failed')").all()) {
-        const id = `legacy:${digest({ path: realpathSync(legacyDbPath), effectId: effect.effect_id })}`
-        if (get('dynamic_legacy_blockers', id, true)) continue
-        const taskId = has('execution_runs') ? old.prepare('SELECT task_id FROM execution_runs WHERE run_id=?').get(effect.run_id)?.task_id ?? null : null
-        const resourceKeys = JSON.parse(effect.resource_keys_json ?? '[]')
-        put('dynamic_legacy_blockers', { id, effectId: effect.effect_id, taskId, state: effect.state, resourceKeys, resolved: false, source: realpathSync(legacyDbPath), importedAt: now() })
-        if (['starting','executing','unknown'].includes(effect.state)) lock(resourceKeys, id)
-      }
-    } finally { old.close() }
-  }
   try {
     const fresh = !existed && !marker
     if (fresh) { marker = { version: 1, instanceId, phase: 'initializing', initToken: randomUUID(), ingressEpoch: configuredIngressEpoch }; durableMarker(markerPath, marker, true) }
@@ -499,7 +471,6 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       for (const task of all('dynamic_tasks')) if (!task.drained) { task.recovering = true; saveTask(task) }
       for (const group of all('dynamic_groups')) if (!group.drained) { group.recovering = true; put('dynamic_groups', group) }
-      importLegacy()
       // 旧版活动执行未取得资源锁，不能在升级恢复时伪造此前已串行的保证。
       for (const execution of startupExecutions) {
         const keys = resourceKeys(execution.resourceKeys), held = heldKeys(executionHolder(execution))

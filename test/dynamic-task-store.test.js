@@ -1044,25 +1044,34 @@ test('source route decisions are immutable and group sessions reclaim pending so
   assert.equal((await f.query({ kind: 'source.list', groupId: 'group-1', status: 'pending' })).length, 0)
 })
 
-test('legacy unresolved effects and undrained native sessions become read-only blockers, never dynamic jobs', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'dynamic-legacy-ledger-'))
-  t.after(() => rm(directory, { recursive: true, force: true }))
-  const legacyDbPath = join(directory, 'legacy.sqlite'), old = new DatabaseSync(legacyDbPath)
-  old.exec(`CREATE TABLE execution_runs(run_id TEXT,task_id TEXT); CREATE TABLE execution_effects(effect_id TEXT,run_id TEXT,state TEXT,resource_keys_json TEXT);
-    CREATE TABLE execution_nodes(node_run_id TEXT,run_id TEXT,session_id TEXT,status TEXT,drained INTEGER);
-    INSERT INTO execution_runs VALUES ('run','task'); INSERT INTO execution_effects VALUES ('effect','run','unknown','["repo:legacy"]');
-    INSERT INTO execution_nodes VALUES ('node','run','old-session','running',0);`)
-  old.close()
-  const f = await fixture(t, { legacyDbPath }), owner = await f.task()
-  assert.equal((await f.query({ kind: 'legacy.list' })).length, 2)
-  await assert.rejects(f.execution(owner.binding), { code: 'DYNAMIC_LEGACY_EFFECT_UNRESOLVED' })
-  await assert.rejects(f.command('task.complete', { binding: owner.binding, summary: 'Done' }), { code: 'DYNAMIC_TASK_NOT_QUIESCENT' })
-  const readback = new DatabaseSync(legacyDbPath, { readOnly: true })
-  assert.equal(readback.prepare('SELECT state FROM execution_effects').get().state, 'unknown')
-  readback.close()
-  assert.equal((await f.query({ kind: 'execution.list' })).length, 0)
+test('existing unresolved blockers survive reopen and keep current executions fail closed', async t => {
+  const f = await fixture(t)
+  await f.command('task.create', { taskId: 'task', request: 'Retain unknown-effect fence' })
+  const blocker = { id: 'persisted-unresolved-effect', taskId: 'task', source: 'retired-offline-ledger', state: 'unknown', resourceKeys: ['repo:old'], resolved: false }
+  const db = new DatabaseSync(f.config.dbPath)
+  db.prepare('INSERT INTO dynamic_legacy_blockers(id,body) VALUES (?,?)').run(blocker.id, JSON.stringify(blocker))
+  db.prepare('INSERT INTO dynamic_resource_locks(resource_key,holder) VALUES (?,?)').run('repo:old', blocker.id)
+  db.close()
+  await f.reopen()
+  const current = (await f.command('task.claim', { taskId: 'task' })).result
+  assert.deepEqual(await f.query({ kind: 'legacy.list' }), [blocker])
+  await assert.rejects(f.execution(current.binding), { code: 'DYNAMIC_LEGACY_EFFECT_UNRESOLVED' })
+  await assert.rejects(f.command('task.complete', { binding: current.binding, summary: 'Done' }), { code: 'DYNAMIC_TASK_NOT_QUIESCENT' })
+  const readback = new DatabaseSync(f.config.dbPath, { readOnly: true })
+  try {
+    assert.equal(JSON.parse(readback.prepare('SELECT body FROM dynamic_legacy_blockers WHERE id=?').get(blocker.id).body).resolved, false)
+    assert.equal(readback.prepare('SELECT holder FROM dynamic_resource_locks WHERE resource_key=?').get('repo:old').holder, blocker.id)
+  } finally { readback.close() }
+  assert.deepEqual(await f.query({ kind: 'execution.list' }), [])
 })
 
+test('retired offline Owner backend import is rejected before touching either database', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'dynamic-retired-import-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  await assert.rejects(openDynamicTaskStore({ dbPath: join(directory, 'new.sqlite'), instanceId: 'fixture', initialize: true, legacyDbPath: join(directory, 'absent-old.sqlite') }), { code: 'DYNAMIC_LEGACY_IMPORT_RETIRED' })
+  const { readdir } = await import('node:fs/promises')
+  assert.deepEqual(await readdir(directory), [])
+})
 
 test('result and wake roll back together on a failed SQLite write and the same command remains safely retryable', async t => {
   const f = await fixture(t), owner = await f.task(), binding = await f.execution(owner.binding)

@@ -56,9 +56,11 @@
     {
       "source": "claude-execution-session.js",
       "sourceSha256": "fe0c894dfc98a5eb8afb4cbab787b4b6e52f093e0cfb47db17ab7361928efea1",
-      "status": "adapted",
-      "sha256": "7c43082687224e55b9fb7134c435fbcb68408dce509c351c7f7f10f757593398",
-      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
+      "status": "retired-driver",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior.",
+      "lastRetainedSha256": "7c43082687224e55b9fb7134c435fbcb68408dce509c351c7f7f10f757593398",
+      "retirementEvidence": "docs/retired-workflow-session-contracts.md",
+      "retirementReason": "Unused predecessor execution/storage adapter retired; retained current business and safety contracts and explicit gaps are mapped in the evidence document."
     },
     {
       "source": "client.js",
@@ -202,7 +204,7 @@
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
       "status": "adapted",
-      "sha256": "a52443b0433a489de8dd448ffc1ea8ad4713683c45b1b9e211cfdf73671559d4",
+      "sha256": "043a47d11bd6c4a7c8ced0000532fdbcab8e5246a914192e6c30b25ee74fd0f9",
       "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay."
     },
     {
@@ -341,9 +343,11 @@
     {
       "source": "execution-session.js",
       "sourceSha256": "1648fe1e0dcbf2fc7a2112d46dd55cb19acc11bebda3b65e536673656da70c2c",
-      "status": "adapted",
-      "sha256": "719cdb8f599a509ef7ee05922e002aa857c939dada26ce0a9971e01107a6253d",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
+      "status": "retired-driver",
+      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior.",
+      "lastRetainedSha256": "719cdb8f599a509ef7ee05922e002aa857c939dada26ce0a9971e01107a6253d",
+      "retirementEvidence": "docs/retired-workflow-session-contracts.md",
+      "retirementReason": "Unused predecessor execution/storage adapter retired; retained current business and safety contracts and explicit gaps are mapped in the evidence document."
     },
     {
       "source": "execution-store-worker.js",
@@ -421,7 +425,7 @@
       "source": "execution.js",
       "sourceSha256": "fd183488a96e69bfe3ab739d976e20117bd132ff7d53edc3faaa1480e6ea1816",
       "status": "adapted",
-      "sha256": "323c93d3af5f9be7d2b1648f6c67f3c812316fb304b6af807f98fc4f28a33a4d",
+      "sha256": "826935ebac1a362f4860d1b899baf8299bb6803f22cae8902dddf51b6d41e0d8",
       "adaptation": "Require the official Pi application factory service rather than the retired DSH-derived loop service."
     },
     {
@@ -646,8 +650,8 @@
     {
       "source": "observer-group-pages.js",
       "sourceSha256": "17b98077f6808b0e8477c2a9c97f5fae9735e34eb72b13266f99afcc031f42ef",
-      "status": "retained",
-      "sha256": "17b98077f6808b0e8477c2a9c97f5fae9735e34eb72b13266f99afcc031f42ef"
+      "status": "adapted",
+      "sha256": "716599f7bcfb2c0c5c9d095583bc3ac3478d1449f38134c427a440e88acc9ed5"
     },
     {
       "source": "observer-legacy-execution-pages.js",
@@ -746,7 +750,7 @@
       "source": "runtime.js",
       "sourceSha256": "1e0dd7c3619196deb84718bb6e0a32985352cc75dfa57c726c58389706559f8a",
       "status": "adapted",
-      "sha256": "4eaefe05c78f62c44e816773acc1e246c04211fbf0bf5d1b1fb90ce20cfe5211",
+      "sha256": "e98c1debc36bd0bdd6545666a45401754e3f90f90b68d2d97477bbce85d4d209",
       "adaptation": "Local model/tool/child public protocol imports preserve behavior."
     },
     {
@@ -786,9 +790,11 @@
     {
       "source": "storage-v8-schema.js",
       "sourceSha256": "73f76d1576a69647b8a8a0e040f1bf9dfba16d150a67512aae0c2e99c9731d60",
-      "status": "adapted",
-      "sha256": "0fd486043ba17eb11d74bedcecd26623bdeb007c3be6485f26eb433de19e0c51",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
+      "status": "retired-driver",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation.",
+      "lastRetainedSha256": "0fd486043ba17eb11d74bedcecd26623bdeb007c3be6485f26eb433de19e0c51",
+      "retirementEvidence": "docs/retired-predecessor-storage.md",
+      "retirementReason": "Unused predecessor execution/storage adapter retired; retained current business and safety contracts and explicit gaps are mapped in the evidence document."
     },
     {
       "source": "store.js",
@@ -1013,13 +1019,15 @@
     {
       "source": "task-session-history.js",
       "sourceSha256": "573ae864b0862110f699327d607e494dacabd7367e4debd2742c37912d205b14",
-      "status": "retained",
-      "sha256": "573ae864b0862110f699327d607e494dacabd7367e4debd2742c37912d205b14"
+      "status": "retired-driver",
+      "lastRetainedSha256": "573ae864b0862110f699327d607e494dacabd7367e4debd2742c37912d205b14",
+      "retirementEvidence": "docs/retired-predecessor-storage.md",
+      "retirementReason": "Unused predecessor execution/storage adapter retired; retained current business and safety contracts and explicit gaps are mapped in the evidence document."
     },
     {
       "source": "task-session-observability.js",
       "sourceSha256": "248e2c517cf9b40fb0207bbfa93b696bc47a53a597ea546e2142f463e7344a5a",
-      "status": "retained",
+      "status": "adapted",
       "sha256": "77fb19f540c0e5e926e1961046b420e493992f37af7413ed123c2e1fbf066e0b"
     },
     {
@@ -1039,9 +1047,11 @@
     {
       "source": "task-session.js",
       "sourceSha256": "afa52ceb8277de93442096ddfe4d7bca6690eab0bd7d6d3dc7f93fa05119c163",
-      "status": "adapted",
-      "sha256": "858e4df28e1984ccd4800ae01bf5a5096d5c8f3deb5bf17d2703e039a5d017be",
-      "adaptation": "Retained only for independent legacy callers; pure model selection reexports the shared configuration helper and default TaskService no longer imports this driver."
+      "status": "retired-driver",
+      "adaptation": "Retained only for independent legacy callers; pure model selection reexports the shared configuration helper and default TaskService no longer imports this driver.",
+      "lastRetainedSha256": "858e4df28e1984ccd4800ae01bf5a5096d5c8f3deb5bf17d2703e039a5d017be",
+      "retirementEvidence": "docs/retired-workflow-session-contracts.md",
+      "retirementReason": "Unused predecessor execution/storage adapter retired; retained current business and safety contracts and explicit gaps are mapped in the evidence document."
     },
     {
       "source": "task-source-instructions.js",
@@ -1071,7 +1081,7 @@
       "source": "task-topic-coordinator.js",
       "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
       "status": "adapted",
-      "sha256": "7095c8504f8ed5a8416d6a8a47f8c3ce17e8fac379e0a79d7ffa71ce53923728",
+      "sha256": "3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20",
       "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body."
     },
     {
@@ -1226,8 +1236,8 @@
     {
       "source": "workflow-service.js",
       "sourceSha256": "aa03d0ebfb1f70c4119007de29d847fc14b39525cf0f3c0dab73915b9e4c701c",
-      "status": "retained",
-      "sha256": "aa03d0ebfb1f70c4119007de29d847fc14b39525cf0f3c0dab73915b9e4c701c"
+      "status": "adapted",
+      "sha256": "438aafe18011973293808229651319aa362c8e41a94d549cb2829f31d171f67b"
     },
     {
       "source": "workflow-source-evidence.js",

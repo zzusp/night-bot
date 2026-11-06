@@ -142,6 +142,14 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
       const creation={ sessionId,auditKinds:coordinationAuditKinds,initialReceipts:prior?[]:[{version:1,domain:'coordination',kind:'identity',payload:identity}],
         authorizeInput:packet=>entry.active&&topics.isCurrentRequest(request)&&isDeepStrictEqual(entry.authorizedPackets.get(packet.id),packet),
         beforeRequest:()=>{if(!entry.active||!topics.isCurrentRequest(request))throw new Error('coordination_request_inactive')},
+        onToolResult:(actor)=>{
+          if(actor.id!==sessionId||sessions.get(request.groupId,request)!==actor)throw new Error('coordination_tool_wrong_request')
+          entry.sliceSteps=(entry.sliceSteps??0)+1
+          const limit=role==='route'?1:3
+          const yieldNow=!entry.active||!topics.isCurrentRequest(request)||entry.yieldRequested||request.routingPaused||entry.hasContenders?.()&&(entry.sliceSteps>=limit||Date.now()-entry.sliceStartedAt>=30_000)
+          if(yieldNow)entry.sliceYielded=entry.active&&!request.routingPaused
+          return !!yieldNow
+        },
         meta: { cwd: await sessionWorkspace(root, role), runtimeOwner: 'topic-coordinator', agentPreset },
         agentOptions: typeof models === 'function' ? models() : models,
         setup: async agentCtx => {
@@ -167,7 +175,6 @@ export async function openTaskTopicCoordinator({ ctx, store, legacy, root, model
           })) agentCtx.get('tools').register(tool)
           agentCtx.on('tools/execute',async(exec,next)=>{
             const result=await next()
-            entry.sliceSteps=(entry.sliceSteps??0)+1
             const limit=role==='route'?1:3
             if(!entry.active||!topics.isCurrentRequest(request)){exec.concludeTurn();return result}
             if(entry.yieldRequested||request.routingPaused||entry.hasContenders?.()&&(entry.sliceSteps>=limit||Date.now()-entry.sliceStartedAt>=30_000)){entry.sliceYielded=!request.routingPaused;exec.concludeTurn()}

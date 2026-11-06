@@ -3,7 +3,6 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {spawnSync} from 'node:child_process'
 import {createHash} from 'node:crypto'
-import {historicalExecutionPage} from '../packages/dingtalk-dsh-assistant/task-session-history.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
@@ -72,22 +71,6 @@ test('legacy execution page does not migrate or mutate an existing unindexed dat
  const db=new DatabaseSync(':memory:');t.after(()=>db.close())
  assert.throws(()=>observerLegacyFamilyPage(db,{taskId:'t',groupIds:[],limit:10}),{code:'OBSERVER_PAGINATION_MIGRATION_REQUIRED'})
  assert.equal(db.prepare('SELECT count(*) n FROM sqlite_master').get().n,0)
-})
-
-
-test('read-only historical adapter selects ten run records before reading their node references',t=>{
- const db=new DatabaseSync(':memory:');t.after(()=>db.close())
- db.exec(`CREATE TABLE execution_runs(run_id TEXT PRIMARY KEY,task_id TEXT,status TEXT,created_at TEXT,updated_at TEXT);
- CREATE TABLE execution_nodes(node_run_id TEXT,run_id TEXT,session_id TEXT,status TEXT,drained INTEGER,output_ref TEXT,evidence_refs TEXT);`)
- for(let i=0;i<1000;i++){
-  db.prepare('INSERT INTO execution_runs VALUES(?,?,?,?,?)').run('r'+i,'t','succeeded','same','same')
-  db.prepare('INSERT INTO execution_nodes VALUES(?,?,?,?,?,?,?)').run('n'+i,'r'+i,null,'succeeded',1,'output:'+i,JSON.stringify(['large-body-ref'.repeat(1000)]))
- }
- let runRows=0,nodeRows=0;const statements=[]
- const observed={prepare(sql){statements.push(sql);const statement=db.prepare(sql);return {get:(...args)=>statement.get(...args),all:(...args)=>{const rows=statement.all(...args);if(sql.includes('FROM execution_runs'))runRows+=rows.length;if(sql.includes('FROM execution_nodes'))nodeRows+=rows.length;return rows}}}}
- const page=historicalExecutionPage(observed,new Set(['execution_runs','execution_nodes']),'t',{offset:510,limit:10})
- assert.equal(page.total,1000);assert.equal(runRows,10);assert.equal(nodeRows,10);assert.equal(page.items[0].execution.executionId,'r510')
- assert(statements.every(sql=>!sql.includes('evidence_refs')&&!sql.includes('SELECT *')))
 })
 
 

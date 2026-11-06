@@ -83,17 +83,9 @@ test('生产HTTP提供精确的单消息重试入口', async () => {
   } finally { await new Promise(resolve => server.close(resolve)) }
 })
 
-test('叶子会话使用DSH原生descriptor且恢复旧会话时补齐', async () => {
-  const source = await readFile(new URL('../packages/dingtalk-dsh-assistant/runtime.js', import.meta.url), 'utf8')
-  assert.match(source, /import \{ snapshotSubagentDescriptor \} from '@deepseek-ai\/dsh-subagent'/)
-  assert.match(source, /handle\.agent\.session\.append\('subagent\/descriptor', snapshotSubagentDescriptor\(/)
-  assert.match(source, /mode: 'continuable'/)
-  assert.match(source, /label: leafDisplayName\(task\.title \?\? task\.objective\)/)
-  assert.match(source, /heading\.length <= 20/)
-  assert.match(source, /ensureLeafDescriptor\(handle, task\); applyPermission\(handle, 'danger-full-access'\)/)
-  assert.equal(source.match(/applyPermission\(handle, 'danger-full-access'\)/g)?.length, 6)
-  assert.doesNotMatch(source, /applyPermission\(handle, 'read-only'\)/)
-  assert.doesNotMatch(source, /applyPermission\(handle, 'workspace-write'\)/)
+test('retired Owner and subagent session drivers are absent from the metadata module', async () => {
+  const api = await import('../packages/dingtalk-core/runtime.js')
+  assert.deepEqual(Object.keys(api).sort(), ['buildTaskAssociationIndex','residentSessionId','taskWorkLocations'])
 })
 
 test('Task上下文只引用固定Topic版本，不再构造消息正文持久副本', async () => {

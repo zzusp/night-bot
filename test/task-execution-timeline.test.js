@@ -4,7 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
+import {memoryHost} from './fixtures/memory-host.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import { readTaskLifecycle, projectTaskLifecycle, projectTaskTimeline, projectTaskElapsed } from '../packages/dingtalk-dsh-assistant/task-execution-timeline.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
@@ -153,27 +154,12 @@ test('missing reopen history or terminal time remains incomplete; known cancella
 
 test('real detail HTTP reads multiple lifecycle intervals without creating jobs, logs or new state', async t => {
   const f = await fixture(t)
-  const owner = (await f.command('task.claim', { taskId: 't', force: true })).result.binding
-  const execution = (await f.command('execution.dispatch', { binding: owner, key: 'final-record', prompt: '只读核查' })).result.execution
-  const binding = (await f.command('execution.claim', { executionId: execution.executionId })).result.binding
-  f.at(5)
-  await f.command('execution.result', { binding, output: { status: 'completed', summary: '真实执行完成结论', evidence: ['fixture.txt'], limitations: [], artifacts: [] } })
-  await f.command('execution.drained', { binding })
-  await f.command('task.drained', { binding: owner })
   await f.complete(10); await f.reopen(15); await f.complete(20)
-  const snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'lifecycle-http' })
-  const residentStore = await openResidentStore(facility), noop = async () => {}
+  const storage=await nativeResidentSnapshot()
+  const residentStore=await openResidentStore(storage.domains),native=await memoryHost(t)
   const legacy = { getAgentConfig: () => ({ workspaceDir: f.root }), getGroup: () => undefined }
-  let dispatches = 0
-  const sessions = { close: noop, cancel: noop, run: async () => { dispatches++; throw new Error('read must not dispatch') } }
-  const service = await openTaskSessionService({ ctx: {}, legacy, residentStore, store: f.store,
-    config: { dbPath: f.store.info.dbPath, instanceId: 'lifecycle', workspaceDir: f.root },
-    persistence: { close: noop, register: noop }, taskSessions: sessions, executionSessions: sessions, groupSessions: sessions })
+  const service = await openTaskSessionService({ ctx:native.host.ctx, legacy, residentStore, store: f.store,
+    config: { dbPath: f.store.info.dbPath, instanceId: 'lifecycle', workspaceDir: f.root } })
   const runtime = { ...legacy, getTaskSessionDetail: id => service.taskDetail(id) }
   const server = createServer((req, res) => handleRequest(req, res, runtime).catch(error => { res.writeHead(500); res.end(error.message) }))
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -183,8 +169,7 @@ test('real detail HTTP reads multiple lifecycle intervals without creating jobs,
     const response = await fetch(url)
     assert.equal(response.status, 200)
     const detail = await response.json()
-    assert.equal(detail.timeline.executions[0].conclusions[0].summary, '真实执行完成结论')
-    assert.equal(detail.timeline.executions[0].conclusions[0].at, iso(5))
+    assert.deepEqual(detail.timeline.executions, [], 'Single has no independent execution-node sessions')
     assert.equal(detail.timeline.task.complete, true)
     assert.equal(detail.timeline.task.segments.length, 2)
     assert.equal(detail.timeline.task.segments[1].endedAt, iso(20))
@@ -196,8 +181,8 @@ test('real detail HTTP reads multiple lifecycle intervals without creating jobs,
     assert.equal(current.timeline.task.segments[2].startedAt, iso(25))
     assert.equal(current.timeline.task.segments[2].active, true)
     assert.equal(current.timeline.task.events.filter(event => event.kind === 'reopened').length, 2)
-    assert.equal(dispatches, 0)
-  } finally { await new Promise(resolve => server.close(resolve)); await service.close(); await residentStore.close() }
+    assert.equal(native.requests.length, 0)
+  } finally { await new Promise(resolve => server.close(resolve)); await service.close(); await residentStore.close(); await storage.close() }
 })
 
 

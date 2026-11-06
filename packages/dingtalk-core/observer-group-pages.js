@@ -63,7 +63,7 @@ export function createObserverGroupPages({readGroup,readSources,readRequests,isO
    let changed=false
    for(const id of ids){
     const message=raw.get(id)
-    if(!message||![undefined,'dingtalk','migration','workflow-v2','task-session'].includes(message.sourceKind)||isOwnNotification(Object.assign(Object.create(message),{groupId:group.groupId}))){
+    if(!message||![undefined,'channel','dingtalk','migration','workflow-v2','task-session'].includes(message.sourceKind)||isOwnNotification(Object.assign(Object.create(message),{groupId:group.groupId}))){
      changed=!!remove.run(group.groupId,id).changes||changed
      continue
     }

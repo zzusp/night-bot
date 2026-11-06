@@ -1,11 +1,11 @@
-import test from 'node:test'
+import test, {after} from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { platformTaskPage } from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
@@ -16,17 +16,16 @@ import { assertCoordinationHandoffProof, freezeCoordinationSourceOrder, selectCo
 // Source revision/transaction guarantees now run through Route -> Topic -> Task
 // Owner. Retired ordinal/DAG/barrier/reminder-edit algorithms remain audit data;
 // they are not simulated as if still executable.
-function facility(snapshot) {
-  return new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'current-source-changes' })
+const domainResources=[]
+after(async()=>{for(const resource of domainResources)await resource.close()})
+async function facility(snapshot={tables:{},global:null},beforePut=()=>{}){
+ const resource=await nativeResidentSnapshot(snapshot,{beforeCommit:({change})=>beforePut(change.table,change.key,change.value)})
+ domainResources.push(resource);return resource.domains
 }
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'source-changes-')), snapshot = { tables: {}, global: null }
   const options = { dbPath: join(directory, 'tasks.sqlite'), instanceId: 'changes', initialize: true }
-  let store = await openDynamicTaskStore(options), resident = await openResidentStore(facility(snapshot)), tasks = []
+  let store = await openDynamicTaskStore(options), resident = await openResidentStore(await facility(snapshot)), tasks = []
   const refresh = async () => {
     tasks = (await store.query({ kind: 'task.list' })).map(task => ({ ...task, inputVersion: task.requirementRevision,
       state: task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' || task.drained ? 'waiting' : 'running',
@@ -55,7 +54,7 @@ async function fixture(t) {
   t.after(async () => { await resident.close(); await store.close(); await rm(directory, { recursive: true, force: true }) })
   return { snapshot, options, query, command, refresh, message, route, topic, candidate, durable,
     get resident() { return resident }, get tasks() { return tasks },
-    async restart() { await resident.close(); await store.close(); store = await openDynamicTaskStore(options); resident = await openResidentStore(facility(snapshot)); await refresh() },
+    async restart() { await resident.close(); await store.close(); store = await openDynamicTaskStore(options); resident = await openResidentStore(await facility(snapshot)); await refresh() },
     async seedHistory(rows) {
       await store.close(); const db = new DatabaseSync(options.dbPath)
       try {
@@ -73,7 +72,7 @@ test('quoted follow-up keeps complete original and quote independently across du
   const id = (await f.route('follow-up')).topicIdsByKey['follow-up'], first = f.resident.getTopicContext({ groupId: 'group', topicId: id })
   await f.message('follow-up', text); await f.restart()
   const context = f.resident.getTopicContext({ groupId: 'group', topicId: id })
-  assert.deepEqual(context, first); assert.equal(context.messages[0].text, text)
+  assert.deepEqual(JSON.parse(JSON.stringify(context)), JSON.parse(JSON.stringify(first))); assert.equal(context.messages[0].text, text)
   assert.equal(context.messages[0].quotedMessage.content, 'Earlier notice')
   assert.deepEqual(await f.query('execution.list'), []); assert.deepEqual(await f.query('notification.list'), [])
   assert.deepEqual(f.resident.listSourceDispatchOwnership('group'), [])
@@ -116,7 +115,7 @@ test('source enrichment retains old immutable evidence while new version remains
   const f = await fixture(t), topicId = await f.topic('source', 'Original request')
   const before = f.resident.getTopicContext({ groupId: 'group', topicId, revision: 1 })
   await f.message('source', 'Revised request', { messageVersion: 2 }); await f.route('source', topicId); await f.restart()
-  assert.deepEqual(f.resident.getTopicContext({ groupId: 'group', topicId, revision: 1 }).messages, before.messages)
+  assert.deepEqual(JSON.parse(JSON.stringify(f.resident.getTopicContext({ groupId: 'group', topicId, revision: 1 }).messages)), JSON.parse(JSON.stringify(before.messages)))
   assert.equal(f.resident.getTopicContext({ groupId: 'group', topicId }).messages[0].text, 'Revised request')
 })
 test('repeated short phrase is rejected and distinct full source quotes preserve exact spans across restart', async t => {

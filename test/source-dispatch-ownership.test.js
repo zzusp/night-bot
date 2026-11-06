@@ -1,27 +1,26 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import test, {after} from 'node:test'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { COORDINATION_RETIRED_REASON, retiredSourceOwnership } from '../packages/dingtalk-dsh-assistant/coordination-retirement.js'
 import { messageProcessingProjection } from '../packages/dingtalk-dsh-assistant/observer-message-projection.js'
 
-function facility(snapshot) {
-  return new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'source-dispatch-test' })
+const domainResources=[]
+after(async()=>{for(const resource of domainResources)await resource.close()})
+async function facility(snapshot={tables:{},global:null},beforePut=()=>{}){
+ const resource=await nativeResidentSnapshot(snapshot,{beforeCommit:({change})=>beforePut(change.table,change.key,change.value)})
+ domainResources.push(resource);return resource.domains
 }
 const ref = unit => ({ unitId: unit.unitId, unitRevision: unit.unitRevision })
 const retirement = { kind: 'feature-removed', reason: COORDINATION_RETIRED_REASON, at: '2026-10-29T00:00:00Z' }
 async function fixture(t) {
   const snapshot = { tables: {}, global: null }
-  let store = await openResidentStore(facility(snapshot))
+  let store = await openResidentStore(await facility(snapshot))
   await store.subscribe({ groupId: 'g' })
-  await store.close(); store = await openResidentStore(facility(snapshot))
+  await store.close(); store = await openResidentStore(await facility(snapshot))
   t.after(() => store.close())
   return { get store() { return store }, snapshot, async reopen(change = () => {}) {
-    await store.close(); change(snapshot.tables.groups.g); store = await openResidentStore(facility(snapshot)); return store
+    await store.close(); change(snapshot.tables.groups.g); store = await openResidentStore(await facility(snapshot)); return store
   } }
 }
 async function routed(store) {
@@ -56,9 +55,9 @@ test('retired coordination routing rejects the entire batch without claiming a s
   await assert.rejects(f.store.routeMessages({ groupId: 'g', routeId: 'old-route', routingRevision: 0, routes: [{ messageId: 'message', messageVersion: 1,
     units: [{ unitKey: 'a', summary: 'A', sourceRefs: [{ quote: 'A;' }], dispatchOwner: 'coordination', topics: [] },
       { unitKey: 'b', summary: 'B', sourceRefs: [{ quote: 'B' }], topics: [{ newTopicKey: 'b', title: 'B' }] }] }] }), /INDEPENDENT_COORDINATION_RETIRED/)
-  assert.deepEqual(f.store.getGroup('g'), before)
+  assert.deepEqual(JSON.parse(JSON.stringify(f.store.getGroup('g'))), JSON.parse(JSON.stringify(before)))
   await f.reopen()
-  assert.deepEqual(f.store.getGroup('g'), before)
+  assert.deepEqual(JSON.parse(JSON.stringify(f.store.getGroup('g'))), JSON.parse(JSON.stringify(before)))
 })
 
 test('new requirements and discussion retain independent Topic source ownership without a coordinator reservation', async t => {
@@ -127,7 +126,7 @@ test('all former recovery and handoff entry points reject without invoking a led
   for (const name of ['retrySourceDispatch', 'reserveSourceDispatch', 'updateSourceDispatch', 'beginSourceDispatchHandoff', 'completeSourceDispatchHandoff']) {
     await assert.rejects(f.store[name]({ groupId: 'g', ...ref(f.owner), expectedGeneration: 1, reservationId: f.owner.reservationId },
       () => assert.fail('Retired recovery must not reach another ledger')), /INDEPENDENT_COORDINATION_RETIRED/)
-    assert.deepEqual(f.store.getGroup('g'), before)
+    assert.deepEqual(JSON.parse(JSON.stringify(f.store.getGroup('g'))), JSON.parse(JSON.stringify(before)))
   }
 })
 
@@ -136,7 +135,7 @@ test('a current Topic decision retains its operation identity when an old coordi
   await finish(f.store, topic, 'current-decision')
   const before = structuredClone(f.store.getGroup('g'))
   await assert.rejects(f.store.reserveSourceDispatch({ groupId: 'g', ...ref(unit) }), /INDEPENDENT_COORDINATION_RETIRED/)
-  assert.deepEqual(f.store.getGroup('g'), before)
+  assert.deepEqual(JSON.parse(JSON.stringify(f.store.getGroup('g'))), JSON.parse(JSON.stringify(before)))
   assert.equal(before.topics[0].decisions[0].decisionId, 'current-decision')
   assert.deepEqual(before.sourceDispatchOwnership, [])
 })

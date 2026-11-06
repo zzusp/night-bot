@@ -3,13 +3,22 @@ import { createHash } from 'node:crypto'
 import { resolve, dirname } from 'node:path'
 const manifest = JSON.parse(await readFile('docs/source-manifest.json','utf8'))
 const excluded = new Set(['client.js','web-client.js','index.js'])
-const adapted = new Set(["message-agent.js", "task-model-config.js", "fixed-topic-handler.js", "http.js", "execution.js", "resident.js", "session-persistence.js", "tool-schema.js", "coordination-context.js", "decision.js", "dws-runner.js", "dynamic-task-store.js", "dynamic-operation-readback.js", "topic-runtime.js", "agent-query-tools.js", "agent-work.js", "claude-execution-session.js", "coordination-sessions.js", "execution-controller.js", "execution-session.js", "fake-llm.js", "group-coordinator-session.js", "host-context.js", "independent-coordination-planner.js", "model-context.js", "platform-schedule.js", "native-restart-scope-probe.js", "native-maintenance-drain.js", "runtime.js", "session-skill-refresh.js", "status-query.js", "storage-v8-schema.js", "store.js", "task-general-workflow.js", "task-owner-session.js", "task-session-persistence.js", "task-session-service.js", "task-session.js", "task-topic-coordinator.js", "task-workflow-contracts.js", "workflow-configuration.js", "topic-facts.js", "session-workspaces.js", "dws-adapter.js", "dws-bridge.js", "performance.js", "topic-model.js", "task-resident-runtime.js", "task-session-observability.js"])
-const adaptedCount = adapted.size
+const adapted = new Set(["observer-group-pages.js", "workflow-service.js", "message-agent.js", "task-model-config.js", "fixed-topic-handler.js", "http.js", "execution.js", "resident.js", "session-persistence.js", "tool-schema.js", "coordination-context.js", "decision.js", "dws-runner.js", "dynamic-task-store.js", "dynamic-operation-readback.js", "topic-runtime.js", "agent-query-tools.js", "agent-work.js", "claude-execution-session.js", "coordination-sessions.js", "execution-controller.js", "execution-session.js", "fake-llm.js", "group-coordinator-session.js", "host-context.js", "independent-coordination-planner.js", "model-context.js", "platform-schedule.js", "native-restart-scope-probe.js", "native-maintenance-drain.js", "runtime.js", "session-skill-refresh.js", "status-query.js", "storage-v8-schema.js", "store.js", "task-general-workflow.js", "task-owner-session.js", "task-session-persistence.js", "task-session-service.js", "task-session.js", "task-topic-coordinator.js", "task-workflow-contracts.js", "workflow-configuration.js", "topic-facts.js", "session-workspaces.js", "dws-adapter.js", "dws-bridge.js", "performance.js", "topic-model.js", "task-resident-runtime.js", "task-session-observability.js"])
+const retiredDrivers = new Map([["claude-execution-session.js", "docs/retired-workflow-session-contracts.md"], ["execution-session.js", "docs/retired-workflow-session-contracts.md"], ["task-session.js", "docs/retired-workflow-session-contracts.md"], ["storage-v8-schema.js", "docs/retired-predecessor-storage.md"], ["task-session-history.js", "docs/retired-predecessor-storage.md"]])
+const retiredCount = retiredDrivers.size
+const adaptedCount = adapted.size - [...retiredDrivers.keys()].filter(source=>adapted.has(source)).length
 let retained = 0
 for (const entry of manifest.files) {
   const path = resolve('packages/dingtalk-core', entry.source)
   if (entry.status === 'excluded-ui') {
     if (!excluded.delete(entry.source)) throw new Error('Unexpected source exclusion: ' + entry.source)
+    continue
+  }
+  if (entry.status === 'retired-driver') {
+    if (retiredDrivers.get(entry.source)!==entry.retirementEvidence || !/^[0-9a-f]{64}$/.test(entry.lastRetainedSha256) || !entry.retirementReason) throw new Error('Unreviewed driver retirement: '+entry.source)
+    retiredDrivers.delete(entry.source); adapted.delete(entry.source)
+    await access(entry.retirementEvidence)
+    try { await access(path); throw new Error('Retired driver source reintroduced: '+entry.source) } catch(error) { if(error.code!=='ENOENT') throw error }
     continue
   }
   const bytes = await readFile(path)
@@ -23,7 +32,7 @@ for (const entry of manifest.files) {
   }
   retained++
 }
-if (excluded.size || adapted.size) throw new Error('Source accounting incomplete')
+if (excluded.size || adapted.size || retiredDrivers.size) throw new Error('Source accounting incomplete')
 const actual = (await readdir('packages/dingtalk-core')).filter(name => /\.(js|ps1)$/.test(name))
 if (actual.length !== retained) throw new Error('Unexpected core modules outside source accounting')
 const routes = await readFile('docs/HTTP-ROUTES.md','utf8')
@@ -36,4 +45,4 @@ if (host.includes("new URL('./pi-loop.js'")||!host.includes("new URL('./pi-offic
 const taskService=await readFile('packages/dingtalk-core/task-session-service.js','utf8')
 for(const retired of ['task-session.js','execution-session.js','claude-execution-session.js'])if(new RegExp('from\\s+[\"\'][^\"\']*/'+retired.replaceAll('.','\\.')+'[\"\']').test(taskService))throw new Error('Retired task execution driver loaded by official service: '+retired)
 if(!taskService.includes("TASK_OFFICIAL_FACTORY_REQUIRED"))throw new Error('Task service official authority admission is missing')
-console.log(JSON.stringify({source: manifest.sourceCommit, retainedModules: retained, excludedUiModules: 3, explicitlyAdaptedModules: adaptedCount, relativeImports: 'closed', httpRoutes: 'retained'}))
+console.log(JSON.stringify({source: manifest.sourceCommit, retainedModules: retained, retiredModules: retiredCount, excludedUiModules: 3, explicitlyAdaptedModules: adaptedCount, relativeImports: 'closed', httpRoutes: 'retained'}))

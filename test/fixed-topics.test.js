@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { createFixedTopicHandler } from '../packages/dingtalk-dsh-assistant/fixed-topic-handler.js'
 import { FIXED_TOPICS, fixedUnitRequestId, platformTaskPage } from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
@@ -16,12 +16,9 @@ import { correctOutOfScope } from '../packages/dingtalk-dsh-assistant/fixed-topi
 
 async function fixture(t, { tasks = [], decide = async () => {}, timezone = 'Asia/Shanghai', readMentioned, snapshot = { tables: {}, global: null } } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'fixed-topic-'))
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'fixed-topic-test' })
-  const store = await openResidentStore(facility)
+  const domain=await nativeResidentSnapshot(snapshot)
+  const store=await openResidentStore(domain.domains)
+  t.after(()=>domain.close())
   await store.subscribe({ groupId: 'g', responsibility: '修复UPR业务', timezone })
   const created = [], errors = [], replies = [], sections = []
   const ctx = { agents: { async create(options) {
@@ -43,7 +40,7 @@ async function fixture(t, { tasks = [], decide = async () => {}, timezone = 'Asi
     appendOutbox: async args => { replies.push(args); return store.appendOutbox(args) },
   })
   t.after(async () => { await handler.close(); await store.close(); await rm(root, { recursive: true, force: true }) })
-  return { store, handler, created, errors, replies, sections, async route(text, units, extra = {}) {
+  return { root, store, handler, created, errors, replies, sections, async route(text, units, extra = {}) {
     await store.ingest({ groupId: 'g', messageId: 'm', text, occurredAt: '2026-10-28T00:00:00Z', senderOpenDingTalkId: 'actor', ...extra })
     const args = topicRouteSubmissionSchema.parse({ requestId: 'r', routes: [{ messageId: 'm', messageVersion: 1, units }] })
     return store.routeMessages({ groupId: 'g', routeId: 'r', routingRevision: 0, routes: args.routes })
@@ -138,7 +135,8 @@ test('manual correction assigns all 416–422 to out-of-scope silently, preservi
   assert.equal(f.created.length, 0); assert.equal(f.replies.length, 0); assert.deepEqual(f.errors, [])
   await f.store.close()
   const restarted = await fixture(t, { snapshot, readMentioned: async () => { throw new Error('must not replay') } })
-  assert.deepEqual(await restarted.store.correctFixedTopicClassification(args), receipt)
+  // Native durable storage is JSON: absent optional fields do not persist as undefined own-properties.
+  assert.deepEqual(await restarted.store.correctFixedTopicClassification(args), JSON.parse(JSON.stringify(receipt)))
   restarted.handler.schedule('g'); await restarted.handler.whenIdle()
   const page = await restarted.store.listFixedTopicMessagesPage({ groupId: 'g', topicId: 'out-of-scope' })
   assert.equal(page.total, 7); assert.ok(page.items.every(item => item.state === 'silent' && item.manualCorrection.requestId === args.requestId))
@@ -462,8 +460,10 @@ test('mention lookup rejects failed, malformed, undecrypted and incomplete pages
 })
 
 test('user timezone-only settings update persists and group timezone takes priority', async t => {
-  const { setup } = await import('./fixtures/runtime-mixed.js')
-  const h = await setup(t)
+  const { openTaskResidentRuntime } = await import('../packages/dingtalk-core/task-resident-runtime.js')
+  const h = await fixture(t)
+  h.runtime = await openTaskResidentRuntime({get:()=>({}),agentDefaultModel:{currentSelection:()=>({provider:'configured',model:'configured'})}},h.store,h.root)
+  t.after(()=>h.runtime.close())
   const saved = await h.runtime.updateAgentConfig({ timezone: 'America/New_York' })
   assert.equal(saved.timezone, 'America/New_York')
   assert.equal(h.runtime.getAgentConfig().timezone, 'America/New_York')

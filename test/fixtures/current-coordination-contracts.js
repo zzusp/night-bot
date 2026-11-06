@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {openNativeDomains} from '../../src/native-domain.js'
 import { openDynamicTaskStore } from '../../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import { openResidentStore } from '../../packages/dingtalk-dsh-assistant/store.js'
 import { createTopicFactHandler } from '../../packages/dingtalk-dsh-assistant/topic-facts.js'
@@ -13,18 +13,13 @@ import { projectTaskNotification } from '../../packages/dingtalk-dsh-assistant/t
 // then the real startup retirement runs; retired commands are never enabled.
 export async function currentCoordinationFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'current-coordination-contract-'))
-  const snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'current-contract-test' })
-  const resident = await openResidentStore(facility)
+  const domains=await openNativeDomains({root:join(root,'domains')})
+  const resident = await openResidentStore(domains)
   const options = { dbPath: join(root, 'ledger.sqlite'), instanceId: 'current-contract', initialize: true, webActorId: 'operator' }
   let ledger = await openDynamicTaskStore(options)
   const finalizers = new Set()
   const close = async () => { for (const finalize of finalizers) await finalize(); await ledger.close() }
-  t.after(async () => { await close(); await resident.close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => { await close(); await resident.close(); await domains.closeAll(); await rm(root, { recursive: true, force: true }) })
   const command = (kind, args = {}, id = randomUUID()) => ledger.command({ id, kind, args })
   const query = (kind, args = {}) => ledger.query({ kind, ...args })
   await resident.subscribe({ groupId: 'group' })

@@ -5,7 +5,6 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
-import { openTaskSessionHistory } from '../packages/dingtalk-dsh-assistant/task-session-history.js'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
 import { nativeTaskHost, latestInput, topicTaskCalls } from './fixtures/task-session-native-host.js'
 import { createModelContentIndex } from '../packages/dingtalk-dsh-assistant/model-context.js'
@@ -85,26 +84,6 @@ async function service(root, options = {}) {
   return { instance: { ...host.service, close: () => host.close() }, inputs, residentStore: host.residentStore }
 }
 
-test('historical conclusions and complete execution artifacts are readable without modifying any archived database or artifact bytes', async () => {
-  const f = await historicalFixture(), before = await snapshot(f.archive)
-  const history = openTaskSessionHistory(f.dbPath, { artifactDirectory: f.artifactDirectory, taskWorkspaceRoot: f.workspace })
-  try {
-    const task = await history.read('legacy-task')
-    assert.equal(task.historyOnly, true); assert.equal(task.legacyReadonly, true)
-    assert.equal(task.result.summary, '已完成，保留原始结论')
-    assert.equal(task.reports.length, 2)
-    assert.equal(task.requirement.value.request, '保留历史任务目标与结果')
-    assert.equal(task.result.evidenceDetails[0].value.result, '真实历史检查通过')
-    assert.equal(task.executions[0].sessions[0].output.value.summary, '历史执行的完整结果')
-    assert.equal(task.executions[0].sessions[1].sessionId, null)
-    assert.equal(task.executions[0].sessions[1].output.value.checked, true)
-    assert.equal(task.historicalArtifacts.length, 4)
-    assert.equal(history.list().length, 1)
-    assert.equal(await history.read('absent'), null)
-  } finally { history.close() }
-  assert.deepEqual(await snapshot(f.archive), before)
-})
-
 test('active task service ignores archived history and never exposes or imports retired tasks', { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (_nativeContext) => {
   await _nativeContext.beginBusiness()
   const f = await _nativeContext.step(async () => historicalFixture()), before = await _nativeContext.step(async () => snapshot(f.archive))
@@ -120,25 +99,6 @@ test('active task service ignores archived history and never exposes or imports 
   } finally { await _nativeContext.step(async () => h.instance.close()) }
   assert.deepEqual(await _nativeContext.step(async () => snapshot(f.archive)), before)
 }))
-
-test('missing configuration, corrupt contents and malformed historical refs are reported unavailable rather than invented evidence', async () => {
-  const f = await historicalFixture()
-  let history = openTaskSessionHistory(f.dbPath)
-  try { assert.ok((await history.read('legacy-task')).historicalArtifacts.every(item => item.status === 'unavailable' && item.reason === 'LEGACY_ARTIFACT_ROOT_UNAVAILABLE')) }
-  finally { history.close() }
-  await writeFile(join(f.artifactDirectory, f.refs.output), '{"summary":"altered"}')
-  const db = new DatabaseSync(f.dbPath)
-  db.prepare('UPDATE execution_nodes SET evidence_refs=? WHERE node_run_id=?').run(JSON.stringify(['../outside.json', 'sha256-' + 'a'.repeat(64) + '.json']), 'old-node'); db.close()
-  const before = await snapshot(f.archive)
-  history = openTaskSessionHistory(f.dbPath, { artifactDirectory: f.artifactDirectory, taskWorkspaceRoot: f.workspace })
-  try {
-    const task = await history.read('legacy-task'), byRef = new Map(task.historicalArtifacts.map(item => [item.ref, item]))
-    assert.equal(byRef.get(f.refs.output).reason, 'ARTIFACT_DIGEST_MISMATCH')
-    assert.equal(byRef.get('../outside.json').reason, 'ARTIFACT_REFERENCE_INVALID')
-    assert.equal(byRef.get('sha256-' + 'a'.repeat(64) + '.json').reason, 'ENOENT')
-  } finally { history.close() }
-  assert.deepEqual(await snapshot(f.archive), before)
-})
 
 test('source text and actual attachment bytes are materialized into their own task and reused without downloading again', { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (_nativeContext) => {
   const root = await temporary(), calls = []
@@ -254,7 +214,7 @@ for (const mode of ['snapshot-link', 'snapshot-truncated', 'foreign-resource', '
 
 test('persistence initialization failure releases the already-open dynamic store and permits a clean retry', async () => {
   const root = await temporary(), config = { dbPath: join(root, 'failed-start.sqlite'), instanceId: 'failed-start', initialize: true, workspaceDir: root }
-  await assert.rejects(openTaskSessionService({ ctx: {}, config, legacy: { getAgentConfig: () => ({ workspaceDir: root }) } }), { code: 'TASK_SESSION_PERSISTENCE_REQUIRED' })
+  await assert.rejects(openTaskSessionService({ ctx: {}, config, legacy: { getAgentConfig: () => ({ workspaceDir: root }) } }), { code: 'TASK_OFFICIAL_FACTORY_REQUIRED' })
   const reopened = await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId, initialize: false })
   try { assert.deepEqual(await reopened.query({ kind: 'task.list' }), []) } finally { await reopened.close() }
 })

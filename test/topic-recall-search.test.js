@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createTopicCoordinator } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 
 function setup(t, suppliedTopics) {
@@ -62,13 +62,8 @@ test('大目录仅投影请求页，多词查询仍按排序分页', async t => 
 })
 
 test('首包保留引用优先并召回目录首屏之外的历史候选', async t => {
-  const snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'topic-test' })
-  const store = await openResidentStore(facility)
+  const storage=await nativeResidentSnapshot()
+  const store = await openResidentStore(storage.domains)
   await store.subscribe({ groupId: 'g', responsibility: '处理测试任务' })
   await store.setAgentNames(['助理'])
   const ingest = (messageId, extra = {}) => store.ingest({ groupId: 'g', messageId, text: messageId, senderOpenDingTalkId: 'user', occurredAt: '2026-09-07T00:00:00Z', ...extra })
@@ -81,7 +76,7 @@ test('首包保留引用优先并召回目录首屏之外的历史候选', async
   const sent = [], errors = []
   const agent = { session: { snapshotEvents: () => [] }, steer(message) { sent.push(message.content[0].text) }, whenIdle: () => new Promise(() => {}) }
   const coordinator = createTopicCoordinator({ store, getAgent: () => agent, assertSession() {}, serializeTasks: fn => fn(), isClosing: () => false, reviewCandidates: () => [], onError(_group, error) { errors.push(error) } })
-  t.after(async () => { await coordinator.close(); await store.close() })
+  t.after(async () => { await coordinator.close(); await store.close(); await storage.close() })
   await ingest('current', { text: `请排查数据库导出超时 管理 测试 ${'额外词语 '.repeat(10000)}`, quotedMessage: { messageId: 'reference', content: '引用事项' } })
   const OriginalSegmenter = Intl.Segmenter
   let segmentsRead = 0, charsSegmented = 0

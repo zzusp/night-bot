@@ -5,232 +5,74 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
+import {providerHost,result} from './fixtures/provider-official-host.js'
+import {memoryHost} from './fixtures/memory-host.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
 import { taskNotificationRecovery } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
 import { taskNotificationOutbound } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
 import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
 
-// Real HTTP + service + durable SQLite. Only the model/DSH session calls are deterministic fixtures.
-// This does not verify a real browser, DingTalk transport, model, credentials, or deployment.
-test('任务会话HTTP端到端：唯一会话、动态执行、需求修订、CAS取消与旧写入口退役', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'task-session-http-'))
-  const snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'task-http-test' })
-  const residentStore = await openResidentStore(facility)
-  await residentStore.subscribe({ groupId: 'g', name: '验收群', responsibility: '处理用户授权的验收工作' })
-  const legacy = { getAgentConfig: () => ({ model: 'test', provider: 'test', workspaceDir: root }), getGroup: id => residentStore.getGroup(id),
-    getTask: id => id === 'old' ? { taskId: 'old', state: 'completed', result: '历史结果' } : undefined }
-  const noop = async () => {}
-  let taskTurns = 0
-  const service = await openTaskSessionService({ ctx: { agents: { get() {} }, sessions: { get() {} } }, legacy, residentStore,
-    config: { dbPath: join(root, 'control.sqlite'), workspaceDir: root, instanceId: 'http-fixture', initialize: true, webActorId: 'owner' },
-    persistence: { register: noop, close: noop }, groupSessions: { run: noop, close: noop },
-    taskSessions: { close: noop, cancel: noop, run: async ({ input, delegate, submit, onSessionBound }) => { taskTurns++; await onSessionBound(); if (!input.executions.length) for (let i = 0; i < 10; i++) await delegate({ key: `核对服务${String(i).padStart(2, '0')}`, objective: '检查实际服务状态', context: '只核对', resourceKeys: [] }); await submit({ action: 'wait', summary: '已委派核对，等待确认', evidence: ['fixture-only'], limitations: ['未调用真实模型'] }) } },
-    executionSessions: { close: noop, cancel: noop, run: async ({ onSessionBound, onResult, onProgress }) => { await onSessionBound(); await onProgress({ summary: '已读取状态，开始验证', evidence: ['actual-evidence.txt'], activity: '验证状态', reportId: 'http-stage' }); await onResult({ status: 'completed', summary: '核对成功', evidence: ['actual-evidence.txt'], limitations: ['未部署'], artifacts: [] }); return { status: 'submitted' } } },
-  })
-  const runtime = { ...legacy,
-    listTaskView: () => service.boardTasks(), getTaskSessionDetail: id => service.taskDetail(id), getTaskSessionExecutions: (...args) => service.taskExecutions(...args), getTaskSessionDecisions: (...args) => service.taskDecisions(...args),
-    createTask: args => service.createTask(args), appendTaskContext: args => service.appendTaskContext(args), cancelTask: args => service.cancelTask(args),
-    getTaskDialogue: id => service.taskDialogue(id), sendTaskDialogue: args => service.sendTaskDialogue(args) }
-  const server = createServer((req, res) => handleRequest(req, res, runtime).catch(error => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: error.message })) }))
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-  const base = `http://127.0.0.1:${server.address().port}`
-  const post = async (path, body) => { const response = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: response.status, body: await response.json() } }
-  try {
-    for (const path of ['/state/coordination-sources', '/state/coordination-sources/old', '/state/coordination-work'])
-      assert.equal((await fetch(base + path)).status, 410)
-    assert.equal((await post('/coordination/old/retire-observation', {})).status, 410)
-    await assert.rejects(service.store.command({ id: 'observer-reserve', kind: 'coordination.reserve',
-      args: { unitId: 'synthetic-observer-source', revision: 1, groupId: 'g', original: 'Synthetic reserved input' } }), { code: 'INDEPENDENT_COORDINATION_RETIRED' })
-    const input = { requestId: 'create', groupId: 'g', title: '核对服务', objective: '核对服务并保留证据', acceptanceCriteria: ['状态可查'] }
-    const created = await post('/tasks', input)
-    assert.equal(created.status, 200, JSON.stringify(created.body))
-    const taskId = created.body.taskId, sessionId = created.body.session.sessionId
-    assert.ok(taskId && sessionId)
-    assert.equal(residentStore.listTopics('g').length, 1)
-    assert.equal((await service.store.query({ kind: 'task.get', taskId })).topicRefs.length, 1)
-    const duplicate = await post('/tasks', input)
-    assert.equal(duplicate.status, 200, JSON.stringify(duplicate.body)); assert.equal(duplicate.body.taskId, taskId)
-    await service.whenIdle(); await service.recover(); await service.whenIdle()
-    const executions = await service.store.query({ kind: 'execution.list', taskId })
-    assert.equal(executions.length, 10, 'The pagination fixture starts with ten dispatched executions')
-    assert.ok(executions.every(execution => execution.status === 'succeeded' && execution.drained))
-    // 历史读取夹具：旧任务可能已有超过十个执行；不经新派发绕过上限，也不删分页覆盖。
-    // 十个真实服务执行保留原样，另复制43个已结束历史记录及其阶段事件，仅用于HTTP读取断言。
-    const stage = (await service.store.query({ kind: 'wake.list', taskId })).find(wake => wake.kind === 'execution.stage.progress' && wake.payload.executionId === executions[0].executionId)
-    assert.ok(stage)
-    const db = new DatabaseSync(join(root, 'control.sqlite'))
-    try {
-      db.exec('BEGIN')
-      for (let index = 10; index < 53; index++) {
-        const execution = structuredClone(executions[0]), id = `historical-fixture-${index}`, title = `核对服务${index}`
-        delete execution.resources
-        Object.assign(execution, { id, executionId: id, sessionId: `task-execution-${id}`, key: title, title })
-        execution.input.title = title
-        db.prepare('INSERT INTO dynamic_executions(id,body) VALUES (?,?)').run(id, JSON.stringify(execution))
-        const wake = structuredClone(stage)
-        Object.assign(wake, { id: `stage-${id}`, wakeId: `stage-${id}`, state: 'acked' })
-        wake.payload.executionId = id
-        db.prepare('INSERT INTO dynamic_wakes(id,body) VALUES (?,?)').run(wake.id, JSON.stringify(wake))
-      }
-      db.exec('COMMIT')
-    } finally { db.close() }
-    assert.equal((await service.store.query({ kind: 'execution.list', taskId })).length, 53)
-    const detail = await (await fetch(base + `/state/tasks/${taskId}/detail`)).json()
-    assert.equal(detail.session.sessionId, sessionId)
-    assert.ok(detail.session.workspaceDir.startsWith(root))
-    assert.ok(detail.session.logPath.startsWith(root))
-    assert.equal(detail.timeline.version, 1)
-    assert.equal(detail.timeline.executions.length, 53)
-    assert.ok(detail.timeline.executions.every(row => row.complete && row.segments.length === 2 && row.segments.every(segment => segment.endedAt)))
-    assert.ok(detail.timeline.executions.every(row => row.segments[1].label === '验证状态' && row.milestones.length === 1))
-    assert.equal(detail.timeline.human.title, '人工介入')
-    assert.deepEqual(detail.timeline.human.segments, [])
-    const page = await (await fetch(base + `/state/tasks/${taskId}/executions?offset=0&limit=20`)).json()
-    assert.equal(page.total, 53)
-    const decisions = await (await fetch(base + `/state/tasks/${taskId}/decisions?limit=1`)).json()
-    assert.equal(decisions.decisions.length, 1)
-    assert.ok(decisions.decisions[0].decision.summary)
-    assert.ok(Array.isArray(decisions.decisions[0].decision.evidence))
-    assert.equal(decisions.decisions[0].sessionId, sessionId)
-    assert.equal((await fetch(base + `/state/tasks/${taskId}/decisions?limit=0`)).status, 400)
-    assert.equal((await fetch(base + '/state/tasks/missing/decisions')).status, 404)
-    assert.equal(page.executions.length, 20)
-    const board = await (await fetch(base + '/state/tasks')).json()
-    assert.equal(board[0].executionSessions.length, 53)
-    assert.equal(new Set(board[0].executionSessions.map(item => item.sessionId)).size, 53)
-    assert.deepEqual(board[0].executionSessions, detail.executionSessions)
-    assert.ok(board[0].executionSessions.every(item => /^核对服务\d{2}$/.test(item.title)))
-    assert.ok(board[0].executionSessions.every(item => item.runTiming.recorded === true && item.runTiming.elapsedMs >= 0 && item.runTiming.startedAt === null))
-    assert.ok(board[0].executionSessions.every(item => item.latestRoundTiming.active === false
-      && Date.parse(item.latestRoundTiming.endedAt) >= Date.parse(item.latestRoundTiming.startedAt)))
-    assert.ok(board[0].executionSessions.every(item => item.drained === true && item.recovering === false))
-    assert.deepEqual((await service.boardTasks())[0].executionSessions, board[0].executionSessions)
-    assert.equal(page.executions[0].status, 'succeeded')
-    assert.notEqual(page.executions[0].sessionId, sessionId)
-    assert.equal(page.executions[0].result.summary, '核对成功')
-    const dialoguePath = `/tasks/${taskId}/dialogue`
-    assert.equal((await post(dialoguePath, { requestId: 'chat', text: '现在进度怎样？', actorId: 'spoof' })).status, 400)
-    const saved = await post(dialoguePath, { requestId: 'chat', text: '现在进度怎样？' })
-    assert.equal(saved.status, 202); assert.equal(saved.body.reply, null)
-    await service.whenIdle()
-    const conversation = await (await fetch(base + `/state${dialoguePath}`)).json()
-    assert.equal(conversation.sessionId, sessionId)
-    assert.equal(conversation.messages.length, 1)
-    assert.ok(conversation.messages[0].reply)
-    const dialogueDecisions = await (await fetch(base + `/state/tasks/${taskId}/decisions?limit=1`)).json()
-    assert.equal(dialogueDecisions.decisions[0].decision.summary, conversation.messages[0].reply)
-    assert.ok(dialogueDecisions.decisions[0].triggers.some(item => item.kind === 'task.dialogue'))
-    assert.equal((await post(dialoguePath, { requestId: 'chat', text: '现在进度怎样？' })).status, 202)
-    assert.equal((await post(dialoguePath, { requestId: 'chat', text: '同一ID不同正文' })).status, 409)
-    assert.equal((await service.taskDetail(taskId)).executionCount, 53)
-    assert.equal((await service.taskDetail(taskId)).requirementRevision, 1)
-    const foreignOrigin = await fetch(base + dialoguePath, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://example.invalid' },
-      body: JSON.stringify({ requestId: 'foreign', text: '不能受理' }) })
-    assert.equal(foreignOrigin.status, 403)
-    assert.equal((await post(dialoguePath, { requestId: 'empty', text: '   ' })).status, 400)
-    assert.deepEqual(page.executions[0].result.limitations, ['未部署'])
-    const missing = await post(`/tasks/${taskId}/context`, { requestId: 'missing-classification', context: '开发分支别搞错了', expectedRequirementRevision: detail.requirementRevision, expectedControlRevision: detail.controlRevision })
-    assert.equal(missing.status, 400)
-    assert.equal((await service.taskDetail(taskId)).requirementRevision, detail.requirementRevision)
-    const conflict = await post(`/tasks/${taskId}/context`, { requestId: 'conflicting-classification', context: '收回授权', progressImpact: 'preserve', authorizationChange: 'changed', expectedRequirementRevision: detail.requirementRevision, expectedControlRevision: detail.controlRevision })
-    assert.equal(conflict.status, 400)
-    assert.equal((await service.taskDetail(taskId)).contextInputContract.missingClassification, 'reject-without-cancelling')
-    await assert.rejects(service.appendTaskContext({ taskId, requestId: 'direct-api-missing', context: '开发分支别搞错了' }), { code: 'TASK_CONTEXT_CLASSIFICATION_REQUIRED' })
-    const revised = await post(`/tasks/${taskId}/context`, { requestId: 'revise', progressImpact: 'replan', context: '补充：还需读取错误日志', expectedRequirementRevision: detail.requirementRevision, expectedControlRevision: detail.controlRevision })
-    assert.equal(revised.status, 200, JSON.stringify(revised.body))
-    assert.equal(revised.body.requirementRevision, 2)
-    assert.equal(revised.body.session.sessionId, sessionId)
-    await service.whenIdle()
-    const stale = await post(`/tasks/${taskId}/context`, { requestId: 'stale', progressImpact: 'replan', context: '旧客户端资料', expectedRequirementRevision: 1, expectedControlRevision: detail.controlRevision })
-    assert.equal(stale.status, 409, JSON.stringify(stale.body))
-    const current = await service.taskDetail(taskId)
-    const cancelled = await post(`/tasks/${taskId}/cancel`, { requestId: 'cancel', reason: '验收完成', expectedControlRevision: current.controlRevision })
-    assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body))
-    assert.equal(cancelled.body.controlState, 'cancelled')
-    assert.equal(cancelled.body.session.sessionId, sessionId)
-    assert.equal((await service.taskDialogue(taskId)).writable, false)
-    assert.notEqual((await post(dialoguePath, { requestId: 'after-cancel', text: '不能自动恢复任务' })).status, 202)
-    assert.equal((await post(dialoguePath, { requestId: 'chat', text: '现在进度怎样？' })).status, 202, 'saved request remains idempotent after terminal state')
-    assert.equal((await service.taskDialogue(taskId)).messages.length, 1)
-    await service.whenIdle()
-    // The fixture also checks retired-mode endpoints below. Select the actual
-    // native runtime capability while exercising its supported reopen route.
-    runtime.isTaskSessionMode = () => true
-    runtime.reopenTask = args => service.reopenTask(args)
-    const stopped = await service.taskDetail(taskId)
-    const completedExecutions = await service.store.query({ kind: 'execution.list', taskId })
-    assert.equal(stopped.drained, true)
-    const reopenBody = { requestId: 'maintenance-reopen', context: 'Resume the original task without replaying completed work',
-      expectedRequirementRevision: stopped.requirementRevision, expectedControlRevision: stopped.controlRevision }
-    const foreignReopen = await fetch(base + `/tasks/${taskId}/reopen`, { method: 'POST',
-      headers: { 'content-type': 'application/json', origin: 'https://outside.invalid' }, body: JSON.stringify(reopenBody) })
-    assert.equal(foreignReopen.status, 403)
-    const reopened = await post(`/tasks/${taskId}/reopen`, reopenBody)
-    assert.equal(reopened.status, 200, JSON.stringify(reopened.body))
-    assert.equal(reopened.body.taskId, taskId)
-    assert.equal(reopened.body.session.sessionId, sessionId)
-    assert.equal(reopened.body.runSequence, stopped.runSequence + 1)
-    await service.whenIdle()
-    assert.deepEqual(await service.store.query({ kind: 'execution.list', taskId }), completedExecutions)
-    assert.equal((await post(`/tasks/${taskId}/reopen`, reopenBody)).status, 200, 'same formal request is idempotent')
-    delete runtime.isTaskSessionMode
-    delete runtime.reopenTask
-    assert.equal((await (await fetch(base + '/state/tasks')).json()).length, 1)
-    assert.equal((await post('/tasks/old/context', { requestId: 'old', progressImpact: 'replan', context: '禁止恢复', expectedRequirementRevision: 1, expectedControlRevision: 1 })).status, 404)
-    for (const path of ['/tasks/old/reopen', '/tasks/old/reports/r/retry', '/authorizations/old/decision', '/workflows/message/requests/r/answer']) assert.equal((await post(path, {})).status, 410)
-    assert.ok(taskTurns >= 1)
-    await residentStore.ingest({groupId:'g',messageId:'startup-alert',text:'待处理',senderOpenDingTalkId:'owner',occurredAt:'2026-10-20T10:39:40Z'})
-    await residentStore.markMessageAgentDelivery({groupId:'g',messageId:'startup-alert',status:'decision-failed',error:'agent-preset/invalid'})
-    assert.equal(service.listAlerts().find(item=>item.alertId==='coordination:g').detail,'agent-preset/invalid', '持久消息故障不能依赖会被扫描清空的内存失败表')
-    await residentStore.markMessageAgentDelivery({groupId:'g',messageId:'startup-alert',status:'delivered'})
-    assert.equal(service.listAlerts().some(item=>item.alertId==='coordination:g'),false)
-
-  } finally { await new Promise(resolve => server.close(resolve)); await service.close(); await residentStore.close(); await rm(root, { recursive: true, force: true }) }
+// Actual official Host, provider loopback, SQL and HTTP. No Owner/leaf drivers.
+test('official Single HTTP preserves one session, source revisions, idempotence and cancellation CAS',async t=>{
+ const h=await providerHost(t,{decide:()=>[result('wait','Await the current authorized source')]}),service=h.service
+ const runtime={isTaskSessionMode:()=>true,listTaskView:()=>service.boardTasks(),getTaskSessionDetail:id=>service.taskDetail(id),
+  getTaskSessionExecutions:(...args)=>service.taskExecutions(...args),getTaskSessionDecisions:(...args)=>service.taskDecisions(...args),
+  createTask:args=>service.createTask(args),appendTaskContext:args=>service.appendTaskContext(args),cancelTask:args=>service.cancelTask(args),
+  getTaskDialogue:id=>service.taskDialogue(id),sendTaskDialogue:args=>service.sendTaskDialogue(args)}
+ const server=createServer((req,res)=>handleRequest(req,res,runtime).catch(error=>{res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({error:error.message}))}))
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
+ const base=`http://127.0.0.1:${server.address().port}`
+ const post=async(path,body)=>{const response=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:response.status,body:await response.json()}}
+ for(const path of ['/state/coordination-sources','/state/coordination-sources/old','/state/coordination-work'])assert.equal((await fetch(base+path)).status,410)
+ const input={requestId:'official-http-create',groupId:'native-group',title:'Original HTTP task',objective:'Inspect only the original HTTP request and await authorized context',context:'Original exact HTTP source'}
+ const created=await post('/tasks',input);assert.equal(created.status,200,JSON.stringify(created.body));await service.whenIdle()
+ const id=created.body.taskId,sessionId=created.body.session.sessionId;assert.ok(id&&sessionId)
+ const count=h.taskRequests().length
+ const duplicate=await post('/tasks',input);assert.equal(duplicate.status,200);assert.equal(duplicate.body.taskId,id);await service.whenIdle();assert.equal(h.taskRequests().length,count)
+ assert.deepEqual(await h.query('execution.list',{taskId:id}),[])
+ let detail=await service.taskDetail(id)
+ const missing=await post(`/tasks/${id}/context`,{requestId:'classification-missing',context:'No implicit authorization',expectedRequirementRevision:detail.requirementRevision,expectedControlRevision:detail.controlRevision});assert.equal(missing.status,400)
+ const text='Explicit new authorized context, still the same objective'
+ const args={requestId:'preserve-exact',progressImpact:'preserve',context:text,expectedRequirementRevision:detail.requirementRevision,expectedControlRevision:detail.controlRevision}
+ const amended=await post(`/tasks/${id}/context`,args);assert.equal(amended.status,200,JSON.stringify(amended.body));await service.whenIdle()
+ assert.equal(amended.body.session.sessionId,sessionId)
+ const before=h.taskRequests().length;await post(`/tasks/${id}/context`,args);await service.whenIdle();assert.equal(h.taskRequests().length,before)
+ detail=await service.taskDetail(id);assert.equal(detail.requirementRevision,1);assert.equal(detail.contextRevision,1)
+ const native=await h.stored(id);assert.ok(JSON.stringify(native.entries).includes(text));assert.ok(JSON.stringify(native.entries).includes(input.context))
+ assert.equal(native.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1)
+ const cancelled=await post(`/tasks/${id}/cancel`,{requestId:'cancel-exact',reason:'Stop this authorized request',expectedControlRevision:detail.controlRevision});assert.equal(cancelled.status,200,JSON.stringify(cancelled.body));await service.whenIdle()
+ assert.equal((await service.taskDetail(id)).control,'cancelled')
+ const stale=await post(`/tasks/${id}/cancel`,{requestId:'stale-cancel',reason:'Stale revision',expectedControlRevision:detail.controlRevision});assert.equal(stale.status,409)
+ assert.deepEqual(await h.query('execution.list',{taskId:id}),[])
 })
 
 const notificationGuardError = { phase: 'send', knownNotSent: true, retryable: true, exitCode: 1, stdout: '',
   stderr: JSON.stringify({ error: { category: 'api', code: 1, origin: 'mcp_gateway', operation: 'chat/get_conversation_info',
     reason: 'topic_quote_guard_unavailable', retryable: true, message: '无法确认引用回复目标是否属于话题圈，已阻止发送' } }) }
 
-test('inbox projection startup failure releases the ledger and runtime listeners for retry',async t=>{
-  const root=await mkdtemp(join(tmpdir(),'inbox-startup-')), dbPath=join(root,'tasks.sqlite'), closed=[]
-  const noop=async()=>{}, residentStore={listGroups:()=>[],getGroup:()=>null}
-  const args={ctx:{agents:{get(){}},sessions:{get(){}},on:()=>()=>closed.push('listener')},residentStore,
-    legacy:{getAgentConfig:()=>({workspaceDir:root})},config:{dbPath,workspaceDir:root,instanceId:'inbox-startup',initialize:true},
-    persistence:{register:noop,close:async()=>closed.push('persistence')},
-    taskSessions:{close:async()=>closed.push('owner'),cancel:noop},executionSessions:{close:async()=>closed.push('execution'),cancel:noop}}
-  try {
-    await writeFile(dbPath+'.observer-inbox.sqlite','invalid sqlite')
-    await assert.rejects(openTaskSessionService(args),/not a database/)
-    for(const resource of ['listener','owner','execution','persistence'])assert(closed.includes(resource),resource)
-    await unlink(dbPath+'.observer-inbox.sqlite')
-    const retry=await openTaskSessionService({...args,config:{...args.config,initialize:false}})
-    await retry.close()
-  }finally{await rm(root,{recursive:true,force:true})}
+test('inbox projection startup failure releases the real ledger for an official Host retry',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'inbox-startup-')),dbPath=join(root,'tasks.sqlite'),native=await memoryHost(t)
+ const args={ctx:native.host.ctx,residentStore:{listGroups:()=>[],getGroup:()=>null},legacy:{getAgentConfig:()=>({workspaceDir:root})},config:{dbPath,workspaceDir:root,instanceId:'inbox-startup',initialize:true}}
+ try{
+  await writeFile(dbPath+'.observer-inbox.sqlite','invalid sqlite')
+  await assert.rejects(openTaskSessionService(args),/not a database/)
+  await unlink(dbPath+'.observer-inbox.sqlite')
+  const retry=await openTaskSessionService({...args,config:{...args.config,initialize:false}})
+  await retry.close();assert.equal(native.requests.length,0);assert.equal(native.host.ctx.agents.list().length,0)
+ }finally{await rm(root,{recursive:true,force:true})}
 })
 
 async function notificationServiceFixture(t, notifications) {
-  const root = await mkdtemp(join(tmpdir(), 'notification-service-retry-')), snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'notification-service-test' })
-  const residentStore = await openResidentStore(facility)
+  const root = await mkdtemp(join(tmpdir(), 'notification-service-retry-')),storage=await nativeResidentSnapshot(),native=await memoryHost(t)
+  const residentStore = await openResidentStore(storage.domains)
   await residentStore.subscribe({ groupId: 'g', name: '合成群', responsibility: '仅隔离测试' })
   const noop = async () => {}
-  const service = await openTaskSessionService({ ctx: { agents: { get() {} }, sessions: { get() {} } }, residentStore, notifications,
+  const service = await openTaskSessionService({ ctx:native.host.ctx, residentStore, notifications,
     legacy: { getAgentConfig: () => ({ workspaceDir: root }), getGroup: id => residentStore.getGroup(id) },
-    config: { dbPath: join(root, 'tasks.sqlite'), workspaceDir: root, instanceId: 'notification-service', initialize: true },
-    persistence: { register: noop, close: noop }, taskSessions: { close: noop, cancel: noop }, executionSessions: { close: noop, cancel: noop } })
-  t.after(async () => { await service.close(); await residentStore.close(); await rm(root, { recursive: true, force: true }) })
+    config: { dbPath: join(root, 'tasks.sqlite'), workspaceDir: root, instanceId: 'notification-service', initialize: true } })
+  t.after(async () => { await service.close(); await residentStore.close(); await storage.close(); await rm(root, { recursive: true, force: true }) })
   let sequence = 0
   const command = (kind, args) => service.store.command({ kind, args, id: `fixture:${++sequence}` })
   const read = id => service.store.query({ kind: 'notification.get', notificationId: id })
@@ -256,6 +98,8 @@ test('notification service manual recovery uses the original identity, stages an
     readback: async () => ({ messageId: 'verified', conversationId: 'g' }) })
   await f.command('source.record', { sourceId: 'stage-source', groupId: 'g', messageId: 'source', actorId: 'owner', text: '合成来源', version: 1 })
   await f.residentStore.ingest({groupId:'g',messageId:'verified',text:'合成原回复',senderOpenDingTalkId:'unknown-at-ingress',occurredAt:'2026-10-29T00:00:00Z'})
+  assert.equal(f.residentStore.getGroup('g').messages.find(message=>message.messageId==='verified').sourceKind,'channel')
+  await f.service.observerGroupPage.ready()
   assert.equal((await f.service.observerGroupPage('g')).items.some(message=>message.messageId==='verified'),true)
   const failed = await f.failed('notice')
   const result = await f.retry(failed)
@@ -268,6 +112,7 @@ test('notification service manual recovery uses the original identity, stages an
   assert.deepEqual(source.stages.map(stage => stage.stage), ['send', 'readback'])
   assert.ok(source.stages.every(stage => stage.completedAt))
   assert.equal(f.residentStore.getGroup('g').outbox.find(row => row.outboundId === 'notice').notificationState, 'delivered')
+  await f.service.observerGroupPage.ready()
   assert.equal((await f.service.observerGroupPage('g')).items.some(message=>message.messageId==='verified'),false,'late delivery identity removes the earlier echo from the persistent inbox')
   await assert.rejects(f.retry(failed), { code: 'DYNAMIC_NOTIFICATION_RECOVERY_STALE' })
   await assert.rejects(f.retry(delivered), { code: 'TASK_NOTIFICATION_RECOVERY_FORBIDDEN' })

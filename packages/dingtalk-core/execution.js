@@ -1,20 +1,10 @@
-import { closeExecutionResources } from './resource-close.js'
-export { closeExecutionResources } from './resource-close.js'
-import { openExecutionStore } from './execution-store.js'
-import { openExecutionArtifacts, parseArtifactReference } from './execution-artifacts.js'
-import { taskDirectories } from './session-workspaces.js'
-import { createExecutionController } from './execution-controller.js'
-import { createExecutionSessions } from './execution-session.js'
-import { createExecutionDelivery } from './execution-delivery.js'
-
-export { freezeCandidate, readCandidate, verifyCandidate } from './execution-candidate.js'
-export { createGitDelivery } from './execution-git.js'
-export { createManagedWorkspaces } from './execution-workspace.js'
-
-export const name = 'dingtalk-execution-foundation'
-export const inject = ['executionWorkflows', 'agents', 'officialAgentFactory', 'sessions', 'sessionPersistence', 'sessionProjections', 'llm', 'tools', 'systemPrompt']
-
-/** 以已有持久工件引用区分布局；旧任务不会因升级或重启自动搬迁。 */
+// Portable task-artifact directory resolution; no execution/session driver.
+import {parseArtifactReference} from './execution-artifacts.js'
+import {taskDirectories} from './session-workspaces.js'
+export {closeExecutionResources} from './resource-close.js'
+export {freezeCandidate,readCandidate,verifyCandidate} from './execution-candidate.js'
+export {createGitDelivery} from './execution-git.js'
+export {createManagedWorkspaces} from './execution-workspace.js'
 export function createTaskDirectoryResolver({ store, workspaceRoot }) {
   return async (taskId, { logicalTaskId } = {}) => {
     const plan = await store.query({ kind: 'task.plan', taskId })
@@ -29,34 +19,4 @@ export function createTaskDirectoryResolver({ store, workspaceRoot }) {
     logicalTaskId ??= (await store.query({ kind: 'task.family', taskId }))?.rootTaskId ?? taskId
     return taskDirectories(workspaceRoot, logicalTaskId)
   }
-}
-
-/** 独立入口；不读取、写回或迁移旧resident的Task账。 */
-export async function openExecutionRuntime({ ctx, dbPath, instanceId, artifactDirectory, taskWorkspaceRoot, initialize = false, workflows, historicalWorkflows = [], deliveryOptions, readTools = [], repositoryInspect, tools = [], getWorkspaceDir, maxConcurrentRuns = 4, configuration }) {
-  const store = await openExecutionStore({ dbPath, instanceId, initialize })
-  let sessions, controller
-  try {
-    const getTaskDirectories = taskWorkspaceRoot ? createTaskDirectoryResolver({ store, workspaceRoot: taskWorkspaceRoot }) : undefined
-    const artifacts = await openExecutionArtifacts({ directory: artifactDirectory, initialize, taskWorkspaceRoot, getTaskDirectories,observerPageBindings:{get:args=>store.query({kind:'observer.artifact-binding',...args}),put:args=>store.command({id:`observer-artifact-binding:${args.ref}:${args.view}:${args.root}`,kind:'observer.artifact-bind',args})} })
-    const delivery = deliveryOptions ? createExecutionDelivery({ ...deliveryOptions, store, artifacts }) : undefined
-    const registeredTools = typeof tools === 'function' ? await tools({ store, artifacts }) : tools
-    sessions = createExecutionSessions({ ctx, isCurrent: binding => controller.isCurrent(binding), repositoryInspect, tools: registeredTools, getWorkspaceDir })
-    const definitions = typeof workflows === 'function' ? await workflows(store, artifacts) : { workflows, historicalWorkflows }
-    controller = createExecutionController({ store, artifacts, sessions, delivery, ...definitions, readTools, maxConcurrentRuns, configuration,
-    })
-    return { controller, store, artifacts, delivery, async close() { await closeExecutionResources([['controller', () => controller.close()], ['store', () => store.close()]]) } }
-  } catch (error) {
-    try { await closeExecutionResources([['sessions', () => sessions?.close()], ['store', () => store.close()]]) }
-    catch (cleanup) { throw new AggregateError([error, cleanup], 'EXECUTION_OPEN_CLEANUP_FAILED') }
-    throw error
-  }
-}
-
-export async function apply(ctx, config) {
-  if (config.initialize) throw new Error('execution_initialization_is_offline_only')
-  const runtime = await openExecutionRuntime({ ctx, ...config, initialize: false, workflows: ctx.executionWorkflows, deliveryOptions: ctx.executionDelivery })
-  try {
-    ctx.provide('execution', runtime)
-    ctx.effect(() => () => runtime.close())
-  } catch (error) { await runtime.close(); throw error }
 }
