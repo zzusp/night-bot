@@ -55,7 +55,7 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 - 当前子目标：SG7
 - 当前阶段：SG1–SG7约定范围均已完成。脚本模型回归与两个分别受验的真实业务已核，最终review无确认残留阻断；实现/证据9f93e0d已push，原PR #2已更新并独立核回正文、base/head与远端实现SHA一致，OPEN/MERGEABLE，CI列表为空。本文最终提交仅回填交付事实，不改受验业务字节。
 - 唯一下一步：无本任务实施待办；后续CI、合并、部署、真实渠道发送或扩大验收范围均需用户另行授权。
-- 保留边界：verified-6的两次中间ROUTER_EVIDENCE_REFERENCE_INVALID后第三次成功，不宣称零工具错误；verified-4唯一通知失败原因、verified-5坏引用仍未知，不由本次PASS追认修复。新失败诊断分支未在真实坏ref上动态验收；非统一版本并发/非完整全量全绿，原runtime/default历史失败及Linux/POSIX/live DWS等未验边界保留，不作为已授权交付的新增门槛。
+- 未闭环项：约定范围内无剩余实施项；保留验收边界：verified-6的两次中间ROUTER_EVIDENCE_REFERENCE_INVALID后第三次成功，不宣称零工具错误；verified-4唯一通知失败原因、verified-5坏引用仍未知，不由本次PASS追认修复。新失败诊断分支未在真实坏ref上动态验收；非统一版本并发/非完整全量全绿，原runtime/default历史失败及Linux/POSIX/live DWS等未验边界保留，不作为已授权交付的新增门槛。
 - 并行执行：原tests唯一读取凭据/运行真实API；最初同runner原生concurrency=2，两case独立Host/root/SQLite，链内串行。Web通过后仅补Router；未开副本、dynamic workflow或新增场景。最后操作bcfyu5fir自然exit0，资源完整清理。
 
 ### Git交付与恢复
