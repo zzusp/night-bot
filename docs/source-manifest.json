@@ -1000,8 +1000,8 @@
     {
       "source": "task-resident-runtime.js",
       "sourceSha256": "22e0fbeadf09a035a73b082c1dd52ef773f637c8282bf61172152648e906e9b8",
-      "status": "retained",
-      "sha256": "761f07f79603a6488e94ff1ee9b1fa20d5f5d8dc154c4ede9aabcad7122b90dd"
+      "status": "adapted",
+      "sha256": "37b8bbcfdc8488cc1c2f62c8bc399eecf515c34467e81f233c735b0f6dea340f"
     },
     {
       "source": "task-result.js",

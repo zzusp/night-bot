@@ -36,7 +36,7 @@ export async function openTaskResidentRuntime(ctx, store, cwd, { agentWorkspaceD
   let closed = false, profile = '', groupReader, resourceReader
   const selection = () => ctx.agentDefaultModel.currentSelection()
   const taskSelection = () => taskModelConfig(store.getTaskSessionModelConfig?.() ?? taskSessionModel)
-  const getAgentConfig = () => ({ agentNames: store.getAgentNames?.() ?? [], agentPreset, workspaceDir: store.getAgentWorkspaceDir?.() ?? root, ...selection(),
+  const getAgentConfig = () => ({ agentNames: store.getAgentNames?.() ?? [], timezone: store.getTimezone?.(), agentPreset, workspaceDir: store.getAgentWorkspaceDir?.() ?? root, ...selection(),
     taskSessionModel: taskSelection(),
     executionBackend: piOnly ? 'pi' : store.getExecutionBackend?.() ?? initialExecutionBackend,
     replySignature: store.getReplySignature?.() ?? initialSignature,
@@ -64,6 +64,10 @@ export async function openTaskResidentRuntime(ctx, store, cwd, { agentWorkspaceD
         if (Object.hasOwn(input,'coordinationModel')) throw new Error('INDEPENDENT_COORDINATION_RETIRED')
         if (['taskPrompts','taskPromptsVersion','leafSessionPrompt','workflowVariables','workflowBindings'].some(key => Object.hasOwn(input,key))) retired()
         const patch = {}
+        if (input.timezone !== undefined) {
+          new Intl.DateTimeFormat('en', { timeZone: input.timezone }).format()
+          patch.timezone = input.timezone
+        }
         if (Object.hasOwn(input, 'executionBackend')) {
           if (piOnly) { if (input.executionBackend !== 'pi') throw Object.assign(new Error('EXECUTION_BACKEND_RETIRED'), {code:'EXECUTION_BACKEND_RETIRED'}) }
           else patch.executionBackend = validateExecutionBackend(input.executionBackend)
