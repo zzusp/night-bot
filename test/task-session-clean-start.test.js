@@ -1,3 +1,4 @@
+import {waitUntil} from './fixtures/task-session-native-host.js'
 import { nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
