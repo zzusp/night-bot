@@ -50,3 +50,5 @@ allowlist plus a current-input check is not an equivalent task resource grant.
 No new grant, tool registration, default query service or synthetic node identity
 is introduced in this retirement. Moving a source repository and reopening the
 old v26 workflow is no longer claimed as current production integration evidence.
+
+The standalone synthetic `measure-model-context-172`, `replay-host-budget-172` and old `coordination-standard-model-adapter` scripts and its dedicated adapter test are retired too. They replayed DSH Host frames or old Session projections and were not current production callers. Official Pi context/resource-budget, first-tier 15-message steering and durable source tests are retained; no historical 172 performance or vendor-model result is claimed. The pure business `model-context` fixtures remain separately accounted.
