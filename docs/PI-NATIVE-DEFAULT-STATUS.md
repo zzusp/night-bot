@@ -1,3 +1,5 @@
+> 最新指定基线为 `7416964`；本轮 Windows 工作树变更、依赖/源码退休审计与真实推理状态见 [本机验收目标](acceptance/pi-native-retirement-local/goal.md)。本页数字属于各自历史提交，不代表本轮未提交源码通过。外部 DSH 生产/开发/锁文件依赖均已为零，保留源码仍须署源。
+
 # Official Pi default runtime checkpoint
 
 Core source checkpoint: `b573cb3` (official Single-only task service, read-only application metadata catalog, and pre-effect file-policy admission).

@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import {Context} from '@deepseek-ai/cordis'
 import {setImmediate} from 'node:timers/promises'
@@ -27,7 +28,7 @@ test('default Host metadata catalog has no Session facade and preserves actual c
 })
 
 test('cold task recovery retains its unregistered actual native writer instead of declaring it drained',{timeout:20000},async t=>{
- const root=await mkdtemp('/tmp/night-catalog-writer-');let first,cold,writer
+ const root=await mkdtemp(join(tmpdir(),'night-catalog-writer-'));let first,cold,writer
  t.after(async()=>{await writer?.close();await cold?.close();await first?.close();await rm(root,{recursive:true,force:true})})
  first=await providerHost(t,{root,decide:()=>[result()]});const id=await first.create('catalog-writer-original');await first.service.whenIdle()
  const prior=await first.query('task.get',{taskId:id});await first.service.store.command({id:'held-writer-wake',kind:'task.wake',args:{taskId:id,kind:'operator.continue',payload:{requestId:'held-writer-proof'}}});await first.service.store.command({id:'claim-held-writer',kind:'task.claim',args:{taskId:id}});await first.close()

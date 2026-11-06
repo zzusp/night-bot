@@ -1,3 +1,5 @@
+import {join} from 'node:path'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createTopicCoordinator} from '../packages/dingtalk-core/topic-runtime.js'
@@ -8,7 +10,7 @@ test('actual official Host missing credentials retain the original error while c
  const {mkdtemp,rm}=await import('node:fs/promises')
  const {createServer}=await import('node:http')
  const {handleRequest}=await import('../packages/dingtalk-core/http.js')
- const root=await mkdtemp('/tmp/topic-real-missing-credentials-')
+ const root=await mkdtemp(join(tmpdir(),'topic-real-missing-credentials-'))
  let host,handle,store,coordinator,server
  t.after(async()=>{
   await coordinator?.close();await handle?.dispose();await store?.close();await host?.close()

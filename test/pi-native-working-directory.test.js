@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {resolve} from 'node:path'
+import {posix} from 'node:path'
+const {resolve}=posix
 import {readFile} from 'node:fs/promises'
 import {decodePiJournal} from '../src/runtime/pi-journal.js'
 import NativeWorkingDirectory from '../src/native-working-directory.js'

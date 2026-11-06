@@ -203,6 +203,10 @@ export class SkillWatchManager {
 			usePolling: this.config.usePolling,
 			interval: this.config.pollIntervalMs
 		});
+		// Windows fs.watch can remain attached to the renamed directory. Observe the
+		// lexical root identity as well, so a same-path replacement is re-admitted.
+		const identityChanged = () => { void this.handleAncestorWatchEvent(state, mode); };
+		watchFile(state.root.path, { persistent: false, interval: this.config.pollIntervalMs }, identityChanged);
 		let ready = false;
 		const readiness = Promise.withResolvers();
 		const signal = this.lifecycle.signal;
@@ -216,6 +220,7 @@ export class SkillWatchManager {
 		const handle = {
 			mode,
 			close: () => {
+				unwatchFile(state.root.path, identityChanged);
 				const closing = watcher.close();
 				watcher.on("error", onError);
 				return closing;
@@ -328,10 +333,12 @@ async function resolveRootWatchMode(root, followSymlinks) {
 	let candidate = root;
 	while (true) {
 		try {
-			if ((await stat(candidate)).isDirectory()) {
+			const info = await stat(candidate);
+			if (info.isDirectory()) {
 				const anchor = candidate === root && !followSymlinks && (await lstat(candidate)).isSymbolicLink() ? resolve(candidate) : await canonicalizeWatchPath(candidate);
 				if (candidate === root) return {
 					kind: "root",
+					identity: `${info.dev}:${info.ino}`,
 					anchor
 				};
 				const firstSegment = relative(candidate, root).split(sep)[0];
@@ -361,7 +368,7 @@ async function resolveRootWatchMode(root, followSymlinks) {
 	}
 }
 function sameWatchMode(left, right) {
-	return left.kind === right.kind && left.anchor === right.anchor && (left.kind === "root" || right.kind === "ancestor" && left.nextPath === right.nextPath);
+	return left.kind === right.kind && left.anchor === right.anchor && (left.kind === "root" ? left.identity === right.identity : right.kind === "ancestor" && left.nextPath === right.nextPath);
 }
 function isRelevantWatchEvent(root, event, path) {
 	const segments = containedSegments(root.path, path);

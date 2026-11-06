@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
@@ -9,7 +10,7 @@ import {apply as authority} from '../src/pi-authority.js'
 import {decodePiJournal} from '../src/runtime/pi-journal.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-storage-boundary-'),ctx=new Context();authority(ctx)
+ const root=await mkdtemp(join(tmpdir(),'night-storage-boundary-')),ctx=new Context();authority(ctx)
  const backend=new storage.default(ctx,{root:join(root,'sessions')})
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  const header=id=>({version:4,id,createdAt:1,isSeeded:false,cwd:root})

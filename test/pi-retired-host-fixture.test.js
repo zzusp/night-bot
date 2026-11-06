@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
@@ -5,7 +6,7 @@ import {join} from 'node:path'
 import {nativeTaskHost} from './fixtures/task-session-native-host.js'
 
 test('shared business fixture uses the actual official Single with no legacy Session or model service', {timeout:15000}, async t=>{
- const root=await mkdtemp('/tmp/night-retired-host-')
+ const root=await mkdtemp(join(tmpdir(),'night-retired-host-'))
  let handle
  t.after(async()=>{try{await handle?.close()}finally{await rm(root,{recursive:true,force:true})}})
  handle=await nativeTaskHost(root,request=>{

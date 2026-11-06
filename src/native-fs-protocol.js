@@ -1,3 +1,4 @@
+// Retains MIT-derived capability/observation contracts; see licenses/dsh-fs-MIT.txt.
 // Night's Host IO capability. These errors and opaque metadata are application
 // policy/IO facts; Pi's tool definitions own the model-facing file protocol.
 import {Service} from '@deepseek-ai/cordis'

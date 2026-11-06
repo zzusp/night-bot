@@ -49,6 +49,8 @@ No generic release installer existed for this tree: older `install-profile.ps1`/
 `deploy-local.ps1` scripts target the source DSH deployment (including old fixed
 Windows paths) and remain historical references, not Night Bot upgrade entrypoints.
 
+显式绝对 state/workspace 接入也将默认技能/指令根限定在 `state/runtime/configured-agents` 与 `state/runtime/configured-harness`，不回退到用户 home。该接入不搬迁既有数据；新安装仍要求标准 portable 布局。
+
 ## Actual routing and scope
 
 | Purpose | Standard location |
@@ -66,7 +68,7 @@ Windows paths) and remain historical references, not Night Bot upgrade entrypoin
 `pnpm start CONFIG` now runs `bin/night-bot-run.js`, which scopes `TMPDIR`, `TMP`,
 `TEMP` and `XDG_CACHE_HOME` to its child and sends stdout/stderr to the private log.
 It preserves inherited proxy/CA/credential environment variables and does not rewrite
-`HOME`. It forwards shutdown signals and waits for the service. Calling
+`HOME`. 它等待服务排空后退出；受管父进程通过 Node IPC 发送 `{type:"night-bot-shutdown"}`，launcher 再转发给服务。Windows 的 `child.kill("SIGTERM")` 是强制终止，不能用于声称已优雅停止；POSIX 信号仍接入同一排空路径。 Calling
 `bin/night-bot.js` directly still works, but retains the caller's OS temporary
 environment; it does not provide managed file logging. These are real exceptions.
 Portable custom `skillDirs` must remain within the physical installation tree;
@@ -95,6 +97,11 @@ symlink/junction ancestor aliases are refused rather than traversed on setup.
 Stop the service and wait for successful drain/exit before copying durable data.
 The portable Host lease remains held through all service shutdown, including
 background memory work. Backups acquire that same lease and refuse a live Host.
+Shared-file transactions queue by resolved path within one Host before acquiring
+the existing disk lease. This prevents its Windows contenders from reading an
+owner record while the previous transaction removes it. Cross-process live-owner,
+stale-owner and token checks remain unchanged; permission failures propagate.
+No lock format migration or Windows cross-process kernel parity is claimed.
 Keep SQLite, journals, memory, domains, workspaces and attachment objects from one
 offline snapshot; copying only `tasks.sqlite` during a live write is not supported.
 

@@ -1,0 +1,21 @@
+case,scope,round-1,round-2
+workspace-safety,原主检出与既有服务保护,PASS,PASS
+filesystem-root-replacement,文件系统与根目录替换竞态42项,PASS,PASS_PRIOR_SOURCE
+approval-poison-drain,授权poison和备份11项,PASS,PASS_PRIOR_SOURCE
+proxy-sdk-import,代理和SDK导入6项,PASS,PASS_PRIOR_SOURCE
+frozen-install,undici升级后锁文件安装,PASS,PASS
+source-import-guards,本轮已执行的源码哈希导入守卫,PASS,PASS
+default-suite,默认完整回归,INTERRUPTED,FAIL_PRIOR_SOURCE
+runtime-suite,运行时分组109通过19失败3取消,FAIL,PASS
+routing-suite,路由分组44通过3失败,FAIL,PASS_PRIOR_SOURCE
+domain-suite,领域分组389通过2失败,FAIL,PASS_PRIOR_SOURCE
+containment-portable,可运行隔离用例5通过,PASS,PASS_PRIOR_SOURCE
+containment-platform,平台前提不满足17项,SKIP,SKIP
+real-codex-task,官方OAuth推理与文件任务终态,PASS,PASS
+cold-restart-no-replay,同一任务文件和journal哈希不变,PASS,PASS
+real-api-key,环境引用缺少实际值,BLOCKED,BLOCKED
+windows-model-process-privacy,模型子进程隐私namespace,SKIP,SKIP
+commit-and-push,冻结验证后提交推送工作分支,PENDING,PENDING
+directory-transaction-queue,活 owner/死亡回收/16 写者及 15+1 入站,NOT_RUN,PASS
+transaction-failure-and-live-backup,异常后队列释放与在线备份拒绝,NOT_RUN,PASS
+final-default-full-rerun,最终源码默认全量重跑,NOT_RUN,NOT_RUN

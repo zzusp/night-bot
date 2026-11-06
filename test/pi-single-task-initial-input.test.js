@@ -1,8 +1,10 @@
+import {join} from 'node:path'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {nativeRuntimeHost,latestInput} from './fixtures/runtime-official-host.js'
-async function fixture(t,decide){const root=await mkdtemp('/tmp/night-single-initial-input-'),h=await nativeRuntimeHost(root,decide);t.after(async()=>{await h.close();await rm(root,{recursive:true,force:true})});return h}
+async function fixture(t,decide){const root=await mkdtemp(join(tmpdir(),'night-single-initial-input-')),h=await nativeRuntimeHost(root,decide);t.after(async()=>{await h.close();await rm(root,{recursive:true,force:true})});return h}
 const result=action=>[{name:'task_result',args:{decision:{action,summary:'Verified initial inputs',evidence:['actual admitted sources'],limitations:[],...action==='blocked'?{question:'What remaining fact should be used?',audience:'operator'}:{}}}}]
 test('Single create preserves actual initial context/source refs through SQL, materialization and official admission',async t=>{
  let input;const h=await fixture(t,request=>{input=latestInput(request);return result('complete')})

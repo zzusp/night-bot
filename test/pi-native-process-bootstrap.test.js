@@ -10,13 +10,13 @@ import {replaceLinuxTarget} from '../src/process/linux-bootstrap.js'
 import {o as environment,l as invocation} from '../src/process/runner-launch-B2zsQ1Dz.js'
 const fixture = t => {const files=create({cwd:process.cwd(),env:{}});t.after(()=>cleanup(files));return files}
 
-test('owned Linux request is one-shot and rejects unexpected environment/transport fields',t=>{
+test('owned Linux request is one-shot and rejects unexpected environment/transport fields',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},t=>{
   const files=fixture(t)
   assert.deepEqual(consume(files.requestPath),{cwd:process.cwd(),env:{}})
   assert.throws(()=>consume(files.requestPath),{code:'ENOENT'})
   for(const request of [{cwd:'/',env:{'BAD=KEY':'x'}},{cwd:'/',env:{a:'\0'}},{cwd:'/',env:{},control:'ipc'},{cwd:'/',env:{},extra:true}]) assert.throws(()=>create(request),/invalid Linux launch request/)
 })
-test('owned Linux request rejects symlink, hardlink and permissive files without consuming targets',t=>{
+test('owned Linux request rejects symlink, hardlink and permissive files without consuming targets',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},t=>{
   const root=mkdtempSync(join(tmpdir(),'night-bootstrap-test-'));t.after(()=>rmSync(root,{recursive:true,force:true}))
   const target=join(root,'target');writeFileSync(target,'private',{mode:0o600})
   for(const kind of ['symlink','hardlink','permissions']) {
@@ -29,7 +29,7 @@ test('owned Linux request rejects symlink, hardlink and permissive files without
     cleanup(files)
   }
 })
-test('owned Linux transport refuses replaced directory and malformed startup errors',t=>{
+test('owned Linux transport refuses replaced directory and malformed startup errors',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},t=>{
   const files=fixture(t)
   chmodSync(files.directory,0o755);assert.throws(()=>consume(files.requestPath),/unsafe/);chmodSync(files.directory,0o700)
   writeFileSync(files.startupErrorPath,JSON.stringify({type:'error',error:{name:'Error',message:'x',authority:true}}),{mode:0o600})
@@ -104,7 +104,7 @@ test('owned Linux owner treats unknown leader identity and throwing group observ
   assert.equal(await Promise.race([wait.then(()=>true),new Promise(resolve=>setImmediate(()=>resolve(false)))]),false)
   release=true;await wait;assert.deepEqual(signals,['SIGTERM'])
 })
-test('owned Linux request and startup error reject FIFO without blocking',async t=>{
+test('owned Linux request and startup error reject FIFO without blocking',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   if(process.platform!=='linux')return t.skip('Linux only')
   const {execFileSync}=await import('node:child_process')
   for(const kind of ['request','error']) {
@@ -114,7 +114,7 @@ test('owned Linux request and startup error reject FIFO without blocking',async 
     assert.throws(()=>kind==='request'?consume(path):readError(path),/unsafe/)
   }
 })
-test('owned Linux transport rejects inode replacement after open and cleanup refuses replaced directory',async t=>{
+test('owned Linux transport rejects inode replacement after open and cleanup refuses replaced directory',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   const fs=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module')
   let changed=false
   const original=fs.default.readSync
@@ -136,7 +136,7 @@ test('target stdout cannot forge a private bootstrap startup result',async t=>{
   assert.equal(readError(files.startupErrorPath),undefined)
 })
 
-test('owned Linux error transport rejects hardlinks and post-open replacement',async t=>{
+test('owned Linux error transport rejects hardlinks and post-open replacement',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   const fs=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module')
   const files=fixture(t)
   linkSync(files.requestPath,files.startupErrorPath)
@@ -151,7 +151,7 @@ test('owned Linux error transport rejects hardlinks and post-open replacement',a
   try {assert.throws(()=>readError(files.startupErrorPath),/changed while reading|unsafe private Linux launch entry/)}
   finally {fs.default.readSync=original;syncBuiltinESMExports()}
 })
-test('owned Linux request read stays anchored when its directory is replaced during read',async t=>{
+test('owned Linux request read stays anchored when its directory is replaced during read',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   const fs=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module')
   let changed=false
   const files=fixture(t),moved=`${files.directory}-moved`,original=fs.default.readSync
@@ -164,7 +164,7 @@ test('owned Linux request read stays anchored when its directory is replaced dur
   assert.equal(existsSync(join(moved,'launch-request.json')),false)
 })
 
-test('owned Linux reads are bounded to observed size plus EOF probe when files grow',async t=>{
+test('owned Linux reads are bounded to observed size plus EOF probe when files grow',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   const fs=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module')
   for(const kind of ['request','error']) {
     const files=fixture(t),path=kind==='request'?files.requestPath:files.startupErrorPath
@@ -178,7 +178,7 @@ test('owned Linux reads are bounded to observed size plus EOF probe when files g
     assert.ok(requested<=size+1,`read requested ${requested}, original ${size}`)
   }
 })
-test('owned Linux request and startup error reject malformed UTF-8 without replacement decoding',t=>{
+test('owned Linux request and startup error reject malformed UTF-8 without replacement decoding',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},t=>{
   for(const kind of ['request','error']) {
     const files=fixture(t),path=kind==='request'?files.requestPath:files.startupErrorPath
     const [prefix,suffix]=kind==='request'?['{"cwd":"/","env":{"VALUE":"','"}}']:['{"type":"error","error":{"name":"Error","message":"','"}}']
@@ -186,7 +186,7 @@ test('owned Linux request and startup error reject malformed UTF-8 without repla
     assert.throws(()=>kind==='request'?consume(path):readError(path),{code:'ERR_ENCODING_INVALID_ENCODED_DATA'})
   }
 })
-test('owned Linux read loop handles short reads and preserves valid UTF-8 environment exactly',async t=>{
+test('owned Linux read loop handles short reads and preserves valid UTF-8 environment exactly',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   const fs=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module')
   const value={cwd:process.cwd(),env:{UNICODE:'你好🌙',LITERAL:'a\nb'}}
   const files=create(value);t.after(()=>cleanup(files))
@@ -196,7 +196,7 @@ test('owned Linux read loop handles short reads and preserves valid UTF-8 enviro
   try {assert.deepEqual(consume(files.requestPath),value)}
   finally {fs.default.readSync=original;syncBuiltinESMExports()}
 })
-test('owned Linux transport rejects same-size modification metadata during a read',async t=>{
+test('owned Linux transport rejects same-size modification metadata during a read',{skip:process.platform!=='linux'?'Requires Linux private /proc/self/fd transport and POSIX permissions':false},async t=>{
   const fs=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module')
   const files=fixture(t),original=fs.default.readSync
   let changed=false

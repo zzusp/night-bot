@@ -5,10 +5,10 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, waitUntil } from './fixtures/routing-official-host.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 test('本地 API 恢复待判后真实调度并收束原始来源', { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
   assert.ok(available, reason)

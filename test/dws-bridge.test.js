@@ -38,7 +38,7 @@ for (const mode of ['event', 'history']) test(`任务会话技术申请通过私
   } finally { await stop() }
 })
 import { readFile } from 'node:fs/promises'
-import { normalizeHistoryMessage, parseRedlineDecision, parseWorkflowApprovalDecision, startDwsBridge } from '../packages/dingtalk-dsh-assistant/dws-bridge.js'
+import { normalizeHistoryMessage, parseRedlineDecision, parseWorkflowApprovalDecision, startDwsBridge } from '../packages/dingtalk-core/dws-bridge.js'
 
 test('新消息工作流接收不等待图片连接器，保留资源交材料节点', async () => {
   let onEvent, received, downloads = 0
@@ -62,7 +62,7 @@ test('新消息工作流接收不等待图片连接器，保留资源交材料�
 })
 
 test('本人消息增量补拉默认每10秒执行并使用30秒重叠窗口', async () => {
-  const source = await readFile(new URL('../packages/dingtalk-dsh-assistant/dws-bridge.js', import.meta.url), 'utf8')
+  const source = await readFile(new URL('../packages/dingtalk-core/dws-bridge.js', import.meta.url), 'utf8')
   assert.match(source, /groupBackfillIntervalMs = 10_000/)
   assert.match(source, /groupBackfillOverlapMs = 30_000/)
 })
@@ -1136,7 +1136,7 @@ test('Web在DWS发送过程中批复时撤回已落地申请并停止等待', as
 })
 
 test('钉钉文档严格URL归一化，去query按nodeId去重并拒绝伪造域路径', async () => {
-  const { normalizeResourceRefs, parseDingtalkDocUrl } = await import('../packages/dingtalk-dsh-assistant/dws-bridge.js')
+  const { normalizeResourceRefs, parseDingtalkDocUrl } = await import('../packages/dingtalk-core/dws-bridge.js')
   const url = 'https://alidocs.dingtalk.com/i/nodes/Node_123-ab'
   assert.deepEqual(normalizeResourceRefs([{ type: 'url', resourceId: url + '?from=card' }], `${url}?from=text ${url}#heading`), [{ type: 'dingtalkDoc', resourceId: 'Node_123-ab' }])
   for (const invalid of ['http://alidocs.dingtalk.com/i/nodes/id', 'https://alidocs.dingtalk.com.evil.test/i/nodes/id', 'https://user@alidocs.dingtalk.com/i/nodes/id', 'https://alidocs.dingtalk.com:444/i/nodes/id', 'https://alidocs.dingtalk.com/i/nodes/id/extra', 'https://alidocs.dingtalk.com/i/nodes/%2Fetc']) assert.equal(parseDingtalkDocUrl(invalid), null)

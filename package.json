@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node bin/night-bot-run.js",
-    "test": "node --test test/pi-*.test.js && pnpm check",
+    "test": "node scripts/test-pi.mjs default && pnpm check",
     "check": "node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs",
     "test:runtime": "node scripts/test-pi.mjs runtime",
     "test:routing": "node scripts/test-pi.mjs routing",
@@ -43,7 +43,7 @@
     "pg": "^8.23.0",
     "sharp": "0.35.5",
     "turndown": "7.2.4",
-    "undici": "7.16.0",
+    "undici": "8.12.3",
     "yaml": "2.9.1",
     "zod": "^4.0.0"
   },

@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm,mkdir,symlink,readFile,access} from 'node:fs/promises'
@@ -11,7 +12,7 @@ const quote=value=>"'"+value.replaceAll("'","'\\''")+"'"
 async function fixture(t){
  const roots=[],hosts=[]
  t.after(async()=>{try{for(const host of hosts.toReversed())await host.close()}finally{for(const root of roots)await rm(root,{recursive:true,force:true})}})
- const newRoot=async()=>{const root=await mkdtemp('/tmp/night-single-kernel-');roots.push(root);return root},root=await newRoot()
+ const newRoot=async()=>{const root=await mkdtemp(join(tmpdir(),'night-single-kernel-'));roots.push(root);return root},root=await newRoot()
  return {root,newRoot,async host(decide,{at=root,initialize=true}={}){const h=await nativeRuntimeHost(at,decide,{initialize,config:{dbPath:join(at,'data/state/tasks.sqlite')}});hosts.push(h);return h},config(at=root){return{installRoot:at,dataDir:'data',resident:{taskSessions:{initialize:true,instanceId:'native-test',ownerActorId:'native-user',webActorId:'native-user'}}}}}
 }
 const taskRoot=(h,id)=>join(h.ctx.runtimePaths.workspaces,'tasks',id)

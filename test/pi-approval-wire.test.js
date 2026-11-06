@@ -86,8 +86,10 @@ test('idle awaits official terminal commit and terminal storage poison fences fu
  release.resolve();await running;await waiting;f.store.commit=original
  assert.ok((await f.host.ctx.sessionPersistence.readNative(f.handle.actor.id,{requireComplete:true})).context.piMessages.some(message=>message.role==='assistant'&&message.stopReason==='stop'))
  const root=await mkdtemp(join(tmpdir(),'night-approval-poison-'));t.after(()=>rm(root,{recursive:true,force:true}))
- const script=`import assert from 'node:assert/strict';import {createServer} from 'node:http';import {mkdtemp,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {createHost} from ${JSON.stringify(new URL('../src/host.js',import.meta.url).href)};let nextInput=0;const say=${say.toString()};const fixture=${fixture.toString()};await (${poisonProof.toString()})(${JSON.stringify(root)});console.log('POISON_FENCE_PROVED');process.exit(0);`
- const child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk)
- const code=await new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',resolve)})
- assert.equal(code,0,output);assert.match(output,/POISON_FENCE_PROVED/)
+ const script=`import assert from 'node:assert/strict';import {createServer} from 'node:http';import {mkdtemp,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {createHost} from ${JSON.stringify(new URL('../src/host.js',import.meta.url).href)};let nextInput=0;const say=${say.toString()};const fixture=${fixture.toString()};await (${poisonProof.toString()})(${JSON.stringify(root)});process.send('POISON_FENCE_PROVED');`
+ const child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe','ipc']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk)
+ // Retain the poisoned owner until the parent observes the proof, then terminate
+ // that isolated process; process.exit races libuv watcher teardown on Windows.
+ const exited=new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',(code,signal)=>resolve({code,signal}))})
+ try{await Promise.race([new Promise(resolve=>child.once('message',message=>{assert.equal(message,'POISON_FENCE_PROVED');resolve()})),exited.then(result=>assert.fail(JSON.stringify(result)+output))])}finally{child.kill('SIGTERM');await exited}
 })

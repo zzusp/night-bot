@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,appendFile,mkdir,cp,writeFile} from 'node:fs/promises'
@@ -9,7 +10,7 @@ import * as Authority from '../src/pi-authority.js'
 import {decodePiJournal} from '../src/runtime/pi-journal.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-native-store-'),ctx=new Context();await ctx.plugin(Authority)
+ const root=await mkdtemp(join(tmpdir(),'night-native-store-')),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  return {root,ctx,backend,header:id=>({version:4,id,createdAt:Date.now(),isSeeded:false,cwd:root})}
@@ -104,7 +105,7 @@ test('official compaction and branch summary survive direct commit unchanged',as
 
 test('native portable copy restores logical cwd without rewriting original Pi bytes or user text',async t=>{
  const {runtimePaths}=await import('../src/runtime/paths.js'),{portablePaths}=await import('../src/runtime/portable.js')
- const root=await mkdtemp('/tmp/night-native-portable-'),contexts=[]
+ const root=await mkdtemp(join(tmpdir(),'night-native-portable-')),contexts=[]
  t.after(async()=>{for(const ctx of contexts)await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  async function setup(installRoot){const paths=runtimePaths({installRoot});await mkdir(paths.workspaces,{recursive:true});const ctx=new Context();contexts.push(ctx);ctx.provide('portablePaths',portablePaths(paths));await ctx.plugin(Authority);return {paths,ctx,backend:new PiPersistence(ctx,{root:join(paths.state,'sessions')})}}
  const source=await setup(join(root,'source')),header={version:4,id:'portable',createdAt:Date.now(),isSeeded:false,cwd:source.paths.workspaces}

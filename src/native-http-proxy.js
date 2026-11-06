@@ -394,7 +394,8 @@ async function createPolicyDispatcher(policy) {
 		const proxy = proxyForUrl(policy, new URL(origin.toString()));
 		if (proxy !== void 0) return new ProxyAgent({
 			...passed,
-			uri: proxy
+			uri: proxy,
+			proxyTunnel: true
 		});
 		return new Pool(origin, passed);
 	} });

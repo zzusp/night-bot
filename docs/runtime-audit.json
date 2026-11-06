@@ -1,7 +1,9 @@
 {
   "schema": 2,
+  "sourceFingerprint": "0b3799325503d509dabc03dcdf86ea47d593ffd68ac139f28fae1bf6a0001fde",
+  "workingTreeDirty": true,
   "status": "official-pi-default-with-retained-derived-source",
-  "checkpoint": "e1d6cfadc61cc085d45b253e593d63afd9619825",
+  "checkpoint": "741696438f5feef82504b3282dc7b975333070ee",
   "completeDshSourceRemoval": false,
   "dependencies": {
     "productionDsh": [],
@@ -9,7 +11,7 @@
     "lockedDsh": []
   },
   "runtime": {
-    "modules": 407,
+    "modules": 400,
     "externalDshImports": []
   },
   "authority": {
@@ -20,7 +22,7 @@
     "business": "Night authorization, queues, task state and effect receipts"
   },
   "sourceAccounting": {
-    "retained": 195,
+    "retained": 194,
     "retired": [
       {
         "source": "claude-execution-session.js",
@@ -29,6 +31,10 @@
       {
         "source": "execution-session.js",
         "evidence": "docs/retired-workflow-session-contracts.md"
+      },
+      {
+        "source": "resident.js",
+        "evidence": "docs/retired-resident-entry.md"
       },
       {
         "source": "storage-v8-schema.js",
@@ -75,20 +81,12 @@
       "target": "link:./packages/capability-compat/sandbox"
     },
     {
-      "name": "@deepseek-ai/dsh-session-projection",
-      "target": "link:./packages/capability-compat/session-projection"
-    },
-    {
       "name": "@deepseek-ai/dsh-llm",
       "target": "link:./packages/capability-compat/llm"
     },
     {
       "name": "@deepseek-ai/dsh-tools",
       "target": "link:./packages/capability-compat/tools"
-    },
-    {
-      "name": "@deepseek-ai/dsh-session",
-      "target": "link:./packages/capability-compat/session"
     },
     {
       "name": "@deepseek-ai/dsh-session-persistence",
@@ -124,7 +122,6 @@
     "dsh-scope-MIT.txt",
     "dsh-session-MIT.txt",
     "dsh-session-persistence-MIT.txt",
-    "dsh-session-projection-MIT.txt",
     "dsh-session-title-MIT.txt",
     "dsh-shell-MIT.txt",
     "dsh-shell-env-MIT.txt",
@@ -155,7 +152,7 @@
   ],
   "limits": [
     "Zero external packages does not imply zero copied or derived implementation. Retained code and test copies require their notices.",
-    "Legacy Session/event compatibility and platform-derived backends remain separate migration work.",
+    "Mutable Session, projection/query drivers and historical-data import are retired; attributed platform/policy implementations and local namespace aliases remain.",
     "Effectful codemode stays disabled: official nested summaries are post-execution and bounded; abort/idle does not join host tools.",
     "Windows kernel isolation and real vendor integration require separate verification."
   ],
@@ -164,6 +161,7 @@
     "docs/NODE-RPC-RETIREMENT.md",
     "docs/retired-session-drivers.md",
     "docs/FS-IO-MIGRATION.md",
-    "docs/SEARCH-IO-MIGRATION.md"
+    "docs/SEARCH-IO-MIGRATION.md",
+    "docs/acceptance/pi-native-retirement-local/goal.md"
   ]
 }

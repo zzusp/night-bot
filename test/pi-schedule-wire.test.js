@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createServer} from 'node:http'
@@ -14,7 +15,7 @@ import {fixedUnitRequestId} from '../packages/dingtalk-core/fixed-topics.js'
 
 async function until(check,label){for(let n=0;n<300;n++){const result=await check();if(result)return result;await new Promise(r=>setTimeout(r,20))}throw new Error('timeout: '+label)}
 async function fixture(t,decide=()=>undefined){
-  const root=await mkdtemp('/tmp/night-schedule-wire-'),requests=[],errors=[];let host
+  const root=await mkdtemp(join(tmpdir(),'night-schedule-wire-')),requests=[],errors=[];let host
   const server=createServer(async(req,res)=>{
     let text='';for await(const chunk of req)text+=chunk
     const body=JSON.parse(text);requests.push(body)
@@ -348,11 +349,11 @@ test('actual CLI process restart executes a persisted reminder and never repeats
   await writeFile(path,JSON.stringify({...f.config,resident:{host:'127.0.0.1',port,groups:[],dws:{enabled:false,writesAuthorized:false},taskSessions:{instanceId:'cli-schedule-test',ownerActorId:'fixture-owner',webActorId:'fixture-owner',ingressEpoch:new Date().toISOString(),initialize:true}}}))
   let output=''
   const start=async()=>{
-    child=spawn(process.execPath,['bin/night-bot.js',path],{stdio:['ignore','pipe','pipe']});exited=once(child,'exit')
+    child=spawn(process.execPath,['bin/night-bot.js',path],{stdio:['ignore','pipe','pipe','ipc']});exited=once(child,'exit')
     child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d)
-    await until(async()=>{assert.equal(child.exitCode,null,output);try{return (await fetch(`http://127.0.0.1:${port}/health`)).ok}catch{}},'CLI health')
+    await until(async()=>{assert.equal(child.exitCode,null,output);try{return (await fetch(`http://127.0.0.1:${port}/health`)).ok}catch{}},'CLI health').catch(error=>{throw new Error(error.message+'; CLI output: '+output,{cause:error})})
   }
-  const stop=async()=>{child.kill('SIGTERM');const [code]=await exited;assert.equal(code,0,output)}
+  const stop=async()=>{child.send({type:'night-bot-shutdown'});const [code]=await exited;assert.equal(code,0,output)}
   t.after(async()=>{if(child?.exitCode===null&&child.signalCode===null)await stop()})
   await start();await until(()=>writes===1,'CLI scheduled effect');await until(async()=>{try{return await readFile(join(f.config.workspaceDir,'cli-schedule-proof.txt'),'utf8')==='one process effect'}catch{}},'file readback')
   await until(async()=>{const bytes=await readFile(join(f.config.stateDir,'storage','schedule.json'),'utf8');return bytes.includes('"inactive"')},'CLI receipt')

@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
@@ -14,7 +15,7 @@ import {definition} from './fixtures/pi-official-tools.js'
 import {createBusinessAdmission,admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
 
 test('real official components execute, commit, cold-read and reopen with no Host session facade',async t=>{
- const root=await mkdtemp('/tmp/night-official-session-'),agentDir=join(root,'agent');await mkdir(agentDir)
+ const root=await mkdtemp(join(tmpdir(),'night-official-session-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context();new NativeAgents(ctx);await ctx.plugin(Authority)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
  new NativeTools(ctx)

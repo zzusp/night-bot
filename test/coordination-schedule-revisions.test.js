@@ -5,11 +5,11 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
 import {openNativeDomains} from '../src/native-domain.js'
-import {openDynamicTaskStore} from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import {openResidentStore} from '../packages/dingtalk-dsh-assistant/store.js'
-import {createPlatformSchedules} from '../packages/dingtalk-dsh-assistant/platform-schedule.js'
-import {fixedUnitRequestId,platformScheduleSessionId} from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
-import {summarizeTimeSlots} from '../packages/dingtalk-dsh-assistant/coordination-time.js'
+import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
+import {openResidentStore} from '../packages/dingtalk-core/store.js'
+import {createPlatformSchedules} from '../packages/dingtalk-core/platform-schedule.js'
+import {fixedUnitRequestId,platformScheduleSessionId} from '../packages/dingtalk-core/fixed-topics.js'
+import {summarizeTimeSlots} from '../packages/dingtalk-core/coordination-time.js'
 
 // This is the bridge's deterministic contract fixture, not a claim that a fake
 // clock drives native DSH. Real ScheduleService tests live in fixed-topics-native.

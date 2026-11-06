@@ -1,8 +1,10 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
-import {mkdtemp,mkdir,rm,readFile,writeFile,appendFile,symlink,link} from 'node:fs/promises'
+import {mkdtemp,mkdir,rm,readFile,writeFile,appendFile,link} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
 
@@ -17,7 +19,7 @@ const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input
 // verify strict native storage and business evidence binding, never kernel exit
 // or that a production factory already emits an authentic drain attestation.
 async function fixture(t,{mutate=async()=>{},withDrain=true,intentVersion=1,alterIntent=()=>{}}={}){
- const root=await mkdtemp('/tmp/night-effect-reconcile-'),ctx=new Context();await ctx.plugin(Authority)
+ const root=await mkdtemp(join(tmpdir(),'night-effect-reconcile-')),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),bindings={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1}
  const task={...bindings,status:'active',control:'active',drained:true,recovering:false,ownerActorId:'owner',groupId:'group'},scope={taskId:'task',sessionId:'session',taskRoot:root,workingDirectory:root,ownerActorId:'owner',groupId:'group',channelDigest:taskEffectDigest({channel:'fixture'}),authorizationDigest:taskEffectDigest({mode:'workspace-write',memory:'fixture-group'})}
  const state={task,scope,live:false,operators:new Map()},auditKinds={...singleTaskAuditKinds,...admissionAuditKinds,...effectReconciliationAuditKinds,'directory/changed':()=>true}
@@ -115,7 +117,7 @@ test('evidence cannot claim success, noEffect or a new replay permission',async 
 test('Host-owned evidence verifies exact bytes and refuses symbolic and hard links',async t=>{
  const f=await fixture(t),p=await proposal(f)
  await appendFile(p.path,' ');await assert.rejects(f.core.prepare(p.request),{code:'TASK_EFFECT_EVIDENCE_HASH_MISMATCH'})
- await rm(p.path);await writeFile(join(f.root,'outside.json'),JSON.stringify(p.doc));await symlink(join(f.root,'outside.json'),p.path)
+ await rm(p.path);await writeFile(join(f.root,'outside.json'),JSON.stringify(p.doc));await symlink(process.platform==='win32'?f.root:join(f.root,'outside.json'),p.path,process.platform==='win32'?'dir':'file')
  await assert.rejects(f.core.prepare(p.request),{code:'TASK_EFFECT_EVIDENCE_PATH_UNSAFE'})
  await rm(p.path);await link(join(f.root,'outside.json'),p.path)
  await assert.rejects(f.core.prepare(p.request),{code:'TASK_EFFECT_EVIDENCE_PATH_UNSAFE'})

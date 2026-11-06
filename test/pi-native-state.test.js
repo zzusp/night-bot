@@ -1,6 +1,8 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, writeFile, readdir, symlink } from 'node:fs/promises'
+import {mkdtemp,rm,readFile,writeFile,readdir} from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { openNativeDomains, defineDomain, domainTable } from '../src/native-domain.js'
@@ -8,7 +10,7 @@ import { openNativeModelSelection } from '../src/native-state.js'
 import { openResidentStore } from '../packages/dingtalk-core/store.js'
 const spec = () => defineDomain({ name: 'fixture', version: 2, tables: { items: domainTable(z.object({ count: z.number() })) }, global: { schema: z.object({ ready: z.boolean() }), initial: { ready: false } } })
 async function fixture(t, options = {}) {
-  const root = await mkdtemp('/tmp/night-native-state-'), facilities = []
+  const root = await mkdtemp(join(tmpdir(),'night-native-state-')), facilities = []
   t.after(async () => { try { for (const f of facilities) await f.closeAll() } finally { await rm(root,{recursive:true,force:true}) } })
   const create = async opts => { const f = await openNativeDomains({ root, ...options, ...opts }); facilities.push(f); return f }
   return {root,create}
@@ -76,6 +78,6 @@ test('the complete resident store retains group configuration and ingress on the
   assert.deepEqual(reopened.getAgentNames(),['Fixture bot']);await reopened.close()
 })
 test('native state refuses symlink targets',async t=>{
-  const f=await fixture(t);const outside=join(f.root,'outside.json');await writeFile(outside,'{}');await symlink(outside,join(f.root,'fixture.json'))
+  const f=await fixture(t);const outside=join(f.root,'outside.json');await writeFile(outside,'{}');await symlink(process.platform==='win32'?f.root:outside,join(f.root,'fixture.json'),process.platform==='win32'?'junction':'file')
   await assert.rejects((await f.create()).open(spec()),/regular file/);assert.equal(await readFile(outside,'utf8'),'{}')
 })

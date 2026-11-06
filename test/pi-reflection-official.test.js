@@ -32,12 +32,14 @@ test('official reflection abort waits for native stream settlement before return
 })
 
 test('background review uses explicit configured resolution, refuses secrets and fences changed memory scopes',async t=>{
+ let store,fixtureHost
+ t.after(async()=>{await fixtureHost?.close();await store?.close()})
  const {memoryHost}=await import('./fixtures/memory-host.js'),{openDynamicTaskStore}=await import('../packages/dingtalk-core/dynamic-task-store.js'),{memoryScope}=await import('../src/memory/scope.js'),{join}=await import('node:path')
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
- const f=await memoryHost(t,async body=>{if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return;entered.resolve();await release.promise;const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content);return{text:JSON.stringify({lessons:[{key:'bounded',observation:'Verified local result',hypothesis:'limited',shortcut:'Inspect first',evidenceIds:[input.eventId]}]})}})
+ const f=fixtureHost=await memoryHost(t,async body=>{if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return;entered.resolve();await release.promise;const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content);return{text:JSON.stringify({lessons:[{key:'bounded',observation:'Verified local result',hypothesis:'limited',shortcut:'Inspect first',evidenceIds:[input.eventId]}]})}})
  const ctx=f.host.ctx,official=ctx.nativePiProvider.official,original=official.resolve.bind(official),resolved=[]
  official.resolve=async(config,scope)=>{resolved.push({config,scope});return original(config,scope)}
- const store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'reflection-contract.sqlite'),instanceId:'reflection-contract',initialize:true});t.after(()=>store.close())
+ store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'reflection-contract.sqlite'),instanceId:'reflection-contract',initialize:true});
  async function complete(id,summary){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded request',ownerActorId:'PRIVATE_OWNER_NEVER_PROVIDER'});const binding=(await command('task.claim',{taskId:id})).result.binding;await command('task.complete',{binding,summary,result:{summary}})}
  await complete('one','verified local result');const detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await entered.promise
  const scope=memoryScope({actorId:'PRIVATE_OWNER_NEVER_PROVIDER'},{scope:'personal'},true)

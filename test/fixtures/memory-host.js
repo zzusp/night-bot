@@ -1,10 +1,11 @@
+import {tmpdir} from 'node:os'
 import {createServer} from 'node:http'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHost} from '../../src/host.js'
 import {randomUUID} from 'node:crypto'
 export async function memoryHost(t,decide=()=>undefined,{background=false}={}){
-  const root=await mkdtemp('/tmp/night-memory-wire-'),requests=[],errors=[];let host
+  const root=await mkdtemp(join(tmpdir(),'night-memory-wire-')),requests=[],errors=[];let host
   const server=createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk
     const body=JSON.parse(raw);requests.push(body);const decision=await decide(body)

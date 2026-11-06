@@ -82,6 +82,6 @@ test('TypeScript and Python SDKs retain union fields, nullable types, tuple shap
  }
  const {spawnSync}=await import('node:child_process')
  const py=renderToolsSdkPy(declarations).split('```python\n')[1].split('\n```')[0]
- const parsed=spawnSync('python3',['-c','import ast,sys;ast.parse(sys.stdin.read())'],{input:py,encoding:'utf8'})
+ const parsed=spawnSync(process.platform==='win32'?'python':'python3',['-I','-X','utf8','-c','import ast,sys;ast.parse(sys.stdin.read())'],{input:py,encoding:'utf8'})
  assert.equal(parsed.status,0,parsed.stderr)
 })

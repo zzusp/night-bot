@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {Context} from '@deepseek-ai/cordis'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
@@ -9,7 +10,7 @@ import {bindApprovalAudit} from '../../src/native-approval.js'
 // Actual native journal and production typed business ports, without Session,
 // projection, synthetic eventAt/seq, or invented conversation/turn history.
 export async function nativeBusinessPolicyFixture(t,{ctx=new Context()}={}){
- const root=await mkdtemp('/tmp/night-policy-journal-'),backend=new PiPersistence(ctx,{root:join(root,'sessions')}),actors=[]
+ const root=await mkdtemp(join(tmpdir(),'night-policy-journal-')),backend=new PiPersistence(ctx,{root:join(root,'sessions')}),actors=[]
  await ctx.plugin(Authority)
  ctx.logger={warn(){},error(){}}
  t.after(async()=>{for(const item of actors){item.store.commit=item.originalCommit;item.store.appendAudit=item.originalAppend;item.detach()}try{await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})

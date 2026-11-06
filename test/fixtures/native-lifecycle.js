@@ -7,7 +7,9 @@ import { lifecycleStages, lifecycleContext } from './lifecycle-stages.js'
 const scope = new AsyncLocalStorage()
 const activeState = () => scope.getStore() ?? lifecycleContext()
 const preparationMs = 30000, cleanupMs = 20000
-const businessBudget = value => value === undefined ? 30000 : value
+// Windows integration fixtures perform the same durable IO with a larger test-only budget.
+export const nativeTestTimeout = value => process.platform === 'win32' ? value * 2 : value
+const businessBudget = value => nativeTestTimeout(value === undefined ? 30000 : value)
 export const nativeLifecycleTimeout = value => businessBudget(value) + preparationMs + cleanupMs
 
 // Called by the shared real Host as soon as its idempotent close exists. This

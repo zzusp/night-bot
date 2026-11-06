@@ -1,6 +1,8 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,mkdir,writeFile,readFile,lstat,symlink,readdir} from 'node:fs/promises'
+import {mkdtemp,rm,mkdir,writeFile,readFile,lstat,readdir} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
 import {createScope} from '../src/native-scope.js'
@@ -10,7 +12,7 @@ import {createOfficialHostResourceResolver} from '../src/pi-official-host-resour
 import {runtimePaths,prepareRuntimePaths} from '../src/runtime/paths.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-official-resources-'),ctx=new Context(),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
+ const root=await mkdtemp(join(tmpdir(),'night-official-resources-')),ctx=new Context(),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
  new NativeAgents(ctx);new NativeSkills(ctx)
  const models=[],memoryPorts=[],credentials={resolve:async()=>({value:'scoped'})},registry={list:()=>[]},systemPrompt={officialSections:async()=>({night_fixture:'scoped'})}
  let alive=true
@@ -130,4 +132,20 @@ test('a preset with no selected filesystem cannot fall back to a broader inherit
  const f=await fixture(t);let reads=0;const original=f.fs.resolve;f.fs.resolve=(...args)=>{reads++;return original(...args)}
  f.ctx.provide('agentPresets',{serviceFor:()=>undefined})
  await assert.rejects(f.resolve(f.a),{code:'PI_OFFICIAL_RESOURCE_SERVICES_REQUIRED'});assert.equal(reads,0)
+})
+
+test('absolute-root Host uses owned instruction and skill roots instead of the operating-system user home',async t=>{
+ const os=await import('node:os'),{syncBuiltinESMExports}=await import('node:module'),{createHost}=await import('../src/host.js')
+ const f=await fixture(t),foreign=join(f.root,'foreign-user'),work=join(f.root,'legacy-work'),config={stateDir:join(f.root,'legacy-state'),workspaceDir:work,model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',apiKeyEnv:'ISOLATED_RESOURCE_TEST_KEY',models:[{id:'m',contextWindow:4096,maxTokens:128}]}},skillWatch:false,credentialsWatch:false}
+ const paths=runtimePaths(config),foreignSkill=join(foreign,'.agents','skills','foreign','SKILL.md'),ownedSkill=join(paths.agentsHome,'skills','owned','SKILL.md')
+ for(const [path,name]of [[foreignSkill,'foreign-private'],[ownedSkill,'owned-resource']]){await mkdir(join(path,'..'),{recursive:true});await writeFile(path,`---\nname: ${name}\ndescription: isolated resource\n---\n${name}`)}
+ t.mock.method(os.default,'homedir',()=>foreign);syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports()})
+ let host,handle
+ try{
+  host=await createHost(config,{environmentOptions:{home:foreign,inherited:{ISOLATED_RESOURCE_TEST_KEY:'local-fixture'}}})
+  handle=await host.ctx.agents.create({sessionId:'owned-global-resources',agentOptions:config.model,meta:{cwd:work}})
+  const options={scope:handle.actor,cwd:work},catalog=await host.ctx.skills.list(options)
+  assert.ok(catalog.some(skill=>skill.name==='owned-resource'));assert.ok(!catalog.some(skill=>skill.name==='foreign-private'))
+  assert.equal(host.ctx.runtimePaths.agentsHome,paths.agentsHome)
+ }finally{await handle?.dispose();await host?.close()}
 })

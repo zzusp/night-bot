@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
@@ -8,7 +9,7 @@ import {apply as authority} from '../src/pi-authority.js'
 import {buildSessionProjection} from '@earendil-works/pi-coding-agent'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-official-observation-'),ctx=new Context();authority(ctx)
+ const root=await mkdtemp(join(tmpdir(),'night-official-observation-')),ctx=new Context();authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  const writer=await backend.createNative({version:4,id:'observed',createdAt:Date.now(),isSeeded:false,cwd:root})
  t.after(async()=>{await writer.close();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})

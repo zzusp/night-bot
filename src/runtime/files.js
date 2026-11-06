@@ -74,4 +74,14 @@ export async function acquireLock(path,{timeoutMs=5000}={}){
     }
   }
 }
-export async function withLock(path,work,options){const release=await acquireLock(path,options);try{return await work()}finally{await release()}}
+const transactionTails=new Map()
+export async function withLock(path,work,options){
+  const key=resolve(path),previous=transactionTails.get(key),idle=Promise.withResolvers()
+  transactionTails.set(key,idle.promise)
+  try{
+    // 同一 Host 的共享文件事务先排队，避免 Windows 读写者争删租约目录。
+    await previous
+    const release=await acquireLock(path,options)
+    try{return await work()}finally{await release()}
+  }finally{idle.resolve();if(transactionTails.get(key)===idle.promise)transactionTails.delete(key)}
+}

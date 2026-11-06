@@ -1,4 +1,4 @@
-import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
+import { nativeLifecycle, nativeLifecycleTimeout, nativeTestTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { available, reason, nativeRuntimeHost, latestInput, modelToolValues, waitUntil, topicTaskCalls } from './fixtures/runtime-official-host.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 import {getSystemMessageText} from '@earendil-works/pi-ai'
 const requestSystemText=request=>request.messages.filter(message=>message.role==='system').map(getSystemMessageText).join('\n')
 const taskSessionMessages=request=>request.messages.filter(message=>message.role==='user').flatMap(message=>(typeof message.content==='string'?[{type:'text',text:message.content}]:message.content??[]).filter(part=>{try{return part.type==='text'&&!!JSON.parse(part.text).task}catch{return false}}).map(part=>({role:message.role,text:part.text})))
@@ -153,7 +153,7 @@ for (const failure of ['none', 'empty', 'invalid-source', 'topic']) test(`群业
   assert.ok(reviewLeases.length >= 2)
 }))
 
-test('待实施批准期间事实追问保留来源并明确通知，内部证据不外发且不绕过原问题',{timeout:30000},async t=>{
+test('待实施批准期间事实追问保留来源并明确通知，内部证据不外发且不绕过原问题',{timeout:nativeTestTimeout(30000)},async t=>{
  let original,reviewStep=0
  const summary='此前 UPR 导入覆盖修复已核对；当前点击编辑持久化只有方案，仍等你确认。'
  const h=await fixture(t,async request=>{const routed=routeTask(request,original);if(routed)return routed;const input=latestInput(request)

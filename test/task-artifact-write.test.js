@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, readdir, rm, mkdir, symlink, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createTaskArtifactFiles } from '../packages/dingtalk-dsh-assistant/task-artifact-files.js'
-import { createGeneralCapabilityStepWorkflow } from '../packages/dingtalk-dsh-assistant/task-general-workflow.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createTaskArtifactFiles } from '../packages/dingtalk-core/task-artifact-files.js'
+import { createGeneralCapabilityStepWorkflow } from '../packages/dingtalk-core/task-general-workflow.js'
 import { createTaskArtifactWriteAdapter, createGeneralArtifactWriteCapability,
-  createTaskArtifactImportAdapter, createGeneralArtifactImportCapability } from '../packages/dingtalk-dsh-assistant/task-artifact-write.js'
+  createTaskArtifactImportAdapter, createGeneralArtifactImportCapability } from '../packages/dingtalk-core/task-artifact-write.js'
 
 const input = { role: 'migration-script', fileName: '数据库 迁移.sql', content: '-- 测试\r\nSELECT 1;\r\n' }
 const scope = { requirementRevision: 1, artifactFiles: [{ role: input.role, fileName: input.fileName }] }

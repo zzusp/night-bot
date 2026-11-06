@@ -8,7 +8,7 @@ import {createAgentSession,SessionManager,SettingsManager,DefaultResourceLoader}
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-const declaration=baseURL=>({fixture:{api:'openai-completions',baseURL,apiKeyEnv:'FIXTURE_KEY',headers:{'x-profile':'preserved'},streamIdleTimeoutMs:1000,models:[{id:'m',maxTokens:64,contextWindow:8192,compat:{supportsDeveloperRole:false}}]}})
+const declaration=baseURL=>({fixture:{api:'openai-completions',baseURL,apiKeyEnv:'FIXTURE_KEY',headers:{'x-profile':'preserved'},streamIdleTimeoutMs:process.platform==='win32'?5000:1000,models:[{id:'m',maxTokens:64,contextWindow:8192,compat:{supportsDeveloperRole:false}}]}})
 function fixture(raw,environment={FIXTURE_KEY:'private-fixture-key'}) {
  let profiles=resolvePiProfiles(raw,{deferred:true})
  const auth=piAuthentication({getEnvironment:name=>environment[name],fileExists:async()=>{throw Error('home file access forbidden')}})

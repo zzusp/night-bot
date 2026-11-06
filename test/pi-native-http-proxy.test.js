@@ -9,7 +9,7 @@ test('native proxy policy bypasses local and excluded destinations while preserv
  const proxy='http://fixture:password@127.0.0.1:12345',result=await policyContract(native)
  assert.deepEqual(result.diagnostics,[])
  assert.deepEqual(result.routes,[{proxied:true,proxy},{proxied:true,proxy},{proxied:false},{proxied:false},{proxied:false},{proxied:false},{proxied:true,proxy}])
- assert.deepEqual(result.child,{NODE_USE_ENV_PROXY:'1',http_proxy:undefined,HTTP_PROXY:proxy,https_proxy:proxy,HTTPS_PROXY:proxy,no_proxy:'.bypass.example,port.example:8080,localhost,127.0.0.1,::1,[::1]',NO_PROXY:'.bypass.example,port.example:8080,localhost,127.0.0.1,::1,[::1]'})
+ assert.deepEqual(result.child,{NODE_USE_ENV_PROXY:'1',http_proxy:process.platform==='win32'?proxy:undefined,HTTP_PROXY:proxy,https_proxy:proxy,HTTPS_PROXY:proxy,no_proxy:'.bypass.example,port.example:8080,localhost,127.0.0.1,::1,[::1]',NO_PROXY:'.bypass.example,port.example:8080,localhost,127.0.0.1,::1,[::1]'})
  assert.deepEqual(result.clear,Object.fromEntries(names.filter(name=>name!=='NODE_USE_ENV_PROXY').map(name=>[name,undefined])))
 })
 test('native proxy nested direct policy restores exact outer route, dispatcher and launch environment',async()=>fakeEnvironment({ALL_PROXY:'http://127.0.0.1:12345'},async env=>{const before=getGlobalDispatcher(),beforeEnv=new Map(names.map(n=>[n,process.env[n]])),outer=await native.installProxyFromEnvironment(env,()=>{});try{const outerDispatcher=getGlobalDispatcher(),proxy=native.proxyRouteFor(new URL('http://public.example')).proxy,inner=await native.installProxyFromEnvironment(environment({}),()=>{});try{assert.equal(native.proxyRouteFor(new URL('http://public.example')).proxied,false);assert.deepEqual(native.proxyEnvironmentForChild(),{})}finally{await inner()}assert.equal(getGlobalDispatcher(),outerDispatcher);assert.equal(native.proxyRouteFor(new URL('http://public.example')).proxy,proxy)}finally{await outer()}assert.equal(getGlobalDispatcher(),before);assert.ok(names.every(n=>process.env[n]===beforeEnv.get(n)),'proxy environment restoration mismatch');assert.deepEqual(native.proxyEnvironmentForChild(),{})}))
@@ -32,3 +32,19 @@ test('repeated proxy release shares the drain and cannot overwrite a later insta
  }finally{await releaseSecond()}
  assert.equal(getGlobalDispatcher(),before)
 }))
+
+
+test('importing the pinned official SDK preserves the installed proxy used by global fetch',async t=>{
+ const f=await proxyFixture(t)
+ await fakeEnvironment({HTTP_PROXY:f.proxyURL},async env=>{
+  const release=await native.installProxyFromEnvironment(env,()=>{})
+  try{
+   const dispatcher=getGlobalDispatcher()
+   await import('@earendil-works/pi-coding-agent')
+   assert.equal(getGlobalDispatcher(),dispatcher)
+   const response=await fetch('http://proxy-fixture.example/sdk-import')
+   assert.equal(await response.text(),'NATIVE_PROXY_BODY_MARKER')
+   assert.equal(f.seen.length,1)
+  }finally{await release()}
+ })
+})

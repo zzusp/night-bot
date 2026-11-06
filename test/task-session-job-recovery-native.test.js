@@ -38,7 +38,7 @@ test('historical job text is read as data and never launches or settles a native
  const id=await create(h);await idle(h);const stored=await snapshot(h,id);single(stored);assert.equal(step,2);assert.equal(facts(stored,'registered').length,0);assert.equal((await h.query('operation.list')).length,0);assert.equal((await h.query('execution.list')).length,0)
 })
 
-test('serial native results stay in one task journal; explicit stage and final result do not create member executions',{timeout:25000},async t=>{
+test('serial native results stay in one task journal; explicit stage and final result do not create member executions',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:25000},async t=>{
  let step=0
  const h=await fixture(t,async(request)=>{
   const current=step++
@@ -52,7 +52,7 @@ test('serial native results stay in one task journal; explicit stage and final r
  const stored=await snapshot(h,id);single(stored);assert.equal(stored.task.sessionId,first.task.sessionId);assert.equal(stored.task.status,'completed');assert.equal(step,5);assert.equal(facts(stored,'registered').length,3);assert.equal(facts(stored,'settled').length,3);assert.equal((await h.query('execution.list')).length,0);assert.equal((await readFile(join(taskRoot(h,id),'work/serial.txt'),'utf8')).trim(),'SERIAL_1\nSERIAL_2\nSERIAL_3')
 })
 
-for(const background of [false,true])test(`original ${background?'background':'promoted foreground'} process is retained through terminal output`,{timeout:20000},async t=>{
+for(const background of [false,true])test(`original ${background?'background':'promoted foreground'} process is retained through terminal output`,{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:20000},async t=>{
  let step=0,jobId
  const h=await fixture(t,async(request,host)=>{
   if(step++===0)return [shell("console.log('before');setTimeout(()=>{require('node:fs').writeFileSync('work/result.txt','after');console.log('after')},1200)",{timeoutMs:500,...background?{run_in_background:true}:{}})]
@@ -62,7 +62,7 @@ for(const background of [false,true])test(`original ${background?'background':'p
  const id=await create(h);await idle(h);const stored=await snapshot(h,id);single(stored);assert.equal(step,3);const registered=facts(stored,'registered'),settled=facts(stored,'settled');assert.equal(registered.length,1);assert.equal(registered[0].jobId,jobId);assert.equal(registered[0].owner,stored.task.sessionId);assert.equal(settled.length,1);assert.equal(settled[0].producerReported,true);assert.equal(settled[0].status,'completed');assert.equal(await readFile(join(taskRoot(h,id),'work/result.txt'),'utf8'),'after')
 })
 
-for(const killed of [false,true])test(`original producer terminal receipt is durable before a job read or task result: killed=${killed}`,{timeout:20000},async t=>{
+for(const killed of [false,true])test(`original producer terminal receipt is durable before a job read or task result: killed=${killed}`,{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:20000},async t=>{
  let step=0,jobId
  const h=await fixture(t,async(request,host)=>{
   if(step++===0)return [shell(`require('node:fs').appendFileSync('work/once.txt','once\\n');setTimeout(()=>console.log('terminal'),${killed?10000:500})`,{run_in_background:true})]
@@ -80,7 +80,7 @@ test('missing-job read remains a real error, leaves no effect intent and permits
  const id=await create(h);await idle(h);const stored=await snapshot(h,id);single(stored);assert.equal(stored.task.status,'completed');assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,0);assert.ok(h.toolResults.some(row=>row.name==='job_output'&&row.result.isError));assert.ok(h.toolResults.some(row=>row.name==='job_list'&&!row.result.isError))
 })
 
-for(const explicitStop of [false,true])test(`background HTTP service serves a later real tool and its original process drains: explicitStop=${explicitStop}`,{timeout:20000},async t=>{
+for(const explicitStop of [false,true])test(`background HTTP service serves a later real tool and its original process drains: explicitStop=${explicitStop}`,{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:20000},async t=>{
  let step=0,jobId,port
  const h=await fixture(t,async(request,host)=>{
   const id=latestInput(request).task.taskId
@@ -94,7 +94,7 @@ for(const explicitStop of [false,true])test(`background HTTP service serves a la
  const id=await create(h);await idle(h);const stored=await snapshot(h,id);single(stored);const terminal=facts(stored,'settled').find(row=>row.jobId===jobId);assert.ok(terminal);assert.ok(['killed','failed','completed'].includes(terminal.status));assert.equal(terminal.producerReported,true);await assert.rejects(fetch('http://127.0.0.1:'+port));const heartbeat=await readFile(join(taskRoot(h,id),'work/heartbeat.txt'),'utf8');await new Promise(resolve=>setTimeout(resolve,120));assert.equal(await readFile(join(taskRoot(h,id),'work/heartbeat.txt'),'utf8'),heartbeat)
 })
 
-for(const background of [false,true])test(`task cancellation joins the original ${background?'background':'foreground'} process and retains unknown effects`,{timeout:20000},async t=>{
+for(const background of [false,true])test(`task cancellation joins the original ${background?'background':'foreground'} process and retains unknown effects`,{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:20000},async t=>{
  let jobId
  const h=await fixture(t,async(_request,host)=>{if(!jobId){jobId='starting';return [shell("const fs=require('node:fs');fs.writeFileSync('work/started.json',JSON.stringify({pid:process.pid}));fs.writeFileSync('work/heartbeat.txt',String(Date.now()));setInterval(()=>fs.writeFileSync('work/heartbeat.txt',String(Date.now())),20);console.log('started');setTimeout(()=>require('node:fs').writeFileSync('work/forbidden.txt','late'),30000)",{timeoutMs:500,...background?{run_in_background:true}:{}})]}await new Promise(resolve=>setTimeout(resolve,200));return [result('wait')]})
  const id=await create(h),started=await waitUntil(async()=>{try{return JSON.parse(await readFile(join(taskRoot(h,id),'work/started.json'),'utf8'))}catch{return false}},'owned process entered');await waitUntil(async()=>facts(await snapshot(h,id),'registered').length,'registered original job');await h.service.cancelTask({taskId:id,requestId:'cancel',reason:'Stop the original process'});await idle(h)
@@ -113,7 +113,7 @@ test('unknown effect holds all future execution while Host readback remains avai
  await h.service.appendTaskContext({taskId:id,requestId:'investigate',progressImpact:'replan',context:'Read the existing evidence; this is not effect reconciliation.'});await idle(h);assert.equal(f.calls,1);assert.equal(modelCount(h),before,'unknown receipt cannot reopen a model executor');assert.equal((await snapshot(h,id)).audit.filter(r=>r.domain==='task'&&r.kind==='effect-reconciled').length,0)
 })
 
-test('cold restart reads the original durable terminal receipt and the same task file without replaying its producer',{timeout:25000},async t=>{
+test('cold restart reads the original durable terminal receipt and the same task file without replaying its producer',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:25000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-single-job-reopen-'));let first,second,firstStep=0;t.after(async()=>{await second?.close();await first?.close();await rm(root,{recursive:true,force:true})})
  first=await fixture(t,async(request,host)=>{if(firstStep++===0)return [shell("require('node:fs').appendFileSync('work/once.txt','once\\n');setTimeout(()=>console.log('done'),500)",{run_in_background:true})];const id=latestInput(request).task.taskId;await waitUntil(async()=>facts(await snapshot(host,id),'settled').length,'durable terminal before interruption');throw Error('Fixture interruption after native job terminal commit')},{root})
  const id=await create(first);await idle(first);const before=await snapshot(first,id),job=facts(before,'registered')[0];assert.equal(facts(before,'settled')[0].status,'completed');await first.close()

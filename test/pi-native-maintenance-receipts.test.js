@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,appendFile} from 'node:fs/promises'
@@ -11,7 +12,7 @@ import {isolationDigest as hash} from '../packages/dingtalk-core/native-restart-
 // Scripted Host attestations exercise the strict reader; these are not evidence
 // that the production factory can observe/process-drain or emit a terminal yet.
 async function fixture(t,{mutate=()=>{},afterTerminal=false,branchBeforeTerminal=false,unknown=true}={}){
- const root=await mkdtemp('/tmp/night-native-drain-'),binding={taskId:'task',executionId:'execution',sessionId:'session',requirementRevision:2,controlRevision:3,inputVersion:4,inputDigest:'input-digest',leaseEpoch:5}
+ const root=await mkdtemp(join(tmpdir(),'night-native-drain-')),binding={taskId:'task',executionId:'execution',sessionId:'session',requirementRevision:2,controlRevision:3,inputVersion:4,inputDigest:'input-digest',leaseEpoch:5}
  const ctx=new Context();authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'tasks','task','.dsh','sessions')}),header={version:4,id:binding.sessionId,createdAt:Date.now(),isSeeded:false,cwd:root}
  // The permissive fixture writer deliberately allows malformed domain payloads

@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
@@ -22,7 +23,7 @@ const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input
 const decision={action:'complete',summary:'Verified',evidence:['scripted tool result'],limitations:[]}
 const definition=(name,execute)=>({name,description:name,parameters:{type:'object',properties:{a:{type:'integer'},b:{type:'integer'}},additionalProperties:false},output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute})
 async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>true}={}){
- const root=await mkdtemp('/tmp/night-single-official-'),agentDir=join(root,'agent');await mkdir(agentDir)
+ const root=await mkdtemp(join(tmpdir(),'night-single-official-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context();new NativeAgents(ctx);new NativeSystemPrompt(ctx,{});new NativeTools(ctx);new NativeJobs(ctx);authority(ctx)
  const persistence=new PiPersistence(ctx,{root:join(root,'sessions')}),requests=[],actors=[];let effects=0
  ctx.provide('sandboxPolicy',{resolve:({actor})=>{assert.equal(ctx.agents.get(actor.id),actor);return{mode:'workspace-write',workspaceRoot:root,sessionId:actor.id}}})

@@ -5,8 +5,8 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { available, reason, nativeTaskHost, topicTaskCalls } from './fixtures/routing-official-host.js'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
-import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/group-message.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
+import { sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
 
 const refusal = { error: { category: 'api', code: 1, origin: 'mcp_gateway', operation: 'chat/get_conversation_info',
   reason: 'topic_quote_guard_unavailable', retryable: true, message: '无法确认引用回复目标是否属于话题圈，已阻止发送' } }

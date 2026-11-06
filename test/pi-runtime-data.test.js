@@ -1,9 +1,13 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,mkdir,readFile,writeFile,readdir,symlink,stat} from 'node:fs/promises'
+import {mkdtemp,rm,mkdir,readFile,writeFile,readdir,stat} from 'node:fs/promises'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
+import {acquireLock,withLock,atomicWrite,readRegular} from '../src/runtime/files.js'
 import {runtimePaths,prepareRuntimePaths,prepareSecrets,environmentPaths,pathInventory} from '../src/runtime/paths.js'
 import {backupData,restoreData,sanitizedConfig} from '../src/runtime/backup.js'
 import {loadConfig} from '../src/config.js'
@@ -11,7 +15,7 @@ import {loadNativeEnvironment} from '../src/native-environment.js'
 import {createHost} from '../src/host.js'
 import {memoryHost} from './fixtures/memory-host.js'
 const config=root=>({installRoot:root,dataDir:'data',model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',models:[{id:'m'}]}}})
-async function fixture(t){const root=await mkdtemp('/tmp/night-data-');t.after(()=>rm(root,{recursive:true,force:true}));return root}
+async function fixture(t){const root=await mkdtemp(join(tmpdir(),'night-data-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
 test('portable defaults live below install root while explicit legacy paths remain unchanged',async t=>{
   const root=await fixture(t),file=join(root,'config.json');await writeFile(file,JSON.stringify(config(root)))
   const loaded=await loadConfig(file),paths=runtimePaths(loaded)
@@ -21,6 +25,25 @@ test('portable defaults live below install root while explicit legacy paths rema
   assert.throws(()=>runtimePaths({...config(root),dataDir:'../outside'}),/OUTSIDE_INSTALL_ROOT/)
   assert.throws(()=>runtimePaths({...config(root),stateDir:join(root,'old')}),/MIXED_DATA_LAYOUT/)
   assert.match(pathInventory(loaded).relocation,/relative/)
+})
+test('directory lease handoff preserves a live cross-process owner, reaps a dead owner and serializes real writers',{timeout:nativeTestTimeout(15000)},async t=>{
+  let child,closed,output=''
+  t.after(async()=>{if(child?.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');await closed})
+  const root=await fixture(t),path=join(root,'writer.lock'),counter=join(root,'counter.json')
+  const script='import {acquireLock} from '+JSON.stringify(new URL('../src/runtime/files.js',import.meta.url).href)+';await acquireLock('+JSON.stringify(path)+');process.on("message",()=>{});process.send("LOCK_HELD");'
+  child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe','ipc']});child.stdout.resume();child.stderr.on('data',chunk=>output+=chunk);closed=once(child,'close')
+  const [message]=await Promise.race([once(child,'message',{signal:t.signal}),closed.then(result=>assert.fail(JSON.stringify(result)+output))])
+  assert.equal(message,'LOCK_HELD');await assert.rejects(acquireLock(path,{timeoutMs:0}),{code:'NIGHT_DATA_IN_USE'})
+  child.kill('SIGTERM');await closed
+  const release=await acquireLock(path);await release();await release()
+  await atomicWrite(counter,'0')
+  const rejected=new Error('transaction work rejected')
+  await assert.rejects(withLock(path,async()=>{throw rejected}),error=>error===rejected)
+  const results=await Promise.allSettled(Array.from({length:16},()=>withLock(path,async()=>{
+    const value=Number(await readRegular(counter));await atomicWrite(counter,String(value+1))
+  },{timeoutMs:nativeTestTimeout(5000)})))
+  for(const result of results)assert.equal(result.status,'fulfilled',result.reason?.stack)
+  assert.equal(await readRegular(counter),'16');assert.deepEqual(await readdir(root),['counter.json'])
 })
 test('real default Host, auth credential path, attachment cache and memory use the portable layout',async t=>{
   const f=await memoryHost(t),p=f.host.ctx.runtimePaths
@@ -69,17 +92,21 @@ test('an interrupted restore blocks startup and new snapshots instead of accepti
   await assert.rejects(createHost(c),e=>e.code==='NIGHT_RESTORE_INCOMPLETE')
   await assert.rejects(backupData(c,join(root,'backups','snapshot')),e=>e.code==='NIGHT_RESTORE_INCOMPLETE')
 })
-test('managed launcher writes logs/tmp under data and starts the real loopback service',async t=>{
+test('managed launcher writes logs/tmp under data and starts the real loopback service',{timeout:nativeTestTimeout(15000)},async t=>{
+  let child,exited,output=''
+  t.after(async()=>{if(child?.exitCode===null&&child.signalCode===null){child.send({type:'night-bot-shutdown'});await exited}})
   const root=await fixture(t),c=config(root),p=runtimePaths(c);await prepareRuntimePaths(p)
   const http=await import('node:http'),reserve=http.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r))
   c.resident={host:'127.0.0.1',port,groups:[],dws:{enabled:false,writesAuthorized:false},taskSessions:{instanceId:'layout-test',ownerActorId:'fixture',webActorId:'fixture',initialize:true,ingressEpoch:new Date().toISOString()}}
   const file=join(root,'config.json');await writeFile(file,JSON.stringify(c))
-  const child=spawn(process.execPath,['bin/night-bot-run.js',file],{stdio:['ignore','pipe','pipe']});let error='';child.stderr.on('data',d=>error+=d);const exited=once(child,'exit')
-  t.after(async()=>{if(child.exitCode===null&&child.signalCode===null){child.kill('SIGTERM');await exited}})
+  child=spawn(process.execPath,['bin/night-bot-run.js',file],{stdio:['ignore','pipe','pipe','ipc']})
+  for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>output+=chunk)
+  exited=once(child,'close')
   let health
-  for(let n=0;n<150;n++){if(child.exitCode!==null)assert.fail(error);try{const r=await fetch(`http://127.0.0.1:${port}/health`);if(r.ok){health=await r.json();break}}catch{}await new Promise(r=>setTimeout(r,30))}
-  assert.equal(health?.status,'ok',error);assert.ok((await readdir(p.logs)).includes('service.log'));assert.ok(Array.isArray(await readdir(p.temp)))
-  child.kill('SIGTERM');assert.equal((await exited)[0],0,error)
+  const deadline=performance.now()+nativeTestTimeout(4500)
+  while(performance.now()<deadline){if(child.exitCode!==null||child.signalCode!==null)assert.fail(output);try{const r=await fetch(`http://127.0.0.1:${port}/health`);if(r.ok){health=await r.json();break}}catch{}await new Promise(r=>setTimeout(r,30))}
+  assert.equal(health?.status,'ok',output||await readFile(join(p.logs,'service.log'),'utf8'));assert.ok((await readdir(p.logs)).includes('service.log'));assert.ok(Array.isArray(await readdir(p.temp)))
+  child.send({type:'night-bot-shutdown'});assert.equal((await exited)[0],0,output)
 })
 
 test('new Night Bot data restores A to B: continued Pi history, workspace, scheduled task, attachment and Markdown memory',{timeout:20000},async t=>{
@@ -141,5 +168,5 @@ test('credential values and environment files are confined to the separate priva
   await prepareSecrets(p)
   const environment=await loadNativeEnvironment({...environmentPaths(c),inherited:{},materialize:false});assert.equal(environment.get('MODEL_LOCAL_KEY').value,'fixture-only-key');assert.equal(environment.get('UNEXPECTED_CONFIG_KEY'),undefined)
   if(process.platform!=='win32'){assert.equal((await stat(p.secrets)).mode&0o777,0o700);assert.equal((await stat(join(p.secrets,'.env'))).mode&0o777,0o600)}
-  const outside=join(root,'external.env');await writeFile(outside,'not an app secret');await symlink(outside,join(p.secrets,'linked.env'));await assert.rejects(prepareSecrets(p),/SECRET_PATH_UNSAFE/)
+  const outside=join(root,'external.env');if(process.platform==='win32')await mkdir(outside);else await writeFile(outside,'not an app secret');await symlink(outside,join(p.secrets,'linked.env'));await assert.rejects(prepareSecrets(p),/SECRET_PATH_UNSAFE/)
 })

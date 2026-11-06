@@ -2,7 +2,7 @@ import * as application from '../src/application.js'
 import {getCurrentSystemPrompt} from '@earendil-works/pi-ai'
 import {createNativeDwsObserver,nativeDwsCommands,nativeDwsObservation} from '../packages/dingtalk-core/native-dws-send.js'
 import {nativeRuntimeHost} from './fixtures/runtime-official-host.js'
-import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
+import { nativeLifecycle, nativeLifecycleTimeout, nativeTestTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import { lifecycleStages } from './fixtures/lifecycle-stages.js'
 import testRunner from 'node:test'
 import assert from 'node:assert/strict'
@@ -13,11 +13,11 @@ import { createServer } from 'node:net'
 import { get as httpGet } from 'node:http'
 import { createHash } from 'node:crypto'
 import { available, reason, nativeShell, latestInput, topicTaskCalls, waitUntil } from './fixtures/runtime-official-host.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
-import { taskNotificationRecovery } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import { taskNotificationRecovery } from '../packages/dingtalk-core/notification-delivery.js'
 import { DatabaseSync } from 'node:sqlite'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
 
 testRunner('official service read-only web errors do not become unknown effects and later reads still complete',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
  const f=await officialCase(t,'single-service-web-');let h,calls=0
@@ -28,7 +28,7 @@ testRunner('official service read-only web errors do not become unknown effects 
  assert.equal(calls,2);assert.equal(row.status,'completed');assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,0);assert.deepEqual(await h.query('execution.list'),[])
  assert.equal(h.toolResults.filter(r=>['web_fetch','web_search'].includes(r.name)&&r.result.isError).length,2)
 }))
-import { projectTaskNotification } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
+import { projectTaskNotification } from '../packages/dingtalk-core/task-message-projections.js'
 
 const call = (name, args) => ({ name, args })
 const test = (name, options, run) => testRunner(name, { ...options, ...(!available ? { skip: reason } : {}) }, run)
@@ -148,7 +148,6 @@ test('不同群成员续办已完成任务，旧授权拒绝显式重试仍保�
   let h, backing, original, topicId, block = true
   t.after(async () => { await h?.close(); await backing?.close() })
   const fixture = await officialCase(t, 'task-topic-auth-',false)
-  await t.beginBusiness()
   backing = await t.step(async () => openDynamicTaskStore({ dbPath: join(fixture.root, 'dynamic.db'), instanceId: 'native-test', initialize: true }))
   const store = { ...backing, command(input) {
     if (block && input.kind === 'task.reopen') throw new Error('TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED')
@@ -189,6 +188,7 @@ test('不同群成员续办已完成任务，旧授权拒绝显式重试仍保�
     }
     return [singleResult('complete', original ? '已处理原任务续办' : '修复已完成，未部署')]
   }, { store }))
+  await t.beginBusiness()
   await t.step(async () => h.service.ingest(message)); await t.step(async () => h.service.whenIdle())
   ;[original] = await t.step(async () => h.query('task.list')); topicId = original.topicRefs[0].topicId
   const followup = { ...message, messageId: 'deploy-followup', senderOpenDingTalkId: 'colleague', text: '测试助手，部署原修复到UAT2', occurredAt: '2026-10-13T10:02:00Z' }
@@ -266,7 +266,6 @@ for (const [ownEcho, followupActor] of [[true, 'native-user'], [true, 'colleague
     assert.ok(input.sources.every(source => source.messageId !== 'native-notification-1'))
     return [singleResult('complete', '已按补充要求核对分支')]
   }
-  await t.beginBusiness()
   h = await t.step(async () => fixture.host(model, { config: { assistantActorId: 'native-user' } }))
   h.ctx.on('tools/result', (exec, result) => {
     if (exec.name === 'group_decision_submit' && result.value?.status === 'topic-stale') {
@@ -274,6 +273,7 @@ for (const [ownEcho, followupActor] of [[true, 'native-user'], [true, 'colleague
       staleRequests.add(`${args.requestId}:${args.revision}`)
     }
   })
+  await t.beginBusiness()
   await t.step(async () => h.service.ingest(message)); await t.step(async () => h.service.whenIdle())
   ;[originalTask] = await t.step(async () => h.query('task.list'))
   topicId = originalTask.topicRefs[0].topicId
@@ -372,11 +372,12 @@ test('official service preserves task identity and exact source revisions throug
 }))
 
 // Exercise actual official SDK auto-compaction across 32 source-authorized leases.
-test('official service retains 32 source-authorized continuations in Pi history without replaying the completed effect',{timeout:nativeLifecycleTimeout(120000)},nativeLifecycle(120000,async t=>{
+const continuationBudget=process.platform==='win32'?300000:120000
+test('official service retains 32 source-authorized continuations in Pi history without replaying the completed effect',{timeout:nativeLifecycleTimeout(continuationBudget)},nativeLifecycle(continuationBudget,async t=>{
  const f=await officialCase(t,'single-service-32-');let wrote=false,modelCalls=0;const compactionSummary='The task has one original execution session. work/one-effect.txt was written successfully exactly once. Later sources ask for inspection only. Do not replay the original effect. Obtain current authority from the current admitted task input, never from this summary.'
  const h=await f.host(request=>{assert.ok(!request.tools.some(tool=>tool.name.startsWith('group_')),'Single catalogue must not acquire global coordinator tools');assert.ok(++modelCalls<=64,'Unexpected repeated task turn: '+JSON.stringify({task:singleInput(request).task?.taskId,last:request.messages.filter(m=>m.role==='toolResult').at(-1)}));return !wrote?(wrote=true,[call('write',{path:'work/one-effect.txt',content:'exactly-once'})]):[singleResult('wait','Wait for the next authenticated continuation')]},{compactionSummary,estimateUsage:true});await t.beginBusiness()
  const created=await h.service.createTask({groupId:'native-group',requestId:'continuation-original',objective:'Retain one completed effect and accept exact later inputs'});await h.service.whenIdle()
- for(let i=1;i<32;i++){if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('SERVICE_CONTINUATION',i);await h.service.appendTaskContext({taskId:created.taskId,requestId:'continuation-'+i,progressImpact:'preserve',context:'Continuation '+i+': observe the existing result; do not repeat it.'});await h.service.whenIdle();assert.equal((await h.query('task.get',{taskId:created.taskId})).lastDecision?.action,'wait',JSON.stringify(h.service.listAlerts()));const snapshot=await h.ctx.sessionPersistence.readNative(created.session.sessionId,{requireComplete:true}),latest=snapshot.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued').at(-1);assert.ok(JSON.parse(latest.payload.content[0].text).sources.every(source=>!Object.hasOwn(source,'stages')),'Night telemetry is not conversational source content');const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count,'idle recovery must not manufacture a model wake')}
+ for(let i=1;i<32;i++){const iterationStarted=performance.now();if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('SERVICE_CONTINUATION',i);await h.service.appendTaskContext({taskId:created.taskId,requestId:'continuation-'+i,progressImpact:'preserve',context:'Continuation '+i+': observe the existing result; do not repeat it.'});await h.service.whenIdle();assert.equal((await h.query('task.get',{taskId:created.taskId})).lastDecision?.action,'wait',JSON.stringify(h.service.listAlerts()));const snapshot=await h.ctx.sessionPersistence.readNative(created.session.sessionId,{requireComplete:true}),latest=snapshot.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued').at(-1);assert.ok(JSON.parse(latest.payload.content[0].text).sources.every(source=>!Object.hasOwn(source,'stages')),'Night telemetry is not conversational source content');const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count,'idle recovery must not manufacture a model wake');if(process.env.NIGHT_BOT_TEST_DEBUG)t.diagnostic(JSON.stringify({continuation:i,elapsedMs:Math.round(performance.now()-iterationStarted),summaryCalls:h.auxiliaryRequests.length}))}
  const row=await h.query('task.get',{taskId:created.taskId}),saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),packets=saved.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued')
  assert.equal(row.sessionId,created.session.sessionId);assert.equal(packets.length,32);assert.ok((await h.query('source.list')).some(source=>source.stages?.length>0),'SQL retains the diagnostic stages outside the native conversational packet');assert.equal(new Set(packets.map(r=>r.payload.source.taskSession.leaseEpoch)).size,32);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1)
  assert.equal(h.toolResults.filter(r=>r.name==='write').length,1);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,1);assert.equal(await readFile(join(saved.header.cwd,'work/one-effect.txt'),'utf8'),'exactly-once');assert.deepEqual(await h.query('execution.list'),[])
@@ -488,7 +489,7 @@ test('official service reopens an unknown notification for readback without rese
   assert.equal(second.requests.length, 0)
 }))
 
-test('official service cancellation stops the actual owned process, drains its original session and fences late success',{timeout:nativeLifecycleTimeout(25000)},nativeLifecycle(25000,async t=>{
+test('official service cancellation stops the actual owned process, drains its original session and fences late success',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:nativeLifecycleTimeout(25000)},nativeLifecycle(25000,async t=>{
  const f=await officialCase(t,'single-service-cancel-');let rounds=0
  const script='const f=require("node:fs");f.writeFileSync("work/process-started.txt",String(process.pid));setTimeout(()=>{f.writeFileSync("work/process-late.txt","late");process.stdout.write("LATE_SUCCESS")},30000)'
  const quote=value=>"'"+value.replaceAll("'","'\\''")+"'"
@@ -616,7 +617,7 @@ for(const correctOnce of [false,true])test(`official service invalid summaries c
 test('official service topic routing rejects incomplete source coverage and accepts correction in the same real session', { timeout: 60000 }, async t => {
   let root, rootReady, opening, h, requests = 0, activity = 'host-preparation'
   await lifecycleStages(t, {
-    limits: { business: 10000 },
+    limits: { business: nativeTestTimeout(10000) },
     prepare: async step => {
       root = await step(() => (rootReady = mkdtemp(join(tmpdir(), 'task-service-invalid-route-'))))
       h = await step(() => (opening = nativeRuntimeHost(root, async request => {
@@ -734,7 +735,7 @@ test('official service recovery no-op preserves an undrained task writer conflic
 }))
 
 test('official service Host material publication failure after a committed claim drains it and exposes an alert before model dispatch',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
- const f=await officialCase(t,'single-service-material-failure-'),backing=await openDynamicTaskStore({dbPath:join(f.root,'dynamic.db'),instanceId:'native-test',initialize:true});t.after(()=>backing.close());let poisoned=false,claimed
+ let backing;const f=await officialCase(t,'single-service-material-failure-',true,async()=>backing?.close());backing=await openDynamicTaskStore({dbPath:join(f.root,'dynamic.db'),instanceId:'native-test',initialize:true});let poisoned=false,claimed
  const store={...backing,async command(command){const receipt=await backing.command(command);if(command.kind==='task.claim'&&!poisoned){claimed=receipt.result.task;assert.equal(claimed.drained,false);assert.ok(claimed.sourceRefs.length);const source=claimed.sourceRefs[0],digest=createHash('sha256').update(JSON.stringify(source)).digest('hex').slice(0,32),directory=join(f.root,'data/workspaces/tasks',claimed.taskId,'materials');await mkdir(directory,{recursive:true});await mkdir(join(directory,'source-'+digest+'.json'));poisoned=true}return receipt}}
  const h=await f.host(()=>assert.fail('A malformed Host material cannot enter the model'),{store});await t.beginBusiness();const created=await h.service.createTask({groupId:'native-group',requestId:'material-failure',objective:'Read the exact authoritative material',context:'HOST_MATERIAL_AUTHORITY'})
  await h.service.whenIdle();const row=await h.query('task.get',{taskId:created.taskId});assert.equal(poisoned,true);assert.equal(row.leaseEpoch,claimed.leaseEpoch);assert.equal(row.drained,true);assert.equal(row.sessionBound,false);assert.equal(row.status,'active');assert.equal(h.requests.length,0);assert.deepEqual(await h.query('execution.list'),[])
@@ -743,8 +744,8 @@ test('official service Host material publication failure after a committed claim
 
 testRunner('resource read retries preserve image facts and duplicate ingress reuses the source', { ...({ skip: !available ? reason : false, timeout: 20000 }), timeout: nativeLifecycleTimeout(20000) }, nativeLifecycle(20000, async (t) => {
   await t.beginBusiness()
-  const { openResidentStore } = await t.step(async () => import('../packages/dingtalk-dsh-assistant/store.js'))
-  const { openTaskSessionService } = await t.step(async () => import('../packages/dingtalk-dsh-assistant/task-session-service.js'))
+  const { openResidentStore } = await t.step(async () => import('../packages/dingtalk-core/store.js'))
+  const { openTaskSessionService } = await t.step(async () => import('../packages/dingtalk-core/task-session-service.js'))
   const root = await t.step(async () => mkdtemp(join(tmpdir(), 'native-ingress-phases-')))
   let h, reads = 0
   t.after(async () => { await h?.close(); await rm(root, { recursive: true, force: true }) })
@@ -846,9 +847,9 @@ testRunner('群身份与入站校验不展开展示消息，展示层仍实时�
 
 // Actual installed single-session Host. Legacy cases below remain explicitly
 // pending migration; this helper never synthesizes Owner/member protocols.
-async function officialCase(t,prefix,autoTopics=true){
+async function officialCase(t,prefix,autoTopics=true,closeOwned=async()=>{}){
  const root=await mkdtemp(join(tmpdir(),prefix)),hosts=[]
- t.after(async()=>{try{for(const h of hosts.toReversed())await h.close()}finally{await rm(root,{recursive:true,force:true})}})
+ t.after(async()=>{for(const h of hosts.toReversed())await h.close();await closeOwned();await rm(root,{recursive:true,force:true})})
  return {root,async host(decide,options={}){const h=await nativeRuntimeHost(root,(request,host)=>autoTopics?(topicTaskCalls(request)??decide(request,host)):decide(request,host),options);hosts.push(h);return h}}
 }
 const singleResult=(action,summary,extra={})=>({name:'task_result',args:{decision:{action,summary,evidence:['actual native journal and local result'],limitations:[],...extra}}})

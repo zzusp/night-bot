@@ -1,7 +1,9 @@
+import {symlink} from './fixtures/filesystem-link.js'
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,readFile,appendFile,writeFile,symlink,readdir,mkdir} from 'node:fs/promises'
-import {join} from 'node:path'
+import {mkdtemp,rm,readFile,appendFile,writeFile,readdir,mkdir} from 'node:fs/promises'
+import {join,basename} from 'node:path'
 import {createHash} from 'node:crypto'
 import {Context} from '@deepseek-ai/cordis'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
@@ -10,7 +12,7 @@ import {apply as authority} from '../src/pi-authority.js'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
 const user=text=>({role:'user',content:[{type:'text',text}],timestamp:1})
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-pi-authority-'),ctx=new Context();authority(ctx)
+ const root=await mkdtemp(join(tmpdir(),'night-pi-authority-')),ctx=new Context();authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  t.after(async()=>{try{await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})
  return{root,ctx,backend,header:id=>nativeSessionHeader(id,{cwd:root})}
@@ -52,7 +54,7 @@ test('pre-aborted native creation leaves no empty durable identity or ownership'
  assert.deepEqual(await f.backend.list(),[])
 })
 test('global Pi journal refuses symbolic file targets before reads or writes',async t=>{
- const f=await fixture(t);await f.backend.checkedRoot(true);const outside=join(f.root,'outside.jsonl');await writeFile(outside,'unchanged');await symlink(outside,f.backend.path('linked'))
+ const f=await fixture(t);await f.backend.checkedRoot(true);const outside=join(f.root,'outside.jsonl');await writeFile(outside,'unchanged');await symlink(process.platform==='win32'?f.root:outside,f.backend.path('linked'),process.platform==='win32'?'junction':'file')
  await assert.rejects(f.backend.readNative('linked'),{code:'PI_SESSION_PATH_UNSAFE'});await assert.rejects(f.backend.createNative(f.header('linked')),{code:'PI_SESSION_PATH_UNSAFE'})
  assert.equal(await readFile(outside,'utf8'),'unchanged')
 })
@@ -77,5 +79,5 @@ test('foreign imported metadata is refused without reopening any source or modif
  manager.appendCustomEntry('night.commit',{version:2,entryCount:records.length,auditCount:0,previousCommit:null,entriesHash})
  const bytes=[header,...manager.getEntries()].map(entry=>JSON.stringify(entry)).join('\n')+'\n',path=f.backend.path('retired-import');await writeFile(path,bytes)
  for(const read of [()=>f.backend.readNative('retired-import'),()=>f.backend.openNative('retired-import')])await assert.rejects(read(),{code:'PI_SESSION_IMPORT_UNSUPPORTED'})
- assert.equal(await readFile(path,'utf8'),bytes);assert.deepEqual(await readdir(join(f.root,'sessions')),[path.split('/').at(-1)])
+ assert.equal(await readFile(path,'utf8'),bytes);assert.deepEqual(await readdir(join(f.root,'sessions')),[basename(path)])
 })

@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readTaskNotificationDelivery, verifyTaskNotificationReadback, readOperatorNotificationDelivery } from '../packages/dingtalk-dsh-assistant/task-notification-readback.js'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
-import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/group-message.js'
+import { readTaskNotificationDelivery, verifyTaskNotificationReadback, readOperatorNotificationDelivery } from '../packages/dingtalk-core/task-notification-readback.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
+import { sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
 const notification = { id: 'n', payload: { conversationId: 'g', sourceMessageId: 's', text: '核验完成。', atOpenDingTalkIds: ['u'] } }
 const observed = { messageId: 'm', conversationId: 'g', text: '核验完成。', quotedMessage: { messageId: 's', conversationId: 'g' }, atOpenDingTalkIds: ['u'] }
 
@@ -79,7 +79,7 @@ test('unknown send cannot be reconciled from somebody else quoting identical tex
 })
 
 test('超长通知使用同一外部摘要键发送和精确回读，历史原始键仍可读且unknown不重发', async () => {
-  const { deliverTaskNotification } = await import('../packages/dingtalk-dsh-assistant/notification-delivery.js')
+  const { deliverTaskNotification } = await import('../packages/dingtalk-core/notification-delivery.js')
   const longId = `coordination:${'x'.repeat(124)}`, commands = []
   const pending = { ...notification, id: longId, state: 'unknown', sendAttemptCount: 1,
     payload: { ...notification.payload, actorId: 'u' } }
@@ -140,7 +140,7 @@ test('send status cannot replace a different acknowledged message identity', asy
 })
 
 test('DWS无序列表只消除项间换行，正文、围栏和段落边界不可吞并', async () => {
-  const { sameDeliveredText } = await import('../packages/dingtalk-dsh-assistant/group-message.js')
+  const { sameDeliveredText } = await import('../packages/dingtalk-core/group-message.js')
   const expected = '结论。\n\n- 验证 A B 通过。\n\n- 版本 `v1` 已读回。\n\n范围有限。\n\n- 署名'
   const rendered = '结论。\n- 验证 A B 通过。- 版本 **v1** 已读回。\n范围有限。\n- 署名'
   assert.equal(sameDeliveredText('@用户 '+rendered, expected, {sender:'用户'}), true)
@@ -154,7 +154,7 @@ test('DWS无序列表只消除项间换行，正文、围栏和段落边界不�
 })
 
 test('无成功任务回执的列表通知仍严格匹配内容与身份且不重发', async () => {
-  const { deliverTaskNotification } = await import('../packages/dingtalk-dsh-assistant/notification-delivery.js')
+  const { deliverTaskNotification } = await import('../packages/dingtalk-core/notification-delivery.js')
   const pending = {...notification, state:'unknown', sendAttemptCount:1, ack:{messageId:'m'}, payload:{...notification.payload,text:'- A B\n\n- C'}}
   const message = {...observed, senderId:'bot', text:'- A B- C'}
   const adapter = {querySendStatus:async id=>{assert.equal(id,'original-send');return {result:{sendStatus:'SUCCESS'},messageRef:{openConversationId:'g',openMessageId:'m'}}}, readMessage:async()=>message}
@@ -171,7 +171,7 @@ test('无成功任务回执的列表通知仍严格匹配内容与身份且不�
 })
 
 test('DWS分段有序列表重置编号时保留正文、数字、列表顺序和代码围栏', async () => {
-  const { sameDeliveredText } = await import('../packages/dingtalk-dsh-assistant/group-message.js')
+  const { sameDeliveredText } = await import('../packages/dingtalk-core/group-message.js')
   const expected = '结论。\n\n1. 环境 UAT2 已核实，数量 12。\n\n2. 仅调查来源，保留 `v2`。\n\n范围。\n\n- 证据 A\n\n- 证据 B'
   const rendered = '结论。\n1. 环境 UAT2 已核实，数量 12。\n1. 仅调查来源，保留 **v2**。\n范围。\n- 证据 A- 证据 B'
   assert.equal(sameDeliveredText('@用户 '+rendered, expected, { sender: '用户' }), true)
@@ -186,7 +186,7 @@ test('DWS分段有序列表重置编号时保留正文、数字、列表顺序�
 })
 
 test('无成功任务回执的有序列表通知严格比较正文与身份且不重发', async () => {
-  const { deliverTaskNotification } = await import('../packages/dingtalk-dsh-assistant/notification-delivery.js')
+  const { deliverTaskNotification } = await import('../packages/dingtalk-core/notification-delivery.js')
   const pending = { ...notification, state: 'unknown', sendAttemptCount: 1, ack: { messageId: 'm' },
     payload: { ...notification.payload, text: '1. 环境已核实。\n\n2. 只调查来源。' } }
   const message = { ...observed, senderId: 'bot', text: '1. 环境已核实。\n1. 只调查来源。' }
@@ -206,7 +206,7 @@ test('无成功任务回执的有序列表通知严格比较正文与身份且�
 
 
 test('原SUCCESS发送回执只核验原消息，unknown结清不调用发送且错误ID/会话/状态不结清', async () => {
-  const { deliverTaskNotification } = await import('../packages/dingtalk-dsh-assistant/notification-delivery.js')
+  const { deliverTaskNotification } = await import('../packages/dingtalk-core/notification-delivery.js')
   const pending = {...notification, state:'unknown', sendAttemptCount:1, ack:{openTaskId:'original-send'}}
   let status = {result:{sendStatus:'SUCCESS',openConversationId:'g',openMessageId:'m'}}
   let message = {messageId:'m',conversationId:'g',text:'钉钉已重新渲染正文',createTime:'2026-10-20 18:01:50'}

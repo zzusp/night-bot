@@ -1,6 +1,7 @@
+import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdir,writeFile,symlink,readFile} from 'node:fs/promises'
+import {mkdir,writeFile,readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 import {bindWorkingDirectoryActor} from '../src/native-working-directory.js'
@@ -45,6 +46,7 @@ test('process privacy uses bound immutable official origin, masks private roots 
  const f=await fixture(t),{installProcessPrivacy}=await import('../src/memory/privacy.js'),seen=[]
  const port={agents:f.ctx.agents,subprocess:{resolveExecutable:async()=>'/usr/bin/bwrap',spawn(spec){seen.push(spec);return{done:Promise.resolve(),collected:{}}},async spawnTerminal(spec){seen.push(spec);return{done:Promise.resolve(),collected:{}}}},spillStore:{saveText(){}},get:()=>undefined,effect(){}}
  await installProcessPrivacy(port,f.ctx.memoryPrivacy)
+ if(process.platform!=='linux'){assert.throws(()=>f.run(()=>port.subprocess.spawn({cwd:join(f.root,'work'),argv:['node','-e','noop']})),{code:'MEMORY_PROCESS_PRIVACY_UNAVAILABLE'});assert.equal(seen.length,0);return}
  await f.run(()=>port.subprocess.spawn({cwd:join(f.root,'work'),argv:['node','-e','noop'],env:{PROVIDER_API_KEY:'PRIVATE_PROVIDER_KEY',PATH:'/bin'},control:'pipe'}).done)
  assert.equal(seen.length,1);assert.equal(seen[0].env.PROVIDER_API_KEY,undefined);assert.equal(seen[0].env.HOME,'/tmp/night-home');assert.ok(seen[0].argv.includes(join(f.root,'sessions')));assert.ok(seen[0].argv.includes(join(f.root,'work')))
  assert.throws(()=>f.ctx.agents.withInitiator(f.foreign,()=>port.subprocess.spawn({cwd:join(f.root,'work'),argv:['node']})),{code:'PI_WORKING_DIRECTORY_ACTOR_UNBOUND'})

@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm,readFile,readdir,appendFile,writeFile} from 'node:fs/promises'
@@ -10,7 +11,7 @@ import {piJournalFilename} from '../src/runtime/pi-journal.js'
 import {readNativeHistory} from '../packages/dingtalk-core/native-maintenance-drain.js'
 
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-routed-journal-'),directory=join(root,'tasks','task','sessions'),path=join(directory,piJournalFilename('owned'))
+ const root=await mkdtemp(join(tmpdir(),'night-routed-journal-')),directory=join(root,'tasks','task','sessions'),path=join(directory,piJournalFilename('owned'))
  await mkdir(directory,{recursive:true});const routes=new Map([['owned',path]]),ctx=new Context();ctx.provide('taskSessionRoutes',routes);authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'global-unused')}),header=nativeSessionHeader('owned',{cwd:root}),message={role:'user',content:[{type:'text',text:'ROUTED_EVIDENCE'}],timestamp:1}
  t.after(async()=>{try{await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})

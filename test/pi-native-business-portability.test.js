@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,readFile,rm,writeFile,rename} from 'node:fs/promises'
@@ -18,7 +19,7 @@ const boot=root=>createHost(configuration(root),{environmentOptions:{inherited:{
 const usage={input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 
 test('own backup restores actual actor cwd, artifact binding and permissions without changing signed Pi entries or user paths',{timeout:20000},async t=>{
- const root=await mkdtemp('/tmp/night-business-portable-'),sourceRoot=join(root,'source'),targetRoot=join(root,'target')
+ const root=await mkdtemp(join(tmpdir(),'night-business-portable-')),sourceRoot=join(root,'source'),targetRoot=join(root,'target')
  let source,target,handle,resumed
  t.after(async()=>{try{await resumed?.dispose();await handle?.dispose();await target?.close();await source?.close()}finally{await rm(root,{recursive:true,force:true})}})
  source=await boot(sourceRoot)
@@ -67,7 +68,7 @@ test('own backup restores actual actor cwd, artifact binding and permissions wit
 })
 
 test('unmarked current native receipts read at the original root and fail closed after own backup relocation',async t=>{
- const root=await mkdtemp('/tmp/night-unmarked-portable-'),sourceRoot=join(root,'source'),targetRoot=join(root,'target'),config=configuration(sourceRoot),paths=runtimePaths(config)
+ const root=await mkdtemp(join(tmpdir(),'night-unmarked-portable-')),sourceRoot=join(root,'source'),targetRoot=join(root,'target'),config=configuration(sourceRoot),paths=runtimePaths(config)
  const contexts=[];t.after(async()=>{for(const ctx of contexts)await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  await prepareRuntimePaths(paths);const cwd=join(paths.workspaces,'project'),sub=join(cwd,'sub');await mkdir(sub,{recursive:true})
  const codec=portablePaths(paths),manager=SessionManager.inMemory(cwd);manager.newSession({id:'unmarked'})
@@ -90,7 +91,7 @@ test('unmarked current native receipts read at the original root and fail closed
 })
 
 test('Host stamps only registered controlled fields; forged or missing new sidecars cannot commit or publish a broader path',async t=>{
- const root=await mkdtemp('/tmp/night-path-binding-guard-'),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
+ const root=await mkdtemp(join(tmpdir(),'night-path-binding-guard-')),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
  const ctx=new Context();ctx.provide('portablePaths',portablePaths(paths));authority(ctx)
  const backend=new PiPersistence(ctx,{root:join(paths.state,'sessions')}),cwd=join(paths.workspaces,'project');await mkdir(cwd,{recursive:true})
  t.after(async()=>{try{await ctx.fiber.dispose()}finally{await rm(root,{recursive:true,force:true})}})

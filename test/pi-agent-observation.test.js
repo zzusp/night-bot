@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
@@ -13,7 +14,7 @@ const hash=value=>createHash('sha256').update(value).digest('hex')
 const base=Date.parse('2026-11-05T01:00:00Z')
 const record=(kind,time,summary={},extra={})=>makeAgentObservation({ownerId:'owner',runId:'run',entryId:['model-completed','input-admitted'].includes(kind)?'native-'+kind:kind.startsWith('tool-')?'native-model-completed':null,spanId:hash(kind.startsWith('model-')?'model':kind.startsWith('tool-')?'tool':kind),kind,timestamp:base+time,summary,...extra})
 async function storage(t,options={}){
- const root=await mkdtemp('/tmp/night-observation-'),facilities=[];let store
+ const root=await mkdtemp(join(tmpdir(),'night-observation-')),facilities=[];let store
  const open=async()=>{const facility=await openNativeDomains({root,...options});facilities.push(facility);return store=await openResidentStore(facility)}
  t.after(async()=>{await store?.close();for(const facility of facilities)await facility.closeAll();await rm(root,{recursive:true,force:true})})
  return{root,open}

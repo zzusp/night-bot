@@ -1,9 +1,10 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
-async function fixture(t){const root=await mkdtemp('/tmp/night-live-transition-'),db=await openDynamicTaskStore({dbPath:join(root,'db'),instanceId:'live-transition',initialize:true});let n=0;t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});const command=(kind,args,id=kind+':'+(++n))=>db.command({kind,args,id}),query=(kind,args={})=>db.query({kind,...args});await command('task.create',{taskId:'task',groupId:'group',ownerActorId:'owner',request:'Original objective'});const {binding}= (await command('task.claim',{taskId:'task'})).result;return{command,query,binding}}
+async function fixture(t){const root=await mkdtemp(join(tmpdir(),'night-live-transition-')),db=await openDynamicTaskStore({dbPath:join(root,'db'),instanceId:'live-transition',initialize:true});let n=0;t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});const command=(kind,args,id=kind+':'+(++n))=>db.command({kind,args,id}),query=(kind,args={})=>db.query({kind,...args});await command('task.create',{taskId:'task',groupId:'group',ownerActorId:'owner',request:'Original objective'});const {binding}= (await command('task.claim',{taskId:'task'})).result;return{command,query,binding}}
 const supplement=(f,id,binding=f.binding)=>f.command('task.supplement',{taskId:'task',messageId:id,text:'Exact supplementary source '+id,expectedRequirementRevision:1,expectedControlRevision:1,liveBinding:binding},'supplement:'+id)
 test('live supplement claims and ACKs only its exact wake after ordered official admission proof handoff',async t=>{
  const f=await fixture(t);await supplement(f,'one');await supplement(f,'two')

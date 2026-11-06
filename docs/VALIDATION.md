@@ -1,3 +1,7 @@
+> 本轮 Windows 本机完整回归、真实模型与部署验证独立记录于 [本机验收](acceptance/pi-native-retirement-local/goal.md)。下文 Linux 结果不能替代 Windows 实测，Windows 的非 Linux 进程隐私失败关闭与文件 symlink 权限限制须单独报告。
+
+> Windows 的真实 Host/Pi 集成夹具使用 Linux 两倍的测试业务期限，以容纳本机持久化 I/O；32 轮实际压缩/续办专项在 Windows 使用 10 分钟业务预算（Linux 仍 120 秒），每轮真实来源、效果和压缩断言保留；其余夹具沿用两倍期限。断言、场景轮数及生产运行期限不变。这是用户授权的测试时间调整，不是功能或隔离策略降级。
+
 > Current default wiring and source-specific results are recorded in
 > [PI-NATIVE-DEFAULT-STATUS.md](PI-NATIVE-DEFAULT-STATUS.md) and
 > [pi-default-checkpoint-evidence.json](pi-default-checkpoint-evidence.json).

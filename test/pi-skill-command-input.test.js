@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import {nativeSessionHeader} from './fixtures/native-session-header.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -11,7 +12,7 @@ import {createBusinessAdmission,admissionAuditKinds} from '../src/runtime/pi-bus
 import {skillCommand} from '../src/runtime/pi-skill-command-input.js'
 const packet={id:'command',source:{kind:'direct-user'},content:[{type:'text',text:'/skill:verified do work'}]}
 async function fixture(t){
- const root=await mkdtemp('/tmp/night-command-'),ctx=new Context();await ctx.plugin(Authority)
+ const root=await mkdtemp(join(tmpdir(),'night-command-')),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),options={auditKinds:admissionAuditKinds}
  const store=await backend.createNative(nativeSessionHeader('commands',{cwd:root}),options)
  t.after(async()=>{await store.close();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})

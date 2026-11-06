@@ -1,9 +1,10 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {openDynamicTaskStore,pendingTaskHumanReview} from '../packages/dingtalk-core/dynamic-task-store.js'
-async function fixture(t){const root=await mkdtemp('/tmp/night-task-business-failure-');let db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator',initialize:true}),n=0;t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});const f={command:(kind,args,id=kind+':'+(++n))=>db.command({kind,args,id}),query:(kind,args={})=>db.query({kind,...args}),async cold(){await db.close();db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator'})}};await f.command('task.create',{taskId:'task',groupId:'group',ownerActorId:'operator',request:'Original authorized objective'});return f}
+async function fixture(t){const root=await mkdtemp(join(tmpdir(),'night-task-business-failure-'));let db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator',initialize:true}),n=0;t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});const f={command:(kind,args,id=kind+':'+(++n))=>db.command({kind,args,id}),query:(kind,args={})=>db.query({kind,...args}),async cold(){await db.close();db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator'})}};await f.command('task.create',{taskId:'task',groupId:'group',ownerActorId:'operator',request:'Original authorized objective'});return f}
 const failure={code:'TASK_PI_PROVIDER_ERROR',phase:'decision',stopReason:'error'}
 async function claim(f,args={}){return(await f.command('task.claim',{taskId:'task',...args})).result}
 async function drain(f,binding){await f.command('task.drained',{binding})}

@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises'
@@ -8,7 +9,7 @@ import {createHost} from '../src/host.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
-async function temp(t){const root=await mkdtemp('/tmp/night-backup-dirs-');t.after(()=>rm(root,{recursive:true,force:true}));return root}
+async function temp(t){const root=await mkdtemp(join(tmpdir(),'night-backup-dirs-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
 async function service(host,config,initialize){const ctx=host.ctx,options={...config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'empty-task.sqlite'),instanceId:'empty-task',ownerActorId:'owner',webActorId:'owner',reasoningMode:'inherit'},resident=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...options,initialize});const tasks=await openTaskSessionService({ctx,config:options,store,residentStore:resident,legacy:{getAgentConfig:()=>options,getGroup:id=>resident.getGroup(id)},notifications:{async send(){throw Error('no sends')},async readback(){throw Error('no readback')}}});return {tasks,store,async close(){await tasks.close();await store.close();await resident.close()}}}
 async function until(fn){for(let n=0;n<400;n++){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,10))}throw Error('task timeout')}
 for(const marked of [true,false])test(marked?'typed task materials cross own backup roots while uncertain effects remain fenced':'old unmarked material packets remain held after own backup relocation',{timeout:20000},async t=>{
