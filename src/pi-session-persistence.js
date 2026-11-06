@@ -129,7 +129,7 @@ export default class PiSessionPersistence extends Service {
     const nameEntry=data.entries.findLast(entry=>entry.type==='session_info')
     return clean({format:data.format,header:data.header,entries:data.entries,audit:data.audit,
       sessionName:{name:nameManager.getSessionName(),nameEntryId:nameEntry?.id},
-      auditEntries:data.entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>({entryId:entry.id,parentId:entry.parentId,data:entry.data})),
+      auditEntries:data.entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map((entry,index)=>({entryId:entry.id,parentId:entry.parentId,data:data.audit[index]})),
       context:committedContext(data)})
   }
   async openNative(id,options={}) {

@@ -47,3 +47,14 @@ test('native storage preserves opaque signed assistant fields and Pi entry bytes
  assert.deepEqual(await readFile(f.backend.path('signed')),bytes)
  const after=await f.backend.readNative('signed',{requireComplete:true});assert.deepEqual(after.entries,before.entries)
 })
+test('borrowed committed business receipts stay immutable when the live official manager is modified',async t=>{
+ const f=await fixture(t),options={auditKinds:{'approval/policy':payload=>payload.policy==='ask'||payload.policy==='never'}}
+ let writer=await f.backend.createNative(f.header('prefix'),options)
+ writer.appendAudit({version:1,domain:'approval',kind:'policy',payload:{policy:'never'}});await writer.close()
+ const bytes=await readFile(f.backend.path('prefix'));writer=await f.backend.openNative('prefix',options)
+ writer.manager.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.audit').data.payload.policy='ask'
+ assert.deepEqual(await writer.readAudit(),[{version:1,domain:'approval',kind:'policy',payload:{policy:'never'}}])
+ await assert.rejects(writer.commit(),{code:'PI_SESSION_PREFIX_CHANGED'})
+ await assert.rejects(writer.close(),{code:'PI_SESSION_PREFIX_CHANGED'})
+ assert.deepEqual(await readFile(f.backend.path('prefix')),bytes)
+})

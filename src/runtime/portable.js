@@ -1,7 +1,9 @@
+import {stampAuditPathBindings,readAuditPathBindings} from './pi-business-path-bindings.js'
 import {relative,resolve,sep} from 'node:path'
 import {inside} from './paths.js'
 import {failure} from './files.js'
-/** Typed application paths only. User text, commands and effect receipts stay opaque. */
+/** Typed application paths and explicitly marked standing-business paths only.
+ * User text, commands, Pi messages/signatures and effect arguments stay opaque. */
 export function portablePaths(paths){
   if(paths.mode!=='portable')return undefined
   const encode=path=>{
@@ -13,6 +15,8 @@ export function portablePaths(paths){
     const path=resolve(paths.installRoot,value);if(!inside(paths.workspaces,path))throw failure('NIGHT_PORTABLE_PATH_INVALID');return path
   }
   return {encode,decode,
+    auditReceipt:receipt=>stampAuditPathBindings(receipt,{originRoot:paths.installRoot,encode}),
+    readAuditReceipt:(receipt,context)=>readAuditPathBindings(receipt,{decode,...context}),
     header:header=>({...header,...header.cwd!==undefined?{portableCwd:encode(header.cwd)}:{}}),
     readHeader:header=>{const {portableCwd,...rest}=header;return {...rest,...portableCwd!==undefined?{cwd:decode(portableCwd)}:{}}},
     event:event=>event.type==='working-directory/change'?{...event,data:{...event.data,portableCwd:encode(event.data.cwd)}}:event,

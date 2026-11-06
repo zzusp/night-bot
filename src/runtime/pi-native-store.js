@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util'
 import {createHash,randomUUID} from 'node:crypto'
 import {open,link,unlink,readFile} from 'node:fs/promises'
 import {dirname,join} from 'node:path'
@@ -12,7 +13,7 @@ const hash=value=>createHash('sha256').update(value).digest('hex')
  * AgentSession before close; this module neither drives nor replays agent work. */
 export function nativeStore({backend,path,header,manager,lease,data,options={}}) {
   const id=header.id
-  let committed=data?.entries??[],piHeader=clone(manager.getHeader()),newFile=!data,closed=false,closing,poisoned,chain=Promise.resolve()
+  let committed=clone(data?.entries??[]),piHeader=clone(manager.getHeader()),newFile=!data,closed=false,closing,poisoned,chain=Promise.resolve()
   const assertOpen=()=>{if(closed)throw fail('PI_SESSION_HANDLE_CLOSED');if(poisoned)throw poisoned}
   const snapshot=()=>({format:'pi-native-v1',header:clone(header),nativeEntryCount:committed.length,auditCount:committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').length,revision:hash(JSON.stringify(committed.at(-1)??piHeader)),formatStatus:'current'})
   async function persist(signal) {
@@ -47,16 +48,19 @@ export function nativeStore({backend,path,header,manager,lease,data,options={}})
     }catch(error){if(started)poisoned=Object.assign(new Error('PI_SESSION_COMMIT_UNCERTAIN',{cause:error}),{code:'PI_SESSION_COMMIT_UNCERTAIN'});throw poisoned??error}
     finally{await file?.close();if(temp)await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error})}
   }
-  function validateReceipt(receipt){validateNativeAudit(receipt);const validate=options.auditKinds?.[receipt.domain+'/'+receipt.kind];if(typeof validate!=='function'||validate(clone(receipt.payload))!==true)throw fail('PI_SESSION_AUDIT_KIND_UNREGISTERED')}
+  const pathCodec=backend.ctx.get('portablePaths')
+  const sourceHeader=clone(manager.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.header')?.data.header)
+  const logicalReceipt=receipt=>pathCodec?.readAuditReceipt?.(receipt,{sourceHeader,logicalHeader:header})??receipt
+  function validateReceipt(receipt,verifyPaths=true){validateNativeAudit(receipt);const validate=options.auditKinds?.[receipt.domain+'/'+receipt.kind];if(typeof validate!=='function'||validate(clone(receipt.payload))!==true)throw fail('PI_SESSION_AUDIT_KIND_UNREGISTERED');if(verifyPaths&&!pathCodec?.auditReceipt&&receipt.pathBindings!==undefined)throw fail('PI_SESSION_AUDIT_PATH_BINDING_HOST_ONLY');if(verifyPaths&&pathCodec?.auditReceipt){const {pathBindings,...plain}=receipt,expected=pathCodec.auditReceipt(plain);if(!isDeepStrictEqual(pathBindings,expected.pathBindings))throw fail('PI_SESSION_AUDIT_PATH_BINDING_HOST_ONLY')}}
   const handle={kind:'pi-native',format:'pi-native-v1',id,header:clone(header),manager,access:'write',snapshot,
     enqueue(){throw fail('PI_SESSION_NATIVE_HOST_EVENT_FORBIDDEN')},
     append(){throw fail('PI_SESSION_NATIVE_HOST_EVENT_FORBIDDEN')},
-    appendAudit(receipt){assertOpen();if(closing)throw fail('PI_SESSION_HANDLE_CLOSED');validateReceipt(receipt);return manager.appendCustomEntry('night.audit',clone(receipt))},
+    appendAudit(receipt){assertOpen();if(closing)throw fail('PI_SESSION_HANDLE_CLOSED');const copied=clone(receipt);if(copied.pathBindings!==undefined)throw fail('PI_SESSION_AUDIT_PATH_BINDING_HOST_ONLY');validateReceipt(copied,false);const stored=pathCodec?.auditReceipt?.(copied)??copied;return manager.appendCustomEntry('night.audit',stored)},
     commit({signal}={}){if(closing||backend.closed)return Promise.reject(fail('PI_SESSION_HANDLE_CLOSED'));const operation=chain.then(()=>persist(signal)).catch(error=>{const last=manager.getEntries().at(-1);if(last?.customType==='night.commit'&&last.id!==committed.at(-1)?.id)poisoned??=error;throw error});chain=operation.catch(()=>{});return operation},
     flush(options){return handle.commit(options)},
     reader(){throw fail('PI_SESSION_NATIVE_AUDIT_API_REQUIRED')},
-    async readAudit(){await chain;assertOpen();return clone(committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>e.data))},
-    async readAuditEntries(){await chain;assertOpen();return clone(committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>({entryId:e.id,parentId:e.parentId,receipt:e.data})))},
+    async readAudit(){await chain;assertOpen();return clone(committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>logicalReceipt(e.data)))},
+    async readAuditEntries(){await chain;assertOpen();return clone(committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>({entryId:e.id,parentId:e.parentId,receipt:logicalReceipt(e.data)})))},
     close(){return closing??=(async()=>{try{await chain;await persist()}finally{closed=true;backend.handles.delete(handle);if(backend.writers.get(id)===handle)backend.writers.delete(id);unregister?.();await lease.close()}})()},
     [Symbol.asyncDispose](){return handle.close()},
   }
