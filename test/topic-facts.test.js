@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {openNativeDomains} from '../src/native-domain.js'
 import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
 import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
@@ -18,16 +18,12 @@ import { sendWorkflowNotification } from '../packages/dingtalk-dsh-assistant/gro
 import { verifyTaskNotificationReadback } from '../packages/dingtalk-dsh-assistant/task-notification-readback.js'
 
 async function fixture(t, { signature = '' } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'topic-facts-')), snapshot = { tables: {}, global: null }
-  const facility = new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'isolated' })
-  const resident = await openResidentStore(facility)
+  const root = await mkdtemp(join(tmpdir(), 'topic-facts-'))
+  const domains=await openNativeDomains({root:join(root,'domains')})
+  const resident = await openResidentStore(domains)
   const config = { dbPath: join(root, 'facts.sqlite'), instanceId: 'fact-test' }
   let ledger = await openDynamicTaskStore({ ...config, initialize: true }), sequence = 0
-  t.after(async () => { await ledger.close(); await resident.close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => { await ledger.close(); await resident.close(); await domains.closeAll(); await rm(root, { recursive: true, force: true }) })
   const query = (kind, args = {}) => ledger.query({ kind, ...args })
   const commit = (kind, args = {}, id = `cmd-${++sequence}`) => ledger.command({ id, kind, args })
   await resident.subscribe({ groupId: 'group' })

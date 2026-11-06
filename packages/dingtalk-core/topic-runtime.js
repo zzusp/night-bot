@@ -329,7 +329,7 @@ export function createTopicCoordinator({ store, getAgent, assertSession, dispatc
   async function settleCoordinationRequest(groupId, requestId) {
     const state = requestId && store.getCoordinationRequest?.(groupId, requestId)
     if (state?.status === 'pending' && !collections.some(collection => collection.has(requestId))) {
-      await store.updateCoordinationRequest(groupId, requestId, { status: 'completed', nextRetryAt: undefined })
+      await store.updateCoordinationRequest(groupId, requestId, { status: 'completed', nextRetryAt: undefined }, undefined, { expectedStatus: 'pending' })
     }
   }
   const replyRouting = (messages, replyToMessageId, atOpenDingTalkIds, atAll) => groupNotificationRouting(messages, { replyToMessageId, atOpenDingTalkIds, atAll })

@@ -4,7 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
-import {DomainFacility} from '@deepseek-ai/dsh-storage-domain'
+import {openNativeDomains} from '../src/native-domain.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
 import {openResidentStore} from '../packages/dingtalk-dsh-assistant/store.js'
 import {createPlatformSchedules} from '../packages/dingtalk-dsh-assistant/platform-schedule.js'
@@ -14,13 +14,9 @@ import {summarizeTimeSlots} from '../packages/dingtalk-dsh-assistant/coordinatio
 // This is the bridge's deterministic contract fixture, not a claim that a fake
 // clock drives native DSH. Real ScheduleService tests live in fixed-topics-native.
 async function fixture(t){
-  const root=await mkdtemp(join(tmpdir(),'platform-schedule-contract-')),snapshot={tables:{},global:null}
-  const facility=()=>new DomainFacility({emit(){},storage:{backend:{get:()=>({kv:{async open(){return{
-    loadAll:async()=>structuredClone(snapshot),close:async()=>{},
-    async putRecord(table,key,value){(snapshot.tables[table]??={})[key]=structuredClone(value)},
-    async deleteRecord(table,key){delete snapshot.tables[table][key]},
-  }}}})}}},{backend:'schedule-contract'})
-  let store=await openResidentStore(facility()),bridge,clock=Date.parse('2026-10-21T00:00:00Z'),createCount=0
+  const root=await mkdtemp(join(tmpdir(),'platform-schedule-contract-'))
+  let domains=await openNativeDomains({root:join(root,'domains')})
+  let store=await openResidentStore(domains),bridge,clock=Date.parse('2026-10-21T00:00:00Z'),createCount=0
   const records=[]
   // A Host-owned session was already persisted; native scheduling belongs to the
   // injected service. We test persistence/identity calls, not its clock algorithm.
@@ -40,11 +36,11 @@ async function fixture(t){
   const source={groupId:'g',messageId:'m',messageVersion:1,unitId:unit.unitId,unitRevision:unit.unitRevision,timezone:'Asia/Shanghai',
     requestId:fixedUnitRequestId('g',message,unit)}
   open()
-  t.after(async()=>{await bridge.close();await store.close();await rm(root,{recursive:true,force:true})})
+  t.after(async()=>{await bridge.close();await store.close();await domains.closeAll();await rm(root,{recursive:true,force:true})})
   return {source,records,native,ctx,args:{title:'Progress report',prompt:'Report current progress to the group',at:'2026-10-21T09:00:00+08:00'},
     get store(){return store},get creates(){return createCount},submit:(args,identity=source)=>bridge.submit(identity,args),
     tick:ms=>{clock+=ms},setTime:at=>{clock=Date.parse(at)},
-    async restart(){await bridge.close();await store.close();store=await openResidentStore(facility());open()}}
+    async restart(){await bridge.close();await store.close();await domains.closeAll();domains=await openNativeDomains({root:join(root,'domains')});store=await openResidentStore(domains);open()}}
 }
 
 test('explicit timezone offset freezes one canonical instant and one native identity through retries and restart',async t=>{

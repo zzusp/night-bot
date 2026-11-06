@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { nativeRuntimeHost } from './fixtures/runtime-official-host.js'
-import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import { Session } from '../packages/capability-compat/session/index.js'
 import { createToolResultMessage } from '../packages/capability-compat/llm/index.js'
 import { coordinationTools } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
@@ -16,16 +16,11 @@ import { boundedTopicContext, createTopicCoordinator, projectTopicContext, TASK_
 import { visiblePromptRefs, visibleSectionLength, compactSectionValue } from '../packages/dingtalk-dsh-assistant/coordination-context.js'
 import { stagePlanFor } from '../packages/dingtalk-dsh-assistant/task-input-revision.js'
 
-function memoryFacility(snapshot) {
-  return new DomainFacility({ emit() {}, storage: { backend: { get: () => ({ kv: { async open() { return {
-    loadAll: async () => structuredClone(snapshot), close: async () => {},
-    async putRecord(table, key, value) { (snapshot.tables[table] ??= {})[key] = structuredClone(value) },
-    async deleteRecord(table, key) { delete snapshot.tables[table][key] },
-  } } } }) } } }, { backend: 'topic-test' })
-}
 async function setup(t, options = {}) {
   const snapshot = options.snapshot ?? { tables: {}, global: null }
-  const store = await openResidentStore(memoryFacility(snapshot))
+  const storage=await nativeResidentSnapshot(snapshot)
+  const {domains}=storage
+  const store = await openResidentStore(domains)
   if (!store.getGroup('g')) await store.subscribe({ groupId: 'g', responsibility: '处理测试任务' })
   await store.setAgentNames(['助理'])
   const sent = [], errors = [], tools = new Map(), applications = []
@@ -51,8 +46,8 @@ async function setup(t, options = {}) {
     },
   })
   coordinator.register({ tools: { register(tool) { tools.set(tool.name, tool) } } }, 'g', options.scope)
-  t.after(async () => { await coordinator.close(); await store.close() })
-  return { store, snapshot, coordinator, sent, errors, applications, tools,
+  t.after(async () => { await coordinator.close(); await store.close(); await storage.close() })
+  return { store, snapshot, coordinator, sent, errors, applications, tools, settle:()=>storage.settle(),
     rawCall: (name, args, exec = { groupId: 'g' }) => tools.get(name).execute(args, exec),
     async call(name, args, exec = { groupId: 'g' }) {
       const result = await tools.get(name).execute(args, exec)
@@ -73,7 +68,7 @@ async function ingest(h, messageId, extra = {}) {
   await h.store.ingest({ groupId: 'g', messageId, text: `@助理 ${messageId}`, senderOpenDingTalkId: 'od-a', occurredAt: '2026-09-07T00:00:00Z', ...extra })
 }
 
-const settleStartup = async () => { for (let index = 0; index < 8; index++) await new Promise(resolve => setImmediate(resolve)) }
+const settleStartup = h => h.settle()
 const startupFailure = () => Object.assign(new Error('agent preset invalid'), { coordinationStartupFailure: true, code: 'agent-preset/invalid' })
 const pendingStartupAgent = () => ({ whenIdle: () => new Promise(() => {}) })
 
@@ -84,21 +79,21 @@ test('启动失败持久退避，预设未恢复不派发，到期沿原请求�
     checkStartupRecovery: async (groupId, requestId) => { checked.push([groupId, requestId]); return available },
     dispatchRequest: async (request, message) => { dispatched.push({ requestId: request.requestId, messageId: message.id }); if (broken) throw startupFailure(); return pendingStartupAgent() },
   })
-  await ingest(h, 'startup-original'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'startup-original'); await h.coordinator.schedule('g'); await settleStartup(h)
   const requestId = dispatched[0].requestId
   let state = h.store.getCoordinationRequest('g', requestId)
   assert.equal(state.status, 'exhausted'); assert.equal(state.failurePhase, 'startup')
   assert.equal(state.failureCode, 'agent-preset/invalid'); assert.equal(state.startupAttempt, 1)
   assert.equal(state.attempt, 0); assert.equal(state.messageId, undefined)
   assert.ok(Date.parse(state.nextRetryAt) > Date.now())
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.equal(dispatched.length, 1, '未到期不重新创建句柄')
   await h.store.updateCoordinationRequest('g', requestId, { nextRetryAt: new Date(0).toISOString() })
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.equal(dispatched.length, 1, '预设仍无效不派发')
   assert.deepEqual(checked.at(-1), ['g', requestId])
   available = true; broken = false
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.deepEqual(dispatched, [dispatched[0], dispatched[0]], '原请求与输入 ID 原样接续')
   state = h.store.getCoordinationRequest('g', requestId)
   assert.equal(state.status, 'pending'); assert.equal(state.attempt, 0)
@@ -109,7 +104,7 @@ test('启动失败持久退避，预设未恢复不派发，到期沿原请求�
 test('重启保留启动退避，校验异常保留原故障，历史零输入失败可恢复', async t => {
   const calls = []
   const h = await setup(t, { dispatchRequest: async request => { calls.push(request.requestId); throw startupFailure() } })
-  await ingest(h, 'startup-restart'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'startup-restart'); await h.coordinator.schedule('g'); await settleStartup(h)
   const requestId = calls[0], saved = structuredClone(h.store.getCoordinationRequest('g', requestId))
   await h.coordinator.close(); await h.store.close()
   let checkThrows = true
@@ -117,18 +112,18 @@ test('重启保留启动退避，校验异常保留原故障，历史零输入�
     checkStartupRecovery: async () => { if (checkThrows) throw new Error('preset service unavailable'); return true },
     dispatchRequest: async request => { calls.push(request.requestId); return pendingStartupAgent() },
   })
-  await reopened.coordinator.recover(); await settleStartup()
+  await reopened.coordinator.recover(); await settleStartup(reopened)
   assert.equal(calls.length, 1)
   assert.equal(reopened.store.getCoordinationRequest('g', requestId).nextRetryAt, saved.nextRetryAt)
   await reopened.store.updateCoordinationRequest('g', requestId, { nextRetryAt: new Date(0).toISOString() })
-  await assert.rejects(reopened.coordinator.recover(), /preset service unavailable/); await settleStartup()
+  await assert.rejects(reopened.coordinator.recover(), /preset service unavailable/); await settleStartup(reopened)
   assert.equal(calls.length, 1)
   assert.equal(reopened.store.getCoordinationRequest('g', requestId).failurePhase, 'startup')
   assert.equal(reopened.store.getCoordinationRequest('g', requestId).lastError, saved.lastError)
   // 历史记录没有新分类字段，只有 attempt=0 且没有已派发输入才能接回。
   await reopened.store.updateCoordinationRequest('g', requestId, { failurePhase: undefined, failureCode: undefined, startupAttempt: undefined })
   checkThrows = false
-  await reopened.coordinator.recover(); await settleStartup()
+  await reopened.coordinator.recover(); await settleStartup(reopened)
   assert.deepEqual(calls, [requestId, requestId])
 })
 
@@ -137,22 +132,22 @@ test('普通协议耗尽与已派发后失败均不被启动补偿重放', async
   const h = await setup(t, { checkStartupRecovery: async () => true,
     dispatchRequest: async request => { calls.push(request.requestId); throw new Error('after dispatch failure') },
   })
-  await ingest(h, 'protocol-exhausted'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'protocol-exhausted'); await h.coordinator.schedule('g'); await settleStartup(h)
   const requestId = calls[0]
   const failed = h.store.getCoordinationRequest('g', requestId)
   assert.equal(failed.failurePhase, 'dispatch')
   assert.equal(failed.attempt, 0); assert.equal(failed.messageId, undefined)
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.equal(calls.length, 1, '新派发 Promise 普通拒绝不可冒充旧版未分类启动错误')
   await h.store.updateCoordinationRequest('g', requestId, { status: 'exhausted', attempt: 3, messageId: `message-${requestId}`, nextRetryAt: new Date(0).toISOString() })
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.equal(calls.length, 1)
   await h.store.updateCoordinationRequest('g', requestId, { attempt: 0 })
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.equal(calls.length, 1, '有已派发 messageId 的零次协议请求也不能当作历史启动失败')
   assert.equal(h.store.getCoordinationRequest('g', requestId).failurePhase, 'dispatch')
   await h.store.updateCoordinationRequest('g', requestId, { failurePhase: 'startup', failureCode: 'agent-preset/invalid', startupAttempt: 1 })
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   assert.equal(calls.length, 1, '已有 messageId 时即使后来出现启动错误也不能自动重放')
 })
 
@@ -161,11 +156,11 @@ test('连续启动失败增加独立退避次数，并发恢复只派发一次',
   const h = await setup(t, { retryDelayMs: 60_000, checkStartupRecovery: async () => true,
     dispatchRequest: async request => { calls.push(request.requestId); throw startupFailure() },
   })
-  await ingest(h, 'startup-concurrent'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'startup-concurrent'); await h.coordinator.schedule('g'); await settleStartup(h)
   const requestId = calls[0]
   await h.store.updateCoordinationRequest('g', requestId, { nextRetryAt: new Date(0).toISOString() })
   const before = Date.now()
-  await Promise.all([h.coordinator.recover(), h.coordinator.recover()]); await settleStartup()
+  await Promise.all([h.coordinator.recover(), h.coordinator.recover()]); await settleStartup(h)
   assert.deepEqual(calls, [requestId, requestId])
   const state = h.store.getCoordinationRequest('g', requestId)
   assert.equal(state.startupAttempt, 2); assert.equal(state.attempt, 0)
@@ -173,7 +168,7 @@ test('连续启动失败增加独立退避次数，并发恢复只派发一次',
   assert.ok(Date.parse(state.nextRetryAt) <= Date.now() + 120_000)
   await h.store.updateCoordinationRequest('g', requestId, { startupAttempt: 10, nextRetryAt: new Date(0).toISOString() })
   const cappedBefore = Date.now()
-  await h.coordinator.recover(); await settleStartup()
+  await h.coordinator.recover(); await settleStartup(h)
   const capped = h.store.getCoordinationRequest('g', requestId)
   assert.equal(capped.startupAttempt, 11); assert.equal(capped.attempt, 0)
   assert.ok(Date.parse(capped.nextRetryAt) >= cappedBefore + 300_000)
@@ -183,7 +178,7 @@ test('连续启动失败增加独立退避次数，并发恢复只派发一次',
 test('manual request recovery fences message version, units and request token and coalesces repeated clicks', async t => {
   let offline = true
   const h = await setup(t, { dispatchRequest: async () => { if (offline) throw startupFailure(); return pendingStartupAgent() } })
-  await ingest(h, 'manual-recovery'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'manual-recovery'); await h.coordinator.schedule('g'); await settleStartup(h)
   const first = h.coordinator.messageProcessingRequests('g')[0]
   const args = { groupId: 'g', messageId: 'manual-recovery', messageVersion: 1, activeUnitRefs: [], requestId: first.requestId, token: first.retryToken }
   await assert.rejects(h.coordinator.retryMessageRequest({ ...args, messageVersion: 2 }), /MESSAGE_RETRY_STALE/)
@@ -192,12 +187,12 @@ test('manual request recovery fences message version, units and request token an
   const results = await Promise.allSettled([h.coordinator.retryMessageRequest(args), h.coordinator.retryMessageRequest(args)])
   assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
   assert.equal(results.filter(result => result.status === 'rejected').length, 1)
-  await settleStartup()
+  await settleStartup(h)
   const second = h.coordinator.messageProcessingRequests('g')[0]
   assert.equal(second.status, 'exhausted'); assert.notEqual(second.retryToken, first.retryToken)
   await assert.rejects(h.coordinator.retryMessageRequest(args), /MESSAGE_RETRY_STALE/)
   offline = false
-  await h.coordinator.retryMessageRequest({ ...args, token: second.retryToken }); await settleStartup()
+  await h.coordinator.retryMessageRequest({ ...args, token: second.retryToken }); await settleStartup(h)
   assert.equal(h.coordinator.messageProcessingRequests('g')[0].status, 'pending')
   await assert.rejects(h.coordinator.retryMessageRequest({ ...args, token: second.retryToken }), /MESSAGE_RETRY_STALE/)
   assert.equal(h.store.getGroup('g').messages.length, 1)
@@ -206,7 +201,7 @@ test('manual request recovery fences message version, units and request token an
 test('messageProcessingRequests preserves startup compensation and exposes only detached read-only fields', async t => {
   const h = await setup(t, { dispatchRequest: async () => { throw startupFailure() } })
   await ingest(h, 'request-private', { text: 'PRIVATE-BODY', senderOpenDingTalkId: 'PRIVATE-ACTOR' })
-  await h.coordinator.schedule('g'); await settleStartup()
+  await h.coordinator.schedule('g'); await settleStartup(h)
   const before = structuredClone(h.snapshot), sent = h.sent.length, errors = h.errors.length
   const requestId = Object.keys(h.store.getGroup('g').coordinationRequests)[0]
   const [request] = h.coordinator.messageProcessingRequests('g')
@@ -223,7 +218,7 @@ test('messageProcessingRequests preserves startup compensation and exposes only 
 
 test('messageProcessingRequests classifies legacy zero-input exhaustion by the existing startup recovery rule', async t => {
   const h = await setup(t, { dispatchRequest: async () => { throw startupFailure() } })
-  await ingest(h, 'legacy-startup'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'legacy-startup'); await h.coordinator.schedule('g'); await settleStartup(h)
   const id = Object.keys(h.store.getGroup('g').coordinationRequests)[0]
   await h.store.updateCoordinationRequest('g', id, { failurePhase: undefined, failureCode: undefined, startupAttempt: undefined })
   const before = structuredClone(h.snapshot), persisted = h.store.getCoordinationRequest('g', id)
@@ -242,7 +237,7 @@ test('messageProcessingRequests classifies legacy zero-input exhaustion by the e
 
 test('messageProcessingRequests route scope requires current unrouted message versions and live status', async t => {
   const h = await setup(t)
-  await ingest(h, 'route-current'); await ingest(h, 'route-other'); await h.coordinator.schedule('g'); await settleStartup()
+  await ingest(h, 'route-current'); await ingest(h, 'route-other'); await h.coordinator.schedule('g'); await settleStartup(h)
   const id = h.envelope('[GROUP_TOPIC_ROUTE]').requestId
   assert.deepEqual(h.coordinator.messageProcessingRequests('g')[0].messages,
     [{ messageId: 'route-current', messageVersion: 1 }, { messageId: 'route-other', messageVersion: 1 }])
@@ -272,7 +267,7 @@ test('messageProcessingRequests decision scope includes only current unprocessed
     { unitKey: 'one', summary: 'one', sourceRefs: [{ quote: 'PRIVATE-ONE;' }], topics: [{ topicId: first.topicId }] },
     { unitKey: 'two', summary: 'two', sourceRefs: [{ quote: 'PRIVATE-TWO' }], topics: [{ topicId: first.topicId }] },
   ] }] })
-  await settleStartup()
+  await settleStartup(h)
   const current = h.envelope('[GROUP_TOPIC_DECISION]'), topic = h.store.getTopic('g', first.topicId)
   const expected = h.store.getGroup('g').messages.find(message => message.messageId === 'current').activeUnitRefs
     .map(ref => ({ messageId: 'current', messageVersion: 1, ...ref }))
@@ -296,7 +291,7 @@ test('messageProcessingRequests excludes replaced Topic revisions and removed Un
     routes: [{ messageId: 'same-version', messageVersion: 1, ignoredRefs: [], units: [{ unitKey: 'whole-message', summary: 'revised semantic unit',
       sourceRefs: [{ quote: 'source text' }], topics: [{ newTopicKey: 'replacement', title: 'replacement' }] }] }] })
   assert.deepEqual(h.coordinator.messageProcessingRequests('g'), [])
-  await h.coordinator.schedule('g'); await settleStartup()
+  await h.coordinator.schedule('g'); await settleStartup(h)
   const requests = h.coordinator.messageProcessingRequests('g')
   assert.equal(requests.some(request => request.requestId === first.requestId), false)
   const messages = requests.flatMap(request => request.messages)
@@ -311,14 +306,14 @@ for (const kind of ['route', 'decision']) test(`messageProcessingRequests rebuil
   await ingest(h, 'restart-current')
   if (kind === 'decision') await route(h)
   else await h.coordinator.schedule('g')
-  await settleStartup()
+  await settleStartup(h)
   const id = h.envelope(kind === 'route' ? '[GROUP_TOPIC_ROUTE]' : '[GROUP_TOPIC_DECISION]').requestId
   await h.store.updateCoordinationRequest('g', id, { status: 'exhausted', attempt: 3, lastError: 'PRIVATE-OLD-ERROR' })
   const persisted = structuredClone(h.store.getCoordinationRequest('g', id))
   assert.equal(persisted.topicId, undefined); assert.equal(persisted.messages, undefined)
   await h.coordinator.close(); await h.store.close()
   const reopened = await setup(t, { snapshot: h.snapshot })
-  await reopened.coordinator.recover(); await settleStartup()
+  await reopened.coordinator.recover(); await settleStartup(reopened)
   const recovered = structuredClone(reopened.store.getCoordinationRequest('g', id))
   const [request] = reopened.coordinator.messageProcessingRequests('g')
   assert.equal(request.requestId, id); assert.equal(request.status, 'exhausted'); assert.equal(request.attempt, 3)
@@ -1805,7 +1800,7 @@ test('Task 通知要求真实 Topic 引用及参与人，并拒绝旧 Task 输�
   assert.equal((await h.call('group_reply_submit', { requestId: request.requestId, reply: '结果', replyReview: { kind: 'substantive' }, replyToMessageId: 'a1', atOpenDingTalkIds: ['od-a'] })).status, 'task-stale')
   assert.match((await outcome).error.message, /task_result_context_changed/)
   assert.equal(h.store.getGroup('g').outbox.length, 0)
-  await new Promise(resolve => setImmediate(resolve))
+  await h.settle()
   assert.equal(h.store.getCoordinationRequest('g', request.requestId).status, 'superseded')
 })
 
@@ -2642,6 +2637,7 @@ test('结构校验一次返回全部引用歧义及字段位置，整批零副�
   await ingest(h, 'multiple-errors', { text: '甲 甲 乙 乙' })
   await h.coordinator.schedule('g')
   const request = h.envelope('[GROUP_TOPIC_ROUTE]')
+  await h.settle()
   const before = structuredClone(h.store.getGroup('g'))
   const result = await h.call('group_topic_route_submit', { requestId: request.requestId, routes: [{ messageId: 'multiple-errors', messageVersion: 1, units: [{
     unitKey: 'a', summary: '两处重复引用', sourceRefs: [{ quote: '甲' }], contextRefs: [{ quote: '乙', purpose: '共享要求' }], topics: [{ newTopicKey: 'a', title: '不能写入' }],

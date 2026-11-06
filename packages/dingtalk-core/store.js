@@ -628,11 +628,16 @@ export async function openResidentStore(storageDomain) {
     updateSourceDispatch: async () => { throw new Error('INDEPENDENT_COORDINATION_RETIRED') },
     beginSourceDispatchHandoff: async () => { throw new Error('INDEPENDENT_COORDINATION_RETIRED') },
     completeSourceDispatchHandoff: async () => { throw new Error('INDEPENDENT_COORDINATION_RETIRED') },
-    updateCoordinationRequest: (groupId, requestId, patch, validateSnapshot) => serialize(groupId, async () => {
+    updateCoordinationRequest: (groupId, requestId, patch, validateSnapshot, {expectedStatus} = {}) => serialize(groupId, async () => {
       validateSnapshot?.()
       const entry = findGroupEntry(groupId)
       if (!entry) throw new Error(`group_not_found:${groupId}`)
       const [key, group] = entry
+      const current = group.coordinationRequests?.[requestId]
+      // Check under the same group writer queue as the eventual document commit.
+      // A completion queued before supersession commits must not erase it.
+      if (expectedStatus !== undefined && current?.status !== expectedStatus
+        || current?.status === 'superseded' && patch.status === 'completed') return current
       const requests = { ...group.coordinationRequests, [requestId]: { ...group.coordinationRequests?.[requestId], ...patch, updatedAt: new Date().toISOString() } }
       const terminal = Object.entries(requests).filter(([, value]) => ['completed', 'superseded'].includes(value.status)).sort((a, b) => a[0] === requestId ? 1 : b[0] === requestId ? -1 : (a[1].updatedAt ?? '').localeCompare(b[1].updatedAt ?? '') || a[0].localeCompare(b[0]))
       for (const [expired] of terminal.slice(0, Math.max(0, terminal.length - 500))) delete requests[expired]

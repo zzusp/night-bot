@@ -793,7 +793,7 @@
       "source": "store.js",
       "sourceSha256": "642f453d7baf48c065c8f504028a59e5052d027487b6433d916ab87c522bcfe2",
       "status": "adapted",
-      "sha256": "f3c231b6ca51ba20516a14354b3dea1fc54ff78108f0e70e8b2a47695bc94016",
+      "sha256": "10fc82a59c55bf6983047e39478e818e388537f390c6e90d324b08334a6827c9",
       "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
     },
     {
@@ -1129,7 +1129,7 @@
       "source": "topic-runtime.js",
       "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
       "status": "adapted",
-      "sha256": "07516680777fea140d09707a527ab101ef9f27d9ed1084d4a3feabca42be3d8e",
+      "sha256": "4dd448d1ba544b15f859d92d96117b7502b3cb4567af9886c834e0b87eed6233",
       "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body. Topic visibility, body retries and read provenance use live Pi model context; writer/authority failures propagate. Exact decision-schema admission returns declared structured correction before dispatch; issue scope is arguments rather than invented field-specific diagnostics."
     },
     {
