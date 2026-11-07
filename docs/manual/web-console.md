@@ -2,7 +2,7 @@
 
 Night Bot Web 是可选界面。管理员启用后，通过本机地址登录；令牌由管理员从受保护的安装目录提供。
 
-本页面向操作者；界面开发与维护统一遵循 [DESIGN.md](../acceptance/web-console/DESIGN.md)，本页不另立 UI/UE 规则。
+本页面向操作者；界面开发与维护统一遵循仓库根目录的 [DESIGN.md](../../DESIGN.md)，本页不另立 UI/UE 规则。
 
 ## 与 Bot 对话
 

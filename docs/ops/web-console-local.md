@@ -1,6 +1,6 @@
 # 可选 Web 控制台本机运行
 
-本页只说明安装、运行与排障；UI/UE 的唯一指导文档为 [DESIGN.md](../acceptance/web-console/DESIGN.md)。
+本页只说明安装、运行与排障；UI/UE 的唯一指导文档为仓库根目录的 [DESIGN.md](../../DESIGN.md)。
 
 ## 边界
 

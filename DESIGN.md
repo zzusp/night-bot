@@ -48,21 +48,21 @@ components:
 
 ### 文档地位与适用范围
 
-**本文件是 Night Bot UI/UE 的唯一指导性文档**，统一视觉、信息架构、组件、交互、状态、恢复、文案和可访问性。当前适用于 `packages/web-console` 的所有页面；新增页面沿用本规范。原独立交互合同已合并到本文，不另建平行 UI/UE 规则。
+**仓库根目录的本文件是 Night Bot UI/UE 的唯一指导性文档**，统一视觉、信息架构、组件、交互、状态、恢复、文案和可访问性。当前适用于 `packages/web-console` 的所有页面；新增页面沿用本规范。原独立交互合同已合并到本文，不另建平行 UI/UE 规则。
 
 本文规定设计意图与行为约束；源码负责实现，业务/API/权限文档负责领域事实。不能用展示需求改变 Bot 的权限、数据或执行语义。通用设计技能、上游模板和历史截图只作参考；与本文不一致时，先按当前产品要求和业务约束明确差异，再同步修订本文与实现，不以现有代码自动覆盖规范。
 
 | 文档或实现 | 职责 |
 |---|---|
 | 本文 | 唯一现行 UI/UE 规则与共享实现入口 |
-| [premium-ui.json](premium-ui.json) | 指向本文的机器审查配置，不另立设计规则 |
-| [使用说明](../../manual/web-console.md)、[运维说明](../../ops/web-console-local.md) | 操作者使用、安装和排障，不另立设计规则 |
-| [实施前快照](../../spec/independent-web-console.md) | 保留当时的架构取舍，不作为现行 UI/UE 规范 |
-| [验收入口](goal.md)、`round-*.md`、`matrix.csv` 与截图 | 指定版本的验证证据，不将历史结果当作当前规范或新版本通过证明 |
+| [premium-ui.json](docs/acceptance/web-console/premium-ui.json) | 指向本文的机器审查配置，不另立设计规则 |
+| [使用说明](docs/manual/web-console.md)、[运维说明](docs/ops/web-console-local.md) | 操作者使用、安装和排障，不另立设计规则 |
+| [实施前快照](docs/spec/independent-web-console.md) | 保留当时的架构取舍，不作为现行 UI/UE 规范 |
+| [验收入口](docs/acceptance/web-console/goal.md)、该目录的 `round-*.md`、`matrix.csv` 与截图 | 指定版本的验证证据，不将历史结果当作当前规范或新版本通过证明 |
 
 ### 产品与视觉方向
 
-依据用户指定的 BoardUI 设计。参考固定版本 [BoardUI/boardui@ec5c5eb](https://github.com/BoardUI/boardui/tree/ec5c5eb3e29c2441be63b9422cd54f411ef23466)：`agent-chat.tsx`、`agent-composer.tsx`、`dashboard-sidebar.tsx`、`styles/theme.css` 和 `styles/typography.css`。复用公开 MIT 源码，许可保存在 [boardui-MIT.txt](../../../packages/web-console/licenses/boardui-MIT.txt)。
+依据用户指定的 BoardUI 设计。参考固定版本 [BoardUI/boardui@ec5c5eb](https://github.com/BoardUI/boardui/tree/ec5c5eb3e29c2441be63b9422cd54f411ef23466)：`agent-chat.tsx`、`agent-composer.tsx`、`dashboard-sidebar.tsx`、`styles/theme.css` 和 `styles/typography.css`。复用公开 MIT 源码，许可保存在 [boardui-MIT.txt](packages/web-console/licenses/boardui-MIT.txt)。
 
 这是中文个人助手产品界面：用户与 Bot 对话，查看配置的渠道、渠道消息与任务执行情况。优先桌面长时间使用，窄屏保留同样的信息与操作。没有特定地域业务规则；UI 语言为简体中文，不推断用户身份、企业或业务。
 
@@ -74,8 +74,8 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 
 | 业务依据 | UI 后果 |
 |---|---|
-| [渠道合同](../../CHANNELS.md)、`src/channels/service.js` | 身份由认证后的服务端绑定；会话只有 `chat` / `chat-room`；已接纳不等于业务完成 |
-| [任务归档](../../TASK-ARCHIVE.md)、`src/runtime/pi-journal.js` | SQLite/Pi 是业务权威；展示不得写任务状态或消费未提交的 journal |
+| [渠道合同](docs/CHANNELS.md)、`src/channels/service.js` | 身份由认证后的服务端绑定；会话只有 `chat` / `chat-room`；已接纳不等于业务完成 |
+| [任务归档](docs/TASK-ARCHIVE.md)、`src/runtime/pi-journal.js` | SQLite/Pi 是业务权威；展示不得写任务状态或消费未提交的 journal |
 | `packages/dingtalk-core/task-session-service.js` | 每任务一个执行会话；任务状态、等待原因、结果与时间线按真实记录投影 |
 | `packages/web-console/server/security.js` | 本机单操作者、令牌登录和会话边界；界面不提供账号切换或身份伪造入口 |
 | `packages/web-console/server/session-view.js`、`packages/web-console/server/views.js` | 执行记录是当前已提交上下文；仅展示必要字段，隐藏思考、系统指令、工具参数、凭据与私密路径 |
@@ -151,7 +151,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 
 ### Token 与源码归属
 
-[boardui.css](../../../packages/web-console/src/styles/boardui.css) 是运行时 token 的唯一声明来源；本文 frontmatter 镜像已选浅色值并说明用途，不生成第二套样式。深色映射及状态颜色也在该文件；[app.css](../../../packages/web-console/src/styles/app.css) 实现页面布局与明确的组件变体。唯一指导文档不等于把 CSS 迁成 Markdown 生成系统。
+[boardui.css](packages/web-console/src/styles/boardui.css) 是运行时 token 的唯一声明来源；本文 frontmatter 镜像已选浅色值并说明用途，不生成第二套样式。深色映射及状态颜色也在该文件；[app.css](packages/web-console/src/styles/app.css) 实现页面布局与明确的组件变体。唯一指导文档不等于把 CSS 迁成 Markdown 生成系统。
 
 文字链接使用 `--board-info`（浅色 #1d4ed8、深色 #93c5fd），交互背景使用 `--board-primary`，不能因为当前色值相似就混用语义。共享组件与页面消费同一组 `--board-*` 变量。
 
@@ -247,6 +247,6 @@ Composer 是受控组件，消息文本归调用方持有；原始缩进和换�
 
 1. 改 UI/UE 前读本文并核对业务/API 约束与共享 owner。视觉、流程或状态发生持久变化时，同步修改本文与对应 token/组件；不恢复独立 UX 合同，不在 README、手册或验收报告中另立规则。
 2. 保持 frontmatter → `boardui.css` → 共享组件 → 页面用途可追溯；本文镜像与运行时不一致时查明意图，记录修正原因，不能无说明地放宽规则。
-3. 纯文档整理运行 DESIGN lint、`premium-ui.json` 指向本文的 strict 静态审查，以及链接/旧引用检查；不把历史浏览器结果声称为本次实跑。审查配置中的源码/命令/evidence 路径均相对本目录。
+3. 纯文档整理运行 `designmd lint DESIGN.md`、strict 静态审查，以及链接/旧引用检查；不把历史浏览器结果声称为本次实跑。审查器使用仓库根目录作为 `project_root`，显式传入 `--config docs/acceptance/web-console/premium-ui.json`；配置中的源码/命令/evidence 路径均相对仓库根目录。审查输出用 `--output docs/acceptance/web-console/design-contract-audit.json` 保存在验收目录。
 4. 修改页面、交互或运行时代码时，执行配置中的相关单元/集成、类型检查、构建与浏览器命令。浏览器至少覆盖成功、加载、失败、空/无匹配、键盘、中文 IME、390px、浅深色和受影响的异步恢复；涉及滚动、认证、长内容、reduced motion 的变更需覆盖对应反例。
 5. 静态审查和 axe 不能替代真实浏览器或 Host/Pi 回归，也不等于完整 WCAG 认证、真实厂商接入或部署验收。结果记录到 PR；需要跨轮回归时沿用既有验收目录与版本绑定，规范本身不堆测试流水账。

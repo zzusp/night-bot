@@ -1,7 +1,7 @@
 /* BoardUI visual adaptation. MIT, copyright 2026 Mertcan Dundar Esmergul.
  * Source: BoardUI/boardui@ec5c5eb3e29c2441be63b9422cd54f411ef23466.
  * Geometry: agent-chat, agent-composer, dashboard-sidebar; palette: theme.css.
- * Token ownership: this stylesheet; see docs/acceptance/web-console/DESIGN.md.
+ * Token ownership: this stylesheet; see repository-root DESIGN.md.
  */
 :root {
   color-scheme: light;

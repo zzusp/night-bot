@@ -1,6 +1,6 @@
 # 独立 Web 控制台决策快照
 
-> 本文保留实施前的方案与判断，不作为现行 UI/UE 指导；当前视觉、交互及接纳状态语义统一见 [DESIGN.md](../acceptance/web-console/DESIGN.md)。
+> 本文保留实施前的方案与判断，不作为现行 UI/UE 指导；当前视觉、交互及接纳状态语义统一见仓库根目录的 [DESIGN.md](../../DESIGN.md)。
 
 基线：`origin/worktree-resident-conversation-routing@d273509`，2026-11-07 已 fetch。主检出有其他会话改动，本任务仅使用 `worktree-night-bot-web-console`。
 
