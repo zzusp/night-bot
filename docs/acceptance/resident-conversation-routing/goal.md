@@ -1,8 +1,8 @@
 # 常驻 Router 与事项直连
 
-> 状态：ACTIVE
+> 状态：COMPLETED
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-07T09:50:17+08:00
+> 最近维护：2026-11-07T09:51:57+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -57,8 +57,8 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 | SG5 | 去 Topic、特殊入口、归档及升级 | 保留当前平台/文件/媒体合同，单任务归档和离线升级不重放 | 原链路、固定start冷续与默认旧v1归档迁接分批通过，生产守卫未放宽 | round-2.md、review.md |
 | SG6 | 回归、独立审查与修复 | 必要组及最后增量真实终态、当前源码guard、综合审查 | 完成；本地回归、两个真实业务及当前guard证据已核，最终review无确认残留阻断 | round-4.md、matrix.csv、review.md |
 | SG7 | 提交、push/PR 与最终核验 | 合理提交、无CI触发、正确base/head、gh独立回查 | 原范围完成；实现9f93e0d和文档head d273509已交付PR #2 | Git事实 |
-| SG8 | 指定渠道职责配置与完整产品链 | 明确配置入口、职责贯通全部相关角色、群隔离与可操作接入文档 | 本地阶段完成；原受验九文件、定向1PASS、guard、活文档和独立Review均已核；不等于真实闭环完成 | round-5.md、matrix.csv、review.md的SG8节、原spec补充 |
-| SG9 | 指定群真实终态与原PR更新 | 真实监听→事项→群内交付→复盘，读回证据并更新原PR | 实际独立事项交付、复盘、冷恢复及最终审查已核；本轮Git收口中，旧取消/unknown及未验边界保留 | round-7.md:97/119/139、matrix.csv、review.md:411–451；Lead已核原回执和历史前缀 |
+| SG8 | 指定渠道职责配置与完整产品链 | 明确配置入口、职责贯通全部相关角色、群隔离与可操作接入文档 | 完成；两群脚本角色隔离与职责传播已核，指定群真实闭环见SG9，不扩为其它群或全平台结论 | round-5.md、matrix.csv、review.md的SG8节、原spec补充 |
+| SG9 | 指定群真实终态与原PR更新 | 真实监听→事项→群内交付→复盘，读回证据并更新原PR | 完成；指定群独立事项实际交付、持久复盘、必要冷恢复/正常退出、最终审查与原PR更新均已核，保留旧unknown及明确未验边界 | round-7.md:97/119/139、matrix.csv、review.md:411–451及本节最终Git事实 |
 
 ## 本次单写增量
 
@@ -76,9 +76,10 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 - SG9实际业务终态：临时controller night-bot-de转达真人独立事项后，原Tests已完成真实平台来源、消费与交付核证；Lead独立读完整round-7（2bb4353c）及7份指定原回执。新task `sg9-independent-20261107-02`、session83c5ac6e和workspace独立，source v1/typed actor与平台原生sender及owner精确对应，triage committed/Router consumed/source settled，无旧依赖、completed/drained/run1。实际write→read→task_result成功；work、冻结输出、平台重新下载均48B/SHA `1c2ec48694affb8c6414695062b6b46c9f3c5d031211a18770e6f5f526c97d69`，精确两行目标内容。同群中文正文及附件均status SUCCESS/完整mget/实际内容匹配，两notification delivered/send1/readback1。详见round-7.md:97；不是转达、入队或局部idle代替实证。
 - 复盘、冷恢复与排空：同task-completed event的无工具复盘done/attempt1/lesson1，task reviews、group review/state及唯一同session/event经验entry对应；原工具call_db57/e1ac/4feb/e142/2467均已独立回读。入口522be99d的同安装顺序冷恢复b3hzpf9xy真实ready/backfill ok/health ok，15份strict Pi journal的bytes/SHA/assistant及枚举数、两收据、产物与复盘完全不变，精确自回声未登记为source，无执行/发送/复盘重放。正式IPC自然exit0，supervisor与observer各自closed，sourceStable15、keyInPrivateLog=false，原端口和准确进程已无；实例已结束，没有待续的真人输入或现场运行。旧task仍cancelled/revision2/lease2/run1，原45111字节ad7062 journal及unknown不改写。详见round-7.md:119/139。
 - 观测修复及代码版本：实际业务入口2e340e7b曾写失败后永久拒绝并停更，原observer未closed、最终15998条旧固定错误完整保留，首OS cause未知；临时TRIAGE_NO_DISPOSITION与该观测问题分开，后续health已ok。停止原运行后仅修验收入口为522be99d并完成实际冷恢复；该运行正常停止后，再清真正write前的prior缓存为最终入口 `6f44710a1b89cb88003b9dc3b31ef5177671d1d4447ae9e2b268f9996a3999fa`。最终6f actual apply+atomicWrite隔离call_10ca7fc91a304cc28d317feb16694cb0已独立回读pass，覆盖拒绝后重试、不可变排队快照、B→A、closed以及A成功→B失败→A仍拒绝→夹具恢复后A落盘；无网络/业务实例，夹具已清。未为最终6f再起真实实例，不将522现场结果冒充6f全分支实测；14产品文件及原echo test字节与原实现/HEAD相同，既有生产guard证据复用。
-- 证据历史与边界：最新matrix为8ef6e2f2、91唯一case/9列，Lead独立核剥R7后逐字重建原74行8列/R6完整c14cd39f；R6报告/旧失败保留，未建全绿report。坏observer没有新消息单条raw event/lastEventAt，认证平台来源与持久消费链成立，但live event/history补读分支无法区分；POSIX目录sync提交不确定未动态注入，两项不宣称专项通过。当前为ACTIVE/SG9 FINAL_GIT_DELIVERY，业务终态与最终独立审查已核，仅本轮Git尚未收口；原Review已在review.md:411–451一次追加并冻结（06ba38be），Lead全文读回并核原87319字节/ec0cda4f及78243字节/d8bc189d前缀不变、未发现新的确认残留代码缺陷；代码基线853ed25加goal/报告/矩阵/验收入口未提交增量，产品源码/账本/旧unknown未改。
-- 唯一下一步：由Lead精确提交本轮goal/报告/矩阵/review/验收入口五文件，更新原PR #2并独立gh/远端回查，回填最终goal完成状态；原Review已核不再等待。CI/GitHub PR合并/生产部署仍禁止，不再起实例、重发业务或重跑已通过检查。
-- 未闭环项：本轮提交/原PR更新；最终审查记录已核；真实业务不再等待输入。原成员窗口保留，现场实例已正常结束；最终交付后再标记整体完成，不以Tests自报或PR更新单项替代完整验收。
+- 证据历史与边界：最新matrix为8ef6e2f2、91唯一case/9列，Lead独立核剥R7后逐字重建原74行8列/R6完整c14cd39f；R6报告/旧失败保留，未建全绿report。坏observer没有新消息单条raw event/lastEventAt，认证平台来源与持久消费链成立，但live event/history补读分支无法区分；POSIX目录sync提交不确定未动态注入，两项不宣称专项通过。当前为COMPLETED/SG9，业务终态、最终独立审查及本轮Git交付均已核；原Review已在review.md:411–451一次追加并冻结（06ba38be），Lead全文读回并核原87319字节/ec0cda4f及78243字节/d8bc189d前缀不变、未发现新的确认残留代码缺陷；本次真实执行与隔离接续基线为853ed25，后续五文件验收入口/证据增量已保存为2874a73；四份最终报告/矩阵/review/入口的提交blob与受验字节逐一一致，产品源码/账本/旧unknown未改。
+- 唯一下一步：无。本目标已授权范围已完成；保留原PR OPEN，合并GitHub PR、CI和生产部署未授权，不自动执行。原六成员窗口保留，Tests已确认无真实实例/观察器/模型操作在途、隔离夹具0，不再新增验证或监听。
+- 未闭环项：本目标已授权范围内无待执行项。明确保留旧取消事项的unknown与缺失producer证明，不追认旧成功；单条原始live/history分支、首次OS cause及POSIX目录sync故障动态分支仍属盲点/未验，不声明全量全平台绿。合并/生产部署不属于本目标授权交付。
+- SG9最终Git交付事实：实现/证据提交`2874a73ce48fdbcbe59fb8a4731ff8f4d055274f`为五文件、150新增/21删除，提交前最终6f已实际隔离运行，code/blob与原回执版本绑定已核；14产品源码与原echo test未变，未重复已通过guard/业务。push前准确执行gh pr view --json state,mergedAt为OPEN/null，目标base无incoming，远端workflowCount0/hooks[]、无本地active hook。push后独立ls-remote与gh head均2874a73；原[PR #2](https://github.com/zzusp/night-bot/pull/2)回查number2/state OPEN/mergeable MERGEABLE，base refactor/pi-native-retirement ← head worktree-resident-conversation-routing。正文由同一UTF-8草稿通过write-pr checker后更新，独立逐字核相同，SHA256=`250cd65a2c18ec93dbb1c4a3b7410089fbe7678165ef6afe30a800d54b798bf9`；更新后gh run list=[]。无CI、PR合并或生产部署。本次仅回填完成事实的最终文档提交以最终gh/远端回查为准，不循环写自身SHA。
 - 前阶段Git交付事实（本次真实事项续验前）：发现远端ahead4后暂停，真人明确选择“核对后安全整合”；fetch/gh核明另一路PR #3已合入本分支远端5f8dd1e，本会话没有执行该PR合并。实现提交`ee0c39f67fb629f5421eaebc6dbc60d70fa23a4c`保存本轮30文件；本地整合提交`823c8fe595ec323d9d9e45a85a9fa7b3105edf2b`保留其62文件，README自动保留双方增量、无冲突，未rebase或临时checkout受验源码。19项受验工作树/index/提交blob均与冻结字节一致，Tests原运行未重启；整合后pnpm check真实exit0（194/53、404、191imports、0外部SDK/旧编排）与diff --check通过。push前准确gh状态为OPEN/null；push后独立ls-remote及gh均为823c8fe。原[PR #2](https://github.com/zzusp/night-bot/pull/2)正文已用同UTF-8文件通过write-pr checker后更新，独立回查`number=2/state=OPEN/mergeable=MERGEABLE/base=refactor/pi-native-retirement/head=worktree-resident-conversation-routing`，正文逐字相同，SHA256=`2ae7a241ec342eb8606f3c7c4a6f110846de514a9119531e7d31d95785434809`。远端目标base仍eca0df5、无incoming；workflowCount=0/hooks=[]、无本地active hooks，更新后gh run list为[]；没有触发CI、合并GitHub PR或生产部署。本次仅回填交付事实的最终文档head以最终gh/远端回查为准，不循环写自身SHA。
 
 ### 原SG1–SG7 Git交付与恢复
