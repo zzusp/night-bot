@@ -449,3 +449,53 @@ round-6.md 完整 SHA256=217eaa81c8a92e2e405bd8a094e3d49c877f6e1d2c9652743408e2c
 当前HEAD853ed2563b56308aada3a42fdd13043832286e8b，加本阶段goal/报告/矩阵/入口未提交增量。已逐项核原14产品/配置/依赖与echo test共15项仍同冻结报告，最终入口完整SHA为6f44710a1b89cb88003b9dc3b31ef5177671d1d4447ae9e2b268f9996a3999fa；不重复已通过业务、产品guard或全量。历史review原87319字节/ec0cda4f完整保留。
 
 本阶段可交Lead整合：指定群新独立事项的实际交付、同event持久复盘、必要恢复与正常退出证据成立，最终窄修无已确认未处理代码缺陷；单条原始live/history分支、首次OS cause及POSIX目录sync动态分支按上述边界保留。长期目标状态、提交/push/原PR回查仍归Lead，不因本审查替代Git交付或擅自宣告整体结束。本会话只追加review，未改其它文件、未测试/运行现场/发送/重启/重放、未读秘密或私有配置、未做Git写/CI/合并/部署，也未新增agent/workflow。
+
+## SG10 第八轮终态窄审：中立边界、显式续办与普通交接恢复
+
+本节为 SG10 阶段末一次集中追加。限定已核源码、实际原回执和最终材料，未发现新的确认残留代码缺陷，可交 Lead 继续原 PR 整合。这不把分组结果合成一次最新全量通过，不替代 Git 回查、真实厂商重新验收或长期目标完成；SG1–9、旧失败与 unknown 保留。
+
+### 受验版本与独立证据
+
+- 实际 HEAD 为 `2e6cf2ebf2df41d90aa46af5895a42401988ae4d`，分支 `worktree-resident-conversation-routing`；有本任务团队已知的未提交工作树及 Lead 暂存成果。结论绑定实际字节，不仅绑定 HEAD。Review 未做 Git 写入，未确认本轮 commit/push/PR 更新。
+- 最终五产品为 lifecycle `423a2e97`、ledger `425b730e`、factory `f402d9e6`、official-session `1cef70fa`、task-session-service `cfaaf8c0`。完整路径/SHA 集中在 [round-8.md](round-8.md)；本会话逐项计算全部 43 项当前 SHA，与最终表全部相同。
+- 已独立读必要原输出及实际测试断言，包括 b3we9iekt、bockg3hqv、ba779gfp3、brt8jyqyp、bc39joqdx、bekhpc09z、byaesj68v 与最新 b5kq76lkg。原输出 SHA、各组版本及自然退出集中见 round-8，不另建流水账。bc39/bekh 的 39 项起止与当前字节一致，digest `82f0e702dd7d9f6fdef4afc6151963fac3d6827dd9666b5bb65a0d9a35091743`；bya 的 29 项起止及当前一致，未重复实跑。
+- 最新 b5kq76lkg 的 24 项 START=END=当前，check/whitespace 均 0、自然退出 0；194 retained/56 adapted、405 production/runtime、191 bare imports、0 外部 SDK/旧编排定义、relative imports closed、HTTP routes retained。b4/b96 只证明其当时版本，不能替代最终 423 版。另核 manifest 的 203 对原 source/sourceSha256 仍逐对等于 HEAD。
+
+### 已修反例与权限边界
+
+- 两个窗口分开核：原 enqueued 未 admitted 的 packet 冷开优先恢复，后到事件另批；原 admitted 后模型失败不能靠 duplicate deliver 再触发模型。新 `app.tasks.resumeRouterBatch({conversationId,generation,sessionId,packetId,failedEntryId})` 是 Host-only 显式控制入口，严格绑定原 scope、当前 generation/session、完整 packet 和 branch 真实错误 entry。不提供新来源/权限，不新建 packet、不换 session、不重 enqueue/deliver、不改 SQL/journal、不调用 SDK 私有续轮。
+- 30/31 反例生产可达：正式 task.control 产生 29 内部事件加一个用户来源，原批满 30 后新增第 31 pending；仅比 limit30 列表会漏 SQL 新项。ledger 只读 inbox-count 与原 validate 联用，要求全量 pending 数量等于原批数量，保留顺序、完整 packet 和权限校验；count=0 也经 store 的 `!==undefined` 正常返回。b3 负例在模型前拒绝且保留新事件，未放宽 15 用户来源、30 批次或大小限制；同组另两项失败不抹去此证据。
+- MEMORY_ADMISSION_REQUIRED 是冷开 current 为空的真实缺口，memory 拒绝正确。比较后排除放宽守卫、全局猜最后 admitted、重新 deliver；最小修在 factory 传入已严格核过的原 packet，wrapper 构造时建立稳定只读 current 委托并冻结。公开 sendCustomMessage(false) 的 claim 持久提交、afterClaim 复核后，才为完整公开 SDK 轮临时绑定原 `{id,messages:[packet]}`，每次 structuredClone，finally 清除；未改 raw admission/SDK 状态。
+- 已核 memory.beforeRun、visibleBusinessInputs、run 关联等消费者。原来源仍须 night.business-input/lookup 精确一致，claim/turn 不成为来源；记忆命令只识别顶层 user，原 conversation-router packet 不重放 remember/forget。实际 SSE endpoint 读取发布 actor.current 的断言绑定原 journal packet；bock 再次模型错误后 current 恢复冷开 undefined，新错误持久且旧 proof 冷拒。取消没有专项动态证据，不据 finally 存在宣称已测。
+- checkpoint 保留 owner/live、原授权、idle/无 pending、严格最后错误、唯一 claim/已提交 revision、toolCall/result 配对及 effect/job 未结检查，afterClaim 再核；一次错误 entry 的 proof 不可重复领取。claim 在公开触发轮前提交，保留 SDK compaction 可能先于 trigger 消息的实际顺序，未用私有 `_startRun` 或裸 continue。
+- bock 成功例最后查错旧 g1 seed，原整例 FAIL 保留。factory 在新 candidate 创建时写 seed，故只改为 candidate 严格 journal/header，并关联 published rotation 的 old/candidateSessionId、handoffId/conversation；精确五行 fixture 修复未降低断言。ba 单项自然 0 证明该版成功，但 lifecycle 仍 63c，不冒充最终并发版。
+
+### 普通 recover 与活跃交接
+
+- 已沿 application 的 5 秒 recover、task service、tails 和 factory.dispose 核代码竞态：旧 recover 在 tails 外恢复 phase/释放 owner，rotate 已写 handoff 并 await 模型时可能被当冷中断 dispose。recovering 只合并 recover 彼此，Host 上下文 snapshot 不是锁；owner/live 守卫也不能阻止错误 dispose。预创建 NOT_LIVE stack 不能定位现场失败时点。
+- 最终 lifecycle 仅将 phase 恢复和 published 旧 owner 清理移入原 drain/tail；recover union router.list/pending-conversations 的 id，逐 scope await 原 schedule，执行时重读 row。精确逆变换两块可重建 63c。recoverConversation 全在队列内，close 仍先停止接纳、join tails 再 dispose；无 busy 静默 skip、新锁、停 timer 或 factory live 放宽。
+- bc39 挂住真实无工具 handoff SSE，正式 recover 已到真实 router.list gate 时仍 phase=handoff、旧 owner signal 未 abort，release 后 await 两者终态；settled/cursor1、generation+1、published candidate/严格 seed、原 packet/admission 唯一及再冷不重放均通过。bekh 另一 scope 的真实 store EACCES 仍传播，不被首 scope 的 ROUTER_BATCH_UNSETTLED 吞掉，模型不增。两项各 1 PASS、自然 0。
+- brt 原安装 strict/immutable 原回执单独证明业务 settled、event consumed/cursor1，g1 active/lastHandoffCursor0，rotation aborted/interrupted-handoff、无 candidate；不证明准确现场交错 trace。代码竞态已证并修，现场唯一深 cause 不补猜。原 proof 已用，此后不再 resume；普通 recover 只续交接，不重做已 settled 业务。
+
+### 原安装终态与保留风险
+
+- 本会话只提取 Tests 指定两个原 tool_result 摘要，未读现场 DB/journal、私有配置或技能正文。原 task/session completed/drained/run1；初次 skill→read→task_result 及两读取收据与工具 entry 绑定事实，不能把当时后段失败改为整脚本 PASS。私有技能只在原安装忽略目录，不复制公开 fixture。
+- 最终 bya 默认 application 普通 recover 仅一次 tool-free handoff，business/execution/tools-result/渠道 transport 均 0；Router active/g2/cursor1/lastHandoffCursor1，candidate 严格 header/seed 对应原 rotation。原 task/session/completion/run1、task.list/notification.list 深等，g1 的 39-entry/36535B 物理前缀不变，packet/enqueued/admitted/claim/turn 仍各一份。重复 recover/whenIdle 不增模型，不再调用旧 proof。
+- 初末 health ok/recoveryIssue0/outboundAuthorized=false；config、16 份其他 strict journal 含原 execution 整字节不变，技能 ignored/untracked/unstaged，29 source 不变。teardown 实际 await app/Host/endpoint，close 错误会使本例失败。最终 1 PASS、自然 0，不能只凭 HTTP 或工具成功代替业务/关闭终态。
+- 正常关闭不消除 Host/application 在 close 抛错时串行清理短路的既有风险；早期 CLI CANCEL/精确自有 PID 强制清理和 brt NOT_LIVE 保持原结果。Windows 隔离限制、Linux runbook 未本机实跑、取消未专项动态、原准确竞态 trace 未留，均不写 PASS。新成功不补旧 unknown 的 producer-drain/reconciled 证明。
+
+### DWS 中立映射与 R7 适用范围
+
+- 已沿 `src/channels/service.js:37` → `src/channels/plugins/dingtalk-dws.js:33` → `packages/dingtalk-core/group-message.js:71` / `packages/dingtalk-core/task-notification-readback.js:55` → 原 adapter 读完整责任链。notificationAudience 对新 recipientActorIds/replyToActorId 和旧厂商字段只作读投影，历史 payload/digest/receipt 不机械改写。envelope 将受众、payload.actorId、显式引用作者分别经当前 conversation participant 映射，未知成员不再静默 filter、跨会话拒绝；单聊 recipientIds 仍为空。
+- 下游实际 native quote 条件仍是 payload.sourceMessageId 与 payload.actorId 同时存在，作者用 actorId；readback 仍按相同字段建 outbound。正式生产方 `task-session-service.js:800` 将 actorId/replyToActorId 同源写入，typed 将 actorId 映回 envelope.senderId，因此该现行路径及仅有 sourceMessageId/actorId 的历史路径保留作者语义。不能只因新 replyToParticipantId 字段存在，就宣称任意不含 actorId 的外来 payload 已获原生引用支持；本次未扩大这类输入合同。
+- 新最终通知 sourceRef 只保来源，未显式引用时不从 sourceRef 反推 quote/作者；受众经 recipientIds 映到插件内部 atOpenDingTalkIds，冻结附件按原 afterNotificationId 顺序承接同受众。已读 neutral 断言：文字/附件 recipientIds=['bob']、replyToMessageId/replyToParticipantId 均 undefined。ACL/schema 与附件终态来自 Tests 原本地分组，不等于本轮厂商发送。
+- group-message 从 sameDeliveredText 起的协议尾部与 HEAD/R7 基线精确相同：10283B/SHA `c6c85145a40a575d1e021a66e96eab7eb1fc01743d9146564529d9e81d5fd420`。dws-adapter.js、task-notification-readback.js 也逐字等于 HEAD，SHA 分别 `4c5e9fc34d042e47b34e087c183992c52d71693c12ebe2d526d9d8984ae78f19`、`c04a9192f01ad3a2a03cbb3970b2a25c3ef077269f989d54eafb1657cedd570e`。这是限定协议未变的静态证据，不能覆盖已变上游所有受众/引用组合。
+- R7 真实同群文字/48B 附件读回、持久复盘、冷恢复保持其原版本事实；不据未变源码或本轮 fake/loopback 宣称新版 DWS 全链重新实平台验收，尤其不补称原生 mention 已核验。SUCCESS 精确回执只证明送达，mentionVerification=unavailable 的边界保留。R7 单条 live/history 盲点、旧 unknown 和未补 producer 证明不被本轮消除；未重发/重启/读取现场来装作补证。
+
+### 最终材料与交接
+
+最终 [round-8.md](round-8.md) 为 23319B/SHA `021d3b595c79ed7612dab024d80a60b5884b6ecc28e20fbfba91a87d09374238`，43 项最新映射逐项等当前；matrix.csv 为 22678B/SHA `2ef891d7d2c12dfcb776c554b3eb0ec6ebefac4bf83b59375b016c86f399aad4`、122 case/10 列。已独立 CSV 比较原 HEAD：原 91 case/9 列每个历史字段不变，仅新增 round_8 列及 31 case，保留 FAIL/CANCEL/NOT_RUN，不拼同版全量全绿，不建 report.md。
+
+R4 报告最终 19686B/SHA `b9338900b8d3acf92ce68711e26ff2b72e6d425e06c453d92e161bd8497db12a`。已读相对 HEAD 六处清理注记：原结论、时间/版本、必要文字和清理前完整 SHA 保留；两份 round-4/verified-3-web-continuation-result.json、verified-6-router-result.json 已用独立只读存在性查询确认不存在。清理由 Tests 唯一执行，Review 未改这些材料或清理其他会话资源。
+
+追加前原 review 为 451 行/98232B/SHA `06ba38be2ced1b98ae8ab472f71a5744788dd3f6af114d9f986b8a9f0b8eb276`；本节只在其后追加，原 SG1–9 和先前检查点逐字保留。本会话未改产品/测试/目标/报告/矩阵或其他文档，未另起 agent/workflow/实例、运行测试/模型/渠道、读取秘密、外发、重放、部署、合并或触发 CI。Review 交回此文件写权；唯一 [goal.md](goal.md) 由 Lead 维护，下一步仅由 Lead 完成已授权原分支/原 PR 的真实 Git 交付与回查，不据本窄审宣告长期目标结束。

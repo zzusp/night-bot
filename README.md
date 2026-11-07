@@ -8,7 +8,7 @@ Night Bot 是基于 Pi 的个人助理 Agent 初始化套件，任何人都可�
 
 ## 运行
 
-需要 Node.js 24+、pnpm。只有启用钉钉渠道才需要 DWS CLI；默认关闭渠道外发。需要受限 shell 执行时，宿主必须提供可用的 Linux bubblewrap/Landlock 等沙箱；不可用时拒绝执行，不自动切换权限模式。
+需要 Node.js 24+、pnpm。只有启用钉钉渠道才需要 DWS CLI；默认关闭渠道外发。Linux 上需要受限 shell 或模型进程工具时，宿主必须提供可用的 bubblewrap；Native sandbox 再按平台能力选择 bwrap/Landlock 等实现，隐私能力不可用时拒绝执行，不自动切换权限模式。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -21,13 +21,13 @@ curl http://127.0.0.1:18998/health
 
 所有 Night Bot 运行数据位于安装目录的 `data/`，任务工作区与业务产物位于 `data/workspaces/`，备份位于 `backups/`；这些目录被 Git 忽略。代码升级须保留数据目录。同一 Host 的共享文件事务按路径排队，再取得磁盘租约；活 owner 不因超时被驱逐，权限拒绝不作普通重试。初始化命令只创建配置和目录，不会替你验证真实模型、渠道身份或外发授权；再次初始化拒绝覆盖配置。本项目不需要导入原 DSH 插件历史数据。目录、权限、备份与异路径恢复详见 [DATA-LAYOUT](docs/DATA-LAYOUT.md)。
 
-默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，外部渠道的目录发现、生命周期和能力接口见 [插件接口](docs/CHANNEL-PLUGINS.md)。钉钉使用 `channelPlugins` 的 `dingtalk-dws` 配置；Windows 默认直接使用当前用户受系统保护的 DWS 登录态，不复制凭据；多个实例可能共享账号存储，不能用 HOME/config 目录宣称独立账号；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。保留原工具的权限 preset 与业务授权规则。HTTP 仅监听 loopback；需要远程访问时使用经过鉴权的运维通道。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
+默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，外部渠道的目录发现、生命周期和能力接口见 [插件接口](docs/CHANNEL-PLUGINS.md)；Linux 隔离前置和实际探针见 [Linux 隔离运行](docs/ops/linux-contained-runtime.md)。钉钉使用 `channelPlugins` 的 `dingtalk-dws` 配置；Windows 默认直接使用当前用户受系统保护的 DWS 登录态，不复制凭据；多个实例可能共享账号存储，不能用 HOME/config 目录宣称独立账号；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。保留原工具的权限 preset 与业务授权规则。HTTP 仅监听 loopback；需要远程访问时使用经过鉴权的运维通道。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
 
 指定钉钉群的职责、助手设定和规范通过私有配置 `channelPlugins[].config.groups[].responsibility` 传入；`config.responsibility` 可作该插件所列群的默认值。配置贯通一级分诊、常驻 Router、事项执行与独立无工具复盘，不改变原消息授权或跨群隔离。修改后须正常停止并重启；未获真实连接/发送授权时保持 `listen:false`、`writesAuthorized:false`。配置优先级见 [渠道职责](docs/CHANNELS.md#渠道职责配置)，Windows 账号、隔离准备和真实终态核对见 [接入流程](docs/ops/windows-local-runtime.md#指定钉钉群接入)。
 
 `/config/agent` 保存的默认模型选择持久化于 `stateDir/storage/night_model_selection.json`，重启后优先于初始 JSON 配置中的默认选择；provider 声明仍由启动配置提供。
 
-`providers` 由本地 NativePiProvider 处理，兼容原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为安装目录内的额外技能目录；默认加载 `data/config/skills` 和受控指令目录。技能与指令发现不通过 `DSH_*` 环境变量选择目录，技能也不隐式读取外部 `.dsh/skills`；显式绝对 state/workspace 模式使用 state 内受控的 `runtime/configured-agents`、`runtime/configured-harness`，不扫描操作系统用户 home。技能文件默认开启监听，外部编辑后会在下次模型步骤提醒重读；`skillWatch: false` 可显式关闭后台监听，原生写入/编辑仍会使技能目录失效刷新。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。凭据与附件不会回退到外部 DSH 目录；旧扁平凭据会拒绝并保留原文件。终端默认只提供 `NIGHT_BOT_SHELL` 和 `NIGHT_BOT_SESSION_ID` 执行事实，不提供 DSH home/profile；安装目录模式继续过滤非标准扩展环境值。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和单会话任务执行；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。
+`providers` 由本地 NativePiProvider 处理，兼容原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为安装目录内的额外技能目录；默认加载 `data/config/skills` 和受控指令目录。技能与指令发现不通过 `DSH_*` 环境变量选择目录，技能也不隐式读取外部 `.dsh/skills`；显式绝对 state/workspace 模式使用 state 内受控的 `runtime/configured-agents`、`runtime/configured-harness`，不扫描操作系统用户 home。技能文件默认开启监听，外部编辑后会在下次模型步骤提醒重读；`skillWatch: false` 可显式关闭后台监听，原生写入/编辑仍会使技能目录失效刷新。个人业务技能正文及同目录 `scripts`、`references`、`assets` 只存于本机 `data/config/skills` 或经 `git check-ignore` 确认的插件私有技能目录，不进入代码或 npm 包；迁移应从本次已授权复用范围内的既有安装指针取源；若需清理或移动，只处理本轮引入材料，不覆盖或移动他人既有技能；不盲拷 `node_modules` 或旧 worktree。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。凭据与附件不会回退到外部 DSH 目录；旧扁平凭据会拒绝并保留原文件。终端默认只提供 `NIGHT_BOT_SHELL` 和 `NIGHT_BOT_SESSION_ID` 执行事实，不提供 DSH home/profile；安装目录模式继续过滤非标准扩展环境值。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和单会话任务执行；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。
 
 默认 Host 还提供持久定时服务和 `schedule_create/list/update/delete` 工具，支持单次、固定间隔、每日、每周及五字段 cron。记录保存在 `stateDir/storage/schedule.json`，到时通过原 Pi 会话执行；停机后恢复到期事项，周期事项合并漏过的轮次。同一消息的入账与排期回执用稳定身份对齐，恢复不重复投递已入账的事项。取消已排期事项不会撤回已入队消息；显式取消 Agent 仍会清空其待办输入。子代理不能创建提醒，冷恢复保留原权限与模型。可通过 `schedule.deliveryHistoryDays`（默认 30）和 `schedule.deliveryHistoryRecords`（默认 200）配置历史保留。
 
@@ -57,7 +57,7 @@ pnpm audit:runtime
 
 常驻 Router 重构的当前范围与验收状态见 [验收入口](docs/acceptance/resident-conversation-routing/goal.md)；此前 Topic/Owner 验收记录仅作历史证据。验证与证据见 [VALIDATION](docs/VALIDATION.md)，功能映射见 [MIGRATION](docs/MIGRATION.md)，当前架构见 [RUNTIME](docs/RUNTIME.md)，来源与许可见 [THIRD_PARTY](THIRD_PARTY.md)。
 
-本轮 Windows 验证与明确阻断见 [本机验收目标](docs/acceptance/pi-native-retirement-local/goal.md)，保留数据的启动/停止流程见 [Windows 本机运维](docs/ops/windows-local-runtime.md)。现有 `undici` 与固定 Pi SDK 对齐为 8.12.3，避免 SDK 导入覆盖旧版全局代理；HTTP 代理继续使用 CONNECT 隧道。真实 DWS/业务系统及 Windows/macOS 内核仍需在对应部署环境验收；可选 Claude CLI 和额外浏览器、数据库、搜索插件需要实际安装与授权。原部署和验收脚本保留为源实现参考，不能直接作为 Night Bot 的部署入口。没有迁移生产数据或执行真实外发、合并、部署。
+早期 Windows 验证与阻断见 [本机验收目标](docs/acceptance/pi-native-retirement-local/goal.md)；SG10 的默认无插件 CLI、渠道中立/附件、本地 operator/requester 分流、私有 Skill 读取和 Router 恢复结果按 [第八轮报告](docs/acceptance/resident-conversation-routing/round-8.md) 的各组受验版本成立，不是新版全量或广义开发运维替代证明。SG9 指定群真实交付保留 [第七轮证据](docs/acceptance/resident-conversation-routing/round-7.md)，本轮 fake 渠道回归未重新验证新版真实 DWS。保留数据的启动/停止流程见 [Windows 本机运维](docs/ops/windows-local-runtime.md)。现有 `undici` 与固定 Pi SDK 对齐为 8.12.3，避免 SDK 导入覆盖旧版全局代理；HTTP 代理继续使用 CONNECT 隧道。真实 DWS/业务系统及 Windows/macOS 内核仍需在对应部署环境验收；可选 Claude CLI 和额外浏览器、数据库、搜索插件需要实际安装与授权。原部署和验收脚本保留为源实现参考，不能直接作为 Night Bot 的部署入口。SG10 本轮没有新增真实模型/厂商调用、生产数据迁移、CI、合并或部署；Linux 规程未在本机实跑，Windows 进程隐私与异常关闭风险仍保留。
 
 Windows 重启恢复探针默认固定本仓库进程/ACL 代码的已审阅哈希；迁移部署位置时可由受信任宿主设置 `NIGHT_BOT_RUNTIME_ROOT`，不会将未知 provider 代码视为已验证。现有存活进程、写入者、端口、时间和完整证据检查继续保留。
 

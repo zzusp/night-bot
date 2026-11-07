@@ -2,6 +2,8 @@ import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {z} from 'zod'
 import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.js'
+import {conversationSource} from './message-safety.js'
+import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -138,21 +140,44 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId:rotation.id,safeToResume:true,error:'interrupted-handoff'})
     }else fail('ROUTER_RECOVERY_BLOCKED')
   }
+  function packetViews(row,batch){
+    const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
+    const body={conversationId:row.id,generation:row.generation,events:batch}
+    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:batch.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
+    return [packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
+  }
   async function drain(conversationId){
     let row=await query('router.get',{conversationId})
     const events=await query('router.inbox',{conversationId,limit:30})
     if(!row){if(!events.length)return;row=(await command('router.ensure',{conversationId,sessionId:sessionId(conversationId,1)})).result.conversation}
     if(row.phase!=='active'){await recoverConversation(row);row=await query('router.get',{conversationId})}
+    // 恢复和旧 owner 释放共享本会话队列，不把仍在途的交接当作冷中断。
+    for(const rotation of await query('router.rotations',{conversationId}))if(rotation.state==='published'&&rotation.candidateSessionId===row.activeSessionId){const old=handles.get(rotation.oldSessionId);if(old){await old.dispose();handles.delete(rotation.oldSessionId)}}
     let handle
     for(;;){
       const inbox=await query('router.inbox',{conversationId,limit:30})
       if(!inbox.length)break
-      // 每批用户来源不超过15；内部事件另受总量和编码预算约束。
-      let users=0,bytes=0;const batch=[]
-      for(const event of inbox){if(event.kind==='source.message'&&users>=15)break;const size=Buffer.byteLength(JSON.stringify(event));if(batch.length&&bytes+size>131072)break;batch.push(event);bytes+=size;if(event.kind==='source.message')users++}
       handle??=await open(row)
-      const id=`router-input:${hash([conversationId,batch.map(event=>event.id)])}`
-      const packet={id,source:{kind:'conversation-router',conversationId,generation:row.generation,eventIds:batch.map(event=>event.id)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({conversationId,generation:row.generation,events:batch})}]}
+      const admittedInput=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
+      const admittedPacket=admittedInput&&handle.agent.admission.lookupPacket(admittedInput.details?.packetId)
+      // 已接纳且未结的旧批次只能显式续轮，迟到事件也不能让它被重新编成新输入。
+      if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id)))fail('ROUTER_BATCH_UNSETTLED')
+      const persistedPacket=pendingBusinessInputs(handle.agent)[0]
+      let batch=[]
+      if(persistedPacket){
+        // 冷恢复先续原批次；迟到事件留下一批，持久正文只接受旧原样或确定性中性投影。
+        const ids=persistedPacket.source.eventIds
+        if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
+        batch=inbox.slice(0,ids.length)
+        if(!isDeepStrictEqual(ids,batch.map(event=>event.id)))fail('ROUTER_PACKET_ID_CONFLICT')
+      }else{
+        // 每批用户来源不超过15；内部事件另受总量和编码预算约束。
+        let users=0,bytes=0
+        for(const event of inbox){if(event.kind==='source.message'&&users>=15)break;const size=Buffer.byteLength(JSON.stringify(event));if(batch.length&&bytes+size>131072)break;batch.push(event);bytes+=size;if(event.kind==='source.message')users++}
+      }
+      const [currentPacket,legacyPacket]=packetViews(row,batch),id=currentPacket.id
+      if(persistedPacket&&!isDeepStrictEqual(persistedPacket,currentPacket)&&!isDeepStrictEqual(persistedPacket,legacyPacket))fail('ROUTER_PACKET_ID_CONFLICT')
+      const packet=persistedPacket??currentPacket
       packets.set(id,packet)
       try{await handle.enqueue(packet);await handle.deliver(id);await handle.whenIdle()}finally{packets.delete(id)}
       const pending=await query('router.inbox',{conversationId,limit:30})
@@ -165,18 +190,56 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     if(closed)return Promise.reject(Object.assign(new Error('ROUTER_CLOSED'),{code:'ROUTER_CLOSED'}))
     const previous=tails.get(conversationId)??Promise.resolve()
     const work=previous.catch(()=>{}).then(()=>drain(conversationId))
+    return trackTail(conversationId,work)
+  }
+  function trackTail(conversationId,work){
     tails.set(conversationId,work)
     void work.then(()=>errors.delete(conversationId),error=>errors.set(conversationId,error)).finally(()=>{if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
   }
-  return {schedule,errors,
+  async function resumeRouterBatch({conversationId,generation,sessionId:activeSessionId,packetId,failedEntryId}={}){
+    if(closed)fail('ROUTER_CLOSED')
+    if(agents.currentInitiator?.()!==undefined)fail('ROUTER_RESUME_HOST_ONLY')
+    if(![conversationId,activeSessionId,packetId,failedEntryId].every(value=>typeof value==='string'&&value.length)||!Number.isSafeInteger(generation)||generation<1)fail('ROUTER_RESUME_REQUEST_INVALID')
+    if(tails.has(conversationId))fail('ROUTER_RESUME_BUSY')
+    const assertRow=row=>{if(!row||row.phase!=='active'||row.generation!==generation||row.activeSessionId!==activeSessionId||activeSessionId!==sessionId(conversationId,generation))fail('ROUTER_RESUME_STALE')}
+    let attempted=false
+    // 同步占有原会话队列；并发控制请求不能排队后变成另一次模型轮。
+    const work=Promise.resolve().then(async()=>{
+      const row=await query('router.get',{conversationId});assertRow(row)
+      if(!await persistence.stat(activeSessionId))fail('ROUTER_NATIVE_IDENTITY_INVALID')
+      const handle=await open(row),packet=handle.agent.admission.lookupPacket(packetId)
+      if(agents.get(activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
+      const ids=packet?.source.eventIds
+      if(packet?.id!==packetId||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
+      const validate=async()=>{
+        const current=await query('router.get',{conversationId});assertRow(current)
+        const inbox=await query('router.inbox',{conversationId,limit:30})
+        const pendingCount=await query('router.inbox-count',{conversationId})
+        if(pendingCount!==ids.length||!isDeepStrictEqual(ids,inbox.map(event=>event.id)))fail('ROUTER_RESUME_BATCH_STALE')
+        if(!packetViews(current,inbox).some(value=>isDeepStrictEqual(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
+      }
+      await validate();packets.set(packetId,packet)
+      try{const resumed=handle.resumeRouterBatch({packet,failedEntryId},validate);attempted=true;await resumed;await handle.whenIdle()}finally{packets.delete(packetId)}
+      const pending=await query('router.inbox',{conversationId,limit:30})
+      if(pending.some(event=>ids.includes(event.id)))fail('ROUTER_BATCH_UNSETTLED')
+      await drain(conversationId)
+      return {conversationId,generation,sessionId:activeSessionId,packetId,resumed:true,settled:true}
+    })
+    tails.set(conversationId,work)
+    void work.then(()=>errors.delete(conversationId),error=>{if(attempted)errors.set(conversationId,error)}).finally(()=>{if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
+    return work
+  }
+  return {schedule,resumeRouterBatch,errors,
     async whenIdle(){for(;;){const work=[...tails.values()];await Promise.all(work);if(!tails.size)break}},
     async recover(){
-      for(const row of await query('router.list')){
-        if(row.phase!=='active')await recoverConversation(row)
-        else for(const rotation of await query('router.rotations',{conversationId:row.id}))if(rotation.state==='published'&&rotation.candidateSessionId===row.activeSessionId){const old=handles.get(rotation.oldSessionId);if(old){await old.dispose();handles.delete(rotation.oldSessionId)}}
+      const conversations=new Set((await query('router.list')).map(row=>row.id))
+      for(const id of await query('router.pending-conversations'))conversations.add(id)
+      const failures=[]
+      for(const id of conversations){
+        try{await schedule(id)}catch(error){if(error.code!=='ROUTER_BATCH_UNSETTLED')throw error;failures.push({conversationId:id,code:error.code})}
       }
-      for(const id of await query('router.pending-conversations'))await schedule(id)
+      return {failures}
     },
     async close(){
       // 先拒绝新调度，已接纳轮次仍按当前 generation 排空，不能伪造成过时代际。

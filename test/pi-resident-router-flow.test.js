@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {hash} from '../src/memory/format.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
 
@@ -262,4 +263,260 @@ for(const invalid of ['blank-intent','missing-source','utf8-budget','referents-o
   const saved=await h.host.ctx.sessionPersistence.readNative(current.activeSessionId,{requireComplete:true})
   assert.equal(saved.header.generation,1);assert.ok(saved.entries.some(entry=>entry.customType==='night.commit'))
   assert.equal((await h.query('task.list')).length,0)
+})
+
+test('legacy prepared replyRequest and cold unknown retain original payload bytes while neutral retries stay idempotent',{timeout:nativeTestTimeout(60000)},async t=>{
+  const steps=new Map();let h,original,frozen,notificationId
+  h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(!requestTools(body).includes('resident_router_reply'))return {text:'No additional work'}
+    const input=router(body),key=input.events.map(event=>event.id).join(','),step=steps.get(key)??0;steps.set(key,step+1)
+    if(!original){
+      original=input.events.find(event=>event.source)?.source
+      assert.ok(original)
+      notificationId='router-operation:'+hash(JSON.stringify([original.conversationId,'legacy-frozen-reply']))
+      const request={kind:'router-reply',sourceId:original.sourceId,sourceVersion:original.version,text:'Frozen legacy response',atOpenDingTalkIds:[original.actorId],artifactFiles:[]}
+      await h.store.command({id:'fixture-old-producer',kind:'notification.prepare',args:{notificationId,taskId:null,requirementRevision:1,kind:'router-reply',payload:{text:request.text,conversationId:original.conversationId,sourceId:original.sourceId,sourceVersion:original.version,sourceRef:{messageId:original.messageId,messageVersion:original.version,actorId:original.actorId},atOpenDingTalkIds:[original.actorId],replyKind:'substantive',taskIds:[],topicRefs:[],replyRequest:request}}})
+      frozen=await h.query('notification.get',{notificationId})
+    }
+    const args={operationId:'legacy-frozen-reply',sourceId:original.sourceId,messageVersion:original.version,text:'Frozen legacy response',recipientActorIds:[original.actorId]}
+    if(step===0)return {tool:'resident_router_reply',args}
+    if(step===1)return {tool:'resident_router_reply',args:{...args,text:'Changed frozen content'}}
+    if(step===2)return {tool:'resident_router_reply',args:{...args,recipientActorIds:[]}}
+    if(step===3)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'legacy-settle:'+key}}
+    return {text:'Original frozen notification reused without preparing another send'}
+  },{readback:async()=>{throw Error('Synthetic unknown readback remains unavailable')}})
+  h.host.ctx.channels.transports.get('resident-fixture').canSend=()=>false
+  const input=channelMessage('legacy-original',{text:'Preserve this existing bounded response'})
+  await h.receive(input);await h.service.whenIdle()
+  assert.match(frozen.payloadDigest,/^[a-f0-9]{64}$/);assert.equal(frozen.state,'prepared');assert.deepEqual(await h.query('notification.get',{notificationId}),frozen);assert.equal(h.sent.length,0)
+  assert.ok(Object.hasOwn(frozen.payload,'atOpenDingTalkIds'));assert.ok(Object.hasOwn(frozen.payload.replyRequest,'atOpenDingTalkIds'));assert.equal(Object.hasOwn(frozen.payload,'recipientActorIds'),false)
+  const preparedResult=h.results.find(row=>row.name==='resident_router_reply'&&!row.result.isError)
+  assert.ok(preparedResult);assert.deepEqual(preparedResult.result.value.notification.payload.recipientActorIds,[original.actorId])
+  await h.store.command({id:'fixture-old-send-start',kind:'notification.start',args:{notificationId}})
+  await h.restart()
+  const cold=await h.query('notification.get',{notificationId})
+  assert.equal(cold.sendAttemptCount,1);assert.equal(cold.state,'unknown');assert.deepEqual(cold.payload,frozen.payload);assert.equal(cold.payloadDigest,frozen.payloadDigest);assert.equal(h.sent.length,0)
+  await h.receive(channelMessage('legacy-neutral-retry',{text:'Review the existing frozen response without changing its audience or content'}));await h.service.whenIdle()
+  const current=await h.query('notification.get',{notificationId})
+  assert.equal(current.state,'unknown');assert.deepEqual(current.payload,frozen.payload);assert.equal(current.payloadDigest,frozen.payloadDigest);assert.equal(current.sendAttemptCount,cold.sendAttemptCount);assert.equal(h.sent.length,0)
+  const replays=h.results.filter(row=>row.name==='resident_router_reply'&&!row.result.isError),conflicts=h.results.filter(row=>row.name==='resident_router_reply'&&row.result.isError)
+  assert.equal(replays.length,2);assert.equal(conflicts.length,4);assert.ok(conflicts.every(row=>JSON.stringify(row.result).includes('DYNAMIC_COMMAND_ID_CONFLICT')))
+  assert.equal((await h.query('notification.list')).length,1)
+  t.diagnostic(JSON.stringify({case:'legacy-reply-request-neutral-retry',preparedReused:true,coldState:current.state,originalPayloadAndDigestPreserved:true,semanticParameterConflicts:conflicts.length,additionalSends:h.sent.length,realVendorExecuted:false}))
+})
+
+
+test('cold Router resumes an exact legacy pending packet before a later event without changing its body or replaying either batch',{timeout:nativeTestTimeout(60000)},async t=>{
+  const batches=[];let injected=false,legacyPacket
+  const h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body)
+      if(body.messages.at(-1)?.role!=='tool')batches.push(structuredClone(input))
+      return settle(body,input)
+    }
+    return {text:'No other work'}
+  })
+  const registry=h.host.ctx.agents,create=registry.create
+  registry.create=async function(options){
+    const handle=await create.call(this,options)
+    if(options.meta?.runtimeOwner==='conversation-router'&&!injected){
+      const enqueue=handle.enqueue.bind(handle)
+      handle.enqueue=async packet=>{
+        if(injected)throw Object.assign(Error('TEST_ROUTER_ENQUEUE_INTERRUPTED'),{code:'TEST_ROUTER_ENQUEUE_INTERRUPTED'})
+        if(!injected){
+          const input=JSON.parse(packet.content[0].text.slice('Router 请求：'.length))
+          for(const event of input.events)if(event.source)event.source=await h.query('source.get',{sourceId:event.source.sourceId})
+          // 模拟旧Host编码，在正式enqueue提交后、SDK接纳前中断；不改journal或SQLite。
+          packet.content[0].text='Router 请求：'+JSON.stringify(input)
+          legacyPacket=structuredClone(packet)
+          await enqueue(packet);injected=true
+          throw Object.assign(Error('TEST_ROUTER_ENQUEUE_INTERRUPTED'),{code:'TEST_ROUTER_ENQUEUE_INTERRUPTED'})
+        }
+        return enqueue(packet)
+      }
+    }
+    return handle
+  }
+  t.after(()=>{registry.create=create})
+  const input=channelMessage('legacy-pending',{text:'Original pending business input',quotedMessage:{messageId:'quoted',senderId:'bob',text:'Preserve this original context'}}),conversationId=h.host.ctx.channels.identity(input).sessionId
+  await h.receive(input)
+  await eventually(()=>injected,'legacy packet durably enqueued before SDK admission',t.signal)
+  await h.service.whenIdle().catch(error=>assert.match(error.message,/TEST_ROUTER_ENQUEUE_INTERRUPTED/))
+  const before=await h.query('router.get',{conversationId}),stored=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+  const original=stored.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued')
+  assert.equal(original.length,1);assert.deepEqual(original[0].payload,legacyPacket)
+  assert.equal(stored.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted').length,0)
+  assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').length,0);assert.equal(batches.length,0)
+  assert.equal((await h.query('router.inbox',{conversationId})).length,1)
+  const originalBody=JSON.parse(legacyPacket.content[0].text.slice('Router 请求：'.length)),source=originalBody.events[0].source
+  assert.equal(source.groupId,conversationId);assert.equal(Object.hasOwn(source,'conversationId'),false)
+  await h.store.command({id:'fixture-later-source',kind:'source.record-direct',args:{source:{sourceId:'late-router-source',groupId:conversationId,messageId:'late-router-message',actorId:source.actorId,channel:source.channel,version:1,text:'LATE_EVENT_NOT_IN_COMMITTED_PACKET',resources:[]},conversation:{conversationId}}})
+  await h.store.command({id:'fixture-later-triage',kind:'triage.commit',args:{dispositions:[{sourceId:'late-router-source',messageVersion:1,needsHandling:true,reason:'A later independently recorded event'}]}})
+  const pending=await h.query('router.inbox',{conversationId});assert.equal(pending.length,2)
+  assert.ok(!legacyPacket.content[0].text.includes('LATE_EVENT_NOT_IN_COMMITTED_PACKET'))
+  await h.close()
+  const closed=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+  assert.deepEqual(closed.audit,stored.audit);assert.equal(closed.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled').length,0)
+  await h.restart();await h.service.whenIdle()
+  const after=await h.query('router.get',{conversationId}),recovered=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+  const enqueued=recovered.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued'&&row.payload.source.kind==='conversation-router'),ids=new Set(enqueued.map(row=>row.payload.id)),admitted=recovered.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted'&&ids.has(row.payload.id))
+  assert.ok(recovered.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued'&&!ids.has(row.payload.id)).every(row=>row.payload.source.kind==='router-handoff'),'only the separate tool-free handoff may add another input')
+  assert.equal(enqueued.length,2);assert.equal(admitted.length,2);assert.deepEqual(enqueued[0].payload,legacyPacket)
+  assert.deepEqual(recovered.entries.slice(0,stored.entries.length),stored.entries)
+  const originalEntries=recovered.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details.packetId===legacyPacket.id)
+  assert.equal(originalEntries.length,1);assert.deepEqual(originalEntries[0].content,legacyPacket.content);assert.deepEqual(originalEntries[0].details.source,legacyPacket.source)
+  assert.equal(batches.length,2);assert.equal(batches[0].generation,before.generation);assert.deepEqual(batches[0],originalBody)
+  assert.equal(batches[1].events.length,1);assert.equal(batches[1].events[0].source.sourceId,'late-router-source');assert.notEqual(enqueued[1].payload.id,legacyPacket.id)
+  assert.deepEqual(batches[1].events.map(event=>event.id),[pending.find(event=>event.sourceId==='late-router-source').id])
+  assert.equal((await h.query('router.inbox',{conversationId})).length,0);assert.equal(after.cursor,2)
+  assert.equal(h.results.filter(row=>row.name==='resident_router_settle'&&!row.result.isError&&row.sessionId===before.activeSessionId).length,2);assert.equal(h.sent.length,0)
+  const requests=h.requests.length
+  await h.restart();await h.service.whenIdle()
+  assert.equal(h.requests.length,requests);assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})).entries,recovered.entries)
+  assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+  t.diagnostic(JSON.stringify({case:'legacy-router-pending-before-later-event',originalGeneration:before.generation,originalPacketPreserved:true,originalAdmissions:originalEntries.length,laterEventHandledSeparately:true,restartModelReplay:false,realVendorExecuted:false}))
+})
+
+
+for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])test(outcome==='unrelated-error'?'an unsettled Router cannot mask an unrelated conversation recovery failure':outcome==='newer-input'?'an admitted failed Router checkpoint refuses a newer pending business input before inference':outcome==='fails-again'?'a second failed Router continuation retains its checkpoint history and cannot replay the consumed proof':'an admitted failed Router batch resumes only through an explicit Host checkpoint after strict cold recovery',{timeout:nativeTestTimeout(60000)},async t=>{
+  const continuationAdmissions=[]
+  let failModel=true,resumeEntered,releaseResume,holdResume=false,fatalConversation,continuationPacket,continuationSessionId,observeHandoffRecovery
+  const entered=new Promise(resolve=>resumeEntered=resolve),released=new Promise(resolve=>releaseResume=resolve)
+  const handoffEntered=Promise.withResolvers(),handoffReleased=Promise.withResolvers(),recoveryListed=Promise.withResolvers()
+  t.after(()=>{releaseResume();handoffReleased.resolve()})
+  const h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary){if(outcome==='complete'){handoffEntered.resolve();await handoffReleased.promise}return summary}
+    if(requestTools(body).includes('channel_triage_submit')){
+      if(outcome==='newer-input'){
+        const conversationId=h.host.ctx.channels.identity(channelMessage('explicit-failed-batch')).sessionId,taskId='paused-inbox-fixture'
+        await h.store.command({id:'fixture-paused-task',kind:'task.create',args:{taskId,conversationId,groupId:conversationId,ownerActorId:'owner',request:'A paused task used only to produce real internal ledger events'}})
+        // 29个正式内部变更加本次用户来源构成30项原批次，不放宽15条用户输入上限。
+        for(let index=0;index<29;index++)await h.store.command({id:'fixture-paused-control-'+index,kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:index+1}})
+      }
+      return submit(triage(body),()=>({needsHandling:true}))
+    }
+    if(requestTools(body).includes('resident_router_settle')){
+      if(continuationPacket)continuationAdmissions.push(await h.host.ctx.agents.get(continuationSessionId).admission.current())
+      if(failModel)return {error:'TEST_ROUTER_MODEL_CHECKPOINT_FAILURE'}
+      if(holdResume&&body.messages.at(-1)?.role!=='tool'){holdResume=false;resumeEntered();await released}
+      return settle(body,router(body))
+    }
+    return {text:'No other work'}
+  },{wrapStore:store=>({...store,query:q=>{
+    if(fatalConversation&&q.kind==='router.inbox'&&q.conversationId===fatalConversation)throw Object.assign(Error('TEST_UNRELATED_ROUTER_STORE_FAILURE'),{code:'EACCES'})
+    const result=store.query(q)
+    if(observeHandoffRecovery&&q.kind==='router.list'){observeHandoffRecovery=false;recoveryListed.resolve()}
+    return result
+  }})})
+  const message=channelMessage('explicit-failed-batch'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message)
+  await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
+  const row=await h.query('router.get',{conversationId}),failed=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+  const business=failed.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details.source.kind==='conversation-router')
+  assert.equal(business.length,1)
+  const assistant=failed.entries.findLast(entry=>entry.type==='message'&&entry.message.role==='assistant')
+  assert.equal(assistant.message.stopReason,'error');assert.match(assistant.message.errorMessage,/TEST_ROUTER_MODEL_CHECKPOINT_FAILURE/)
+  const packetId=business[0].details.packetId
+  assert.equal(failed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued'&&receipt.payload.id===packetId).length,1)
+  assert.equal(failed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted'&&receipt.payload.id===packetId).length,1)
+  const inbox=await h.query('router.inbox',{conversationId});assert.equal(inbox.length,outcome==='newer-input'?30:1);assert.equal(row.cursor,0)
+  await h.close()
+  const closed=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true}),requests=h.requests.length
+  await h.restart()
+  assert.ok(h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'),'an unsettled batch remains an explicit degraded recovery issue')
+  await h.service.recover()
+  assert.equal(h.requests.length,requests,'cold and ordinary recovery must not replay an already admitted model turn')
+  assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})).entries.slice(0,closed.entries.length),closed.entries)
+  const proof={conversationId,generation:row.generation,sessionId:row.activeSessionId,packetId,failedEntryId:assistant.id}
+  async function rejectedWithoutInference(candidate){
+    const count=h.requests.length
+    await assert.rejects(h.service.resumeRouterBatch(candidate),error=>typeof error.code==='string'&&/^(?:PI_)?ROUTER_/.test(error.code))
+    assert.equal(h.requests.length,count,'a refused continuation must not call the model')
+  }
+  for(const candidate of [{...proof,conversationId:'foreign-conversation'},{...proof,generation:row.generation+1},{...proof,sessionId:'foreign-router-session'},{...proof,packetId:packetId+':foreign'},{...proof,failedEntryId:business[0].id}])await rejectedWithoutInference(candidate)
+  if(outcome==='unrelated-error'){
+    const source=await h.query('source.get',{sourceId:inbox.find(event=>event.sourceId).sourceId}),other='unrelated-failed-conversation'
+    await h.store.command({id:'fixture-unrelated-source',kind:'source.record-direct',args:{source:{sourceId:'unrelated-recovery-source',groupId:other,messageId:'unrelated-recovery-message',actorId:source.actorId,channel:source.channel,version:1,text:'A separate recovery scope must still be inspected',resources:[]},conversation:{conversationId:other}}})
+    await h.store.command({id:'fixture-unrelated-triage',kind:'triage.commit',args:{dispositions:[{sourceId:'unrelated-recovery-source',messageVersion:1,needsHandling:true,reason:'A distinct pending recovery scope'}]}})
+    const count=h.requests.length;fatalConversation=other
+    try{await assert.rejects(h.service.recover(),{code:'EACCES'})}finally{fatalConversation=undefined}
+    assert.equal(h.requests.length,count)
+    assert.ok(h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'))
+    assert.equal((await h.query('router.inbox',{conversationId:other})).length,1)
+    assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})).entries.slice(0,closed.entries.length),closed.entries)
+    t.diagnostic(JSON.stringify({case:'unsettled-router-does-not-mask-other-recovery-error',originalUnsettledRetained:true,unrelatedStoreFailurePropagated:true,modelRequestsUnchanged:true,realVendorExecuted:false}))
+    return
+  }
+  if(outcome==='newer-input'){
+    const source=await h.query('source.get',{sourceId:inbox.find(event=>event.sourceId).sourceId})
+    await h.store.command({id:'fixture-resume-later-source',kind:'source.record-direct',args:{source:{sourceId:'resume-later-source',groupId:conversationId,messageId:'resume-later-message',actorId:source.actorId,channel:source.channel,version:1,text:'A later input must not be bypassed by the old checkpoint',resources:[]},conversation:{conversationId}}})
+    await h.store.command({id:'fixture-resume-later-triage',kind:'triage.commit',args:{dispositions:[{sourceId:'resume-later-source',messageVersion:1,needsHandling:true,reason:'The original failed batch is no longer the complete current inbox'}]}})
+    await rejectedWithoutInference(proof)
+    assert.equal((await h.query('router.inbox-count',{conversationId})),31)
+    assert.deepEqual((await h.query('router.inbox',{conversationId})).map(event=>event.id),inbox.map(event=>event.id),'the later 31st event stays outside the default 30-item projection')
+    assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})).entries.slice(0,closed.entries.length),closed.entries)
+    assert.equal(h.sent.length,0)
+    t.diagnostic(JSON.stringify({case:'failed-router-newer-pending-refusal',originalBatch:30,pendingTotal:31,pagedOverflowInvisible:true,originalPrefixUnchanged:true,newerEventRetained:true,modelRequestsUnchanged:true,realVendorExecuted:false}))
+    return
+  }
+  continuationPacket=failed.audit.find(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued'&&receipt.payload.id===packetId).payload
+  continuationSessionId=row.activeSessionId
+  const priorCurrent=await h.host.ctx.agents.get(continuationSessionId).admission.current()
+  assert.equal(priorCurrent,undefined,'cold recovery must not invent a current business turn')
+  const assertOriginalAdmission=()=>{
+    assert.ok(continuationAdmissions.length>0,'the actual model endpoint must observe the continuation')
+    for(const admitted of continuationAdmissions)assert.deepEqual(admitted,{id:packetId,messages:[continuationPacket]},'memory must see only the exact original business packet, not the Host control message')
+  }
+  if(outcome==='fails-again'){
+    await assert.rejects(h.service.resumeRouterBatch(proof),error=>typeof error.code==='string'&&/^(?:PI_)?ROUTER_/.test(error.code))
+    assertOriginalAdmission()
+    assert.equal(await h.host.ctx.agents.get(continuationSessionId).admission.current(),priorCurrent,'a failed continuation must restore the original current delegate')
+    const again=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true}),latest=again.entries.findLast(entry=>entry.type==='message'&&entry.message.role==='assistant')
+    assert.equal(latest.message.stopReason,'error');assert.notEqual(latest.id,assistant.id)
+    assert.deepEqual(again.entries.slice(0,closed.entries.length),closed.entries)
+    assert.equal(again.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details.packetId===packetId).length,1)
+    assert.equal((await h.query('router.inbox',{conversationId})).length,1)
+    assert.ok(h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'))
+    const failedRequests=h.requests.length
+    await h.restart();await rejectedWithoutInference(proof)
+    assert.equal(h.requests.length,failedRequests);assert.equal((await h.query('router.get',{conversationId})).cursor,0)
+    t.diagnostic(JSON.stringify({case:'router-continuation-fails-again',originalMemoryAdmissionBound:true,currentRestoredAfterFailure:true,newNativeFailureRetained:true,originalInputUnique:true,consumedCheckpointRefusedAfterCold:true,modelRequestsUnchangedAfterCold:true,realVendorExecuted:false}))
+    return
+  }
+  failModel=false;holdResume=true
+  const resumed=h.service.resumeRouterBatch(proof)
+  try{await Promise.race([entered,resumed.then(()=>assert.fail('continuation completed before its model gate'))]);await rejectedWithoutInference(proof)}finally{releaseResume()}
+  await Promise.race([handoffEntered.promise,resumed.then(()=>assert.fail('continuation completed before its handoff gate'))])
+  observeHandoffRecovery=true
+  const recovery=h.service.recover();void recovery.catch(()=>{})
+  try{
+    await recoveryListed.promise
+    assert.equal((await h.query('router.get',{conversationId})).phase,'handoff')
+    assert.equal(h.host.ctx.agents.get(continuationSessionId).lifecycle.signal.aborted,false,'ordinary recovery must not dispose the live handoff owner')
+  }finally{handoffReleased.resolve()}
+  await Promise.all([resumed,recovery]);await h.service.whenIdle();assertOriginalAdmission()
+  const completed=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true}),current=await h.query('router.get',{conversationId})
+  assert.deepEqual(completed.entries.slice(0,closed.entries.length),closed.entries)
+  assert.equal(completed.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details.packetId===packetId).length,1)
+  assert.equal(completed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued'&&receipt.payload.id===packetId).length,1)
+  assert.equal(completed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted'&&receipt.payload.id===packetId).length,1)
+  assert.equal(h.results.filter(result=>result.name==='resident_router_settle'&&!result.result.isError&&result.sessionId===row.activeSessionId).length,1)
+  assert.equal((await h.query('router.inbox',{conversationId})).length,0);assert.equal(current.cursor,1);assert.equal(current.generation,row.generation+1)
+  const candidate=await h.host.ctx.sessionPersistence.readNative(current.activeSessionId,{requireComplete:true})
+  assert.equal(candidate.header.conversationId,conversationId);assert.equal(candidate.header.generation,current.generation)
+  const rotation=(await h.query('router.rotations',{conversationId})).find(item=>item.oldSessionId===row.activeSessionId&&item.state==='published')
+  assert.equal(rotation?.candidateSessionId,current.activeSessionId)
+  assert.ok(candidate.entries.some(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff'&&entry.details.handoffId===rotation.id&&entry.details.conversationId===conversationId))
+  await rejectedWithoutInference(proof)
+  const finishedRequests=h.requests.length
+  await h.restart();await h.service.whenIdle()
+  assert.equal(h.requests.length,finishedRequests);assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})).entries,completed.entries)
+  await rejectedWithoutInference(proof)
+  assert.ok(!h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'),'only a settled batch clears its recovery issue')
+  assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+  t.diagnostic(JSON.stringify({case:'explicit-failed-router-batch-continuation',originalMemoryAdmissionBound:true,liveHandoffRecoverySerialized:true,strictCold:true,originalPacketUnique:true,originalAdmissionUnique:true,originalPrefixUnchanged:true,concurrentAndStaleRejectedBeforeInference:true,settled:true,legalHandoff:true,coldReplay:false,realVendorExecuted:false}))
 })

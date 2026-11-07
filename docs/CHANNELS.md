@@ -15,9 +15,14 @@ No private note is injected into a room. Models cannot select another principal.
 Register an explicitly configured transport through
 `ctx.channels.registerTransport(channelId, {send, readback})`. These functions
 receive a typed envelope containing the original channel/conversation, a stable
-`deliveryKey`, the exact original `replyToMessageId`, sender and text. `chat`
-envelopes have no group mentions; `chat-room` mentions are derived from registered
-participants. A missing transport leaves delivery prepared with an explicit
+`deliveryKey`, the exact `replyToMessageId`, `senderId`, text, `recipientIds` and
+optional `replyToParticipantId`. Active notifications use Host-internal
+`recipientActorIds` / `replyToActorId`; Channels verifies every selected actor in
+the authenticated conversation before mapping them to transport participant IDs.
+This validation also applies to `chat`, whose native `recipientIds` remains `[]`;
+`chat-room` recipients are mapped from the same conversation's participants. Only
+the vendor plugin translates these neutral fields into native send/quote flags.
+A missing transport leaves delivery prepared with an explicit
 maintenance error; it never falls through to DWS. Transport implementations must
 retain idempotency/readback evidence and report uncertainty honestly. No connector
 or real account is enabled by initialization.
@@ -27,8 +32,15 @@ is attached (the standard managed service composition), it owns the channel
 triage ingress. Adapters must start ingress after that composition is ready and
 stop it before shutdown. The current SDK supplies this integration boundary;
 it does not claim integrations with all messaging platforms or install accounts.
-The retained internal transport facade has historical DingTalk field names, while
-the public typed protocol and adapter delivery envelopes remain channel-neutral.
+Historical resident ingress/outbox projections retain DingTalk-named fields;
+active notification DTOs and adapter delivery envelopes use the neutral fields
+above. Existing payloads and digests are not renamed or migrated. Host
+`channels.readResource('readMessage', ...)` checks the requested message and remote
+conversation, then returns an internal `conversationId`, optional `actorId` and a
+neutral `quotedMessage` with internal `conversationId`, optional `actorId` and
+`text`; it does not expose top-level `groupId` / `senderOpenDingTalkId` as the
+public identity contract. Transport-level `readMessage` still reports the original
+channel conversation and authenticated sender for that conversion.
 
 ## 渠道职责配置
 
@@ -91,7 +103,7 @@ Router 的业务工具按实际职责区分：
 
 这些是应用授权的模型工具，不是公开 HTTP 接口。动作的稳定 `operationId` 按 conversation 和业务键派生，不依赖本次 Pi sessionId；跨 generation 仍按原收据去重。当前 generation、来源版本、真实作者和任务权限均在 Host 校验，模型不能自选其它身份。
 
-`resident_router_reply` 可用 `atOpenDingTalkIds` 明确选择同一会话中有受信身份依据的一人或多人，`[]` 表示不提及。不得按姓名猜 ID，也不默认通知所有参与人；Router 不开放 `atAll`。指定受众时使用普通 Markdown，不隐式引用或额外 @ 原作者。受众与正文、来源、文件选择一并冻结在 `replyRequest`，相同 operationId 改换受众明确冲突，不能变成新一轮发送。
+`resident_router_reply` 可用 `recipientActorIds` 明确选择同一会话中有受信身份依据的一人或多人，值为 Host namespace 内部 actor 标识，`[]` 表示不提及。渠道插件负责将 Host 受众映射为原生 sender/mention/quote 字段；模型和显示名不能直接指定 vendor open ID。不得按姓名猜 ID，也不默认通知所有参与人；Router 不开放 `atAll`。指定受众时使用普通 Markdown，不隐式引用或额外 @ 原作者。受众与正文、来源、文件选择一并冻结在 `replyRequest`，相同 operationId 改换受众明确冲突，不能变成新一轮发送。
 
 ## Router 最终文件交付
 
@@ -117,7 +129,19 @@ Router 常驻的是逻辑身份和业务记录，Pi 物理会话按 generation �
 
 摘要失败、截断、必要引用缺失或新代提交不完整时，不清空旧 journal，不回滚已完成业务，不重放动作。只有旧代提交、owner 和排空仍可信时才可恢复普通处理；SQL/Pi 不一致、旧实例已 fence 或效果不确定时保持阻断，依既有严格 journal 解码和维护证据恢复。连续流量未排空时继续处理，不假装空闲；Pi 原生阈值压缩仍保留。
 
-当前默认接线、失败路径与平台限制以 [本轮验收](acceptance/resident-conversation-routing/goal.md) 为入口；历史 Topic 分诊测试及本地协议计时不代表新 Router 或真实模型/渠道已验收。
+### 已接纳未结批次的显式续办
+
+Router 批次已经 `admitted`、随后模型轮失败且事件尚未 `settled` 时，普通恢复不能把它重新 `enqueue` / `deliver` 成另一份业务输入。只有受信 Host 可显式调用 `application.tasks.resumeRouterBatch({conversationId,generation,sessionId,packetId,failedEntryId})`，绑定原 conversation、当前 generation/Router active session、原 packet 和原生失败 checkpoint；该方法拒绝模型域调用，没有新增 HTTP、CLI 或模型工具入口。它是 Host 集成合同，不是让操作者绕过应用直调 Pi SDK 的操作方式。
+
+续办前重新校验 active owner、原官方会话 idle、来源权限、packet/历史一致性及未结事件全集。除逐项核对原事件 ID 外，还检查 pending 总数等于原 `eventIds.length`，避免只读前 30 条而漏过较新输入；不扩大用户消息 15 条或批次 30 条上限。并发、重复/过期 checkpoint、较新输入、外来会话、未决工具效果及 owner/store 不一致均拒绝，不因局部 idle 绕过。
+
+Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非业务 claim，再沿同一历史/packet 继续；控制记录不是新用户来源或授权，不重跑已经完成的任务，不重放原业务输入或未知外部效果。失败保留原 journal 和未结事件，不自动循环重试；只有本批全部事件真正 `settled` 后，才恢复正常排空/交接并清除对应 Router 恢复告警。
+
+普通 `recover()` 的 phase 恢复和已 `published` 交接的旧 owner 清理，也经同一 conversation 的 tail 串行执行；排队后重新读取当前 row/rotation，不把仍在途的交接当作冷中断。不暂停恢复 timer、不因 busy 静默跳过，也不放宽 live owner 守卫。原批次已经 `settled` 时不再调用 `resumeRouterBatch`，只由正式普通恢复推进该 Router 尚待完成的无工具交接/换代，不重跑原任务或业务输入。
+
+默认冷启动仅将确定的 `ROUTER_BATCH_UNSETTLED` 保留为任务服务 `recover()` 的 `degraded` 结果及现有 `listAlerts` 恢复告警，以保留上述 Host 入口；不代表恢复完成或消息已消费。其它 journal、owner、store 恢复错误仍失败关闭，不能被另一个 conversation 的未结告警遮蔽。已证 Host/application 异常 `close` 的串行短路风险未在本合同中修复；正常关闭的结果不证明错误关闭已安全释放全部资源。
+
+[第八轮报告](acceptance/resident-conversation-routing/round-8.md)记录了 Host checkpoint 续办及模型前拒绝反例，并在最新 `423a2e97` lifecycle 版本验证 live handoff/普通 recover 的确定性交错、另一 scope 错误传播和原安装已结批次的普通恢复。原安装最后仅一次无工具交接，原任务/执行 session/`run1` 与配置、私有 Skill、其它 journal 保持，重复恢复不重放且正常关闭。各组只绑定报告所列受验指纹，不宣称同版全量通过；本轮仅使用 loopback 脚本模型，没有新增真实模型或厂商调用。Windows 进程隐私限制、异常关闭风险和未专项验证的取消路径仍保留，历史 Topic/Owner 或此前局部结果不能替代这些边界。
 
 ## Plugin discovery
 
@@ -162,9 +186,8 @@ quoted text replies, not private-chat file delivery or general history catch-up.
 
 群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。这不证明当前 DWS/profile 会推送同账号在单成员群中的原始消息，也不证明真实回声已被正确抑制。`listen:false` 下的 `acceptHistoryMessage`、SDK 注入和 fake 仅验证本地链路；真实订阅、原始入站、群内交付/回读和复盘须分项留证。
 
-`test/pi-channel-plugin.test.js` checks disabled/registered modes and the actual
-standard application without any channel installed. Local adapter/domain contracts
-exercise vendor protocol behavior with fixtures. A real DWS executable, login,
-subscription reconnect, private operator routing and upload/download have not been
-accepted against a live account. These remain channel integration checks and do
-not block core initialization, tasks or local acceptance.
+`test/pi-channel-plugin.test.js` covers disabled/registered modes and the actual
+standard application without any channel installed. [第八轮报告](acceptance/resident-conversation-routing/round-8.md)
+records default-CLI no-DWS loading/process observations and local fake protocol,
+recipient/quote/resource and attachment regressions, scoped to each tested version.
+SG9 的指定群真实文本/附件交付、平台回读、复盘和冷恢复保留在[第七轮报告](acceptance/resident-conversation-routing/round-7.md)，不因本轮 fake 通过就追认为新版现场验收。当前轮次没有新增真实 DWS 登录、监听、发送或私聊测试；跨账号、订阅重连和其它平台能力不能从上述结果推断。渠道集成仍单独授权，不作为无插件核心初始化和本地任务验收的前提。

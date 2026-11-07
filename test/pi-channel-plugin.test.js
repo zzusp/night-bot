@@ -8,9 +8,10 @@ import {apply as applyDws} from '../src/channels/plugins/dingtalk-dws.js'
 import {apply as applyApplication,inject} from '../src/application.js'
 import {randomUUID} from 'node:crypto'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
-import {requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
+import {requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
 import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
+import {modelToolValues} from './fixtures/routing-official-model.js'
 
 test('core initializes without a DWS executable or plugin, and disabled plugins never register a transport',async t=>{
   const f=await memoryHost(t);assert.equal(f.host.ctx.get('dingtalkChannel'),undefined);assert.equal(f.host.ctx.channels.transports.size,0)
@@ -22,7 +23,7 @@ test('optional DWS plugin registers the typed boundary, preserves authenticated 
   const runner={cwd:f.root,async run(){commands++;throw Error('No real CLI calls in plugin registration test')},spawn(){commands++;throw Error('No subscription requested')}}
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture-profile',writesAuthorized:false,listen:false},{runner})})
   const plugin=f.host.ctx.get('dingtalkChannel');assert.ok(plugin);if(plugin.accountPolicy.mode==='private')assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')));else{assert.equal(plugin.accountDirectory,undefined);assert.equal(plugin.accountPolicy.sharedAcrossInstances,true)}
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
+  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{isOwnNotification:()=>false}})
   let captured;const receive=f.host.ctx.channels.receive.bind(f.host.ctx.channels);f.host.ctx.channels.receive=input=>{captured=input;return receive(input)}
   const response=await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'real-source-1',senderOpenDingTalkId:'authenticated-sender',text:'quoted boundary proof',occurredAt:'2026-11-05T10:00:00.000Z',quotedMessage:{messageId:'original-quoted-message',text:'earlier context',senderOpenDingTalkId:'quoted-person'}})
   assert.equal(captured.sentAt,'2026-11-05T10:00:00.000Z');assert.deepEqual(captured.quotedMessage,{messageId:'original-quoted-message',text:'earlier context',senderId:'quoted-person'});
@@ -124,10 +125,14 @@ test('generic message readers use neutral identities and enforce conversation sc
   let remote='room'
   channels.registerTransport('generic',{send:async()=>{},readback:async()=>{},readMessage:async()=>({messageId:'source',conversationId:remote,senderId:'alice',text:'hello',quotedMessage:{messageId:'quoted',senderId:'bob',text:'quoted body'}})})
   const message=await channels.readResource('readMessage',identity.sessionId,'source')
-  assert.equal(message.senderOpenDingTalkId,identity.principal)
-  assert.equal(message.quotedMessage.senderOpenDingTalkId,channels.identity({...input,senderId:'bob'}).principal)
-  assert.equal(message.quotedMessage.content,'quoted body')
+  assert.equal(message.actorId,identity.principal);assert.equal(message.conversationId,identity.sessionId);assert.equal(Object.hasOwn(message,'senderOpenDingTalkId'),false)
+  assert.equal(message.quotedMessage.actorId,channels.identity({...input,senderId:'bob'}).principal);assert.equal(Object.hasOwn(message.quotedMessage,'senderOpenDingTalkId'),false)
+  assert.equal(message.quotedMessage.text,'quoted body');assert.equal(message.quotedMessage.conversationId,identity.sessionId)
   remote='other';await assert.rejects(channels.readResource('readMessage',identity.sessionId,'source'),/SCOPE_MISMATCH/)
+  const direct=await channels.registerConversation({...input,type:'chat',messageId:'direct-alice'}),other=await channels.registerConversation({...input,type:'chat',senderId:'bob',messageId:'direct-bob'})
+  const notice={id:'direct-scope',payload:{conversationId:direct.sessionId,text:'Direct bounded response',recipientActorIds:[direct.principal]}}
+  assert.deepEqual(channels.deliveryEnvelope(notice).recipientIds,[])
+  for(const actorId of ['unknown-actor',other.principal])assert.throws(()=>channels.deliveryEnvelope({...notice,payload:{...notice.payload,recipientActorIds:[actorId]}}),{code:'CHANNEL_RECIPIENT_NOT_IN_CONVERSATION'})
 })
 
 test('multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization',async t=>{
@@ -136,7 +141,7 @@ test('multiple DWS instances isolate transports and describe credential sharing;
   assert.equal(channels.plugins.size,2);assert.equal(channels.transports.size,2)
   if(channels.plugins.get('account-one').accountPolicy.mode==='private')assert.notEqual(channels.plugins.get('account-one').accountDirectory,channels.plugins.get('account-two').accountDirectory)
   else{assert.equal(channels.plugins.get('account-one').accountDirectory,undefined);assert.equal(channels.plugins.get('account-two').accountPolicy.sharedAcrossInstances,true)}
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
+  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{isOwnNotification:()=>false}})
   await assert.rejects(channels.plugins.get('account-one').acceptHistoryMessage({groupId:'private',messageId:'m',senderOpenDingTalkId:'peer',text:'private'},{type:'chat'}),/CHAT_NOT_AUTHORIZED/)
   const raw={groupId:'shared',messageId:'same-message',senderOpenDingTalkId:'same-peer',text:'isolated account message',quotedMessage:{messageId:'quote-without-author',content:'unknown identity'}}
   const one=await channels.plugins.get('account-one').acceptHistoryMessage(raw),two=await channels.plugins.get('account-two').acceptHistoryMessage(raw)
@@ -219,7 +224,7 @@ test('configured channel responsibilities isolate all model roles through the de
       if(!task)return {tool:'resident_task_plan',args:{operationId:'role-plan-'+room.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:room.taskId,title:'Bounded task '+room.key,objective:'Complete the bounded local verification for '+room.key,requirements:['Report a verified bounded result']}],dependencies:[]}}
       if(task.status==='completed'&&input.events.some(event=>event.taskEvent?.kind==='task.completed')&&!replied.has(room.key)){
         replied.add(room.key)
-        return {tool:'resident_router_reply',args:{operationId:'role-result-'+room.key,sourceId:source.sourceId,messageVersion:source.version,text:'Bounded verification completed.',atOpenDingTalkIds:[]}}
+        return {tool:'resident_router_reply',args:{operationId:'role-result-'+room.key,sourceId:source.sourceId,messageVersion:source.version,text:'Bounded verification completed.',recipientActorIds:[]}}
       }
       const lastCall=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name
       if(body.messages.at(-1)?.role==='tool'&&lastCall==='resident_router_settle')return {text:'The current batch is settled.'}
@@ -284,4 +289,109 @@ test('configured channel responsibilities isolate all model roles through the de
   assert.deepEqual(toolErrors,[]);assert.deepEqual(f.errors,[])
   await app.close()
   t.diagnostic(JSON.stringify({case:'sg8-configured-channel-roles',tasks:proof,roles:rooms.map(room=>({room:room.key,requests:Object.fromEntries(['channel','triage','router','task','reflection'].map(role=>[role,observed.filter(row=>row.room===room.key&&row.role===role).length]))})),notifications:notices.map(row=>({id:row.id,state:row.state,messageId:row.receipt.messageId})),fakeSends:sent.length,fakeReadbacks:readbacks.length,modelRequests:f.requests.length,listenerStarted:false,realDwsExecuted:false}))
+})
+
+test('default application neutral Router tools enforce recipient/source ACL and deliver material-backed frozen files',{timeout:nativeTestTimeout(90000)},async t=>{
+  const steps=new Map(),taskPackets=[],calls=[],resourceReads=[],sent=[],results=[],materialText='MATERIAL='+randomUUID()
+  const taskId='neutral-material-task';let app,channels,sourceIdentity,bob,foreign,originalSource
+  const progress={phase:'setup',models:0,tools:{}}
+  t.signal.addEventListener('abort',()=>t.diagnostic(JSON.stringify({case:'default-neutral-tools-interrupted',progress})),{once:true})
+  const f=await memoryHost(t,async body=>{
+    progress.models++;progress.phase='model-request'
+    const tools=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：')
+    if(tools.includes('channel_triage_submit'))return {tool:'channel_triage_submit',args:{dispositions:triage.messages.map(message=>({sourceId:message.sourceId,messageVersion:message.version??message.messageVersion,needsHandling:message.messageId==='neutral-request',reason:'Only the exact material request needs work'}))}}
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(handoff)return {text:JSON.stringify({currentIntent:'Keep original source and frozen delivery references',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(tools.includes('task_result')){
+      const input=requestText({...body,messages:body.messages.filter(message=>message.role==='user')}).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
+      assert.ok(input);taskPackets.push(input)
+      const key='execution:'+input.task.taskId,step=steps.get(key)??0;steps.set(key,step+1)
+      progress.lastModel={kind:'execution',step,taskId:input.task.taskId}
+      const resource=input.materials.flatMap(material=>material.resources??[]).find(resource=>resource.status==='read')
+      assert.ok(resource,'default task composition must read/materialize the original generic resource')
+      if(step===0)return {tool:'read',args:{path:resource.path}}
+      if(step===1){assert.ok(requestText(body).some(text=>text.includes(materialText)),'actual model tool response must contain the fetched resource bytes');return {tool:'write',args:{path:'work/result.txt',content:materialText}}}
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Read the original material and verified the result file',evidence:['work/result.txt'],limitations:[],artifacts:['work/result.txt'],deliveryFiles:[{path:'work/result.txt',caption:'Verified material result'}]}}}
+    }
+    if(!tools.includes('resident_router_reply'))return {text:'No additional work'}
+    const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=steps.get(key)??0;steps.set(key,step+1)
+    progress.lastModel={kind:'router',step,events:input.events.map(event=>({kind:event.kind,taskId:event.taskId,sourceId:event.sourceId}))}
+    const source=input.events.find(event=>event.source?.messageId==='neutral-request')?.source
+    const settle=()=>({tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'neutral-settle:'+key}})
+    const definition=body.tools.find(tool=>tool.function.name==='resident_router_reply').function
+    assert.ok(definition.parameters.properties.recipientActorIds);assert.equal(Object.hasOwn(definition.parameters.properties,'atOpenDingTalkIds'),false)
+    if(source){
+      originalSource=source
+      assert.equal(Object.hasOwn(source,'groupId'),false);assert.equal(source.conversationId,sourceIdentity.sessionId);assert.equal(source.actorId,sourceIdentity.principal)
+      assert.equal(source.quote.actorId,bob);assert.equal(source.quote.text,'Keep this original quote');assert.equal(Object.hasOwn(source.quote,'senderOpenDingTalkId'),false)
+      assert.ok(source.text.includes('DingTalk'),'literal user vendor names must be preserved')
+      const reply={operationId:'neutral-acl-'+step,sourceId:source.sourceId,messageVersion:source.version,text:'A bounded local response'}
+      if(step===0)return {tool:'resident_source_get',args:{sourceId:source.sourceId}}
+      if(step===1)return {tool:'resident_router_reply',args:{...reply,recipientActorIds:['unknown-actor']}}
+      if(step===2)return {tool:'resident_router_reply',args:{...reply,recipientActorIds:[foreign]}}
+      if(step===3)return {tool:'resident_router_reply',args:{...reply,atOpenDingTalkIds:[bob]}}
+      if(step===4)return {tool:'resident_router_reply',args:{...reply,messageVersion:source.version+1,recipientActorIds:[bob]}}
+      if(step===5)return {tool:'resident_task_plan',args:{operationId:'neutral-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title:'Material verification',objective:'Read the original material, create a local result file and report the frozen output.',requirements:['Result bytes match the material']}],dependencies:[]}}
+      if(step===6)return settle()
+      return {text:'Original source disposition committed'}
+    }
+    if(input.events.some(event=>event.taskEvent?.kind==='task.completed'&&event.taskEvent.taskId===taskId)){
+      if(step===0)return {tool:'resident_task_query',args:{taskId}}
+      if(step===1){const task=modelToolValues(body).toReversed().find(value=>value.task?.taskId===taskId)?.task;assert.ok(task?.completion?.result?.artifactFiles?.length);return {tool:'resident_router_reply',args:{operationId:'neutral-delivery',sourceId:originalSource.sourceId,messageVersion:originalSource.version,text:'The verified DingTalk material result is attached.',recipientActorIds:[bob],taskDelivery:{taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}}}
+      if(step===2)return settle()
+      return {text:'Frozen delivery has a durable disposition'}
+    }
+    if(step===0)return settle()
+    return {text:'Non-business event settled'}
+  })
+  channels=f.host.ctx.channels
+  const message={type:'chat-room',channelId:'neutral-channel',conversationId:'local-room',senderId:'alice',messageId:'neutral-request',text:'DingTalk request: read the attached local material and deliver the verified file.',mentions:['bob'],quotedMessage:{messageId:'bob-original',senderId:'bob',text:'Keep this original quote'},resourceRefs:[{type:'file',resourceId:'local-material',fileName:'request.txt'}]}
+  sourceIdentity=channels.identity(message);bob=channels.identity({...message,senderId:'bob'}).principal;foreign=channels.identity({...message,senderId:'foreign-person',conversationId:'other-room'}).principal
+  channels.registerTransport('neutral-channel',{
+    async send(envelope){calls.push('text-send');sent.push(structuredClone(envelope));return {messageId:'local-text'}} ,
+    async readback(envelope){calls.push('text-readback');return {messageId:'local-text',visible:true}},
+    async sendFile(envelope,notification,file){calls.push('file-send');sent.push(structuredClone(envelope));assert.equal(await readFile(join(file.directory,file.fileName),'utf8'),materialText);return {messageId:'local-file'}},
+    async readbackFile(){calls.push('file-readback');return {messageId:'local-file',visible:true}},
+    async readResource(envelope){resourceReads.push(structuredClone(envelope));return {text:materialText,complete:true,hasMore:false,failures:[]}},
+  })
+  f.host.ctx.on('tools/result',(execution,result)=>{results.push({name:execution.name,result,sessionId:execution.agent?.id});progress.tools[execution.name]=(progress.tools[execution.name]??0)+1;progress.lastTool={name:execution.name,isError:!!result.isError,code:result.error?.code};if(execution.name==='task_result'&&result.isError&&!progress.firstTaskResultError){const text=(result.content??[]).filter(part=>part.type==='text').map(part=>part.text).join(String.fromCharCode(10));progress.firstTaskResultError={codes:[...new Set(text.match(/[A-Z][A-Z0-9_]{5,}/g)??[])],digest:hash(text)}}progress.phase='tool-result'})
+  const appConfig={...f.config,resident:{host:'127.0.0.1',port:0,taskSessions:{instanceId:'neutral-tools',ownerActorId:'owner',webActorId:'owner',ingressEpoch:new Date().toISOString(),initialize:true,reasoningMode:'inherit'}}}
+  await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,appConfig)})
+  app=f.host.ctx.get('application')
+  await channels.receive({...message,messageId:'bob-original',senderId:'bob',text:'Participant only',quotedMessage:undefined,resourceRefs:[],mentions:[]})
+  await channels.receive({...message,messageId:'foreign-original',senderId:'foreign-person',conversationId:'other-room',text:'Different conversation participant',quotedMessage:undefined,resourceRefs:[],mentions:[]})
+  await channels.receive(message);progress.phase='business-drain';await app.tasks.whenIdle();progress.phase='delivery-wait'
+  await eventually(async()=>{const notices=await app.tasks.store.query({kind:'notification.list'});return notices.length===2&&notices.every(notice=>notice.state==='delivered')},'default Router text and frozen file both visibly delivered',t.signal)
+  await app.tasks.whenIdle()
+  const task=await app.tasks.store.query({kind:'task.get',taskId}),notices=await app.tasks.store.query({kind:'notification.list'})
+  assert.equal(task.status,'completed');assert.equal(task.drained,true);assert.equal(task.ownerActorId,sourceIdentity.principal);assert.equal(task.conversationId,sourceIdentity.sessionId)
+  assert.deepEqual(calls,['text-send','text-readback','file-send','file-readback']);assert.equal(sent.length,2)
+  for(const envelope of sent){assert.equal(envelope.conversationId,message.conversationId);assert.equal(envelope.channelId,message.channelId);assert.deepEqual(envelope.recipientIds,['bob']);assert.equal(envelope.replyToMessageId,undefined);assert.equal(envelope.replyToParticipantId,undefined)}
+  assert.ok(resourceReads.length>=1);assert.ok(resourceReads.every(value=>value.channelId===message.channelId&&value.conversationId===message.conversationId&&value.messageId===message.messageId));assert.deepEqual(resourceReads[0].resource,message.resourceRefs[0])
+  const child=notices.find(notice=>notice.payload.artifact),parent=notices.find(notice=>!notice.payload.artifact)
+  assert.equal(child.payload.afterNotificationId,parent.id);assert.deepEqual(child.payload.recipientActorIds,[bob]);assert.equal(child.payload.replyToActorId,undefined)
+  assert.ok(taskPackets.length>=3)
+  for(const input of taskPackets){for(const source of input.sources){assert.equal(Object.hasOwn(source,'groupId'),false);if(source.quote){assert.equal(source.quote.actorId,bob);assert.equal(source.quote.text,message.quotedMessage.text);assert.equal(Object.hasOwn(source.quote,'senderOpenDingTalkId'),false)}}for(const material of input.materials){assert.equal(Object.hasOwn(material,'groupId'),false);if(material.quote)assert.equal(material.quote.actorId,bob)}}
+  const rejected=results.filter(row=>row.name==='resident_router_reply'&&row.result.isError)
+  assert.equal(rejected.length,3,'unknown actor, cross-conversation actor and wrong source version fail inside the registered tool')
+  const schemaRejected=new Map(f.requests.flatMap(body=>body.messages).filter(message=>message.role==='tool'&&String(message.content).includes('atOpenDingTalkIds')&&/unexpected|unrecognized|additional|schema|invalid|validation/i.test(String(message.content))).map(message=>[message.tool_call_id,message]))
+  assert.equal(schemaRejected.size,1,'the old public field is rejected by official schema validation before tools/result')
+  assert.equal(rejected.length+schemaRejected.size,4,'all four unauthorized variants fail before delivery')
+  assert.ok(results.some(row=>row.name==='resident_source_get'&&!row.result.isError));assert.ok(results.some(row=>row.name==='resident_task_plan'&&!row.result.isError));assert.equal(f.errors.length,0)
+  const taskNative=await f.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+  await f.close();f.config.reflection={enabled:false};await f.boot()
+  await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,appConfig)});app=f.host.ctx.get('application')
+  await app.tasks.whenIdle()
+  assert.equal(f.host.ctx.channels.transports.size,0)
+  assert.deepEqual(await app.tasks.store.query({kind:'notification.list'}),notices,'delivered payloads, digests and attempts remain unchanged with no channel installed')
+  assert.ok(!app.tasks.listAlerts().some(row=>row.detail==='CHANNEL_TRANSPORT_UNAVAILABLE'),'terminal delivered notifications do not require a disabled transport')
+  assert.deepEqual((await f.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})).entries,taskNative.entries)
+  const pendingId='neutral-pending-disabled-channel'
+  await app.tasks.store.command({id:'fixture-pending-disabled-channel',kind:'notification.prepare',args:{notificationId:pendingId,taskId:parent.taskId,requirementRevision:parent.requirementRevision,kind:parent.kind,payload:parent.payload}})
+  await app.tasks.recover();await app.tasks.whenIdle()
+  const disabledPending=await app.tasks.store.query({kind:'notification.get',notificationId:pendingId})
+  assert.equal(disabledPending.state,'prepared');assert.equal(disabledPending.sendAttemptCount??0,0)
+  assert.ok(app.tasks.listAlerts().some(row=>row.alertId==='failure:'+pendingId&&row.detail==='CHANNEL_TRANSPORT_UNAVAILABLE'),'unfinished delivery still reports its missing transport')
+  assert.deepEqual(calls,['text-send','text-readback','file-send','file-readback'])
+  t.diagnostic(JSON.stringify({case:'default-neutral-tools',disabledColdTerminalUnchanged:true,pendingTransportFailureRetained:true,taskStatus:task.status,drained:task.drained,sourceAclRejections:rejected.length+schemaRejected.size,resourceReads:resourceReads.length,visibleText:1,visibleFrozenFile:1,recipientNativeIds:sent.map(value=>value.recipientIds),literalUserVendorTextPreserved:true,realVendorExecuted:false}))
 })

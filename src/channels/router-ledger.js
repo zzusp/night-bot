@@ -141,7 +141,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         let notification
         if (decision.reply) {
           const notificationId = `triage-reply:${source.sourceId}`
-          notification = {id:notificationId,notificationId,kind:'triage-reply',taskId:null,requirementRevision:source.version,state:'prepared',payload:{outboundId:notificationId,conversationId:source.groupId,sourceId:source.sourceId,sourceMessageId:source.messageId,actorId:source.actorId,text:decision.reply,replyKind:'confirmation',replyToMessageId:source.messageId,replyToSenderOpenDingTalkId:source.actorId,sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId}},createdAt:new Date().toISOString()}
+          notification = {id:notificationId,notificationId,kind:'triage-reply',taskId:null,requirementRevision:source.version,state:'prepared',payload:{outboundId:notificationId,conversationId:source.groupId,sourceId:source.sourceId,sourceMessageId:source.messageId,actorId:source.actorId,text:decision.reply,replyKind:'confirmation',replyToMessageId:source.messageId,replyToActorId:source.actorId,sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId}},createdAt:new Date().toISOString()}
           notification.payloadDigest = digest(notification.payload)
           write('notifications',notification); notifications.push(notification)
         }
@@ -252,6 +252,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.list')return rows('conversations')
     if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending').map(row=>row.conversationId),...rows('conversations').filter(row=>row.cursor>row.lastHandoffCursor||row.phase!=='active').map(row=>row.id)])]
     if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(row=>({...row,source:row.sourceId?read('sources',row.sourceId):undefined,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined}))
+    if(q.kind==='router.inbox-count')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').length
     if(q.kind==='router.dependencies')return rows('dependencies').filter(row=>(!q.conversationId||row.conversationId===q.conversationId)&&(!q.taskId||row.taskId===q.taskId||row.prerequisiteTaskId===q.taskId))
     if(q.kind==='router.rotations')return rows('router_rotations').filter(row=>!q.conversationId||row.conversationId===q.conversationId)
     if(q.kind==='router.source-links')return rows('source_links').filter(row=>(!q.taskId||row.taskId===q.taskId)&&(!q.sourceId||row.sourceId===q.sourceId))

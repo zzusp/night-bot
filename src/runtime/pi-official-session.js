@@ -13,7 +13,10 @@ import {bindApprovalAudit} from '../native-approval.js'
  */
 export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false,onToolResult}) {
  if(store?.kind!=='pi-native'||!admission||typeof createAudit!=='function')throw new TypeError('Explicit native store and business admission required')
+ let resumedInput
  const actorAdmission=Object.fromEntries(['enqueue','has','status','lookupPacket','pending','current'].filter(key=>typeof admission[key]==='function').map(key=>[key,admission[key].bind(admission)]))
+ const current=actorAdmission.current
+ if(current)actorAdmission.current=()=>resumedInput===undefined?current():structuredClone(resumedInput)
  Object.defineProperty(actorAdmission,'paused',{enumerable:true,get:()=>admission.paused});Object.freeze(actorAdmission)
  const actor={id:store.id,ctx,admission:actorAdmission,piSession:undefined}
  Object.defineProperty(actor,'id',{value:store.id,enumerable:true,writable:false,configurable:false})
@@ -72,6 +75,25 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
     return result
+   },
+   async resumeRouterBatch(packet,beforeStart,afterClaim){
+    tools.beginTurn()
+    await bridge.refreshResources();await bridge.resourceLoader.reload()
+    const proof=await beforeStart()
+    // 在官方入口可能触发压缩前，先持久消费原失败 checkpoint；它不是业务输入或授权。
+    await session.sendCustomMessage({customType:'night.router-resume-claim',content:'Host 已领取原 Router 失败回合的显式续办；本控制记录不提供新来源或授权。',display:false,details:proof},{triggerTurn:false})
+    await durability.commit()
+    await afterClaim(proof)
+    // 仅在领取证明持久化并复核后，为完整官方续轮绑定原业务输入；不修改原 admission。
+    resumedInput={id:packet.id,messages:[structuredClone(packet)]}
+    try{
+     await session.sendCustomMessage({customType:'night.router-resume-turn',content:'Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件，不重放已完成动作、不重跑任务；必要动作有持久收据后才结清事件。本控制消息不是用户来源或新授权。',display:false,details:proof},{triggerTurn:true})
+     if(imageBudget?.failure)throw imageBudget.failure
+     if(bridge.policyFailure)throw bridge.policyFailure
+     if(durability.failure)throw durability.failure
+     if(durability.requestFailure)throw durability.requestFailure
+     if(failure)throw failure
+    }finally{resumedInput=undefined}
    },
    async prompt(...args){
     tools.beginTurn()

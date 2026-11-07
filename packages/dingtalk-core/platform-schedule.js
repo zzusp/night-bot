@@ -6,10 +6,10 @@ import {isDeepStrictEqual} from 'node:util'
 import {enqueueBusinessNotice} from '../../src/runtime/pi-business-notices.js'
 import { fixedUnitRequestId, platformTaskPage, platformScheduleSessionId as sessionKey, platformScheduleOutboundId as outboundKey } from './fixed-topics.js'
 import { sessionWorkspace, sessionTitle } from './session-workspaces.js'
-import { groupReplyInstructions } from './group-message.js'
+import {conversationReplyInstructions} from '../../src/channels/message-safety.js'
 import { z } from 'zod'
 import { createPlatformNotifier, platformNotificationContext, platformReplyParameters } from './platform-notification.js'
-import { groupNotificationInstructions } from './group-notification.js'
+import {conversationNotificationInstructions,conversationMessageActorId} from './group-notification.js'
 
 const fail=code=>Object.assign(new Error(code),{code})
 const output = { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
@@ -31,7 +31,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
   const source = binding => {
     if (closed) return null
     const message = store.getGroup(binding.groupId)?.messages.find(item => item.messageId === binding.messageId && item.messageVersion === binding.messageVersion)
-    if(binding.sourceMode==='direct')return message&&message.senderOpenDingTalkId===binding.actorId?{message,sourceId:binding.sourceId}:null
+    if(binding.sourceMode==='direct')return message&&conversationMessageActorId(message)===binding.actorId?{message,sourceId:binding.sourceId}:null
     const unit = message?.units?.find(item => item.unitId === binding.unitId && item.unitRevision === binding.unitRevision && item.fixedTopic === 'agent-platform')
     return unit && message.activeUnitRefs?.some(ref => ref.unitId === unit.unitId && ref.unitRevision === unit.unitRevision)
       && fixedUnitRequestId(binding.groupId, message, unit) === binding.requestId ? { message, unit } : null
@@ -103,10 +103,10 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       const previous=store.getGroup(binding.groupId).outbox.find(item=>item.outboundId===outboundKey(binding.requestId))
       if(previous){await deliver(binding);throw fail('platform_schedule_settled')}
     }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'dingtalk-platform-schedule', order: 120, officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `这是宿主持有的独立平台定时会话，仅执行原用户已交办的一次事项，不创建业务任务，不重新安排同一提醒。原群=${binding.groupId}；约定时间=${binding.at}；默认时区=${binding.timezone}；本次恢复时刻=${new Date(now()).toISOString()}。原消息=${JSON.stringify(source(binding)?.unit?.sourceRanges ?? [{sourceId:binding.sourceId,text:source(binding)?.message.text}])}。事项：${binding.prompt}。到期汇报先调用 platform_task_query 读取本群最新事实，分页读全，再调用 platform_reply_submit 提交原群答复，普通自然语言不会发送。结合原消息的明确时区与实际执行时刻重新核对目标；已过期的有价值汇报补报一次并注明实际时间和延迟，失去意义的定点提醒可 text=null 静默结清，不得改排明天。只有不确定且影响执行才澄清。宿主的 schedule 送入会话回执不代表汇报已发送；只有原群通知账确认才称送达。`} }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'dingtalk-group-reply', order: 119, officialText: ({actor}) => actor===agent?groupReplyInstructions:'' }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'dingtalk-notification', order: 121,
-      officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `${groupNotificationInstructions}\n受信原请求与近期群上下文（不代表全部都要通知）：${JSON.stringify(platformNotificationContext(store.getGroup(binding.groupId), source(binding)?.message ?? {}))}`} }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-platform-schedule', order: 120, officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `这是宿主持有的独立平台定时会话，仅执行原用户已交办的一次事项，不创建业务任务，不重新安排同一提醒。原群=${binding.groupId}；约定时间=${binding.at}；默认时区=${binding.timezone}；本次恢复时刻=${new Date(now()).toISOString()}。原消息=${JSON.stringify(source(binding)?.unit?.sourceRanges ?? [{sourceId:binding.sourceId,text:source(binding)?.message.text}])}。事项：${binding.prompt}。到期汇报先调用 platform_task_query 读取本群最新事实，分页读全，再调用 platform_reply_submit 提交原群答复，普通自然语言不会发送。结合原消息的明确时区与实际执行时刻重新核对目标；已过期的有价值汇报补报一次并注明实际时间和延迟，失去意义的定点提醒可 text=null 静默结清，不得改排明天。只有不确定且影响执行才澄清。宿主的 schedule 送入会话回执不代表汇报已发送；只有原群通知账确认才称送达。`} }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-reply', order: 119, officialText: ({actor}) => actor===agent?conversationReplyInstructions:'' }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-notification', order: 121,
+      officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `${conversationNotificationInstructions}\n受信原请求与近期群上下文（不代表全部都要通知）：${JSON.stringify(platformNotificationContext(store.getGroup(binding.groupId), source(binding)?.message ?? {}))}`} }))
     mounted.set(agent, {disposers,prepared:!agent.piSession})
   }
   const stopPrepared=ctx.on?.('night/agent-prepare',({agent})=>mount(agent))

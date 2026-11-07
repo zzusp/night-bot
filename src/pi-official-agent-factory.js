@@ -8,7 +8,7 @@ import {deepFreeze} from './native-values.js'
 import {createNightOfficialSession} from './runtime/pi-official-session.js'
 import {createBusinessAdmission,admissionAuditKinds} from './runtime/pi-business-admission.js'
 import {createNativeBusinessState,nativeBusinessAuditKinds} from './runtime/pi-business-state.js'
-import {jobReceiptKinds} from './runtime/job-ledger.js'
+import {jobReceiptKinds,unresolvedNativeJobReceipts} from './runtime/job-ledger.js'
 import {todoAuditKinds} from './native-tool-todo.js'
 import {bindBusinessInputAuthority} from './runtime/pi-business-inputs.js'
 import {bindBusinessNotices} from './runtime/pi-business-notices.js'
@@ -77,7 +77,7 @@ export class OfficialAgentFactory {
   const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,effectReconciliationAuditKinds,sessionNameAuditKinds,ports.auditKinds,options.auditKinds)
   const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
   const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
-  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false
+  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false,routerContinuing=false,routerResumeCheck
   const cancellationError=fail('PI_OFFICIAL_ACTOR_NOT_LIVE')
   const lifecycle=new AbortController(),deliveryContext=new AsyncLocalStorage(),pending=new Set()
   const requestGuards=new Set()
@@ -142,6 +142,7 @@ export class OfficialAgentFactory {
      const jobs=actor.ctx.get('jobs');if(jobs){if(typeof jobs.assertCanRun!=='function')throw fail('PI_JOB_ADMISSION_REQUIRED');await jobs.assertCanRun(actor)}
      await options.beforeRequest?.(actor)
      for(const guard of requestGuards)await guard({actor,signal:lifecycle.signal})
+     await routerResumeCheck?.()
     },
     onToolResult:options.onToolResult,
     beforeStoreClose:async()=>{await ownerCtx.get('sessionNames')?.closeActor(actor);await skillRefresh?.close();if(published)await drain('dispose');await admission.close()},
@@ -176,11 +177,60 @@ export class OfficialAgentFactory {
     if(errors.length)throw new AggregateError(errors,'Official actor cancellation failed')
    }
    const thisFactory=this
+   const routerCheckpoint=(packet,failedEntryId,claim)=>{
+    active();check()
+    if(store.header.runtimeOwner!=='conversation-router'||packet.source.kind!=='conversation-router'||packet.source.conversationId!==store.header.conversationId||packet.source.generation!==store.header.generation)throw fail('PI_ROUTER_RESUME_SCOPE')
+    if(!bundle.session.isIdle||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_RESUME_BUSY')
+    if(admission.status(packet.id)!=='admitted'||admission.pending().length||!isDeepStrictEqual(admission.lookupPacket(packet.id),packet))throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+    const entries=store.manager.getEntries(),branch=store.manager.getBranch(),messages=branch.filter(entry=>['message','custom_message'].includes(entry.type))
+    const inputs=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details?.packetId===packet.id),input=inputs[0]
+    if(inputs.length!==1||!isDeepStrictEqual(input.details,{packetId:packet.id,source:packet.source})||!isDeepStrictEqual(input.content,packet.content)||branch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')?.id!==input.id)throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+    const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
+    if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
+    if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==store.snapshot().nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    if(failure?.type!=='message'||failure.message.role!=='assistant'||failure.message.stopReason!=='error'||messages.at(claim===undefined?-1:-2)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    // 未配对或错误工具结果不能凭 idle 推断外部效果已结算。
+    const suffix=branch.slice(branch.indexOf(input)+1),calls=new Map()
+    for(const entry of suffix){
+     if(entry.type==='message'&&entry.message.role==='user')throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+     if(entry.type==='custom_message'&&entry.customType!=='night.tool-context'&&(!['night.router-resume-claim','night.router-resume-turn'].includes(entry.customType)||entry.details?.packetId!==packet.id||entry.details.inputEntryId!==input.id||entry.details.conversationId!==store.header.conversationId||entry.details.generation!==store.header.generation||entry.details.sessionId!==id))throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+    }
+    for(const entry of suffix)if(entry.type==='message'){
+     const message=entry.message
+     if(message.role==='assistant')for(const block of message.content)if(block.type==='toolCall'){if(calls.has(block.id))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.set(block.id,block.name)}
+     if(message.role==='toolResult'){if(!calls.has(message.toolCallId)||calls.get(message.toolCallId)!==message.toolName||message.isError)throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.delete(message.toolCallId)}
+    }
+    const receipts=entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data)
+    if(calls.size||unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent'))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision}
+   }
    const handle={actor,agent:actor,session:bundle.session,
-    enqueue:packet=>{active();if(routerFrozen)throw fail('PI_ROUTER_FROZEN');return admission.enqueue(packet)},
+    enqueue:packet=>{active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');return admission.enqueue(packet)},
     deliver:(packetId,deliveryOptions)=>{
-     active();if(routerFrozen)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
+     active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
     },whenIdle,cancel,
+    resumeRouterBatch({packet,failedEntryId},validate){
+     active();check()
+     if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
+     if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size||!bundle.session.isIdle)throw fail('PI_ROUTER_RESUME_BUSY')
+     if(typeof validate!=='function')throw new TypeError('Router Host validation required')
+     packet=deepFreeze(structuredClone(packet));routerCheckpoint(packet,failedEntryId)
+     routerContinuing=true
+     const authorizeResume=async()=>{active();check();await validate();if(await authorize(packet,actor)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')}
+     const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,async()=>{
+      await authorizeResume();routerCheckpoint(packet,failedEntryId)
+      routerFrozen=true;admission.pause()
+      const hold=await drain('maintenance')
+      await hold.resume?.();active();check();admission.resume();routerFrozen=false
+      routerResumeCheck=async()=>{await authorizeResume();routerResumeCheck=undefined}
+      return bundle.resumeRouterBatch(packet,async()=>{
+       await store.commit();await authorizeResume();return routerCheckpoint(packet,failedEntryId)
+      },async proof=>{routerCheckpoint(packet,failedEntryId,proof);await authorizeResume()})
+     }))
+     pending.add(operation)
+     void operation.finally(()=>{routerResumeCheck=undefined;routerContinuing=false;pending.delete(operation)}).catch(()=>{})
+     return operation
+    },
     async routerCommitProof(){
      active();await whenIdle();await store.commit()
      const entries=store.manager.getEntries(),commit=entries.at(-1)
@@ -200,7 +250,7 @@ export class OfficialAgentFactory {
      return handle.routerCommitProof()
     },
     async runToolFreeHandoff(packet,validate){
-     active();if(routerFrozen||maintenanceCount||admission.paused)throw fail('PI_ROUTER_HANDOFF_BUSY')
+     active();if(routerContinuing||routerFrozen||maintenanceCount||admission.paused)throw fail('PI_ROUTER_HANDOFF_BUSY')
      routerFrozen=true
      await whenIdle();const handoffHold=await drain('maintenance');await handoffHold.resume?.()
      if(admission.pending().length||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.isStreaming||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_INPUT_PENDING')
@@ -225,6 +275,7 @@ export class OfficialAgentFactory {
     routerResumeAfterHandoffFailure(){active();check();if(maintenanceFailed||admission.paused)throw fail('PI_ROUTER_RECOVERY_BLOCKED');routerFrozen=false},
     runMaintenance(action){
      if(deliveryContext.getStore()===actor)return Promise.reject(fail('PI_MAINTENANCE_REENTRANT'))
+     if(routerContinuing)return Promise.reject(fail('PI_ROUTER_RESUME_BUSY'))
      if(typeof action!=='function')return Promise.reject(new TypeError('Maintenance callback required'))
      if(!maintenanceCount){maintenanceRestore=!admission.paused;maintenanceFailed=false;maintenanceReleases=[]}maintenanceCount++;admission.pause()
      const operation=maintenance.then(async()=>{if(closing||disposed)throw fail('PI_OFFICIAL_ACTOR_NOT_LIVE');await bundle.session.abort();await whenIdle();const proof=await drain('maintenance');if(proof.resume)maintenanceReleases.push(proof.resume);const result=await thisFactory.executionContext.run(actor,()=>action(actor));await store.commit();return result})

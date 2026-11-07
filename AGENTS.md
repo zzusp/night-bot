@@ -6,7 +6,13 @@ credentials, private paths or business assumptions. Channels are optional adapte
 conversation abstractions, with authenticated sender/conversation isolation.
 DingTalk DWS CLI belongs in the optional channel plugin, never default core
 composition, startup probes or core acceptance prerequisites. Preserve plugin
-capabilities and report live vendor integration separately.
+capabilities and report live vendor integration separately. Public tools, prompts
+and DTOs use channel-neutral actor, conversation and recipient fields; vendor
+authentication/protocol, native IDs, quotes and resource mapping stay in the
+optional plugin. Historical audit and receipts remain traceable to source/vendor
+fields and are not mechanically renamed or migrated; retained compatibility
+helpers for historical message/receipt formatting do not mean DWS is loaded or
+running, and other static-loading claims require test evidence.
 Each task has one execution session; no separate task Owner/coordinator or split
 execution team. First-tier triage only decides per-source handling and optional
 short replies; it never splits, creates or controls tasks. Each authenticated
@@ -57,7 +63,15 @@ artifacts stay in `data/workspaces/`; model file/process tools must enforce that
 write boundary, including relative paths and symlinks. System binaries/libraries
 and ephemeral OS mechanisms are dependencies, not external business workspaces.
 Runtime data, memories, credentials, backups and business artifacts must never be
-committed to Git. Version code, tests, rules and deliberate formal skill templates.
+committed to Git. Version code, tests, rules, generic skill loading/isolation
+mechanisms and no-body configuration contracts only. Private skill bodies, scripts,
+references and assets stay in ignored installation data and are never staged,
+committed or pushed. When migrating them, use an existing installation pointer within this task's
+authorized reuse scope as source, and never copy stale node_modules, worktrees,
+accounts or credentials. If cleanup or relocation is needed, touch only materials
+introduced by this task; never overwrite or move another session's existing skills.
+Run git check-ignore before and after copying, and inspect git diff --cached and
+git ls-files for skill paths before delivery.
 Autonomous learning uses scoped, evidence-linked memory and task retrospectives;
 model inferences are not facts or authorization. Learning failures must not undo
 completed delivery; retain audit, restart idempotence and forgetting behavior.

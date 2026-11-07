@@ -2,6 +2,7 @@ import {Service} from '@deepseek-ai/cordis'
 import {z} from 'zod'
 import {join} from 'node:path'
 import {hash} from '../memory/format.js'
+import {notificationAudience} from '../../packages/dingtalk-core/group-notification.js'
 import {isDeepStrictEqual} from 'node:util'
 import {failure,privateDirectory,readRegular,atomicWrite,withLock} from '../runtime/files.js'
 const envelopeSchema=z.object({type:z.enum(['chat','chat-room']),channelId:z.string().min(1).max(128),conversationId:z.string().min(1).max(256),senderId:z.string().min(1).max(256),messageId:z.string().min(1).max(256),messageVersion:z.number().int().positive().optional(),text:z.string().min(1).max(32000),sentAt:z.string().optional(),mentionedAgent:z.boolean().optional(),mentions:z.array(z.string().min(1).max(256)).max(256).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),resourceRefs:z.array(z.record(z.string(),z.unknown())).max(32).optional(),quotedMessage:z.object({messageId:z.string(),senderId:z.string().optional(),text:z.string().optional()}).strict().optional()}).strict()
@@ -33,7 +34,18 @@ export default class Channels extends Service {
   registerOperatorNotifications(id,notifications){if(this.operatorNotifications)throw failure('CHANNEL_OPERATOR_TRANSPORT_EXISTS');this.operatorNotifications=notifications;return ()=>{if(this.operatorNotifications===notifications)this.operatorNotifications=undefined}}
   registerPlugin(channelId,plugin){if(this.plugins.has(channelId))throw failure('CHANNEL_PLUGIN_EXISTS');this.plugins.set(channelId,plugin);return ()=>this.plugins.delete(channelId)}
   registerTransport(channelId,transport){if(!transport||typeof transport.send!=='function'||typeof transport.readback!=='function'||this.transports.has(channelId))throw failure('CHANNEL_TRANSPORT_INVALID');this.transports.set(channelId,transport);return ()=>this.transports.delete(channelId)}
-  deliveryEnvelope(notification){const payload=notification.payload??notification,context=this.groupContext(payload.conversationId);if(!context)return undefined;return {type:context.type,channelId:context.channelId,conversationId:context.conversationId,deliveryKey:notification.id,text:payload.text,replyToMessageId:payload.sourceMessageId,senderId:context.participants[payload.actorId],mentions:context.type==='chat'?[]:(payload.atOpenDingTalkIds??[]).map(id=>context.participants[id]).filter(Boolean),...(payload.atAll?{atAll:true}:{})}}
+  deliveryEnvelope(notification){
+    const payload=notification.payload??notification,context=this.groupContext(payload.conversationId)
+    if(!context)return undefined
+    const audience=notificationAudience(payload),recipientActorIds=audience.recipientActorIds??[]
+    const unknownRecipient=recipientActorIds.find(id=>context.participants[id]===undefined)
+    if(unknownRecipient!==undefined)throw failure('CHANNEL_RECIPIENT_NOT_IN_CONVERSATION')
+    const replyToParticipantId=audience.replyToActorId===undefined?undefined:context.participants[audience.replyToActorId]
+    if(audience.replyToActorId!==undefined&&replyToParticipantId===undefined)throw failure('CHANNEL_REPLY_ACTOR_NOT_IN_CONVERSATION')
+    const senderId=payload.actorId===undefined?undefined:context.participants[payload.actorId]
+    if(payload.actorId!==undefined&&senderId===undefined)throw failure('CHANNEL_ACTOR_NOT_IN_CONVERSATION')
+    return {type:context.type,channelId:context.channelId,conversationId:context.conversationId,deliveryKey:notification.id,text:payload.text,replyToMessageId:audience.replyToMessageId??payload.sourceMessageId,senderId,recipientIds:context.type==='chat'?[]:recipientActorIds.map(id=>context.participants[id]),...replyToParticipantId!==undefined?{replyToParticipantId}:{},...(audience.atAll?{atAll:true}:{})}
+  }
   async readResource(method,groupId,messageId,resource){
     const context=this.groupContext(groupId),transport=context&&this.transports.get(context.channelId)
     if(!transport||typeof transport[method]!=='function')throw failure('CHANNEL_RESOURCE_READER_UNAVAILABLE')
@@ -43,11 +55,11 @@ export default class Channels extends Service {
     const remoteConversation=value?.conversationId??value?.groupId
     if(value?.messageId!==messageId||remoteConversation&&remoteConversation!==context.conversationId)throw failure('CHANNEL_RESOURCE_SCOPE_MISMATCH')
     const principal=sender=>'channel-actor-'+hash(JSON.stringify([context.channelId,sender]))
-    const sender=value.senderId??value.senderOpenDingTalkId,quote=value.quotedMessage,quotedSender=quote?.senderId??quote?.senderOpenDingTalkId
-    // Attributed Topic domain uses historical field names. Translate only here;
-    // third-party transports expose neutral sender/conversation identities.
-    return {...value,groupId,...sender?{senderOpenDingTalkId:principal(sender)}:{},...quote?{quotedMessage:{...quote,content:quote.text??quote.content??'',...quotedSender?{senderOpenDingTalkId:principal(quotedSender)}:{}}}:{}}
-
+    const senderActor=value.actorId??((value.senderId??value.senderOpenDingTalkId)===undefined?undefined:principal(value.senderId??value.senderOpenDingTalkId)),quote=value.quotedMessage
+    const quoteActor=quote?.actorId??((quote?.senderId??quote?.senderOpenDingTalkId)===undefined?undefined:principal(quote.senderId??quote.senderOpenDingTalkId))
+    const {senderId:_senderId,senderOpenDingTalkId:_senderOpenDingTalkId,actorId:_actorId,conversationId:_conversationId,groupId:_groupId,quotedMessage:_quotedMessage,...rest}=value
+    const quoteView=quote?(({senderId:_quoteSenderId,senderOpenDingTalkId:_quoteSenderOpenDingTalkId,actorId:_quoteActorId,content,text,groupId:_quoteGroupId,conversationId:_quoteConversationId,...quoteRest})=>({...quoteRest,text:text??content??'',conversationId:groupId,...quoteActor!==undefined?{actorId:quoteActor}: {}}))(quote):undefined
+    return {...rest,conversationId:groupId,...senderActor!==undefined?{actorId:senderActor}:{},...quoteView?{quotedMessage:quoteView}: {}}
   }
 
   canDeliver(notification){const context=this.groupContext(notification.payload?.conversationId);if(!context)return true;const transport=this.transports.get(context.channelId);return !!transport&&(!transport.capabilities?.conversationTypes||transport.capabilities.conversationTypes.includes(context.type))&&(!notification.payload?.artifact||typeof transport.sendFile==='function'&&(!transport.capabilities?.files||transport.capabilities.files.includes(context.type)))&&(['unknown','starting'].includes(notification.state)||!transport.canSend||transport.canSend(notification))}

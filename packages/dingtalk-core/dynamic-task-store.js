@@ -13,7 +13,7 @@ import { taskNotificationRecovery } from './notification-delivery.js'
 import { isNativeFilePrecondition } from './dynamic-filesystem-scope.js'
 import { taskExecutionContext } from './execution-context.js'
 import { stableTaskResourceIdentity } from './task-message-projections.js'
-import { groupNotificationParts } from './group-notification.js'
+import { groupNotificationParts, notificationAudience } from './group-notification.js'
 import { fixedTopicIds, fixedUnitRequestId, platformScheduleOutboundId } from './fixed-topics.js'
 import { stableId } from './topic-model.js'
 import { createExecutionResourceCatalog } from './execution-resource-catalog.js'
@@ -538,11 +538,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const index=selected.findIndex(file=>file.artifact.artifactId===p.artifact.artifactId),file=selected[index]
       if(!file)fail('DYNAMIC_TASK_DELIVERY_INVALID')
       const expectedAfter=index===0?parent.id:parent.id+':file:'+selected[index-1].artifact.artifactId
+      const audience=notificationAudience(p),parentAudience=notificationAudience(parentPayload)
       if(parent.kind!=='status'||parent.taskId!==task.taskId||parent.requirementRevision!==task.requirementRevision
         ||parentPayload.artifact!==undefined||digest(parentPayload.taskDelivery??null)!==digest(selection)
         ||digest(parentPayload.artifactFiles??[])!==digest(selected)||parentPayload.sourceId!==source.sourceId
         ||parentPayload.sourceVersion!==source.version||digest(parentPayload.sourceRef??null)!==digest(ref)
-        ||digest(p.atOpenDingTalkIds??null)!==digest(parentPayload.atOpenDingTalkIds??null)||p.atAll!==parentPayload.atAll
+        ||digest(audience.recipientActorIds??null)!==digest(parentAudience.recipientActorIds??null)||audience.atAll!==parentAudience.atAll
         ||digest(p.artifact)!==digest(file.artifact)||p.artifactFiles!==undefined||p.text!==file.artifact.fileName+'：'+file.caption
         ||notification.id!==parent.id+':file:'+file.artifact.artifactId||p.afterNotificationId!==expectedAfter)fail('DYNAMIC_TASK_DELIVERY_INVALID')
     } else if(p.deliveryId!==notification.id||p.afterNotificationId!==undefined||digest(p.artifactFiles??[])!==digest(selected))fail('DYNAMIC_TASK_DELIVERY_INVALID')
@@ -892,10 +893,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           || !task.sourceRefs.includes(source.sourceId) || !(Date.parse(source.timestamp) >= Date.parse(request.createdAt) && Date.parse(source.timestamp) <= Date.parse(stamp))) fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
         const payload = a.topicFacts === true ? null : clone(record(a.humanReply.notification))
         if (payload) {
-          const quoteFields=[payload.sourceMessageId,payload.actorId,payload.replyToMessageId,payload.replyToSenderOpenDingTalkId]
+          const audience=notificationAudience(payload)
+          const quoteFields=[payload.sourceMessageId,payload.actorId,audience.replyToMessageId,audience.replyToActorId]
           const quoted=quoteFields.every((value,index)=>value===[source.messageId,source.actorId,source.messageId,source.actorId][index])
           const sourceIdentity=payload.sourceRef===undefined?quoted:digest(payload.sourceRef)===digest({messageId:source.messageId,messageVersion:source.version,actorId:source.actorId})&&(quoted||quoteFields.every(value=>value==null))
-          if(payload.conversationId!==source.groupId||payload.sourceId!==source.sourceId||payload.sourceVersion!==source.version||!sourceIdentity||payload.atAll||digest(payload.atOpenDingTalkIds??[])!==digest([source.actorId]))fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
+          if(payload.conversationId!==source.groupId||payload.sourceId!==source.sourceId||payload.sourceVersion!==source.version||!sourceIdentity||audience.atAll||digest(audience.recipientActorIds??[])!==digest([source.actorId]))fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
         }
         const evidence = array(a.evidence).map(item => text(item, 'evidence'))
         if (!evidence.length) fail('DYNAMIC_ARGUMENT_INVALID', 'evidence')

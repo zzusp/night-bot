@@ -71,17 +71,19 @@ Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport
 
 不要清理仍被进程使用的数据、SQLite WAL、会话或临时文件。
 
+若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。继续处理须由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的显式续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
+
 ## 真实验收
 
 通过本机 HTTP 创建明确授权的有限任务，例如仅在任务 `work/` 中写入标记、读回并提交完成。必须观察任务 `completed`、正式 `task_result`、实际文件和官方 Pi journal；健康响应或模型的一句成功说明不足以证明任务完成。
 
-本轮可复用核验入口：
+早期标记文件任务的专用核验入口：
 
 ```powershell
 node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . TASK_ID http://127.0.0.1:19198
 ```
 
-该脚本只适用于约定的标记文件验收任务。冷重启后比较同一任务、文件 SHA-256、journal SHA-256 和工具调用次数；不得重新创建任务代替持久性检查。
+该脚本只适用于约定的标记文件验收任务。冷重启后比较同一任务、文件 SHA-256、journal SHA-256 和工具调用次数；不得重新创建任务代替持久性检查。当前 SG10 的默认 CLI、私有 Skill 及原安装 Router 恢复结果见[第八轮报告](../acceptance/resident-conversation-routing/round-8.md)，按各组源码指纹生效；指定群真实交付仍为[第七轮](../acceptance/resident-conversation-routing/round-7.md)的现场版本，本轮未新增真实模型或 DWS 调用。正常关闭通过不证明异常关闭风险已消失；取消路径仍未专项验证。
 
 ## 指定钉钉群接入
 

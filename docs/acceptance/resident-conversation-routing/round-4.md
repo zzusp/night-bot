@@ -53,7 +53,7 @@
 
 verified-5 未保存具体被拒 handoff refs、同代请求元数据及 lookup；原隔离根已清理，不能复原。模型虚构引用、提示未给合法 ID、合法同域引用被误拒三个候选均未由旧记录排除，**历史根因未收敛**。未据错误 code 盲改生产/提示/引用 guard；最终通过也不解释历史失败或证明模型稳定性。
 
-原 initial、diagnostic-2、verified-3 Router、verified-4、verified-5 的七份旧 JSON 附件按保留规则清理；其结果、关键错误、版本和必要文字证据在本节保留。仅保留最终 Router 和已通过 Web 的两份安全 JSON，不保留整库、journal、业务文件、原始模型正文或旧附件备份。
+原 initial、diagnostic-2、verified-3 Router、verified-4、verified-5 的七份旧 JSON 附件按保留规则清理；其结果、关键错误、版本和必要文字证据在本节保留。第四轮当时仅保留最终 Router 和已通过 Web 的两份安全 JSON；这两份旧轮附件已于第八轮按归档规则清理，原结论及下文必要文字证据保留。未保留整库、journal、业务文件、原始模型正文或旧附件备份。
 
 ## 必要实现修复与本地定向验证
 
@@ -88,7 +88,7 @@ Platform 只在原 handoff 提示说明三个 section 必须为非空字符串�
 
 ### Router：verified-6
 
-保留 `round-4/verified-6-router-result.json`。开始 `2026-11-06T15:40:50.574Z`，结束 `2026-11-06T15:44:31.615Z`。唯一原子计划创建 synthetic-calc-a / synthetic-report-b，均 req1、completed/drained，session 不同；两次 write/read/task_result 完成实际文件与核验。
+原附件 `round-4/verified-6-router-result.json` 已于第八轮归档时清理；本节原结论和必要文字证据保留。开始 `2026-11-06T15:40:50.574Z`，结束 `2026-11-06T15:44:31.615Z`。唯一原子计划创建 synthetic-calc-a / synthetic-report-b，均 req1、completed/drained，session 不同；两次 write/read/task_result 完成实际文件与核验。
 
 - 同一当前 dependency 的成功 `resident_dependency_evaluate` 结果 sequence=27，B 首工具的实际 execute 开始 sequence=28；不是拿 B 工具结束时刻推测先后。B 官方入模 packet 含 A 当前 completion 和对应 satisfied evaluation。
 - A 文件为 SUM=42，B 文件含 VERIFIED_SUM=42 与本次随机 marker；实际 read toolResult 与目标路径/callId 对齐，且冻结 descriptor SHA/size 等于工作文件实际字节。
@@ -108,7 +108,7 @@ A 内容 SHA=`2e975eb1c209f7809b5513e2dec1affc73fc2626ba97d3d0e5a2fe6b6bed5b1b`�
 
 ### Web：复用 verified-3 完整 PASS
 
-保留 `round-4/verified-3-web-continuation-result.json`。本例在同 runner 与当时 Router 并发启动（PID97896，两 case 开始相差2ms），开始 `2026-11-06T14:52:24.156Z`，结束 `2026-11-06T14:53:32.967Z`，68878.1696ms。
+原附件 `round-4/verified-3-web-continuation-result.json` 已于第八轮归档时清理；本节原结论和必要文字证据保留。本例在同 runner 与当时 Router 并发启动（PID97896，两 case 开始相差2ms），开始 `2026-11-06T14:52:24.156Z`，结束 `2026-11-06T14:53:32.967Z`，68878.1696ms。
 
 - 无群初始 Web 输入：实际 write/read BASE 后 wait；后续认证新 Web 来源按 preserve 进入原 session，原 BASE 字节与 journal 前缀保留，只追加 NEXT 并实际 read 核验后 completed/drained，req保持1。
 - 同任务 `task-159d01fa5aba129068707b15c723ae41`、同 session `task-session-39b943de-e8c2-44d3-bec7-a083d4e92b30`；frozenOutputs=1；零渠道通知/send/readback，无拆分执行。
@@ -133,8 +133,8 @@ node $entry --config $approvedConfig --case router --attempt $attempt --check
 node $entry --config $approvedConfig --case router --attempt $attempt
 ```
 
-本次没有为了重新获得已通过的结果重复运行Web、全量组或厂商联调。正式交付取本报告、矩阵round_4和以下两份最终安全JSON，不从清理前旧附件推导当前事实。
-- `round-4/verified-6-router-result.json` SHA-256：`a5879141ccdcdfbad70627f56a69ce24dd16e1ef1419338dffede7d803affe7e`。
-- `round-4/verified-3-web-continuation-result.json` SHA-256：`fe9802aa4e669aba740f90d213145bd4e22eb2638a4ed6896ff0e10a9211f72e`。
+本次没有为了重新获得已通过的结果重复运行Web、全量组或厂商联调。第四轮原交付包含本报告、矩阵round_4和以下两份安全JSON。两附件已于第八轮按归档规则清理，原结论、文字证据与矩阵历史不变；以下仅保留清理前指纹，不再表示附件仍可读取。
+- `round-4/verified-6-router-result.json`（已于第八轮清理）SHA-256：`a5879141ccdcdfbad70627f56a69ce24dd16e1ef1419338dffede7d803affe7e`。
+- `round-4/verified-3-web-continuation-result.json`（已于第八轮清理）SHA-256：`fe9802aa4e669aba740f90d213145bd4e22eb2638a4ed6896ff0e10a9211f72e`。
 
 提交行尾说明：verified-6 实际运行入口 SHA-256 仍为 `503d94b5034f0989d2a5ec61045835062c6f64967097942fd2c5d851625b852a`；提交版入口仅将 CRLF 归一化为 LF，SHA-256 为 `3c466e00d549a7b00d02e4e2a9475759a47c034713d09b93cdf423041985a57a`；此次未重跑 API 或业务测试，历史运行指纹与矩阵结果不变。

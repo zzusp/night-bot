@@ -65,6 +65,15 @@ Windows paths) and remain historical references, not Night Bot upgrade entrypoin
 | Owned skills and instructions | `data/config/{skills,agents,harness}` |
 | Managed log / transient files | `data/logs` / `data/temp` |
 
+`data/config/skills` stores private skill bodies and their same-directory
+`scripts`, `references` and `assets`; these are installation data, not source code or
+an npm package. A migration must use an existing installation pointer within this task's authorized
+reuse scope and avoid stale `node_modules` or worktrees. If cleanup or relocation is
+needed, touch only materials introduced by this task; never overwrite or move another
+session's existing skills. Before and after copying, run `git check-ignore`; before
+delivery independently inspect `git diff --cached` and `git ls-files`. Never copy
+accounts or credentials.
+
 `pnpm start CONFIG` now runs `bin/night-bot-run.js`, which scopes `TMPDIR`, `TMP`,
 `TEMP` and `XDG_CACHE_HOME` to its child and sends stdout/stderr to the private log.
 It preserves inherited proxy/CA/credential environment variables and does not rewrite

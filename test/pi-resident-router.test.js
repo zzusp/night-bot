@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
 
 const triageInput = body => requestEnvelope(body,'一级分诊请求：')
 const triageReply = (input,select) => ({tool:'channel_triage_submit',args:{dispositions:input.messages.map(message=>({
@@ -79,4 +79,57 @@ test('default ingress shares room arrangements without merging private senders o
     if(privateMarkers.length){assert.equal(privateMarkers.length,1);assert.equal(input.messages.length,1,'isolated conversations cannot share a triage batch')}
   }
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+})
+
+test('conversation task questions default to operator Web intake and explicit requester preserves the original scope/session',{timeout:nativeTestTimeout(60000)},async t=>{
+  const packets=[]
+  const h=await residentRouterHost(t,body=>{
+    const tools=requestTools(body)
+    if(tools.includes('channel_triage_submit'))return triageReply(triageInput(body),()=>({needsHandling:false}))
+    if(tools.includes('resident_router_settle')){
+      const input=requestEnvelope(body,'Router 请求：')
+      if(body.messages.at(-1)?.role==='tool')return {text:'Pending events settled'}
+      return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'questions:'+input.events.map(event=>event.id).join(',')}}
+    }
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(handoff)return {text:JSON.stringify({currentIntent:'Preserve original question and source references',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(!tools.includes('task_result'))return {text:'No additional work'}
+    const input=requestText({...body,messages:body.messages.filter(message=>message.role==='user')}).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
+    assert.ok(input);packets.push(input)
+    const definition=body.tools.find(tool=>tool.function.name==='task_result').function
+    assert.deepEqual(definition.parameters.properties.decision.properties.audience.enum,['operator','requester'])
+    if(input.task.humanRequests?.some(request=>request.status==='answered'))return {tool:'task_result',args:{decision:{action:'complete',summary:'The original local work continued after the precise answer',evidence:['authorized answer read'],limitations:[]}}}
+    const audience=input.task.title.slice('audience-'.length)
+    return {tool:'task_result',args:{decision:{action:'blocked',summary:'A precise input is required before continuing',question:'Which exact local verification input should be used?',evidence:['original authenticated objective'],limitations:[],...audience==='default'?{}:{audience}}}}
+  })
+  for(const audience of ['default','operator','requester']){
+    const input=channelMessage('question-'+audience,{senderId:'requester-'+audience,text:'Verify this local-only objective and ask for missing input explicitly.'}),identity=h.host.ctx.channels.identity(input),before=h.sent.length
+    await h.receive(input)
+    const created=await h.service.createTask({requestId:'question-'+audience,title:'audience-'+audience,objective:input.text,channel:input})
+    await h.service.whenIdle()
+    let task=await h.query('task.get',{taskId:created.taskId})
+    assert.equal(task.drained,true);assert.equal(task.conversationId,identity.sessionId);assert.equal(task.ownerActorId,identity.principal)
+    assert.equal(task.humanRequests.length,1)
+    const request=task.humanRequests[0]
+    assert.equal(request.audience,audience==='requester'?'requester':'operator');assert.equal(request.status,'waiting-reply')
+    const web=(await h.service.listAuthorizationRequests()).find(item=>item.taskId===task.taskId&&item.requestId===request.requestId)
+    assert.ok(web);assert.equal(web.audience,request.audience)
+    const notices=await h.query('notification.list',{taskId:task.taskId})
+    if(audience!=='requester'){
+      assert.equal(h.sent.length,before,'missing operator transport never redirects a technical question to a business conversation');assert.equal(notices.length,0)
+      continue
+    }
+    await eventually(()=>h.sent.length===before+1&&h.readbacks.length===before+1,'requester question actually sent and read back by local transport',t.signal)
+    assert.equal(notices.length,1);assert.equal(notices[0].kind,'question');assert.equal(notices[0].payload.audience,'requester')
+    const source=await h.query('source.get',{sourceId:notices[0].payload.sourceId})
+    assert.equal(source.actorId,identity.principal);assert.equal(source.messageId,input.messageId);assert.equal(source.groupId,identity.sessionId);assert.equal(notices[0].payload.sourceVersion,source.version)
+    assert.equal(h.sent.at(-1).conversationId,input.conversationId);assert.equal(h.sent.at(-1).senderId,input.senderId)
+    const args={taskId:task.taskId,humanRequestId:request.requestId,requestId:'precise-local-answer',reply:'Use the original local-only verification input.',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
+    await assert.rejects(h.service.respondHumanRequest({...args,expectedControlRevision:task.controlRevision+1}),{code:'DYNAMIC_HUMAN_REQUEST_STALE'})
+    await h.service.respondHumanRequest(args);await h.service.whenIdle()
+    const completed=await h.query('task.get',{taskId:task.taskId})
+    assert.equal(completed.status,'completed');assert.equal(completed.drained,true);assert.equal(completed.sessionId,task.sessionId);assert.equal(completed.conversationId,task.conversationId);assert.equal(completed.ownerActorId,task.ownerActorId);assert.equal(completed.humanRequests[0].status,'answered')
+  }
+  assert.equal(packets.filter(input=>input.task.title==='audience-default').length,1);assert.equal(h.errors.length,0)
+  t.diagnostic(JSON.stringify({case:'operator-requester-routing',defaultOperatorWebOnly:true,explicitOperatorWebOnly:true,requesterSourcePreserved:true,requesterWebCasResumeSameSession:true,realVendorExecuted:false}))
 })

@@ -70,14 +70,27 @@ Channel ID separates accounts and plugins. Principal IDs are namespaced by chann
 Message deduplication includes metadata; conflicting reuse of an ID fails.
 
 Outbound methods receive a neutral envelope with type/channel/conversation,
-`deliveryKey`, text, reply source message ID, recipient sender ID and mentions,
-followed by the durable notification. Preserve its idempotency identity. If a send
-may have happened, use readback; missing evidence never authorizes a fresh send.
-Readers return a matching `messageId` and `conversationId`, `senderId`, text and
-optional quote with neutral `senderId`/text. The core boundary translates into
-historical attributed Topic field names. Those internal names and old sourceKind
-values remain readable; new unified ingress uses `sourceKind: 'channel'` and
-persists channel type/ID, quote author, mentions and platform flags through restart.
+`deliveryKey`, text, `replyToMessageId`, `senderId`, `recipientIds` and optional
+`replyToParticipantId`, followed by the durable notification. Active notification
+fields `recipientActorIds` / `replyToActorId` are trusted Host-internal actors;
+Channels validates them in the authenticated conversation before mapping them to
+transport participant IDs. `chat` also validates the actors but sends native
+`recipientIds: []`. The DWS plugin alone maps the envelope to
+`atOpenDingTalkIds` / `replyToSenderOpenDingTalkId`. Preserve the notification's
+idempotency identity. If a send may have happened, use readback; missing evidence
+never authorizes a fresh send.
+
+Transport `readMessage` returns a matching `messageId`, original channel
+`conversationId`, authenticated `senderId`, text and optional quote with
+`senderId`/text. The Host checks the message/conversation and converts
+`channels.readResource('readMessage', ...)` to internal `conversationId`, optional
+`actorId` and neutral `quotedMessage` (`conversationId`, optional `actorId`,
+`text`). This public read view omits top-level `groupId` / `senderOpenDingTalkId`;
+it is distinct from the preserved historical resident ingress/outbox projections.
+Historical notification payloads, digests and source identities are not migrated
+or rehashed; the read projection accepts the old fields. Old sourceKind values
+remain readable; new unified ingress uses `sourceKind: 'channel'` and persists
+channel type/ID, quote author, mentions and platform flags through restart.
 
 ## DWS interfaces verified and remaining limits
 
@@ -129,11 +142,9 @@ resending. Group/history/media/file and operator capabilities retain their prior
 adapter paths. Private-chat history catch-up is not implemented for general chat;
 only live subscribed messages and the retained operator recovery path are covered.
 
-No CLI binary/account was configured here; no real DingTalk messages were sent.
-Login, profile compatibility on the deployed CLI version, actual group/private
-send/receive, reconnect delivery and upload/download remain live acceptance work.
-The separate Baibu task owns “Night Bot Test” live testing; this branch does not
-connect, deploy or send messages there.
+本节最初的 v1.0.63 官方接口/源码检查阶段未配置 CLI 二进制或真实账号，也未发送钉钉消息；当时的“不连接、不部署、不发送”只描述该阶段，不代表当前分支从未做过现场验收。后续 SG9 已在明确授权的指定测试群完成独立事项的文本/附件交付、平台回读、持久复盘及必要冷恢复，实际受验版本和未验边界见[第七轮报告](acceptance/resident-conversation-routing/round-7.md)。该结果不外推为任意账号、私聊、重连或全平台能力均已验收。
+
+SG10 的[第八轮报告](acceptance/resident-conversation-routing/round-8.md)已记录默认 CLI、渠道中立映射/附件、operator/requester 分流、私有 Skill 读取、Host 显式续办与原安装普通交接恢复的实际终态；各组结论只绑定各自源码/测试指纹，不相加为最新版本全量通过。本轮使用 loopback 脚本模型及 fake 渠道，没有新增真实模型或厂商请求、监听、发送，也没有部署 Linux；fake 映射回归不追认为第七轮在新版代码上的现场验证。长期目标和交付状态以[唯一验收入口](acceptance/resident-conversation-routing/goal.md)为准。
 
 ## Existing system login and optional private-account storage
 
@@ -207,6 +218,17 @@ namespace or DWS_DISABLE_KEYCHAIN into children. Both preserve OS protections an
 scope the subprocess temp directory. In system mode, DWS-owned config/keychain
 state and any CLI diagnostic/cache files may remain outside Night Bot's `data/`;
 Night Bot backup does not include those credentials. A restore needs a separately
-available CLI login. No actual Windows execution/account was used in this branch;
-unit tests cover the Windows environment and policy selection, and fixture tests
-cover registration without copying credentials or contacting an account.
+available CLI login. 本节最初的账号策略检查仅覆盖 Windows 环境/策略单元测试及无账号连接的注册 fixture，没有在该阶段使用真实 Windows 账号；这不是当前全分支的运行结论。后续指定群的 Windows 现场事实见[第七轮报告](acceptance/resident-conversation-routing/round-7.md)，SG10 当前分组结果见[第八轮报告](acceptance/resident-conversation-routing/round-8.md)，不据历史策略测试或本轮 fake 映射回归推断新增现场结果。
+
+## 旧 DSH 对照与只读边界
+
+旧 DSH 的 README 和实现只作为能力对照，不是 Night Bot 已完成的实测证明，也不是迁移入口。Night Bot 不恢复旧的 `Topic → Owner → 多 execution session` 编排：当前每个认证 conversation 只有一个常驻 Router，每个事项只有一个执行 session；任务安排、依赖释放、效果收据、排空和恢复仍由 Host/SQLite 强制执行。
+
+- `src/channels/loader.js` 中内置 `dingtalk-dws` 的 entry URL/type 只是可选插件类型注册；`src/config.js` 保留纯群配置校验。默认 `channelPlugins` 为空，或实例为 `enabled:false` 时，不导入渠道插件实例、不注册 transport、不探测 DWS 可执行文件、不订阅、不创建账号目录。该合同不要求默认依赖图中历史消息/收据 helper 全部零加载；保留 `group-message` 兼容 helper 不代表运行 DWS。第八轮两个默认 CLI 受验分组实际观察 launcher/服务两进程：DWS 插件、runner、bridge、adapter 加载为 0，DWS 进程调用为 0，历史 `group-message` 格式 helper 加载为 1；均完成本地任务和正常 IPC 退出。结果按该报告所列分组版本成立，不能由静态 URL 外推，也不能宣称所有历史 helper 已从依赖图移除。
+- `src/tasks/single-session.js` 使用 `src/channels/message-safety.js` 的中性会话规则进入单一执行会话；它不创建旧式 Owner 或子执行会话。Router 的 `resident_router_reply.recipientActorIds` 是 Host namespace 内部 actor 标识，空数组表示不提及；Channels 先在已认证 conversation 校验，再映射为 transport 的 `recipientIds` / `replyToParticipantId`，DWS 插件最后映射原生 mention/quote 字段。显示名、正文中的姓名、旧报告或通用 DWS 标记都不能替代 recipient authorization；引用、提及和署名由 Host 依据冻结 payload 处理，模型不得自行拼接内部身份或重复署名。
+- 旧 DSH 的连续执行、skill 读取/`skillNames` 传递、`job_list`/`job_output` 和后台进程排空可作为行为对照。Night Bot 复用受控 skill、文件/进程工具和 job 观测能力，但 skill 只提供读取/提示，不产生动作授权；后台 job 必须在当前事项的 Host scope 内，终态和 drain 证据不能由模型自报替代。第八轮核证原安装一个已授权的通用只读计划审查 Skill 及配套引用的实际读取，原 task/session/completion 和 `completed/drained/run1` 保持；并非旧技能全集兼容、后台命令或业务效果全覆盖。技能正文/引用只留原安装忽略目录，独立包版本与公开分发许可未核，不随代码提交。旧 DSH 的委派协议、共享工作区和多 execution 生命周期不自动兼容，也不应通过适配器恢复。
+- 旧 DSH 将 operator 技术问题与 requester 业务问题分流；Night Bot 的技术问题缺省为 `operator`，业务问题须显式选择 `requester`。第八轮本地 Host 验证缺省问题仅留内部 Web，显式 requester 保持原 conversation/session/受众，Web-only requester 不创造 IM 权限；不表示本轮实测了 operator 私聊发送。回复来源、权限、版本 CAS 和真实送达收据仍按当前任务合同核验，既有持久问题/unknown 通知不改写。
+- 旧 DSH 的 alias、secret binding 和署名配置不迁移个人身份或秘密。Night Bot 只接受部署者私有配置中的明确 actor、profile、`replySignature` 和群职责；Host 最多附加一次署名，配置文字不创造授权、跨群访问或外发许可。账号登录、profile、群成员、真实回声、附件上传下载、readback/receipt 和无工具复盘必须分别做 live acceptance。
+- Windows 的安装模式只在当前实现支持的隐私边界内宣称能力：`find` 在已授权普通文件表内进程内 glob，不启动 `rg`；`grep`、shell 和后台作业仍需要模型子进程 privacy，缺失时失败关闭并保留 `MEMORY_PROCESS_PRIVACY_UNAVAILABLE`。这不由小文件演示或旧 DSH 的 Linux sandbox 记录覆盖。Linux 运行前置和验证入口见 [Linux 隔离运行](ops/linux-contained-runtime.md)；未满足 bubblewrap/内核前置时不得关闭 sandbox 或改成无隔离执行。
+
+旧仓源码、历史 README、fake/SDK 注入、`acceptHistoryMessage`、listener ready、health=ok、send accepted 或本地脚本通过都不能证明 Night Bot 已等价替代真实 DWS 监听、模型执行、群内交付、附件回读、同账号回声过滤或持久复盘。旧仓保持只读，不导入历史数据、身份、业务设定、凭据或绝对路径；替代结论以当前 Night Bot 源码、定向测试和实际部署环境的独立证据为准。
