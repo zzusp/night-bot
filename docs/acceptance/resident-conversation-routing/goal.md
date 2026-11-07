@@ -1,8 +1,8 @@
 # 常驻 Router 与事项直连
 
-> 状态：ACTIVE
+> 状态：COMPLETED
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-07T17:35:54+08:00
+> 最近维护：2026-11-07T17:38:55+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -78,7 +78,7 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 | SG8 | 指定渠道职责配置与完整产品链 | 明确配置入口、职责贯通全部相关角色、群隔离与可操作接入文档 | 完成；两群脚本角色隔离与职责传播已核，指定群真实闭环见SG9，不扩为其它群或全平台结论 | round-5.md、matrix.csv、review.md的SG8节、原spec补充 |
 | SG9 | 指定群真实终态与原PR更新 | 真实监听→事项→群内交付→复盘，读回证据并更新原PR | 完成；指定群独立事项实际交付、持久复盘、必要冷恢复/正常退出、最终审查与原PR更新均已核，保留旧unknown及明确未验边界 | round-7.md:97/119/139、matrix.csv、review.md:411–451及本节最终Git事实 |
 
-| SG10 | 通用产品替代能力与渠道边界补齐 | 当前旧仓真实合同对照、必要差距实现、无插件默认实跑/最小受影响验证、原PR真实交付与部署前置 | 实现及限定原群R10现场已核齐；最终归档/审查已交回，待本轮原PR/Git交付核验 | spec §14、round-8.md、round-10.md:123/130/149/156、review.md:548及本次Git事实 |
+| SG10 | 通用产品替代能力与渠道边界补齐 | 当前旧仓真实合同对照、必要差距实现、无插件默认实跑/最小受影响验证、原PR真实交付与部署前置 | 完成；R8实现/技能/默认无插件与R10限定原群完整现场、独立审查及原PR交付均已核证，既有平台边界保留 | spec §14、round-8.md、round-10.md:123/130/149/156、review.md:548及本次Git事实 |
 
 ## 本次单写增量
 
@@ -87,7 +87,7 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 ## 当前检查点
 
 - 当前子目标：SG10
-- 当前阶段：ACTIVE/SG10最终Git交付。R10原指定群真实闭环已完成并独立核证：16:52:25.466+08:00真人来源v1正式入站，唯一session执行write/read/task_result，task completed/drained/run1；29B文件读回/冻结及父子delivered/send1/readback1，原生quote精确，@原作者由原生@当前用户索引结合既有同profile认证链/当前typed映射证明。mget/receipt提及数组unavailable保持，不补造数组。持久无工具复盘done/attempt1、完成事件consumed，Router g9/cursor9/lastHandoff9；正常IPC退出后同任务冷恢复，26 strict journal/8业务表/11保护文件无重放，再正常IPC自然0。17:17:10+08:00六精确PID及19298监听均无，两自有临时驱动已清理，无现场在途。产品47项仍冻结于实现cd045ee；详细证据仅存round-10，不重复运行现场或本地已通过组。
+- 当前阶段：COMPLETED/SG10；本目标及追加“完成DWS现场验收”的约定范围已完成，原PR本轮更新及远端提交已独立回查。R10原指定群真实闭环已完成并独立核证：16:52:25.466+08:00真人来源v1正式入站，唯一session执行write/read/task_result，task completed/drained/run1；29B文件读回/冻结及父子delivered/send1/readback1，原生quote精确，@原作者由原生@当前用户索引结合既有同profile认证链/当前typed映射证明。mget/receipt提及数组unavailable保持，不补造数组。持久无工具复盘done/attempt1、完成事件consumed，Router g9/cursor9/lastHandoff9；正常IPC退出后同任务冷恢复，26 strict journal/8业务表/11保护文件无重放，再正常IPC自然0。17:17:10+08:00六精确PID及19298监听均无，两自有临时驱动已清理，无现场在途。产品47项仍冻结于实现cd045ee；详细证据仅存round-10，不重复运行现场或本地已通过组。
 - 上一轮完成事实：实现提交`753fa39`及仅goal交付文档提交`67d2d50`已push原分支；PR #2最后独立回读为OPEN/MERGEABLE，未合并/部署/触发CI。round-8、matrix和review的历史结果/版本边界保持，原安装私有技能任务已completed/drained/run1，其Router已正常交接至g2；不可再原样运行仅适配旧断点的private-skill-check脚本。
 - 新确认差距：基线2e6cf2e的task-session-service submit对有conversationId/question但audience缺省强改requester，覆盖下游operator默认；single-session参数可省略audience，queueHumanRequest requester分支会准备原群回复。Core已最小修默认operator、业务问题显式requester并说明工具合同；bax20lrh1的本地Host分流单项已通过：缺省operator仅内部Web，显式requester保持原conversation/session/受众；整组原FAIL/CANCEL保留。不按文本猜分类、不真实发送、不重写已有请求。
 - 实现关联恢复反例：中性supplement.sources与原严格SQL快照比较在native admission已提交、SQL admitted未落账退出窗口冲突；Core已冻结input-origin必要修复SHA38f6c9ff，Lead/Review独立核精确旧/中性两shape、packet/input逐字和全部身份/版本守卫。Tests扩真实Pi commit/readNative/SessionManager冷证明及篡改拒绝，独立组原回执已由Lead核验通过；普通task-input含leaseEpoch递增的泛化冲突已排除，不加通用版本层、不迁移journal/SQL。Platform仍独占必要dynamic账本humanReview/子附件受众消费。
@@ -101,14 +101,16 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 - SG10写入权：Lead独占本goal、原spec及必要manifest/Git；Core独占resident-router-business、single-session、业务prompt及必要reflection，其余已冻结；Platform独占channels/service、loader、plugins、router-*与必要通用传输边界，本次续办范围为src/channels/router-lifecycle.js、src/pi-official-agent-factory.js、src/runtime/pi-official-session.js、src/channels/router-ledger.js（仅只读pending计数）及packages/dingtalk-core/task-session-service.js（Core已交出该文件，仅必要Host委托和确定未结恢复告警，保留72509157终态顺序修复）；Tests独占test/**、本目录脚本/matrix/round-8；Docs独占AGENTS/README/CHANNELS及必要运行文档；Review仅原review追加。交叉文件先交接。Core另独占group-notification/group-reply-format/platform-notification/platform-schedule及一份必要纯中性消息helper（放src自有目录，不冒充上游）；group-message纯职责抽离后再交Platform处理协议部分。Platform可改必要task-message-projections/账本幂等比较；config/loader纯声明不构成运行探测，决定保留而不为删词重构。Docs可补一份Linux隔离运行runbook，因现有ops仅Windows/Web，需给支持环境具体准备，未实跑不写已部署。Night-bot-c1仅只读补充，已确认未新增docs写者，原Docs仍唯一。 新增技能复用仅Core写原安装已忽略私有技能目录；复用源保持只读；除已交接并重新冻结的历史终态恢复最小修复外，不改原Core冻结文件，不写Platform现有plugins/**/service。必要代码文件先给Lead明确范围并交接；Docs不复制技能，Tests仍独占测试和现场执行。两份技能已在原安装忽略目录私有落盘并独立核证；此结论不等于任务实际读取通过。
 - 续办动态复验：Lead已全文核b3we9iekt原回执3PASS/2FAIL/自然1、39项稳定；满30+第31pending拒绝、另一scope EACCES传播和默认CLI自然0有效，两真续轮被MEMORY_ADMISSION_REQUIRED挡住。两文件修复后bockg3hqv为1PASS/1FAIL/自然1、39项稳定；再失败路径已证原packet current/失败finally恢复undefined/新原生错误/冷启旧proof拒绝。完成路径末尾误在旧g1查candidate seed而FAIL，Tests仅改读current activeSessionId并绑定published rotation，单条ba779gfp3已由Lead全文核1PASS/自然0、39项起止稳定，原packet/current/唯一input与admission/settled/合法candidate seed/再次冷启不重放成立；私有脚本之后修DTO字段，不能称39项当前全同；两次FAIL完整保留，不当整链PASS。
 - 原安装追加失败：beiiysg9s自然1/0PASS/1FAIL，脚本误读DTO session.id而实际为session.sessionId，正式续办前拒绝且原proof未消费；仅修两字段。brt8jyqyp自然1/0PASS/1FAIL，Lead全文核NOT_LIVE原输出；Tests严格只读账摘要证同task completed/drained/run1、原event consumed/cursor1、g1追加正式claim/turn/成功settle与handoff输入，rotation aborted/interrupted-handoff、无candidate。两次config/技能及其它16journal整字节保护通过。原现场精确交错仍无trace，确定性交错及普通恢复现已由bc39/bya独立验证，不凭Error定义行追认原失败位置；已settled原proof不再调用，后续仅同Router正式普通recover完成交接。
-- 唯一下一步：本轮限定现场、Tests集中归档及Review独立窄审均已完成并交回；Lead已独立核报告/矩阵/审查指纹和历史保护。只完成四份最终验收文档提交、原分支push、原PR正文更新及gh/远端独立回查，然后回填本goal完成状态。无需真人重发、重启、重放或扩大验证；不合并/部署/触发CI。
-- 未闭环项：现场业务无待办，仅本轮Git/原PR最终核验未完成。Windows进程privacy、Linux未实跑、异常close/取消专项、旧unknown缺producer证明、status probe/原native operation未统一取消/join及通用mention数组不可得等既有边界保留；不是这次限定现场的未完成用例，不据新成功追认旧unknown，不扩为全平台部署或异常关闭治理。
+- 唯一下一步：无，本目标完成。原PR #2已更新并独立核OPEN/MERGEABLE、正文逐字一致及远端验收提交；本次仅goal回填交付终态，不改变受验业务字节，最终文档提交SHA在交付回复报告，不循环自引用。保留原成员窗口，不再启动现场、真人重发、执行proof或重复已通过验证；后续新范围另行授权，不合并/部署/触发CI。
+- 未闭环项：本次约定范围无。Windows进程privacy、Linux未实跑、异常close/取消专项、旧unknown缺producer证明、status probe/原native operation未统一取消/join及通用mention数组不可得等既有边界保留，不据新成功追认旧unknown，不外推其它群/私聊或全平台部署。未重跑全量test/runtime/routing/containment，历史FAIL/CANCEL/SKIP保持。
 
 - SG10最终Git交付事实：实现/验收提交`753fa3911db5279e919c63235e89a815ff7df1e9`为43文件、1747新增/797删除；提交前本地真实执行及最终guard已核，提交后43项blob与受验SHA逐项一致，工作树干净。push前gh为OPEN/null、目标base无incoming，workflowCount0/webhookCount0、无本地workflow/active hook；push后独立ls-remote和gh头均753fa39。原[PR #2](https://github.com/zzusp/night-bot/pull/2)标题为“refactor: 常驻 Router 直连事项并补齐中性渠道与受控恢复”，base refactor/pi-native-retirement ← head worktree-resident-conversation-routing，OPEN/MERGEABLE/mergedAt null；正文经同UTF-8文件checker通过后更新并独立回读等文，body SHA256 `d3dce3a4a3a301650a0b2749f7f2698c7804171bf7447414f600a04787879110`。更新后gh run list=[]，没有CI、合并或生产部署。以下仅goal事实回填，不改变受验业务字节，不重复实跑；最后文档SHA以交付回复/最终gh回查为准。
 
 - R9–R10工程保存点Git事实：实现提交`cd045eeea2253c9aaedf82065dc553f54c55c55b`为18文件、848新增/195删除；47项提交blob逐项等最终btpr受验指纹及当前工作树，提交后已独立核clean。push前原PR为OPEN/mergedAt null，目标base无incoming（交付前fetch后的原HEAD比较18/0）、workflowCount0/webhookCount0及无活动本地hook；远端ls-remote和gh头均cd045ee。原[PR #2](https://github.com/zzusp/night-bot/pull/2)保持原标题、base refactor/pi-native-retirement ← head worktree-resident-conversation-routing；同UTF-8正文checker通过后更新，独立gh回读为OPEN/MERGEABLE/null且正文逐字一致，SHA256 `b987fa98851812e5e514acc7edce3aceea017e64b72ffe6bf35fa1e8fcb234f8`；gh run list=[]。R9原报告保留98行CRLF及原SHA，暂存检查其余17文件按默认规则通过，R9用Git cr-at-eol及逻辑行空白校验通过，不改永久配置或历史字节。本条和检查点仅回填已发生交付事实，不改变受验业务字节；最终文档提交SHA由交付回复/最终gh回查报告，现场仍ACTIVE，不合并/部署。
 
 - R10最终归档核验：round-10.md为27464B/SHA256 `4bf10319ca911c83cb47977af23d1602120ea8ffc7a4105b4a32fde539567d82`；matrix.csv为167例/12列、34174B/SHA256 `adc4a80ad5939de7f63686f9f87e835e1ac0e0dc23cbb40c3026efc546a47bf6`，仅8个现场格更新、17本地格及两fixture FAIL保留；R9完整CSV可逆重建9f0d766e、R1–R9报告逐字不变。review.md:548追加独立终态审查，132128B/SHA256 `bdf832cde9f5f7eaea215e68d4eb91d5930ae46f7b3e5cb703ac7d2cf813880f`，原122209B及更早110236B前缀均保护。全部现场验证脚本失败与首次外层false占位原样保留；不建全绿report。
+
+- R10最终Git交付事实：现场归档提交`cb037ac48fa029bf69ed8f7e01997ed0610eba68`仅4份验收文档、135新增/24删除，暂存blob独立逐字核对、默认whitespace通过，提交后工作树clean；业务实现仍为`cd045eeea2253c9aaedf82065dc553f54c55c55b`及47项受验指纹。push前原PR为OPEN/null，最后fetch目标base无incoming（当时HEAD...base为21/0）、workflowCount0/webhookCount0、无tracked .github或活动hook；push后ls-remote精确cb037ac。原[PR #2](https://github.com/zzusp/night-bot/pull/2)原标题“refactor: 常驻 Router 直连事项并补齐中性渠道与受控恢复”，base `refactor/pi-native-retirement` ← head `worktree-resident-conversation-routing`；同一UTF-8正文经feature checker通过后gh更新，独立gh回读number2/OPEN/MERGEABLE/mergedAt null、head cb037ac且正文逐字一致，body SHA256 `80284d5f72865ff459ae0530f0cc0cb4e3588c3693f03f16f7d5123112df21b5`。gh run list=[]；未CI、合并或部署。本条仅回填已发生事实，最终仅goal文档提交及清理结果由本轮最终只读回查/交付回复报告。
 
 ### SG1–SG9冻结检查点（以下“当前”仅指其原阶段）
 
