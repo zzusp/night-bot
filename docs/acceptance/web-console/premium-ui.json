@@ -2,7 +2,7 @@
   "profile": "product-admin",
   "sourceRoots": ["../../../packages/web-console/src"],
   "locale": "zh-CN",
-  "canonicalMap": "UX-CONTRACT.md",
+  "canonicalMap": "DESIGN.md",
   "requiredCapabilities": ["Form", "Scrollbar", "Toast", "CRUD"],
   "requiredCommands": ["unit", "typecheck", "build", "browser"],
   "commands": {

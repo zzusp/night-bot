@@ -1,5 +1,7 @@
 # Night Bot
 
+UI/UE 的唯一指导性文档是 [DESIGN.md](docs/acceptance/web-console/DESIGN.md)。修改界面前先读该文档；视觉、交互、状态、文案和可访问性规则统一在其中维护，不另建平行的 UX 合同或设计规范。CSS 与组件是实现，操作/运维手册和历史验收记录不替代设计规范。
+
 Night Bot is a generic personal-assistant Agent initialization kit. Anyone should
 be able to initialize their own assistant without another person's identities,
 credentials, private paths or business assumptions. Channels are optional adapters and support exactly the core `chat`/`chat-room`
