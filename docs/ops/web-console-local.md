@@ -1,5 +1,7 @@
 # 可选 Web 控制台本机运行
 
+本页只说明安装、运行与排障；UI/UE 的唯一指导文档为仓库根目录的 [DESIGN.md](../../DESIGN.md)。
+
 ## 边界
 
 Web 包位于 `packages/web-console`，使用 Node.js 24+，独立 pnpm 清单和锁文件。Bot 根安装、CLI 与默认服务不导入这个包；不需要安装 React/Vite 即可运行 Bot。插件只通过既有渠道和只读服务接入，不修改核心 schema。

@@ -1,18 +1,18 @@
 {
   "profile": "product-admin",
-  "sourceRoots": ["../../../packages/web-console/src"],
+  "sourceRoots": ["packages/web-console/src"],
   "locale": "zh-CN",
-  "canonicalMap": "UX-CONTRACT.md",
+  "canonicalMap": "DESIGN.md",
   "requiredCapabilities": ["Form", "Scrollbar", "Toast", "CRUD"],
   "requiredCommands": ["unit", "typecheck", "build", "browser"],
   "commands": {
-    "unit": "pnpm --dir ../../../packages/web-console test",
-    "typecheck": "pnpm --dir ../../../packages/web-console typecheck",
-    "build": "pnpm --dir ../../../packages/web-console build",
-    "browser": "pnpm --dir ../../../packages/web-console test:browser"
+    "unit": "pnpm --dir packages/web-console test",
+    "typecheck": "pnpm --dir packages/web-console typecheck",
+    "build": "pnpm --dir packages/web-console build",
+    "browser": "pnpm --dir packages/web-console test:browser"
   },
   "evidence": {
-    "crudFullFlow": "../../../packages/web-console/test/browser.spec.ts",
-    "failurePaths": "../../../packages/web-console/test/server.test.js"
+    "crudFullFlow": "packages/web-console/test/browser.spec.ts",
+    "failurePaths": "packages/web-console/test/server.test.js"
   }
 }
