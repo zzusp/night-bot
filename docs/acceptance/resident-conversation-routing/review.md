@@ -406,3 +406,46 @@ round-6.md 完整 SHA256=217eaa81c8a92e2e405bd8a094e3d49c877f6e1d2c9652743408e2c
 本阶段审查收口为“正式停用与恢复补读修复已实证，等待新真人 SDK 事项”；SG9 总目标继续 ACTIVE/WAITING_INPUT。原 review 78243字节前缀 d8bc189d 保留。后续新输入沿原第七轮材料由 Tests 继续，Lead 单写 goal 并负责原 PR 整合，不因本节另起轮次或重复整轮验证。
 
 本会话本阶段仅追加 review.md；未改 goal/产品/测试/报告/矩阵，未运行测试、模型、guard或实例，未读取秘密、私有配置或活动业务数据库，未连接/发送、停止/重启/重放、执行 Git 写/CI/合并/部署或新增 agent/workflow。现场 API/SDK 和业务运行结果均来自原 Tests 的指定原回执，不冒称本会话亲自执行。
+
+
+## SG9 第七轮终态窄审：独立交付、复盘与观测恢复
+
+本节为同一第七轮的阶段末集中追加，原 review 及先前 WAITING_INPUT/BLOCKED 时点逐字保留，不另起轮次。已从原 Tests 的指定原工具回执确认：新独立事项 completed/drained，文件与实际平台文本/附件读回一致，同完成 event 的持久复盘 done，必要同安装冷恢复未重放，正式 IPC 与最终 closed 观测分别核实。最终验收入口窄修未发现新的确认残留缺陷；这是限定范围的结论，不是新全量或全平台全绿。单条消息的 live event/history 分支仍有观测盲点，Git/原 PR 最终交付仍由 Lead 核证。
+
+### 独立来源与唯一任务
+
+- 本会话只读原 Tests transcript，未运行实例/模型、查询现场 API/活动数据库或读取私有配置。已接原 call_10b19dd、86e663af、010d57eb、aba624fe、e1acaff7、db57b2d3 等必要回执；完整 tool_use_id 集中见 round-7.md:143–157，不复制平台正文、群/profile、配置或业务档案入 Git。
+- 平台原消息 SHA20e2978a 与 source SHA82c05d23、version1、actor SHA4131eaf5 和新任务授权链对应；triage committed/needsHandling=true，Router source.message consumed、processedCursor5/generation4，source settled、issues[]。平台实际 mget 的原 source 身份差异回执 call_329967c3f65844c7bd7b8d56ff177597 中，原生 sender 哈希856e4fd0与后续 typed 转换匹配；e1ac 核严格 channel-actor- + SHA(JSON([channelId,senderId])) 后等于 ingress principal/task owner。不能把内部 principal 与平台原生 ID 直接比较，也不以昵称/后缀猜身份。
+- 新 sg9-independent-20261107-02 / task-session-83c5ac6e-8ade-4da8-9697-74cc186af6ea 的 source/session/workspace 与旧事项不同，同原群/owner、dependencies=[]、三个 blocker 数组为空。原回执确认 createdAt=2026-11-07T00:58:10.887Z、completed/drained/run1/controlRevision1；没有 clone/reopen/依赖旧任务。新 journal 严格 committed/total49968字节、SHA e3be3784、assistant3，write/read/task_result 的三个 toolResult 无错误，写入有一对 intent/result。
+- 原监听曾实际 ready，真实平台消息及认证持久 ingress/消费链已证；但旧坏 observer 未保存该条 raw event。现有 source-read span、平台 mget 或接入时间不能区分当时是 live event 还是同实例 history 补读。此专项 **未收敛/观测盲点** 保留，不编造原始快照，不以重发或注入补证；也不把该盲点说成没有真实平台消息或任务未完成。
+
+### 文件、实际交付及持久复盘
+
+- 原010d回执的 exactTwoLines=false 来自验收预设末尾LF；随后 c66f8108 原结果为 lineCount2/line1Exact=true/line2Exact=true/hasFinalLF=false。实际文件48字节，精确两行 SG9-LIVE-20261107-01 与 真实群消息闭环验收，SHA1c2ec486；work 与 Host冻结输出相同，未改业务文件迎合断言。artifact c63548db、descriptor requirementRevision/version1、producer.runId与nodeRunId对应新task/session、outputRef=single:1、size48/同SHA，见 round-7.md:106–107。
+- e1ac 原执行输入与结果均已读：既有 adapter 设 writesAuthorized=false，经真实 querySendStatus 核文本/附件 SUCCESS，再 readMessage 比正文、readMessageFile 以预期 resource/size/SHA 实际下载验证。文本同已送正文；附件重新下载48字节/SHA1c2ec486，与冻结 descriptor 相同，临时下载清理。不是只凭 status/receipt、fake 或候选 notice 判送达。
+- 两条 notification 均 delivered、sendAttemptCount1/readbackAttemptCount1，送达时点00:58:44.882Z与00:58:49.295Z；两 receipt SHA分别6d189530与0a6c5fbe，平台文本/附件 message SHA分别f9c0a42c与aaa48236、各有持久 evidenceRef。完成与送达是分别核实的事实，不把旧 Router 状态文字当新结果交付。
+- db57 原回执确认同新task及 task-completed:complete:sg9-independent-20261107-02:1 的复盘 done/attempts1/lesson1，recordedAt=00:58:35.301Z、SHA d990727f。task reviews与group review副本字节同、evolution state深等、scope匹配task memoryGroupId/owner；唯一经验entry的source为同session/event，evidenceIds精确为该event。冷恢复 e142 再核 review文件1份、attempt1、经验entry1，没有重复学习。officialReflectionText 不提供 tools、拒 toolCall 后才可done的实现合同已核，复盘不另建执行session、不授予发送或后继执行权限；不以 whenIdle 或仅 task completed 代替持久 done。
+
+### 观测故障与最终窄修
+
+- 已确认旧入口2e340e7b:29的缺陷并直接交 Tests：prior在成功前更新，tail.then只有成功分支，一次 atomicWrite reject 后同快照不重试、变更快照也不执行写入；:30只反复打印，:32的closed同样失败。旧observer停在2026-11-06T20:41:52.996Z/running，不可用其tools/errors空或Monitor静默断言后续无业务。原日志最后15998条旧格式错误保留，15586是较早快照，不冒充停机基线；最初OS错误未保留，不能猜EPERM/ENOSPC。
+- 静态沿实际 IPC 链核：supervisor转发给run launcher，再到CLI host.close；Host先application/tasks.close、factory.close，再fiber.dispose。已装Cordis fiber.ts:675–685对各disposer分别catch/log。因此观测drain reject不能直接推出task drain失败或IPC必exit1，IPC exit0也不能证明closed观测成功；三个事实分开核。原业务 bmpv0tlos 的正式IPC自然0/sourceStable15/keyfalse已由 e5bac23c及宿主完成通知证实，同时旧observer仍running，历史不追认closed成功。
+- 停止态第一修522be99d将snapshot structuredClone冻结，在串行write中去重、成功后才commit prior，tail.then(write,write)允许后续sample接续、当前失败仍reject；timer仅打印有限白名单code/phase，不输出异常对象/私有路径。普通health数据已沿plugin与bridge:230–284核适合克隆。未改通用atomicWrite、产品、账本或权限。
+- 本会话进一步找到同层反例：原atomicWrite在POSIX rename成功后目录sync失败可抛committed=true；522旧prior=A、B实际覆盖但报错后，再A会误跳过。此为静态合同反例，不是本机原OS cause。最终6f44710a在真正write前清prior，任何失败后不再用旧成功缓存断言磁盘内容，成功再commit；保留原异常与串行队列，该已证缺口已修。最终diff只在原sample/timer责任层，没有放宽底层路径/原子写入合同。
+- 已读 call_10ca7fc91a304cc28d317feb16694cb0 的实际执行源码和原结果，不仅采信pass汇总：import真实apply、使用真实atomicWrite，自有runtime边界连续两次NIGHT_PATH_UNSAFE均reject、timer安全错误；修复夹具后同快照可写；A成功→B真实I/O失败→再A仍reject、修复夹具后A实际写入；可变health不污染已排队快照，B→A最终A，pending更新与closed均等待完成。源码起止6f44710a一致、finally恢复钩子并删除自有夹具后access=ENOENT，语法/空白检查通过。该隔离没有网络、模型、秘密或业务实例。
+- 版本必须分开：真实新业务为2e340e7b，同安装冷恢复/closed实证为522be99d，停止后最终6f44710a只做上述隔离和静态核证。未再起真实实例；没有把522现场结果冒充6f全分支实测，也没有动态注入POSIX目录sync提交不确定。未做的分支不追认为已测，已修的静态反例不继续列成最终残留缺陷。
+
+### 冷恢复、精确回声与正常排空
+
+- 原522冷恢复 b3hzpf9xy 先check再start，同原安装/配置SHA cb7aca39、epoch2026-11-06T17:57:44.948Z。4feb96aa原输入已核显式portable codec + requireComplete:true逐份decode；原15份journal数组已独立从db57回执重建，紧凑JSON SHA精确为5b0b9fd9，恢复时bytes/SHA/assistant与原数组逐项深等。listener ready、backfill ok/completionScope durable-receipt、HTTP status ok/recoveryIssue0，不能由HTTP单独推SDK ready。
+- 冷恢复仍仅新completed/drained/lease-run-revision1与旧cancelled/revision2/lease2/run1两task；两receipt、send1/readback1、48字节work/冻结产物、review SHA均不变，工具/错误空。e1429b86进一步核完整source page total2/nextOffset=null、新真人marker1、三条sent outbox精确ID不在source page，journal仍15、无新task/session/收据重放；同完成event唯一复盘/经验条数不变。该实际恢复覆盖精确自回声不变成新事项，而非仅本地fake去重用例。
+- 2467f9a9原回执与宿主 b3hzpf9xy completed/exit0通知分别核实：正式IPC、closedAt=2026-11-07T01:29:59.535Z，signal=null/sourceStable15/keyfalse；observer独立phase=closed/at01:29:59.362Z、tools0/errors[]。新code/phase错误0、旧15998条历史保留，独立OS退出事实按Tests原回传记录，不冒称本会话亲查PID/端口。当前实例已结束，没有待输入、在途监听或本会话后台操作。
+- 新业务首读health degraded/recoveryIssue1、TRIAGE_NO_DISPOSITION，以及原末尾LF假设、内外namespace误比、就绪观察器字段写错、早期错误计数误作终态基线均在round-7.md保留；后续issues[]和正常终态不抹去这些失败。旧事项的45111字节/ad7062f5/assistant2/identity+intent仍保留，无result/reconciled/owner-drained补造；新成功不关闭旧unknown，也不冒充旧事项完成。
+
+### 冻结材料与交付范围
+
+已完整分段读最终round-7.md，161行/30001字节，SHA256=2bb4353c3771ae4d8c5de15ac0bc19f95ba989f53545effbf951453c3b244fe5；matrix.csv SHA256=8ef6e2f29286de5b0696648511c26535bc514c8e343c4037ba8f088dd4babb4d，91个唯一case/9列。前阶段待输入记录保留为历史，更新四条新业务终态并新增三条观测记录；剥离R7列与新增行后精确重建R6完整c14cd39f，原74行/前六轮逐字保留，round-6.md仍217eaa81。未建全绿report.md。
+
+当前HEAD853ed2563b56308aada3a42fdd13043832286e8b，加本阶段goal/报告/矩阵/入口未提交增量。已逐项核原14产品/配置/依赖与echo test共15项仍同冻结报告，最终入口完整SHA为6f44710a1b89cb88003b9dc3b31ef5177671d1d4447ae9e2b268f9996a3999fa；不重复已通过业务、产品guard或全量。历史review原87319字节/ec0cda4f完整保留。
+
+本阶段可交Lead整合：指定群新独立事项的实际交付、同event持久复盘、必要恢复与正常退出证据成立，最终窄修无已确认未处理代码缺陷；单条原始live/history分支、首次OS cause及POSIX目录sync动态分支按上述边界保留。长期目标状态、提交/push/原PR回查仍归Lead，不因本审查替代Git交付或擅自宣告整体结束。本会话只追加review，未改其它文件、未测试/运行现场/发送/重启/重放、未读秘密或私有配置、未做Git写/CI/合并/部署，也未新增agent/workflow。

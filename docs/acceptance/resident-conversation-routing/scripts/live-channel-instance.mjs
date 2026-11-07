@@ -26,8 +26,13 @@ export async function apply(ctx){
   const tools=[],errors=[];let phase='boot',prior,tail=Promise.resolve()
   ctx.on('tools/result',(execution,result)=>tools.push({at:new Date().toISOString(),name:execution.name,sessionId:execution.agent?.id,callId:execution.callId,isError:!!result.isError,...result.isError?{code:result.error?.code??result.error?.name??'TOOL_ERROR'}:{}}))
   ctx.on('agent/error',event=>errors.push({at:new Date().toISOString(),code:event.error?.code??event.error?.name??'AGENT_ERROR'}))
-  const sample=()=>{const snapshot={phase,health:ctx.channels.plugins.get(plugin.channelId)?.health,tools,errors};const text=JSON.stringify(snapshot);if(text===prior)return tail;prior=text;tail=tail.then(()=>atomicWrite(join(paths.runtime,'sg9-observation.json'),JSON.stringify({at:new Date().toISOString(),pid:process.pid,...snapshot},null,2)+'\n'));return tail}
-  const timer=setInterval(()=>void sample().catch(()=>console.error('SG9_OBSERVATION_WRITE_FAILED')),1000);timer.unref()
+  const sample=()=>{
+    const snapshot=structuredClone({phase,health:ctx.channels.plugins.get(plugin.channelId)?.health,tools,errors}),text=JSON.stringify(snapshot)
+    // 仅成功落盘后去重；前次失败不阻断后续快照，排队内容不随原对象变化。
+    const write=async()=>{if(text===prior)return;prior=undefined;await atomicWrite(join(paths.runtime,'sg9-observation.json'),JSON.stringify({at:new Date().toISOString(),pid:process.pid,...snapshot},null,2)+'\n');prior=text}
+    tail=tail.then(write,write);return tail
+  }
+  const timer=setInterval(()=>void sample().catch(error=>{const code=['EACCES','EPERM','ENOSPC','EIO','EROFS','EBUSY','ENOENT','EEXIST','ENOTDIR','EISDIR','EMFILE','ENFILE','NIGHT_PATH_UNSAFE','NIGHT_PATH_CHANGED','NIGHT_WRITE_COMMIT_UNCERTAIN'].includes(error?.code)?error.code:'OBSERVATION_WRITE_FAILED';console.error('SG9_OBSERVATION_WRITE_FAILED; phase='+phase+'; code='+code)}),1000);timer.unref()
   ctx.on('night/ready',async()=>{phase='running';await sample()})
   ctx.effect(()=>async()=>{clearInterval(timer);phase='closed';await sample();await tail},'SG9 observation drain')
 }
