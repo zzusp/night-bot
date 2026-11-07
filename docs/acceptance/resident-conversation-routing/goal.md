@@ -2,7 +2,7 @@
 
 > 状态：ACTIVE
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-07T15:42:47+08:00
+> 最近维护：2026-11-07T15:49:57+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -87,7 +87,7 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 ## 当前检查点
 
 - 当前子目标：SG10
-- 当前阶段：ACTIVE/SG10-R10本地阶段已归档并独立审查，原安装真实监听待真人输入。round-10为ffe5d67d，matrix为ecafabbe/167用例12列，review追加为b593cf64；Lead已核原R9完整CSV可逆重建、HEAD122×10字段及review原前缀不变，47项源码逐项等最终btpr受验字节，两次fixture FAIL和R9 echo FAIL均保留。原Tests外层b601nf10p（--run --hold）及Monitor bq0vvu12d继续；独立就绪bozw4158i自然0，SDK北京时间15:17:13、完整backfill15:17:24、HTTPok/recoveryIssue0/tools0。原supervisor87404/launcher97088/service104368/127.0.0.1:19298归属已独立核实；原群07:19:23Z消息页约定marker命中0只作该时点观察。完整field-check真人请求及后续闭环尚无证据，不将ready或本地PASS当全链完成；工程保存点正按原PR收口。
+- 当前阶段：ACTIVE/SG10-R10本地阶段已归档并独立审查，原安装真实监听待真人输入。round-10为ffe5d67d，matrix为ecafabbe/167用例12列，review追加为b593cf64；Lead已核原R9完整CSV可逆重建、HEAD122×10字段及review原前缀不变，47项源码逐项等最终btpr受验字节，两次fixture FAIL和R9 echo FAIL均保留。原Tests外层b601nf10p（--run --hold）继续；旧Monitor bq0vvu12d到期后，Tests已按宿主通知复用同一只读命令续接bsbnbs72g，回传原现场healthy/ready/backfill ok、tools0及原3task，不把该回传当新业务终态；独立就绪bozw4158i自然0，SDK北京时间15:17:13、完整backfill15:17:24、HTTPok/recoveryIssue0/tools0。原supervisor87404/launcher97088/service104368/127.0.0.1:19298归属已独立核实；原群07:19:23Z消息页约定marker命中0只作该时点观察。完整field-check真人请求及后续闭环尚无证据，不将ready或本地PASS当全链完成；工程保存点实现cd045ee已push原分支，原PR正文独立回读一致且OPEN/MERGEABLE；不以此结束现场目标。
 - 上一轮完成事实：实现提交`753fa39`及仅goal交付文档提交`67d2d50`已push原分支；PR #2最后独立回读为OPEN/MERGEABLE，未合并/部署/触发CI。round-8、matrix和review的历史结果/版本边界保持，原安装私有技能任务已completed/drained/run1，其Router已正常交接至g2；不可再原样运行仅适配旧断点的private-skill-check脚本。
 - 新确认差距：基线2e6cf2e的task-session-service submit对有conversationId/question但audience缺省强改requester，覆盖下游operator默认；single-session参数可省略audience，queueHumanRequest requester分支会准备原群回复。Core已最小修默认operator、业务问题显式requester并说明工具合同；bax20lrh1的本地Host分流单项已通过：缺省operator仅内部Web，显式requester保持原conversation/session/受众；整组原FAIL/CANCEL保留。不按文本猜分类、不真实发送、不重写已有请求。
 - 实现关联恢复反例：中性supplement.sources与原严格SQL快照比较在native admission已提交、SQL admitted未落账退出窗口冲突；Core已冻结input-origin必要修复SHA38f6c9ff，Lead/Review独立核精确旧/中性两shape、packet/input逐字和全部身份/版本守卫。Tests扩真实Pi commit/readNative/SessionManager冷证明及篡改拒绝，独立组原回执已由Lead核验通过；普通task-input含leaseEpoch递增的泛化冲突已排除，不加通用版本层、不迁移journal/SQL。Platform仍独占必要dynamic账本humanReview/子附件受众消费。
@@ -101,10 +101,12 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 - SG10写入权：Lead独占本goal、原spec及必要manifest/Git；Core独占resident-router-business、single-session、业务prompt及必要reflection，其余已冻结；Platform独占channels/service、loader、plugins、router-*与必要通用传输边界，本次续办范围为src/channels/router-lifecycle.js、src/pi-official-agent-factory.js、src/runtime/pi-official-session.js、src/channels/router-ledger.js（仅只读pending计数）及packages/dingtalk-core/task-session-service.js（Core已交出该文件，仅必要Host委托和确定未结恢复告警，保留72509157终态顺序修复）；Tests独占test/**、本目录脚本/matrix/round-8；Docs独占AGENTS/README/CHANNELS及必要运行文档；Review仅原review追加。交叉文件先交接。Core另独占group-notification/group-reply-format/platform-notification/platform-schedule及一份必要纯中性消息helper（放src自有目录，不冒充上游）；group-message纯职责抽离后再交Platform处理协议部分。Platform可改必要task-message-projections/账本幂等比较；config/loader纯声明不构成运行探测，决定保留而不为删词重构。Docs可补一份Linux隔离运行runbook，因现有ops仅Windows/Web，需给支持环境具体准备，未实跑不写已部署。Night-bot-c1仅只读补充，已确认未新增docs写者，原Docs仍唯一。 新增技能复用仅Core写原安装已忽略私有技能目录；复用源保持只读；除已交接并重新冻结的历史终态恢复最小修复外，不改原Core冻结文件，不写Platform现有plugins/**/service。必要代码文件先给Lead明确范围并交接；Docs不复制技能，Tests仍独占测试和现场执行。两份技能已在原安装忽略目录私有落盘并独立核证；此结论不等于任务实际读取通过。
 - 续办动态复验：Lead已全文核b3we9iekt原回执3PASS/2FAIL/自然1、39项稳定；满30+第31pending拒绝、另一scope EACCES传播和默认CLI自然0有效，两真续轮被MEMORY_ADMISSION_REQUIRED挡住。两文件修复后bockg3hqv为1PASS/1FAIL/自然1、39项稳定；再失败路径已证原packet current/失败finally恢复undefined/新原生错误/冷启旧proof拒绝。完成路径末尾误在旧g1查candidate seed而FAIL，Tests仅改读current activeSessionId并绑定published rotation，单条ba779gfp3已由Lead全文核1PASS/自然0、39项起止稳定，原packet/current/唯一input与admission/settled/合法candidate seed/再次冷启不重放成立；私有脚本之后修DTO字段，不能称39项当前全同；两次FAIL完整保留，不当整链PASS。
 - 原安装追加失败：beiiysg9s自然1/0PASS/1FAIL，脚本误读DTO session.id而实际为session.sessionId，正式续办前拒绝且原proof未消费；仅修两字段。brt8jyqyp自然1/0PASS/1FAIL，Lead全文核NOT_LIVE原输出；Tests严格只读账摘要证同task completed/drained/run1、原event consumed/cursor1、g1追加正式claim/turn/成功settle与handoff输入，rotation aborted/interrupted-handoff、无candidate。两次config/技能及其它16journal整字节保护通过。原现场精确交错仍无trace，确定性交错及普通恢复现已由bc39/bya独立验证，不凭Error定义行追认原失败位置；已settled原proof不再调用，后续仅同Router正式普通recover完成交接。
-- 唯一下一步：原Tests保持原现场正式监听，承接真人来源后核实际文件/父quote与@/附件回读/无工具复盘/同任务冷恢复及本次正常退出。Lead已独立核R10/matrix及Review本地阶段结论，继续提交并更新原PR作为工程保存点；goal维持ACTIVE、现场hold不中断，不合并/部署/触发CI。后续现场阶段结束再集中补本轮终态和原PR事实。所有产品冻结不并写，真实平台仅原Tests执行；缺真人输入不注入或重放补足。probe关闭不join底层CLI及原native operation未统一resolver的边界保留，不外推全部资源排空或shell原生发送回声。
+- 唯一下一步：原Tests保持原现场正式监听，承接真人来源后核实际文件/父quote与@/附件回读/无工具复盘/同任务冷恢复及本次正常退出。Lead已独立核R10/matrix及Review本地阶段结论，并完成实现cd045ee和原PR工程保存点交付；goal维持ACTIVE、现场hold不中断，不合并/部署/触发CI。后续现场阶段结束再集中补本轮终态和原PR事实。所有产品冻结不并写，真实平台仅原Tests执行；缺真人输入不注入或重放补足。probe关闭不join底层CLI及原native operation未统一resolver的边界保留，不外推全部资源排空或shell原生发送回声。
 - 未闭环项：最新版DWS完整现场链及原生mention/quote仍未验；没有新真人群请求时不能完成新入站与再次交付验收。Windows进程privacy、Linux未实跑、异常close/取消专项、旧unknown缺producer证明等边界保留，不据新成功追认旧unknown，不扩成平台部署或全库治理。
 
 - SG10最终Git交付事实：实现/验收提交`753fa3911db5279e919c63235e89a815ff7df1e9`为43文件、1747新增/797删除；提交前本地真实执行及最终guard已核，提交后43项blob与受验SHA逐项一致，工作树干净。push前gh为OPEN/null、目标base无incoming，workflowCount0/webhookCount0、无本地workflow/active hook；push后独立ls-remote和gh头均753fa39。原[PR #2](https://github.com/zzusp/night-bot/pull/2)标题为“refactor: 常驻 Router 直连事项并补齐中性渠道与受控恢复”，base refactor/pi-native-retirement ← head worktree-resident-conversation-routing，OPEN/MERGEABLE/mergedAt null；正文经同UTF-8文件checker通过后更新并独立回读等文，body SHA256 `d3dce3a4a3a301650a0b2749f7f2698c7804171bf7447414f600a04787879110`。更新后gh run list=[]，没有CI、合并或生产部署。以下仅goal事实回填，不改变受验业务字节，不重复实跑；最后文档SHA以交付回复/最终gh回查为准。
+
+- R9–R10工程保存点Git事实：实现提交`cd045eeea2253c9aaedf82065dc553f54c55c55b`为18文件、848新增/195删除；47项提交blob逐项等最终btpr受验指纹及当前工作树，提交后已独立核clean。push前原PR为OPEN/mergedAt null，目标base无incoming（交付前fetch后的原HEAD比较18/0）、workflowCount0/webhookCount0及无活动本地hook；远端ls-remote和gh头均cd045ee。原[PR #2](https://github.com/zzusp/night-bot/pull/2)保持原标题、base refactor/pi-native-retirement ← head worktree-resident-conversation-routing；同UTF-8正文checker通过后更新，独立gh回读为OPEN/MERGEABLE/null且正文逐字一致，SHA256 `b987fa98851812e5e514acc7edce3aceea017e64b72ffe6bf35fa1e8fcb234f8`；gh run list=[]。R9原报告保留98行CRLF及原SHA，暂存检查其余17文件按默认规则通过，R9用Git cr-at-eol及逻辑行空白校验通过，不改永久配置或历史字节。本条和检查点仅回填已发生交付事实，不改变受验业务字节；最终文档提交SHA由交付回复/最终gh回查报告，现场仍ACTIVE，不合并/部署。
 
 ### SG1–SG9冻结检查点（以下“当前”仅指其原阶段）
 
