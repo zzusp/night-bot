@@ -544,3 +544,41 @@ R4 报告最终 19686B/SHA `b9338900b8d3acf92ce68711e26ff2b72e6d425e06c453d92e16
 - bddd8bjga 原 guard 与结构校验自然0，输出 SHA `db890b81cda97124ccb10d28b173e20ee046732266de759a7ff71ce1b2568d7f`：194 retained/57 adapted、405 production/runtime、191 bare imports、0 externalSDK/旧编排、strict source5/removed9、relative imports closed/HTTP routes retained。manifest `5d748a04` 与 coverage 脚本 `fc23110d` 精确适配本轮，203对原 source/sourceSha256 与HEAD逐对不变；不重复 guard，也不把它当渠道实发证明。
 - 必要文档已核：README `82e0601b`、CHANNELS `719d86b2`、Windows runbook `c3cfb03b`；仅 CHANNELS 后补已证 probe 关闭精确限制。引用受众/父子能力、队列 resolver 范围及 R8 无真实调用仅限定 R8 均与实现相符，不把 R9 旧现场或本地 fake 当最新版现场收发。阶段材料定向 diff --check 通过。
 - 追加前原 review 为501行/110236B/SHA `b9f9acc5b3c231399ef4722679f83c04c19438d8faa2c6201afc87622ba9a2d9`；仅在其后追加，原历史不改。本会话未改产品、测试、goal、报告、matrix或其他文档，未运行测试/模型/渠道/实例，未读秘密或技能正文、未外发/重放、未新增 agent/workflow/定时器、未做 Git 写/CI/合并/部署。交回原 review 写权给 Lead，唯一 [goal.md](goal.md) 继续 ACTIVE/SG10；Lead按已授权原PR保存工程增量，Tests保持原现场，后续现场结果再按实际版本补验，不因本节结束长期目标。
+
+## SG10 第十轮现场终态窄审：真实交付、原生提及与同任务冷恢复
+
+本节在 Tests 集中交回现场报告后一次追加；前节待输入及未退出是其原观察时点，历史不改。本次原指定群/profile 的有限现场闭环、复盘、同任务冷恢复与正常退出证据已独立核齐，未找到阻止本阶段交回的新增确认缺陷，可交 Lead 整合原 PR。旁路状态查询未统一取消/join、原 native operation 范围及其他既有风险仍保留；本节不替代最终 Git/PR 回查或宣告广义平台全部验收。
+
+### 版本与真实执行、交付
+
+- 首次现场起点 HEAD 为67d2d50加已冻结工作树；Lead 后保存实现 cd045ee，冷恢复起点及本次材料核验 HEAD 为 `e7d045abf71d057a6ffd1748425cd2a9437b2c26`。两外层各保护47项受验文件，产品/测试未因现场改动；本会话不重复旧47份源码审查、不再运行测试/平台/实例，只读指定已结束原回执、必要复盘责任链和最终材料。当前未提交增量为团队已知最终文档。
+- `call_cad9eadad3174ed0987bca2adac831b9` 的新 formal source 为 version1/processed，时间2026-11-07 16:52:25.466+08:00，native message hash `4edde5fe498038bd6dfe3cd4564bcabe02b25d67c7d7b0c60e95e794eab2bd60`。分诊/Router正式工具序列与来源对应；后续离线权威表核唯一 source、triage committed1、来源及新 task.completed consumed2，两自身消息未成为 source/fact。不能只由工具页隐藏 own 或 SDK 是否回传自事件推断入口正确。
+- 已读 `call_9f684b13a2aa4bd7bd6610aad08ec573` 的实际脚本及 R10_LOCAL_FIELD_EVIDENCE：新独立任务 completed/drained/run1，唯一执行 session hash `abf33ccb29fb5c8ae9009c846097d707ed5dc823c5f573943ab1d46fe3422c5b`；strict portable/requireComplete journal hash `17415f728ee2fa9fbc75af414d0007e4781978902546d7fbec244e387acc8a39`，write/read/task_result各有成功 toolResult、errors0。work、Host冻结文件及descriptor同29B，SHA `afe13bfb164fcc75d4d2a1623c8d89b0c761b75a2e665531c288a9ff401ef3c2`，本会话另按请求UTF-8字节重算长度/hash一致，不从task.json或完成状态推测产物。
+- `call_48be6fe4ceeb4501a32eaa7dfd240b40` 是原profile/原群的独立真实 status/mget/文件重下，不重发；父/子分别delivered、send1/readback1且status精确匹配原receipt。父mid hash572f690d、子mid2990a64c，正文按真实quotedMessage验证；文件资源身份与冻结receipt对应，重新下载29B/hash精确同上，临时下载已清。SUCCESS、正文、引用、提及、资源字节分层核证，不相互代替。
+
+### 原生引用、提及与认证复用
+
+- mget quote精确原mid/原群但不暴露原作者ID；同次原生 list-mentions raw另有quote senderOpenDingTalkId。本会话重算 raw 中父mid572f690d、quote原mid4edde5fe、native作者856e4fd0，与源/父receipt及typed映射一致；不只按显示名认作者。`call_d5ec3f6d52174f99b28270816ae7a71d` 的当前contexts.participants将typed owner4131eaf5精确映到native作者856e4fd0，父唯一recipient及replyToActorId同owner，子来源相同但无quote；内部conversation/native群分域保留。
+- 已读9f原回执的精确leaf schema：chat message list-mentions / chat.search_at_me_message查询提及当前用户的原始索引。48be原查询沿原profile/原群、父时间前后1秒，success、requestSatisfied/sourceExhausted=true，paging/result hasMore=false、truncated=false，唯一群/唯一父mid。`call_7e563e5dc01748f38d1b7e27c8156d1c` 仅复用该raw，无新DWS调用；本会话逐字段及hash独立重核，不依其PASS标记自证。
+- 比较三条证据路径：正文出现@姓名不足以证明原生提及，quoted作者也不是mention目标，二者均不采作目标证明；采用原生@当前用户索引的精确父消息命中，加同profile已核认证主体和当前typed/native作者/受众映射。认证复用原 `call_3f63dac727534f5481f34757978c08c0` get-self真实exit0，`call_000a6f06cd2c4a99b15bf6444a7ae165` auth readonly精确userId/corpId、唯一userId→openId及原群membership，再接875d原离线同profile/config核验。48be本身只比较配置assistantActorId，未新调用whoami；本节结论明确依赖这条既有认证链复用，不称08:59新认证核验。
+- 据此本次“原生@原作者”成立，原生quote也精确核齐。mget没有mentions数组，原runtime receipt mentionVerification=unavailable及空atOpenDingTalkIds不改写；索引命中不等于可枚举任意原生mention受众，更不由quote作者或正文姓名补造数组。支持范围仅本次同profile/同群/原作者，不外推所有接收者或其它渠道。
+
+### 持久无工具复盘、交接与回声
+
+- d5回执核 task review/scope review逐字同SHA `06771d97ba7bd0f90ae40a1dcb6e3b37139c8f9dd88da221c7648b140416d7ee`，同event state done/attempt1、lesson1及actor scope；`call_2bf03b1811344d77b2b80bc4e661a507` 核experience条目1/revision1、task/event/actor精确。复盘以当时已完成/产物为证据，不因此追认当时渠道已送达，私有复盘正文不入Git。
+- 另沿 `src/memory/reflection-inference.js:25` 核实际默认官方一次streamSimple仅stop且无toolCall才返回，`src/memory/reflection.js:54` 验evidenceIds后才在79/82持久done/review/state。两文件逐字等HEAD，SHA分别8c945064、8876dfc8。持久done与实际守卫共同支持无工具复盘，未把Router交接的零工具当复盘推理日志。
+- `call_551d30e5f9c245d6ac013264fee75c36` 以活库mode=ro/query_only事务而非immutable核新完成事件consumed，g9/cursor9/lastHandoff9、g8→g9 published、原/候选strict commit及精确来源覆盖；2bf独立核g8交接assistant1/toolCall0/toolResult0/stop。d5在交付后完整backfill成功的观察及最终离线权威表均为两own source/fact0。原R9回声FAIL不因本次成功改写，单条SDK live/history分支仍不补猜。
+
+### 正常关闭、冷恢复与保护
+
+- 已完整读首次 b601nf10p、观察器 b66yixnw1及同安装冷恢复 b627yivlg 的已结束原输出，SHA分别70172e70、4b36e46c、3195da30，与最终round-10相同。首次17:11:56.884+08:00自然exit0/signal null、IPC/closed/sourceStable、verificationError null；原3task/4notice整body、22旧journal物理前缀、config/技能/47source保持，合法新增source1/task1/notice2，assistant/tool/effect77/56/2→93/69/3。原unknown和已消费proof未补造或重放。
+- 冷恢复从首次关闭后的4task/6notice、26journal、DB7099a6ab新断点先自检再启原监督，不重跑旧DB87dd/22journal初始驱动。17:14:28+08:00真实ready/完整backfill/HTTP ok，17:14:33.915正常IPC自然exit0。26strict journal逐字相同，digest `4938272d10b84585ae61f64f1d2e6564804edea4298f59b5b071269033408b26`；8业务表相同，新source/task/notice0、assistant/tool/effect仍93/69/3，两个通知send/readback各1，11项产物/复盘/经验/配置/技能保护文件相同。整DB hash改变，不能称整库字节不变；无重放绑定实际业务表、journal、产物和复盘。
+- `call_9dba72f7e87d40989de697b304b809cc` 的17:17:10+08:00独立OS原JSON核首次及冷恢复六个精确PID均无、19298无监听、可归属实例进程0。其后拒非空WAL/SHM才immutable/query_only读最终DB a5f94eec，起止hash同；source唯一/v1/actor、triage及消费、任务completed/drained/run1、通知终态及own source/fact0均再核。Review只读原回执，未亲查/操作实例或活库；这些实际退出证据不消除状态查询实现未统一drain的限制。
+- 清理由Tests执行：`call_0e88ae2721b44273bd6e666705a4a052` 对两自有驱动精确hash/普通文件/ignored/untracked/unstaged先--check零副作用再apply，`call_e9f5db78271f4165ad812267883533c9` 独立核不存在。本会话另只读exists确认两路径均无；未动安装data、日志、WAL、锁或他人文件，无在途现场任务/第二实例。
+
+### 失败分类、材料与交回
+
+- 两次验证脚本FAIL保留：cbccfb正文校验误传true，48be改传真实quotedMessage成功，未改expected文本；115ed整paging deepEqual误拒合法lastCursor，7e改逐字段完整性/原群/精确mid/作者检查后通过，无新DWS调用。另179cd为Python路径语法错、09f为猜journal文件名ENOENT、e6de为把raw Pi header当logical owner导致Node报错；e6de同shell末尾stop自检成功使外层0，不能当Node通过，551/2bf后续按strict logical header核证。均属验证代码/定位错误，不记产品修复或重发；本地两fixture FAIL及R9 FAIL也保持。
+- 首外层newMentionQuoteCasePassed=false原marker保留；它是生命周期/基线保护驱动的占位，冷驱动适配原脚本时明确将该字面量换成independent-completed-receipt。quote/@依据48be/7e独立已完成证明，不借外层exit0抹false。关闭瞬间观察器HTTP TypeError后收到closed自然终态，未因此重启。
+- 最终round-10为217行/27464B/SHA `4bf10319ca911c83cb47977af23d1602120ea8ffc7a4105b4a32fde539567d82`；matrix为167case/12列、34174B/SHA `adc4a80ad5939de7f63686f9f87e835e1ac0e0dc23cbb40c3026efc546a47bf6`。本会话独立CSV比较只改8个R10现场格，17个本地格及两FAIL不动；剥R10仍逐字重建R9完整27668B/9f0d766e，R1–R9报告逐字等HEAD。最终材料定向diff --check通过，未建全绿report，不扩跑全量。
+- 追加前原review为546行/122209B/SHA `b593cf64258148151e480d29938a26c284490a7ba1eab0f8e8a179c1e9fb5035`，仅追加本节。Review未改产品/测试/goal/报告/matrix，未运行平台/模型/测试、读取秘密或私有技能正文、发送/重放/启停实例、Git写/CI/合并/部署或新增agent/workflow。现交回原review写权；唯一goal.md及原PR最后整合/真实回查由Lead负责，原有限现场完成事实与既有未验/已证风险分别保留。
