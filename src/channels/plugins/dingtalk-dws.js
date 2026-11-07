@@ -65,7 +65,11 @@ export async function apply(ctx,config={},dependencies={}){
     if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId}))return {accepted:false,processing:'ignored',reason:'own-notification',channelType:type,conversationId:message.groupId}
     return ctx.channels.receive(channelInput)
   }
-  const plugin={accountPolicy,adapter,notifications,acceptHistoryMessage,responsibility:context=>context.type==='chat-room'&&context.channelId===channelId?responsibilities.get(context.conversationId):undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:createNativeDwsObserver,get health(){return health},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
+  const plugin={accountPolicy,adapter,notifications,acceptHistoryMessage,responsibility:context=>context.type==='chat-room'&&context.channelId===channelId?responsibilities.get(context.conversationId):undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
+    const context=ctx.channels.groupContext(notification.payload?.conversationId)
+    if(context?.channelId!==channelId||context.type!=='chat-room')return
+    return {conversationId:context.conversationId,querySendStatus:id=>adapter.querySendStatus(id)}
+  }}),get health(){return health},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
   const unregisterPlugin=ctx.channels.registerPlugin(channelId,plugin)
   if(!ctx.get('dingtalkChannel'))ctx.provide('dingtalkChannel',plugin)
   const stopObserver=ctx.channels.registerOperationObserver(channelId,plugin),stopOperator=config.operatorNotifications===true?ctx.channels.registerOperatorNotifications(channelId,notifications):undefined

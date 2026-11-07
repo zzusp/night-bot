@@ -1,8 +1,8 @@
 # 常驻 Router 与事项直连
 
-> 状态：COMPLETED
+> 状态：ACTIVE
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-07T13:52:25+08:00
+> 最近维护：2026-11-07T15:42:47+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -24,6 +24,12 @@
 - SG10起点为本分支`2e6cf2ebf2df41d90aa46af5895a42401988ae4d`、工作树clean；原SG1–9完成及历史失败/unknown不改写。只沿原worktree/PR #2/六成员/本goal，不新建执行团队、实例副本、分支/PR或定时器。无插件默认产品须实际执行并证明不加载/探测钉钉；过时case按现行合同处理，不全量补旧测试。
 - 旧仓/实例/数据仅只读；Night现有数据必须保留，确需变换先显式离线`--check`，不导入旧DSH数据。Tests仍唯一真实调用者，已有实发授权仅原Night Bot Test/原profile/原安装，不扩生产群或其它群。禁止生产部署、合并、触发CI；若原PR已合或安全push会触发CI，保留本地成果并报告，不另开线或绕过。
 - SG10追加技能复用沿用本目标及原成员。最新明确约束：复用的Skill正文/脚本/references/assets仅进原安装已忽略的私有`data/config/skills`或适当插件私有技能目录，禁止git add/commit/push；代码仅允许必要通用加载/隔离机制和无正文配置说明。旧仓全程只读，不复制凭据、私有业务数据、个人身份/设定/路径/账号，不恢复Owner/Topic/旧工具底座。Core为唯一技能写者，先核准确安装指针、实际Skill来源、许可证、依赖和兼容性，复制前后check-ignore，提交前独立核staged/tracked；主控转达的inventory线索不构成独立核证或复制结果。
+
+## 本次接续：完成 DWS 现场验收
+
+- 2026-11-07真人显式设置目标“完成 DWS 现场验收”；沿本goal、原安装/群/profile/分工/分支/PR继续，不创建另一Goal或替代实例。R9旧交付真实只读回读是阶段证据，不能作为新链路完成。
+- 完成判据：原群真人新来源经正式入口进入分诊/Router/唯一执行session，实际产物读回和群内结果/附件交付，精确平台回读；原生quote/@按新请求逐项观察，缺字段或缺行为不判PASS；形成有依据的无工具复盘，再核同任务冷恢复无重放及正常退出。旧任务/旧unknown/已消费proof保护，R1–R8历史不改。
+- 真实新来源是外部输入条件：已请真人在原群手动提交有限文件/原生引用与@请求；不通过CLI自发自收、Host/HTTP注入或重放旧消息补足。未收到时标记待真实输入，不能称整个现场验收完成；其余独立验证和本轮证据收口继续。
 
 ## 完成条件
 
@@ -72,7 +78,7 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 | SG8 | 指定渠道职责配置与完整产品链 | 明确配置入口、职责贯通全部相关角色、群隔离与可操作接入文档 | 完成；两群脚本角色隔离与职责传播已核，指定群真实闭环见SG9，不扩为其它群或全平台结论 | round-5.md、matrix.csv、review.md的SG8节、原spec补充 |
 | SG9 | 指定群真实终态与原PR更新 | 真实监听→事项→群内交付→复盘，读回证据并更新原PR | 完成；指定群独立事项实际交付、持久复盘、必要冷恢复/正常退出、最终审查与原PR更新均已核，保留旧unknown及明确未验边界 | round-7.md:97/119/139、matrix.csv、review.md:411–451及本节最终Git事实 |
 
-| SG10 | 通用产品替代能力与渠道边界补齐 | 当前旧仓真实合同对照、必要差距实现、无插件默认实跑/最小受影响验证、原PR真实交付与部署前置 | 完成；必要通用差距已实现、分版本验收/审查及原PR交付已独立核，保留平台和现场未验边界 | spec §14、round-8.md、review.md:453及下方SG10最终Git事实 |
+| SG10 | 通用产品替代能力与渠道边界补齐 | 当前旧仓真实合同对照、必要差距实现、无插件默认实跑/最小受影响验证、原PR真实交付与部署前置 | 上轮实现交付完成；R9完成旧交付回读，现取证实际冷恢复的新工具来源，完整现场链仍活动 | spec §14、round-8.md、review.md:453及本次检查点 |
 
 ## 本次单写增量
 
@@ -81,7 +87,8 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 ## 当前检查点
 
 - 当前子目标：SG10
-- 当前阶段：COMPLETED/SG10。必要通用边界实现、分版本最短验证、私有Skill实际读取及同原任务/Router恢复、最终Docs/Review与原PR交付均已完成。实现提交753fa3911db5279e919c63235e89a815ff7df1e9的43项受验源码/测试/脚本blob逐项等round-8；round-8为021d3b59、matrix2ef891d7、review（仅修两相对链接）b9f9acc5，旧报告/矩阵/审查历史保留。原PR #2已更新并独立读回OPEN/MERGEABLE、正确base/head、正文等经检查UTF-8文件、远端头等实现提交；gh run list=[]。仅本goal交付事实文档回填尚需保存，最终文档head以最后远端/gh回查及交付回复为准，不循环写自身SHA。无新测试/现场动作或在途；不再扩大范围。保Windows进程privacy、Linux未实跑、异常close、取消未专项、原现场race无trace、旧unknown/producer证明及新版DWS未重新现场验收边界，不宣称全面替代或全平台全量绿。
+- 当前阶段：ACTIVE/SG10-R10本地阶段已归档并独立审查，原安装真实监听待真人输入。round-10为ffe5d67d，matrix为ecafabbe/167用例12列，review追加为b593cf64；Lead已核原R9完整CSV可逆重建、HEAD122×10字段及review原前缀不变，47项源码逐项等最终btpr受验字节，两次fixture FAIL和R9 echo FAIL均保留。原Tests外层b601nf10p（--run --hold）及Monitor bq0vvu12d继续；独立就绪bozw4158i自然0，SDK北京时间15:17:13、完整backfill15:17:24、HTTPok/recoveryIssue0/tools0。原supervisor87404/launcher97088/service104368/127.0.0.1:19298归属已独立核实；原群07:19:23Z消息页约定marker命中0只作该时点观察。完整field-check真人请求及后续闭环尚无证据，不将ready或本地PASS当全链完成；工程保存点正按原PR收口。
+- 上一轮完成事实：实现提交`753fa39`及仅goal交付文档提交`67d2d50`已push原分支；PR #2最后独立回读为OPEN/MERGEABLE，未合并/部署/触发CI。round-8、matrix和review的历史结果/版本边界保持，原安装私有技能任务已completed/drained/run1，其Router已正常交接至g2；不可再原样运行仅适配旧断点的private-skill-check脚本。
 - 新确认差距：基线2e6cf2e的task-session-service submit对有conversationId/question但audience缺省强改requester，覆盖下游operator默认；single-session参数可省略audience，queueHumanRequest requester分支会准备原群回复。Core已最小修默认operator、业务问题显式requester并说明工具合同；bax20lrh1的本地Host分流单项已通过：缺省operator仅内部Web，显式requester保持原conversation/session/受众；整组原FAIL/CANCEL保留。不按文本猜分类、不真实发送、不重写已有请求。
 - 实现关联恢复反例：中性supplement.sources与原严格SQL快照比较在native admission已提交、SQL admitted未落账退出窗口冲突；Core已冻结input-origin必要修复SHA38f6c9ff，Lead/Review独立核精确旧/中性两shape、packet/input逐字和全部身份/版本守卫。Tests扩真实Pi commit/readNative/SessionManager冷证明及篡改拒绝，独立组原回执已由Lead核验通过；普通task-input含leaseEpoch递增的泛化冲突已排除，不加通用版本层、不迁移journal/SQL。Platform仍独占必要dynamic账本humanReview/子附件受众消费。
 - 平台早期窄审与实跑检查点（历史版本）：当时router-lifecycle1000b332使用真实pendingBusinessInputs权威接口先续旧批次，后到event留下一批，完整packet仅接受原旧/确定性中性形状并复用原字节；service184c4daf对chat/room统一在transport前拒绝外来recipient/reply actor，chat仍不发原生mentions；plugin c4dd1b06已撤只为旧mock添加的可选guard，保留required精确自身收据过滤；projections0fbe37ae保留旧payload.actorId引用作者fallback。group-message最终LF/SHA0e5b36bc，sameDeliveredText起协议尾部与HEAD10283B/hash c6c85145精确同。Lead已全文读Platform六份原回执：首组28PASS/3FAIL/1CANCEL；DWS2PASS属已撤临时guard版，flow实际12PASS属临时lookup且无起止SHA，均不能证明最终冻结版本；职责旧fixture失败及neutral附件180s取消由Tests修合法fixture和定位，不降低产品守卫。该早期检查点当时尚在验收；后续最终结果见round-8，不改写上述原组统计。
@@ -94,8 +101,8 @@ SG1–SG7 对应原 S1–S7，工作范围和负责人不变。
 - SG10写入权：Lead独占本goal、原spec及必要manifest/Git；Core独占resident-router-business、single-session、业务prompt及必要reflection，其余已冻结；Platform独占channels/service、loader、plugins、router-*与必要通用传输边界，本次续办范围为src/channels/router-lifecycle.js、src/pi-official-agent-factory.js、src/runtime/pi-official-session.js、src/channels/router-ledger.js（仅只读pending计数）及packages/dingtalk-core/task-session-service.js（Core已交出该文件，仅必要Host委托和确定未结恢复告警，保留72509157终态顺序修复）；Tests独占test/**、本目录脚本/matrix/round-8；Docs独占AGENTS/README/CHANNELS及必要运行文档；Review仅原review追加。交叉文件先交接。Core另独占group-notification/group-reply-format/platform-notification/platform-schedule及一份必要纯中性消息helper（放src自有目录，不冒充上游）；group-message纯职责抽离后再交Platform处理协议部分。Platform可改必要task-message-projections/账本幂等比较；config/loader纯声明不构成运行探测，决定保留而不为删词重构。Docs可补一份Linux隔离运行runbook，因现有ops仅Windows/Web，需给支持环境具体准备，未实跑不写已部署。Night-bot-c1仅只读补充，已确认未新增docs写者，原Docs仍唯一。 新增技能复用仅Core写原安装已忽略私有技能目录；复用源保持只读；除已交接并重新冻结的历史终态恢复最小修复外，不改原Core冻结文件，不写Platform现有plugins/**/service。必要代码文件先给Lead明确范围并交接；Docs不复制技能，Tests仍独占测试和现场执行。两份技能已在原安装忽略目录私有落盘并独立核证；此结论不等于任务实际读取通过。
 - 续办动态复验：Lead已全文核b3we9iekt原回执3PASS/2FAIL/自然1、39项稳定；满30+第31pending拒绝、另一scope EACCES传播和默认CLI自然0有效，两真续轮被MEMORY_ADMISSION_REQUIRED挡住。两文件修复后bockg3hqv为1PASS/1FAIL/自然1、39项稳定；再失败路径已证原packet current/失败finally恢复undefined/新原生错误/冷启旧proof拒绝。完成路径末尾误在旧g1查candidate seed而FAIL，Tests仅改读current activeSessionId并绑定published rotation，单条ba779gfp3已由Lead全文核1PASS/自然0、39项起止稳定，原packet/current/唯一input与admission/settled/合法candidate seed/再次冷启不重放成立；私有脚本之后修DTO字段，不能称39项当前全同；两次FAIL完整保留，不当整链PASS。
 - 原安装追加失败：beiiysg9s自然1/0PASS/1FAIL，脚本误读DTO session.id而实际为session.sessionId，正式续办前拒绝且原proof未消费；仅修两字段。brt8jyqyp自然1/0PASS/1FAIL，Lead全文核NOT_LIVE原输出；Tests严格只读账摘要证同task completed/drained/run1、原event consumed/cursor1、g1追加正式claim/turn/成功settle与handoff输入，rotation aborted/interrupted-handoff、无candidate。两次config/技能及其它16journal整字节保护通过。原现场精确交错仍无trace，确定性交错及普通恢复现已由bc39/bya独立验证，不凭Error定义行追认原失败位置；已settled原proof不再调用，后续仅同Router正式普通recover完成交接。
-- 唯一下一步：无。已授权SG10范围完成；仅保存本goal交付事实文档并作最后远端/PR回读，不新增业务、测试或设计门槛。保留原PR OPEN及原六成员窗口；CI、GitHub合并和生产部署未授权且未执行。
-- 未闭环项：本次已授权范围内无待执行工程项。原安装技能读取、同任务completed/drained/run1、原事件settled、同Router普通handoff和正常退出已由round-8分步闭环；不同阶段原FAIL/CANCEL不改判。明确保留平台/现场未验及旧unknown和异常close风险，不把这些边界写成PASS，也不新增部署/合并授权。
+- 唯一下一步：原Tests保持原现场正式监听，承接真人来源后核实际文件/父quote与@/附件回读/无工具复盘/同任务冷恢复及本次正常退出。Lead已独立核R10/matrix及Review本地阶段结论，继续提交并更新原PR作为工程保存点；goal维持ACTIVE、现场hold不中断，不合并/部署/触发CI。后续现场阶段结束再集中补本轮终态和原PR事实。所有产品冻结不并写，真实平台仅原Tests执行；缺真人输入不注入或重放补足。probe关闭不join底层CLI及原native operation未统一resolver的边界保留，不外推全部资源排空或shell原生发送回声。
+- 未闭环项：最新版DWS完整现场链及原生mention/quote仍未验；没有新真人群请求时不能完成新入站与再次交付验收。Windows进程privacy、Linux未实跑、异常close/取消专项、旧unknown缺producer证明等边界保留，不据新成功追认旧unknown，不扩成平台部署或全库治理。
 
 - SG10最终Git交付事实：实现/验收提交`753fa3911db5279e919c63235e89a815ff7df1e9`为43文件、1747新增/797删除；提交前本地真实执行及最终guard已核，提交后43项blob与受验SHA逐项一致，工作树干净。push前gh为OPEN/null、目标base无incoming，workflowCount0/webhookCount0、无本地workflow/active hook；push后独立ls-remote和gh头均753fa39。原[PR #2](https://github.com/zzusp/night-bot/pull/2)标题为“refactor: 常驻 Router 直连事项并补齐中性渠道与受控恢复”，base refactor/pi-native-retirement ← head worktree-resident-conversation-routing，OPEN/MERGEABLE/mergedAt null；正文经同UTF-8文件checker通过后更新并独立回读等文，body SHA256 `d3dce3a4a3a301650a0b2749f7f2698c7804171bf7447414f600a04787879110`。更新后gh run list=[]，没有CI、合并或生产部署。以下仅goal事实回填，不改变受验业务字节，不重复实跑；最后文档SHA以交付回复/最终gh回查为准。
 

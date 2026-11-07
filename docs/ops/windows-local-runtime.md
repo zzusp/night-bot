@@ -83,7 +83,9 @@ Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport
 node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . TASK_ID http://127.0.0.1:19198
 ```
 
-该脚本只适用于约定的标记文件验收任务。冷重启后比较同一任务、文件 SHA-256、journal SHA-256 和工具调用次数；不得重新创建任务代替持久性检查。当前 SG10 的默认 CLI、私有 Skill 及原安装 Router 恢复结果见[第八轮报告](../acceptance/resident-conversation-routing/round-8.md)，按各组源码指纹生效；指定群真实交付仍为[第七轮](../acceptance/resident-conversation-routing/round-7.md)的现场版本，本轮未新增真实模型或 DWS 调用。正常关闭通过不证明异常关闭风险已消失；取消路径仍未专项验证。
+该脚本只适用于约定的标记文件验收任务。冷重启后比较同一任务、文件 SHA-256、journal SHA-256 和工具调用次数；不得重新创建任务代替持久性检查。SG10 的默认 CLI、私有 Skill 及原安装 Router 恢复结果见[第八轮报告](../acceptance/resident-conversation-routing/round-8.md)，按各组源码指纹生效；第八轮没有新增真实模型或 DWS 调用。
+
+[第七轮](../acceptance/resident-conversation-routing/round-7.md)的指定群旧文字/附件交付已在[第九轮](../acceptance/resident-conversation-routing/round-9.md)按 `67d2d50` 及其核对的 R8 源码指纹完成真实只读回读；随后同安装冷启动有真实模型调用及一次文字答复，正常 IPC 关闭通过，但自身回声进入来源/分诊为 FAIL。第九轮结束时实例已关闭，尚未收到约定的新文件/原生 quote/@ 请求，没有该新事项的文件交付、无工具复盘或再冷恢复通过证据。本次引用参数与登记前回声 guard 的实现合同不能据此追认为新版现场已通过。正常关闭通过不证明异常关闭风险已消失；取消路径仍未专项验证。
 
 ## 指定钉钉群接入
 
@@ -113,8 +115,10 @@ if ($LASTEXITCODE -ne 0) { throw '配置检查失败，不启动插件。' }
 1. 由授权执行者核实当前 DWS/profile 实际登录身份和目标群；只记录成功/失败与脱敏证据，不转储账号配置。停机后将 `listen` 设为 `true`；确已获得交付授权时再设 `writesAuthorized:true`，随后按同一受管入口重启。监听会订阅所列群并补读历史，`ingressEpoch` 仍拦截旧历史，不能为让样例通过倒退 epoch。
 2. 在指定群实际发送有限、明确授权的验收请求，注明需要群内说明和附件。验证来源确为订阅事件或真实历史补读，保留消息身份/版本与渠道、群、真实作者的对应证据；不能用 `acceptHistoryMessage`、SDK/HTTP 注入、fake 或仅启动 ready 替代。同账号在单成员群中的消息是否进入订阅/补读，必须单独实测；没有收到不能宣称已承接，也不改账号绕过。
 3. 从本机 `GET /state/groups?summary=true` 找到内部 conversation ID，再按 `GET /state/groups/:groupId/messages`、`/outbox` 分页读原消息处理及通知状态；任务看 `GET /state/tasks/:taskId/detail`。外部 DWS 群 ID 与内部 conversation ID 不混用。受信 Host 可另读 `ctx.channels.plugins.get(channelId).health` 的监听与补读状态；当前没有对应通用 HTTP 明细接口，不能从 `/health` 的兼容布尔值推断它们。
-4. 观察同任务唯一执行 session、正式 `task_result`、`completed` 且排空，以及实际冻结文件 descriptor/字节哈希。Router 必须选用本任务当前完成版本的 `taskDelivery`，说明父通知送达后再发文件子件；核对指定群内实际可见消息、附件原名/内容与持久 readback/receipt。`unknown` 只回读，不重授发送；检查回声命中本实例精确收据，不重新进入业务或造新任务。不能把同账号消息一律当回声过滤。
+4. 观察同任务唯一执行 session、正式 `task_result`、`completed` 且排空，以及实际冻结文件 descriptor/字节哈希。Router 必须选用本任务当前完成版本的 `taskDelivery`，说明父通知送达后再发文件子件；原请求明确要求原生引用时，可组合仅接受 `true` 的 `replyToSource`，由 Host 从本次 `sourceId` / `messageVersion` 绑定原消息/作者，且 `recipientActorIds` 须显式含原作者。省略该选项时默认行为不变；引用仅作用于父说明，文件子件不继承原生 quote/@。核对指定群内实际可见消息、附件原名/内容与持久 readback/receipt。`unknown` 只回读，不重授发送；检查回声命中本实例精确收据，不重新进入业务或造新任务。不能把同账号消息一律当回声过滤。
 5. 独立核对带原完成事件引用的持久复盘报告及该群范围内的经验目的地；合法空经验可为 `skipped`，不能仅以已调度或任务完成代替报告。复盘无工具、保持原记忆范围，不能依据 `task.completed` 声称附件已送达。最后正常停止并冷恢复，核同一任务/会话/产物和发送收据没有重放；未核或阻断的环节逐项报告。
+
+当前登记前回声 guard 仅覆盖 Router/任务队列通知：即使关闭 `operatorNotifications`，也用该插件自身 adapter 和原生/内部会话映射精确查身份，在消息事实/来源登记前过滤自身消息。同会话 `starting` / `unknown` 通知身份未决时，typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，沿既有持久补读水位恢复；不把暂缓记为已接纳或已完成，也不靠绕过沙箱、注入或重发旧事项继续。原 native operation 的 send/status 尚未统一 typed 接线，不能外推 shell 原生发送的通用回声已修复或已验收；完整合同见 [CHANNELS](../CHANNELS.md)。
 
 ## 既有 Night Bot 的 Router 离线升级
 

@@ -38,7 +38,7 @@ import { buildReplyReviewCandidates } from './decision.js'
 import { resolveTopicMessages, topicSourceEntries, stableId, fingerprint, replyTopicForMessage, canonicalReplyTopic, topicDecisionCoversEntry } from './topic-model.js'
 import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from './task-message-projections.js'
 import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory } from './session-workspaces.js'
-import {finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
+import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
 import {formatTaskConversationReply} from './group-reply-format.js'
 import {assertConversationReply,conversationQuote} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
@@ -246,6 +246,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (residentStore?.getGroup(message.groupId)?.outbox.some(item => item.deliveredMessageId === message.messageId)) return true
     return [...notificationCache.values()].some(item => item.payload?.conversationId === message.groupId
       && [receiptMessageId(item.receipt), receiptMessageId(item.ack)].includes(message.messageId))
+  }
+  async function ownNotificationAtIngress(message) {
+    if (closed) fail('TASK_SESSION_CLOSED')
+    if (isOwnNotification(message)) return true
+    try { await nativeDws.beforeIngress(message.groupId) }
+    catch (error) {
+      if (error.code !== 'CHANNEL_NOTIFICATION_IDENTITY_PENDING' || !isOwnNotification(message)) throw error
+    }
+    if (closed) fail('TASK_SESSION_CLOSED')
+    return isOwnNotification(message)
   }
   const observation = createTaskSessionObservability({ store: residentStore, listTasks: () => [...taskCache.values()], resolveSessionIdentity: sessionId => {
     const task = [...taskCache.values()].find(item => item.sessionId === sessionId && item.sessionBound)
@@ -763,9 +773,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const audience=notificationAudience(args)
     const explicitAudience=kind!=='platform-reply'&&audience.recipientActorIds!==undefined
     const finalReply=kind==='platform-reply'||!!selection||explicitAudience
-    const replyToMessageId=finalReply?args.replyToMessageId:args.replyToMessageId??source.messageId
-    const replyToActorId=finalReply?audience.replyToActorId:audience.replyToActorId??source.actorId
-    const recipients=[...new Set(audience.recipientActorIds??(finalReply?[]:[source.actorId]))]
+    const replyToSource=args.replyToSource===true
+    const replyToMessageId=replyToSource?source.messageId:finalReply?args.replyToMessageId:args.replyToMessageId??source.messageId
+    const replyToActorId=replyToSource?source.actorId:finalReply?audience.replyToActorId:audience.replyToActorId??source.actorId
+    const recipients=[...new Set(audience.recipientActorIds??(finalReply||replyToSource?[]:[source.actorId]))]
     const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,
       replyToMessageId,replyToActorId,recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),artifactFiles:args.artifactFiles??[]})
     const previous=await query('notification.get',{notificationId})
@@ -779,7 +790,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(previous.kind!==kind||hash(canonicalReplyRequest(request))!==hash(saved))fail('DYNAMIC_COMMAND_ID_CONFLICT')
       void deliverNotifications();return {notification:{...previous,payload:{...canonicalReplyRequest(p),...p.replyRequest?{replyRequest:canonicalReplyRequest(p.replyRequest)}:{}}}}
     }
-    if(explicitAudience)finalConversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{recipientActorIds:recipients})
+    if(replyToSource){
+      const {target}=conversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{replyToMessageId,recipientActorIds:recipients,atAll:args.atAll})
+      if(conversationMessageActorId(target)!==replyToActorId)fail('DYNAMIC_DIRECT_SOURCE_INVALID')
+    }else if(explicitAudience)finalConversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{recipientActorIds:recipients})
     let artifactFiles=args.artifactFiles??[]
     if(selection){
       const task=await requireTask(selection.taskId)
@@ -870,7 +884,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     void work.catch(error=>failures.set(groupId,{id:groupId,code:error.code??error.message}))
     return work
   }
-  async function ingest(message) {
+  async function ingest(message, notificationIdentityChecked = false) {
     const receivedAt = new Date().toISOString()
     const loopDelay = monitorEventLoopDelay({ resolution: 10 })
     loopDelay.enable()
@@ -881,8 +895,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (!residentStore.getGroup(message.groupId)) fail('group_not_subscribed')
     const actorId = conversationMessageActorId(message)
     if (!actorId) fail('TASK_SESSION_AUTHENTICATED_SOURCE_REQUIRED')
-    if (!isOwnNotification(message)) await nativeDws.beforeIngress(message.groupId)
-    if (isOwnNotification(message)) {
+    if (notificationIdentityChecked ? isOwnNotification(message) : await ownNotificationAtIngress(message)) {
       return { accepted: false, processing: 'ignored', reason: 'own-notification' }
     }
     const sourceId = `im:${hash([message.groupId, message.messageId, message.messageVersion ?? 1])}`
@@ -1591,11 +1604,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
 
   const unifiedIngress=async input=>{
     if(!['chat','chat-room'].includes(input?.type))return ingest(input)
-    const channel=await ctx.get('channels').registerConversation(input),e=channel.envelope
+    const channels=ctx.get('channels'),identity=channels.identity(input)
+    // 只读派生 scope；身份未决必须在消息事实和来源持久登记之前暂缓。
+    if(await ownNotificationAtIngress({groupId:identity.sessionId,messageId:identity.envelope.messageId}))return {accepted:false,processing:'ignored',reason:'own-notification',channelType:identity.envelope.type,conversationId:identity.envelope.conversationId}
+    const channel=await channels.registerConversation(input),e=channel.envelope
     const group=residentStore.getGroup(channel.sessionId),configuredResponsibility=ctx.get('channels').responsibility(channel.sessionId)
     if(!group)await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationId,responsibility:configuredResponsibility??'Respect authenticated channel participants and the current user request.'})
     else if(configuredResponsibility!==undefined&&group.responsibility!==configuredResponsibility)await residentStore.updateGroup({groupId:channel.sessionId,responsibility:configuredResponsibility})
-    const channels=ctx.get('channels'),principal=senderId=>channels.identity({...e,senderId}).principal
+    const principal=senderId=>channels.identity({...e,senderId}).principal
     const occurredAt=channels.groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt
     const response=await ingest({
       groupId:channel.sessionId,messageId:e.messageId,messageVersion:e.messageVersion??1,actorId:channel.principal,senderName:e.senderId,text:e.text,
@@ -1606,7 +1622,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       ...typeof e.mentionedAgent==='boolean'?{mentionedAgent:e.mentionedAgent}:{},
       ...e.mentions?{mentions:e.mentions.map(principal)}:{},
       ...e.platformFlags?{platformFlags:e.platformFlags}:{},automated:e.platformFlags?.automated===true,
-    })
+    },true)
     return {...response,channelType:e.type,conversationId:e.conversationId}
   }
   const detachIngress=ctx.get('channels').attachIngress(unifiedIngress)

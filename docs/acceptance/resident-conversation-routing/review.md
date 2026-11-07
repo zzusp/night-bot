@@ -499,3 +499,48 @@ round-6.md 完整 SHA256=217eaa81c8a92e2e405bd8a094e3d49c877f6e1d2c9652743408e2c
 R4 报告最终 19686B/SHA `b9338900b8d3acf92ce68711e26ff2b72e6d425e06c453d92e161bd8497db12a`。已读相对 HEAD 六处清理注记：原结论、时间/版本、必要文字和清理前完整 SHA 保留；两份 round-4/verified-3-web-continuation-result.json、verified-6-router-result.json 已用独立只读存在性查询确认不存在。清理由 Tests 唯一执行，Review 未改这些材料或清理其他会话资源。
 
 追加前原 review 为 451 行/98232B/SHA `06ba38be2ced1b98ae8ab472f71a5744788dd3f6af114d9f986b8a9f0b8eb276`；本节只在其后追加，原 SG1–9 和先前检查点逐字保留。本会话未改产品/测试/目标/报告/矩阵或其他文档，未另起 agent/workflow/实例、运行测试/模型/渠道、读取秘密、外发、重放、部署、合并或触发 CI。Review 交回此文件写权；唯一 [goal.md](goal.md) 由 Lead 维护，下一步仅由 Lead 完成已授权原分支/原 PR 的真实 Git 交付与回查，不据本窄审宣告长期目标结束。
+
+## SG10 第九至十轮阶段窄审：引用、精确回声与现场待输入
+
+本节按 Lead 交接集中审查 R9 反例后的本地工程增量及 R10 真实 ready 检查点。仅追加原审查记录，不等待尚未收到的真人来源才保存工程成果；现场目标仍 ACTIVE，本节不作为完整 DWS 现场验收通过或最终 Git 交付证明。
+
+### 确认保留项与阶段结论
+
+- 已证保留限制：`packages/dingtalk-core/native-dws-send.js:131` 的 Promise.race 只限制等待，不取消底层状态查询；`:231` 的 observer.close 不 join/cancel probes，ChannelsService 聚合关闭也不等待异步 observer 关闭。原 runner 超时发 terminate 后立即 reject，未等待 child.done。可达交错为 unknown 通知的额外身份查询挂起，1500ms typed 暂缓和水位保存结束后立即 stop，查询 CLI 仍可能运行至自身超时；closed 检查也不能倒推已进入 save 的投影全部 join。Platform 与 Lead 已确认，此轮不改 runner/进程治理。bridge 消息和水位排空的 PASS 不能宣称所有旁路 CLI 已排空；后续正常退出仅核实际观察到的实例及资源。
+- 能力范围保留：新 resolver 只接队列 notification；原 native operation send/status 支路仍依原 conversation/query 路径，未统一 typed scope/query 接线。不能把本地队列回声 PASS 扩为 shell 原生发送通用能力，不能据同账号、正文或通用 DWS 标记粗滤。Windows 进程 privacy、Linux 未实跑、异常 close 专项及旧 unknown 缺 producer 证明等既有边界不变。
+- 在上述明确范围内，未找到阻止本轮本地工程保存点的新增确认缺陷。引用的来源/受众/幂等、默认插件回声身份、typed 暂缓、持久水位及 pause 交错有下述源码与原回执支持；已证限制不写成已修，分组通过不拼为最新同版全量全绿。原群真人新文件事项、原生 quote/@、本次复盘/冷恢复/正常退出仍待实际证据。
+
+### 实际版本、分组结果与失败责任
+
+- 本阶段实际 HEAD 为 `67d2d5011f54b1f63704b84c81b24c1216d0e3fa`，分支 `worktree-resident-conversation-routing`，存在原团队已知未提交源码、测试和文档增量。结论绑定工作树字节，不仅绑定 HEAD；Review 未做 Git 写入或确认本轮提交/push/PR 更新。
+- 五产品保持联合冻结：resident-router-business `cf284083`、task-session-service `6592256f`、plugin `d1cc7cd0`、native-dws-send `247191b2`、bridge `08221847`；最终测试为 pi-channel-plugin `e5b7a835`、dws-bridge `410f50d3`。完整路径/SHA 见 [round-10.md](round-10.md)，本会话逐项核七份当前字节与表相同。最终 btpr 原回执47项逐一等当前，digest `669959964ec2d4bf5476b767ff1069194552d20fd2c2a8ea9d0ef5b0ad06ee5e`。
+- 已独立读四份本地原输出及实际断言：b9mg6uq8o 为引用2 PASS/自然0；bqpz1986y 为5 PASS/1 FAIL/自然1，含 bridge 两项 PASS；b24nr8a3q 为3 PASS/1 FAIL/自然1；btprbo14p 为 SUCCESS 单项1 PASS/自然0。各组 CANCEL/SKIP 均0。四份输出 SHA 与 round-10 表相同；各自 START/END changed=[]，前三组与最终共有文件仅 pi-channel-plugin 测试 SHA 不同，quote组46项未绑定 bridge 测试，不能称四组是同版完整47项整跑。
+- 首次 FAIL 是 fake SUCCESS status 漏 `contractVersion:'im.message-send-status.v1'`，严格 proof 正确拒绝为 IDENTITY_PENDING/status-unconfirmed。第二次已过滤精确回声，但测试错误要求 receipt 整对象 undefined；原 notification-delivery 未 verified 时本来保留 ACK/openTaskId。最终仅改为未 delivered 且 receipt 无已验证 messageId/observedAt。Review 从当前测试逐步逆还原这两处，精确重建 ed9b0066 和首版1b519ebb；产品五份未改、未放宽 nativeDwsStatus，两个整组 FAIL 保留，不称为两次产品修复。
+
+### 引用来源、受众和幂等
+
+- `src/channels/resident-router-business.js:105` 公开 schema 仅接受 `replyToSource:true`，不接受 false/字符串或任意引用消息、作者字段。工具仍先严格验证 sourceId/messageVersion 及当前 conversation/generation，再调用原 Host prepareReply；任务来源、revision、冻结 artifact manifest、hold/archived 校验未放宽。
+- `packages/dingtalk-core/task-session-service.js:776` 只从当前原 source 绑定 messageId/actorId；显式引用必须显式选择含原作者的受众，缺省、空数组和仅他人拒绝，不自动扩大受众。解析后的引用、作者和 recipients 沿原 replyRequest/payloadDigest 冻结；同 operation 相同请求不多发，去 quote 或改受众的语义变更冲突，不增加旁路幂等机制。
+- 默认不 opt-in 保持现有合同；taskDelivery 与显式受众默认普通 Markdown，普通未显式受众路径保留原默认引用。引用仅作用于父说明，file child 保留顺序和受众账，不宣称 DWS 文件自身原生 quote/@。b9mg 经默认 application/官方 Pi/真实 Host/SQLite/中性 transport，实际 work 写读及 task_result 冻结，文字1/文件1、回读2；file readback 挂起时 child 非 delivered，冷开历史终态不重发。官方 schema、四类受众拒绝与 operation 冲突均有实际断言；这是本地证据，不是厂商现场。
+
+### 默认插件身份、typed 暂缓与持久恢复
+
+- R9 原 ACK 只有 openTaskId，没有 messageId/native conversation，不能靠扩 parser 获得不存在字段。`src/channels/plugins/dingtalk-dws.js:68` 默认 observer 直接注入自身 adapter，operatorNotifications=false 也可查询；经当前插件持久 chat-room context 将内部 scope 映到 native conversation。严格 status 需 contractVersion、SUCCESS、原 openTaskId、native conversation/messageRef 一致，投影仍写回内部 outbox。
+- `packages/dingtalk-core/native-dws-send.js:169` 只投影精确 deliveredMessageId/sendReceipt 身份，不改变 notification 内容/附件验证或 delivered 状态。`:208` 等待后 fresh 重查同 scope starting/unknown 身份，超时、失败、PROCESSING 或缺 proof 均 typed 暂缓，不能当真人。`packages/dingtalk-core/task-session-service.js:250` 在 unifiedIngress 的 registerConversation/fact/source 之前执行该 guard；精确已知 own 可过滤，未决错误仍抛出，不返回 accepted/ignored 冒充接纳。
+- 最终 SUCCESS 单项在 mget 挂起时验证 fact/source/triage 均0、send1；同账号同正文泛 flag 但新 mid、同 mid 异 room、异 channel 均不误滤。timeout/error 两例用早120秒真人消息，暂缓时无 fact/source/triage，真实 ingress.json 水位覆盖原消息；冷开正式 history 接纳一次/source1/triage1，完整成功才清下界。永久 PROCESSING 冷开仍 degraded、水位保留、source/triage0、通知非 delivered，不吞错或伪造成功。
+- `packages/dingtalk-core/dws-bridge.js:225` 取原消息 overlap 下界与 active backfill start 更早值，先增 recoveryEpoch 使旧补读失效，再沿原 controlTail/saveIngressState 持久 pin。写失败显式 CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED，完整成功才清原水位；已查旧 backfill 尾、pin 失败、pause 前后和 stop 交错，未找到丢新水位或队列自等待反例。
+- pause 在原 controlTail 内仅持久状态并建立 drain，实际等待移到 tail 外；消息可回到同 tail 保存 pin，不再互等。stop 等 pauseDrain/inflight messages/controlTail 及原补读资源。bqp 两项分别用真实 atomicWrite/磁盘 JSON 验 pause 持久 pin、冷开补读一次，以及目录目标 I/O 失败显式 degraded/accepted0/旧磁盘水位保持；不据这些本地 PASS 消除本节首项状态查询资源限制。
+
+### R9 事实与 R10 真实 ready 边界
+
+- 已全文读 [round-9.md](round-9.md)、b5jokmzks/bxfu4kavz 原输出和四个指定脱敏 tool_result。R9 在旧67d2d50版真实回读既有文字/48B附件，随后原安装真实 ready/backfill、模型调用及一条文字答复成立；source+2/task0/notification+1，自身答复在精确身份落账前进入 source/triage 的 FAIL 保留。最终 ignore 不等于入口去重，外层自然0不等于现场全链 PASS；精确 status 首 messageRef/mget 交错仍未观察，不补猜时序。原旧任务/通知、历史物理前缀及当轮配置/技能保护保持原报告事实，不追认当前修复已现场验证。
+- 本会话只从 Tests 原宿主记录定向提取已结束 `call_01b385f4ac5f4506a4c1ea35aad10a59` 的安全预检摘要：2026-11-07T07:16:15.060Z，47 source/22 journal、原3 task/4 notice，strict history digest `10c4bafc4ca058b600210c64bc637d14db913ceff5b5dd5547919311a302dd90`；原监督及 R10 外层 CHECK_OK 的 effects/network/credentialRead 均0，独立端口预检返回 FREE。未读取现场活库、私有配置、秘密或技能正文，未复跑自检；离线 hash 不当作运行中活库证明。
+- 已独立读 bozw4158i 完整已结束原输出，SHA `e86fa169196a94089f4f41e6bdb1f8147e235d208e0fd46d2596747e79ec94cd`、自然0：SDK 07:17:13.712Z ready、完整 backfill 07:17:24.139Z/durable-receipt、HTTP ok/recoveryIssue0/tools0，原 supervisor87404/launcher97088/service104368、127.0.0.1:19298。北京时间为15:17；listenerIsReadOnly=false，不能称无外发权限或只读启动，tools0也不等于模型 HTTP 请求0。精确 OS 归属是 Lead/Tests 另行原回执，本会话未亲查现场进程。
+- 本阶段报告没有新 field 请求已接纳证据，未发生可验的新文件事项闭环。b601nf10p --run --hold 及 Monitor bq0vvu12d 仍由原 Tests 持有；本会话未读在途输出充当终态，未停止或重启实例。新来源、文件冻结/实际交付与精确回读、原生 quote/@、无工具持久复盘、同任务冷恢复和本次正常 IPC 退出/结束保护均不填 PASS。保持原监听等真人，不注入、自发自收或重放补足；工程提交保存点不能代替这些条件。
+
+### 最终材料与交接
+
+- 本阶段 round-10 为146行/15937B/SHA `ffe5d67d6c41aafe2343f6d3e0aac20e80e777d60eebdf796d0551e78af3b3af`；matrix 为167唯一 case/12列、34102B/SHA `ecafabbec7786915901215f3ddbd0bd828b83de92e14e1ff028b88de32aadad0`。本会话独立剥 R10 新行/列，逐字重建 R9 完整27668B/SHA `9f0d766e796285deb980fa280a572d23887bfb31bccff5cc169ce6e1e65c70fa`；原 HEAD122 case/10字段逐值不变。R1–8报告逐字等HEAD，R9仍12439B/e5a76ea1；FAIL/NOT_RUN/WAITING/IN_PROGRESS均保留，未建全绿 report。
+- bddd8bjga 原 guard 与结构校验自然0，输出 SHA `db890b81cda97124ccb10d28b173e20ee046732266de759a7ff71ce1b2568d7f`：194 retained/57 adapted、405 production/runtime、191 bare imports、0 externalSDK/旧编排、strict source5/removed9、relative imports closed/HTTP routes retained。manifest `5d748a04` 与 coverage 脚本 `fc23110d` 精确适配本轮，203对原 source/sourceSha256 与HEAD逐对不变；不重复 guard，也不把它当渠道实发证明。
+- 必要文档已核：README `82e0601b`、CHANNELS `719d86b2`、Windows runbook `c3cfb03b`；仅 CHANNELS 后补已证 probe 关闭精确限制。引用受众/父子能力、队列 resolver 范围及 R8 无真实调用仅限定 R8 均与实现相符，不把 R9 旧现场或本地 fake 当最新版现场收发。阶段材料定向 diff --check 通过。
+- 追加前原 review 为501行/110236B/SHA `b9f9acc5b3c231399ef4722679f83c04c19438d8faa2c6201afc87622ba9a2d9`；仅在其后追加，原历史不改。本会话未改产品、测试、goal、报告、matrix或其他文档，未运行测试/模型/渠道/实例，未读秘密或技能正文、未外发/重放、未新增 agent/workflow/定时器、未做 Git 写/CI/合并/部署。交回原 review 写权给 Lead，唯一 [goal.md](goal.md) 继续 ACTIVE/SG10；Lead按已授权原PR保存工程增量，Tests保持原现场，后续现场结果再按实际版本补验，不因本节结束长期目标。

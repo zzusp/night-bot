@@ -35,7 +35,7 @@ curl http://127.0.0.1:18998/health
 
 这些核心能力可以通过本机 HTTP、隔离文件和本地模型协议测试验收，不依赖安装 DWS CLI。钉钉、其他消息渠道及业务系统分别做集成验收。
 
-`chat` 与 `chat-room` 采用“轻量一级分诊 → 每 conversation 一个常驻 Router → 每事项一个执行会话”。一级分诊逐消息决定是否转交和是否简短回复，不拆分或创建事项；Router 理解原消息、关联和安排事项、评估结果。来源、权限、版本与任务依赖由 Host/SQLite 校验，任务自报完成不等于后续事项已获准执行。Router 的逻辑身份持久，空闲时以无工具交接安全更换 Pi generation，保留旧 journal。15 条批次、可靠转交和回复回读规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
+`chat` 与 `chat-room` 采用“轻量一级分诊 → 每 conversation 一个常驻 Router → 每事项一个执行会话”。一级分诊逐消息决定是否转交和是否简短回复，不拆分或创建事项；Router 理解原消息、关联和安排事项、评估结果。来源、权限、版本与任务依赖由 Host/SQLite 校验，任务自报完成不等于后续事项已获准执行。Router 的逻辑身份持久，空闲时以无工具交接安全更换 Pi generation，保留旧 journal。原请求明确要求引用当前来源时，Router 可用 `replyToSource:true`，由 Host 绑定原消息/作者且显式受众须含原作者；默认回复与文件子件能力不变。15 条批次、可靠转交和回复回读规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
 
 ## 验证
 
@@ -57,7 +57,7 @@ pnpm audit:runtime
 
 常驻 Router 重构的当前范围与验收状态见 [验收入口](docs/acceptance/resident-conversation-routing/goal.md)；此前 Topic/Owner 验收记录仅作历史证据。验证与证据见 [VALIDATION](docs/VALIDATION.md)，功能映射见 [MIGRATION](docs/MIGRATION.md)，当前架构见 [RUNTIME](docs/RUNTIME.md)，来源与许可见 [THIRD_PARTY](THIRD_PARTY.md)。
 
-早期 Windows 验证与阻断见 [本机验收目标](docs/acceptance/pi-native-retirement-local/goal.md)；SG10 的默认无插件 CLI、渠道中立/附件、本地 operator/requester 分流、私有 Skill 读取和 Router 恢复结果按 [第八轮报告](docs/acceptance/resident-conversation-routing/round-8.md) 的各组受验版本成立，不是新版全量或广义开发运维替代证明。SG9 指定群真实交付保留 [第七轮证据](docs/acceptance/resident-conversation-routing/round-7.md)，本轮 fake 渠道回归未重新验证新版真实 DWS。保留数据的启动/停止流程见 [Windows 本机运维](docs/ops/windows-local-runtime.md)。现有 `undici` 与固定 Pi SDK 对齐为 8.12.3，避免 SDK 导入覆盖旧版全局代理；HTTP 代理继续使用 CONNECT 隧道。真实 DWS/业务系统及 Windows/macOS 内核仍需在对应部署环境验收；可选 Claude CLI 和额外浏览器、数据库、搜索插件需要实际安装与授权。原部署和验收脚本保留为源实现参考，不能直接作为 Night Bot 的部署入口。SG10 本轮没有新增真实模型/厂商调用、生产数据迁移、CI、合并或部署；Linux 规程未在本机实跑，Windows 进程隐私与异常关闭风险仍保留。
+早期 Windows 验证与阻断见 [本机验收目标](docs/acceptance/pi-native-retirement-local/goal.md)；SG10 的默认无插件 CLI、渠道中立/附件、本地 operator/requester 分流、私有 Skill 读取和 Router 恢复结果按 [第八轮报告](docs/acceptance/resident-conversation-routing/round-8.md) 的各组受验版本成立，不是新版全量或广义开发运维替代证明。SG9 指定群真实交付保留 [第七轮证据](docs/acceptance/resident-conversation-routing/round-7.md)；[第九轮](docs/acceptance/resident-conversation-routing/round-9.md)在其所列版本完成旧文字/附件的真实回读及同安装正常 IPC 关闭，冷启动也实际调用模型并发送一次文字答复，但自身回声进入来源/分诊为 FAIL。该轮尚未收到新文件/原生 quote/@ 请求；本次 `replyToSource` 和登记前回声 guard 不被这些历史结果追认为新版现场通过。保留数据的启动/停止流程见 [Windows 本机运维](docs/ops/windows-local-runtime.md)。现有 `undici` 与固定 Pi SDK 对齐为 8.12.3，避免 SDK 导入覆盖旧版全局代理；HTTP 代理继续使用 CONNECT 隧道。真实 DWS/业务系统及 Windows/macOS 内核仍需在对应部署环境验收；可选 Claude CLI 和额外浏览器、数据库、搜索插件需要实际安装与授权。原部署和验收脚本保留为源实现参考，不能直接作为 Night Bot 的部署入口。第八轮仅用 loopback 脚本模型/fake 渠道，没有新增真实模型/厂商调用；其零调用结论不适用于第九轮。上述验收不代表生产数据迁移、CI、合并或部署；Linux 规程未在本机实跑，Windows 进程隐私与异常关闭风险仍保留。
 
 Windows 重启恢复探针默认固定本仓库进程/ACL 代码的已审阅哈希；迁移部署位置时可由受信任宿主设置 `NIGHT_BOT_RUNTIME_ROOT`，不会将未知 provider 代码视为已验证。现有存活进程、写入者、端口、时间和完整证据检查继续保留。
 

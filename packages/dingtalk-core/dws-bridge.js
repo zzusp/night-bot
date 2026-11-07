@@ -112,6 +112,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
   }
   let ingress = { ...ingressState }
   let controlTail = Promise.resolve()
+  let pauseDrain = Promise.resolve()
   let stopping = false
   let humanPollTimer
   let humanPollTail = Promise.resolve()
@@ -171,7 +172,10 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
         ...(media.mediaUnavailable.length > 0 || persisted?.mediaUnavailable?.length > 0 ? { mediaUnavailable: media.mediaUnavailable } : {}),
       })
       if (accepted.duplicate) return
-    })()
+    })().catch(async error => {
+      if (error.code === 'CHANNEL_NOTIFICATION_IDENTITY_PENDING') await retainDeferredMessage(message, error)
+      throw error
+    })
     inflightMessages.set(key, operation)
     operation.finally(() => { if (inflightMessages.get(key) === operation) inflightMessages.delete(key) }).catch(() => undefined)
     return operation
@@ -217,6 +221,34 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     }
     bridgeEntries.set(groupId, entry)
     return entry
+  }
+  const retainDeferredMessage = async (message, error) => {
+    const entry = entryFor(message.groupId)
+    const start = earlierIso(beforeOverlap(message.occurredAt ?? message.createTime), entry.activeBackfillStartAt ?? defaultBackfillStart(message.groupId))
+    // 先使旧补读失效，避免它清掉刚发生的暂缓；持久下界仍由原状态队列单写。
+    entry.recoveryEpoch++
+    entry.recoveryRequired = true
+    entry.recoveryFromAt = earlierIso(entry.recoveryFromAt, start)
+    entry.backfillState = 'failed'
+    entry.lastBackfillError = describeError(error)
+    entry.lastBackfillErrorAt = now()
+    entry.lastBackfillMessageId = message.messageId
+    publishHealth()
+    const operation = controlTail.then(async () => {
+      const next = { ...ingress, recoveryFromAt: earlierIso(ingress.recoveryFromAt, entry.recoveryFromAt) }
+      await saveIngressState(next)
+      ingress = next
+      publishHealth()
+    })
+    controlTail = operation.catch(() => {})
+    try { await operation }
+    catch (cause) {
+      const failure = Object.assign(new Error('CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED', { cause }), { code: 'CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED' })
+      entry.lastBackfillError = failure.message
+      entry.lastBackfillErrorAt = now()
+      publishHealth()
+      throw failure
+    }
   }
   const clearReadyTimer = (entry) => {
     if (entry.readyTimer !== undefined) clearTimeout(entry.readyTimer)
@@ -872,9 +904,10 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     }).catch(error => logger.warn(error))
   }
   const setIngressPaused = paused => {
+    let drain
     const operation = controlTail.then(async () => {
       if (stopping) throw new Error('MESSAGE_INGRESS_STOPPED')
-      if (ingress.paused === paused) return healthSnapshot()
+      if (ingress.paused === paused) { if (paused) drain = pauseDrain; return }
       const next = paused
         ? { paused: true, pausedAt: now(), recoveryFromAt: earlierIso(ingress.recoveryFromAt, beforeOverlap(now())) }
         : { paused: false, recoveryFromAt: ingress.recoveryFromAt }
@@ -894,7 +927,8 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
           entry.recoveryFromAt = earlierIso(entry.recoveryFromAt, next.recoveryFromAt)
         }
         publishHealth()
-        await Promise.allSettled([...closing, ...inflightMessages.values()])
+        // 暂缓消息也要写 controlTail；排空回执不能占着状态队列等待自身。
+        drain = pauseDrain = Promise.allSettled([...closing, ...inflightMessages.values()])
       } else {
         for (const group of runtime.listGroups()) attach(group)
       }
@@ -903,7 +937,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
       return healthSnapshot()
     })
     controlTail = operation.catch(() => {})
-    return operation
+    return operation.then(async () => { await drain; return healthSnapshot() })
   }
 
   for (const group of runtime.listGroups()) attach(group)
@@ -963,6 +997,8 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     publishHealth()
     await Promise.allSettled(closingSubscriptions.map((subscription) => subscription.done))
     if (closingHumanReplySubscription !== undefined) await Promise.allSettled([closingHumanReplySubscription.done])
+    await pauseDrain
+    await Promise.allSettled([...inflightMessages.values()])
     await controlTail
     await humanPollTail
     await Promise.allSettled(entries.map((entry) => entry.backfillPromise))
