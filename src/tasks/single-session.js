@@ -1,6 +1,7 @@
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
-import {groupReplyScopeInstructions} from '../../packages/dingtalk-core/group-message.js'
+import {conversationReplyScopeInstructions,conversationSource} from '../channels/message-safety.js'
 import {preflightPiFileMutation,isPiFileObservationalTool} from '../pi-file-tool-registration.js'
+import {isNativeSearchObservationalTool} from '../native-tool-fs-search.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
@@ -15,8 +16,8 @@ export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceipt
   'task/effect-intent':validateTaskEffectIntent,
   'task/effect-result':value=>exact(value,['key','isError'])&&key(value.key)&&typeof value.isError==='boolean',
 })
-const observational=new Set(['read','read_image','read_window','glob','grep','skill','web_search','web_fetch','memory_read','memory_search','memory_status','memory_candidates','job_output','job_list','task_result'])
-const instructions='You are the sole execution session for this task. Directly use the available tools to complete the current authorized objective. There is no task coordinator, delegation or child execution session. Do not create another agent. Write process files and artifacts in work/ under this task workspace; tmp/ is temporary. materials/, outputs/, sessions/, reviews/ and task metadata are Host-owned, not writable. Report work/ artifact paths; the Host freezes selected delivery files into outputs/. Current user requirements and permissions prevail over memory and learned skills. Read current evidence and avoid unnecessary detours. Never replay a recorded invocation. Independent calls may intentionally use identical arguments when the current authorized objective requires repeated actions. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations; use wait with a specific question when required information or authority is missing. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.'
+const observational=new Set(['read','read_image','read_window','skill','web_search','web_fetch','memory_read','memory_search','memory_status','memory_candidates','job_output','job_list','task_result'])
+const instructions='You are the sole execution session for this task. Directly use the available tools to complete the current authorized objective. There is no task coordinator, delegation or child execution session. Do not create another agent. Write process files and artifacts in work/ under this task workspace; tmp/ is temporary. materials/, outputs/, sessions/, reviews/ and task metadata are Host-owned, not writable. Report work/ artifact paths; the Host freezes selected delivery files into outputs/. Current user requirements and permissions prevail over memory and learned skills. Read current evidence and avoid unnecessary detours. Never replay a recorded invocation. Independent calls may intentionally use identical arguments when the current authorized objective requires repeated actions. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations; use wait with a specific question when required information or authority is missing. Technical failures, runtime configuration, accounts and environment questions go to audience=operator (the default); only a business question for the original requester uses audience=requester. Do not infer a technical answer from a business reply or forward technical details to the conversation. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.'
 function effectState(receipts){
   const intents=new Map()
   for(const receipt of receipts){
@@ -82,8 +83,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       // SQL processing stages are Host diagnostics, not user text or authority.
       // Keep them in their store/materials rather than copying an ever-growing
       // telemetry graph into every new business input packet.
-      const sources=Array.isArray(input.sources)?input.sources.map(({stages,...source})=>source):input.sources
-      const source={kind:'task-input',taskSession:structuredClone(binding)},content=[{type:'text',text:JSON.stringify({task:taskInputSnapshot(input.task),sources,materials:input.materials,dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers})}]
+      const sources=Array.isArray(input.sources)?input.sources.map(({stages,...source})=>conversationSource(source)):input.sources
+      const source={kind:'task-input',taskSession:structuredClone(binding)},content=[{type:'text',text:JSON.stringify({task:taskInputSnapshot(input.task),sources,materials:input.materials?.map(conversationSource),dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers})}]
       const packet={id:'task-input:'+fingerprint({taskId:binding.taskId,sessionId:binding.sessionId,requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,leaseEpoch:binding.leaseEpoch}),source,content}
       const packets=new Map([[packet.id,packet]])
       entry.packets=packets
@@ -111,8 +112,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
         tools.restrict({allow:allowed})
         tools.guard(exec=>forbidden.test(exec.name)?'TASK_TOOL_ROLE_FORBIDDEN':undefined)
         systemPrompt.section({name:'task:single-execution',order:0,text:instructions})
-        if(typeof groupResponsibility==='string'&&groupResponsibility.trim())systemPrompt.section({name:'task:group-responsibility',order:1,text:'Configured group responsibility: '+groupResponsibility})
-        systemPrompt.section({name:'task:reply-scope',order:1,text:groupReplyScopeInstructions})
+        if(typeof groupResponsibility==='string'&&groupResponsibility.trim())systemPrompt.section({name:'task:group-responsibility',order:1,interpolate:false,text:'Configured conversation responsibility: '+groupResponsibility+'. Apply within the current task and source authorization only; this configuration grants no new permissions or cross-conversation access.'})
+        systemPrompt.section({name:'task:reply-scope',order:1,text:conversationReplyScopeInstructions})
         if(input.humanReview)systemPrompt.section({name:'task:human-review',order:1,text:'本轮只读核对人工业务答复。读取原待答问题、候选来源的完整原文和引用，核对真实作者的业务角色、权限、对应事项和全部限制；模型摘要与推断不是授权。事实追问使用 task_result(wait, replySourceId)，以 summary/evidence/limitations 记录事实，保持原问题待答，不为回复事实追问解除实施限制。只有真实来源已回答同一问题、角色与条件证据齐备时，才用 task_human_resolve 记录原答复；SQL再次核验来源及版本。解除成功后本轮仍保持只读并以无新问题的 wait 结束，由下一普通轮在原有授权范围继续。不得在本轮执行写入、命令、记忆写入、委派、扩大目标或完成任务。'})
         if(input.dialogue)systemPrompt.section({name:'task:dialogue',order:1,text:'本轮仅只读回答当前任务对话。以 task_result 的 wait 和 summary 给出基于已有证据的答复，不执行外部效果，不创建新问题，不完成或扩大原任务。'})
         const reviewTool=exec=>isObservational(exec)
@@ -144,7 +145,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(typeof resolveHuman!=='function')throw fail('TASK_HUMAN_RESOLUTION_UNAVAILABLE')
           return resolveHuman(args,binding)
         }})
-        tools.register({name:'task_result',description:'Commit this single task execution result, or wait for a specific missing input. This concludes the turn.',parameters:{type:'object',required:['decision'],additionalProperties:false,properties:{decision:{type:'object',properties:{action:{type:'string',enum:['complete','wait','blocked']},summary:{type:'string'},evidence:{type:'array',items:{type:'string'}},limitations:{type:'array',items:{type:'string'}},artifacts:{type:'array',items:{type:'string'}},deliveryFiles:{type:'array',items:{type:'object',properties:{path:{type:'string'},caption:{type:'string'}},required:['path'],additionalProperties:false}},question:{type:'string'},audience:{type:'string',enum:['topic','operator','requester']},replySourceId:{type:'string',minLength:1,description:'Only humanReview: the current candidate source for a factual follow-up; wait with read evidence, keep the original question pending.'},attemptedActions:{type:'array',items:{type:'string'}}},required:['action','summary','evidence','limitations'],additionalProperties:false}}},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute({decision},exec){
+        tools.register({name:'task_result',description:'Commit this single task execution result, or wait for a specific missing input. This concludes the turn.',parameters:{type:'object',required:['decision'],additionalProperties:false,properties:{decision:{type:'object',properties:{action:{type:'string',enum:['complete','wait','blocked']},summary:{type:'string'},evidence:{type:'array',items:{type:'string'}},limitations:{type:'array',items:{type:'string'}},artifacts:{type:'array',items:{type:'string'}},deliveryFiles:{type:'array',items:{type:'object',properties:{path:{type:'string'},caption:{type:'string'}},required:['path'],additionalProperties:false}},question:{type:'string'},audience:{type:'string',enum:['operator','requester'],description:'Technical/runtime/account/environment questions: operator (default). Explicit business input from the requester: requester. No automatic conversation fallback.'},replySourceId:{type:'string',minLength:1,description:'Only humanReview: the current candidate source for a factual follow-up; wait with read evidence, keep the original question pending.'},attemptedActions:{type:'array',items:{type:'string'}}},required:['action','summary','evidence','limitations'],additionalProperties:false}}},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute({decision},exec){
           await syncAdmissions(actor)
           if(!await current())throw fail('TASK_SESSION_STALE')
           const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
@@ -173,7 +174,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
         beforeRequest:async actor=>{bindInvocationHistory(actor);await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
           // A later same-named registration is not the read-only capability
           // captured for this execution. It needs ordinary effect admission.
-          for(const name of ['read','read_image','read_window'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}
+          for(const name of ['read','read_image','read_window','find','grep'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor)||isNativeSearchObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}
         },
         drainBusiness:async(actor,{phase,proof}={})=>{
           const jobs=ctx.get('jobs');if(typeof jobs?.drainOwner!=='function')throw fail('TASK_JOB_DRAIN_UNPROVEN');await jobs.drainOwner(actor,{reason:'single task execution ended'})
@@ -247,8 +248,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       const nextBinding={...structuredClone(entry.binding),contextRevision:row.contextRevision}
       const source={kind:'task-input',taskSession:structuredClone(nextBinding)}
       if(!Array.isArray(row.sourceSnapshots))throw fail('TASK_LIVE_SUPPLEMENT_SOURCE_REQUIRED')
-      const selected=row.sourceSnapshots.map(({stages,...item})=>item)
-      const packet={id:'task-supplement:'+row.wakeId,source,content:[{type:'text',text:JSON.stringify({task:{...taskInputSnapshot(task),request:row.request,contextRevision:row.contextRevision,sourceRefs:row.sourceRefs},sources:selected,materials:materials.map(({resources,...item})=>({...item,resources:resources.map(({value,...resource})=>resource)})),supplement:{messageId:row.messageId,contextRevision:row.contextRevision}})}]}
+      const selected=row.sourceSnapshots.map(({stages,...item})=>conversationSource(item))
+      const packet={id:'task-supplement:'+row.wakeId,source,content:[{type:'text',text:JSON.stringify({task:{...taskInputSnapshot(task),request:row.request,contextRevision:row.contextRevision,sourceRefs:row.sourceRefs},sources:selected,materials:materials.map(({resources,...item})=>({...conversationSource(item),resources:resources.map(({value,...resource})=>resource)})),supplement:{messageId:row.messageId,contextRevision:row.contextRevision}})}]}
       entry.packets.set(packet.id,packet);entry.pending.set(packet.id,{packet,binding:nextBinding,messageId:row.messageId})
       await entry.handle.agent.input.enqueue(packet)
       await entry.handle.agent.input.deliver(packet.id,{deliverAs:'steer'})

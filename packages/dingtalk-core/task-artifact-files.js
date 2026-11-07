@@ -98,13 +98,16 @@ export function createTaskArtifactFiles({ root, maxFileBytes = 20 * 1024 * 1024,
     const { taskId, requirementRevision, producer, role, fileName } = input ?? {}
     if (input?.platformSource) {
       const s = input.platformSource
+      const direct=s.sourceId!==undefined
+      const sourceIdentity=direct?typeof s.sourceId==='string'&&s.sourceId.trim()&&s.sourceId.length<=1024&&s.unitId===undefined&&s.unitRevision===undefined:identity(s.unitId)&&Number.isSafeInteger(s.unitRevision)&&s.unitRevision>0
+      // 逻辑请求 ID 只进入 scope 哈希；会话和文件名仍按物理标识校验。
       if (taskId !== undefined || requirementRevision !== undefined || producer !== undefined
-        || !identity(s.requestId) || !identity(s.sessionId) || !identity(s.unitId)
-        || !Number.isSafeInteger(s.messageVersion) || s.messageVersion < 1 || !Number.isSafeInteger(s.unitRevision) || s.unitRevision < 1
-        || ![s.groupId, s.messageId].every(value => typeof value === 'string' && value.trim() && value.length <= 1024)
+        || !identity(s.sessionId) || !sourceIdentity
+        || !Number.isSafeInteger(s.messageVersion) || s.messageVersion < 1
+        || ![s.requestId, s.groupId, s.messageId].every(value => typeof value === 'string' && value.trim() && value.length <= 1024)
         || !safeName(role) || !safeName(fileName) || fileName.toLowerCase() === 'descriptor.json') fail('INPUT_INVALID')
       return { version: 2, platformSource: { requestId: s.requestId, sessionId: s.sessionId, groupId: s.groupId,
-        messageId: s.messageId, messageVersion: s.messageVersion, unitId: s.unitId, unitRevision: s.unitRevision }, role, fileName }
+        messageId: s.messageId, messageVersion: s.messageVersion, ...(direct?{sourceId:s.sourceId}:{unitId:s.unitId,unitRevision:s.unitRevision}) }, role, fileName }
     }
     if (!identity(taskId) || !Number.isSafeInteger(requirementRevision) || requirementRevision < 1
       || !producer || !identity(producer.runId) || !identity(producer.nodeRunId)

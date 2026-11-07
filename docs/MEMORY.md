@@ -60,7 +60,7 @@ The same declarations can be supplied in trusted `memory.bindings` configuration
 keyed by the exact session ID. Bindings survive restart. A session cannot be
 reassigned to another principal/group; create a new session for that identity.
 Do not bind an aggregate multi-person coordinator as one private user. No identity
-is inferred from free text, model output, or a guessed DingTalk ID. The task service binds owner and native execution sessions from trusted ledger owner/group identities before model work. Other ingress adapters and delegated agents must supply authenticated bindings; this is independent of DWS.
+is inferred from free text, model output, or a guessed DingTalk ID. The task service binds task execution sessions from trusted ledger actor/group identities before model work. Conversational roles, including Router generations, require their own authenticated bindings; a handoff summary cannot select a new principal. This is independent of DWS and does not restore a task Owner role.
 
 Personal memory is unavailable in group-bound sessions, even for the same actor.
 Group reads are confined to the bound group; group writes require `groupWrite`.

@@ -22,10 +22,25 @@ test('an original tool call keeps its official input binding after a later sourc
  const origin=taskToolInputOrigin(manager,{callId:'call',name:'write',args,taskId:'task',sessionId:'session'});assert.equal(origin.callEntryId,callEntryId);assert.equal(origin.binding.contextRevision,0);assert.equal(origin.key,taskEffectDigest({requirementRevision:1,controlRevision:1,contextRevision:0,name:'write',args}))
  assert.throws(()=>taskToolInputOrigin(manager,{callId:'call',name:'write',args:{...args,content:'foreign'},taskId:'task',sessionId:'session'}),{code:'TASK_EFFECT_CALL_AMBIGUOUS'})
 })
-test('cold supplemental repair accepts only an exact committed official admission and never queues messages',async t=>{
- const f=await fixture(t),sources=[{sourceId:'source',version:1,text:'Exact original source'}],row={messageId:'supplement',wakeId:'wake',state:'pending',sourceSnapshots:sources,request:'Same objective with source',leaseEpoch:1,requirementRevision:1,controlRevision:1,contextRevision:1},task={...f.binding,contextRevision:1,liveSupplements:[row]},packet={id:'task-supplement:wake',source:{kind:'task-input',taskSession:{...f.binding,contextRevision:1}},content:[{type:'text',text:JSON.stringify({task:{request:row.request,contextRevision:1},sources,supplement:{messageId:row.messageId,contextRevision:1}})}]}
- const entryId=f.append(packet);await f.writer.commit();const stored=await f.persistence.readNative('session',{requireComplete:true}),manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries)),before=manager.getEntries().length
- assert.deepEqual(committedLiveSupplementAdmissions(manager,task),[{messageId:'supplement',entryId,packetId:packet.id,binding:{kind:'task-session',...f.binding,contextRevision:1}}]);assert.equal(manager.getEntries().length,before)
- assert.throws(()=>committedLiveSupplementAdmissions(manager,{...task,liveSupplements:[{...row,sourceSnapshots:[{...sources[0],version:2}]}]}),{code:'TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT'})
- const ack=manager.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.audit'&&entry.data.kind==='admitted');manager.branch(ack.parentId);assert.deepEqual(committedLiveSupplementAdmissions(manager,task),[],'a branch without the committed admission cannot ACK SQL')
+for(const format of ['legacy','neutral'])test('cold supplemental repair accepts exact committed '+format+' sources without rewriting history or queueing input',async t=>{
+ const f=await fixture(t),sources=[{sourceId:'source',version:1,groupId:'original-room',messageId:'original-message',actorId:'original-actor',text:'Keep DingTalk as literal user text',quote:{messageId:'quoted-message',senderOpenDingTalkId:'quoted-actor',content:'Original quoted text'},resourceRefs:[{resourceId:'original-resource',kind:'file'}]}]
+ const neutral=[{sourceId:'source',version:1,conversationId:'original-room',messageId:'original-message',actorId:'original-actor',text:'Keep DingTalk as literal user text',quote:{messageId:'quoted-message',actorId:'quoted-actor',text:'Original quoted text'},resourceRefs:[{resourceId:'original-resource',kind:'file'}]}]
+ const row={messageId:'supplement',wakeId:'wake',state:'pending',sourceSnapshots:sources,request:'Same objective with source',leaseEpoch:1,requirementRevision:1,controlRevision:1,contextRevision:1},task={...f.binding,contextRevision:1,liveSupplements:[row]}
+ const packet={id:'task-supplement:wake',source:{kind:'task-input',taskSession:{...f.binding,contextRevision:1}},content:[{type:'text',text:JSON.stringify({task:{request:row.request,contextRevision:1},sources:format==='neutral'?neutral:sources,supplement:{messageId:row.messageId,contextRevision:1}})}]}
+ const entryId=f.append(packet);await f.writer.commit();const stored=await f.persistence.readNative('session',{requireComplete:true})
+ const manager=()=>SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries)),native=manager(),before=structuredClone(native.getEntries()),snapshot=structuredClone(task)
+ assert.deepEqual(committedLiveSupplementAdmissions(native,task),[{messageId:'supplement',entryId,packetId:packet.id,binding:{kind:'task-session',...f.binding,contextRevision:1}}])
+ assert.deepEqual(native.getEntries(),before);assert.deepEqual(task,snapshot)
+ for(const changed of [{version:2},{actorId:'foreign-actor'},{text:'Tampered original text'},{sourceId:'foreign-source'},{groupId:'foreign-room'},{quote:{...sources[0].quote,senderOpenDingTalkId:'foreign-quoted-actor'}}]){
+  assert.throws(()=>committedLiveSupplementAdmissions(native,{...task,liveSupplements:[{...row,sourceSnapshots:[{...sources[0],...changed}]}]}),{code:'TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT'})
+ }
+ const mismatched=manager(),input=mismatched.getEntries().find(entry=>entry.id===entryId)
+ input.content=[{type:'text',text:packet.content[0].text+' '}]
+ assert.throws(()=>committedLiveSupplementAdmissions(mismatched,task),{code:'TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT'},'enqueued packet and native input bytes must still match')
+ const foreign=manager(),enqueued=foreign.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.audit'&&entry.data.kind==='enqueued')
+ enqueued.data.payload.source.taskSession.taskId='foreign-task'
+ assert.throws(()=>committedLiveSupplementAdmissions(foreign,task),{code:'TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT'},'neutral projection cannot weaken the admitted task/session identity')
+ const ack=native.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.audit'&&entry.data.kind==='admitted');native.branch(ack.parentId)
+ assert.deepEqual(committedLiveSupplementAdmissions(native,task),[],'a branch without committed admission cannot ACK SQL')
+ assert.deepEqual((await f.persistence.readNative('session',{requireComplete:true})).entries,stored.entries,'offline proof must not rewrite the durable journal')
 })

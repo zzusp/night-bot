@@ -3,6 +3,7 @@ import {validatePiFileSourceConfig} from './runtime/pi-file-tool-config.js'
 import { readFile } from 'node:fs/promises'
 import { resolve, isAbsolute, relative, sep } from 'node:path'
 import {runtimePaths} from './runtime/paths.js'
+import {channelGroupResponsibilities} from './channels/service.js'
 
 export async function loadConfig(path) {
   const config = JSON.parse(await readFile(path, 'utf8'))
@@ -46,6 +47,7 @@ export async function loadConfig(path) {
   }
   if(config.resident?.dws?.enabled)throw new Error('NIGHT_BOT_USE_DWS_CHANNEL_PLUGIN')
   if(config.channelPlugins!==undefined&&(!Array.isArray(config.channelPlugins)||config.channelPlugins.some(plugin=>!plugin||typeof plugin.type!=='string'||typeof plugin.enabled!=='boolean')))throw new Error('NIGHT_CHANNEL_PLUGINS_INVALID')
+  for(const plugin of config.channelPlugins??[])if(plugin.type==='dingtalk-dws')channelGroupResponsibilities(plugin.config?.groups,plugin.config?.responsibility)
   if(config.channelPluginDirs!==undefined&&(!Array.isArray(config.channelPluginDirs)||config.channelPluginDirs.some(path=>typeof path!=='string'||!path)))throw new Error('NIGHT_CHANNEL_PLUGIN_DIRECTORIES_INVALID')
   validateSecrets(config)
   return config

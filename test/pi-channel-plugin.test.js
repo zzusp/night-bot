@@ -6,6 +6,12 @@ import {memoryHost} from './fixtures/memory-host.js'
 import {createHost} from '../src/host.js'
 import {apply as applyDws} from '../src/channels/plugins/dingtalk-dws.js'
 import {apply as applyApplication,inject} from '../src/application.js'
+import {randomUUID} from 'node:crypto'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
+import {memoryScope} from '../src/memory/scope.js'
+import {hash} from '../src/memory/format.js'
+import {modelToolValues} from './fixtures/routing-official-model.js'
 
 test('core initializes without a DWS executable or plugin, and disabled plugins never register a transport',async t=>{
   const f=await memoryHost(t);assert.equal(f.host.ctx.get('dingtalkChannel'),undefined);assert.equal(f.host.ctx.channels.transports.size,0)
@@ -17,7 +23,7 @@ test('optional DWS plugin registers the typed boundary, preserves authenticated 
   const runner={cwd:f.root,async run(){commands++;throw Error('No real CLI calls in plugin registration test')},spawn(){commands++;throw Error('No subscription requested')}}
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture-profile',writesAuthorized:false,listen:false},{runner})})
   const plugin=f.host.ctx.get('dingtalkChannel');assert.ok(plugin);if(plugin.accountPolicy.mode==='private')assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')));else{assert.equal(plugin.accountDirectory,undefined);assert.equal(plugin.accountPolicy.sharedAcrossInstances,true)}
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
+  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{isOwnNotification:()=>false}})
   let captured;const receive=f.host.ctx.channels.receive.bind(f.host.ctx.channels);f.host.ctx.channels.receive=input=>{captured=input;return receive(input)}
   const response=await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'real-source-1',senderOpenDingTalkId:'authenticated-sender',text:'quoted boundary proof',occurredAt:'2026-11-05T10:00:00.000Z',quotedMessage:{messageId:'original-quoted-message',text:'earlier context',senderOpenDingTalkId:'quoted-person'}})
   assert.equal(captured.sentAt,'2026-11-05T10:00:00.000Z');assert.deepEqual(captured.quotedMessage,{messageId:'original-quoted-message',text:'earlier context',senderId:'quoted-person'});
@@ -119,10 +125,14 @@ test('generic message readers use neutral identities and enforce conversation sc
   let remote='room'
   channels.registerTransport('generic',{send:async()=>{},readback:async()=>{},readMessage:async()=>({messageId:'source',conversationId:remote,senderId:'alice',text:'hello',quotedMessage:{messageId:'quoted',senderId:'bob',text:'quoted body'}})})
   const message=await channels.readResource('readMessage',identity.sessionId,'source')
-  assert.equal(message.senderOpenDingTalkId,identity.principal)
-  assert.equal(message.quotedMessage.senderOpenDingTalkId,channels.identity({...input,senderId:'bob'}).principal)
-  assert.equal(message.quotedMessage.content,'quoted body')
+  assert.equal(message.actorId,identity.principal);assert.equal(message.conversationId,identity.sessionId);assert.equal(Object.hasOwn(message,'senderOpenDingTalkId'),false)
+  assert.equal(message.quotedMessage.actorId,channels.identity({...input,senderId:'bob'}).principal);assert.equal(Object.hasOwn(message.quotedMessage,'senderOpenDingTalkId'),false)
+  assert.equal(message.quotedMessage.text,'quoted body');assert.equal(message.quotedMessage.conversationId,identity.sessionId)
   remote='other';await assert.rejects(channels.readResource('readMessage',identity.sessionId,'source'),/SCOPE_MISMATCH/)
+  const direct=await channels.registerConversation({...input,type:'chat',messageId:'direct-alice'}),other=await channels.registerConversation({...input,type:'chat',senderId:'bob',messageId:'direct-bob'})
+  const notice={id:'direct-scope',payload:{conversationId:direct.sessionId,text:'Direct bounded response',recipientActorIds:[direct.principal]}}
+  assert.deepEqual(channels.deliveryEnvelope(notice).recipientIds,[])
+  for(const actorId of ['unknown-actor',other.principal])assert.throws(()=>channels.deliveryEnvelope({...notice,payload:{...notice.payload,recipientActorIds:[actorId]}}),{code:'CHANNEL_RECIPIENT_NOT_IN_CONVERSATION'})
 })
 
 test('multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization',async t=>{
@@ -131,7 +141,7 @@ test('multiple DWS instances isolate transports and describe credential sharing;
   assert.equal(channels.plugins.size,2);assert.equal(channels.transports.size,2)
   if(channels.plugins.get('account-one').accountPolicy.mode==='private')assert.notEqual(channels.plugins.get('account-one').accountDirectory,channels.plugins.get('account-two').accountDirectory)
   else{assert.equal(channels.plugins.get('account-one').accountDirectory,undefined);assert.equal(channels.plugins.get('account-two').accountPolicy.sharedAcrossInstances,true)}
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
+  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{isOwnNotification:()=>false}})
   await assert.rejects(channels.plugins.get('account-one').acceptHistoryMessage({groupId:'private',messageId:'m',senderOpenDingTalkId:'peer',text:'private'},{type:'chat'}),/CHAT_NOT_AUTHORIZED/)
   const raw={groupId:'shared',messageId:'same-message',senderOpenDingTalkId:'same-peer',text:'isolated account message',quotedMessage:{messageId:'quote-without-author',content:'unknown identity'}}
   const one=await channels.plugins.get('account-one').acceptHistoryMessage(raw),two=await channels.plugins.get('account-two').acceptHistoryMessage(raw)
@@ -181,4 +191,368 @@ test('group-only DWS never subscribes to private messages or polls private histo
   assert.ok(streams.every(args=>!args.includes('all-direct')&&!args.includes('user_im_message_receive_o2o')))
   assert.equal(f.host.ctx.channels.plugins.get('dingtalk-dws').health.humanReplies.state,'disabled')
   assert.deepEqual(f.host.ctx.channels.transports.get('dingtalk-dws').capabilities.privateSubscription,{scope:'explicit-peers',peerCount:0})
+})
+
+test('configured channel responsibilities isolate all model roles through the default application',{timeout:nativeTestTimeout(90000)},async t=>{
+  const nonce=randomUUID(),spoof='untrusted-role-'+nonce,old='stale-role-'+nonce
+  const rooms=['alpha','beta'].map(key=>({key,id:'role-room-'+key,taskId:'role-task-'+key,
+    responsibility:'trusted-role-'+key+'-'+nonce+' ${notAnInstruction}'}))
+  const observed=[],sent=[],readbacks=[],toolErrors=[],proof=[],replied=new Set();let app
+  const record=(role,room,body)=>observed.push({role,room:room.key,system:body.messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),tools:requestTools(body),body})
+  const f=await memoryHost(t,async body=>{
+    const names=requestTools(body),texts=requestText(body)
+    if(texts.some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION'))){
+      const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),room=rooms.find(row=>row.taskId===input.taskId)
+      record('reflection',room,body);return {text:'{"lessons":[]}'}
+    }
+    const first=requestEnvelope(body,'一级分诊请求：')
+    if(names.includes('channel_triage_submit')){
+      const room=rooms.find(row=>row.groupId===first.conversationId);record('triage',room,body)
+      return {tool:'channel_triage_submit',args:{dispositions:first.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Complete the explicitly requested bounded task'}))}}
+    }
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(!names.length&&handoff)return {text:JSON.stringify({currentIntent:'Consult current authorized source and task ledger',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(names.includes('task_result')){
+      const input=texts.toReversed().map(text=>{try{return JSON.parse(text)}catch{return undefined}}).find(value=>value?.task)
+      const room=rooms.find(row=>row.taskId===input.task.taskId);record('task',room,body)
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Bounded task completed for '+room.key,evidence:['local-role-check'],limitations:[]}}}
+    }
+    if(names.includes('resident_router_settle')){
+      const input=requestEnvelope(body,'Router 请求：'),room=rooms.find(row=>row.groupId===input.conversationId);record('router',room,body)
+      const task=await app.tasks.store.query({kind:'task.get',taskId:room.taskId})
+      const source=(await app.tasks.store.query({kind:'source.list'})).find(row=>row.messageId==='order-'+room.key)
+      if(!task)return {tool:'resident_task_plan',args:{operationId:'role-plan-'+room.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:room.taskId,title:'Bounded task '+room.key,objective:'Complete the bounded local verification for '+room.key,requirements:['Report a verified bounded result']}],dependencies:[]}}
+      if(task.status==='completed'&&input.events.some(event=>event.taskEvent?.kind==='task.completed')&&!replied.has(room.key)){
+        replied.add(room.key)
+        return {tool:'resident_router_reply',args:{operationId:'role-result-'+room.key,sourceId:source.sourceId,messageVersion:source.version,text:'Bounded verification completed.',recipientActorIds:[]}}
+      }
+      const lastCall=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name
+      if(body.messages.at(-1)?.role==='tool'&&lastCall==='resident_router_settle')return {text:'The current batch is settled.'}
+      return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'role-settle:'+input.events.map(event=>event.eventId).join(',')}}
+    }
+    record('channel',rooms[0],body);return {text:'The configured channel context is available.'}
+  })
+  const flag=(args,key)=>args[args.indexOf(key)+1]
+  const runner={
+    async run(args){
+      let value
+      if(args.includes('+messages-send')||args[1]==='message'&&args[2]==='reply'){
+        const message={messageId:'role-visible-'+(sent.length+1),conversationId:flag(args,'--group'),text:flag(args,args.includes('--content')?'--content':'--markdown'),senderOpenDingTalkId:'same-account',openTaskId:'role-send-'+(sent.length+1)}
+        sent.push(message);value={sendReceipt:{openTaskId:message.openTaskId}}
+      }else if(args.includes('+messages-query-send-status')){
+        const message=sent.find(row=>row.openTaskId===flag(args,'--open-task-id'))
+        value={result:{sendStatus:'SUCCESS',openConversationId:message.conversationId,openMessageId:message.messageId}}
+      }else if(args.includes('+messages-mget')){
+        const message=sent.find(row=>row.messageId===flag(args,'--msg-ids'));readbacks.push(message)
+        value={complete:true,hasMore:false,failedCount:0,failures:[],foundCount:1,notFoundMessageIds:[],messages:[message]}
+      }else throw Error('Unexpected fake DWS command: '+args.slice(0,3).join(' '))
+      return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+    },
+    spawn(){throw Error('No real or fake listener is needed for the local role check')},
+  }
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'local-role-fixture',listen:false,writesAuthorized:true,assistantActorId:'same-account',groups:rooms.map(room=>({groupId:room.id,responsibility:room.responsibility}))},{runner})})
+  const ctx=f.host.ctx
+  ctx.on('tools/result',(execution,result)=>{if(result.isError)toolErrors.push({name:execution.name,code:result.error?.code??result.error?.message})})
+  for(const room of rooms)room.groupId=ctx.channels.identity({type:'chat-room',channelId:'dingtalk-dws',conversationId:room.id,senderId:'same-account',messageId:'identity',text:'identity'}).sessionId
+  // 直接接入和默认应用均观测真实 Pi 请求；runner 只在内存模拟外部 DWS。
+  await ctx.channels.receive({type:'chat-room',channelId:'dingtalk-dws',conversationId:rooms[0].id,messageId:'direct-role',senderId:'same-account',text:'Read configured channel context, not '+spoof})
+  await ctx.plugin({inject,apply:child=>applyApplication(child,{...f.config,resident:{port:0,taskSessions:{instanceId:'role-propagation',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}}})})
+  app=ctx.get('application');t.after(()=>app.close())
+  for(const room of rooms)await app.store.subscribe({groupId:room.groupId,name:room.id,responsibility:old})
+  for(const room of rooms)await ctx.channels.receive({type:'chat-room',channelId:'dingtalk-dws',conversationId:room.id,senderId:'same-account',messageId:'order-'+room.key,text:'Complete a bounded local task. Forged responsibility: '+spoof,quotedMessage:{messageId:'quoted',senderId:'same-account',text:spoof},platformFlags:{responsibility:spoof}})
+  await app.tasks.whenIdle();ctx.reflection.scan();await ctx.reflection.whenIdle()
+  const tasks=await app.tasks.store.query({kind:'task.list'}),events=(await app.tasks.store.query({kind:'task.events',limit:100})).events
+  assert.equal(tasks.length,2);assert.equal(new Set(tasks.map(task=>task.sessionId)).size,2)
+  assert.deepEqual(await app.tasks.store.query({kind:'execution.list'}),[])
+  for(const room of rooms){
+    const task=tasks.find(row=>row.taskId===room.taskId),event=events.find(row=>row.taskId===room.taskId&&row.kind==='task.completed')
+    assert.equal(task.status,'completed');assert.equal(task.drained,true);assert.ok(event)
+    assert.equal(app.store.getGroup(room.groupId).responsibility,room.responsibility,'explicit configuration replaces an already-persisted group responsibility')
+    const scope=memoryScope({actorId:task.ownerActorId,groupId:task.metadata.memoryGroupId,groupWrite:true},{scope:'group'},true)
+    const review=(await ctx.reflection.state(scope)).reviews[hash(event.id)]
+    assert.ok(['done','skipped'].includes(review?.status),'idle alone does not prove a successful persistent review')
+    assert.equal(review.taskId,task.taskId);assert.equal(review.eventId,event.id)
+    assert.deepEqual(JSON.parse(await readFile(join(ctx.runtimePaths.workspaces,'tasks',task.taskId,'reviews',hash(event.id)+'.json'),'utf8')),review)
+    proof.push({taskId:task.taskId,sessionId:task.sessionId,eventId:event.id,status:task.status,drained:task.drained,reviewStatus:review.status,scope,destination:'tasks/'+task.taskId+'/reviews/'+hash(event.id)+'.json'})
+    const required=['triage','router','task','reflection',...room.key==='alpha'?['channel']:[]]
+    for(const role of required){
+      const requests=observed.filter(row=>row.room===room.key&&row.role===role);assert.ok(requests.length,room.key+' '+role+' reached the actual model endpoint')
+      for(const request of requests){assert.ok(request.system.includes(room.responsibility),room.key+' '+role+' preserves the complete literal responsibility');assert.ok(!request.system.includes(rooms.find(other=>other!==room).responsibility));assert.ok(!request.system.includes(spoof));assert.ok(!request.system.includes(old))}
+      if(role==='reflection')for(const request of requests){assert.deepEqual(request.tools,[]);assert.equal(request.body.messages.length,2);const input=JSON.parse(request.body.messages[1].content);assert.equal(input.taskId,task.taskId);assert.equal(input.eventId,event.id);assert.deepEqual(Object.keys(input).sort(),['eventId','facts','taskId'])}
+    }
+  }
+  const notices=await app.tasks.store.query({kind:'notification.list'})
+  assert.equal(notices.length,2);assert.ok(notices.every(row=>row.state==='delivered'))
+  assert.equal(sent.length,2);assert.equal(readbacks.length,2)
+  assert.deepEqual(sent.map(row=>row.conversationId).sort(),rooms.map(room=>room.id).sort())
+  for(const notice of notices){const destination=ctx.channels.groupContext(notice.payload.conversationId).conversationId;assert.ok(sent.some(row=>row.conversationId===destination&&row.messageId===notice.receipt.messageId))}
+  assert.deepEqual(toolErrors,[]);assert.deepEqual(f.errors,[])
+  await app.close()
+  t.diagnostic(JSON.stringify({case:'sg8-configured-channel-roles',tasks:proof,roles:rooms.map(room=>({room:room.key,requests:Object.fromEntries(['channel','triage','router','task','reflection'].map(role=>[role,observed.filter(row=>row.room===room.key&&row.role===role).length]))})),notifications:notices.map(row=>({id:row.id,state:row.state,messageId:row.receipt.messageId})),fakeSends:sent.length,fakeReadbacks:readbacks.length,modelRequests:f.requests.length,listenerStarted:false,realDwsExecuted:false}))
+})
+
+for(const replyToSource of [undefined,true])test('default application neutral Router tools enforce recipient/source ACL and deliver material-backed frozen files'+(replyToSource?' with explicit source quote':''),{timeout:nativeTestTimeout(90000)},async t=>{
+  const steps=new Map(),taskPackets=[],calls=[],resourceReads=[],sent=[],results=[],materialText='MATERIAL='+randomUUID(),fileReadback=Promise.withResolvers();let fileReadbackStarted=false
+  t.signal.addEventListener('abort',()=>fileReadback.resolve(),{once:true})
+  const taskId='neutral-material-task';let app,channels,sourceIdentity,bob,foreign,originalSource
+  const progress={phase:'setup',models:0,tools:{}}
+  t.signal.addEventListener('abort',()=>t.diagnostic(JSON.stringify({case:'default-neutral-tools-interrupted',progress})),{once:true})
+  const f=await memoryHost(t,async body=>{
+    progress.models++;progress.phase='model-request'
+    const tools=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：')
+    if(tools.includes('channel_triage_submit'))return {tool:'channel_triage_submit',args:{dispositions:triage.messages.map(message=>({sourceId:message.sourceId,messageVersion:message.version??message.messageVersion,needsHandling:message.messageId==='neutral-request',reason:'Only the exact material request needs work'}))}}
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(handoff)return {text:JSON.stringify({currentIntent:'Keep original source and frozen delivery references',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(tools.includes('task_result')){
+      const input=requestText({...body,messages:body.messages.filter(message=>message.role==='user')}).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
+      assert.ok(input);taskPackets.push(input)
+      const key='execution:'+input.task.taskId,step=steps.get(key)??0;steps.set(key,step+1)
+      progress.lastModel={kind:'execution',step,taskId:input.task.taskId}
+      const resource=input.materials.flatMap(material=>material.resources??[]).find(resource=>resource.status==='read')
+      assert.ok(resource,'default task composition must read/materialize the original generic resource')
+      if(step===0)return {tool:'read',args:{path:resource.path}}
+      if(step===1){assert.ok(requestText(body).some(text=>text.includes(materialText)),'actual model tool response must contain the fetched resource bytes');return {tool:'write',args:{path:'work/result.txt',content:materialText}}}
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Read the original material and verified the result file',evidence:['work/result.txt'],limitations:[],artifacts:['work/result.txt'],deliveryFiles:[{path:'work/result.txt',caption:'Verified material result'}]}}}
+    }
+    if(!tools.includes('resident_router_reply'))return {text:'No additional work'}
+    const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=steps.get(key)??0;steps.set(key,step+1)
+    progress.lastModel={kind:'router',step,events:input.events.map(event=>({kind:event.kind,taskId:event.taskId,sourceId:event.sourceId}))}
+    const source=input.events.find(event=>event.source?.messageId==='neutral-request')?.source
+    const settle=()=>({tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'neutral-settle:'+key}})
+    const definition=body.tools.find(tool=>tool.function.name==='resident_router_reply').function
+    assert.ok(definition.parameters.properties.recipientActorIds);assert.deepEqual(definition.parameters.properties.replyToSource.enum,[true]);assert.equal(Object.hasOwn(definition.parameters.properties,'atOpenDingTalkIds'),false)
+    if(source){
+      originalSource=source
+      assert.equal(Object.hasOwn(source,'groupId'),false);assert.equal(source.conversationId,sourceIdentity.sessionId);assert.equal(source.actorId,sourceIdentity.principal)
+      assert.equal(source.quote.actorId,bob);assert.equal(source.quote.text,'Keep this original quote');assert.equal(Object.hasOwn(source.quote,'senderOpenDingTalkId'),false)
+      assert.ok(source.text.includes('DingTalk'),'literal user vendor names must be preserved')
+      const reply={operationId:'neutral-acl-'+step,sourceId:source.sourceId,messageVersion:source.version,text:'A bounded local response'}
+      if(step===0)return {tool:'resident_source_get',args:{sourceId:source.sourceId}}
+      if(step===1)return {tool:'resident_router_reply',args:{...reply,recipientActorIds:['unknown-actor']}}
+      if(step===2)return {tool:'resident_router_reply',args:{...reply,recipientActorIds:[foreign]}}
+      if(step===3)return {tool:'resident_router_reply',args:{...reply,atOpenDingTalkIds:[bob]}}
+      if(step===4)return {tool:'resident_router_reply',args:{...reply,messageVersion:source.version+1,recipientActorIds:[bob]}}
+      if(step===5)return {tool:'resident_task_plan',args:{operationId:'neutral-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title:'Material verification',objective:'Read the original material, create a local result file and report the frozen output.',requirements:['Result bytes match the material']}],dependencies:[]}}
+      if(step===6)return settle()
+      return {text:'Original source disposition committed'}
+    }
+    if(input.events.some(event=>event.taskEvent?.kind==='task.completed'&&event.taskEvent.taskId===taskId)){
+      if(step===0)return {tool:'resident_task_query',args:{taskId}}
+      if(step>0){
+        const task=modelToolValues(body).toReversed().find(value=>value.task?.taskId===taskId)?.task
+        assert.ok(task?.completion?.result?.artifactFiles?.length)
+        const delivery={operationId:'neutral-delivery',sourceId:originalSource.sourceId,messageVersion:originalSource.version,text:'The verified DingTalk material result is attached.',recipientActorIds:replyToSource?[sourceIdentity.principal,bob]:[bob],...(replyToSource?{replyToSource}:{}),taskDelivery:{taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}
+        if(replyToSource){
+          if(step<=6){assert.equal((await app.tasks.store.query({kind:'notification.list'})).length,0,'invalid quote requests must not prepare any notification');assert.equal(sent.length,0)}
+          if(step<=3)return {tool:'resident_router_reply',args:{...delivery,operationId:'neutral-quote-audience-'+step,recipientActorIds:[undefined,[],[bob]][step-1]}}
+          if(step===4||step===5)return {tool:'resident_router_reply',args:{...delivery,operationId:'neutral-quote-schema-'+step,replyToSource:step===4?false:'true'}}
+          if(step===6||step===7)return {tool:'resident_router_reply',args:delivery}
+          if(step===8){const {replyToSource,...withoutQuote}=delivery;return {tool:'resident_router_reply',args:withoutQuote}}
+          if(step===9)return {tool:'resident_router_reply',args:{...delivery,recipientActorIds:[sourceIdentity.principal]}}
+          if(step===10)return settle()
+        }else{
+          if(step===1)return {tool:'resident_router_reply',args:delivery}
+          if(step===2)return settle()
+        }
+      }
+      return {text:'Frozen delivery has a durable disposition'}
+    }
+    if(step===0)return settle()
+    return {text:'Non-business event settled'}
+  })
+  channels=f.host.ctx.channels
+  const message={type:'chat-room',channelId:'neutral-channel',conversationId:'local-room',senderId:'alice',messageId:'neutral-request',text:'DingTalk request: read the attached local material and deliver the verified file.'+(replyToSource?' Quote this original message and notify me and bob.':''),mentions:['bob'],quotedMessage:{messageId:'bob-original',senderId:'bob',text:'Keep this original quote'},resourceRefs:[{type:'file',resourceId:'local-material',fileName:'request.txt'}]}
+  sourceIdentity=channels.identity(message);bob=channels.identity({...message,senderId:'bob'}).principal;foreign=channels.identity({...message,senderId:'foreign-person',conversationId:'other-room'}).principal
+  channels.registerTransport('neutral-channel',{
+    async send(envelope){calls.push('text-send');sent.push(structuredClone(envelope));return {messageId:'local-text'}} ,
+    async readback(envelope){calls.push('text-readback');return {messageId:'local-text',visible:true}},
+    async sendFile(envelope,notification,file){calls.push('file-send');sent.push(structuredClone(envelope));assert.equal(await readFile(join(file.directory,file.fileName),'utf8'),materialText);return {messageId:'local-file'}},
+    async readbackFile(){calls.push('file-readback');if(replyToSource){fileReadbackStarted=true;await fileReadback.promise}return {messageId:'local-file',visible:true}},
+    async readResource(envelope){resourceReads.push(structuredClone(envelope));return {text:materialText,complete:true,hasMore:false,failures:[]}},
+  })
+  f.host.ctx.on('tools/result',(execution,result)=>{results.push({name:execution.name,result,sessionId:execution.agent?.id});progress.tools[execution.name]=(progress.tools[execution.name]??0)+1;progress.lastTool={name:execution.name,isError:!!result.isError,code:result.error?.code};if(execution.name==='task_result'&&result.isError&&!progress.firstTaskResultError){const text=(result.content??[]).filter(part=>part.type==='text').map(part=>part.text).join(String.fromCharCode(10));progress.firstTaskResultError={codes:[...new Set(text.match(/[A-Z][A-Z0-9_]{5,}/g)??[])],digest:hash(text)}}progress.phase='tool-result'})
+  const appConfig={...f.config,resident:{host:'127.0.0.1',port:0,taskSessions:{instanceId:'neutral-tools',ownerActorId:'owner',webActorId:'owner',ingressEpoch:new Date().toISOString(),initialize:true,reasoningMode:'inherit'}}}
+  await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,appConfig)})
+  app=f.host.ctx.get('application')
+  await channels.receive({...message,messageId:'bob-original',senderId:'bob',text:'Participant only',quotedMessage:undefined,resourceRefs:[],mentions:[]})
+  await channels.receive({...message,messageId:'foreign-original',senderId:'foreign-person',conversationId:'other-room',text:'Different conversation participant',quotedMessage:undefined,resourceRefs:[],mentions:[]})
+  await channels.receive(message);progress.phase='business-drain'
+  if(replyToSource){
+    try{
+      await eventually(()=>fileReadbackStarted,'frozen file readback has actually started',t.signal)
+      const pending=await app.tasks.store.query({kind:'notification.list'})
+      assert.equal(pending.find(notice=>!notice.payload.artifact).state,'delivered')
+      assert.notEqual(pending.find(notice=>notice.payload.artifact).state,'delivered','exact send identity does not replace frozen file readback')
+    }finally{fileReadback.resolve()}
+  }
+  await app.tasks.whenIdle();progress.phase='delivery-wait'
+  await eventually(async()=>{const notices=await app.tasks.store.query({kind:'notification.list'});return notices.length===2&&notices.every(notice=>notice.state==='delivered')},'default Router text and frozen file both visibly delivered',t.signal)
+  await app.tasks.whenIdle()
+  const task=await app.tasks.store.query({kind:'task.get',taskId}),notices=await app.tasks.store.query({kind:'notification.list'})
+  assert.equal(task.status,'completed');assert.equal(task.drained,true);assert.equal(task.ownerActorId,sourceIdentity.principal);assert.equal(task.conversationId,sourceIdentity.sessionId)
+  assert.deepEqual(calls,['text-send','text-readback','file-send','file-readback']);assert.equal(sent.length,2)
+  for(const [index,envelope] of sent.entries()){assert.equal(envelope.conversationId,message.conversationId);assert.equal(envelope.channelId,message.channelId);assert.deepEqual(envelope.recipientIds,replyToSource?['alice','bob']:['bob']);assert.equal(envelope.replyToMessageId,replyToSource&&index===0?message.messageId:undefined);assert.equal(envelope.replyToParticipantId,replyToSource&&index===0?'alice':undefined)}
+  assert.ok(resourceReads.length>=1);assert.ok(resourceReads.every(value=>value.channelId===message.channelId&&value.conversationId===message.conversationId&&value.messageId===message.messageId));assert.deepEqual(resourceReads[0].resource,message.resourceRefs[0])
+  const child=notices.find(notice=>notice.payload.artifact),parent=notices.find(notice=>!notice.payload.artifact)
+  assert.equal(child.payload.afterNotificationId,parent.id);assert.deepEqual(child.payload.recipientActorIds,replyToSource?[sourceIdentity.principal,bob]:[bob]);assert.equal(child.payload.replyToActorId,undefined)
+  assert.equal(parent.payload.sourceMessageId,replyToSource?message.messageId:undefined);assert.equal(parent.payload.replyToActorId,replyToSource?sourceIdentity.principal:undefined)
+  assert.equal(parent.payload.replyRequest.replyToMessageId,parent.payload.sourceMessageId);assert.equal(parent.payload.replyRequest.replyToActorId,parent.payload.replyToActorId)
+  assert.equal(parent.payload.taskDelivery.taskId,taskId);assert.equal(parent.payload.taskDelivery.requirementRevision,task.requirementRevision)
+  assert.deepEqual(parent.payload.taskDelivery.artifactIds,task.completion.result.artifactFiles.map(file=>file.artifact.artifactId))
+  assert.ok(taskPackets.length>=3)
+  for(const input of taskPackets){for(const source of input.sources){assert.equal(Object.hasOwn(source,'groupId'),false);if(source.quote){assert.equal(source.quote.actorId,bob);assert.equal(source.quote.text,message.quotedMessage.text);assert.equal(Object.hasOwn(source.quote,'senderOpenDingTalkId'),false)}}for(const material of input.materials){assert.equal(Object.hasOwn(material,'groupId'),false);if(material.quote)assert.equal(material.quote.actorId,bob)}}
+  const rejected=results.filter(row=>row.name==='resident_router_reply'&&row.result.isError)
+  assert.equal(rejected.length,replyToSource?8:3,'source/recipient ACL, quote author and operation semantic conflicts fail inside the registered tool')
+  if(replyToSource){assert.equal(rejected.filter(row=>JSON.stringify(row.result).includes('group_reply_quote_author_not_in_recipients')).length,3);assert.equal(rejected.filter(row=>JSON.stringify(row.result).includes('DYNAMIC_COMMAND_ID_CONFLICT')).length,2)}
+  const schemaRejected=new Map(f.requests.flatMap(body=>body.messages).filter(message=>message.role==='tool'&&/atOpenDingTalkIds|replyToSource/.test(String(message.content))&&/unexpected|unrecognized|additional|schema|invalid|validation/i.test(String(message.content))).map(message=>[message.tool_call_id,message]))
+  assert.equal(schemaRejected.size,replyToSource?3:1,'legacy field and non-true quote options are rejected by official schema before tools/result')
+  assert.equal(rejected.length+schemaRejected.size,replyToSource?11:4,'all unauthorized variants fail without additional deliveries')
+  assert.ok(results.some(row=>row.name==='resident_source_get'&&!row.result.isError));assert.ok(results.some(row=>row.name==='resident_task_plan'&&!row.result.isError));assert.equal(f.errors.length,0)
+  const taskNative=await f.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+  await f.close();f.config.reflection={enabled:false};await f.boot()
+  await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,appConfig)});app=f.host.ctx.get('application')
+  await app.tasks.whenIdle()
+  assert.equal(f.host.ctx.channels.transports.size,0)
+  assert.deepEqual(await app.tasks.store.query({kind:'notification.list'}),notices,'delivered payloads, digests and attempts remain unchanged with no channel installed')
+  assert.ok(!app.tasks.listAlerts().some(row=>row.detail==='CHANNEL_TRANSPORT_UNAVAILABLE'),'terminal delivered notifications do not require a disabled transport')
+  assert.deepEqual((await f.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})).entries,taskNative.entries)
+  const pendingId='neutral-pending-disabled-channel'
+  await app.tasks.store.command({id:'fixture-pending-disabled-channel',kind:'notification.prepare',args:{notificationId:pendingId,taskId:parent.taskId,requirementRevision:parent.requirementRevision,kind:parent.kind,payload:parent.payload}})
+  await app.tasks.recover();await app.tasks.whenIdle()
+  const disabledPending=await app.tasks.store.query({kind:'notification.get',notificationId:pendingId})
+  assert.equal(disabledPending.state,'prepared');assert.equal(disabledPending.sendAttemptCount??0,0)
+  assert.ok(app.tasks.listAlerts().some(row=>row.alertId==='failure:'+pendingId&&row.detail==='CHANNEL_TRANSPORT_UNAVAILABLE'),'unfinished delivery still reports its missing transport')
+  assert.deepEqual(calls,['text-send','text-readback','file-send','file-readback'])
+  t.diagnostic(JSON.stringify({case:'default-neutral-tools',replyToSource:replyToSource??'omitted',disabledColdTerminalUnchanged:true,pendingTransportFailureRetained:true,taskStatus:task.status,drained:task.drained,sourceAclRejections:rejected.length+schemaRejected.size,resourceReads:resourceReads.length,visibleText:1,visibleFrozenFile:1,recipientNativeIds:sent.map(value=>value.recipientIds),literalUserVendorTextPreserved:true,realVendorExecuted:false}))
+})
+
+async function defaultDwsEcho(t,statusMode='success'){
+  const stages=new Map(),sent=[],triaged=[],historyReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
+  let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[]
+  t.signal.addEventListener('abort',()=>{statusGate.resolve();contentGate.resolve()},{once:true})
+  t.after(()=>{statusGate.resolve();contentGate.resolve()})
+  const f=await memoryHost(t,body=>{
+    const tools=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：'),handoff=requestEnvelope(body,'Router 交接请求：')
+    if(tools.includes('channel_triage_submit')){triaged.push(...triage.messages.map(message=>message.messageId));return {tool:'channel_triage_submit',args:{dispositions:triage.messages.map(message=>({sourceId:message.sourceId,messageVersion:message.version??message.messageVersion,needsHandling:message.messageId==='race-request',reason:'Only the original request needs a reply'}))}}}
+    if(handoff)return {text:JSON.stringify({currentIntent:'Preserve exact delivery identity',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(!tools.includes('resident_router_reply'))return {text:'No further action'}
+    const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=stages.get(key)??0;stages.set(key,step+1)
+    const source=input.events.find(event=>event.source?.messageId==='race-request')?.source
+    if(source&&step===0)return {tool:'resident_router_reply',args:{operationId:'race-reply',sourceId:source.sourceId,messageVersion:source.version,text:'Exactly one visible reply',recipientActorIds:[]}}
+    if(step===(source?1:0))return {tool:'resident_router_settle',args:{operationId:'race-settle:'+key,eventIds:input.events.map(event=>event.id)}}
+    return {text:'Settled'}
+  })
+  const flag=(args,name)=>{const index=args.indexOf(name);return index<0?undefined:args[index+1]}
+  const page=messages=>({complete:true,hasMore:false,failedCount:0,failures:[],foundCount:messages.length,notFoundMessageIds:[],messages})
+  const runner={async run(args){
+    assert.equal(flag(args,'--profile'),'fixture-profile');assert.equal(flag(args,'--format'),'json')
+    let value
+    if(args.includes('+messages-send')||args.includes('+messages-reply')){
+      assert.equal(sent.length,0,'uncertain delivery must never be resent')
+      sent.push({messageId:'race-visible',conversationId:flag(args,'--group')??flag(args,'--conversation-id'),text:flag(args,'--markdown')??flag(args,'--text')??flag(args,'--content'),senderOpenDingTalkId:'same-account',createTime:new Date().toISOString()})
+      value={sendReceipt:{openTaskId:'fixture-send'}}
+    }else if(args.includes('+messages-query-send-status')){
+      assert.equal(flag(args,'--open-task-id'),'fixture-send');statusStarted=true
+      if(!ready&&statusMode==='timeout')await statusGate.promise
+      if(!ready&&statusMode==='error')return {exitCode:1,stdout:'',stderr:'fixture status unavailable'}
+      value={contractVersion:'im.message-send-status.v1',success:true,openTaskId:'fixture-send',result:{sendStatus:ready?'SUCCESS':'PROCESSING',...(ready?{openConversationId:'race-room',openMessageId:'race-visible'}:{})},...(ready?{messageRef:{openConversationId:'race-room',openMessageId:'race-visible'}}:{})}
+    }else if(args.includes('+messages-mget')){
+      assert.equal(flag(args,'--msg-ids'),'race-visible');contentStarted=true;await contentGate.promise;value=page(sent)
+    }else if(args.includes('+chat-messages')){
+      const range={conversationId:flag(args,'--group'),start:flag(args,'--start'),end:flag(args,'--end')};historyReads.push(range)
+      value=page(history.filter(message=>message.groupId===range.conversationId&&Date.parse(message.occurredAt)>=Date.parse(range.start)&&Date.parse(message.occurredAt)<=Date.parse(range.end)))
+    }else throw Error('Unexpected fixture DWS command: '+args.slice(0,3).join(' '))
+    return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+  },spawn(args,callbacks){
+    const group=flag(args,'--chat-id')??flag(args,'--group'),done=Promise.withResolvers();assert.ok(group)
+    streams.set(group,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'))
+    return {done:done.promise,terminate(){done.resolve({exitCode:0})}}
+  }}
+  async function mount({recovering=false}={}){
+    const ctx=f.host.ctx;channels=ctx.channels
+    for(const channelId of ['dingtalk-dws','other-dws'])await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,{enabled:true,channelId,profile:'fixture-profile',accountMode:'system',writesAuthorized:true,operatorNotifications:false,listen:channelId==='dingtalk-dws',groups:['race-room','other-room'],assistantActorId:'same-account'},{runner})})
+    await ctx.plugin({inject,apply:child=>applyApplication(child,{...f.config,resident:{host:'127.0.0.1',port:0,taskSessions:{instanceId:'default-echo',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:'2026-01-01T00:00:00Z'}}})})
+    app=ctx.get('application');plugin=channels.plugins.get('dingtalk-dws');otherPlugin=channels.plugins.get('other-dws')
+    assert.equal(channels.operatorNotifications,undefined)
+    await eventually(()=>plugin.health.groups?.length===2&&plugin.health.groups.every(group=>group.listener?.state==='ready'&&(recovering||group.backfill?.state==='ok')),'real optional bridge ready with initial history',t.signal)
+  }
+  await mount()
+  const raw={groupId:'race-room',messageId:'race-request',senderOpenDingTalkId:'alice',text:'Please send one bounded reply',occurredAt:new Date().toISOString()}
+  const input=message=>({type:'chat-room',channelId:'dingtalk-dws',conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text})
+  const identity=channels.identity(input(raw));assert.notEqual(identity.sessionId,raw.groupId)
+  const ingressFile=join(f.host.ctx.runtimePaths.state,'channels','dingtalk-dws','ingress.json')
+  async function absent(message){
+    assert.equal(channels.groupContext(channels.identity(input(message)).sessionId)?.messageFacts?.[message.messageId],undefined,'no channel fact may precede identity resolution')
+    assert.equal((await app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===message.messageId&&source.groupId===identity.sessionId).length,0)
+    assert.equal(triaged.filter(id=>id===message.messageId).length,0)
+  }
+  return {f,sent,triaged,historyReads,raw,identity,ingressFile,input,absent,
+    get app(){return app},get plugin(){return plugin},get otherPlugin(){return otherPlugin},get channels(){return channels},
+    get statusStarted(){return statusStarted},get contentStarted(){return contentStarted},
+    receive:message=>plugin.acceptHistoryMessage(message),
+    emit(message){streams.get(message.groupId).onStdoutLine(JSON.stringify({conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,content:message.text,event_time:Date.parse(message.occurredAt)}))},
+    release(){ready=true;statusGate.resolve();contentGate.resolve()},
+    async restart(messages){history=messages;await f.close();streams.clear();await f.boot();await mount({recovering:true})},
+  }
+}
+
+test('default optional DWS filters exact echo before registration while content readback is pending',{timeout:nativeTestTimeout(45000)},async t=>{
+  const h=await defaultDwsEcho(t)
+  try{
+    await h.receive(h.raw);await eventually(()=>h.contentStarted,'real adapter content mget is in flight',t.signal)
+    const notice=(await h.app.tasks.store.query({kind:'notification.list'}))[0]
+    assert.equal(notice.ack.sendReceipt.openTaskId,'fixture-send');assert.equal(notice.ack.messageId,undefined);assert.notEqual(notice.state,'delivered')
+    const echo={...h.raw,messageId:'race-visible',senderOpenDingTalkId:'same-account',text:h.sent[0].text,messageAiSendFlag:'DWS'}
+    assert.equal((await h.receive(echo)).reason,'own-notification');await h.absent(echo)
+    const current=await h.app.tasks.store.query({kind:'notification.get',notificationId:notice.id});assert.notEqual(current.state,'delivered');assert.equal(current.receipt?.messageId,undefined);assert.equal(current.receipt?.observedAt,undefined)
+    const fresh={...echo,messageId:'same-account-real-message'}
+    assert.notEqual((await h.receive(fresh)).reason,'own-notification')
+    assert.notEqual((await h.receive({...echo,groupId:'other-room'})).reason,'own-notification')
+    assert.notEqual((await h.otherPlugin.acceptHistoryMessage(echo)).reason,'own-notification')
+    await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.length===4&&h.triaged.includes(fresh.messageId)},'three non-echo messages reach formal source and triage',t.signal)
+  }finally{h.release()}
+  await h.app.tasks.whenIdle()
+  await eventually(async()=>(await h.app.tasks.store.query({kind:'notification.list'}))[0]?.state==='delivered','original content readback completes delivery',t.signal)
+  assert.equal(h.sent.length,1);assert.equal((await h.app.tasks.store.query({kind:'task.list'})).length,0)
+  t.diagnostic(JSON.stringify({case:'default-optional-dws-echo',internalNativeScopesDiffer:true,operatorNotifications:false,echoFactsSourcesTriage:0,sendCount:1,contentReadbackRequired:true,realVendorExecuted:false}))
+})
+
+for(const mode of ['timeout','error'])test('default optional DWS defers unresolved '+mode+' identity and cold backfills the original older message once',{timeout:nativeTestTimeout(45000)},async t=>{
+  const h=await defaultDwsEcho(t,mode)
+  try{
+    await h.receive(h.raw);await eventually(()=>h.statusStarted,'original notification status query started',t.signal)
+    const deferred={...h.raw,messageId:'older-real-message',text:'A separate genuine request',occurredAt:new Date(Date.parse(h.raw.occurredAt)-120000).toISOString()}
+    h.emit(deferred)
+    const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'typed deferral persists its original lower bound',t.signal)
+    assert.ok(Date.parse(checkpoint.recoveryFromAt)<=Date.parse(deferred.occurredAt));assert.ok(Date.parse(deferred.occurredAt)<Date.parse(h.raw.occurredAt)-30000)
+    await h.absent(deferred);assert.equal(h.plugin.health.healthy,false)
+    const other={...deferred,groupId:'other-room',messageId:'other-scope-real-message'}
+    assert.notEqual((await h.receive(other)).reason,'own-notification')
+    await eventually(()=>h.triaged.includes(other.messageId),'another scope remains available during the unresolved send',t.signal)
+    h.release();await h.restart([deferred])
+    await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.some(source=>source.messageId===deferred.messageId)&&h.triaged.includes(deferred.messageId)},'cold complete history formally admits the same deferred message',t.signal)
+    await h.app.tasks.whenIdle()
+    const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===deferred.messageId)
+    assert.equal(sources.length,1);assert.equal(sources[0].version,1);assert.equal(h.triaged.filter(id=>id===deferred.messageId).length,1)
+    assert.ok(h.historyReads.some(range=>range.conversationId===deferred.groupId&&Date.parse(range.start)<=Date.parse(deferred.occurredAt)))
+    await eventually(async()=>JSON.parse(await readFile(h.ingressFile,'utf8')).recoveryFromAt===undefined,'only successful complete recovery clears the durable lower bound',t.signal)
+    assert.equal(h.sent.length,1);assert.equal((await h.app.tasks.store.query({kind:'task.list'})).length,0)
+    t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-'+mode,sourceCount:1,triageCount:1,oldTimestampRecovered:true,sendCount:1,realVendorExecuted:false}))
+  }finally{h.release()}
+})
+
+test('default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound',{timeout:nativeTestTimeout(45000)},async t=>{
+  const h=await defaultDwsEcho(t,'processing')
+  try{
+    await h.receive(h.raw);await eventually(()=>h.statusStarted,'original status remains PROCESSING',t.signal)
+    const deferred={...h.raw,messageId:'still-unconfirmed-real-message',text:'Await exact identity before admission',occurredAt:new Date(Date.parse(h.raw.occurredAt)-120000).toISOString()}
+    h.emit(deferred)
+    const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'unknown identity pins durable recovery',t.signal)
+    await h.absent(deferred);await h.restart([deferred])
+    await eventually(()=>h.plugin.health.groups.some(group=>group.backfill?.lastError==='CHANNEL_NOTIFICATION_IDENTITY_PENDING'),'cold history exposes unresolved identity rather than pretending success',t.signal)
+    await h.absent(deferred)
+    const current=JSON.parse(await readFile(h.ingressFile,'utf8'))
+    assert.ok(Date.parse(current.recoveryFromAt)<=Date.parse(checkpoint.recoveryFromAt));assert.equal(h.plugin.health.healthy,false)
+    assert.equal(h.sent.length,1);assert.notEqual((await h.app.tasks.store.query({kind:'notification.list'}))[0].state,'delivered')
+  }finally{h.release()}
 })

@@ -7,6 +7,7 @@ import {mkdtemp,rm,mkdir,readFile,writeFile,readdir,stat} from 'node:fs/promises
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
+import {pathToFileURL} from 'node:url'
 import {acquireLock,withLock,atomicWrite,readRegular} from '../src/runtime/files.js'
 import {runtimePaths,prepareRuntimePaths,prepareSecrets,environmentPaths,pathInventory} from '../src/runtime/paths.js'
 import {backupData,restoreData,sanitizedConfig} from '../src/runtime/backup.js'
@@ -14,8 +15,14 @@ import {loadConfig} from '../src/config.js'
 import {loadNativeEnvironment} from '../src/native-environment.js'
 import {createHost} from '../src/host.js'
 import {memoryHost} from './fixtures/memory-host.js'
+import {requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
 const config=root=>({installRoot:root,dataDir:'data',model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',models:[{id:'m'}]}}})
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'night-data-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
+async function initialize(root,{actor='fixture',model='m',keyEnv='MY_MODEL_KEY'}={}){
+  const child=spawn(process.execPath,['bin/night-bot-init.js','--root',root,'--actor',actor,'--provider','fixture','--model',model,'--key-env',keyEnv],{stdio:['ignore','pipe','pipe']})
+  let out='',error='';child.stdout.on('data',chunk=>out+=chunk);child.stderr.on('data',chunk=>error+=chunk)
+  const [code]=await once(child,'close');return {code,out,error}
+}
 test('portable defaults live below install root while explicit legacy paths remain unchanged',async t=>{
   const root=await fixture(t),file=join(root,'config.json');await writeFile(file,JSON.stringify(config(root)))
   const loaded=await loadConfig(file),paths=runtimePaths(loaded)
@@ -92,21 +99,75 @@ test('an interrupted restore blocks startup and new snapshots instead of accepti
   await assert.rejects(createHost(c),e=>e.code==='NIGHT_RESTORE_INCOMPLETE')
   await assert.rejects(backupData(c,join(root,'backups','snapshot')),e=>e.code==='NIGHT_RESTORE_INCOMPLETE')
 })
-test('managed launcher writes logs/tmp under data and starts the real loopback service',{timeout:nativeTestTimeout(15000)},async t=>{
-  let child,exited,output=''
-  t.after(async()=>{if(child?.exitCode===null&&child.signalCode===null){child.send({type:'night-bot-shutdown'});await exited}})
-  const root=await fixture(t),c=config(root),p=runtimePaths(c);await prepareRuntimePaths(p)
+test('initialized default CLI completes a real local task without loading a vendor plugin or probing DWS',{timeout:nativeTestTimeout(60000)},async t=>{
+  let child,exited,f,output=''
+  const progress={phase:'setup'}
+  t.signal.addEventListener('abort',()=>{const reply=f?.requests.flatMap(body=>body.messages).find(message=>message.role==='tool'&&/TASK_|[Ee]rror|validation/.test(String(message.content)));t.diagnostic(JSON.stringify({case:'default-cli-interrupted',progress,modelRequests:f?.requests.length,firstToolErrorCodes:reply?String(reply.content).match(/[A-Z][A-Z0-9_]{5,}/g):undefined,firstToolError:reply?.content,serviceOutput:output}))},{once:true})
+  t.after(async()=>{if(child?.exitCode===null&&child.signalCode===null){progress.phase='shutdown-cleanup';child.send({type:'night-bot-shutdown'});await exited}})
+  const root=await fixture(t),initialized=await initialize(root,{actor:'cli-owner'})
+  assert.equal(initialized.code,0,initialized.error)
+  const file=JSON.parse(initialized.out).config,c=await loadConfig(file),p=runtimePaths(c)
+  assert.ok(c.channelPlugins.every(plugin=>plugin.enabled===false),'disabled optional metadata must not activate any channel')
+  progress.phase='initialized'
+  f=await memoryHost(t,body=>{
+    if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(handoff&&!requestTools(body).length)return {text:JSON.stringify({currentIntent:'The local task is complete; retain its original ledger references',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=requestEnvelope(body,'Router 请求：');assert.ok(input)
+      if(body.messages.at(-1)?.role==='tool')return {text:'The local task completion event is committed.'}
+      return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'cli-settle:'+input.events.map(event=>event.id).join(',')}}
+    }
+    if(requestTools(body).includes('task_result'))return {tool:'task_result',args:{decision:{action:'complete',summary:'Default CLI local task verified',evidence:['original HTTP objective'],limitations:[]}}}
+    assert.fail('Unexpected default CLI model role')
+  })
+  await f.close()
   const http=await import('node:http'),reserve=http.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r))
-  c.resident={host:'127.0.0.1',port,groups:[],dws:{enabled:false,writesAuthorized:false},taskSessions:{instanceId:'layout-test',ownerActorId:'fixture',webActorId:'fixture',initialize:true,ingressEpoch:new Date().toISOString()}}
-  const file=join(root,'config.json');await writeFile(file,JSON.stringify(c))
-  child=spawn(process.execPath,['bin/night-bot-run.js',file],{stdio:['ignore','pipe','pipe','ipc']})
+  const stored=JSON.parse(await readFile(file,'utf8'));stored.providers.fixture=f.config.providers.fixture;stored.providers.fixture.apiKeyEnv='MY_MODEL_KEY';stored.resident.port=port
+  await writeFile(file,JSON.stringify(stored,null,2)+'\n')
+  const probeDirectory=join(p.temp,'default-cli-probe'),probe=join(probeDirectory,'observe.mjs');await mkdir(probeDirectory)
+  await writeFile(probe,String.raw`
+import childProcess from 'node:child_process'
+import {registerHooks,syncBuiltinESMExports} from 'node:module'
+import {writeFileSync} from 'node:fs'
+import {basename,join} from 'node:path'
+const directory=${JSON.stringify(probeDirectory)},repository=${JSON.stringify(new URL('../',import.meta.url).href)}
+const trace={pid:process.pid,entry:basename(process.argv[1]??''),phase:'started',modules:[],processCalls:0,dwsCalls:0}
+const save=()=>writeFileSync(join(directory,process.pid+'.json'),JSON.stringify(trace))
+const isDwsCommand=value=>/(?:^|[\/\s"'])dws(?:\.(?:exe|cmd|bat))?(?=$|[\s"'])/i.test(String(value).replaceAll(String.fromCharCode(92),'/'))
+registerHooks({load(url,context,nextLoad){if(['src/','packages/','bin/'].some(prefix=>url.startsWith(repository+prefix)))trace.modules.push(url.slice(repository.length));return nextLoad(url,context)}})
+for(const method of ['spawn','spawnSync','exec','execSync','execFile','execFileSync','fork']){
+  const original=childProcess[method]
+  childProcess[method]=function(command,...args){trace.processCalls++;if(isDwsCommand(command)||Array.isArray(args[0])&&args[0].some(isDwsCommand))trace.dwsCalls++;return Reflect.apply(original,this,[command,...args])}
+}
+syncBuiltinESMExports();save();process.once('exit',()=>{trace.phase='closed';save()})
+`)
+  child=spawn(process.execPath,['bin/night-bot-run.js',file],{env:{...process.env,MY_MODEL_KEY:'local-fixture',NODE_OPTIONS:[process.env.NODE_OPTIONS,'--import='+pathToFileURL(probe).href].filter(Boolean).join(' ')},stdio:['ignore','pipe','pipe','ipc']})
   for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>output+=chunk)
-  exited=once(child,'close')
-  let health
-  const deadline=performance.now()+nativeTestTimeout(4500)
-  while(performance.now()<deadline){if(child.exitCode!==null||child.signalCode!==null)assert.fail(output);try{const r=await fetch(`http://127.0.0.1:${port}/health`);if(r.ok){health=await r.json();break}}catch{}await new Promise(r=>setTimeout(r,30))}
-  assert.equal(health?.status,'ok',output||await readFile(join(p.logs,'service.log'),'utf8'));assert.ok((await readdir(p.logs)).includes('service.log'));assert.ok(Array.isArray(await readdir(p.temp)))
-  child.send({type:'night-bot-shutdown'});assert.equal((await exited)[0],0,output)
+  exited=once(child,'close');progress.phase='cli-spawned'
+  const base=`http://127.0.0.1:${port}`,poll=async read=>{for(;;){t.signal.throwIfAborted();const value=await read();if(value)return value;await new Promise(resolve=>setTimeout(resolve,30))}}
+  const health=await poll(async()=>{
+    if(child.exitCode!==null||child.signalCode!==null)assert.fail(output||await readFile(join(p.logs,'service.log'),'utf8'))
+    let response;try{response=await fetch(base+'/health',{signal:t.signal})}catch{return}
+    assert.equal(response.status,200);return response.json()
+  })
+  assert.equal(health.status,'ok');assert.equal(health.transport,'channels');assert.equal(health.outboundAuthorized,false);progress.phase='http-ready'
+  const response=await fetch(base+'/tasks',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({requestId:'default-cli-task',groupId:'local-cli-scope',title:'Local CLI verification',objective:'Return the exact local verification result without sending a channel message.'}),signal:t.signal})
+  const created=await response.json();assert.equal(response.status,200,JSON.stringify(created));assert.ok(created.taskId);progress.phase='task-created'
+  const detail=await poll(async()=>{const response=await fetch(base+'/state/tasks/'+created.taskId+'/detail',{signal:t.signal});assert.equal(response.status,200);const value=await response.json();return value.status==='completed'&&value.drained?value:undefined})
+  assert.equal(detail.completion.result.summary,'Default CLI local task verified');assert.equal(detail.ownerActorId,'cli-owner');assert.equal(detail.runSequence,1);assert.equal(detail.session.role,'execution');assert.deepEqual(detail.executions,[])
+  assert.ok(f.requests.some(body=>body.tools?.some(tool=>tool.function.name==='task_result')),'the real CLI must reach the local model/task tool loop')
+  assert.ok((await readdir(p.logs)).includes('service.log'));assert.ok(Array.isArray(await readdir(p.temp)))
+  progress.phase='task-completed-shutdown';child.send({type:'night-bot-shutdown'});assert.deepEqual(await exited,[0,null],output||await readFile(join(p.logs,'service.log'),'utf8'))
+  const traces=await Promise.all((await readdir(probeDirectory)).filter(name=>name.endsWith('.json')).map(async name=>JSON.parse(await readFile(join(probeDirectory,name),'utf8'))))
+  assert.equal(traces.length,2,'both the actual launcher and its service child must have loaded the observation hook')
+  assert.deepEqual(traces.map(trace=>trace.entry).sort(),['night-bot-run.js','night-bot.js']);assert.ok(traces.every(trace=>trace.phase==='closed'))
+  assert.ok(traces.find(trace=>trace.entry==='night-bot-run.js').processCalls>0,'actual launcher spawn is the process observation positive control')
+  const modules=[...new Set(traces.flatMap(trace=>trace.modules))],vendorModules=modules.filter(name=>name==='src/channels/plugins/dingtalk-dws.js'||name==='src/channels/plugins/dws-environment.js'||name==='packages/dingtalk-core/dws-runner.js')
+  assert.ok(modules.includes('src/application.js'));assert.ok(modules.includes('src/host.js'));assert.deepEqual(vendorModules,[]);assert.equal(traces.reduce((sum,trace)=>sum+trace.dwsCalls,0),0)
+  const moduleLoads=Object.fromEntries(['src/channels/plugins/dingtalk-dws.js','packages/dingtalk-core/dws-runner.js','packages/dingtalk-core/dws-bridge.js','packages/dingtalk-core/dws-adapter.js','packages/dingtalk-core/group-message.js'].map(name=>[name,traces.flatMap(trace=>trace.modules).filter(value=>value===name).length]))
+  t.diagnostic(JSON.stringify({case:'initialized-default-cli',taskStatus:detail.status,drained:detail.drained,enabledChannels:c.channelPlugins.filter(plugin=>plugin.enabled).length,observedProcesses:traces.length,moduleLoads,dwsProcessCalls:traces.reduce((sum,trace)=>sum+trace.dwsCalls,0),naturalExit:0,realVendorExecuted:false}))
+  assert.equal(moduleLoads['packages/dingtalk-core/dws-bridge.js'],0);assert.equal(moduleLoads['packages/dingtalk-core/dws-adapter.js'],0)
 })
 
 test('new Night Bot data restores A to B: continued Pi history, workspace, scheduled task, attachment and Markdown memory',{timeout:20000},async t=>{
@@ -155,10 +216,11 @@ test('new Night Bot data restores A to B: continued Pi history, workspace, sched
 })
 
 test('initializer creates unique private generic configuration, honors install layout and never overwrites it',async t=>{
-  const root=await fixture(t),run=()=>new Promise(resolve=>{const child=spawn(process.execPath,['bin/night-bot-init.js','--root',root,'--actor','my-own-id','--provider','fixture','--model','my-model','--key-env','MY_MODEL_KEY'],{stdio:['ignore','pipe','pipe']});let out='',error='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>error+=d);child.on('exit',code=>resolve({code,out,error}))})
+  const root=await fixture(t),run=()=>initialize(root,{actor:'my-own-id',model:'my-model'})
   const first=await run();assert.equal(first.code,0,first.error);const file=JSON.parse(first.out).config,c=await loadConfig(file)
-  assert.equal(c.installRoot,root);assert.equal(c.workspaceDir,join(root,'data/workspaces'));assert.equal(c.resident.taskSessions.ownerActorId,'my-own-id');assert.deepEqual(c.channelPlugins,[])
-  assert.equal(c.model.model,'my-model');assert.equal(c.providers.fixture.apiKeyEnv,'MY_MODEL_KEY');assert.doesNotMatch(await readFile(file,'utf8'),/REPLACE_WITH|2026-11-04/)
+  assert.equal(c.installRoot,root);assert.equal(c.workspaceDir,join(root,'data/workspaces'));assert.equal(c.resident.taskSessions.ownerActorId,'my-own-id');assert.equal(c.resident.taskSessions.webActorId,'my-own-id')
+  assert.ok(c.channelPlugins.every(plugin=>plugin.enabled===false));assert.ok(Number.isFinite(Date.parse(c.resident.taskSessions.ingressEpoch)))
+  assert.equal(c.model.model,'my-model');assert.equal(c.providers.fixture.apiKeyEnv,'MY_MODEL_KEY');assert.doesNotMatch(await readFile(file,'utf8'),/REPLACE_WITH_OWNER_ID|SET_CURRENT_UTC_TIMESTAMP|2026-11-04/)
   assert.notEqual((await run()).code,0)
 })
 

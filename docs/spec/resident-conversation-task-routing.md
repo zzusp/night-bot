@@ -261,3 +261,112 @@ flowchart TD
 实施后按影响运行 `pnpm test`、`pnpm test:runtime`、`pnpm test:routing`，并覆盖本次受影响的 domain/containment、严格 journal/归档以及 native source/hash/import guard。使用隔离目录、本地脚本模型和假渠道验证默认接线；真实模型效果、Windows/Linux 平台限制、真实 DWS 发送单独报告。本文的源码/API核验不算这些测试通过。
 
 最终完成的判据：默认消息路径不再创建或依赖 Topic；一级分诊只快速判断处理/回复且不拆事项；每个 conversation 的 Router 职责可跨重启和换代延续；事项拆分与安排由 Router 负责，任务保持唯一执行会话；A→B 在当前授权和证据条件下可靠推进；无丢消息、重复执行、越权或归档扩散；Router 空闲交接失败不损坏已完成业务。
+
+
+## 13. 2026-11-07 钉钉产品闭环追加快照
+
+追加基线：原PR #2仍OPEN，head `d27350972df888bf864186eabe64513c12460382`。原重构交付及轮次保留；当前目标从代码接线验收推进为指定测试群的完整产品闭环，不以全量回归作为新门槛。唯一进度仍在原goal，本文只保存本次实施前取舍，不复制后续流水。
+
+### 已核缺口与最小方案
+
+- DWS保持可选渠道插件，配置groups驱动真实订阅；当前统一入站首次订阅使用硬编码通用responsibility，triage未接配置职责，Router/task已有责任字段，reflection只有无工具复盘规则。需要把可信渠道配置接入这条真实链，不能只在示例中增加字段。
+- 采用一条可信prompt/责任配置，沿现有responsibility使用：按认证channel与conversation精确解析，会话配置优先于渠道默认；未配置保留既有职责/通用默认。配置入口使用参数，不从消息正文/envelope或环境变量推断角色职责，不引入角色prompt矩阵或第二套权限权威。
+- 已定接口为`channels.responsibility(sessionId)`；`undefined`保留既有resident职责/首次通用默认，空字符串明确清空；启动快照，配置修改重启生效。Core对四角色共用resolver，并仅对已明确配置的既有群同步，不以真值判断吞掉空字符串。
+- 分诊、Router、单任务执行和无工具复盘各保留原角色限制；prompt承载职责、设定和行为规范，不能生成发送许可、放宽任务/记忆scope或绕过来源/版本/收据守卫。配置更新/已有会话生效规则由实现明确，文档按实际行为说明，不虚称热更新。
+- Windows沿现有system账号策略和显式profile，不复制凭据或改变CLI全局选择；使用独立本机运行数据与空闲loopback端口，不替换其它安装。真实目标标识/账号只在私有配置，源码和文档均为占位符。
+
+### 验证与实际接入边界
+
+- 先用现有Host/脚本模型/假渠道能力做最短定向证明：prompt按群隔离、四角色实际输入、配置入站身份不可伪造；相关旧case依据当前合同调整，不逐个修整批历史测试，不跑全量。
+- 指定群的最终验证必须来自真实DWS订阅/回填路径，保留可关联的来源、Router事项、执行session、群内消息/附件readback与持久review；注入不算监听，健康或队列idle不算产品完成。
+- 单成员同账号：现有bridge在task-session模式先交Host入站，旧按显示名匹配outbox的分支不参与；是否保留人工消息并拒绝自动回声必须按实际监听事实核，不通过放宽automated/own-notification检查凑通过。
+- 当前会话仍受原真实外发禁令约束，主控转达尚未由本会话真人解除；只准备隔离实例，不连接或发送，也不让别的执行者绕过。没有新CI、合并或生产部署授权。
+
+实施分工以goal的本次单写增量为准；Core/Platform直接对齐可信resolver，原Tests唯一运行，Docs补操作说明，Review核实际diff，Lead回收证据并更新原PR。不新建团队/会话/定时器。
+
+
+## 14. 通用替代能力与可选渠道边界（SG10开工快照）
+
+起点：2026-11-07，Night HEAD `2e6cf2e`/clean；旧仓仅只读当前checkout `c6722651ccb58063a92faca163f107e9641031e0`，本地main落后其origin/main 496且已有无关改动，不能代表远端最新/实际生产。原SG1–9保持历史证据，本节记录实施前取舍，持续进度只更新原goal。
+
+### 当前证据与替代差距
+
+| 范围 | 当前可核证据 | 必要动作/不声称范围 |
+| --- | --- | --- |
+| 群聊真实收发、附件、恢复、复盘 | 旧README:19–43要求通知/业务分账和严格回读；Night SG9已有指定群真实独立事项、文件重下载、同event复盘及冷恢复证据 | 复用已有证据，仅重验本轮确受影响路径；不等于所有平台/所有任务可替代 |
+| 通用主体/会话/收件人 | Night resident-router-business:104/114公开atOpenDingTalkIds；service:45–49把中性读回投影为历史senderOpenDingTalkId；single-session:2/116挂载group-message指令 | 核心工具/prompt使用通用actor/conversation/recipient，vendor映射留插件；保留旧来源路径/审计可追溯，不全库替换 |
+| 无插件默认路径 | loader:6/11内置dingtalk-dws URL/type，:28–35只加载显式enabled项 | 默认产品实际执行证明不加载/探测DWS；决定是否将内置注册移到可选插件元数据，不能把一个URL声明等同真实probe |
+| 持续任务/技能/命令与后台job | 旧README:11–17/41–45说明旧Owner/多执行和原生工具/job合同 | 对照Night当前默认调用链与可复用实测，不恢复Owner/Topic/多执行；不以来源文件存在或48B demo证明通用执行全覆盖 |
+| 人工请求/身份配置 | 旧README:37明确operator技术问题与requester业务问题分流；身份别名/署名仍需核当前源码 | 核Night实际默认行为与可选渠道权限；个人身份/账号/业务规范只在私有部署/渠道配置，不写仓库模板 |
+| 运行环境/数据 | Night VALIDATION:3明确Windows非Linux进程privacy失败关闭；旧README:5说明自身清洁启动，不代表Night数据迁移 | 不关闭sandbox；给明确支持环境/部署前置与可执行准备，保留Night数据，必要离线变化有--check；绝不改/导入旧DSH数据 |
+
+### 最小方案与取舍
+
+1. 仅给vendor字段换显示名、保留核心schema/prompt：不能满足通用合同，排除。
+2. 全库vendor词替换/包名重写/重造编排：会改历史审计、来源与既有数据，超出目标并放大回归，排除。
+3. 采用现有通用channel identity/transport边界，公开工具与当前核心通知合同改为中性字段；必要历史账投影留在明确内部边界，钉钉认证/原生收件人、quote/mention/resource/send/readback只在可选插件映射。Core与Platform先对齐当前调用链后实施，确需Night离线数据变化才另给显式--check，不默认添加兼容层或静默迁移。
+
+验收最短路径：实际无插件默认产品＋受影响通用chat/chat-room/收件人/source版本/跨群拒绝/unknown不重放，真实vendor仅由原Tests按现有Night Bot Test授权做必要最小动作。Windows/Linux结果分报，保留失败与未验，不扩大为新全量。Docs只据已核合同更新AGENTS及必要接入/部署前置。原PR push前核state/目标线/CI入口，已合或会触发CI则保留本地成果并报告，不擅自另开分支/PR。
+
+### 技能私有复用追加决策
+
+2026-11-07追加范围沿用SG10。最新明确要求覆盖任何仓库技能模板解释：复用Skill的正文、脚本、references和assets仅进入原安装已忽略的私有`data/config/skills`或适当插件私有技能目录，禁止提交；代码只允许必要通用加载/隔离机制及无正文配置说明。原Core唯一写技能，Platform/Tests/Docs现有职责不变，源仓只读，不复制身份、私有业务数据或凭据。
+
+现状已读：`src/native-skill-filesystem.js`已有custom根、原生frontmatter、provider及`bundledSkillDir`机制；`src/host.js`的portable组合使用`data/config/skills`等受控配置根，`skillDirs`必须留在安装根。存在加载能力不证明目标Skill可发现、可读取或工具可执行。关于独立个人技能包的消息目前只是转述，实际安装指针、来源、许可证和兼容性仍须核证，不从node_modules陈旧worktree推断。
+
+1. 把旧技能全部拷成仓库模板：违反最新不入库要求，也可能带入个人配置/不兼容工具，排除。
+2. 为执行旧技能恢复DSH底座、旧Owner/Topic或旧工具ABI：扩大产品边界并冲突当前单执行合同，排除。
+3. 优先现有Native技能机制，先核来源/许可/依赖，选择兼容通用能力私有复用；DingTalk/DWS专属技能只随显式启用的可选渠道能力加载。仅在实际证明现机制有缺口后补最小加载/隔离代码，先交接具体文件，不复制业务Skill正文到源码或测试fixture。
+
+复制前读现有目标并执行`git check-ignore`，复制后复核忽略状态，提交前独立核staged/tracked无复用材料。验收必须经过真实任务执行session发现和读取所复用Skill，以及无插件默认路径不加载钉钉专属能力；只保留必要来源/版本/hash及行为摘要，不公开技能正文、账号、私有路径或凭据。准确来源缺失或许可/工具不兼容时保留具体阻断，不伪造已安装，不暂停其它SG10必要实现。
+
+### 已接纳未结批次的显式受控续办
+
+2026-11-07，SG10原安装技能任务已在唯一执行session完成读取并达到completed/drained/run1；随后Router的脚本模型因漏角色返回400，原business packet已admitted而task.completed未settled。实际调用链证明这是恢复能力缺口：deliver对admitted ID保持duplicate/no-replay；普通recover/retry只重新schedule；cursor0且有pending禁止generation handoff。不能用换task/session、重写日志或直接consume事件补验收。
+
+比较后排除：①重启或把deliver改为自动重发，会无效或破坏原admission去重；②绕过pending/游标guard换generation，会丢失业务所有权证明；③直调SDK agent.continue/普通NativeSessionController，缺应用授权、AgentSession生命周期和持久化边界。选择在现有Router lifecycle与official factory间补Host-only显式续办，不开放模型工具，不新增HTTP API、schema、通用重试平台或DSH兼容层。
+
+最小合同：
+
+- Host显式指定原conversation/generation/activeSession、原packet及确定失败的模型轮/原生entry证明；核当前active phase、官方live actor、idle、无并发/较新待输入、原packet及对应未结event身份。过期、外来、取消、已处理、篡改或并发请求在模型请求前拒绝。
+- 沿当前Pi 1.5.0公开AgentSession接口和原SessionManager历史继续。必要的Host控制custom message必须明确是非业务控制，不充当用户来源/授权，不创建新business packet，不重跑enqueue/deliver，不改原admission及已提交entry。不能调用SDK私有_startRun、改SDK状态/消息数组或自行实现推理循环；原工具/权限/资源/图像预算/持久化/排空钩子全部保留。
+- 受控请求需绑定原失败checkpoint，使重复或过期调用不能再启动模型；继续发生新的失败时保留其原生历史及未结事件，不自动循环。完成后重查本批全部event已settled，再走现有正常handoff流程；不将admitted等同业务消费完成。未知副作用和owner/store失败仍失败关闭，不能通过续办清账或重新发送。
+- 默认application在tasks.recover拒绝时会被Cordis卸载，不能捕获启动失败后取失效服务续办。排除新增application维护模式及继续从失败实例操作，选择在现有Router lifecycle/task service仅将确定ROUTER_BATCH_UNSETTLED保留为可观测degraded/恢复失败，使Host显式续办可达；逐conversation保留错误，不能遮蔽其它scope的journal、owner或store异常，这些异常继续失败关闭。定时recover不启动新推理，原pending不消费；仅本批真正settled后清对应错误，不伪报恢复完成。
+- Platform唯一写Router lifecycle、official factory、official session wrapper，以及task-session-service中必要Host方法委托和上述精确恢复告警；Core显式交出该最后文件本次写权，其余冻结源码不动。若这四文件不能承载，先说明已证缺口及准确新增文件范围再协调，不先扩平台。Lead独占方案/goal/来源manifest及最终guard，Tests独占测试和原安装，Review只读核边界。
+
+验证仅覆盖新影响：真实默认Host本地SSE模型失败后严格冷开原journal，以同packet/原admission续同一批并完成；拒绝过期/跨conversation、重复/并发续办且不新增模型请求，保留原journal前缀、业务输入唯一性与后续冷启不重放。再由唯一Tests在原安装续现有task.completed，任务/session/run1和原15journal/config/私有技能边界保持；不得新建替代任务或重跑已完成技能执行。最终来源/import/native guard扩充绑定新触及factory/session文件；旧725版通过证据不冒充新代码通过。原正常CLI/neutral/cold结果按实际源码影响复用，不重复全量。
+
+同日写后反证追加：`router.inbox`最多投影30条，生产内部事件没有pending总数上限，30条原批次之后的新第31条会被截断，原相等比较与native pending均看不到它。为兑现无较新待输入合同，精确增加第五文件`src/channels/router-ledger.js`的只读pending总量投影，并在原lifecycle续办校验中要求总量与原eventIds长度相等；不提高每批30/用户15上限、不增加schema或通用分页机制。Platform仍唯一写，等Tests当前在途终态后交接冻结，补满批溢出的模型前拒绝反证。
+
+动态验证后的必要决策：首组真正续轮在`memory.beforeRun`以`MEMORY_ADMISSION_REQUIRED`拒绝，证实冷开raw admission.current为空，而正常deliver才设置current。排除放宽记忆准入/控制文本冒充来源，也排除冷启全局猜最后packet或再deliver；只在既有factory/session wrapper增加每actor、单控制轮寿命的原packet视图。factory仍先核原lookup/native checkpoint/SQL/count/authorize，wrapper在claim持久化且afterClaim成功后绑定，构造时稳定且冻结的current函数按次返回原{id,messages:[packet]}副本，完整公开SDK续轮及原失败检查以finally撤销；正常路径委托原current。raw admission、memory、去重及历史不改，不增加第六文件。
+
+原安装续办后的并发恢复决策：原批次已真实settled/consumed、cursor1且原proof已消费，后续却出现NOT_LIVE，账本记录handoff aborted/interrupted-handoff、未发布candidate。源码确认普通recover在conversation tails之外处理phase和释放旧owner，可能把活交接误作冷中断；堆栈只指预创建Error，不据此独断现场唯一交错。排除放宽factory live、停5秒恢复timer或ifbusy静默跳过；仅在现有lifecycle把phase恢复、published旧owner清理与正常drain/rotate纳入同conversation队列，并在队列内读当前row。保持确定unsettled告警与其它scope错误传播、资源join。以live handoff与普通recover确定交错验证，再在原安装经正式普通recover完成同Router交接；原已settled批次不再resume、不新任务/业务packet、不手工改账。
+
+### DWS现场同次父说明的显式引用增量
+
+2026-11-07，真人明确目标“完成 DWS 现场验收”。在`67d2d50`核当前公开Router schema及Host冻结链：普通无显式受众的reply默认引用并提及原作者；显式`recipientActorIds`或`taskDelivery`进入最终通知分支，不从原来源默认补quote。公开工具没有引用参数，因此无法选择“同次文件交付父说明原生引用当前消息且显式@请求人”，虽然可选DWS底层已有这两个协议参数。引用溯源`sourceRef`不等于发送quote。此缺口与R9现场新增工具的来源定性独立，不据此解释现场事件。
+
+三方案：恢复最终通知自动quote/从sourceRef反推会破坏已验默认受众合同，排除；开放任意replyTo消息/作者或另加通用quote对象需要新的目标与版本授权，超出“回复当前消息”，暂不采用；选择中性、仅true的可选`replyToSource`，明确引用本次`sourceId/messageVersion`已验证的原消息。未选择时全部保持现有默认，不引入vendor字段、数据库schema、HTTP入口或新的推理路径。
+
+- 原同conversation、Router代际、当前source版本检查先执行；Host仅在显式opt-in时从该受信source绑定`replyToMessageId=source.messageId`与`replyToActorId=source.actorId`。模型不能另选消息或冒充作者。
+- 引用作者可能收到平台原生通知；显式受众须包含该作者，空数组或只选他人时在冻结/发送前拒绝，不自动扩大受众。`taskDelivery`仍核原任务来源、当前完成版本及冻结artifact manifest。
+- 解析后的引用、受众沿原replyRequest/payloadDigest冻结；同operationId改变语义仍冲突，不改写旧收据/历史/unknown，不自动补发。只给父说明原生quote/@；文件child保持现有顺序与受众账，不声称DWS文件协议支持独立quote/@。
+- 最小实现仅Router公开schema/描述/prompt及task-session-service的Host opt-in解析，Core单写；Tests补原工具到冻结父说明的有效引用、默认不引用、缺引用作者拒绝、同操作语义冲突最短验证，再按当前指纹做真实现场。Lead同步来源hash/guard，Docs维护实际合同；真实平台字段缺失保留未验证，不用SUCCESS冒充原生引用或@已验。
+- R9当前实例已正式IPC自然退出、43项源码不变，原任务/通知与18原journal前缀受保护；新来源及排期的定性仍由Tests离线取证。本增量未借重启重放旧事项，不改DB/日志或私有配置；待具体写入交接后实施。
+
+### DWS发送确认后的自身回声与持久暂缓
+
+R9运行版`67d2d50`的真实ACK仅带openTaskId，不带消息或会话ID。原Tests证实新通知在ack后、正式回读落receipt前的SDK回声进入source/triage，后receipt精确消息ID及经context映射后的会话均与之相同；原源码/配置和旧业务保持，现场已自然关闭。不能将此归因于ACK解析漏字段，也不能把另一条此前未入账真人消息的首次承接称为重放；其排期结果expired，没有未来排期。
+
+已核责任链：默认application只注入operator通知服务，operator未开时现有native observer拿不到querySendStatus；可选DWS plugin未注入自身adapter。即使有query，探针把内部conversation scope与厂商会话直接比较，无法获得精确proof。unifiedIngress又在探针前登记channel fact。修复应保持核心中性身份，在可选插件边界完成已绑定channel/context的厂商映射。
+
+三方案：扩大ACK字段解析没有真实mid可用，排除；等待整条通知内容/文件readback会将同scope入口与资源下载耦合且不能解决unknown身份，排除；采用既有有界精确状态探针，在fact/source登记前核身份。沿原openTaskId、SUCCESS、厂商conversation/message逐项验证，才投影到原内部scope的outbox身份，不改通知终态、不替代内容/文件回读、不重发。
+
+- 仅同channel/scope存在可能已发送而身份未决的starting/unknown通知时触发该边界；prepared未发、按原规则已证未发或无待核通知不阻塞。先查已知精确自身消息，再探针，随后fresh核cache/outbox；得到精确身份才判own或排除此发送。其它scope、同账号/正文/泛DWS标记不能作为丢弃理由。
+- 1500ms探针超时、查询错或非SUCCESS不等于真人：仍有未决发送则显式抛`CHANNEL_NOTIFICATION_IDENTITY_PENDING`，不登记fact/source或作已消费/ignored回执。保持现有有界等待和unknown语义，错误保留cause，不增加循环重试或无限挂住单请求。
+- 仅抛错不能保晚到真人：原bridge listener/backfill异常只记错误，后续默认起点为最新消息减30秒，失败的更早消息可能永久越过。故精确增加bridge文件，在此typed暂缓结束前借现有controlTail/saveIngressState/recoveryFromAt及entry epoch持久钉住原消息/本轮起点的更早边界；原补读timer及重启继续覆盖，完整成功后才清水位。保存失败显式可观察，不宣称恢复保证或静默按真人通过；不新加state字段/队列/调度器。
+- pause原在controlTail内等待inflightMessages；若message pin也等该tail会自等待。仅将pause的资源drain等待放到状态串行队列外，返回仍等待drain，pin/pause/resume/finish共享原状态队列，不增加锁。
+- 产品最小范围：可选plugin、native-dws-send、task-session-service、dws-bridge四文件。Platform可先单写三个无交叉文件；service须待Core交回quote增量后再串行移交Platform叠加登记前guard，不能覆盖已确认增量。Lead维护本快照/来源hash，Tests写必要确定性交错与实际同安装验收，Review独立核；实例与旧账均不手改。
+- 最短验证以默认application+真实optional plugin注册（operator关闭、internal!=native、仅openTaskId ACK、mget挂起）证echo在登记前过滤且send仍1/未伪造delivered；同账号/正文的新真人及异scope不误滤，探针失败后的晚到真人经持久水位冷恢复正式接纳一次，pause无自等待。该恢复保证只验获准群chat-room，不外推未启用directChats；真实平台仍由唯一Tests执行。
+
+本增量仅修Router/任务队列notification的自身回声；原native operation的send/status支路未在本轮统一typed scope及query接线，不承诺shell原生发送的通用回声修复，也不为此扩大本轮实现或现场范围。

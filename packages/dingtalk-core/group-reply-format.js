@@ -1,11 +1,11 @@
-import { assertGroupReply } from './group-message.js'
+import {assertConversationReply} from '../../src/channels/message-safety.js'
 
 // Explicit Agent configuration only; never infer an identity from names or prose.
 export function normalizeReplySignature(value = '') {
   if (typeof value !== 'string' || /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(value)) throw new Error('GROUP_REPLY_SIGNATURE_INVALID')
   const signature = value.trim()
   if (signature.length > 80 || /^[-*•]/u.test(signature)) throw new Error('GROUP_REPLY_SIGNATURE_INVALID')
-  assertGroupReply(signature)
+  assertConversationReply(signature)
   return signature
 }
 
@@ -61,14 +61,14 @@ function withoutSourceQuote(text, sourceText) {
 
 /**
  * Presentation only: the caller decides whether and when a notification is allowed.
- * DWS owns the native quote and mention; do not duplicate either as display-name text.
+ * The channel owns native quote and mention; do not duplicate either in the body.
  * Evidence and limitations must already be public, verified task-session statements.
  */
-export function formatTaskGroupReply({ source, summary, evidence, limitations, signature, includeSignature = true, internalIds = [], allowUnrouted = false } = {}) {
-  const groupId = required(source?.groupId, 'GROUP_ID')
-  const unrouted = allowUnrouted && !source?.messageId && !source?.senderOpenDingTalkId
+export function formatTaskConversationReply({ source, summary, evidence, limitations, signature, includeSignature = true, internalIds = [], allowUnrouted = false } = {}) {
+  const conversationId = required(source?.conversationId, 'GROUP_ID')
+  const unrouted = allowUnrouted && !source?.messageId && !source?.actorId
   const replyToMessageId = unrouted ? undefined : required(source?.messageId, 'SOURCE_MESSAGE_ID')
-  const replyToSenderOpenDingTalkId = unrouted ? undefined : required(source?.senderOpenDingTalkId, 'SOURCE_SENDER_ID')
+  const replyToActorId = unrouted ? undefined : required(source?.actorId, 'SOURCE_SENDER_ID')
   const clean = text => withoutConfiguredReplySignature(text, signature)
   const body = required(withoutSourceQuote(clean(required(summary, 'SUMMARY')), source.text), 'SUMMARY')
   const facts = lines(evidence, 'EVIDENCE').map(clean).filter(Boolean)
@@ -81,9 +81,16 @@ export function formatTaskGroupReply({ source, summary, evidence, limitations, s
   const sign = normalizeReplySignature(signature)
   if (sign && includeSignature) sections.push(`- ${sign}`)
   const text = sections.join('\n\n')
-  assertGroupReply(text, internalIds)
+  assertConversationReply(text, internalIds)
   if (/通过AI发送|全部已读|(?:查看|见|打开)(?:\s*Agent)?\s*本地(?:任务)?详情|(?:调度|内部)(?:任务)?编号\s*[:：]?\s*SG\d+|(?:\/workspace\/|\/tmp\/|[A-Za-z]:\\Users\\)/iu.test(text)) {
     throw new Error('GROUP_REPLY_PRIVATE_OR_PLATFORM_TEXT')
   }
-  return { groupId, text, ...(unrouted ? { atOpenDingTalkIds: [] } : { replyToMessageId, replyToSenderOpenDingTalkId, atOpenDingTalkIds: [replyToSenderOpenDingTalkId] }) }
+  return { conversationId, text, ...(unrouted ? { recipientActorIds: [] } : { replyToMessageId, replyToActorId, recipientActorIds: [replyToActorId] }) }
+}
+
+// Historical group callers retain their existing projection; new business uses actor IDs.
+export function formatTaskGroupReply({source,...options}={}) {
+  const {conversationId,recipientActorIds,replyToActorId,...reply}=formatTaskConversationReply({
+    ...options,source:{...source,conversationId:source?.groupId,actorId:source?.senderOpenDingTalkId}})
+  return {groupId:conversationId,...reply,...replyToActorId!==undefined?{replyToSenderOpenDingTalkId:replyToActorId}:{},atOpenDingTalkIds:recipientActorIds}
 }

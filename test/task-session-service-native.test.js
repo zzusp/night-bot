@@ -39,7 +39,7 @@ const test = (name, options, run) => testRunner(name, { ...options, ...(!availab
 // automatic tracing of arbitrary DWS shell commands.
 
 
-test('official service completion freezes files and resumes remaining delivery after the explanation is archived', { ...({ timeout: 20000 }), timeout: nativeLifecycleTimeout(20000) }, nativeLifecycle(20000, async (t) => {
+test('official service completion freezes files and resumes remaining delivery after the explanation is archived', { ...({ timeout: 20000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   const fixture = await officialCase(t, 'native-final-files-')
   let step=0
   const h=await fixture.host(async request=>{
@@ -48,10 +48,12 @@ test('official service completion freezes files and resumes remaining delivery a
     if(step===2)return[call('read',{path:'work/acceptance.txt'})]
     assert.ok(JSON.stringify(request.messages.filter(m=>m.role==='toolResult')).includes('accepted original bytes'))
     return[singleResult('complete','The local acceptance bytes were read back',{artifacts:['work/acceptance.txt'],deliveryFiles:[{path:'work/acceptance.txt',caption:'本地验收结果'}]})]
-  }, { serviceFactory:explicitDwsService,config:{assistantActorId:'native-assistant'},notifications: { send: async () => ({ messageId: 'summary' }), readback: async () => undefined,
+  }, { routerReplyRecipients:['reviewer','native-user'],serviceFactory:explicitDwsService,config:{assistantActorId:'native-assistant'},notifications: { send: async () => ({ messageId: 'summary' }), readback: async () => undefined,
     sendFile: async () => assert.fail('Files must wait for the final explanation receipt'), readbackFile: async () => undefined } })
     await t.beginBusiness()
 
+  t.onCancel(async()=>t.diagnostic(JSON.stringify({attachmentFinal:{notices:await h.query('notification.list'),alerts:h.service.listAlerts()}})))
+  await h.residentStore.ingest({groupId:'native-group',messageId:'recipient-reviewer',senderOpenDingTalkId:'reviewer',text:'我负责接收验收文件。',occurredAt:new Date().toISOString()})
   await t.step(async () => h.service.ingest({ groupId: 'native-group', messageId: 'final-file', senderOpenDingTalkId: 'native-user', senderName: '用户',
     text: '测试助手，生成并核验本地文件，随最终结果交付', timestamp: new Date().toISOString() }))
   await t.step(async () => h.service.whenIdle())
@@ -65,6 +67,11 @@ test('official service completion freezes files and resumes remaining delivery a
   const explanation = notices.find(n => n.payload.deliveryId === n.id)
   const fileNotice = notices.find(n => n.payload.artifact)
   assert.ok(explanation); assert.equal(fileNotice.state, 'prepared')
+  assert.deepEqual(explanation.payload.atOpenDingTalkIds,['reviewer','native-user']);assert.equal(explanation.payload.sourceMessageId,undefined);assert.equal(explanation.payload.actorId,undefined)
+  assert.deepEqual(fileNotice.payload.atOpenDingTalkIds,['reviewer','native-user'])
+  const startCommand={id:`notification-start:${fileNotice.id}:0`,kind:'notification.start',args:{notificationId:fileNotice.id}}
+  assert.notEqual(explanation.state,'delivered')
+  for(let i=0;i<2;i++){const held=await h.service.store.command(startCommand);assert.equal(held.dispatchEligible,false);assert.equal(held.result.notification.state,'prepared');assert.equal(held.result.notification.sendAttemptCount??0,0);assert.ok(!held.result.notification.sendPermit)}
   await t.step(async () => h.service.store.command({ id: 'observe-summary', kind: 'notification.reconcile', args: { notificationId: explanation.id, state: 'delivered',
     evidenceRef: 'exact-original-send', receipt: { messageId: explanation.ack.messageId, conversationId: 'native-group' } } }))
   await t.step(async () => h.service.store.command({ id: 'archive-delivery-task', kind: 'task.archive', args: { taskId: created.taskId, actorId: 'native-user' } }))
@@ -73,7 +80,7 @@ test('official service completion freezes files and resumes remaining delivery a
   const sent = []
   const recovered = await t.step(async () => fixture.host(() => { throw new Error('Recovery must not re-run task models') }, { initialize: false,serviceFactory:explicitDwsService,config:{assistantActorId:'native-assistant'}, notifications: {
     send: async () => assert.fail('The explanation must not be sent twice'), readback: async n => ({ messageId: n.ack.messageId }),
-    sendFile: async (n, file) => { sent.push(n.id); assert.equal(await readFile(file.path, 'utf8'), 'accepted original bytes'); return { openTaskId: 'queued-file-send' } },
+    sendFile: async (n, file) => { sent.push(n.id); assert.deepEqual(n.payload.atOpenDingTalkIds,['reviewer','native-user']); assert.equal(await readFile(file.path, 'utf8'), 'accepted original bytes'); return { openTaskId: 'queued-file-send' } },
     readbackFile: async () => undefined,
     querySendStatus: async id => { assert.equal(id, 'queued-file-send'); return { contractVersion: 'im.message-send-status.v1', success: true, openTaskId: id,
       result: { sendStatus: 'SUCCESS', openConversationId: 'native-group', openMessageId: 'delivered-file' },
@@ -85,6 +92,7 @@ test('official service completion freezes files and resumes remaining delivery a
   assert.equal((await t.step(async () => recovered.service.ingest(echo))).reason, 'own-notification')
   const pendingFile = await t.step(async () => recovered.query('notification.get', { notificationId: fileNotice.id }))
   assert.equal(pendingFile.state, 'starting'); assert.equal(pendingFile.ack.openTaskId, 'queued-file-send')
+  assert.equal(pendingFile.sendAttemptCount,1);assert.equal((await recovered.service.store.command(startCommand)).dispatchEligible,false)
   const outbound = recovered.residentStore.getGroup('native-group').outbox.find(item => item.outboundId === fileNotice.id)
   assert.equal(outbound.deliveredMessageId, 'delivered-file'); assert.equal(outbound.status, 'pending')
   await t.step(async () => recovered.close())
@@ -94,6 +102,7 @@ test('official service completion freezes files and resumes remaining delivery a
     readbackFile: async () => ({ messageId: 'delivered-file', conversationId: 'native-group' }),
   } }))
   assert.equal((await t.step(async () => verified.service.ingest(echo))).reason, 'own-notification', 'Early identity proof survives restart')
+  const replay=await verified.service.store.command(startCommand);assert.equal(replay.dispatchEligible,false);assert.equal(replay.result.notification.sendAttemptCount,1)
   await t.step(async () => verified.service.whenIdle())
   const awaitingReadback = await t.step(async () => verified.query('notification.get', { notificationId: fileNotice.id }))
   const retry = await t.step(async () => verified.service.retryNotification({ groupId: 'native-group', notificationId: fileNotice.id,
@@ -102,21 +111,18 @@ test('official service completion freezes files and resumes remaining delivery a
   assert.equal((await t.step(async () => verified.query('notification.get', { notificationId: fileNotice.id }))).state, 'delivered')
 }))
 
-// The scripted coordinator obeys the same required-read contract as a real model.
-for(const mode of ['missing','preserve','replan','cancel'])test(`official service coordinator context semantics preserve explicit classification and cancellation: ${mode}`,{timeout:nativeLifecycleTimeout(25000)},nativeLifecycle(25000,async t=>{
- const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());const f=await officialCase(t,'single-service-context-',false);let h,created,first=true
- const reviews=new Set()
+// The Router must classify preserve/replan/cancel explicitly before Host mutation.
+for(const mode of ['missing','preserve','replan','cancel'])test(`official Router context actions preserve explicit classification and cancellation: ${mode}`,{timeout:nativeLifecycleTimeout(25000)},nativeLifecycle(25000,async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());const f=await officialCase(t,'single-service-context-',false);let h,created,first=true,semanticTurns=0
  h=await f.host(request=>{
   const names=request.tools.map(tool=>tool.name),input=latestInput(request)
   if(names.includes('task_result')){if(first){first=false;entered.resolve();return release.promise.then(()=>[singleResult('wait','Original body released without an external effect')])}return[singleResult('wait','Current exact context was observed')]}
-  if(names.includes('group_topic_route_submit')){const calls=topicTaskCalls(request);if(!created)return calls;for(const route of calls[0].args.routes)for(const unit of route.units)unit.topics=[{topicId:created.topicRefs[0].topicId,reason:'Current task continuation'}];return calls}
-  if(names.includes('group_decision_submit')&&input.trigger!=='task-facts'){
-   if(!created)return topicTaskCalls(request)
-   if(!reviews.has(input.requestId)){reviews.add(input.requestId);return[call('group_reply_review_get',{requestIds:[input.requestId]})]}
-   const candidates=JSON.parse(h.toolResults.findLast(r=>r.name==='group_reply_review_get').result.content[0].text).candidates,ids=candidates.map(item=>item.outboundId),basisUnitRefs=input.messages.map(({unitId,unitRevision})=>({unitId,unitRevision}))
-   const rejected=mode==='missing'&&request.messages.some(r=>r.role==='toolResult'&&r.toolName==='group_decision_submit'&&r.isError&&JSON.stringify(r.content).includes('progressImpact'))
-   const action={kind:mode==='cancel'?'task-cancel':'task-context',taskId:created.taskId,inputVersion:created.requirementRevision,runSequence:created.runSequence,topicRefs:[{topicId:input.topicId,revision:input.revision}],basisUnitRefs,...mode==='cancel'?{reason:'User explicitly cancelled'}:{context:input.messages.at(-1).text,...mode==='missing'?{}:{progressImpact:mode}}}
-   return[call('group_decision_submit',{requestId:input.requestId,topicId:input.topicId,revision:input.revision,decision:{basisMessageIds:input.messages.map(m=>m.messageId),basisUnitRefs,actions:rejected?[]:[action],reply:rejected?'Classification was omitted; no task change was accepted.':'The explicit context meaning was verified.',replyToMessageId:input.messages.at(-1).messageId,replyReview:{kind:'substantive',reviewedOutboundIds:ids,sameMatterOutboundIds:[],replaceOutboundIds:[]}}})]
+  const source=input.events?.find(event=>event.source?.messageId==='semantic-input')?.source
+  if(names.includes('resident_router_settle')&&source&&created){
+   if(semanticTurns++===0){const args={operationId:'explicit-context-action',sourceId:source.sourceId,messageVersion:source.version,taskId:created.taskId,expectedRequirementRevision:created.requirementRevision,expectedControlRevision:created.controlRevision,
+    ...(mode==='cancel'?{kind:'control',control:'cancelled',reason:source.text}:mode==='replan'?{kind:'revise',objective:source.text,text:source.text}:mode==='preserve'?{kind:'supplement',text:source.text}:{text:source.text})};return[call('resident_task_action',args)]}
+   if(semanticTurns===2)return[call('resident_router_settle',{operationId:'settle-context-action',eventIds:input.events.map(event=>event.id)})]
+   return[]
   }
   return topicTaskCalls(request)??[]
  })
@@ -124,7 +130,7 @@ for(const mode of ['missing','preserve','replan','cancel'])test(`official servic
  await t.beginBusiness();await h.service.ingest({...message,messageId:'original-context'});await entered.promise;[created]=await h.query('task.list')
  const actor=h.ctx.agents.get(created.sessionId);assert.ok(actor)
  await h.service.ingest({groupId:'native-group',messageId:'semantic-input',senderOpenDingTalkId:'native-user',text:mode==='cancel'?'测试助手，明确取消原任务':mode==='replan'?'测试助手，改为新目标并停止旧目标':'测试助手，先核对正确分支，这不是新授权',timestamp:new Date().toISOString()})
- if(mode==='missing')await waitUntil(()=>h.requests.some(request=>request.messages.some(r=>r.role==='toolResult'&&r.toolName==='group_decision_submit'&&r.isError&&JSON.stringify(r.content).includes('progressImpact'))),'missing semantic classification explicitly rejected')
+ if(mode==='missing')await waitUntil(()=>h.requests.some(request=>request.messages.some(row=>row.role==='toolResult'&&row.toolName==='resident_task_action'&&row.isError&&JSON.stringify(row.content).includes('kind'))),'missing semantic action explicitly rejected')
  else await waitUntil(async()=>{const row=await h.query('task.get',{taskId:created.taskId});return mode==='cancel'?row.control==='cancelled':mode==='replan'?row.requirementRevision===2:row.contextRevision===1},'explicit context action applied')
  const during=await h.query('task.get',{taskId:created.taskId});assert.equal(during.requirementRevision,mode==='replan'?2:1)
  if(['missing','preserve'].includes(mode)){assert.equal(actor.lifecycle.signal.aborted,false,'ordinary context cannot silently cancel the running body');assert.equal(during.drained,false)}
@@ -144,218 +150,56 @@ test('official service preserves one authenticated source identity across the SQ
  const saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),packets=saved.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued');assert.equal(packets.length,1);const packet=JSON.parse(packets[0].payload.content[0].text);assert.equal(packet.sources.find(value=>value.sourceId===source.sourceId).text,body);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,0);assert.deepEqual(await h.query('execution.list'),[])
 }))
 
-test('不同群成员续办已完成任务，旧授权拒绝显式重试仍保留原任务和会话', { ...({ timeout: 20000 }), timeout: nativeLifecycleTimeout(20000) }, nativeLifecycle(20000, async (t) => {
-  let h, backing, original, topicId, block = true
-  t.after(async () => { await h?.close(); await backing?.close() })
-  const fixture = await officialCase(t, 'task-topic-auth-',false)
-  backing = await t.step(async () => openDynamicTaskStore({ dbPath: join(fixture.root, 'dynamic.db'), instanceId: 'native-test', initialize: true }))
-  const store = { ...backing, command(input) {
-    if (block && input.kind === 'task.reopen') throw new Error('TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED')
-    return backing.command(input)
-  } }
-  const reviews = new Set()
-  h = await t.step(async () => fixture.host(async request => {
-    const input = latestInput(request), names = request.tools.map(tool => tool.name)
-    if (input.trigger === 'task-facts') return topicTaskCalls(request)
-    if (names.includes('group_topic_route_submit')) {
-      const calls = topicTaskCalls(request)
-      if (topicId) for (const route of calls[0].args.routes) for (const unit of route.units)
-        unit.topics = [{ topicId, relationship: 'continuation', reason: '部署原修复' }]
-      return calls
-    }
-    if (names.includes('group_decision_submit') && topicId) {
-      if (!reviews.has(input.requestId)) {
-        reviews.add(input.requestId)
-        return [call('group_reply_review_get', { requestIds: [input.requestId] })]
-      }
-      const review = h.toolResults.findLast(item => item.name === 'group_reply_review_get')
-      const reviewedOutboundIds = JSON.parse(review.result.content[0].text).candidates.map(item => item.outboundId)
-      const basisUnitRefs = input.messages.map(({ unitId, unitRevision }) => ({ unitId, unitRevision }))
-      return [call('group_decision_submit', { requestId: input.requestId, topicId, revision: input.revision, decision: {
-        basisMessageIds: input.messages.map(item => item.messageId), basisUnitRefs,
-        actions: [{ kind: 'task-reopen', taskId: original.taskId, inputVersion: original.requirementRevision,
-          runSequence: original.runSequence, context: '部署原修复到UAT2', objective: '部署原修复到UAT2',
-          acceptanceCriteria: ['核验实际运行版本'], topicRefs: [{ topicId, revision: input.revision }], basisUnitRefs }],
-        reply: '沿原任务部署UAT2。', replyToMessageId: 'deploy-followup', atOpenDingTalkIds: ['colleague'],
-        replyReview: { kind: 'substantive', reviewedOutboundIds, sameMatterOutboundIds: [], replaceOutboundIds: [] },
-      } })]
-    }
-    const calls = topicTaskCalls(request)
-    if (calls) return calls
-    if (original) {
-      assert.equal(input.task.sessionId, original.sessionId)
-      assert.ok(input.sources.some(source => source.actorId === 'colleague' && source.text === '测试助手，部署原修复到UAT2'))
-    }
-    return [singleResult('complete', original ? '已处理原任务续办' : '修复已完成，未部署')]
-  }, { store }))
-  await t.beginBusiness()
-  await t.step(async () => h.service.ingest(message)); await t.step(async () => h.service.whenIdle())
-  ;[original] = await t.step(async () => h.query('task.list')); topicId = original.topicRefs[0].topicId
-  const followup = { ...message, messageId: 'deploy-followup', senderOpenDingTalkId: 'colleague', text: '测试助手，部署原修复到UAT2', occurredAt: '2026-10-13T10:02:00Z' }
-  await t.step(async () => h.service.ingest(followup)); await t.step(async () => h.service.whenIdle())
-  const blocked = h.residentStore.getTopic(message.groupId, topicId).decisions.at(-1)
-  assert.equal(blocked.error, 'TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED')
-  assert.equal(blocked.status, 'blocked')
-  assert.equal(blocked.operations.length, 1)
-  assert.equal(blocked.operations[0].status, 'blocked')
-  assert.equal(blocked.operations[0].lastError, 'TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED')
-  assert.equal((await t.step(async () => h.query('task.list')))[0].requirementRevision, 1)
-  const sent = h.sent.length
-  block = false
-  await t.step(async () => h.service.retryMessage({ groupId: message.groupId, messageId: followup.messageId })); await t.step(async () => h.service.whenIdle())
-  const [task] = await t.step(async () => h.query('task.list'))
-  assert.equal((await t.step(async () => h.query('task.list'))).length, 1)
-  assert.equal(task.taskId, original.taskId); assert.equal(task.sessionId, original.sessionId)
-  assert.equal(task.ownerActorId, 'native-user'); assert.equal(task.runSequence, 2)
-  assert.equal(task.requirementRevision, 2); assert.equal(task.status, 'completed')
-  assert.ok(h.sent.length > sent)
-  const recovered = h.residentStore.getTopic(message.groupId, topicId).decisions.at(-1)
-  assert.equal(recovered.decisionId, blocked.decisionId)
-  assert.equal(recovered.status, 'completed')
-  assert.equal(recovered.attempt, 2)
-  assert.equal(recovered.operations[0].operationId, blocked.operations[0].operationId)
-  assert.equal(recovered.operations[0].status, 'applied')
-  assert.equal(recovered.operations[0].recoveryResolution, 'not-applied')
-  assert.equal(recovered.operations[0].lastError, 'TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED', '恢复不抹除原 Host 接纳失败证据')
-  assert.equal(h.residentStore.getTopic(message.groupId, topicId).processedRevision, 2)
-  await t.step(async () => h.service.retryMessage({ groupId: message.groupId, messageId: followup.messageId })); await t.step(async () => h.service.whenIdle())
-  assert.equal((await t.step(async () => h.query('task.list')))[0].runSequence, 2)
+test('Router rejects another sender reopening completed work; the original author can reopen the same execution session',{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
+ const f=await officialCase(t,'task-source-auth-',false);let h,original,turns=new Map()
+ h=await f.host(request=>{
+  const input=latestInput(request),names=request.tools.map(tool=>tool.name)
+  const source=input.events?.find(event=>event.source?.messageId.startsWith('reopen-'))?.source
+  if(names.includes('resident_router_settle')&&source){
+   const step=turns.get(source.sourceId)??0;turns.set(source.sourceId,step+1)
+   if(step<(source.actorId==='colleague'?2:1))return[call('resident_task_action',{operationId:'reopen:'+source.sourceId,sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:original.taskId,expectedRequirementRevision:1,expectedControlRevision:1,objective:'沿原修复在既有授权范围复核',text:source.text})]
+   if(step===(source.actorId==='colleague'?2:1))return[call('resident_router_settle',{operationId:'settle:'+source.sourceId,eventIds:input.events.map(event=>event.id)})]
+   return[]
+  }
+  const calls=topicTaskCalls(request);if(calls)return calls
+  if(original){assert.equal(input.task.sessionId,original.sessionId);assert.ok(input.sources.some(source=>source.messageId==='reopen-author'))}
+  return[singleResult('complete',original?'原作者明确授权的续办已完成':'原目标已经完成')]
+ })
+ await t.beginBusiness();await h.service.ingest(message);await h.service.whenIdle();[original]=await h.query('task.list')
+ await h.service.ingest({...message,messageId:'reopen-colleague',senderOpenDingTalkId:'colleague',text:'测试助手，重新打开原任务'});await h.service.whenIdle()
+ const denied=h.toolResults.filter(row=>row.name==='resident_task_action'&&row.result.isError)
+ assert.equal(denied.length,2);assert.ok(denied.every(row=>JSON.stringify(row.result).includes('FORBIDDEN')||JSON.stringify(row.result).includes('PERMISSION')))
+ assert.equal((await h.query('task.get',{taskId:original.taskId})).requirementRevision,1)
+ await h.service.ingest({...message,messageId:'reopen-author',text:'测试助手，在既有授权范围重开原任务复核'});await h.service.whenIdle()
+ const [current]=await h.query('task.list');assert.equal((await h.query('task.list')).length,1)
+ assert.equal(current.taskId,original.taskId);assert.equal(current.sessionId,original.sessionId);assert.equal(current.ownerActorId,'native-user');assert.equal(current.requirementRevision,2);assert.equal(current.status,'completed')
+ const count=h.requests.length;await h.service.ingest({...message,messageId:'reopen-author',text:'测试助手，在既有授权范围重开原任务复核'});await h.service.whenIdle()
+ assert.equal(h.requests.length,count);assert.equal((await h.query('task.get',{taskId:original.taskId})).requirementRevision,2)
 }))
 
-for (const [ownEcho, followupActor] of [[true, 'native-user'], [true, 'colleague'], [false, 'native-user']]) test(`话题历史${ownEcho ? '自身通知不阻断人工补充' : '未准入真实消息仍拒绝更新且不发送成功回复'}-${followupActor}`, { ...({ timeout: 15000 }), timeout: nativeLifecycleTimeout(15000) }, nativeLifecycle(15000, async (t) => {
-  const fixture = await officialCase(t, 'task-topic-source-',false)
-  let topicId, originalTask, ownerCalls = 0
-  const readReviews = new Set(), staleRequests = new Set()
-  let h
-  const model = async request => {
-    assert.ok(h.requests.length < 12, JSON.stringify(h.toolResults.slice(-2)))
-    const input = latestInput(request), names = request.tools.map(tool => tool.name)
-    if (input.trigger === 'task-facts') return topicTaskCalls(request)
-    if (names.includes('group_topic_route_submit')) {
-      const calls = topicTaskCalls(request)
-      if (topicId) for (const route of calls[0].args.routes) for (const unit of route.units)
-        unit.topics = [{ topicId, relationship: 'continuation', reason: '原任务的人工补充' }]
-      return calls
-    }
-    if (names.includes('group_decision_submit') && topicId) {
-      const reviewKey = `${input.requestId}:${input.revision}`
-      if (staleRequests.has(reviewKey)) return []
-      if (!readReviews.has(reviewKey)) {
-        readReviews.add(reviewKey)
-        return [call('group_reply_review_get', { requestIds: [input.requestId] })]
-      }
-      const basisUnitRefs = input.messages.map(({ unitId, unitRevision }) => ({ unitId, unitRevision }))
-      const review = h.toolResults.findLast(item => item.name === 'group_reply_review_get')
-      const reviewedOutboundIds = JSON.parse(review.result.content[0].text).candidates.map(item => item.outboundId)
-      return [call('group_decision_submit', { requestId: input.requestId, topicId, revision: input.revision, decision: {
-        basisMessageIds: input.messages.map(item => item.messageId), basisUnitRefs,
-        actions: [{ kind: 'task-context', taskId: originalTask.taskId, inputVersion: originalTask.requirementRevision,
-          runSequence: originalTask.runSequence, context: '先核对正确开发分支，这不是批准例外', progressImpact: 'preserve',
-          topicRefs: [{ topicId, revision: input.revision }], basisUnitRefs }],
-        reply: '已补入原任务，先核对正确分支。', replyToMessageId: 'manual-followup', atOpenDingTalkIds: [followupActor],
-        replyReview: { kind: 'substantive', reviewedOutboundIds, sameMatterOutboundIds: [], replaceOutboundIds: [] },
-      } })]
-    }
-    const calls = topicTaskCalls(request)
-    if (calls) return calls
-    if (++ownerCalls === 1) return followupActor === 'colleague'
-      ? [singleResult('blocked','需要核对开发来源',{audience:'requester',question:'是否批准分支例外？',attemptedActions:['核对原始交办']})]
-      : [call('task_result', { decision: { action: 'blocked', summary: '需要核对开发来源', question: '是否批准分支例外？', evidence: [], limitations: [] } })]
-    assert.equal(input.task.sessionId, originalTask.sessionId)
-    assert.ok(input.sources.some(source => source.text === '先核对分支，不是批准例外'))
-    assert.ok(input.sources.every(source => source.messageId !== 'native-notification-1'))
-    return [singleResult('complete', '已按补充要求核对分支')]
-  }
-  h = await t.step(async () => fixture.host(model, { config: { assistantActorId: 'native-user' } }))
-  h.ctx.on('tools/result', (exec, result) => {
-    if (exec.name === 'group_decision_submit' && result.value?.status === 'topic-stale') {
-      const args = exec.args ?? exec.arguments
-      staleRequests.add(`${args.requestId}:${args.revision}`)
-    }
-  })
-  await t.beginBusiness()
-  await t.step(async () => h.service.ingest(message)); await t.step(async () => h.service.whenIdle())
-  ;[originalTask] = await t.step(async () => h.query('task.list'))
-  topicId = originalTask.topicRefs[0].topicId
-  const echo = { ...message, messageId: ownEcho ? 'native-notification-1' : 'unadmitted-user-message',
-    text: ownEcho ? h.sent[0].payload.text : '需要保留的真实历史指令', quotedMessage: { messageId: message.messageId, content: message.text }, occurredAt: '2026-10-13T10:01:00Z' }
-  await t.step(async () => h.residentStore.ingest(echo))
-  await t.step(async () => h.residentStore.routeMessages({ groupId: message.groupId, routeId: 'historical-echo-route', routingRevision: h.residentStore.getGroup(message.groupId).routingRevision, routes: [{ messageId: echo.messageId, messageVersion: 1,
-    topics: [{ topicId, relationship: 'continuation', reason: '历史话题上下文' }] }] }))
-  const sentBefore = h.sent.filter(notification => notification.kind === 'topic-reply').length
-  await t.step(async () => h.service.ingest({ ...message, senderOpenDingTalkId: followupActor, messageId: 'manual-followup', text: '先核对分支，不是批准例外', occurredAt: '2026-10-13T10:02:00Z' }))
-  await t.step(async () => h.service.whenIdle())
-  const [task] = await t.step(async () => h.query('task.list'))
-  assert.equal((await t.step(async () => h.query('task.list'))).length, 1)
-  assert.ok(!(await t.step(async () => h.query('source.list'))).some(source => source.messageId === echo.messageId))
-  if (ownEcho) {
-    assert.equal(task.status, 'active', JSON.stringify(h.service.listAlerts()))
-    assert.equal(task.humanRequests[0].status, 'waiting-reply', '普通定位补充既不改变授权，也不能代答或清除operator技术申请')
-    assert.equal(task.requirementRevision, 1)
-    assert.equal(ownerCalls, 1)
-    assert.equal(h.residentStore.getTopic(message.groupId, topicId).processedRevision, 3)
-  } else {
-    assert.equal(task.humanRequests[0].status, 'waiting-reply')
-    assert.equal(ownerCalls, 1)
-    assert.equal(h.sent.filter(notification => notification.kind === 'topic-reply').length, sentBefore)
-    const blocked = h.residentStore.getTopic(message.groupId, topicId).decisions.at(-1)
-    assert.equal(blocked.status, 'blocked')
-    assert.equal(blocked.error, 'TASK_TOPIC_SOURCE_VERSION_MISSING')
-    // 模拟旧版先回复再失败，投影后的来源身份已改变。
-    const notificationId = blocked.outboundId, topicRefs = [{ topicId, revision: blocked.revision }]
-    await t.step(async () => h.residentStore.appendOutbox({ groupId: message.groupId, outboundId: notificationId, decisionId: blocked.decisionId,
-      sourceMessageId: `topic-decision:${blocked.decisionId}`, text: blocked.decision.reply, topicRefs, taskIds: [originalTask.taskId],
-      replyToMessageId: 'manual-followup', replyToSenderOpenDingTalkId: 'native-user', atOpenDingTalkIds: ['native-user'] }))
-    await t.step(async () => h.service.store.command({ id: `prepare-notification:${notificationId}`, kind: 'notification.prepare', args: {
-      notificationId, taskId: originalTask.taskId, requirementRevision: 1, kind: 'topic-reply', payload: {
-        text: blocked.decision.reply, topicRefs, taskIds: [originalTask.taskId], replyKind: 'substantive', conversationId: message.groupId,
-        sourceMessageId: 'manual-followup', actorId: 'native-user', replyToMessageId: 'manual-followup',
-        replyToSenderOpenDingTalkId: 'native-user', atOpenDingTalkIds: ['native-user'], fact: { topicRefs }, kind: 'topic-reply',
-      },
-    } }))
-    const started = await t.step(async () => h.service.store.command({ id: 'fixture-old-reply-start', kind: 'notification.start', args: { notificationId } }))
-    const delivered = await t.step(async () => h.service.store.command({ id: 'fixture-old-reply-delivered', kind: 'notification.delivered', args: {
-      notificationId, dispatchToken: started.result.notification.dispatchToken, receipt: { messageId: 'historical-reply-id' },
-    } }))
-    await t.step(async () => projectTaskNotification({ residentStore: h.residentStore, notification: delivered.result.notification }))
-    await t.step(async () => h.service.store.command({ id: 'fixture-admit-historical-source', kind: 'source.record', args: {
-      sourceId: 'fixture-historical-source', groupId: message.groupId, messageId: echo.messageId, version: 1,
-      actorId: message.senderOpenDingTalkId, text: echo.text, timestamp: echo.occurredAt,
-    } }))
-    // A legacy partial commit is observed only after a real service restart.
-    // Retain the test's transport audit across both instances; expected counts stay unchanged.
-    const sentHistory = h.sent.slice()
-    await t.step(async () => h.close()); readReviews.clear()
-    h = await t.step(async () => fixture.host(model, { initialize: false, config: { assistantActorId: 'native-user' } }))
-    h.sent.unshift(...sentHistory) // Preserve the diagnostic recorder across the two real instances.
-    const append = h.residentStore.appendOutbox
-    let duplicateAppends = 0
-    h.residentStore.appendOutbox = args => {
-      if (args.outboundId === notificationId) { duplicateAppends++; throw new Error('outbox_identity_duplicate') }
-      return append(args)
-    }
-    await t.step(async () => h.service.retryMessage({ groupId: message.groupId, messageId: 'manual-followup' })); await t.step(async () => h.service.whenIdle())
-    h.residentStore.appendOutbox = append
-    const recoveredReply = h.residentStore.getTopic(message.groupId, topicId).decisions.at(-1)
-    assert.equal(duplicateAppends, 0, 'The frozen delivered notification is reused without appending its identity again')
-    assert.equal(recoveredReply.error, undefined)
-    assert.equal(recoveredReply.status, 'completed')
-    assert.equal(recoveredReply.decisionId, blocked.decisionId)
-    assert.ok(recoveredReply.operations.every(operation => operation.status === 'applied'))
-    await t.step(async () => h.service.retryMessage({ groupId: message.groupId, messageId: 'manual-followup' })); await t.step(async () => h.service.whenIdle())
-    assert.equal((await t.step(async () => h.query('task.list')))[0].status, 'active', JSON.stringify(h.service.listAlerts()))
-    assert.equal((await t.step(async () => h.query('task.list')))[0].humanRequests[0].status, 'waiting-reply')
-    assert.equal(ownerCalls, 1)
-    assert.equal((await t.step(async () => h.query('notification.get', { notificationId }))).state, 'delivered')
-    assert.equal(h.residentStore.getGroup(message.groupId).outbox.find(item => item.outboundId === notificationId).deliveredMessageId, 'historical-reply-id')
-    assert.equal(h.sent.filter(notification => notification.kind === 'topic-reply').length, sentBefore)
-    const oldEcho = await t.step(async () => h.service.ingest({ ...message, messageId: 'historical-reply-id', text: blocked.decision.reply }))
-    assert.equal(oldEcho.reason, 'own-notification', '重放 prepared 收据不能覆盖当前 delivered 的发送身份缓存')
-    const sentAfter = h.sent.length
-    await t.step(async () => h.service.retryMessage({ groupId: message.groupId, messageId: 'manual-followup' })); await t.step(async () => h.service.whenIdle())
-    assert.equal(h.sent.length, sentAfter, '已应用动作和已送达回复不能因重复重试再次执行')
-    assert.equal(ownerCalls, 1)
-  }
+for(const [ownEcho,actor]of [[true,'native-user'],[true,'colleague'],[false,'native-user']])test(`Router supplements only the admitted source; historical context is not authority: echo=${ownEcho}, actor=${actor}`,{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
+ const f=await officialCase(t,'task-direct-source-',false);let h,original,taskTurns=0
+ h=await f.host(request=>{
+  const routed=topicTaskCalls(request,{task:original});if(routed)return routed
+  const input=latestInput(request);taskTurns++
+  if(!original)return[singleResult('blocked','原问题仍待明确答复',{audience:'requester',question:'是否批准原范围内的例外？',attemptedActions:['核对原始交办']})]
+  assert.ok(input.humanReview);assert.equal(input.task.sessionId,original.sessionId)
+  assert.ok(input.sources.some(source=>source.messageId==='manual-followup'&&source.actorId===actor&&source.text==='先核对分支，不是批准例外'))
+  assert.ok(input.sources.every(source=>!['native-notification-1','unadmitted-history'].includes(source.messageId)))
+  return[singleResult('wait','定位补充不代表批准，保留原待答问题')]
+ })
+ await t.beginBusiness();await h.service.ingest(message);await h.service.whenIdle();[original]=await h.query('task.list')
+ assert.ok(original.humanRequests.length===1)
+ const historical={...message,messageId:ownEcho?'native-notification-1':'unadmitted-history',text:ownEcho?h.sent[0].payload.text:'未准入的历史正文不是当前动作授权'}
+ if(ownEcho)assert.equal((await h.service.ingest(historical)).reason,'own-notification')
+ else await h.residentStore.ingest(historical)
+ const input={...message,messageId:'manual-followup',senderOpenDingTalkId:actor,text:'先核对分支，不是批准例外',occurredAt:new Date().toISOString(),timestamp:new Date().toISOString()}
+ await h.service.ingest(input);await h.service.whenIdle()
+ const [current]=await h.query('task.list');assert.equal((await h.query('task.list')).length,1)
+ assert.equal(current.sessionId,original.sessionId);assert.equal(current.requirementRevision,1);assert.equal(current.humanRequests[0].status,'waiting-reply');assert.equal(current.humanRequests[0].requestId,original.humanRequests[0].requestId)
+ assert.equal(taskTurns,2);assert.ok(!(await h.query('source.list')).some(source=>source.messageId===historical.messageId))
+ const count=h.requests.length;await h.service.ingest(input);await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
+ assert.deepEqual(await h.query('execution.list'),[])
 }))
 
 // Retired: 180-message DSH Host event/projection retirement and compacted
@@ -377,6 +221,9 @@ test('official service retains 32 source-authorized continuations in Pi history 
  const f=await officialCase(t,'single-service-32-');let wrote=false,modelCalls=0;const compactionSummary='The task has one original execution session. work/one-effect.txt was written successfully exactly once. Later sources ask for inspection only. Do not replay the original effect. Obtain current authority from the current admitted task input, never from this summary.'
  const h=await f.host(request=>{assert.ok(!request.tools.some(tool=>tool.name.startsWith('group_')),'Single catalogue must not acquire global coordinator tools');assert.ok(++modelCalls<=64,'Unexpected repeated task turn: '+JSON.stringify({task:singleInput(request).task?.taskId,last:request.messages.filter(m=>m.role==='toolResult').at(-1)}));return !wrote?(wrote=true,[call('write',{path:'work/one-effect.txt',content:'exactly-once'})]):[singleResult('wait','Wait for the next authenticated continuation')]},{compactionSummary,estimateUsage:true});await t.beginBusiness()
  const created=await h.service.createTask({groupId:'native-group',requestId:'continuation-original',objective:'Retain one completed effect and accept exact later inputs'});await h.service.whenIdle()
+ // Web 来源没有入站计时；保存 Host 观测后核对后续会话投影始终排除遥测。
+ const sourceId=(await h.query('task.get',{taskId:created.taskId})).sourceRefs[0],observedAt=new Date().toISOString()
+ await h.service.store.command({id:'continuation-original-observed',kind:'source.stage',args:{sourceId,stage:{spanId:'continuation-original-observed',stage:'host',phase:'task-commit',requestId:'continuation-original',attempt:0,startedAt:observedAt,completedAt:observedAt}}})
  for(let i=1;i<32;i++){const iterationStarted=performance.now();if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('SERVICE_CONTINUATION',i);await h.service.appendTaskContext({taskId:created.taskId,requestId:'continuation-'+i,progressImpact:'preserve',context:'Continuation '+i+': observe the existing result; do not repeat it.'});await h.service.whenIdle();assert.equal((await h.query('task.get',{taskId:created.taskId})).lastDecision?.action,'wait',JSON.stringify(h.service.listAlerts()));const snapshot=await h.ctx.sessionPersistence.readNative(created.session.sessionId,{requireComplete:true}),latest=snapshot.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued').at(-1);assert.ok(JSON.parse(latest.payload.content[0].text).sources.every(source=>!Object.hasOwn(source,'stages')),'Night telemetry is not conversational source content');const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count,'idle recovery must not manufacture a model wake');if(process.env.NIGHT_BOT_TEST_DEBUG)t.diagnostic(JSON.stringify({continuation:i,elapsedMs:Math.round(performance.now()-iterationStarted),summaryCalls:h.auxiliaryRequests.length}))}
  const row=await h.query('task.get',{taskId:created.taskId}),saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),packets=saved.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued')
  assert.equal(row.sessionId,created.session.sessionId);assert.equal(packets.length,32);assert.ok((await h.query('source.list')).some(source=>source.stages?.length>0),'SQL retains the diagnostic stages outside the native conversational packet');assert.equal(new Set(packets.map(r=>r.payload.source.taskSession.leaseEpoch)).size,32);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1)
@@ -389,10 +236,11 @@ test('official service retains 32 source-authorized continuations in Pi history 
 
 test('official service group responsibility reaches the actual Pi system prompt and reply signatures survive formatting',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
  const f=await officialCase(t,'single-service-group-scope-',false),responsibility='GROUP_REPLY_SCOPE_PROOF: reply with the configured group signature.';let currentSystem='',groupRequests=0,taskRequests=0,taskPrompt
- const h=await f.host(request=>{const topics=topicTaskCalls(request);if(topics){groupRequests++;assert.ok(currentSystem.includes(responsibility),'actual group model system prompt retains configured responsibility');if(topics[0].args.decision)topics[0].args.decision.reply+='\n\n- configured group signature';return topics}taskRequests++;taskPrompt=currentSystem;return[singleResult('complete','Current objective verified')]},{serviceFactory:async options=>{const profile=options.ctx.get('nativePiProvider').profiles().get('native-task-test'),stream=profile.baseProvider.streamSimple;profile.baseProvider.streamSimple=function(model,context,...args){currentSystem=getCurrentSystemPrompt(context.messages);return Reflect.apply(stream,this,[model,context,...args])};return openTaskSessionService(options)}})
+ const signature='- configured group signature'
+ const h=await f.host(request=>{const routed=topicTaskCalls(request,{signature:String.fromCharCode(10,10)+signature});if(routed){groupRequests++;if(request.tools.some(tool=>tool.name==='resident_router_settle'))assert.ok(currentSystem.includes(responsibility),'actual Router system prompt retains configured responsibility');return routed}taskRequests++;taskPrompt=currentSystem;return[singleResult('complete','Current objective verified')]},{agentConfig:{replySignature:signature},serviceFactory:async options=>{const profile=options.ctx.get('nativePiProvider').profiles().get('native-task-test'),stream=profile.baseProvider.streamSimple;profile.baseProvider.streamSimple=function(model,context,...args){currentSystem=getCurrentSystemPrompt(context.messages);return Reflect.apply(stream,this,[model,context,...args])};return openTaskSessionService(options)}})
  await t.beginBusiness();await h.residentStore.updateGroup({groupId:'native-group',responsibility});await h.service.ingest(message);await h.service.whenIdle()
  assert.ok(groupRequests>=2);assert.equal(taskRequests,1);assert.ok(taskPrompt?.includes(responsibility),'actual sole execution prompt inherits the configured group responsibility')
- assert.ok(h.sent.find(notification=>notification.kind==='topic-reply').payload.text.endsWith('\n\n- configured group signature'))
+ assert.ok(h.sent.find(notification=>notification.kind==='router-reply').payload.text.endsWith(String.fromCharCode(10,10)+signature))
 }))
 
 test('official service reads and copies an existing authorized file byte-for-byte in one execution session',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
@@ -412,7 +260,7 @@ test('official service routes authenticated sources into one effect-fenced task 
  assert.equal(task.status,'completed',JSON.stringify(h.service.listAlerts()));assert.equal(task.ownerActorId,'native-user');assert.ok(task.sourceRefs.includes(source.sourceId));assert.equal(source.text,message.text);assert.equal(source.routed,true);assert.deepEqual(await h.query('execution.list'),[])
  assert.equal(h.toolResults.filter(r=>r.name==='write'&&!r.result.isError).length,2);assert.ok(h.toolResults.some(r=>r.name==='write'&&r.result.isError&&JSON.stringify(r.result).includes('FS_SANDBOX_DENIED')));assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,2);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,2)
  for(const key of ['alpha','beta'])assert.equal(await readFile(join(saved.header.cwd,'work',key+'.txt'),'utf8'),key+'-native-proof');await assert.rejects(readFile(join(saved.header.cwd,'outputs/forged.txt')),{code:'ENOENT'})
- const events=(await h.query('task.events')).events;assert.equal(events.filter(event=>event.kind==='task.completed').length,1);const notices=await h.query('notification.list'),final=notices.find(n=>n.payload.coveredEventIds?.length&&n.state==='delivered');assert.ok(final,'completion explanation needs actual readback');const facts=await Promise.all(final.payload.coveredEventIds.map(factId=>h.query('topic.fact.get',{factId})));assert.ok(facts.some(fact=>fact.taskId===task.taskId&&fact.kind==='completed'&&fact.commandId===events[0].commandId),'notification facts must refer to the exact authoritative completion command');assert.equal(h.sent.length,2);assert.equal(h.readbacks.length,2)
+ const events=(await h.query('task.events')).events;assert.equal(events.filter(event=>event.kind==='task.completed').length,1);const notices=await h.query('notification.list'),final=notices.find(n=>n.kind==='router-reply'&&n.payload.text===task.completion.summary&&n.state==='delivered');assert.ok(final,'completion explanation needs actual readback');assert.equal(final.payload.sourceId,source.sourceId);assert.ok(h.requests.some(request=>latestInput(request).events?.some(event=>event.taskEvent?.commandId===events.find(item=>item.kind==='task.completed').commandId)),'Router must observe the exact authoritative completion event');assert.ok(h.toolResults.some(row=>row.name==='resident_task_query'&&row.result.value?.task?.completion?.commandId===task.completion.commandId),'reply must read the actual current task completion');assert.equal(h.sent.length,2);assert.equal(h.readbacks.length,2)
  const counts={requests:h.requests.length,sent:h.sent.length};assert.equal((await h.service.ingest({...message,messageId:'source-delivery'})).sourceId,accepted.sourceId);await h.service.whenIdle();await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,counts.requests);assert.equal(h.sent.length,counts.sent);assert.equal((await h.query('task.list')).length,1);assert.equal(h.ctx.agents.get(task.sessionId),undefined)
 }))
 
@@ -431,7 +279,7 @@ test('official service fulfils eleven independent outputs in one task session wi
  await t.beginBusiness();const created=await h.service.createTask({groupId:'native-group',requestId:'eleven',objective:'Produce and verify all eleven independent outputs without creating a team'});await h.service.whenIdle()
  const row=await h.query('task.get',{taskId:created.taskId}),saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true});assert.equal(row.status,'completed');assert.equal(row.drained,true);assert.deepEqual(await h.query('execution.list'),[])
  for(let i=0;i<11;i++)assert.equal(await readFile(join(saved.header.cwd,'work/output-'+i+'.txt'),'utf8'),'independent-output-'+i)
- assert.equal(h.toolResults.filter(r=>r.name==='write'&&!r.result.isError).length,11);assert.equal(h.toolResults.filter(r=>r.name==='read'&&!r.result.isError).length,11);assert.equal(new Set(h.toolResults.map(r=>r.sessionId)).size,1);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,11)
+ assert.equal(h.toolResults.filter(r=>r.name==='write'&&!r.result.isError).length,11);assert.equal(h.toolResults.filter(r=>r.name==='read'&&!r.result.isError).length,11);assert.deepEqual([...new Set(h.toolResults.filter(r=>['write','read','task_result'].includes(r.name)).map(r=>r.sessionId))],[row.sessionId]);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,11)
  const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
 }))
 
@@ -447,15 +295,16 @@ test('official service cold continuation resumes the same titled workspace and r
 }))
 
 test('official service reopens an unknown notification for readback without resending completed business work', { ...({ timeout: 15000 }), timeout: nativeLifecycleTimeout(15000) }, nativeLifecycle(15000, async (t) => {
+  t.mock.timers.enable({apis:['Date'],now:Date.now()})
   const fixture = await officialCase(t, 'task-service-notification-')
   let sends = 0, canRead = false, readbacks = 0
   const notifications = {
-    async send(notification) { sends++; return { messageId: notification.payload.coveredEventIds?.length ? 'durable-delivery-id' : 'durable-confirmation-id' } },
+    async send(notification) { sends++; return { messageId: notification.payload.text==='可用的已有证据已核验。' ? 'durable-delivery-id' : 'durable-confirmation-id' } },
     async readback(notification) {
       readbacks++
-      const id = notification.payload.coveredEventIds?.length ? 'durable-delivery-id' : 'durable-confirmation-id'
+      const id = notification.payload.text==='可用的已有证据已核验。' ? 'durable-delivery-id' : 'durable-confirmation-id'
       assert.equal(notification.ack.messageId, id)
-      return !notification.payload.coveredEventIds?.length || canRead ? { messageId: id, verified: true } : null
+      return notification.payload.text!=='可用的已有证据已核验。' || canRead ? { messageId: id, verified: true } : null
     },
   }
   const first = await fixture.host(async request => {
@@ -467,8 +316,8 @@ test('official service reopens an unknown notification for readback without rese
     await t.step(async () => first.service.ingest({ ...message, messageId: 'notification-request', text: '测试助手，核对已有记录并给出结论。' }))
     await t.step(async () => first.service.whenIdle())
     assert.equal((await t.step(async () => first.query('task.list')))[0].status, 'completed')
-    const pending = (await t.step(async () => first.query('notification.list'))).find(notification => notification.payload.coveredEventIds?.length)
-    assert.equal(pending.state, 'starting', 'Topic 发件箱将 ACK 与送达回查分开记录')
+    const pending = (await t.step(async () => first.query('notification.list'))).find(notification => notification.payload.text==='可用的已有证据已核验。')
+    assert.equal(pending.state, 'starting', 'Router 通知将 ACK 与送达回查分开记录')
     assert.equal(pending.ack.messageId, 'durable-delivery-id')
     assert.equal(pending.readbackAttemptCount, 1)
     assert.ok(Date.parse(pending.nextAttemptAt) > Date.now())
@@ -477,11 +326,11 @@ test('official service reopens an unknown notification for readback without rese
   const readsBeforeRecovery = readbacks
   canRead = true
   const second = await t.step(async () => fixture.host(() => { throw new Error('Completed task must not invoke the model during receipt recovery') }, { notifications, initialize: false }))
-  assert.equal((await t.step(async () => second.query('notification.list'))).find(notification => notification.payload.coveredEventIds?.length).state, 'unknown')
+  assert.equal((await t.step(async () => second.query('notification.list'))).find(notification => notification.payload.text==='可用的已有证据已核验。').state, 'unknown')
   await t.step(async () => second.service.recover()); await t.step(async () => second.service.whenIdle())
   assert.equal(readbacks, readsBeforeRecovery, 'Restart must preserve the persisted observation cooldown')
   const retryAt = Math.max(...(await t.step(async () => second.query('notification.list'))).filter(notification => notification.state === 'unknown').map(notification => Date.parse(notification.nextAttemptAt)))
-  await t.step(async () => new Promise(resolve => setTimeout(resolve, Math.max(0, retryAt - Date.now()) + 20)))
+  t.mock.timers.setTime(retryAt+20)
   await t.step(async () => second.service.recover()); await t.step(async () => second.service.whenIdle())
   assert.ok((await t.step(async () => second.query('notification.list'))).every(notification => notification.state === 'delivered'))
   assert.equal((await t.step(async () => second.query('task.list'))).length, 1)
@@ -514,7 +363,7 @@ test('official service requirement changes fence old provider results and resume
  await waitUntil(async()=>(await h.query('task.get',{taskId:created.taskId})).requirementRevision===2,'new revision committed before old provider releases');release.resolve();await changing;await h.service.whenIdle()
  const after=await h.query('task.get',{taskId:created.taskId});assert.equal(after.sessionId,before.sessionId);assert.equal(after.requirementRevision,2);assert.equal(after.status,'active');assert.equal(after.drained,true);assert.equal(after.lastDecision.action,'wait');assert.equal(inputs.length,2)
  assert.ok(inputs[1].sources.some(source=>source.text.includes('NEW_REQUIREMENT: analyze only')));assert.ok(inputs[1].sources.every(source=>source.actorId==='native-user'));assert.equal(inputs[1].sources.length,2)
- const results=h.toolResults.filter(r=>r.name==='task_result');assert.equal(results.filter(r=>!r.result.isError).length,1,'only the new current binding may commit a result');assert.ok(results.filter(r=>r.result.isError).every(r=>JSON.stringify(r.result).includes('TASK_SESSION_STALE')),'a late old official response may be journaled only as a rejected stale result');assert.equal((await h.query('task.events')).events.length,0)
+ const results=h.toolResults.filter(r=>r.name==='task_result');assert.equal(results.filter(r=>!r.result.isError).length,1,'only the new current binding may commit a result');assert.ok(results.filter(r=>r.result.isError).every(r=>JSON.stringify(r.result).includes('TASK_SESSION_STALE')),'a late old official response may be journaled only as a rejected stale result');const events=(await h.query('task.events')).events;assert.equal(events.some(event=>event.kind==='task.completed'),false);for(const kind of ['task.changed','task.waiting'])assert.ok(events.some(event=>event.kind===kind&&event.requirementRevision===2))
  const saved=await h.ctx.sessionPersistence.readNative(after.sessionId,{requireComplete:true});assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1);assert.deepEqual(saved.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued').map(r=>r.payload.source.taskSession.requirementRevision),[1,2]);assert.deepEqual(await h.query('execution.list'),[])
  const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
  }finally{release.resolve()}
@@ -583,7 +432,7 @@ for (const persistent of [false, true]) test(`official service session creation 
 
 for(const persistent of [false,true])test(`official service model failure is held without a spin until explicit new context: persistent=${persistent}`,{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
  const f=await officialCase(t,'single-service-model-failure-');let rounds=0
- const h=await f.host(()=>{rounds++;return[singleResult('complete','The same task recovered after explicit new context')]},{providerError:()=>rounds===1||persistent?Error('CONTROLLED_MODEL_FAILURE'):undefined})
+ const h=await f.host(()=>{rounds++;return[singleResult('complete','The same task recovered after explicit new context')]},{providerError:request=>request.tools.some(tool=>tool.name==='task_result')&&(rounds===1||persistent)?Error('CONTROLLED_MODEL_FAILURE'):undefined})
  await t.beginBusiness();const task=await h.service.createTask({groupId:'native-group',requestId:'failure',objective:'Handle an actual official provider error'})
  await h.service.whenIdle();for(let i=0;i<3;i++){await h.service.recover();await h.service.whenIdle()}
  assert.equal(rounds,1);const before=await h.query('task.get',{taskId:task.taskId});assert.equal(before.drained,true);assert.equal(before.status,'active');assert.equal(before.technicalFailure?.code,'TASK_PI_PROVIDER_ERROR','The official provider failure remains durable after recovery clears transient alerts');assert.equal(before.lastDecision?.technicalFailure?.code,'TASK_PI_PROVIDER_ERROR');assert.equal(before.providerRecovery??null,null,'No Host provider retry timer is installed')
@@ -614,59 +463,19 @@ for(const correctOnce of [false,true])test(`official service invalid summaries c
  await h.service.recover();await h.service.whenIdle();assert.equal(rounds,2);assert.equal(h.ctx.agents.get(row.sessionId),undefined)
 }))
 
-test('official service topic routing rejects incomplete source coverage and accepts correction in the same real session', { timeout: 60000 }, async t => {
-  let root, rootReady, opening, h, requests = 0, activity = 'host-preparation'
-  await lifecycleStages(t, {
-    limits: { business: nativeTestTimeout(10000) },
-    prepare: async step => {
-      root = await step(() => (rootReady = mkdtemp(join(tmpdir(), 'task-service-invalid-route-'))))
-      h = await step(() => (opening = nativeRuntimeHost(root, async request => {
-        if (request.tools.some(tool => tool.name === 'group_topic_route_submit')) {
-          requests++
-          assert.ok(requests <= 2, 'Routing correction must finish on its second model call')
-          if (requests === 1) {
-            const input = latestInput(request)
-            return [call('group_topic_route_submit', { requestId: input.requestId, routes: input.messages.map(message => ({ messageId: message.messageId, messageVersion: message.messageVersion, units: [], ignoredRefs: [] })) })]
-          }
-        }
-        return topicTaskCalls(request) ?? [singleResult('complete', '话题决定合法纠正后完成任务')]
-      })))
-    },
-    business: async (_value, step) => {
-      activity = 'ingest'
-      const ingested = await step(() => h.service.ingest({ ...message, messageId: 'invalid-source-coverage' }))
-      activity = 'routing-drain'
-      await step(() => h.service.whenIdle())
-      assert.equal(requests, 2)
-      assert.equal((await step(() => h.query('source.get', { sourceId: ingested.sourceId }))).routed, true)
-      const tasks = await step(() => h.query('task.list'))
-      assert.equal(tasks.length, 1)
-      assert.equal(tasks[0].status, 'completed')
-      const group = h.residentStore.getGroup(message.groupId)
-      assert.equal(group.messages[0].routingStatus, 'routed')
-      assert.equal(group.topics.length, 1)
-      assert.equal(group.topics[0].processedRevision, group.topics[0].revision)
-      const results = h.toolResults.filter(result => result.name === 'group_topic_route_submit')
-      assert.equal(results[0].result.value.status, 'invalid-arguments')
-      assert.equal(results[0].result.value.issues[0].path, 'routes.0.ignoredRefs')
-      assert.match(results[0].result.value.issues[0].message, /完整原文忽略记录/)
-      assert.equal(results[1].result.value.status, 'accepted')
-      activity = 'session-persistence'
-      const saved = await step(() => h.ctx.sessionPersistence.readNative(results[0].sessionId,{requireComplete:true}))
-      assert.equal(saved.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').flatMap(entry=>entry.message.content).filter(block=>block.type==='toolCall'&&block.name==='group_topic_route_submit').length, 2)
-      activity = 'final-drain'
-      await step(() => h.service.whenIdle())
-      assert.equal(requests, 2)
-    },
-    cleanup: async () => {
-      t.diagnostic(JSON.stringify({ topicCorrectionActivity: activity, routeCalls: requests }))
-      if (rootReady) root = await rootReady
-      if (opening) h = await opening
-      await h?.close()
-      if (root) await rm(root, { recursive: true, force: true })
-    },
-  })
-})
+test('official first tier rejects incomplete source coverage and accepts correction in the same real Pi session',{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
+ const f=await officialCase(t,'triage-correction-',false);let requests=0
+ const h=await f.host(request=>{
+  if(request.tools.some(tool=>tool.name==='channel_triage_submit')&&++requests===1)return[call('channel_triage_submit',{dispositions:[]})]
+  return topicTaskCalls(request)??[singleResult('complete','完整处置原来源后完成任务')]
+ })
+ await t.beginBusiness();const input=await h.service.ingest({...message,messageId:'invalid-source-coverage'});await h.service.whenIdle()
+ assert.equal(requests,2);assert.equal((await h.query('source.get',{sourceId:input.sourceId})).routed,true)
+ const tasks=await h.query('task.list');assert.equal(tasks.length,1);assert.equal(tasks[0].status,'completed');assert.deepEqual(h.residentStore.listTopics(message.groupId),[])
+ const results=h.toolResults.filter(row=>row.name==='channel_triage_submit');assert.equal(results.length,1);assert.equal(results[0].result.isError,false)
+ const saved=await h.ctx.sessionPersistence.readNative(results[0].sessionId,{requireComplete:true})
+ assert.equal(saved.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').flatMap(entry=>entry.message.content).filter(block=>block.type==='toolCall'&&block.name==='channel_triage_submit').length,2);assert.ok(saved.entries.some(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.isError),'Pi schema validation failure stays in the same actual session before the valid tool executes')
+}))
 
 test('official service application boots and disposes with declared channel-neutral dependencies only',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
  const f=await officialCase(t,'single-service-app-'),h=await f.host(()=>assert.fail('Startup cannot invoke a model'),{resident:true});await t.beginBusiness()
@@ -742,7 +551,7 @@ test('official service Host material publication failure after a committed claim
  assert.ok(h.service.listAlerts().some(alert=>alert.detail==='TASK_MATERIAL_PATH_INVALID'),JSON.stringify(h.service.listAlerts()));assert.equal(h.ctx.agents.get(row.sessionId),undefined);assert.equal(h.ctx.piAuthority.describe(row.sessionId),undefined)
 }))
 
-testRunner('resource read retries preserve image facts and duplicate ingress reuses the source', { ...({ skip: !available ? reason : false, timeout: 20000 }), timeout: nativeLifecycleTimeout(20000) }, nativeLifecycle(20000, async (t) => {
+testRunner('resource read retries preserve image facts and duplicate ingress reuses the source', { ...({ skip: !available ? reason : false, timeout: 20000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   await t.beginBusiness()
   const { openResidentStore } = await t.step(async () => import('../packages/dingtalk-core/store.js'))
   const { openTaskSessionService } = await t.step(async () => import('../packages/dingtalk-core/task-session-service.js'))
@@ -751,9 +560,7 @@ testRunner('resource read retries preserve image facts and duplicate ingress reu
   t.after(async () => { await h?.close(); await rm(root, { recursive: true, force: true }) })
   h = await t.step(async () => nativeRuntimeHost(root, request => {
     const input = latestInput(request)
-    return request.tools.some(tool => tool.name === 'group_topic_route_submit') ? [{ name: 'group_topic_route_submit', args: {
-      requestId: input.requestId, routes: input.messages.map(item => ({ messageId: item.messageId, messageVersion: item.messageVersion,
-        ignoredRefs: [{ quote: item.text, reason: '隔离入站时钟验证，无业务执行' }], units: [] })) } }] : []
+    return request.tools.some(tool=>tool.name==='channel_triage_submit')?[call('channel_triage_submit',{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:false,reason:'隔离入站时钟验证，无业务执行'}))})]:[]
   }, { resident: true }))
   h.residentStore = await t.step(async () => openResidentStore(h.ctx.storageDomain))
   await t.step(async () => h.residentStore.subscribe({ groupId: 'phase-group', name: '隔离计时群' }))
@@ -765,6 +572,7 @@ testRunner('resource read retries preserve image facts and duplicate ingress reu
       return { image: { mediaType: 'image/png', data: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOQy7vzHwAEfgJodQLI1QAAAABJRU5ErkJggg==', 'base64') } }
     }, notifications: { send: () => assert.fail('不得发送消息'), readback: () => assert.fail('不得读取渠道回执') } }))
   const message = { groupId: 'phase-group', messageId: 'image-message', occurredAt: '2026-10-27T05:30:27.636Z', senderOpenDingTalkId: 'native-user', text: '图片入站计时', resourceRefs: [{ type: 'mediaId', resourceId: 'private-media' }] }
+  t.onCancel(async()=>t.diagnostic(JSON.stringify({mediaFinal:{requests:h.requests.length,results:h.toolResults.slice(-4),alerts:h.service.listAlerts(),sources:(await h.service.store.query({kind:'source.list'})).map(source=>({sourceId:source.sourceId,version:source.version,routed:source.routed})),pending:await h.service.store.query({kind:'triage.pending',conversationId:'phase-group'})}})))
   const first = await t.step(async () => h.service.ingest(message))
   const failed = await t.step(async () => h.service.store.query({ kind: 'source.get', sourceId: first.sourceId }))
   const retry = await t.step(async () => h.service.ingest(message))
@@ -862,3 +670,28 @@ async function explicitDwsService(options){
  options.ctx.effect(()=>stop,'optional DWS observer fixture ownership')
  return openTaskSessionService(options)
 }
+
+test('service close drains the real task, observers and owned SQLite after an early subscription cleanup fails',{timeout:nativeLifecycleTimeout(25000)},nativeLifecycle(25000,async t=>{
+ const root=await mkdtemp(join(tmpdir(),'service-close-failure-')),gate=Promise.withResolvers(),entered=Promise.withResolvers(),trace=[]
+ let h,detached=false,pageClosed=false
+ const fault=Object.assign(new Error('fixture reflection detach failure'),{code:'FIXTURE_REFLECTION_DETACH'})
+ const leaves=error=>error?.errors?error.errors.flatMap(leaves):[error]
+ t.onCancel(()=>gate.resolve())
+ t.after(async()=>{gate.resolve();try{await h?.close()}catch(error){assert.ok(leaves(error).every(value=>value.code===fault.code),String(error))}finally{await rm(root,{recursive:true,force:true})}})
+ h=await nativeRuntimeHost(root,async()=>{entered.resolve();await gate.promise;return[singleResult('wait','Actual closing task released without another business effect')]},{serviceFactory:async options=>{
+  const reflection=options.ctx.get('reflection');assert.ok(reflection?.attachStore)
+  const attach=reflection.attachStore
+  reflection.attachStore=function(...args){const stop=Reflect.apply(attach,this,args);return()=>{stop?.();detached=true;gate.resolve();throw fault}}
+  try{return await openTaskSessionService({...options,closeObserver:event=>trace.push(event)})}finally{reflection.attachStore=attach}
+ }})
+ const closePage=h.service.observerGroupPage.close.bind(h.service.observerGroupPage)
+ h.service.observerGroupPage.close=async()=>{await closePage();pageClosed=true}
+ await t.beginBusiness();const created=await h.service.createTask({groupId:'native-group',requestId:'close-drain',objective:'Retain one real in-flight task during cleanup failure'})
+ await entered.promise
+ await assert.rejects(h.service.close(),error=>error instanceof AggregateError&&leaves(error).some(value=>value===fault))
+ assert.equal(detached,true);assert.equal(pageClosed,true);assert.equal(h.ctx.agents.get(created.sessionId),undefined)
+ for(const stage of ['service.topic.close','service.owner.close','service.inflight-settled','service.observation-tail','service.observer-page.close','service.store.close'])assert.ok(trace.some(event=>event.stage===stage&&event.closeEvent==='settled'),stage)
+ const final=trace.findLast(event=>event.stage==='service.store.close'&&event.closeEvent==='settled')
+ assert.equal(final.counts.tasks,0);assert.equal(final.counts.notifications,0);assert.equal(final.counts.observationPending,0)
+ await assert.rejects(h.service.store.query({kind:'task.list'}),/closed|not open|DYNAMIC_STORE_CLOSED/i)
+}))

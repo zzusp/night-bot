@@ -56,8 +56,8 @@ The production AST call graph has no external caller of sessionQuery filterEvent
 traceSession/traceEvent/readSession/readEvent or the new projection transport.
 The four actual observer call sites are subagent continuation/catalog/label and
 session-controller recovery. Business effect receipts use inspectSession directly;
-Topic recall, workflow queries and Markdown memory search use their own business
-stores. No Night HTTP/CLI session-fulltext route is registered.
+Conversation/task source queries and Markdown memory search use their own business
+stores; historical Topic references do not restore active Topic routing. No Night HTTP/CLI session-fulltext route is registered.
 
 1. Recommended current scope: do not add headless fulltext search. This removes no
    connected user feature; keep official projection and required observation.

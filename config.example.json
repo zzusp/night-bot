@@ -8,7 +8,22 @@
   "skillWatch": true,
   "credentialsWatch": true,
   "channelPluginDirs": [],
-  "channelPlugins": [],
+  "channelPlugins": [{
+    "type": "dingtalk-dws",
+    "enabled": false,
+    "channelId": "dingtalk-dws",
+    "config": {
+      "profile": "REPLACE_WITH_EXPLICIT_PROFILE",
+      "accountMode": "system",
+      "listen": false,
+      "writesAuthorized": false,
+      "responsibility": "仅处理本渠道已配置会话中明确授权的请求。",
+      "groups": [{
+        "groupId": "REPLACE_WITH_GROUP_ID",
+        "responsibility": "在此填写该群的职责、助手设定和工作规范；不能据此扩大权限或执行未经授权的操作。"
+      }]
+    }
+  }],
   "memory": { "background": true, "bindings": {} },
   "resident": {
     "host": "127.0.0.1",

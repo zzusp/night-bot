@@ -220,12 +220,16 @@ const taskSchema = z.object({
   stateHistory: z.array(taskStateEventSchema).optional(),
   reopenContext: z.string().min(1).optional(), resumeContext: z.string().min(1).optional(), archivedAt: z.string().min(1).optional(), createdAt: z.string().min(1), updatedAt: z.string().min(1),
 })
-const platformScheduleSchema = z.object({
+const platformScheduleFields = {
   sessionId: z.string().min(1), requestId: z.string().min(1), groupId: z.string().min(1), messageId: z.string().min(1),
-  messageVersion: z.number().int().positive(), unitId: z.string().min(1), unitRevision: z.number().int().positive(),
-  timezone: z.string().min(1), title: z.string().min(1).max(120), prompt: z.string().min(1).max(8000), at: z.string().datetime(),
-  scheduleId: z.string().optional(), outcome: z.enum(['replied', 'expired', 'superseded']).optional(), completedAt: z.string().optional(),
-})
+  messageVersion: z.number().int().positive(), timezone: z.string().min(1), title: z.string().min(1).max(120),
+  prompt: z.string().min(1).max(8000), at: z.string().datetime(), scheduleId: z.string().optional(),
+  outcome: z.enum(['replied', 'expired', 'superseded']).optional(), completedAt: z.string().optional(),
+}
+const platformScheduleSchema = z.union([
+  z.strictObject({...platformScheduleFields,sourceMode:z.literal('direct'),sourceId:z.string().min(1),actorId:z.string().min(1)}),
+  z.strictObject({...platformScheduleFields,unitId:z.string().min(1),unitRevision:z.number().int().positive()}),
+])
 const messageIngressSchema = z.strictObject({ paused: z.boolean(), pausedAt: z.iso.datetime().optional(), recoveryFromAt: z.iso.datetime().optional() })
 const schedulerSchema = z.object({
   messageIngress: messageIngressSchema.optional(),

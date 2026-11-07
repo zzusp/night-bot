@@ -165,8 +165,8 @@
       "source": "dws-bridge.js",
       "sourceSha256": "8c203c1720b160d1e6db2eb2bca1922e95d111921a96aa49917ace97b610da19",
       "status": "adapted",
-      "sha256": "b07a0427ef2826b81cd5bbeb7f65017273ba92255e1d7f135e2bd62e8c7b8550",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes."
+      "sha256": "082218473340959f3ffe9d8e6b0b364e87d6bd3c2819535135e54734408fea8c",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes. DWS身份暂缓沿原controlTail/ingress recoveryFromAt持久保留更早补读下界；epoch保护并发补读，pause排空移到状态队列外，stop等待消息与持久水位。"
     },
     {
       "source": "dws-runner.js",
@@ -204,8 +204,8 @@
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
       "status": "adapted",
-      "sha256": "043a47d11bd6c4a7c8ced0000532fdbcab8e5246a914192e6c30b25ee74fd0f9",
-      "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay."
+      "sha256": "2eaf598ffa90b8d75a2d581f03442a2940d891715b98af2475948ef18fee0b03",
+      "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay. 账本v4接入直接来源、分诊与Router依赖/事件/轮换；调度及claim双守卫，共用任务mutation更新依赖版本并保留控制来源。 人工事实追问通知在task.wait事务创建，直接sourceRef与历史quoted身份分别严格核验。 任务附件交付在prepare/start核验当前完成版本、原来源、冻结descriptor/caption、父子顺序及冻结受众一致；归档后只续已有通知。 父依赖等待的start负许可仅在旧现均prepared、零发送且从未授许可、冻结payload一致时按原ID重评估全部当前守卫，热冷收据原位更新保留序号；首次授许可后继续去重，unknown仅回读。 SG10：父子附件受众幂等和humanReview来源校验采用单一历史受众只读投影，保留source/version/actor/atAll与unknown守卫，不改旧payload/hash。"
     },
     {
       "source": "engineering-output-contract.js",
@@ -451,8 +451,9 @@
     {
       "source": "fixed-topics.js",
       "sourceSha256": "979b0fe9b49759786c351f76ec5d485a402f68aea491190c5857502f3dddfb75",
-      "status": "retained",
-      "sha256": "979b0fe9b49759786c351f76ec5d485a402f68aea491190c5857502f3dddfb75"
+      "status": "adapted",
+      "sha256": "00e5b75f4696c2201e18e6e7adf6d4ebeeae8ce910d3756b3706dbde4d3efd93",
+      "adaptation": "平台排期物理sessionId对含冒号等非法字符的直接来源请求做稳定哈希映射，逻辑request/outbound身份和既有安全sessionId保持不变。"
     },
     {
       "source": "group-coordinator-session.js",
@@ -464,14 +465,16 @@
     {
       "source": "group-message.js",
       "sourceSha256": "d7579e34f4b7e7df922382d7dd0156d728bd14e354b412b853c8da2b849c3208",
-      "status": "retained",
-      "sha256": "d7579e34f4b7e7df922382d7dd0156d728bd14e354b412b853c8da2b849c3208"
+      "status": "adapted",
+      "sha256": "0e5b36bc8dc2e0ea9ec36426bb5410ad7c143766024f3f6d4120e712d9206eb2",
+      "adaptation": "SG10：纯中性会话提示和正文安全提取到src自有helper，历史export保留别名；sameDeliveredText起的厂商发送/回读/收据协议尾部与原版精确一致。"
     },
     {
       "source": "group-notification.js",
       "sourceSha256": "121b35ac812f3c72b253b88c0ee5a25cbe02b156ab0fc9657261c2c461572168",
-      "status": "retained",
-      "sha256": "121b35ac812f3c72b253b88c0ee5a25cbe02b156ab0fc9657261c2c461572168"
+      "status": "adapted",
+      "sha256": "8508fc53d9b994b255fbef2d5dbdfe20340dec6c5ca1761dfb08469fe281f4b6",
+      "adaptation": "直接来源平台附件仅在原通知具有fact时复制该字段，避免undefined进入持久化JSON；保留历史fact、来源身份、父子通知顺序及幂等边界。 文件子件继承taskDelivery与显式受众，仍按原deliveryId/afterNotificationId串行。 SG10：公开中性actor/recipient通知合同，历史group字段仅在显式包装与notificationAudience只读投影双读；保留原通知身份，不迁移冻结账。"
     },
     {
       "source": "group-person-aliases.js",
@@ -482,8 +485,9 @@
     {
       "source": "group-reply-format.js",
       "sourceSha256": "94e8a3e7fd4072d741353a32af0fff10884cd5c0bde225d6c127a0db615d1341",
-      "status": "retained",
-      "sha256": "94e8a3e7fd4072d741353a32af0fff10884cd5c0bde225d6c127a0db615d1341"
+      "status": "adapted",
+      "sha256": "e41b3d81b038738f845612451e4cda65d8294f309d196d091fd81ae93ed53b20",
+      "adaptation": "SG10：会话回复使用conversationId/actorId/recipientActorIds，历史group包装显式转接；保留正文安全、署名与引用处理。"
     },
     {
       "source": "host-context.js",
@@ -496,8 +500,8 @@
       "source": "http.js",
       "sourceSha256": "c1202c9a9f65e76d200ae75ae934893fd2911582e865a059a2dba40837534d6d",
       "status": "adapted",
-      "sha256": "98d6b2f695d302be5437f86e53cf196ce086d4d35857b98ee8419df2aac9d7e6",
-      "adaptation": "Retained routes with strict local effect reconciliation endpoints protected by private operator capability; no caller-supplied identity."
+      "sha256": "2fce9d22455b6508ff137fd5db4d6664c948179eb5e400da6bd500d5d97580df",
+      "adaptation": "Retained routes with strict local effect reconciliation endpoints protected by private operator capability; no caller-supplied identity. 活动Topic写入口和旧字段返回410；历史GET只读标注；恢复入口使用直接来源及triage/router阶段。"
     },
     {
       "source": "independent-coordination-planner.js",
@@ -570,8 +574,9 @@
     {
       "source": "native-dws-send.js",
       "sourceSha256": "78663e8224fe981907c984f8867a8f8d4f715f98c7f80f6a77c36a21baabf67e",
-      "status": "retained",
-      "sha256": "78663e8224fe981907c984f8867a8f8d4f715f98c7f80f6a77c36a21baabf67e"
+      "status": "adapted",
+      "sha256": "247191b298c30583569225caa007549d3b1d832cb8f7f1308fbd236eb816d9f4",
+      "adaptation": " 可选插件注入本channel的厂商会话映射及状态查询；精确发送身份单独投影，不冒充内容/附件verified或重发。仅同scope starting/unknown身份未决时有界探针后抛typed暂缓，保留错误cause。"
     },
     {
       "source": "native-maintenance-drain.js",
@@ -668,8 +673,9 @@
     {
       "source": "observer-message-projection.js",
       "sourceSha256": "86726bff2d651493f480dd98ea5175b4f96682a8d9a284eee6ac9b665c939507",
-      "status": "retained",
-      "sha256": "86726bff2d651493f480dd98ea5175b4f96682a8d9a284eee6ac9b665c939507"
+      "status": "adapted",
+      "sha256": "f4075630ec6d49d34a88ad7675c5ef24610300549cffc8d419db9799e40643b7",
+      "adaptation": "显示来源版本对应的分诊、Router处置与直接任务关联，不创建活动Topic。"
     },
     {
       "source": "observer-outbox-state.js",
@@ -717,15 +723,16 @@
     {
       "source": "platform-notification.js",
       "sourceSha256": "030a71b5ddec3d445061bfab746fc38ac6f163e5fb1204ade989c17433638722",
-      "status": "retained",
-      "sha256": "030a71b5ddec3d445061bfab746fc38ac6f163e5fb1204ade989c17433638722"
+      "status": "adapted",
+      "sha256": "57e220a10812b1d2097e7cdeeac822b19689cd443c7beff5935d76f250050139",
+      "adaptation": "平台通知与附件支持直接来源身份，保留冻结正文、投递去重及历史unit身份。 冷恢复标记并复用原冻结回复，保留直接source或历史unit身份互斥。 SG10：当前工具schema/模型context采用中性actor和收件人；旧outbox通过单一受众只读投影恢复，冻结payload及未知效果不重写或重放。"
     },
     {
       "source": "platform-schedule.js",
       "sourceSha256": "2e3da4accc1654b8eff117b3df8db8cdfab5d88f1df53c86f27ad1d345f400ac",
       "status": "adapted",
-      "sha256": "c146e64449f0c31472a5bb669874e8e34e59121e74d27ccf5a897009579aaf31",
-      "adaptation": "Official typed schedule admission and tools; Host scheduler and actual admitted-packet/settled recovery close the inactive-record-before-enqueue window without replay."
+      "sha256": "d0118f0df0d5438aeac1a618fa1302633ca044bede3fe1ae114a00c47bf6ea92",
+      "adaptation": "Official typed schedule admission and tools; Host scheduler and actual admitted-packet/settled recovery close the inactive-record-before-enqueue window without replay. 原生平台排期支持直接消息来源及认证作者，保留旧持久排期恢复而不创建虚拟Topic。 SG10：当前schedule提示/通知工具采用中性会话和actor合同，保留原提醒文本与精确冷恢复匹配。"
     },
     {
       "source": "resident.js",
@@ -802,8 +809,8 @@
       "source": "store.js",
       "sourceSha256": "642f453d7baf48c065c8f504028a59e5052d027487b6433d916ab87c522bcfe2",
       "status": "adapted",
-      "sha256": "10fc82a59c55bf6983047e39478e818e388537f390c6e90d324b08334a6827c9",
-      "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
+      "sha256": "9a9c8f9fbbd5931779c5cc82f11871f148360a34d243e255179dc7711df4c7f4",
+      "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. 持久平台身份区分直接source与历史unit的互斥结构；保留消息及通知旧记录可读。"
     },
     {
       "source": "task-actions.js",
@@ -814,14 +821,16 @@
     {
       "source": "task-archive.js",
       "sourceSha256": "7b59c08f3722e7ddb5a903597735ff167deacce8b9433ccbbc94db31f4daf202",
-      "status": "retained",
-      "sha256": "7b59c08f3722e7ddb5a903597735ff167deacce8b9433ccbbc94db31f4daf202"
+      "status": "adapted",
+      "sha256": "961454db16e30ef8d400271cea696b70312d799825ec9637e5b1f053fb602da5",
+      "adaptation": "冷归档保留Router账本v4版本，禁止归档操作降回旧二进制可读的v3。"
     },
     {
       "source": "task-artifact-files.js",
       "sourceSha256": "f9be3f32e2af23bd0a0fdd05db87bd8571f189767cd3856184b1c1a07532205c",
-      "status": "retained",
-      "sha256": "f9be3f32e2af23bd0a0fdd05db87bd8571f189767cd3856184b1c1a07532205c"
+      "status": "adapted",
+      "sha256": "94610342bdbded5c44a3b15eb1f671ac19f8958ba24dc34ed4f0286a70a8d187",
+      "adaptation": "平台产物描述符接受互斥直接来源/历史unit身份，保留task产物版本、哈希及路径校验。 逻辑requestId有界保存且仅进入scope摘要，物理session/文件名和互斥来源身份校验不放宽。"
     },
     {
       "source": "task-artifact-scope.js",
@@ -912,8 +921,9 @@
     {
       "source": "task-message-projections.js",
       "sourceSha256": "cecb2e481976b3171e183d7178fbc6e6ca68705dee0188759a7cb4d68d101b83",
-      "status": "retained",
-      "sha256": "cecb2e481976b3171e183d7178fbc6e6ca68705dee0188759a7cb4d68d101b83"
+      "status": "adapted",
+      "sha256": "0fbe37ae98dd301209ad72527503cee0050511d3e640a4608a3370c12a9ee099",
+      "adaptation": "SG10：中性入站只在resident-store边界转历史actor/quote形状，旧通知受众仅双读投影；保留原来源、receipt、恢复与unknown状态。 历史通知缺省reply actor仍精确沿用原payload.actorId投影，不丢旧引用作者。"
     },
     {
       "source": "task-model-config.js",
@@ -1044,8 +1054,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "0afb5264a508f44f51834e6efadee3cb291cc7b26813547259c21b4bcbfb6760",
-      "adaptation": "Official Single-only service; rejects absent factory and split execution state, removes legacy driver dispatch and Host provider retry while retaining effect reconciliation, source-bound live admissions, archive holds and official Topic routing."
+      "sha256": "6592256ffb0b77c0156d332ef32f5cbc338a32a8a61043d5b4cac72cb06b221a",
+      "adaptation": "默认认证入口改为轻量分诊及常驻Router；直接来源任务动作、依赖评估和唯一执行会话，保留通知/平台排期/归档与无重放边界，退休活动Topic路由。 Web动作冻结请求及首次派生参数，收据重试不取消后续lease；旧冻结出箱核对真实身份，close尝试全部资源后聚合异常。 Router显式选择单任务冻结附件及受信多人受众，复用共享说明/父子通知；恢复媒体读取并用富化实际版本登记来源，direct发送前先核持久父态。 无群Web续办/重开沿用创建时的单任务来源作用域，仅真实群任务要求订阅；不采调用方群标识、不创建虚假群或IM来源，保留原actor、版本、去重与唯一session边界。 执行及同session补充将本任务真实入边的当前前置完成、原事件与匹配评估/授权来源送入既有task输入；校版本及依赖ready，排除前置会话、完整来源正文和全图，不新增授权。 渠道配置职责经认证会话resolver贯通分诊、Router、执行与无工具复盘；首次订阅及既有群仅同步明确配置（含空清空），不采消息元数据配置、不新增授权或跨群scope。 SG10：活动工具/模型来源及通知使用中性主体/收件人，旧quote/notification请求仅确定性只读投影保持幂等；技术问题缺省operator，业务补充显式requester，不改旧事实/收据/hash。 历史已送达/不可重试失败通知先按原终态退出再查transport，保留原recall/投影与未完成及unknown守卫。 SG10受控恢复：仅Host委托续原已接纳失败Router批次，绑定原会话/代际/packet/checkpoint；确定未结恢复显式degraded及可观察告警，其它错误失败关闭，不新业务输入或重放任务/发送。 显式replyToSource仅绑定当前受信source消息/作者，要求受众包含作者，沿原冻结幂等和父子交付。统一渠道入口在登记fact/source前精确核自身发送，身份未决显式暂缓，不扩大到同账号或正文过滤。"
     },
     {
       "source": "task-session.js",

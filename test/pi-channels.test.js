@@ -43,8 +43,8 @@ test('channel delivery with a durable input but no completion receipt stays unce
  const f=await memoryHost(t),api=f.host.ctx.channels,first=message('chat','dm','alice','one','first input')
  const response=await api.receive(first),actor=f.host.ctx.get('agents').get(response.sessionId),next=message('chat','dm','alice','two','second input')
  await api.registerConversation(next)
- const {hash}=await import('../src/memory/format.js'),identity=api.identity(next),messageKey=hash(JSON.stringify([next.channelId,next.conversationId,next.messageId]))
- const source={kind:'user',channelType:next.type,channelId:next.channelId,conversationId:next.conversationId,senderId:next.senderId,channelMessageId:next.messageId,principal:identity.principal,channelMessageKey:messageKey}
+ const {hash}=await import('../src/memory/format.js'),identity=api.identity(next),messageKey=hash(JSON.stringify([next.channelId,next.conversationId,next.messageId,next.messageVersion??1]))
+ const source={kind:'user',channelType:next.type,channelId:next.channelId,conversationId:next.conversationId,senderId:next.senderId,channelMessageId:next.messageId,messageVersion:next.messageVersion??1,principal:identity.principal,channelMessageKey:messageKey}
  await actor.input.enqueue({id:'channel:'+messageKey,source,content:[{type:'text',text:next.text}]})
  const requests=f.requests.length;await f.close();await f.boot()
  const result=await f.host.ctx.channels.receive(next)

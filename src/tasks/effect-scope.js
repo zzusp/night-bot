@@ -4,7 +4,9 @@ import {nativeBusinessAuditKinds} from '../runtime/pi-business-state.js'
 export async function readTaskEffectScope(ctx,task,stored){
  const memory=ctx.get('memory');await memory?.bindingReady
  const binding=memory?.bindings?.get(task.sessionId)
- if(!binding||binding.actorId!==task.ownerActorId||(binding.groupId??null)!==(task.groupId??null))throw Object.assign(new Error('TASK_EFFECT_MEMORY_SCOPE_MISMATCH'),{code:'TASK_EFFECT_MEMORY_SCOPE_MISMATCH'})
+ // 渠道会话与记忆群使用不同命名空间；沿用 Host 创建任务时的可信映射。
+ const memoryGroupId=task.groupId&&task.metadata?.channelType!=='chat'?(task.metadata?.memoryGroupId??task.groupId):null
+ if(!binding||binding.actorId!==task.ownerActorId||(binding.groupId??null)!==memoryGroupId)throw Object.assign(new Error('TASK_EFFECT_MEMORY_SCOPE_MISMATCH'),{code:'TASK_EFFECT_MEMORY_SCOPE_MISMATCH'})
  const facts={};let cwd=stored.header.cwd
  for(const row of stored.audit){
   const name=row.domain+'/'+row.kind

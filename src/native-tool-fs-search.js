@@ -1,6 +1,8 @@
 // Night-owned safe search IO. Pi's public find tool owns its schema/rendering.
 // grep uses a bounded packaged-rg port because Pi 1.5 exposes no spawn override.
 import z from '@deepseek-ai/schemastery'
+import {scopeOf,scopeChainOf} from './native-scope.js'
+import {Minimatch} from 'minimatch'
 import {createFindToolDefinition} from '@earendil-works/pi-coding-agent'
 import {isAbsolute,join,parse,relative,resolve,sep} from 'node:path'
 import {existsSync} from 'node:fs'
@@ -15,6 +17,12 @@ const fail=(code,message,cause)=>new SearchError(message,code,cause?{cause}:unde
 export const RAW_OUTPUT_MAX_BYTES=20_000_000,SEARCH_TIMEOUT_MS=30_000,SEARCH_STDERR_MAX_BYTES=65536,SEARCH_GRACE_MS=3000,SEARCH_META_MAX_BYTES=65536,GREP_MAX_MATCHES=250,GREP_MAX_LINE_BYTES=2000
 export const name='night-native-tool-fs-search',inject=['tools','systemPrompt','subprocess','workingDirectory','fs','agents']
 export const Config=z.object({globMaxResults:z.number().default(100),grepMaxMatches:z.number().default(GREP_MAX_MATCHES),grepMaxLineBytes:z.number().default(GREP_MAX_LINE_BYTES),searchMetaMaxBytes:z.number().default(SEARCH_META_MAX_BYTES),rawOutputMaxBytes:z.number().default(RAW_OUTPUT_MAX_BYTES),graceMs:z.number().default(SEARCH_GRACE_MS),stderrMaxBytes:z.number().default(SEARCH_STDERR_MAX_BYTES),timeoutMs:z.number().default(SEARCH_TIMEOUT_MS),maxEntries:z.number().default(10000),maxDepth:z.number().default(64)})
+const registrations=new WeakMap()
+export function isNativeSearchObservationalTool(definition,actor){
+ const port=definition&&registrations.get(definition)
+ // 搜索注册在 preset generation；仅承认该作用域链上的真实在册 actor。
+ return !!actor&&!!port&&port.agents.get(actor.id)===actor&&scopeChainOf(actor).includes(port.scope)&&port.registry.get(definition.name,actor)===definition
+}
 let executable
 export async function resolveRgPath(){
  executable??=Promise.resolve().then(async()=>{
@@ -30,7 +38,7 @@ export function previewLine(value,maxBytes){const result=boundText(value,{headBy
 export async function runRipgrep(ctx,exec,toolName,argv,maxBytes,graceMs,stderrMaxBytes,cwd){
  aborted(exec.signal);cwd??=await ctx.workingDirectory.ensure(exec.agent,exec.signal)
  let handle,outcome,problem
- try{handle=ctx.subprocess.spawn({argv:[await resolveRgPath(),'--no-config',...argv],cwd,stdio:{stdin:'ignore',stdout:{maxBytes},stderr:{maxBytes:stderrMaxBytes}},graceMs,signal:exec.signal})}catch(e){aborted(exec.signal);throw fail('SEARCH_FAILED','Search process could not start',e)}
+ try{handle=ctx.subprocess.spawn({argv:[await resolveRgPath(),'--no-config',...argv],cwd,stdio:{stdin:'ignore',stdout:{maxBytes},stderr:{maxBytes:stderrMaxBytes}},graceMs,signal:exec.signal})}catch(e){aborted(exec.signal);throw fail('SEARCH_FAILED','Search process could not start'+(typeof e?.code==='string'?' ('+e.code+')':''),e)}
  try{outcome=await handle.done}catch(e){problem=e}
  // Completion includes the process range; never release a canceled native tool
  // while its subprocess owner still reports live descendants.
@@ -121,7 +129,12 @@ export async function apply(ctx,caps){
    textArg(args.pattern,'pattern');if(args.path!==undefined)textArg(args.path,'path')
    if(args.limit!==undefined&&(!Number.isSafeInteger(args.limit)||args.limit<1||args.limit>caps.globMaxResults))throw fail('SEARCH_INVALID_ARGUMENT','find limit exceeds configured result budget')
    const operations={exists:async path=>(await allowed(fs,path,cwd,exec.signal)).info!==undefined,glob:async(pattern,path,options)=>{
-    const job=(async()=>{const files=await enumerateSearchFiles(fs,path,cwd,exec.signal,caps),raw=await capture(ctx,exec,caps,cwd,files,['--files','--null','--hidden',`--glob=${pattern}`]);return raw.split('\0').filter(Boolean).slice(0,options.limit)})();pending.add(job);try{return await job}finally{pending.delete(job)}
+    const job=(async()=>{
+     const files=await enumerateSearchFiles(fs,path,cwd,exec.signal,caps),matcher=new Minimatch(pattern,{dot:true,matchBase:true,nonegate:true,nocomment:true}),matches=[]
+     // 只匹配已授权的文件表，不为文件名搜索启动拥有额外 IO 能力的进程。
+     for(const file of files){aborted(exec.signal);if(matcher.match(relative(path,file).split(sep).join('/'))){matches.push(file);if(matches.length>=options.limit)break}}
+     return matches
+    })();pending.add(job);try{return await job}finally{pending.delete(job)}
    }}
    const tool=createFindToolDefinition(cwd,{operations})
    let result
@@ -146,6 +159,6 @@ export async function apply(ctx,caps){
    if(Buffer.byteLength(rendered)>caps.searchMetaMaxBytes)throw fail('SEARCH_RESULT_LIMIT','Rendered search exceeds result byte cap; narrow the search')
    return {text:rendered}
   }}
- ctx.tools.register(find);ctx.tools.register(grep)
+ for(const definition of [find,grep]){registrations.set(definition,{scope:scopeOf(ctx),agents:ctx.agents,registry:ctx.tools});ctx.tools.register(definition)}
  ctx.systemPrompt.section({name:'tool:safe-search',order:ctx.systemPrompt.getSectionOrder('TOOL_GREP'),text:()=> 'Use find to discover authorized files and grep to search their contents. Use read for surrounding context.',officialText:()=> 'Use find to discover authorized files and grep to search their contents. Use read for surrounding context.'})
 }

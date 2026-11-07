@@ -1,17 +1,32 @@
 # Night Bot
 
+UI/UE 的唯一指导性文档是仓库根目录的 [DESIGN.md](DESIGN.md)。修改界面前先读该文档；视觉、交互、状态、文案和可访问性规则统一在其中维护，不另建平行的 UX 合同或设计规范。CSS 与组件是实现，操作/运维手册和历史验收记录不替代设计规范。
+
 Night Bot is a generic personal-assistant Agent initialization kit. Anyone should
 be able to initialize their own assistant without another person's identities,
 credentials, private paths or business assumptions. Channels are optional adapters and support exactly the core `chat`/`chat-room`
 conversation abstractions, with authenticated sender/conversation isolation.
 DingTalk DWS CLI belongs in the optional channel plugin, never default core
 composition, startup probes or core acceptance prerequisites. Preserve plugin
-capabilities and report live vendor integration separately.
+capabilities and report live vendor integration separately. Public tools, prompts
+and DTOs use channel-neutral actor, conversation and recipient fields; vendor
+authentication/protocol, native IDs, quotes and resource mapping stay in the
+optional plugin. Historical audit and receipts remain traceable to source/vendor
+fields and are not mechanically renamed or migrated; retained compatibility
+helpers for historical message/receipt formatting do not mean DWS is loaded or
+running, and other static-loading claims require test evidence.
 Each task has one execution session; no separate task Owner/coordinator or split
-execution team. Topic dialogue and tool-free retrospectives are separate roles.
-First-tier triage owns tentative quoted feedback and same-session steer intake,
-with at most 15 messages per batch; overflow queues. Keep source/version links,
-durable delivery deduplication and unknown-send readback.
+execution team. First-tier triage only decides per-source handling and optional
+short replies; it never splits, creates or controls tasks. Each authenticated
+conversation has one durable Router identity for task arrangement and result
+assessment, separate from task execution and tool-free retrospectives. Keep both
+triage and Router user-message batches at most 15; overflow queues. Preserve
+same-session steer, direct source/version/actor links, durable delivery
+deduplication and unknown-send readback. Task dependencies are Host-enforced;
+completion alone grants neither authorization nor dependent-task execution.
+Router handoff is tool-free; Pi generation rotation must preserve committed
+history, one business owner and durable pending inputs. Topic is historical audit,
+not an active routing entity. See docs/CHANNELS.md.
 Do not turn repetition counts into a universal gate for skill creation: the model
 assesses evidence/value/applicability, including strong single-task lessons; program
 code enforces scope, permissions, deduplication and traceability.
@@ -50,7 +65,15 @@ artifacts stay in `data/workspaces/`; model file/process tools must enforce that
 write boundary, including relative paths and symlinks. System binaries/libraries
 and ephemeral OS mechanisms are dependencies, not external business workspaces.
 Runtime data, memories, credentials, backups and business artifacts must never be
-committed to Git. Version code, tests, rules and deliberate formal skill templates.
+committed to Git. Version code, tests, rules, generic skill loading/isolation
+mechanisms and no-body configuration contracts only. Private skill bodies, scripts,
+references and assets stay in ignored installation data and are never staged,
+committed or pushed. When migrating them, use an existing installation pointer within this task's
+authorized reuse scope as source, and never copy stale node_modules, worktrees,
+accounts or credentials. If cleanup or relocation is needed, touch only materials
+introduced by this task; never overwrite or move another session's existing skills.
+Run git check-ignore before and after copying, and inspect git diff --cached and
+git ls-files for skill paths before delivery.
 Autonomous learning uses scoped, evidence-linked memory and task retrospectives;
 model inferences are not facts or authorization. Learning failures must not undo
 completed delivery; retain audit, restart idempotence and forgetting behavior.
