@@ -124,6 +124,11 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       {type: 'sample-channel', channelId: '备用渠道', enabled: false},
     ]},
     tasks: {
+      store: {async query(query) {
+        if (query.kind === 'task.list') return tasks.filter(task => task.groupId === query.groupId).map(task => ({taskId: task.taskId, groupId: task.groupId}))
+        if (query.kind === 'task.get') {const task = tasks.find(task => task.taskId === query.taskId); return task && {taskId: task.taskId, groupId: task.groupId, sessionId: task.session.sessionId, sessionBound: true}}
+        if (query.kind === 'router.get') return null
+      }},
       async boardTasks(query) {return pageOf(tasks.filter(task => !query.state || task.state === query.state), query)},
       listObserverGroups() {return rooms},
       async taskDetail(id) {return tasks.find(task => task.taskId === id)},

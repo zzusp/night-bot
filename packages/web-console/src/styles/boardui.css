@@ -129,7 +129,7 @@ a:hover { color: var(--board-info); }
 .board-icon-button:not(:disabled):hover { background: var(--board-hover); color: var(--board-text); }
 .board-icon-button:not(:disabled):active { background: var(--board-border-strong); }
 .board-icon-button:disabled { opacity: .4; }
-.board-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 22px; max-width: 100%; padding: 2px 8px; border-radius: var(--board-radius-pill); color: var(--board-muted); background: var(--board-hover); font-size: 11px; font-weight: 500; line-height: 16px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.board-badge { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 4px; min-height: 22px; max-width: 100%; padding: 2px 8px; border-radius: var(--board-radius-pill); color: var(--board-muted); background: var(--board-hover); font-size: 11px; font-weight: 500; line-height: 16px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
 .board-badge--success { color: var(--board-success); background: var(--board-success-soft); }
 .board-badge--warning { color: var(--board-warning); background: var(--board-warning-soft); }
 .board-badge--danger { color: var(--board-danger); background: var(--board-danger-soft); }

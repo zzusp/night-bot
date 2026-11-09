@@ -106,17 +106,26 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const current = () => requestVersion === sessionVersion && !signal.aborted;
-    if (response.status === 401 && path !== '/login' && path !== '/session' && current()) window.dispatchEvent(new Event('night-session-expired'));
-    // 同浏览器另一标签登录会替换共享 cookie。只读同步新会话，不重放被拒绝的写操作。
-    if (response.status === 403 && data?.error === 'CSRF_INVALID' && current()) {
+    // A resource/proxy failure is not proof that the browser session ended.
+    // Confirm through the session endpoint; never replay the original operation.
+    if (path !== '/login' && path !== '/session' && current() &&
+      (response.status === 401 || (response.status === 403 && data?.error === 'CSRF_INVALID'))) {
       try {
         const check = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
-        if (!check.ok) throw new Error('SESSION_REFRESH_FAILED');
-        const session = await check.json() as Session;
-        if (current()) { setSession(session); window.dispatchEvent(new CustomEvent('night-session-refreshed', { detail: session })); }
-      } catch { if (current()) window.dispatchEvent(new Event('night-session-expired')); }
-      throw new ApiError(403, 'SESSION_CHANGED');
+        const session = await check.json().catch(() => null);
+        if (check.status === 401 && session?.error === 'AUTH_REQUIRED') {
+          if (current()) window.dispatchEvent(new Event('night-session-expired'));
+          throw new ApiError(401, 'AUTH_REQUIRED');
+        }
+        if (!check.ok || session?.authenticated !== true || typeof session.csrfToken !== 'string' || !session.csrfToken) throw new ApiError(503, 'SESSION_CHECK_UNAVAILABLE');
+        if (current() && session.csrfToken !== csrfToken) { setSession(session); window.dispatchEvent(new CustomEvent('night-session-refreshed', { detail: session })); }
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(503, 'SESSION_CHECK_UNAVAILABLE');
+      }
+      throw new ApiError(response.status === 401 ? 503 : 403, response.status === 401 ? 'SESSION_RESOURCE_UNAVAILABLE' : 'SESSION_CHANGED');
     }
+    if (response.status === 403 && data?.error === 'CSRF_INVALID') throw new ApiError(403, 'SESSION_CHANGED');
     throw new ApiError(response.status, data?.error ?? 'REQUEST_FAILED');
   }
   if (data === null) throw new ApiError(502, 'INVALID_RESPONSE');
@@ -138,8 +147,10 @@ export function errorText(error: unknown) {
     if (['DINGTALK_CONFIG_INVALID', 'DINGTALK_CHANNEL_REQUEST_INVALID'].includes(error.code)) return '钉钉渠道配置未被接纳，请检查渠道标识和目标。';
     if (error.code === 'CHANNEL_CONFIGURATION_UNAVAILABLE') return '当前安装暂不支持保存渠道配置。请检查运行方式或稍后重试。';
     if (error.code === 'WEB_CHAT_SINGLETON') return 'Web 仅保留一个可继续的对话。请返回当前 Web 对话；原历史记录未被修改。';
+    if (error.code === 'SESSION_RESOURCE_UNAVAILABLE') return '当前请求暂不可用，登录状态正常。请稍后重试。';
+    if (error.code === 'SESSION_CHECK_UNAVAILABLE') return '暂时无法核对登录状态，当前内容已保留。请恢复连接后重试。';
     if (error.code === 'SESSION_CHANGED') return '连接状态已变化，内容已保留。请重新确认连接后重试刚才的操作。';
-    if (error.status === 401) return '登录已失效，请重新连接。';
+    if (error.status === 401) return '浏览器会话已结束，请使用访问令牌重新连接。';
     if (error.status === 403) return '当前连接没有访问权限，请重新登录或联系管理员。';
     if (error.status === 404) return '这条记录不存在，或已不再可用。';
     if (error.status === 409) return '记录已变化，请刷新后查看最新状态。';
