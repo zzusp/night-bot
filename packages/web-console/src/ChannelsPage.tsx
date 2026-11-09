@@ -224,23 +224,24 @@ function ChannelCardStatus({ item }: { item: Channel }) {
   const connected = hasRuntime ? item.runningConnected : item.connected;
   const error = item.runningErrorCode === undefined ? item.errorCode : item.runningErrorCode;
   const loaded = typeof item.savedVersion === 'string' && item.savedVersion === item.runningVersion;
+  const mismatch = item.runningVersion !== undefined && item.runningVersion !== null && !loaded;
+  const runtimeName = item.runningName && item.runningName !== item.channelId && item.runningName !== item.name ? item.runningName : '';
   return <div className="channel-card-status">
     {item.type === 'dingtalk-dws' && <div className="channel-configuration-state">
       {pendingRestart(item) ? <Badge tone="warning">已保存 · 待重启</Badge>
-        : item.liveApplied === true ? <Badge tone="success">保存配置已激活</Badge>
-        : item.liveApplied === false ? <Badge tone="warning">{loaded ? '已加载 · 尚未激活' : '尚未激活'}</Badge> : <span>配置应用状态未报告</span>}
-      {pendingRestart(item) && <span>尚未应用到当前运行态</span>}
-      {item.errorCode === 'DINGTALK_CHANNEL_SWITCH_BLOCKED' && <span>{channelError(item.errorCode)}</span>}
+        : item.liveApplied === true ? <Badge tone="success">配置已应用</Badge>
+        : item.liveApplied === false ? <Badge tone="warning">配置未应用</Badge> : <span>配置状态未提供</span>}
       <span>{item.writesAuthorized === true ? '外发已授权' : item.writesAuthorized === false ? '外发未授权' : '外发授权未报告'}</span>
     </div>}
     <div className="channel-health">
-      {item.runningVersion === null ? <span>当前运行：尚未加载此渠道</span> : item.runningVersion !== undefined
-        ? <span>当前运行：{item.runningName || item.channelId}{item.runningConversationType ? ` · ${conversationType(item.runningConversationType)}` : ''}{loaded ? ' · 保存版本已加载' : ' · 此前版本'}</span> : <span>当前运行状态</span>}
-      <Status value={state ?? 'unknown'} />
-      {error && error !== 'DINGTALK_CHANNEL_SWITCH_BLOCKED' && <span>{channelError(error)}</span>}
+      {!state || state === 'unknown' ? <Badge tone="neutral">运行阶段未提供</Badge> : <Status value={state} />}
       <span>{connected === true ? <><RiCheckboxCircleFill size={13} />健康检查正常</> : connected === false ? '健康检查未就绪' : '健康状态未报告'}</span>
     </div>
+    {item.runningVersion === null && <p className="channel-runtime-note">尚未加载，保存后须正常重启</p>}
+    {mismatch && <p className="channel-runtime-note">当前仍使用此前配置{runtimeName ? `：${runtimeName}` : ''}{item.runningConversationType && item.runningConversationType !== item.conversationType ? ` · ${conversationType(item.runningConversationType)}` : ''}</p>}
+    {(item.errorCode === 'DINGTALK_CHANNEL_SWITCH_BLOCKED' || error) && <p className="channel-card-error">{channelError(item.errorCode === 'DINGTALK_CHANNEL_SWITCH_BLOCKED' ? item.errorCode : error)}</p>}
   </div>;
+
 }
 
 export default function ChannelsPage({ id }: { id?: string }) {
