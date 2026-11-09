@@ -1,6 +1,6 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
-import { RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiSeedlingLine, RiShieldCheckLine, RiSunLine } from '@remixicon/react';
-import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session } from './api';
+import { RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine } from '@remixicon/react';
+import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session, type OperatorSettings } from './api';
 import { dateTime, navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
 import { Loading, Notice, Status } from './components/Shared';
@@ -9,8 +9,11 @@ import { TaskDetail, TaskList } from './TasksPage';
 import ChannelsPage from './ChannelsPage';
 import PermissionsPanel from './components/PermissionsPanel';
 import EvolutionPage from './EvolutionPage';
+import SettingsPage from './SettingsPage';
+import {AssistantBrandContext, defaultBrand, useAssistantBrand} from './components/AssistantBrand';
 
 function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expired: boolean }) {
+  const brand=useAssistantBrand();
   const [token, setToken] = useState('');
   const [show, setShow] = useState(false);
   const [pending, setPending] = useState(false);
@@ -25,7 +28,7 @@ function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expi
     finally { setPending(false); }
   };
   return <main className="login-page"><div className="login-brand"><Logo /><Badge tone="neutral">个人工作空间</Badge></div>
-    <section className="login-card"><div className="login-symbol"><RiShieldCheckLine size={26} /></div><h1>{expired ? '重新连接你的助手' : '欢迎回到 Night Bot'}</h1>
+    <section className="login-card"><div className="login-symbol"><RiShieldCheckLine size={26} /></div><h1>{expired ? '重新连接你的助手' : `欢迎回到 ${brand.name}`}</h1>
       {expired && <p>浏览器会话已结束，请使用访问令牌重新连接。</p>}
       <form noValidate onSubmit={event => void submit(event)}><label htmlFor="access-token">访问令牌</label><div className="token-input"><input ref={input} id="access-token" type={show ? 'text' : 'password'} autoComplete="current-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} aria-invalid={!!error} aria-describedby="login-help login-error" placeholder="输入访问令牌" /><IconButton label={show ? '隐藏访问令牌' : '显示访问令牌'} aria-pressed={show} onClick={() => setShow(value => !value)}>{show ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}</IconButton></div>
         <p id="login-help" className="field-help">使用本机 Web 插件生成的令牌，由管理员提供。</p><div id="login-error" className="field-error" role={error ? 'alert' : undefined}>{error}</div><Button type="submit" busy={pending} disabled={pending} icon={<RiArrowRightLine size={17} />}>连接工作空间</Button>
@@ -47,6 +50,10 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   let id: string | undefined;
   try { id = segments[1] ? decodeURIComponent(segments[1]) : undefined; } catch { id = undefined; }
   const isConversation = section === 'chat' || (section === 'channels' && !!id);
+  const settings = useResource<OperatorSettings>('/settings',10000);
+  const inheritedBrand=useAssistantBrand();
+  const brand = settings.data?.appearance || inheritedBrand;
+  useEffect(()=>{const refresh=()=>settings.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[settings.refresh]);
   const overview = useResource<Overview>('/overview', 5000);
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
   const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
@@ -63,8 +70,8 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const drawer = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const currentChats = historyOffset ? olderChats : recent;
-  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
-  useEffect(() => { document.title = `${title} — Night Bot`; }, [title]);
+  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'settings' && !id ? '设置' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
+  useEffect(() => { document.title = `${title} — ${brand.name}`; }, [title,brand.name]);
   useEffect(() => { if (section !== 'chat') titleRef.current?.focus(); drawer.current?.close(); }, [route.pathname, section]);
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = next; setTheme(next);
@@ -77,7 +84,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     finally { setLogoutBusy(false); }
   };
   const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); olderChats.refresh(); };
-  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }];
+  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'settings',label:'设置',icon:RiSettings3Line}];
   const sidebar = (mobile = false) => <>
     <div className="sidebar-brand"><Logo />{mobile && <IconButton label="关闭导航" onClick={() => drawer.current?.close()}><RiCloseLine size={19} /></IconButton>}</div>
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
@@ -89,7 +96,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <div className="sidebar-bottom">
       <div className="operator"><span className="operator-avatar">{session.operator.name.slice(0, 1) || 'N'}</span><div><strong>{session.operator.name || '操作者'}</strong><span>本机工作空间</span></div><IconButton label="退出登录" disabled={logoutBusy} onClick={() => void logout()}><RiLogoutBoxRLine size={18} /></IconButton></div>
     </div></>;
-  return <div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar">{sidebar()}</aside>
+  return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar">{sidebar()}</aside>
     <dialog ref={drawer} className="nav-dialog" aria-label="导航"><div className="sidebar">{sidebar(true)}</div></dialog>
     <div className="main-frame"><header className="topbar"><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div>
       <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '连接中断' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
@@ -98,7 +105,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
       <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
       {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
@@ -115,10 +122,12 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </aside>}
       </div>
     </div>
-  </div>;
+  </div></AssistantBrandContext.Provider>;
 }
 
 export default function App() {
+  const branding = useResource<import('./components/AssistantBrand').AssistantBrand>('/appearance',10000);
+  useEffect(()=>{const refresh=()=>branding.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[branding.refresh]);
   const [session, updateSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
   const [expired, setExpired] = useState(false);
@@ -150,6 +159,6 @@ export default function App() {
     window.addEventListener('night-session-refreshed', refreshed);
     return () => { disposed = true; window.removeEventListener('night-session-expired', expire); window.removeEventListener('night-session-refreshed', refreshed); };
   }, []);
-  if (checking) return <div className="startup"><Logo /><Loading>正在连接工作空间…</Loading></div>;
-  return session ? <Workspace session={session} drafts={drafts} onLogout={logout} /> : <>{startupError && <div className="startup-notice" role="alert">{errorText(startupError)}</div>}<Login onLogin={login} expired={expired} /></>;
+  if (checking) return <AssistantBrandContext.Provider value={branding.data||defaultBrand}><div className="startup"><Logo /><Loading>正在连接工作空间…</Loading></div></AssistantBrandContext.Provider>;
+  return <AssistantBrandContext.Provider value={branding.data||defaultBrand}>{session ? <Workspace session={session} drafts={drafts} onLogout={logout} /> : <>{startupError && <div className="startup-notice" role="alert">{errorText(startupError)}</div>}<Login onLogin={login} expired={expired} /></>}</AssistantBrandContext.Provider>;
 }
