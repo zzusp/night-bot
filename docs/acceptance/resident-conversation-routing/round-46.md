@@ -10,7 +10,7 @@
 
 ## 实际版本与取舍
 
-受验分支 `worktree-resident-conversation-routing`，HEAD `2db2aa7c27c9f1ced506de7740c6aac4b757119c` 加未提交协作工作树。各批源/测试/资产SHA以原件成对pin为准，不能仅用HEAD代表。提交/远端事实在唯一goal回填，不为文档自身SHA循环提交。验收前已fetch目标分支，base `eca0df5ed127d8b043ba087291bfb1426d0ca5d6` 在HEAD内，无整合需求；PR2当时OPEN/mergedAt=null/MERGEABLE。
+受验分支 `worktree-resident-conversation-routing`，HEAD `2db2aa7c27c9f1ced506de7740c6aac4b757119c` 加未提交协作工作树。各批源/测试/资产SHA以原件成对pin为准，不能仅用HEAD代表。受验源码已保存到代码提交6145f9483d76e7fa1f5a9d91da3af9154b156ead并独立核远端一致；随后仅文档回填交付事实，与受验代码分开，不为文档自身SHA循环提交。验收前已fetch目标分支，base `eca0df5ed127d8b043ba087291bfb1426d0ca5d6` 在HEAD内，无整合需求；PR2当时OPEN/mergedAt=null/MERGEABLE。
 
 原渠道页只读，离线CLI需安装锁；Web不spawn离线CLI或绕锁。编辑采用既有决策快照 [Web渠道配置决定](../../spec/web-dingtalk-channel-create.md)：直接改row会混binding/游标；只允许名称/职责不能满足完整目标编辑；最终固定channelId/canonical账号，按真实身份隔离并在保存/cold双查旧依赖。没有删除、热加载、外发授权入口、schema变更或新调度器。唯一UI合同仍为根DESIGN.md。
 
@@ -67,4 +67,4 @@
 
 本轮所有文字FAIL/PASS及matrix历史保留。旧候选/前批浅深截图已由最终browser-channels-edit五图替代，前批文字结果不变；最终真实截图只保留edit-pending（72311B/882e1247）和edited-connected（71588B/17fb7307）两图，PNG ignored且未跟踪。Tests先--check再精确清理verify-web-channel.mjs、旧real-night-bot-test-pending.png及real-night-bot-test-connected.png，Main独立核缺席；旧证据内附件引用仅代表当时状态，附件已清理，原文字结果保留。一次性模型helper同样在归档后清理；实际运行supervisor仍参与用户预览，不清理。config、凭据、绑定、SQL/Pi及私有Skill/业务材料均不入Git。
 
-本轮实现、约定验证和清理已完成，下一步仅Git交付；保持原PR2，commit带[skip ci]，不触发CI/merge/deploy。最终PR正文自包含机制、实际结果与未验边界，写后独立gh/远端头核回。
+本轮实现、约定验证、清理与Git交付已完成；代码提交6145f9483d76e7fa1f5a9d91da3af9154b156ead带[skip ci]，已推原功能分支并更新原PR2。独立gh回读number2/OPEN/mergedAt=null/MERGEABLE，base refactor/pi-native-retirement←head worktree-resident-conversation-routing，远端头精确匹配且正文逐字等已检查文件，代码提交Actions run数0/statusCheckRollup为空。矩阵344行/新增16场景及round_46列，原328行历史列逐字节保持；真实模型首错保FAIL、用户更新后单次推理另列PASS，不追认消息回复。最终交付事实集中于唯一goal；无CI/merge/deploy/真实发送，本轮不再追加工作。
