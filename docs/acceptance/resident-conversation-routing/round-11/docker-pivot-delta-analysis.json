@@ -1,0 +1,28 @@
+{
+  "scope": "Original failure retained; diagnose strace presentation mismatch from the actual captured trace, not a business PASS.",
+  "originalExit": 1,
+  "originalDeclaredNegativePassed": false,
+  "actualNegativeExit": 0,
+  "actualNegativeTrace": "16    pivot_root(\"/tmp\", \"oldroot\")     = -1 EPERM (Operation not permitted)\n",
+  "actualSnapshotsEqual": true,
+  "originalBwrapStarted": false,
+  "reason": "Exact expected string used one space before equals; actual strace padded five spaces. No syscall/policy/permission or errno change.",
+  "followupDriverSha256": "874de74327d67d2c9cb631ecd4fd2e402a01f07132125a61298314cd3d7e323c",
+  "followupProfileSha256": "117a16091bb3b1cf73929bebb37b1b8d2ff7804c9c85f4a49eb2ac17eefc1d77",
+  "followupWrapperExit": 0,
+  "followupNegativePassed": true,
+  "followupBwrapExit": 1,
+  "nextObservedCall": "mount(/oldroot/, /newroot/, NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = -1 EPERM",
+  "nextObservedMountFlags": 53248,
+  "evidence": {
+    "docs/acceptance/resident-conversation-routing/round-11/docker-pivot-delta.log": "a37758e3b062d9bf94c967d9b3121102a3ba9b7940cd95cb1085b33afd456da4",
+    "docs/acceptance/resident-conversation-routing/round-11/docker-pivot-delta-result.json": "8015166ae67e4bbf2df3e93d5964bd6ff653a074123daedb3a649d20a1ce9862",
+    "docs/acceptance/resident-conversation-routing/round-11/docker-pivot-delta-cleanup.json": "2ede3caa2d81df5834f1567259cfb2702637d180f24439aa8315f6fc49dc6b9a",
+    "docs/acceptance/resident-conversation-routing/round-11/docker-pivot-spacing.log": "3405ec378ea7d83abc53517bc12a211c37b333cf1d733852e12ebb9b0e4c560f",
+    "docs/acceptance/resident-conversation-routing/round-11/docker-pivot-spacing-result.json": "890a4629f96f200fcefd32e436ef2bc81667bdeec75d71975b087ae900ec1c54",
+    "docs/acceptance/resident-conversation-routing/round-11/docker-pivot-spacing-cleanup.json": "2a5c47dbdb733381b4dc60c333b71f061e0ed1b7c2d907ab4f8425c5799d976e"
+  },
+  "bothOwnedContainersIndependentlyAbsent": true,
+  "applicationStarted": false,
+  "realVendorExecuted": false
+}

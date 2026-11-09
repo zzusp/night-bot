@@ -23,7 +23,7 @@ instances explicitly:
   "channelPluginDirs": ["plugins/channels"],
   "channelPlugins": [
     {"type":"example-chat","channelId":"personal-account","enabled":true,"config":{}},
-    {"type":"dingtalk-dws","enabled":false}
+    {"type":"dingtalk-dws","channelId":"dingtalk-room","enabled":false}
   ]
 }
 ```
@@ -34,8 +34,20 @@ code, create account directories, register transports or probe executables.
 vendor-specific composition logic. Multiple enabled instances may use the same
 type when the plugin supports it. DWS namespaces cache/state/workspace directories
 by channel ID; account directories are namespaced only in private-account mode.
-System-account instances share the external CLI credential context. The first `dingtalkChannel` service is a
-compatibility alias; all instances are available in `channels.plugins`.
+System-account instances share the external CLI credential context. Instances are available by their explicit channel ID in `channels.plugins`;
+do not select a target by assuming a first-instance service alias.
+
+## 钉钉专用 CLI 与离线配置
+
+`node bin/night-bot-dingtalk.js CONFIG` 提供 `list`、`add --channel-id ID --json CONFIG_JSON [--enabled true|false]`、`set --channel-id ID --json PATCH_JSON`、`enable`、`disable` 及显式 `env` 导入。`add/set` 的 JSON 只含公开 `dingtalk_*` 配置；`channelId/enabled` 属于实例外层。名称与 Prompt 通过 `dingtalk_name/dingtalk_prompt` 设置，不接受旧的 `groups[].responsibility`、`config.responsibility`、`accountMode`、`listen`、`writesAuthorized` 或任意扩展字段。
+
+所有修改先加 `--check`：只校验拟改配置和 ingress 检查点，不创建锁、不落盘、不调用 DWS 或验证登录。去掉 `--check` 后，CLI 必须取得离线 Host 锁，再保存每渠道暂停/补拉检查点和配置；Host 运行时拒绝写入，不提供在线热更新。返回 `changed`、`checkOnly`、`restartRequired`、`liveApplied:false`；配置未变化但检查点变化也会要求重启。`list` 只显示实例标识、启用、名称、会话类型和是否配 Prompt，不输出绑定、账号登录资料或 Prompt 正文。
+
+`env` 只消费本次显式传入环境的 `DINGTALK_*`：单实例用 `DINGTALK_CHANNEL_ID`、`DINGTALK_ENABLED` 和对应公开字段的大写名称；布尔值只接受 `true/false`。多实例用 `DINGTALK_CHANNELS_JSON` 的完整实例数组，不能同时提供其它非空 `DINGTALK_*`。普通 `add/set` 参数不与环境字段混用；环境中没有相关字段时 `env` 不改配置。首次准备保持实例禁用、监听/发送为 false，不依赖默认值阻止连接。
+
+启用实例后才按已配置的账号和目标核真实登录并绑定。缺登录为 `waiting-auth`，登录元数据更新可触发重新解析接入；其它错误保留失败，不放宽身份或循环尝试未知目标。普通配置修改和离线 `enable/disable` 按 `restartRequired` 正常重启；停用期间的原下界和未完成补拉保留，恢复继续既有 bridge 与去重，不删除 ingress 文件或倒退业务 `ingressEpoch`。binding 在安装内 `data/config/channels/`，水位在 `data/state/channels/`，工作文件、缓存和私有账号另按安装目录分区；均不入 Git。 已认证的暂缓消息只在同一渠道游标中保存 ID/时间、不存正文；未找回已知消息的 `complete` 补拉不能清除恢复界，旧 bridge 快照也不能覆盖新消费/暂缓记录，具体完成判据见 [渠道恢复合同](CHANNELS.md)。
+
+操作命令见 [Windows 接入流程](ops/windows-local-runtime.md#指定钉钉群接入)，容器配置见 [Docker 运维](ops/docker-deployment.md)。以上为实现与操作合同，离线保存、监听 ready 或健康状态均不替代当前版本的隔离测试和真实账号/订阅/送达验收；当前结果统一见 [验收入口](acceptance/resident-conversation-routing/goal.md)。
 
 ## Lifecycle and capabilities
 
@@ -111,25 +123,12 @@ installed binary or a live account):
   which performs a different identity resolution. Group quoted sends retain the
   existing native reply path and native mention flags.
 
-Private chat ingress is opt-in: `config.directChats:true` requires an explicit
-`directPeers` allowlist of authenticated open IDs and `assistantActorId` to exclude
-the account's own output. Each allowed peer gets a reconnecting server-scoped
-`event consume user_im_message_receive_o2o --open-dingtalk-id PEER --flatten
---format ndjson` subscription. This public specific-conversation event is declared
-in `internal/event/personal/registry.go`, with target/flatten flags in
-`internal/app/event_command.go`. It avoids both all-direct collection and sender
-subscriptions (which may cover messages beyond private conversation scope).
-Operator replies require `operatorNotifications:true` plus explicit `operatorPeers`
-open IDs. The union of enabled direct/operator peers determines the subscriptions;
-merely listing peers without enabling their feature does nothing. No peers means
-no private subscription, polling or authorization-recall history reads. Events
-with unauthenticated or non-allowlisted senders are dropped before normalization,
-health updates and application ingestion. Operator history/recovery is also scoped
-to configured peers. Group event conversation IDs must match their subscription.
-The composite private listener waits for every configured stream to be ready,
-stops sibling streams on exit and reconnects the configured set only.
-Avoid configuring the same peer as a
-business-chat participant and an operator unless both processing paths are desired.
+钉钉公开配置以 `dingtalk_*` 为唯一入口，完整目标字段见 [渠道职责配置](CHANNELS.md#渠道职责配置)。每个实例必须有独立 `channelId`，并用 `dingtalk_conversation_type` 选择一个群聊或一个私聊目标。群名/姓名仅用于显式查找；实际登录资料、组织、userId/open ID 与 conversation 须完整解析并耐久绑定，未找到、多候选或身份变化拒绝。`dingtalk_binding` 可提供版本 1 的固定身份约束，但不得手工猜造身份；正常运行由插件保存安装内绑定，重新启动也须核对。
+
+私聊用 `dingtalk_conversation_type:"chat"` 和 `dingtalk_user_id` 或 `dingtalk_user_name` 显式选择对端。内部 `directPeers`、`assistantActorId` 由绑定派生，`directChats` 不是公开开关。实时订阅沿用 `event consume user_im_message_receive_o2o --open-dingtalk-id PEER --flatten --format ndjson`，不使用 all-direct 或泛发送人订阅；此 specific-conversation 事件及 target/flatten 参数由官方 `internal/event/personal/registry.go`、`internal/app/event_command.go` 定义。
+
+额外 operator 回复只在 `dingtalk_operator_notifications:true` 且提供非空 `dingtalk_operator_peers` 时启用；可选 `dingtalk_human_user_id`、`dingtalk_current_user_name` 供已有 operator 适配路径使用，不替代业务对端绑定或授权。operator 和业务私聊是两条路径，不希望双路处理时不要配置同一对端。只列 peers 不开启功能不会订阅；订阅、事件和恢复均限制在明确对端/会话，不能收集任意私聊。原始字段名及 vendor 命令继续留在插件，Host 使用中性身份。
+
 Private quoted replies use `chat +messages-reply --open-dingtalk-id ...
 --conversation-id ... --message-id ... --ref-sender ... --content ...
 --idempotency-key ... --yes`, verified in `chat/lark_alignment.go` and
@@ -139,8 +138,7 @@ Both paths retain idempotency and exact SUCCESS status readback
 bound to the original conversation. They do **not** claim private-chat
 mentions or file delivery. Missing send acknowledgment stays unresolved without
 resending. Group/history/media/file and operator capabilities retain their prior
-adapter paths. Private-chat history catch-up is not implemented for general chat;
-only live subscribed messages and the retained operator recovery path are covered.
+adapter paths. 新版业务私聊已复用 bridge 的暂停/恢复与范围历史补读：只读绑定对端的 `chat +chat-messages --open-dingtalk-id ... --start ... --end ... --order asc --page-all`，必须取得完整结果并逐条校验身份及时间；不完整或错会话/对端拒绝。群聊和私聊均保留每渠道持久水位及去重，不按重启重新定起点。此为当前实现合同，未证明真实私聊订阅、补拉、引用或发送已验收；operator 恢复仍独立核对。
 
 本节最初的 v1.0.63 官方接口/源码检查阶段未配置 CLI 二进制或真实账号，也未发送钉钉消息；当时的“不连接、不部署、不发送”只描述该阶段，不代表当前分支从未做过现场验收。后续 SG9 已在明确授权的指定测试群完成独立事项的文本/附件交付、平台回读、持久复盘及必要冷恢复，实际受验版本和未验边界见[第七轮报告](acceptance/resident-conversation-routing/round-7.md)。该结果不外推为任意账号、私聊、重连或全平台能力均已验收。
 
@@ -169,7 +167,7 @@ Night Bot does not need to own or relocate them to use the current user's DWS
 login. Central storage rules apply to Night Bot-managed secrets; they do not turn
 third-party system credential storage into a prerequisite for independent login.
 
-`config.accountMode` selects the actual behavior:
+`config.dingtalk_account_mode` selects the actual behavior:
 
 | Mode | Default | Behavior |
 | --- | --- | --- |
@@ -183,12 +181,14 @@ Only an explicit Windows request for `private` fails with
 cannot be supplied by the examined CLI. This is a mode-specific error, not a ban
 on the Windows channel. Disabled plugins still do nothing.
 
-For example, reuse the current user's authenticated CLI account:
+准备复用当前用户已认证账号的禁用配置如下；启用仍须另获连接授权：
 
 ```json
-{"channelPlugins":[{"type":"dingtalk-dws","enabled":true,"config":{
-  "accountMode":"system","profile":"YOUR_PROFILE","writesAuthorized":false,
-  "groups":["YOUR_ROOM_ID"]
+{"channelPlugins":[{"type":"dingtalk-dws","channelId":"dingtalk-room","enabled":false,"config":{
+  "dingtalk_account_mode":"system","dingtalk_profile":"YOUR_PROFILE",
+  "dingtalk_conversation_type":"chat-room","dingtalk_group_id":"YOUR_ROOM_ID",
+  "dingtalk_name":"指定群助手","dingtalk_prompt":"仅处理本会话明确授权的请求。",
+  "dingtalk_listen":false,"dingtalk_writes_authorized":false
 }}]}
 ```
 
@@ -207,8 +207,8 @@ an independent Windows keychain. Logging in, switching account, resetting auth o
 changing CLI config elsewhere under the same OS user can affect running instances.
 Use an explicit profile, keep account-changing CLI operations out of the bot's
 runtime workflow, and revalidate the account after a deliberate login switch.
-`assistantActorId` binds self-message filtering/readback where configured; it is
-not a continuous verification of the CLI's current login identity. If genuinely
+运行时绑定中的 `actorId` 用于核对精确发送身份与回读；它不是公开的
+`assistantActorId` 配置入口，也不能以同账号发送人替代消息级回声收据。 If genuinely
 independent Windows account lifecycles are needed, use separate OS users or wait
 for an upstream production-supported credential namespace. This is an optional
 multi-account deployment choice, not a single-account startup requirement.
@@ -224,7 +224,7 @@ available CLI login. 本节最初的账号策略检查仅覆盖 Windows 环境/�
 
 旧 DSH 的 README 和实现只作为能力对照，不是 Night Bot 已完成的实测证明，也不是迁移入口。Night Bot 不恢复旧的 `Topic → Owner → 多 execution session` 编排：当前每个认证 conversation 只有一个常驻 Router，每个事项只有一个执行 session；任务安排、依赖释放、效果收据、排空和恢复仍由 Host/SQLite 强制执行。
 
-- `src/channels/loader.js` 中内置 `dingtalk-dws` 的 entry URL/type 只是可选插件类型注册；`src/config.js` 保留纯群配置校验。默认 `channelPlugins` 为空，或实例为 `enabled:false` 时，不导入渠道插件实例、不注册 transport、不探测 DWS 可执行文件、不订阅、不创建账号目录。该合同不要求默认依赖图中历史消息/收据 helper 全部零加载；保留 `group-message` 兼容 helper 不代表运行 DWS。第八轮两个默认 CLI 受验分组实际观察 launcher/服务两进程：DWS 插件、runner、bridge、adapter 加载为 0，DWS 进程调用为 0，历史 `group-message` 格式 helper 加载为 1；均完成本地任务和正常 IPC 退出。结果按该报告所列分组版本成立，不能由静态 URL 外推，也不能宣称所有历史 helper 已从依赖图移除。
+- `src/channels/loader.js` 中内置 `dingtalk-dws` 的 entry URL/type 只是可选插件类型注册；`src/config.js` 校验通用 Host 配置，钉钉公开字段由插件纯校验器处理。默认 `channelPlugins` 为空，或实例为 `enabled:false` 时，不导入渠道插件实例、不注册 transport、不探测 DWS 可执行文件、不订阅、不创建账号目录。该合同不要求默认依赖图中历史消息/收据 helper 全部零加载；保留 `group-message` 兼容 helper 不代表运行 DWS。第八轮两个默认 CLI 受验分组实际观察 launcher/服务两进程：DWS 插件、runner、bridge、adapter 加载为 0，DWS 进程调用为 0，历史 `group-message` 格式 helper 加载为 1；均完成本地任务和正常 IPC 退出。结果按该报告所列分组版本成立，不能由静态 URL 外推，也不能宣称所有历史 helper 已从依赖图移除。
 - `src/tasks/single-session.js` 使用 `src/channels/message-safety.js` 的中性会话规则进入单一执行会话；它不创建旧式 Owner 或子执行会话。Router 的 `resident_router_reply.recipientActorIds` 是 Host namespace 内部 actor 标识，空数组表示不提及；Channels 先在已认证 conversation 校验，再映射为 transport 的 `recipientIds` / `replyToParticipantId`，DWS 插件最后映射原生 mention/quote 字段。显示名、正文中的姓名、旧报告或通用 DWS 标记都不能替代 recipient authorization；引用、提及和署名由 Host 依据冻结 payload 处理，模型不得自行拼接内部身份或重复署名。
 - 旧 DSH 的连续执行、skill 读取/`skillNames` 传递、`job_list`/`job_output` 和后台进程排空可作为行为对照。Night Bot 复用受控 skill、文件/进程工具和 job 观测能力，但 skill 只提供读取/提示，不产生动作授权；后台 job 必须在当前事项的 Host scope 内，终态和 drain 证据不能由模型自报替代。第八轮核证原安装一个已授权的通用只读计划审查 Skill 及配套引用的实际读取，原 task/session/completion 和 `completed/drained/run1` 保持；并非旧技能全集兼容、后台命令或业务效果全覆盖。技能正文/引用只留原安装忽略目录，独立包版本与公开分发许可未核，不随代码提交。旧 DSH 的委派协议、共享工作区和多 execution 生命周期不自动兼容，也不应通过适配器恢复。
 - 旧 DSH 将 operator 技术问题与 requester 业务问题分流；Night Bot 的技术问题缺省为 `operator`，业务问题须显式选择 `requester`。第八轮本地 Host 验证缺省问题仅留内部 Web，显式 requester 保持原 conversation/session/受众，Web-only requester 不创造 IM 权限；不表示本轮实测了 operator 私聊发送。回复来源、权限、版本 CAS 和真实送达收据仍按当前任务合同核验，既有持久问题/unknown 通知不改写。

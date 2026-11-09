@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createServer, request as httpRequest } from 'node:http'
 import test from 'node:test'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 // fetch会重写Host；用原生HTTP请求验证服务器收到的真实Host边界。
 const rawRequest = (url, options = {}) => new Promise((resolve, reject) => {

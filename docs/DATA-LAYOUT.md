@@ -82,21 +82,13 @@ It preserves inherited proxy/CA/credential environment variables and does not re
 environment; it does not provide managed file logging. These are real exceptions.
 Portable custom `skillDirs` must remain within the physical installation tree;
 external roots and symlink ancestor aliases are refused before loading/watchers.
-Portable model file tools read installation files and write only the workspace.
-Canonical file resolution rejects external traversal and symlink targets. Linux
-model subprocesses run in a separate mount namespace: installation/package code
-and system dependency roots (`/usr`, `/bin`, `/sbin`, `/lib*`, `/etc`, `/opt`) are
-read-only, workspace writes follow the permission preset, `/tmp` is ephemeral,
-and raw state/memory/vault/attachments/cache/logs are masked. Other business
-locations are absent. Even `danger-full-access` does not override this deployment
-boundary; `read-only` stays read-only. Kernel tests cover all three modes. This is
-not a sandbox for trusted plugins or the Host administrator; they execute code with
-the service account's authority. System dependency roots are explicitly readable,
-not a promise of arbitrary OS-secret isolation. External custom binaries must be
-installed in allowed dependency locations or within the installation. Model process
-execution fails closed without the Linux namespace runner; Windows/macOS equivalent
-privacy namespaces are not implemented or validated. The native file fence remains
-available on those platforms. Existing low-level explicit-root APIs are retained for
+业务产物默认保存在 workspace，文件与命令工具使用应用配置 `permissionMode`，具体选择见 [README](../README.md#工具权限)。`ask` / `auto` 默认保持任务 work/tmp、凭据、会话和 Host 归档保护；外部业务目标进入准确单调用审批，批准后只授予声明的路径和读写/进程范围，符号链接与目标在执行前重新核对。不能将一个新文件的批准扩大成其父目录整树。auto 仅用无工具模型审查需审批动作，不确定或失败回人工。
+
+Linux 受限进程用独立 mount namespace；代码与系统依赖只读，业务 work/tmp 按当前受控范围挂载，原始 state/memory/vault/attachments/cache/logs 隐藏，隔离 OS tmp 与业务目录分开。缺少受限后端时失败关闭，不自动退到直接执行。各平台实际通过与未验项见[唯一验收入口](acceptance/resident-conversation-routing/goal.md)，不把旧三种 sandbox policy 的测试结果当成新三档权限证明。
+
+`full` 仅由可信安装操作者显式选择，文件与进程按当前运行环境的 OS 账号权限直接访问，不保留上述业务 workspace 围栏，不是管理员提权，也不能保证同账号可访问的 Host 私有文件仍被 OS 隔离。Host API 的档案所有权、actor/call 授权、审计、取消和 no-replay 仍保留；这些应用检查不等于直接进程不能修改磁盘文件。父容器或 OS 既有约束仍有效。可信插件和 Host 管理代码同样具有服务账号权限，cwd 不是任意插件安全边界；系统依赖可读也不是任意 OS 秘密隔离承诺。
+
+Existing low-level explicit-root APIs are retained for
 compatibility tests, but the supported managed launcher refuses that layout. No
 plugin historical-data conversion/import was added. Use physical installation paths:
 symlink/junction ancestor aliases are refused rather than traversed on setup.

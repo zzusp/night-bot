@@ -3,11 +3,15 @@ import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import NativeBash from '../src/native-bash-local.js'
 import NativePwsh from '../src/native-pwsh-local.js'
+import SandboxBash from '../src/native-bash-sandbox.js'
+import SandboxPwsh from '../src/native-pwsh-sandbox.js'
+import NativeSandbox from '../src/native-sandbox.js'
+import {windowsFileRequest,windowsLaunchPolicy} from '../src/process/contracts.js'
 import {deadline} from '../src/runtime/deadlines.js'
 import {parseExitStatus,ENV_FACT_PREFIX} from '../src/native-shell.js'
 const abortOf=s=>s.aborted?Promise.resolve():new Promise(r=>s.addEventListener('abort',r,{once:true}))
 function reader(text){return{readFrom:at=>({text:Buffer.from(text).subarray(at).toString(),nextOffset:Buffer.byteLength(text),lossy:false})}}
-async function fixture(t,Impl=NativeBash){const ctx=new Context(),state={spawns:[],done:Promise.withResolvers(),out:'stdout text',err:'stderr text',terminated:0};ctx.provide('subprocess',{spawn:spec=>{state.spawns.push(spec);if(state.failure)throw state.failure;return{done:state.done.promise,waitForExit:async()=>{await state.done.promise.catch(()=>{});return true},collected:{stdout:reader(state.out),stderr:reader(state.err)},terminate(){state.terminated++}}}});await ctx.plugin(Impl,{cwd:'/fixture cwd',timeoutMs:50,maxTimeoutMs:200,maxOutputBytes:100,maxSpillBytes:1000,graceMs:5,.../Pwsh/.test(Impl.name)?{pwshPath:'fixture-pwsh'}:{}});t.after(async()=>{state.done.resolve({exitCode:0,signal:null});await ctx.fiber.dispose()});return{ctx,state,shell:ctx.get('shell')}}
+async function fixture(t,Impl=NativeBash,sandboxPolicy){const ctx=new Context(),state={spawns:[],done:Promise.withResolvers(),out:'stdout text',err:'stderr text',terminated:0};ctx.provide('subprocess',{spawn:spec=>{state.spawns.push(spec);if(state.failure)throw state.failure;return{done:state.done.promise,waitForExit:async()=>{await state.done.promise.catch(()=>{});return true},collected:{stdout:reader(state.out),stderr:reader(state.err)},terminate(){state.terminated++}}}});if(sandboxPolicy){const sandbox=new NativeSandbox(ctx);sandbox.internals={chain:['windows-acl'],windowsAclRunnerArgs:['fixture-windows-runner']};ctx.provide('sandboxPolicy',{defaultMode:sandboxPolicy.mode,resolve:()=>sandboxPolicy})}await ctx.plugin(Impl,{cwd:'/fixture cwd',timeoutMs:50,maxTimeoutMs:200,maxOutputBytes:100,maxSpillBytes:1000,graceMs:5,.../Pwsh/.test(Impl.name)?{pwshPath:'fixture-pwsh'}:{}});t.after(async()=>{state.done.resolve({exitCode:0,signal:null});await ctx.fiber.dispose()});return{ctx,state,shell:ctx.get('shell')}}
 test('native bash and pwsh preserve independently specified argv, environment, bounded output and exit contracts',async t=>{
  for(const Impl of [NativeBash,NativePwsh]){
   const h=await fixture(t,Impl),command='literal $source; text',spec=h.shell.resolve({command,timeoutMs:500,env:{CUSTOM:'value'}}),execution=await h.shell.execute(spec)
@@ -25,3 +29,17 @@ test('native shell same-code ancestor deadline keeps caller identity even after 
 test('native shell foreground timeout waits for provider close before final result',async t=>{const h=await fixture(t),ex=await h.shell.execute(h.shell.resolve({command:'fixture',timeoutMs:5}));let returned=false;const result=ex.result().then(r=>{returned=true;return r});await abortOf(h.state.spawns[0].signal);await new Promise(r=>setImmediate(r));assert.equal(returned,false);h.state.done.resolve({exitCode:null,signal:'SIGTERM'});const r=await result;assert.equal(r.timedOut,true);assert.equal(r.aborted,false);assert.equal(r.signal,'SIGTERM')})
 test('native shell provider creation failure settles done and preserves one infrastructure rejection without retry',async t=>{const h=await fixture(t);h.state.failure=Error('fixture spawn failure');const ex=await h.shell.execute(h.shell.resolve({command:'fixture'}));await ex.done;assert.equal(ex.status,'killed');await assert.rejects(ex.result(),e=>e===h.state.failure);assert.equal(h.state.spawns.length,1)})
 test('execution fact names and trailing-only exit markers have explicit bounded contracts',()=>{assert.equal(ENV_FACT_PREFIX,'NIGHT_BOT_');for(const [text,expected] of [['plain output',{body:'plain output',exitCode:0}],['value\n[exit code: 9]',{body:'value',exitCode:9}],['value\n[killed by signal: SIGTERM]',{body:'value',signal:'SIGTERM'}],['[exit code: 9]',{body:'[exit code: 9]',exitCode:0}],['[exit code: 9]\nmore',{body:'[exit code: 9]\nmore',exitCode:0}]])assert.deepEqual(parseExitStatus(text),expected)})
+
+test('Windows prepared metadata survives both real sandbox shell adapters and local spawnSpec copies',async t=>{
+ const workspaceRoot=String.raw`C:\night-fixture\data\workspaces\sandbox`
+ for(const Impl of [SandboxBash,SandboxPwsh]){
+  const h=await fixture(t,Impl,{mode:'workspace-write',workspaceRoot}),command='literal $value; -- argument',execution=await h.shell.execute(h.shell.resolve({command,workdir:workspaceRoot}))
+  const spawn=h.state.spawns[0],file=windowsFileRequest(spawn)
+  assert.ok(file,'sandbox prepared metadata must reach the actual subprocess boundary')
+  assert.equal(file.mode,'workspace-write');assert.equal(file.workspaceRoot,workspaceRoot)
+  assert.deepEqual(file.argv,Impl===SandboxBash?['bash','-c',command]:h.shell.argv(h.shell.resolve({command})))
+  assert.equal(spawn.argv[0],'fixture-windows-runner');assert.deepEqual(spawn.argv.slice(-file.argv.length),file.argv)
+  assert.equal(windowsLaunchPolicy(spawn),undefined);assert.equal(Object.hasOwn(spawn,'lpac'),false)
+  h.state.done.resolve({exitCode:0,signal:null});assert.equal((await execution.result()).exitCode,0)
+ }
+})

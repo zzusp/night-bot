@@ -1,0 +1,25 @@
+{
+  "removedResources": [
+    {
+      "container": "night-bot-sg12-app-current-r16",
+      "containerId": "ac3993ec8b7cfef2a1f09d1df1d678e585e966fc2dd7d08ca01ca3a2d9752808",
+      "volume": "night-bot-sg12-data-current-r16",
+      "owner": "sg12-current-r16"
+    },
+    {
+      "container": "night-bot-sg12-app-current-r17",
+      "containerId": "ce6215869e055abcefa2e46dd40d8aa5f50d2359a48f47610a73022692f646d0",
+      "volume": "night-bot-sg12-data-current-r17",
+      "owner": "sg12-current-r17"
+    }
+  ],
+  "removedSupersededFiles": {
+    "docker-application-result.json": "6a4fc6e52dc342b0f1e16bffc0a338bf15b742b8a2f19868ef3c116fb10d7255",
+    "docker-application.log": "a4d37ec0e6acf8c1bc34a109030933a29f127c1d360f4e418b1b59f1ccf213c7",
+    "docker-application-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docker-application-check.json": "57284bcc7c08ad661e7c6dcf83da67b51600946a339c8880c53b93649c6f102c",
+    "docker-application-independent-files.json": "86625f4799fad38fd83232190193a4bc6ff4355713cead48cd1488bddce33211"
+  },
+  "retainedFinalResultSha256": "513ff146180d0df17964afaacec34c4ff7f39ba9b41b9b622fae46bffdb5ae85",
+  "imageRetained": "sha256:be1ffc45ee8a451ccddc63453305bde839ba4c01029a82d6bc26e79ef0c6d5e0"
+}

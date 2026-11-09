@@ -94,6 +94,6 @@ test('scenario 6: workflow succeeds but the actual original delivery is missing;
  const f=await openTaskSessionControlFixture(t,{ownerContract:{id:'actual-report',version:'1',resultContract:{id:'actual-report',version:'1',requiredFields:['result']},validateCompletion:async()=>{try{return (await readFile(reportPath,'utf8'))==='requested final report'}catch(error){if(error.code==='ENOENT')return false;throw error}}}});reportPath=join(f.directory,'requested-report.md')
  const requirement={request:'Produce actual result and deliver requested final report',acceptanceCriteria:['Actual result exists','Requested final report is delivered'],scope:{}}
  await writeFile(f.candidatePath,f.expected);const done=await f.start({input:requirement});assert.equal(done.run.status,'succeeded');await f.controller.advanceTaskPlan(f.taskId);await bindOriginalRequirement(f,requirement)
- await assert.rejects(readFile(reportPath),{code:'ENOENT'});await assert.rejects(attemptOriginalCompletion(f,requirement),{code:'TASK_OWNER_COMPLETION_UNVERIFIED'})
+ await assert.rejects(readFile(reportPath),{code:'ENOENT'});await assert.rejects(attemptOriginalCompletion(f,requirement),error=>{assert.equal(error.code,'TASK_OWNER_COMPLETION_UNVERIFIED');assert.equal(error.completionGate.gate,'domain-completion');return true})
  assert.equal(await f.store.query({kind:'task.owner.delivery-manifest',taskId:f.taskId}),null);const owner=await f.store.query({kind:'task.owner',taskId:f.taskId});assert.notEqual(owner.status,'accepted');assert.equal(count(await f.calls(),'deliver'),1)
 })

@@ -1,0 +1,87 @@
+{
+  "variant": "sg11-owned-native-security-projection",
+  "os": "Windows 11 x64",
+  "node": "v24.19.0",
+  "sourceBefore": {
+    "src/process/windows-acl.js": "8d3f7d5a23dddb3f187269b0977a8e515e30c30d5e0027e690ca88070e5c3003",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "8d3f7d5a23dddb3f187269b0977a8e515e30c30d5e0027e690ca88070e5c3003",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329"
+  },
+  "sourceChanged": [],
+  "scriptSha256": "9f860e43395736f964d51ebae8788fe33d123447175d860843917abb42365a46",
+  "check": {
+    "exit": 0,
+    "effects": 0,
+    "nativeExecuted": false
+  },
+  "run": {
+    "nodeExit": 1,
+    "status": "FAILED",
+    "nativeExecuted": true,
+    "CreateFileWAttempts": 1,
+    "CreateFileWError": 5,
+    "desiredAccess": 917632,
+    "shareMode": 3,
+    "creationDisposition": 3,
+    "flags": 35651584,
+    "nativeSetSecurityInfoAttempts": 0,
+    "inheritanceCalls": 0,
+    "allocationCount": 0,
+    "handleCount": 0,
+    "retainedAllocations": 0,
+    "retainedHandles": 0,
+    "observations": [],
+    "stderrLength": 0,
+    "fixtureRetained": true,
+    "fixtureRelativeRoot": "data/workspaces/sg11-security-projection-c32c97eac19749adbb27e235d957d630",
+    "originalNativeFileIdsObtained": false,
+    "originalNativeSecurityDescriptorsObtained": false,
+    "setterProjectionVerified": false
+  },
+  "readonlyDiagnostics": {
+    "ownerMatchesCurrentUser": true,
+    "impersonationLevel": "None",
+    "allThreeNonReparse": true,
+    "allThreeNotReadonly": true,
+    "allThreeUnprotected": true,
+    "denyAceCount": 0,
+    "currentUserExplicitAceCount": 0,
+    "ownerRightsAceCount": 0,
+    "enabledGroupObjectAllowMasks": [
+      1245631,
+      1179817
+    ],
+    "enabledGroupObjectGrantsWriteOwner": false,
+    "fullControlRules": [
+      {
+        "tokenMembership": "deny-only",
+        "mask": 2032127
+      },
+      {
+        "tokenMembership": "not-current-token",
+        "mask": 2032127
+      }
+    ],
+    "takeOwnershipOrRestorePrivilegeAvailable": false,
+    "isAccessCheck": false,
+    "isOriginalNodeTokenSnapshot": false,
+    "noAclOrTokenChanges": true
+  },
+  "privateEvidenceSha256": {
+    "docs/tmp/sg11-security-projection-probe.mjs": "9f860e43395736f964d51ebae8788fe33d123447175d860843917abb42365a46",
+    "docs/tmp/sg11-security-projection-checklist.md": "ba149a7be47c6fb184501e5146e323f4cb22e9a3909bd91c81d093c5edcb855f",
+    "docs/tmp/sg11-security-projection-check.json": "042c18167a954b3c2ce0dd9f66306cb8d8ecbafa11a17be362187d1fd8b0ec4f",
+    "docs/tmp/sg11-security-projection-run-check.json": "8ebab89dde4138ee2ae93ea4b7c01e1e535d6d7557b33e4f32cee4bf5d363e8a",
+    "docs/tmp/sg11-security-projection-run.json": "f5816a9833329151b30b2036d586fe44cf722749f13b6640120f64e3f37f4d51",
+    "docs/tmp/sg11-security-projection-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-security-projection-execution.json": "600b8898d5eb606a42642817f9de399853bc8a0e0fccb9a35247f3953b7aa05d",
+    "docs/tmp/sg11-security-projection-permissions.json": "f923603ceebf416965e34c5d3af04c0c8ffdde1d188a5a82173fc6c35ade2e87",
+    "docs/tmp/sg11-security-projection-identity.json": "1ab4950bc647cce313fd80c0e8c0a3c21c89e4e022975dba54dd8c44d6d237bc"
+  },
+  "scope": "Component fixture open failed before any setter; no Profile, Token creation/change, Job, process/Resume, network or production admission. Separate read-only diagnostics use inherited-identity child processes."
+}

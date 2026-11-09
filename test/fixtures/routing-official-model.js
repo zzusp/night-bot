@@ -107,7 +107,7 @@ export function topicTaskCalls(request, { title = '原消息交办', objective, 
       const sourceId=row.sourceRefs[0],source=values.findLast(value=>value.sourceId===sourceId)
       if(!calls.some(call=>call.name==='resident_source_get'&&call.arguments.sourceId===sourceId))return [{name:'resident_source_get',args:{sourceId}}]
       if(!source)throw Error('Completion reply requires the authenticated original source')
-      return [{name:'resident_router_reply',args:{operationId:'fixture-completion:'+completed.taskEventId,sourceId:source.sourceId,messageVersion:source.version,text:(row.completion?.result?.summary??row.completion?.summary)+signature,...(replyRecipients?{atOpenDingTalkIds:replyRecipients}:{}),...(row.completion?.result?.artifactFiles?.length?{taskDelivery:{taskId:row.taskId,requirementRevision:row.requirementRevision,artifactIds:row.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}:{})}}]
+      return [{name:'resident_router_reply',args:{operationId:'fixture-completion:'+completed.taskEventId,sourceId:source.sourceId,messageVersion:source.version,text:(row.completion?.result?.summary??row.completion?.summary)+signature,...(replyRecipients?{recipientActorIds:replyRecipients}:{}),...(row.completion?.result?.artifactFiles?.length?{taskDelivery:{taskId:row.taskId,requirementRevision:row.requirementRevision,artifactIds:row.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}:{})}}]
     }
     if(task){
       const next=sourceEvents.find(event=>!calls.some(call=>call.name==='resident_task_action'&&call.arguments.sourceId===event.source.sourceId))

@@ -5,11 +5,11 @@ import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { postgresWrapperScope, postgresWrapperInspection, referencesIsolatedPostgres } from '../packages/dingtalk-dsh-assistant/native-postgres-wrapper.js'
+import { postgresWrapperScope, postgresWrapperInspection, referencesIsolatedPostgres } from '../packages/dingtalk-core/native-postgres-wrapper.js'
 import { restartFixture } from './fixtures/native-restart-isolation.js'
-import { restartScopeProbePlan, localRestartScope, restartProducerFilter } from '../packages/dingtalk-dsh-assistant/native-restart-scope-probe.js'
-import { inspectIsolatedHostRestart, prepareRestartScopeProbe } from '../packages/dingtalk-dsh-assistant/dynamic-operation-readback.js'
-import { isolationBinding, isolationDigest, verifyRestartIsolation } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
+import { restartScopeProbePlan, localRestartScope, restartProducerFilter } from '../packages/dingtalk-core/native-restart-scope-probe.js'
+import { inspectIsolatedHostRestart, prepareRestartScopeProbe } from '../packages/dingtalk-core/dynamic-operation-readback.js'
+import { isolationBinding, isolationDigest, verifyRestartIsolation } from '../packages/dingtalk-core/native-restart-isolation.js'
 
 const pg = String.raw`& D:\soft\PostgreSQL\16\bin\postgres.exe -D D:\agent\artifacts\isolated-pg -h 127.0.0.1 -p 25428`
 const maven = String.raw`$env:JAVA_HOME='D:\jdk'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"; $env:JAVA_TOOL_OPTIONS='-Dfile.encoding=UTF-8'; python D:\host\skills\business-development\scripts\verification_run.py --cwd D:\agent\worktrees\compat --evidence-dir D:\agent\tasks\task\round-5 --name compile -- D:\maven\bin\mvn.cmd -o '-Dmaven.repo.local=D:\maven\repository' -DskipTests test-compile`

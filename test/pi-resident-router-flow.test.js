@@ -60,7 +60,7 @@ test('all four default dispositions keep original handling independent of an unk
 })
 
 test('durable receipt echoes tolerate later DWS flags without replacing existing message facts',{timeout:nativeTestTimeout(40000)},async t=>{
-  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{hash}=await import('../src/memory/format.js'),{apply:applyDws}=await import('../src/channels/plugins/dingtalk-dws.js')
+  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{hash}=await import('../src/memory/format.js'),{apply:applyDws,validateConfig:validateDws}=await import('../src/channels/plugins/dingtalk-dws.js')
   const sent=[],readbacks=[],at=new Date().toISOString(),flag=(args,key)=>args[args.indexOf(key)+1]
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary)return summary
@@ -69,7 +69,11 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   })
   const runner={async run(args){
     let value
-    if(args.includes('+messages-send')||args[1]==='message'&&args[2]==='reply'){
+    if(args[0]==='profile')value={success:true,profiles:[{profile:'synthetic-corp:synthetic-user',corpId:'synthetic-corp',userId:'synthetic-user',userName:'Synthetic Self',isOrgCurrent:true}]}
+    else if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:'synthetic-corp',userId:'synthetic-user',orgUserName:'Synthetic Self'}}]}
+    else if(args.includes('+search-user'))value={count:1,users:[{userId:'synthetic-user',openDingTalkId:'same-account'}]}
+    else if(args.includes('conversation-info'))value={result:{openConversationId:flag(args,'--group'),singleChat:false}}
+    else if(args.includes('+messages-send')||args[1]==='message'&&args[2]==='reply'){
       const message={messageId:'synthetic-visible-'+(sent.length+1),conversationId:flag(args,'--group'),text:flag(args,args.includes('--content')?'--content':'--markdown'),senderOpenDingTalkId:'same-account',openTaskId:'synthetic-send-'+(sent.length+1)}
       sent.push(message);value={sendReceipt:{openTaskId:message.openTaskId}}
     }else if(args.includes('+messages-query-send-status')){
@@ -79,11 +83,11 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
     }else throw Error('Unexpected synthetic DWS command: '+args.slice(0,3).join(' '))
     return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
   },spawn(){throw Error('No listener in the local receipt regression')}}
-  async function mount(channelId='dingtalk-dws'){
-    const ctx=h.host.ctx
-    await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,{enabled:true,channelId,profile:'synthetic-profile',listen:false,writesAuthorized:true,assistantActorId:'same-account',groups:['shared-room','other-room']},{runner})})
-    await ctx.parallel('night/ready',{runtime:{},tasks:h.service})
-    return ctx.channels.plugins.get(channelId)
+  async function mount(channelId='dingtalk-dws',groupId='shared-room'){
+    const ctx=h.host.ctx,config={...validateDws({dingtalk_profile:'synthetic-corp:synthetic-user',dingtalk_conversation_type:'chat-room',dingtalk_group_id:groupId,dingtalk_listen:false,dingtalk_writes_authorized:true}),enabled:true,channelId}
+    await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,config,{runner,environment:{USERPROFILE:h.root,HOME:h.root,DWS_CONFIG_DIR:h.root,DWS_KEYCHAIN_DIR:h.root}})})
+    await ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{},tasks:h.service})
+    const plugin=ctx.channels.plugins.get(channelId);assert.equal(plugin.health.state,'ready',JSON.stringify(plugin.health));return plugin
   }
   let plugin=await mount()
   const receive=(input,target=plugin)=>target.acceptHistoryMessage({groupId:input.conversationId,messageId:input.messageId,senderOpenDingTalkId:input.senderId,text:input.text,occurredAt:at,...input.platformFlags?.messageAiSendFlag?{messageAiSendFlag:input.platformFlags.messageAiSendFlag}:{}})
@@ -107,7 +111,9 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   for(const change of [{text:'Changed actual content'},{senderId:'foreign-actor'},{platformFlags:{messageAiSendFlag:'DWS',automated:true}}])await assert.rejects(receive({...original,...change}),error=>error.code==='CHANNEL_MESSAGE_ID_CONFLICT')
   const fresh={...echo,messageId:'fresh-same-account',platformFlags:{messageAiSendFlag:'DWS',automated:true}}
   assert.notEqual((await receive(fresh)).reason,'own-notification')
-  assert.notEqual((await receive({...echo,conversationId:'other-room'})).reason,'own-notification')
+  const otherRoom=await mount('other-room-dws','other-room')
+  assert.equal(h.service.isOwnNotification({groupId:h.host.ctx.channels.identity({...echo,conversationId:'other-room'}).sessionId,messageId:echo.messageId}),false)
+  assert.notEqual((await receive({...echo,conversationId:'other-room'},otherRoom)).reason,'own-notification')
   const other=await mount('other-dws')
   assert.notEqual((await receive(echo,other)).reason,'own-notification')
   await h.service.whenIdle()
@@ -519,4 +525,99 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   assert.ok(!h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'),'only a settled batch clears its recovery issue')
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
   t.diagnostic(JSON.stringify({case:'explicit-failed-router-batch-continuation',originalMemoryAdmissionBound:true,liveHandoffRecoverySerialized:true,strictCold:true,originalPacketUnique:true,originalAdmissionUnique:true,originalPrefixUnchanged:true,concurrentAndStaleRejectedBeforeInference:true,settled:true,legalHandoff:true,coldReplay:false,realVendorExecuted:false}))
+})
+
+// 等待真实模型请求，关停必须先取消 SDK；放行模型夹具不能成为关闭条件。
+test('Router close interrupts an active official Pi request before joining its tail without replaying the settled tool',{timeout:nativeTestTimeout(40000)},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+  let requests=0,aborts=0,handle
+  const h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      if(++requests===2){entered.resolve();await release.promise}
+      return {tool:'resident_router_settle',args:{eventIds:router(body).events.map(event=>event.id),operationId:'shutdown-original-settle'}}
+    }
+    return {text:'No other work'}
+  })
+  const registry=h.host.ctx.agents,create=registry.create
+  registry.create=async function(options){const value=await create.call(this,options);if(options.meta?.runtimeOwner==='conversation-router'){
+    handle=value;const abort=value.session.abort.bind(value.session);value.session.abort=async(...args)=>{aborts++;assert.equal(value.agent.lifecycle.signal.aborted,true);return abort(...args)}
+  }return value}
+  t.after(()=>{registry.create=create})
+  const message=channelMessage('active-router-close'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message);await entered.promise
+  assert.equal(handle.session.isStreaming,true);assert.equal(handle.agent.lifecycle.signal.aborted,false)
+  const before=await h.query('router.get',{conversationId});assert.equal(before.cursor,1);assert.equal(before.generation,1)
+  await h.close();assert.ok(aborts>0);assert.equal(handle.session.isStreaming,false);assert.equal(registry.get(before.activeSessionId),undefined)
+  const cold=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+  assert.equal(cold.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled').length,0)
+  assert.equal(cold.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='resident_router_settle'&&!entry.message.isError).length,1)
+  release.resolve();await h.restart();await h.service.whenIdle()
+  assert.equal(requests,2,'cold recovery cannot issue the admitted business batch or repeat its settled tool')
+  assert.equal((await h.query('router.get',{conversationId})).cursor,1);assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+})
+
+test('Router close preserves an actually committed undelivered packet and cold recovery admits it only once',{timeout:nativeTestTimeout(40000)},async t=>{
+  const entered=Promise.withResolvers();let held=false,packet,handle,modelBatches=0
+  const h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){if(body.messages.at(-1)?.role!=='tool')modelBatches++;return settle(body,router(body))}
+    return {text:'No other work'}
+  })
+  const registry=h.host.ctx.agents,create=registry.create
+  registry.create=async function(options){const value=await create.call(this,options);if(options.meta?.runtimeOwner==='conversation-router'&&!held){
+    handle=value;const enqueue=value.enqueue.bind(value);value.enqueue=async input=>{const result=await enqueue(input);packet=structuredClone(input);held=true;entered.resolve();await new Promise((resolve,reject)=>{const signal=value.agent.lifecycle.signal;if(signal.aborted)reject(signal.reason);else signal.addEventListener('abort',()=>reject(signal.reason),{once:true})});return result}
+  }return value}
+  t.after(()=>{registry.create=create})
+  const message=channelMessage('pending-router-close'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message);await entered.promise
+  const row=await h.query('router.get',{conversationId}),before=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+  assert.equal(handle.agent.admission.status(packet.id),'pending');assert.equal(modelBatches,0)
+  assert.deepEqual(before.audit.filter(receipt=>receipt.domain==='admission').map(receipt=>receipt.kind),['enqueued'])
+  await h.close()
+  const closed=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+  assert.deepEqual(closed.audit,before.audit);assert.deepEqual(closed.audit.find(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued').payload,packet)
+  await h.restart();await h.service.whenIdle()
+  const cold=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+  assert.equal(cold.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued'&&receipt.payload.id===packet.id).length,1)
+  assert.equal(cold.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted'&&receipt.payload.id===packet.id).length,1)
+  assert.equal(cold.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='cancelled').length,0);assert.equal(modelBatches,1)
+  const requests=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,requests)
+  assert.equal((await h.query('router.inbox',{conversationId})).length,0)
+})
+
+test('Router close joins and disposes an actual late-created official handle without admitting a batch or rotating generation',{timeout:nativeTestTimeout(40000)},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let handle
+  const h=await residentRouterHost(t,body=>requestTools(body).includes('channel_triage_submit')?submit(triage(body),()=>({needsHandling:true})):{text:'No Router dispatch expected'})
+  const registry=h.host.ctx.agents,create=registry.create
+  registry.create=async function(options){const value=await create.call(this,options);if(options.meta?.runtimeOwner==='conversation-router'){handle=value;entered.resolve();await release.promise}return value}
+  t.after(()=>{registry.create=create})
+  const message=channelMessage('opening-router-close'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message);await entered.promise;const before=await h.query('router.get',{conversationId});assert.equal(registry.get(before.activeSessionId),handle.agent)
+  let finished=false;const closing=h.close().then(()=>{finished=true});await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false)
+  release.resolve();await closing
+  assert.equal(handle.agent.lifecycle.signal.aborted,true);assert.equal(registry.get(before.activeSessionId),undefined)
+  const cold=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+  assert.equal(cold.audit.filter(receipt=>receipt.domain==='admission').length,0);assert.equal(cold.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff').length,0)
+  assert.equal(cold.header.generation,before.generation);assert.equal(before.cursor,0);assert.equal(h.requests.length,1)
+})
+
+test('Router close cannot swallow an admission PAUSED failure produced before its own interruption',{timeout:nativeTestTimeout(40000)},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(),aborted=Promise.withResolvers();t.after(()=>release.resolve());let prior;const trace=[]
+  const h=await residentRouterHost(t,body=>requestTools(body).includes('channel_triage_submit')?submit(triage(body),()=>({needsHandling:true})):{text:'No Router dispatch expected'})
+  const registry=h.host.ctx.agents,create=registry.create
+  registry.create=async function(options){const value=await create.call(this,options);if(options.meta?.runtimeOwner==='conversation-router'){
+    const interrupt=value.interrupt.bind(value),dispose=value.dispose.bind(value)
+    value.interrupt=(...args)=>{trace.push({at:'interrupt',priorCode:prior?.code,sameReason:prior===value.agent.lifecycle.signal.reason});return interrupt(...args)}
+    value.dispose=(...args)=>{trace.push({at:'dispose',aborted:value.agent.lifecycle.signal.aborted});return dispose(...args)}
+    value.agent.lifecycle.signal.addEventListener('abort',()=>{trace.push({at:'abort',code:value.agent.lifecycle.signal.reason?.code});aborted.resolve()},{once:true})
+    const maintenance=Error('maintenance failed before shutdown');await assert.rejects(value.runMaintenance(()=>{throw maintenance}),error=>error===maintenance)
+    const deliver=value.deliver.bind(value);value.deliver=async(...args)=>{try{return await deliver(...args)}catch(error){prior=error;entered.resolve();await release.promise;throw error}}
+  }return value}
+  t.after(()=>{registry.create=create})
+  await h.receive(channelMessage('paused-router-close'));await entered.promise;assert.equal(prior.code,'PI_BUSINESS_ADMISSION_PAUSED')
+  const closing=h.close(),rejected=assert.rejects(closing,error=>{const contains=value=>value===prior||value?.errors?.some(contains);return contains(error)})
+  await aborted.promise;trace.push({at:'release',code:prior.code,safe:prior.routerSafeToResume});t.diagnostic(JSON.stringify({pausedCloseTrace:trace}));release.resolve();await rejected;assert.equal(h.requests.length,1)
 })

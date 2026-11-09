@@ -4,9 +4,9 @@ import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-core/store.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 function memoryFacility() {
   const rows=new Map(),table=name=>({get:key=>rows.get(`${name}:${key}`),entries:()=>[...rows].filter(([k])=>k.startsWith(name+':')).map(([k,v])=>[k.slice(name.length+1),v])[Symbol.iterator](),

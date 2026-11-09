@@ -37,10 +37,10 @@ import { resolveTaskArtifactScope } from './task-artifact-scope.js'
 import { buildReplyReviewCandidates } from './decision.js'
 import { resolveTopicMessages, topicSourceEntries, stableId, fingerprint, replyTopicForMessage, canonicalReplyTopic, topicDecisionCoversEntry } from './topic-model.js'
 import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from './task-message-projections.js'
-import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory } from './session-workspaces.js'
+import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, taskWorkspaceReady, assertTaskWorkspaceReady, initializeTaskDirectories } from './session-workspaces.js'
 import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
 import {formatTaskConversationReply} from './group-reply-format.js'
-import {assertConversationReply,conversationQuote} from '../../src/channels/message-safety.js'
+import {assertConversationReply,conversationQuote,conversationSource} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
 import { projectTaskTimeline, readTaskLifecycle } from './task-execution-timeline.js'
@@ -100,7 +100,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (!suppliedStore) await store.close()
     throw error
   }
-  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),getTaskDirectories:taskId=>taskDirectories(root,taskId) })
+  const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),getTaskDirectories:async taskId=>taskDirectories(root,taskId,{task:await requireTask(taskId)}) })
   const originalNotifications=notifications
   notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('send',notification):originalNotifications.send(notification),readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
@@ -143,7 +143,27 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
 
   const refreshTasks = async () => { taskCache.clear(); for (const task of await query('task.list')) taskCache.set(task.taskId, topicTaskView(task)) }
   function topicTaskView(task) { return { ...task, state: task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' || task.drained ? 'waiting' : 'running', inputVersion: task.requirementRevision, runSequence: task.runSequence ?? 1, topicRefs: task.topicRefs ?? [], appliedOperations: task.appliedOperations ?? [], acceptanceCriteria: task.requirements ?? [], taskPromptRefs: [] } }
+  async function initializeNewTaskWorkspace(task) {
+    if(closed&&!admissionHolds.has(task.taskId))fail('TASK_SESSION_CLOSED')
+    if(!task.workspaceInitialization)return
+    const {creationCommandId,sessionId}=task.workspaceInitialization,binding={taskId:task.taskId,creationCommandId,sessionId}
+    const begin=await store.command({id:creationCommandId+':workspace-begin',kind:'task.workspace.begin',args:binding})
+    if(begin.replayed)throw Object.assign(new Error('TASK_WORKSPACE_INITIALIZATION_NO_REPLAY'),{code:'TASK_WORKSPACE_INITIALIZATION_NO_REPLAY'})
+    let failure,observation
+    try {observation=await hostScheduler(()=>initializeTaskDirectories(root,begin.result.task))}catch(error){failure=error}
+    // finish 的提交错误不得改写为另一终态；原 initializing 保留为不确定且禁重放。
+    try{
+      await store.command({id:creationCommandId+':workspace-finish',kind:'task.workspace.finish',args:{...binding,state:failure?'failed':'ready',...(failure?{code:failure.code??'TASK_WORKSPACE_INITIALIZATION_FAILED',...(failure.nativeResources?{nativeResources:failure.nativeResources}:{}),...(failure.api?{nativeFailure:{api:failure.api,win32Code:failure.win32Code}}:{})}:{observation:observation.native})}})
+    }catch(commitError){
+      const error=new AggregateError([...(failure?[failure]:[]),commitError],'Task workspace initialization finish is uncertain')
+      error.code='TASK_WORKSPACE_INITIALIZATION_COMMIT_UNCERTAIN'
+      error.nativeResources=failure?.nativeResources??observation?.native?.nativeResources
+      throw error
+    }
+    if(failure)throw failure
+  }
   const command = async (kind, args, id) => {
+    if(closed&&(kind==='router.plan'||kind==='task.create'&&!admissionHolds.has(args.taskId)))fail('TASK_SESSION_CLOSED')
     if(kind.startsWith('execution.'))fail('TASK_SPLIT_EXECUTION_REMOVED')
     let clarification = kind === 'notification.prepare' && args.kind === 'routing-clarification' ? args.payload : undefined
     if (kind === 'notification.start') {
@@ -151,7 +171,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (notification?.kind === 'routing-clarification') clarification = notification.payload
     }
     const settledEvents=kind==='router.settle'?(await query('router.inbox',{conversationId:args.conversationId,limit:30})).filter(event=>args.eventIds.includes(event.id)||args.eventIds.includes(event.eventId)):[]
-    const commit = () => store.command({ id: id ?? `${kind}:${randomUUID()}`, kind, args: clean(args) })
+    const commandId=id??`${kind}:${randomUUID()}`
+    const commit = () => store.command({ id:commandId, kind, args: clean(args) })
     // 发送许可与待判版本在同一群锁内线性化；缓存/出箱投影必须留在锁外。
     let receipt
     if (clarification) {
@@ -167,7 +188,34 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           throw error
         })
     } else receipt = await commit()
-    if(archives){const taskId=receipt.result?.task?.taskId??receipt.result?.operation?.taskId??receipt.result?.notification?.taskId??args.binding?.taskId??args.taskId;if(taskId){const current=await query('task.get',{taskId});if(current)try{await archives.register(current);archives.schedule(taskId)}catch(error){archives.errors.set(taskId,error.code??'TASK_ARCHIVE_NOT_READY');archives.onFailure(taskId,error);receipt.archiveMaintenance={pending:true,taskId,code:error.code??'TASK_ARCHIVE_NOT_READY'}}}}
+    const creating=kind==='task.create'||kind==='router.plan',workspaceFailures=[]
+    const createdTasks=creating?(receipt.result?.tasks??(receipt.result?.task?[receipt.result.task]:[])):[]
+    if(creating){
+      for(const created of createdTasks){
+        const creationId=kind==='router.plan'?commandId+':'+created.taskId:commandId
+        // Router action 幂等可由新 commandId 返回旧结果；不能仅看外层 replayed。
+        if(!receipt.replayed&&created.workspaceInitialization?.creationCommandId===creationId)try{
+          if(kind==='router.plan')await admitTask(created.taskId,()=>initializeNewTaskWorkspace(created))
+          else await initializeNewTaskWorkspace(created)
+        }catch(error){
+          const diagnostic={id:created.taskId,code:error.code??'TASK_WORKSPACE_INITIALIZATION_FAILED',...(error.nativeResources?{nativeResources:error.nativeResources}:{}),...(error.api?{nativeFailure:{api:error.api,win32Code:error.win32Code}}:{})}
+          Object.defineProperty(diagnostic,'cause',{value:error})
+          failures.set('task-workspace:'+created.taskId,diagnostic)
+        }
+        const current=await query('task.get',{taskId:created.taskId})
+        if(!taskWorkspaceReady(current))workspaceFailures.push({taskId:current.taskId,...current.workspaceInitialization})
+        else failures.delete('task-workspace:'+current.taskId)
+      }
+      // 仅更新本次返回投影，不回写已提交的创建收据快照。
+      receipt={...receipt,result:{...receipt.result,...(receipt.result?.task?{task:await query('task.get',{taskId:receipt.result.task.taskId})}:{}),
+        ...(receipt.result?.tasks?{tasks:await Promise.all(receipt.result.tasks.map(task=>query('task.get',{taskId:task.taskId})))}:{})}}
+    }
+    const archiveTaskIds=new Set([...(receipt.result?.tasks??[]).map(task=>task.taskId),receipt.result?.task?.taskId??receipt.result?.operation?.taskId??receipt.result?.notification?.taskId??args.binding?.taskId??args.taskId].filter(Boolean))
+    if(archives)for(const taskId of archiveTaskIds){
+      const current=await query('task.get',{taskId})
+      if(!current||!taskWorkspaceReady(current))continue
+      try{await archives.register(current);archives.schedule(taskId)}catch(error){archives.errors.set(taskId,error.code??'TASK_ARCHIVE_NOT_READY');archives.onFailure(taskId,error);receipt.archiveMaintenance={pending:true,taskId,code:error.code??'TASK_ARCHIVE_NOT_READY'}}
+    }
     if(receipt.completionEvent)ctx.get?.('reflection')?.scan()
     observerGroupPage?.sourceChanged(receipt.result?.source ?? args.source)
     for(const row of receipt.result?.dispositions??[]){const source=await query('source.get',{sourceId:row.sourceId});observerGroupPage?.sourceChanged(source)}
@@ -212,6 +260,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       || kind === 'source.processingCompleted' && !receipt.replayed)) void deliverNotifications().catch(error => {
       ctx.logger?.warn?.(`notification scan: ${error.code ?? error.message}`)
     })
+    if(workspaceFailures.length){
+      void hostScheduler(()=>schedulePending())
+      throw Object.assign(new Error('TASK_WORKSPACE_NOT_READY'),{code:'TASK_WORKSPACE_NOT_READY',committed:true,tasks:workspaceFailures})
+    }
     return receipt
   }
   await startup.measure('task-service.cache', async () => {
@@ -286,7 +338,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const taskSessions = suppliedTaskSessions ?? createSingleTaskSessions({ ctx, isCurrent: currentTask, isOwnerCurrent:binding=>currentTask(binding,{allowLiveSupplements:true}),
     readEffectScope:async(binding,stored)=>readTaskEffectScope(ctx,await query('task.get',{taskId:binding.taskId}),stored),
-    getWorkspaceDir: async ({ binding }) => {if(archives)await archives.register(await query('task.get',{taskId:binding.taskId}));return taskWorkspace(root, binding.taskId)} })
+    getWorkspaceDir: async ({ binding }) => {const task=await requireTask(binding.taskId);assertTaskWorkspaceReady(task);if(archives)await archives.register(task);return taskWorkspace(root,binding.taskId,task)} })
   const effectReconciliation=config.webActorId?createTaskEffectReconciliation({persistence:ctx.sessionPersistence,readTask:taskId=>query('task.get',{taskId}),readScope:(task,stored)=>readTaskEffectScope(ctx,task,stored),isSessionLive:async sessionId=>!!ctx.agents.get(sessionId),readOperatorSource:sourceId=>query('source.get',{sourceId}),operatorActorId:config.webActorId}):undefined
   async function projectEffectReconciliation(task,row,writerHeld=false){
     if(!writerHeld){
@@ -394,7 +446,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(identity.taskId!==task.taskId||identity.objective!==task.objective||identity.expectedRequirementRevision+1!==origin.binding.requirementRevision||hash(identity.closedIntentEntryIds)!==hash(closedIntentEntryIds))continue
       const sourceId='effect-action:'+hash([task.taskId,identity.requestId]),source=await query('source.get',{sourceId})
       if(!source||snapshot.sourceId!==sourceId||!task.sourceRefs.includes(sourceId)||source.actorId!==config.webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId)||!source.text?.trim())continue
-      const stable=value=>Object.fromEntries(['sourceId','groupId','messageId','version','actorId','channel','text','quote','resources','timestamp','requestIdentity'].map(key=>[key,value[key]]))
+      const stable=value=>{
+        const projected=conversationSource(value)
+        return Object.fromEntries(['sourceId','conversationId','messageId','version','actorId','channel','text','quote','resources','timestamp','requestIdentity'].map(key=>[key,projected[key]]))
+      }
       if(hash(stable(snapshot))!==hash(stable(source))||hash(source.requestIdentity.effectAuthorization)!==hash(identity))continue
       const key=hash([task.taskId,identity.requestId]),revision=await query('receipt.get',{id:'effect-action-revise:'+key}),activated=await query('receipt.get',{id:'effect-action-activate:'+key})
       if(revision?.result.task.requirementRevision!==origin.binding.requirementRevision||activated?.result.task.requirementRevision!==origin.binding.requirementRevision||activated.result.task.controlRevision!==origin.binding.controlRevision)continue
@@ -423,7 +478,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const pending = await query('wake.list', { taskId: id }).catch(() => [])
         const task = await query('task.get', { taskId: id }).catch(() => null)
         again = !task?.archivedAt && task?.status === 'active' && task.control === 'active' && task.drained
-          && retryReady(id)
+          && taskWorkspaceReady(task) && retryReady(id)
           && (pendingDialogue(task) || pendingTaskHumanReview(task, pending) || !taskHumanWait(task))
           && pending.some(item => item.state !== 'acked')
       }
@@ -457,7 +512,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         // SQLite is the durable queue. A freed slot promotes existing work immediately,
         // without depending on a periodic recovery tick or manufacturing another wake.
         for (const task of await query('task.list')) {
-          if(task.effectReconciliations?.some(row=>row.state==='prepared'))continue
+          if(!taskWorkspaceReady(task)||task.effectReconciliations?.some(row=>row.state==='prepared'))continue
           if (closed) return
           if (task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
           const pending = await query('wake.list', { taskId: task.taskId })
@@ -526,7 +581,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const executions = await query('execution.list', { taskId: task.taskId })
     const pendingWake = !task.lastDecision && (await query('wake.list', { taskId: task.taskId })).some(wake => wake.state !== 'acked')
     const state = taskBoardState(task, executions, pendingWake)
-    return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.drained?'idle':'running',workspaceDir:await taskWorkspace(root,task.taskId),logPath:ctx.sessionPersistence.path(task.sessionId)}}
+    return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.drained?'idle':'running',workspaceDir:taskWorkspaceReady(task)?await taskWorkspace(root,task.taskId,task):null,logPath:ctx.sessionPersistence.path(task.sessionId)}}
 
   }
   async function taskDetail(taskId) {
@@ -545,7 +600,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return {...page,items:undefined,executions:[]}
   }
   async function materializeSource(taskId, source) {
-    const directories = await taskDirectories(root, taskId, { create: true })
+    const directories = await taskDirectories(root, taskId, {task:await requireTask(taskId)})
     const target = join(directories.materials, `source-${hash(source.sourceId).slice(0, 32)}.json`)
     const readSnapshot = async () => {
       await checkedTaskDirectory(directories.materials)
@@ -632,6 +687,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     await Promise.allSettled([oldTask, ...list.map(item => oldExecutions.get(item.executionId))].filter(Boolean))
   }
   function admitTask(taskId, action) {
+    if(closed)fail('TASK_SESSION_CLOSED')
     const previous = admissions.get(taskId) ?? Promise.resolve()
     const pending = previous.catch(() => {}).then(async () => {
       admissionHolds.add(taskId)
@@ -981,6 +1037,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed || admissionHolds.has(taskId) || !retryReady(taskId) || !reserveTask(taskId)) return Promise.resolve()
     return track(inflightTasks, taskId, async () => {
       let task = await requireTask(taskId)
+      if(!taskWorkspaceReady(task)){if(!failures.has('task-workspace:'+taskId))failures.set('task-workspace:'+taskId,{id:taskId,code:'TASK_WORKSPACE_NOT_READY'});taskSlots.delete(taskId);return}
       if(task.dependenciesReady===false){taskSlots.delete(taskId);return}
       if(task.effectReconciliations?.some(row=>row.state==='prepared')){taskSlots.delete(taskId);return}
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') { taskSlots.delete(taskId); return }
@@ -1015,7 +1072,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             Object.assign(binding,{contextRevision:nextBinding.contextRevision});task=await requireTask(taskId)
             sources.splice(0,sources.length,...(await Promise.all(task.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean))
           },
-          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root, taskId), task.title); return command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`) },
+          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root,taskId,task), task.title); return command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`) },
           resolveHuman: async args => {
             if (!humanReview) fail('DYNAMIC_HUMAN_REVIEW_NOT_PENDING')
             return (await command('task.human.resolve', { binding, ...args },
@@ -1047,7 +1104,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             if (decision.action === 'complete') {
               if (decision.deliveryFiles?.length && (!notifications?.sendFile || !notifications?.readbackFile)) fail('TASK_DELIVERY_FILE_TRANSPORT_UNAVAILABLE')
               const artifactFiles = await (freezeSingleTaskFiles)({ reported:decision.artifacts,selected: decision.deliveryFiles, task,
-                executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root, taskId), files: deliveryFiles })
+                executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root,taskId,task), files: deliveryFiles })
               const replyBindings=await taskReplyBindings(task)
               const topicFacts=!task.conversationId&&(replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length)
               await command('task.complete', { binding, summary: decision.summary, result: artifactFiles.length ? { ...decision, artifactFiles } : decision, topicFacts,
@@ -1343,7 +1400,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         for (const request of task.humanRequests ?? []) if (request.status === 'waiting-reply') await queueHumanRequest(task, request)
       for(const candidate of recoveryCandidates)failures.set(candidate.taskId,{id:candidate.taskId,code:'TASK_LEGACY_OPERATION_REVIEW_REQUIRED'})
       for (const task of await query('task.list')) if (task.sessionBound) {
-        const cwd = await taskWorkspace(root, task.taskId)
+        const cwd = await taskWorkspace(root,task.taskId,task)
         await attachWorkspace(task.sessionId, cwd, task.title)
       }
 
@@ -1718,7 +1775,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         controlState: task.control, waitingReason: task.state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
         result: task.completion?.result ?? task.lastDecision ?? null, legacyReadonly: false,
         ...(task.archivedAt ? {} : { session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running',
-          workspaceDir: dirname(taskFilePath(root, task.taskId, 'work')), logPath: ctx.sessionPersistence.path(task.sessionId) } }) })) }
+          workspaceDir: taskWorkspaceReady(task)?dirname(taskFilePath(root,task.taskId,'work')):null, logPath: ctx.sessionPersistence.path(task.sessionId) } }) })) }
     },
     async taskDecisions(taskId, options = {}) { await requireTask(taskId); return query('task.decisions', { ...options, taskId }) },
     async reconcileWebTaskTopics(){fail('TOPIC_ROUTING_RETIRED')},
@@ -1779,11 +1836,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await schedulePending()
       await deliverNotifications(notificationAttempts)
       do {
-        await Promise.allSettled([scheduling, notificationScan, ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean))
+        await Promise.allSettled([scheduling, notificationScan, ...admissions.values(), ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean))
         await residentRouter.whenIdle()
         await schedulePending()
         await deliverNotifications(notificationAttempts)
-      } while (scheduling || notificationScan || sourceProjections.size || [inflightTasks,inflightExecutions,inflightGroups,inflightNotifications].some(map => map.size))
+      } while (scheduling || notificationScan || admissions.size || sourceProjections.size || [inflightTasks,inflightExecutions,inflightGroups,inflightNotifications].some(map => map.size))
       await archives?.idle()
     },
     close() {return closingService??=(async()=>{
@@ -1795,7 +1852,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await attempt(()=>reflection?.whenIdle())
       await attempt(()=>nativeDws.close())
       const counts = () => ({ observationPending: observationQueue.pending, tasks: inflightTasks.size, executions: inflightExecutions.size, groups: inflightGroups.size,
-        notifications: inflightNotifications.size, sourceProjections: sourceProjections.size,
+        notifications: inflightNotifications.size, admissions: admissions.size, sourceProjections: sourceProjections.size,
         scheduling: !!scheduling, recovering: !!recovering, notificationScan: !!notificationScan })
       // 任一资源关闭失败仍需等待其它关闭，最后保留全部真实异常。
       await attempt(()=>observeClose(closeTrace, 'service.topic.close', async()=>{
@@ -1804,7 +1861,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if(failures.length)throw new AggregateError(failures,'Conversation shutdown failed')
       }, counts))
       await attempt(()=>observeClose(closeTrace, 'service.owner.close', () => taskSessions.close(), counts))
-      await attempt(()=>observeClose(closeTrace, 'service.inflight-settled', () => Promise.allSettled([scheduling, recovering, notificationScan, ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean)), counts))
+      await attempt(()=>observeClose(closeTrace, 'service.inflight-settled', () => Promise.allSettled([scheduling, recovering, notificationScan, ...admissions.values(), ...sourceProjections, ...inflightTasks.values(), ...inflightExecutions.values(), ...inflightGroups.values(), ...inflightNotifications.values()].filter(Boolean)), counts))
+      for(const diagnostic of failures.values())if(diagnostic.nativeResources?.handles.retained||diagnostic.nativeResources?.local.retained)
+        errors.push(diagnostic.cause??Object.assign(new Error('TASK_WORKSPACE_NATIVE_RESOURCES_RETAINED'),{nativeResources:diagnostic.nativeResources}))
       await attempt(()=>stopObservation?.())
       await attempt(()=>observeClose(closeTrace, 'service.observation-tail', () => observationQueue.close(), counts))
       await attempt(()=>stopInboxProjection?.())

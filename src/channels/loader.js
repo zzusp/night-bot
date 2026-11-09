@@ -32,7 +32,11 @@ export async function channelPluginRows(config,paths){
     const channelId=instance.channelId??instance.config?.channelId??instance.type
     if(typeof channelId!=='string'||!channelId||channelId.length>128||ids.has(channelId))invalid('ID_INVALID_OR_DUPLICATE')
     ids.add(channelId)
-    rows.push({name:definition.entry,config:{...instance.config,enabled:true,channelId}})
+    const plugin=await import(definition.entry)
+    if(plugin.validateConfig!==undefined&&typeof plugin.validateConfig!=='function')invalid('VALIDATOR_INVALID')
+    const normalized=plugin.validateConfig?plugin.validateConfig(instance.config??{}):instance.config??{}
+    if(!normalized||typeof normalized!=='object'||Array.isArray(normalized)||typeof normalized.then==='function')invalid('CONFIG_INVALID')
+    rows.push({name:definition.entry,config:{...normalized,enabled:true,channelId}})
   }
   return rows
 }

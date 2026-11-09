@@ -177,6 +177,31 @@ test('task/channel views only project existing facts and never return configurat
   assert.equal((await f.fetchApi('/api/conversations')).body.items[0].type, 'chat-room')
 })
 
+test('渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接', async t => {
+  const f = await fixture(t); await f.login()
+  const stages = ['starting', 'waiting-auth', 'ready', 'paused', 'recovering', 'listening', 'error', 'stopped', 'PRIVATE_UNKNOWN_STATE']
+  const expected = []
+  f.app.config.channelPlugins = stages.map((state, index) => {
+    const channelId = 'health-' + index, healthy = index % 2 === 0
+    const health = {state, healthy, credentials: 'PRIVATE_HEALTH_CREDENTIAL', path: '/private/health'}
+    Object.defineProperty(health, 'lastError', {get() {assert.fail('raw adapter error must not be read')}})
+    f.channels.plugins.set(channelId, {health})
+    expected.push({channelId, type: 'fixture-chat', enabled: false, connectionState: index === 8 ? 'unknown' : state,
+      errorCode: state === 'waiting-auth' ? 'CHANNEL_AUTH_REQUIRED' : state === 'error' ? 'CHANNEL_ADAPTER_ERROR' : null, connected: healthy})
+    return {type: 'fixture-chat', channelId, enabled: false, config: {token: 'PRIVATE_CONFIG_CREDENTIAL'}}
+  })
+  for (const [channelId, health] of [['absent', undefined], ['invalid', {state: 'ready', healthy: 'PRIVATE_NOT_BOOLEAN'}]]) {
+    f.app.config.channelPlugins.push({type: 'fixture-chat', channelId, enabled: true})
+    if (health) f.channels.plugins.set(channelId, {health})
+    expected.push({channelId, type: 'fixture-chat', enabled: true, connectionState: health ? 'ready' : 'unknown', errorCode: null})
+  }
+  const result = await f.fetchApi('/api/channels')
+  assert.equal(result.status, 200)
+  assert.deepEqual(result.body.items, expected)
+  assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_|lastError|credentials|token|\/private\//)
+  assert.equal(f.received.length, 0, 'reading connection state cannot admit or replay business work')
+})
+
 test('partial overview failure preserves other sections without reflecting internal errors', async t => {
   const f = await fixture(t, {taskError: query => query.state === 'waiting'}); await f.login()
   const result = await f.fetchApi('/api/overview')

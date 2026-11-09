@@ -4,9 +4,9 @@ import { pathToFileURL } from 'node:url'
 import { randomUUID, createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import yaml from 'js-yaml'
-import { createAgentResourceReadCapability } from '../packages/dingtalk-dsh-assistant/agent-query-resources.js'
-import { createAgentDatabaseReadCapability, validateDatabaseConfigurationConnections } from '../packages/dingtalk-dsh-assistant/agent-query-database.js'
-import { createAgentStatusReadCapability } from '../packages/dingtalk-dsh-assistant/agent-query-status.js'
+import { createAgentResourceReadCapability } from '../packages/dingtalk-core/agent-query-resources.js'
+import { createAgentDatabaseReadCapability, validateDatabaseConfigurationConnections } from '../packages/dingtalk-core/agent-query-database.js'
+import { createAgentStatusReadCapability } from '../packages/dingtalk-core/agent-query-status.js'
 const fail = code => { throw new Error(code) }
 const hash = value => createHash('sha256').update(value).digest('hex')
 const keys = (x, expected) => x && typeof x === 'object' && !Array.isArray(x) && isDeepStrictEqual(Object.keys(x).sort(), expected.sort())

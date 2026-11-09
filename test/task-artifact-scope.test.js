@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { coordinationArtifactScope, resolveTaskArtifactScope } from '../packages/dingtalk-dsh-assistant/task-artifact-scope.js'
+import { coordinationArtifactScope, resolveTaskArtifactScope } from '../packages/dingtalk-core/task-artifact-scope.js'
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'artifact-policy-'))

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import {mkdtemp} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {createExecutionController} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
+import {createExecutionController} from '../packages/dingtalk-core/execution-controller.js'
 const number={type:'number'}
 async function fixture(t,{failAt='work',onWork}={}) {
  const directory=await mkdtemp(join(tmpdir(),'dsh-controls-')),dbPath=join(directory,'control.sqlite')

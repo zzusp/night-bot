@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test, {after} from 'node:test'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
-import { openResidentStore, reconcileReplacementGraph } from '../packages/dingtalk-dsh-assistant/store.js'
-import { stagePlanFor } from '../packages/dingtalk-dsh-assistant/task-input-revision.js'
+import { openResidentStore, reconcileReplacementGraph } from '../packages/dingtalk-core/store.js'
+import { stagePlanFor } from '../packages/dingtalk-core/task-input-revision.js'
 
 const domainResources=[]
 after(async()=>{for(const resource of domainResources)await resource.close()})
@@ -863,7 +863,7 @@ test('历史Web补充归并后按原来源顺序读上下文，晚到归并不�
 })
 
 test('来源引用索引保留版本、事项增删与历史修订且不读取正文', async () => {
-  const { topicSourceEntries, topicMessages } = await import('../packages/dingtalk-dsh-assistant/topic-model.js')
+  const { topicSourceEntries, topicMessages } = await import('../packages/dingtalk-core/topic-model.js')
   let scans = 0
   const entries = [
     { revision: 1, messageId: 'm', messageVersion: 1, unitId: 'a', unitRevision: 1 },

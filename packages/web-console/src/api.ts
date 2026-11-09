@@ -15,17 +15,48 @@ export interface Task {
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];
   notifications?: Record<string, unknown>[];
 }
-export interface Channel { channelId: string; type: string; enabled: boolean; connected?: boolean }
+export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown';
+export interface Channel {
+  channelId: string; type: string; enabled: boolean; connected?: boolean;
+  connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | null;
+}
 export interface Conversation { id: string; name: string; channelId: string; type: string; updatedAt?: string }
 export interface ChatSummary { id: string; title: string; updatedAt: string; status: string }
+export interface MessageSource { sessionId: string; entryId: string; callId?: string }
+export interface MessageBodyPage { messageId: string; text: string; offset: number; nextOffset: number | null; total: number; revision: string; source: MessageSource; redacted: boolean }
+export interface HistoryReader { endpoint: string; revision: string }
 export interface Message {
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
-  kind?: string; toolName?: string; redacted?: boolean; truncated?: boolean;
+  kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean;
+  source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
 }
-export interface Chat { conversationId: string; messages: Message[]; status: string; truncated?: boolean }
+export interface Chat {
+  conversationId: string; messages: Message[]; status: string; truncated?: boolean;
+  taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
+}
 export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string }
+export interface LearningSource { taskId: string; eventId: string; reviewId: string }
+export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
+export interface LearningChange {
+  id: string; reviewId: string; taskId: string; kind: 'memory' | 'skill'; action: 'upsert' | 'current-version';
+  status: 'applied' | 'candidate' | 'not-applied'; scope: 'personal' | 'group' | 'project'; name: string;
+  version: string | number; canRead: boolean; source: LearningSource;
+}
+export interface TaskLearning { status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
+export interface LearningBody { id: string; kind: 'memory' | 'skill'; text: string; version: string | number; source: LearningSource; redacted: boolean; truncated?: boolean }
 export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; waiting: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
+
+export type PermissionMode = 'ask' | 'auto' | 'full';
+export interface PermissionRequest {
+  id: string; actorId: string; taskId: string | null; conversationId: string | null; callId: string; toolName: string;
+  status: 'pending' | 'allowed-once' | 'rejected' | 'cancelled'; createdAt: string; decidedAt?: string; revocable: boolean;
+  display: { summary: string; target: string | null; cwd: string; command: string | null; parametersDigest: string };
+}
+export interface PermissionsView {
+  mode: PermissionMode; options: { value: PermissionMode; label: string; description: string }[]; requests: PermissionRequest[];
+  protection: { status: 'unconfined' | 'not-attested' | 'unavailable'; backend: 'direct' | null; description: string };
+}
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string) { super(code); }

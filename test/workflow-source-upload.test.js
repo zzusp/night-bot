@@ -8,7 +8,7 @@ import { join, resolve, dirname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { gunzipSync } from 'node:zlib'
 import yaml from 'js-yaml'
-import { sourceUploadTarget, uploadUatSource } from '../packages/dingtalk-dsh-assistant/workflow-source-upload.js'
+import { sourceUploadTarget, uploadUatSource } from '../packages/dingtalk-core/workflow-source-upload.js'
 
 const execFile = promisify(execFileCallback)
 const target = { repository: 'HiQ-AI/dataset', branch: 'feature/uat3-base' }

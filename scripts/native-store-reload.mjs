@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { maintenanceStatus } from '../packages/dingtalk-dsh-assistant/execution-maintenance.js'
+import { maintenanceStatus } from '../packages/dingtalk-core/execution-maintenance.js'
 const fail=code=>{throw new Error(code)}
 export function verifyFailedStoreSessions({maintenance,nodes,failure,sessions}) {
  if(failure?.action!=='query'||failure?.origin!=='rpc-timeout')fail('RELOAD_FAILURE_NOT_READ_TIMEOUT')

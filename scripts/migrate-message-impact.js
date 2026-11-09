@@ -3,8 +3,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { registerMessageImpact } from '../packages/dingtalk-dsh-assistant/message-ledger.js'
-import { validateTaskPlanSchema } from '../packages/dingtalk-dsh-assistant/execution-task-plan.js'
+import { registerMessageImpact } from '../packages/dingtalk-core/message-ledger.js'
+import { validateTaskPlanSchema } from '../packages/dingtalk-core/execution-task-plan.js'
 
 const reject = code => { throw new Error(code) }
 const scalar = (db,sql) => Object.values(db.prepare(sql).get())[0]

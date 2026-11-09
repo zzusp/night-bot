@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTaskPermits } from '../packages/dingtalk-dsh-assistant/task-permits.js'
+import { createTaskPermits } from '../packages/dingtalk-core/task-permits.js'
 
 test('等待审阅停止推进但排空前不释放，B 先拿许可，A 恢复必须重新排队', () => {
   const permits = createTaskPermits({ limit: () => 1 })

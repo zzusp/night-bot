@@ -5,10 +5,10 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
+import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-core/store.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
 import { available, reason, nativeTaskHost, latestInput, topicTaskCalls, modelToolValues } from './fixtures/task-session-native-host.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 function memoryFacility(seed = new Map()) {
   const table = name => ({

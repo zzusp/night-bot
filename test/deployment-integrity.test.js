@@ -1,4 +1,4 @@
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, cp, readFile, readdir, symlink } from 'node:fs/promises'
@@ -157,7 +157,7 @@ test('工程源码副本的node_modules明确排除，复制不遍历链接且�
 
 test('schema6部署在同一owner锁内迁移，其他owner拒绝且历史证明可独立回读',async t=>{
   const { PassThrough }=await import('node:stream')
-  const { openExecutionStore }=await import('../packages/dingtalk-dsh-assistant/execution-store.js')
+  const { openExecutionStore }=await import('../packages/dingtalk-core/execution-store.js')
   const { holdDeploymentOwnerLock }=await import('../docs/acceptance/topic-context-completeness/scripts/check-repair-deployment.mjs')
   const { verifyMessageImpact }=await import('../scripts/migrate-message-impact.js')
   const root=await mkdtemp(join(tmpdir(),'deploy-impact-')),dbPath=join(root,'control.sqlite')
@@ -190,7 +190,7 @@ test('schema6部署在同一owner锁内迁移，其他owner拒绝且历史证明
 
 test('必要依赖索引部署持owner锁迁移并独立回读原数据',async t=>{
  const {PassThrough}=await import('node:stream')
- const {openExecutionStore}=await import('../packages/dingtalk-dsh-assistant/execution-store.js')
+ const {openExecutionStore}=await import('../packages/dingtalk-core/execution-store.js')
  const {holdDeploymentOwnerLock}=await import('../docs/acceptance/topic-context-completeness/scripts/check-repair-deployment.mjs')
  const {verifyExecutionDependencyIndex}=await import('../scripts/migrate-execution-dependency-index.mjs')
  const root=await mkdtemp(join(tmpdir(),'deploy-dependency-')),dbPath=join(root,'control.sqlite')
@@ -267,7 +267,7 @@ for(const mode of ['purged','ordinary-delete','no-delete','live-task','live-run'
 });
 
 for(const known of [true,false])test(`已清理任务的原生阶段回执界定旧节点引用，不猜测run身份：${known}`,async t=>{
- const {plannedStageRunId}=await import('../packages/dingtalk-dsh-assistant/execution-controller.js');const f=await fixture();t.after(()=>f.db.close());
+ const {plannedStageRunId}=await import('../packages/dingtalk-core/execution-controller.js');const f=await fixture();t.after(()=>f.db.close());
  f.db.exec('CREATE TABLE execution_events(seq INTEGER PRIMARY KEY,kind TEXT,payload TEXT);CREATE TABLE business_tasks(task_id TEXT);CREATE TABLE execution_runs(task_id TEXT);CREATE TABLE execution_receipts(command_id TEXT,result TEXT)');
  const taskId='task-old';f.db.prepare('INSERT INTO execution_events VALUES(1,?,?)').run('task.delete',JSON.stringify({taskId,reason:'explicit-user-terminal-history-cleanup'}));
  const runId=known?plannedStageRunId(taskId,1,'stage-1',1):'run-unknown';
@@ -281,7 +281,7 @@ for(const known of [true,false])test(`已清理任务的原生阶段回执界定
 });
 
 for(const known of [true,false])test(`已清理直派任务只接受同一命令摘要的Task与Run：${known}`,async t=>{
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js');const f=await fixture();t.after(()=>f.db.close());
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js');const f=await fixture();t.after(()=>f.db.close());
  f.db.exec('CREATE TABLE execution_events(seq INTEGER PRIMARY KEY,kind TEXT,payload TEXT);CREATE TABLE business_tasks(task_id TEXT);CREATE TABLE execution_runs(task_id TEXT);CREATE TABLE execution_receipts(command_id TEXT,result TEXT)');
  const digest=executionDigest('msg-source:u0:0:0'),taskId=`task-${digest.slice(0,32)}`;
  f.db.prepare('INSERT INTO execution_events VALUES(1,?,?)').run('task.delete',JSON.stringify({taskId,reason:'explicit-user-terminal-history-cleanup'}));

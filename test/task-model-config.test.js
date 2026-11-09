@@ -4,10 +4,10 @@ import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { taskModelConfig, taskModelSelection } from '../packages/dingtalk-dsh-assistant/task-model-config.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { taskModelConfig, taskModelSelection } from '../packages/dingtalk-core/task-model-config.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-core/store.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 test('unset task depth defaults low; explicit inheritance and model default remain distinct', () => {
   const execution = { provider: 'executor', model: 'sol', reasoningEffort: 'low' }

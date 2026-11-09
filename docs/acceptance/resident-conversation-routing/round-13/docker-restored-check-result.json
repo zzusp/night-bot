@@ -1,0 +1,269 @@
+{
+  "pass": true,
+  "image": "sha256:c34333f096fc1ffa807b812acfe064b9832942a754053dd5fd4be75041d82813",
+  "volume": "night-bot-sg12-data-c34333f0-r13",
+  "owner": "sg12-c34333f0-r13",
+  "cases": [
+    {
+      "kind": "missing",
+      "exit": 1,
+      "containerExit": 1,
+      "running": false,
+      "pid": 0,
+      "containerId": "07cc316c637d3f6f4ce7b66c7e949bde5d0aa7f686b50379533e7e424d5ec034",
+      "before": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        }
+      ],
+      "after": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        }
+      ],
+      "unchanged": true,
+      "logSha256": "48a3ddd87f72cf52be819ef6e630854d1dfe77deee0b8d9f9bd642dd1f2e4d7d"
+    },
+    {
+      "kind": "prepared",
+      "exit": 0,
+      "containerExit": 0,
+      "running": false,
+      "pid": 0,
+      "containerId": "44729ac186c238dade0098bb84f97db8569c889be89080cf81d4bde7ed2e61dc",
+      "before": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        },
+        {
+          "path": "/temp",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        }
+      ],
+      "after": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        },
+        {
+          "path": "/temp",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        }
+      ],
+      "unchanged": true,
+      "logSha256": "1983971f6f38e42656e7aa85e8197488b8411da1423fe58d459829d8f3363f78"
+    },
+    {
+      "kind": "permissions",
+      "exit": 1,
+      "containerExit": 1,
+      "running": false,
+      "pid": 0,
+      "containerId": "32a2a7a594440ddd6fb2155b9e3c456c3338e4ac04d46ea4ec3bb991d58396d1",
+      "before": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        },
+        {
+          "path": "/temp",
+          "mode": 493,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        }
+      ],
+      "after": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        },
+        {
+          "path": "/temp",
+          "mode": 493,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        }
+      ],
+      "unchanged": true,
+      "logSha256": "9921f7cd386b9c1218cfbe82155125aa374db3ba9a8b35f0142dc1b0573d0c00"
+    },
+    {
+      "kind": "alias",
+      "exit": 1,
+      "containerExit": 1,
+      "running": false,
+      "pid": 0,
+      "containerId": "4806012935abde43477f736158efcf33add4823bcda925e9d9efbf158b989105",
+      "before": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114743883.5186
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        },
+        {
+          "path": "/temp",
+          "mode": 511,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114743883.5186,
+          "link": "/tmp"
+        },
+        {
+          "path": "/temp-held",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        }
+      ],
+      "after": [
+        {
+          "path": ".",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114743883.5186
+        },
+        {
+          "path": "/restore-probe.txt",
+          "mode": 384,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114735522.8738,
+          "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+        },
+        {
+          "path": "/temp",
+          "mode": 511,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114743883.5186,
+          "link": "/tmp"
+        },
+        {
+          "path": "/temp-held",
+          "mode": 448,
+          "uid": 1000,
+          "gid": 1000,
+          "mtimeMs": 1794114738059.0706
+        }
+      ],
+      "unchanged": true,
+      "logSha256": "9921f7cd386b9c1218cfbe82155125aa374db3ba9a8b35f0142dc1b0573d0c00"
+    }
+  ],
+  "applicationStarted": false,
+  "realVendorExecuted": false,
+  "source": "Docker exact image with entrypoint def816be; owned fixture only",
+  "finalSnapshot": [
+    {
+      "path": ".",
+      "mode": 448,
+      "uid": 1000,
+      "gid": 1000,
+      "mtimeMs": 1794114746500.3496
+    },
+    {
+      "path": "/restore-probe.txt",
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000,
+      "mtimeMs": 1794114735522.8738,
+      "sha256": "2ac3e388e7fed1491de540dc8dde2d41bcf1728dfbb5fe61f2de10224d79c1ff"
+    },
+    {
+      "path": "/temp",
+      "mode": 448,
+      "uid": 1000,
+      "gid": 1000,
+      "mtimeMs": 1794114738059.0706
+    }
+  ]
+}

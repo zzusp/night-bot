@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
-import { residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
+import { residentDomainSpec } from '../packages/dingtalk-core/store.js'
 
 // 当前 v9 只读预检；历史 v8 必须先通过独立目标迁移，不能由运行时隐式重写。
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)

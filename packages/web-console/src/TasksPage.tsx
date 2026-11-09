@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { RiArrowLeftLine, RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine, RiMoreLine } from '@remixicon/react';
-import { type Page, type Task, type ExecutionPage } from './api';
-import { dateTime, navigate, textOf, useResource } from './hooks';
+import { type Page, type Task } from './api';
+import { dateTime, navigate, textOf, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState } from './components/BoardPrimitives';
-import { Loading, Markdown, MessageList, Notice, Pagination, Search, Status } from './components/Shared';
+import { Loading, Markdown, Notice, Pagination, Search, Status } from './components/Shared';
+import { ExecutionHistory } from './components/ExecutionHistory';
+import { LearningChanges } from './components/LearningChanges';
 
 export function TaskList({ route }: { route: URL }) {
   const state = route.searchParams.get('state') || '';
@@ -30,27 +32,22 @@ export function TaskList({ route }: { route: URL }) {
 
 export function TaskDetail({ id }: { id: string }) {
   const query = useResource<Task>(`/tasks/${encodeURIComponent(id)}`, 4000);
-  const [tab, setTab] = useState<'overview' | 'dialogue'>('overview');
-  const [executionPage, setExecutionPage] = useState<{ offset: number; revision?: string }>({ offset: 0 });
-  const dialogue = useResource<ExecutionPage>(tab === 'dialogue' ? `/tasks/${encodeURIComponent(id)}/session?limit=50&offset=${executionPage.offset}${executionPage.revision ? `&revision=${encodeURIComponent(executionPage.revision)}` : ''}` : null, executionPage.offset ? 0 : 5000);
+  const route = useRoute();
+  const view = route.searchParams.get('view');
+  const tab = view === 'execution' ? 'dialogue' : view === 'learning' ? 'learning' : 'overview';
+  const setTab = (next: 'overview' | 'dialogue' | 'learning') => navigate(`/tasks/${encodeURIComponent(id)}${next === 'overview' ? '' : `?view=${next === 'dialogue' ? 'execution' : 'learning'}`}`);
   const task = query.data;
-  useEffect(() => { setTab('overview'); setExecutionPage({ offset: 0 }); }, [id]);
   const raw = task?.timeline;
   const timeline = [...(raw?.task?.events || []), ...(raw?.human?.segments || []), ...(raw?.executions || []).flatMap(track => track.milestones || [])].sort((a, b) => String(a.at || a.startedAt || '').localeCompare(String(b.at || b.startedAt || '')));
   const eventLabels: Record<string, string> = { created: '任务已创建', completed: '任务已完成', reopened: '任务已重新打开', cancelled: '任务已取消' };
-  const messages = dialogue.data?.items || [];
   return <div className="page-content detail-page"><a className="back-link" href="#/tasks"><RiArrowLeftLine size={16} />全部任务</a>
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
     {!task ? query.loading ? <Loading /> : <EmptyState title="无法读取任务" description="请刷新，或返回任务列表选择其他任务。" /> : <>
       <div className="detail-heading"><div><span className="eyebrow">任务详情</span><h2>{task.title || '未命名任务'}</h2></div><Status value={task.state} /></div>
       <div className="detail-meta"><span>创建于 {dateTime(task.createdAt)}</span><span>更新于 {dateTime(task.updatedAt)}</span>{task.session && <span>执行会话 <Status value={task.session.status} /></span>}</div>
       {task.objective && <div className="task-objective"><Markdown text={task.objective} /></div>}
-      <div className="filter-tabs detail-tabs" role="group" aria-label="任务详情视图"><button type="button" aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>执行信息</button><button type="button" aria-pressed={tab === 'dialogue'} onClick={() => setTab('dialogue')}>执行记录</button></div>
-      {tab === 'dialogue' ? <div className="task-dialogue"><div className="execution-scope">当前执行上下文 · 会话压缩或分支后，可能不包含更早记录</div>
-        {dialogue.error && <Notice error={dialogue.error} stale={!!dialogue.data} onRetry={() => { setExecutionPage({ offset: 0 }); dialogue.refresh(); }} />}
-        {dialogue.loading && !dialogue.data ? <Loading /> : !dialogue.data && dialogue.error ? <EmptyState title="执行记录暂不可读" description="使用上方按钮重新获取。" /> : dialogue.data?.status === 'pending' ? <EmptyState title={dialogue.data.reason === 'SESSION_NOT_STARTED' ? '执行尚未开始' : '执行记录正在提交'} description={dialogue.data.reason === 'SESSION_NOT_STARTED' ? '任务开始执行后，记录会自动显示。' : 'Bot 正在保存记录，提交完成后会自动更新。'} /> : dialogue.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" description="当前无法安全读取此会话，请稍后重新获取。" action={<Button variant="secondary" onClick={dialogue.refresh}>重新获取</Button>} /> : <MessageList key={id + ':' + executionPage.offset} messages={messages} userLabel="用户" empty={<EmptyState title="暂无可展示的执行记录" description="记录会随着任务推进而更新。" />} />}
-        <div className="execution-pagination">{executionPage.offset > 0 && <Button variant="secondary" onClick={() => setExecutionPage({ offset: 0 })}>回到最新</Button>}{dialogue.data?.nextOffset != null && <Button variant="secondary" onClick={() => setExecutionPage({ offset: dialogue.data!.nextOffset!, revision: dialogue.data!.revision })}>查看更早记录</Button>}</div>
-      </div> :
+      <div className="filter-tabs detail-tabs" role="group" aria-label="任务详情视图"><button type="button" aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>执行信息</button><button type="button" aria-pressed={tab === 'dialogue'} onClick={() => setTab('dialogue')}>执行记录</button><button type="button" aria-pressed={tab === 'learning'} onClick={() => setTab('learning')}>复盘与学习</button></div>
+      {tab === 'learning' ? <LearningChanges key={id} taskId={id} /> : tab === 'dialogue' ? <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} /></div> :
       <div className="detail-columns"><div className="detail-main">
         {textOf(task.result) && <section className="detail-section"><h3><RiCheckboxCircleLine size={18} />处理结果</h3><Markdown text={textOf(task.result)} /></section>}
         <section className="detail-section"><h3><RiPulseLine size={18} />执行动态</h3>{timeline.length ? <ol className="timeline">{timeline.map((event, index) => <li key={String(event.id || index)}><span className="timeline-dot" /><div><strong>{event.summary || event.label || eventLabels[event.kind || ''] || event.description || event.kind || '状态更新'}</strong>{event.at || event.startedAt ? <time>{dateTime(event.at || event.startedAt)}</time> : null}{event.status && <Status value={event.status} />}</div></li>)}</ol> : <p className="muted">暂时没有执行动态，任务推进后会自动更新。</p>}</section>

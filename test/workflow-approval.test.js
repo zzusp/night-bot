@@ -4,10 +4,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createWorkflowApprovalService } from '../packages/dingtalk-dsh-assistant/workflow-approval.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { createWorkflowApprovalService } from '../packages/dingtalk-core/workflow-approval.js'
 
 for (const [decision, channel] of [['approved', 'web'], ['rejected', 'web'], ['rejected', 'im']]) test(`同一效果的 Web/钉钉审批首终态生效；无权及跨任务拒绝 ${decision}/${channel}`, async t => {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-workflow-approval-'))

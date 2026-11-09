@@ -1,0 +1,63 @@
+{
+  "containerId": "00a27090f64cfae831ed5149ad0680b5a490de13fbe9a240d232d0b5ef743d94",
+  "image": "sha256:0c6c6f8c665a222d64390252df473b22b2cae9cfc09cbd133f73c509dbc9575c",
+  "mode": "--run",
+  "controlledStop": true,
+  "naturalShutdown": false,
+  "at": "2026-11-08T04:53:20.919Z",
+  "child": {
+    "pid": 102,
+    "state": "R",
+    "ppid": "17",
+    "userTicks": 119841,
+    "systemTicks": 12119,
+    "starttime": "4692256",
+    "cmd": [
+      "/usr/local/bin/node",
+      "/opt/night-bot/bin/night-bot.js",
+      "/opt/night-bot/data/config/config.json"
+    ]
+  },
+  "wrapper": {
+    "pid": 17,
+    "state": "S",
+    "ppid": "1",
+    "userTicks": 3,
+    "systemTicks": 2,
+    "starttime": "4691963",
+    "cmd": [
+      "node",
+      "/opt/night-bot/bin/night-bot-run.js",
+      "/opt/night-bot/data/config/config.json"
+    ]
+  },
+  "task": {
+    "taskId": "container-business-r13",
+    "status": "completed",
+    "drained": true,
+    "completion": {
+      "at": "2026-11-08T04:33:20.508Z",
+      "commandId": "complete:container-business-r13:1",
+      "contextRevision": 0,
+      "controlRevision": 1,
+      "instructionIds": [],
+      "leaseEpoch": 1,
+      "requirementRevision": 1,
+      "result": {
+        "action": "complete",
+        "evidence": [
+          "actual direct write, shell work/tmp and read terminal"
+        ],
+        "limitations": [],
+        "summary": "CONTAINER_BUSINESS_R13_COMPLETE"
+      },
+      "runSequence": 1,
+      "summary": "CONTAINER_BUSINESS_R13_COMPLETE"
+    },
+    "runSequence": 1
+  },
+  "artifactsMatched": true,
+  "portsAbsent": true,
+  "signalSent": true,
+  "reason": "Preserve completed business; exact startup-owned process is CPU-active after ports closed; controlled SIGTERM is not natural Host shutdown or a successful cold restart."
+}

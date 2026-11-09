@@ -5,14 +5,14 @@ import { promisify } from 'node:util'
 import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createGitDelivery } from '../packages/dingtalk-dsh-assistant/execution-git.js'
-import { freezeCandidate, verifyCandidate } from '../packages/dingtalk-dsh-assistant/execution-candidate.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { createGitDelivery } from '../packages/dingtalk-core/execution-git.js'
+import { freezeCandidate, verifyCandidate } from '../packages/dingtalk-core/execution-candidate.js'
 
-import { createGithubPullRequests } from '../packages/dingtalk-dsh-assistant/execution-pr.js'
+import { createGithubPullRequests } from '../packages/dingtalk-core/execution-pr.js'
 
 const exec = promisify(execFile)
 const git = async (cwd, ...args) => (await exec('git', ['-C', cwd, ...args], { windowsHide: true })).stdout.trim()

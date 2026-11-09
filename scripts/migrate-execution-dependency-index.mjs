@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
 import { resolve, isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { maintenanceStatus } from '../packages/dingtalk-dsh-assistant/execution-maintenance.js'
+import { maintenanceStatus } from '../packages/dingtalk-core/execution-maintenance.js'
 
 const fail = code => { throw Error(code) }
 const indexName = 'execution_one_active_task'

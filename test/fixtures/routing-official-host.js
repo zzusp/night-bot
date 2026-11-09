@@ -12,9 +12,9 @@ const usage={input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input
 /** Routing business scripts run against the actual installed official factory.
  * No Session/steer facade or Host message/request conversion is installed. */
 export async function nativeTaskHost(root,decide,options={}){
- let host,closed=false,sequence=0
+ let host,closing,sequence=0
  const requests=[],auxiliaryRequests=[],sent=[],readbacks=[],toolResults=[],signal=nativeLifecycleSignal(),h={root,requests,auxiliaryRequests,sent,readbacks,toolResults}
- h.close=async()=>{if(closed)return;closed=true;if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('ROUTING_FIXTURE',JSON.stringify({requests:requests.length,toolResults:toolResults.map(item=>({name:item.name,error:item.result.error,status:item.result.value?.status})),alerts:h.service?.listAlerts()}));try{await h.service?.close()}finally{try{await h.residentStore?.close()}finally{await host?.close()}}}
+ h.close=()=>closing??=(async()=>{if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('ROUTING_FIXTURE',JSON.stringify({requests:requests.length,toolResults:toolResults.map(item=>({name:item.name,error:item.result.error,status:item.result.value?.status})),alerts:h.service?.listAlerts()}));try{await h.service?.close()}finally{try{await h.residentStore?.close()}finally{await host?.close()}}})()
  registerNativeCleanup(()=>h.close())
  try{
   host=await createHost({installRoot:root,dataDir:'data',model:{provider:'native-task-test',model:'controlled'},providers:{'native-task-test':{api:'openai-completions',baseURL:'http://127.0.0.1:1',apiKeyEnv:'ROUTING_FIXTURE_KEY',models:[{id:'controlled',reasoningEfforts:{off:null,low:'low'},input:['text'],contextWindow:32000,maxTokens:1024}]}},skillDirs:options.skillDirs??[],memory:{background:false},reflection:{enabled:false},skillWatch:false,credentialsWatch:false},{environmentOptions:{inherited:{ROUTING_FIXTURE_KEY:'local-fixture-only'}}})

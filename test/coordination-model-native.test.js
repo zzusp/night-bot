@@ -5,9 +5,9 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, topicTaskCalls, waitUntil } from './fixtures/task-session-native-host.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
 
 // Independent planning was removed. Model isolation remains a current contract:
 // configuration affects later Topic requests, never an in-flight request or the Owner selection.

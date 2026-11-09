@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createAgentDatabaseReadCapability,createRegisteredPostgresConnector} from '../packages/dingtalk-dsh-assistant/agent-query-database.js'
+import {createAgentDatabaseReadCapability,createRegisteredPostgresConnector} from '../packages/dingtalk-core/agent-query-database.js'
 const resource={id:'hiq-editor-production-approval',connectionId:'existing',environment:'production',tables:[{schema:'public',table:'approval',columns:['id']}],metadataSchemas:['public'],dataAccess:'all-tables-readonly'}
 const scope={databaseIds:[resource.id]}
 
@@ -90,8 +90,8 @@ test('42501 parameter connection replica and identity failures are distinct',asy
 
 test('real query tool facade validates SQL fields and never changes cancellation or identity',async t=>{
  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path')
- const {openExecutionArtifacts}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
- const {createAgentQueryTools,verifyAgentEvidence}=await import('../packages/dingtalk-dsh-assistant/agent-query-tools.js')
+ const {openExecutionArtifacts}=await import('../packages/dingtalk-core/execution-artifacts.js')
+ const {createAgentQueryTools,verifyAgentEvidence}=await import('../packages/dingtalk-core/agent-query-tools.js')
  const root=await mkdtemp(join(tmpdir(),'dsh-db-tool-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const artifacts=await openExecutionArtifacts({directory:join(root,'artifacts'),initialize:true}),f=fixture()
  const binding={kind:'task-owner',taskId:'task',sessionId:'owner',turnId:'turn',leaseEpoch:1,ownerEpoch:1,requirementRevision:1,inputDigest:'a'.repeat(64)}

@@ -1,10 +1,13 @@
-// MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-tool-bash-MIT.txt. Application process/sandbox/jobs/policy services own effects.
+import {createBashToolDefinition,createPowerShellToolDefinition,truncateTail} from '@earendil-works/pi-coding-agent';
+import {constants as osConstants} from 'node:os';
+import {authorizedProcessPolicy} from './process/contracts.js';
+// 保留的授权/耐久Job算法源自MIT实现；见licenses/dsh-tool-bash-MIT.txt与licenses/dsh-tool-pwsh-MIT.txt。 Application process/sandbox/jobs/policy services own effects.
 import z from "@deepseek-ai/schemastery";
-import { isAbsolute, sep } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { TOOL_ABORTED, defineTool } from "./native-tool-protocol.js";
 import { HarnessError } from "./native-llm-protocol.js";
 import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "./native-sandbox-protocol.js";
-import { ENV_FACT_PREFIX, parseExitStatus } from "./native-shell.js";
+
 //#region lib/types/background.js
 /**
 * Generic-job adaptation for bash process handles: the terminal outcome the
@@ -98,10 +101,12 @@ function ringDelta(chunks) {
 * @param outcome - projects the settled process into the job outcome.
 * @returns synchronous job hooks whose completion includes preparation and process settlement.
 */
-function processJob(start, outcome) {
+function processJob(start, outcome, preparationSignal) {
 	const controller = new AbortController();
+	const ready = Promise.withResolvers();
 	let process;
 	return {
+		ready: ready.promise,
 		cancel: (reason) => {
 			if (controller.signal.aborted) return;
 			controller.abort(reason);
@@ -109,7 +114,16 @@ function processJob(start, outcome) {
 		},
 		done: (async () => {
 			try {
-				process = await start(controller.signal);
+				const preparation = new AbortController();
+				const abortPreparation = () => preparation.abort(preparationSignal.reason);
+				preparationSignal?.addEventListener("abort", abortPreparation, { once: true });
+				if (preparationSignal?.aborted) abortPreparation();
+				try {
+					process = await start(preparationSignal === void 0 ? controller.signal : AbortSignal.any([controller.signal, preparation.signal]));
+				} finally {
+					preparationSignal?.removeEventListener("abort", abortPreparation);
+				}
+				ready.resolve({});
 				try {
 					if (controller.signal.aborted) process.kill();
 				} finally {
@@ -117,6 +131,7 @@ function processJob(start, outcome) {
 				}
 				return outcome(process);
 			} catch (error) {
+				ready.resolve({ error });
 				return {
 					status: controller.signal.aborted && process === void 0 ? "killed" : "failed",
 					detail: error instanceof Error ? error.message : String(error)
@@ -132,43 +147,45 @@ function processJob(start, outcome) {
 *
 * @module @deepseek-ai/dsh-tool-bash/render
 */
-/** Append the truncation notice (with the full-output spill path) to a stream's text. */
-function streamText(output) {
-	if (!output.truncated) return output.text;
-	return `${output.text}\n[output truncated; full output: ${output.spillPath ?? "(unavailable)"}]`;
+/** Pi owns the ordinary output tail and exit formatting; only application facts remain here. */
+function renderResult(result,escalationModes=[]){
+ const notices=sandboxNotes(result.sandbox,escalationModes)
+ if(result.piOutput.truncated)notices.push('[输出为截断窗口；原stdout/stderr、各自truncated和已有spillPath见本次工具结构结果]')
+ for(const name of ['stdout','stderr']){
+  const stream=result[name]
+  if(stream.truncated)notices.push(`[${name} output truncated; full output: ${stream.spillPath??'(unavailable)'}]`)
+ }
+ if(result.timedOut)notices.push(`[timed out after ${result.timeoutMs}ms]`)
+ if(result.stopped!==undefined)notices.push(`[stopped: ${result.stopped}]`)
+ if(result.signal!==null)notices.push(`[killed by signal: ${result.signal}]`)
+ return [result.piOutput.text,...notices].join('\n')
 }
-/**
-* Shape one finished run into the text the model sees: stdout, then a marked
-* stderr section, then exit-status markers. Non-zero exits are reported, not
-* errored — the model decides how to react; only infrastructure failures
-* (spawn errors, aborts) surface as isError results.
-* @param result - the completed foreground run from the executor.
-* @param escalationModes - the escalation targets this composition advertises;
-*   non-empty adds the same-turn escalation hint after a denial marker
-*   (default `[]`: no hint).
-* @returns the model-facing text: output body (or `(no output)`), then any timeout/stopped/signal/exit markers, each on its own line.
-*/
-function renderResult(result, escalationModes = []) {
-	const out = streamText(result.stdout);
-	const err = streamText(result.stderr);
-	let body = out;
-	if (err.length > 0) {
-		if (body.length > 0 && !body.endsWith("\n")) body += "\n";
-		body += `[stderr]\n${err}`;
-	}
-	if (body.length === 0) body = "(no output)";
-	const markers = [];
-	if (result.sandbox?.denied) {
-		markers.push(sandboxDenialMarker(result.sandbox.mode));
-		if (escalationModes.length > 0) markers.push(escalationHintMarker("command"));
-	}
-	if (result.timedOut) markers.push(`[timed out after ${result.timeoutMs}ms]`);
-	if (result.stopped !== void 0) markers.push(`[stopped: ${result.stopped}]`);
-	if (result.signal !== null) markers.push(`[killed by signal: ${result.signal}]`);
-	else if (result.exitCode !== 0) markers.push(`[exit code: ${result.exitCode}]`);
-	if (markers.length === 0) return body;
-	if (!body.endsWith("\n")) body += "\n";
-	return body + markers.join("\n");
+async function executeOfficialShell(createTool,args,exec,spec,run){
+ let value,window
+ const timeout=args.run_in_background===true||args.timeoutMs===undefined?undefined:args.timeoutMs/1000
+ const tool=createTool(spec.workdir,{exposeSessionEnvironment:false,operations:{
+  async exec(command,cwd,options){
+   if(command!==args.command||cwd!==spec.workdir||options.signal!==exec.signal||options.timeout!==timeout)throw new Error('Pi shell operation does not match the admitted call')
+   // 不使用Pi收集的Host env；run只消费原授权调用解析出的executionEnv和scope。
+   value=await run()
+   // 仅完成原Job启动/转交；SDK的占位exit_code/wall_time不进入业务结果。
+   if(value.kind!=='foreground')return{exitCode:0}
+   const text=ringDelta([{channel:'stdout',text:value.stdout.text},{channel:'stderr',text:value.stderr.text}])
+   window=truncateTail(text)
+   // Pi1.5无输出存储port。只交官方显示尾窗，原完整结构/pull/spill不动，不新增OS tmp日志。
+   options.onData(Buffer.from(window.content,'utf8'))
+   const signalCode=value.signal===null?undefined:osConstants.signals[value.signal]
+   return{exitCode:value.exitCode??(signalCode===undefined?null:128+signalCode)}
+  }
+ }})
+ let rendered
+ try{rendered=await tool.execute(exec.callId,{command:args.command,...timeout===undefined?{}:{timeout}},exec.signal)}catch(error){
+  // 原进程已结算但无退出码：保留Pi准确展示和原结构事实，不伪造exit0或覆盖已知超时。
+  if(value?.kind!=='foreground'||value.exitCode!==null||!error.message.endsWith('Command terminated without an exit code'))throw error
+  rendered={content:[{type:'text',text:error.message}]}
+ }
+ if(value.kind!=='foreground')return value
+ return{...value,piOutput:{text:rendered.content.map(block=>block.text).join('\n'),truncated:window.truncated||value.stdout.truncated||value.stderr.truncated}}
 }
 /**
 * Shape a foreground call that stopped waiting into the text the model sees:
@@ -233,16 +250,13 @@ const Config = z.object({
 	enableRunInBackground: z.boolean().default(true),
 	promoteOnTimeout: z.boolean().default(true)
 });
-function validateBashArgs(args, effectiveMode) {
+function validateBashArgs(args, effectiveMode,toolName) {
 	if (args.command.trim().length === 0) throw new Error("invalid command: expected a non-empty string");
 	if (args.description.trim().length === 0) throw new Error("invalid description: expected a non-empty string");
 	if (args.timeoutMs !== void 0 && (!Number.isFinite(args.timeoutMs) || args.timeoutMs <= 0)) throw new Error(`invalid timeoutMs: expected a positive number, got ${JSON.stringify(args.timeoutMs)}`);
-	if (args.sandbox_permissions !== void 0 && args.sandbox_permissions === effectiveMode) return;
+	if (toolName === "bash" && args.sandbox_permissions !== void 0 && args.sandbox_permissions === effectiveMode) return;
 	const justification = args.sandbox_permissions === void 0 && args.justification?.trim() === "" ? void 0 : args.justification;
 	validateEscalationArgs(args.sandbox_permissions, justification);
-}
-function bashDescription() {
-	return `Execute a bash command (\`bash -c\`) and return its stdout/stderr. Each call runs in a fresh shell; pass \`workdir\` instead of using \`cd\`. Managed \`$${ENV_FACT_PREFIX}*\` variables expose trusted execution facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Provide \`description\` before \`command\` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with \`\${VAR:?}\`. Commands may run under a file sandbox; a blocked file operation is reported as \`[sandbox: file access denied under <mode> mode]\`, a policy denial: do not retry another way.`;
 }
 function presentBashCall(args) {
 	if (args.run_in_background === true) return {
@@ -279,7 +293,7 @@ function presentBashResult(args, result) {
 			text: `\`\`\`console\n${raw.replace(/\n+$/, "")}\n\`\`\``
 		}]
 	};
-	const { body, ...exit } = parseExitStatus(raw);
+	const body=raw,exit={exitCode:result.value.exitCode,signal:result.value.signal};
 	return {
 		card: "terminal",
 		output: body,
@@ -289,7 +303,7 @@ function presentBashResult(args, result) {
 /** Resolve a relative per-call override against the Session's current directory. */
 function resolveWorkdir(modelWorkdir, sessionCwd) {
 	if (modelWorkdir === void 0) return sessionCwd;
-	if (sessionCwd !== void 0 && !isAbsolute(modelWorkdir)) return `${sessionCwd}${sep}${modelWorkdir}`;
+	if (sessionCwd !== void 0 && !isAbsolute(modelWorkdir)) return resolve(sessionCwd,modelWorkdir);
 	return modelWorkdir;
 }
 /** Detach the executor DTO from readonly Service Definition types into plain JSON data. */
@@ -338,7 +352,9 @@ const BACKGROUND_OUTPUT_PROPERTIES = {
 		required: true
 	}
 };
-function apply(ctx, config = {}) {
+export function applyShellTool(ctx, config = {},toolName="bash") {
+ const createOfficialTool=toolName==="bash"?createBashToolDefinition:createPowerShellToolDefinition;
+ const official=createOfficialTool(process.cwd(),{exposeSessionEnvironment:false,operations:{exec(){throw new Error("Unbound Pi shell operation")}}});
 	const backgroundEnabled = config.enableRunInBackground ?? true;
 	const promoteOnTimeout = (config.promoteOnTimeout ?? true) && backgroundEnabled;
 	const defaultMode = ctx.shell.sandboxMode;
@@ -370,14 +386,14 @@ function apply(ctx, config = {}) {
 			approver: ctx.get("approval"),
 			agent: exec.agent,
 			callId: exec.callId,
-			toolName: "bash",
+			toolName,
 			signal: exec.signal
 		});
 	};
 	ctx.systemPrompt.section({
-		name: "tool:bash",
-		order: ctx.systemPrompt.getSectionOrder("TOOL_BASH"),
-		text: "Check the [exit code: N] marker on every bash result; investigate failures before moving on."
+		name: `tool:${toolName}`,
+		order: ctx.systemPrompt.getSectionOrder(toolName==="bash"?"TOOL_BASH":"TOOL_PWSH"),
+		text: "命令结果采用Pi官方格式；检查Command exited with code及结构exitCode。超时转后台需按jobId收集，取消必须等待原范围排空。"
 	});
 	/**
 	* One registration of the `bash` tool. With a registry, every call
@@ -391,9 +407,9 @@ function apply(ctx, config = {}) {
 		const startJob = async (registry, args, exec, spec) => {
 			let proc;
 			let stopped;
-			return {
-				id: await registry.startDurable({
-					kind: "bash",
+			let ready;
+			const id = await registry.startDurable({
+					kind: toolName,
 					label: args.command,
 					...exec.agent ? { owner: exec.agent.id } : {},
 					output: processSources(() => proc),
@@ -404,7 +420,8 @@ function apply(ctx, config = {}) {
 								signal
 							});
 							return proc;
-						}, (started) => processOutcome(started, escalationModes));
+						}, (started) => processOutcome(started, escalationModes), args.run_in_background === true ? exec.signal : void 0);
+						ready = hooks.ready;
 						return {
 							done: hooks.done,
 							cancel: (reason) => {
@@ -413,7 +430,19 @@ function apply(ctx, config = {}) {
 							}
 						};
 					}
-				}, exec),
+				}, exec);
+			// 同一调用在启动准备期间保持有效；启动后取消权仅归原作业。
+			if (args.run_in_background === true) {
+				const prepared = await ready;
+    if(Object.hasOwn(prepared,"error")){
+     // ready失败不是原Job的耐久终态；完成同Job结算后才允许工具调用返回。
+     try{await registry.wait(id,undefined,exec.agent?.id);registry.remove(id,exec.agent?.id);}
+     catch(settlement){throw new AggregateError([prepared.error,settlement],'Shell preparation and durable Job settlement failed');}
+     throw prepared.error;
+    }
+			}
+			return {
+				id,
 				process: () => proc,
 				stopped: () => stopped
 			};
@@ -430,8 +459,9 @@ function apply(ctx, config = {}) {
 			*/
 			const stop = async (reason) => {
 				registry.kill(attached.id, owner, reason);
-				const settled = await registry.wait(attached.id, timeoutMs, owner);
-				if (settled.status !== "running" && settled.status !== "stopping") registry.remove(attached.id, owner);
+    // 原调用的超时/abort只负责发取消，不能截断prepare、范围drain和耐久结算。
+				const settled = await registry.wait(attached.id, undefined, owner);
+				registry.remove(attached.id, owner);
 				return settled;
 			};
 			let view;
@@ -487,8 +517,8 @@ function apply(ctx, config = {}) {
 			};
 		};
 		return defineTool({
-			name: "bash",
-			description: bashDescription(),
+			name: toolName,
+			description: `${official.description} Night保留timeoutMs（毫秒）、workdir、精确permission_scope及耐久后台Job；完整输出使用应用原结构/pull/spill，Pi只接显示尾窗，不写OS临时日志。`,
 			parameters: {
 				description: {
 					type: "string",
@@ -498,7 +528,7 @@ function apply(ctx, config = {}) {
 				command: {
 					type: "string",
 					required: true,
-					description: "The bash command to execute."
+					description: official.parameters.properties.command.description
 				},
 				timeoutMs: {
 					type: "number",
@@ -508,9 +538,18 @@ function apply(ctx, config = {}) {
 					type: "string",
 					description: "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
 				},
+				permission_scope: {
+					type: "object",
+					description: "需要批准的外部命令范围；这里只声明待审批路径，不授予权限。路径必须存在；创建新文件请优先使用文件工具，不要自行扩大到父目录。",
+					additionalProperties: false,
+					properties: {
+						readPaths: { type: "array", required: true, items: { type: "string" } },
+						writePaths: { type: "array", required: true, items: { type: "string" } }
+					}
+				},
 				...background ? { run_in_background: {
 					type: "boolean",
-					description: "Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies."
+					description: "在后台运行，完成准备并提交启动后返回作业 ID（用 job_output 收集、job_kill 停止）；不等待进程结束，不设命令超时。"
 				} } : {},
 				...escalationModes.length > 0 ? {
 					sandbox_permissions: {
@@ -587,6 +626,7 @@ function apply(ctx, config = {}) {
 								type: "boolean",
 								required: true
 							},
+       piOutput:{type:'object',required:true,additionalProperties:false,properties:{text:{type:'string',required:true},truncated:{type:'boolean',required:true}}},
 							stopped: { type: "string" },
 							timeoutMs: {
 								type: "number",
@@ -651,12 +691,12 @@ function apply(ctx, config = {}) {
 			},
 			async execute(args, exec) {
 				const standingPolicy = resolveSandboxPolicy(exec);
-				validateBashArgs(args, standingPolicy?.mode);
+				validateBashArgs(args, standingPolicy?.mode,toolName);
 				const approvedMode = args.sandbox_permissions !== void 0 && args.justification !== void 0 ? await approveBashEscalation(args.sandbox_permissions, args.justification, exec, standingPolicy) : void 0;
-				const policy = approvedMode === void 0 ? standingPolicy : {
+				const policy = authorizedProcessPolicy(ctx, approvedMode === void 0 ? standingPolicy : {
 					...standingPolicy,
 					mode: approvedMode
-				};
+				});
 				const cwd = exec.agent === void 0 ? void 0 : await ctx.workingDirectory.ensure(exec.agent, exec.signal);
 				const workdir = resolveWorkdir(args.workdir, cwd);
 				const executionEnv = ctx.shellEnv.collect(exec);
@@ -667,14 +707,13 @@ function apply(ctx, config = {}) {
 					executionEnv,
 					...policy !== void 0 ? { sandboxPolicy: policy } : {}
 				};
+    const baseSpec=ctx.shell.resolve(request);
+    const run=async()=>{
 				if (args.run_in_background === true) {
 					if (!backgroundEnabled) throw new Error("run_in_background is disabled for this deployment (enableRunInBackground: false)");
 					if (jobs === void 0) throw new Error("background jobs unavailable: the application job service and controller are required");
 					if (exec.signal.aborted) throw toolAborted();
-					const spec = ctx.shell.resolve({
-						...request,
-						onExpiry: "none"
-					});
+					const spec = {...baseSpec,onExpiry:"none"};
 					return {
 						kind: "background",
 						jobId: (await startJob(jobs, args, exec, spec)).id,
@@ -682,29 +721,25 @@ function apply(ctx, config = {}) {
 					};
 				}
 				if (jobs !== void 0 && promote) {
-					const spec = ctx.shell.resolve({
-						...request,
-						onExpiry: "none"
-					});
+					const spec = {...baseSpec,onExpiry:"none"};
 					let attached;
 					try {
 						attached = await startJob(jobs, args, exec, spec);
 					} catch (error) {
 						if (!["background jobs unavailable: no job controller serves this agent", "background job limit reached for this owner"].includes(error.message)) throw error;
-						ctx.logger.warn(`bash: job registration refused, running in the foreground with the timeout kill instead: ${String(error)}`);
+						ctx.logger.warn(`${toolName}: job registration refused, running in the foreground with the timeout kill instead: ${String(error)}`);
 					}
 					if (attached !== void 0) return waitOnJob(jobs, attached, exec, spec);
 				}
-				const spec = ctx.shell.resolve({
-					...request,
-					signal: exec.signal
-				});
+				const spec = {...baseSpec,signal:exec.signal};
 				const result = await (await ctx.shell.execute(spec)).result();
 				if (result.aborted) throw toolAborted();
 				return {
 					kind: "foreground",
 					...canonicalBashResult(result, spec.workdir)
 				};
+    };
+    return executeOfficialShell(createOfficialTool,args,exec,baseSpec,run);
 			},
 			presentCall: presentBashCall,
 			presentResult: presentBashResult
@@ -726,4 +761,5 @@ function apply(ctx, config = {}) {
 	});
 }
 //#endregion
+function apply(ctx,config={}){return applyShellTool(ctx,config,"bash")}
 export { Config, apply, inject, name };

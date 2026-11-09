@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import {mkdir,mkdtemp,writeFile,readFile,unlink,rm} from 'node:fs/promises'
 import {execFileSync} from 'node:child_process'
 import {resolve,join} from 'node:path'
-import {freezeCandidate,readCandidate,assertCandidateWorktree,withCandidateWorkspaceUse} from '../packages/dingtalk-dsh-assistant/execution-candidate.js'
-import {createWorktreeVerificationJobCheck} from '../packages/dingtalk-dsh-assistant/execution-check-job.js'
-import {createWorktreeAcceptanceRunner} from '../packages/dingtalk-dsh-assistant/execution-worktree-acceptance.js'
-import {acceptanceCriteriaSchema} from '../packages/dingtalk-dsh-assistant/task-input-contract.js'
+import {freezeCandidate,readCandidate,assertCandidateWorktree,withCandidateWorkspaceUse} from '../packages/dingtalk-core/execution-candidate.js'
+import {createWorktreeVerificationJobCheck} from '../packages/dingtalk-core/execution-check-job.js'
+import {createWorktreeAcceptanceRunner} from '../packages/dingtalk-core/execution-worktree-acceptance.js'
+import {acceptanceCriteriaSchema} from '../packages/dingtalk-core/task-input-contract.js'
 const root=resolve('docs/tmp/review-core-regression')
 const pause=ms=>new Promise(r=>setTimeout(r,ms))
 async function fixture(t){

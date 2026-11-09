@@ -1,3 +1,5 @@
+> 当前默认接线与受验状态见 [RUNTIME](RUNTIME.md) 和[唯一目标](acceptance/resident-conversation-routing/goal.md)。下文绑定 `4568d3f` 的调用者盘点、default-switch 与 Direct AgentSession assembly（含“不是默认工厂”）均为早期源码检查点，不能反推当前仍装配子代理或尚未切换 Pi；官方/应用职责与授权要求继续适用。
+
 # Official Pi ownership: required migration boundary
 
 Version: the exact `@earendil-works/*` 1.5.0 packages pinned in package.json and

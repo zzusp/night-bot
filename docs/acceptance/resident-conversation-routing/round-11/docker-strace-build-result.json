@@ -1,0 +1,14 @@
+{
+  "exit": 0,
+  "base": "sha256:b3964940df2d6abcfc8e27dbfba00bca01ff5f00dbcd75e5bb8e1202eb77f713",
+  "tag": "night-bot:sg12-strace-b3964940-r5",
+  "imageId": "sha256:29687f6ea17d26028ab3f8575edd6b2ae71191f0e11e4ca07d06d586edc6e45c",
+  "user": "node",
+  "baseTagStillMatches": true,
+  "baseLayerPrefixMatches": true,
+  "reviewedDockerfileUnchanged": true,
+  "dockerfileSha256": "3d1cab69fb1324011fad5c90130d100d060b71e1ffaa72c077f0fb8881b37321",
+  "driverSha256": "c0d4e3dbd4b297e615fb3fce45b15903aef8b7be58ca1f7191f6af6c8bc9b588",
+  "logSha256": "abce2f23803b8088e7811cc1e0a9267388f3453e037fcc0e080b472a2e4ab15c",
+  "applicationStarted": false
+}

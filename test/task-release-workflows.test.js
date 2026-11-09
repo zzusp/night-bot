@@ -1,18 +1,18 @@
-import { withAuthorizationSessions } from '../packages/dingtalk-dsh-assistant/execution-authorization-session.js'
+import { withAuthorizationSessions } from '../packages/dingtalk-core/execution-authorization-session.js'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createReleaseTaskWorkflow, createLegacyReleaseTaskWorkflow, releaseWorkflowKinds, readScopedDataChangeCompletionEvidence, createScopedNativeDataChangeCompletionPolicy, createNativeDataChangeCompletionPolicy, readDataChangeCompletionEvidence } from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createReleaseTaskWorkflow, createLegacyReleaseTaskWorkflow, releaseWorkflowKinds, readScopedDataChangeCompletionEvidence, createScopedNativeDataChangeCompletionPolicy, createNativeDataChangeCompletionPolicy, readDataChangeCompletionEvidence } from '../packages/dingtalk-core/task-release-workflows.js'
 
-import { createDataChangeTaskWorkflowV6 } from '../packages/dingtalk-dsh-assistant/workflow-data-change.js'
+import { createDataChangeTaskWorkflowV6 } from '../packages/dingtalk-core/workflow-data-change.js'
 
 const commitSha = 'a'.repeat(40)
 

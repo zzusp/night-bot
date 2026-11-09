@@ -42,19 +42,22 @@ const test = (name, options, run) => testRunner(name, { ...options, ...(!availab
 test('official service completion freezes files and resumes remaining delivery after the explanation is archived', { ...({ timeout: 20000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   const fixture = await officialCase(t, 'native-final-files-')
   let step=0
+  const recipientActorIds=[]
   const h=await fixture.host(async request=>{
     const topic=topicTaskCalls(request);if(topic)return topic
     if(step++===0)return[call('write',{path:'work/acceptance.txt',content:'accepted original bytes'})]
     if(step===2)return[call('read',{path:'work/acceptance.txt'})]
     assert.ok(JSON.stringify(request.messages.filter(m=>m.role==='toolResult')).includes('accepted original bytes'))
     return[singleResult('complete','The local acceptance bytes were read back',{artifacts:['work/acceptance.txt'],deliveryFiles:[{path:'work/acceptance.txt',caption:'本地验收结果'}]})]
-  }, { routerReplyRecipients:['reviewer','native-user'],serviceFactory:explicitDwsService,config:{assistantActorId:'native-assistant'},notifications: { send: async () => ({ messageId: 'summary' }), readback: async () => undefined,
+  }, { routerReplyRecipients:recipientActorIds,serviceFactory:explicitDwsService,config:{assistantActorId:'native-assistant'},notifications: { send: async () => ({ messageId: 'summary' }), readback: async () => undefined,
     sendFile: async () => assert.fail('Files must wait for the final explanation receipt'), readbackFile: async () => undefined } })
     await t.beginBusiness()
 
   t.onCancel(async()=>t.diagnostic(JSON.stringify({attachmentFinal:{notices:await h.query('notification.list'),alerts:h.service.listAlerts()}})))
-  await h.residentStore.ingest({groupId:'native-group',messageId:'recipient-reviewer',senderOpenDingTalkId:'reviewer',text:'我负责接收验收文件。',occurredAt:new Date().toISOString()})
-  await t.step(async () => h.service.ingest({ groupId: 'native-group', messageId: 'final-file', senderOpenDingTalkId: 'native-user', senderName: '用户',
+  const channels=h.ctx.get('channels'),envelope={type:'chat-room',channelId:'file-delivery-fixture',conversationId:'native-group',messageId:'final-file',text:'test identity'}
+  recipientActorIds.push(channels.identity({...envelope,senderId:'vendor-reviewer'}).principal,channels.identity({...envelope,senderId:'vendor-requester'}).principal)
+  await h.residentStore.ingest({groupId:'native-group',messageId:'recipient-reviewer',senderOpenDingTalkId:recipientActorIds[0],text:'我负责接收验收文件。',occurredAt:new Date().toISOString()})
+  await t.step(async () => h.service.ingest({ groupId: 'native-group', messageId: 'final-file', actorId: recipientActorIds[1], senderName: '用户',
     text: '测试助手，生成并核验本地文件，随最终结果交付', timestamp: new Date().toISOString() }))
   await t.step(async () => h.service.whenIdle())
   const [created] = await t.step(async () => h.query('task.list'))
@@ -67,8 +70,8 @@ test('official service completion freezes files and resumes remaining delivery a
   const explanation = notices.find(n => n.payload.deliveryId === n.id)
   const fileNotice = notices.find(n => n.payload.artifact)
   assert.ok(explanation); assert.equal(fileNotice.state, 'prepared')
-  assert.deepEqual(explanation.payload.atOpenDingTalkIds,['reviewer','native-user']);assert.equal(explanation.payload.sourceMessageId,undefined);assert.equal(explanation.payload.actorId,undefined)
-  assert.deepEqual(fileNotice.payload.atOpenDingTalkIds,['reviewer','native-user'])
+  assert.deepEqual(explanation.payload.recipientActorIds,recipientActorIds);assert.equal(explanation.payload.sourceMessageId,undefined);assert.equal(explanation.payload.actorId,undefined)
+  assert.deepEqual(fileNotice.payload.recipientActorIds,recipientActorIds)
   const startCommand={id:`notification-start:${fileNotice.id}:0`,kind:'notification.start',args:{notificationId:fileNotice.id}}
   assert.notEqual(explanation.state,'delivered')
   for(let i=0;i<2;i++){const held=await h.service.store.command(startCommand);assert.equal(held.dispatchEligible,false);assert.equal(held.result.notification.state,'prepared');assert.equal(held.result.notification.sendAttemptCount??0,0);assert.ok(!held.result.notification.sendPermit)}
@@ -80,7 +83,7 @@ test('official service completion freezes files and resumes remaining delivery a
   const sent = []
   const recovered = await t.step(async () => fixture.host(() => { throw new Error('Recovery must not re-run task models') }, { initialize: false,serviceFactory:explicitDwsService,config:{assistantActorId:'native-assistant'}, notifications: {
     send: async () => assert.fail('The explanation must not be sent twice'), readback: async n => ({ messageId: n.ack.messageId }),
-    sendFile: async (n, file) => { sent.push(n.id); assert.deepEqual(n.payload.atOpenDingTalkIds,['reviewer','native-user']); assert.equal(await readFile(file.path, 'utf8'), 'accepted original bytes'); return { openTaskId: 'queued-file-send' } },
+    sendFile: async (n, file) => { sent.push(n.id); assert.deepEqual(n.payload.recipientActorIds,recipientActorIds); assert.equal(await readFile(file.path, 'utf8'), 'accepted original bytes'); return { openTaskId: 'queued-file-send' } },
     readbackFile: async () => undefined,
     querySendStatus: async id => { assert.equal(id, 'queued-file-send'); return { contractVersion: 'im.message-send-status.v1', success: true, openTaskId: id,
       result: { sendStatus: 'SUCCESS', openConversationId: 'native-group', openMessageId: 'delivered-file' },
@@ -677,13 +680,15 @@ test('service close drains the real task, observers and owned SQLite after an ea
  const fault=Object.assign(new Error('fixture reflection detach failure'),{code:'FIXTURE_REFLECTION_DETACH'})
  const leaves=error=>error?.errors?error.errors.flatMap(leaves):[error]
  t.onCancel(()=>gate.resolve())
- t.after(async()=>{gate.resolve();try{await h?.close()}catch(error){assert.ok(leaves(error).every(value=>value.code===fault.code),String(error))}finally{await rm(root,{recursive:true,force:true})}})
+ t.after(async()=>{gate.resolve();try{await h?.close()}finally{await rm(root,{recursive:true,force:true})}})
  h=await nativeRuntimeHost(root,async()=>{entered.resolve();await gate.promise;return[singleResult('wait','Actual closing task released without another business effect')]},{serviceFactory:async options=>{
   const reflection=options.ctx.get('reflection');assert.ok(reflection?.attachStore)
   const attach=reflection.attachStore
   reflection.attachStore=function(...args){const stop=Reflect.apply(attach,this,args);return()=>{stop?.();detached=true;gate.resolve();throw fault}}
   try{return await openTaskSessionService({...options,closeObserver:event=>trace.push(event)})}finally{reflection.attachStore=attach}
  }})
+ const closeHost=h.close;let fixtureClosing
+ h.close=()=>fixtureClosing??=closeHost().catch(error=>{const errors=leaves(error);assert.ok(errors.length>0&&errors.every(value=>value===fault),String(error))})
  const closePage=h.service.observerGroupPage.close.bind(h.service.observerGroupPage)
  h.service.observerGroupPage.close=async()=>{await closePage();pageClosed=true}
  await t.beginBusiness();const created=await h.service.createTask({groupId:'native-group',requestId:'close-drain',objective:'Retain one real in-flight task during cleanup failure'})

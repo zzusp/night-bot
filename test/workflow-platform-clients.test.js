@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createPlatformClients } from '../packages/dingtalk-dsh-assistant/workflow-platform-clients.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createPlatformClients } from '../packages/dingtalk-core/workflow-platform-clients.js'
 
 const SHA = 'a'.repeat(40)
 const json = body => ({ ok: true, json: async () => body })

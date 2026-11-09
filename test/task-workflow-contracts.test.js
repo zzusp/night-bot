@@ -5,15 +5,15 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts, executionDigest, executionError } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskWorkflowContracts, validateWorkflowRepairAdmission } from '../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
-import { readOnlyWorkflowOwnerContract } from '../packages/dingtalk-dsh-assistant/task-readonly-workflows.js'
-import { createGeneralCapabilityStepWorkflow } from '../packages/dingtalk-dsh-assistant/task-general-workflow.js'
-import { externalWorkflowOwnerContract, legacyExternalWorkflowOwnerContract, createReleaseTaskWorkflow } from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
-import { openWorkflowService } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { dataChangeProposalRepairPolicy } from '../packages/dingtalk-dsh-assistant/workflow-data-change.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts, executionDigest, executionError } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createTaskWorkflowContracts, validateWorkflowRepairAdmission } from '../packages/dingtalk-core/task-workflow-contracts.js'
+import { readOnlyWorkflowOwnerContract } from '../packages/dingtalk-core/task-readonly-workflows.js'
+import { createGeneralCapabilityStepWorkflow } from '../packages/dingtalk-core/task-general-workflow.js'
+import { externalWorkflowOwnerContract, legacyExternalWorkflowOwnerContract, createReleaseTaskWorkflow } from '../packages/dingtalk-core/task-release-workflows.js'
+import { openWorkflowService } from '../packages/dingtalk-core/workflow-service.js'
+import { dataChangeProposalRepairPolicy } from '../packages/dingtalk-core/workflow-data-change.js'
 
 test('数据变更候选修复仅接纳零外部效果，保留旧定义并以受信票据重做当前输入', async () => {
   const stage = { stageId: 'sql', runId: 'run', workflowId: 'task-data-change', workflowDigest: 'a'.repeat(64), status: 'running' }
@@ -454,7 +454,7 @@ test('同领域连续状态变更按当前验收逐阶段分派，历史证明�
 })
 
 test('保留写效果流程冻结验收身份，不再导出旧只读执行工厂', async () => {
-  const old=await import('../packages/dingtalk-dsh-assistant/task-readonly-workflows.js')
+  const old=await import('../packages/dingtalk-core/task-readonly-workflows.js')
   assert.equal(old.createReadOnlyTaskWorkflows,undefined)
   const capabilities=[{id:'write-file',identity:'write-v1',effectClass:'file.write',authorize:()=>true,prepare:()=>({}),verify:()=>({})}]
   const one=createGeneralCapabilityStepWorkflow({capabilities,completionCheck:()=>true,completionIdentity:'one'})
@@ -822,7 +822,7 @@ test('直接查询必须经过共享语义验收，查询成功不代表业务�
 })
 
 test('工程检查缺文件以完整Host日志识别为配置前提，损坏日志不冒认',async()=>{
- const {inspectEngineeringCheckPrerequisite}=await import('../packages/dingtalk-dsh-assistant/task-workflow-contracts.js')
+ const {inspectEngineeringCheckPrerequisite}=await import('../packages/dingtalk-core/task-workflow-contracts.js')
  const {createHash}=await import('node:crypto')
  const paths=['tests/a.test.cjs','tests/b.test.cjs'],bytes=Buffer.from(JSON.stringify({steps:[{args:['--test',...paths],exitCode:1,stderr:`Could not find '${paths.join(', ')}'\n`}]}))
  const part={kind:'engineering-verification-failure',candidateDigest:'candidate',checkId:'dataset-build',checkVersion:'1',encoding:'base64',part:0,parts:1,data:bytes.toString('base64'),logBytes:bytes.length,logSha256:createHash('sha256').update(bytes).digest('hex')}

@@ -3,16 +3,15 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts, executionDigest, executionError } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskWorkflowContracts } from '../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
-import { createTaskOwnerController } from '../packages/dingtalk-dsh-assistant/task-owner-controller.js'
-import { externalWorkflowOwnerContract } from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts, executionDigest, executionError } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { createTaskWorkflowContracts } from '../packages/dingtalk-core/task-workflow-contracts.js'
+import { externalWorkflowOwnerContract } from '../packages/dingtalk-core/task-release-workflows.js'
 
 const schema = { type: 'object', additionalProperties: true }
 
-for (const hostValidated of [false, true]) test(`数据变更提示真实送达Owner但纠错交原执行控制，Host受信校验=${hostValidated}`, async t => {
+for (const hostValidated of [false, true]) test(`数据变更领域诊断要求显式Host维护且只读检查不产生效果，Host受信校验=${hostValidated}`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'data-change-prompt-'))
   const store = await openExecutionStore({ dbPath: join(root, 'control.sqlite'), instanceId: 'prompt', initialize: true })
   const artifacts = await openExecutionArtifacts({ directory: join(root, 'artifacts'), initialize: true })
@@ -20,7 +19,7 @@ for (const hostValidated of [false, true]) test(`数据变更提示真实送达O
     baseline: { snapshotId: 'fixture', sha256: 'a'.repeat(64) }, sources: [{ id: 'fixture-source', content: '本地夹具', sha256: 'b'.repeat(64) }], constraints: [] }
   const candidate = { applySql: hostValidated ? 'ALTER TABLE public.fixture ADD COLUMN optional_value integer DEFAULT 0;' : '',
     rollbackSql: '仅测试候选，不执行SQL', verificationSql: '只读夹具说明', expectedChange: '仅本地夹具' }
-  let validationEnabled = false, validationCalls = 0, owner, received, repairDenied = false
+  let validationEnabled = false, validationCalls = 0
   const workflow = { id: 'task-data-change', version: 'prompt-fixture', ownerContract: externalWorkflowOwnerContract, nodes: [
     { id: 'freeze-input', version: '1', executor: 'code', allowedEffects: ['pure'], inputSchema: schema, outputSchema: schema,
       mapInput: ({ requirement }) => requirement, execute: async ({ input }) => input },
@@ -37,7 +36,7 @@ for (const hostValidated of [false, true]) test(`数据变更提示真实送达O
       mapInput: ({ previousOutput }) => previousOutput, execute: async () => { throw Error('APPROVAL_MUST_NOT_RUN') } },
   ] }
   const controller = createExecutionController({ store, artifacts, workflows: [workflow] })
-  t.after(async () => { await owner?.close(); await controller.close(); await store.close() })
+  t.after(async () => { await controller.close(); await store.close() })
   await controller.createTaskPlan({ commandId: 'plan', taskId: 'task', stages: [{ stageId: 'sql', workflowId: workflow.id, input: requirement }] })
   const plan = await controller.advanceTaskPlan('task'), runId = plan.stages[0].runId
   await controller.whenIdle(runId)
@@ -52,35 +51,14 @@ for (const hostValidated of [false, true]) test(`数据变更提示真实送达O
   assert.equal(observed.requiresCurrentQuery, true)
   assert.equal(observed.queryContextRequired, true)
   assert.equal(observed.waitingNodes[0].reason, hostValidated ? 'BYTEBASE_PRECONDITIONS_UNCONFIRMED' : 'DATA_CHANGE_PROPOSAL_INVALID')
-  owner = createTaskOwnerController({ ctx: {}, store, artifacts, controller, modelConfig: () => ({}),
-    advanceTask: async () => { throw Error('OWNER_MUST_NOT_ADVANCE') }, authorizeStages: async () => false,
-    inspectCurrentExecution: contracts.inspectCurrentExecution, readStageArtifacts: contracts.readStageArtifacts,
-    repairCurrentStage: async () => { throw Error('OWNER_MUST_NOT_REPAIR') },
-    sessionRunner: { async close() {}, async run({ input, onSessionBound, onCandidate }) {
-      await onSessionBound()
-      received = input.currentExecution
-      await assert.rejects(onCandidate({ action: 'repairCurrentStage', summary: '旧动作仍拒绝', evidenceRefs: [] }), { code: 'TASK_OWNER_EXECUTION_REPAIR_DISABLED' })
-      repairDenied = true
-      const decision = { action: 'wait', summary: '当前候选待原执行会话纠正，未执行业务SQL', evidenceRefs: [],
-        condition: { kind: 'execution', missing: '当前候选校验结果', responsibleParty: '原执行会话', resumeWhen: '原会话纠正并提交真实结果后继续', evidenceRefs: [] } }
-      await onCandidate(decision)
-      return { status: 'submitted', decision }
-    } } })
-  await owner.ensure({ taskId: 'task', criteria: ['完整原需求交付'], sourceKey: 'fixture-source', origin: {} })
-  await owner.observe('task'); await owner.drive('task'); await owner.applyPending()
-  assert.ok(received, 'real Owner runner must receive the domain prompt')
-  assert.equal(received.repairable, false)
-  assert.equal(received.responsibility, 'execution-session')
-  assert.equal(received.repairBinding, undefined)
-  assert.equal(repairDenied, true)
-  assert.equal(received.instruction, observed.instruction)
-  assert.doesNotMatch(received.instruction, /repairCurrentStage|workflowRevision/)
-  assert.match(received.instruction, /原任务执行会话.*task_execution_control/)
-  assert.match(received.instruction, /真实产出/)
-  if (hostValidated) assert.match(received.instruction, /不需要重复查询已有目录事实.*独立真人审批/)
-  else assert.match(received.instruction, /受信结构资料.*不同于上次失败.*不得原样重试空SQL.*不得替换既有工单或批准/)
+  assert.doesNotMatch(observed.instruction, /repairCurrentStage|workflowRevision|task_execution_control/)
+  assert.match(observed.instruction, /仅为诊断与修正建议/)
+  assert.match(observed.instruction, /实际可用的显式Host维护入口及当前权限校验/)
+  assert.match(observed.instruction, /不得凭本诊断发起外部效果/)
+  assert.match(observed.instruction, /本次精确SQL.*真实产出.*不得原样重试空SQL.*不得替换既有工单或批准.*独立真人审批/)
+  if (hostValidated) assert.match(observed.instruction, /不需要重复查询已有目录事实.*独立真人审批/)
+  else assert.match(observed.instruction, /受信结构资料.*不同于上次失败.*不得原样重试空SQL.*不得替换既有工单或批准/)
   assert.deepEqual(await controller.state(runId), before)
   assert.deepEqual(await store.query({ kind: 'effect.list', runId }), [])
-  assert.equal((await store.query({ kind: 'task.owner', taskId: 'task' })).decision.action, 'wait')
   assert.ok(validationCalls >= 1)
 })

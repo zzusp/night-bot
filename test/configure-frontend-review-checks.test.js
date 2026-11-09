@@ -37,7 +37,7 @@ test('隔离配置check零写、apply备份回读、旧hash及并发锁拒绝',a
 })
 
 test('前端配置生成的全部步骤可由当前检查构造器接纳，旧执行上限拒绝',async()=>{
- const {createVerificationJobCheck}=await import('../packages/dingtalk-dsh-assistant/execution-check-job.js')
+ const {createVerificationJobCheck}=await import('../packages/dingtalk-core/execution-check-job.js')
  const result=planFrontendChecks(source,yaml),schema=yaml.DEFAULT_SCHEMA.extend([new yaml.Type('tag:yaml.org,2002:js',{kind:'scalar',construct:value=>value})])
  const check=yaml.load(result.updated,{schema}).repositories[0].checks[0]
  assert.ok(createVerificationJobCheck({...check,root:tmpdir()}))

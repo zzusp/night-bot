@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
-import { assertCurrentTaskPrompts } from '../packages/dingtalk-dsh-assistant/task-result.js'
+import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-core/store.js'
+import { assertCurrentTaskPrompts } from '../packages/dingtalk-core/task-result.js'
 
 function memoryFacility(seed = new Map()) {
   const table = (name) => ({

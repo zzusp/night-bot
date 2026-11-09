@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { planWorkflowGroupEnrollment } from './workflow-group-profile.mjs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cutoverWorkflow, enrollEmptyWorkflowGroup } from '../packages/dingtalk-dsh-assistant/workflow-cutover.js'
+import { cutoverWorkflow, enrollEmptyWorkflowGroup } from '../packages/dingtalk-core/workflow-cutover.js'
 const { values } = parseArgs({ options: { 'enroll-empty-group': { type: 'boolean' }, profile: { type: 'string' }, 'expected-profile-sha256': { type: 'string' }, legacy: { type: 'string' }, journal: { type: 'string' }, db: { type: 'string' }, artifacts: { type: 'string' }, instance: { type: 'string' }, group: { type: 'string', multiple: true }, 'runtime-pid': { type: 'string' }, 'runtime-port': { type: 'string' }, 'scheduled-task': { type: 'string' }, check: { type: 'boolean' }, execute: { type: 'boolean' } } })
 if (values.check === values.execute || ['legacy', 'journal', 'db', 'artifacts', 'instance', 'runtime-pid', 'runtime-port', 'scheduled-task'].some(k => !values[k]) || !values.group?.length) throw new Error('usage: --legacy <json> --journal <json> --db <sqlite> --artifacts <directory> --instance <id> --group <id> --runtime-pid <stopped-pid> --runtime-port <port> --scheduled-task <exact-name> (--check | --execute)')
 if (process.platform !== 'win32') throw new Error('cutover_cli_requires_windows_quiescence_probe')

@@ -1,0 +1,31 @@
+{
+  "operation": "CRLF to LF only",
+  "behavioralTestsRerun": false,
+  "reason": "Only line terminators change; execution evidence remains bound to its original exact test bytes. Current source SHA is separately updated in inventory.",
+  "files": [
+    {
+      "file": "test/pi-official-host-runtime.test.js",
+      "beforeSha256": "3b7e4a08c9704acfd6cdf2050d79d3b353b735e3a74cd8020212b205f54f50f2",
+      "afterSha256": "25726f302512d20e5a0d37e3febb996cb73de290d02dcea00b2dc7cf760cb899",
+      "crlfToLfCount": 169
+    },
+    {
+      "file": "test/pi-native-jobs.test.js",
+      "beforeSha256": "20bc8163cba4bfc1d437f69286bd63f5d5f71c8a44fa4adabd0de20d51a9ab89",
+      "afterSha256": "4c05a97e6036d2a917b11978c1a7bb1239860f9ecaf0a50517d7a510bea92c82",
+      "crlfToLfCount": 43
+    },
+    {
+      "file": "docs/acceptance/resident-conversation-routing/matrix.csv",
+      "beforeSha256": "5c945aa25d92a8ab6cf1a2083ecbb07f71f5f1fd4b466f9a1b2b643397342b74",
+      "afterSha256": "240f3dfd2426db415eb4b05c57075fec14c1e12f80c413b075f5100836d8a07e",
+      "crlfToLfCount": 278
+    },
+    {
+      "file": "docs/acceptance/resident-conversation-routing/round-19.md",
+      "beforeSha256": "30a0e7e666c2aead426154a7b974526c6aaa5126d8a85d5fab55f484d14b40ac",
+      "afterSha256": "3cb221340f74be2e9f0e5e10d3ecc778772c1a7333f057dd790db185ea4e50f5",
+      "crlfToLfCount": 45
+    }
+  ]
+}

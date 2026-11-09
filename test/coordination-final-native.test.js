@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, modelToolValues, topicTaskCalls } from './fixtures/task-session-native-host.js'
 import { retiredCoordinationHost } from './fixtures/retired-coordination-native.js'
-import { projectTaskNotification } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
-import { residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
+import { projectTaskNotification } from '../packages/dingtalk-core/task-message-projections.js'
+import { residentDomainSpec } from '../packages/dingtalk-core/store.js'
 
 const original = '九点查询原任务，不改变业务目标。'
 const oldNotice = { id: 'legacy-query-notice', kind: 'coordination', state: 'prepared', requirementRevision: 1,

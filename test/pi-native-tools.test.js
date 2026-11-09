@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
 import {createScope} from '../src/native-scope.js'
-import {TOOL_RUNTIME_SCHEDULER} from '../packages/capability-compat/tools/index.js'
+import {TOOL_RUNTIME_SCHEDULER} from '../src/native-tool-protocol.js'
 import NativeTools from '../src/native-tools.js'
 const tool=(name,execute=async args=>args)=>({name,description:name,parameters:{type:'object',additionalProperties:true},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute})
 async function fixture(t){const ctx=new Context();ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0});new NativeTools(ctx);t.after(()=>ctx.fiber.dispose());let call=0;return{ctx,run:(name,args={},extra={})=>ctx.tools.execute({callId:'call-'+ ++call,name,arguments:args,signal:new AbortController().signal,...extra})}}
@@ -52,7 +52,7 @@ test('an execution wrapper cannot replace away the original caller cancellation'
  h.ctx.tools.register(tool('slow',async(_args,exec)=>{signal=exec.signal;entered.resolve();await gate.promise;return{done:true}}));h.ctx.on('tools/execute',(exec,next)=>{exec.signal=replacement.signal;return next()});const pending=h.run('slow',{}, {signal:original.signal});await entered.promise;original.abort({kind:'user'});assert.equal(signal.aborted,true);assert.equal(replacement.signal.aborted,false);gate.resolve();assert.equal((await pending).error.info.code,'ABORTED')
 })
 test('tool failures with hostile Error getters still settle one auditable error result',async t=>{
- const {HarnessError}=await import('../packages/capability-compat/llm/index.js'),h=await fixture(t);h.ctx.tools.register(tool('bad',async()=>{const error=new HarnessError('original','CODE');Object.defineProperty(error,'code',{get(){throw new Error('getter failed')}});throw error}));const result=await h.run('bad');assert.equal(result.isError,true);assert.equal(result.error.message,'original')
+ const {HarnessError}=await import('../src/native-llm-protocol.js'),h=await fixture(t);h.ctx.tools.register(tool('bad',async()=>{const error=new HarnessError('original','CODE');Object.defineProperty(error,'code',{get(){throw new Error('getter failed')}});throw error}));const result=await h.run('bad');assert.equal(result.isError,true);assert.equal(result.error.message,'original')
 })
 test('a journal flush failure prevents tool and wrapper effects before dispatch',async t=>{
  const h=await fixture(t);let body=0,wrapper=0;h.ctx.provide('sessions',{flush:async()=>{throw new Error('journal commit uncertain')}});h.ctx.tools.register(tool('write',async()=>{body++;return{ok:true}}));h.ctx.on('tools/execute',(_exec,next)=>{wrapper++;return next()});const result=await h.run('write',{}, {agent:{session:{}}});assert.equal(result.isError,true);assert.equal(body,0);assert.equal(wrapper,0);assert.ok(result.error.message.includes('journal'))
@@ -70,7 +70,7 @@ test('code result rendering preserves shallow JSON formatting and handles deeply
  const h=await fixture(t);let value={literal:'must not be treated as a renderer marker',items:[1,{ok:true}]};const agent={session:{append:()=>{}}},scope=createScope(h.ctx,agent);h.ctx.provide('workingDirectory',{ensure:async()=>'/tmp'});h.ctx.provide('ptcRuntime',{language:'typescript',resolve:request=>request,run:async()=>({logs:[],value})});scope.ctx.tools.presentAs('ptc');const shallow=await h.run('run_code',{description:'Render structured result',code:'fake'},{agent});assert.equal(shallow.content[0].text,JSON.stringify(value,null,2));value='leaf';for(let i=0;i<10000;i++)value={child:value};const deep=await h.run('run_code',{description:'Render deep structured result',code:'fake'},{agent});assert.equal(deep.isError,false);assert.ok(deep.content[0].text.length<110000);assert.ok(deep.content[0].text.includes('leaf'));await scope.dispose()
 })
 test('structured error facts are read once before the final audit snapshot',async t=>{
- const {HarnessError}=await import('../packages/capability-compat/llm/index.js'),h=await fixture(t);let reads=0;h.ctx.tools.register(tool('bad',async()=>{const error=new HarnessError('fact','CODE');Object.defineProperty(error,'code',{get(){if(++reads>1)throw new Error('read twice');return'CODE'}});throw error}));const result=await h.run('bad');assert.equal(result.error.info.code,'CODE');assert.equal(reads,1)
+ const {HarnessError}=await import('../src/native-llm-protocol.js'),h=await fixture(t);let reads=0;h.ctx.tools.register(tool('bad',async()=>{const error=new HarnessError('fact','CODE');Object.defineProperty(error,'code',{get(){if(++reads>1)throw new Error('read twice');return'CODE'}});throw error}));const result=await h.run('bad');assert.equal(result.error.info.code,'CODE');assert.equal(reads,1)
 })
 test('raw tool parameter contracts reject invalid calls before durable and wrapper effects',async t=>{
  const h=await fixture(t);let body=0,wrappers=0,flushes=0

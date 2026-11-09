@@ -93,9 +93,21 @@ export function browserSessions({token, channelId, now = Date.now}) {
   }
 }
 
-export function requireLocalRequest(request, origin) {
+export function webListenOptions(config) {
+  const host = config.host ?? '127.0.0.1', port = config.port ?? 3080
+  if (!['127.0.0.1', '0.0.0.0'].includes(host) || !Number.isInteger(port) || port < 0 || port > 65535) fail('WEB_LISTEN_INVALID')
+  if (host === '0.0.0.0' && !config.publicOrigin) fail('WEB_PUBLIC_ORIGIN_REQUIRED')
+  if (config.publicOrigin !== undefined) {
+    let url
+    try {url = new URL(config.publicOrigin)} catch {fail('WEB_PUBLIC_ORIGIN_INVALID')}
+    if (typeof config.publicOrigin !== 'string' || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.port === '0' || url.origin !== config.publicOrigin) fail('WEB_PUBLIC_ORIGIN_INVALID')
+  }
+  return {host, port, publicOrigin: config.publicOrigin, allowRemote: host === '0.0.0.0'}
+}
+
+export function requireLocalRequest(request, origin, {allowRemote = false} = {}) {
   const expected = new URL(origin)
-  if (!['127.0.0.1', '::ffff:127.0.0.1'].includes(request.socket.remoteAddress)
+  if (!allowRemote && !['127.0.0.1', '::ffff:127.0.0.1'].includes(request.socket.remoteAddress)
     || request.headers.host !== expected.host
     || request.headers.origin !== undefined && request.headers.origin !== origin
     || request.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(request.headers['sec-fetch-site'])) fail('ORIGIN_FORBIDDEN', 403)

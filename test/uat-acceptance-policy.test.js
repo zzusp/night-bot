@@ -1,7 +1,7 @@
-import {createUatMergePlatform} from '../packages/dingtalk-dsh-assistant/workflow-uat-merge-platform.js'
+import {createUatMergePlatform} from '../packages/dingtalk-core/workflow-uat-merge-platform.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {validUatAcceptancePolicy,assertUatLocalAcceptance,assertCurrentUatOwnerBinding} from '../packages/dingtalk-dsh-assistant/uat-acceptance-policy.js'
+import {validUatAcceptancePolicy,assertUatLocalAcceptance,assertCurrentUatOwnerBinding} from '../packages/dingtalk-core/uat-acceptance-policy.js'
 import {planReleaseTargetAppend} from '../scripts/configure-release-targets.mjs'
 import {createHash} from 'node:crypto'
 const policy={targetId:'dataset-uat2-deployment',requiredChecks:[],acceptancePolicy:'original-owner-current-scope'}

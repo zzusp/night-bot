@@ -8,9 +8,8 @@ import {openNativeDomains} from '../src/native-domain.js'
 import { openResidentStore } from '../packages/dingtalk-core/store.js'
 import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
-import { createTopicFactHandler } from '../packages/dingtalk-core/topic-facts.js'
-import { createTopicCoordinator } from '../packages/dingtalk-core/topic-runtime.js'
-import { replyTopicForMessage } from '../packages/dingtalk-core/topic-model.js'
+import { createTopicFactHandler, factDecisionSchema } from '../packages/dingtalk-core/topic-facts.js'
+import { replyTopicForMessage, topicHistoryReferences } from '../packages/dingtalk-core/topic-model.js'
 import { projectTaskNotification } from '../packages/dingtalk-core/task-message-projections.js'
 import { deliverTaskNotification } from '../packages/dingtalk-core/notification-delivery.js'
 import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
@@ -254,31 +253,27 @@ test('旧事实请求不能覆盖已到达补充或任务新版本，新结论�
 
 test('事实轮拒绝任何任务动作，引用已送达回复能反查 Topic', async t => {
   const f = await fixture(t), a = await f.task('alpha'); await f.finish(a)
-  const texts = [], tools = new Map(), actions = []
-  const coordinator = createTopicCoordinator({ store: f.resident, taskFacts: f.handler, workflowPromptsEnabled: false,
-    getAgent: () => ({ steer: message => texts.push(message.content[0].text), whenIdle: () => new Promise(() => {}) }),
-    assertSession() {}, serializeTasks: run => run(), applyAction: action => actions.push(action), appendOutbox: () => {},
-    reviewCandidates: () => [], validateReplyReview() {}, onError: error => { throw error }, isClosing: () => false })
-  t.after(() => coordinator.close())
-  coordinator.register({ tools: { register: tool => tools.set(tool.name, tool) } }, 'group')
-  await Promise.all([coordinator.schedule('group'), coordinator.schedule('group')])
-  const envelopes = () => texts.map(text => JSON.parse(text.split('\n').find(line => line.startsWith('Topic 请求：')).slice('Topic 请求：'.length)))
-  const [request] = envelopes()
-  assert.equal(envelopes().length, 1)
-  assert.equal(request.trigger, 'task-facts')
-  const submit = decision => tools.get('group_decision_submit').execute({ requestId: request.requestId, topicId: request.topicId, revision: request.revision, decision })
-  const decision = { actions: [], topicUpdate: { summary: '结果已核验' }, reason: '新结果', reply: '核对完成。', replyToMessageId: 'origin', atOpenDingTalkIds: ['user'] }
-  assert.equal((await submit({ ...decision, actions: [{ kind: 'new-task' }] })).status, 'invalid-arguments')
-  assert.equal((await submit(decision)).status, 'accepted')
-  assert.equal(actions.length, 0)
+  const context = await f.context(), submission = f.submission(context, 'fact-only', '核对完成。')
+  const invalid = { ...submission, decision: { ...submission.decision, actions: [{ kind: 'new-task' }] } }
+  const wire = Object.fromEntries(['requestId', 'topicId', 'revision', 'decision'].map(key => [key, invalid[key]]))
+  assert.equal(factDecisionSchema.safeParse(wire).success, false)
+  const tasks = await f.query('task.list'), notices = await f.query('notification.list')
+  await assert.rejects(f.submit(invalid), error => error.name === 'ZodError')
+  assert.deepEqual(await f.query('task.list'), tasks)
+  assert.deepEqual(await f.query('notification.list'), notices)
+  assert.equal((await f.submit(submission)).status, 'accepted')
   const [notice] = await f.query('notification.list')
   await projectTaskNotification({ residentStore: f.resident, notification: { ...notice, state: 'delivered', receipt: { messageId: 'quoted-delivery' } } })
   await f.resident.ingest({ groupId: 'group', messageId: 'followup', text: '这个结果还有一个问题', senderOpenDingTalkId: 'user',
     quotedMessage: { messageId: 'quoted-delivery', content: '核对完成。' }, occurredAt: new Date().toISOString() })
-  await coordinator.schedule('group')
-  const route = envelopes().find(value => value.messages?.some(item => item.messageId === 'followup'))
-  assert.deepEqual(route.messages[0].quotedReply, { topicId: f.topicId, taskIds: ['alpha'], coveredEventIds: request.facts.map(f => f.eventId) })
-  assert.ok(route.relatedTopics.some(topic => topic.topicId === f.topicId))
+  const group = f.resident.getGroup('group')
+  const history = topicHistoryReferences(group.topics, group.outbox, group.messages.filter(message => message.messageId === 'followup'))
+  assert.equal(history.quotedReplies.length, 1)
+  const [quoted] = history.quotedReplies
+  assert.equal(quoted.replyTopicId, f.topicId)
+  assert.deepEqual(quoted.taskIds, ['alpha'])
+  assert.deepEqual(quoted.coveredEventIds, context.eventIds)
+  assert.ok(history.relatedTopicIds.includes(f.topicId))
 })
 
 test('默认事实上下文使用有界 SQL 投影，长执行材料不进入判断', async t => {

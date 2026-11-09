@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto'
 import {piJournalFilename} from '../../src/runtime/pi-journal.js'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isolationDigest as hash } from '../../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
+import { isolationDigest as hash } from '../../packages/dingtalk-core/native-restart-isolation.js'
 
 // The installer's actual file shapes, including PowerShell's one-child object.
 export async function maintenanceEvidenceFixture(root, binding, events, rawText) {

@@ -5,8 +5,8 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises'
 import {dirname,resolve} from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {performance} from 'node:perf_hooks'
-import {handleRequest as currentHandler} from '../packages/dingtalk-dsh-assistant/http.js'
-import {createObserverGroupPages} from '../packages/dingtalk-dsh-assistant/observer-group-pages.js'
+import {handleRequest as currentHandler} from '../packages/dingtalk-core/http.js'
+import {createObserverGroupPages} from '../packages/dingtalk-core/observer-group-pages.js'
 import {createHash} from 'node:crypto'
 
 // Serial, in-memory synthetic HTTP comparison. Never opens a ledger/profile or
@@ -16,15 +16,15 @@ const root=fileURLToPath(new URL('../',import.meta.url))
 const arg=name=>{const at=process.argv.indexOf(name);return at<0?undefined:process.argv[at+1]}
 const base=arg('--base')??'041277a23d443e527e67ca44272144edd2e42c38'
 assert.match(base,/^[a-f0-9]{40}$/u)
-const output=resolve(root,arg('--output')??'scratch/integration-evidence/observer-benchmark.json')
-const helper=resolve(root,'scratch/integration-evidence/benchmark-helpers',`${base}-http.mjs`)
+const output=resolve(root,arg('--output')??'docs/tmp/observer-benchmark/result.json')
+const helper=resolve(root,'docs/tmp/observer-benchmark/helpers',`${base}-http.mjs`)
 await mkdir(dirname(helper),{recursive:true});await mkdir(dirname(output),{recursive:true})
 const baselineSource=execFileSync('git',['show',`${base}:packages/dingtalk-dsh-assistant/http.js`],{cwd:root,encoding:'utf8'})
-const source=baselineSource.replace(/(from\s*|import\s*\()(['"])(\.{1,2}\/[^'"]+)\2/gu,(_,prefix,quote,spec)=>`${prefix}${quote}${pathToFileURL(resolve(root,'packages/dingtalk-dsh-assistant',spec)).href}${quote}`)
+const source=baselineSource.replace(/(from\s*|import\s*\()(['"])(\.{1,2}\/[^'"]+)\2/gu,(_,prefix,quote,spec)=>`${prefix}${quote}${pathToFileURL(resolve(root,'packages/dingtalk-core',spec)).href}${quote}`)
 await writeFile(helper,source)
 const {handleRequest:baselineHandler}=await import(pathToFileURL(helper).href)
 const sourceHashes={}
-for(const name of ['http.js','observer-group-pages.js','observer-message-projection.js'])sourceHashes[name]=createHash('sha256').update(await readFile(resolve(root,'packages/dingtalk-dsh-assistant',name))).digest('hex')
+for(const name of ['http.js','observer-group-pages.js','observer-message-projection.js'])sourceHashes[name]=createHash('sha256').update(await readFile(resolve(root,'packages/dingtalk-core',name))).digest('hex')
 const serverFor=async(handler,runtime)=>{
  const server=createServer((request,response)=>Promise.resolve(handler(request,response,runtime)).catch(()=>{response.writeHead(500);response.end('{"error":"synthetic_fixture_failed"}') }))
  await new Promise(done=>server.listen(0,'127.0.0.1',done))

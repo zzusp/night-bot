@@ -4,10 +4,10 @@ import { createHash } from 'node:crypto'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createDataChangePreparationWorkflow, assertDataChangeExecutionIdentity } from '../packages/dingtalk-dsh-assistant/workflow-data-change.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createDataChangePreparationWorkflow, assertDataChangeExecutionIdentity } from '../packages/dingtalk-core/workflow-data-change.js'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const requirement = () => ({ request: '同步翻译', constraints: ['仅更新指定键'],

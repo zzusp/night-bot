@@ -4,8 +4,8 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { readExecutedAgentQueryRefs } from '../packages/dingtalk-dsh-assistant/agent-query-tools.js'
-import { restoreEngineeringReadEvidence } from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
+import { readExecutedAgentQueryRefs } from '../packages/dingtalk-core/agent-query-tools.js'
+import { restoreEngineeringReadEvidence } from '../packages/dingtalk-core/workflow-engineering.js'
 
 function receipt(value, extra = {}) {
   return { seq: 2, type: 'tool/result', sourceEventSeqs: [1], data: { message: {

@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-dsh-assistant/workflow-trusted-platforms.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createDataChangeApprovalResumeWorkflow } from '../packages/dingtalk-dsh-assistant/workflow-data-change.js'
-import { defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createDataChangeApprovalResumeWorkflow } from '../packages/dingtalk-core/workflow-data-change.js'
+import { defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
 
 const target = { instance: 'instances/prod', database: 'instances/prod/databases/app', environment: 'production' }
 const config = { bytebase: { adapterId: 'bytebase', adapterVersion: '1', targets: [{

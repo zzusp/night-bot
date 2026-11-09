@@ -5,7 +5,7 @@ import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, waitUntil } from './fixtures/task-session-native-host.js'
-import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
+import { inspectSession } from '../packages/dingtalk-core/session-persistence.js'
 
 const call = (name, args) => ({ name, args })
 const reply = summary => call('task_session_submit', { decision: { action: 'wait', summary, evidence: [], limitations: [] } })

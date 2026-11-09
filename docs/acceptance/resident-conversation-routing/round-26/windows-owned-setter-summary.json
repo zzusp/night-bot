@@ -1,0 +1,407 @@
+{
+  "variant": "sg11-private-created-native-security-projection",
+  "os": "Windows 11 x64",
+  "node": "v24.19.0",
+  "sourceBefore": {
+    "src/process/windows-acl.js": "e1bbe8830229d56292d5b376b70e8a448464a60de61f579a57fce5ce204f65ac",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "e1bbe8830229d56292d5b376b70e8a448464a60de61f579a57fce5ce204f65ac",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329"
+  },
+  "sourceChanged": [],
+  "scriptSha256": "3c6e3f875945c8c60293858eabc1aa4758b7422e47ea85a9dcb397335309f9c1",
+  "check": {
+    "exit": 0,
+    "effects": 0,
+    "nativeExecuted": false
+  },
+  "run": {
+    "nodeExit": 1,
+    "status": "FAILED",
+    "creation": {
+      "attempted": true,
+      "created": true,
+      "unknown": false,
+      "status": 1
+    },
+    "initialRootMatchesCreation": {
+      "owner": true,
+      "group": true,
+      "dacl": true
+    },
+    "frozenStages": 4,
+    "privateInheritanceCandidates": 8,
+    "nativeSetSecurityInfoAttempts": 1,
+    "firstSetStatus": 0,
+    "failure": "Actual setter projection differs from fixed native stage",
+    "daclReleaseAttempted": false,
+    "labelMutationAttempts": 0,
+    "finalRestorationVerified": false,
+    "allocationCount": 18,
+    "localFreeCount": 10,
+    "destroyPrivateCount": 8,
+    "handleCount": 5,
+    "allAllocationsAndHandlesOneShotClosed": true,
+    "retainedAllocations": 0,
+    "retainedHandles": 0,
+    "stderrLength": 0,
+    "fixtureRetained": true,
+    "fixtureRelativeRoot": "data/workspaces/sg11-security-projection-owned-08fddda7464141e199b142ca9be1d4f0",
+    "sourceStable": true
+  },
+  "objects": [
+    {
+      "path": "root",
+      "beforeControl": 38916,
+      "candidateControl": 38916,
+      "actualControl": 39940,
+      "controlXor": 1024,
+      "candidateLength": 228,
+      "actualLength": 228,
+      "componentsEqual": {
+        "owner": true,
+        "group": true,
+        "dacl": true,
+        "sacl": true
+      },
+      "beforeAces": [
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 0,
+          "role": "owner-rights"
+        }
+      ],
+      "candidateAces": [
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 1179817,
+          "role": "synthetic-package"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 131072,
+          "role": "owner-rights"
+        }
+      ],
+      "actualAces": [
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 1179817,
+          "role": "synthetic-package"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 131072,
+          "role": "owner-rights"
+        }
+      ],
+      "productionSameOwnedSecurityDescriptor": false,
+      "byteEqualsFixedStage": false
+    },
+    {
+      "path": "child",
+      "beforeControl": 34820,
+      "candidateControl": 35844,
+      "actualControl": 35844,
+      "controlXor": 0,
+      "candidateLength": 304,
+      "actualLength": 228,
+      "componentsEqual": {
+        "owner": true,
+        "group": true,
+        "dacl": false,
+        "sacl": true
+      },
+      "beforeAces": [
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 0,
+          "role": "owner-rights"
+        }
+      ],
+      "candidateAces": [
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 3,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 1179817,
+          "role": "synthetic-package"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 131072,
+          "role": "owner-rights"
+        }
+      ],
+      "actualAces": [
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 1179817,
+          "role": "synthetic-package"
+        },
+        {
+          "type": 0,
+          "flags": 19,
+          "mask": 131072,
+          "role": "owner-rights"
+        }
+      ],
+      "productionSameOwnedSecurityDescriptor": false,
+      "byteEqualsFixedStage": false
+    },
+    {
+      "path": "child/file",
+      "beforeControl": 34820,
+      "candidateControl": 35844,
+      "actualControl": 35844,
+      "controlXor": 0,
+      "candidateLength": 304,
+      "actualLength": 228,
+      "componentsEqual": {
+        "owner": true,
+        "group": true,
+        "dacl": false,
+        "sacl": true
+      },
+      "beforeAces": [
+        {
+          "type": 0,
+          "flags": 0,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 0,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 0,
+          "mask": 0,
+          "role": "owner-rights"
+        }
+      ],
+      "candidateAces": [
+        {
+          "type": 0,
+          "flags": 0,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 0,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 0,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 1179817,
+          "role": "synthetic-package"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 131072,
+          "role": "owner-rights"
+        }
+      ],
+      "actualAces": [
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 2032127,
+          "role": "host"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 2032127,
+          "role": "system"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 0,
+          "role": "owner-rights"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 1179817,
+          "role": "synthetic-package"
+        },
+        {
+          "type": 0,
+          "flags": 16,
+          "mask": 131072,
+          "role": "owner-rights"
+        }
+      ],
+      "productionSameOwnedSecurityDescriptor": false,
+      "byteEqualsFixedStage": false
+    }
+  ],
+  "privateEvidenceSha256": {
+    "docs/tmp/sg11-security-projection-owned-probe.mjs": "3c6e3f875945c8c60293858eabc1aa4758b7422e47ea85a9dcb397335309f9c1",
+    "docs/tmp/sg11-security-projection-owned-checklist.md": "b28293c29c1dbc55c72c12997758db1eba1a793274c3803c5bae0244b2e4a533",
+    "docs/tmp/sg11-security-projection-owned-check.json": "176f91037dd6d73c553c7fe445356df1d4a6d01bdcdf1981ae216ed83ae1fa52",
+    "docs/tmp/sg11-security-projection-owned-run-check.json": "176f91037dd6d73c553c7fe445356df1d4a6d01bdcdf1981ae216ed83ae1fa52",
+    "docs/tmp/sg11-security-projection-owned-run.json": "896664128bf13f9995d142ea2b6f07e7cd02b54333adaa0b70880b53d5901496",
+    "docs/tmp/sg11-security-projection-owned-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-security-projection-owned-execution.json": "59469bbf40f5f8658942e3d0cc57023a4545463a13e3437ad2e2f896c2e842bf"
+  },
+  "boundary": "Real first DACL setter projection failed; no retry, restoration, deletion, Profile, token mutation, Job, process launch, Resume, HPCON, NamedPipe creation or external messages."
+}

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 import { available, reason, nativeTaskHost, latestInput, nativeShell, waitUntil, topicTaskCalls } from './fixtures/task-session-native-host.js'
 
 test('restart wakes technical unknown wait once per implementation and retains the effect fence', { ...({ skip: !available ? reason : false, timeout: 20000 }), timeout: nativeLifecycleTimeout(20000) }, nativeLifecycle(20000, async (t) => {

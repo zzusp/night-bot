@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-dsh-assistant/workflow-trusted-platforms.js'
+import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
 
 const target = { id: 'rebuild', kind: 'uat-rebuild', repository: 'HiQ-AI/dataset', environment: 'uat',
   service: 'dataset', runbookId: 'dataset-uat', branch: 'uat',

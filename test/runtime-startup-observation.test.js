@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {projectStartupInspection as projectActual,validateStartupInspection} from '../packages/dingtalk-dsh-assistant/runtime-startup-observation.js'
+import {projectStartupInspection as projectActual,validateStartupInspection} from '../packages/dingtalk-core/runtime-startup-observation.js'
 const projectStartupInspection=(config,input)=>projectActual(config,{...input,completeness:{status:'complete-retained-window',returnedBytes:Buffer.byteLength(input.raw),limitBytes:524288}})
 const config={booleanProperties:['approval.notification-outbox.enabled'],springConditions:[{className:'ApprovalNotificationOutboxTask',property:'approval.notification-outbox.enabled'}]}
 const startedAt='2026-10-12T08:25:00Z'

@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {validateLocalAcceptanceSubmission,validateEngineeringPlanScope} from '../packages/dingtalk-dsh-assistant/engineering-output-contract.js'
-import {executionDigest} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import {validateLocalAcceptanceSubmission,validateEngineeringPlanScope} from '../packages/dingtalk-core/engineering-output-contract.js'
+import {executionDigest} from '../packages/dingtalk-core/execution-artifacts.js'
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/paused-task-contracts.json',import.meta.url),'utf8'))
 for(const item of fixture.tasks)test(`${item.sg} frozen paused contract replay`,()=>{
  assert.equal(item.control.state,'paused')

@@ -6,11 +6,11 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import {memoryHost} from './fixtures/memory-host.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { readTaskLifecycle, projectTaskLifecycle, projectTaskTimeline, projectTaskElapsed } from '../packages/dingtalk-dsh-assistant/task-execution-timeline.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { readTaskLifecycle, projectTaskLifecycle, projectTaskTimeline, projectTaskElapsed } from '../packages/dingtalk-core/task-execution-timeline.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 const start = Date.parse('2026-10-16T10:00:00Z'), iso = minute => new Date(start + minute * 60000).toISOString()
 test('card total elapsed includes completed-to-reopen gaps and all waiting/paused time', () => {

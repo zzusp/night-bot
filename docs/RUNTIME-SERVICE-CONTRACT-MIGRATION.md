@@ -1,3 +1,5 @@
+> 历史迁移映射与定向证据：以下 45 项服务合同、43 PASS / 2 FAIL 及后续 2 PASS 均保留原阶段范围，不是 SG11 当前服务组数量或同版全量结论。当前真实消费者、退役 case 与替代安全覆盖以[唯一目标](acceptance/resident-conversation-routing/goal.md)链接的台账和验收为准，不因保留本页而恢复旧 Owner/多执行 facade。
+
 # Runtime service contract migration
 
 The service tests exercise the installed official Pi Host and one execution

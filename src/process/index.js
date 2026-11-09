@@ -1,12 +1,13 @@
 // Derived from DeepSeek dsh-subprocess-local 0.2.1-alpha.2 (MIT).
 // Copyright (c) 2026 DeepSeek. See licenses/dsh-subprocess-local-MIT.txt.
 import { C as bindManagedProcess, D as createProcessInspector, E as validateSubprocessSpec, O as controlPipe, S as loadLinuxExecve, T as spawnSubprocess, _ as parseWindowsRunnerResult, c as runnerStdio, d as cleanupLinuxLaunchFiles, l as spawnRunnerInvocation, m as deserializeRunnerError, n as WINDOWS_RUNNER_SELECTION, o as runnerEnvironment, p as createLinuxLaunchFiles, s as runnerInvocationAvailable, u as targetEnvironment, w as childEnv, y as readLinuxStartupError } from "./runner-launch-B2zsQ1Dz.js";
+import { parseWindowsTerminalDimensions, parseWindowsTerminalResizeRequest, parseWindowsScopeProofResult } from "./runner-launch-B2zsQ1Dz.js";
 import { logSpillFailure, prepareManagedProcessBinding } from "./output.js";
 import { closeSync, constants, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { constants as constants$1, devNull, tmpdir, userInfo } from "node:os";
 import { basename, delimiter, extname, isAbsolute, join, resolve } from "node:path";
-import { createLazyRequire } from "./contracts.js";
+import { createLazyRequire, windowsLaunchPolicy, processResourceRecorder, retainProcessPolicy } from "./contracts.js";
 import { SubprocessExecutableNotFoundError, SubprocessRuntime } from "./contracts.js";
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { setTimeout as setTimeout$1 } from "node:timers/promises";
@@ -73,7 +74,7 @@ function probeLinuxBootstrap(internals = {}) {
 * @returns whether the current user manager supports the required scope invocation.
 */
 function probeLinuxScope(internals = {}) {
-	const unitBase = unitStem("dsh-subprocess-probe");
+	const unitBase = unitStem("night-process-probe");
 	const result = (internals.spawnSync ?? spawnSync)(internals.systemdRun ?? "systemd-run", [
 		"--user",
 		"--scope",
@@ -457,7 +458,7 @@ function prepareLinuxTerminalScope(spec, targetEnv, internals = {}) {
 		env: targetEnv
 	});
 	const startup = new LinuxScopeStartup(files, "terminal");
-	const unitBase = unitStem("dsh-terminal");
+	const unitBase = unitStem("night-terminal");
 	return {
 		command: internals.systemdRun ?? "systemd-run",
 		args: scopeArgs(unitBase, invocation, spec.argv),
@@ -485,7 +486,7 @@ function launchLinuxScope(spec, targetEnv, internals = {}) {
 		...spec.stdio.control === void 0 ? {} : { control: spec.stdio.control }
 	});
 	const startup = new LinuxScopeStartup(files, "subprocess");
-	const unitBase = unitStem("dsh-subprocess");
+	const unitBase = unitStem("night-process");
 	let child;
 	try {
 		child = (internals.spawn ?? spawn)(internals.systemdRun ?? "systemd-run", scopeArgs(unitBase, invocation, spec.argv), {
@@ -587,7 +588,11 @@ var WindowsJobOwner = class {
 * @param internals - optional runner launch seams used by tests.
 * @returns direct streams, result, and runner-owned managed range.
 */
-function launchWindowsJob(spec, targetEnv, internals = {}) {
+function launchWindowsJob(spec, targetEnv, internals = {}, terminalDimensions) {
+ const lpac = windowsLaunchPolicy(spec), recordResource = processResourceRecorder(spec);
+ const dimensions=terminalDimensions===undefined?undefined:parseWindowsTerminalDimensions(terminalDimensions);
+ if(dimensions!==undefined&&(lpac===undefined||spec.stdio.control!==undefined))throw new Error('Windows native terminal requires its original LPAC resource protocol without inherited control');
+ if (lpac !== undefined && typeof recordResource !== 'function') throw new Error('Windows LPAC requires its durable Job resource recorder');
 	const invocation = internals.runnerInvocation ?? spawnRunnerInvocation();
 	const [command, ...prefix] = invocation;
 	const ignoredStdinFd = spec.stdio.stdin === "ignore" ? openSync(devNull, "r") : void 0;
@@ -601,19 +606,22 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 			cwd: process.cwd(),
 			windowsHide: true,
 			env: runnerEnvironment(WINDOWS_RUNNER_SELECTION, invocation),
-			stdio: runnerStdio(spec, true, ignoredStdinFd ?? "pipe")
+			stdio: dimensions===undefined?runnerStdio(spec, true, ignoredStdinFd ?? "pipe"):["pipe","pipe","ignore","ipc"]
 		});
 	} finally {
 		if (ignoredStdinFd !== void 0) closeSync(ignoredStdinFd);
 	}
-	const targetStdin = child.stdio[4];
+	const targetStdin = dimensions===undefined?child.stdio[4]:child.stdin;
 	const direct = Promise.withResolvers();
 	const rangeExit = Promise.withResolvers();
 	let directResultType;
 	let runnerSpawned = false;
 	let runnerExit;
 	let ipcDisconnected = false;
+ const terminal=dimensions===undefined?undefined:{ready:Promise.withResolvers(),readySeen:false,sequence:0,pending:undefined};
+ terminal?.ready.promise.catch(()=>{});
 	const failInfrastructure = (error) => {
+  terminal?.ready.reject(error);terminal?.pending?.done.reject(error);
 		direct.reject(error);
 		rangeExit.reject(error);
 	};
@@ -621,6 +629,9 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 		if (!runnerSpawned || runnerExit === void 0) return;
 		const { exitCode, signal } = runnerExit;
 		if (exitCode === 0 && signal === null) {
+   if (lpac !== undefined && (resourcePending || scopeProofPending || lastResource && lastResource.status !== 'released' || directResultType === 'target-exit' && lastResource?.status !== 'released')) {
+    failInfrastructure(new Error('Windows LPAC runner exited without committed resource release proof'));return;
+   }
 			if (directResultType !== void 0) {
 				rangeExit.resolve();
 				return;
@@ -631,7 +642,82 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 		failInfrastructure(/* @__PURE__ */ new Error(`subprocess-local: Windows Job runner exited with ${status} before proving its managed range empty`));
 	};
 	const owner = new WindowsJobOwner(child, rangeExit.promise, () => directResultType, failInfrastructure);
+ let resourceSequence = 0, resourcePending = false, lastResource;
+ let scopeProofSequence = 0, scopeProofPending = false;
+ const acceptResource = async result => {
+  if (lpac === undefined || typeof recordResource !== 'function' || resourcePending || scopeProofPending || result.sequence !== resourceSequence + 1 || lastResource?.status === 'released') throw new Error('Windows resource receipt is unbound or out of sequence');
+  resourcePending = true;
+  try {
+   let entryId;
+   if (result.privateProof !== undefined) {
+    if (typeof recordResource.withProof !== 'function') throw new Error('Windows private resource proof has no durable Job port');
+    entryId = await recordResource.withProof(result.descriptor, result.privateProof);
+   } else entryId = await recordResource(result.descriptor);
+   if (typeof entryId !== 'string' || !entryId || entryId.includes(String.fromCharCode(0))) throw new Error('Windows resource commit returned no durable entry identity');
+   resourceSequence = result.sequence;lastResource = result.descriptor;
+   if (!child.connected || typeof child.send !== 'function') throw new Error('Windows resource journal committed after IPC disconnected');
+   resourcePending = false;
+   child.send({type:'resource-ack',sequence:result.sequence,entryId},error => {
+    if (error !== null) { failInfrastructure(error);owner.signal(undefined, error); }
+   });
+  } finally { resourcePending = false; }
+ };
+ const acceptScopeProofQuery = async result => {
+  if (lpac === undefined || resourcePending || scopeProofPending || result.sequence !== scopeProofSequence + 1 || lastResource?.status === 'released' || ipcDisconnected || runnerExit !== undefined) throw new Error('Windows scope proof query is unbound or out of sequence');
+  scopeProofPending = true;
+  try {
+   let response;
+   try {
+    if (typeof recordResource?.readScopeProofs !== 'function') throw new Error('Windows scope proof lookup has no durable Job port');
+    const proofs = await recordResource.readScopeProofs(result.fileIds);
+    response = parseWindowsScopeProofResult({type:'scope-proof-result',sequence:result.sequence,proofs});
+   } catch {
+    response = {type:'scope-proof-error',sequence:result.sequence};
+   }
+   if (ipcDisconnected || runnerExit !== undefined || !child.connected || typeof child.send !== 'function') throw new Error('Windows scope proof lookup completed after IPC disconnected');
+   scopeProofSequence = result.sequence;
+   // 对端可在回包后立刻提交下一条收据；send callback 不充当耐久屏障。
+   scopeProofPending = false;
+   child.send(response,error => {
+    if (error !== null) { failInfrastructure(error);owner.signal(undefined,error); }
+   });
+  } finally { scopeProofPending = false; }
+ };
 	child.on("message", (value) => {
+  if(value?.type==='terminal-ready'||value?.type==='terminal-resized'){
+   try{
+    const result=parseWindowsRunnerResult(value);
+    if(!terminal||!runnerSpawned||directResultType!==undefined||ipcDisconnected||lastResource===undefined||lastResource.status==='released')throw new Error('Windows terminal control result is unbound');
+    if(result.type==='terminal-ready'){
+     if(terminal.readySeen)throw new Error('Windows terminal ready cannot repeat');
+     terminal.readySeen=true;terminal.ready.resolve(result.pid);
+    }else{
+     const pending=terminal.pending;
+     if(!terminal.readySeen||!pending||pending.sequence!==result.sequence)throw new Error('Windows terminal resize result is unbound or out of sequence');
+     terminal.pending=undefined;terminal.sequence=result.sequence;pending.done.resolve();
+    }
+   }catch(error){failInfrastructure(error);owner.signal(undefined,error);}
+   return;
+  }
+  if (value?.type === 'scope-proof-query') {
+   let query;
+   try { query = parseWindowsRunnerResult(value); }
+   catch (error) { failInfrastructure(error);owner.signal(undefined,error);return; }
+   void acceptScopeProofQuery(query).catch(error => { failInfrastructure(error);owner.signal(undefined,error); });
+   return;
+  }
+  if (value?.type === 'resource-ownership') {
+   let resource;
+   try { resource = parseWindowsRunnerResult(value); }
+   catch (error) { failInfrastructure(error);owner.signal(undefined, error);return; }
+   void acceptResource(resource).catch(error => {
+    failInfrastructure(error);
+    // 提交失败没有entryId；精确失败回包只终止原等待，不授权任何Native副作用。
+    if(child.connected&&typeof child.send==='function')try{child.send({type:'resource-error',sequence:resource.sequence},sendError=>{if(sendError!==null)owner.terminateForHostExit();});}catch{owner.terminateForHostExit();}
+    owner.signal(undefined,error);
+   });
+   return;
+  }
 		if (directResultType !== void 0) {
 			failInfrastructure(/* @__PURE__ */ new Error("subprocess-local: Windows runner emitted more than one direct result"));
 			owner.terminateForHostExit();
@@ -646,6 +732,11 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 			return;
 		}
 		directResultType = result.type;
+  if(terminal){
+   const stopped=new Error('Windows terminal exited before its pending control completed');
+   if(!terminal.readySeen)terminal.ready.reject(result.type==='error'?deserializeRunnerError(result.error):stopped);
+   if(terminal.pending){terminal.pending.done.reject(stopped);terminal.pending=undefined;}
+  }
 		if (result.type === "target-exit") direct.resolve({
 			exitCode: result.exitCode,
 			signal: null
@@ -661,7 +752,9 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 				type: "start",
 				cwd: spec.cwd,
 				env: targetEnv,
-				...spec.stdio.control === void 0 ? {} : { control: spec.stdio.control }
+				...spec.stdio.control === void 0 ? {} : { control: spec.stdio.control },
+				...lpac === void 0 ? {} : { lpac, resourceProtocol: 1 },
+    ...dimensions===undefined?{}:{terminal:dimensions}
 			}, (error) => {
 				if (error === null) return;
 				failInfrastructure(error);
@@ -674,6 +767,7 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 	});
 	child.once("error", (error) => {
 		if (!runnerSpawned) {
+   terminal?.ready.reject(error);
 			direct.reject(error);
 			rangeExit.resolve();
 			return;
@@ -693,14 +787,95 @@ function launchWindowsJob(spec, targetEnv, internals = {}) {
 	});
 	return {
 		stdin: spec.stdio.stdin === "ignore" ? null : targetStdin,
-		stdout: child.stdio[5],
-		stderr: child.stdio[6],
+		stdout: dimensions===undefined?child.stdio[5]:child.stdout,
+		stderr: dimensions===undefined?child.stdio[6]:undefined,
 		control: controlPipe(child, spec.stdio.control),
 		direct: direct.promise,
+  ...terminal===undefined?{}:{terminal:{
+   ready:terminal.ready.promise,
+   resize(cols,rows){
+    const request=parseWindowsTerminalResizeRequest({type:'terminal-resize',sequence:terminal.sequence+1,cols,rows});
+    if(!terminal.readySeen||terminal.pending||directResultType!==undefined||runnerExit!==undefined||ipcDisconnected||!child.connected)throw new Error('Windows terminal resize requires its original live idle runner');
+    const pending={sequence:request.sequence,done:Promise.withResolvers()};terminal.pending=pending;
+    try{child.send(request,error=>{if(error!==null){failInfrastructure(error);owner.signal(undefined,error);}})}catch(error){failInfrastructure(error);owner.signal(undefined,error);}
+    return pending.done.promise;
+   }
+  }},
 		owner
 	};
 }
 //#endregion
+// ConPTY传输复用原WindowsJobOwner；此handle不从PID或输出推断范围排空。
+class WindowsTerminalHandle {
+ constructor(launch,spec,onQuiescence){
+  this.launch=launch;this.spec=spec;this.onQuiescence=onQuiescence;
+  this.output=new PassThrough();this.operations=new Set();this.outputFinished=Promise.withResolvers();
+  this.closing=false;this.closed=false;this.exited=false;this.outputEnded=false;this.revision=0;
+  this.outputFinished.promise.catch(()=>{});
+  const fail=error=>{launch.owner.failInfrastructure(error);launch.owner.signal(undefined,error);};
+  this.output.on('error',fail);
+  this.resume=()=>{if(this.outputPaused){this.outputPaused=false;launch.stdout.resume();}};
+  this.output.on('drain',this.resume);
+  this.output.once('close',()=>{if(!this.outputEnded)fail(new Error('Windows terminal output closed before transport EOF'));});
+  launch.stdout.on('data',data=>{if(!this.output.write(data)&&!this.closing){this.outputPaused=true;launch.stdout.pause();}});
+  launch.stdout.once('end',()=>{this.outputEnded=true;this.output.end();this.outputFinished.resolve();});
+  launch.stdout.once('close',()=>{if(!this.outputEnded){const error=new Error('Windows terminal transport closed without EOF');this.outputFinished.reject(error);fail(error);}});
+  launch.stdout.on('error',error=>{this.outputFinished.reject(error);fail(error);});
+  launch.stdin.on('error',fail);
+  this.ready=launch.terminal.ready.then(pid=>{this.pid=pid;spec.signal?.throwIfAborted();if(this.closing)throw new Error('Windows terminal start was cancelled');return pid;});
+  this.ready.catch(()=>{});
+  this.done=launch.direct.then(async outcome=>{this.exited=true;await this.outputFinished.promise;return outcome;},error=>{this.exited=true;throw error;});
+  this.done.catch(()=>{});
+  this.onAbort=()=>{void this.terminate().catch(()=>{});};
+  spec.signal?.addEventListener('abort',this.onAbort,{once:true});
+  if(spec.signal?.aborted)this.onAbort();
+ }
+ get running(){return !this.closing&&!this.exited;}
+ operation(run){
+  if(this.closing||this.exited||this.pid===undefined)return Promise.reject(new Error('Windows terminal is not ready or has exited'));
+  const pending=Promise.resolve().then(()=>{if(this.closing)throw new Error('Windows terminal is closing');return run();});
+  this.operations.add(pending);
+  void pending.then(()=>this.operations.delete(pending),()=>this.operations.delete(pending));
+  return pending;
+ }
+ write(data){
+  return this.operation(()=>new Promise((resolveWrite,rejectWrite)=>{
+   this.revision++;
+   this.launch.stdin.write(data,error=>error?rejectWrite(error):resolveWrite());
+  }));
+ }
+ resize(cols,rows){
+  const dimensions=parseWindowsTerminalDimensions({cols,rows});
+  return this.operation(()=>this.launch.terminal.resize(dimensions.cols,dimensions.rows));
+ }
+ async inspectForeground(){
+  // 与既有Windows inspector一致，仅公开console伪组，不把它当作Job归属证明。
+  return this.running&&this.pid!==undefined?{processGroupId:this.pid,inputWaiting:false}:undefined;
+ }
+ async inspectActivity(){return{state:this.closed?'idle':'unknown',revision:this.revision};}
+ signalForeground(signal){
+  if(signal==='SIGINT')return this.write(String.fromCharCode(3)).then(()=>this.pid);
+  if(signal==='SIGKILL')return Promise.reject(new Error('refusing to SIGKILL the terminal shell; terminate the terminal session instead'));
+  if(signal!=='SIGTERM')return Promise.reject(new Error(`signal ${signal} is unsupported on Windows; only SIGINT, SIGTERM, and SIGKILL are available`));
+  return this.operation(()=>{this.revision++;this.launch.owner.signal(signal);return this.pid;});
+ }
+ terminate(){
+  if(this.cleanup)return this.cleanup;
+  this.closing=true;this.outputPaused=false;this.launch.stdout.resume();
+  this.cleanup=(async()=>{
+   let signalFailure;
+   try{this.launch.owner.signal('SIGTERM',this.spec.signal?.reason);}catch(error){signalFailure=error;}
+   // 取消先到原runner，才能解开仍等待输入/resize的操作；不以固定等待期限充当drain。
+   const joined=await Promise.allSettled([...this.operations,this.done,this.launch.owner.waitForExit(),this.outputFinished.promise]);
+   const failures=joined.slice(-2).filter(result=>result.status==='rejected').map(result=>result.reason);
+   if(signalFailure)failures.unshift(signalFailure);
+   if(failures.length)throw new AggregateError(failures,'Windows terminal transport or managed range drain failed');
+   this.closed=true;this.revision++;this.spec.signal?.removeEventListener('abort',this.onAbort);this.output.off('drain',this.resume);this.onQuiescence();
+  })();
+  return this.cleanup;
+ }
+ terminateForHostExit(){this.closing=true;this.launch.stdout.resume();this.launch.owner.terminateForHostExit();}
+}
 //#region lib/types/terminal.js
 /** Local node-pty terminal-process implementation for the subprocess seam. */
 function delay(ms, signal) {
@@ -1171,7 +1346,7 @@ function prepareShellActivity(spec, env, platform) {
 	if (spec.shellActivity !== true || platform === "win32" || spec.argv.length !== 2 || spec.argv[1] !== "-i") return void 0;
 	const shell = basename(spec.argv[0]);
 	if (shell !== "bash" && shell !== "zsh") return void 0;
-	const directory = mkdtempSync(join(tmpdir(), "dsh-shell-"));
+	const directory = mkdtempSync(join(tmpdir(), "night-shell-"));
 	const state = quote(join(directory, "state"));
 	const guards = quote(join(directory, "guards"));
 	try {
@@ -1180,24 +1355,24 @@ function prepareShellActivity(spec, env, platform) {
 			writeFileSync(rc, [
 				"[[ ! -r ~/.bashrc ]] || builtin source ~/.bashrc",
 				"if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )) && [[ ! $(declare -p PROMPT_COMMAND PS0 2>/dev/null) =~ declare\\ -[^[:space:]]*r ]]; then",
-				"  __dsh_shell_pid=$BASHPID; __dsh_shell_sequence=0",
-				"  __dsh_shell_idle() {",
+				"  __night_shell_pid=$BASHPID; __night_shell_sequence=0",
+				"  __night_shell_idle() {",
 				"    local result=$?",
-				"    if [[ $BASHPID == \"$__dsh_shell_pid\" ]]; then",
-				"      (( ++__dsh_shell_sequence ))",
+				"    if [[ $BASHPID == \"$__night_shell_pid\" ]]; then",
+				"      (( ++__night_shell_sequence ))",
 				"      local activity=idle",
 				`      builtin trap -p >| ${guards}`,
 				`      [[ ! -s ${guards} ]] || activity=unknown`,
-				`      builtin printf '%s:%s:%s\\n' "$BASHPID" "$__dsh_shell_sequence" "$activity" >| ${state}`,
+				`      builtin printf '%s:%s:%s\\n' "$BASHPID" "$__night_shell_sequence" "$activity" >| ${state}`,
 				"    fi",
 				"    return \"$result\"",
 				"  }",
 				"  if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == \"declare -a \"* ]]; then",
-				"    PROMPT_COMMAND+=(__dsh_shell_idle)",
+				"    PROMPT_COMMAND+=(__night_shell_idle)",
 				"  else",
-				"    PROMPT_COMMAND=\"${PROMPT_COMMAND}\"$'\\n'\"__dsh_shell_idle\"",
+				"    PROMPT_COMMAND=\"${PROMPT_COMMAND}\"$'\\n'\"__night_shell_idle\"",
 				"  fi",
-				`  PS0+=${quote(`$(builtin printf '%s:%s:busy' "$__dsh_shell_pid" "$__dsh_shell_sequence" >| ${state})`)}`,
+				`  PS0+=${quote(`$(builtin printf '%s:%s:busy' "$__night_shell_pid" "$__night_shell_sequence" >| ${state})`)}`,
 				"fi",
 				""
 			].join("\n"), {
@@ -1214,29 +1389,29 @@ function prepareShellActivity(spec, env, platform) {
 		writeFileSync(join(directory, ".zshenv"), [
 			env.ZDOTDIR === void 0 ? "unset ZDOTDIR" : `ZDOTDIR=${quote(env.ZDOTDIR)}`,
 			"[[ ! -r ${ZDOTDIR:-$HOME}/.zshenv ]] || builtin source \"${ZDOTDIR:-$HOME}/.zshenv\"",
-			"typeset -g __dsh_shell_pid=$$ __dsh_shell_sequence=0",
-			"__dsh_shell_activity() {",
-			"  (( ZSH_SUBSHELL == 0 && $$ == __dsh_shell_pid )) || return",
-			"  (( ++__dsh_shell_sequence ))",
-			`  builtin printf '%s:%s:%s\\n' "$$" "$__dsh_shell_sequence" "$1" >| ${state}`,
+			"typeset -g __night_shell_pid=$$ __night_shell_sequence=0",
+			"__night_shell_activity() {",
+			"  (( ZSH_SUBSHELL == 0 && $$ == __night_shell_pid )) || return",
+			"  (( ++__night_shell_sequence ))",
+			`  builtin printf '%s:%s:%s\\n' "$$" "$__night_shell_sequence" "$1" >| ${state}`,
 			"  return 0",
 			"}",
-			"__dsh_shell_idle() {",
+			"__night_shell_idle() {",
 			`  { builtin trap; zle -F; } >| ${guards}`,
-			"  if [[ $CONTEXT != start || -n $BUFFER ]]; then __dsh_shell_activity busy",
-			`  elif [[ -s ${guards} || -n \${(k)functions[(I)TRAP*]} ]]; then __dsh_shell_activity unknown`,
-			"  else __dsh_shell_activity idle; fi",
+			"  if [[ $CONTEXT != start || -n $BUFFER ]]; then __night_shell_activity busy",
+			`  elif [[ -s ${guards} || -n \${(k)functions[(I)TRAP*]} ]]; then __night_shell_activity unknown`,
+			"  else __night_shell_activity idle; fi",
 			"}",
-			"__dsh_shell_busy() { __dsh_shell_activity busy }",
-			"__dsh_shell_init() {",
+			"__night_shell_busy() { __night_shell_activity busy }",
+			"__night_shell_init() {",
 			"  autoload -Uz add-zle-hook-widget add-zsh-hook",
-			"  add-zle-hook-widget line-init __dsh_shell_idle",
-			"  add-zle-hook-widget line-finish __dsh_shell_busy",
-			"  add-zsh-hook preexec __dsh_shell_busy",
-			"  precmd_functions=(${precmd_functions:#__dsh_shell_init})",
+			"  add-zle-hook-widget line-init __night_shell_idle",
+			"  add-zle-hook-widget line-finish __night_shell_busy",
+			"  add-zsh-hook preexec __night_shell_busy",
+			"  precmd_functions=(${precmd_functions:#__night_shell_init})",
 			"}",
 			"typeset -ga precmd_functions",
-			"precmd_functions+=(__dsh_shell_init)",
+			"precmd_functions+=(__night_shell_init)",
 			""
 		].join("\n"), {
 			mode: 384,
@@ -1263,7 +1438,7 @@ function prepareShellActivity(spec, env, platform) {
 * phase force-stops any ranges the service still owns. It has no config: every
 * disposition and limit arrives on the spec, so deployment-varying choices
 * stay with the caller's config (the bash executor's, the LSP host's, …).
-* @module @deepseek-ai/dsh-subprocess-local
+* @module night-bot/process
 */
 const requireNodePty = createLazyRequire("node-pty", import.meta.url);
 /**
@@ -1364,6 +1539,7 @@ var ManagedProcessRuntime = class extends SubprocessRuntime {
 		validateSubprocessSpec(spec);
 		const env = targetEnvironment(spec);
 		const containmentMode = this.selectContainmentMode("ordinary");
+		if (windowsLaunchPolicy(spec) !== void 0 && containmentMode !== "windows-job") throw new Error("Windows LPAC policy cannot use a fallback process provider");
 		let handle;
 		const internals = {
 			...this.internals,
@@ -1420,6 +1596,25 @@ var ManagedProcessRuntime = class extends SubprocessRuntime {
 		};
 	}
 	async spawnTerminal(spec) {
+  if(windowsLaunchPolicy(spec)!==undefined){
+   const platform=this.internals.platform??process.platform;
+   if(platform!=='win32'||!probeWindowsJob(this.internals))throw new Error('Windows LPAC requires a native ConPTY launch; node-pty fallback is forbidden');
+   validateSubprocessSpec(spec);
+   const dimensions=parseWindowsTerminalDimensions({cols:spec.cols,rows:spec.rows});
+   if(spec.stdio?.control!==undefined||spec.control!==undefined)throw new Error('Windows native terminal cannot inherit a separate control pipe');
+   // 原typed策略与recorder显式保留；TERM只是终端参数，不成为授权来源。
+   const request=retainProcessPolicy(spec,{...spec,stdio:{stdin:'pipe',stdout:'pipe',stderr:'ignore'},env:{...spec.env,TERM:spec.terminalType}});
+   const launch=launchWindowsJob(request,targetEnvironment(request),this.internals,dimensions);
+   const handle=new WindowsTerminalHandle(launch,spec,()=>this.terminals.delete(handle));
+   this.terminals.add(handle);
+   const release=()=>handle.terminate();
+   handle.done.then(release,release).catch(()=>{});
+   try{await handle.ready;return handle;}
+   catch(error){
+    try{await handle.terminate();}catch(cleanup){throw new AggregateError([error,cleanup],'Windows terminal start and mandatory drain failed');}
+    throw error;
+   }
+  }
 		const file = spec.argv[0];
 		if (file === void 0 || file.length === 0) throw new Error("subprocess-local: terminal argv must contain a program");
 		spec.signal?.throwIfAborted();

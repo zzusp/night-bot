@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createServer } from 'node:http'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
-import { messageProcessingProjection } from '../packages/dingtalk-dsh-assistant/observer-message-projection.js'
-import { createObserverGroupPages } from '../packages/dingtalk-dsh-assistant/observer-group-pages.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
+import { messageProcessingProjection } from '../packages/dingtalk-core/observer-message-projection.js'
+import { createObserverGroupPages } from '../packages/dingtalk-core/observer-group-pages.js'
 
 test('待判投影不被旧完成戳覆盖，理由与 CAS 身份可见', () => {
   const message = { messageId: 'm', messageVersion: 2, routingStatus: 'needs-context', routingHold: { messageVersion: 2, epoch: 3, reason: '取消范围不明确', createdAt: '2026-01-01T00:00:00Z' } }

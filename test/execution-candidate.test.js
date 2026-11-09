@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, writeFile, readFile, unlink } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
-import { freezeCandidate, readCandidate, verifyCandidate, assertVerifiedCandidate, assertCandidateManagedEdits } from '../packages/dingtalk-dsh-assistant/execution-candidate.js'
+import { freezeCandidate, readCandidate, verifyCandidate, assertVerifiedCandidate, assertCandidateManagedEdits } from '../packages/dingtalk-core/execution-candidate.js'
 
 const root = resolve('docs/tmp/execution-candidate-tests')
 const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { windowsHide: true, encoding: 'utf8' }).trim()
@@ -220,7 +220,7 @@ test('冻结OID批量搜索保持多批Unicode跨行二进制语义并拒绝取�
 })
 
 test('Host恢复检查票据保留真实摘要，拒绝改检查版本或伪工件', async()=>{
-  const {restoreVerifiedCandidate}=await import('../packages/dingtalk-dsh-assistant/execution-candidate.js')
+  const {restoreVerifiedCandidate}=await import('../packages/dingtalk-core/execution-candidate.js')
   const candidate=await freezeCandidate(await fixture()),requiredChecks=[{id:'read',version:'1'}]
   const original=await verifyCandidate({candidate,checks:[{...requiredChecks[0],run:async view=>({passed:(await view.readFile('kept.txt')).toString()==='base',log:'actual bytes'})}]})
   const restored=await restoreVerifiedCandidate({candidate,verification:structuredClone(original),requiredChecks})

@@ -1,0 +1,10 @@
+{
+  "test/pi-channel-plugin.test.js": "854a38c11f412a1d4c06483aba3b928f4184395c6a05f6639bda7660152875bc",
+  "src/channels/plugins/dingtalk-storage.js": "d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d",
+  "src/channels/plugins/dingtalk-ingress.js": "a10ecc730f390f0b2a66b4b9f596f7c10bebbacf85fce5d2b54b541089fd552f",
+  "src/channels/plugins/dingtalk-binding.js": "e1df02040e9a56a1b0b2479cf2815e35fabb6292e644f4becd6de6e04646279f",
+  "src/runtime/files.js": "03962ce0c92b343a5afee4229160ce33f7a87963a946dc9f624c80d2c92164ce",
+  "src/runtime/paths.js": "6f3f3c3855d073425cf591861cbe783da1cd703b16f1ae5210651fc594e4599a",
+  "src/memory/format.js": "e8827d94317c0902b7fc22ac9f7cd7aca6b423bcc3e454873991ae2d29ee3d51",
+  "packages/dingtalk-core/dws-bridge.js": "082218473340959f3ffe9d8e6b0b364e87d6bd3c2819535135e54734408fea8c"
+}

@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { incident,validateEvidence } from '../docs/acceptance/topic-context-completeness/scripts/reconcile-prepare-failure.mjs'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
 
 test('一次性准备失败审计拒绝业务执行、身份错配、残留与未停止进程',()=>{
  const prepared={...incident,generation:1,uatEnvironment:'uat3'}

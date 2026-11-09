@@ -1,0 +1,10 @@
+{
+  "exit": 1,
+  "startedAt": "2026-11-07T20:58:50.526Z",
+  "finishedAt": "2026-11-07T20:59:36.288Z",
+  "sourceCount": 984,
+  "sourceChanged": [],
+  "logSha256": "9b266396439edb0d8f596c55123e9bb22610fd0add9438b60144d8b80bc54124",
+  "preload": false,
+  "realVendorExecuted": false
+}

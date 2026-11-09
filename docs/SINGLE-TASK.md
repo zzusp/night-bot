@@ -38,23 +38,22 @@ File/process fences expose only the current task/conversation workspace, not oth
 users' workspaces. Linux system dependencies stay read-only. The generic task API
 and the model cannot choose an external business directory.
 
-Before a potentially mutating tool call, the runtime durably records an intent;
-a synchronous tool result gets a durable result record before the next step.
-Repeating the same tool/arguments in the same requirement/context/control version
-is denied as already attempted. An unresolved intent after a crash blocks
-automatic continuation with `TASK_EFFECT_UNCERTAIN_NO_REPLAY`. A final result also
-requires no live background jobs. This is conservative protection for identical
-calls, not a proof that two differently worded commands have different effects.
-Unknown external effects require reconciliation; a provider retry or directory
-restore is not authorization to replay them. Cancellation/failed tools can have
-partial effects and must be reported honestly.
+潜在写入工具调用前，runtime 先持久提交 intent，成功结果在下一步前记账。
+新 v2 intent 绑定实际官方 session、assistant entry、call ID、已接纳 input entry、
+packet digest 和原任务绑定；同一次已登记调用不可再次执行业务效果，不按工具名/参数
+或要求、上下文、控制版本相同来全局拒绝独立调用。当前授权目标需要时，独立实际 call
+可以同参；不同命令文字也不证明业务效果不同。原 Night v1 收据只在实际原输入和调用
+唯一匹配时读取，不改写历史，歧义保持阻断，详见 [输入与重试](PI-TASK-INPUT-AND-RETRY.md)。
+
+崩溃后的未决 intent 以 `TASK_EFFECT_UNCERTAIN_NO_REPLAY` 阻止自动继续；最终结果
+还要求没有活动后台 job。未知外部效果须对账；provider retry、换 call ID 或恢复目录
+不授权重放，已对账旧效果的新动作仍须真实新来源授权。取消或工具失败可能已有部分
+效果，须如实报告。
 
 Completed tasks trigger the independent scoped retrospective. Failure to learn or
-send a notification cannot reverse task completion. The older multi-execution
-source remains attributed, inactive compatibility/reference code for explicit-root
-tests; the supported portable composition does not construct those drivers, expose
-their tools or accept their existing execution rows. This is a new project, so no
-old plugin/task-team data import or migration is supplied.
+send a notification cannot reverse task completion. 旧任务 Owner/多执行 session
+驱动已退休；保留历史审计或只读原始核验输入不恢复这些 driver、工具或 ABI，也不把
+旧执行行当作原会话续办命令。本项目不提供旧 DSH 插件/任务团队数据导入或迁移。
 
 Final file delivery selects only explicitly reported files under that task workspace.
 The Host checks physical scope (including links), freezes original bytes with a

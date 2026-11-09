@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ingestTaskResidentMessage, taskNotificationOutbound, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { retiredSourceOwnership, COORDINATION_RETIRED_REASON } from '../packages/dingtalk-dsh-assistant/coordination-retirement.js'
+import { ingestTaskResidentMessage, taskNotificationOutbound, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from '../packages/dingtalk-core/task-message-projections.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { retiredSourceOwnership, COORDINATION_RETIRED_REASON } from '../packages/dingtalk-core/coordination-retirement.js'
 
 function memoryFacility(seed = new Map(), onWrite = () => {}) {
   const table = name => ({

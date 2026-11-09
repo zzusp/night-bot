@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
 import { bootstrapProfile, changeBootstrapProfile, sealBootstrapStore, apply } from '../scripts/bootstrap-workflow-maintenance.mjs'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 import { planProjectLocalAcceptance } from '../scripts/configure-project-local-acceptance.mjs'
 
 const hash=v=>createHash('sha256').update(v).digest('hex')

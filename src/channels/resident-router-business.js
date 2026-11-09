@@ -87,9 +87,10 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   const string={type:'string'},integer={type:'integer',minimum:1},strings={type:'array',items:string}
   const identity={operationId:string,sourceId:string,messageVersion:integer}
   const tools=[
-    {name:'resident_task_query',description:'读取当前conversation的事项、版本、证据与依赖，不跨群。',parameters:{type:'object',additionalProperties:false,properties:{taskId:string,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:100}}},execute:async(args)=>{
-      if(args.taskId){const task=await query('task.get',{taskId:args.taskId});if(!task||task.groupId!==conversationId)fail('ROUTER_TASK_FORBIDDEN');return {task,dependencies:await query('router.dependencies',{conversationId,taskId:args.taskId})}}
+    {name:'resident_task_query',description:'读取当前conversation的事项、版本、证据与依赖，不跨群。',parameters:{type:'object',additionalProperties:false,properties:{taskId:string,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:100}}},execute:async(args,exec)=>{
+      if(args.taskId){const task=await query('task.get',{taskId:args.taskId});await current(exec);if(!task||task.groupId!==conversationId)fail('ROUTER_TASK_FORBIDDEN');const dependencies=await query('router.dependencies',{conversationId,taskId:args.taskId});await current(exec);return {task,dependencies}}
       const tasks=await query('task.list',{groupId:conversationId,archived:'all'}),offset=args.offset??0,limit=args.limit??50
+      await current(exec)
       if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>100)fail('ROUTER_TASK_PAGE_INVALID')
       return {tasks:tasks.slice(offset,offset+limit),total:tasks.length,hasMore:offset+limit<tasks.length,nextOffset:Math.min(offset+limit,tasks.length)}
     }},

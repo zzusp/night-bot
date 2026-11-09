@@ -2,7 +2,7 @@ import {officialReflectionText} from './reflection-inference.js'
 import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
 import {rm} from 'node:fs/promises'
-import {memoryScope,readableScopes} from './scope.js'
+import {bindingSchema,memoryScope,readableScopes} from './scope.js'
 import {checkedText,hash} from './format.js'
 import {atomicWrite,readRegular,withLock,failure} from '../runtime/files.js'
 const validKey=value=>typeof value==='string'&&/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)&&value.length<=60
@@ -96,6 +96,59 @@ export default class Reflection extends Service {
       }
       await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');this.host.skills.invalidateCache()
     })
+  }
+  // Host 检视只接受已认证渠道 binding；模型工具仍走官方 live actor 权限。
+  async inspectTask(task,readerBinding,{store,changeId,version}={}){
+    const source=[...this.sources].find(item=>item.store===store)
+    if(!source)throw failure('LEARNING_UNAVAILABLE')
+    const owner=task.ownerActorId??source.ownerActorId
+    if(typeof owner!=='string')throw failure('LEARNING_IDENTITY_INVALID')
+    const binding={actorId:owner,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}}
+    const scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'})
+    const allowed=readableScopes(bindingSchema.parse(readerBinding)).some(row=>row.scope.kind===scope.kind&&row.scope.id===scope.id)
+    const state=await this.state(scope),reviews=[],changes=[],bodies=new Map()
+    const add=(reviewId,report,kind,key,value,text)=>{
+      const id=hash(JSON.stringify([task.taskId,reviewId,kind,key,scope.kind,scope.id]))
+      const source={taskId:task.taskId,eventId:report.eventId,reviewId}
+      const currentVersion=hash(JSON.stringify([id,value,text??null]))
+      const canRead=allowed&&typeof text==='string'
+      changes.push({id,reviewId,taskId:task.taskId,kind,action:kind==='memory'?'upsert':'current-version',status:value.status,scope:scope.kind,name:key,version:currentVersion,canRead,source})
+      if(canRead)bodies.set(id,{id,kind,text,version:currentVersion,source})
+    }
+    for(const [reviewId,report]of Object.entries(state.reviews)){
+      if(report.taskId!==task.taskId)continue
+      if(reviewId!==hash(report.eventId)||!['done','skipped','failed'].includes(report.status))throw failure('LEARNING_IDENTITY_INVALID')
+      reviews.push({reviewId,taskId:task.taskId,eventId:report.eventId,status:report.status,summary:report.status==='failed'?'复盘失败，不能据此认定记忆或技能已更新':report.status==='skipped'?'复盘未产生新经验':'已记录 '+(report.lessons?.length??0)+' 条复盘；变更以当前落盘证据为准',at:report.recordedAt??null})
+      const prefix='task-'+reviewId.slice(0,12)+'-'
+      const current=await this.host.memory.store.search(scope,{query:prefix,limit:20})
+      const entries=current.entries.filter(row=>row.topic==='experience'&&row.key.startsWith(prefix)&&row.source?.messageId===report.eventId)
+      const memoryKeys=new Set([...(report.lessons??[]).map(lesson=>prefix+lesson.key),...entries.map(row=>row.key)])
+      for(const key of memoryKeys){
+        const saved=(await this.host.memory.store.read(scope,{topic:'experience',key})).entries.find(row=>row.source?.messageId===report.eventId)
+        const prior=entries.findIndex(row=>row.key===key)
+        if(prior>=0)entries.splice(prior,1)
+        if(saved)entries.push(saved)
+        const entry=saved
+        add(reviewId,report,'memory',key,{status:entry?'applied':'not-applied',revision:entry?.revision??null,source:entry?.source??null},entry?.text)
+      }
+      for(const [key,value]of Object.entries(state.skills)){
+        if(!value.supports?.some(row=>row.taskId===task.taskId&&memoryKeys.has(row.memoryKey)))continue
+        if(!validKey(key))throw failure('LEARNING_IDENTITY_INVALID')
+        const supported=value.supports.some(row=>row.taskId===task.taskId&&entries.some(entry=>entry.key===row.memoryKey))
+        let text=value.active&&supported?await readRegular(join(this.directory(scope),'skills',key,'SKILL.md')):undefined
+        if(text!==undefined){const marker=text.match(/NIGHT_LEARNED_SCOPE=([^;]+);revision=(\d+)/);if(!marker||marker[1]!==scope.kind+'/'+scope.id||text!==this.renderSkill(scope,key,value,Number(marker[2])))text=undefined}
+        add(reviewId,report,'skill',key,{status:value.active&&text!==undefined?'applied':value.active?'not-applied':'candidate',revision:value.revision,signature:value.signature},text)
+      }
+    }
+    if(changeId!==undefined){
+      const change=changes.find(row=>row.id===changeId)
+      if(!change)throw failure('LEARNING_CHANGE_NOT_FOUND')
+      if(!change.canRead)throw failure('LEARNING_BODY_FORBIDDEN')
+      if(change.version!==version)throw failure('LEARNING_VERSION_STALE')
+      return bodies.get(changeId)
+    }
+    reviews.sort((a,b)=>(b.at??'').localeCompare(a.at??'')||a.reviewId.localeCompare(b.reviewId))
+    return {status:'ready',reviews,changes,revision:hash(JSON.stringify([reviews,changes]))}
   }
   async catalog(requestedAgent){
     const agent=this.host.agents.currentInitiator()??requestedAgent;if(!agent)return []

@@ -1,0 +1,11 @@
+{
+  "group": "default",
+  "exit": 1,
+  "sourceChanged": [
+    "packages/web-console/server/plugin.js",
+    "packages/web-console/src/ChatPage.tsx",
+    "packages/web-console/src/api.ts",
+    "packages/web-console/src/styles/app.css"
+  ],
+  "logSha256": "19238949ebc73624f9d4cf641edcd80eb53fece31448889b380d7fb75e88dbb4"
+}

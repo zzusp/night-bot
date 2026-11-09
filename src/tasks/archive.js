@@ -36,7 +36,7 @@ function ownsTaskSession(session,taskId,sessionId){
 }
 export class TaskArchives{
   constructor({paths,store,routes,onFailure=()=>{},onSuccess=()=>{}}){Object.assign(this,{paths,store,routes,onFailure,onSuccess});this.tails=new Map();this.dirty=new Set();this.errors=new Map();this.attachments=new AttachmentFiles(paths.data)}
-  async register(task){await taskDirectories(this.paths.workspaces,task.taskId);for(const name of ['sessions','reviews','materials/runtime-evidence/process','materials/runtime-evidence/tools'])await privateDirectory(join(this.paths.workspaces,'tasks',task.taskId,name));return registerTaskSession(this.paths,this.routes,task)}
+  async register(task){await taskDirectories(this.paths.workspaces,task.taskId,{task});for(const name of ['sessions','reviews','materials/runtime-evidence/process','materials/runtime-evidence/tools'])await privateDirectory(join(this.paths.workspaces,'tasks',task.taskId,name));return registerTaskSession(this.paths,this.routes,task)}
   schedule(taskId){
     if(!taskId)return;this.dirty.add(taskId);if(this.tails.has(taskId))return this.tails.get(taskId)
     const work=(async()=>{do{this.dirty.delete(taskId);try{await this.capture(taskId);this.errors.delete(taskId);this.onSuccess(taskId)}catch(error){this.errors.set(taskId,error.code??'TASK_ARCHIVE_CAPTURE_FAILED');this.onFailure(taskId,error)}}while(this.dirty.has(taskId))})().finally(()=>{if(this.tails.get(taskId)===work)this.tails.delete(taskId);if(this.dirty.has(taskId))this.schedule(taskId)})
@@ -178,7 +178,7 @@ export async function acknowledgeTaskRestore(config,taskId,note){return offline(
 
 async function adoptOwnedTask(options,taskId){
   const task=await options.store.query({kind:'task.get',taskId});if(!task||!task.drained||task.recovering||(await options.store.query({kind:'execution.list',taskId})).length)throw failure('TASK_ARCHIVE_NOT_DRAINED')
-  const directories=await taskDirectories(options.paths.workspaces,taskId),central=join(options.paths.state,'sessions',archiveHash(task.sessionId)+'.pi.jsonl'),target=join(directories.root,'sessions',archiveHash(task.sessionId)+'.pi.jsonl')
+  const directories=await taskDirectories(options.paths.workspaces,taskId,{task}),central=join(options.paths.state,'sessions',archiveHash(task.sessionId)+'.pi.jsonl'),target=join(directories.root,'sessions',archiveHash(task.sessionId)+'.pi.jsonl')
   if(await lstat(central+'.lock').catch(error=>{if(error.code!=='ENOENT')throw error}))throw failure('TASK_ARCHIVE_SESSION_BUSY')
   const existing=await lstat(central).catch(error=>{if(error.code!=='ENOENT')throw error});const source=existing?central:target
   if(task.sessionBound){const session=await validatePiArchiveSession(source,task.sessionId);if(session.header.agentPreset!=='night-bot-task'||session.header.portableCwd!==relative(options.paths.installRoot,directories.root).split('\\').join('/')||!ownsTaskSession(session,taskId,task.sessionId)||session.committedBytes!==session.totalBytes)throw failure('TASK_ARCHIVE_NOT_OWNED_SINGLE_TASK');const value=await bytes(source);if(source!==target){const prior=await lstat(target).catch(error=>{if(error.code!=='ENOENT')throw error});if(prior&&archiveHash(await bytes(target))!==archiveHash(value))throw failure('TASK_ARCHIVE_SESSION_CONFLICT');if(!prior)await atomicWrite(target,value)}}
@@ -189,5 +189,5 @@ async function adoptOwnedTask(options,taskId){
 /** Explicit offline packing of Night Bot's own existing single-task Pi data;
  * no DSH journals, legacy execution teams or foreign data are imported. */
 export async function adoptTaskArchive(config,taskId){return offline(config,async options=>{
-  const existing=await options.store.query({kind:'task.get',taskId});if(!existing)throw failure('TASK_ARCHIVE_TASK_MISSING');if(!existing.drained||existing.recovering)throw failure('TASK_ARCHIVE_NOT_DRAINED');await taskDirectories(options.paths.workspaces,taskId);const marker=join(options.paths.runtime,'task-restore.pending.json');await atomicWrite(marker,json({version:1,kind:'adopt',taskId}));try{const result=await adoptOwnedTask(options,taskId);await rm(marker);return {ok:true,...result}}catch(error){throw Object.assign(failure('TASK_ARCHIVE_RESTORE_INCOMPLETE'),{cause:error})}
+  const existing=await options.store.query({kind:'task.get',taskId});if(!existing)throw failure('TASK_ARCHIVE_TASK_MISSING');if(!existing.drained||existing.recovering)throw failure('TASK_ARCHIVE_NOT_DRAINED');await taskDirectories(options.paths.workspaces,taskId,{task:existing});const marker=join(options.paths.runtime,'task-restore.pending.json');await atomicWrite(marker,json({version:1,kind:'adopt',taskId}));try{const result=await adoptOwnedTask(options,taskId);await rm(marker);return {ok:true,...result}}catch(error){throw Object.assign(failure('TASK_ARCHIVE_RESTORE_INCOMPLETE'),{cause:error})}
 })}

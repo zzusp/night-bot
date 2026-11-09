@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { executionDigest, openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { executionDigest, openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
 import { assertVerificationDrainScope } from '../docs/acceptance/topic-context-completeness/scripts/recover-verification-drain.mjs'
 test('排空桥与正式Owner使用同一工件路径，workspace根不能重复tasks',async()=>{
  const source=await readFile(new URL('../docs/acceptance/topic-context-completeness/scripts/recover-verification-drain.mjs',import.meta.url),'utf8')

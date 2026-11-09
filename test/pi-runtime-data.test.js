@@ -19,7 +19,7 @@ import {requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
 const config=root=>({installRoot:root,dataDir:'data',model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',models:[{id:'m'}]}}})
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'night-data-'));t.after(()=>rm(root,{recursive:true,force:true}));return root}
 async function initialize(root,{actor='fixture',model='m',keyEnv='MY_MODEL_KEY'}={}){
-  const child=spawn(process.execPath,['bin/night-bot-init.js','--root',root,'--actor',actor,'--provider','fixture','--model',model,'--key-env',keyEnv],{stdio:['ignore','pipe','pipe']})
+  const child=spawn(process.execPath,['bin/night-bot-init.js','--root',root,'--actor',actor,'--provider','fixture','--model',model,'--api','openai-completions','--base-url','http://127.0.0.1:1/v1','--key-env',keyEnv],{stdio:['ignore','pipe','pipe']})
   let out='',error='';child.stdout.on('data',chunk=>out+=chunk);child.stderr.on('data',chunk=>error+=chunk)
   const [code]=await once(child,'close');return {code,out,error}
 }

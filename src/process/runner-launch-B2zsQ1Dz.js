@@ -7,7 +7,7 @@ import { createLinuxLaunchFiles, linuxLaunchFilesFromLocator, consumeLinuxLaunch
 import { prepareManagedProcessBinding } from "./output.js";
 import { accessSync, closeSync, constants, lstatSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { createLazyRequire } from "./contracts.js";
+import { createLazyRequire, parseWindowsLaunchPolicy, parseWindowsResourceOwnership, parseWindowsResourceProof } from "./contracts.js";
 import { scrubbedParentEnv } from "./contracts.js";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { setTimeout as setTimeout$1 } from "node:timers/promises";
@@ -48,7 +48,7 @@ function controlEnvironment(env, control) {
 * The koffi bindings load lazily so
 * non-Windows processes never touch Win32 libraries; all decision logic takes
 * an injectable internals boundary so suites can pin it on any host.
-* @module dsh-subprocess-local/windows-inspector
+* @module night-bot/process/windows-inspector
 */
 const requireKoffi$1 = createLazyRequire("koffi", import.meta.url);
 /**
@@ -559,7 +559,7 @@ function createProcessInspector(platform = process.platform, arch = process.arch
 * POSIX owners stage TERM before KILL; Windows owners terminate immediately.
 * This layer reacts to an abort signal; callers own deadlines, teardown
 * ladders, and cause classification.
-* @module dsh-subprocess-local/spawn
+* @module night-bot/process/spawn
 */
 /**
 * Build a child environment: explicit caller entries override the scrubbed
@@ -846,12 +846,18 @@ function parseWindowsStartRequest(value) {
 		"type",
 		"cwd",
 		"env"
-	], ["control"]) || value.type !== "start" || typeof value.cwd !== "string" || !isStringRecord(value.env) || value.control !== void 0 && value.control !== "pipe") throw new Error("subprocess runner received an invalid Windows start request");
+	], ["control", "lpac", "resourceProtocol", "terminal"]) || value.type !== "start" || typeof value.cwd !== "string" || !isStringRecord(value.env) || value.control !== void 0 && value.control !== "pipe") throw new Error("subprocess runner received an invalid Windows start request");
+	if (value.resourceProtocol !== void 0 && (value.resourceProtocol !== 1 || !Object.hasOwn(value, "lpac"))) throw new Error("Invalid Windows resource protocol negotiation");
+ if (Object.hasOwn(value,'terminal') && (value.resourceProtocol !== 1 || !Object.hasOwn(value,'lpac') || Object.hasOwn(value,'control'))) throw new Error('Windows terminal requires LPAC resource protocol without inherited control');
+ const terminal = Object.hasOwn(value,'terminal') ? parseWindowsTerminalDimensions(value.terminal) : undefined;
 	return {
 		type: "start",
 		cwd: value.cwd,
 		env: value.env,
-		...value.control === "pipe" ? { control: "pipe" } : {}
+		...value.control === "pipe" ? { control: "pipe" } : {},
+		...Object.hasOwn(value, "lpac") ? { lpac: parseWindowsLaunchPolicy(value.lpac, value.cwd) } : {},
+		...value.resourceProtocol === 1 ? { resourceProtocol: 1 } : {},
+  ...terminal === undefined ? {} : {terminal}
 	};
 }
 /**
@@ -859,6 +865,31 @@ function parseWindowsStartRequest(value) {
 * @param value - untrusted IPC payload.
 * @returns whether the payload is the exact terminate request.
 */
+function parseWindowsResourceAcknowledgement(value) {
+ if (isRecord(value) && value.type === 'resource-error' && hasExactKeys(value,['type','sequence']) && Number.isSafeInteger(value.sequence) && value.sequence >= 1) return {type:value.type,sequence:value.sequence};
+ if (!isRecord(value) || !hasExactKeys(value, ["type", "sequence", "entryId"]) || value.type !== "resource-ack" || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || typeof value.entryId !== "string" || !value.entryId || value.entryId.includes(String.fromCharCode(0))) throw new Error("Invalid Windows resource acknowledgement");
+ return { type: value.type, sequence: value.sequence, entryId:value.entryId };
+}
+function parseWindowsScopeProofResult(value) {
+ if (!isRecord(value) || !Number.isSafeInteger(value.sequence) || value.sequence < 1) throw new Error('Invalid Windows scope proof response');
+ if (value.type === 'scope-proof-error' && hasExactKeys(value,['type','sequence'])) return {type:value.type,sequence:value.sequence};
+ if (value.type !== 'scope-proof-result' || !hasExactKeys(value,['type','sequence','proofs']) || !Array.isArray(value.proofs)) throw new Error('Invalid Windows scope proof response');
+ const proofs = value.proofs.map(row => {
+  if (!isRecord(row) || !hasExactKeys(row,['owner','jobId','entryId','resource','privateProof']) || ['owner','jobId','entryId'].some(key=>typeof row[key] !== 'string' || !row[key] || row[key].includes(String.fromCharCode(0)))) throw new Error('Invalid committed Windows scope proof identity');
+  const resource=parseWindowsResourceOwnership(row.resource), privateProof=parseWindowsResourceProof(row.privateProof);
+  if (resource.profileName !== privateProof.profileName || resource.profileSid !== privateProof.profileSid || resource.scopeCount !== privateProof.scopeCount) throw new Error('Windows scope proof crosses its resource identity');
+  return {owner:row.owner,jobId:row.jobId,entryId:row.entryId,resource,privateProof};
+ });
+ return {type:value.type,sequence:value.sequence,proofs};
+}
+function parseWindowsTerminalDimensions(value) {
+ if (!isRecord(value) || !hasExactKeys(value,['cols','rows']) || ![value.cols,value.rows].every(n=>Number.isInteger(n)&&n>0&&n<=32767)) throw new Error('Invalid Windows terminal dimensions');
+ return {cols:value.cols,rows:value.rows};
+}
+function parseWindowsTerminalResizeRequest(value) {
+ if (!isRecord(value) || value.type !== 'terminal-resize' || !hasExactKeys(value,['type','sequence','cols','rows']) || !Number.isSafeInteger(value.sequence) || value.sequence < 1) throw new Error('Invalid Windows terminal resize request');
+ return {type:value.type,sequence:value.sequence,...parseWindowsTerminalDimensions({cols:value.cols,rows:value.rows})};
+}
 function isWindowsTerminateRequest(value) {
 	return isRecord(value) && hasExactKeys(value, ["type"]) && value.type === "terminate";
 }
@@ -869,6 +900,22 @@ function isWindowsTerminateRequest(value) {
 */
 function parseWindowsRunnerResult(value) {
 	if (!isRecord(value) || typeof value.type !== "string") throw new Error("subprocess runner emitted an invalid Windows result");
+ if (value.type === 'terminal-ready') {
+  if (!hasExactKeys(value,['type','pid']) || !Number.isSafeInteger(value.pid) || value.pid <= 0) throw new Error('Invalid Windows terminal ready result');
+  return {type:value.type,pid:value.pid};
+ }
+ if (value.type === 'terminal-resized') {
+  if (!hasExactKeys(value,['type','sequence']) || !Number.isSafeInteger(value.sequence) || value.sequence < 1) throw new Error('Invalid Windows terminal resize result');
+  return {type:value.type,sequence:value.sequence};
+ }
+	if (value.type === "resource-ownership") {
+		if (!hasExactKeys(value, ["type", "sequence", "descriptor"], ["privateProof"]) || !Number.isSafeInteger(value.sequence) || value.sequence < 1) throw new Error("Invalid Windows resource ownership message");
+		return {type:value.type, sequence:value.sequence, descriptor:parseWindowsResourceOwnership(value.descriptor), ...Object.hasOwn(value,"privateProof") ? {privateProof:parseWindowsResourceProof(value.privateProof)} : {}};
+	}
+	if (value.type === 'scope-proof-query') {
+  if (!hasExactKeys(value,['type','sequence','fileIds']) || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || !Array.isArray(value.fileIds) || value.fileIds.some(id=>typeof id !== 'string' || !/^[a-f0-9]{48}$/.test(id)) || new Set(value.fileIds).size !== value.fileIds.length) throw new Error('Invalid Windows scope proof query');
+  return {type:value.type,sequence:value.sequence,fileIds:[...value.fileIds]};
+ }
 	if (value.type === "error") return parseErrorResult(value);
 	if (value.type === "target-exit") {
 		const validExitCode = typeof value.exitCode === "number" && Number.isSafeInteger(value.exitCode) && value.exitCode >= 0;
@@ -914,7 +961,7 @@ function deserializeRunnerError(serialized) {
 //#region lib/types/runner-launch.js
 /** Parent-side invocation and bootstrap state for the private native runner. */
 /** The one private environment variable consumed before target state is restored. */
-const SUBPROCESS_RUNNER_ENV = "DSH_SUBPROCESS_RUNNER";
+const SUBPROCESS_RUNNER_ENV = "NIGHT_BOT_SUBPROCESS_RUNNER";
 /** Sentinel used by the packaged bootstrap for the Windows IPC runner. */
 const WINDOWS_RUNNER_SELECTION = "windows";
 const RUNNER_CONTROL_ENV_PREFIXES = ["NODE_", "TSX_"];
@@ -1133,4 +1180,4 @@ function targetEnvironment(spec) {
 	return controlEnvironment(env, spec.stdio?.control);
 }
 //#endregion
-export { bindManagedProcess as C, createProcessInspector as D, validateSubprocessSpec as E, controlPipe as O, loadLinuxExecve as S, spawnSubprocess as T, parseWindowsRunnerResult as _, resolveWindowsExecutable as a, serializeRunnerError as b, runnerStdio as c, cleanupLinuxLaunchFiles as d, consumeLinuxLaunchRequest as f, linuxLaunchFilesFromLocator as g, isWindowsTerminateRequest as h, parseRunnerTargetArgv as i, spawnRunnerInvocation as l, deserializeRunnerError as m, WINDOWS_RUNNER_SELECTION as n, runnerEnvironment as o, createLinuxLaunchFiles as p, consumeRunnerSelection as r, runnerInvocationAvailable as s, SUBPROCESS_RUNNER_ENV as t, targetEnvironment as u, parseWindowsStartRequest as v, childEnv as w, writeLinuxStartupError as x, readLinuxStartupError as y };
+export { parseWindowsTerminalDimensions, parseWindowsTerminalResizeRequest, parseWindowsResourceAcknowledgement, parseWindowsScopeProofResult, bindManagedProcess as C, createProcessInspector as D, validateSubprocessSpec as E, controlPipe as O, loadLinuxExecve as S, spawnSubprocess as T, parseWindowsRunnerResult as _, resolveWindowsExecutable as a, serializeRunnerError as b, runnerStdio as c, cleanupLinuxLaunchFiles as d, consumeLinuxLaunchRequest as f, linuxLaunchFilesFromLocator as g, isWindowsTerminateRequest as h, parseRunnerTargetArgv as i, spawnRunnerInvocation as l, deserializeRunnerError as m, WINDOWS_RUNNER_SELECTION as n, runnerEnvironment as o, createLinuxLaunchFiles as p, consumeRunnerSelection as r, runnerInvocationAvailable as s, SUBPROCESS_RUNNER_ENV as t, targetEnvironment as u, parseWindowsStartRequest as v, childEnv as w, writeLinuxStartupError as x, readLinuxStartupError as y };

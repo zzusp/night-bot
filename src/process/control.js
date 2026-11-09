@@ -6,7 +6,7 @@ import { Socket } from "node:net";
 /** Child descriptor reserved for the optional subprocess control channel. */
 const SUBPROCESS_CONTROL_FD = 7;
 /** Private launch marker consumed before a Node child executes application code. */
-const SUBPROCESS_CONTROL_ENV = "DSH_SUBPROCESS_CONTROL";
+const SUBPROCESS_CONTROL_ENV = "NIGHT_BOT_SUBPROCESS_CONTROL";
 /**
 * Consume the launch marker and open the inherited control pipe at fd 7.
 * The returned stream owns the descriptor. Call once before executing untrusted code;

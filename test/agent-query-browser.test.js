@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import {mkdtemp,writeFile,readFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {validateBrowserResource,browserObservationRequestAllowed as allowed,readBrowserResource} from '../packages/dingtalk-dsh-assistant/agent-query-browser.js'
-import {createAgentStatusReadCapability} from '../packages/dingtalk-dsh-assistant/agent-query-status.js'
+import {validateBrowserResource,browserObservationRequestAllowed as allowed,readBrowserResource} from '../packages/dingtalk-core/agent-query-browser.js'
+import {createAgentStatusReadCapability} from '../packages/dingtalk-core/agent-query-status.js'
 const origin='https://editor2.hiqdat.dev'
 test('UAT2观察仅已知读请求，撤回/保存/消息已读/跨站和编码绕过均拦截',()=>{
  assert.equal(allowed(origin+'/api/dataset/approval/list','POST','xhr',{page:1,size:10}),true)

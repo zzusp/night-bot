@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 import { migrateExecutionDependencyIndex } from '../scripts/migrate-execution-dependency-index.mjs'
 
 test('必要依赖索引8到9零业务变更、check零写、可重启且重复迁移幂等', async t => {

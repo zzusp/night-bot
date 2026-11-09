@@ -1,0 +1,34 @@
+{
+  "args": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^Windows LPAC (never enters fallback ordinary or node-pty providers|runner requires durable Job protocol before current-token executable resolution)$",
+    "test/pi-native-process.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "durationSeconds": 0.39099999994505197,
+  "sourceBefore": {
+    "test/pi-native-process.test.js": "96a239499cf43952156df2f8bab768b4920ab340b7e35b4db9504630a2718166",
+    "src/process/runner.js": "7935651293fcc57eeecbe3402a767f1c2c3f00813f605750a5459f7bce963eb1",
+    "src/process/windows-profile.js": "cb59e4240ef65464e56818d93bfb576752243e7b3741e02c4ee3a957ae1752d6",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3",
+    "src/process/runner-launch-B2zsQ1Dz.js": "83bda81536ab4401e57b0fa43369e31f09e34a660f844437c98e5dc85d70aaa9",
+    "src/process/index.js": "44989dd69959ecf25d17aab6e09726ab929fe6eab2e8d561e05a76fdb919ec31"
+  },
+  "sourceAfter": {
+    "test/pi-native-process.test.js": "96a239499cf43952156df2f8bab768b4920ab340b7e35b4db9504630a2718166",
+    "src/process/runner.js": "7935651293fcc57eeecbe3402a767f1c2c3f00813f605750a5459f7bce963eb1",
+    "src/process/windows-profile.js": "cb59e4240ef65464e56818d93bfb576752243e7b3741e02c4ee3a957ae1752d6",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3",
+    "src/process/runner-launch-B2zsQ1Dz.js": "83bda81536ab4401e57b0fa43369e31f09e34a660f844437c98e5dc85d70aaa9",
+    "src/process/index.js": "44989dd69959ecf25d17aab6e09726ab929fe6eab2e8d561e05a76fdb919ec31"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "7e8073106dfb229ce8c0a25f8480055992a547bfd75814b016b05eb4ca4cd6de",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "windowsTargetLaunched": false,
+  "nativeExecuted": false,
+  "realVendorExecuted": false
+}

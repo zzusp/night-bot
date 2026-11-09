@@ -1,0 +1,55 @@
+{
+  "taskId": "b9d0qrkbm",
+  "observedAt": "2026-11-08T01:35:37.737326+00:00",
+  "executorExit": 3,
+  "reason": "Original runner stopped after runtime end fingerprint contained three source changes.",
+  "groupTerminals": {
+    "default": {
+      "exit": 1,
+      "cases": {
+        "PASS": 1216,
+        "FAIL": 3,
+        "SKIP": 26
+      },
+      "resultSha256": "41b866b26c06c993eedacbac401cd7231022d4ee768b4be5c91ce855931fc1e3",
+      "controlledWorkerExit": -1
+    },
+    "runtime": {
+      "exit": 0,
+      "termination": "natural",
+      "cases": {
+        "PASS": 150,
+        "SKIP": 12
+      },
+      "resultSha256": "5c021576f8aac3f7578d52dc459ad6155e7dbd6ce5f36373a52656e88a4805fe",
+      "ledgerSha256": "aa9d2b7e8a00c2e873783641d608c3f2f9e307f569e90dfc3d46673b92a4845e"
+    }
+  },
+  "sourceMapSha256": "68a432a68686ddafa7d3528db642f25bfa45200fbb571af26afb7f6a151f5dd1",
+  "sourceCount": 1110,
+  "sourceChanged": [
+    {
+      "file": "AGENTS.md",
+      "before": "7d8821fbda3cca90660f4dd798418bf416ddcec87195772c4158260b79e0cf00",
+      "after": "327018ce266440759f4c9e0ab3441034f505efbc690a287ac1cc0b7879b88d64"
+    },
+    {
+      "file": "README.md",
+      "before": "8ab3a9daaff2fe442b743b5f88cb7665b3bcaf0e6d8096cc90f5973376279c4e",
+      "after": "8218ca1824fc5fee08ecfa264d53cbcebb1c5a16cee792e236b3bf7d749d4f01"
+    },
+    {
+      "file": "packages/web-console/src/styles/boardui.css",
+      "before": "c18df60556352e06cef7495c998b906892f1d65f3da75bd5ea95c44b57117885",
+      "after": "3de642e61704f127a0741eecadf50113d46d60108b4e2d6a4273af0abc75abce"
+    }
+  ],
+  "notStarted": [
+    "routing",
+    "domain",
+    "containment"
+  ],
+  "combinedFiveGroupResultWritten": false,
+  "originalTaskOutputSha256": "6e778d23cf1a84a5d703220c09f57d3647b5ec164ab7c386d81952d40c97550c",
+  "scope": "Batch terminal accounting only, not five-group PASS or proof that historical native unknown resources were cleaned."
+}

@@ -1,3 +1,5 @@
+> 历史审计快照：以下正文的标题、“当前”“本轮”、alias 保留声明及本机入口均指原退休阶段，原文保留供追溯，不是 SG11 现状。当前边界见 [MIGRATION](MIGRATION.md)，实际清理、Windows 限制和同版验收见[唯一目标](acceptance/resident-conversation-routing/goal.md)。`docs/runtime-audit.json` 是历史检查点，现行审计命令写入 `docs/tmp/runtime-audit.json`，不能用旧清单证明本轮全清或全量通过。
+
 # 当前 DSH/Pi 边界
 
 外部 DSH 生产依赖、开发声明与锁文件包均为零。当前默认 Host 使用官方 Pi 1.5.0 AgentSession、SessionManager、buildSessionProjection 和 convertToLlm，Night 只维护授权、业务 SQLite、严格 journal 提交与副作用收据。

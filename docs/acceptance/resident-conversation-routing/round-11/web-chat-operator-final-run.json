@@ -1,0 +1,14 @@
+{
+  "exit": 0,
+  "startedAt": "2026-11-07T21:39:18.852Z",
+  "finishedAt": "2026-11-07T21:40:27.400Z",
+  "sourceCount": 476,
+  "sourceChanged": [],
+  "logSha256": "181758fd21e103fac1704a7cf871e5ce379e66b196319aad16e9c5f83eda5d85",
+  "businessResult": {
+    "path": "docs/acceptance/resident-conversation-routing/round-11/web-chat-real-host-result.json",
+    "sha256": "984240dc0cc97a1d019e62ca4752c2c552ca27f449de8f9ce8747a2fd3f0f350"
+  },
+  "modelInputDecoding": "native req.setEncoding(utf8); no preload",
+  "realVendorExecuted": false
+}

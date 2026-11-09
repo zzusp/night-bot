@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createTopicCoordinator } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
+import { topicHistoryPage, topicHistoryMatches, topicHistoryReferences, topicHistoryQueries } from '../packages/dingtalk-core/topic-model.js'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
 
 function setup(t, suppliedTopics) {
   const topics = suppliedTopics ?? [
@@ -11,12 +11,7 @@ function setup(t, suppliedTopics) {
     { topicId: 'c', title: '超时排查', summary: '接口响应慢', revision: 3 },
     { topicId: 'd', title: '无关事项', summary: '日常工作', revision: 1 },
   ]
-  const store = { listTopics: () => topics }
-  const tools = new Map()
-  const coordinator = createTopicCoordinator({ store, getAgent: () => ({}), assertSession() {}, isClosing: () => false })
-  coordinator.register({ tools: { register(tool) { tools.set(tool.name, tool) } } }, 'g')
-  t.after(() => coordinator.close())
-  return { topics, list: (args) => tools.get('group_topic_list').execute(args, { groupId: 'g' }) }
+  return { topics, list: async args => topicHistoryPage(topics, args) }
 }
 
 test('多词召回按命中数排序并给出逐字段依据，分页稳定', async t => {
@@ -61,7 +56,7 @@ test('大目录仅投影请求页，多词查询仍按排序分页', async t => 
   assert.equal(reads, 5)
 })
 
-test('首包保留引用优先并召回目录首屏之外的历史候选', async t => {
+test('历史引用保留真实来源并召回目录首屏之外的候选，分词预算不变', async t => {
   const storage=await nativeResidentSnapshot()
   const store = await openResidentStore(storage.domains)
   await store.subscribe({ groupId: 'g', responsibility: '处理测试任务' })
@@ -73,10 +68,7 @@ test('首包保留引用优先并召回目录首屏之外的历史候选', async
     { messageId: 'seed', messageVersion: 1, topics: refs, effectOwner: { newTopicKey: 'topic-0' } },
     { messageId: 'reference', messageVersion: 1, topics: [{ newTopicKey: 'quoted', title: '用户引用事项' }] },
   ] })
-  const sent = [], errors = []
-  const agent = { session: { snapshotEvents: () => [] }, steer(message) { sent.push(message.content[0].text) }, whenIdle: () => new Promise(() => {}) }
-  const coordinator = createTopicCoordinator({ store, getAgent: () => agent, assertSession() {}, serializeTasks: fn => fn(), isClosing: () => false, reviewCandidates: () => [], onError(_group, error) { errors.push(error) } })
-  t.after(async () => { await coordinator.close(); await store.close(); await storage.close() })
+  t.after(async () => { await store.close(); await storage.close() })
   await ingest('current', { text: `请排查数据库导出超时 管理 测试 ${'额外词语 '.repeat(10000)}`, quotedMessage: { messageId: 'reference', content: '引用事项' } })
   const OriginalSegmenter = Intl.Segmenter
   let segmentsRead = 0, charsSegmented = 0
@@ -88,15 +80,18 @@ test('首包保留引用优先并召回目录首屏之外的历史候选', async
       return { *[Symbol.iterator]() { for (const item of inner) { segmentsRead++; yield item } } }
     }
   }
-  try { await coordinator.schedule('g') } finally { Intl.Segmenter = OriginalSegmenter }
+  let queries
+  const messages = store.getGroup('g').messages.filter(message => message.messageId === 'current')
+  try { queries = topicHistoryQueries(messages) } finally { Intl.Segmenter = OriginalSegmenter }
   assert.ok(segmentsRead <= 20, `分词迭代超出预算: ${segmentsRead}`)
   assert.ok(charsSegmented <= 4000, `分词输入超出预算: ${charsSegmented}`)
-  assert.deepEqual(errors, [])
-  const envelope = JSON.parse(sent.find(text => text.startsWith('[GROUP_TOPIC_ROUTE]')).split('\n').find(line => line.startsWith('Topic 请求：')).slice('Topic 请求：'.length))
+  const references = topicHistoryReferences(store.listTopics('g'), store.getGroup('g').outbox, messages)
+  assert.equal(references.relatedTopicIds[0], routed.topicIdsByKey.quoted)
+  assert.deepEqual(references.quotedReplies, [])
   const target = routed.topicIdsByKey['topic-79']
-  assert.equal(envelope.relatedTopics[0].topicId, routed.topicIdsByKey.quoted)
-  assert.deepEqual(envelope.relatedTopics[0].recallSources, ['reference'])
-  assert.equal(envelope.topics.some(topic => topic.topicId === target), false)
-  assert.ok(envelope.recalledTopics.some(topic => topic.topicId === target && topic.matchedQueries.length > 0))
-  assert.ok(JSON.stringify(envelope.topics).length + JSON.stringify(envelope.recalledTopics).length <= 5000)
+  const directory = topicHistoryPage(references.topics)
+  assert.equal(directory.topics.some(topic => topic.topicId === target), false)
+  const recalled = topicHistoryMatches(references.topics, queries)
+  assert.ok(recalled.some(item => item.topic.topicId === target && item.matchedQueries.length > 0))
+  assert.ok(queries.length <= 5)
 })

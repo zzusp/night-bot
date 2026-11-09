@@ -4,7 +4,13 @@
 
 本规程用于 Linux 本机或受管测试机上的 Night Bot portable 安装。它只说明可实施的运行前置和验证顺序，不代表本仓库已经在你的内核、模型、DWS 账号或生产环境部署成功。默认先验证无插件核心；钉钉等外部渠道必须另行配置、授权和验收。
 
-当前模型进程隐私实现要求在 Linux 解析到 `bwrap`。应用找不到可用 runner 时会以 `MEMORY_PROCESS_PRIVACY_UNAVAILABLE` 失败关闭，不自动改成无隔离执行。Native sandbox 还会按当前平台能力选择 bwrap/Landlock 等实现，但不能用其中一项的存在替代模型进程 privacy 的实际探针。
+本规程的受限进程前置适用于默认 `permissionMode: ask` 与 `auto`。当前模型进程隐私实现要求在 Linux 解析到 `bwrap`。应用找不到可用 runner 时会以 `MEMORY_PROCESS_PRIVACY_UNAVAILABLE` 失败关闭，不自动改成无隔离执行。Native sandbox 还会按当前平台能力选择 bwrap/Landlock 等实现，但不能用其中一项的存在替代模型进程 privacy 的实际探针。
+
+## 权限选择与受限验收
+
+顶层配置使用 `permissionMode`，默认 `ask`；初始化可传 `--permission-mode ask|auto|full`。离线修改先运行 `node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask --check`，检查后再去掉 `--check` 保存，并按 `restartRequired` 正常重启。认证 Web 可在线保存，但必须回读 Host 的实际模式。具体操作见[权限与审批](web-console-local.md#安装权限与单次审批)。
+
+`ask` 将外部业务写入或更宽命令范围交人工逐次批准；`auto` 由当前 Pi 模型无工具审查，失败或不确定转人工，两者继续保留私有区与精确 scope 隔离。`full` 仅由安装操作者显式选择，以当前 OS 账号直接访问，不提权，不承诺工作区或同账号 Host 私有文件隔离；容器/OS 原有限制仍有效。full 不是 bwrap 不可用时的回退，也不能抵扣本页受限执行验收。保存配置本身不证明外部目标操作成功或后端已可用，新权限真实结果以[当前目标](../acceptance/resident-conversation-routing/goal.md)为准。
 
 ## 支持前置
 
@@ -36,6 +42,12 @@ fi
 
 该探针只证明本机可以启动一次基础 bwrap，不证明任意 shell、后台作业、文件工具、模型 provider 或外部网络都已验收。应用仍会在真实工具调用前执行自身路径、环境、workspace 和隐私守卫。
 
+### 进程范围所有权单独验证
+
+bwrap 的路径/namespace 隐私与完整进程范围所有权是不同边界。当前 `linux-scope` 还要求实际私有 bootstrap/libc execve 可用，以及当前用户的 `systemd-run --user --scope` 和 `systemctl --user` 能建立、查询和回收真实 transient scope；仅安装命令或基础 bwrap 探针通过不够。深探测不满足时，当前实现明确警告并选择较弱的 `fallback`：逃离进程组或直接父链的后代，不保证被终止或阻止 `waitForExit()` 结算。
+
+验证必须观察真实工具调用所在进程的实际选择，并结合业务终态与范围 drain；不要预跑独立 probe、注入 provider 或只凭一个 `linux-scope` 字符串宣称排空。当前受限 Docker 六例已在封定镜像上取得业务 PASS，但三个 worker 的实际选择全部为 `fallback`，不能称强所有权验收通过，也不外推到其它宿主。准确源码和结果见[当前目标](../acceptance/resident-conversation-routing/goal.md)。需要由目标环境提供上述真实用户 manager/范围能力；不能通过添加容器特权、扩大 capabilities、挂载整宿主或更改宿主安全策略将本轮结果改称通过。
+
 ## 安装与配置
 
 使用独立安装目录和独立 `data/`，不要把多个实例的运行数据、SQLite、WAL、日志或临时目录混用：
@@ -51,7 +63,7 @@ pnpm check
 pnpm init:assistant --actor YOUR_LOCAL_ACTOR --provider openai --model YOUR_MODEL --key-env OPENAI_API_KEY
 ```
 
-审核 `data/config/config.json` 时保持 `shell: "bash"`、loopback `resident.host` 和本实例空闲端口；`channelPlugins` 保持空数组或所有示例项 `enabled:false`。密钥只通过配置引用的环境变量或受支持的凭据机制提供，不写命令行、仓库、日志或验收材料。业务工作和交付文件只写入 `data/workspaces/`，秘密、日志、缓存和 temp 继续分桶保存。
+审核 `data/config/config.json` 时保持 `shell: "bash"`、loopback `resident.host` 和本实例空闲端口；`channelPlugins` 保持空数组或所有示例项 `enabled:false`。密钥只通过配置引用的环境变量或受支持的凭据机制提供，不写命令行、仓库、日志或验收材料。业务工作和交付文件默认位于 `data/workspaces/`，秘密、日志、缓存和 temp 继续分桶保存。外部业务路径须按下述模式取得本次操作的准确授权，不将外部文件自动迁入安装目录。
 
 配置解析检查不启动应用、不连接 DWS：
 

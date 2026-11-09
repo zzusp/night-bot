@@ -15,7 +15,17 @@ export async function apply(ctx,config){
   const store=await openResidentStore(ctx.storageDomain),runtime=await openTaskResidentRuntime(ctx,store,paths.workspaces,{agentPreset:'night-bot',agentWorkspaceDir:paths.workspaces,taskSessionModel:taskConfig,maxConcurrentTasks:resident.maxConcurrentTasks??5})
   runtime.setGroupMessageReader((...args)=>ctx.get('channels').readResource('readMessage',...args));runtime.setGroupResourceReader(async(...args)=>{const value=await ctx.get('channels').readResource('readResource',...args);if(!value?.image)return value;return {...value,imageRefs:await ctx.attachments.saveImages([value.image])}})
   let tasks,server,timer,closing
-  const close=()=>closing??=(async()=>{clearInterval(timer);await ctx.parallel('night/stopping');if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));await tasks?.close();await runtime.close?.()})()
+  const close=()=>closing??=(async()=>{
+    clearInterval(timer)
+    const errors=[]
+    const attempt=async action=>{try{await action();return true}catch(error){errors.push(error);return false}}
+    await attempt(()=>ctx.parallel('night/stopping'))
+    await attempt(async()=>{if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()))})
+    const tasksClosed=await attempt(()=>tasks?.close())
+    // tasks 仍可能依赖原来源/通知/归档 store；close 拒绝不构成其可拆证明。
+    if(tasksClosed)await attempt(()=>runtime.close?.())
+    if(errors.length)throw new AggregateError(errors,'Application shutdown failed; ownership retained')
+  })()
   ctx.effect(()=>close,'application shutdown')
   const unsupported=()=>{throw Object.assign(Error('CHANNEL_TRANSPORT_UNAVAILABLE'),{code:'CHANNEL_TRANSPORT_UNAVAILABLE'})}
   const operatorNotifications=ctx.get('channels').operatorNotifications

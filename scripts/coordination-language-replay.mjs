@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
-import { coordinationProposalSchema } from '../packages/dingtalk-dsh-assistant/independent-coordination-planner.js'
+import { coordinationProposalSchema } from '../packages/dingtalk-core/independent-coordination-planner.js'
 
 // No Host, TaskStore, credentials, write tools or sender are supplied to adapters.
 // A real-model adapter must be explicitly supplied by the operator; the default

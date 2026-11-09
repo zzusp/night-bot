@@ -1,0 +1,45 @@
+{
+  "command": "pnpm check",
+  "executor": "original Core session; Tests independently verified the precise original tool-use/result pair, did not rerun",
+  "startedToolAt": "2026-11-08T01:36:40.576Z",
+  "resultToolAt": "2026-11-08T01:36:44.429Z",
+  "toolUseId": "call_4d0c7de7efa7441c8bc7c1342c1e3abe",
+  "sourceHead": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "manifestSha256": "a85c92e9035b1e9aa85ea1e7ae960a026361f2d5e17af5cba95c456f954a1470",
+  "nativeRestartProbeSha256": "ea53f6092d1014e89d4b27deb08e100509968ceddaf52ede9f9d2415c36fb338",
+  "coverageGuardSha256": "0252645a94e1f390cfaf3e56d9ec3e7ca2a9d931cce194f88aa90d57223868d0",
+  "originalToolUseLineSha256": "fbe0de4180bc7c6af98fe2f2ccf2d8847a64917901cb54a7708670b218a2b7f3",
+  "originalToolResultLineSha256": "7a2c1feefc486f1485d1b49e5c37ef3d421f4de3361cf36dd31b52b938769566",
+  "originalStdoutSha256": "b7d8e2d5f353105b405c21bd9b830e43b3fa49e15edcdfd5ce2bc82debabb8bf",
+  "is_error": false,
+  "interrupted": false,
+  "stderr": "",
+  "numericExitCodeInOriginalReceipt": false,
+  "completeThreeGuardStdoutObserved": true,
+  "guardResults": [
+    {
+      "source": "93e431a2a76938d32aefc070b093fcfb65691c70",
+      "retainedModules": 190,
+      "retiredModules": 10,
+      "excludedUiModules": 3,
+      "explicitlyAdaptedModules": 57,
+      "relativeImports": "closed",
+      "httpRoutes": "retained"
+    },
+    {
+      "productionImportFiles": 393,
+      "literalBareImports": 191,
+      "status": "declared-production-imports"
+    },
+    {
+      "runtimeJsFiles": 393,
+      "externalSdkImports": 0,
+      "legacyOrchestratorDefinitions": 0,
+      "legacySourceFilesVerified": 2,
+      "historicalFormatFilesRemoved": 9
+    }
+  ],
+  "privateTranscriptPathOmitted": true,
+  "scope": "Source/hash/import guard evidence for the actual pre-permission-change dirty tree only; not proof of later permission implementation or runtime test completion."
+}

@@ -34,6 +34,122 @@ export const stableId = (prefix, value) => `${prefix}-${createHash('sha256').upd
 export const fingerprint = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 export const isPendingDecision = record => !['completed', 'rejected'].includes(record.status)
 
+export function topicHistoryReferences(topics, outbox, messages) {
+  const allTopics = topics.filter(topic => !topic.mergedInto)
+  const referencedIds = new Set(messages.flatMap(message => [message.messageId, message.quotedMessage?.messageId]).filter(Boolean))
+  const relatedIds = new Set(allTopics.filter(topic => {
+    const active = new Map(topic.entries.map(entry => [entry.unitId ?? entry.messageId, entry]))
+    return [...active.values()].some(entry => entry.action === 'add' && referencedIds.has(entry.messageId))
+  }).map(topic => topic.topicId))
+  const quotedReplies = outbox.filter(outbound => outbound.deliveredMessageId && referencedIds.has(outbound.deliveredMessageId))
+  for (const reply of quotedReplies) {
+    if (reply.replyTopicId) relatedIds.add(reply.replyTopicId)
+    else for (const ref of reply.topicRefs ?? []) relatedIds.add(ref.topicId)
+  }
+  return { topics: allTopics, relatedTopicIds: [...relatedIds], quotedReplies }
+}
+
+export const topicHistoryQueries = messages => {
+  const segmenter = new Intl.Segmenter('zh', { granularity: 'word' })
+  const words = new Set()
+  let remaining = 4000
+  for (const message of messages) {
+    if (remaining <= 0) break
+    const text = message.text.slice(0, remaining)
+    remaining -= text.length
+    for (const part of segmenter.segment(text)) {
+      const word = part.segment.trim()
+      if (part.isWordLike && word.length >= 2 && word.length <= 32) words.add(word)
+      if (words.size === 5) return [...words]
+    }
+  }
+  return [...words]
+}
+
+export const topicHistoryMatches = (topics, queries) => topics.map((topic, index) => {
+  const fields = { title: (topic.title ?? '').toLowerCase(), summary: (topic.summary ?? '').toLowerCase() }
+  const matchedQueries = queries.flatMap(query => {
+    const matchedFields = Object.keys(fields).filter(field => fields[field].includes(query.toLowerCase()))
+    return matchedFields.length ? [{ query, fields: matchedFields }] : []
+  })
+  return { topic, index, matchedQueries }
+}).filter(item => item.matchedQueries.length).sort((a, b) => b.matchedQueries.length - a.matchedQueries.length || a.index - b.index)
+
+export function topicHistoryPage(topics, { query, queries, offset = 0, limit = 50 } = {}) {
+  if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('topic_page_invalid')
+  if (queries !== undefined && (query !== undefined || !Array.isArray(queries) || queries.length < 1 || queries.length > 5 || queries.some(value => typeof value !== 'string' || !value.trim() || value.trim().length > 32))) throw new Error('topic_query_invalid')
+  const terms = queries?.map(value => value.trim()).filter((value, index, values) => values.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index)
+  const matched = terms ? topicHistoryMatches(topics, terms) : undefined
+  const all = matched ?? topics.filter(topic => `${topic.title ?? ''}\n${topic.summary ?? ''}`.toLowerCase().includes((query ?? '').toLowerCase()))
+  const page = all.slice(offset, offset + limit).map(item => {
+    const { topicId, title, revision, processedRevision, status, summary, recallSources } = matched ? item.topic : item
+    return { topicId, title, revision, processedRevision, status, summary: summary?.slice(0, 240),
+      ...(recallSources ? { recallSources } : {}), ...(matched ? { matchedQueries: item.matchedQueries } : {}) }
+  })
+  const nextOffset = Math.min(all.length, offset + page.length)
+  return { topics: page, total: all.length, offset, limit, nextOffset, hasMore: nextOffset < all.length, ...(terms ? { queries: terms } : {}) }
+}
+
+export const strictlyBoundedItems = (items, maxChars, maxCount) => {
+  const selected = []
+  for (const item of items) {
+    if (selected.length >= maxCount) break
+    if (JSON.stringify([...selected, item]).length > maxChars) continue
+    selected.push(item)
+  }
+  return selected
+}
+export const TOPIC_CONTEXT_MAX_CHARS = 40_000
+export function boundedTopicContext(context, { textOffset = 0, maxChars = TOPIC_CONTEXT_MAX_CHARS } = {}) {
+  if (!Number.isInteger(textOffset) || textOffset < 0) throw new Error('topic_text_offset_invalid')
+  const projected = projectTopicContext(context)
+  const taskRefs = strictlyBoundedItems(projected.taskRefs ?? [], 8_000, 50)
+  const base = { ...projected, messages: [], taskRefs, totalTaskRefs: projected.taskRefs?.length ?? 0, hasMoreTaskRefs: taskRefs.length < (projected.taskRefs?.length ?? 0) }
+  const messages = [], completedMessageIds = [], completedUnitRefs = []
+  let nextOffset = projected.offset, nextTextOffset
+  const output = () => ({ ...base, messages, completedMessageIds, completedUnitRefs, nextOffset, ...(nextTextOffset === undefined ? {} : { nextTextOffset }), hasMoreMessages: nextOffset < projected.total || nextTextOffset !== undefined })
+  if (JSON.stringify(output()).length > maxChars) throw new Error('topic_context_metadata_too_large')
+  for (let index = 0; index < projected.messages.length; index++) {
+    const message = projected.messages[index]
+    const start = index === 0 ? textOffset : 0
+    const text = String(message.text ?? '')
+    if (start > text.length) throw new Error('topic_text_offset_invalid')
+    const complete = { ...message, text: text.slice(start), ...(start > 0 ? { textOffset: start, textTotal: text.length, textHasMore: false } : {}) }
+    messages.push(complete); completedMessageIds.push(message.messageId); completedUnitRefs.push({ unitId: message.unitId, unitRevision: message.unitRevision }); nextOffset = projected.offset + index + 1; nextTextOffset = undefined
+    if (JSON.stringify(output()).length <= maxChars) continue
+    messages.pop(); completedMessageIds.pop(); completedUnitRefs.pop(); nextOffset = projected.offset + index
+    let low = 0, high = text.length - start
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2)
+      messages.push({ ...message, text: text.slice(start, start + middle), textOffset: start, textTotal: text.length, textHasMore: start + middle < text.length })
+      nextTextOffset = start + middle < text.length ? start + middle : undefined
+      const fits = JSON.stringify(output()).length <= maxChars
+      messages.pop()
+      if (fits) low = middle
+      else high = middle - 1
+    }
+    if (low === 0) {
+      nextTextOffset = undefined
+      break
+    }
+    const end = start + low
+    messages.push({ ...message, text: text.slice(start, end), textOffset: start, textTotal: text.length, textHasMore: end < text.length })
+    nextTextOffset = end
+    break
+  }
+  const result = output()
+  if (JSON.stringify(result).length > maxChars) throw new Error('topic_context_budget_exceeded')
+  return result
+}
+
+export function projectTopicContext(context) {
+  const { topicId, title, revision, processedRevision, status, summary, summaryRevision, openQuestions } = context.topic
+  const pending = context.topic.decisions?.findLast(isPendingDecision)
+  const processing = pending ? { decisionId: pending.decisionId, status: pending.status, appliedOperations: pending.operations.filter((operation) => operation.status === 'applied').length, totalOperations: pending.operations.length, ...(pending.error ? { error: pending.error.slice(0, 1000) } : {}) } : undefined
+  const messages = context.messages.map(({ _sourceMessageText: _hidden, ...message }) => message)
+  return JSON.parse(JSON.stringify({ ...context, messages, topic: { topicId, title, revision, processedRevision, status, ...(summary === undefined ? {} : { summary }), summaryRevision, openQuestions, ...(processing ? { processing } : {}) } }))
+}
+
 // submitWebTaskInput derives both IDs from the same group/request identity.
 // Its deterministic action settles that Web input, not the whole Topic snapshot.
 export function isWebTaskDecision(record) {

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {createExecutionController} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import {approvedPurgeTaskIds} from '../packages/dingtalk-dsh-assistant/execution-task-purge.js'
-import {preparePurgedEngineeringRun} from '../packages/dingtalk-dsh-assistant/task-purge-start.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
+import {createExecutionController} from '../packages/dingtalk-core/execution-controller.js'
+import {approvedPurgeTaskIds} from '../packages/dingtalk-core/execution-task-purge.js'
+import {preparePurgedEngineeringRun} from '../packages/dingtalk-core/task-purge-start.js'
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'purged-run-start-'))
  const store=await openExecutionStore({dbPath:join(root,'control.sqlite'),instanceId:'test',initialize:true})

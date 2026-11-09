@@ -204,8 +204,8 @@
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
       "status": "adapted",
-      "sha256": "2eaf598ffa90b8d75a2d581f03442a2940d891715b98af2475948ef18fee0b03",
-      "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay. 账本v4接入直接来源、分诊与Router依赖/事件/轮换；调度及claim双守卫，共用任务mutation更新依赖版本并保留控制来源。 人工事实追问通知在task.wait事务创建，直接sourceRef与历史quoted身份分别严格核验。 任务附件交付在prepare/start核验当前完成版本、原来源、冻结descriptor/caption、父子顺序及冻结受众一致；归档后只续已有通知。 父依赖等待的start负许可仅在旧现均prepared、零发送且从未授许可、冻结payload一致时按原ID重评估全部当前守卫，热冷收据原位更新保留序号；首次授许可后继续去重，unknown仅回读。 SG10：父子附件受众幂等和humanReview来源校验采用单一历史受众只读投影，保留source/version/actor/atAll与unknown守卫，不改旧payload/hash。"
+      "sha256": "8e6ed66e78644dd882ce36c74861aeb13e1beb02acaff60c19410258e41764b2",
+      "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay. 账本v4接入直接来源、分诊与Router依赖/事件/轮换；调度及claim双守卫，共用任务mutation更新依赖版本并保留控制来源。 人工事实追问通知在task.wait事务创建，直接sourceRef与历史quoted身份分别严格核验。 任务附件交付在prepare/start核验当前完成版本、原来源、冻结descriptor/caption、父子顺序及冻结受众一致；归档后只续已有通知。 父依赖等待的start负许可仅在旧现均prepared、零发送且从未授许可、冻结payload一致时按原ID重评估全部当前守卫，热冷收据原位更新保留序号；首次授许可后继续去重，unknown仅回读。 SG10：父子附件受众幂等和humanReview来源校验采用单一历史受众只读投影，保留source/version/actor/atAll与unknown守卫，不改旧payload/hash。 Windows 新任务在原事务内登记 Host 专用工作区初始化状态，begin/finish 精确绑定 task/session/creationCommandId 并单调推进；未就绪拒绝 claim，不在事务内创建目录，不重放已提交初始化。"
     },
     {
       "source": "engineering-output-contract.js",
@@ -222,8 +222,9 @@
     {
       "source": "execution-artifacts.js",
       "sourceSha256": "d3c4a291e036d36b71fc17061a30a841eda8b159f82a1812906974496690836b",
-      "status": "retained",
-      "sha256": "d3c4a291e036d36b71fc17061a30a841eda8b159f82a1812906974496690836b"
+      "status": "adapted",
+      "sha256": "72db7cfc57d2abf87480eafae8218c42aa3f767affbe0ddf16157224e894cf75",
+      "adaptation": "SG11：stage artifact reader归已有产物owner；保task/run/workflow/digest、invalidated排除、受信ref集合、诊断及错误码。"
     },
     {
       "source": "execution-authorization-session.js",
@@ -601,8 +602,8 @@
       "source": "native-restart-scope-probe.js",
       "sourceSha256": "6b5c5f8a750a595e40d933e2d5fa834c2df8d003d763993a8803142d41e6a86f",
       "status": "adapted",
-      "sha256": "e417967793374dd60daa4ceed0b9430d003044e39b98b743eb425263d5b82359",
-      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof. Reviewed native process contracts now scrub ambient NIGHT_BOT_ metadata as well as retired DSH_ names; LF and CRLF fingerprints updated to those exact source bytes. Removed explicit DSH profile/provider compatibility branch; only native source fingerprints can define a plan, with all review and exclusion requirements retained. Reviewed replacement of process output capture with the application byte ring; pinned LF/CRLF hashes updated only for the reviewed output module, without runtime self-blessing. Pin reviewed owned Linux bootstrap/transport/owner modules and updated runner imports; no deployed-source auto-blessing or weaker exclusion/receipt guards."
+      "sha256": "7053a97bece8ce57c14636d782566e81f3babbd143f0a0ffaadedc4e6e4362c0",
+      "adaptation": "Application-versioned job evidence; no DSH producer journal ABI is accepted for restart proof. Reviewed native process contracts now scrub ambient NIGHT_BOT_ metadata as well as retired DSH_ names; LF and CRLF fingerprints updated to those exact source bytes. Removed explicit DSH profile/provider compatibility branch; only native source fingerprints can define a plan, with all review and exclusion requirements retained. Reviewed replacement of process output capture with the application byte ring; pinned LF/CRLF hashes updated only for the reviewed output module, without runtime self-blessing. Pin reviewed owned Linux bootstrap/transport/owner modules and updated runner imports; no deployed-source auto-blessing or weaker exclusion/receipt guards. SG11：固定已审本地ACL/runner与真实process源码的LF/CRLF哈希，移除已退旧副本路径，保身份、Job/来源排除及无重放证明门槛。 SG11续验：仅对齐已审contracts、index、runner-launch、runner、win32、native-sandbox及windows-acl七源的LF/CRLF静态pin；15条路径、顺序及probe身份、收据、来源排除和no-replay门槛保持，不据此宣称Windows LPAC/full通过。 三档权限增量：仅更新既有contracts/native-sandbox两个槽的LF/CRLF指纹，绑定同次调用的只读策略投影；15条路径、顺序、来源排除与无重放门槛不变，不代表scoped或full行为已通过。 §16.26：对齐原15项中contracts/index/runner-launch/runner/win32及windows-acl六槽的LF/CRLF静态指纹；前五源逐字绑定R43来源，ACL绑定新增可信Host维护ACE及精确共享撤权候选。其余九槽、路径/顺序、身份、排除、drain与no-replay门保持，不运行时自签部署源，也不以指纹同步追认候选Native通过。 继承失败上下文增量：仅同步现有windows-acl槽的LF/CRLF指纹，零新增Native动作，原15路径和所有证明门保持。"
     },
     {
       "source": "node-output-readout.js",
@@ -780,8 +781,8 @@
       "source": "session-workspaces.js",
       "sourceSha256": "cf6f05f3d1101bd056b39f51dc5c23f7fb8b92f9fe9897895c11270bcd18fbc2",
       "status": "adapted",
-      "sha256": "156d397936960edc922bb93bddd6984de18bf820762f70f9794036e59d236f6c",
-      "adaptation": "Task archive includes Host-owned sessions and reviews alongside materials/work/tmp/outputs; trusted task identity and physical path checks remain in force."
+      "sha256": "aeab7763ff07657b9597975a8a112f96073cc6f1622787f113cfe39860f8d5b2",
+      "adaptation": "Task archive includes Host-owned sessions and reviews alongside materials/work/tmp/outputs; trusted task identity and physical path checks remain in force. Windows 仅可信 initializing 的新默认任务在提交后独占创建普通 task 根及 Low/NW work/tmp；复用原 Native 创建期判词，资源闭合后再准备其余用途目录。普通解析检查 ready，已有目录、旧任务及 restore/adopt 不重打 Low；ready 不替代永久 SD 资格或进程授权。"
     },
     {
       "source": "startup-metrics.js",
@@ -909,8 +910,9 @@
     {
       "source": "task-maintenance-constraint.js",
       "sourceSha256": "3e35943682dc176cb2409e8fc452bb04eb8625e279f3dee8291df87d2dba589c",
-      "status": "retained",
-      "sha256": "3e35943682dc176cb2409e8fc452bb04eb8625e279f3dee8291df87d2dba589c"
+      "status": "adapted",
+      "sha256": "ce43ba32ebf9f20c447731a669f170ad31051202f1f9f9b7ae9cabd09f4d1025",
+      "adaptation": "SG11：维护事实reader归已有维护业务owner；保task.owner.events历史事实、分页/来源/需求/stage/run绑定与requestId去重。"
     },
     {
       "source": "task-markdown-file.js",
@@ -947,15 +949,20 @@
     {
       "source": "task-owner-controller.js",
       "sourceSha256": "ca8ed3272ceff5f062bad43684570e53ad6dc7e2c870418ef1b7a52bb392dfcf",
-      "status": "retained",
-      "sha256": "ca8ed3272ceff5f062bad43684570e53ad6dc7e2c870418ef1b7a52bb392dfcf"
+      "status": "retired-driver",
+      "adaptation": "SG11：pure reader已归maintenance/artifact真实owner；两孤立执行模块在消费者正式放行后精确删除。",
+      "lastRetainedSha256": "4d043412a363107e7d44df6657ff8a40cee1fdb04905313d3a45deeb7e8f1c31",
+      "retirementEvidence": "docs/spec/resident-conversation-task-routing.md",
+      "retirementReason": "SG11：当前任务由Single唯一执行；12个旧Owner消费者已逐注册迁接或按取消协议退休并经独立审查，移除孤立Owner执行机制。保留真实领域、历史事件/收据及Store拒旧决策；本批不宣称Single补齐所有旧领域诊断入口。"
     },
     {
       "source": "task-owner-session.js",
       "sourceSha256": "c718a2fcf4ee87fc90a418fc583c036535b39042eb5846521ffefc8a6258964e",
-      "status": "adapted",
-      "sha256": "36f886412052fffa1921c7aa49dad4f39d20d0ed273755f7a921c2c25c57e379",
-      "adaptation": "Retain behavior; message construction now uses local immutable message protocol rather than the SDK helper. Local model/tool/child public protocol imports preserve behavior."
+      "status": "retired-driver",
+      "adaptation": "SG11：pure reader已归maintenance/artifact真实owner；两孤立执行模块在消费者正式放行后精确删除。",
+      "lastRetainedSha256": "36f886412052fffa1921c7aa49dad4f39d20d0ed273755f7a921c2c25c57e379",
+      "retirementEvidence": "docs/spec/resident-conversation-task-routing.md",
+      "retirementReason": "SG11：当前任务由Single唯一执行；12个旧Owner消费者已逐注册迁接或按取消协议退休并经独立审查，移除孤立Owner执行机制。保留真实领域、历史事件/收据及Store拒旧决策；本批不宣称Single补齐所有旧领域诊断入口。"
     },
     {
       "source": "task-owner-store.js",
@@ -1054,8 +1061,8 @@
       "source": "task-session-service.js",
       "sourceSha256": "100249678e6f4aa6b2ddf45b32dc6c344e9311f87ff9924818145aed5b6450bb",
       "status": "adapted",
-      "sha256": "6592256ffb0b77c0156d332ef32f5cbc338a32a8a61043d5b4cac72cb06b221a",
-      "adaptation": "默认认证入口改为轻量分诊及常驻Router；直接来源任务动作、依赖评估和唯一执行会话，保留通知/平台排期/归档与无重放边界，退休活动Topic路由。 Web动作冻结请求及首次派生参数，收据重试不取消后续lease；旧冻结出箱核对真实身份，close尝试全部资源后聚合异常。 Router显式选择单任务冻结附件及受信多人受众，复用共享说明/父子通知；恢复媒体读取并用富化实际版本登记来源，direct发送前先核持久父态。 无群Web续办/重开沿用创建时的单任务来源作用域，仅真实群任务要求订阅；不采调用方群标识、不创建虚假群或IM来源，保留原actor、版本、去重与唯一session边界。 执行及同session补充将本任务真实入边的当前前置完成、原事件与匹配评估/授权来源送入既有task输入；校版本及依赖ready，排除前置会话、完整来源正文和全图，不新增授权。 渠道配置职责经认证会话resolver贯通分诊、Router、执行与无工具复盘；首次订阅及既有群仅同步明确配置（含空清空），不采消息元数据配置、不新增授权或跨群scope。 SG10：活动工具/模型来源及通知使用中性主体/收件人，旧quote/notification请求仅确定性只读投影保持幂等；技术问题缺省operator，业务补充显式requester，不改旧事实/收据/hash。 历史已送达/不可重试失败通知先按原终态退出再查transport，保留原recall/投影与未完成及unknown守卫。 SG10受控恢复：仅Host委托续原已接纳失败Router批次，绑定原会话/代际/packet/checkpoint；确定未结恢复显式degraded及可观察告警，其它错误失败关闭，不新业务输入或重放任务/发送。 显式replyToSource仅绑定当前受信source消息/作者，要求受众包含作者，沿原冻结幂等和父子交付。统一渠道入口在登记fact/source前精确核自身发送，身份未决显式暂缓，不扩大到同账号或正文过滤。"
+      "sha256": "cb09f98b1d4f44e335c36d889fab6bcb0ce1e593e9a1f3ecf415cb45d374900c",
+      "adaptation": "默认认证入口改为轻量分诊及常驻Router；直接来源任务动作、依赖评估和唯一执行会话，保留通知/平台排期/归档与无重放边界，退休活动Topic路由。 Web动作冻结请求及首次派生参数，收据重试不取消后续lease；旧冻结出箱核对真实身份，close尝试全部资源后聚合异常。 Router显式选择单任务冻结附件及受信多人受众，复用共享说明/父子通知；恢复媒体读取并用富化实际版本登记来源，direct发送前先核持久父态。 无群Web续办/重开沿用创建时的单任务来源作用域，仅真实群任务要求订阅；不采调用方群标识、不创建虚假群或IM来源，保留原actor、版本、去重与唯一session边界。 执行及同session补充将本任务真实入边的当前前置完成、原事件与匹配评估/授权来源送入既有task输入；校版本及依赖ready，排除前置会话、完整来源正文和全图，不新增授权。 渠道配置职责经认证会话resolver贯通分诊、Router、执行与无工具复盘；首次订阅及既有群仅同步明确配置（含空清空），不采消息元数据配置、不新增授权或跨群scope。 SG10：活动工具/模型来源及通知使用中性主体/收件人，旧quote/notification请求仅确定性只读投影保持幂等；技术问题缺省operator，业务补充显式requester，不改旧事实/收据/hash。 历史已送达/不可重试失败通知先按原终态退出再查transport，保留原recall/投影与未完成及unknown守卫。 SG10受控恢复：仅Host委托续原已接纳失败Router批次，绑定原会话/代际/packet/checkpoint；确定未结恢复显式degraded及可观察告警，其它错误失败关闭，不新业务输入或重放任务/发送。 显式replyToSource仅绑定当前受信source消息/作者，要求受众包含作者，沿原冻结幂等和父子交付。统一渠道入口在登记fact/source前精确核自身发送，身份未决显式暂缓，不扩大到同账号或正文过滤。 SG11：授权新效果回验两端复用conversationSource与conversationId稳定投影，保精确来源/版本/actor/closure/revision/activation及幂等守卫。 Windows 新任务初始化同时贯穿 Web 与 Router 批量事务后路径，creationCommandId 防内层幂等旧结果被误当 fresh；返回及缓存回读当前 SQL，历史收据不改写。未就绪的单项/分页工作区投影、kick 与两层队列提升均失败关闭；保原 wake、终态、错误及 Native ownership 链，finish 再失败聚合而不重放。原 admissions 串行接纳进入 whenIdle/close join，closed 后拒新接纳；已有任务和恢复不触发初始化。"
     },
     {
       "source": "task-session.js",
@@ -1093,9 +1100,11 @@
     {
       "source": "task-topic-coordinator.js",
       "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
-      "status": "adapted",
-      "sha256": "3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20",
-      "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body."
+      "status": "retired-driver",
+      "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body.",
+      "lastRetainedSha256": "3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20",
+      "retirementEvidence": "docs/acceptance/resident-conversation-routing/round-11/topic-execution-retirement.json",
+      "retirementReason": "旧 Topic 会话工厂及仅供其内部使用的 group_* helper 已无真实外部消费者，当前职责由分诊与常驻 Router 承担；保留历史模型、审计和权限/版本合同，不提供兼容工厂。"
     },
     {
       "source": "task-uat-pr-merge.js",
@@ -1113,8 +1122,8 @@
       "source": "task-workflow-contracts.js",
       "sourceSha256": "cbf3a9c13b85bcc946f12a3e025f8ad7572d93b6c28f8ae9a2fc31729d8ee905",
       "status": "adapted",
-      "sha256": "e6827b350d0e4463b394678da16c9b96315de8075ca37934b209bf37d9714516",
-      "adaptation": "Local model/tool/child public protocol imports preserve behavior."
+      "sha256": "1cb09797b67b891772692f9863a9b673e98373662101d86a31fe183da68c7c7d",
+      "adaptation": "Local model/tool/child public protocol imports preserve behavior. SG11：从实际维护/产物owner导入两个中性reader，移除对Owner controller的纯helper依赖，不恢复Owner执行。"
     },
     {
       "source": "task-workflow.js",
@@ -1146,15 +1155,17 @@
       "source": "topic-model.js",
       "sourceSha256": "b6e674e1a98dda2423256065bb4170c569c69d19c8b81db44da446d48108ea17",
       "status": "adapted",
-      "sha256": "afa9618482a1c253a7700a670b8f18b8023cd4b24b91189088ef09d3b4993de4",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation."
+      "sha256": "e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. 历史Topic的严格预算/无损正文续读/安全上下文投影及稳定多关键词历史查询、分页、4000字符/5词分词预算及来源/已送回复精确关联纯体归此数据owner；保原来源与协议，不复活活动Topic路由。"
     },
     {
       "source": "topic-runtime.js",
       "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
-      "status": "adapted",
-      "sha256": "0b45c0eead57d7c6a390c697e79c60b51dbd3a21f16718d0d81ebbf915fd51d4",
-      "adaptation": "Portable first tier owns tentative source-quoted feedback, bounded 15-source batches, same-session incremental ingress and durable batch recovery; second tier retains Topic and task processing. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body. Topic visibility, body retries and read provenance use live Pi model context; writer/authority failures propagate. Exact decision-schema admission returns declared structured correction before dispatch; issue scope is arguments rather than invented field-specific diagnostics."
+      "status": "retired-driver",
+      "adaptation": "历史Topic coordinator仅供退休前消费者迁接；有界上下文、去隐藏正文、历史查询分页、分词预算与来源/已送回复关联纯体改由topic-model数据owner承载，无兼容re-export。旧请求/群作用域、关联目录3000字符预算、readCall、seenTopicVersions及真实续页偏移仍保留；当前conversation Router不加载或恢复该执行角色。原上游来源/历史journal和HTTP审计合同不机械改名。",
+      "lastRetainedSha256": "f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c",
+      "retirementEvidence": "docs/acceptance/resident-conversation-routing/round-11/topic-execution-retirement.json",
+      "retirementReason": "混合测试消费者已逐注册迁退，保留历史原体并迁接有效 Store/Pi 合同，当前12项实跑通过；旧 Topic 执行及 group_* 注册取消，历史账本、审计及 unknown/no-replay 合同保留，静态退役不计为 PASS。"
     },
     {
       "source": "uat-acceptance-policy.js",
@@ -1201,8 +1212,9 @@
     {
       "source": "workflow-data-change.js",
       "sourceSha256": "2f158754c3cc3bf4f41514369516f68c3319bcce262ed3903442004873c3a79c",
-      "status": "retained",
-      "sha256": "2f158754c3cc3bf4f41514369516f68c3319bcce262ed3903442004873c3a79c"
+      "status": "adapted",
+      "sha256": "355578b32638052a0b88dd1083ff3fbe037e3b3d3367a055ad4d9eb79f41a024",
+      "adaptation": "SG11：仅两条领域诊断提示去掉不存在的执行控制工具及自动接管承诺；保真实候选/校验/修正证据和显式Host维护验权，不恢复Owner ABI或声称Single已接入。"
     },
     {
       "source": "workflow-engineering.js",

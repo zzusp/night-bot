@@ -199,7 +199,7 @@ test('任务目录验收直接服务PID通过，所有阶段使用任务临时�
   assert.equal(event.tmp, event.temp); assert.equal(event.tmpdir, event.temp)
   assert.equal(event.evidenceRoot, join(dirname(fixture.prepared.directory), 'evidence'))
  }
- const { createTaskLocalAcceptanceRunner } = await import('../packages/dingtalk-dsh-assistant/execution-task-local-acceptance.js')
+ const { createTaskLocalAcceptanceRunner } = await import('../packages/dingtalk-core/execution-task-local-acceptance.js')
  assert.deepEqual(await createTaskLocalAcceptanceRunner(fixture.options).readReceipt(fixture.prepared), result)
 })
 
@@ -210,7 +210,7 @@ for (const taskFiles of [false, true]) test('验收配置和方案不以数量�
   config.scenarios=Array.from({length:40},(_,index)=>({...config.scenarios[0],id:'scenario-'+index}))
   config.companionServices=Array.from({length:5},(_,index)=>({...config.companionServices[0],id:'service-'+index}))
   const options={...fixture.options,root:join(fixture.directory,'large-runs'),config}
-  const runner=taskFiles?(await import('../packages/dingtalk-dsh-assistant/execution-task-local-acceptance.js')).createTaskLocalAcceptanceRunner(options):createLocalAcceptanceRunner(options)
+  const runner=taskFiles?(await import('../packages/dingtalk-core/execution-task-local-acceptance.js')).createTaskLocalAcceptanceRunner(options):createLocalAcceptanceRunner(options)
   const plan={cases:config.scenarios.map((scenario,index)=>({criterionId:'criterion-'+index,scenarioId:scenario.id,expected:'actual-value',steps:Array.from({length:40},(_,step)=>'操作'+step),parameters:{description:'必要业务背景'.repeat(1000)}}))}
   assert.ok(Buffer.byteLength(JSON.stringify(plan))>65536)
   const prepared=await runner.prepare({...fixture.request,plan})
@@ -224,7 +224,7 @@ for (const taskFiles of [false, true]) test('干净失败的新attempt绑定当�
  assert.equal(failed.passed,false);assert.equal(failed.cleanup.createdResources,0)
  const oldReceipt=await readFile(join(dirname(fixture.prepared.directory),'receipt.json'),'utf8')
  const options={...fixture.options,config:{...fixture.options.config,version:'fixture-2'}}
- const runner=taskFiles?(await import('../packages/dingtalk-dsh-assistant/execution-task-local-acceptance.js')).createTaskLocalAcceptanceRunner(options):createLocalAcceptanceRunner(options)
+ const runner=taskFiles?(await import('../packages/dingtalk-core/execution-task-local-acceptance.js')).createTaskLocalAcceptanceRunner(options):createLocalAcceptanceRunner(options)
  await assert.rejects(runner.execute(fixture.prepared),{code:'LOCAL_ACCEPTANCE_PREPARED_MISMATCH'})
  const retry=await runner.retryPrepared({...fixture.prepared,action:'external'},{attemptKey:'fixed-runner'})
  assert.equal(retry.runnerIdentity,runner.identity);assert.equal(retry.directory,fixture.prepared.directory)

@@ -14,7 +14,17 @@
       ],
       "fixture": {
         "file": "test/fixtures/workflow-engineering-mixed.js",
-        "sha256": "1619bd4a3d0a8d7c2e7c40335bdcd76b14b4aa341f3bd72d7c8c6f335fc5c1f2"
+        "sha256": "1619bd4a3d0a8d7c2e7c40335bdcd76b14b4aa341f3bd72d7c8c6f335fc5c1f2",
+        "review": {
+          "fromSha256": "1619bd4a3d0a8d7c2e7c40335bdcd76b14b4aa341f3bd72d7c8c6f335fc5c1f2",
+          "sha256": "fdf0125f51dfdb3fc2338704d7f02a6563d914a6560dab165a69cf6109a4b1c7",
+          "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+          "reason": "SG11: only existing same-name core imports and the pure stage-artifact reader owner/name were migrated; original helper bodies and assertions remain.",
+          "evidence": [
+            "docs/spec/resident-conversation-task-routing.md#16",
+            "test/fixtures/workflow-engineering-mixed.js"
+          ]
+        }
       },
       "cases": [
         {
@@ -45,7 +55,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "4ea42396f03dea68c02aa4d0a19c8ea60ad63ba55e598b62ee318139c80f3988",
+            "sha256": "3d84e630be17d0389916963309437f03bbbd7aedf7a1abf1905dd779eac575b8",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 3,
@@ -105,7 +125,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "fa5ca9b3952eeb058db3a78b7782eff4b98edec2b02cd94d4fbb14a89081b443",
+            "sha256": "5a43ed2b1ed4a6c57e4456bcfbdad411654c10e2bb9c600b7abe9be322f2e88c",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 7,
@@ -135,7 +165,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "50608d83a3223e33ede748c4c5c61818a8f61a050ed2d8ba88793fe63e9c6a5a",
+            "sha256": "53e3ffefdfc2bc059e67079d3ff2fc2c946d1596781f95fe0a2e8e1ed2a0a51b",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 9,
@@ -150,7 +190,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "e66865ac8c3d9e191fb6daf4fb3c9f126736d9b92adb3e17f2ff302b01039e27",
+            "sha256": "b9fc1a5b125c7314022453dc4a0d6332191a0fe05e9bfe7ae92bff2d7dd78553",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering.test.js"
+            ]
+          }
         },
         {
           "originalId": 10,
@@ -165,7 +215,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "ea64f377fb7449956bec904b6270dc97279fb453d49a1e915203a32926a2d227",
+            "sha256": "93106ce8af9038d78d3f19bca6827a68da902a27e8f63103b761036ac1c602b1",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 11,
@@ -285,7 +345,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "d7a173eab43bd3b3a44d1c794553925b38bc257edbbd749b4b764173bbec5bbc",
+            "sha256": "6220a25e5ef09aeb318ded1cf1ab0f439be70ff159018836d5903fbd67d6dc3f",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 19,
@@ -390,7 +460,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "fcd2b47e434708e5912f9760326e8e26e66740e653b668fd5d40ed18fd8e386f",
+            "sha256": "d0a3656ceefa14c8b5a6c55233965c393dceacf20abb51a4bc0d5e7b94813a7b",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 26,
@@ -405,7 +485,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "a9a7a5281c6df5edfbc41ea24757f6091288923c2720da4399a7930e42d3bae7",
+            "sha256": "9f89ff8d943e406974ed1b563e1dcadd3d9252ef67f16c7c44f51997a2dd04ea",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 27,
@@ -420,7 +510,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "ea3bcbe45c9737ded24bd8168952d07588c4f01bf76e3256d153cc99d8c31ee8",
+            "sha256": "84667bb951b65d0c396c169354cd3a0e86a695eeb24789da0f3022a231036714",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 28,
@@ -435,7 +535,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "f3641c59f020a9156ad1e5ff0c0d18c65fba3fbd7f151d5e35df8a3d24025d3e",
+            "sha256": "4dbd73dc684bc926f190e482c739355a935b921cfb3c69310fdc1374dfa9bc7a",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 29,
@@ -465,7 +575,17 @@
             "README.md#首版限制",
             "docs/ops/task-session-clean-start.md",
             "docs/ops/runtime-contracts-archive.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "a84256b866e014cf5670de24d23dc7ba5ae256da72fc940723569e26cbaf96b0",
+            "sha256": "63895ec3e98f3b280de8df9ccb6acfb9981165860a69d910b9190183655a4216",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/workflow-engineering-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 31,
@@ -484,8 +604,8 @@
         }
       ],
       "destinationSha256": {
-        "test/workflow-engineering.test.js": "2cf99ed2bdd49dc1b359a0801599c09453a2cd1fc4fc65c481f706545eea9ac1",
-        "test/workflow-engineering-history.test.js": "dd2844e350ab477e35921de3f4ab9a19494a99eb0c7cca65053b969e4c7989bb"
+        "test/workflow-engineering.test.js": "441188eb8fa7f6d02d6bb888ee59f23f74f7c9f6fe589744f11551a08f023863",
+        "test/workflow-engineering-history.test.js": "bdf4b03444fe2a42846a93875009e8b374aafed1cfbf4287d0c0facd327fbed5"
       }
     },
     {
@@ -499,7 +619,17 @@
       ],
       "fixture": {
         "file": "test/fixtures/execution-local-acceptance-mixed.js",
-        "sha256": "2e22c90b0e58e68be8165c16596ef57f3be962b7d42036f0d47e5bb50a8f9d41"
+        "sha256": "2e22c90b0e58e68be8165c16596ef57f3be962b7d42036f0d47e5bb50a8f9d41",
+        "review": {
+          "fromSha256": "2e22c90b0e58e68be8165c16596ef57f3be962b7d42036f0d47e5bb50a8f9d41",
+          "sha256": "01ed237b34041d776d655cc806b18e662b638bb3e7d7e866723192a7985bfd02",
+          "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+          "reason": "SG11: only existing same-name core imports and the pure stage-artifact reader owner/name were migrated; original helper bodies and assertions remain.",
+          "evidence": [
+            "docs/spec/resident-conversation-task-routing.md#16",
+            "test/fixtures/execution-local-acceptance-mixed.js"
+          ]
+        }
       },
       "cases": [
         {
@@ -770,7 +900,17 @@
             "packages/dingtalk-dsh-assistant/package.json#files",
             "packages/dingtalk-dsh-assistant/session-workspaces.js",
             "docs/ops/task-session-clean-start.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "8b734c42e374ca3ddc41a33e8be7ba4a7f88dbd113a127267e9d3ab6f6a8c533",
+            "sha256": "2e29f16eb44a55a0983c388d6aae841a7608d5d7e950b41707b95e2ada069dbf",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/execution-local-acceptance-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 19,
@@ -803,12 +943,13 @@
           ],
           "review": {
             "fromSha256": "22256f83d98d209bc9a7484d367771f6863ad1764e85874d11e8cc3767e4334d",
-            "sha256": "8f7dc0ad49464f3ff7966fd73ce92b4c235d513b779a205636644d85758d7fb7",
+            "sha256": "caa27d9875a1394df86d5e020f1a495f7821f35a50768077cb64825c5f860c40",
             "basisCommit": "fa14be0f5f571d0740081c65da372c5456220545",
-            "reason": "复审原#20：补真实传递依赖并使用平台无关身份配置；原LF/CRLF相等、实际源码改变不等断言及变体完整保留，不预约Windows进程。",
+            "reason": "复审原#20：补真实传递依赖并使用平台无关身份配置；原LF/CRLF相等、实际源码改变不等断言及变体完整保留，不预约Windows进程。; SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
             "evidence": [
               "docs/ops/release-230-test-recovery.md",
-              "test/execution-local-acceptance.test.js"
+              "test/execution-local-acceptance.test.js",
+              "docs/spec/resident-conversation-task-routing.md#16"
             ]
           }
         },
@@ -825,7 +966,17 @@
             "packages/dingtalk-dsh-assistant/package.json#files",
             "packages/dingtalk-dsh-assistant/session-workspaces.js",
             "docs/ops/task-session-clean-start.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "5ca284ccd09422762de857972ab2846366fa934bb6975fd57e8524e87b349b3c",
+            "sha256": "ae9bf13ba1fad10e5e8e1d7fdf25a071e39fd5426532444df72d7a81250f88f4",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/execution-local-acceptance-history.test.js"
+            ]
+          }
         },
         {
           "originalId": 22,
@@ -840,12 +991,22 @@
             "packages/dingtalk-dsh-assistant/package.json#files",
             "packages/dingtalk-dsh-assistant/session-workspaces.js",
             "docs/ops/task-session-clean-start.md"
-          ]
+          ],
+          "review": {
+            "fromSha256": "ad0a2fab2bf7b5dded0ea38d2ed3107d6801c9eb88362ec77e707585f9c26409",
+            "sha256": "7e9b9e17289509378dbd4e762b553cf1f2e0be4ac0d2294ec035101b3206dd50",
+            "basisCommit": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+            "reason": "SG11: only existing core imports/URL copy-source and the pure artifact-reader name changed; retain original assertions, variants and classification.",
+            "evidence": [
+              "docs/spec/resident-conversation-task-routing.md#16",
+              "test/execution-local-acceptance-history.test.js"
+            ]
+          }
         }
       ],
       "destinationSha256": {
-        "test/execution-local-acceptance.test.js": "0cbd4ec8432094cd716a22b215ec233e78dc9be98620b56ccf058e4d95816a41",
-        "test/execution-local-acceptance-history.test.js": "602b1994b6a5f261d320f8de8a6c49edb50074945f4110c9afa4d9bada2aad05"
+        "test/execution-local-acceptance.test.js": "9d43f2cbb52afac2a777fea670866fb52412163c392151437c0f6ce681e8e309",
+        "test/execution-local-acceptance-history.test.js": "654743791f596025643df0bad1ab076f7579bb1e84209fec72febafb715d05ed"
       }
     },
     {
@@ -3142,6 +3303,12 @@
       "destinationSha256": {
         "test/runtime.test.js": "84a0f722c97b475155b8627e9b2686a59e7c9342d9c0abe0983f142a7b307efe",
         "test/runtime-history.test.js": "f8fd4f6836ab31c4f55bd7679ae2ff03c1c4e45c5b8ceb08cf7c2925111cdbcc"
+      },
+      "retirement": {
+        "state": "removed-unmigrated",
+        "removalCommit": "77b1817d591d3454d35e0d05e5a3d39561ff84ad",
+        "evidence": "docs/retired-workflow-session-contracts.md",
+        "reason": "Only the legacy runtime containers were removed; all 149 original registrations, identities, classifications and reviews remain audit evidence. The 34 current/compatibility contracts are unported gaps, not retired contracts or current PASS."
       }
     }
   ]

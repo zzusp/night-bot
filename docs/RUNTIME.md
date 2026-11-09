@@ -6,35 +6,32 @@ services enforce authorization, side-effect intent/result receipts, bounded
 concurrency, commit-before-idle and restart fencing. An uncertain terminal commit
 fails the instance; completed effects are not redispatched on recovery.
 
-No external registry DSH runtime packages remain in a production-only install.
-Default Host composition mounts49 locally owned replacements and native spill/
-configuration support. Generic Cordis/schema/native-system libraries remain
-ordinary dependencies, rather than a DSH Host. Public legacy package names map
-explicitly to local owners/protocols; SDK ABI metadata is separate from Pi/app
-versioning. Original Runtime classes exist only in independent test references.
+生产依赖不含外部 registry DSH runtime 包。默认 Host 接入仓库内服务与官方 Pi；
+Cordis、schema 和平台系统库仍是通用依赖。原 `packages/capability-compat`、
+`packages/scope-compat` 已移除，不再要求靠旧包名 reexport 维持部署 ABI。
+历史模块计数不是当前装配数量，来源与变化以实际 manifest/guard 为准。
 
-Compatibility intentionally retained:
+## 当前保留与退休边界
 
-- The event/audit/publication/inbox façade preserves source business APIs and
-  strict receiver/ownership semantics. Its surface fold is not model context.
-- Released v0–v4 codecs preserve historical readers, adjacent migrations,
-  relationship validation, corruption refusal and plain/zstd import. The app
-  writes current history through Pi; legacy IO is isolated import support.
-- The verifier is an isolated ESM worker using the shared owned verifier. It
-  validates physical bytes, logical identity/count, prefix and complete assistant
-  streams, without the old bundled model Runtime.
-- Windows ACL/process support retains exact MIT source provenance and low-level
-  flags. Managed restart evidence binds native source paths and reviewed LF/CRLF
-  hashes. Explicit legacy deployment probes remain separate compatibility input.
+- Pi 是当前历史、消息、上下文与推理权威。Host 保留业务事件、来源授权、严格提交、
+  writer/owner 栅栏和副作用收据；这些职责不恢复 v4 publication/inbox façade。
+- DSH v0–v4 codecs、转换器、format catalog、旧 verifier worker 和历史数据导入均已退休。
+  Runtime 与离线维护仍须使用同一严格 Pi journal 解码，拒绝未提交尾并显式校验可移植路径。
+  Night Bot 自身任务档案的封存/备份/受控恢复见 [TASK-ARCHIVE](TASK-ARCHIVE.md)，不导入旧 DSH 数据。
+- 旧任务 Owner 的 controller/session 执行模块已移除。历史审计和只读原始核验输入不恢复
+  任务团队、多执行会话、旧 driver 或旧 ABI。
+- Windows ACL/runner 使用 `src/process/windows-acl.js`、`src/process/windows-acl-runner.js`，
+  继续保留派生来源与 MIT notices。ACL 迁接只是部分实现；Windows 模型子进程 privacy
+  尚未具备可生产接线，缺失时失败关闭，不由静态 guard 或普通文件工具通过推断内核隔离。
+- 当前受管入口为 `pnpm start <CONFIG>`（`bin/night-bot-run.js`），组合 `src/application.js`；
+  Web 与渠道须显式配置可选插件。旧 `start-web.ps1`、`restart-web.ps1`、
+  `recover-data-change-approval.ps1` 和 `web-module-loader.cjs` 已退休，不能当作现行运行命令。
 
-The source façade/format code is not presented as newly invented algorithms or
-additional active-service replacement credit. Original/target hashes, rewrites,
-licenses and release-generated golden byte fixtures are retained for review.
-
-Functional mapping and acceptance limits are in MIGRATION.md and VALIDATION.md.
-Real DWS/vendor/business, Windows/macOS kernel and optional Claude/browser/plugin
-integrations require their own installed, authorized environment. No current
-result claims that external acceptance has occurred.
+仍保留的派生算法继续署源，原始/目标哈希与许可供复核；静态来源守卫不等于功能验收。
+现行映射见 [MIGRATION](MIGRATION.md)，当前源码版本、工作树和实际验收见
+[唯一目标](acceptance/resident-conversation-routing/goal.md)。历史结果见 [VALIDATION](VALIDATION.md)；
+DWS/厂商/业务系统、Windows/macOS 内核和可选 CLI/插件的结果按各自安装、授权和受验版本成立，
+不能将某一集成的通过推广到其它平台、账号或本轮全量。
 
 NativeSchedule is a default Host service, with local NativeSessionController for
 ordinary cold-session activation and four session-bound model tools. Calendar,

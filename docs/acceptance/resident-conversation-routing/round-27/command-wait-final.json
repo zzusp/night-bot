@@ -1,0 +1,29 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=spec",
+    "--test-name-pattern=^(native jobs wait abort detaches without cancelling producer|owned job ids enforce session access and owner disposal drains production|throwing teardown cancellation reports orphan uncertainty and never replays producer|official job terminal commit failure keeps outcome uncertain and never publishes success)$",
+    "test/pi-native-jobs.test.js",
+    "test/pi-official-job-ledger.test.js"
+  ],
+  "exit": 0,
+  "sourceBefore": {
+    "src/native-jobs.js": "b6ecbade333d1d394d7f55408f32c3a4e84fa19c06e40f6843d2f82aa72a33e7",
+    "src/runtime/job-ledger.js": "5c0c65404ddc02bdf7bb2aa44035996998e0dc72232506a2bfdccae75e1d88d4",
+    "src/native-tool-bash.js": "11e004a2ea873f87600de756cb65b25c5d1a77a94efcb5e8f8966bac273ed060",
+    "src/native-tool-pwsh.js": "ef850d0ee5dfce8adfe064dfefe2282443c265913bdf934be56b60c27e288f37",
+    "test/pi-native-jobs.test.js": "b4305e99122193bf9568ed5478cbc0d3dd99b495be109011923ff89ec0f7b071",
+    "test/pi-official-job-ledger.test.js": "8dcfb8c09f718e94c6bff46b1a3842926db8f3933b345b68c2603136463e8f98"
+  },
+  "sourceAfter": {
+    "src/native-jobs.js": "b6ecbade333d1d394d7f55408f32c3a4e84fa19c06e40f6843d2f82aa72a33e7",
+    "src/runtime/job-ledger.js": "5c0c65404ddc02bdf7bb2aa44035996998e0dc72232506a2bfdccae75e1d88d4",
+    "src/native-tool-bash.js": "11e004a2ea873f87600de756cb65b25c5d1a77a94efcb5e8f8966bac273ed060",
+    "src/native-tool-pwsh.js": "ef850d0ee5dfce8adfe064dfefe2282443c265913bdf934be56b60c27e288f37",
+    "test/pi-native-jobs.test.js": "b4305e99122193bf9568ed5478cbc0d3dd99b495be109011923ff89ec0f7b071",
+    "test/pi-official-job-ledger.test.js": "8dcfb8c09f718e94c6bff46b1a3842926db8f3933b345b68c2603136463e8f98"
+  },
+  "logSha256": "ff1d1685de78d92b86b05c80c51133ab2268772034952437d5914a0b4dcf1c9a"
+}

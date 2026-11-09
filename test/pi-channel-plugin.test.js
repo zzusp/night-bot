@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFile,access} from 'node:fs/promises'
+import {readFile,access,writeFile,readdir,lstat,mkdir,mkdtemp,rm} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 import {createHost} from '../src/host.js'
@@ -12,6 +13,12 @@ import {requestEnvelope,requestTools,requestText,eventually} from './fixtures/re
 import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
 import {modelToolValues} from './fixtures/routing-official-model.js'
+import {validateConfig as validateDingtalkConfig} from '../src/channels/plugins/dingtalk-config.js'
+import {runDingtalkCli} from '../src/channels/plugins/dingtalk-cli.js'
+import {dingtalkChannelPaths,openDingtalkIngress} from '../src/channels/plugins/dingtalk-storage.js'
+import {dingtalkIngressAdapter} from '../src/channels/plugins/dingtalk-ingress.js'
+import {selectDwsProfile,resolveDingtalkBinding} from '../src/channels/plugins/dingtalk-binding.js'
+
 
 test('core initializes without a DWS executable or plugin, and disabled plugins never register a transport',async t=>{
   const f=await memoryHost(t);assert.equal(f.host.ctx.get('dingtalkChannel'),undefined);assert.equal(f.host.ctx.channels.transports.size,0)
@@ -21,9 +28,9 @@ test('core initializes without a DWS executable or plugin, and disabled plugins 
 test('optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data',async t=>{
   const f=await memoryHost(t);let commands=0
   const runner={cwd:f.root,async run(){commands++;throw Error('No real CLI calls in plugin registration test')},spawn(){commands++;throw Error('No subscription requested')}}
-  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture-profile',writesAuthorized:false,listen:false},{runner})})
-  const plugin=f.host.ctx.get('dingtalkChannel');assert.ok(plugin);if(plugin.accountPolicy.mode==='private')assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')));else{assert.equal(plugin.accountDirectory,undefined);assert.equal(plugin.accountPolicy.sharedAcrossInstances,true)}
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{isOwnNotification:()=>false}})
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('dingtalk-dws',{dingtalk_group_id:'room-fixture'}),pluginDependencies(f,runner))})
+  const plugin=f.host.ctx.channels.plugins.get('dingtalk-dws');assert.ok(plugin);if(plugin.accountPolicy.mode==='private')assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')));else{assert.equal(plugin.accountDirectory,undefined);assert.equal(plugin.accountPolicy.sharedAcrossInstances,true)}
+  await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{},tasks:{isOwnNotification:()=>false}})
   let captured;const receive=f.host.ctx.channels.receive.bind(f.host.ctx.channels);f.host.ctx.channels.receive=input=>{captured=input;return receive(input)}
   const response=await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'real-source-1',senderOpenDingTalkId:'authenticated-sender',text:'quoted boundary proof',occurredAt:'2026-11-05T10:00:00.000Z',quotedMessage:{messageId:'original-quoted-message',text:'earlier context',senderOpenDingTalkId:'quoted-person'}})
   assert.equal(captured.sentAt,'2026-11-05T10:00:00.000Z');assert.deepEqual(captured.quotedMessage,{messageId:'original-quoted-message',text:'earlier context',senderId:'quoted-person'});
@@ -66,9 +73,10 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   const streams=new Map(),calls=[]
   const runner={
     async run(args){calls.push(args);return {exitCode:0,stdout:JSON.stringify(args.includes('+messages-query-send-status')?{result:{sendStatus:'SUCCESS',openConversationId:'private',openMessageId:'sent-private'}}:(args.includes('+messages-send')||args.includes('+messages-reply'))?{sendReceipt:{openTaskId:'send-task'}}:{messages:[],complete:true}),stderr:''}},
-    spawn(args,callbacks){const done=Promise.withResolvers(),kind=args.includes('user_im_message_receive_o2o')?'private:'+args[args.indexOf('--open-dingtalk-id')+1]:args[args.indexOf('--kind')+1];streams.set(kind,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}},
+    spawn(args,callbacks){const done=Promise.withResolvers(),kind=args.includes('user_im_message_receive_o2o')||args.includes('sender')?'private:'+args[args.indexOf('--open-dingtalk-id')+1]:args[args.indexOf('--kind')+1];streams.set(kind,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}},
   }
-  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture',writesAuthorized:true,groups:['room'],directChats:true,directPeers:['peer'],assistantActorId:'self'},{runner})})
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('dingtalk-dws',{dingtalk_group_id:'room',dingtalk_writes_authorized:true,dingtalk_listen:true}),pluginDependencies(f,runner))})
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('private-dws',{dingtalk_conversation_type:'chat',dingtalk_group_id:undefined,dingtalk_user_id:'peer-user',dingtalk_writes_authorized:true,dingtalk_listen:true}),pluginDependencies(f,runner))})
   await f.host.ctx.plugin({inject,apply:ctx=>applyApplication(ctx,{...f.config,resident:{port:0,taskSessions:{instanceId:'bridge',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:'2026-01-01T00:00:00Z'}}})})
   const app=f.host.ctx.get('application'),channels=f.host.ctx.channels
   t.after(()=>app.close())
@@ -89,12 +97,12 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   await new Promise(r=>setTimeout(r,25));assert.ok(![...channels.contexts.values()].some(context=>context.conversationId==='foreign-private'))
   assert.ok([...streams.keys()].every(key=>key!=='all-direct'))
   streams.get('private:peer').onStdoutLine(JSON.stringify({...event,conversation_id:'private',message_id:'private-message'}))
-  const directId=channels.identity({...input,type:'chat',conversationId:'private',messageId:'private-message'}).sessionId
+  const directId=channels.identity({...input,type:'chat',channelId:'private-dws',conversationId:'private',messageId:'private-message'}).sessionId
   await until(()=>app.store.getGroup(directId)?.messages.length)
   assert.notEqual(directId,groupId)
-  const notification={id:'private-send-key',payload:{conversationId:directId,actorId:channels.identity(input).principal,text:'private answer',sourceMessageId:'private-message'}}
+  const notification={id:'private-send-key',payload:{conversationId:directId,actorId:channels.identity({...input,channelId:'private-dws'}).principal,text:'private answer',sourceMessageId:'private-message'}}
   const ack=await channels.transportCall('send',notification)
-  const send=calls.find(args=>args.includes('--open-dingtalk-id'));assert.equal(send[send.indexOf('--open-dingtalk-id')+1],'peer');assert.ok(!send.includes('--group'));assert.ok(send.includes('+messages-reply'));assert.equal(send[send.indexOf('--conversation-id')+1],'private');assert.equal(send[send.indexOf('--message-id')+1],'private-message')
+  const send=calls.find(args=>args.includes('+messages-reply'));assert.ok(send,'actual quoted direct send must exist independently of private history reads');assert.equal(send[send.indexOf('--open-dingtalk-id')+1],'peer');assert.ok(!send.includes('--group'));assert.ok(send.includes('+messages-reply'));assert.equal(send[send.indexOf('--conversation-id')+1],'private');assert.equal(send[send.indexOf('--message-id')+1],'private-message')
   assert.equal((await channels.transportCall('readback',{...notification,ack})).messageId,'sent-private')
   assert.equal(await channels.transportCall('readback',notification),undefined)
   assert.equal(channels.canDeliver({...notification,payload:{...notification.payload,artifact:{}}}),false)
@@ -115,7 +123,7 @@ test('manifest validation rejects duplicate types, escaped entries and duplicate
   await assert.rejects(channelPluginRows({channelPluginDirs:['plugins']},paths),/TYPE_DUPLICATE/)
   await manifest({apiVersion:1,type:'external',entry:'../../outside.mjs'})
   await assert.rejects(channelPluginRows({channelPluginDirs:['plugins']},paths),/ENTRY_OUTSIDE_PACKAGE/)
-  await assert.rejects(channelPluginRows({channelPlugins:[{type:'dingtalk-dws',enabled:true},{type:'dingtalk-dws',enabled:true}]},paths),/ID_INVALID_OR_DUPLICATE/)
+  await assert.rejects(channelPluginRows({channelPlugins:[{type:'dingtalk-dws',channelId:'duplicate',enabled:true,config:dingtalkPublic()},{type:'dingtalk-dws',channelId:'duplicate',enabled:true,config:dingtalkPublic()}]},paths),/ID_INVALID_OR_DUPLICATE/)
   assert.deepEqual(await channelPluginRows({channelPlugins:[{type:'absent',enabled:false}]},paths),[])
 })
 
@@ -137,11 +145,11 @@ test('generic message readers use neutral identities and enforce conversation sc
 
 test('multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization',async t=>{
   const f=await memoryHost(t),channels=f.host.ctx.channels,runner={run(){throw Error('unexpected CLI')},spawn(){throw Error('unexpected listener')}}
-  for(const channelId of ['account-one','account-two'])await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,listen:false,profile:'fixture',channelId},{runner})})
+  for(const channelId of ['account-one','account-two'])await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig(channelId,{dingtalk_group_id:'shared'}),pluginDependencies(f,runner))})
   assert.equal(channels.plugins.size,2);assert.equal(channels.transports.size,2)
   if(channels.plugins.get('account-one').accountPolicy.mode==='private')assert.notEqual(channels.plugins.get('account-one').accountDirectory,channels.plugins.get('account-two').accountDirectory)
   else{assert.equal(channels.plugins.get('account-one').accountDirectory,undefined);assert.equal(channels.plugins.get('account-two').accountPolicy.sharedAcrossInstances,true)}
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{isOwnNotification:()=>false}})
+  await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{},tasks:{isOwnNotification:()=>false}})
   await assert.rejects(channels.plugins.get('account-one').acceptHistoryMessage({groupId:'private',messageId:'m',senderOpenDingTalkId:'peer',text:'private'},{type:'chat'}),/CHAT_NOT_AUTHORIZED/)
   const raw={groupId:'shared',messageId:'same-message',senderOpenDingTalkId:'same-peer',text:'isolated account message',quotedMessage:{messageId:'quote-without-author',content:'unknown identity'}}
   const one=await channels.plugins.get('account-one').acceptHistoryMessage(raw),two=await channels.plugins.get('account-two').acceptHistoryMessage(raw)
@@ -168,23 +176,23 @@ test('DWS private credentials use supported roots; Windows defaults to the prote
 
 test('system-account plugins use the existing CLI context and describe shared login without creating a private vault',async t=>{
   const f=await memoryHost(t),channels=f.host.ctx.channels,runner={run(){throw Error('unexpected CLI')},spawn(){throw Error('unexpected listener')}}
-  for(const channelId of ['shared-one','shared-two'])await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,listen:false,profile:'fixture',channelId,accountMode:'system'},{runner})})
+  for(const channelId of ['shared-one','shared-two'])await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig(channelId,{dingtalk_account_mode:'system'}),pluginDependencies(f,runner))})
   const one=channels.plugins.get('shared-one'),two=channels.plugins.get('shared-two')
   assert.equal(one.accountPolicy.mode,'system');assert.equal(one.accountPolicy.sharedAcrossInstances,true);assert.equal(one.accountPolicy.independentLogin,false)
   assert.equal(one.accountDirectory,undefined);assert.equal(two.accountDirectory,undefined)
   assert.deepEqual(channels.transports.get('shared-one').capabilities.account,one.accountPolicy)
   const {readdir}=await import('node:fs/promises')
   assert.ok(!(await readdir(f.host.ctx.runtimePaths.secrets)).some(name=>name.startsWith('dingtalk-dws')))
-  await f.host.ctx.parallel('night/ready',{runtime:{},tasks:{}})
+  await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{},tasks:{}})
   assert.equal(channels.transports.size,2)
 })
 
 test('group-only DWS never subscribes to private messages or polls private history',async t=>{
   const f=await memoryHost(t),commands=[],streams=[]
   const runner={async run(args){commands.push(args);return {exitCode:0,stdout:'{"messages":[],"complete":true}',stderr:''}},spawn(args,hooks){streams.push(args);const done=Promise.withResolvers();queueMicrotask(()=>hooks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}}}
-  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'fixture',groups:['only-room'],directPeers:['not-enabled'],operatorPeers:['also-not-enabled']},{runner})})
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('dingtalk-dws',{dingtalk_group_id:'only-room',dingtalk_listen:true,dingtalk_operator_peers:['also-not-enabled']}),pluginDependencies(f,runner))})
   let privateQueries=0
-  await f.host.ctx.parallel('night/ready',{runtime:{getGroup:()=>({messages:[],outbox:[]}),listAuthorizationRequests(){privateQueries++;return []}},tasks:{}})
+  await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{getGroup:()=>({messages:[],outbox:[]}),listAuthorizationRequests(){privateQueries++;return []}},tasks:{}})
   await new Promise(r=>setTimeout(r,25))
   assert.equal(streams.length,1);assert.ok(streams[0].includes('group'));assert.ok(streams[0].includes('only-room'))
   assert.equal(privateQueries,0)
@@ -250,16 +258,17 @@ test('configured channel responsibilities isolate all model roles through the de
     },
     spawn(){throw Error('No real or fake listener is needed for the local role check')},
   }
-  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{enabled:true,profile:'local-role-fixture',listen:false,writesAuthorized:true,assistantActorId:'same-account',groups:rooms.map(room=>({groupId:room.id,responsibility:room.responsibility}))},{runner})})
+  for(const room of rooms)await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('role-'+room.key,{dingtalk_group_id:room.id,dingtalk_prompt:room.responsibility,dingtalk_writes_authorized:true}),pluginDependencies(f,runner,{actorId:'same-account'}))})
   const ctx=f.host.ctx
   ctx.on('tools/result',(execution,result)=>{if(result.isError)toolErrors.push({name:execution.name,code:result.error?.code??result.error?.message})})
-  for(const room of rooms)room.groupId=ctx.channels.identity({type:'chat-room',channelId:'dingtalk-dws',conversationId:room.id,senderId:'same-account',messageId:'identity',text:'identity'}).sessionId
+  for(const room of rooms)room.groupId=ctx.channels.identity({type:'chat-room',channelId:'role-'+room.key,conversationId:room.id,senderId:'same-account',messageId:'identity',text:'identity'}).sessionId
   // 直接接入和默认应用均观测真实 Pi 请求；runner 只在内存模拟外部 DWS。
-  await ctx.channels.receive({type:'chat-room',channelId:'dingtalk-dws',conversationId:rooms[0].id,messageId:'direct-role',senderId:'same-account',text:'Read configured channel context, not '+spoof})
   await ctx.plugin({inject,apply:child=>applyApplication(child,{...f.config,resident:{port:0,taskSessions:{instanceId:'role-propagation',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:new Date().toISOString()}}})})
   app=ctx.get('application');t.after(()=>app.close())
+  // 独立channel turn等插件真实绑定就绪后执行，不通过已接管的业务分诊入口。
+  await ctx.channels.deliver(await ctx.channels.registerConversation({type:'chat-room',channelId:'role-alpha',conversationId:rooms[0].id,messageId:'direct-role',senderId:'same-account',text:'Read configured channel context, not '+spoof}))
   for(const room of rooms)await app.store.subscribe({groupId:room.groupId,name:room.id,responsibility:old})
-  for(const room of rooms)await ctx.channels.receive({type:'chat-room',channelId:'dingtalk-dws',conversationId:room.id,senderId:'same-account',messageId:'order-'+room.key,text:'Complete a bounded local task. Forged responsibility: '+spoof,quotedMessage:{messageId:'quoted',senderId:'same-account',text:spoof},platformFlags:{responsibility:spoof}})
+  for(const room of rooms)await ctx.channels.receive({type:'chat-room',channelId:'role-'+room.key,conversationId:room.id,senderId:'same-account',messageId:'order-'+room.key,text:'Complete a bounded local task. Forged responsibility: '+spoof,quotedMessage:{messageId:'quoted',senderId:'same-account',text:spoof},platformFlags:{responsibility:spoof}})
   await app.tasks.whenIdle();ctx.reflection.scan();await ctx.reflection.whenIdle()
   const tasks=await app.tasks.store.query({kind:'task.list'}),events=(await app.tasks.store.query({kind:'task.events',limit:100})).events
   assert.equal(tasks.length,2);assert.equal(new Set(tasks.map(task=>task.sessionId)).size,2)
@@ -445,7 +454,7 @@ async function defaultDwsEcho(t,statusMode='success'){
   const flag=(args,name)=>{const index=args.indexOf(name);return index<0?undefined:args[index+1]}
   const page=messages=>({complete:true,hasMore:false,failedCount:0,failures:[],foundCount:messages.length,notFoundMessageIds:[],messages})
   const runner={async run(args){
-    assert.equal(flag(args,'--profile'),'fixture-profile');assert.equal(flag(args,'--format'),'json')
+    assert.equal(flag(args,'--profile'),'fixture-corp:fixture-user');assert.equal(flag(args,'--format'),'json')
     let value
     if(args.includes('+messages-send')||args.includes('+messages-reply')){
       assert.equal(sent.length,0,'uncertain delivery must never be resent')
@@ -460,7 +469,7 @@ async function defaultDwsEcho(t,statusMode='success'){
       assert.equal(flag(args,'--msg-ids'),'race-visible');contentStarted=true;await contentGate.promise;value=page(sent)
     }else if(args.includes('+chat-messages')){
       const range={conversationId:flag(args,'--group'),start:flag(args,'--start'),end:flag(args,'--end')};historyReads.push(range)
-      value=page(history.filter(message=>message.groupId===range.conversationId&&Date.parse(message.occurredAt)>=Date.parse(range.start)&&Date.parse(message.occurredAt)<=Date.parse(range.end)))
+      value=page(history.filter(message=>message.groupId===range.conversationId&&Date.parse(message.occurredAt)>=Date.parse(range.start)&&Date.parse(message.occurredAt)<=Date.parse(range.end)).map(message=>({...message,conversationId:message.groupId,createTime:message.occurredAt})))
     }else throw Error('Unexpected fixture DWS command: '+args.slice(0,3).join(' '))
     return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
   },spawn(args,callbacks){
@@ -470,17 +479,17 @@ async function defaultDwsEcho(t,statusMode='success'){
   }}
   async function mount({recovering=false}={}){
     const ctx=f.host.ctx;channels=ctx.channels
-    for(const channelId of ['dingtalk-dws','other-dws'])await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,{enabled:true,channelId,profile:'fixture-profile',accountMode:'system',writesAuthorized:true,operatorNotifications:false,listen:channelId==='dingtalk-dws',groups:['race-room','other-room'],assistantActorId:'same-account'},{runner})})
+    for(const channelId of ['dingtalk-dws','other-dws','other-room-dws'])await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,pluginConfig(channelId,{dingtalk_group_id:channelId==='other-room-dws'?'other-room':'race-room',dingtalk_account_mode:'system',dingtalk_writes_authorized:true,dingtalk_listen:channelId==='dingtalk-dws'}),pluginDependencies(f,runner,{actorId:'same-account'}))})
     await ctx.plugin({inject,apply:child=>applyApplication(child,{...f.config,resident:{host:'127.0.0.1',port:0,taskSessions:{instanceId:'default-echo',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:'2026-01-01T00:00:00Z'}}})})
     app=ctx.get('application');plugin=channels.plugins.get('dingtalk-dws');otherPlugin=channels.plugins.get('other-dws')
     assert.equal(channels.operatorNotifications,undefined)
-    await eventually(()=>plugin.health.groups?.length===2&&plugin.health.groups.every(group=>group.listener?.state==='ready'&&(recovering||group.backfill?.state==='ok')),'real optional bridge ready with initial history',t.signal)
+    await eventually(()=>plugin.health.conversations?.length===1&&plugin.health.conversations.every(group=>group.listener?.state==='ready'&&(recovering||group.backfill?.state==='ok')),'real optional bridge ready with initial history',t.signal)
   }
   await mount()
   const raw={groupId:'race-room',messageId:'race-request',senderOpenDingTalkId:'alice',text:'Please send one bounded reply',occurredAt:new Date().toISOString()}
   const input=message=>({type:'chat-room',channelId:'dingtalk-dws',conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text})
   const identity=channels.identity(input(raw));assert.notEqual(identity.sessionId,raw.groupId)
-  const ingressFile=join(f.host.ctx.runtimePaths.state,'channels','dingtalk-dws','ingress.json')
+  const ingressFile=dingtalkChannelPaths(f.host.ctx.runtimePaths,'dingtalk-dws').ingressFile
   async function absent(message){
     assert.equal(channels.groupContext(channels.identity(input(message)).sessionId)?.messageFacts?.[message.messageId],undefined,'no channel fact may precede identity resolution')
     assert.equal((await app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===message.messageId&&source.groupId===identity.sessionId).length,0)
@@ -507,7 +516,8 @@ test('default optional DWS filters exact echo before registration while content 
     const current=await h.app.tasks.store.query({kind:'notification.get',notificationId:notice.id});assert.notEqual(current.state,'delivered');assert.equal(current.receipt?.messageId,undefined);assert.equal(current.receipt?.observedAt,undefined)
     const fresh={...echo,messageId:'same-account-real-message'}
     assert.notEqual((await h.receive(fresh)).reason,'own-notification')
-    assert.notEqual((await h.receive({...echo,groupId:'other-room'})).reason,'own-notification')
+    await assert.rejects(h.receive({...echo,groupId:'other-room'}),/AUTHENTICATED_IDENTITY_REQUIRED/)
+    assert.notEqual((await h.channels.plugins.get('other-room-dws').acceptHistoryMessage({...echo,groupId:'other-room'})).reason,'own-notification')
     assert.notEqual((await h.otherPlugin.acceptHistoryMessage(echo)).reason,'own-notification')
     await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.length===4&&h.triaged.includes(fresh.messageId)},'three non-echo messages reach formal source and triage',t.signal)
   }finally{h.release()}
@@ -519,18 +529,22 @@ test('default optional DWS filters exact echo before registration while content 
 
 for(const mode of ['timeout','error'])test('default optional DWS defers unresolved '+mode+' identity and cold backfills the original older message once',{timeout:nativeTestTimeout(45000)},async t=>{
   const h=await defaultDwsEcho(t,mode)
+  let phase='status',deferred
   try{
     await h.receive(h.raw);await eventually(()=>h.statusStarted,'original notification status query started',t.signal)
-    const deferred={...h.raw,messageId:'older-real-message',text:'A separate genuine request',occurredAt:new Date(Date.parse(h.raw.occurredAt)-120000).toISOString()}
+    phase='typed-deferral'
+    deferred={...h.raw,messageId:'older-real-message',text:'A separate genuine request',occurredAt:new Date(Date.parse(h.raw.occurredAt)-120000).toISOString()}
     h.emit(deferred)
-    const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'typed deferral persists its original lower bound',t.signal)
+    const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'typed deferral persists its original lower bound',t.signal).catch(async error=>{t.diagnostic(JSON.stringify({mode,health:h.plugin.health,notifications:(await h.app.tasks.store.query({kind:'notification.list'})).map(n=>({id:n.id,state:n.state,hasAck:!!n.ack,receipt:n.receipt})),triaged:h.triaged,errors:h.f.errors.map(value=>({code:value.code,message:value.message}))}));throw error})
     assert.ok(Date.parse(checkpoint.recoveryFromAt)<=Date.parse(deferred.occurredAt));assert.ok(Date.parse(deferred.occurredAt)<Date.parse(h.raw.occurredAt)-30000)
     await h.absent(deferred);assert.equal(h.plugin.health.healthy,false)
     const other={...deferred,groupId:'other-room',messageId:'other-scope-real-message'}
-    assert.notEqual((await h.receive(other)).reason,'own-notification')
+    assert.notEqual((await h.channels.plugins.get('other-room-dws').acceptHistoryMessage(other)).reason,'own-notification')
     await eventually(()=>h.triaged.includes(other.messageId),'another scope remains available during the unresolved send',t.signal)
+    phase='cold-admission'
     h.release();await h.restart([deferred])
     await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.some(source=>source.messageId===deferred.messageId)&&h.triaged.includes(deferred.messageId)},'cold complete history formally admits the same deferred message',t.signal)
+    phase='cold-drain'
     await h.app.tasks.whenIdle()
     const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===deferred.messageId)
     assert.equal(sources.length,1);assert.equal(sources[0].version,1);assert.equal(h.triaged.filter(id=>id===deferred.messageId).length,1)
@@ -538,6 +552,18 @@ for(const mode of ['timeout','error'])test('default optional DWS defers unresolv
     await eventually(async()=>JSON.parse(await readFile(h.ingressFile,'utf8')).recoveryFromAt===undefined,'only successful complete recovery clears the durable lower bound',t.signal)
     assert.equal(h.sent.length,1);assert.equal((await h.app.tasks.store.query({kind:'task.list'})).length,0)
     t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-'+mode,sourceCount:1,triageCount:1,oldTimestampRecovered:true,sendCount:1,realVendorExecuted:false}))
+  }catch(error){
+    const describe=(value,seen=new Set())=>{
+      if(value===null||typeof value!=='object')return value
+      if(seen.has(value))return '[circular]'
+      seen.add(value)
+      return {name:value.name,code:value.code,message:value.message,stack:value.stack,...value.cause!==undefined?{cause:describe(value.cause,seen)}:{},...Array.isArray(value.errors)?{errors:value.errors.map(item=>describe(item,seen))}:{}}
+    }
+    let ingress,sources
+    try{ingress=JSON.parse(await readFile(h.ingressFile,'utf8'))}catch(value){ingress={readError:describe(value)}}
+    try{sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===deferred?.messageId)}catch(value){sources={queryError:describe(value)}}
+    t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-diagnostic',mode,phase,error:describe(error),health:h.plugin.health,ingress,historyReads:h.historyReads.map(range=>({...range,coversDeferred:range.conversationId===deferred?.groupId&&Date.parse(range.start)<=Date.parse(deferred?.occurredAt)&&Date.parse(range.end)>=Date.parse(deferred?.occurredAt)})),deferred,sources,triageCount:h.triaged.filter(id=>id===deferred?.messageId).length,triaged:h.triaged,errors:h.f.errors.map(value=>describe(value)),rawBridgeErrorUnavailable:true,realVendorExecuted:false}))
+    throw error
   }finally{h.release()}
 })
 
@@ -549,10 +575,196 @@ test('default optional DWS keeps permanently unknown identity degraded and retai
     h.emit(deferred)
     const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'unknown identity pins durable recovery',t.signal)
     await h.absent(deferred);await h.restart([deferred])
-    await eventually(()=>h.plugin.health.groups.some(group=>group.backfill?.lastError==='CHANNEL_NOTIFICATION_IDENTITY_PENDING'),'cold history exposes unresolved identity rather than pretending success',t.signal)
+    await eventually(()=>h.plugin.health.conversations.some(group=>group.backfill?.lastError==='CHANNEL_NOTIFICATION_IDENTITY_PENDING'),'cold history exposes unresolved identity rather than pretending success',t.signal)
     await h.absent(deferred)
     const current=JSON.parse(await readFile(h.ingressFile,'utf8'))
     assert.ok(Date.parse(current.recoveryFromAt)<=Date.parse(checkpoint.recoveryFromAt));assert.equal(h.plugin.health.healthy,false)
     assert.equal(h.sent.length,1);assert.notEqual((await h.app.tasks.store.query({kind:'notification.list'}))[0].state,'delivered')
   }finally{h.release()}
+})
+
+const pluginConfig=(channelId,extra={})=>({...validateDingtalkConfig(dingtalkPublic(extra)),enabled:true,channelId})
+function pluginDependencies(f,runner,{actorId='self',peerId='peer'}={}){
+ const bindingRunner={...runner,async run(args){
+  const flag=name=>args[args.indexOf(name)+1]
+  let value
+  if(args[0]==='profile')value={success:true,profiles:[{profile:'fixture-corp:fixture-user',corpId:'fixture-corp',userId:'fixture-user',userName:'Fixture Self',isOrgCurrent:true}]}
+  else if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:'fixture-corp',userId:'fixture-user',orgUserName:'Fixture Self'}}]}
+  else if(args[0]==='contact'&&args.includes('get'))value={result:[{orgEmployeeModel:{corpId:'fixture-corp',userId:flag('--ids'),orgUserName:'Fixture Peer'}}]}
+  else if(args.includes('+search-user'))value={count:1,users:[{userId:flag('--query')==='Fixture Self'?'fixture-user':'peer-user',openDingTalkId:flag('--query')==='Fixture Self'?actorId:peerId}]}
+  else if(args.includes('conversation-info'))value={result:{openConversationId:args.includes('--group')?flag('--group'):'private',singleChat:!args.includes('--group')}}
+  else return runner.run(args)
+  return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+ }}
+ return {runner:bindingRunner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:f.root,DWS_KEYCHAIN_DIR:f.root}}
+}
+const dingtalkPublic=(extra={})=>({dingtalk_profile:'fixture-corp:fixture-user',dingtalk_conversation_type:'chat-room',dingtalk_group_id:'fixture-room',dingtalk_listen:false,...extra})
+const completeHistory=messages=>({messages,complete:true,hasMore:false,partial:false,failedCount:0,failures:[]})
+function boundDwsFixture(){
+ const calls=[],streams=new Map(),state={authenticated:true,exitCode:0,messages:[]}
+ const profile={profile:'fixture-corp:fixture-user',corpId:'fixture-corp',userId:'fixture-user',userName:'Fixture Self',isOrgCurrent:true}
+ const runner={
+  async run(args){
+   calls.push([...args]);let value
+   if(args[0]==='profile')return {exitCode:state.exitCode,stdout:JSON.stringify({success:true,profiles:state.authenticated?[profile]:[]}),stderr:''}
+   assert.equal(args[args.indexOf('--profile')+1],profile.profile)
+   if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:profile.corpId,userId:profile.userId,orgUserName:'Fixture Self'}}]}
+   else if(args.includes('+search-user'))value={count:1,users:[{userId:profile.userId,openDingTalkId:'self-open'}]}
+   else if(args.includes('conversation-info'))value={result:{openConversationId:args[args.indexOf('--group')+1],singleChat:false}}
+   else if(args.includes('+chat-messages'))value=completeHistory(state.messages)
+   else assert.fail('Unexpected isolated DWS command: '+args.slice(0,2).join(' '))
+   return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+  },
+  spawn(args,callbacks){
+   assert.ok(args.includes('+listen-im'));assert.equal(args[args.indexOf('--kind')+1],'group')
+   const done=Promise.withResolvers();streams.set('group',callbacks)
+   queueMicrotask(()=>callbacks.onStderrLine('[event] ready'))
+   return {done:done.promise,terminate(){done.resolve()}}
+  },
+ }
+ return {runner,calls,streams,state,profile}
+}
+async function dingtalkTree(root){
+ const rows=[]
+ async function visit(path,name){
+  const info=await lstat(path)
+  rows.push({name,mode:info.mode,ino:info.ino,nlink:info.nlink,mtimeMs:info.mtimeMs,...info.isFile()?{body:(await readFile(path)).toString('base64')}: {}})
+  if(info.isDirectory())for(const child of (await readdir(path)).sort())await visit(join(path,child),name+'/'+child)
+ }
+ await visit(root,'.');return rows
+}
+
+test('SG12 钉钉CLI check完整零写，disabled跨日启用保留实际首次下界且查询不被午夜替代',async t=>{
+ const f=await memoryHost(t),paths=f.host.ctx.runtimePaths;await f.close()
+ const file=join(paths.config,'config.json'),epoch='2026-01-02T03:04:05.000Z'
+ const existing={type:'dingtalk-dws',channelId:'preinstalled',enabled:false,config:dingtalkPublic()}
+ await writeFile(file,JSON.stringify({...f.config,resident:{taskSessions:{ingressEpoch:epoch}},channelPlugins:[existing]}))
+ const invoke=async(args,environment={})=>{let output;await runDingtalkCli([file,...args],{environment,write:text=>{output=JSON.parse(text)}});return output}
+ const before=await dingtalkTree(f.root)
+ for(const args of [
+  ['add','--channel-id','new-disabled','--enabled','false','--json',JSON.stringify(dingtalkPublic()),'--check'],
+  ['disable','--channel-id','preinstalled','--check'],['enable','--channel-id','preinstalled','--check'],
+ ]){const result=await invoke(args);assert.equal(result.checkOnly,true);assert.equal(result.liveApplied,false);assert.equal(result.changed,true)}
+ const env={DINGTALK_CHANNELS_JSON:JSON.stringify([{...existing,channelId:'env-group'},{...existing,channelId:'env-private',config:dingtalkPublic({dingtalk_conversation_type:'chat',dingtalk_group_id:undefined,dingtalk_user_id:'peer-user'})}])}
+ assert.equal((await invoke(['env','--check'],env)).changed,true)
+ assert.deepEqual(await dingtalkTree(f.root),before)
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-01T15:00:00.000Z')})
+ const created=await invoke(['add','--channel-id','new-disabled','--enabled','false','--json',JSON.stringify(dingtalkPublic())])
+ assert.equal(created.ok,true);assert.equal(created.liveApplied,false);assert.equal(created.restartRequired,true)
+ const ingressFile=dingtalkChannelPaths(paths,'new-disabled').ingressFile
+ const first=JSON.parse(await readFile(ingressFile,'utf8'))
+ assert.equal(first.firstStartedAt,'2026-10-01T15:00:00.000Z');assert.equal(first.paused,true)
+ t.mock.timers.setTime(Date.parse('2026-10-03T16:00:00.000Z'))
+ await invoke(['enable','--channel-id','new-disabled'])
+ const next=JSON.parse(await readFile(ingressFile,'utf8'))
+ assert.equal(next.firstStartedAt,first.firstStartedAt);assert.equal(next.pausedAt,first.pausedAt);assert.equal(next.recoveryFromAt,first.firstStartedAt)
+ await invoke(['enable','--channel-id','preinstalled'])
+ assert.equal(JSON.parse(await readFile(dingtalkChannelPaths(paths,'preinstalled').ingressFile,'utf8')).firstStartedAt,epoch)
+ const ingress=await openDingtalkIngress(paths,'new-disabled'),ranges=[],config={...validateDingtalkConfig(dingtalkPublic()),binding:{conversationId:'fixture-room',actorId:'self-open'}}
+ const adapter=dingtalkIngressAdapter({async readGroupRange(id,range){assert.equal(id,'fixture-room');ranges.push(range);return completeHistory([])}},config,{getFromAt:()=>ingress.snapshot().recoveryFromAt})
+ await adapter.readGroupRange('fixture-room',{start:'2026-10-01T00:00:00.000Z',end:'2026-10-03T16:00:00.000Z'})
+ assert.equal(ranges[0].start,first.firstStartedAt)
+ await ingress.saveBridgeState({...ingress.snapshot(),recoveryFromAt:epoch})
+ await adapter.readGroupRange('fixture-room',{start:epoch,end:'2026-10-03T16:00:00.000Z'})
+ assert.equal(ranges[1].start,epoch)
+ await ingress.drain();t.mock.timers.reset()
+ const stable=await dingtalkTree(f.root)
+ await assert.rejects(invoke(['add','--channel-id','bad','--json','{}','--check']),/DINGTALK_CONFIG_INVALID/)
+ assert.deepEqual(await dingtalkTree(f.root),stable)
+ await assert.rejects(openDingtalkIngress(paths,'missing-start'),{code:'DINGTALK_INGRESS_START_REQUIRED'})
+ assert.deepEqual(await dingtalkTree(f.root),stable)
+})
+
+test('SG12 默认真实登录文件观察从待认证接绑定，恢复context安全且普通使用不触发重试',async t=>{
+ const f=await memoryHost(t),channels=f.host.ctx.channels,paths=f.host.ctx.runtimePaths,auth=join(f.root,'isolated-dws-metadata'),wire=boundDwsFixture()
+ await mkdir(auth);wire.state.authenticated=false
+ const profileFile=join(auth,'profiles.json'),metadata={profiles:[{corpId:'fixture-corp',userId:'fixture-user',lastLoginAt:'2026-10-01T00:00:00Z',lastUsedAt:'2026-10-01T00:00:00Z'}]}
+ await writeFile(profileFile,JSON.stringify(metadata))
+ const config={...validateDingtalkConfig(dingtalkPublic({dingtalk_prompt:'隔离职责'})),enabled:true,channelId:'auth-observed'}
+ const input={type:'chat-room',channelId:config.channelId,conversationId:'fixture-room',senderId:'self-open',messageId:'restored',text:'历史上下文'}
+ const context=await channels.registerConversation(input)
+ await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,config,{runner:wire.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:auth}})})
+ const plugin=channels.plugins.get(config.channelId),epoch='2026-01-02T03:04:05.000Z'
+ await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:epoch}}},runtime:{},tasks:{isOwnNotification:()=>false}})
+ assert.equal(plugin.health.state,'waiting-auth');assert.equal(channels.groupContext(context.sessionId).responsibility,undefined);assert.equal(channels.responsibility(context.sessionId),undefined)
+ const ingressFile=dingtalkChannelPaths(paths,config.channelId).ingressFile
+ assert.equal(JSON.parse(await readFile(ingressFile,'utf8')).firstStartedAt,epoch)
+ const attempts=()=>wire.calls.filter(args=>args[0]==='profile').length
+ assert.equal(attempts(),1)
+ metadata.profiles[0].lastUsedAt='2026-10-02T00:00:00Z';await writeFile(profileFile,JSON.stringify(metadata))
+ await new Promise(resolve=>setTimeout(resolve,350));assert.equal(attempts(),1);assert.equal(plugin.health.state,'waiting-auth')
+ wire.state.authenticated=true;metadata.profiles[0].lastLoginAt='2026-10-03T00:00:00Z';await writeFile(profileFile,JSON.stringify(metadata))
+ await eventually(()=>plugin.health.state==='ready','default login observer bound exact channel')
+ assert.equal(attempts(),2);assert.equal(channels.responsibility(context.sessionId),'隔离职责')
+ assert.equal(plugin.responsibility({...channels.groupContext(context.sessionId),conversationId:'foreign-room'}),undefined)
+ assert.equal(JSON.parse(await readFile(ingressFile,'utf8')).firstStartedAt,epoch)
+ assert.equal(JSON.parse(await readFile(dingtalkChannelPaths(paths,config.channelId).bindingFile,'utf8')).profile,'fixture-corp:fixture-user')
+ assert.equal(f.requests.length,0)
+})
+
+test('SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试',async t=>{
+ const profile={profile:'a:u',corpId:'a',userId:'u',corpName:'Org',isOrgCurrent:false}
+ assert.throws(()=>selectDwsProfile({success:true,profiles:[profile,{...profile,profile:'b:v',corpId:'b',userId:'v'}]},'Org'),{code:'DINGTALK_PROFILE_AMBIGUOUS'})
+ assert.throws(()=>selectDwsProfile({success:true,profiles:[profile]},'a'),{code:'DINGTALK_PROFILE_NOT_FOUND'})
+ const wire=boundDwsFixture(),config=validateDingtalkConfig(dingtalkPublic())
+ const binding=await resolveDingtalkBinding(config,{runner:wire.runner})
+ await assert.rejects(resolveDingtalkBinding({...config,binding:{...binding,conversationId:'other-room'}},{runner:wire.runner}),{code:'DINGTALK_BINDING_CHANGED'})
+ for(const exitCode of [1,4]){
+  const f=await memoryHost(t),auth=join(f.root,'isolated-dws-metadata');await mkdir(auth)
+  const file=join(auth,'profiles.json');await writeFile(file,JSON.stringify({profiles:[]}))
+  const fixture=boundDwsFixture();fixture.state.exitCode=exitCode
+  const normalized={...config,enabled:true,channelId:'terminal-'+exitCode}
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,normalized,{runner:fixture.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:auth}})})
+  await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{},tasks:{isOwnNotification:()=>false}})
+  const plugin=f.host.ctx.channels.plugins.get(normalized.channelId)
+  assert.equal(plugin.health.state,'error');assert.equal(plugin.health.lastError,'DINGTALK_QUERY_FAILED')
+  await writeFile(file,JSON.stringify({profiles:[{corpId:'fixture-corp',userId:'fixture-user',lastLoginAt:'2026-10-03T00:00:00Z'}]}))
+  await new Promise(resolve=>setTimeout(resolve,350))
+  assert.equal(fixture.calls.length,1);assert.equal(plugin.health.state,'error');await f.close()
+ }
+})
+
+test('DWS durable ingress pins survive stale bridge snapshots and complete pages missing known messages',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'night-dws-ingress-')),paths={mode:'portable',installRoot:root,config:join(root,'data','config'),state:join(root,'data','state'),secrets:join(root,'data','secrets'),workspaces:join(root,'data','workspaces'),cache:join(root,'data','cache')},channelId='pin-fixture'
+ t.after(()=>rm(root,{recursive:true,force:true}))
+ const ingress=await openDingtalkIngress(paths,channelId,{fromAt:'2026-10-01T00:00:00.000Z'}),stale=ingress.snapshot(),deferred={messageId:'known-deferred',occurredAt:'2026-10-02T01:00:00.000Z',text:'must not persist a body copy'},newer={messageId:'new-consumed',occurredAt:'2026-10-02T02:00:00.000Z'}
+ await ingress.deferred(deferred);await ingress.consumed(newer)
+ await ingress.saveBridgeState({...stale,recoveryFromAt:undefined})
+ await ingress.completedRange({end:'2026-10-03T00:00:00.000Z'});await ingress.drain()
+ const file=dingtalkChannelPaths(paths,channelId).ingressFile,persisted=JSON.parse(await readFile(file,'utf8'))
+ assert.deepEqual(persisted.deferredMessages,[{messageId:deferred.messageId,occurredAt:deferred.occurredAt}]);assert.equal(persisted.consumedMessageId,newer.messageId);assert.equal(persisted.firstStartedAt,stale.firstStartedAt)
+ assert.equal(persisted.backfillThroughAt,undefined);assert.ok(Date.parse(persisted.recoveryFromAt)<=Date.parse(deferred.occurredAt))
+ const cold=await openDingtalkIngress(paths,channelId),config={...validateDingtalkConfig(dingtalkPublic()),binding:{conversationId:'fixture-room',actorId:'self-open'}},ranges=[]
+ const adapter=dingtalkIngressAdapter({async readGroupRange(id,range){ranges.push(range);return completeHistory([])}},config,{getFromAt:()=>stale.firstStartedAt,getDeferredMessages:()=>cold.snapshot().deferredMessages??[]})
+ await assert.rejects(adapter.readGroupRange('fixture-room',{start:newer.occurredAt,end:'2026-10-03T00:00:00.000Z'}),{code:'DINGTALK_DEFERRED_HISTORY_INCOMPLETE'})
+ assert.ok(Date.parse(ranges[0].start)<=Date.parse(deferred.occurredAt));assert.deepEqual(cold.snapshot().deferredMessages,persisted.deferredMessages)
+ const pinned=cold.snapshot();await cold.consumed(deferred);await cold.saveBridgeState({...pinned,recoveryFromAt:undefined});await cold.completedRange({end:'2026-10-03T00:00:00.000Z'});await cold.drain()
+ const resolved=JSON.parse(await readFile(file,'utf8'))
+ assert.equal(resolved.deferredMessages,undefined);assert.equal(resolved.consumedMessageId,newer.messageId);assert.equal(resolved.backfillThroughAt,'2026-10-03T00:00:00.000Z')
+})
+
+test('DWS lifecycle retains one observer across serial and concurrent ready and never recreates after stop',async t=>{
+ const f=await memoryHost(t),wire=boundDwsFixture(),app={config:{resident:{taskSessions:{ingressEpoch:'2026-01-02T03:04:05.000Z'}}},runtime:{},tasks:{isOwnNotification:()=>false}}
+ let opened=0,closed=0
+ await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('lifecycle-single'),{runner:wire.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:f.root},observeLogin:async()=>{opened++;return async()=>{closed++}}})})
+ const ready=()=>f.host.ctx.parallel('night/ready',app)
+ await ready();await ready();await Promise.all([ready(),ready(),ready()]);assert.equal(opened,1)
+ await f.host.ctx.parallel('night/stopping');assert.equal(closed,1)
+ await ready();assert.equal(opened,1);await f.close();assert.equal(closed,1);assert.equal(f.requests.length,0)
+})
+
+test('DWS lifecycle stop joins in-flight observer creation and its exact asynchronous close tail',async t=>{
+ const creating=Promise.withResolvers(),createRelease=Promise.withResolvers(),closing=Promise.withResolvers(),closeRelease=Promise.withResolvers()
+ t.after(()=>{createRelease.resolve();closeRelease.resolve()})
+ const f=await memoryHost(t),wire=boundDwsFixture(),app={config:{resident:{taskSessions:{ingressEpoch:'2026-01-02T03:04:05.000Z'}}},runtime:{},tasks:{isOwnNotification:()=>false}}
+ let opened=0,closed=0,stopSettled=false
+ await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('lifecycle-inflight'),{runner:wire.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:f.root},observeLogin:async()=>{opened++;creating.resolve();await createRelease.promise;return async()=>{closed++;closing.resolve();await closeRelease.promise}}})})
+ const ready=f.host.ctx.parallel('night/ready',app)
+ await Promise.race([creating.promise,ready.then(()=>assert.fail('ready settled before observer creation'))])
+ const stopping=f.host.ctx.parallel('night/stopping').finally(()=>{stopSettled=true})
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(stopSettled,false);assert.equal(closed,0)
+ createRelease.resolve();await Promise.race([closing.promise,stopping.then(()=>assert.fail('stop settled before closing its observer'))])
+ assert.equal(stopSettled,false);assert.equal(opened,1);assert.equal(closed,1)
+ closeRelease.resolve();await Promise.all([ready,stopping]);assert.equal(stopSettled,true)
+ await f.host.ctx.parallel('night/ready',app);assert.equal(opened,1);await f.close();assert.equal(closed,1);assert.equal(f.requests.length,0)
 })

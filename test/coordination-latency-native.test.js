@@ -1,182 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {mkdtemp,rm} from 'node:fs/promises'
-import {tmpdir} from 'node:os'
-import {join} from 'node:path'
-import sharp from 'sharp'
-import {isDeepStrictEqual} from 'node:util'
-import {nativeTaskHost,latestInput} from './fixtures/task-session-native-host.js'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
-import { createCoordinationSessions } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
-import { createTopicCoordinator } from '../packages/dingtalk-dsh-assistant/topic-runtime.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
+import {openResidentStore} from '../packages/dingtalk-core/store.js'
 
-const tick = () => new Promise(resolve => setImmediate(resolve))
-
-// 确定性模型只决定调用序列；消息路由、工具校验、调度、决策和 Task 落库均走真实实现。
-test('真实协调器中九次非法旧决策不挡住新图文任务，公平续行不消耗请求重试次数', { timeout: 10000 }, async t => {
+test('历史Host动作阻塞跨重启保留后续来源、去重账及禁止提前完成', async t => {
   const snapshot = { tables: {}, global: null }
   const domain=await nativeResidentSnapshot(snapshot)
-  const store=await openResidentStore(domain.domains)
-  t.after(()=>domain.close())
-  await store.subscribe({ groupId: 'g', responsibility: '响应明确发给小小鹏的排查请求' })
-  await store.setAgentNames(['小小鹏'])
-  await store.ingest({ groupId: 'g', messageId: 'old', text: '小小鹏，上次盘点不要接。', occurredAt: '2026-09-22T08:26:00Z' })
-  await store.routeMessages({ groupId: 'g', routeId: 'seed-old-topic', routingRevision: 0,
-    routes: [{ messageId: 'old', messageVersion: 1, topics: [{ newTopicKey: 'old', title: '代理越界接活' }] }] })
-  const oldTopicId = store.listTopics('g')[0].topicId
-  const root=await mkdtemp(join(tmpdir(),'coord-latency-pi-'))
-  let decide
-  const host=await nativeTaskHost(root,request=>decide(request),{resident:true}),ctx=host.ctx
-  ctx.nativePiProvider.profiles().get('native-task-test').models[0].input=['text','image']
-  const image=await ctx.attachments.saveImage({data:await sharp({create:{width:720,height:335,channels:3,background:'#f4f4f4'}}).jpeg().toBuffer(),mediaType:'image/jpeg'})
-  const incoming = { groupId: 'g', messageId: 'msg5oChb4j8c29-fixture', text: '小小鹏看下这个：任一专家已经开始审核后不可撤回；一个专家审核完了，为啥可以撤回，如下图',
-    occurredAt: '2026-09-22T08:26:18.310Z', imageRefs: [image] }
-
-  const firstEntered = Promise.withResolvers(), releaseFirst = Promise.withResolvers(), taskCreated = Promise.withResolvers()
-  const oldFinished = Promise.withResolvers(), newFinished = Promise.withResolvers()
-  const calls = new Map(), agents = new Map(), requests = new Map(), acceptedOrder = [], applicationIds = [], errors = [], imagesSeen = []
-  let coordinator, manager, oldRequest, newRequest, taskCreatedWhileOldPending = false
-
-  decide = async options => {
-      const input=latestInput(options),request=requests.get(input.requestId)
-      assert.ok(request,'actual SDK request must map to its exact authorized Host request')
-      const role=request.requestId.startsWith('coord-decision-')?'decision':'route'
-      const count = (calls.get(request.requestId) ?? 0) + 1
-      calls.set(request.requestId, count)
-      const isOld = request.topicId === oldTopicId
-      let name, args
-      if (request.requestId.startsWith('coord-summary-')) {
-        assert.equal(count, 1, '摘要迁移按当前工具协议一次提交，不消耗请求重试')
-        name = 'group_topic_summary_submit'
-        args = { requestId: request.requestId, topicId: request.topicId, summary: '原话题停止承接盘点；新话题继续排查审核后撤回异常。' }
-      } else if (role === 'route') {
-        assert.equal(count, 1, '小消息的真实路由仅需一次模型调用')
-        name = 'group_topic_route_submit'
-        args = { requestId: request.requestId, routes: request.messages.map(message => ({
-          messageId: message.messageId, messageVersion: message.messageVersion, ignoredRefs: [], units: [{
-            unitKey: 'review-recall', summary: '排查专家已审核后仍可撤回的原因', replacesUnitIds: [],
-            sourceRefs: [{ quote: message.text }, { imageRefId: image.attachmentId }],
-            topics: [{ newTopicKey: 'review-recall', title: '专家审核后撤回异常' }],
-          }],
-        })) }
-      } else if (isOld) {
-        assert.ok(count <= 10, '旧话题不得无限重复提交')
-        if (count === 1) { firstEntered.resolve(); await releaseFirst.promise }
-        name = 'group_decision_submit'
-        args = { requestId: request.requestId, topicId: request.topicId, revision: request.revision,
-          decision: { basisMessageIds: ['old'], actions: [], reason: '停止承接盘点。', ...(count <= 9 ? { reply: '本次不会继续处理。' } : {}) } }
-      } else {
-        assert.ok(count <= 2, '任务决策不应因其他话题错误重复生成')
-        imagesSeen.push((options.messages ?? []).flatMap(message => message.content ?? []).filter(part => part.type === 'image').map(part => ({data:part.data,mimeType:part.mimeType})))
-        if (count === 1) {
-          name = 'group_decision_context_get'
-          args = { requestId: request.requestId, section: 'messages', offset: 0 }
-        } else {
-          name = 'group_decision_submit'
-          args = { requestId: request.requestId, topicId: request.topicId, revision: request.revision,
-            decision: { basisMessageIds: [incoming.messageId], actions: [{ kind: 'new-task', title: '排查审核后撤回异常',
-              objective: '排查已有专家审核后仍能撤回分配的原因', acceptanceCriteria: ['给出根因及代码证据'], topicRefs: [{ topicId: request.topicId, revision: request.revision }] }],
-            reply: '收到，我会排查原因。', replyReview: { kind: 'confirmation', reviewedOutboundIds: [], sameMatterOutboundIds: [], replaceOutboundIds: [] } } }
-        }
-      }
-      return [{name,args}]
-  }
-
-  manager = createCoordinationSessions({ eventPrefix: null, isCurrent: request => coordinator.isCurrentRequest(request), onError: error => errors.push(error), create: async entry => {
-    requests.set(entry.request.requestId, entry.request)
-    if (entry.role === 'decision' && entry.request.topicId === oldTopicId) oldRequest = entry.request
-    else if (entry.role === 'decision') newRequest = entry.request
-    const handle=await ctx.agents.create({sessionId:entry.sessionId,meta:{cwd:ctx.runtimePaths.workspaces,agentPreset:'night-bot'},agentOptions:{provider:'native-task-test',model:'controlled'},
-      authorizeInput:packet=>entry.active&&coordinator.isCurrentRequest(entry.request)&&isDeepStrictEqual(entry.authorizedPackets.get(packet.id),packet),
-      beforeRequest:()=>{if(!entry.active||!coordinator.isCurrentRequest(entry.request))throw Error('coordination_request_inactive')},
-      onToolResult:actor=>{
-        assert.equal(agents.get(entry.request.requestId),actor)
-        entry.sliceSteps=(entry.sliceSteps??0)+1
-        const yieldNow=!entry.active||!coordinator.isCurrentRequest(entry.request)||entry.yieldRequested||entry.request.routingPaused||entry.hasContenders?.()&&entry.sliceSteps>=(entry.role==='route'?1:3)
-        if(yieldNow)entry.sliceYielded=entry.active&&!entry.request.routingPaused
-        return !!yieldNow
-      },
-      setup(agentCtx){
-        coordinator.register(agentCtx,'g',entry.request)
-        agentCtx.on('tools/execute',async(exec,next)=>{const result=await next()
-          if(!entry.active||!coordinator.isCurrentRequest(entry.request)){exec.concludeTurn();return result}
-          if(entry.yieldRequested||entry.request.routingPaused||entry.hasContenders?.()&&entry.sliceSteps>=(entry.role==='route'?1:3)){entry.sliceYielded=!entry.request.routingPaused;exec.concludeTurn()}
-          return result
-        })
-      }})
-    agents.set(entry.request.requestId, handle.agent)
-    return handle
-  } })
-  coordinator = createTopicCoordinator({ store, getAgent: (groupId, request) => request ? manager.get(groupId, request) : {},
-    dispatchRequest: (request, message) => manager.dispatch(request, message), waitRequestIdle: request => manager.whenSettled(request),
-    onRequestFinished(request) {
-      acceptedOrder.push(request.requestId); manager.finish(request)
-      if (request.topicId === oldTopicId) oldFinished.resolve()
-      else if (request.requestId.startsWith('coord-decision-')) newFinished.resolve()
-    },
-    assertSession(exec, groupId, scope) { manager.assert(exec.agent, groupId, scope.requestId) },
-    serializeTasks: operation => operation(), isClosing: () => false, retryDelayMs: 1,
-    reviewCandidates: () => [], validateReplyReview: review => review,
-    appendOutbox: outbound => store.appendOutbox(outbound), cancelTask() {}, onError(_groupId, error) { errors.push(error) },
-    async applyAction(groupId, action, operation) {
-      assert.equal(action.kind, 'new-task')
-      applicationIds.push(operation.operationId)
-      await store.createTask({ groupId, taskId: operation.taskId, operationId: operation.operationId, ...action })
-      taskCreatedWhileOldPending = coordinator.isCurrentRequest(oldRequest)
-      taskCreated.resolve()
-    },
-  })
-  t.after(async () => { releaseFirst.resolve(); try { await coordinator.close(); await manager.close(); await store.close() } finally { try { await host.close() } finally { await rm(root,{recursive:true,force:true}) } } })
-  await coordinator.schedule('g')
-  await firstEntered.promise
-  await store.ingest(incoming)
-  await coordinator.schedule('g')
-  releaseFirst.resolve()
-  await newFinished.promise; await taskCreated.promise
-  assert.equal(taskCreatedWhileOldPending, true, '旧话题未结束时，后续图文任务已落库')
-  assert.ok(calls.get(oldRequest.requestId) < 10)
-  assert.ok(acceptedOrder.includes(newRequest.requestId))
-  assert.equal(acceptedOrder.includes(oldRequest.requestId), false)
-  assert.ok(imagesSeen.some(refs => refs.some(ref => typeof ref.data==='string'&&ref.data.length>0&&ref.mimeType==='image/jpeg')), '真实原生模型上下文保留图片附件')
-  await oldFinished.promise
-  await Promise.all([...requests.values()].map(request => manager.whenSettled(request)))
-  await coordinator.drain('g'); await tick()
-  assert.equal(calls.get(oldRequest.requestId), 10)
-  assert.equal(calls.get(newRequest.requestId), 2)
-  const history=await ctx.sessionPersistence.readNative(agents.get(oldRequest.requestId).id,{requireComplete:true})
-  const results=history.context.piMessages.filter(message=>message.role==='toolResult'&&message.toolName==='group_decision_submit')
-  assert.equal(results.filter(result => result.isError).length, 9)
-  assert.ok(results.slice(0,9).every(result=>result.isError&&result.content.some(part=>part.type==='text'&&/invalid arguments/i.test(part.text))), 'official prepareArguments rejects all nine malformed decisions before business execution')
-  assert.equal(results.at(-1).isError,false)
-  assert.equal(store.listTasks().length, 1)
-  const [task] = store.listTasks()
-  const committed = store.getTopic('g', newRequest.topicId).decisions.find(record => record.revision === newRequest.revision)
-  assert.equal(committed.status, 'completed', '消息决策在 Host 动作接纳后结束，不等待业务 Task 执行完成')
-  assert.equal(task.state, 'queued', '业务 Task 尚未执行，不能把决策完成投影成业务完成')
-  assert.ok(committed.operations.every(operation => operation.status === 'applied'))
-  assert.equal(applicationIds.length, 1)
-  assert.equal(store.getGroup('g').outbox.length, 1, '只落库一次确认，不调用真实 DWS')
-  for (const request of requests.values()) {
-    const saved=store.getCoordinationRequest('g',request.requestId)
-    if(!saved) {
-      assert.match(request.requestId,/^coord-summary-/,'只有已被后续摘要替代的维护请求可以不保留当前协调账')
-      assert.ok((calls.get(request.requestId)??0)<=1,'被替代摘要可以尚未进入模型，但不得重放')
-    } else assert.equal(saved.attempt,0,'公平续行不是请求失败重试')
-  }
-  await coordinator.schedule('g'); await coordinator.drain('g')
-  assert.equal(store.listTasks().length, 1)
-  assert.equal(applicationIds.length, 1)
-  assert.deepEqual(errors, [])
-})
-
-test('Host 动作阻塞保留后续同话题消息，不能提前完成或当成模型处理', async t => {
-  const snapshot = { tables: {}, global: null }
-  const domain=await nativeResidentSnapshot(snapshot)
-  const store=await openResidentStore(domain.domains)
-  t.after(()=>domain.close())
-  let coordinator
-  t.after(async () => { await coordinator?.close(); await store.close() })
+  let store=await openResidentStore(domain.domains)
+  t.after(async()=>{try{await store.close()}finally{await domain.close()}})
   await store.subscribe({ groupId: 'g' })
   const ingest = messageId => store.ingest({ groupId: 'g', messageId, text: messageId, occurredAt: '2026-10-19T08:00:00Z' })
   await ingest('blocked-source')
@@ -193,21 +24,18 @@ test('Host 动作阻塞保留后续同话题消息，不能提前完成或当成
   await ingest('later-source')
   await store.routeMessages({ groupId: 'g', routeId: 'later-route', routingRevision: 1,
     routes: [{ messageId: 'later-source', messageVersion: 1, topics: [{ topicId, relationship: 'continuation', reason: '原事项补充' }] }] })
-  let modelDispatches = 0, hostActions = 0
-  coordinator = createTopicCoordinator({ store, getAgent: () => ({}), isClosing: () => false,
-    dispatchRequest() { modelDispatches++; throw new Error('blocked Topic must not dispatch another decision') },
-    serializeTasks: operation => operation(), applyAction() { hostActions++ }, appendOutbox: outbound => store.appendOutbox(outbound),
-    reviewCandidates: () => [], validateReplyReview: review => review, cancelTask() {}, onError(_groupId, error) { throw error } })
-  await coordinator.schedule('g')
-  await coordinator.drain('g')
+  const snapshotBeforeRestart=structuredClone(store.getGroup('g'))
+  await store.close()
+  store=await openResidentStore(domain.domains)
+  for(const key of ['topics','messages','routeHistory','taskReservations','outbox'])assert.deepEqual(JSON.parse(JSON.stringify(store.getGroup('g')[key])),JSON.parse(JSON.stringify(snapshotBeforeRestart[key])),key+' retains its full persisted history')
+  const duplicate=await store.acceptTopicDecision({groupId:'g',topicId,revision:1,decisionId:'blocked-decision',decision:accepted.record.decision})
+  assert.equal(duplicate.status,'duplicate')
   const topic = store.getTopic('g', topicId)
   assert.equal(topic.revision, 2)
   assert.equal(topic.processedRevision, 0)
   assert.equal(topic.decisions.length, 1)
   assert.equal(topic.decisions[0].status, 'blocked')
   assert.equal(topic.decisions[0].operations[0].lastError, 'TASK_TOPIC_AUTHENTICATED_SOURCE_REQUIRED')
-  assert.equal(modelDispatches, 0)
-  assert.equal(hostActions, 0)
   assert.equal(store.listTasks().length, 0)
   assert.equal(store.getGroup('g').outbox.length, 0)
   await assert.rejects(store.completeTopicDecision({ groupId: 'g', topicId, decisionId: accepted.record.decisionId }), /topic_decision_operations_pending/)

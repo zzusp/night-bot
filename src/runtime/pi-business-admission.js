@@ -24,7 +24,7 @@ const fail=code=>Object.assign(new Error(code),{code})
 export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
- let tail=Promise.resolve(),failure,paused=false,current,closed=false
+ let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false
  const healthy=()=>{if(failure)throw failure;if(closed)throw fail('PI_BUSINESS_ADMISSION_CLOSED')}
  const append=(kind,payload)=>store.appendAudit({version:1,domain:'admission',kind,payload})
  function restore(receipt){
@@ -88,10 +88,10 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   lookupPacket:id=>packets.has(id)?structuredClone(packets.get(id)):undefined,
   pending:()=>[...packets.keys()].filter(id=>!admitted.has(id)&&!cancelled.has(id)&&commands.status(id)!=='admitted'),
   current:()=>current===undefined?undefined:structuredClone(current),
-  pause(){healthy();paused=true},
-  resume(){healthy();paused=false},
+  pause(reason){healthy();paused=true;pauseReason=reason},
+  resume(){healthy();paused=false;pauseReason=undefined},
   get paused(){return paused},
-  beforeRequest:()=>serialize(async()=>{if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED');await acknowledge();await commands.beforeRequest()}),
+  beforeRequest:()=>serialize(async()=>{if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED');await acknowledge();await commands.beforeRequest()}),
   cancelPending(reason='user'){
    return serialize(async()=>{
     if(typeof reason!=='string'||!reason)throw new TypeError('Cancellation reason required')
@@ -111,7 +111,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
    })
   },
   async deliver(session,id,{deliverAs='steer'}={}){
-   healthy();if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED')
+   healthy();if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(!['steer','followUp'].includes(deliverAs))throw fail('PI_BUSINESS_ADMISSION_MODE_INVALID')
    const packet=packets.get(id);if(!packet)throw fail('PI_BUSINESS_ADMISSION_MISSING')
    if(cancelled.has(id))throw fail('PI_BUSINESS_INPUT_CANCELLED')
@@ -120,7 +120,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
    await serialize(acknowledge)
    if(admitted.has(id)||inflight.has(id))return {id,duplicate:true}
    if(!internalPackets.has(id)&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
-   healthy();if(paused)throw fail('PI_BUSINESS_ADMISSION_PAUSED')
+   healthy();if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(admitted.has(id)||inflight.has(id))return {id,duplicate:true}
    const command=!internalPackets.has(id)?skillCommand(packet):undefined
    if(command){

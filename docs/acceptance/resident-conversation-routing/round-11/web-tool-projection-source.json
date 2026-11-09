@@ -1,0 +1,11 @@
+{
+  "package.json": "4fda002d0c72c4248d343abdc94cbca8e4f9132ef5e67e796ea4b706332c41dd",
+  "pnpm-lock.yaml": "631e2d48f05547005977585310d311e71de85ff830f658c823da4745b4bd65f9",
+  "packages/web-console/server/session-view.js": "a38fdbe8d0cab8bcfd22f7a10a16b576fa4bd0da0793d87429560270a74e3f91",
+  "packages/web-console/server/security.js": "8c23cc13bc510aacb92b51fb8952d0a7236466d704f3b647d0ae5379128828ef",
+  "packages/web-console/test/session-view.test.js": "c788c6257a12f8d9424c05f75cfd0c03b2fde7ae68a70809d740b3953714654e",
+  "packages/web-console/test/session-host.test.js": "e2db3c8923826b3214e7b9cbebf7fa3cba397a8c77340eb4a9624e6c8992f79b",
+  "packages/web-console/server/plugin.js": "313171bdfd88786988cff952e2033b6452e524b6ab6dffd6b79b584ff742705d",
+  "packages/web-console/server/views.js": "cc010a3c90710c27e3480f91a0a681d4d99699e6e983a9c762a6f3063ad309a5",
+  "packages/web-console/src/components/Shared.tsx": "e8f9b6e97c842fb0974c0a9039f8c34f5fca3396860bd2a838cf75a21f0d41ad"
+}

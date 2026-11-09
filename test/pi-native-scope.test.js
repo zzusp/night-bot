@@ -5,7 +5,6 @@ import {pathToFileURL} from 'node:url'
 import {Context} from '@deepseek-ai/cordis'
 import * as native from '../src/native-scope.js'
 import * as legacy from './fixtures/legacy-scope.mjs'
-import {assertNativeScopeAuthority} from '../src/native-scope-guard.js'
 
 function behavior(api) {
   const root={},child={},next={}
@@ -33,9 +32,4 @@ function behavior(api) {
 }
 test('Scope algorithms agree with independent original private-state implementation',async()=>{
   await behavior(native);await behavior(legacy)
-})
-test('historical Scope namespace shares every application-owned public export',async()=>{
- assertNativeScopeAuthority()
- const api=await import('../packages/scope-compat/index.js')
- for(const [name,value] of Object.entries(native))assert.equal(api[name],value)
 })

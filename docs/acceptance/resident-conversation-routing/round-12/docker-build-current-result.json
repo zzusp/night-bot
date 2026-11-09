@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "spawnFailure": false,
+  "startedAt": "2026-11-08T04:08:08.186Z",
+  "finishedAt": "2026-11-08T04:09:19.654Z",
+  "tag": "night-bot:sg12-current-fe541e3b-r12",
+  "sourceChanged": [],
+  "sourceCount": 491,
+  "logSha256": "e62a0a02cdc43f50dd3ddeddf9d6e807f8b530c039bb78e9de29444b3f6e4c81",
+  "image": {
+    "id": "sha256:0c6c6f8c665a222d64390252df473b22b2cae9cfc09cbd133f73c509dbc9575c",
+    "os": "linux",
+    "architecture": "amd64",
+    "user": "node"
+  },
+  "realVendorExecuted": false,
+  "applicationRuntimeValidated": false
+}

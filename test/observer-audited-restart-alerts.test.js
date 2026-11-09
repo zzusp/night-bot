@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createObserverAlertPages } from '../packages/dingtalk-dsh-assistant/observer-alert-pages.js'
-import { hasRestartIsolation, isolationDigest } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
+import { createObserverAlertPages } from '../packages/dingtalk-core/observer-alert-pages.js'
+import { hasRestartIsolation, isolationDigest } from '../packages/dingtalk-core/native-restart-isolation.js'
 import { restartFixture } from './fixtures/native-restart-isolation.js'
 
 function audited(acknowledged = true) {

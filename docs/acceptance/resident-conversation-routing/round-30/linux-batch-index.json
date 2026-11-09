@@ -1,0 +1,338 @@
+{
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "worktree": "uncommitted sealed collaboration source; live sources may change after sealing",
+  "sourceMapSha256": "88bc62104ce17e4bc534f5899576e4709a9ac6d254f1fc0c0131535daf569723",
+  "buildTaskId": "bmg3o7c55",
+  "testTaskId": "b39s3x1n5",
+  "buildExit": 0,
+  "nodeContainerExit": 0,
+  "dockerWaitExit": 0,
+  "collectorDriverExit": 1,
+  "businessPass": true,
+  "strongOwnerPass": false,
+  "classification": "CASE_PASS_ON_OBSERVED_FALLBACK; STRONG_OWNER_UNPROVEN",
+  "containerRemoved": true,
+  "containerAbsenceIndependentlyChecked": true,
+  "assets": {
+    "linux-build-source-map.json": {
+      "sha256": "2e7e3e6c0795da040ffcec5d2a3e478e0fb56b8a989b3a49aa218e8004c66c8a",
+      "bytes": 55442,
+      "sourcePath": "docs/tmp/sg11-linux-six-build-source-map.json"
+    },
+    "linux-build-result.json": {
+      "sha256": "7a97b8bf7068533712a7a0f2892898b5b07e6acf21eb5fcfa62464545a46af4e",
+      "bytes": 671,
+      "sourcePath": "docs/tmp/sg11-linux-six-build-result.json"
+    },
+    "linux-build.log": {
+      "sha256": "a5eda53d8a963f2225aecd645c4d8e371158607df967530bcc7d5562b68bebf3",
+      "bytes": 8420,
+      "sourcePath": "docs/tmp/sg11-linux-six-build.log"
+    },
+    "linux-payload-source.json": {
+      "sha256": "9a13b07643926b7cbed4bcf1449b9976af26fd25bb816b66337793b136e5339b",
+      "bytes": 1216,
+      "sourcePath": "docs/tmp/sg11-linux-six-payload-source.json"
+    },
+    "linux-six-result.json": {
+      "sha256": "1e88468d007b9d5578533c8254804743b99fa30485a1886bbb50497bac6b397d",
+      "bytes": 5165,
+      "sourcePath": "docs/tmp/sg11-linux-six-test-result.json"
+    },
+    "linux-six.log": {
+      "sha256": "765df8cf21222060b18e6a6ebb642ea6cebe79c2efa49c844c0603d8c184ee77",
+      "bytes": 2820,
+      "sourcePath": "docs/tmp/sg11-linux-six-test.log"
+    },
+    "linux-six-stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "sourcePath": "docs/tmp/sg11-linux-six-test-stderr.log"
+    },
+    "linux-six-driver.mjs": {
+      "sha256": "e30b1ddf442fe0eb9d32a15629e6b8b21ce729fcebd564afecf8b81afbe60945",
+      "bytes": 9538,
+      "sourcePath": "docs/tmp/sg11-linux-six-run.mjs"
+    },
+    "linux-build-driver.mjs": {
+      "sha256": "e2498b0fc5c78d1a1f545f388892dd84a48089e4244dea46b6d64769600c5a0d",
+      "bytes": 6323,
+      "sourcePath": "docs/tmp/sg11-linux-six-build.mjs"
+    },
+    "linux-seal-driver.py": {
+      "sha256": "03b051816ef5a75db1bd65e165998e0589d194b1e29802e317f7eb559532229f",
+      "bytes": 4887,
+      "sourcePath": "docs/tmp/sg11-linux-six-seal.py"
+    },
+    "linux-provider-observer.mjs": {
+      "sha256": "03e28cd7b39127069fd8b947a82459dc3c8037421c471cf9f5be8ecfd266e8b5",
+      "bytes": 1014,
+      "sourcePath": "docs/tmp/sg11-linux-provider-observer.mjs"
+    }
+  },
+  "providerEvents": [
+    {
+      "pid": 21,
+      "file": "native-managed-shell-kernel.test.js",
+      "sequence": 1,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 21,
+      "file": "native-managed-shell-kernel.test.js",
+      "sequence": 2,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 60,
+      "file": "native-memory-privacy-kernel.test.js",
+      "sequence": 1,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 60,
+      "file": "native-memory-privacy-kernel.test.js",
+      "sequence": 2,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 91,
+      "file": "native-shell-kernel-wire.test.js",
+      "sequence": 1,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 91,
+      "file": "native-shell-kernel-wire.test.js",
+      "sequence": 2,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    }
+  ],
+  "actualIsolation": {
+    "nonRoot": true,
+    "network": "none",
+    "capDropAll": true,
+    "noNewPrivileges": true,
+    "readOnlyRoot": true,
+    "readOnlyTestPayload": true,
+    "seccompMatchesOriginal": true,
+    "privileged": false,
+    "appArmorProfile": ""
+  },
+  "runtimeInputs": {
+    "node": "v24.13.0",
+    "platform": "linux",
+    "uid": 1000,
+    "payloadFiles": 5,
+    "sourceInputsVerified": true
+  },
+  "testCases": [
+    {
+      "name": "real Linux confined shell joins cancellation of a process that refuses TERM",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "Linux owned subprocess direct exit cannot settle shell completion while a descendant remains",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "portable model processes cannot read the vault or inherit provider/environment credential values",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "task archive fences absolute writes, symlink escapes and private journals in an actual model shell; task temporary files stay local",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "actual Pi native confined bash retains one managed effect through explicit background and job collection",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "actual Pi native confined bash retains one managed effect through timeout promotion and job collection",
+      "passed": true,
+      "directive": null
+    }
+  ],
+  "sensitiveRuntimeDataIncluded": false,
+  "inventory": {
+    "rows": 5468,
+    "beforeSha256": "467fabea4de2708fac4bb45312d75f48e5911a1ad6028bbc4c5c2f6790764457",
+    "afterSha256": "a8051a1e6570249d0a69a4c74d0f176d327cf8cb844b03b101defa05d010465a",
+    "changedRows": 6,
+    "identitiesAndRegistrationHashesPreserved": true,
+    "changes": [
+      {
+        "file": "test/native-managed-shell-kernel.test.js",
+        "case_name": "real Linux confined shell joins cancellation of a process that refuses TERM",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "latest_evidence_status": "NO_CASE_EVIDENCE",
+          "evidence_id": "",
+          "evidence_line": "",
+          "evidence_sha256": "",
+          "evidence_round": "",
+          "version_boundary": "No observed case-level result; no aggregate PASS inference",
+          "disposition": "NEEDS_CASE_EVIDENCE",
+          "evidence_test_sha256": "",
+          "evidence_selection_basis": ""
+        }
+      },
+      {
+        "file": "test/native-managed-shell-kernel.test.js",
+        "case_name": "Linux owned subprocess direct exit cannot settle shell completion while a descendant remains",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "latest_evidence_status": "NO_CASE_EVIDENCE",
+          "evidence_id": "",
+          "evidence_line": "",
+          "evidence_sha256": "",
+          "evidence_round": "",
+          "version_boundary": "No observed case-level result; no aggregate PASS inference",
+          "disposition": "NEEDS_CASE_EVIDENCE",
+          "evidence_test_sha256": "",
+          "evidence_selection_basis": ""
+        }
+      },
+      {
+        "file": "test/native-memory-privacy-kernel.test.js",
+        "case_name": "portable model processes cannot read the vault or inherit provider/environment credential values",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "latest_evidence_status": "NO_CASE_EVIDENCE",
+          "evidence_id": "",
+          "evidence_line": "",
+          "evidence_sha256": "",
+          "evidence_round": "",
+          "version_boundary": "No observed case-level result; no aggregate PASS inference",
+          "disposition": "NEEDS_CASE_EVIDENCE",
+          "evidence_test_sha256": "",
+          "evidence_selection_basis": ""
+        }
+      },
+      {
+        "file": "test/native-memory-privacy-kernel.test.js",
+        "case_name": "task archive fences absolute writes, symlink escapes and private journals in an actual model shell; task temporary files stay local",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "latest_evidence_status": "NO_CASE_EVIDENCE",
+          "evidence_id": "",
+          "evidence_line": "",
+          "evidence_sha256": "",
+          "evidence_round": "",
+          "version_boundary": "No observed case-level result; no aggregate PASS inference",
+          "disposition": "NEEDS_CASE_EVIDENCE",
+          "evidence_test_sha256": "",
+          "evidence_selection_basis": ""
+        }
+      },
+      {
+        "file": "test/native-shell-kernel-wire.test.js",
+        "case_name": "actual Pi native confined bash retains one managed effect through explicit background and job collection",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "latest_evidence_status": "NO_CASE_EVIDENCE",
+          "evidence_id": "",
+          "evidence_line": "",
+          "evidence_sha256": "",
+          "evidence_round": "",
+          "version_boundary": "No observed case-level result; no aggregate PASS inference",
+          "disposition": "NEEDS_CASE_EVIDENCE",
+          "evidence_test_sha256": "",
+          "evidence_selection_basis": ""
+        }
+      },
+      {
+        "file": "test/native-shell-kernel-wire.test.js",
+        "case_name": "actual Pi native confined bash retains one managed effect through timeout promotion and job collection",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "latest_evidence_status": "NO_CASE_EVIDENCE",
+          "evidence_id": "",
+          "evidence_line": "",
+          "evidence_sha256": "",
+          "evidence_round": "",
+          "version_boundary": "No observed case-level result; no aggregate PASS inference",
+          "disposition": "NEEDS_CASE_EVIDENCE",
+          "evidence_test_sha256": "",
+          "evidence_selection_basis": ""
+        }
+      }
+    ]
+  },
+  "matrix": {
+    "rows": 293,
+    "beforeSha256": "2da8c245cc1febcbf6eb3e2be6d9be6cfc501a058921763817ef5344376fce9f",
+    "afterSha256": "5c9ecd41bd7273a752b48b916271f72ca626db139fb0e8c9f23e9b3c3b10d801",
+    "oldColumnBytesPreserved": true,
+    "limitedBusinessRow": "sg10-linux-containment",
+    "notFullRunbookOrStrongOwnerPass": true
+  },
+  "sealingRecord": {
+    "sha256": "ba123e84356aa7ddced64deda50e6f92539fa7f59aecd5976bb7f309ad1b4815",
+    "bytes": 55584,
+    "metadata": {
+      "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+      "dirtyWorkingTree": true,
+      "contextPath": "docs/tmp/sg11-linux-six-build-context",
+      "sourceMapSha256": "88bc62104ce17e4bc534f5899576e4709a9ac6d254f1fc0c0131535daf569723",
+      "contextEncoding": "sorted-name-space-sha256-newline-v1",
+      "sourceChangedWhileSealing": [],
+      "portableRuntimeDataIncluded": false
+    },
+    "exactSourceFilesPreservedAt": "linux-build-source-map.json"
+  },
+  "scratchCleanup": {
+    "plannedFiles": [
+      "sg11-linux-six-seal.py",
+      "sg11-linux-six-build.mjs",
+      "sg11-linux-six-run.mjs",
+      "sg11-linux-provider-observer.mjs",
+      "sg11-linux-six-sealed-source.json",
+      "sg11-linux-six-payload-source.json",
+      "sg11-linux-six-build-source-map.json",
+      "sg11-linux-six-build-result.json",
+      "sg11-linux-six-build.log",
+      "sg11-linux-six-current.iid",
+      "sg11-linux-six-test-result.json",
+      "sg11-linux-six-test.log",
+      "sg11-linux-six-test-stderr.log"
+    ],
+    "plannedDirectories": [
+      "sg11-linux-six-build-context",
+      "sg11-linux-six-payload"
+    ],
+    "status": "CHECK_ZERO_EFFECTS_THEN_RUN_COMPLETED_INDEPENDENT_ABSENCE_VERIFIED",
+    "finalSourceSnapshotsKept": true,
+    "nativeFailureEvidenceRemoved": false,
+    "cleanupScriptAlsoRemoved": true,
+    "directoriesInputsVerifiedBeforeRemoval": {
+      "buildSourceFiles": 491,
+      "testPayloadFiles": 5
+    },
+    "imageRetainedForPendingStrongOwnerInvestigation": true
+  },
+  "priorReportCleanupAnnotation": {
+    "file": "round-29.md",
+    "beforeSha256": "b3776e10e2783c610dc028a0b20ac3a7564c0d8194d77c894da66c57df49f4bc",
+    "afterSha256": "366575606bca4909827e5d1dc821de1f2003256bb5380e09ea99261d7e4ae1ad",
+    "onlyChange": "observer original scratch path cleanup annotation; historical Native evidence and results unchanged",
+    "inverseExact": true
+  }
+}

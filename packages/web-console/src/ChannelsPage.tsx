@@ -3,7 +3,7 @@ import { RiChat3Line, RiGroupLine, RiArrowLeftLine, RiArrowRightLine, RiGlobalLi
 import { type Channel, type Conversation, type Message } from './api';
 import { useResource } from './hooks';
 import { Badge, Button, EmptyState } from './components/BoardPrimitives';
-import { Loading, MessageList, Notice, Search } from './components/Shared';
+import { Loading, MessageList, Notice, Search, Status } from './components/Shared';
 
 const conversationType = (type?: string | null) => type === 'chat-room' ? '群聊' : type === 'chat' ? '单聊' : '会话类型未记录';
 
@@ -25,7 +25,10 @@ export default function ChannelsPage({ id }: { id?: string }) {
   return <div className="page-content channels-page"><div className="page-heading"><div><span className="eyebrow">CHANNELS</span><h2>所有对话，在这里汇合</h2><p>查看已配置的渠道和会话，了解消息如何被处理。</p></div></div>
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}
     {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" description="使用上方按钮重新获取。" /> : channels.data?.items.length ? <div className="channel-cards">{channels.data.items.map(item => <button type="button" className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId} aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
-      <div className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={24} /></div><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.enabled ? 'success' : 'neutral'}>{item.enabled ? '已启用' : '未启用'}</Badge><div className="channel-card-bottom"><span>{item.connected === true ? <><RiCheckboxCircleFill size={13} />适配器已接入</> : item.enabled ? '等待适配器接入' : '当前未接入'}</span><RiArrowRightLine size={16} /></div>
+      <div className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={24} /></div><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.enabled ? 'success' : 'neutral'}>{item.enabled ? '已启用' : '未启用'}</Badge><div className="channel-card-bottom"><div className="channel-health"><Status value={item.connectionState ?? 'unknown'} />
+        {item.errorCode && <span>{item.errorCode === 'CHANNEL_AUTH_REQUIRED' ? '需要完成渠道认证' : '适配器异常，请查看运维说明'}</span>}
+        <span>{item.connected === true ? <><RiCheckboxCircleFill size={13} />健康检查正常</> : item.connected === false ? '健康检查未就绪' : '健康状态未报告'}</span>
+      </div><RiArrowRightLine size={16} /></div>
     </button>)}</div> : <EmptyState title="还没有配置渠道" description="管理员在 Bot 配置中启用渠道后，会自动显示在这里。" />}
     <div className="section-heading"><div><h3>渠道会话 <span>{items.length}</span></h3><p>{channel ? `正在查看 ${channel}` : '查看渠道接收的消息和 Bot 回复'}</p></div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
     {conversations.error && <Notice error={conversations.error} onRetry={conversations.refresh} stale={!!conversations.data} />}

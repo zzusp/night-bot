@@ -1,14 +1,21 @@
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {validatePiFileSourceConfig} from './runtime/pi-file-tool-config.js'
-import { readFile } from 'node:fs/promises'
+import { readFile,realpath } from 'node:fs/promises'
 import { resolve, isAbsolute, relative, sep } from 'node:path'
-import {runtimePaths} from './runtime/paths.js'
-import {channelGroupResponsibilities} from './channels/service.js'
+import {runtimePaths,inside} from './runtime/paths.js'
+import {readRegular,atomicWrite,withLock,failure} from './runtime/files.js'
 
+const configFiles=new WeakMap()
+export const configFileOf=config=>configFiles.get(config)
 export async function loadConfig(path) {
-  const config = JSON.parse(await readFile(path, 'utf8'))
+  const config=validateConfig(JSON.parse(await readFile(path, 'utf8')),path)
+  configFiles.set(config,resolve(path));return config
+}
+
+export function validateConfig(config,path) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('NIGHT_BOT_CONFIG_INVALID')
   assertPiTaskBackendConfiguration(config)
+  if(config.permissionMode!==undefined&&!['ask','auto','full'].includes(config.permissionMode))throw failure('NIGHT_BOT_PERMISSION_MODE_INVALID')
   const paths=runtimePaths(config,path)
   if(paths.mode==='portable')Object.assign(config,{installRoot:paths.installRoot,dataDir:paths.data,stateDir:paths.state,workspaceDir:paths.workspaces})
   for (const key of ['stateDir','workspaceDir']) {
@@ -31,9 +38,12 @@ export async function loadConfig(path) {
   for(const key of ['search','fetch'])if(config.webTools?.[key]!==undefined&&typeof config.webTools[key]!=='boolean')throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)
   for(const key of ['searchMaxResults','searchMaxQueries','fetchTimeoutMs','searchTimeoutMs','fetchMaxOutputChars'])if(config.webTools?.[key]!==undefined&&(!Number.isInteger(config.webTools[key])||config.webTools[key]<1||(key==='fetchTimeoutMs'||key==='searchTimeoutMs')&&config.webTools[key]>2147483647))throw new Error('NIGHT_BOT_WEB_CONFIG_INVALID:'+key)
   const resident = config.resident ?? {}
+  if(!resident||typeof resident!=='object'||Array.isArray(resident))throw failure('NIGHT_BOT_RESIDENT_CONFIG_INVALID')
+  const residentKeys=new Set(['host','port','groups','taskSessions','maxConcurrentTasks','fakeModel'])
+  for(const key of Object.keys(resident))if(!residentKeys.has(key))throw failure('NIGHT_BOT_RESIDENT_CONFIG_UNSUPPORTED:'+key)
+  if(resident.port!==undefined&&(!Number.isInteger(resident.port)||resident.port<0||resident.port>65535))throw failure('NIGHT_BOT_HTTP_PORT_INVALID')
   if (resident.fakeModel) throw new Error('NIGHT_BOT_FAKE_MODEL_IS_TEST_ONLY')
   if (resident.host && !['127.0.0.1','::1','localhost'].includes(resident.host)) throw new Error('NIGHT_BOT_HTTP_REQUIRES_LOOPBACK')
-  if (resident.dws?.writesAuthorized && !resident.dws?.enabled) throw new Error('NIGHT_BOT_DWS_WRITE_CONFIGURATION_INVALID')
   for (const profile of Object.values(config.providers)) {
     if ('apiKey' in profile || 'token' in profile || 'password' in profile) throw new Error('NIGHT_BOT_USE_CREDENTIAL_ENV_REFERENCE')
   }
@@ -45,10 +55,36 @@ export async function loadConfig(path) {
       validateSecrets(item)
     }
   }
-  if(config.resident?.dws?.enabled)throw new Error('NIGHT_BOT_USE_DWS_CHANNEL_PLUGIN')
   if(config.channelPlugins!==undefined&&(!Array.isArray(config.channelPlugins)||config.channelPlugins.some(plugin=>!plugin||typeof plugin.type!=='string'||typeof plugin.enabled!=='boolean')))throw new Error('NIGHT_CHANNEL_PLUGINS_INVALID')
-  for(const plugin of config.channelPlugins??[])if(plugin.type==='dingtalk-dws')channelGroupResponsibilities(plugin.config?.groups,plugin.config?.responsibility)
   if(config.channelPluginDirs!==undefined&&(!Array.isArray(config.channelPluginDirs)||config.channelPluginDirs.some(path=>typeof path!=='string'||!path)))throw new Error('NIGHT_CHANNEL_PLUGIN_DIRECTORIES_INVALID')
   validateSecrets(config)
   return config
+}
+
+// 配置保存与运行态分离；--check 不创建锁或临时文件。
+export async function updateConfig(path,update,{checkOnly=false}={}) {
+  const file=resolve(path),initial=await readRegular(file)
+  if(initial===undefined)throw failure('NIGHT_BOT_CONFIG_NOT_FOUND')
+  const paths=runtimePaths(JSON.parse(initial),file)
+  const assertPath=async()=>{
+    if(paths.mode!=='portable'||!inside(paths.config,file)||relative(paths.config,await realpath(paths.config))!==''||relative(file,await realpath(file))!=='')throw failure('NIGHT_BOT_CONFIG_PATH_UNSAFE')
+  }
+  await assertPath()
+  const save=async()=>{
+    await assertPath()
+    const previous=await readRegular(file)
+    if(previous===undefined)throw failure('NIGHT_BOT_CONFIG_NOT_FOUND')
+    const current=JSON.parse(previous),next=await update(structuredClone(current))
+    validateConfig(structuredClone(next),file)
+    const after=runtimePaths(next,file)
+    if(after.installRoot!==paths.installRoot||after.data!==paths.data)throw failure('NIGHT_BOT_CONFIG_RELOCATION_REQUIRES_OFFLINE_RESTORE')
+    const changed=JSON.stringify(current)!==JSON.stringify(next)
+    if(changed&&!checkOnly){
+      await assertPath()
+      if(await readRegular(file)!==previous)throw failure('NIGHT_BOT_CONFIG_CHANGED')
+      await atomicWrite(file,JSON.stringify(next,null,2)+'\n')
+    }
+    return {config:next,changed,checkOnly,restartRequired:changed}
+  }
+  return checkOnly?save():withLock(resolve(paths.config,'.configuration.lock'),save)
 }

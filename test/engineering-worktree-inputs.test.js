@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {normalizeWorktreeAcceptancePlan,createEngineeringLeanWorkflow,createEngineeringWorktreeWorkflow} from '../packages/dingtalk-dsh-assistant/task-workflow.js'
-import {defineExecutionWorkflow} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import {normalizeWorktreeAcceptancePlan,createEngineeringLeanWorkflow,createEngineeringWorktreeWorkflow} from '../packages/dingtalk-core/task-workflow.js'
+import {defineExecutionWorkflow} from '../packages/dingtalk-core/execution-controller.js'
 const context={request:'actual target',criteria:[{id:'c',description:'criterion'}],scenarios:[{id:'s',description:'description'}]}
 test('worktree acceptance fills deterministic context and rejects missing required business expectations',()=>{
  const expected='real expected '.repeat(1000),steps=['business step '.repeat(1000)]

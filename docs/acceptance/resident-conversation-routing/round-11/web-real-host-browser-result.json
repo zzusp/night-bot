@@ -1,0 +1,42 @@
+{
+  "taskStatus": "completed",
+  "drained": true,
+  "officialTool": "task_result",
+  "sessionId": "task-session-cc063ecd-62f8-40df-95f4-e6dc7b88a883",
+  "toolSourceMatches": true,
+  "reviewStatus": "done",
+  "learning": [
+    {
+      "kind": "memory",
+      "status": "applied",
+      "version": "fa8d49481f5dd9be3b3ba90f9a1a941d8bc3a3a0e39bed459179cecbc51aa178",
+      "source": {
+        "taskId": "task-e8da54931b4f19a4953af548f1982daf",
+        "eventId": "task-completed:complete:task-e8da54931b4f19a4953af548f1982daf:1",
+        "reviewId": "f7f07d66e07ea0db706eb6c9016b843de110bc4fe5008a1ac280393fbe167be2"
+      }
+    },
+    {
+      "kind": "skill",
+      "status": "applied",
+      "version": "2d5dfb70d89a4af5b9c37de3d5d08b476b79ceceb8eef77969d1514ecb46c5b2",
+      "source": {
+        "taskId": "task-e8da54931b4f19a4953af548f1982daf",
+        "eventId": "task-completed:complete:task-e8da54931b4f19a4953af548f1982daf:1",
+        "reviewId": "f7f07d66e07ea0db706eb6c9016b843de110bc4fe5008a1ac280393fbe167be2"
+      }
+    }
+  ],
+  "refreshPreserved": true,
+  "readOnlyJournalSha256": "7843bb891ed360a41397e6e9b37681f09fcb635b5c302eba37009092cbf68ee4",
+  "readOnlyLearningSha256": "c7e0fa3e94f97a91f72671a41ba80e08dee351a94d09a4c28c66440233b4db27",
+  "modelRequestsBeforeAndAfter": 2,
+  "apiRoutesIntercepted": false,
+  "realVendorExecuted": false,
+  "scriptedLocalModel": true,
+  "dist": {
+    "index.html": "9fc50d2f5ca1d4ad20347eb9729ff9eccfd2bbc42b0bd1cfe6091e07085e8d38",
+    "assets/index-BKF6wqgH.css": "beb0406a66786d843ccd7f5c0006f7f0f715a7953e35c34aa2aeec20c11c4c20",
+    "assets/index-BLG5xPVo.js": "5285c1170c7172307259e56c27d12d199edab144efc551874b3a48a8c7dc8d77"
+  }
+}

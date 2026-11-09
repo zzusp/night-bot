@@ -5,21 +5,21 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createEngineeringTaskWorkflow, createEngineeringDeliveryAdapters, createEngineeringDeliverableWorkflow, createEngineeringAcceptanceWorkflow } from '../packages/dingtalk-dsh-assistant/task-workflow.js'
-import { describeVerificationChecks, createBusinessAcceptanceCheck } from '../packages/dingtalk-dsh-assistant/execution-check-job.js'
-import { createManagedWorkspaces } from '../packages/dingtalk-dsh-assistant/execution-workspace.js'
-import { createManagedEdits } from '../packages/dingtalk-dsh-assistant/execution-edit.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createGitDelivery } from '../packages/dingtalk-dsh-assistant/execution-git.js'
-import { createGithubPullRequests } from '../packages/dingtalk-dsh-assistant/execution-pr.js'
-import { readEngineeringDeliveryProof } from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
-import { createEngineeringBranchReuseWorkflow, createEngineeringUatBaselineWorkflow, createEngineeringMappedBaselineWorkflow } from '../packages/dingtalk-dsh-assistant/task-workflow.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createEngineeringTaskWorkflow, createEngineeringDeliveryAdapters, createEngineeringDeliverableWorkflow, createEngineeringAcceptanceWorkflow } from '../packages/dingtalk-core/task-workflow.js'
+import { describeVerificationChecks, createBusinessAcceptanceCheck } from '../packages/dingtalk-core/execution-check-job.js'
+import { createManagedWorkspaces } from '../packages/dingtalk-core/execution-workspace.js'
+import { createManagedEdits } from '../packages/dingtalk-core/execution-edit.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { createGitDelivery } from '../packages/dingtalk-core/execution-git.js'
+import { createGithubPullRequests } from '../packages/dingtalk-core/execution-pr.js'
+import { readEngineeringDeliveryProof } from '../packages/dingtalk-core/workflow-engineering.js'
+import { createEngineeringBranchReuseWorkflow, createEngineeringUatBaselineWorkflow, createEngineeringMappedBaselineWorkflow } from '../packages/dingtalk-core/task-workflow.js'
 
 test('本地验收规划完整接纳80条标准与超过旧窗口的计划，仍拒绝遗漏和不存在场景', async () => {
-  const { createEngineeringLocalAcceptanceWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
+  const { createEngineeringLocalAcceptanceWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
   let captured
   const workflow = createEngineeringLocalAcceptanceWorkflow({ provider: 'test', model: 'test', discovery: { allowedPrefixes: ['src/'] },
     project: {}, workspaceAdapter: {}, editAdapter: {}, checks: [{ id: 'check', version: '1', run: async () => ({ passed: true }) }], adapterIdentity: 'test', localAcceptance: { scenarios: [{ id: 'value' }],
@@ -216,7 +216,7 @@ test('失败工程检查以有界工件保留完整日志，节点仍waiting且�
   const directory=await mkdtemp(join(tmpdir(),'dsh-check-evidence-')),source=join(directory,'source');await mkdir(source)
   const exec=promisify(execFile),git=async(...args)=>(await exec('git',['-C',source,...args],{windowsHide:true})).stdout.trim()
   await git('init','-b','main');await git('config','user.name','Test');await git('config','user.email','test@example.invalid');await writeFile(join(source,'value.txt'),'source');await git('add','.');await git('commit','-m','base')
-  const {createVerificationJobCheck}=await import('../packages/dingtalk-dsh-assistant/execution-check-job.js')
+  const {createVerificationJobCheck}=await import('../packages/dingtalk-core/execution-check-job.js')
   let log
   const job=createVerificationJobCheck({id:'build',version:'1',root:join(directory,'checks'),executable:process.execPath,args:['-e',"process.stdout.write(Buffer.alloc(10000,0));process.stderr.write(Buffer.alloc(10000,1));process.exitCode=3"]})
   const store=await openExecutionStore({dbPath:join(directory,'control.db'),instanceId:'failure',initialize:true}),artifacts=await openExecutionArtifacts({directory:join(directory,'artifacts'),initialize:true})
@@ -370,8 +370,8 @@ test('v14真实controller按需检索依次进入方案和应用，v13冻结合�
 })
 
 test('v15无需修改保留源码并重新检查；缺读取、冲突、工作树漂移均阻断，v14仍拒绝空方案', async t => {
-  const { createEngineeringRevalidationWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
-  const { describeTaskNodeOutput } = await import('../packages/dingtalk-dsh-assistant/workflow-service.js')
+  const { createEngineeringRevalidationWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
+  const { describeTaskNodeOutput } = await import('../packages/dingtalk-core/workflow-service.js')
   const root=await mkdtemp(join(tmpdir(),'dsh-no-change-')),source=join(root,'source')
   await mkdir(join(source,'src'),{recursive:true});await mkdir(join(root,'work'))
   const exec=promisify(execFile),git=async(...args)=>(await exec('git',['-C',source,...args],{windowsHide:true})).stdout.trim()
@@ -408,9 +408,9 @@ test('v15无需修改保留源码并重新检查；缺读取、冲突、工作�
 })
 
 test('v19技术方案无需补丁，实施节点内审查且只传共享方案引用，v18保持冻结', async () => {
-  const { createEngineeringTechnicalPlanWorkflow, createEngineeringTaskContextWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
-  const { validateJsonSchemaValue } = await import('../packages/capability-compat/tools/index.js')
-  const { executionDigest } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+  const { createEngineeringTechnicalPlanWorkflow, createEngineeringTaskContextWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
+  const { validateJsonSchemaValue } = await import('../src/native-tool-protocol.js')
+  const { executionDigest } = await import('../packages/dingtalk-core/execution-artifacts.js')
   const options={workflowId:'task-engineering-v19-factory',provider:'test',model:'test',discovery:{allowedPrefixes:['src/']},project:{targetCommit:'a'.repeat(40),taskBase:'a'.repeat(40)},workspaceAdapter:{},editAdapter:{},checks:[{id:'build',version:'1',run:async()=>({passed:true,log:'fixture'})}],adapterIdentity:'technical-plan'}
   const old=defineExecutionWorkflow(createEngineeringTaskContextWorkflow(options)),flow=createEngineeringTechnicalPlanWorkflow(options)
   assert.equal(flow.version,'19');assert.ok(defineExecutionWorkflow(flow).digest);assert.ok(!flow.nodes.some(node=>node.id==='validate-proposal'))
@@ -434,8 +434,8 @@ test('v19技术方案无需补丁，实施节点内审查且只传共享方案�
 })
 
 test('v19按技术方案读取当前文件后实际受管编辑，不消费方案补丁且拒绝过期hash',async()=>{
-  const { createEngineeringTechnicalPlanWorkflow }=await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
-  const {createHash}=await import('node:crypto'),{executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+  const { createEngineeringTechnicalPlanWorkflow }=await import('../packages/dingtalk-core/task-workflow.js')
+  const {createHash}=await import('node:crypto'),{executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
   const root=await mkdtemp(join(tmpdir(),'dsh-technical-edit-')),source=join(root,'source')
   await mkdir(join(source,'src'),{recursive:true});await mkdir(join(root,'work'))
   const exec=promisify(execFile),git=async(...args)=>(await exec('git',['-C',source,...args],{windowsHide:true})).stdout.trim()

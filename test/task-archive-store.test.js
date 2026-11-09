@@ -1,11 +1,11 @@
-import {receiptOwnerSql} from '../packages/dingtalk-dsh-assistant/task-archive.js'
+import {receiptOwnerSql} from '../packages/dingtalk-core/task-archive.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'task-archive-'))

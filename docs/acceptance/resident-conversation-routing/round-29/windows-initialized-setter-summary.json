@@ -1,0 +1,366 @@
+{
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "worktree": "uncommitted shared collaboration tree",
+  "status": "FAILED",
+  "nodeExit": 1,
+  "collectorExit": 0,
+  "taskId": "bue53yjjx",
+  "startedAt": "2026-11-08T12:01:36.646121+00:00",
+  "endedAt": "2026-11-08T12:01:36.876162+00:00",
+  "elapsedSeconds": 0.23400000005494803,
+  "node": "v24.19.0",
+  "sourceBefore": {
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-profile.js": "4164922a215241c35988ef6dbbefa3766d0272e32167ac5e88fef41e8f15c29d",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-profile.js": "4164922a215241c35988ef6dbbefa3766d0272e32167ac5e88fef41e8f15c29d",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceChanged": [],
+  "nativeConsumedSources": [
+    "src/process/windows-acl.js",
+    "src/process/win32.js",
+    "src/process/contracts.js"
+  ],
+  "staticAssociatedSources": [
+    "src/process/windows-profile.js",
+    "src/process/index.js"
+  ],
+  "creation": {
+    "attempted": true,
+    "created": true,
+    "unknown": false,
+    "status": 1
+  },
+  "creationProjection": {
+    "mask": 5388,
+    "requestedProjection": 5124,
+    "actualProjection": 4100,
+    "matched": false,
+    "onlyDaclAutoInheritedMissing": true,
+    "fullControlXor": 3072,
+    "saclWasRequested": false
+  },
+  "requestedControl": 37892,
+  "immediateCreatedControl": 38916,
+  "initialization": {
+    "needed": true,
+    "attempted": true,
+    "status": 0,
+    "unknown": false,
+    "initialized": true,
+    "validated": true,
+    "sameLength": true,
+    "sameBytesExceptControl": true,
+    "emptyBefore": true,
+    "emptyAfter": true,
+    "controlXor": 1024,
+    "pathCheckBefore": {
+      "repoAndBaseRealpathStable": true,
+      "rootAndAncestorsNonLinkDirectories": true,
+      "nativeAncestorHandles": false
+    },
+    "pathCheckAfter": {
+      "repoAndBaseRealpathStable": true,
+      "rootAndAncestorsNonLinkDirectories": true,
+      "nativeAncestorHandles": false
+    }
+  },
+  "initializedActualControl": 39940,
+  "initializationFileIdStable": true,
+  "rootAfterDescendantsUnchanged": true,
+  "originalControls": [
+    39940,
+    35844,
+    35844
+  ],
+  "baselineRebuilds": [
+    {
+      "component": "dacl",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": true,
+      "controlXor": 0
+    },
+    {
+      "component": "dacl",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": true,
+      "controlXor": 0
+    },
+    {
+      "component": "label",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": true,
+      "controlXor": 0
+    },
+    {
+      "component": "label",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": true,
+      "controlXor": 0
+    }
+  ],
+  "stages": [
+    {
+      "name": "dacl-add",
+      "matchesFixedStage": [
+        true,
+        true,
+        true
+      ],
+      "expectedControls": [
+        39940,
+        35844,
+        35844
+      ],
+      "actualControls": [
+        39940,
+        35844,
+        35844
+      ],
+      "controlXor": [
+        0,
+        0,
+        0
+      ],
+      "byteEqualsFixedStage": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "name": "dacl-release",
+      "matchesFixedStage": [
+        true,
+        true,
+        true
+      ],
+      "expectedControls": [
+        39940,
+        35844,
+        35844
+      ],
+      "actualControls": [
+        39940,
+        35844,
+        35844
+      ],
+      "controlXor": [
+        0,
+        0,
+        0
+      ],
+      "byteEqualsFixedStage": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "name": "label-low",
+      "matchesFixedStage": [
+        true,
+        true,
+        true
+      ],
+      "expectedControls": [
+        39956,
+        35860,
+        35860
+      ],
+      "actualControls": [
+        39956,
+        35860,
+        35860
+      ],
+      "controlXor": [
+        0,
+        0,
+        0
+      ],
+      "byteEqualsFixedStage": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "name": "label-release",
+      "matchesFixedStage": [
+        false,
+        false,
+        false
+      ],
+      "expectedControls": [
+        39940,
+        35844,
+        35844
+      ],
+      "actualControls": [
+        48148,
+        35860,
+        35860
+      ],
+      "controlXor": [
+        8208,
+        16,
+        16
+      ],
+      "byteEqualsFixedStage": [
+        false,
+        false,
+        false
+      ]
+    }
+  ],
+  "lastStageOfflineComparisons": [
+    {
+      "componentMatches": {
+        "revision": true,
+        "reserved": true,
+        "control": false,
+        "owner": true,
+        "group": true,
+        "sacl": true,
+        "dacl": true
+      },
+      "bothSaclNull": true,
+      "expectedControl": 39940,
+      "actualControl": 48148,
+      "controlXor": 8208
+    },
+    {
+      "componentMatches": {
+        "revision": true,
+        "reserved": true,
+        "control": false,
+        "owner": true,
+        "group": true,
+        "sacl": true,
+        "dacl": true
+      },
+      "bothSaclNull": true,
+      "expectedControl": 35844,
+      "actualControl": 35860,
+      "controlXor": 16
+    },
+    {
+      "componentMatches": {
+        "revision": true,
+        "reserved": true,
+        "control": false,
+        "owner": true,
+        "group": true,
+        "sacl": true,
+        "dacl": true
+      },
+      "bothSaclNull": true,
+      "expectedControl": 35844,
+      "actualControl": 35860,
+      "controlXor": 16
+    }
+  ],
+  "phaseReached": "label-release actual full control comparison failed; no final snapshot or restoration proof",
+  "nativeSetAttempts": 5,
+  "initializationSetAttempts": 1,
+  "businessSetAttempts": 4,
+  "setStatuses": [
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "nativeGetAttempts": 29,
+  "allocations": {
+    "count": 42,
+    "local": 30,
+    "privateSecurity": 12,
+    "allAttemptedClosed": true,
+    "retained": 0
+  },
+  "handles": {
+    "count": 5,
+    "allAttemptedClosed": true,
+    "retained": 0
+  },
+  "fixture": {
+    "root": "data/workspaces/sg11-security-projection-initialized-8ac556c1811b44bbbf2db045db8dcc15",
+    "retained": true,
+    "removed": false,
+    "finalSnapshotReached": false,
+    "actualOsRestorationProved": false
+  },
+  "errors": [
+    {
+      "name": "AssertionError",
+      "message": "Actual setter projection differs from fixed native stage",
+      "code": "ERR_ASSERTION"
+    }
+  ],
+  "stderrBytes": 0,
+  "privateEvidence": {
+    "docs/tmp/sg11-security-projection-initialized-probe.mjs": {
+      "sha256": "97b224654963d94c909bd9adc8b896533839eddf6579060a928feb4d83a41446",
+      "bytes": 26820
+    },
+    "docs/tmp/sg11-security-projection-initialized-checklist.md": {
+      "sha256": "dc6cff02c9a7253005fe2b293b800db28ca7ffa615be93c66c7687d1f6c83212",
+      "bytes": 8146
+    },
+    "docs/tmp/sg11-security-projection-initialized-check.json": {
+      "sha256": "4ca05dc320d570a4d8b88cd5ea62f48a176b5f2fafb13b4dde26a847e00bb98d",
+      "bytes": 2368
+    },
+    "docs/tmp/sg11-security-projection-initialized-check-execution.json": {
+      "sha256": "34a6a5eb6f3d6873c649f32f104a09f55051b19aba3cbc8178814b0559aa5c30",
+      "bytes": 1061
+    },
+    "docs/tmp/sg11-security-projection-initialized-run-check.json": {
+      "sha256": "4ca05dc320d570a4d8b88cd5ea62f48a176b5f2fafb13b4dde26a847e00bb98d",
+      "bytes": 2368
+    },
+    "docs/tmp/sg11-security-projection-initialized-run.json": {
+      "sha256": "3f5ab125add7f051cb68bb202197b39a7391537297a196b6f76847db8ce73590",
+      "bytes": 115834
+    },
+    "docs/tmp/sg11-security-projection-initialized-run-stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/tmp/sg11-security-projection-initialized-execution.json": {
+      "sha256": "333d3ad30f15e3a3a16078cef1c874b13a99a45b495a6fecaa4741908bc2c27b",
+      "bytes": 2660
+    }
+  },
+  "inventory": {
+    "rows": 5468,
+    "beforeSha256": "467fabea4de2708fac4bb45312d75f48e5911a1ad6028bbc4c5c2f6790764457",
+    "afterSha256": "467fabea4de2708fac4bb45312d75f48e5911a1ad6028bbc4c5c2f6790764457",
+    "changed": false,
+    "newPassEvidence": 0
+  },
+  "matrix": {
+    "rows": 293,
+    "beforeSha256": "06f396f41e5d7ec894530b3d19fa8c2e9df0514c541cd748547c0399ddedbfde",
+    "afterSha256": "2da8c245cc1febcbf6eb3e2be6d9be6cfc501a058921763817ef5344376fce9f",
+    "oldColumnBytesPreserved": true
+  },
+  "linuxPending": {
+    "modeAssertionsSourceSha256": "5f3ba7b5d424c24ab6b21342eb6c869171e31a0e3356ed1446a238fa5d79b57b",
+    "observerPath": "docs/tmp/sg11-linux-provider-observer.mjs",
+    "observerSha256": "03e28cd7b39127069fd8b947a82459dc3c8037421c471cf9f5be8ecfd266e8b5",
+    "observerSyntaxOnly": true,
+    "linuxExecuted": false,
+    "dockerStarted": false,
+    "noPassCredited": true
+  }
+}

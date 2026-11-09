@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 
 async function fixture(t) {
  const dir=await mkdtemp(join(tmpdir(),'message-agent-')), options={dbPath:join(dir,'control.sqlite'),instanceId:randomUUID()}
@@ -113,7 +113,7 @@ async function failedReadOnly(t) {
 }
 test('只读answer原命令受控重试保留旧失败及送达回执，新attempt独立通知且租约递增',async t=>{
  const f=await failedReadOnly(t)
- const {createWorkflowNotifications}=await import('../packages/dingtalk-dsh-assistant/workflow-notifications.js')
+ const {createWorkflowNotifications}=await import('../packages/dingtalk-core/workflow-notifications.js')
  let sends=0
  const adapter={canDisclose:async()=>true,send:async()=>({messageId:'out-'+(++sends)}),readback:async n=>({messageId:n.ack.messageId})}
  const notifier=createWorkflowNotifications({store:f.store,adapter})
@@ -163,7 +163,7 @@ test('成功或未排空的answer不可当读取失败重试',async t=>{
 
 for(const priorVersion of [1,2])test(`通知扫描第${priorVersion}代旧失败快照与下一代完成并发时不得占用新代次回执`,async t=>{
  const f=await failedReadOnly(t)
- const {createWorkflowNotifications}=await import('../packages/dingtalk-dsh-assistant/workflow-notifications.js')
+ const {createWorkflowNotifications}=await import('../packages/dingtalk-core/workflow-notifications.js')
  async function attempt(args,success){
   await f.call('command.retry.readonly',args)
   const command=(await f.claim()).result.command

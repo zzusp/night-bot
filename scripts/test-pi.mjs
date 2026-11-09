@@ -10,7 +10,7 @@ const files = process.argv[2]==='default' ? (await readdir('test')).filter(name=
 if (!files) throw new Error('Expected default, runtime, routing, containment or domain')
 const concurrency=Number(process.env.NIGHT_BOT_TEST_CONCURRENCY??1)
 if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>8)throw new Error('Test concurrency must be an integer from 1 to 8')
-const child = spawn(process.execPath, ['--test',`--test-concurrency=${concurrency}`,...files.map(name => `test/${name}.test.js`)], {
+const child = spawn(process.execPath, ['--experimental-test-module-mocks','--test',`--test-concurrency=${concurrency}`,...files.map(name => `test/${name}.test.js`)], {
   stdio: 'inherit', env: { ...process.env },
 })
 child.on('error', error => { console.error(error.message); process.exitCode = 1 })

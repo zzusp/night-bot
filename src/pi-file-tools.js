@@ -94,7 +94,8 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
   const initial=authority();validateEscalationArgs(args.sandbox_permissions,args.justification)
   let granted
   if(args.sandbox_permissions!==undefined)granted=await approveEscalation({requestedMode:args.sandbox_permissions,effectiveMode:initial.mode,justification:args.justification,subject:'operation'},{approver:approval,agent:actor,callId,toolName:kind,signal})
-  return()=>{const current=authority();if(granted!==undefined&&(current.mode!==initial.mode||current.workspaceRoot!==initial.workspaceRoot))throw fail('PI_FILE_POLICY_CHANGED');return granted===undefined?current:{...current,mode:granted}}
+  const target=actor.ctx.get('toolPermissions')?await fs.resolve(args.path,{cwd:directory.get(actor),signal}):undefined
+  return()=>{const current=authority();if(granted!==undefined&&(current.mode!==initial.mode||current.workspaceRoot!==initial.workspaceRoot))throw fail('PI_FILE_POLICY_CHANGED');const managed=target&&actor.ctx.get('tools').resolveFileAuthorization({actor,path:String(target.targetKey),writing:true});return managed?{...current,mode:'danger-full-access'}:granted===undefined?current:{...current,mode:granted}}
  }
  async function preparedMutationPolicy(exec,kind,input,args,callId,signal,preflight=false){
   if(!exec)return mutationPolicy(kind,args,callId,signal)

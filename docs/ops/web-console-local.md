@@ -4,11 +4,11 @@
 
 ## 边界
 
-Web 包位于 `packages/web-console`，使用 Node.js 24+，独立 pnpm 清单和锁文件。Bot 根安装、CLI 与默认服务不导入这个包；不需要安装 React/Vite 即可运行 Bot。插件只通过既有渠道和只读服务接入，不修改核心 schema。
+Web 包位于 `packages/web-console`，使用 Node.js 24+，独立 pnpm 清单和锁文件。不需要安装 React/Vite 即可运行默认核心；Web 前端及插件均需显式配置启用。通用配置 CLI 复用该包 `server/security.js` 的纯网络参数校验，不启动 Web 服务，也不依赖前端运行库。聊天沿既有渠道接入，任务与渠道视图只读；安装操作者的权限模式与单次审批通过 Host 受控 API 接入，不由浏览器直接改任务账本。
 
 启用后的插件是可信 Host 代码，和 Bot 同进程生命周期，不宣称独立进程故障隔离。前端静态文件缺失时 `/api` 仍可用，页面返回明确 503；关闭浏览器不停止 Bot。禁用插件会关闭 Web 入站和该渠道投递，其他 Bot 功能继续运行。
 
-服务只接受 `127.0.0.1` 的同源请求，默认端口 3080。此交付不包含公网、多用户账户、反向代理/TLS或厂商渠道上线验收；不要直接改监听为 `0.0.0.0`。
+默认服务监听 `127.0.0.1`，端口 3080，校验本机来源和同源请求。容器中仅在可信配置显式提供 `host: "0.0.0.0"` 及固定 `publicOrigin: "http://127.0.0.1:宿主端口"` 时允许容器内监听；宿主端口仍须只发布到 loopback，Host/Origin、令牌及 CSRF 校验保留，详见 [Docker 规程](docker-deployment.md)。缺少或不合法的 `publicOrigin` 会拒绝启动，不支持直接把默认实例改成任意地址。该扩展尚未完成容器实跑验收，也不包含公网、多用户账户、反向代理/TLS或厂商渠道上线验收。
 
 ## 安装和构建
 
@@ -24,7 +24,27 @@ pnpm --dir packages/web-console build
 
 ## 显式启用
 
-在现有私有配置中**追加**下列插件目录及实例，保留已有配置，不覆盖它们：
+已有安装优先使用通用配置 CLI。先只读查看，再执行零副作用检查，核对无误后保存同一组参数：
+
+```powershell
+node bin/night-bot-config.js data/config/config.json show
+node bin/night-bot-config.js data/config/config.json web --enabled true --host 127.0.0.1 --port 3080 --channel-id local-web --sender-id YOUR_LOCAL_ACTOR --operator-name "本机操作者" --check
+node bin/night-bot-config.js data/config/config.json web --enabled true --host 127.0.0.1 --port 3080 --channel-id local-web --sender-id YOUR_LOCAL_ACTOR --operator-name "本机操作者"
+```
+
+`YOUR_LOCAL_ACTOR` 使用本安装的操作者标识；已存在的 Web 实例沿用原 `channel-id` 与 `sender-id`，不创建另一份实例替换历史身份。CLI 拒绝原实例变更发送者，换身份须使用新渠道 ID。直接安装保持 `--host 127.0.0.1`，不因配置命令绕过同源、令牌或 CSRF 校验。容器的受控发布边界见上方 Docker 规程。
+
+容器配置 CLI 已支持 `--public-origin`。在对应容器的安装根执行以下检查，再以同一参数去掉 `--check` 保存；示例容器端口为 3080，宿主 loopback 端口为 13080，实际端口映射仍按 Docker 规程设置：
+
+```powershell
+node bin/night-bot-config.js data/config/config.json web --enabled true --channel-id local-web --sender-id YOUR_LOCAL_ACTOR --host 0.0.0.0 --port 3080 --public-origin http://127.0.0.1:13080 --check
+```
+
+固定 `publicOrigin` 必须与浏览器实际使用的宿主 loopback 地址一致，不能用任意外部域名、凭据或 URL 路径。CLI 与 Web 插件共用网络参数校验；仅保存这些值不会发布 Docker 端口、验证容器内核或绕过应用沙箱。
+
+保存仅更新安装目录受控 `data/config/` 下的配置文件，不热改运行态；结果中的 `changed` 表示配置差异，`checkOnly:true` 表示本次没有写入，`restartRequired` 表示应用该差异需要正常重启。`--check` 不创建配置锁或临时文件。不要把令牌、模型密钥或带凭据的 URL 作为参数。
+
+也可在现有私有配置中**追加**下列插件目录及实例，保留已有配置，不覆盖它们；与上方 CLI 使用同一实例标识：
 
 ```json
 {
@@ -52,17 +72,52 @@ pnpm --dir packages/web-console build
 
 独立接纳和回复账本在 `data/state/web-console-<channelId哈希>/delivery.sqlite`。它只记录 Web 渠道事务，不替代任务 SQLite 或 Pi 会话。升级保留整个 data；备份和恢复遵守已有离线一致性及默认排除 secrets 的规则。
 
+## 安装权限与单次审批
+
+配置仅使用顶层 `permissionMode`，取值 `ask` / `auto` / `full`，缺省为 `ask`；示例配置显式写 `"permissionMode": "ask"`。初始化可传 `--permission-mode ask|auto|full`，通用配置 CLI 使用同名参数。它不是旧组件预设名，也不读取 Host 环境变量来代替模式或单次授权。
+
+在安装根先检查，再保存同一组参数：
+
+```powershell
+node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask --check
+node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask
+```
+
+CLI 保存后按原运行手册正常重启才应用配置，不在运行期间手工改文件冒充热切换。`full` 必须显式选择，不作为沙箱不可用时的回退；它按当前系统账号真实访问，不提权，进程不再隔离，同账号可访问的凭据与 Host 私有文件不能宣称受进程隔离保护。`ask` / `auto` 保留私有区、任务元数据等独立边界；批准命令只授予准确动作的受控范围，不把外部目标批准解释为撤销全部隔离。Windows 受限命令仍取决于真实后端，不因配置存在而成为已验收能力。
+
+Web「权限与审批」使用 `GET /api/permissions` 读取当前 Host `mode`、`options`、`protection` 和 `requests`。`protection` 是 Host 实际报告的 `status/backend/description`：`not-attested` 不能推为已隔离，`unavailable` 明确不可用，`full` 的 `unconfined/direct` 明确进程不隔离；页面不启动探针或由模式猜测后端。可选档位和保护说明不替代各平台真实执行验收。
+
+`PUT /api/permissions` 的正文为 `{mode}`，持久保存成功后切换当前 Host；`POST /api/permissions/requests/:id` 的正文包含 `decision`（`allow` / `reject` / `revoke`）。两者仅允许已认证安装操作者，沿同源 cookie、Host/Origin 与 CSRF 校验，返回与 GET 相同的完整视图；普通任务或群消息不能调用这些入口改变权限。Web 保存不要求另一次 CLI 重启，不能将 CLI 的 `restartRequired` 混作 Web 响应。 权限面板绑定当前认证会话；CSRF 只读同步到新会话时重建该面板，清除旧审批详情、未提交选择与反馈，使旧在途响应失效，不改变原聊天草稿容器。
+
+审批只展示 Host 生成的 `display.summary/target/cwd/command/parametersDigest` 及声明的身份、状态和时间字段；审批必要的业务目标、cwd 与命令使用专用路径保留投影，以便操作者核对准确业务路径，同时仍隐藏 token、JSON 敏感字段、raw args/env 和未知字段。普通会话的路径默认隐藏规则不变，前端不解析原始命令。请求绑定 actor、task/conversation、call、参数摘要、cwd 和范围；模式变更、撤销或过期不允许借旧请求执行。每项 `revocable` 由 Host 计算，仅同一 live exec、同一权限 epoch、未取消且尚未消费效果的授权可撤销；前端只有收到 `true` 才提供撤销操作。`revoke` 先同步撤销私有 grant，再持久记为 `cancelled`，不回滚已发生效果；模式保存也取消旧未消费授权。已消费、调用结束、过期或冷恢复旧项不可撤销，409 后不重试原决定；其它失败先 GET 核当前状态，页面不会自动重发 PUT/POST。
+
+`auto` 使用当前配置的通用模型，经 Pi 作一次无工具审查，只处理 Host 判定需要批准的动作；无法确定或模型失败转人工，不复用或安装 DSH reviewer。已保存模式可冷恢复；原 pending 请求恢复为 cancelled，不重建等待、不重放动作。页面显示批准结果不证明工具完成，后端隔离、外部路径真实效果和恢复防重仍须按[唯一验收目标](../acceptance/resident-conversation-routing/goal.md)的对应版本核验，旧 Chat/learning 结果不追认为新权限通过。
+
 ## 升级、停用与诊断
 
 - 正式升级基于已合并代码，并按既有运行手册停机/备份/升级；构建后带上该版本 `dist/`。此任务不执行正式部署。
-- 停用：将该实例 `enabled` 改为 false，按运行手册重启。不要删除 data；待核实回执不自动重放。仅停止浏览器不需要重启 Bot。
+- 停用：先运行 `node bin/night-bot-config.js data/config/config.json web --enabled false --channel-id local-web --check`，再以相同参数去掉 `--check` 保存；沿用实际渠道 ID，按运行手册正常重启。也可手工将该实例 `enabled` 改为 false。不要删除 data；待核实回执不自动重放。仅停止浏览器不需要重启 Bot。
+- 停机排障：等待 Host 关闭终态；Web/HTTP 已停或框架清理已返回均不证明 Job/进程已排空。前置关闭失败仍会尝试后续清理并聚合原始错误，保留根依赖与安装锁；任务关闭失败时保留 resident runtime/store。无 journal 的临时 Job 同样需要确认运行中的 producer 已排空；取消抛错、排空未知或结局日志出错时，不能通过删除记录清除阻断。不要手删安装锁、重放原动作或强制退出制造关闭成功。
 - 端口占用：选空闲的 `config.port`，不要终止无关进程。已有 token 文件/存储目录被链接、权限不符或结构异常时会失败关闭；不要通过放宽权限绕过。
+- 渠道状态：`connectionState` 只显示 Host 白名单阶段，缺省为 `unknown`；`connected` 只来自适配器真实健康布尔值，不由 `enabled` 推导。等待认证仅返回 `CHANNEL_AUTH_REQUIRED`，适配器错误仅返回 `CHANNEL_ADAPTER_ERROR`；不把原始 `lastError`、路径、登录数据或配置透传页面。状态展示不替代真实连接、发送和回读验收。
 - 503 `WEB_ASSETS_NOT_BUILT`：在相同代码版本的独立包安装并构建。不要把这个错误解释为 Bot 未启动。
 - 401：登录失效或 token 不符。403：检查是否用了日志中的 127.0.0.1 地址与同源页面。未知接纳/发送：查同 requestId 的回执，不新建请求重放。
 
 同浏览器多标签重新登录导致 `CSRF_INVALID` 时，页面只读查询当前会话并同步 CSRF，保留草稿让操作者决定重试，不自动重放写请求。退出和重新登录按顺序完成，避免旧退出响应清除新 cookie。聊天最新接纳状态按 SQLite 写入顺序判定，不依赖随机请求 ID 或系统时钟先后；没有新增核心字段或 Web 数据库迁移。
 
 概览五个区块独立返回结果，局部错误在 `sectionErrors` 标出；单一渠道 health 或会话读取异常不会使其他区块不可见。任务结果、时间线及补充留言采用显式展示字段投影，并隐藏标注的凭据与私密路径；Bot 原始记录保持不变。
+
+## 正式执行历史与正文
+
+聊天「对话」保留原接纳/回复账本；「执行过程」分为当前 Router 与关联任务组，分别只读官方 Pi 已提交上下文。关联任务来自认证 conversation 的 SQLite 持久记录，包含已完成/归档任务，Router 换代不清除关联；前端不从模型文字、消息链接或任意任务 ID 推断关联。任务组默认折叠，仅展开时读取，收起即卸载读组件。任务详情「执行记录」保持读取本任务执行会话。换代、压缩或分支后，不承诺每组当前投影包含原始全部历史，不把渠道账本拼成完整工具历史。
+
+`GET /api/chat/:id` 返回权威 `taskIds` 与 `taskHistoryStatus`；`ready` 配 `[]` 才表示没有关联任务，`null/unavailable` 或读取失败不转为空列表。Router 使用 `/api/chat/:id/session`，Chat 内任务组使用 `/api/chat/:id/tasks/:taskId/session`，Host 校验任务属于该 Chat 的认证 conversation；未关联统一返回 404 `CHAT_TASK_NOT_FOUND`，不接受任意 session ID。任务详情仍用 `/api/tasks/:id/session`。各历史每页最多 50 项；更早页绑定 `revision`，版本冲突后回到最新，不跨版本拼接。工具结果必须与同一 session 内准确的调用及工具名配对，再按服务端稳定身份合并；孤立、重复 ID 或名称冲突的结果保留事件与状态，不猜测正文。只有调用而没有已提交结果时显示「等待结果」，不宣称正在执行。Host 对工具输入和结构化工具结果以固定工具、字段和类型构造展示投影，未知输入/DTO 字段（含嵌套字段）默认隐藏；未知工具用固定「未公开工具」名称，保留状态和 opaque callId，不公开原名称及任意正文。字段准入不替代秘密脱敏；隐藏推理、系统指令、原始参数对象、权限/环境、凭据、私密路径与审计均不透传。
+
+Web 受众是安装 token 认证后的单操作者，安装级任务/session API 提供任务检视权；Chat 专属任务入口另校验 conversation 关联，不是将结果向群成员发布。业务文件属于安装私有数据本身不构成该操作者无权访问的依据，不另加文件公开证明字段或账本。对同一 task 的严格已提交 journal，`read/read_window/grep/web_search/web_fetch` 结果经 exact call/name 配对后，保留工具声明的业务 text（包括 JSON 业务文件）；JSON 文件不是工具 DTO，无需脱敏时不改写原空白，分页保真。秘密及私密路径继续脱敏，网页结果 URL 隐藏；未知工具、未知输入/DTO 字段和孤立/冲突结果的拒绝边界不变。命令、作业、memory/learned-skill 的历史工具正文不泛透传，任务检视权不扩大独立 learning 的 reader binding、scope、version 和 403/409 授权链；私有记忆与学习技能的当前正文仍须走其显式读取入口。正式 `task_result` 与 Router 的获准业务字段继续保留。首段与续页使用同一投影，不通过续读返回已隐藏的字段；实现恢复不替代本轮真实 Chat 与安全反例的实跑结果。
+
+长正文使用同一授权入口下的 `/session/messages/:messageId`，按该条投影的 opaque ID、`revision` 和脱敏后 UTF-16 offset 分段读取，每段最多 16000；不接受任意路径、URL 或 session ID。页面显示记录来源及当前段范围，复制按钮只复制已展示段。网络恢复只重读服务端历史，不重放接纳或外部效果。
+
+复盘读模型为 `/api/tasks/:id/learning`。列表只含真实复盘及变更元数据；`applied` 以实际记忆来源或当前有效技能证据确认，候选和未应用记录独立标明。不可读返回 `unavailable` 与空缺数据，不伪造空列表。私有正文不随列表下发，仅 `/api/tasks/:id/learning/changes/:changeId?version=...` 按浏览器认证身份的实际 scope 校验；无权 403、版本不同 409。前端不为无权条目发正文请求，拒绝后不显示旧缓存正文，不提供记忆或技能写入入口。
 
 ## 开发与隔离验收
 

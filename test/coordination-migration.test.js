@@ -8,9 +8,9 @@ import { execFileSync, spawnSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 import { inspectCoordinationMigration, migrateCoordinationLedger } from '../scripts/migrate-coordination-ledger.mjs'
-import { migrationStateDigest } from '../packages/dingtalk-dsh-assistant/coordination-migration-state.js'
+import { migrationStateDigest } from '../packages/dingtalk-core/coordination-migration-state.js'
 
 const repository = fileURLToPath(new URL('../', import.meta.url))
 const baseline = '94f99720836e134f0615dc7e02f0f4d4bd72b7e9'

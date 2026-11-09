@@ -178,15 +178,9 @@ editable work uses work/. Shared delivery-cache originals are not deleted.
 A mismatch or live writer is refused. No original DSH `.dsh` journals, execution
 teams, legacy plugin datasets or foreign workspaces are imported.
 
-Default model file tools and Linux model subprocesses enforce the per-task
-boundary including absolute paths and symlinks: only work/ andtmp/ are writable;
-materials/outputs/reviews/metadata are Host-owned, and raw sessions are masked.
-Task process TMP/TEMP/TMPDIR point to its tmp directory for writable modes;
-read-only execution retains isolated OS temporary behavior. System dependency
-files and ephemeral OS mechanisms remain separate from business work. Trusted
-plugins and Host administrator code retain service-account authority: cwd is not
-an arbitrary-plugin security sandbox. Windows/macOS equivalent process privacy
-and real vendor CLI behavior are not accepted here.
+在 `permissionMode: ask`（默认）与 `auto` 下，文件和受限进程保留任务档案边界：任务内仅 work/ 和 tmp/ 可写，materials/outputs/reviews/metadata 由 Host 管理，raw sessions 不向进程开放。任务外的业务路径可申请准确单次授权，批准只给本次调用的声明范围，不能因此修改 Host 私有区或扩大到其它任务。路径、符号链接、调用身份及参数在实际执行前重新核对。可写任务的 TMP/TEMP/TMPDIR 指向准确 task.tmp；只读执行仍可使用隔离 OS 临时机制，不能据此扩大业务写界。
+
+显式 `full` 按当前运行环境的 OS 账号权限直接访问；Host API 仍维护档案所有权、审计、取消与 no-replay，但不能声称同账号直接进程仍被 OS 阻止读取或修改这些档案文件。full 不等于管理员提权，也不证明默认受限档已通过。系统依赖与 OS 临时机制仍区别于外部业务目标；可信插件不因 cwd 而成为隔离执行。权限选择见 [README](../README.md#工具权限)，各平台实际进程保护与厂商验收保留[当前目标](acceptance/resident-conversation-routing/goal.md)中的未验边界。
 
 Archives contain private source messages, task files, tool output and Pi history.
 They intentionally do not package `data/secrets`, credentials or shared account

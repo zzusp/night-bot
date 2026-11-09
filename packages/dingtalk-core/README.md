@@ -1,34 +1,26 @@
-# DingTalk DSH Assistant Runtime
+# Night Bot Core
 
-通用钉钉任务运行时，使用 DSH 原生会话、工具、preset 和持久化。当前架构为消息只关联话题，原话题协调器结合新消息与固定版本原文调度任务，任务会话负责完整目标，独立执行会话完成具体操作。
+`@night-bot/core` 是 Night Bot 的私有通用应用服务包，当前 manifest 为 `private:true`、`UNLICENSED`。Pi AgentSession/SessionManager 负责推理、工具迭代、历史和模型上下文；Host 负责来源认证、任务账本、权限、版本、效果收据和可靠交付。移植来源与许可见 [来源说明](../../THIRD_PARTY.md)，本地迁接不改变原代码归属。
 
 ## 入口与职责
 
-- 默认入口：Web 插件注册
-- `@zzusp/dingtalk-dsh-assistant/resident`：传输、配置、任务服务和 HTTP 看板接口
-- `@zzusp/dingtalk-dsh-assistant/client`：构建后的 Web 设置页面
+- 从根项目初始化和启动，命令及配置见 [README](../../README.md)。当前包没有声明旧 `@zzusp/dingtalk-dsh-assistant/resident` 或 `/client` 导出，不能把旧包名当成现行接入接口。
+- 核心支持渠道无关的 `chat` / `chat-room`；DWS 和 Web 控制台是独立可选插件。默认无插件组合不依赖 DWS CLI、真实账号或 Web 页面，启用插件不替代业务授权。
+- 一级分诊只决定逐来源 handling 和可选短回复；每个已认证 conversation 的常驻 Router 负责关联、安排和评估事项。每个事项只有一个执行 session，没有任务 Owner、委派执行团队或独立子执行会话；Topic 仅留作历史审计。
+- 执行输入、实时补充、任务动作与依赖都绑定原来源、作者和当前版本；Pi generation 交接或任务完成不产生新授权。协议和生命周期见 [CHANNELS](../../docs/CHANNELS.md) 与 [SINGLE-TASK](../../docs/SINGLE-TASK.md)。
 
-任务会话负责完整目标，可直接使用当前 Agent preset 提供的原生工具、按需读取技能，也可委派独立执行会话开展工作；任务与执行会话均保留实际配置的原生工具，不额外设置统筹工具白名单。具体操作仍须满足当前真实授权、宿主沙箱和审批要求。Host 保证身份、来源、版本、并发、效果对账和通知，不代替任务会话判断业务完成。
+## 配置与私有技能
 
-## 个人配置与技能
+包内不提供个人 Agent 姓名、私人署名、业务技能或业务目标名单。actor、群职责、模型、可选 `replySignature` 与插件开关来自安装自己的私有配置，不从显示名或旧报告推断身份和权限。
 
-包内不提供个人 Agent 姓名、默认私人署名、个人业务技能或业务目标名单。名称、群职责、工作区、模型和可选 `replySignature` 来自用户自己的配置。Host在完整最终回复持久化前统一落款；中间消息不追加，空配置不推断私人身份。
+个人 Skill 正文及同目录 scripts、references、assets 只保留在已忽略的安装数据中，不进入代码、fixture 或 npm 包；默认目录为安装内 `data/config/skills`，额外目录遵守当前受控 `skillDirs` 合同。模型按需读取技能，技能内容不是执行、外发、合并或部署授权。不导入旧 DSH 数据，也不复制旧账号、凭据或整份共享技能集合。数据和备份边界见 [DATA-LAYOUT](../../docs/DATA-LAYOUT.md)。
 
-个人 skill 通过 DSH 原生 skill registry、filesystem provider、tool-skill 提供，可使用用户技能目录或所选 preset 的 `customSkillDirs`。目录只展示名称和描述；任务/执行会话按需读取正文，执行会话按需读取引用资料。技能内容不是授权，不能自动合并、部署、发送或执行生产 SQL。
+## 运行与交付边界
 
-## 发布与运行边界
+任务材料、工作、冻结输出、Pi 会话及复盘分区保存在该任务档案内；模型只能写任务 `work/` 和 `tmp/`。实际文件、冻结 descriptor、任务完成、通知送达和无工具复盘分别核验，不能用工具成功、send accepted 或页面就绪代替业务终态。
 
-本包使用当前入口依赖的显式文件清单，不包含退役固定工作流、私人平台适配器、历史业务流程说明或个人技能包。旧执行/平台入口不再导出。历史取证源码仍可在项目仓库查看，但不是当前安装包的运行步骤。
+安装与升级使用完整 Night Bot 代码、依赖锁文件和匹配配置，保留各安装自己的 `data/`；本包目录不能单独充当完整安装。现存 unknown、历史 journal、授权版本及 no-replay 边界保持，正常停止和升级按 [运行手册](../../docs/ops/windows-local-runtime.md) 执行。当前 Windows 安全命令/进程隔离仍须以 SG11 的实际实现、OS 证据与受验版本核定，本页不宣称可生产隔离或全量通过。
 
-配置完整的原生 DSH preset、持久存储和真实身份后才能启用；不自动提升沙箱权限。既有实例切换必须按照项目当前清洁启动说明完成停机、排空和数据边界审阅。工具成功、构建通过和消息受理均不能替代真实业务或送达核验。
+## 历史记录
 
-源码、安装与升级说明：[项目仓库](https://github.com/HiQ-AI/dingtalk-dsh-assistant)。候选包应按提交及 SHA 校验；包版本号本身不能证明候选已发布或用户实例已部署。
-
-自动历史回补仅保存背景。对已保存消息使用现有单消息重试入口时，可显式接纳该消息并交给原话题决策；原身份、时间和附件保留，全局接入水位不变，已存在来源或任务不会重复创建。
-话题协调指令要求 task-proposal 仅询问是否交办，不承诺开始或完成；new-task 确认也不等于执行完成。此自然语言约束由模型按指令生成，Host 的结构校验不保证任意自由文本语义，任务是否存在仍以真实任务及决策记录为准。
-固定决策/审阅会话的 `group_reply_review_get {}` 由 Host 绑定当前唯一请求，显式其他请求 ID 仍拒绝；决策会话的 `group_topic_context_get {}` 读取绑定的 Topic 固定版本，版本变化或请求失效拒绝。路由会话没有唯一当前 Topic，必须从候选复制完整 `readCall.arguments`（含 `topicId/revision`）；候选提供已有摘要，足以排除不同业务目标时无需强读历史。缺参返回具体纠错入口和合法候选模板，不猜测归属。任务目录每次读取最新状态，返回实际 `query`、目录 `snapshotFingerprint` 和保留查询条件的 `nextCall`；当前上下文中已读的同页可直接复用，目录指纹变化须重新核对，已有任务动作仍需完整目标与版本读取。
-每个话题决策版本从当前群任务重新生成可选 `linkedTasks`：最多8项、1600字符的关联任务身份和精确正文 `readCall`，以及不超过3000 UTF-8字节的未截断完整任务 `snapshots`。完整快照可在本轮直接核对；大正文仍需读回，不把身份索引当作完整目标。超量或其他业务目标继续查目录；整体预算不足先省略可选快照/索引，不能挤掉新来源及授权事实。新版本不继承旧会话审批，提交仍校验当前来源、Topic及Task版本。
-
-Web 新建任务传入已有 topicRefs 时，授权消息复用首个原话题而不再额外建话题；其他引用保持固定版本。任务素材按话题事实精确绑定消息版本，已接纳消息后续图片富化产生新版时，通过带来源链的 Host 命令捕获该版本，不静默省略图片或用旧版本替代。
-
-模型上下文按本轮统筹判断投影：保留当前目标、控制、来源/作者/版本、授权更正及 unknown 身份；操作详情仅展开待决策项，blockers 用原操作 ID 指向。相同阶段通知复用执行记录，历史目标及完整记录通过唯一 catalogRef 按原 ID 定位。长消息复用 material 原文文件，其他长上下文、结果、证据和诊断复用现有内容 JSON 文件，不以 eager contentIndex 每轮回灌。readRequired 要求核对相关段落及授权边界，使用已有文件工具按需定位；显式 model_content_read 仍可精确读取目录叶子。JSON 字符串文件需按 JSON 解码，文件工具截断不能当作完整读取。常规合成场景默认 Host 约2–3KB UTF-8，不硬截断必要身份/边界；实际读出的工具正文仍有历史重传成本。详见 [Issue172 验收记录](../../docs/acceptance/issue-172/context-projection.md)。
+保留原包的 Issue172 历史引用：`docs/acceptance/issue-172/context-projection.md`。该记录未随当前 Night 仓库提供，不能作为本次通过证据。旧 Topic、Owner、多执行会话和包发布说明只代表该轮历史，不能作为当前运行步骤、兼容 ABI 或新业务授权。当前进展见唯一[验收入口](../../docs/acceptance/resident-conversation-routing/goal.md)，不重写历史结果来证明本次清理完成。

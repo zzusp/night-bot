@@ -3,10 +3,10 @@ import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
 import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {randomUUID} from 'node:crypto'
-import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest} from './security.js'
+import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
-import {configuredChannels, conversationMessages, conversations, taskDialogueView, taskView} from './views.js'
-import {taskSessionView} from './session-view.js'
+import {configuredChannels, conversationMessages, conversations, permissionsView, taskDialogueView, taskView} from './views.js'
+import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
 const defaultDist = fileURLToPath(new URL('../dist', import.meta.url))
@@ -50,11 +50,10 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getPermissions = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
-  const port = config.port ?? 3080
-  if (!Number.isInteger(port) || port < 0 || port > 65535 || config.host !== undefined && config.host !== '127.0.0.1') fail('WEB_LISTEN_INVALID')
+  const network = webListenOptions(config), {port} = network
   const namespace = 'web-console-' + digest(channelId).slice(0, 16)
   const secrets = await controlledDirectory(paths.secrets, namespace)
   const state = await controlledDirectory(paths.state, namespace)
@@ -65,6 +64,14 @@ export async function createWebConsole({channels, paths, config, getApplication,
   let origin, stopped = false, closePromise, startPromise
   const sessionView = session => ({authenticated: true, csrfToken: session.csrfToken, operator: {name: config.operatorName ?? '本机操作者'}, channelId})
   const application = () => {const value = getApplication(); if (!value) fail('BOT_NOT_READY', 503); return value}
+  const permissions = () => {const value = getPermissions(); if (!value) fail('PERMISSIONS_UNAVAILABLE', 503); return value}
+  const permissionView = value => permissionsView(value, [credential.token])
+  const chatContext = id => {
+    const chat = ledger.chat(identifier(id))
+    if (!chat) fail('CHAT_NOT_FOUND', 404)
+    const conversationId = channels.identity({type: 'chat', channelId, senderId, conversationId: id, messageId: 'session-view', text: 'session-view'}).sessionId
+    return {chat, conversationId}
+  }
   const page = query => ({offset: pageNumber(query, 'offset', 0), limit: pageNumber(query, 'limit', 30, 100)})
   const taskOptions = query => {
     const state = query.get('state') || undefined
@@ -78,7 +85,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
   }
   async function route(request, response) {
     headers(response)
-    requireLocalRequest(request, origin)
+    requireLocalRequest(request, origin, network)
     if (stopped) fail('WEB_STOPPING', 503)
     const url = new URL(request.url, origin), path = url.pathname
     if (!path.startsWith('/api/')) {
@@ -92,6 +99,18 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const session = sessions.require(request, !['GET', 'HEAD'].includes(request.method))
     if (request.method === 'GET' && path === '/api/session') return send(response, 200, sessionView(session))
     if (request.method === 'POST' && path === '/api/logout') {await jsonBody(request, []); sessions.logout(session, response); return send(response, 200, {ok: true})}
+    if (request.method === 'GET' && path === '/api/permissions') return send(response, 200, permissionView(permissions().view()))
+    if (request.method === 'PUT' && path === '/api/permissions') {
+      const body = await jsonBody(request, ['mode'], 1024)
+      if (!['ask', 'auto', 'full'].includes(body.mode)) fail('PERMISSION_MODE_INVALID')
+      return send(response, 200, permissionView(await permissions().setMode(body.mode)))
+    }
+    const permissionRequest = /^\/api\/permissions\/requests\/([A-Za-z0-9-]{1,128})$/.exec(path)
+    if (request.method === 'POST' && permissionRequest) {
+      const body = await jsonBody(request, ['decision'], 1024)
+      if (!['allow', 'reject', 'revoke'].includes(body.decision)) fail('PERMISSION_DECISION_INVALID')
+      return send(response, 200, permissionView(await permissions().respond(permissionRequest[1], body.decision)))
+    }
     if (request.method === 'GET' && path === '/api/channels') return send(response, 200, configuredChannels(application(), channels))
     if (request.method === 'GET' && path === '/api/conversations') return send(response, 200, conversations(application(), channels))
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))
@@ -108,6 +127,42 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const values = Object.fromEntries(keys.map((key, index) => [key, outcomes[index].status === 'fulfilled' ? outcomes[index].value : null]))
       const sectionErrors = Object.fromEntries(keys.flatMap((key, index) => outcomes[index].status === 'rejected' ? [[key, 'SECTION_UNAVAILABLE']] : []))
       return send(response, 200, {status: 'connected', timestamp: new Date().toISOString(), ...values, sectionErrors})
+    }
+    const learning = /^\/api\/tasks\/([^/]+)\/learning(?:\/changes\/([^/]+))?$/.exec(path)
+    if (request.method === 'GET' && learning) {
+      const body = learning[2] !== undefined, allowed = body ? ['version'] : []
+      if ([...url.searchParams.keys()].some(key => !allowed.includes(key)) || body && !/^[a-f0-9]{64}$/.test(url.searchParams.get('version') ?? '')) fail('PAGE_INVALID')
+      const app = application(), taskId = decodeURIComponent(learning[1])
+      const task = app.tasks.store?.query ? await app.tasks.store.query({kind: 'task.get', taskId}) : await app.tasks.taskDetail(taskId)
+      if (!task) fail('TASK_NOT_FOUND', 404)
+      const reflection = getReflection()
+      if (!reflection?.inspectTask || !app.tasks.store?.query) {
+        if (body) fail('LEARNING_UNAVAILABLE', 503)
+        return send(response, 200, {status: 'unavailable', reason: 'LEARNING_UNAVAILABLE', reviews: null, changes: null})
+      }
+      const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'learning-view', messageId: 'learning-view', text: 'learning-view'})
+      let value
+      try {value = await reflection.inspectTask(task, identity.binding, {store: app.tasks.store,
+        ...(body ? {changeId: decodeURIComponent(learning[2]), version: url.searchParams.get('version')} : {})})}
+      catch (error) {
+        const status = {LEARNING_CHANGE_NOT_FOUND: 404, LEARNING_BODY_FORBIDDEN: 403, LEARNING_VERSION_STALE: 409, LEARNING_UNAVAILABLE: 503}[error.code]
+        if (status) fail(error.code, status)
+        throw error
+      }
+      if (body) value = {...value, ...visibleText(value.text, [credential.token], {maxLength: Infinity})}
+      else value = {...value, reviews: value.reviews.map(row => ({...row, summary: visibleText(row.summary, [credential.token]).text})),
+        changes: value.changes.map(row => ({...row, name: visibleText(row.name, [credential.token]).text}))}
+      return send(response, 200, value)
+    }
+    const bodyOptions = query => {
+      if ([...query.keys()].some(key => !['offset', 'limit', 'revision'].includes(key)) || !query.get('revision')) fail('PAGE_INVALID')
+      return {offset: pageNumber(query, 'offset', 0, Number.MAX_SAFE_INTEGER), limit: pageNumber(query, 'limit', 16000, 16000), revision: query.get('revision'), secrets: [credential.token]}
+    }
+    const taskBody = /^\/api\/tasks\/([^/]+)\/session\/messages\/([^/]+)$/.exec(path)
+    if (request.method === 'GET' && taskBody) {
+      const value = await application().tasks.taskDetail(decodeURIComponent(taskBody[1]))
+      if (!value) fail('TASK_NOT_FOUND', 404)
+      return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), task: value, persistence: getSessionPersistence(), messageId: decodeURIComponent(taskBody[2])}))
     }
     const task = /^\/api\/tasks\/([^/]+)(?:\/(dialogue|executions|session))?$/.exec(path)
     if (request.method === 'GET' && task) {
@@ -133,11 +188,36 @@ export async function createWebConsole({channels, paths, config, getApplication,
       }))
     }
     if (request.method === 'GET' && path === '/api/chat') return send(response, 200, ledger.chats(page(url.searchParams)))
+    const chatTask = /^\/api\/chat\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    if (request.method === 'GET' && chatTask) {
+      const {conversationId} = chatContext(decodeURIComponent(chatTask[1])), taskId = decodeURIComponent(chatTask[2])
+      const store = application().tasks.store
+      if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
+      const value = await store.query({kind: 'task.get', taskId})
+      if (!value || value.taskId !== taskId || value.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
+      const task = {taskId, session: {sessionId: value.sessionId, sessionBound: value.sessionBound}}
+      const options = {task, persistence: getSessionPersistence(), secrets: [credential.token]}
+      if (chatTask[3]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[3])}))
+      if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
+      return send(response, 200, await taskSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
+    }
+    const chatSession = /^\/api\/chat\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    if (request.method === 'GET' && chatSession) {
+      const {conversationId} = chatContext(decodeURIComponent(chatSession[1]))
+      const store = application().tasks.store
+      if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
+      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
+      if (chatSession[2]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[2])}))
+      if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
+      return send(response, 200, await routerSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
+    }
     const chat = /^\/api\/chat\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && chat) {
-      const value = ledger.chat(identifier(decodeURIComponent(chat[1])))
-      if (!value) fail('CHAT_NOT_FOUND', 404)
-      return send(response, 200, value)
+      const {chat: value, conversationId} = chatContext(decodeURIComponent(chat[1]))
+      const store = application().tasks.store
+      if (!store?.query) return send(response, 200, {...value, taskIds: null, taskHistoryStatus: 'unavailable', taskHistoryReason: 'TASK_HISTORY_UNAVAILABLE'})
+      const tasks = await store.query({kind: 'task.list', groupId: conversationId, archived: 'all'})
+      return send(response, 200, {...value, taskIds: [...new Set(tasks.map(task => task.taskId))], taskHistoryStatus: 'ready'})
     }
     const requestMatch = /^\/api\/requests\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && requestMatch) {
@@ -184,8 +264,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
   const start = () => {
     if (stopped) fail('WEB_STOPPING', 503)
     return startPromise ??= (async () => {
-      await new Promise((resolve, reject) => {server.once('error', reject); server.listen(port, '127.0.0.1', () => {server.off('error', reject); resolve()})})
-      origin = 'http://127.0.0.1:' + server.address().port
+      await new Promise((resolve, reject) => {server.once('error', reject); server.listen(port, network.host, () => {server.off('error', reject); resolve()})})
+      origin = network.publicOrigin ?? 'http://127.0.0.1:' + server.address().port
       return origin
     })()
   }
@@ -214,7 +294,7 @@ export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
   const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
-    getSessionPersistence: () => ctx.sessionPersistence, listen: false})
+    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getPermissions: () => ctx.get('toolPermissions'), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

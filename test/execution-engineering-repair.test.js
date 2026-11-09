@@ -5,15 +5,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createEngineeringRegistry } from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
-import { createEngineeringFailureRepair } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { createTaskOwnerController } from '../packages/dingtalk-dsh-assistant/task-owner-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { createEngineeringRegistry } from '../packages/dingtalk-core/workflow-engineering.js'
+import { createEngineeringFailureRepair } from '../packages/dingtalk-core/workflow-service.js'
 
-for (const ambiguous of [false, true]) test(`冻结v18维护修复保留同Run历史，原生Owner拒绝旧修复决策：${ambiguous ? '补丁歧义读原工作区' : '读失败候选'}、并发拒绝、幂等及旧证据保留`, { timeout: 180000 }, async t => {
+for (const ambiguous of [false, true]) test(`冻结v18维护修复保留同Run历史：${ambiguous ? '补丁歧义读原工作区' : '读失败候选'}、并发拒绝、幂等及旧证据保留`, { timeout: 180000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-engineering-repair-')), source = join(root, 'source'), remote = join(root, 'remote.git')
   await mkdir(join(source, 'src'), { recursive: true })
   const exec = promisify(execFile), git = async (...args) => (await exec('git', ['-C', source, ...args], { windowsHide: true })).stdout.trim()
@@ -107,21 +106,8 @@ for (const ambiguous of [false, true]) test(`冻结v18维护修复保留同Run�
   const unknown = createEngineeringFailureRepair({ store: unknownStore, artifacts, controller, engineering: registry })
   assert.equal((await unknown.inspectCurrentExecution('task')).repairable, false)
   await assert.rejects(unknown.repairCurrentStage({ taskId: 'task', decision, commandId: 'unknown' }), /REPAIR_NOT_ADMITTED/)
-  let repairCommand, rejectedOwnerRepair = false
-  const owner = createTaskOwnerController({ ctx: {}, store, artifacts, controller, modelConfig: () => ({ provider: 'test', model: 'test' }), authorizeStages: async () => true, advanceTask: async () => {}, ...helpers,
-    repairCurrentStage: args => { repairCommand = args.commandId; return helpers.repairCurrentStage(args) },
-    sessionRunner: { async run({ input, onSessionBound, onCandidate, readArtifact }) {
-      assert.equal(input.currentExecution.repairable, false)
-      for (const ref of decision.evidenceRefs) await readArtifact(ref)
-      if (!ambiguous) assert.equal((await readArtifact(evidenceRef)).text, Buffer.from(failedEvidence.data, 'base64').toString('utf8'))
-      await onSessionBound(); await assert.rejects(onCandidate(decision), { code: 'TASK_OWNER_EXECUTION_REPAIR_DISABLED' }); rejectedOwnerRepair = true; return { status: 'no_submission' }
-    }, async close() {} } })
-  t.after(() => owner.close())
-  await owner.observe('task'); await assert.rejects(owner.drive('task'), { code: 'TASK_OWNER_NO_DECISION' }); assert.deepEqual(await owner.applyPending(), [])
-  assert.equal(rejectedOwnerRepair, true)
-  assert.equal(repairCommand, undefined)
   assert.equal((await controller.state(runId)).run.generation, 1)
-  repairCommand = 'explicit-frozen-v18-maintenance-repair'
+  const repairCommand = 'explicit-frozen-v18-maintenance-repair'
   const repairReceipt = await helpers.repairCurrentStage({ taskId: 'task', decision, commandId: repairCommand })
   if (!ambiguous) assert.equal(repairReceipt.result.mode, 'candidate-in-place')
   await controller.whenIdle(runId)

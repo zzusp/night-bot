@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../packages/capability-compat/tools/index.js'
-import { groupDecisionSchema, groupDecisionSubmissionSchema, groupDecisionSubmissionJsonSchema } from '../packages/dingtalk-dsh-assistant/decision.js'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '../src/native-tool-protocol.js'
+import { groupDecisionSchema, groupDecisionSubmissionSchema, groupDecisionSubmissionJsonSchema } from '../packages/dingtalk-core/decision.js'
 
 const topicRefs = [{ topicId: 'topic-recall', revision: 1 }]
 const basis = { basisMessageIds: ['message-recall'], basisUnitRefs: [{ unitId: 'unit-recall', unitRevision: 1 }] }

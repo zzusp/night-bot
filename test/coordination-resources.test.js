@@ -4,8 +4,8 @@ import { mkdtemp, writeFile, access, rm, readdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { createCoordinationResourceTools, readPublicResource } from '../packages/dingtalk-dsh-assistant/coordination-resources.js'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
+import { createCoordinationResourceTools, readPublicResource } from '../packages/dingtalk-core/coordination-resources.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
 
 test('真实xlsx附件完整保留多sheet、Y列、空行位置与公式缓存且清理下载文件', async t => {
   const ExcelJS = createRequire(new URL('../packages/dingtalk-dsh-assistant/package.json', import.meta.url))('exceljs')

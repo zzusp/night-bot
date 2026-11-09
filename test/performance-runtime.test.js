@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openResidentRuntime } from '../packages/dingtalk-dsh-assistant/runtime.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openResidentRuntime } from '../packages/dingtalk-core/runtime.js'
 
 async function setup(t) {
   const values = new Map(), events = new Map(), agents = new Map()

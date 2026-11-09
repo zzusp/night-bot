@@ -1,0 +1,53 @@
+{
+  "startedAt": "2026-11-08T05:59:57.212632+00:00",
+  "finishedAt": "2026-11-08T06:00:06.534084+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^Router close cannot swallow an admission PAUSED failure produced before its own interruption$",
+    "test/pi-resident-router-flow.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "sourceBefore": {
+    "src/channels/router-lifecycle.js": "9a97650dceaa69ca5974b23f074c80bb3561ad55bbd5264982a5592350c2745b",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/runtime/pi-business-admission.js": "5e48f095770a3930bfdd8bcb385b5e40338b468018346ce6d0e2755d3a36c24b",
+    "src/runtime/pi-official-session.js": "5877722630415971c06f7993af2f4bbb70f853da630893e5704691c506fc7343",
+    "test/pi-resident-router-flow.test.js": "b07927a824f0a6c827bc37ef02949369b9354218506ecbe54c5a2d85178ca75f",
+    "test/pi-official-agent-factory.test.js": "3e33bfab15f4d53d05b9bab6e475e625202f18149fcc55fbf7f638c8c3a6ee16",
+    "test/fixtures/resident-router-host.js": "00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "test/fixtures/pi-official-tools.js": "1b3e431c7cdf6c8e491bea98f67f8a7512963057425f5ece87fe6034604e1fa6",
+    "src/runtime/pi-official-context.js": "a2a643ae7dfc74e4d245cc6b42f0eacd6148e3b68263dbc404cdcd2e071af847",
+    "src/runtime/pi-official-durability.js": "aec1aea6df519f26664f9743800a6c3718ed828002d2b2c9834e03ad0bd6dfdf",
+    "src/runtime/pi-native-store.js": "a20a311fed8dcdc2df70e2f53cf14de73afa29a959d284eb5d6f1f8d60796dc6",
+    "src/pi-session-persistence.js": "387d722ed7eff4a4dca38229b7b69c85825f106af4d6a35a4eeeced2cc478d37",
+    "packages/dingtalk-core/task-session-service.js": "b9057bcff6f102f05ca507809fb69d890723635e3a8f0c2575df977f737ce87d"
+  },
+  "sourceAfter": {
+    "src/channels/router-lifecycle.js": "9a97650dceaa69ca5974b23f074c80bb3561ad55bbd5264982a5592350c2745b",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/runtime/pi-business-admission.js": "5e48f095770a3930bfdd8bcb385b5e40338b468018346ce6d0e2755d3a36c24b",
+    "src/runtime/pi-official-session.js": "5877722630415971c06f7993af2f4bbb70f853da630893e5704691c506fc7343",
+    "test/pi-resident-router-flow.test.js": "b07927a824f0a6c827bc37ef02949369b9354218506ecbe54c5a2d85178ca75f",
+    "test/pi-official-agent-factory.test.js": "3e33bfab15f4d53d05b9bab6e475e625202f18149fcc55fbf7f638c8c3a6ee16",
+    "test/fixtures/resident-router-host.js": "00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "test/fixtures/pi-official-tools.js": "1b3e431c7cdf6c8e491bea98f67f8a7512963057425f5ece87fe6034604e1fa6",
+    "src/runtime/pi-official-context.js": "a2a643ae7dfc74e4d245cc6b42f0eacd6148e3b68263dbc404cdcd2e071af847",
+    "src/runtime/pi-official-durability.js": "aec1aea6df519f26664f9743800a6c3718ed828002d2b2c9834e03ad0bd6dfdf",
+    "src/runtime/pi-native-store.js": "a20a311fed8dcdc2df70e2f53cf14de73afa29a959d284eb5d6f1f8d60796dc6",
+    "src/pi-session-persistence.js": "387d722ed7eff4a4dca38229b7b69c85825f106af4d6a35a4eeeced2cc478d37",
+    "packages/dingtalk-core/task-session-service.js": "b9057bcff6f102f05ca507809fb69d890723635e3a8f0c2575df977f737ce87d"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "7d3d07868aced54aac4bf31d40c4248636f7d36168f5a817c711215a2dd77a57",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "nativeExecuted": false,
+  "realVendorExecuted": false
+}

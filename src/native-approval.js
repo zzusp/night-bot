@@ -30,7 +30,7 @@ export default class NativeApproval extends Service {
  static Config=schema.object({policy:schema.union([...APPROVAL_POLICIES]).default('ask')})
  constructor(ctx,config={}){if(!APPROVAL_POLICIES.includes(config.policy??'ask'))throw new TypeError('Invalid approval policy');super(ctx,'approval');this.host=ctx;this.config={...config,policy:config.policy??'ask'};this.closed=false;this.active=new Set();this.calls=new AsyncLocalStorage();this.lifetime=new AbortController();ctx.effect(()=>()=>this.close(),'native approval cancel/drain');ctx.inject(['systemPrompt'],child=>child.systemPrompt.context({name:'approval:policy',order:child.systemPrompt.getContextOrder('APPROVAL_POLICY'),officialText:({actor})=>this.officialText({actor}),text:context=>context.agent?this.officialText({actor:context.agent}):''}))}
  policyForActor(actor){const audit=approvalAudits.get(actor);if(!audit)throw new Error('Approval actor has no bound business audit');const policy=audit.approvalPolicy()??this.config.policy;if(!APPROVAL_POLICIES.includes(policy))throw new Error('Invalid business approval policy');return policy}
- officialText({actor}){return this.policyForActor(actor)==='never'?neverText:askText}
+ officialText({actor}){const permissions=this.host.get('toolPermissions');return permissions?`权限模式：${permissions.mode}。工作目录外文件操作由Host发起逐次审批；命令需要更宽访问时使用sandbox_permissions与justification。只有安装操作者可通过CLI或认证Web选择ask、auto、full，不能通过任务或聊天升级。`:this.policyForActor(actor)==='never'?neverText:askText}
  setPolicy(actor,policy){if(this.closed)throw new Error('Approval service disposed');if(!APPROVAL_POLICIES.includes(policy))throw new TypeError('Invalid approval policy');const previous=this.policyForActor(actor);if(previous===policy)return;const audit=approvalAudits.get(actor);audit.append('approval/policy',{policy});return audit.flush()}
  async request(req){
   if(this.closed)throw new Error('Approval service disposed')
@@ -39,6 +39,8 @@ export default class NativeApproval extends Service {
   if(req.businessAudit!==undefined&&req.businessAudit!==audit.source)throw new Error('Foreign approval business audit')
   if(!audit.isTurnOpen())throw new Error('approval.request() outside an open turn')
   if(!audit.isLive())throw new Error('Approval actor is not live')
+  const permissions=this.host.get('toolPermissions')
+  if(permissions&&!permissions.handles(req)){const answer=await permissions.approveRequest(req);if(answer!==undefined)return answer}
   const record={req,audit,agent:req.agent};this.active.add(record)
   record.done=this.calls.run(record,()=>this.perform(record)).finally(()=>this.active.delete(record));return record.done
  }
@@ -52,11 +54,11 @@ export default class NativeApproval extends Service {
   // waiting cannot grant; an admitted decision's write must then drain.
   if(signal.aborted)outcome='cancelled'
   else if(audit&&(!audit.isLive()||!audit.isTurnOpen()))outcome='cancelled'
-  else if(outcome==='allowed-once'&&this.policyForActor(agent)==='never')outcome='rejected'
+  else if(outcome==='allowed-once'&&!this.host.get('toolPermissions')?.handles(req)&&this.policyForActor(agent)==='never')outcome='rejected'
   append('approval/decided',{id,outcome});await audit.flush();return outcome
  }
  async decide(req,signal=req.signal??this.lifetime.signal,agent=req.agent){
-  if(this.closed||signal.aborted)return'cancelled';const audit=approvalAudits.get(agent);if(audit&&(!audit.isLive()||!audit.isTurnOpen()))return'cancelled';if(this.policyForActor(agent)==='never')return'rejected'
+  if(this.closed||signal.aborted)return'cancelled';if(this.host.get('toolPermissions')?.handles(req))return this.host.get('toolPermissions').decide(req,signal);const audit=approvalAudits.get(agent);if(audit&&(!audit.isLive()||!audit.isTurnOpen()))return'cancelled';if(this.policyForActor(agent)==='never')return'rejected'
   const answer=Promise.resolve().then(()=>{if(signal.aborted)return'cancelled';return this.host.waterfall(scopeTarget(agent,agent),'approval/request',req,()=>Promise.resolve('unavailable'))}).then(value=>outcomes.has(value)?value:'unavailable',()=> 'unavailable')
   return raceAnswer(answer,signal)
  }

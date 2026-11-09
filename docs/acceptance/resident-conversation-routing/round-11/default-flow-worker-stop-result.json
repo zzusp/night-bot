@@ -1,0 +1,97 @@
+{
+  "taskId": "b9d0qrkbm",
+  "group": "default",
+  "capturedAt": "2026-11-08T00:26:42.483324+00:00",
+  "diagnosisPath": "docs/acceptance/resident-conversation-routing/round-11/default-flow-worker-diagnosis.json",
+  "diagnosisSha256": "fb526062153a8ee4dfb82e24c424c94c06cc94b7ceac2a19d448b9c49a602637",
+  "checkerSha256": "3dcf6c6c41ee3c8f6eddea9c70f7d427a069261081761ce691f20ccaa1d817ef",
+  "check": {
+    "mode": "--check",
+    "effects": 0,
+    "taskId": "b9d0qrkbm",
+    "workerPid": 104860,
+    "parentPid": 50508,
+    "createdAtUtc": "2026-11-08T00:02:35.6055722Z",
+    "casePass": 16,
+    "caseFail": 1,
+    "children": 0,
+    "singleWorkerOnly": true,
+    "originalDriverPreserved": true,
+    "originalCaseFailurePreserved": true,
+    "sourceChanged": false,
+    "arbitraryTimeoutAdded": false,
+    "fixtureRemoved": false,
+    "nativeResourceCleanupProved": false
+  },
+  "apply": {
+    "mode": "--apply",
+    "effects": 1,
+    "taskId": "b9d0qrkbm",
+    "workerPid": 104860,
+    "parentPid": 50508,
+    "createdAtUtc": "2026-11-08T00:02:35.6055722Z",
+    "casePass": 16,
+    "caseFail": 1,
+    "children": 0,
+    "singleWorkerOnly": true,
+    "originalDriverPreserved": true,
+    "originalCaseFailurePreserved": true,
+    "sourceChanged": false,
+    "arbitraryTimeoutAdded": false,
+    "fixtureRemoved": false,
+    "nativeResourceCleanupProved": false,
+    "workerExited": true,
+    "workerExitCode": -1,
+    "parentStillRunning": true,
+    "originalOuterTaskStillRunning": true,
+    "nonNaturalWorkerExit": true
+  },
+  "authorization": {
+    "basis": "Current controller forwarded the latest human instruction explicitly naming worker 104860, exact creation time, parent 50508, file identity and no children; not reused from the prior b0o test cancellation.",
+    "scope": "Single exact owned test worker only; no tree, parent runner, outer task, business instance, source edit, fixture deletion or new timeout."
+  },
+  "checkCorrections": [
+    {
+      "failure": "TARGET_FILE_IDENTITY_CHANGED",
+      "effects": 0,
+      "cause": "Windows path separator escaped incorrectly in the checker regex; exact file and ancestry predicates preserved."
+    },
+    {
+      "failure": "ReadAllLines sharing violation on original open stdout",
+      "effects": 0,
+      "cause": "Use native Get-Content shared log read; no lock or permission was changed."
+    }
+  ],
+  "independentReadback": {
+    "observedAt": "2026-11-08T00:25:13.5533857Z",
+    "oldWorkerObserved": false,
+    "originalParentPid": 50508,
+    "originalParentCreatedAtUtc": "2026-11-07T23:44:09.038814Z",
+    "originalOuterPid": 65480,
+    "originalOuterCreatedAtUtc": "2026-11-07T23:44:07.145609Z",
+    "newChild": {
+      "pid": 4620,
+      "parentPid": 50508,
+      "createdAtUtc": "2026-11-08T00:24:50.751994Z",
+      "file": "test/pi-resident-router.test.js"
+    },
+    "originalLogProgress": {
+      "lines": [
+        996,
+        997,
+        998,
+        999,
+        1000,
+        1001
+      ],
+      "cases": "Original runner advanced through three upgrade tests and three following Router tests; no new manual test invocation."
+    }
+  },
+  "sourceVerification": {
+    "count": 1110,
+    "sourceMapSha256": "68a432a68686ddafa7d3528db642f25bfa45200fbb571af26afb7f6a151f5dd1",
+    "changed": []
+  },
+  "resultBoundary": "Default contains an artificial non-natural worker termination and an original receipt test FAIL. It must not be called an untouched naturally completed or all-green group. Other original groups require their own source-bound terminal results.",
+  "exactJsRetainer": "UNVERIFIED; Core is inspecting the frozen close/fixture chain read-only."
+}

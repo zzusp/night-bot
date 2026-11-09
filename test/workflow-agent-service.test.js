@@ -6,12 +6,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { openWorkflowService } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { toToolJsonSchema } from '../packages/dingtalk-dsh-assistant/tool-schema.js'
-import { intentContext, validateExecutionMaterialRefs, messageSchemas } from '../packages/dingtalk-dsh-assistant/message-context.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { openWorkflowService } from '../packages/dingtalk-core/workflow-service.js'
+import { toToolJsonSchema } from '../packages/dingtalk-core/tool-schema.js'
+import { intentContext, validateExecutionMaterialRefs, messageSchemas } from '../packages/dingtalk-core/message-context.js'
 
 test('启动材料引用由Host列举，查询资源和其他事项引用不能进入材料等待', () => {
   const input = intentContext({ sourceKey: 'source-a', executionMaterialRefs: ['attachment-a'],

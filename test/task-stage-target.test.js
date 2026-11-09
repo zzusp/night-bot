@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {stageTargetId} from '../packages/dingtalk-dsh-assistant/task-stage-target.js'
+import {stageTargetId} from '../packages/dingtalk-core/task-stage-target.js'
 test('each repeated publication workflow binds its declared repository target without changing single target behavior',()=>{
  const requirement={stageTargets:{merge:['front-uat3','back-uat3'],deploy:['front-uat3','back-uat3']}},plan={stages:[{workflowId:'merge'},{workflowId:'deploy'},{workflowId:'merge'},{workflowId:'deploy'}]}
  assert.equal(stageTargetId(requirement,plan,0,'merge'),'front-uat3');assert.equal(stageTargetId(requirement,plan,1,'deploy'),'front-uat3');assert.equal(stageTargetId(requirement,plan,2,'merge'),'back-uat3');assert.equal(stageTargetId(requirement,plan,3,'deploy'),'back-uat3')
@@ -8,7 +8,7 @@ test('each repeated publication workflow binds its declared repository target wi
  assert.equal(stageTargetId({stageTargets:{merge:'single'}},plan,2,'merge'),'single')
 })
 
-import {createExternalStageContracts} from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
+import {createExternalStageContracts} from '../packages/dingtalk-core/task-release-workflows.js'
 test('accepted Owner candidates feed formal merge and deployment selects the matching repository receipt',async()=>{
  const captured=[],external={availableTargets:[{workflowId:'task-uat-deployment',targetId:'front',repository:'Owner/front'},{workflowId:'task-uat-deployment',targetId:'back',repository:'Owner/back'}],prepareAcceptedProjectSource:async()=>({pullRequestNumber:7,headCommitSha:'a'.repeat(40),resourceRef:'owner-delivery-task:task'}),prepareRequirement:async args=>{captured.push(args);return args}}
  const contracts=createExternalStageContracts({workflowIds:['task-uat-pr-merge','task-uat-deployment'],external,readEngineeringProof:async()=>{throw Error('must not replay native engineering')},readArtifact:async ref=>({repository:ref,baseBranch:'feature/uat3-base',mergeCommitSha:ref==='Owner/front'?'f'.repeat(40):'b'.repeat(40)})})

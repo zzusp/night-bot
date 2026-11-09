@@ -59,7 +59,9 @@ for(const category of ['agent-platform','out-of-scope'])test(`resident Router ${
   assert.equal(notification.taskId,null);assert.deepEqual(notification.payload.topicRefs,[]);assert.deepEqual(notification.payload.taskIds,[])
   assert.equal(notification.payload.sourceRef.messageId,fixedMessage.messageId);assert.equal(notification.payload.sourceRef.actorId,fixedMessage.senderOpenDingTalkId)
   assert.equal(notification.payload.sourceVersion,1);assert.equal(notification.payload.sourceMessageId,fixedMessage.messageId);assert.equal(notification.payload.actorId,fixedMessage.senderOpenDingTalkId)
-  assert.deepEqual(notification.payload.atOpenDingTalkIds,[fixedMessage.senderOpenDingTalkId]);assert.equal(h.sent.length,1);assert.equal(h.readbacks.length,1)
+  const originalSource=await h.query('source.get',{sourceId:notification.payload.sourceId})
+  assert.equal(originalSource.actorId,fixedMessage.senderOpenDingTalkId)
+  assert.deepEqual(notification.payload.recipientActorIds,[originalSource.actorId]);assert.equal(h.sent.length,1);assert.equal(h.readbacks.length,1)
   assert.deepEqual(h.residentStore.getGroup(fixedMessage.groupId).topics,[]);assert.deepEqual(await h.query('task.list'),[])
   const actorId=h.toolResults.find(row=>row.name==='resident_router_reply').sessionId
   const saved=await h.ctx.sessionPersistence.readNative(actorId,{requireComplete:true})
@@ -120,7 +122,7 @@ test('native platform tools coexist with preset tools and full access stays sess
     const names = request.tools.map(tool => tool.name)
     for (const name of ['read', 'write', 'platform_task_query', 'platform_reply_submit']) assert.ok(names.includes(name), name)
     if (step++ === 0) return [{ name: 'read', args: { path: join(root, 'probe.txt') } }, { name: 'platform_task_query', args: { state: 'completed', day: 'today' } }]
-    return [{ name: 'platform_reply_submit', args: { atOpenDingTalkIds: ['test-actor'], text: '约定时间已过，现补报：本群当前范围没有完成记录。' } }]
+    return [{ name: 'platform_reply_submit', args: { recipientActorIds: ['test-actor'], text: '约定时间已过，现补报：本群当前范围没有完成记录。' } }]
   }, { resident: true }))
   h.ctx.on('tools/result', exec => modes.push(h.ctx.permissionPresets.current(exec.agent)))
   h.ctx.on('agent/error', event => errors.push(event.error))
@@ -187,12 +189,12 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
           scheduled.at = new Date(Date.now() + 2500).toISOString()
           return [0, 1].map(() => ({ name: 'platform_schedule_submit', args: scheduled }))
         }
-        return [{ name: 'platform_reply_submit', args: { atOpenDingTalkIds: ['original-actor'], text: '已安排本次工作汇报。' } }]
+        return [{ name: 'platform_reply_submit', args: { recipientActorIds: ['original-actor'], text: '已安排本次工作汇报。' } }]
       }
       if (!request.tools.some(tool => tool.name === 'platform_task_query')) return []
       if (dueTurns++ === 0) return [{ name: 'platform_task_query', args: { state: 'completed', day: 'today' } }]
       assert.match(JSON.stringify(request.messages), /到期时新事实/)
-      return [{ name: 'platform_reply_submit', args: { atOpenDingTalkIds: ['original-actor'], text: '本群当前完成一项：到期时新事实。' } }]
+      return [{ name: 'platform_reply_submit', args: { recipientActorIds: ['original-actor'], text: '本群当前完成一项：到期时新事实。' } }]
     }, { resident: true })
     h.ctx.on('agent/error', event => errors.push(event.error))
     h.ctx.on('tools/result', exec => { if (exec.name === 'platform_schedule_submit') childHeaders.push(exec.agent.metadata) })
@@ -282,7 +284,7 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
       assert.ok(page, 'due report must read real task-service facts')
       assert.ok(Date.parse(page.asOf) >= Date.parse(scheduleInput.at))
       assert.deepEqual(page.items, [])
-      return [{ name: 'platform_reply_submit', args: { ...(audience === 'all' ? { atAll: true } : { atOpenDingTalkIds: ['reviewer', 'native-user'] }), replyToMessageId: fixedMessage.messageId,
+      return [{ name: 'platform_reply_submit', args: { ...(audience === 'all' ? { atAll: true } : { recipientActorIds: ['reviewer', 'native-user'] }), replyToMessageId: fixedMessage.messageId,
         text: '本次工作汇报：当前范围没有已完成任务。[验收说明](https://example.org/result)', files: [1, 2].map(index => ({ path: `result-${index}.png`, caption: `核验项${index}` })) } }]
     }, { resident: true })
     h.ctx.on('agent/error', event => errors.push(event.error))
@@ -335,7 +337,7 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
   assert.equal(report.payload.sourceId,confirmation.payload.sourceId)
   assert.equal(report.payload.sourceRef.messageId, fixedMessage.messageId); assert.equal(report.payload.sourceRef.actorId, fixedMessage.senderOpenDingTalkId)
   assert.equal(report.payload.sourceMessageId, undefined); assert.equal(report.payload.actorId, undefined)
-  assert.deepEqual(report.payload.topicRefs, []); assert.deepEqual(report.payload.atOpenDingTalkIds, audience === 'all' ? [] : ['reviewer', 'native-user']); assert.equal(report.payload.atAll, audience === 'all' ? true : undefined)
+  assert.deepEqual(report.payload.topicRefs, []); assert.deepEqual(report.payload.recipientActorIds, audience === 'all' ? [] : ['reviewer', 'native-user']); assert.equal(report.payload.atAll, audience === 'all' ? true : undefined)
   const [firstFile, secondFile] = notices.filter(item => item.payload.artifact)
   assert.ok(['starting', 'unknown'].includes(firstFile.state)); assert.ok(firstFile.ack); assert.equal(secondFile.state, 'prepared')
   assert.equal(firstFile.payload.afterNotificationId, report.id); assert.equal(secondFile.payload.afterNotificationId, firstFile.id)

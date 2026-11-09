@@ -70,11 +70,14 @@ export function taskDialogueView(value, secrets = []) {
     writable: false, error: value.error ? 'TASK_DIALOGUE_UNAVAILABLE' : null}
 }
 
+const connectionStates = new Set(['starting', 'waiting-auth', 'ready', 'paused', 'recovering', 'listening', 'error', 'stopped'])
 export function configuredChannels(application, channels) {
   return {items: (application.config.channelPlugins ?? []).map(row => {
     const channelId = row.channelId ?? row.config?.channelId ?? row.type
-    const health = channels.plugins.get(channelId)?.health
-    return {channelId, type: row.type, enabled: row.enabled === true,
+    const health = channels.plugins.get(channelId)?.health, state = health?.state
+    const connectionState = connectionStates.has(state) ? state : 'unknown'
+    const errorCode = connectionState === 'waiting-auth' ? 'CHANNEL_AUTH_REQUIRED' : connectionState === 'error' ? 'CHANNEL_ADAPTER_ERROR' : null
+    return {channelId, type: row.type, enabled: row.enabled === true, connectionState, errorCode,
       ...(typeof health?.healthy === 'boolean' ? {connected: health.healthy} : {})}
   })}
 }
@@ -103,4 +106,22 @@ export async function conversationMessages(application, id, options) {
       status: message.notificationState ?? message.status ?? 'unknown', taskIds: message.taskIds ?? []})),
   ].sort((left, right) => (left.createdAt ?? '').localeCompare(right.createdAt ?? '') || left.id.localeCompare(right.id))
   return {items, pages: {messages: pick(messages, ['total', 'nextOffset', 'revision']), outbox: pick(outbox, ['total', 'nextOffset', 'revision'])}}
+}
+
+// 认证操作者必须能核对待批准的业务目标；仍脱敏秘密，不返回 raw args/env。
+export function permissionsView(value, secrets = []) {
+  const modes = ['ask', 'auto', 'full']
+  if (!value || !modes.includes(value.mode)) fail('PERMISSIONS_UNAVAILABLE', 503)
+  const text = value => visibleText(value, secrets, {maxLength: Infinity, preservePaths: true}).text
+  const fields = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key] === null ? null : text(value[key])]))
+  const tools = new Set(['read', 'read_window', 'read_image', 'write', 'edit', 'ls', 'find', 'grep', 'bash', 'pwsh'])
+  return {mode: value.mode,
+    options: value.options.filter(row => modes.includes(row.value)).map(row => ({value: row.value, label: text(row.label), description: text(row.description)})),
+    protection: {...pick(value.protection, ['status', 'backend']), description: text(value.protection.description)},
+    requests: value.requests.filter(row => tools.has(row.toolName)).map(row => ({
+      ...fields(row, ['id', 'actorId', 'taskId', 'conversationId', 'callId', 'toolName', 'status', 'createdAt', 'decidedAt']),
+      revocable: row.revocable === true,
+      display: fields(row.display, ['summary', 'target', 'cwd', 'command', 'parametersDigest']),
+    })),
+  }
 }

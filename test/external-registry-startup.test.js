@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openWorkflowService} from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import {createReleaseTaskWorkflow,externalWorkflowOwnerContract} from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
-import {defineExecutionWorkflow} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openWorkflowService} from '../packages/dingtalk-core/workflow-service.js'
+import {createReleaseTaskWorkflow,externalWorkflowOwnerContract} from '../packages/dingtalk-core/task-release-workflows.js'
+import {defineExecutionWorkflow} from '../packages/dingtalk-core/execution-controller.js'
 test('startup retains historical identical external digest without replaying changed registry metadata',async t=>{
  const root=await mkdtemp(join(tmpdir(),'external-registry-startup-')),config={groupIds:['g'],ownerActorId:'owner',dbPath:join(root,'control.db'),artifactDirectory:join(root,'artifacts'),instanceId:'startup'}
  let calls=0,service;const deny=async()=>{calls++;throw Error('EXTERNAL_NOT_EXPECTED')}

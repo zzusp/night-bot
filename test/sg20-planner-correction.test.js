@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { inspectLocalAcceptanceCorrection } from '../packages/dingtalk-dsh-assistant/execution-input-lineage.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { inspectLocalAcceptanceCorrection } from '../packages/dingtalk-core/execution-input-lineage.js'
 // Synthetic archived planner input: no runtime database or task artifacts are read.
 const taskId='task-synthetic-sg20',requirementRef=`tasks/${taskId}/requirement.json`
 const data={request:'merge candidate records',criteria:[{id:'merge',description:'preserve records'}],scenarios:[{id:'merge-records',description:'exercise merge'}],uatEnvironment:'uat3'}

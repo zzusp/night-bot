@@ -5,9 +5,9 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { available, reason, nativeTaskHost, latestInput } from './fixtures/task-session-native-host.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
 
 test('saved Agent cwd survives restart without moving native Topic sessions or existing task files and logs',
   { ...({ skip: !available ? reason : false, timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {

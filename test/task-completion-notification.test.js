@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sendTaskCompletionNotification } from '../packages/dingtalk-dsh-assistant/task-completion-notification.js'
+import { sendTaskCompletionNotification } from '../packages/dingtalk-core/task-completion-notification.js'
 function fixture(status = 'prepared') {
   let notice = { id: 'n', status, leaseEpoch: 0, disclosure: { conversationId: 'g' }, payload: { text: 'Completed within approved scope.', phase: 'owner:r', conversationId: 'g', fact: { taskId: 't' } } }
   const counts = { sends: 0, claims: 0, writes: [] }

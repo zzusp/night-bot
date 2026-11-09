@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { PassThrough } from 'node:stream'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 import { migrateExecutionEventsIndex, verifyExecutionEventsIndex, assertStoppedMigrationPid } from '../scripts/migrate-execution-events-index.mjs'
 import { holdDeploymentOwnerLock } from '../docs/acceptance/topic-context-completeness/scripts/check-repair-deployment.mjs'
 

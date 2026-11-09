@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
-import {openDynamicTaskStore} from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 
 test('retired pending-reorder graph remains audit while current Task Owners use only their actual resource leases',async t=>{
   const root=await mkdtemp(join(tmpdir(),'retired-effective-graph-'))

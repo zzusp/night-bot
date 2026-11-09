@@ -2,7 +2,7 @@ import {join} from 'node:path'
 import {readdir,lstat} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
 import {readRegular,atomicWrite,privateDirectory,failure} from '../runtime/files.js'
-import {checkedTaskDirectory} from '../../packages/dingtalk-core/session-workspaces.js'
+import {checkedTaskDirectory,assertTaskWorkspaceReady} from '../../packages/dingtalk-core/session-workspaces.js'
 const hash=id=>createHash('sha256').update(id).digest('hex')
 export async function taskSessionRoutes(paths){
   const routes=new Map();if(paths.mode!=='portable')return routes
@@ -17,6 +17,7 @@ export async function taskSessionRoutes(paths){
   return routes
 }
 export async function registerTaskSession(paths,routes,task,{relocate=false}={}){
+  assertTaskWorkspaceReady(task)
   const central=join(paths.state,'sessions',hash(task.sessionId)+'.pi.jsonl');if(!relocate&&!routes.has(task.sessionId)&&await lstat(central).catch(error=>{if(error.code!=='ENOENT')throw error}))throw failure('TASK_ARCHIVE_EXISTING_SESSION_REQUIRES_OFFLINE_RELOCATION');
   const root=join(paths.workspaces,'tasks',task.taskId);await checkedTaskDirectory(root,true);const directory=join(root,'sessions');await privateDirectory(directory)
   const file=join(root,'.task-session.json'),prior=JSON.parse(await readRegular(file)??'null')

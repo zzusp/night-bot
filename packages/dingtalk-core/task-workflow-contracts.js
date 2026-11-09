@@ -1,9 +1,9 @@
-import { executionDigest, executionError } from './execution-artifacts.js'
+import { executionDigest, executionError, readTaskStageArtifacts } from './execution-artifacts.js'
 import { validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
 import { selectTaskDeliveryFiles } from './task-group-file-delivery.js'
 import { dataChangeProposalRepairPolicy } from './workflow-data-change.js'
 import { createHash } from 'node:crypto'
-import { readTaskOwnerStageArtifacts, readOwnerMaintenanceConstraints } from './task-owner-controller.js'
+import { readTaskMaintenanceConstraints } from './task-maintenance-constraint.js'
 
 /** 只识别 Host 已保存的 Node 检查器“显式测试文件不存在”证据，不按业务描述猜测修复方向。 */
 export async function inspectEngineeringCheckPrerequisite({ state, artifacts }) {
@@ -281,7 +281,7 @@ export function createTaskWorkflowContracts({ controller, store, artifacts, prep
     const extra = evidenceRefs.filter(ref => !observed.evidenceRefs.includes(ref))
     if (!extra.length) return observed.evidenceRefs
     const { taskId, plan } = context
-    const entries = await readTaskOwnerStageArtifacts({ taskId, stages: plan.stages, controller, plan,
+    const entries = await readTaskStageArtifacts({ taskId, stages: plan.stages, controller, plan,
       readStageArtifacts: async ({stage,state}) => readPolicyArtifacts(await contextFor(taskId,stage,plan,state)) })
     const allowed = new Set([plan.task.requirementRef, ...entries.flatMap(stage =>
       [stage.outputRef, ...(stage.evidenceRefs ?? []), ...(stage.nodeArtifacts ?? []).map(node => node.artifactRef)])].filter(Boolean))
@@ -504,7 +504,7 @@ export function createTaskWorkflowContracts({ controller, store, artifacts, prep
       const sharedItems = items.map(item => ({ itemId: item.itemId, criterion: item.criterion,
         evidenceRefs: decision.assessments.find(value => value.itemId === item.itemId).evidenceRefs }))
       const sharedRefs = new Set(sharedItems.flatMap(item => item.evidenceRefs))
-      const maintenanceConstraints = await readOwnerMaintenanceConstraints({ taskId, plan, store, artifacts, signal })
+      const maintenanceConstraints = await readTaskMaintenanceConstraints({ taskId, plan, store, artifacts, signal })
       const sharedContext = { maintenanceConstraints, requirement: { ...requirement, acceptanceItems: sharedItems, signal }, decision,
         stages: semanticStages.filter(item => [item.stage.outputRef, ...(item.stage.evidenceRefs ?? [])].some(ref => sharedRefs.has(ref))),
         directEvidence: directEvidence.filter(item => sharedRefs.has(item.evidenceRef)), acceptanceItems: sharedItems }

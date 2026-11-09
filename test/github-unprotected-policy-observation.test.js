@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createPlatformClients} from '../packages/dingtalk-dsh-assistant/workflow-platform-clients.js'
+import {createPlatformClients} from '../packages/dingtalk-core/workflow-platform-clients.js'
 const repository='HiQ-AI/dataset-web',branch='feature/uat3-base',commit='a'.repeat(40)
 const planMessage='Upgrade to GitHub Pro or make this repository public to enable this feature.'
 const row=(name=branch,sha=commit,protectedValue=false)=>({name,commit:{sha},protected:protectedValue})

@@ -1,6 +1,6 @@
 {
   "sourceVersion": "0.2.1-alpha.2",
-  "purpose": "Provenance catalogue for remaining platform forks; removed format/image code tracked separately as historical evidence. Pi remains inference/context/journal authority.",
+  "purpose": "Historical roots/packages/rewrites are provenance only, not module resolution. Native ACL/CLI retain exact MIT source attribution; retired platform paths must stay absent. Pi owns inference/context/journal.",
   "roots": {
     "@deepseek-ai/dsh-session-persistence-jsonl": "src/legacy-v4/dsh-session-persistence-jsonl/lib/index.js",
     "@deepseek-ai/dsh-session-format-catalog": "src/legacy-v4/dsh-session-format-catalog/lib/index.js",
@@ -63,38 +63,19 @@
   "files": [
     {
       "package": "@deepseek-ai/dsh-sandbox-windows-acl",
-      "sourcePath": "lib/index.js",
-      "sourceSha256": "83379e9c6e8bb725d0ed48ad086fc666bfe151c8c1a345e29e3da5b998aa4fd8",
-      "sha256": "83379e9c6e8bb725d0ed48ad086fc666bfe151c8c1a345e29e3da5b998aa4fd8",
-      "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js"
+      "sourcePath": "lib/types-Cl_DXjhk.js",
+      "sourceSha256": "0bb3a34508785bdc34626542f9358d398fd9f60fdaf4b48201dfdff2122f25fc",
+      "sha256": "15ec905ad74751f9e9c039d4a8c102ca1c2dcaf039462180821a074fe64325e8",
+      "target": "src/process/windows-acl.js",
+      "adaptation": "现有本地ACL业务owner与独立CLI；直接复用canonical Win32/control，退旧诊断Skill及兼容出口，保MIT。新增精确 owned file/registry DACL 的 package allow ACE 减写候选构造及 OWNER_RIGHTS READ_CONTROL；拒绝未知 ACE/无效结构，不新增 Host/SYSTEM 全权，不据候选或旧 WRITE_RESTRICTED 实现声称秘密/跨任务读隔离或 full provider 准入。 精确文件DACL/label采用实际Native继承结果及严格冻结阶段；受影响基线必须已AUTO_INHERITED且无AUTO_INHERIT_REQ，首次Set前拒绝不合格control，保原完整比较和旧父重建。此资格拒绝不是Native恢复或生产准入证据。 LABEL阶段仅在实际变化闭包跨越NULL SACL或其控制位时于全部业务Set之前拒绝，保留显式label及无变化NULL旁支；不修改SD、基线或完整比较，不据安全拒绝称Windows可用性已完成。 抽取现有私有资源 SD 构造及精确创建期判词供 Profile 和新默认任务共享；新增仅 Windows 新 task 根普通独占创建及 work/tmp 出生 Low/NW 候选。完整父链、FileID/nativePath/SD/空根核回后，必要时各一次同 DACL Set4，仅允许400差量；Local 地址按活跃实例认领，单次释放未知保引用和摘要。既有 NULL/外部树拒绝门、原完整比较及归属通知不变，实际新建 Native 与完整 LPAC 验收未完成。 §16.26：统一scope grant新增可信Host SID独立READ_CONTROL|WRITE_DAC 0x60000，不加WRITE_OWNER/业务写删；旧两类与新三类来源严格核验，OW/Host分别保原生baseline及活peer最低份数，精确撤权从直接grant插入边界内右向扣减，保原生同字节ACE顺序与完整SD最终恢复。来源完整性由原耐久全历史枚举保证，不增加账本或SID猜测；原身份/Native资格守卫不放宽，候选尚未通过新Native验收。 失败诊断：仅Host继承守恒原失败点以非枚举cause保留已有父子前后SD、目录类型、分支与模板计数；零额外Native调用，原判据、权限和来源格式不变，不据诊断增量宣称继承错误已修复。"
     },
     {
       "package": "@deepseek-ai/dsh-sandbox-windows-acl",
       "sourcePath": "lib/runner.js",
       "sourceSha256": "9159aaa995d417e5948dd1cc3d8cd40616270e320048e577c58a1c65be3f3a2d",
-      "sha256": "67b71b8988583451a8c21451f06960f5266d3d27d133276aa74cd7096a612246",
-      "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js"
-    },
-    {
-      "package": "@deepseek-ai/dsh-sandbox-windows-acl",
-      "sourcePath": "lib/types-Cl_DXjhk.js",
-      "sourceSha256": "0bb3a34508785bdc34626542f9358d398fd9f60fdaf4b48201dfdff2122f25fc",
-      "sha256": "d42375a720d7f628a93cde5cd4a8964f3d75cd1d2fcd589d379d210883e91ee4",
-      "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/types-Cl_DXjhk.js"
-    },
-    {
-      "package": "@deepseek-ai/dsh-subprocess",
-      "sourcePath": "lib/control.js",
-      "sourceSha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
-      "sha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
-      "target": "src/legacy-v4/dsh-subprocess/lib/control.js"
-    },
-    {
-      "package": "@deepseek-ai/dsh-win32-process",
-      "sourcePath": "lib/index.js",
-      "sourceSha256": "622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9",
-      "sha256": "034c397a6da2d41904d156a5e3e520b6fc2e95b26643c7e4dd0ad83c3790bd23",
-      "target": "src/legacy-v4/dsh-win32-process/lib/index.js"
+      "sha256": "e8e44d3b69bee34bdcba776ad332eef31db2c2b74b0f22d87f0133b1bd175adc",
+      "target": "src/process/windows-acl-runner.js",
+      "adaptation": "现有本地ACL业务owner与独立CLI；直接复用canonical Win32/control，退旧诊断Skill及兼容出口，保MIT。"
     }
   ],
   "rewrites": [
@@ -223,6 +204,46 @@
     "removedMetadata": [
       "src/legacy-v4/dsh-compaction-image-offload/LICENSE",
       "src/legacy-v4/dsh-compaction-image-offload/package.json"
+    ]
+  },
+  "retiredPlatformSources": {
+    "reason": "旧ACL ABI及重复Win32/control已退役；本地ACL直接复用canonical process模块。保原来源事实，旧target必须不存在。",
+    "files": [
+      {
+        "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+        "sourcePath": "lib/index.js",
+        "sourceSha256": "83379e9c6e8bb725d0ed48ad086fc666bfe151c8c1a345e29e3da5b998aa4fd8",
+        "sha256": "83379e9c6e8bb725d0ed48ad086fc666bfe151c8c1a345e29e3da5b998aa4fd8",
+        "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/index.js"
+      },
+      {
+        "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+        "sourcePath": "lib/runner.js",
+        "sourceSha256": "9159aaa995d417e5948dd1cc3d8cd40616270e320048e577c58a1c65be3f3a2d",
+        "sha256": "67b71b8988583451a8c21451f06960f5266d3d27d133276aa74cd7096a612246",
+        "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js"
+      },
+      {
+        "package": "@deepseek-ai/dsh-sandbox-windows-acl",
+        "sourcePath": "lib/types-Cl_DXjhk.js",
+        "sourceSha256": "0bb3a34508785bdc34626542f9358d398fd9f60fdaf4b48201dfdff2122f25fc",
+        "sha256": "d42375a720d7f628a93cde5cd4a8964f3d75cd1d2fcd589d379d210883e91ee4",
+        "target": "src/legacy-v4/dsh-sandbox-windows-acl/lib/types-Cl_DXjhk.js"
+      },
+      {
+        "package": "@deepseek-ai/dsh-subprocess",
+        "sourcePath": "lib/control.js",
+        "sourceSha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+        "sha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+        "target": "src/legacy-v4/dsh-subprocess/lib/control.js"
+      },
+      {
+        "package": "@deepseek-ai/dsh-win32-process",
+        "sourcePath": "lib/index.js",
+        "sourceSha256": "622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9",
+        "sha256": "034c397a6da2d41904d156a5e3e520b6fc2e95b26643c7e4dd0ad83c3790bd23",
+        "target": "src/legacy-v4/dsh-win32-process/lib/index.js"
+      }
     ]
   }
 }

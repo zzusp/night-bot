@@ -72,3 +72,46 @@ test('Windows native grep retains the actual process privacy refusal without lau
  assert.equal(f.launched.length,1);assert.equal(f.requests.length,0)
  t.diagnostic(JSON.stringify({case:'windows-grep-native-boundary',code:result.error.info.code,message:result.error.message,spawnRequests:f.launched.length,modelRequests:0}))
 })
+
+test('operator full grep executes real packaged search across workspace external roots and every argv batch',async t=>{
+ const f=await fixture(t),permissions=f.host.ctx.get('toolPermissions'),external=join(f.root,'external-business')
+ await mkdir(external);await writeFile(join(f.own,'work','full-own.txt'),'FULL_GREP_OWN_PHYSICAL\n');await writeFile(join(external,'full-external.txt'),'FULL_GREP_EXTERNAL_PHYSICAL\n')
+ await mkdir(join(f.root,'data','config'),{recursive:true});await writeFile(join(f.root,'data','config','config.json'),JSON.stringify(f.config,null,2)+String.fromCharCode(10))
+ await permissions.setMode('full')
+ const safe=value=>JSON.stringify(value).split(JSON.stringify(f.root).slice(1,-1)).join('<fixture>')
+ const search=async(stage,pattern,path)=>{
+  const before=f.launched.length,result=await f.run('grep',{pattern,path})
+  t.diagnostic(safe({case:'full-native-grep',stage,spawnRequests:f.launched.length-before,isError:result.isError,...result.isError?{code:result.error.info?.code,message:result.error.message}:{summary:result.value.text.split('\n',1)[0]}}))
+  assert.equal(result.isError,false,safe(result));return result.value.text
+ }
+ const own=await search('workspace','FULL_GREP_OWN','work')
+ assert.match(own,/^Found 1 matches\n/);assert.match(own,/full-own\.txt:1: FULL_GREP_OWN_PHYSICAL/)
+ const outside=await search('external','FULL_GREP_EXTERNAL',external)
+ assert.match(outside,/^Found 1 matches\n/);assert.match(outside,/full-external\.txt:1: FULL_GREP_EXTERNAL_PHYSICAL/)
+ const beforeMissing=f.launched.length
+ assert.equal(await search('no-match','FULL_GREP_ABSENT',external),'No matches found');assert.equal(f.launched.length,beforeMissing+1)
+ const directory=join(external,'batches'),files=[];await mkdir(directory)
+ let pathBytes=0
+ while(pathBytes<=16000){
+  const file=join(directory,'batch-'+String(files.length).padStart(3,'0')+'-'+'x'.repeat(96)+'.txt')
+  await writeFile(file,'FULL_GREP_BATCH_'+files.length+'\n');files.push(file);pathBytes+=Buffer.byteLength(file)+1
+ }
+ const beforeBatches=f.launched.length,text=await search('multiple-batches','FULL_GREP_BATCH_',directory),batches=f.launched.slice(beforeBatches)
+ assert.ok(pathBytes>16000);assert.ok(batches.length>=2,'The real filename byte total must launch multiple rg processes')
+ const dispatched=[]
+ for(const spec of batches){
+  assert.equal(spec.argv[1],'--no-config');assert.equal(spec.cwd,f.own);const separator=spec.argv.indexOf('--');assert.ok(separator>1)
+  const paths=spec.argv.slice(separator+1);assert.ok(paths.length);assert.ok(paths.reduce((sum,path)=>sum+Buffer.byteLength(path)+1,0)<=16000);dispatched.push(...paths)
+ }
+ assert.deepEqual(dispatched.sort(),[...files].sort())
+ const found=[...text.matchAll(/:1: FULL_GREP_BATCH_(\d+)(?:\n|$)/g)].map(match=>Number(match[1])).sort((a,b)=>a-b)
+ assert.deepEqual(found,files.map((_,index)=>index));assert.match(text,new RegExp('^Found '+files.length+' matches\n'))
+ t.diagnostic(JSON.stringify({case:'full-native-grep-batches',pathBytes,fileCount:files.length,rgBatches:batches.length,physicalMatches:found.length}))
+ await permissions.setMode('ask')
+ if(process.platform==='win32'){
+  const before=f.launched.length,result=await f.run('grep',{pattern:'FULL_GREP_OWN',path:'work'})
+  assert.equal(result.isError,true);assert.equal(result.error.info.code,'SEARCH_FAILED');assert.match(result.error.message,/MEMORY_PROCESS_PRIVACY_UNAVAILABLE/);assert.equal(f.launched.length,before+1)
+  t.diagnostic(JSON.stringify({case:'full-native-grep-reset',mode:permissions.mode,code:result.error.info.code,message:result.error.message}))
+ }
+ assert.equal(f.requests.length,0)
+})

@@ -4,10 +4,10 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import {openNativeDomains} from '../../src/native-domain.js'
-import { openDynamicTaskStore } from '../../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { openResidentStore } from '../../packages/dingtalk-dsh-assistant/store.js'
-import { createTopicFactHandler } from '../../packages/dingtalk-dsh-assistant/topic-facts.js'
-import { projectTaskNotification } from '../../packages/dingtalk-dsh-assistant/task-message-projections.js'
+import { openDynamicTaskStore } from '../../packages/dingtalk-core/dynamic-task-store.js'
+import { openResidentStore } from '../../packages/dingtalk-core/store.js'
+import { createTopicFactHandler } from '../../packages/dingtalk-core/topic-facts.js'
+import { projectTaskNotification } from '../../packages/dingtalk-core/task-message-projections.js'
 
 // Synthetic current-product fixture. Historical rows enter only while closed,
 // then the real startup retirement runs; retired commands are never enabled.

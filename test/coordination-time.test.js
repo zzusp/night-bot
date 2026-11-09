@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { nextTimeSlot, validateTimeRule, normalizeCoordinationInstant } from '../packages/dingtalk-dsh-assistant/coordination-time.js'
+import { nextTimeSlot, validateTimeRule, normalizeCoordinationInstant } from '../packages/dingtalk-core/coordination-time.js'
 
 test('proposal instants normalize once while durable scheduling retains canonical UTC identities', () => {
   const at = normalizeCoordinationInstant('2026-10-22T09:00:00+08:00')

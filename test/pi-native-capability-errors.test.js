@@ -17,20 +17,20 @@ test('canonical capability errors preserve independent original names, codes, fa
   }
  }
 })
-test('historical namespaces expose the native owners, shared constructors and complete public export vocabulary',async()=>{
+test('native owners expose shared error constructors without retired service aliases',async()=>{
  for(const pkg of packages){
-  const alias=await import('../packages/capability-compat/'+pkg+'/index.js')
-  const native=await import('../src/native-'+pkg+'.js')
+  const api=await import('../src/native-'+pkg+'.js')
   const original=await import('./fixtures/legacy-'+pkg+'-interface.mjs')
-  assert.equal(alias.default,native.default)
-  for(const name of Object.keys(original))assert.ok(name in alias,pkg+': '+name)
-  for(const name of Object.keys(original).filter(n=>n.endsWith('Error')))assert.equal(alias[name],errors[name])
+  assert.equal(typeof api.default,'function')
+  for(const name of Object.keys(original).filter(n=>n.endsWith('Error'))){
+   assert.ok(name in api,pkg+': '+name)
+   assert.equal(api[name],errors[name])
+  }
  }
 })
-test('native HTTP and the public web namespace share canonical error identity',async()=>{
- const api=await import('../packages/capability-compat/web/index.js')
- const native=await import('../src/native-web.js')
- assert.equal(api.default,native.default)
+test('native HTTP and web share canonical error identity',async()=>{
+ const api=await import('../src/native-web.js')
+ assert.equal(typeof api.default,'function')
  assert.equal(api.WebError,errors.WebError)
  const cause=new Error('fixture cause'),error=new api.WebError('fixture','WEB_ABORTED',{cause})
  assert.equal(error.message,'fixture');assert.equal(error.code,'WEB_ABORTED');assert.equal(error.cause,cause)

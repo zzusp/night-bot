@@ -4,8 +4,8 @@ import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {approvedPurgeTaskIds} from '../packages/dingtalk-dsh-assistant/execution-task-purge.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {approvedPurgeTaskIds} from '../packages/dingtalk-core/execution-task-purge.js'
 const hash='a'.repeat(64),ref=taskId=>`tasks/${taskId}/sha256-${hash}.json`
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'dsh-purge-contract-')),dbPath=join(dir,'control.sqlite')

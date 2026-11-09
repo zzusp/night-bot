@@ -6,8 +6,8 @@ import { join, dirname, basename, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
-import { freezeCandidate } from '../../packages/dingtalk-dsh-assistant/execution-candidate.js'
-import { createLocalAcceptanceRunner, acceptanceProcessTree, acceptanceProcessesAlive } from '../../packages/dingtalk-dsh-assistant/execution-local-acceptance.js'
+import { freezeCandidate } from '../../packages/dingtalk-core/execution-candidate.js'
+import { createLocalAcceptanceRunner, acceptanceProcessTree, acceptanceProcessesAlive } from '../../packages/dingtalk-core/execution-local-acceptance.js'
 
 const exec = promisify(execFile)
 const windows = { skip: process.platform !== 'win32', timeout: 180000 }
@@ -78,7 +78,7 @@ async function setup(t, parameters = {}, companion = false, taskFiles = false) {
     config.companionServices = [{ id: 'dataset', executable: process.execPath, args: [artifactPath, 'service', '127.0.0.1', '{port}'], readyPath: '/ready', artifactPath,
       artifactSha256: createHash('sha256').update(fixtureScript).digest('hex') }]
   }
-  const options = { root: join(directory, 'runs'), config, ...(taskFiles ? { tempRoot: join(directory, 'task-tmp') } : {}) }, runner = taskFiles ? (await import('../../packages/dingtalk-dsh-assistant/execution-task-local-acceptance.js')).createTaskLocalAcceptanceRunner(options) : createLocalAcceptanceRunner(options)
+  const options = { root: join(directory, 'runs'), config, ...(taskFiles ? { tempRoot: join(directory, 'task-tmp') } : {}) }, runner = taskFiles ? (await import('../../packages/dingtalk-core/execution-task-local-acceptance.js')).createTaskLocalAcceptanceRunner(options) : createLocalAcceptanceRunner(options)
   const request = { candidate, plan: { cases: [{ criterionId: 'criterion-1', scenarioId: 'fixture', steps: ['读取本地业务结果'], expected: 'actual-value', parameters }] },
     taskId: 'fixture-task', runId: 'fixture-run', generation: 1, uatEnvironment: 'uat4' }
   return { options, runner, prepared: await runner.prepare(request), trace, directory, request,

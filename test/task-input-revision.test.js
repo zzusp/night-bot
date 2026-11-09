@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { reviseTaskProgress, stagePlanFor, reconcileLegacyStagePlan } from '../packages/dingtalk-dsh-assistant/task-input-revision.js'
+import { reviseTaskProgress, stagePlanFor, reconcileLegacyStagePlan } from '../packages/dingtalk-core/task-input-revision.js'
 import { taskPlanFixture, stageOutputFixture } from './fixtures/task-plan.js'
-import { acceptedTaskStageOutputs } from '../packages/dingtalk-dsh-assistant/task-progress.js'
+import { acceptedTaskStageOutputs } from '../packages/dingtalk-core/task-progress.js'
 
 const basis = new Set(['m1'])
 function task() {

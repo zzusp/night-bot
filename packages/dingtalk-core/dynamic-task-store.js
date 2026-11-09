@@ -5,7 +5,7 @@ import {installTaskArchive, archiveTable, archiveTaskRows, readReceiptRow, inser
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
 import { installObserverPagination, installObserverArchivePagination, observerPage, observerGroupQuery } from './observer-pagination.js'
-import { executionSessionTitle } from './session-workspaces.js'
+import { executionSessionTitle, assertTaskWorkspaceReady } from './session-workspaces.js'
 import { createStartupMetrics } from './startup-metrics.js'
 import { operationBlocksRecovery, hasRestartIsolation, isolationBinding, validIsolationReceipt } from './native-restart-isolation.js'
 import { quotedSendRejectionProof } from './group-message.js'
@@ -576,8 +576,22 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         humanRequests: [], createdAt: stamp, updatedAt: stamp }
       text(task.request, 'request'); array(task.sourceRefs); array(task.requirements)
       task.replyBindings = topicFacts.bindings(task, a.replyBindings)
+      if(process.platform==='win32')task.workspaceInitialization={state:'pending',creationCommandId:commandId,sessionId:task.sessionId}
       saveTask(task); wake(taskId, 'task.created', { sourceRefs: task.sourceRefs }, `wake:${commandId}`)
       return changed({ task })
+    }
+    // 只由 Host 在创建事务提交后调用；模型字段、重放收据与恢复均不授予第二次创建。
+    if(kind==='task.workspace.begin'||kind==='task.workspace.finish'){
+      const task=get('dynamic_tasks',text(a.taskId,'taskId')),initial=task.workspaceInitialization
+      if(!initial||initial.creationCommandId!==a.creationCommandId||initial.sessionId!==a.sessionId||task.sessionId!==a.sessionId
+        ||task.sessionBound||!task.drained||task.leaseEpoch!==0||task.archivedAt)fail('TASK_WORKSPACE_INITIALIZATION_BINDING_INVALID')
+      const finishing=kind==='task.workspace.finish'
+      if(commandId!==initial.creationCommandId+(finishing?':workspace-finish':':workspace-begin')
+        ||initial.state!==(finishing?'initializing':'pending'))fail('TASK_WORKSPACE_INITIALIZATION_STATE_INVALID')
+      if(finishing&&!['ready','failed'].includes(a.state))fail('TASK_WORKSPACE_INITIALIZATION_STATE_INVALID')
+      task.workspaceInitialization={...initial,state:finishing?a.state:'initializing',updatedAt:stamp,
+        ...(finishing?(a.state==='failed'?{code:text(a.code,'code'),...(a.nativeResources?{nativeResources:a.nativeResources}:{}),...(a.nativeFailure?{nativeFailure:a.nativeFailure}:{})}:{observation:record(a.observation)}):{})}
+      saveTask(task);return changed({task})
     }
     if (kind === 'task.archive') {
       const task = get('dynamic_tasks', a.taskId)
@@ -818,6 +832,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(!routerLedger.dependenciesReady(get('dynamic_tasks',a.taskId)))fail('ROUTER_DEPENDENCY_PENDING')
       if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
+      assertTaskWorkspaceReady(task)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
       if (!task.drained) fail('DYNAMIC_TASK_BUSY')

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 
-/** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待显式刷新。 */
+/** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待刷新或网络恢复。 */
 export function useResource<T>(path: string | null, interval = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -37,11 +37,14 @@ export function useResource<T>(path: string | null, interval = 0) {
   }, [path, interval, revision]);
   useEffect(() => {
     const visible = () => { if (document.visibilityState === 'visible' && interval) refresh(); };
+    const online = () => { if (path) refresh(); };
     document.addEventListener('visibilitychange', visible);
-    return () => document.removeEventListener('visibilitychange', visible);
-  }, [interval, refresh]);
-  // Never render the previous route's data during the effect cleanup transition.
-  return { data: activePath.current === path ? data : null, error, loading, updatedAt, refresh };
+    window.addEventListener('online', online);
+    return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', online); };
+  }, [path, interval, refresh]);
+  // 路由切换的清理间隙不展示上一资源的数据、错误或读取状态。
+  const current = activePath.current === path;
+  return { data: current ? data : null, error: current ? error : null, loading: !!path && (!current || loading), updatedAt: current ? updatedAt : null, refresh };
 }
 
 export function useRoute() {

@@ -84,7 +84,7 @@ test('headless CLI starts, serves health, and drains through managed shutdown wi
   const portServer = createServer(); await new Promise(r => portServer.listen(0, '127.0.0.1', r))
   const port = portServer.address().port; await new Promise(r => portServer.close(r))
   const config = {installRoot:root,dataDir:'data',stateDir:join(root,'data','state'),workspaceDir:join(root,'data','workspaces'),model:{provider:'fixture',model:'first'}, providers: { fixture: { api: 'openai-completions', baseURL: 'http://127.0.0.1:1/v1', models: [{ id: 'first' }, { id: 'second' }] } },
-    resident: { port, dws: { enabled: false, writesAuthorized: false }, taskSessions: { instanceId: 'cli-fixture', ownerActorId: 'fixture-owner', webActorId: 'fixture-owner', ingressEpoch: '2026-11-04T00:00:00Z', initialize: true } } }
+    resident: { port, taskSessions: { instanceId: 'cli-fixture', ownerActorId: 'fixture-owner', webActorId: 'fixture-owner', ingressEpoch: '2026-11-04T00:00:00Z', initialize: true } } }
   const path = join(root, 'config.json'); await writeFile(path, JSON.stringify(config))
   let child = spawn(process.execPath, ['bin/night-bot.js', path], { cwd: process.cwd(), stdio: ['ignore','pipe','pipe','ipc'] })
   let output = ''; child.stdout.on('data', b => { output += b }); child.stderr.on('data', b => { output += b })

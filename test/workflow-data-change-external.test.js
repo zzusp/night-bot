@@ -1,22 +1,21 @@
-import { withAuthorizationSessions } from '../packages/dingtalk-dsh-assistant/execution-authorization-session.js'
+import { withAuthorizationSessions } from '../packages/dingtalk-core/execution-authorization-session.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskOwnerController } from '../packages/dingtalk-dsh-assistant/task-owner-controller.js'
-import { createAgentQueryTools } from '../packages/dingtalk-dsh-assistant/agent-query-tools.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createExternalStageContracts, nativeDataChangeOwnerContract } from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
-import { createDataChangeTaskWorkflow, createDataChangeTaskWorkflowV6, createDataChangeTaskWorkflowV4, simpleNullableColumnDefinition } from '../packages/dingtalk-dsh-assistant/workflow-data-change.js'
-import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-dsh-assistant/workflow-trusted-platforms.js'
-import { createProductionPostgresHost } from '../packages/dingtalk-dsh-assistant/workflow-postgres-production-host.js'
-import { createPlatformClients } from '../packages/dingtalk-dsh-assistant/workflow-platform-clients.js'
-import { uatCatalogBaselineSql, uatCatalogBaselineCountSql } from '../packages/dingtalk-dsh-assistant/workflow-postgres-uat-host.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts, executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createAgentQueryTools, verifyAgentEvidence } from '../packages/dingtalk-core/agent-query-tools.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { createExternalStageContracts, nativeDataChangeOwnerContract } from '../packages/dingtalk-core/task-release-workflows.js'
+import { createDataChangeTaskWorkflow, createDataChangeTaskWorkflowV6, createDataChangeTaskWorkflowV4, simpleNullableColumnDefinition } from '../packages/dingtalk-core/workflow-data-change.js'
+import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
+import { createProductionPostgresHost } from '../packages/dingtalk-core/workflow-postgres-production-host.js'
+import { createPlatformClients } from '../packages/dingtalk-core/workflow-platform-clients.js'
+import { uatCatalogBaselineSql, uatCatalogBaselineCountSql } from '../packages/dingtalk-core/workflow-postgres-uat-host.js'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const sql = 'BEGIN; UPDATE t SET v=2 WHERE id=1 AND v=1; COMMIT;'
@@ -414,24 +413,24 @@ for (const [automatic, precreated, decision = 'approved', drop = false] of [[fal
       try { return { target: exactTarget, rows: (await client.query(uatCatalogBaselineSql({ schema: 'public', table: 'process_id_temp' }), ['public', 'process_id_temp'])).rows } }
       finally { await client.end() }
     }, verify: async ({ output }) => ({ passed: output.target.database === exactTarget.database, sourceRefs: ['production-readonly-catalog'] }) }] })
-  const owner = createTaskOwnerController({ ctx: {}, store, artifacts, controller, modelConfig: () => ({}), advanceTask: async () => {}, authorizeStages: async () => false,
-    tools: queryTools, prepareQueryInput: async () => requirement,
-    sessionRunner: { async close() {}, async run({ binding, tools, queryInput, onSessionBound, onQueryEvidence, onCandidate }) {
-      await onSessionBound()
-      const queried = await tools[0].execute({ binding, input: queryInput, args: {} })
-      const queryBinding = Object.fromEntries(['kind','taskId','sessionId','turnId','leaseEpoch','ownerEpoch','requirementRevision','inputDigest'].map(key => [key, binding[key]]))
-      await onQueryEvidence({ binding: queryBinding, evidenceRef: queried.evidenceRef })
-      const decision = { action: 'wait', summary: '当前目标结构已核对，等待本测试提交审批候选', evidenceRefs: [queried.evidenceRef], condition: { kind: 'execution', missing: '审批候选', responsibleParty: '执行方', resumeWhen: '本测试继续', evidenceRefs: [queried.evidenceRef] } }
-      await onCandidate(decision); return { status: 'submitted', decision }
-    } } })
-  t.after(() => owner.close())
-  await owner.ensure({ taskId: 'same-production-task', sourceKey: 'original', criteria: ['精确SQL经过插件审批后完成回查'], origin: {} })
-  const ownerRecord = await store.query({ kind: 'task.owner', taskId: 'same-production-task' })
-  const requirementRef = (await artifacts.put(requirement, { taskId: 'same-production-task' })).ref
-  await store.command({ id: 'bind-current-requirement', kind: 'task.requirement.bind-legacy', args: { taskId: 'same-production-task', expectedRequirementRevision: 1, requirementRef, sessionId: ownerRecord.sessionId, criteria: ['精确SQL经过插件审批后完成回查'], sourceKey: 'original', eventKey: 'bind-current' } })
-  await owner.drive('same-production-task')
-  const [contract] = createExternalStageContracts({ workflowIds: ['task-data-change'], external,
-    readTaskEvidence: args => owner.readTaskEvidence(args), readArtifact: async ref => { assert.equal(ref, 'verified-investigation-output'); return source } })
+  const requirementRef = (await artifacts.put(requirement, { taskId:'same-production-task' })).ref
+  const send = async (kind, args, id = kind) => (await store.command({ id, kind, args })).result
+  await send('task.requirement.bind-legacy', { taskId:'same-production-task', expectedRequirementRevision:1,
+    requirementRef, sessionId:'fixture-query-session', criteria:['精确SQL经过插件审批后完成回查'], sourceKey:'original', eventKey:'bind-current' })
+  const claim = await send('task.owner.claim', { taskId:'same-production-task', turnId:'fixture-query-turn', expectedLeaseEpoch:0 })
+  const turn = { taskId:'same-production-task', turnId:claim.turnId, leaseEpoch:claim.leaseEpoch }
+  await send('task.owner.sessionBound', { ...turn, sessionId:claim.sessionId })
+  const binding = { kind:'task-owner', ...turn, sessionId:claim.sessionId, ownerEpoch:claim.ownerEpoch,
+    requirementRevision:claim.versions.requirementRevision, inputDigest:executionDigest(requirement) }
+  const queried = await queryTools[0].execute({ binding, input:requirement, args:{} })
+  await verifyAgentEvidence({ artifacts, refs:[queried.evidenceRef], binding, scope:requirement.scope })
+  await send('task.owner.query-evidence', { ...turn, requirementRevision:binding.requirementRevision, evidenceRef:queried.evidenceRef })
+  const queryDecision = { action:'wait', summary:'当前目标结构已核对，等待本测试提交审批候选', evidenceRefs:[queried.evidenceRef],
+    condition:{kind:'execution',missing:'审批候选',responsibleParty:'执行方',resumeWhen:'本测试继续',evidenceRefs:[queried.evidenceRef]} }
+  await send('task.owner.candidate', { ...turn, decision:queryDecision }); await send('task.owner.accept', turn); await send('task.owner.applied', turn)
+  const [contract] = createExternalStageContracts({ workflowIds:['task-data-change'], external,
+    readTaskEvidence:args=>store.query({kind:'task.owner.query-evidence',...args}),
+    readArtifact:async ref=>{assert.equal(ref,'verified-investigation-output');return source} })
   const currentPlan = await controller.taskPlan('same-production-task')
   const prepared = await contract.prepare({ taskId: 'same-production-task', stage: { workflowId: 'task-data-change' }, stageIndex: 1,
     plan: { ...currentPlan, stages: [{ workflowId: 'task-investigation', status: 'succeeded', outputRef: 'verified-investigation-output' }] }, requirement,
@@ -442,7 +441,7 @@ for (const [automatic, precreated, decision = 'approved', drop = false] of [[fal
   assert.deepEqual(queryProof.result.rows, catalog)
   assert.deepEqual(prepared.input.target, exactTarget)
   assert.equal(prepared.input.baseline, undefined)
-  assert.equal(queries.length, 1, '候选形成前只有Owner主动提交的只读结构查询')
+  assert.equal(queries.length, 1, '候选形成前只有受信查询工具完成的一次结构查询')
   await controller.reviseTaskPlan({ commandId: 'bind-prepared-change', taskId: 'same-production-task', expectedPlanRevision: currentPlan.task.planRevision, expectedControlRevision: currentPlan.task.controlRevision, requirementRevision: currentPlan.task.requirementRevision, affectedFrom: 0, stages: [{ stageId: 'change', workflowId: workflow.id, input: prepared.input }] })
   const boundPlan = await controller.taskPlan('same-production-task')
   await controller.createRun({ commandId: 'real-contract-create', runId: 'real-contract-run', taskId: 'same-production-task',

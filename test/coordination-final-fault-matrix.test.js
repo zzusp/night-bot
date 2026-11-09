@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
-import {openDynamicTaskStore} from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 
 // T03/T23 keep finite SQL fault boundaries against current Task acceptance and
 // completion/Topic-fact transactions. Retired DAG scheduling is not resurrected.

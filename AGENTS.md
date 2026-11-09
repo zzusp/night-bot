@@ -41,9 +41,12 @@ current context/history and inference authority. Do not add DSH data import or
 plugin ABI compatibility. Application session publication rejects foreign facades.
 Runtime and offline maintenance must share strict Pi journal decoding; maintenance
 proofs reject uncommitted tails and require explicit portable-path decoding. Preserve its guards, audit,
-cancellation/drain, ownership and no-replay contracts. Historical namespace
-aliases and pnpm-workspace.yaml are part of the runtime artifact. Run the native
-source/hash/import guard after changing compatibility code.
+cancellation/drain, ownership and no-replay contracts. Historical DSH namespace
+aliases and package facades are cleanup targets, not a required runtime ABI.
+Retire their real consumer/import/lock references together; do not restore them
+for obsolete tests. Preserve pnpm-workspace.yaml's allowBuilds policy when retiring
+overrides. Run the native source/hash/import guard after compatibility changes;
+retained derived implementations still require their original notices.
 Do not bypass dispatch policy or relax sandbox checks to make a test pass.
 The cloud executor wrapper makes nested UID maps read-only; containment tests may
 run with approved executor sandbox escalation so their own bubblewrap works. This
@@ -60,9 +63,23 @@ personal paths. Upgrades must preserve data, and backup/restore must state their
 consistency and privacy boundaries, exclude secrets by default, and validate
 typed controlled paths before relocation. This is a new project: do not add DSH
 plugin historical-data import or legacy path conversion. Night Bot's own future
-backup/copy restore is a separate required capability. Business work and all
-artifacts stay in `data/workspaces/`; model file/process tools must enforce that
-write boundary, including relative paths and symlinks. System binaries/libraries
+backup/copy restore is a separate required capability. Business work and retained
+artifacts default to `data/workspaces/`. Permissions use the application-owned
+`ask` (请求批准), `auto` (帮我批准), and `full` (完全访问) modes, defaulting to `ask`.
+Outside-workspace business writes must reach approval rather than an unconditional
+path denial; an approved call must receive its actual, precisely scoped file or
+process access. Auto uses a tool-free Pi model review of approval-required actions;
+uncertainty or review failure returns to human approval. Full requires an explicit
+authenticated operator choice and provides the documented execution environment's
+OS-account access, not administrator elevation. Never describe a mode as full
+while silently retaining the old workspace-only fence, or claim full preserves
+an OS sandbox that it bypasses. Mode selection is not a task-model or ordinary
+channel-sender capability. Preserve actor/call/argument/scope binding, cancellation,
+durable decisions and no-replay; approval does not turn untrusted text into authority.
+Use DSH behavior only as a reference: implement these permissions through Pi and
+Night Bot's own execution host, without DSH packages, ABI compatibility or old
+execution chains. Explicit full mode is not a workaround for failing default-mode
+containment tests. System binaries/libraries
 and ephemeral OS mechanisms are dependencies, not external business workspaces.
 Runtime data, memories, credentials, backups and business artifacts must never be
 committed to Git. Version code, tests, rules, generic skill loading/isolation
@@ -93,6 +110,9 @@ sessions, task-only reviews/destination references and disposable tmp. SQLite
 remains runtime authority. Never replay JSON snapshots as commands or copy whole
 shared memory/skill scopes. Require offline seals for portable backup, verify
 source/session/artifact identity and hashes, and restore with held effects,
-operator review and no automatic delivery. Task model tools/processes may write
-only work and tmp; metadata, materials, outputs, sessions and reviews are Host-owned.
+operator review and no automatic delivery. Within a task archive, work and tmp
+are model work areas; metadata, materials, outputs, sessions and reviews are
+Host-owned and must not be fabricated through model tools. External business
+targets follow the permission modes above. State the actual OS protection of
+each mode separately from application ownership, especially for full access.
 Do not claim cwd isolates trusted arbitrary plugins. See docs/TASK-ARCHIVE.md.

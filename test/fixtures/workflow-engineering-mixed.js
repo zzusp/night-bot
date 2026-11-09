@@ -1,4 +1,4 @@
-import { readTaskOwnerStageArtifacts } from '../../packages/dingtalk-dsh-assistant/task-owner-controller.js'
+import { readTaskStageArtifacts } from '../../packages/dingtalk-core/execution-artifacts.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
@@ -7,13 +7,13 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy } from '../../packages/dingtalk-dsh-assistant/workflow-engineering.js'
-import { createTaskWorkflowContracts } from '../../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
-import { openExecutionStore } from '../../packages/dingtalk-dsh-assistant/execution-store.js'
-import { defineExecutionWorkflow } from '../../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { executionDigest } from '../../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { openExecutionArtifacts } from '../../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createManagedWorkspaces } from '../../packages/dingtalk-dsh-assistant/execution-workspace.js'
+import { assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy } from '../../packages/dingtalk-core/workflow-engineering.js'
+import { createTaskWorkflowContracts } from '../../packages/dingtalk-core/task-workflow-contracts.js'
+import { openExecutionStore } from '../../packages/dingtalk-core/execution-store.js'
+import { defineExecutionWorkflow } from '../../packages/dingtalk-core/execution-controller.js'
+import { executionDigest } from '../../packages/dingtalk-core/execution-artifacts.js'
+import { openExecutionArtifacts } from '../../packages/dingtalk-core/execution-artifacts.js'
+import { createManagedWorkspaces } from '../../packages/dingtalk-core/execution-workspace.js'
 
 
 // Registration-only fixtures explicitly provide the current local-acceptance capability.
@@ -94,4 +94,4 @@ function registryLocalFixture(directory) {
 
 
 
-export { readTaskOwnerStageArtifacts, assert, execFile, promisify, createHash, mkdir, mkdtemp, writeFile, readdir, readFile, join, tmpdir, assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy, createTaskWorkflowContracts, openExecutionStore, defineExecutionWorkflow, executionDigest, openExecutionArtifacts, createManagedWorkspaces, registryLocalFixture }
+export { readTaskStageArtifacts, assert, execFile, promisify, createHash, mkdir, mkdtemp, writeFile, readdir, readFile, join, tmpdir, assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy, createTaskWorkflowContracts, openExecutionStore, defineExecutionWorkflow, executionDigest, openExecutionArtifacts, createManagedWorkspaces, registryLocalFixture }

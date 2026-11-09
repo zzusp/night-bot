@@ -82,7 +82,6 @@ or bypass read-only review. Execution sessions cannot inherit coordinator,
 delegation or scheduling tools. Official file capabilities retain their private
 identity markers and normal preflight checks; see PI-FILE-TOOLS.md.
 
-Named-resource/member-slot orchestration has only the cancelled delegation
-entry and legacy tests in the inspected tree. No independent current Single
-entry or explicit product requirement was found, so no replacement was added.
-Task queue capacity remains separate and is retained.
+Named-resource/member-slot orchestration 属于已取消的委派架构；旧扫描记录
+不表示当前仍保留其入口或测试，也不要求恢复旧 facade。当前单会话任务不因此获得
+独立资源分配 API；任务队列容量规则单独保留。

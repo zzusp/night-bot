@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { taskProgressSnapshot, acceptedTaskStageOutputs } from '../packages/dingtalk-dsh-assistant/task-progress.js'
+import { taskProgressSnapshot, acceptedTaskStageOutputs } from '../packages/dingtalk-core/task-progress.js'
 import { taskPlanFixture, stageOutputFixture } from './fixtures/task-plan.js'
 
 const task = () => ({ taskId: 'task-1', groupId: 'g1', inputVersion: 2, runSequence: 3, state: 'running', objective: '发布', stageTasks: ['SQL', '后端', '前端'], checkpoints: [

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createGithubPullRequests } from '../packages/dingtalk-dsh-assistant/execution-pr.js'
-import { createVerificationJobCheck, createBusinessAcceptanceCheck } from '../packages/dingtalk-dsh-assistant/execution-check-job.js'
-import { withVerificationProcessJournal, inspectVerificationProcessJournal, historicalVerificationProcesses } from '../packages/dingtalk-dsh-assistant/execution-check-job.js'
+import { createGithubPullRequests } from '../packages/dingtalk-core/execution-pr.js'
+import { createVerificationJobCheck, createBusinessAcceptanceCheck } from '../packages/dingtalk-core/execution-check-job.js'
+import { withVerificationProcessJournal, inspectVerificationProcessJournal, historicalVerificationProcesses } from '../packages/dingtalk-core/execution-check-job.js'
 
 test('历史检查排空保留未知进程责任，按实际命令和候选路径拒绝存活进程',()=>{
  const options={commands:[{executable:'D:/node22/node.exe',args:['yarn.js','run','build']}],root:'D:/tasks/exact/checks',claimedAt:'2026-10-09T00:00:00Z',hostPid:100},born=Date.parse(options.claimedAt)+100

@@ -1,0 +1,27 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^Windows LPAC job configuration",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "startedAt": "2026-11-08T04:43:03.752057+00:00",
+  "finishedAt": "2026-11-08T04:43:04.077708+00:00",
+  "exit": 0,
+  "naturalExit": true,
+  "source": {
+    "test/pi-native-sandbox.test.js": "873f1ad773f603d604a64914b0c69364d8da2e6b493d7877ee8aa36b72db2a5f",
+    "src/process/win32.js": "0ae8684ec62df9470b602d8276ed213b825993b0078e0fa37874c7660d5bbfda",
+    "src/process/windows-acl.js": "ccd6c04d41b513e5ce3e5fdafa9a44d104e8c39797bab9e1529bb0af31d80f98",
+    "src/process/contracts.js": "a032608307f471b232719e5cef8dc1114871b1dcbc6b361ad886b32694165a60",
+    "src/native-sandbox.js": "9ae1d0927b6b05e8b37f2d9174d7ea118e0d7bdb772f4821327a8b0e94cbe25d"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "d258e340c65195a515a8edee3bcb2e89f2723d5428e0f035b4790285004b2039",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "profileCreated": false,
+  "realVendorExecuted": false
+}

@@ -22,8 +22,11 @@ node bin/night-bot-effects.js CONFIG close PROPOSAL.json --operator-text-file NO
 
 inspect 返回当前绑定、原生 intent/call/input 身份和摘要、日志提交切点、
 权限与渠道范围摘要以及排空时间。操作者须实际检查外部效果，再由可信
-Host/操作者将证据存入任务的 `materials/runtime-evidence/effects/`；模型只能
-写 task work/tmp，不能自行制作该 Host 证据。文件名为原始 UTF-8 JSON 字节的
+Host/操作者将证据存入任务的 `materials/runtime-evidence/effects/`。`ask` / `auto`
+的任务内写入只开放 work/tmp，Host 证据目录不能通过普通业务路径审批获得。
+显式 `full` 下的直接进程具有当前 OS 账号访问能力，不能再声称 OS 阻止其
+修改同账号可写文件；证据仍须由操作者实际核实，不因磁盘文件存在而成为
+授权或真实效果证明。模式说明见 [README](../README.md#工具权限)。文件名为原始 UTF-8 JSON 字节的
 SHA-256 加 `.json`，拒绝软链接、硬链接、改变的字节或陈旧身份。
 
 证据 JSON 的精确 schema 见 `evidenceSchema`（src/tasks/effect-reconciliation.js）：

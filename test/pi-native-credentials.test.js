@@ -1,13 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {mkdtemp,readFile,writeFile,rm,stat,unlink,chmod,rename} from 'node:fs/promises'
+import {mkdtemp,readFile,writeFile,rm,stat,unlink,chmod} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import NativeCredentials,{parseCredentialsDocument,credentialRecord} from '../src/native-credentials.js'
 import {createLaunchEnvironmentSnapshot} from '../src/native-environment.js'
-import {withCredentialLock} from '../src/credential-file.js'
+import {withCredentialLock,writeCredentialFile} from '../src/credential-file.js'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 async function fixture(t,text,options={}){const root=await mkdtemp(join(tmpdir(),'night-credential-')),filename=join(root,'credentials.yaml');t.after(()=>rm(root,{recursive:true,force:true}));if(text!==undefined)await writeFile(filename,text,{mode:0o600});const ctx=new Context();ctx.provide('launchEnvironment',createLaunchEnvironmentSnapshot(options.layers??[]));try{await ctx.plugin(NativeCredentials,{path:filename,watch:false,...options.config})}catch(e){await ctx.fiber.dispose();throw e}t.after(()=>ctx.fiber.dispose());return{ctx,store:ctx.credentials,filename,root}}
 test('owned version-one credential documents retain references and detached grants while flat layouts are refused',()=>{
@@ -27,7 +27,7 @@ test('version-one stores retain comments and watcher follows atomic external cha
  const {store,filename}=await fixture(t,'version: 1\nrefs:\n  # keep\n  KEY: "old" # unchanged\n',{config:{watch:true,debounceMs:5}})
  assert.equal((await store.resolve('KEY')).value,'old')
  assert.match(await readFile(filename,'utf8'),/# unchanged/)
- await writeFile(filename+'.replace','version: 1\nrefs: {KEY: external}\n',{mode:0o600});await rename(filename+'.replace',filename)
+ await withCredentialLock(filename,owned=>writeCredentialFile(filename,'version: 1\nrefs: {KEY: external}\n',owned))
  for(let i=0;i<150&&(await store.resolve('KEY')).value!=='external';i++)await sleep(10)
  assert.equal((await store.resolve('KEY')).value,'external')
  await unlink(filename)

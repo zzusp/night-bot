@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { formatTaskGroupReply, normalizeReplySignature } from '../packages/dingtalk-dsh-assistant/group-reply-format.js'
-import { createDwsAdapter } from '../packages/dingtalk-dsh-assistant/dws-adapter.js'
+import { formatTaskGroupReply, normalizeReplySignature } from '../packages/dingtalk-core/group-reply-format.js'
+import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
 
 const source = { groupId: 'cid-group', messageId: 'm-original', senderName: '原发起人', senderOpenDingTalkId: 'od-sender' }
 const format = options => formatTaskGroupReply({ source, summary: '核验结论：问题部分存在。', ...options })

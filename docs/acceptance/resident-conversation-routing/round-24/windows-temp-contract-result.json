@@ -1,0 +1,51 @@
+{
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^(Windows privacy intersects requested task writes and unwraps the original argv exactly once|Windows privacy projects only Host-bound external roots and rejects neighbouring or private scopes|Windows scope projection deduplicates case-insensitive roots and upgrades only matching reads to writes|Windows privacy recognises TASKS casing through real installation paths and POSIX stays case sensitive|Windows LPAC never enters fallback ordinary or node-pty providers|Windows LPAC runner requires durable Job protocol before current-token executable resolution)$",
+    "test/pi-native-sandbox.test.js",
+    "test/pi-native-process.test.js"
+  ],
+  "startedAt": "2026-11-08T09:33:39.376956+00:00",
+  "finishedAt": "2026-11-08T09:33:39.754473+00:00",
+  "exit": 0,
+  "naturalExit": true,
+  "sourceBefore": {
+    "test/pi-native-sandbox.test.js": "556798d3c8e6252a8b82ae1969e7cbc3caefc83bd5444a19acaedc8b7056cf21",
+    "test/pi-native-process.test.js": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+    "src/process/runner.js": "e2c399718c9a9517e16779b1da095f7ccbf561e8388ab4d521eb0bd158524814",
+    "src/process/windows-profile.js": "0f6a04f3738b3b6db48401baa2384a7af4ca7a952e2be70fc3951a6ce51a80a0",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-acl.js": "8d3f7d5a23dddb3f187269b0977a8e515e30c30d5e0027e690ca88070e5c3003",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/memory/privacy.js": "51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6",
+    "src/process/index.js": "44989dd69959ecf25d17aab6e09726ab929fe6eab2e8d561e05a76fdb919ec31",
+    "src/process/runner-launch-B2zsQ1Dz.js": "83bda81536ab4401e57b0fa43369e31f09e34a660f844437c98e5dc85d70aaa9"
+  },
+  "sourceAfter": {
+    "test/pi-native-sandbox.test.js": "556798d3c8e6252a8b82ae1969e7cbc3caefc83bd5444a19acaedc8b7056cf21",
+    "test/pi-native-process.test.js": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+    "src/process/runner.js": "e2c399718c9a9517e16779b1da095f7ccbf561e8388ab4d521eb0bd158524814",
+    "src/process/windows-profile.js": "0f6a04f3738b3b6db48401baa2384a7af4ca7a952e2be70fc3951a6ce51a80a0",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-acl.js": "8d3f7d5a23dddb3f187269b0977a8e515e30c30d5e0027e690ca88070e5c3003",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/memory/privacy.js": "51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6",
+    "src/process/index.js": "44989dd69959ecf25d17aab6e09726ab929fe6eab2e8d561e05a76fdb919ec31",
+    "src/process/runner-launch-B2zsQ1Dz.js": "83bda81536ab4401e57b0fa43369e31f09e34a660f844437c98e5dc85d70aaa9"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "bbc49d9c820cba7e40d95b8da8b8189a98fbb0af417819e2466c80f5437a1797",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "selectedCompleteNames": [
+    "Windows privacy intersects requested task writes and unwraps the original argv exactly once",
+    "Windows privacy projects only Host-bound external roots and rejects neighbouring or private scopes",
+    "Windows scope projection deduplicates case-insensitive roots and upgrades only matching reads to writes",
+    "Windows privacy recognises TASKS casing through real installation paths and POSIX stays case sensitive",
+    "Windows LPAC never enters fallback ordinary or node-pty providers",
+    "Windows LPAC runner requires durable Job protocol before current-token executable resolution"
+  ],
+  "nativeExecuted": false,
+  "windowsTargetLaunched": false
+}

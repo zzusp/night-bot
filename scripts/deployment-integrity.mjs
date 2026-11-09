@@ -5,9 +5,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { createHash } from 'node:crypto'
 import { DatabaseSync, backup } from 'node:sqlite'
 import { stripVTControlCharacters } from 'node:util'
-import { maintenanceStatus } from '../packages/dingtalk-dsh-assistant/execution-maintenance.js'
-import { plannedStageRunId } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { maintenanceStatus } from '../packages/dingtalk-core/execution-maintenance.js'
+import { plannedStageRunId } from '../packages/dingtalk-core/execution-controller.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 
 const fail = code => { throw new Error(code) }
 const hash = value => createHash('sha256').update(value).digest('hex')

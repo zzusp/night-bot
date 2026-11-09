@@ -1,5 +1,5 @@
 import test from 'node:test'
-import { readTaskOwnerStageArtifacts, assert, execFile, promisify, createHash, mkdir, mkdtemp, writeFile, readdir, readFile, join, tmpdir, assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy, createTaskWorkflowContracts, openExecutionStore, defineExecutionWorkflow, executionDigest, openExecutionArtifacts, createManagedWorkspaces, registryLocalFixture } from './fixtures/workflow-engineering-mixed.js'
+import { readTaskStageArtifacts, assert, execFile, promisify, createHash, mkdir, mkdtemp, writeFile, readdir, readFile, join, tmpdir, assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy, createTaskWorkflowContracts, openExecutionStore, defineExecutionWorkflow, executionDigest, openExecutionArtifacts, createManagedWorkspaces, registryLocalFixture } from './fixtures/workflow-engineering-mixed.js'
 
 test('重执行复用受信开发分支最新提交并冻结远端，保留源检出与历史定义', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-branch-reuse-')), source = join(directory, 'source'), remote = join(directory, 'remote.git')
@@ -114,7 +114,7 @@ test('重执行复用受信开发分支最新提交并冻结远端，保留源�
 })
 
 test('v11 输入映射、候选绑定和失败验收不能进入提交；v10 工厂摘要保持稳定', async () => {
-  const { createEngineeringLocalAcceptanceWorkflow, createEngineeringAcceptanceWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
+  const { createEngineeringLocalAcceptanceWorkflow, createEngineeringAcceptanceWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
   let commitCalls = 0
   const options = { provider: 'test', model: 'test', adapterIdentity: 'contract', workspaceAdapter: {}, editAdapter: {},
     checks: [{ id: 'check', version: '1', run: async () => ({ passed: true }) }], project: { uatEnvironment: 'uat1' },

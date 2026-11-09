@@ -1,0 +1,10 @@
+{
+  "removedPaths": [
+    "docs/tmp/sg12-def816be-context.tar",
+    "docs/tmp/sg12-def816be-context.tar.gz",
+    "docs/tmp/sg12-build-context-def816be"
+  ],
+  "sourceMapRetained": true,
+  "finalImageRetained": "sha256:c34333f096fc1ffa807b812acfe064b9832942a754053dd5fd4be75041d82813",
+  "buildResultsAndFailureLogsRetained": true
+}

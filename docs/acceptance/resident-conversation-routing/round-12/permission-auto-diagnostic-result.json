@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-11-08T03:04:07.625461+00:00",
+  "finishedAt": "2026-11-08T03:04:17.034968+00:00",
+  "exit": 0,
+  "source": {
+    "src/tool-permissions.js": "1a2f14be3b131269e925d794db2a8bd40f7399e033ece30e8a4c83f7d0b4e126",
+    "src/host.js": "300cd9d8a87f04621cb604b23e31c970c92e282fe3bf2e9a8a26131020beb1ec",
+    "test/pi-approval-wire.test.js": "3652a7b4031ad34f5d3cd08cb11c194399b7f77d9d025515e9d52ef6cad9ec54",
+    "test/fixtures/memory-host.js": "923ca3c6d85c1180eb4411902b5176ae0374506cbde9e8d7ce1d1089dc3008c1"
+  },
+  "sourceChanged": [],
+  "stderr": "",
+  "stdoutSha256": "65376b60a0ae4dd99410a2121c5ac262a8125f24b76c4214df92440844a5ba25",
+  "purpose": "default configured auto model request diagnosis; not full-group pass"
+}

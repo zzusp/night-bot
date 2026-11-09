@@ -146,7 +146,7 @@ test('待实施批准期间事实追问保留来源并明确通知，内部证�
  original=await createGroupTask(h,'fact-followup','核对 UPR 既有修复与当前编辑持久化方案；实施需要另行确认')
  await h.service.ingest({groupId:'native-group',messageId:'fact-question',senderOpenDingTalkId:'native-user',text:'测试助手，方案没确认，你前面改动的是什么？',occurredAt:new Date().toISOString()});await h.service.whenIdle()
  const after=await h.query('task.get',{taskId:original.taskId});assert.equal(after.humanRequests[0].status,'waiting-reply');assert.equal(after.humanRequests[0].requestId,original.humanRequests[0].requestId);assert.equal(after.sessionId,original.sessionId);assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.controlRevision,original.controlRevision)
- const replies=h.sent.filter(item=>item.payload.sourceRef?.messageId==='fact-question');const deliveredFactCount=after.humanRequests[0].followupReplies.length;assert.equal(replies.length,1);assert.equal(replies[0].payload.text,summary);assert.equal(replies[0].payload.replyToMessageId,undefined);assert.deepEqual(replies[0].payload.atOpenDingTalkIds,['native-user'])
+ const replies=h.sent.filter(item=>item.payload.sourceRef?.messageId==='fact-question');const deliveredFactCount=after.humanRequests[0].followupReplies.length;assert.equal(replies.length,1);assert.equal(replies[0].payload.text,summary);assert.equal(replies[0].payload.replyToMessageId,undefined);assert.deepEqual(replies[0].payload.recipientActorIds,['native-user'])
  const notification=await h.query('notification.get',{notificationId:replies[0].id});assert.equal(notification.taskId,original.taskId);assert.deepEqual(notification.payload.sourceRef,{messageId:'fact-question',messageVersion:1,actorId:'native-user'});assert.equal((await h.query('source.get',{sourceId:notification.payload.sourceId})).messageId,'fact-question')
  assert.equal((await h.query('notification.get',{notificationId:replies[0].id})).state,'delivered');assert.ok(h.readbacks.some(item=>item.id===replies[0].id));assert.ok(h.toolResults.some(item=>item.name==='task_result'&&item.result.isError&&JSON.stringify(item.result).includes('GROUP_REPLY_INTERNAL_DETAILS')))
  await h.service.ingest({groupId:'native-group',messageId:'unrelated-followup',senderOpenDingTalkId:'native-user',text:'测试助手，另外一件事下周再聊',occurredAt:new Date().toISOString()});await h.service.whenIdle();const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count);assert.equal((await h.query('task.get',{taskId:original.taskId})).humanRequests[0].followupReplies.length,deliveredFactCount);assert.deepEqual(await h.query('execution.list'),[])
@@ -196,7 +196,7 @@ for (const batched of [true, false]) test(`积压的两条事实追问均送达�
   assert.ok(replies.every(item=>item.payload.replyToMessageId===undefined&&item.payload.replyToSenderOpenDingTalkId===undefined))
   assert.deepEqual(replies.map(item=>item.payload.sourceRef),[{messageId:'message-0',messageVersion:1,actorId:'member-0'},{messageId:'message-1',messageVersion:1,actorId:'member-1'}])
   assert.deepEqual(replies.map(item=>item.payload.sourceId),sourceIds.slice(0,2))
-  assert.deepEqual(replies.map(item => item.payload.atOpenDingTalkIds), [['member-0'], ['member-1']])
+  assert.deepEqual(replies.map(item => item.payload.recipientActorIds), [['member-0'], ['member-1']])
   for (const reply of replies) assert.equal((await t.step(async () => h.query('notification.get', { notificationId: reply.id }))).state, 'delivered')
   assert.equal((await t.step(async () => h.query('execution.list'))).length, 0)
   assert.equal((await t.step(async () => h.query('operation.list'))).length, 0)
@@ -427,7 +427,7 @@ for (const direct of [false, true]) test(`Web human wait without a real group so
   const task = await t.step(() => h.query('task.get', { taskId: created.taskId }))
   assert.equal(task.humanRequests.length,1)
   const question=task.humanRequests[0]
-  assert.equal(question.audience,'requester');assert.equal(question.status,'waiting-reply')
+  assert.equal(question.audience,direct?'operator':'requester');assert.equal(question.status,'waiting-reply')
   assert.equal((await h.query('notification.list')).length,0);assert.equal(h.sent.length,0)
   const reply={taskId:task.taskId,humanRequestId:question.requestId,requestId:'unbound-web-answer',reply:'已提供原Web验证入口，仅限原授权只读范围',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
   await assert.rejects(h.service.respondHumanRequest({...reply,expectedRequirementRevision:task.requirementRevision+1}),{code:'DYNAMIC_HUMAN_REQUEST_STALE'})

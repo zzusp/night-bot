@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -8,10 +7,10 @@ import { fileURLToPath } from 'node:url'
 import { parse } from 'acorn'
 import { digest, registrations, testFiles } from '../scripts/test-catalog.mjs'
 import { checkedContracts } from '../scripts/test-contracts.mjs'
-import { inventory, selectFiles, extendedLanes } from '../scripts/test-suites.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const contractPath = 'test/mixed-test-contracts.json'
+const baselineRoot = join(root, 'docs/acceptance/resident-conversation-routing/fixtures/test-contract-baselines')
 const load = async () => JSON.parse(await readFile(join(root, contractPath), 'utf8'))
 const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i)
 
@@ -22,18 +21,23 @@ test('fixed baseline registrations, variants and helper bodies survive the physi
   assert.equal(contracts.groups.reduce((n, g) => n + g.originalVariants, 0), 220)
   const keep = [[1,9], [19,20], [1,3,4,...range(19,26),33,34,35,36,40,61,62,91,92,...range(101,107),121,123,126,127,136,137,141]]
   for (const [index, group] of contracts.groups.entries()) {
-    const baseline = execFileSync('git', ['show', `${contracts.sourceCommit}:${group.original}`], { cwd: root, encoding: 'utf8' })
+    const baseline = await readFile(join(baselineRoot, contracts.sourceCommit, group.original), 'utf8')
     assert.equal(digest(baseline), group.originalSha256)
     const original = registrations(baseline)
     assert.deepEqual(group.cases.map(c => [c.originalId, c.sha256, c.variants]), original.map(c => [c.id, c.sha256, c.variants]))
     assert.deepEqual(group.cases.filter(c => c.contract !== 'historical').map(c => c.originalId), keep[index])
+    if (group.retirement) {
+      assert.equal(group.original, 'test/runtime.test.js')
+      assert.equal(group.retirement.state, 'removed-unmigrated')
+      continue
+    }
     let helpers = baseline
     for (const node of [...original].reverse()) helpers = helpers.slice(0, node.start) + helpers.slice(node.end)
     // Reviewed changes retain the original baseline and classification. Compare
     // the pre-review helper with the split source, then check today's bytes via
     // the independently reviewed digest in checkedContracts below.
     let actual = group.fixture.review
-      ? execFileSync('git', ['show', `${group.fixture.review.basisCommit}:${group.fixture.file}`], { cwd: root, encoding: 'utf8' })
+      ? await readFile(join(baselineRoot, group.fixture.review.basisCommit, group.fixture.file), 'utf8')
       : await readFile(join(root, group.fixture.file), 'utf8')
     assert.equal(digest(actual), group.fixture.sha256)
     const ast = parse(actual, { ecmaVersion: 'latest', sourceType: 'module' })
@@ -43,14 +47,14 @@ test('fixed baseline registrations, variants and helper bodies survive the physi
     const normalizeHelperWhitespace = text => text.replaceAll('\r\n', '\n').replace(/^[ \t]+$/gm, '').trim()
     assert.equal(normalizeHelperWhitespace(actual), normalizeHelperWhitespace(helpers), group.fixture.file)
   }
-  assert.equal((await checkedContracts(root)).size, 6)
+  assert.equal((await checkedContracts(root)).size, 4)
 })
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'suite-contract-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
   const contracts = await load()
-  for (const file of [contractPath, ...contracts.groups.flatMap(g => [...g.destinations, g.fixture.file])]) {
+  for (const file of [contractPath, ...contracts.groups.flatMap(g => g.retirement ? [g.retirement.evidence] : [...g.destinations, g.fixture.file])]) {
     await mkdir(dirname(join(directory, file)), { recursive: true })
     await writeFile(join(directory, file), await readFile(join(root, file)))
   }
@@ -86,7 +90,7 @@ test('import changes and new historical helper statements require review', async
 test('an explicit re-review retains original identities and rejects incomplete or mismatched evidence', async t => {
   for (const mutation of ['wrong-origin', 'empty-reason', 'empty-evidence', 'wrong-current-digest', 'changed-classification']) await t.test(mutation, async t => {
     const f = await fixture(t)
-    const reviewed = f.contracts.groups.flatMap(group => group.cases).find(item => item.review)
+    const reviewed = f.contracts.groups.flatMap(group => group.cases).find(item => item.review && item.contract !== 'historical')
     assert.ok(reviewed, 'release recovery must keep an explicit review of the changed input fixture')
     if (mutation === 'wrong-origin') reviewed.review.fromSha256 = '0'.repeat(64)
     if (mutation === 'empty-reason') reviewed.review.reason = ''
@@ -130,14 +134,17 @@ test('recursive discovery sees new nested tests and rejects unsupported test ext
   await assert.rejects(testFiles(directory), /unclassified_test_extension/)
 })
 
-test('unknown tests conservatively enter Release and historical selection never accepts globs or duplicates', async () => {
-  const data = await inventory()
-  assert.ok(data.entries.filter(x => !x.file.endsWith('-history.test.js')).every(x => x.release))
-  assert.deepEqual(selectFiles(data, 'history'), data.entries.filter(x => !x.release).map(x => x.file))
-  assert.throws(() => selectFiles(data, 'history', ['test/*.test.js']), /unknown_or_duplicate/)
-  const file = selectFiles(data, 'history')[0]
-  assert.deepEqual(selectFiles(data, 'history', [file]), [file])
-  assert.throws(() => selectFiles(data, 'history', [file, file]), /unknown_or_duplicate/)
-  assert.throws(() => selectFiles(data, 'unit', [file]), /unknown_or_duplicate/)
-  assert.equal(extendedLanes.at(-1), 'history')
+test('removed runtime containers retain their fixed baseline and cannot silently return', async t => {
+  for (const mutation of ['baseline', 'revived-destination']) await t.test(mutation, async t => {
+    const f = await fixture(t), group = f.contracts.groups.find(g => g.retirement)
+    assert.equal(group.original, 'test/runtime.test.js')
+    if (mutation === 'baseline') {
+      group.cases[0].reason += ' changed'
+      await f.save()
+      await assert.rejects(checkedContracts(f.directory), /mixed_removed_container_proof_invalid/)
+    } else {
+      await writeFile(join(f.directory, group.destinations[0]), '// old runtime container returned')
+      await assert.rejects(checkedContracts(f.directory), /mixed_removed_container_reintroduced/)
+    }
+  })
 })

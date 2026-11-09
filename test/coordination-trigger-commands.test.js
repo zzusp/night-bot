@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 
 async function fixture(t, { rule = { kind: 'once', at: '2026-10-21T01:00:00.000Z' } } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'retired-trigger-'))

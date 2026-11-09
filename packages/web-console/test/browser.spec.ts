@@ -1,14 +1,9 @@
 import {test, expect, type Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import {mkdir} from 'node:fs/promises'
-import {join} from 'node:path'
-import {fileURLToPath} from 'node:url'
 import {FIXTURE_TOKEN} from './preview.mjs'
 
-const evidence = fileURLToPath(new URL('../../../docs/acceptance/web-console/round-3/', import.meta.url))
 async function screenshot(page: Page, name: string) {
-  await mkdir(evidence, {recursive: true})
-  await page.screenshot({path: join(evidence, name + '.png'), fullPage: true, animations: 'disabled'})
+  await page.screenshot({path: test.info().outputPath(name + '.png'), fullPage: true, animations: 'disabled'})
 }
 async function login(page: Page) {
   await page.goto('/#/chat')
@@ -16,6 +11,39 @@ async function login(page: Page) {
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
   await expect(page.getByLabel('消息内容', {exact: true})).toBeVisible()
   await expect(page.getByText('已连接', {exact: true})).toBeVisible()
+}
+
+async function openReadActivity(page: Page) {
+  const response = page.waitForResponse(result => new URL(result.url()).pathname === '/api/tasks/task-research/session')
+  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  const session = await (await response).json()
+  const tools = session.items.filter((row: {role: string}) => row.role === 'tool')
+  expect(tools.map((row: {kind: string}) => row.kind)).toEqual(['tool-call', 'tool-result'])
+  const [call, result] = tools
+  expect(call.callId).toMatch(/^[a-f0-9]{64}$/)
+  expect(result.callId).toBe(call.callId)
+  expect(result.source.entryId).not.toBe(call.source.entryId)
+  expect(result.status).toBe('completed')
+  const activity = page.locator('.message-tool')
+  await expect(activity).toHaveCount(1)
+  await expect(activity.locator('strong')).toHaveText('read')
+  await expect(activity.getByText('已完成', {exact: true})).toBeVisible()
+  await expect(activity.locator('.tool-part')).toHaveCount(0)
+  await activity.getByText('查看工具输入与结果', {exact: true}).click()
+  const parts = activity.locator('.tool-part')
+  await expect(parts).toHaveCount(2)
+  await expect(parts.nth(0).locator('h4')).toHaveText('输入')
+  await expect(parts.nth(1).locator('h4')).toHaveText('输出')
+  expect(JSON.parse(await parts.nth(0).locator('.tool-content').innerText())).toEqual({})
+  await expect(parts.nth(1).locator('.tool-content')).toHaveText('已读取 3 份资料，发现 2 处待确认差异。')
+  for (const [index, row] of tools.entries()) {
+    expect(row.source.callId).toBe(call.callId)
+    expect(row.source.sessionId).toBe(session.sessionId)
+    await parts.nth(index).getByText('查看记录来源', {exact: true}).click()
+    await expect(parts.nth(index).locator('.message-source dd')).toHaveText([session.sessionId, row.source.entryId, call.callId])
+  }
+  await expect(activity).not.toContainText('/not/browser-safe')
+  await expect(activity).not.toContainText('SECRET_ARGUMENT_FIXTURE')
 }
 
 test('访问令牌掩码、失败提示、真实登录和退出', async ({page}) => {
@@ -66,6 +94,44 @@ test('聊天经真实服务器接纳、IME不误发、回复与刷新后历史�
   await screenshot(page, 'chat')
 })
 
+test('概览请求未完成时聊天仍独立读取、编辑与切换，释放后才显示连接', async ({page}) => {
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let started = false, completed = false
+  await page.route('**/api/overview', async route => {
+    started = true
+    const response = await route.fetch()
+    await gate
+    await route.fulfill({response})
+    completed = true
+  })
+  try {
+    await page.goto('/#/chat')
+    await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
+    await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
+    const input = page.getByLabel('消息内容', {exact: true})
+    await expect(input).toBeVisible()
+    await expect.poll(() => started).toBe(true)
+    const chat = page.getByRole('navigation', {name: '最近对话'}).getByRole('link').first()
+    await expect(chat).toBeVisible()
+    await chat.click()
+    await expect(page.locator('.message-user').first()).toBeVisible()
+    await input.fill('概览未完成时仍可编辑的草稿')
+    await input.press('End')
+    await input.press('Shift+Enter')
+    await input.type('保留换行')
+    await expect(input).toHaveValue(`概览未完成时仍可编辑的草稿
+保留换行`)
+    expect(completed).toBe(false)
+    await expect(page.getByText('已连接', {exact: true})).toHaveCount(0)
+    release()
+    await expect.poll(() => completed).toBe(true)
+    await expect(page.getByText('已连接', {exact: true})).toBeVisible()
+    await expect(input).toHaveValue(`概览未完成时仍可编辑的草稿
+保留换行`)
+  } finally { release() }
+})
+
 test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await login(page)
   await page.goto('/#/tasks')
@@ -87,14 +153,9 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await expect(page.getByRole('heading', {name: '整理本周产品调研', exact: true})).toBeVisible()
   await expect(page.getByRole('heading', {name: '执行动态', exact: true})).toBeVisible()
   await screenshot(page, 'task-detail')
-  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await openReadActivity(page)
   await expect(page.locator('.message-assistant').filter({hasText: '已开始核对现有资料'})).toBeVisible()
   await expect(page.locator('.execution-scope')).toContainText('当前执行上下文')
-  await expect(page.locator('.message-tool')).toHaveCount(2)
-  await expect(page.locator('.message-tool').first()).toContainText('read')
-  await expect(page.locator('.message-tool').last()).toContainText('已读取 3 份资料')
-  await page.locator('.message-tool').last().locator('summary').click()
-  await expect(page.locator('.message-tool').last().getByText('已读取 3 份资料，发现 2 处待确认差异。', {exact: true})).toBeVisible()
   await expect(page.locator('.task-dialogue')).not.toContainText('TASK_DIALOGUE_NOT_EXECUTION')
   await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_THINKING_FIXTURE')
   await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_ARGUMENT_FIXTURE')
@@ -236,6 +297,57 @@ for (const fixture of [
   })
 }
 
+test('渠道认证、错误、就绪与未知阶段分开显示，不从 enabled 推断健康', async ({page}) => {
+  await login(page)
+  const rows = [
+    {channelId: 'waiting-login', type: 'fixture-chat', enabled: true, connectionState: 'waiting-auth', errorCode: 'CHANNEL_AUTH_REQUIRED', connected: false},
+    {channelId: 'adapter-error', type: 'fixture-chat', enabled: true, connectionState: 'error', errorCode: 'CHANNEL_ADAPTER_ERROR', connected: false},
+    {channelId: 'actual-ready', type: 'fixture-chat', enabled: false, connectionState: 'ready', errorCode: null, connected: true},
+    {channelId: 'unreported', type: 'fixture-chat', enabled: true, connectionState: 'unknown', errorCode: null},
+  ]
+  await page.route('**/api/channels', route => route.fulfill({json: {items: rows}}))
+  await page.goto('/#/channels')
+  const card = (id: string) => page.locator('.channel-card').filter({has: page.getByText(id, {exact: true})})
+  await expect(card('waiting-login')).toContainText('等待认证')
+  await expect(card('waiting-login')).toContainText('需要完成渠道认证')
+  await expect(card('adapter-error')).toContainText('适配器异常，请查看运维说明')
+  await expect(card('actual-ready')).toContainText('就绪')
+  await expect(card('actual-ready')).toContainText('未启用')
+  await expect(card('actual-ready')).toContainText('健康检查正常')
+  await expect(card('unreported')).toContainText('健康状态未报告')
+  await expect(card('unreported')).not.toContainText('健康检查正常')
+  await screenshot(page, 'channel-connection-states')
+})
+
+test('学习记录区分已应用与候选，正文仅按已授权版本读取', async ({page}) => {
+  await login(page)
+  const source = {taskId: 'task-research', reviewId: 'r'.repeat(64), eventId: 'fixture-completed-event'}
+  const version = 'a'.repeat(64), id = 'b'.repeat(64), forbiddenId = 'c'.repeat(64)
+  const changes = [
+    {id, reviewId: source.reviewId, taskId: source.taskId, kind: 'memory', action: 'upsert', status: 'applied', scope: 'personal', name: '核对经验', version, canRead: true, source},
+    {id: forbiddenId, reviewId: source.reviewId, taskId: source.taskId, kind: 'skill', action: 'current-version', status: 'candidate', scope: 'group', name: '候选核查步骤', version, canRead: false, source},
+  ]
+  let bodyReads = 0
+  await page.route('**/api/tasks/task-research/learning', route => route.fulfill({json: {status: 'ready', reviews: [
+    {reviewId: source.reviewId, taskId: source.taskId, eventId: source.eventId, status: 'done', summary: '已记录隔离样例复盘', at: null}], changes, revision: 'd'.repeat(64)}}))
+  await page.route('**/api/tasks/task-research/learning/changes/*?version=*', async route => {
+    bodyReads++
+    expect(new URL(route.request().url()).searchParams.get('version')).toBe(version)
+    expect(route.request().url()).toContain('/changes/' + id + '?')
+    await route.fulfill({json: {id, kind: 'memory', version, source, text: '已授权的经验正文。', redacted: false}})
+  })
+  await page.goto('/#/tasks/task-research?view=learning')
+  await expect(page.getByRole('heading', {name: '记忆与技能变更记录', exact: true})).toBeVisible()
+  await expect(page.locator('.learning-change').first()).toContainText('已应用')
+  await expect(page.locator('.learning-change').last()).toContainText('候选，未应用')
+  await expect(page.getByRole('button', {name: '正文未授权', exact: true})).toBeDisabled()
+  expect(bodyReads).toBe(0)
+  await page.getByRole('button', {name: '读取授权正文', exact: true}).click()
+  await expect(page.getByText('已授权的经验正文。', {exact: true})).toBeVisible()
+  expect(bodyReads).toBe(1)
+  await screenshot(page, 'learning-scope-and-version')
+})
+
 test('渠道会话按聊天展示、只读、保留不确定发送状态及空态', async ({page}) => {
   await login(page)
   await page.goto('/#/channels')
@@ -249,6 +361,21 @@ test('渠道会话按聊天展示、只读、保留不确定发送状态及空�
   await expect(page.locator('.message').getByText('待核实', {exact: true})).toBeVisible()
   await expect(page.locator('.channel-chat-header').getByText('只读', {exact: true})).toBeVisible()
   expect(await page.getByLabel('消息内容', {exact: true}).count()).toBe(0)
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({width, height: 960})
+    await expect(page.locator('.message-assistant .message-links a')).toHaveCount(2)
+    const targets = await page.locator('.message-assistant .message-links a').evaluateAll(links => links.map(link => {
+      const target = link.getBoundingClientRect()
+      const copy = link.closest('article')!.querySelector('[aria-label="复制消息"]')!.getBoundingClientRect()
+      return {width: target.width, height: target.height, overlapsCopy: target.left < copy.right && target.right > copy.left && target.top < copy.bottom && target.bottom > copy.top}
+    }))
+    for (const target of targets) {
+      expect(target.width).toBeGreaterThanOrEqual(24)
+      expect(target.height).toBeGreaterThanOrEqual(24)
+      expect(target.overlapsCopy).toBe(false)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
   await screenshot(page, 'channel-chat')
   await page.goto('/#/channels/room-empty')
   await expect(page.getByRole('heading', {name: '暂无消息', exact: true})).toBeVisible()
@@ -320,8 +447,7 @@ test('深色聊天、任务、执行上下文与渠道通过 axe WCAG AA', async
     await expect(page.getByText('已连接', {exact: true})).toBeVisible()
     await expect(page.locator('main .loading')).toHaveCount(0)
     if (route === '/tasks/task-research') {
-      await page.getByRole('button', {name: '执行记录', exact: true}).click()
-      await expect(page.locator('.message-tool')).toHaveCount(2)
+      await openReadActivity(page)
     }
     const results = await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze()
     expect(results.violations, `dark ${route}: ${JSON.stringify(results.violations.map(item => ({id: item.id, nodes: item.nodes.map(node => node.target)})))}`).toEqual([])

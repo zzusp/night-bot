@@ -12,3 +12,6 @@ docs/tmp/
 /config.json
 
 /backups/
+
+/docs/acceptance/resident-conversation-routing/round-11/windows-probe-results.json
+/docs/acceptance/resident-conversation-routing/round-11/**/error-context.md

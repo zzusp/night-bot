@@ -1,0 +1,18 @@
+{
+  "startedAt": "2026-11-08T04:02:17.411000+00:00",
+  "finishedAt": "2026-11-08T04:02:30.607692+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "docs/tmp/tests-web-permission-browser.mjs"
+  ],
+  "runnerPid": 83004,
+  "exitCode": 0,
+  "naturalExit": true,
+  "stdoutSha256": "d8f4a670fc3076b2ffa55108b3782bc0f20c16bb07453c989cfb50039472b357",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "dirtyWorkingTree": true,
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509"
+}

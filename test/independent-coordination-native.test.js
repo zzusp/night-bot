@@ -6,11 +6,11 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 import { available, reason, nativeTaskHost as createNativeTaskHost, latestInput, modelToolValues, topicTaskCalls, waitUntil } from './fixtures/task-session-native-host.js'
 import { retiredCoordinationHost as createRetiredCoordinationHost } from './fixtures/retired-coordination-native.js'
-import { coordinationContextSchema } from '../packages/dingtalk-dsh-assistant/independent-coordination-planner.js'
-import { taskNotificationRecovery } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
+import { coordinationContextSchema } from '../packages/dingtalk-core/independent-coordination-planner.js'
+import { taskNotificationRecovery } from '../packages/dingtalk-core/notification-delivery.js'
 
 const model = { enabled: true, provider: 'native-task-test', model: 'coordination-controlled' }
 const diagnosedModel = decide => (...args) => {

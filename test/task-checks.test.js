@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
-import { runTaskCheck } from '../packages/dingtalk-dsh-assistant/task-checks.js'
+import { runTaskCheck } from '../packages/dingtalk-core/task-checks.js'
 
 const digest = text => createHash('sha256').update(text).digest('hex')
 async function fixture(t) {

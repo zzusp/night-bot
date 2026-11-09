@@ -34,7 +34,7 @@ async function fixture(t){
  ctx.agents.setFactory(factory)
  let handle
  t.after(async()=>{failDrain=false;await handle?.dispose().catch(()=>{});await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
- return {ctx,backend,factory,root,setHandle:h=>handle=h,get requests(){return requests},get effects(){return effects},get drains(){return drains},set failDrain(v){failDrain=v},set unknown(v){unknown=v}}
+ return {ctx,backend,factory,root,runtime,model,setHandle:h=>handle=h,get requests(){return requests},get effects(){return effects},get drains(){return drains},set failDrain(v){failDrain=v},set unknown(v){unknown=v}}
 }
 test('official factory publishes real SDK actor, retries without repeating effect, resumes without replay',async t=>{
  const f=await fixture(t);let setup=false
@@ -117,4 +117,49 @@ test('shutdown requested from its own startup or maintenance rejects instead of 
   await assert.rejects(h.dispose(),{code:'PI_OFFICIAL_DISPOSE_REENTRANT'})
  })
  await f.factory.close();f.setHandle(undefined)
+})
+
+for(const mode of ['create','resume'])test('official shutdown joins actual '+mode+' construction across close without publishing a late owner',async t=>{
+ const f=await fixture(t),entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ if(mode==='resume'){const seed=await f.ctx.agents.create({sessionId:'late-start',meta:{cwd:f.root}});await seed.dispose()}
+ let actor
+ const options={sessionId:'late-start',meta:{cwd:f.root},setup:async(_ctx,value)=>{actor=value;entered.resolve();await release.promise}}
+ const starting=mode==='create'?f.ctx.agents.create(options):f.ctx.agents.resume(options)
+ const rejected=assert.rejects(starting,{code:'PI_OFFICIAL_FACTORY_CLOSED'});await entered.promise
+ let finished=false;const closing=f.factory.close().then(()=>{finished=true})
+ assert.equal(actor.lifecycle.signal.aborted,true);await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false)
+ release.resolve();await closing;await rejected
+ assert.equal(f.ctx.agents.get('late-start'),undefined);assert.equal(f.requests,0)
+ const cold=await f.backend.readNative('late-start',{requireComplete:true});assert.equal(cold.entries.filter(entry=>entry.type==='message').length,0)
+ const reopened=await f.backend.openNative('late-start',{auditKinds:{}});await reopened.close()
+})
+
+for(const phase of ['resource-refresh','committed-claim'])test('official shutdown interrupts Router continuation at '+phase+' without a new turn',async t=>{
+ const f=await fixture(t),entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let armed=false,modelRequests=0
+ f.runtime.registerProvider(f.model.provider,{api:f.model.api,streamSimple:()=>{
+  modelRequests++;const stream=createAssistantMessageEventStream(),message={role:'assistant',content:[],api:f.model.api,provider:f.model.provider,model:f.model.id,timestamp:1,stopReason:'error',errorMessage:'Synthetic Router checkpoint failure',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
+  queueMicrotask(()=>{stream.push({type:'error',reason:'error',error:message});stream.end(message)});return stream
+ }})
+ const resolveResources=f.factory.ports.resolveResources
+ f.factory.ports.resolveResources=async(...args)=>{const value=await resolveResources(...args);return{...value,context:{...value.context,instructions:async()=>{if(phase==='resource-refresh'&&armed){armed=false;entered.resolve();await release.promise}return[]}}}}
+ const packet={id:'original-router-input',source:{kind:'conversation-router',conversationId:'continuation-room',generation:1,eventIds:['event-one']},content:'Original business packet'}
+ const h=await f.ctx.agents.create({sessionId:'continuation',meta:{cwd:f.root,runtimeOwner:'conversation-router',conversationId:'continuation-room',generation:1},authorizeInput:value=>value.id===packet.id});f.setHandle(h)
+ await h.enqueue(packet);await h.deliver(packet.id);await h.whenIdle()
+ const failed=h.session.sessionManager.getBranch().findLast(entry=>entry.type==='message'&&entry.message.role==='assistant');assert.equal(failed.message.stopReason,'error')
+ const requests=modelRequests
+ if(phase==='committed-claim'){
+  const store=f.backend.writers.get('continuation'),commit=store.commit.bind(store)
+  store.commit=async(...args)=>{const result=await commit(...args);if(armed&&store.manager.getEntries().some(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim')){armed=false;entered.resolve();await release.promise}return result}
+ }
+ armed=true
+ const continuing=h.resumeRouterBatch({packet,failedEntryId:failed.id},async()=>{}),rejected=assert.rejects(continuing,error=>error===h.agent.lifecycle.signal.reason)
+ await entered.promise;assert.equal(h.session.isStreaming,false)
+ const stopping=h.interrupt();assert.equal(h.agent.lifecycle.signal.aborted,true);release.resolve();await rejected;await stopping
+ await h.dispose();f.setHandle(undefined)
+ const cold=await f.backend.readNative('continuation',{requireComplete:true})
+ assert.equal(cold.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim').length,phase==='committed-claim'?1:0)
+ assert.equal(cold.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-turn').length,0)
+ assert.equal(cold.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input').length,1)
+ assert.equal(cold.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted').length,1);assert.equal(cold.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled').length,0)
+ assert.equal(modelRequests,requests);assert.equal(f.effects,0)
 })

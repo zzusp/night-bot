@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMaterialManifest } from '../packages/dingtalk-dsh-assistant/coordination-context.js'
+import { buildMaterialManifest } from '../packages/dingtalk-core/coordination-context.js'
 
 test('材料分页乱序与重叠合并，但缺口不得显示完整', () => {
   const input = { requestId: 'r1', materials: [{ id: 'm1', version: 1, text: 'abcdef', pages: [{ offset: 4, text: 'ef' }, { offset: 0, text: 'ab' }] }] }

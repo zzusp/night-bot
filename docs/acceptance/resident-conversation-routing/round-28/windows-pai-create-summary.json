@@ -1,0 +1,135 @@
+{
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "worktree": "uncommitted shared collaboration tree",
+  "status": "FAILED",
+  "nodeExit": 1,
+  "collectorExit": 0,
+  "sourceBefore": {
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-profile.js": "4164922a215241c35988ef6dbbefa3766d0272e32167ac5e88fef41e8f15c29d",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-profile.js": "4164922a215241c35988ef6dbbefa3766d0272e32167ac5e88fef41e8f15c29d",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceChanged": [],
+  "nativeConsumedSources": [
+    "src/process/windows-acl.js",
+    "src/process/win32.js",
+    "src/process/contracts.js"
+  ],
+  "staticAssociatedSources": [
+    "src/process/windows-profile.js",
+    "src/process/index.js"
+  ],
+  "creation": {
+    "attempted": true,
+    "created": true,
+    "unknown": false,
+    "status": 1
+  },
+  "phaseReached": "post-create root control comparison; no baseline or setter",
+  "creationProjection": {
+    "requestedControl": 37892,
+    "actualControl": 38916,
+    "mask": 5388,
+    "requestedMasked": 5124,
+    "actualMasked": 4100,
+    "maskedXor": 1024,
+    "componentMatches": {
+      "owner": true,
+      "group": true,
+      "dacl": true
+    },
+    "requestedLength": 160,
+    "actualLength": 160
+  },
+  "originalControls": [
+    38916,
+    34820,
+    34820
+  ],
+  "baselineRebuilds": 0,
+  "frozenStages": 0,
+  "nativeSetAttempts": 0,
+  "allocations": {
+    "count": 4,
+    "localFreeAttemptedClosed": 4,
+    "retained": 0
+  },
+  "handles": {
+    "count": 5,
+    "attemptedClosed": 5,
+    "retained": 0
+  },
+  "fixture": {
+    "root": "data/workspaces/sg11-security-projection-pai-0131323a873048979e50911c39762ffb",
+    "retained": true,
+    "removed": false,
+    "actualOsRestorationProved": false
+  },
+  "errors": [
+    {
+      "name": "AssertionError",
+      "message": "Expected values to be strictly equal:\n\n4100 !== 5124\n",
+      "code": "ERR_ASSERTION"
+    }
+  ],
+  "stderrBytes": 0,
+  "privateEvidence": {
+    "docs/tmp/sg11-security-projection-pai-probe.mjs": {
+      "sha256": "cb463dd429d6ec05e58659dd4cf60a85ea57be312e1e7978c729f9d59ad96b58",
+      "bytes": 21778
+    },
+    "docs/tmp/sg11-security-projection-pai-checklist.md": {
+      "sha256": "cc7b0a62a48942420b7f917f04f87eb20d39c9ad6be3031bab6300eb9d638eea",
+      "bytes": 6642
+    },
+    "docs/tmp/sg11-security-projection-pai-check.json": {
+      "sha256": "c8ae3b83981789cb2692f4a991073f547e447b3ed44a80563efe99038bba5e4f",
+      "bytes": 2300
+    },
+    "docs/tmp/sg11-security-projection-pai-check-execution.json": {
+      "sha256": "e6d51a938a1196e14e9105343cf1637fb052103e93966e12fcd073b585ef6a84",
+      "bytes": 537
+    },
+    "docs/tmp/sg11-security-projection-pai-run-check.json": {
+      "sha256": "c8ae3b83981789cb2692f4a991073f547e447b3ed44a80563efe99038bba5e4f",
+      "bytes": 2300
+    },
+    "docs/tmp/sg11-security-projection-pai-run.json": {
+      "sha256": "1db7485f00247cc730a1c6647a15473ac2c4517bb4388924787f26aca91d8735",
+      "bytes": 7232
+    },
+    "docs/tmp/sg11-security-projection-pai-run-stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/tmp/sg11-security-projection-pai-execution.json": {
+      "sha256": "e4fe910b954b928907df5e26c2c72ee55bc1f65258255734ca97203dc92d439c",
+      "bytes": 2398
+    }
+  },
+  "inventory": {
+    "rows": 5468,
+    "beforeSha256": "5128a32fe30163e60837c84f4a6ec498b725c1e27b2d0afd85a5380df639aa32",
+    "afterSha256": "467fabea4de2708fac4bb45312d75f48e5911a1ad6028bbc4c5c2f6790764457",
+    "identitiesAndRegistrationHashesPreserved": true,
+    "currentMetadataRowsOnly": 8,
+    "newPassEvidence": 0,
+    "pendingLinuxTestSha256": "5f3ba7b5d424c24ab6b21342eb6c869171e31a0e3356ed1446a238fa5d79b57b",
+    "pendingLinuxModeAssertions": "NOT_RUN; syntax only, no historical PASS promoted"
+  },
+  "matrix": {
+    "rows": 293,
+    "beforeSha256": "38266be01a3dc54001b7a6ea7b62d2affb8ec02e06ba01a48128ff671c2e0041",
+    "afterSha256": "06f396f41e5d7ec894530b3d19fa8c2e9df0514c541cd748547c0399ddedbfde",
+    "oldColumnBytesPreserved": true
+  }
+}

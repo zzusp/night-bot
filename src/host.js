@@ -1,8 +1,9 @@
+import {openToolPermissions} from './tool-permissions.js'
+import {configFileOf,updateConfig} from './config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {prepareProfileEntries} from './native-profile-preflight.js'
 import {taskSessionRoutes} from './tasks/session-routes.js'
 import {channelPluginRows} from './channels/loader.js'
-import {assertNativeScopeAuthority} from './native-scope-guard.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import {loadNativeEnvironment} from './native-environment.js'
@@ -19,7 +20,6 @@ const require = createRequire(import.meta.url)
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
 export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false } = {}) {
   assertPiTaskBackendConfiguration(config)
-  assertNativeScopeAuthority()
   const paths=runtimePaths(config)
   await prepareRuntimePaths(paths)
   if(paths.mode==='portable'){
@@ -28,7 +28,21 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
   }
   const root = paths.state, workspace = paths.workspaces
   const ctx = new Context()
-  let releaseData,closing
+  let releaseData,closing,permissionService
+  const close=()=>closing??=(async()=>{
+    const errors=[]
+    const attempt=async action=>{try{await action()}catch(error){errors.push(error)}}
+    await attempt(()=>permissionService?.close())
+    await attempt(()=>ctx.get('application')?.close?.())
+    await attempt(()=>ctx.get('officialAgentFactory')?.close())
+    // Cordis 仅记录 effect 清理错误；须显式等待原 Job/进程 join 的真实结果。
+    await attempt(()=>ctx.get('jobs')?.disposeAll())
+    await attempt(()=>ctx.get('subprocess')?.disposeManagedProcesses())
+    // 未证排空时保留 owner 依赖及安装锁，不能靠拆依赖制造关闭成功。
+    if(!errors.length)await attempt(()=>ctx.fiber.dispose())
+    if(!errors.length)await attempt(()=>releaseData?.())
+    if(errors.length)throw new AggregateError(errors,'Host shutdown failed; ownership retained')
+  })()
   try {
     if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
     ctx.provide('runtimePaths',paths)
@@ -50,10 +64,10 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
       { name: new URL('./native-spill.js', import.meta.url).href, config: { root: paths.spills } }, { name: new URL('./native-jobs.js', import.meta.url).href }, { name: new URL('./native-tool-jobs.js', import.meta.url).href }, { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
       { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
-      { name: new URL('./native-' + shell + '-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'never' } },
+      { name: new URL('./native-' + shell + '-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'ask' } },
       { name: new URL('./native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: {
-        'read-only': { sandbox: 'read-only', approval: 'never' },
-        'workspace-write': { sandbox: 'workspace-write', approval: 'never' },
+        'read-only': { sandbox: 'read-only', approval: 'ask' },
+        'workspace-write': { sandbox: 'workspace-write', approval: 'ask' },
         'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' },
       } } },
       { name: new URL('./pi-authority.js', import.meta.url).href },
@@ -80,6 +94,11 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!ctx.get('subprocess')) throw new Error('NIGHT_BOT_SUBPROCESS_UNAVAILABLE')
     // Full process output is recovery evidence, not disposable launcher temp.
     if(paths.mode==='portable')ctx.subprocess.internals={...ctx.subprocess.internals,spillDir:paths.processSpills}
+    permissionService=await openToolPermissions({ctx,mode:config.permissionMode??'ask',
+      saveMode:async value=>{const file=configFileOf(config)??(paths.mode==='portable'?join(paths.config,'config.json'):undefined);if(!file)throw failure('NIGHT_BOT_PERMISSION_CONFIG_UNAVAILABLE');await updateConfig(file,next=>({...next,permissionMode:value}));config.permissionMode=value},
+      resolveModel:(actor,{signal})=>ctx.nativePiProvider.official.resolve({...ctx.agentDefaultModel.currentSelection(),signal},{credentials:actor.ctx.get('credentials')})})
+    ctx.provide('toolPermissions',permissionService)
+    ctx.effect(()=>()=>permissionService.close(),'Host tool permission requests drain')
     await installProcessPrivacy(ctx,privacy)
     await ctx.plugin({ inject: ['agentPresets'], async *apply(child) {
       for(const id of ['night-bot','night-bot-task'])yield await child.agentPresets.register({ id, plugins: [{ name: 'cordis:group', group: true,
@@ -97,14 +116,9 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     const preset = await ctx.agentPresets.resolve('night-bot')
     if (preset.broken) throw new Error('NIGHT_BOT_PRESET_BROKEN:' + JSON.stringify(preset.broken))
     if (!deferScheduledDelivery) ctx.schedule.start()
-    return { ctx, close: () => closing??=(async()=>{
-      await ctx.get('application')?.close?.()
-      await ctx.get('officialAgentFactory')?.close()
-      await ctx.fiber.dispose()
-      await releaseData?.()
-    })() }
+    return { ctx, close }
   } catch (error) {
-    try{await ctx.get('officialAgentFactory')?.close();await ctx.fiber.dispose();await releaseData?.()}
+    try{await close()}
     catch(cause){throw new AggregateError([error,cause],'Host startup and cleanup failed')}
     throw error
   }

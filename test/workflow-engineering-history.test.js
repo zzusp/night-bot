@@ -1,5 +1,5 @@
 import test from 'node:test'
-import { readTaskOwnerStageArtifacts, assert, execFile, promisify, createHash, mkdir, mkdtemp, writeFile, readdir, readFile, join, tmpdir, assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy, createTaskWorkflowContracts, openExecutionStore, defineExecutionWorkflow, executionDigest, openExecutionArtifacts, createManagedWorkspaces, registryLocalFixture } from './fixtures/workflow-engineering-mixed.js'
+import { readTaskStageArtifacts, assert, execFile, promisify, createHash, mkdir, mkdtemp, writeFile, readdir, readFile, join, tmpdir, assertEngineeringStageRepository, selectTaskLocalAcceptance, createEngineeringStageContract, createEngineeringRegistry, readEngineeringDeliveryProof, readEngineeringRemoteRefs, uatBranchFor, isUatBranch, engineeringWorkflowOwnerContract, createEngineeringCompletionPolicy, createTaskWorkflowContracts, openExecutionStore, defineExecutionWorkflow, executionDigest, openExecutionArtifacts, createManagedWorkspaces, registryLocalFixture } from './fixtures/workflow-engineering-mixed.js'
 
 test('工程交付证明复用同一 Run 工件并要求显式业务 E2E 检查', async () => {
   const commitId = 'a'.repeat(40), candidateDigest = 'b'.repeat(64), verificationDigest = 'c'.repeat(64)
@@ -97,7 +97,7 @@ test('工程交付证明复用同一 Run 工件并要求显式业务 E2E 检查'
   const stage = {stageId:'engineering',status:'succeeded',runId:'r',workflowId:state.run.workflowId,workflowDigest:state.run.workflowDigest,outputRef:'artifact:finalize',evidenceRefs:[]}
   const controller = {state:async()=>state,workflowDefinition:()=>({ownerContract:engineeringWorkflowOwnerContract})}
   const ownerArgs = {taskId:'t',stages:[stage],controller,readStageArtifacts:createTaskWorkflowContracts({controller,artifacts,store}).readStageArtifacts}
-  const ownerArtifacts = await readTaskOwnerStageArtifacts(ownerArgs)
+  const ownerArtifacts = await readTaskStageArtifacts(ownerArgs)
   assert.equal(await engineeringWorkflowOwnerContract.validateCompletion({taskId:'t',state,artifacts,store}),true)
   const admission = createEngineeringCompletionPolicy()
   state.run.requirementRef = 'artifact:frozen-requirement'
@@ -127,8 +127,8 @@ test('工程交付证明复用同一 Run 工件并要求显式业务 E2E 检查'
   assert.ok(ownerArtifacts[0].nodeArtifacts.every(item=>item.description && ownerArtifacts[0].evidenceRefs.includes(item.artifactRef)))
   assert.ok(!ownerArtifacts[0].evidenceRefs.includes('artifact:prepare-push'))
   assert.deepEqual(ownerArtifacts[0].completionEvidenceRefs,['artifact:finalize'])
-  await assert.rejects(readTaskOwnerStageArtifacts({...ownerArgs,taskId:'other'}),/TASK_OWNER_STAGE_RUN_MISMATCH/)
-  await assert.rejects(readTaskOwnerStageArtifacts({...ownerArgs,stages:[{...stage,outputRef:'artifact:other'}]}),/WORKFLOW_OWNER_STAGE_MISMATCH/)
+  await assert.rejects(readTaskStageArtifacts({...ownerArgs,taskId:'other'}),/TASK_OWNER_STAGE_RUN_MISMATCH/)
+  await assert.rejects(readTaskStageArtifacts({...ownerArgs,stages:[{...stage,outputRef:'artifact:other'}]}),/WORKFLOW_OWNER_STAGE_MISMATCH/)
 
   for(const mutate of [
     ()=>{localPrepared.taskId='other'},
@@ -139,7 +139,7 @@ test('工程交付证明复用同一 Run 工件并要求显式业务 E2E 检查'
     const savedLocal=structuredClone(output['finalize-local-acceptance']),savedDefine=structuredClone(output['define-local-acceptance'])
     mutate()
     await assert.rejects(readEngineeringDeliveryProof({state,artifacts,store,taskId:'t'}),{code:'ENGINEERING_ACCEPTANCE_PROOF_REQUIRED'})
-    await assert.rejects(readTaskOwnerStageArtifacts(ownerArgs),{code:'ENGINEERING_ACCEPTANCE_PROOF_REQUIRED'})
+    await assert.rejects(readTaskStageArtifacts(ownerArgs),{code:'ENGINEERING_ACCEPTANCE_PROOF_REQUIRED'})
     await assert.rejects(engineeringWorkflowOwnerContract.validateCompletion({taskId:'t',state,artifacts,store}),{code:'ENGINEERING_ACCEPTANCE_PROOF_REQUIRED'})
     Object.assign(localPrepared,savedLocal.localPrepared)
     output['finalize-local-acceptance']={...savedLocal,localPrepared};output['define-local-acceptance']=savedDefine
@@ -324,9 +324,9 @@ test('工程registry按Task冻结配置，重启重建同digest，模型变化�
 
 test('工程交付后补充：固定分支祖先条件续写、PR原位修订且新代读取旧代结果', { timeout: 2 * 240000 }, async t => {
   const { readFile } = await import('node:fs/promises')
-  const { openExecutionArtifacts } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
-  const { createExecutionController } = await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
-  const { createExecutionDelivery } = await import('../packages/dingtalk-dsh-assistant/execution-delivery.js')
+  const { openExecutionArtifacts } = await import('../packages/dingtalk-core/execution-artifacts.js')
+  const { createExecutionController } = await import('../packages/dingtalk-core/execution-controller.js')
+  const { createExecutionDelivery } = await import('../packages/dingtalk-core/execution-delivery.js')
   const directory = await mkdtemp(join(tmpdir(), 'dsh-revision-')), source = join(directory,'source'), root=join(directory,'managed'), remote=join(directory,'remote.git'), script=join(directory,'gh.cjs'), stateFile=join(directory,'pr.json')
   await mkdir(source); await mkdir(root)
   const exec=promisify(execFile), git=async (repo,...args)=>(await exec('git',['-C',repo,...args],{windowsHide:true})).stdout.trim()
@@ -399,8 +399,8 @@ test('九个 UAT 环境精确映射固定分支，缺失和其他名称不能猜
 })
 
 test('v11 缺本地验收配置时真实 controller 阻塞且不准备工作区', async t => {
-  const { createEngineeringLocalAcceptanceWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
-  const { createExecutionController } = await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
+  const { createEngineeringLocalAcceptanceWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
+  const { createExecutionController } = await import('../packages/dingtalk-core/execution-controller.js')
   const directory = await mkdtemp(join(tmpdir(), 'dsh-local-gate-'))
   const store = await openExecutionStore({ dbPath: join(directory, 'control.db'), instanceId: 'gate', initialize: true })
   const artifacts = await openExecutionArtifacts({ directory: join(directory, 'artifacts'), initialize: true })
@@ -421,7 +421,7 @@ test('v11 缺本地验收配置时真实 controller 阻塞且不准备工作区'
 })
 
 test('本地验收经 delivery 对共享 UAT 加锁，另一个 Run 在首个排空前零发送', async t => {
-  const { createExecutionDelivery } = await import('../packages/dingtalk-dsh-assistant/execution-delivery.js')
+  const { createExecutionDelivery } = await import('../packages/dingtalk-core/execution-delivery.js')
   const directory = await mkdtemp(join(tmpdir(), 'dsh-local-lock-'))
   const store = await openExecutionStore({ dbPath: join(directory, 'control.db'), instanceId: 'lock', initialize: true })
   const artifacts = await openExecutionArtifacts({ directory: join(directory, 'artifacts'), initialize: true })
@@ -532,7 +532,7 @@ test('工程源仓库缺失在git与工作区准备前明确拒绝且零执行�
 })
 
 test('v25工程共享材料读取不依赖节点正文，受管检查修订保留原定义',async t=>{
- const {taskDirectories}=await import('../packages/dingtalk-dsh-assistant/session-workspaces.js')
+ const {taskDirectories}=await import('../packages/dingtalk-core/session-workspaces.js')
  const directory=await mkdtemp(join(tmpdir(),'dsh-shared-')),source=join(directory,'source');await mkdir(source)
  const exec=promisify(execFile),git=async(...args)=>(await exec('git',['-C',source,...args],{windowsHide:true})).stdout.trim()
  await git('init','-b','main');await git('config','user.name','Test');await git('config','user.email','test@example.invalid');await writeFile(join(source,'file.txt'),'base');await git('add','.');await git('commit','-m','base');await git('branch','feature/uat1-base')
@@ -686,7 +686,7 @@ test('当前工程拒绝动态改图入口，Host检查与验收职责随原模�
 })
 
 test('原生读取凭据只恢复同绑定且当前完整SHA吻合的路径',async()=>{
- const {restoreEngineeringReadEvidence}=await import('../packages/dingtalk-dsh-assistant/workflow-engineering.js')
+ const {restoreEngineeringReadEvidence}=await import('../packages/dingtalk-core/workflow-engineering.js')
  const directory=await mkdtemp(join(tmpdir(),'native-read-proof-'));await mkdir(join(directory,'src'));await writeFile(join(directory,'src/a.js'),'const value = 1\n')
  const binding={taskId:'task',runId:'run',nodeRunId:'node',generation:1,inputDigest:'a'.repeat(64),sessionId:'session'}
  const text='const value = 1\n',expectedHash=createHash('sha256').update(text).digest('hex')
@@ -703,9 +703,9 @@ test('原生读取凭据只恢复同绑定且当前完整SHA吻合的路径',asy
 
 test('真实工程受管noChange保留固定节点并完成候选检查本地业务验收与交付', { timeout: 240000 }, async t => {
   const { readFile } = await import('node:fs/promises')
-  const { openExecutionArtifacts } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
-  const { createExecutionController } = await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
-  const { createExecutionDelivery } = await import('../packages/dingtalk-dsh-assistant/execution-delivery.js')
+  const { openExecutionArtifacts } = await import('../packages/dingtalk-core/execution-artifacts.js')
+  const { createExecutionController } = await import('../packages/dingtalk-core/execution-controller.js')
+  const { createExecutionDelivery } = await import('../packages/dingtalk-core/execution-delivery.js')
   const directory = await mkdtemp(join(tmpdir(), 'dsh-revision-')), source = join(directory,'source'), root=join(directory,'managed'), remote=join(directory,'remote.git'), script=join(directory,'gh.cjs'), stateFile=join(directory,'pr.json')
   await mkdir(source); await mkdir(root)
   const exec=promisify(execFile), git=async (repo,...args)=>(await exec('git',['-C',repo,...args],{windowsHide:true})).stdout.trim()
@@ -778,9 +778,9 @@ test('真实工程受管noChange保留固定节点并完成候选检查本地业
 
 test('真实工程受管验收配置纠正保留已验证候选完成交付', { timeout: 240000 }, async t => {
   const { readFile } = await import('node:fs/promises')
-  const { openExecutionArtifacts } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
-  const { createExecutionController } = await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
-  const { createExecutionDelivery } = await import('../packages/dingtalk-dsh-assistant/execution-delivery.js')
+  const { openExecutionArtifacts } = await import('../packages/dingtalk-core/execution-artifacts.js')
+  const { createExecutionController } = await import('../packages/dingtalk-core/execution-controller.js')
+  const { createExecutionDelivery } = await import('../packages/dingtalk-core/execution-delivery.js')
   const directory = await mkdtemp(join(tmpdir(), 'dsh-revision-')), source = join(directory,'source'), root=join(directory,'managed'), remote=join(directory,'remote.git'), script=join(directory,'gh.cjs'), stateFile=join(directory,'pr.json')
   await mkdir(source); await mkdir(root)
   const exec=promisify(execFile), git=async (repo,...args)=>(await exec('git',['-C',repo,...args],{windowsHide:true})).stdout.trim()
@@ -838,9 +838,9 @@ test('真实工程受管验收配置纠正保留已验证候选完成交付', { 
 
 for (const upgradedRunner of [false, true]) test('固定工程重启后复用同Run成功检查回执且无动态改图入口 '+(upgradedRunner?'runner升级':'原实现'), { timeout: 240000 }, async t => {
   const { readFile } = await import('node:fs/promises')
-  const { openExecutionArtifacts } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
-  const { createExecutionController } = await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
-  const { createExecutionDelivery } = await import('../packages/dingtalk-dsh-assistant/execution-delivery.js')
+  const { openExecutionArtifacts } = await import('../packages/dingtalk-core/execution-artifacts.js')
+  const { createExecutionController } = await import('../packages/dingtalk-core/execution-controller.js')
+  const { createExecutionDelivery } = await import('../packages/dingtalk-core/execution-delivery.js')
   const directory = await mkdtemp(join(tmpdir(), 'dsh-revision-')), source = join(directory,'source'), root=join(directory,'managed'), remote=join(directory,'remote.git'), script=join(directory,'gh.cjs'), stateFile=join(directory,'pr.json')
   await mkdir(source); await mkdir(root)
   const exec=promisify(execFile), git=async (repo,...args)=>(await exec('git',['-C',repo,...args],{windowsHide:true})).stdout.trim()
@@ -872,14 +872,14 @@ for (const upgradedRunner of [false, true]) test('固定工程重启后复用同
   let restoredFactory=createEngineeringRegistry
   if(upgradedRunner){
     const {copyFile,symlink}=await import('node:fs/promises'),{fileURLToPath,pathToFileURL}=await import('node:url')
-    const copy=join(directory,'upgraded-plugin'),original=fileURLToPath(new URL('../packages/dingtalk-dsh-assistant/',import.meta.url));await mkdir(copy)
+    const copy=join(directory,'upgraded-plugin'),original=fileURLToPath(new URL('../packages/dingtalk-core/',import.meta.url));await mkdir(copy)
     for(const name of await readdir(original))if(name.endsWith('.js')||name.endsWith('.ps1')||name==='package.json')await copyFile(join(original,name),join(copy,name))
     await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(copy,'node_modules'),'junction')
     const runnerFile=join(copy,'execution-inline-acceptance.js'),runnerSource=await readFile(runnerFile,'utf8')
     const executeStart='async execute(prepared, { signal } = {}) {'
     assert.equal(runnerSource.split(executeStart).length,2)
     await writeFile(runnerFile,runnerSource.replace(executeStart,executeStart+'\n      signal?.throwIfAborted()'))
-    const {createInlineWorktreeAcceptanceRunner:oldRunnerFactory}=await import('../packages/dingtalk-dsh-assistant/execution-inline-acceptance.js')
+    const {createInlineWorktreeAcceptanceRunner:oldRunnerFactory}=await import('../packages/dingtalk-core/execution-inline-acceptance.js')
     const {createInlineWorktreeAcceptanceRunner:newRunnerFactory}=await import(pathToFileURL(runnerFile).href)
     const identityOptions={root:join(root,'local-acceptance'),config:localAcceptance,tempRoot:join(root,'tmp')}
     assert.notEqual(newRunnerFactory(identityOptions).identity,oldRunnerFactory(identityOptions).identity)
@@ -945,7 +945,7 @@ test('execution reset registry reuses dirty workspace and creates current two-no
 })
 
 test('v25 acceptance checkpoint retains real factory preparation delivery identity', async t => {
- const {executionNodeContractDigest}=await import('../packages/dingtalk-dsh-assistant/execution-input-lineage.js')
+ const {executionNodeContractDigest}=await import('../packages/dingtalk-core/execution-input-lineage.js')
  const directory=await mkdtemp(join(tmpdir(),'dsh-v22-identity-')),source=join(directory,'source');await mkdir(source)
  const exec=promisify(execFile),git=async(...args)=>(await exec('git',['-C',source,...args],{windowsHide:true})).stdout.trim()
  await git('init','-b','main');await git('config','user.name','Test');await git('config','user.email','test@example.invalid');await writeFile(join(source,'value.txt'),'base');await git('add','.');await git('commit','-m','base');await git('branch','feature/uat3-base')

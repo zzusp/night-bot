@@ -1,3 +1,4 @@
+import {authorizedProcessPolicy} from './process/contracts.js';
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-bash-sandbox-MIT.txt. Application process/sandbox/jobs/policy services own effects.
 import { SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature, matchesSignature as matchesSignature$1 } from "./native-sandbox-protocol.js";
 import { LocalBashExecutor } from "./native-bash-local.js";
@@ -64,7 +65,7 @@ var SandboxBashExecutor = class NativeSandboxBashExecutor extends LocalBashExecu
 		};
 	}
 	async execute(spec) {
-		const policy = spec.sandboxPolicy;
+		const policy = authorizedProcessPolicy(this.ctx, spec.sandboxPolicy);
 		const { mode } = policy;
 		if (mode === "danger-full-access") return SandboxBashExecutor.decorateResult(await super.execute(spec), (result) => ({
 			...result,
@@ -81,7 +82,7 @@ var SandboxBashExecutor = class NativeSandboxBashExecutor extends LocalBashExecu
 			}, signal);
 			signal.throwIfAborted();
 			confined = prepared;
-			return prepared.argv;
+			return prepared;
 		}, (process) => {
 			const facts = confined;
 			this.processFacts.set(process, {

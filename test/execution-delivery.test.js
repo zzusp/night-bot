@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionDelivery, isTerminalUatBuildFailure } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionDelivery, isTerminalUatBuildFailure } from '../packages/dingtalk-core/execution-delivery.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
 
 async function fixture(t, overrides = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-delivery-'))
@@ -189,7 +189,7 @@ async function incrementalEditFixture(t, mutate = () => {}) {
   const root = await mkdtemp(new URL('../docs/tmp/incremental-edit-', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1'))
   const dbPath = join(root,'control.db'), artifacts = await openExecutionArtifacts({directory:join(root,'artifacts'),initialize:true})
   let store = await openExecutionStore({dbPath,instanceId:'incremental',initialize:true}), count = 0
-  const { createManagedEdits } = await import('../packages/dingtalk-dsh-assistant/execution-edit.js')
+  const { createManagedEdits } = await import('../packages/dingtalk-core/execution-edit.js')
   const directory=join(root,'workspace');await mkdir(directory);await writeFile(join(directory,'old.txt'),'old')
   const managed=createManagedEdits({workspaceAdapter:{reconcile:async()=>({status:'succeeded'})}})
   const editAdapter={execute:async prepared=>{count++;return managed.execute(prepared)},reconcile:managed.reconcile}

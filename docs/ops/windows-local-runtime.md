@@ -37,6 +37,27 @@ pnpm init:assistant --actor YOUR_LOCAL_ACTOR --provider openai --model YOUR_MODE
 
 Codex 使用 `openai-codex` provider 与固定 Pi SDK 实际支持的模型；模型名从官方 catalog 选择。当前代理环境下的本机验收使用该 profile 的 `transport: "sse"`。应用与 SDK 的 undici 均固定在 8.12.3，并显式使用 CONNECT，避免 SDK 导入后覆盖代理 dispatcher。
 
+## 工具权限模式
+
+配置使用顶层 `permissionMode`，默认 `ask`；初始化支持 `--permission-mode ask|auto|full`。
+
+本次实施与验收范围为 `full`；`ask` / `auto` 合同保留，但受限执行尚未完成，本次不交付。此范围调整不改变默认 `ask`，也不自动修改实际实例配置。
+
+以下示例仅用于可信安装操作者明确选择 `full`；离线更改先检查，再保存并正常重启：
+
+```powershell
+node bin/night-bot-config.js data/config/config.json permissions --permission-mode full --check
+node bin/night-bot-config.js data/config/config.json permissions --permission-mode full
+```
+
+`ask` 请求人工单次批准外部业务操作；`auto` 使用当前配置 Pi 模型作无工具审查，不确定或失败转人工。批准后的文件/进程必须实际限制到该调用的准确范围，不能以配置存在、Job/ConPTY 原语通过或单次 ACL 探针成功宣称 Windows 默认受限链已可用；生产 owned Profile、秘密/跨任务隔离和完整回收的未验项仍见本页限制与[当前目标](../acceptance/resident-conversation-routing/goal.md)。缺少受限后端时失败关闭，不自动升级。
+
+`full` 仅供可信安装操作者显式选择，按当前运行环境 OS 账号直接访问，不取得管理员权限，不承诺工作区或同账号 Host 私有文件仍被 OS 隔离。Host API 的身份、业务授权、审计、取消与 no-replay 继续保留；full 的实际执行与受限模式分别验收，不能互相抵扣。认证 Web 的在线选择与单次审批见[Web 权限入口](web-console-local.md#安装权限与单次审批)，保存后以 Host 回读为准。
+
+Windows `full` 已分阶段实跑外部文件写入、配置持久化与冷启动、任务 actor 不能改档、旧批准不重放、前后台 PowerShell、超时转后台后的单次执行与增量输出，以及准备期取消/超时不产生外部写入。本轮补齐 `grep` 授权投影后，真实工作区/外部目录命中、正常无匹配、82 文件分两批完整检索及切回非 `full` 后保留拒绝均通过，同一候选的前台 PowerShell 关联复验通过。各批绑定的源码及结果见[唯一验收入口](../acceptance/resident-conversation-routing/goal.md)；未重跑无关场景，不宣称全部工具、运行中子进程取消或三平台全量通过。
+
+Pi 的 Project Trust 仅控制项目配置、扩展、技能等项目资源的加载信任，不限制代码执行后的 OS 访问；它不是 OS 沙箱，也不表示 Night Bot 已新增该信任入口。
+
 ## 认证
 
 只读列出官方认证状态，不读取凭据正文：
@@ -65,7 +86,7 @@ node bin/night-bot-run.js data/config/config.json
 Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport,modelMode,recoveryIssueCount,inboundConfigured,outboundAuthorized
 ```
 
-标准入口的 `transport` 为 `channels`。当前兼容 `/health` 的 `inboundConfigured` 只识别旧 `dws` 模式，`outboundAuthorized` 只反映是否注册了 transport，不能据此判断插件监听状态或 `writesAuthorized`。`status:ok` 也不证明 DWS 已登录、指定群已订阅或消息已送达。
+标准入口的 `transport` 为 `channels`。当前兼容 `/health` 的 `inboundConfigured` 只识别旧 `dws` 模式，`outboundAuthorized` 只反映是否注册了 transport，不能据此判断插件监听状态或 `dingtalk_writes_authorized`。`status:ok` 也不证明 DWS 已登录、指定群已订阅或消息已送达。
 
 前台停止使用 Ctrl+C，等待 launcher 正常退出。Node 父进程托管时，必须保留 IPC 通道并发送 `{type:'night-bot-shutdown'}`；launcher 会转发给服务，等现有关闭路径排空后退出。Windows 的 `Stop-Process` 或 `child.kill('SIGTERM')` 是强制终止，不能当成优雅排空证据。本机验收的临时监督器仅管理它自己启动的实例，不是正式 Windows 服务管理器。
 
@@ -93,32 +114,44 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 
 ### 隔离准备
 
-1. 默认保持 `channelPlugins:[]` 或示例插件 `enabled:false`。确需检查注册时使用 [CHANNELS 配置片段](../CHANNELS.md#optional-dingtalk-dws-plugin)，设 `enabled:true`、`listen:false`、`writesAuthorized:false`；不要把关闭发送当成关闭监听。`directChats` 与 `operatorNotifications` 不启用，避免扩成私聊范围。
-2. Windows 明确使用 `accountMode:"system"` 和 `profile:"YOUR_PROFILE"`。这里的 system 指当前 OS 用户账号存储，不要求以 LocalSystem 或管理员身份启动。使用同一 OS 用户已有、已核实的 DWS 登录态；不执行登录、切换账号、重置、凭据复制/导出或改注册表。多个实例和不同 profile 可能共享账号存储，不能据此声明账号隔离；Windows 的 `accountMode:"private"` 会拒绝。
-3. `config.groups` 只列获准群；用该群 `responsibility` 写入职责、设定和规范，必要时用插件 `config.responsibility` 作所列群默认。逐群字符串优先，`""` 明确清空；两处均省略则保留原群职责，新群用通用默认。不要用 `resident.groups` 替代 DWS 插件的监听列表。配置优先级、四角色消费和群隔离见 [渠道职责配置](../CHANNELS.md#渠道职责配置)。改配置先正常停止，再重启生效。
+1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。
+2. Windows 明确用 `dingtalk_account_mode:"system"` 和 `dingtalk_profile:"YOUR_PROFILE"`。system 是当前 OS 用户账号存储，不要求 LocalSystem 或管理员。复用已核实的已有登录态，不执行登录、切换账号、重置、凭据复制/导出或改注册表。多个实例/profile 可能共享账号存储，不能声明账号隔离；Windows 显式 private 请求拒绝。
+3. 每个实例只绑定一个目标，使用唯一 `channelId`。群聊设 `dingtalk_conversation_type:"chat-room"` 与群 ID 或群名；私聊另建实例，设 `"chat"` 与 userId 或姓名，不填群目标。`dingtalk_name` 是渠道名称，`dingtalk_prompt` 是该会话职责、设定与规范，`""` 清空、缺省未指定；不再使用 `groups[].responsibility`、`config.responsibility`、`directChats` 或旧无前缀字段。多群/私聊使用多个实例，职责与四角色消费见 [渠道职责配置](../CHANNELS.md#渠道职责配置)。
 
-在安装根目录做不连接 DWS 的检查；配置检查仅加载并校验 JSON，不创建应用、启动监听或验证登录：
+在安装根目录做离线准备。以下 `add` 仅适用于尚未登记的 `dingtalk-room`，占位目标按获准范围填写；已有实例用专用 `set` 修改，不覆盖其它实例：
 
 ```powershell
 Get-Command dws -CommandType Application | Select-Object Name,Source
 $config = (Resolve-Path 'data/config/config.json').ProviderPath
-node --input-type=module -e "import { loadConfig } from './src/config.js'; await loadConfig(process.argv[1]); console.log('CONFIG_OK');" $config
-if ($LASTEXITCODE -ne 0) { throw '配置检查失败，不启动插件。' }
+node bin/night-bot-dingtalk.js $config list
+$room = '{"dingtalk_profile":"YOUR_PROFILE","dingtalk_account_mode":"system","dingtalk_conversation_type":"chat-room","dingtalk_group_id":"YOUR_ROOM_ID","dingtalk_name":"指定群助手","dingtalk_prompt":"仅处理本会话明确授权的请求。","dingtalk_listen":false,"dingtalk_writes_authorized":false}'
+node bin/night-bot-dingtalk.js $config add --channel-id dingtalk-room --enabled false --json $room --check
+if ($LASTEXITCODE -ne 0) { throw '配置检查失败，不保存或启用插件。' }
 ```
 
-`Get-Command` 只定位可执行文件；若配置了 `config.executable`，核对该指定程序。`CONFIG_OK` 只证明配置可解析和通过现有校验，不证明模型密钥、DWS 版本、profile 登录或群成员权限有效。使用准备好的配置按本页“启动与停止”启动；保留 `listen:false` 与发送关闭，不注入真实业务来冒充监听。
+`Get-Command` 只定位程序；自定义程序用 `dingtalk_executable`。`--check` 只读校验拟改配置和水位，不写盘、不创建锁、不调用 DWS；通过也不证明 profile 已登录、目标存在或权限有效。确认拟改无误，先按本页流程正常停止 Host、核实实际退出，再保存：
+
+```powershell
+node bin/night-bot-dingtalk.js $config add --channel-id dingtalk-room --enabled false --json $room
+if ($LASTEXITCODE -ne 0) { throw '配置保存失败，保留错误和原数据。' }
+node bin/night-bot-dingtalk.js $config list
+```
+
+保存须取得离线 Host 锁，运行中拒绝写入；不靠停掉未知进程或删除锁绕过。保存返回 `liveApplied:false`，`changed/restartRequired` 也包含渠道暂停/补拉检查点变化；按返回值正常重启，不声称热更新。已存在实例修改名称/Prompt 使用 `set --channel-id dingtalk-room --json '{"dingtalk_name":"指定群助手","dingtalk_prompt":"新的已授权规范"}' --check`，通过后同样离线保存。`disable --channel-id ID --check` 检查后去掉 `--check` 才保存，`enable` 同理；均不自动连接正在运行的 Host。
+
+显式环境导入只走 `node bin/night-bot-dingtalk.js $config env --check`，核对后去掉 `--check` 保存。单实例使用 `DINGTALK_CHANNEL_ID`、`DINGTALK_ENABLED` 与公开字段对应大写名称；多实例用 `DINGTALK_CHANNELS_JSON` 完整实例数组，不同时设置其它非空 `DINGTALK_*`。首次准备显式禁用并关闭监听/发送，布尔只写 `true/false`；普通 CLI 参数不与环境变量混用。不要把凭据正文传入 JSON、命令行、日志或 Git。
 
 ### 授权后的真实闭环
 
 仅在明确获得指定账号、指定群的连接和发送授权后执行；缺一项就停在准备阶段，不让其它会话代连或代发。
 
-1. 由授权执行者核实当前 DWS/profile 实际登录身份和目标群；只记录成功/失败与脱敏证据，不转储账号配置。停机后将 `listen` 设为 `true`；确已获得交付授权时再设 `writesAuthorized:true`，随后按同一受管入口重启。监听会订阅所列群并补读历史，`ingressEpoch` 仍拦截旧历史，不能为让样例通过倒退 epoch。
+1. 由授权执行者核实 DWS/profile 实际身份和唯一目标；只记录脱敏证据，不转储账号配置。正常停机后，经专用 CLI `set --check` 核对再保存 `dingtalk_listen:true`，仅获发送授权时设 `dingtalk_writes_authorized:true`；实例的 `enable --check` 通过后再离线保存，按 `restartRequired` 重启。名称解析必须得到唯一、完整候选，实际绑定保存于该安装，不手工猜造 `dingtalk_binding`。缺登录时渠道为 `waiting-auth`，其它 Host/Web 能力仍可运行；获准完成官方登录后由元数据观察重新解析接入，不能把等待态当在线，也不将普通权限/歧义错误当未登录重试。登录或切账号仍需相应授权。
 2. 在指定群实际发送有限、明确授权的验收请求，注明需要群内说明和附件。验证来源确为订阅事件或真实历史补读，保留消息身份/版本与渠道、群、真实作者的对应证据；不能用 `acceptHistoryMessage`、SDK/HTTP 注入、fake 或仅启动 ready 替代。同账号在单成员群中的消息是否进入订阅/补读，必须单独实测；没有收到不能宣称已承接，也不改账号绕过。
-3. 从本机 `GET /state/groups?summary=true` 找到内部 conversation ID，再按 `GET /state/groups/:groupId/messages`、`/outbox` 分页读原消息处理及通知状态；任务看 `GET /state/tasks/:taskId/detail`。外部 DWS 群 ID 与内部 conversation ID 不混用。受信 Host 可另读 `ctx.channels.plugins.get(channelId).health` 的监听与补读状态；当前没有对应通用 HTTP 明细接口，不能从 `/health` 的兼容布尔值推断它们。
+3. 从本机 `GET /state/groups?summary=true` 找到内部 conversation ID，再按 `GET /state/groups/:groupId/messages`、`/outbox` 分页读原消息处理及通知状态；任务看 `GET /state/tasks/:taskId/detail`。外部原生 ID 与内部 conversation ID 不混用。受信 Host 可读 `ctx.channels.plugins.get(channelId).health` 的监听与补拉状态；可选 Web 的认证 `/api/channels` 只给白名单阶段及真实健康布尔，不透原始错误、路径或登录资料。配置启用、`ready`、`listening`、`recovering`、健康正常和真正送达分别核实，不能从 `/health` 兼容布尔值推断。停用、恢复和重启沿该渠道耐久 ingress 水位补拉，检查原消息去重且停用消息未丢；不删除水位、重初始化或倒退业务 `ingressEpoch`。群聊与单对端私聊复用此机制，真实私聊仍需另行授权验收。
 4. 观察同任务唯一执行 session、正式 `task_result`、`completed` 且排空，以及实际冻结文件 descriptor/字节哈希。Router 必须选用本任务当前完成版本的 `taskDelivery`，说明父通知送达后再发文件子件；原请求明确要求原生引用时，可组合仅接受 `true` 的 `replyToSource`，由 Host 从本次 `sourceId` / `messageVersion` 绑定原消息/作者，且 `recipientActorIds` 须显式含原作者。省略该选项时默认行为不变；引用仅作用于父说明，文件子件不继承原生 quote/@。核对指定群内实际可见消息、附件原名/内容与持久 readback/receipt。`unknown` 只回读，不重授发送；检查回声命中本实例精确收据，不重新进入业务或造新任务。不能把同账号消息一律当回声过滤。
 5. 独立核对带原完成事件引用的持久复盘报告及该群范围内的经验目的地；合法空经验可为 `skipped`，不能仅以已调度或任务完成代替报告。复盘无工具、保持原记忆范围，不能依据 `task.completed` 声称附件已送达。最后正常停止并冷恢复，核同一任务/会话/产物和发送收据没有重放；未核或阻断的环节逐项报告。
 
-当前登记前回声 guard 仅覆盖 Router/任务队列通知：即使关闭 `operatorNotifications`，也用该插件自身 adapter 和原生/内部会话映射精确查身份，在消息事实/来源登记前过滤自身消息。同会话 `starting` / `unknown` 通知身份未决时，typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，沿既有持久补读水位恢复；不把暂缓记为已接纳或已完成，也不靠绕过沙箱、注入或重发旧事项继续。原 native operation 的 send/status 尚未统一 typed 接线，不能外推 shell 原生发送的通用回声已修复或已验收；完整合同见 [CHANNELS](../CHANNELS.md)。
+当前登记前回声 guard 仅覆盖 Router/任务队列通知：即使关闭 `dingtalk_operator_notifications`，也用该插件自身 adapter 和原生/内部会话映射精确查身份，在消息事实/来源登记前过滤自身消息。同会话 `starting` / `unknown` 通知身份未决时，typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，沿既有持久补读水位恢复；不把暂缓记为已接纳或已完成，也不靠绕过沙箱、注入或重发旧事项继续。原 native operation 的 send/status 尚未统一 typed 接线，不能外推 shell 原生发送的通用回声已修复或已验收；完整合同见 [CHANNELS](../CHANNELS.md)。
 
 ## 既有 Night Bot 的 Router 离线升级
 
@@ -163,7 +196,12 @@ if ($LASTEXITCODE -ne 0) { throw '升级后检查失败，不启动服务。' }
 ## 平台限制
 
 - Windows 本轮已验证官方文件工具的受控任务执行；不据此宣称任意插件、shell 或系统路径统一隔离。
-- 安装模式的模型子进程隐私 namespace 当前只有 Linux 实现。Windows 缺少该能力时，真实 shell、后台作业及仍调用受控 rg 子进程的内容检索 `grep` 继续失败关闭；`grep` 报 `SEARCH_FAILED` 并保留 `MEMORY_PROCESS_PRIVACY_UNAVAILABLE` 原因，这些成功路径仍未覆盖，不关闭 sandbox 迁就测试。文件名查找 `find` 在原文件授权边界内枚举普通文件，再用进程内 glob 匹配，不启动 rg、不依赖该子进程隐私能力；原路径/链接限制、结果上限及 Pi schema/render 保留。
+- SG11 的私有策略准备与 runner IPC 代码不代表 Windows 隔离已准入；既有 9 对象的 apply/拒写专项不能证明生产执行链或完整 cleanup，真实 Profile/token 准备、ConPTY 与强制资源清理仍须完成并验证。 Windows 的 `native-sandbox` 配置自定义 `runnerCommand` 时，因其尚不支持私有 LPAC launch 契约，明确返回 `SANDBOX_UNAVAILABLE`；不放宽 `read-only` 缺省，也不剥除自定义 wrapper 后执行。
+- 当前 LABEL-only setter 无法据返回0证明 NULL SACL 完整控制位恢复。范围冻结会在首个业务 Set 前拒绝真实受影响对象/继承后代的此类变化，保留原文件与失败原因；不为无关 NULL 对象泛拒，也不改目标标签、掩控制位或自动升级权限求通过。仅 `read-only` 策略本次新建、空且未发布的私有 temp 在创建时请求固定 Low/NW；实际完整 SD 必须满足精确 SACL 与控制位门，只有缺 DACL 自动继承位时才允许同 FileID 空根一次同 DACL 初始化。创建期 SD 与初始化后业务基线分开，最终恢复按业务原 SD 逐字比较；组件 Native 通过不替代真实 Profile/mandatory/ConPTY 验收，`scopeReady=false` 保持。此私有 temp 组件不替代已有读根资格、`workspace-write` 或外部树验收，也不改变 ConPTY pipe；禁止以此路径转换既有业务标签。
+- 新默认任务 work/tmp 已接创建期候选；[第38轮](../acceptance/resident-conversation-routing/round-38.md)13项非 Native 合同回归通过，[第39轮](../acceptance/resident-conversation-routing/round-39.md)一个真实新任务初始化为ready、work/tmp 均9814→9c14且原初始化资源全关闭，但同轮 SDK seal 组件在 NUL 准备阶段失败，不能称完整 Native 验收通过。创建合同保持：Web 与 Router 创建任务在事务中登记 Host 未就绪，提交后才独占 Create 普通继承 SD 的 task 根及两个 Low/NW 子目录；仅 work/tmp 新空根按原精确资格各允许至多一次同 DACL 的 Set4 初始化，不做业务 LABEL 往返。Native 资源闭合并准备其余用途目录后才提交 ready；失败或未知保持未就绪，阻止 claim/kick/工作区解析与归档普通 ensure 发布半成品，保留目录、原错误及未知资源，不自动重试 Low 或清理。旧收据、已有任务、restore/adopt 不触发初始化，其他四用途目录和非 Windows 平台不改。ready 不是永久 SD 授权；下段已取得挂起 token/SDK seal 组件证据，旧 NULL/外部写树恢复、完整业务 grant/release/mandatory 与原 runner 准入仍未完成，不能据本候选宣称 Windows 已可用。
+- LPAC 的 `LOCALAPPDATA` 由同 Profile 创建期 `SHGetKnownFolderPath(FOLDERID_LocalAppData)` 的已核可信值提供，大小写无关移除调用方同名项再注入；不是新的配置开关或宿主环境整包继承。HOME/USERPROFILE/temp 仍由原批准根决定，不将 LocalAppData 改成 task/work、私有 temp 或 SDK AC，也不因此增加目录权限。[第40轮](../acceptance/resident-conversation-routing/round-40.md)的 NUL 端点通过与创建记录203分列；后续准确新组件已在本机实测环境来源/大小写覆盖、挂起 child/Job 绑定、SDK seal、受控排空及 released/实时/严格冷读通过，见[第41轮组件验收](../acceptance/resident-conversation-routing/round-41.md)。它始终未 Resume，且只走零业务 scopeEffects 的回收分支。[第42轮](../acceptance/resident-conversation-routing/round-42.md)进一步进入业务 scope 准备，但在冻结前被 Host READ_CONTROL/WRITE_DAC 维护权校验拒绝，实际 scopeEffects 始终0；原无 plan 清理最终 released0/0，Job 仍 failed、task blocked/no-replay。该轮尚未定位具体目标或原态/候选阶段，不能据此初始化既有读根、扩大 ACL、切 full 或放宽校验求绿。
+- [第43轮](../acceptance/resident-conversation-routing/round-43.md)已正式 FAIL 审闭，已定位 materials 只读根在 `prepare.candidate/scope` 的 Host `WRITE_DAC` 校验被拒；原态维护权校验通过，但候选新增的 `OW`（OWNER RIGHTS）READ_CONTROL ACE 抑制 owner 隐式维护权，且无独立 Host ACE 补足。失败发生在 scope 冻结前，没有实际业务 scope 效果，不能以原无 plan 清理代替有 plan mandatory 恢复。R43 后的维护权候选按既有统一 planner 为每份直接 grant 增加可信 Host SID 的独立 `READ_CONTROL|WRITE_DAC`（`0x60000`）维护 ACE；仍先核原态 Host 维护权，保留 Profile 业务 mask 与 OW READ_CONTROL，不增加 `WRITE_OWNER`、Host 业务写/删除或任意主体授权。第三类维护 ACE 的来源核验与共享撤权同批处理：旧两类 delta 不补造第三 ACE，每个 Profile 只撤自身已提交的一份，保留原生同字节 ACE 及其他活跃 Profile 有来源的权限，缺源、矛盾或份数不足仍拒绝。[第44轮](../acceptance/resident-conversation-routing/round-44.md)真实验收仍为 FAIL，首错为 `Native scope inheritance changed Host maintenance ownership`，未到 scope-frozen、scopeEffects 为0，原无 plan 的 released 不抵有 plan mandatory 恢复。当前诊断增量仅将失败点已持有的父子前后 SD、类型、分支与计数附入非枚举 `cause`（`kind: 'scope-host-inheritance'`），无额外 Native 调用；受 Git 忽略的私有诊断投影名为 `privateScopeHostInheritance`。该增量不是修复，尚无新 Native 通过；业务 scope 授予/有 plan mandatory 完整恢复、`scopeReady`、正向 runner ACK/Resume、ConPTY 和完整 Windows 验收仍未通过，原资格门不变。
+- 以下子进程隐私限制针对 `ask` / `auto` 的受限执行，不描述显式 `full` 的 OS 账号直接模式。安装模式的模型子进程隐私 namespace 当前只有 Linux 实现。Windows 缺少该能力时，真实 shell、后台作业及仍调用受控 rg 子进程的内容检索 `grep` 继续失败关闭；`grep` 报 `SEARCH_FAILED` 并保留 `MEMORY_PROCESS_PRIVACY_UNAVAILABLE` 原因，这些成功路径仍未覆盖，不关闭 sandbox 迁就测试。文件名查找 `find` 在原文件授权边界内枚举普通文件，再用进程内 glob 匹配，不启动 rg、不依赖该子进程隐私能力；原路径/链接限制、结果上限及 Pi schema/render 保留。
 - 目录 junction 可用于真实 reparse-point 边界验证；普通文件 symlink 在没有权限时不能声称已覆盖。
 - POSIX `chmod` 位不能证明 Windows DACL 隐私。Linux `/proc/self/fd` 启动协议、POSIX 权限和内核隔离结果不移作 Windows 认证。
 - DWS 是可选渠道，本机核心验收不加载它。真实渠道验收单独授权，钉钉仅使用约定测试群。

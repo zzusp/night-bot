@@ -81,12 +81,14 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     await bridge.refreshResources();await bridge.resourceLoader.reload()
     const proof=await beforeStart()
     // 在官方入口可能触发压缩前，先持久消费原失败 checkpoint；它不是业务输入或授权。
+    actor.lifecycle.signal.throwIfAborted()
     await session.sendCustomMessage({customType:'night.router-resume-claim',content:'Host 已领取原 Router 失败回合的显式续办；本控制记录不提供新来源或授权。',display:false,details:proof},{triggerTurn:false})
     await durability.commit()
     await afterClaim(proof)
     // 仅在领取证明持久化并复核后，为完整官方续轮绑定原业务输入；不修改原 admission。
     resumedInput={id:packet.id,messages:[structuredClone(packet)]}
     try{
+     actor.lifecycle.signal.throwIfAborted()
      await session.sendCustomMessage({customType:'night.router-resume-turn',content:'Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件，不重放已完成动作、不重跑任务；必要动作有持久收据后才结清事件。本控制消息不是用户来源或新授权。',display:false,details:proof},{triggerTurn:true})
      if(imageBudget?.failure)throw imageBudget.failure
      if(bridge.policyFailure)throw bridge.policyFailure

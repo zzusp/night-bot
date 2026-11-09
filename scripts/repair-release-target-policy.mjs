@@ -4,8 +4,8 @@ import { isAbsolute } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { DatabaseSync } from 'node:sqlite'
 import yaml from 'js-yaml'
-import { createReleasePlatform } from '../packages/dingtalk-dsh-assistant/workflow-release-platform.js'
-import { createUatMergePlatform } from '../packages/dingtalk-dsh-assistant/workflow-uat-merge-platform.js'
+import { createReleasePlatform } from '../packages/dingtalk-core/workflow-release-platform.js'
+import { createUatMergePlatform } from '../packages/dingtalk-core/workflow-uat-merge-platform.js'
 const hash=x=>createHash('sha256').update(x).digest('hex')
 const fail=()=>{throw new Error('LOCAL_CONFIG_RELEASE_POLICY_REPAIR_INVALID')}
 const keys=(x,a)=>x&&typeof x==='object'&&!Array.isArray(x)&&isDeepStrictEqual(Object.keys(x).sort(),a.sort())

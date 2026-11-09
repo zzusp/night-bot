@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createEngineeringInlineAcceptanceWorkflow} from '../packages/dingtalk-dsh-assistant/task-workflow.js'
+import {createEngineeringInlineAcceptanceWorkflow} from '../packages/dingtalk-core/task-workflow.js'
 const context={scenarios:[{id:'s',description:'test'}]}
 const options={adapterIdentity:'adapter',prepareGeneration:async({input})=>input,workflowId:'task-engineering-test',provider:'test',model:'test',project:{repository:'other/project',uatEnvironment:'uat1',targetCommit:'a'.repeat(40),taskBase:'a'.repeat(40)},discovery:{allowedPrefixes:['']},workspaceAdapter:{identity:'workspace'},editAdapter:{identity:'edit'},deliveryPlan:{expectedRemoteSha:null,identity:'delivery',gitAdapterFor:()=>({}),prAdapterFor:()=>({}),date:'1700000000 +0000',commitMessage:'change',title:'change',body:'actual changes'},localAcceptance:{identity:'actual',scenarios:context.scenarios},checks:[{id:'real-build',version:'1',run:async()=>({passed:true,log:'exit 0'})}]}
 test('v25 PR derives paths in Host when input lacks metadata but still rejects missing verification',async()=>{

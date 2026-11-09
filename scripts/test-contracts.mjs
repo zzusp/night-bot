@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, access, lstat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { digest, registrations, testFiles } from './test-catalog.mjs'
 
@@ -18,6 +18,29 @@ export async function checkedContracts(root) {
   const seen = new Set(), destinations = new Map()
   for (const group of contracts.groups) {
     if (group.cases.length !== group.originalRegistrations || group.cases.reduce((n, item) => n + item.variants, 0) !== group.originalVariants) throw Error(`mixed_baseline_count_changed: ${group.original}`)
+    if (group.original === 'test/runtime.test.js') {
+      const { retirement, ...baseline } = group
+      if (contracts.sourceCommit !== '7ca36c26ad1c52e8b1896fdc76a7e8aed1c9a697'
+        || digest(JSON.stringify(baseline)) !== '0a7c08dcf8a3b26a3c389f5efe7a7ee6f897687b55813a89b48aa8700df6d598'
+        || retirement?.state !== 'removed-unmigrated'
+        || retirement.removalCommit !== '77b1817d591d3454d35e0d05e5a3d39561ff84ad'
+        || retirement.evidence !== 'docs/retired-workflow-session-contracts.md'
+        || typeof retirement.reason !== 'string' || !retirement.reason.trim())
+        throw Error('mixed_removed_container_proof_invalid: ' + group.original)
+      await access(resolve(root, retirement.evidence))
+      for (const file of [...group.destinations, group.fixture.file]) {
+        try { await lstat(resolve(root, file)) }
+        catch (error) { if (error.code === 'ENOENT') continue; throw error }
+        throw Error('mixed_removed_container_reintroduced: ' + file)
+      }
+      for (const item of group.cases) {
+        const key = `${group.original}:${item.originalId}`
+        if (seen.has(key)) throw Error('mixed_classification_invalid: ' + key)
+        seen.add(key)
+      }
+      continue
+    }
+    if (group.retirement) throw Error('mixed_unreviewed_container_retirement: ' + group.original)
     const actual = []
     for (const file of group.destinations) {
       if (!discovered.has(file)) throw Error(`mixed_destination_not_discovered: ${file}`)

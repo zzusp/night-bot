@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTaskWorkflowContracts } from '../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
-import { createTaskArtifactFiles } from '../packages/dingtalk-dsh-assistant/task-artifact-files.js'
+import { createTaskWorkflowContracts } from '../packages/dingtalk-core/task-workflow-contracts.js'
+import { createTaskArtifactFiles } from '../packages/dingtalk-core/task-artifact-files.js'
 
 async function fixture({ requiredFile = false, deliver = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'task-delivery-manifest-'))

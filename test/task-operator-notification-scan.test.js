@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
 import { available, reason, nativeTaskHost, latestInput, modelToolValues, topicTaskCalls, waitUntil } from './fixtures/task-session-native-host.js'
 
 for (const scenario of ['stale-snapshot', 'late-readback-error', 'recall-error']) test(`已送达通知收敛且保留撤回失败: ${scenario}`, { timeout: 5000 }, async t => {

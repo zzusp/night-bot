@@ -1,0 +1,490 @@
+{
+  "status": "OBSERVED",
+  "exitCode": 0,
+  "scriptSha256": "a5853042ce6c851b239ec8204d493c4c4812cd361df655c1d44460e661984802",
+  "sourceBefore": {
+    "src/process/windows-acl.js": "4cf27e7237b8a3cc5cb78731e16d01420b703fd859ed91bb70788205465eda45",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "4cf27e7237b8a3cc5cb78731e16d01420b703fd859ed91bb70788205465eda45",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3"
+  },
+  "sourceChanged": [],
+  "privateRawEvidence": {
+    "location": "ignored docs/tmp/sg11-label-inheritance-run.json; local only; not published",
+    "sha256": "86a13ef17fdc55797a6d7d730dc064099ddba6078483120a16052918b99cf9aa"
+  },
+  "actualOsDescriptorsUnchanged": true,
+  "readbackFileIdentitiesVerified": true,
+  "allocations": [
+    {
+      "kind": "local",
+      "id": 0,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "kind": "local",
+      "id": 1,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "kind": "local",
+      "id": 2,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "kind": "private-security",
+      "id": 3,
+      "attempted": true,
+      "closed": true,
+      "outputSlotNullAfterDestroy": false
+    },
+    {
+      "kind": "private-security",
+      "id": 4,
+      "attempted": true,
+      "closed": true,
+      "outputSlotNullAfterDestroy": false
+    },
+    {
+      "kind": "private-security",
+      "id": 5,
+      "attempted": true,
+      "closed": true,
+      "outputSlotNullAfterDestroy": false
+    },
+    {
+      "kind": "private-security",
+      "id": 6,
+      "attempted": true,
+      "closed": true,
+      "outputSlotNullAfterDestroy": false
+    },
+    {
+      "kind": "private-security",
+      "id": 7,
+      "attempted": true,
+      "closed": true,
+      "outputSlotNullAfterDestroy": false
+    },
+    {
+      "kind": "private-security",
+      "id": 8,
+      "attempted": true,
+      "closed": true,
+      "outputSlotNullAfterDestroy": false
+    },
+    {
+      "kind": "local",
+      "id": 9,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "kind": "local",
+      "id": 10,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "kind": "local",
+      "id": 11,
+      "attempted": true,
+      "closed": true
+    }
+  ],
+  "handles": [
+    {
+      "path": "",
+      "id": 0,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "path": "child",
+      "id": 1,
+      "attempted": true,
+      "closed": true
+    },
+    {
+      "path": "file",
+      "id": 2,
+      "attempted": true,
+      "closed": true
+    }
+  ],
+  "retainedAllocations": 0,
+  "retainedHandles": 0,
+  "fixtureRemoved": true,
+  "fixtureIndependentlyAbsent": true,
+  "errors": [],
+  "observations": [
+    {
+      "label": "null-label",
+      "directory": true,
+      "parent": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "child": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeParent": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeCreator": {
+        "control": 33796,
+        "saclControl": 0,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": false,
+        "SACL_PROTECTED": false
+      },
+      "native": {
+        "control": 34820,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "merged": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "controlDelta": 0,
+      "mergedEqualsChild": true
+    },
+    {
+      "label": "null-label",
+      "directory": false,
+      "parent": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "child": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeParent": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeCreator": {
+        "control": 33796,
+        "saclControl": 0,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": false,
+        "SACL_PROTECTED": false
+      },
+      "native": {
+        "control": 34820,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "merged": {
+        "control": 35844,
+        "saclControl": 2048,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "controlDelta": 0,
+      "mergedEqualsChild": true
+    },
+    {
+      "label": "explicit-medium",
+      "directory": true,
+      "parent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "child": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeParent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeCreator": {
+        "control": 33812,
+        "saclControl": 16,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": false,
+        "SACL_PROTECTED": false
+      },
+      "native": {
+        "control": 34836,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "merged": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "controlDelta": 0,
+      "mergedEqualsChild": true
+    },
+    {
+      "label": "explicit-medium",
+      "directory": false,
+      "parent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "child": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeParent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeCreator": {
+        "control": 33812,
+        "saclControl": 16,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": false,
+        "SACL_PROTECTED": false
+      },
+      "native": {
+        "control": 34836,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "merged": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "controlDelta": 0,
+      "mergedEqualsChild": true
+    },
+    {
+      "label": "inherited-medium",
+      "directory": true,
+      "parent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "child": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeParent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeCreator": {
+        "control": 33796,
+        "saclControl": 0,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": false,
+        "SACL_PROTECTED": false
+      },
+      "native": {
+        "control": 34836,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "merged": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "controlDelta": 0,
+      "mergedEqualsChild": true
+    },
+    {
+      "label": "inherited-medium",
+      "directory": false,
+      "parent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "child": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeParent": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "nativeCreator": {
+        "control": 33796,
+        "saclControl": 0,
+        "SACL_PRESENT": false,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": false,
+        "SACL_PROTECTED": false
+      },
+      "native": {
+        "control": 34836,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "merged": {
+        "control": 35860,
+        "saclControl": 2064,
+        "SACL_PRESENT": true,
+        "SACL_DEFAULTED": false,
+        "SACL_AUTO_INHERIT_REQ": false,
+        "SACL_AUTO_INHERITED": true,
+        "SACL_PROTECTED": false
+      },
+      "controlDelta": 0,
+      "mergedEqualsChild": true
+    }
+  ],
+  "limitation": "NULL child originally has 0x800; native creator lacks 0x800 but native output gains it; merged matches original. NULL parent/child both lacking 0x800 has not been observed."
+}

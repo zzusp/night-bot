@@ -6,10 +6,10 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
 import { validateManifest, readonlyClients, reconcileReadonlyGate, verifyClosedBackup } from '../scripts/reconcile-data-change-approval.mjs'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
 const manifest = root => ({ version: 1, scope: 'data-change-approval-handoff', runtimeDirectory: root,

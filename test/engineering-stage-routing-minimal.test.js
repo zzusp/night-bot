@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {assertEngineeringStageRepository,selectConfiguredLocalAcceptance} from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
+import {assertEngineeringStageRepository,selectConfiguredLocalAcceptance} from '../packages/dingtalk-core/workflow-engineering.js'
 const requirement={target:{repositoryId:'frontend'},authorization:{actorId:'human'},sourceInstructions:[{sourceKey:'original',sourceVersion:1,actorId:'human',text:'Update the backend export'}]}
 const stage={workflowId:'task-engineering',sourceCondition:{repositoryId:'backend',sourceKey:'original',sourceVersion:1,sourceQuote:'Update the backend export',objective:'backend export',acceptanceCriteria:['Export works']}}
 test('configured cross-project capability needs no dependency whitelist',()=>{

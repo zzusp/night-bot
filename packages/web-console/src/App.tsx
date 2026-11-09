@@ -7,6 +7,7 @@ import { Loading, Notice, Status } from './components/Shared';
 import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
 import ChannelsPage from './ChannelsPage';
+import PermissionsPanel from './components/PermissionsPanel';
 
 function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expired: boolean }) {
   const [token, setToken] = useState('');
@@ -51,6 +52,9 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const [logoutError, setLogoutError] = useState<unknown>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [historyOffset, setHistoryOffset] = useState(0);
+  const [permissionIdentity, resetPermissionIdentity] = useState(() => ({ csrfToken: session.csrfToken, epoch: 0 }));
+  // 只重挂权限面板以失效旧审批异步操作；聊天草稿保留，DOM/key 不含令牌。
+  if (permissionIdentity.csrfToken !== session.csrfToken) resetPermissionIdentity({ csrfToken: session.csrfToken, epoch: permissionIdentity.epoch + 1 });
   const olderChats = useResource<Page<ChatSummary>>(historyOffset ? `/chat?offset=${historyOffset}&limit=20` : null);
   const drawer = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -86,7 +90,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <dialog ref={drawer} className="nav-dialog" aria-label="导航"><div className="sidebar">{sidebar(true)}</div></dialog>
     <div className="main-frame"><header className="topbar"><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div>
       <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '连接中断' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
-        <IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton>
+        <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton>
         {section === 'chat' && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}

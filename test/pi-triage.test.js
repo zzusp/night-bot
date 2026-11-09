@@ -44,7 +44,7 @@ test('cold recovery reclassifies only uncommitted original sources and reads bac
   mode='finish';await h.restart();await h.service.whenIdle()
   const [unknown]=await h.query('notification.list')
   assert.equal(unknown.state,'unknown');assert.equal(h.sent.length,1)
-  assert.equal(h.sent[0].type,'chat');assert.deepEqual(h.sent[0].mentions,[]);assert.equal(h.sent[0].replyToMessageId,original.messageId)
+  assert.equal(h.sent[0].type,'chat');assert.deepEqual(h.sent[0].recipientIds,[]);assert.equal(h.sent[0].replyToMessageId,original.messageId)
   assert.equal(unknown.payload.sourceId,before.sourceId);assert.equal(unknown.payload.sourceRef.actorId,before.actorId)
   assert.ok(h.requests.filter(body=>requestTools(body).includes('channel_triage_submit')).length>oldTriage)
   readable=true;await h.restart()

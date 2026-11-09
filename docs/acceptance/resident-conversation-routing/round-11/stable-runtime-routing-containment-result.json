@@ -1,0 +1,20 @@
+[
+  {
+    "group": "runtime",
+    "exit": 1,
+    "productChanged": [],
+    "logSha256": "a86926dd170f264baf5b7e9178aff153c60d69056b1b98066b59043669a896d8"
+  },
+  {
+    "group": "routing",
+    "exit": 1,
+    "productChanged": [],
+    "logSha256": "6f46095888aaf4c1bae633bdcf6f8d1583665c00900a07cbdbacb6f1721dcaf1"
+  },
+  {
+    "group": "containment",
+    "exit": 0,
+    "productChanged": [],
+    "logSha256": "84c65a052bdfe5779ae60947f2029f218fb7c9a2e6240b49a973b8edaf9b5bfc"
+  }
+]

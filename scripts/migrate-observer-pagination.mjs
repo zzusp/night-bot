@@ -1,11 +1,11 @@
-import {installTaskArchive,archiveTaskRows} from '../packages/dingtalk-dsh-assistant/task-archive.js'
-import { installObserverLegacyExecutionPages } from '../packages/dingtalk-dsh-assistant/observer-legacy-execution-pages.js'
+import {installTaskArchive,archiveTaskRows} from '../packages/dingtalk-core/task-archive.js'
+import { installObserverLegacyExecutionPages } from '../packages/dingtalk-core/observer-legacy-execution-pages.js'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
 import { createReadStream, statSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { installObserverPagination,installObserverArchivePagination } from '../packages/dingtalk-dsh-assistant/observer-pagination.js'
-import { installObserverTracePages } from '../packages/dingtalk-dsh-assistant/observer-trace-pages.js'
+import { installObserverPagination,installObserverArchivePagination } from '../packages/dingtalk-core/observer-pagination.js'
+import { installObserverTracePages } from '../packages/dingtalk-core/observer-trace-pages.js'
 
 // Explicit offline maintenance. Physical archiving requires backup; index-only uses a rollbackable transaction.
 const args = process.argv.slice(2), apply = args.includes('--apply'), indexesOnly=args.includes('--indexes-only')

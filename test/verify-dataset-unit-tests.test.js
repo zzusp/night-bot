@@ -55,7 +55,7 @@ test('后端配置提案仅更换指定check版本与steps，不触碰其他仓�
 
 test('后端检查提案可由当前构造器接纳，不透传旧执行上限',async()=>{
  const {prepareBackendChecks}=await import('../docs/acceptance/topic-context-completeness/scripts/prepare-backend-unit-checks.mjs')
- const {createVerificationJobCheck}=await import('../packages/dingtalk-dsh-assistant/execution-check-job.js')
+ const {createVerificationJobCheck}=await import('../packages/dingtalk-core/execution-check-job.js')
  const before=[{id:'dataset-package',version:'1',steps:[{executable:'java',args:['-DskipTests','package']}]}]
  const options={toolsDirectory:tmpdir(),nodeExecutable:process.execPath,javaExecutable:java,mavenHome:tmpdir()}
  // 路径授权来自Host；此处用当前机器绝对路径验证构造器合同，不执行构建。
@@ -103,7 +103,7 @@ test('JUnit policy requires independent Host task stage repository request and c
 })
 
 test('Host rejects pinned JUnit policy from another stage repository request or candidate before execution',async t=>{
- const {validateEngineeringVerificationPolicy}=await import('../packages/dingtalk-dsh-assistant/workflow-engineering.js')
+ const {validateEngineeringVerificationPolicy}=await import('../packages/dingtalk-core/workflow-engineering.js')
  const {createHash}=await import('node:crypto')
  const root=await mkdtemp(join(tmpdir(),'dsh-host-policy-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const path=join(root,'policy.json'),scope={taskId:'task-1234',stageId:'notification',repositoryId:'dataset',requestDigest:'a'.repeat(64),candidateDigest:'b'.repeat(64)}
@@ -119,7 +119,7 @@ test('Host rejects pinned JUnit policy from another stage repository request or 
 })
 
 test('V2 check process receives independent Host binding over ambient scope',async t=>{
- const {createVerificationJobCheck}=await import('../packages/dingtalk-dsh-assistant/execution-check-job.js')
+ const {createVerificationJobCheck}=await import('../packages/dingtalk-core/execution-check-job.js')
  const root=await mkdtemp(join(tmpdir(),'dsh-host-env-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const scope={taskId:'task-1234',stageId:'notification',repositoryId:'dataset',requestDigest:'a'.repeat(64),candidateDigest:'b'.repeat(64)}
  const check=createVerificationJobCheck({id:'host-scope',version:'1',root,executable:process.execPath,args:['-e',"const s=JSON.parse(process.env.DSH_VERIFICATION_SCOPE);if(s.taskId!=='task-1234'||s.stageId!=='notification'||s.candidateDigest!=='b'.repeat(64))process.exit(1)"]})

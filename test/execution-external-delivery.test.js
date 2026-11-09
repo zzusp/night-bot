@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { defineExecutionWorkflow, createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { defineExecutionWorkflow, createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
 
 async function fixture(t, { grant, execute, reconcile, authorizeExternal, authorizationNode = true } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-external-delivery-'))
@@ -123,7 +123,7 @@ for (const [authorizationNode, request] of [[false,false],[true,true],[true,fals
 })
 
  test('authorization failures belong to executor assessment and real authorization waiting', async () => {
- const { classifyExecutionFailure } = await import('../packages/dingtalk-dsh-assistant/execution-recovery-policy.js')
+ const { classifyExecutionFailure } = await import('../packages/dingtalk-core/execution-recovery-policy.js')
  assert.deepEqual(classifyExecutionFailure({code:'AUTHORIZATION_ASSESSMENT_REQUIRED'}),{category:'authorization-assessment',responsibleParty:'node-executor',nextAction:'assess-authorization-and-use-visible-step'})
  assert.deepEqual(classifyExecutionFailure({code:'effect_approval_required'}),{category:'authorization-waiting',responsibleParty:'authorization-session',nextAction:'await-real-authorization-result'})
  })

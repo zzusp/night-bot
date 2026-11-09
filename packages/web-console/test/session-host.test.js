@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
+import {join} from 'node:path'
+import {openDynamicTaskStore} from '../../../packages/dingtalk-core/dynamic-task-store.js'
+import {memoryScope} from '../../../src/memory/scope.js'
 import {memoryHost} from '../../../test/fixtures/memory-host.js'
 import {nativeTestTimeout} from '../../../test/fixtures/native-lifecycle.js'
 import {apply as applyApplication, inject} from '../../../src/application.js'
@@ -82,4 +85,74 @@ test('task session API reads actual committed Pi source and tool records without
     await web.close(); web = undefined
     assert.deepEqual(await readFile(journal), before, 'closing the optional view cannot mutate task history')
   } finally {await web?.close()}
+})
+
+
+test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 scope/version 授权且读取不触发推理', {timeout: nativeTestTimeout(30000)}, async t => {
+  const f = await memoryHost(t, body => {
+    if (!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')) return {text: '不应执行其他推理'}
+    const input = JSON.parse(body.messages.findLast(row => row.role === 'user').content)
+    return {text: JSON.stringify({lessons: [{key: 'check-evidence', observation: '核对真实结果并保留可验证来源',
+      hypothesis: '该任务的核查步骤可复用', shortcut: '读取当前证据', evidenceIds: [input.eventId],
+      skill: {steps: ['读取当前证据', '核对实际终态'], reason: '本任务已有直接证据', applicability: '同类证据核对', evidenceBacked: true}}]})}
+  })
+  const channels = f.host.ctx.channels, channelId = 'web-learning', senderId = 'reader'
+  const owner = channels.identity({type: 'chat', channelId, senderId, conversationId: 'learning-view', messageId: 'learning-view', text: 'learning-view'}).binding.actorId
+  const store = await openDynamicTaskStore({dbPath: join(f.host.ctx.runtimePaths.state, 'learning-tasks.sqlite'), instanceId: 'web-learning', initialize: true})
+  let web, detach
+  try {
+    const command = (id, kind, args) => store.command({id, kind, args})
+    await command('create', 'task.create', {taskId: 'learn-one', request: '核对隔离任务', ownerActorId: owner})
+    const binding = (await command('claim', 'task.claim', {taskId: 'learn-one'})).result.binding
+    const completion = (await command('complete', 'task.complete', {binding, summary: '核对已完成'})).completionEvent
+    const reflection = f.host.ctx.reflection
+    detach = reflection.attachStore(store, {ownerActorId: owner, model: f.config.model})
+    await reflection.whenIdle()
+    const scope = memoryScope({actorId: owner}), stateFile = join(reflection.directory(scope), 'state.json')
+    const before = await readFile(stateFile), requestCount = f.requests.length
+    assert.equal(requestCount, 1, 'only actual tool-free retrospective inference is expected')
+    assert.ok(f.requests.every(body => !body.tools?.length))
+    const open = async actor => {
+      web = await createWebConsole({channels, paths: f.host.ctx.runtimePaths, config: {channelId, senderId: actor, port: 0},
+        getApplication: () => ({tasks: {store}}), getReflection: () => reflection})
+      const login = await fetch(web.origin + '/api/login', {method: 'POST', headers: {origin: web.origin, 'content-type': 'application/json'},
+        body: JSON.stringify({token: (await readFile(web.credentialPath, 'utf8')).trim()})})
+      assert.equal(login.status, 200)
+      const cookie = login.headers.get('set-cookie').split(';')[0]
+      return async path => {
+        const response = await fetch(web.origin + path, {headers: {origin: web.origin, cookie}})
+        return {status: response.status, body: await response.json()}
+      }
+    }
+    const api = await open(senderId), endpoint = '/api/tasks/learn-one/learning'
+    const index = await api(endpoint)
+    assert.equal(index.status, 200); assert.equal(index.body.status, 'ready')
+    assert.equal(index.body.reviews[0].status, 'done'); assert.equal(index.body.reviews[0].eventId, completion.id)
+    assert.deepEqual(index.body.changes.map(row => row.kind).sort(), ['memory', 'skill'])
+    for (const change of index.body.changes) {
+      assert.equal(change.status, 'applied'); assert.equal(change.canRead, true)
+      assert.match(change.version, /^[a-f0-9]{64}$/)
+      assert.equal(change.source.taskId, 'learn-one'); assert.equal(change.source.eventId, completion.id)
+      const result = await api(endpoint + '/changes/' + change.id + '?version=' + change.version)
+      assert.equal(result.status, 200); assert.equal(result.body.version, change.version)
+      assert.ok(result.body.text.includes(change.kind === 'memory' ? '核对真实结果并保留可验证来源' : 'not authority'))
+      assert.equal((await api(endpoint + '/changes/' + change.id + '?version=' + '0'.repeat(64))).status, 409)
+    }
+    assert.equal((await api(endpoint + '/changes/' + '0'.repeat(64) + '?version=' + '0'.repeat(64))).status, 404)
+    assert.deepEqual(await readFile(stateFile), before); assert.equal(f.requests.length, requestCount)
+    const skill = index.body.changes.find(row => row.kind === 'skill')
+    await command('create-next', 'task.create', {taskId: 'learn-two', request: '核对第二份独立证据', ownerActorId: owner})
+    const nextBinding = (await command('claim-next', 'task.claim', {taskId: 'learn-two'})).result.binding
+    await command('complete-next', 'task.complete', {binding: nextBinding, summary: '第二份证据已核对'})
+    reflection.scan(); await reflection.whenIdle()
+    assert.equal(f.requests.length, requestCount + 1, 'a new committed completion causes exactly one new retrospective')
+    assert.equal((await api(endpoint + '/changes/' + skill.id + '?version=' + skill.version)).status, 409)
+    const current = await api(endpoint)
+    assert.notEqual(current.body.changes.find(row => row.id === skill.id).version, skill.version)
+    await web.close(); web = undefined
+    const foreign = await open('another-reader'), summary = await foreign(endpoint)
+    assert.equal(summary.status, 200); assert.ok(summary.body.changes.every(row => row.canRead === false))
+    for (const change of summary.body.changes) assert.equal((await foreign(endpoint + '/changes/' + change.id + '?version=' + change.version)).status, 403)
+    assert.equal(f.requests.length, requestCount + 1, 'HTTP reads never schedule retrospective or task inference')
+  } finally {await web?.close(); detach?.(); await store.close()}
 })

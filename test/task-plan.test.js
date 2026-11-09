@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { validateTaskPlan, prepareTaskPlan, planItemId, reviseTaskPlan, projectTaskPlan, validateStageOutput, validateCriterionReview, legacyPlanCandidate } from '../packages/dingtalk-dsh-assistant/task-plan.js'
+import { validateTaskPlan, prepareTaskPlan, planItemId, reviseTaskPlan, projectTaskPlan, validateStageOutput, validateCriterionReview, legacyPlanCandidate } from '../packages/dingtalk-core/task-plan.js'
 
 const sourceRefs = [{ messageId: 'm1', messageVersion: 1 }]
 const plan = () => ({ revision: 1, inputVersion: 1, runSequence: 1, sourceRefs, workflowRefs: [], criteria: [{ criterionId: 'c1', description: '结果可回读', sourceRefs, verificationPolicy: 'independent-check' }], stages: [{ stageId: 's1', title: '执行', criterionIds: ['c1'], dependsOn: [], expectedOutputs: ['资源版本'] }, { stageId: 's2', title: '核验', criterionIds: ['c1'], dependsOn: ['s1'], expectedOutputs: ['回读记录'] }] })

@@ -1,6 +1,7 @@
 import {nativeCodeTransport} from './native-code-transport.js'
 import {captureToolSchema} from './runtime/tool-schema-value.js'
 import {Service} from '@deepseek-ai/cordis'
+import {AsyncLocalStorage} from 'node:async_hooks'
 import z from '@deepseek-ai/schemastery'
 import {scopeOf,scopeChainOf,scopeTarget} from './native-scope.js'
 import {snapshotJsonValue,deepFreeze} from './native-values.js'
@@ -27,7 +28,7 @@ export default class NativeTools extends Service {
  static inject=['systemPrompt']
  static Config=z.object({mode:z.union(['native','ptc']).default('native'),maxParallelSubCalls:z.natural().min(1).default(10)})
  constructor(ctx,config={}){
-  super(ctx,'tools');this.config={mode:'native',maxParallelSubCalls:10,...config};if(!['native','ptc'].includes(this.config.mode)||!Number.isInteger(this.config.maxParallelSubCalls)||this.config.maxParallelSubCalls<1)throw new TypeError('Invalid native tool runtime configuration');this.global=layer();this.scoped=new Map();this.states=new WeakMap();this.canonical=new WeakMap();this.contracts=new WeakMap()
+  super(ctx,'tools');this.config={mode:'native',maxParallelSubCalls:10,...config};if(!['native','ptc'].includes(this.config.mode)||!Number.isInteger(this.config.maxParallelSubCalls)||this.config.maxParallelSubCalls<1)throw new TypeError('Invalid native tool runtime configuration');this.global=layer();this.scoped=new Map();this.states=new WeakMap();this.canonical=new WeakMap();this.contracts=new WeakMap();this.permissionExecutions=new AsyncLocalStorage()
   ctx.systemPrompt.tools(context=>this.wireSchemas(context.scope))
   if(this.config.mode!=='native'){ctx.systemPrompt.section(this.collapseSection());ctx.systemPrompt.section(this.sdkSection())}
   this[TOOL_RUNTIME_SCHEDULER]={prepare:input=>this.prepare(input),dispatch:exec=>this.dispatch(exec),finalize:(exec,result)=>this.finalize(exec,result),finish:(exec,result)=>this.finish(exec,result)}
@@ -141,12 +142,16 @@ export default class NativeTools extends Service {
     ||exec.name!==identity.name||exec.arguments!==state.arguments)return
   return Object.freeze({callId:identity.callId,rootCallId:identity.rootCallId,name:identity.name,owner:identity.agent?.id})
  }
+ currentPermissionExecution(){const exec=this.permissionExecutions.getStore();return exec&&(this.admissionIdentity(exec)||this.executionIdentity(exec))?exec:undefined}
+ inspectProcessAuthorization(request){return this.ctx.get('toolPermissions')?.inspectProcessAuthorization(request)}
+ resolveProcessAuthorization(request){return this.ctx.get('toolPermissions')?.resolveProcessAuthorization(request)}
+ resolveFileAuthorization(request){return this.ctx.get('toolPermissions')?.resolveFileAuthorization(request)}
  async prepare(input){
   const state={callerSignal:input.signal,businessAudit:input.businessAudit,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
   const exec={token:Symbol('night.tool.execution'),callId:input.callId,rootCallId:input.rootCallId??input.callId,name:input.name,signal:input.signal,...input.agent===undefined?{}:{agent:input.agent},...input.parent===undefined?{}:{parent:input.parent},...input.schema===undefined?{}:{schema:input.schema},deferContext:context=>state.deferred.push(context),concludeTurn:()=>{state.concluded=true}}
   const collapsed=this.modeFor(input.agent)==='ptc'&&input.parent===undefined&&input.name!=='run_code'
   state.finalizer=collapsed&&!input.signal.aborted?undefined:definition?.finalizeContent?.bind(definition);state.projector=collapsed?undefined:definition?.projectContent?.bind(definition);this.states.set(exec,state)
-  try{
+  return this.permissionExecutions.run(exec,async()=>{try{
    exec.arguments=deepFreeze(snapshot(input.arguments));state.arguments=exec.arguments;state.identity={token:exec.token,agent:exec.agent,callId:exec.callId,rootCallId:exec.rootCallId,name:exec.name}
    // Middleware may wrap cancellation, but cannot replace the admitted capability,
    // owner, RPC parent or captured parameters before an effect.
@@ -169,10 +174,11 @@ export default class NativeTools extends Service {
     throw new ToolArgsError(violations)
    }
    state.admitted=true
+   await this.ctx.get('toolPermissions')?.prepare(exec)
    if(typeof admitted.prepareExecution==='function')await admitted.prepareExecution(exec.arguments,exec)
    if(state.callerSignal.aborted)return{kind:'post-result',exec,result:aborted(false)}
    return{kind:'dispatch',exec}
-  }catch(error){return{kind:'final-result',exec,result:failure(error)}}
+  }catch(error){return{kind:'final-result',exec,result:failure(error)}}})
  }
  body(exec){
   // A continuation can be entered more than once by middleware. One admitted
@@ -184,7 +190,7 @@ export default class NativeTools extends Service {
   const state=this.states.get(exec),wrapper=exec.signal,fused=fusedSignals(state.callerSignal,wrapper),signal=fused.signal
   if(signal.aborted){fused.close();return aborted(false)}
   exec.signal=signal
-  try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.started=true;const result=this.success(exec,definition,await definition.execute(exec.arguments,exec));return signal.aborted?aborted(true,result):result}catch(error){return failure(error)}finally{fused.close();exec.signal=wrapper}
+  try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.started=true;const result=this.success(exec,definition,await this.permissionExecutions.run(exec,()=>definition.execute(exec.arguments,exec)));return signal.aborted?aborted(true,result):result}catch(error){return failure(error)}finally{fused.close();exec.signal=wrapper}
  }
  normalize(exec,result){if(this.canonical.get(result)===exec.token)return result;if(result.isError)return this.mark(exec,{isError:true,error:result.error,content:result.content,...result.meta===undefined?{}:{meta:result.meta},...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}});const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);return this.mark(exec,{...this.success(exec,definition,result.value),...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}})}
  async flushSession(agent,businessAudit){if(businessAudit){if(typeof businessAudit.isLive!=='function'||!businessAudit.isLive())throw new Error('Business tool actor is not live');await businessAudit.flush();if(!businessAudit.isLive())throw new Error('Business tool actor is not live');return}const sessions=this.ctx.get('sessions');if(agent&&sessions)await sessions.flush(agent.session)}
@@ -213,6 +219,7 @@ export default class NativeTools extends Service {
   const state=this.states.get(exec);if(state?.concluded)candidate={...candidate,concludesTurn:true}
   let result
   try{result=this.materialize(candidate);const finalize=this.states.get(exec)?.finalizer;if(finalize){const content=finalize(exec,result);if(content!==undefined)result=this.materialize({...result,content})}}catch(error){result=this.materialize(failure(error))}
+  this.ctx.get('toolPermissions')?.finish(exec)
   if(state)state.finished=true
   Object.freeze(exec)
   for(const callback of this.ctx.events.dispatch('emit',[scopeTarget(this,exec.agent),'tools/result',exec,result]))try{Promise.resolve(callback(exec,result)).catch(error=>this.ctx.logger.warn(errorText(error)))}catch(error){this.ctx.logger.warn(errorText(error))}

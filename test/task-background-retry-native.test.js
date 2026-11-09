@@ -5,8 +5,8 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, topicTaskCalls, latestInput, waitUntil } from './fixtures/task-session-native-host.js'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { topicDecisionRecovery, fingerprint } from '../packages/dingtalk-dsh-assistant/topic-model.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { topicDecisionRecovery, fingerprint } from '../packages/dingtalk-core/topic-model.js'
 
 test('Host exact recovery rejects unknown effects and queue-stale facts, then resumes the original pre-effect failure once', { ...({ timeout: 20000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(20000) }, nativeLifecycle(20000, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'task-host-retry-'))

@@ -77,7 +77,7 @@ export class OfficialAgentFactory {
   const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,effectReconciliationAuditKinds,sessionNameAuditKinds,ports.auditKinds,options.auditKinds)
   const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
   const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
-  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false,routerContinuing=false,routerResumeCheck
+  let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,interruptPromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false,routerContinuing=false,routerResumeCheck
   const cancellationError=fail('PI_OFFICIAL_ACTOR_NOT_LIVE')
   const lifecycle=new AbortController(),deliveryContext=new AsyncLocalStorage(),pending=new Set()
   const requestGuards=new Set()
@@ -166,6 +166,16 @@ export class OfficialAgentFactory {
     // is never converted into a successful drain.
     if(cancelled){if(bundle.durability.failure)throw bundle.durability.failure}else check()
    }
+   // 正常关停只中断当前推理；耐久待投递输入及 owner 留给原关闭链。
+   const interrupt=()=>interruptPromise??=(async()=>{
+    if(closing)return closePromise
+    cancelled=true;lifecycle.abort(cancellationError);const errors=[]
+    try{admission.pause(cancellationError)}catch(error){errors.push(error)}
+    try{await bundle.session.abort()}catch(error){errors.push(error)}
+    try{await whenIdle()}catch(error){errors.push(error)}
+    if(errors.length===1)throw errors[0]
+    if(errors.length)throw new AggregateError(errors,'Official actor interruption failed')
+   })()
    const cancel=async cause=>{
     cancelled=true;lifecycle.abort();admission.pause();const errors=[]
     try{await bundle.session.abort()}catch(error){errors.push(error)}
@@ -208,7 +218,7 @@ export class OfficialAgentFactory {
     enqueue:packet=>{active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');return admission.enqueue(packet)},
     deliver:(packetId,deliveryOptions)=>{
      active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
-    },whenIdle,cancel,
+    },whenIdle,interrupt,cancel,
     resumeRouterBatch({packet,failedEntryId},validate){
      active();check()
      if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
@@ -216,12 +226,12 @@ export class OfficialAgentFactory {
      if(typeof validate!=='function')throw new TypeError('Router Host validation required')
      packet=deepFreeze(structuredClone(packet));routerCheckpoint(packet,failedEntryId)
      routerContinuing=true
-     const authorizeResume=async()=>{active();check();await validate();if(await authorize(packet,actor)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')}
+     const authorizeResume=async()=>{active();check();await validate();active();if(await authorize(packet,actor)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED');active()}
      const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,async()=>{
       await authorizeResume();routerCheckpoint(packet,failedEntryId)
       routerFrozen=true;admission.pause()
       const hold=await drain('maintenance')
-      await hold.resume?.();active();check();admission.resume();routerFrozen=false
+      active();await hold.resume?.();active();check();admission.resume();routerFrozen=false
       routerResumeCheck=async()=>{await authorizeResume();routerResumeCheck=undefined}
       return bundle.resumeRouterBatch(packet,async()=>{
        await store.commit();await authorizeResume();return routerCheckpoint(packet,failedEntryId)
@@ -232,55 +242,56 @@ export class OfficialAgentFactory {
      return operation
     },
     async routerCommitProof(){
-     active();await whenIdle();await store.commit()
+     active();await whenIdle();active();await store.commit();active()
      const entries=store.manager.getEntries(),commit=entries.at(-1)
      if(commit?.type!=='custom'||commit.customType!=='night.commit')throw fail('PI_ROUTER_COMMIT_REQUIRED')
      return {sessionId:id,commitId:commit.id,revision:store.snapshot().revision,nativeEntryCount:entries.length}
     },
     async routerRecoveryProof(handoffId){
      active();routerFrozen=true
-     await whenIdle();const recoveryHold=await drain('maintenance')
+     await whenIdle();active();const recoveryHold=await drain('maintenance');active()
      if(bundle.session.pendingMessageCount||bundle.session.isRetrying)throw fail('PI_ROUTER_INPUT_PENDING')
      for(const packetId of admission.pending()){
-      const packet=admission.lookupPacket(packetId)
+      active();const packet=admission.lookupPacket(packetId)
       if(packet?.source.kind!=='router-handoff'||packet.source.handoffId!==handoffId)throw fail('PI_ROUTER_RECOVERY_INPUT_UNRESOLVED')
       await admission.cancelInternal(packetId,'router-handoff-recovery')
      }
-     check();await store.commit();await recoveryHold.resume?.();routerFrozen=false
+     active();check();await store.commit();active();await recoveryHold.resume?.();active();routerFrozen=false
      return handle.routerCommitProof()
     },
     async runToolFreeHandoff(packet,validate){
      active();if(routerContinuing||routerFrozen||maintenanceCount||admission.paused)throw fail('PI_ROUTER_HANDOFF_BUSY')
      routerFrozen=true
-     await whenIdle();const handoffHold=await drain('maintenance');await handoffHold.resume?.()
+     await whenIdle();active();const handoffHold=await drain('maintenance');active();await handoffHold.resume?.();active()
      if(admission.pending().length||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.isStreaming||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_INPUT_PENDING')
      routerFrozen=true
      const tools=bundle.session.getActiveToolNames();bundle.session.setActiveToolsByName([])
      try{
-      await publishInternal(packet)
+      await publishInternal(packet);active()
       await bundle.deliver(packet.id)
-      await whenIdle()
+      await whenIdle();active()
       const last=bundle.session.messages.findLast(message=>message.role==='assistant')
       if(last?.stopReason!=='stop'||last.content?.some(item=>item.type==='toolCall'))throw fail('PI_ROUTER_HANDOFF_INCOMPLETE')
       const text=last.content.filter(item=>item.type==='text').map(item=>item.text).join('\n')
-      const handoff=await validate(text)
-      await store.commit()
+      const handoff=await validate(text);active()
+      await store.commit();active()
       return {handoff,commitProof:await handle.routerCommitProof()}
      }catch(error){
       // 存储或owner异常不恢复业务；普通模型/schema失败可安全回原代。
-      try{check();active();const hold=await drain('maintenance');await hold.resume?.();bundle.session.setActiveToolsByName(tools);routerFrozen=false;error.routerSafeToResume=true}catch{}
+      try{check();active();const hold=await drain('maintenance');active();await hold.resume?.();active();bundle.session.setActiveToolsByName(tools);routerFrozen=false;error.routerSafeToResume=true}catch{}
       throw error
      }
     },
     routerResumeAfterHandoffFailure(){active();check();if(maintenanceFailed||admission.paused)throw fail('PI_ROUTER_RECOVERY_BLOCKED');routerFrozen=false},
     runMaintenance(action){
+     active()
      if(deliveryContext.getStore()===actor)return Promise.reject(fail('PI_MAINTENANCE_REENTRANT'))
      if(routerContinuing)return Promise.reject(fail('PI_ROUTER_RESUME_BUSY'))
      if(typeof action!=='function')return Promise.reject(new TypeError('Maintenance callback required'))
      if(!maintenanceCount){maintenanceRestore=!admission.paused;maintenanceFailed=false;maintenanceReleases=[]}maintenanceCount++;admission.pause()
-     const operation=maintenance.then(async()=>{if(closing||disposed)throw fail('PI_OFFICIAL_ACTOR_NOT_LIVE');await bundle.session.abort();await whenIdle();const proof=await drain('maintenance');if(proof.resume)maintenanceReleases.push(proof.resume);const result=await thisFactory.executionContext.run(actor,()=>action(actor));await store.commit();return result})
+     const operation=maintenance.then(async()=>{active();await bundle.session.abort();await whenIdle();active();const proof=await drain('maintenance');if(proof.resume)maintenanceReleases.push(proof.resume);active();const result=await thisFactory.executionContext.run(actor,()=>action(actor));active();await store.commit();active();return result})
      maintenance=operation.catch(()=>{});
-     return operation.then(async result=>{maintenanceCount--;if(!maintenanceCount&&!maintenanceFailed&&!closing&&!cancelled){for(const release of maintenanceReleases)await release();maintenanceReleases=[];if(maintenanceRestore)admission.resume()}return result},error=>{maintenanceFailed=true;maintenanceCount--;throw error})
+     return operation.then(async result=>{maintenanceCount--;if(!maintenanceCount&&!maintenanceFailed&&!closing&&!cancelled){for(const release of maintenanceReleases){active();await release()}active();maintenanceReleases=[];if(maintenanceRestore)admission.resume()}return result},error=>{maintenanceFailed=true;maintenanceCount--;throw error})
     },
     dispose(){if(deliveryContext.getStore()===actor||thisFactory.executionContext.getStore()===actor)return Promise.reject(fail('PI_OFFICIAL_DISPOSE_REENTRANT'));return closePromise??=(async()=>{closing=true;cancelled=true;lifecycle.abort();admission.pause();await maintenance;await bundle.close();await observer?.close();await scope.dispose();unbindNotices?.();unbindInputs?.();unbind?.();disposed=true;detach?.();unsubscribe();deliveryContext.disable();thisFactory.handles.delete(handle)})()},
    }
