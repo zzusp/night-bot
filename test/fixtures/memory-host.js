@@ -4,7 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHost} from '../../src/host.js'
 import {randomUUID} from 'node:crypto'
-export async function memoryHost(t,decide=()=>undefined,{background=false,portable=true}={}){
+export async function memoryHost(t,decide=()=>undefined,{background=false,portable=true,dingtalkProfileRunner}={}){
   const root=await mkdtemp(join(tmpdir(),'night-memory-wire-')),requests=[],errors=[];let host
   const server=createServer(async(req,res)=>{
     req.setEncoding('utf8')
@@ -19,7 +19,7 @@ export async function memoryHost(t,decide=()=>undefined,{background=false,portab
   })
   await new Promise(r=>server.listen(0,'127.0.0.1',r))
   const config={...(portable?{installRoot:root,dataDir:'data'}:{stateDir:join(root,'nonportable-state'),workspaceDir:join(root,'data','workspaces')}),model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:`http://127.0.0.1:${server.address().port}/v1`,apiKeyEnv:'MEMORY_FIXTURE_KEY',models:[{id:'m',input:['text'],contextWindow:32000,maxTokens:1024}]}},memory:{background},skillWatch:false,credentialsWatch:false}
-  const boot=async()=>{host=await createHost(config,{environmentOptions:{...portable?{}:{cwd:root,home:root},inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});host.ctx.on('agent/error',e=>errors.push(e.error));return host}
+  const boot=async()=>{host=await createHost(config,{dingtalkProfileRunner,environmentOptions:{...portable?{}:{cwd:root,home:root},inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});host.ctx.on('agent/error',e=>errors.push(e.error));return host}
   const close=async()=>{await host?.close();host=undefined}
   t.after(async()=>{try{await close()}finally{await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true})}})
   await boot()

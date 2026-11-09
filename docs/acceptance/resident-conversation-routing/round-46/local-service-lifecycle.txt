@@ -1,0 +1,17 @@
+R46 本次独立预览安装的正常 IPC 生命周期
+
+范围：仅本任务安装；core 19198 / Web 3082。其它安装与默认端口不操作。命令中的真实目标/账号/秘密来源只用于本机受控参数，不在公共证据复制。
+
+首次最终源冷启前：supervisor --check 实际 effects=0、full、externalChannels=1、startAllowed=true、running=true、modelCredentialSupplied=true；再 --stop 只发送原 pipe 的正常 shutdown。原后台 bzcy8e5sc / call_602783e7fb1f43baa3dcdd436ec3f40b 自然 exit0，local-service-exited code0。独立 process.kill(pid,0) 只读核 supervisor104216/launcher36224/service53112 均不存在，local-web-launcher.json 缺席。未强杀、未删锁。
+
+相同精确allowlist --check 后 --run 启动最终受验源，后台 bnr8kne69。metadata独立回读 supervisor47688 / launcher105960；CIM仅查launcher直属子进程，service45872 的 bin/night-bot.js 身份为true。沿该service后代查询，恰一dws.exe PID102068（parent45872），argv类别为event +listen-im，另一个后代为conhost88468。没有另起手工event consume。
+
+同一PID102068准确argv与本安装保存配置在内存比较，仅输出：
+{"pid":102068,"parentPid":45872,"listenIm":true,"kindGroup":true,"chatIdMatchesSaved":true,"profileMatchesSaved":true}
+不输出profile、原群ID、令牌或整条进程命令。该结果只证明本次consumer归属；厂商订阅状态由Tests同saved profile只读event status按本PID关联，真实Web/绑定/水位见real-channel-observe.txt。
+
+最终真实observe bdh6edf0n自然0，完整原件Main亲读，listening/connected/liveApplied=true、savedVersion=runningVersion、binding账号/群/类型/actor匹配、firstStartedAt保持2026-11-09T06:30:40.490Z、full/writesfalse、POST0。这不证明真实消息推理/外发，原模型401阻断单独保留。
+
+metadata单次PATCH明确200后，--check再正常IPC --stop，bnr8kne69自然exit0；独立核supervisor47688/launcher105960/service45872/consumer102068及metadata缺席。相同allowlist --check effects0/runningfalse后--run后台bubg74ujb。metadata回读supervisor78128/launcher6616，CIM service16076为直属bin/night-bot.js，唯一直属DWS consumer107932。准确argv和保存配置只在内存比较，parent/listen-im/group/target/profile全true。最终observe与唯一active订阅读回见real-channel-edited-observe.txt；saved/running同cd1c670b、原firstStartedAt不变，无重复POST/PATCH或消息发送。
+
+用户更新原授权模型凭据后，单次真实Pi推理通过，见model-credential-retry.txt。为加载新凭据，bubg74ujb正常IPC自然exit0；独立只读核78128/6616/16076/107932全不存活、metadata缺席。相同allowlist先--check再--run后台bgdl2dc0h，启动supervisor51584/launcher98852，CIM核service66600及唯一直属consumer62272；账号/群目标与配置内存匹配。生产Web认证GET HTTP200，saved/running同cd1c670b、listening/connected/liveApplied=true、restartRequired=false、职责已配置、full/writesfalse保持。该运行实例保留供用户查看，无业务消息重发或渠道发送。

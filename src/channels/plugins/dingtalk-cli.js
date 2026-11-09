@@ -55,7 +55,7 @@ export async function runDingtalkCli(argv,{environment=process.env,write=value=>
       // 离线检查点先于配置提交；启用时由 Host 恢复，不能清掉停用期间的补拉下界。
       for(const row of rows){
         const fromAt=existingIds.has(row.channelId)?config.resident?.taskSessions?.ingressEpoch:configuredAt
-        const ingress=await openDingtalkIngress(paths,row.channelId,{fromAt,checkOnly}),state=ingress.snapshot()
+        const ingress=await openDingtalkIngress(paths,row.channelId,{fromAt,checkOnly,storageKey:row.config.dingtalk_storage_key}),state=ingress.snapshot()
         await ingress.saveBridgeState({...state,paused:true,pausedAt:state.pausedAt??configuredAt})
         await ingress.drain()
         ingressChanged||=ingress.changed

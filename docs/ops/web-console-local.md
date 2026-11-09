@@ -4,7 +4,7 @@
 
 ## 边界
 
-Web 包位于 `packages/web-console`，使用 Node.js 24+，独立 pnpm 清单和锁文件。不需要安装 React/Vite 即可运行默认核心；Web 前端及插件均需显式配置启用。通用配置 CLI 复用该包 `server/security.js` 的纯网络参数校验，不启动 Web 服务，也不依赖前端运行库。聊天沿既有渠道接入，任务与渠道视图只读；安装操作者的权限模式与单次审批通过 Host 受控 API 接入，不由浏览器直接改任务账本。
+Web 包位于 `packages/web-console`，使用 Node.js 24+，独立 pnpm 清单和锁文件。不需要安装 React/Vite 即可运行默认核心；Web 前端及插件均需显式配置启用。通用配置 CLI 复用该包 `server/security.js` 的纯网络参数校验，不启动 Web 服务，也不依赖前端运行库。聊天沿既有渠道接入，任务与渠道消息视图只读；认证安装操作者可通过 Host 受控 API 新增与编辑钉钉渠道配置、选择权限模式与处理单次审批，不由浏览器直接改任务账本或任意配置。
 
 启用后的插件是可信 Host 代码，和 Bot 同进程生命周期，不宣称独立进程故障隔离。前端静态文件缺失时 `/api` 仍可用，页面返回明确 503；关闭浏览器不停止 Bot。禁用插件会关闭 Web 入站和该渠道投递，其他 Bot 功能继续运行。
 
@@ -72,6 +72,26 @@ node bin/night-bot-config.js data/config/config.json web --enabled true --channe
 
 独立接纳和回复账本在 `data/state/web-console-<channelId哈希>/delivery.sqlite`。它只记录 Web 渠道事务，不替代任务 SQLite 或 Pi 会话。升级保留整个 data；备份和恢复遵守已有离线一致性及默认排除 secrets 的规则。
 
+## Web 钉钉渠道新增与编辑
+
+认证安装操作者可在「渠道」页新增群聊或私聊配置，并通过卡片编辑已保存配置。新增时填写唯一渠道标识、会话类型、按 ID/名称的单目标及可选显示名称/职责；无需填写 profile。Host 只经可选插件解析 Bot 运行环境当前登录账号：全列表必须恰有一个 `isCurrent:true`，该账号所属组织恰有一个 `isOrgCurrent:true` 且为同一账号；其他组织各自的当前账号不构成歧义。未登录、无全局当前标记或上述标记歧义/不一致时拒绝保存，不回退到首项、最近项、浏览器、环境变量或默认账号。名称解析和账号绑定在正常重启后的既有可选插件流程完成，不在 Web 中登录厂商账号。账户模式固定为 `system`，不接受秘密、环境变量、任意 `binding` 或 `executable`。
+
+接入依赖中的 `contact +search-user` 当前按 DWS v1.0.63（`4cd5d053`）的 composite 响应解析：外层须为 `ok:true`、`outcome:"success"`，`data` 内含 `count` 与 `users`，计数须与用户数组一致；失败、部分或不完整结果拒绝。此结构仅用于该查询；`profile list`、`contact user get-self` 等原子命令保持各自原始响应合同，不全局解包 `data`，不回退接受缺少外层成功状态的裸 `users` 响应。`chat conversation-info` 使用 MCP 原子响应，要求 `success:true`，从 `result.conversationInfo` 读取身份，继续严格校验会话 ID、群聊/私聊种类与绑定漂移；不把裸 `result` 或 contact 的 `data` 当作该身份结构，失败或不完整结果拒绝。响应适配不代表当前渠道已接入，仍须在正常重启后核实账号、目标绑定与监听终态。
+
+`POST /api/channels/dingtalk` 只接收 `{channelId, conversationType, targetKind, target, name?, prompt?}`，会话类型为 `chat-room` / `chat`，目标方式为 `id` / `name`。它沿现有同源 cookie、Host/Origin 和 CSRF 校验，由持有本安装锁的 Host 在配置锁内原子保存，只新增、不覆盖，不从 live Web 派生离线 CLI 或绕过锁。非受控安装或保存端口不可用时返回 503 `CHANNEL_CONFIGURATION_UNAVAILABLE`，不会静默改写其它配置。
+
+编辑使用认证 `GET /api/channels/dingtalk/:encodedId`，只回 `{channelId,version,name,prompt,conversationType,targetKind,target}`；名称与职责缺省为空串。`PATCH` 同路径，完整正文仅 `{expectedVersion,name,prompt,conversationType,targetKind,target}`，ID 只取路径；`expectedVersion` 为 GET 的 64 位小写 SHA256，Host 在原配置锁内对保存整 row 做 CAS，不能覆盖新版本。账号继承已保存 canonical，不选择 OS 当前账号；浏览器不读写 profile、binding、env 或秘密。target/name trim，空 name 清除显示名；prompt 保留原字符串和换行，不 trim；专用详情保持原 ID/名称目标表达，不因内部绑定解析自动改成另一种填写方式。
+
+PATCH 成功回 `{ok:true,changed,restartRequired,liveApplied,channel,detail}`；detail 与 GET 同型，`channel.savedVersion === detail.version`。允许 `changed:false`，仍以实际保存、加载与激活状态报告，不机械要求发生变化或待重启。版本过期为 409 `DINGTALK_CHANNEL_VERSION_CONFLICT`，保留原草稿，只在明确点击重新加载后换入新版本；目标仍有未决依赖为 409 `DINGTALK_CHANNEL_SWITCH_BLOCKED`，保留草稿并先处理旧依赖。未找到为 404 `DINGTALK_CHANNEL_NOT_FOUND`，输入拒绝为 400 `DINGTALK_CHANNEL_REQUEST_INVALID` / `DINGTALK_CONFIG_INVALID`。沿原同源、认证、CSRF 与配置关闭排空，不新增编辑绕锁端口。
+
+名称/职责及同一实际目标编辑保留 binding、ingress 游标、deferred 和外发配置；真实身份切换按插件私有存储隔离新旧身份，新目标外发关闭，旧任务、会话、Pi、SQLite 与冻结投递不迁移或重定向。保存时与旧 Host 排空后的冷启激活点都检查旧未决依赖，不以健康、暂停或 idle 代替，不清 unknown、不重放旧动作。职责可能参与后续任务推理，不承诺只影响新任务。
+
+列表 `savedVersion` / `runningVersion` 分别报告保存与当前加载版本；不同则待重启，相同只证明已加载，钉钉 `liveApplied` 还要求真实绑定激活完成。`runningConnectionState`、`runningErrorCode`、可选 `runningConnected` 及加载后的 `runningName` / `runningConversationType` 独立报告当前插件状态，不用保存配置的待重启状态盖掉旧插件健康。冷启被未决依赖阻止时为 `connectionState:error` / `errorCode:DINGTALK_CHANNEL_SWITCH_BLOCKED` / `liveApplied:false`；不能将重复重启当作解除依赖，保存版本一致也不能声称新目标已接入。
+
+新增固定 `enabled:true`、`listen:true`、`writes:false`；成功回执含 `restartRequired:true`、`liveApplied:false`。GET 渠道安全行能读回已保存未加载的渠道，显示 `pending-restart` / `connected:false`，不返回 profile、目标、绑定或凭据。钉钉行的 `writesAuthorized` 仅报告已保存配置的外发授权，不能视为当前可发送；已有渠道可能已获外发授权，不因新渠道默认关闭而改写它们。按现有运行手册正常排空并重启才应用新增配置，不把保存、真实接入、发送验收混为一体。
+
+重复 ID 返回 409 `DINGTALK_CHANNEL_EXISTS`，输入错误返回 400，均保留草稿且不覆盖已有配置。账号校验在配置写入前完成：未登录、无当前账号或当前账号歧义分别返回 409 `DINGTALK_AUTH_REQUIRED` / `DINGTALK_CURRENT_PROFILE_NOT_FOUND` / `DINGTALK_CURRENT_PROFILE_AMBIGUOUS`，不触发 Web 登录失效；命令不可用或查询失败返回相应 503，响应异常返回相应 502，均明确拒绝并保留草稿。500、断线或不完整成功响应按写结果未知处理，页面只读按原渠道标识核对；GET 同 ID 存在不能证明本次账号/目标已写入，缺席也不解锁重发。不要自动重发 POST、自动换 ID 或通过删除锁处理未知结果。认证换代清除表单并使旧异步回执失效；聊天草稿容器不因此重建。新增与编辑均不实现热加载、删除/启停、授权外发或真实厂商代发。编辑 500、断网或不完整成功回执同样按未知锁定，只读 GET 比较准确字段与版本；仅新版本与提交字段逐项一致可确认当前保存配置一致，版本未变或字段不符继续只读，不判定原提交未发生，不重发 PATCH。
+
 ## 安装权限与单次审批
 
 配置仅使用顶层 `permissionMode`，取值 `ask` / `auto` / `full`，缺省为 `ask`；示例配置显式写 `"permissionMode": "ask"`。初始化可传 `--permission-mode ask|auto|full`，通用配置 CLI 使用同名参数。它不是旧组件预设名，也不读取 Host 环境变量来代替模式或单次授权。
@@ -100,6 +120,7 @@ Web「权限与审批」使用 `GET /api/permissions` 读取当前 Host `mode`�
 - 停机排障：等待 Host 关闭终态；Web/HTTP 已停或框架清理已返回均不证明 Job/进程已排空。前置关闭失败仍会尝试后续清理并聚合原始错误，保留根依赖与安装锁；任务关闭失败时保留 resident runtime/store。无 journal 的临时 Job 同样需要确认运行中的 producer 已排空；取消抛错、排空未知或结局日志出错时，不能通过删除记录清除阻断。不要手删安装锁、重放原动作或强制退出制造关闭成功。
 - 端口占用：选空闲的 `config.port`，不要终止无关进程。已有 token 文件/存储目录被链接、权限不符或结构异常时会失败关闭；不要通过放宽权限绕过。
 - 渠道状态：`connectionState` 只显示 Host 白名单阶段，缺省为 `unknown`；`connected` 只来自适配器真实健康布尔值，不由 `enabled` 推导。等待认证仅返回 `CHANNEL_AUTH_REQUIRED`，适配器错误仅返回 `CHANNEL_ADAPTER_ERROR`；不把原始 `lastError`、路径、登录数据或配置透传页面。状态展示不替代真实连接、发送和回读验收。
+- Web 登录和 `/health` 正常不证明模型可用。消息已接纳但迟迟未回复时，先用 `node bin/night-bot-config.js data/config/config.json show` 核对所选 provider/model，再用 `node bin/night-bot-auth.js data/config/config.json describe-ref YOUR_PROVIDER_CREDENTIAL_REF` 核对该 provider 实际引用的凭据来源/存在状态（替换为配置中的引用名；OAuth 可用同一 CLI 的 `list` 查看凭据描述）；凭据存在也不保证未过期或网关接受。缺凭据、401 或 `session_expired` 应按既有认证流程处理，不把 key 贴进浏览器或日志，不重发已接纳请求。元数据读取不构成模型连通实跑。
 - 503 `WEB_ASSETS_NOT_BUILT`：在相同代码版本的独立包安装并构建。不要把这个错误解释为 Bot 未启动。
 - 401：登录失效或 token 不符。403：检查是否用了日志中的 127.0.0.1 地址与同源页面。未知接纳/发送：查同 requestId 的回执，不新建请求重放。
 

@@ -7,10 +7,10 @@ import {sendWorkflowNotification,notificationOpenTaskId} from '../../../packages
 import {readTaskNotificationDelivery,readOperatorNotificationDelivery,recallOperatorNotification} from '../../../packages/dingtalk-core/task-notification-readback.js'
 import {readTaskFileDelivery} from '../../../packages/dingtalk-core/task-final-delivery.js'
 import {createNativeDwsObserver,nativeDwsCommands,nativeDwsObservation} from '../../../packages/dingtalk-core/native-dws-send.js'
-import {privateDirectory,atomicWrite,readRegular,withLock,failure} from '../../runtime/files.js'
+import {privateDirectory,atomicWrite,withLock,failure} from '../../runtime/files.js'
 import {prepareSecrets} from '../../runtime/paths.js'
 import {resolveDingtalkBinding,verifyDingtalkBinding} from './dingtalk-binding.js'
-import {dingtalkChannelPaths,openDingtalkIngress,assertDingtalkStoragePath} from './dingtalk-storage.js'
+import {dingtalkChannelPaths,openDingtalkIngress,assertDingtalkStoragePath,assertDingtalkTargetSwitch,readDingtalkBinding} from './dingtalk-storage.js'
 import {dingtalkIngressAdapter} from './dingtalk-ingress.js'
 import {observeDwsLogin} from './dingtalk-auth.js'
 export {validateConfig} from './dingtalk-config.js'
@@ -23,21 +23,25 @@ export async function apply(ctx,config={},dependencies={}){
   if(!channelId||!config.profile||!['chat','chat-room'].includes(config.conversationType))throw failure('DINGTALK_PLUGIN_NORMALIZED_CONFIG_REQUIRED')
   config={...config}
   if(paths.mode!=='portable')throw failure('DINGTALK_PORTABLE_LAYOUT_REQUIRED')
-  const {privateHome,workspace,cache,bindingFile,ingressFile}=dingtalkChannelPaths(paths,channelId)
+  const {privateHome,workspace,cache,bindingFile,ingressFile}=dingtalkChannelPaths(paths,channelId,config.storageKey)
   const accountPolicy=dwsAccountPolicy(config.accountMode)
   const environment=dwsEnvironment(paths,privateHome,cache,{accountMode:accountPolicy.mode,...dependencies.environment?{inherited:dependencies.environment}:{}})
   for(const directory of [...accountPolicy.mode==='private'?[privateHome,join(privateHome,'config'),join(privateHome,'keychain')]:[],workspace,cache])await privateDirectory(directory)
   const runnerFor=cwd=>dependencies.runner?{...dependencies.runner,cwd}:createNodeDwsRunner({executable:config.executable??'dws',cwd,env:environment}),runner=runnerFor(workspace)
   let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,lastRange
   let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve()
+  const readSavedBinding=async()=>{
+    const saved=await readDingtalkBinding(bindingFile)
+    if(saved&&config.binding&&(Object.keys(saved).some(key=>saved[key]!==config.binding[key])||Object.keys(config.binding).some(key=>saved[key]!==config.binding[key])))throw failure('DINGTALK_BINDING_CHANGED')
+    return saved
+  }
   const bind=async()=>{
     await assertDingtalkStoragePath(paths,bindingFile)
     await assertDingtalkStoragePath(paths,ingressFile)
     await withLock(bindingFile+'.lock',async()=>{
-      const saved=JSON.parse(await readRegular(bindingFile)??'null')
-      if(saved&&config.binding&&(Object.keys(saved).some(key=>saved[key]!==config.binding[key])||Object.keys(config.binding).some(key=>saved[key]!==config.binding[key])))throw failure('DINGTALK_BINDING_CHANGED')
+      const saved=await readSavedBinding()
       const binding=await resolveDingtalkBinding({...config,binding:saved??config.binding},{runner})
-      if(!saved)await atomicWrite(bindingFile,JSON.stringify(binding)+'\n')
+      if(saved===undefined)await atomicWrite(bindingFile,JSON.stringify(binding)+'\n')
       Object.assign(config,{profile:binding.profile,binding,groupId:config.conversationType==='chat-room'?binding.conversationId:undefined,groups:config.conversationType==='chat-room'?[binding.conversationId]:[],directPeers:config.conversationType==='chat'?[binding.peerId]:[],assistantActorId:binding.actorId})
     })
     adapter=createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner})
@@ -94,7 +98,7 @@ export async function apply(ctx,config={},dependencies={}){
   }
   let settingsTail=Promise.resolve()
   const serialize=work=>{const operation=settingsTail.then(work);settingsTail=operation.catch(()=>{});return operation}
-  const plugin={channelId,get name(){return config.name??channelId},get prompt(){return config.prompt},get enabled(){return config.enabled},
+  const plugin={channelId,get bindingIdentity(){return config.binding?{...config.binding}:undefined},get bindingActive(){return readyBound&&!closed},get name(){return config.name??channelId},get prompt(){return config.prompt},get enabled(){return config.enabled},
     setEnabled:enabled=>serialize(async()=>{
       if(typeof enabled!=='boolean')throw failure('DINGTALK_ENABLED_INVALID')
       if(closed||!app)throw failure('CHANNEL_PLUGIN_NOT_READY')
@@ -150,10 +154,18 @@ export async function apply(ctx,config={},dependencies={}){
     const operation=startTail.then(async()=>{
       if(closed||readyBound||terminal)return
       try{
-        await bind()
-        if(closed)return
-        ingressStore??=await openDingtalkIngress(paths,channelId,{fromAt:app.config.resident.taskSessions.ingressEpoch})
-        readyBound=true
+        const prepare=async()=>{
+          if(config.storageKey!==undefined)await assertDingtalkTargetSwitch(paths,channelId,config.binding)
+          await bind()
+          if(closed)throw failure('DINGTALK_CHANNEL_DISABLED')
+          ingressStore??=await openDingtalkIngress(paths,channelId,{storageKey:config.storageKey,fromAt:app.config.resident.taskSessions.ingressEpoch})
+        }
+        if(config.storageKey!==undefined){
+          const binding=config.binding
+          await assertDingtalkStoragePath(paths,bindingFile)
+          const includeAllScopes=await readSavedBinding()===undefined
+          await app.tasks.withChannelTargetSwitch({channelId,includeAllScopes,nextTarget:{type:binding.conversationType,conversationId:binding.conversationId,peerId:binding.peerId}},prepare,{activate:true,publish:()=>{readyBound=true}})
+        }else{await prepare();readyBound=true}
         await startBridge()
         ctx.logger.info?.('DINGTALK_CHANNEL_BOUND '+JSON.stringify({channelId,conversationType:config.conversationType}))
       }catch(error){
@@ -171,7 +183,7 @@ export async function apply(ctx,config={},dependencies={}){
     // Repeated ready events must retain the same observer and its shutdown handle.
     preparing??=(async()=>{
       try{
-        ingressStore=await openDingtalkIngress(paths,channelId,{fromAt:app.config.resident.taskSessions.ingressEpoch})
+        ingressStore=await openDingtalkIngress(paths,channelId,{storageKey:config.storageKey,fromAt:app.config.resident.taskSessions.ingressEpoch})
         if(closed)return
         stopAuthObserver=await (dependencies.observeLogin??observeDwsLogin)(environment,{onLogin:attemptStart,onError:error=>{if(!readyBound){terminal=true;health={healthy:false,configured:true,state:'error',lastError:error.code}}else ctx.logger.warn(error.code)}})
       }catch(error){terminal=true;health={healthy:false,configured:true,state:'error',lastError:typeof error.code==='string'?error.code:'DINGTALK_AUTH_OBSERVATION_FAILED'}}

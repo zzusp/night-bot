@@ -71,14 +71,21 @@ export function taskDialogueView(value, secrets = []) {
 }
 
 const connectionStates = new Set(['starting', 'waiting-auth', 'ready', 'paused', 'recovering', 'listening', 'error', 'stopped'])
-export function configuredChannels(application, channels) {
-  return {items: (application.config.channelPlugins ?? []).map(row => {
-    const channelId = row.channelId ?? row.config?.channelId ?? row.type
-    const health = channels.plugins.get(channelId)?.health, state = health?.state
-    const connectionState = connectionStates.has(state) ? state : 'unknown'
-    const errorCode = connectionState === 'waiting-auth' ? 'CHANNEL_AUTH_REQUIRED' : connectionState === 'error' ? 'CHANNEL_ADAPTER_ERROR' : null
-    return {channelId, type: row.type, enabled: row.enabled === true, connectionState, errorCode,
-      ...(typeof health?.healthy === 'boolean' ? {connected: health.healthy} : {})}
+export function configuredChannels(application, channels, savedRows = application.config.channelPlugins ?? []) {
+  const running=new Map((application.config.channelPlugins??[]).map(row=>[row.channelId??row.config?.channelId??row.type,row]))
+  const errorFor=(health,type)=>health?.state==='waiting-auth'?'CHANNEL_AUTH_REQUIRED':health?.state==='error'?type==='dingtalk-dws'&&health.lastError==='DINGTALK_CHANNEL_SWITCH_BLOCKED'?'DINGTALK_CHANNEL_SWITCH_BLOCKED':'CHANNEL_ADAPTER_ERROR':null
+  return {items:savedRows.map(row=>{
+    const channelId=row.channelId??row.config?.channelId??row.type,loaded=running.get(channelId),plugin=channels.plugins.get(channelId)
+    const savedVersion=digest(JSON.stringify(row)),runningVersion=loaded?digest(JSON.stringify(loaded)):null,pending=savedVersion!==runningVersion
+    const health=plugin?.health,runningConnectionState=connectionStates.has(health?.state)?health.state:'unknown'
+    const connectionState=pending?'pending-restart':runningConnectionState,errorCode=pending?null:errorFor(health,row.type)
+    return {channelId,type:row.type,enabled:row.enabled===true,savedVersion,runningVersion,connectionState,errorCode,
+      restartRequired:pending,liveApplied:!pending&&row.enabled===true&&!!plugin&&(row.type!=='dingtalk-dws'||plugin.bindingActive===true)&&errorCode!=='DINGTALK_CHANNEL_SWITCH_BLOCKED',
+      runningConnectionState,runningErrorCode:errorFor(health,row.type),
+      ...(typeof health?.healthy==='boolean'?{runningConnected:health.healthy}:{}),
+      ...(row.type==='dingtalk-dws'?{name:row.config?.dingtalk_name??channelId,conversationType:row.config?.dingtalk_conversation_type,promptConfigured:!!row.config?.dingtalk_prompt,writesAuthorized:row.config?.dingtalk_writes_authorized===true,
+        ...(loaded?{runningName:loaded.config?.dingtalk_name??channelId,runningConversationType:loaded.config?.dingtalk_conversation_type}:{} )}:{}),
+      ...(pending?{connected:false}:typeof health?.healthy==='boolean'?{connected:health.healthy}:{})}
   })}
 }
 

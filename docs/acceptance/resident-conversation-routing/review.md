@@ -2316,3 +2316,78 @@ SG11/SG12仍ACTIVE，readOnlyAdmission/runnerIpcAckQualified/productionScopeRead
 - 两次容器run都是显式entrypoint node的direct Host夹具；默认--check在独立记录，不将两者拼写为默认CMD端到端新验收。按Main/Tests交接，浏览器API/CLI/截图保留e367基础层原实证的版本边界，不称e1a重新导航/JS/DOM/截图；本节没有重新执行或重审该浏览器批。没有真实GitHub业务、真实渠道或厂商模型调用。本审未另做Docker inspect/清理，最终容器状态与专属卷清理由Main/Tests原职责核收，不以工具退出0代替独立资源清理证明。
 
 本节只在原review764803B/SHA `fd0c60256e5b0e50ba14a702fbecc6ae58bb184b59e9db19850e476af5ad8c7a` 全文前缀后追加，历史原文/FAIL及旧hold限制均保留；未改生产、测试、goal/spec、README/ops、manifest、matrix/库存、R45正式归档或旧现场。本审执行仅为源码/原工具结果读取、内存AST/精确差量与hash核验；没有跑测试、pnpm check、服务、Docker/OS/Native、probe/driver/归档器，没有切实际安装模式、提交/push/CI/合并/部署或真实外发。该窄审交回Main集中R45与Git，之后不为同一结果再添评审或重复验证门。
+
+### R46 Web新增与编辑钉钉渠道阶段末窄审（2026-11-09）
+
+结论：约定后端增量反证及最终四项编辑测试原件已独立核毕，当前未发现该受审增量剩余的确认缺陷。直达来源漏消费、历史重试跨await落旧来源、未绑定错误目标无法纠正及损坏binding误作缺席四处问题，均在原责任层修复，未放宽未决谓词、迁移历史或新增通用暂停/调度平台。本节经Main明确授权集中追加，不新增功能、优化或额外评审门槛；Core既定五项回归已接回最终终态，见同阶段补记；本地验收与Git按原分工继续，不以本节宣布R46或长期目标完成。
+
+受审为分支`worktree-resident-conversation-routing`、HEAD `2db2aa7c27c9f1ced506de7740c6aac4b757119c`加未提交协作工作树，HEAD不能单独代表受验源码。唯一目标仍为本目录`goal.md`，决策复用`docs/spec/web-dingtalk-channel-create.md`。本审仅写本文件，生产/测试/goal/spec/正式轮次/矩阵/库存/Git保持原单写职责。
+
+#### 最终来源与实跑原件
+
+最终`bnqqq7wnn.output`全文4060B，SHA256 `03d94a05e96f0f61f8d5d120bb30cfe451a214209d8dd7f5de901e48e0f1a17b`，本审完整亲读。UTC08:55:12至08:56:27，四注册4PASS/0FAIL/0CANCEL/0SKIP，duration73777.9191ms，自然退出0，无额外异步失败记录。17源BEFORE/AFTER完全一致，本审逐项重算均等当前工作树、NUL0；这绑定实际观察点，不声称动态导入全覆盖或连续冻结。
+
+| 文件 | 最终SHA256 |
+|---|---|
+| src/host.js | e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1 |
+| src/channels/service.js | 5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 |
+| src/channels/router-lifecycle.js | 316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 |
+| src/channels/plugins/dingtalk-config.js | 21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b |
+| src/channels/plugins/dingtalk-storage.js | 8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505 |
+| src/channels/plugins/dingtalk-binding.js | 300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b |
+| src/channels/plugins/dingtalk-dws.js | 4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad |
+| src/channels/plugins/dingtalk-cli.js | bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 |
+| packages/dingtalk-core/task-session-service.js | 0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 |
+| packages/dingtalk-core/platform-schedule.js | 51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 |
+| packages/dingtalk-core/store.js | 91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 |
+| packages/web-console/server/plugin.js | 82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 |
+| packages/web-console/server/views.js | 91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 |
+| test/pi-channel-edit.test.js | 8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48 |
+| test/fixtures/memory-host.js | 4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 |
+| test/fixtures/native-lifecycle.js | ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 |
+| test/fixtures/resident-router-host.js | 00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a |
+
+修复前`bn9xy3gex.output`也已全文亲读：4057B/SHA256 `6965a892310134570bd42d1b63b8bf122a51988d7565e3f21e4eb7d942a803d8`，4PASS/0FAIL/0CANCEL/0SKIP、19034.0951ms、自然0，17源自身成对稳定。与最终批仅Host/storage/DWS/test四源不同，明确只作严格binding读取修复前历史，不借其PASS证明新源。两原件由Platform保留，公共入口现为round-46/host-channel-edit.txt，精确核验见同阶段补记；本节不复制私有绝对路径或业务值。
+
+#### 已闭合反例及责任层
+
+- **账号、白名单与CAS。** `src/host.js:72`编辑固定channelId，只接受expectedVersion/name/prompt/conversationType/targetKind/target；专用GET仅必要字段与版本，配置事务锁内二次CAS。新增固定唯一current的canonical账号；编辑不重新选current，已有binding先核与保存profile/inline/目标一致，新解析前后profile/corpId/userId/actorId不得漂移；无binding纠错也严格比较新profile与原canonical。metadata不调用厂商。HTTP沿原认证、Host/Origin、CSRF，列表及详情不暴露profile/binding/秘密，不向模型开放配置能力。未知响应只读核对，不自动重发。
+- **直达来源消费。** 原webTopicAction成功执行或复用冻结operationId收据、materialize后漏source.routed，导致任务已completed/drained仍被来源门禁阻断。最终`packages/dingtalk-core/task-session-service.js:1491`在动作/材料/必要supplement成功后，以稳定web-task-source-routed命令ID写原taskId/operationId消费收据；原requestIdentity/版本/receipt重放未改，失败不提前冒称已消费。未忽略所有Web来源、手写fixture.routed或仅凭任务完成放行。
+- **跨await准入。** SQL查询会漏已登记admission、尚未落source/task的create/reopen。最终两入口保存已知groupId/admissionGroups；统一command从平面和嵌套source/conversation、task/notification提scope，提交前再断言。公开service.retryMessage在source.list后await的同根漏口，由source.acceptHistory并入新业务Set解决；未找到其HTTP绑定，本审不夸为HTTP漏洞。typed/raw ingress按已有context登记input flight，Router/platform真实入口与恢复共用scope断言、窄hasInflight。hold在await前同步登记并跨SQL/vendor/FS持有，busy明确拒切，不wait/cancel/drain/replay旧工作。
+- **耐久未决谓词。** scope使用channel contexts内部conversation key，不混厂商native ID。task含归档、未drained/recovering/prepared效果；execution/operation复用原blockers，不用全安装legacy集合误阻无关渠道。latest来源含未routed、processingPending、triageHold/archiveRestoreHold；Router含pending inbox、非active或未交接cursor；通知含prepared/starting/unknown及knownNotSent且retryable的failed；旧ingress deferred不丢。store.listPlatformSchedules从原scheduler枚举，未来以及已prepare、native catalog尚无记录的提醒均阻切，不仅查dynamic task。
+- **未绑定纠错与全scope。** 从未有disk/inline/运行实际binding的错误目标，不再先解析错误旧目标；固定原canonical解析新目标，强制独立hash namespace/writes=false，不宣称同身份或继承旧水位。保存与首次managed cold的includeAllScopes覆盖该channel全部context/flight，即使native ID恰等新候选也不能排除；临时assertInputTarget还拒包括候选新目标的全部新业务，封住SQL扫描后await期间新工作完整落账、flight已结束的窗口。无managed单目标的普通Web/第三方不默认纳管。
+- **严格binding证据。** 反例为已存在null/false/0文件被truthiness当空，cold仅凭存在跳过全scope，随后覆写binding。最终`src/channels/plugins/dingtalk-storage.js:26`仅readRegular严格undefined认缺席，JSON/对象结构/原validateConfig身份校验失败均DINGTALK_BINDING_INVALID；Host current/legacy/目标及旧记录扫描统一复用。DWS readSavedBinding在判includeAll前及bind锁内精确校inline；deferred检查在bind写盘前，全面SQL成功后才在hold内vendor验证/写文件。被拒首次激活不先造身份证书；损坏、不匹配或运行binding不能回退无binding分流。
+- **发布、释放与旧终态。** 同一hold才可activate/release，finally只删临时hold不误删原active target；最后activate与可信readyBound发布同步执行，再release，保存不热发布运行身份。新业务Set不含task.complete/task.drained及notification reconcile/diagnostic/ack/receipt；原unknown/starting读回走readback后reconcile/diagnostic，未误接send门，未发现增量确认误伤。已有unknown仍阻止切换，不清空或重放；metadata/同实际binding保原binding/ingress/deferred/writes，真切换才独立namespace并writes=false，旧任务/Router/SQL/Pi/通知和引用不迁移或重定向。
+
+#### 四项最终实跑与边界
+
+1. 真实Host/HTTP验证未认证GET、无CSRF PATCH、越权字段拒绝；精确回填、无变化回执、metadata保存及保存/运行版本分列；旧CAS拒绝且文件不变；模拟已提交后丢响应为500未知、GET只读回查。原binding/ingress/deferred字节、无关配置保持，vendorCalls=0、模型requests=0，列表不泄露账号/目标/binding。
+2. 同实际身份的ID/名称变化保legacy水位与writes；真切换先被deferred阻止，结清后新namespace/writes=false、旧文件保持。保存后旧deferred再出现时cold inactive/error，版本已加载不冒称liveApplied；结清再cold才active。群转私聊仍原账号，精确peer准入、foreign peer拒绝，无厂商发送。
+3. 真实service/Pi在create/reopen来源读取持点时，SQL无新task或原task仍completed也拒切；恢复后真实task完成。admission之前task.get持点，activate后旧请求拒绝且历史仍可读；历史retry在source.list持点，activate后拒绝且无新SQL来源。SAVE_FAILED保active、释放hold，可显式切回；第三方scope不受限，不以局部idle代替终态。
+4. 原resident store已prepare而native catalog无记录的未来提醒阻切，原outcome结清后才放行。错误旧目标从不被查，同native未知pending在保存/首次cold均阻断，失败后bindingFile仍ENOENT。Host逐项null/false/0/[]/{}均拒绝、原文件/配置不改且无vendor调用；cold null或合法但与inline不同的文件均inactive、保原字节及pending paused。真实cancel/恢复排空、移除测试自造坏fixture后再cold才active，旧ingress字节不变。
+
+以上是本地真实Host/SQLite/Pi、脚本模型与fake vendor，不是实际DWS新群/私聊发送或部署。最终浏览器/构建由Main/Tests按职责亲核，本审不重复UI验证或把HTTP fixture与Host测试拼成真实厂商已接入。另只读核回`round-46/source-guards-final.txt`最后complete channel-edit段：UTC08:56:39.115267至08:56:40.272952，三既有guard各EXIT_CODE0，31输入BEFORE/AFTER与当前工作树逐项相同、SOURCE_CHANGED[]；该档当时14785B/SHA256 `8cc7b60ec9374ed6920b8416fa89ade300178fa9b321035673f4a9e46af64eb3`。同档更早final段属于其它版本，不能只看文件名/首段；本审未代跑guard。
+
+#### 历史失败与待收终态
+
+- 历史原件仍以`round-46/host-channels.txt`及真实创建/解析/观察记录为入口。runner真实timeout要等child close才结算，Host关闭保持安装锁；bd2eid1uq单项1PASS/4426.5688ms/自然0已独立核，原bggwne1fh为2PASS/1FAIL，DINGTALK_QUERY_FAILED与预期PROFILE_LOOKUP_FAILED不符；旧失败/取消批不改，不将后续单项PASS追认为旧批全绿。
+- contact composite、conversation-info MCP按各叶子解析，不全局unwrap。真实只读完整resolve b3bp2k396自然0且config/binding/ingress未写，只证明该批账号/actor/目标解析；首次真实cold bv3cgf1kl的CHANNEL_ADAPTER_ERROR及binding缺席仍是FAIL，单次创建pending-restart/writes=false也非监听证明。后续真实接入及name/prompt编辑应用由Main/Tests按指定安装/群原授权验收，本节不预报PASS或扩真实外发。
+- Core关闭红回归b84bv6dyd为0PASS/1FAIL/自然1：factory.interrupt已fulfilled，Router running聚合误收本次Pi native signal.reason。两行修只记录本次未abort到abort的精确native reason，过滤仅限running，interrupted/stopped的真实join/持久化失败仍聚合，factory不改。修后bo036no8a为7注册6PASS/1FAIL/自然1，关闭与error身份恢复过，permanently unknown更早水位checkpoint超时；bs3prkqa6仅加诊断后单项1PASS/29603.9024ms/自然0。旧水位超时未复现/根因未收敛，不归因EPERM、不称已修水位、不拼同版全18注册通过。最终Router又增加准入，不能拿此前3b036ee7结果代替当前316cd343；Core最终冻结源的既定五项回归已接回，见同阶段终态补记；旧失败与未收敛原因不回填覆盖。
+- 真实模型401/session_expired、旧TRIAGE_NO_DISPOSITION及unknown现场保持独立边界；无凭据刷新与原请求终态证据不称回复恢复、不重发。R46正式报告/矩阵/库存、本地验收和原PR交付由Main沿原流程完成，本节不增加门槛，也不宣布SG11/SG12、ask/auto、19be或长期目标完成。
+
+#### 同阶段既定五项回归终态与公共证据补记
+
+Main交回Core最终批6后，本审只接回原约定终态及公共归档，没有新增测试或新轮审。已完整读取bxyrkvzl4.output：8096B/SHA256 `1b6e0ff88de3c8ba228843ecc3c128e93c152ecf4954454184c1b1e7c6e76b4b`，tool_use_id `call_360b1c39183a4bcd8d661fef08c59993`。实际Node v24.19.0、单命令test-concurrency=1、精确选择五注册，5PASS/0FAIL/0CANCEL/0SKIP、duration78902.2783ms，NODE_EXIT_CODE=0且包装自然0；本审没有重跑。
+
+- 默认无渠道完整应用组合、健康及单次任务创建通过，未因managed门禁要求默认加载DWS。
+- permanently unknown身份仍degraded，跨cold保原补拉下界，不冒充交付成功；本次PASS不倒推旧bo036水位超时根因已修。
+- 真实Pi prepare期精确native取消可正常关闭，已提交settle保持一次、cold不重放；保原join/持久化失败聚合边界。
+- platform bridge真实恢复原source并约束实际due交付，superseded=false/true两个注册均通过；不拿future半提交门禁替代真实due恢复。
+
+原件先核Platform最终17冻结pin全OK，再记22项SOURCE_BEFORE/AFTER，逐项一致。本审独立重算当前22项完全匹配；来源表各行加LF的SHA256为`8f47b6c864b70078396d210626be178f97446a515b7cb1b157055f5eb5efb205`。17共同项与本节最终编辑表完全相同；额外五项为pi-channel-plugin、pi-resident-router-flow、pi-schedule-wire三测试、src/pi-official-agent-factory.js和dws-runner.js。故这次确实覆盖最终Router316cd343/storage8ee4e62b/taskservice0ee89b70/platform51730436，不借旧3b036ee7或旧编辑源结果代替。本批不是全量pnpm test，也不是此前所有18注册同版全部重跑。
+
+公共入口已独立核回：`round-46/host-channels.txt:791`起批6，整档68993B/967行/SHA256 `9c66dc0c151eae925c7467c79e617269ac60665370679a22e8563feb213f4fdc`；`round-46/host-channel-edit.txt`整档17233B/308行/SHA256 `adfb87e6cd10899091d1a484537eeba40eeffd1d9ff792d4f58e5acdc8bd21e3`。后者bn9与bnqq两个ACTUAL_TOOL_OUTPUT区块均与原output逐字节相同，不只是摘要/退出码相同；最终四项入口在:207，严格binding原红回归在:266，历史早批无独立pin的限制保持。两档保不同阶段结果，不把后续通过抹成早批全绿，不复制私有路径或业务值到本审。
+
+本次代码审查与约定回归证据均已收口。Main/Tests正在原授权指定安装执行真实本地观察及metadata编辑，结果以R46正式报告为准；本审不重跑、不提前宣称真实监听/应用成功，也不将该现场验收增加为代码审查新门槛。
+
+本节仅在原review779759B/SHA256 `c4e1ada889f031ce8aa550faddc7aac69198d96bad196f6d2f52e65e7d6999a0`全文前缀后一次追加，R45及更早原文保持。除本review外未修改生产/测试/goal/spec/正式报告/矩阵/库存/运行现场；未执行测试、构建、DWS/厂商、启停服务、真实保存/监听/发送、Git stage/commit/push、CI、合并或部署，未新建Agent/workflow、发布Artifact或上传原件。窄审与既定终态已交Main/Platform，代码审查到此收口；本地验收与Git不成为本审新增前置，不扩旁支审计或重复已完成验证。

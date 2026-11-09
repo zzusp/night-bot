@@ -106,7 +106,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws, residentRouter
-  const admissions = new Map(), admissionHolds = new Set()
+  const admissions = new Map(), admissionHolds = new Set(), admissionGroups = new Map(), targetCommands = new Map()
   const sourceProjections = new Set(), notificationSends = new Set(), notificationReadbacks = new Set()
   const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
   const pendingDialogue = task => task.dialogue?.some(item => !item.reply&&!item.replyError)
@@ -162,7 +162,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     if(failure)throw failure
   }
-  const command = async (kind, args, id) => {
+  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','router.plan','router.task-action','notification.prepare','notification.start'])
+  const command = async (kind,args,id) => {
+    if(!targetCommandKinds.has(kind))return commitCommand(kind,args,id)
+    const groupId=args.groupId??args.conversationId??args.source?.groupId??args.conversation?.conversationId??args.payload?.conversationId??taskCache.get(args.taskId)?.groupId??(args.taskId?(await query('task.get',{taskId:args.taskId}))?.groupId:undefined)??(args.notificationId?(notificationCache.get(args.notificationId)??await query('notification.get',{notificationId:args.notificationId}))?.payload?.conversationId:undefined)
+    ctx.get('channels').assertGroupTarget(groupId)
+    const flight={};targetCommands.set(flight,groupId)
+    try{return await commitCommand(kind,args,id,groupId)}finally{targetCommands.delete(flight)}
+  }
+  const commitCommand = async (kind, args, id, targetGroup) => {
     if(closed&&(kind==='router.plan'||kind==='task.create'&&!admissionHolds.has(args.taskId)))fail('TASK_SESSION_CLOSED')
     if(kind.startsWith('execution.'))fail('TASK_SPLIT_EXECUTION_REMOVED')
     let clarification = kind === 'notification.prepare' && args.kind === 'routing-clarification' ? args.payload : undefined
@@ -172,7 +180,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     const settledEvents=kind==='router.settle'?(await query('router.inbox',{conversationId:args.conversationId,limit:30})).filter(event=>args.eventIds.includes(event.id)||args.eventIds.includes(event.eventId)):[]
     const commandId=id??`${kind}:${randomUUID()}`
-    const commit = () => store.command({ id:commandId, kind, args: clean(args) })
+    const commit = () => {if(targetCommandKinds.has(kind))ctx.get('channels').assertGroupTarget(targetGroup);return store.command({ id:commandId, kind, args: clean(args) })}
     // 发送许可与待判版本在同一群锁内线性化；缓存/出箱投影必须留在锁外。
     let receipt
     if (clarification) {
@@ -686,10 +694,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     await taskSessions.cancel(taskId)
     await Promise.allSettled([oldTask, ...list.map(item => oldExecutions.get(item.executionId))].filter(Boolean))
   }
-  function admitTask(taskId, action) {
+  function admitTask(taskId, action, groupId) {
+    if(groupId)ctx.get('channels').assertGroupTarget(groupId)
     if(closed)fail('TASK_SESSION_CLOSED')
     const previous = admissions.get(taskId) ?? Promise.resolve()
     const pending = previous.catch(() => {}).then(async () => {
+      if(groupId)ctx.get('channels').assertGroupTarget(groupId)
       admissionHolds.add(taskId)
       const oldTask = inflightTasks.get(taskId), oldExecutions = new Map(inflightExecutions)
       try { return await action(oldTask, oldExecutions) }
@@ -698,8 +708,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if (!closed) void schedulePending()
       }
     })
-    admissions.set(taskId, pending)
-    pending.finally(() => { if (admissions.get(taskId) === pending) admissions.delete(taskId) }).catch(() => {})
+    admissions.set(taskId, pending);if(groupId)admissionGroups.set(pending,groupId)
+    pending.finally(() => { if (admissions.get(taskId) === pending) admissions.delete(taskId);admissionGroups.delete(pending) }).catch(() => {})
     return pending
   }
   async function recordMessageStage(request, stage) {
@@ -927,6 +937,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const rerouteGroups=new Set()
   function kickGroup(groupId,source){
     if(closed)return Promise.resolve()
+    try{ctx.get('channels').assertGroupTarget(groupId)}catch(error){return Promise.reject(error)}
     if(inflightGroups.has(groupId)){rerouteGroups.add(groupId);void hostScheduler(async()=>triage.append(groupId,source?[source]:await query('triage.pending',{conversationId:groupId,limit:15}))).catch(error=>failures.set(groupId,{id:groupId,code:error.code??error.message}));return inflightGroups.get(groupId)}
     const work=track(inflightGroups,groupId,async()=>{
       do{
@@ -940,13 +951,18 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     void work.catch(error=>failures.set(groupId,{id:groupId,code:error.code??error.message}))
     return work
   }
-  async function ingest(message, notificationIdentityChecked = false) {
+  function ingest(message,notificationIdentityChecked=false){
+    const channels=ctx.get('channels'),context=channels.groupContext(message.groupId)
+    return context?channels.withInputTarget(context,()=>ingestMessage(message,notificationIdentityChecked)):ingestMessage(message,notificationIdentityChecked)
+  }
+  async function ingestMessage(message, notificationIdentityChecked = false) {
     const receivedAt = new Date().toISOString()
     const loopDelay = monitorEventLoopDelay({ resolution: 10 })
     loopDelay.enable()
     const phases = []
     try {
     if (closed) fail('TASK_SESSION_CLOSED')
+    ctx.get('channels').assertGroupTarget(message.groupId)
     // 订阅身份读取权威群记录，不为接入校验展开并过滤展示消息历史。
     if (!residentStore.getGroup(message.groupId)) fail('group_not_subscribed')
     const actorId = conversationMessageActorId(message)
@@ -1440,6 +1456,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(!task)fail('TASK_WEB_CREATE_USE_DIRECT_ENTRY')
     // 无群 Web 输入沿用建任务时的来源作用域，不将其注册为渠道群。
     const groupId=task.groupId??'task:'+task.taskId
+    ctx.get('channels').assertGroupTarget(groupId)
     if(task.groupId&&!residentStore.getGroup(task.groupId))fail('group_not_subscribed')
     const sourceId='web:'+hash([config.webActorId,groupId,args.requestId]),text=args.context?.trim()||args.objective||args.reason||''
     const request=clean(args),operationId=residentOperationId(groupId,args.requestId)
@@ -1471,7 +1488,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const sources=(await Promise.all(latest.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean),materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
         await taskSessions.supplement({task:await taskInputWithDependencies(latest),sources,materials})
       }
-    })
+      await command('source.routed',{sourceId,receipt:[{taskId:task.taskId,operationId}]},'web-task-source-routed:'+sourceId)
+    },groupId)
     void hostScheduler(()=>schedulePending());return requireTask(task.taskId)
   }
   async function listHumanRequests(options) {
@@ -1662,6 +1680,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const unifiedIngress=async input=>{
     if(!['chat','chat-room'].includes(input?.type))return ingest(input)
     const channels=ctx.get('channels'),identity=channels.identity(input)
+    return channels.withInputTarget(identity.envelope,async()=>{
     // 只读派生 scope；身份未决必须在消息事实和来源持久登记之前暂缓。
     if(await ownNotificationAtIngress({groupId:identity.sessionId,messageId:identity.envelope.messageId}))return {accepted:false,processing:'ignored',reason:'own-notification',channelType:identity.envelope.type,conversationId:identity.envelope.conversationId}
     const channel=await channels.registerConversation(input),e=channel.envelope
@@ -1681,9 +1700,45 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       ...e.platformFlags?{platformFlags:e.platformFlags}:{},automated:e.platformFlags?.automated===true,
     },true)
     return {...response,channelType:e.type,conversationId:e.conversationId}
+    })
   }
   const detachIngress=ctx.get('channels').attachIngress(unifiedIngress)
+  // 短准入栅栏贯穿异步权威读取与发布；原结果、回查和排空落账继续放行。
+  async function withChannelTargetSwitch({channelId,nextTarget,includeAllScopes=false},work,{activate=false,publish}={}){
+    const channels=ctx.get('channels'),hold=channels.holdChannelTarget(channelId,nextTarget,{includeAllScopes})
+    const blocked=()=>fail('DINGTALK_CHANNEL_SWITCH_BLOCKED')
+    try{
+      const groups=new Set(hold.groups)
+      const assertFlights=()=>{
+        if(hold.hasInflight()||[...admissionGroups.values(),...targetCommands.values()].some(group=>groups.has(group))||hold.groups.some(group=>inflightGroups.has(group)||residentRouter.hasInflight(group)||platformSchedules.hasInflight(group)))blocked()
+      }
+      assertFlights()
+      for(const groupId of groups){
+        const tasks=await query('task.list',{groupId,archived:'all'})
+        for(const task of tasks){
+          if(admissions.has(task.taskId)||inflightTasks.has(task.taskId)||(task.status!=='completed'&&task.control!=='cancelled')||!task.drained||task.recovering||task.effectReconciliations?.some(row=>row.state==='prepared'))blocked()
+          const effects=await query('task.blockers',{taskId:task.taskId})
+          if(effects.executions.length||effects.operations.length)blocked()
+        }
+        const metadata=await query('observer.group-metadata',{groupId}),sources=await Promise.all((metadata.sources??[]).map(source=>query('source.get',{sourceId:typeof source==='string'?source:source.sourceId})))
+        const latest=new Map()
+        for(const source of sources.filter(Boolean)){const prior=latest.get(source.messageId);if(!prior||source.version>prior.version)latest.set(source.messageId,source)}
+        if([...latest.values()].some(source=>!source.routed||source.processingPending||source.triageHold||source.archiveRestoreHold))blocked()
+        const router=await query('router.get',{conversationId:groupId})
+        if(await query('router.inbox-count',{conversationId:groupId})>0||router&&(router.phase!=='active'||router.cursor>router.lastHandoffCursor))blocked()
+        const notifications=[...await query('notification.list',{groupId}),...(await Promise.all(tasks.map(task=>query('notification.list',{taskId:task.taskId})))).flat()]
+        if(notifications.some(row=>['prepared','starting','unknown'].includes(row.state)||row.state==='failed'&&row.deliveryError?.knownNotSent&&row.deliveryError?.retryable))blocked()
+        if(residentStore.listPlatformSchedules(groupId).some(binding=>!binding.outcome))blocked()
+      }
+      assertFlights()
+      const result=await work()
+      assertFlights()
+      if(activate){hold.activate();publish?.()}
+      return result
+    }finally{hold.release()}
+  }
   const api = {
+    withChannelTargetSwitch,
     async resumeRouterBatch(args){
       if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
       try{return await hostScheduler(()=>residentRouter.resumeRouterBatch(args))}finally{syncRouterFailures()}
@@ -1726,6 +1781,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     },
     async updateMessageRoutingHold(){fail('TOPIC_ROUTING_RETIRED')},
     async retryMessageProcessing(args){
+      ctx.get('channels').assertGroupTarget(args.groupId)
       if(!['triage','router'].includes(args.phase))fail('TOPIC_ROUTING_RETIRED')
       const source=await query('source.get',{sourceId:args.sourceId})
       if(!source||source.groupId!==args.groupId||source.messageId!==args.messageId||source.version!==args.messageVersion)fail('MESSAGE_RETRY_STALE')
@@ -1739,6 +1795,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     listTopics: groupId => residentStore.listTopics(groupId), getTopic: (groupId, topicId) => residentStore.getTopic(groupId, topicId),
     getTopicContext: args => residentStore.getTopicContext(args),
     async retryMessage({ groupId, messageId }) {
+      ctx.get('channels').assertGroupTarget(groupId)
       if (!residentStore.getGroup(groupId)) fail('group_not_subscribed')
       const sources = (await query('source.list', { groupId })).filter(source => source.messageId === messageId)
       if (!sources.length) {
@@ -1802,7 +1859,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await command('source.routed',{sourceId,receipt:[]},'single-initial-routed:'+sourceId)
       const receipt=await command('task.create',{taskId,request:args.objective,objective:args.objective,title:args.title??args.objective.slice(0,80),requirements:args.acceptanceCriteria??[],ownerActorId:actorId,...groupId?{groupId,conversationId:groupId}:{},sourceRefs:[...new Set([sourceId,...sources.map(source=>source.sourceId)])],topicRefs:args.topicRefs??[],replyBindings:bindingsForSources(sources),metadata:{channel:channel?channel.envelope.type:'web',authorizationSourceId:sourceId,...channel&&args.context?.trim()?{initialContext:args.context}:{},...channel?{channelType:channel.envelope.type,channelId:channel.envelope.channelId,conversationId:channel.envelope.conversationId,senderId:channel.envelope.senderId}:{}}},id)
       void kickTask(receipt.result.task.taskId);return taskDTO(receipt.result.task)
-      })
+      },groupId)
     },
     async appendTaskContext(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-context')) },
     async reopenTask(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-reopen')) },

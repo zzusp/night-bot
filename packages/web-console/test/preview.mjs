@@ -115,7 +115,11 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   const app = {
     config: {channelPlugins: empty ? [] : [
       {type: 'web-console', channelId: CHANNEL_ID, enabled: true},
-      {type: 'dingtalk-dws', channelId: 'dingtalk-work', enabled: true},
+      {type: 'dingtalk-dws', channelId: 'dingtalk-work', enabled: true, config: {
+        dingtalk_profile: 'fixture-corp:fixture-user', dingtalk_conversation_type: 'chat-room',
+        dingtalk_group_id: 'fixture-running-room', dingtalk_prompt: `原始渠道职责
+保留换行`, dingtalk_writes_authorized: false,
+      }},
       {type: 'sample-channel', channelId: '备用渠道', enabled: false},
     ]},
     tasks: {
@@ -140,9 +144,57 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       },
     },
   }
+  // 浏览器夹具只模拟已保存配置；真实安装落盘/锁/水位由 Host 集成测试验证。
+  const savedRows = structuredClone(app.config.channelPlugins)
+  const channelError = code => Object.assign(Error(code), {code})
+  const rowFor = channelId => {
+    const row = savedRows.find(row => row.type === 'dingtalk-dws' && row.channelId === channelId)
+    if (!row) throw channelError('DINGTALK_CHANNEL_NOT_FOUND')
+    return row
+  }
+  const detailFor = row => {
+    const config = row.config, conversationType = config.dingtalk_conversation_type
+    const prefix = 'dingtalk_' + (conversationType === 'chat-room' ? 'group_' : 'user_')
+    const targetKind = Object.hasOwn(config, prefix + 'id') ? 'id' : 'name'
+    return {channelId: row.channelId, version: digest(JSON.stringify(row)), name: config.dingtalk_name ?? '',
+      prompt: config.dingtalk_prompt ?? '', conversationType, targetKind, target: config[prefix + targetKind]}
+  }
+  const channelConfiguration = {
+    async read() {return structuredClone(savedRows)},
+    async getDingtalk(channelId) {return detailFor(rowFor(channelId))},
+    async editDingtalk(channelId, input) {
+      const row = rowFor(channelId), current = detailFor(row)
+      if (input.expectedVersion !== current.version) throw channelError('DINGTALK_CHANNEL_VERSION_CONFLICT')
+      const fields = {name: input.name.trim(), prompt: input.prompt, conversationType: input.conversationType,
+        targetKind: input.targetKind, target: input.target.trim()}
+      if (Object.entries(fields).every(([key, value]) => current[key] === value)) return {changed: false, channel: structuredClone(row), detail: current}
+      const config = {...row.config, dingtalk_conversation_type: fields.conversationType}
+      for (const field of ['dingtalk_group_id', 'dingtalk_group_name', 'dingtalk_user_id', 'dingtalk_user_name']) delete config[field]
+      config['dingtalk_' + (fields.conversationType === 'chat-room' ? 'group_' : 'user_') + fields.targetKind] = fields.target
+      for (const field of ['name', 'prompt']) {
+        if (fields[field] === '') delete config['dingtalk_' + field]
+        else config['dingtalk_' + field] = fields[field]
+      }
+      const updated = {...row, config}
+      savedRows[savedRows.indexOf(row)] = updated
+      return {changed: true, channel: structuredClone(updated), detail: detailFor(updated)}
+    },
+    async addDingtalk(input) {
+      if (savedRows.some(row => (row.channelId ?? row.type) === input.channelId)) throw Object.assign(Error('DINGTALK_CHANNEL_EXISTS'), {code: 'DINGTALK_CHANNEL_EXISTS', status: 409})
+      const targetField = 'dingtalk_' + (input.conversationType === 'chat-room' ? 'group_' : 'user_') + input.targetKind
+      const row = {type: 'dingtalk-dws', channelId: input.channelId, enabled: true, config: {
+        dingtalk_profile: 'fixture-corp:fixture-user', dingtalk_conversation_type: input.conversationType,
+        [targetField]: input.target, dingtalk_writes_authorized: false,
+        ...(input.name === undefined ? {} : {dingtalk_name: input.name}),
+        ...(input.prompt === undefined ? {} : {dingtalk_prompt: input.prompt}),
+      }}
+      savedRows.push(row)
+      return {changed: true, restartRequired: true, liveApplied: false, channel: structuredClone(row)}
+    },
+  }
   let web
   try {
-    web = await createWebConsole({channels, paths, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence})
+    web = await createWebConsole({channels, paths, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence, getChannelConfiguration: () => channelConfiguration})
     if (!empty) {
       const login = await fetch(web.origin + '/api/login', {method: 'POST', headers: {origin: web.origin, 'content-type': 'application/json'}, body: JSON.stringify({token: FIXTURE_TOKEN})})
       if (!login.ok) throw Error('fixture login failed')

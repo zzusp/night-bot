@@ -1,5 +1,5 @@
 import {openToolPermissions} from './tool-permissions.js'
-import {configFileOf,updateConfig} from './config.js'
+import {configFileOf,updateConfig,validateConfig} from './config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {prepareProfileEntries} from './native-profile-preflight.js'
 import {taskSessionRoutes} from './tasks/session-routes.js'
@@ -18,7 +18,7 @@ import {createPrivacy,installProcessPrivacy} from './memory/privacy.js'
 
 const require = createRequire(import.meta.url)
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
-export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false } = {}) {
+export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false, dingtalkProfileRunner } = {}) {
   assertPiTaskBackendConfiguration(config)
   const paths=runtimePaths(config)
   await prepareRuntimePaths(paths)
@@ -29,9 +29,19 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
   const root = paths.state, workspace = paths.workspaces
   const ctx = new Context()
   let releaseData,closing,permissionService
+  const configurationCalls=new Set()
+  const configurationCall=operation=>{
+    if(!releaseData||closing)throw failure('CHANNEL_CONFIGURATION_UNAVAILABLE')
+    if(ctx.get('agents')?.currentInitiator()!==undefined)throw failure('CHANNEL_CONFIGURATION_OPERATOR_REQUIRED')
+    const call=Promise.resolve().then(operation);configurationCalls.add(call)
+    call.finally(()=>configurationCalls.delete(call)).catch(()=>{})
+    return call
+  }
   const close=()=>closing??=(async()=>{
     const errors=[]
     const attempt=async action=>{try{await action()}catch(error){errors.push(error)}}
+    // 已接纳的配置保存先排空，安装锁持续持有到原子提交结束。
+    await Promise.allSettled([...configurationCalls])
     await attempt(()=>permissionService?.close())
     await attempt(()=>ctx.get('application')?.close?.())
     await attempt(()=>ctx.get('officialAgentFactory')?.close())
@@ -45,6 +55,130 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
   })()
   try {
     if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
+    if(paths.mode==='portable'){
+      const file=configFileOf(config)??join(paths.config,'config.json')
+      ctx.provide('channelConfiguration',{
+        read:()=>configurationCall(async()=>{
+          const result=await updateConfig(file,next=>next,{checkOnly:true})
+          return result.config.channelPlugins??[]
+        }),
+        getDingtalk:channelId=>configurationCall(async()=>{
+          const {dingtalkEditable}=await import('./channels/plugins/dingtalk-config.js')
+          const result=await updateConfig(file,next=>next,{checkOnly:true})
+          const row=result.config.channelPlugins?.find(row=>row.channelId===channelId&&row.type==='dingtalk-dws')
+          if(!row)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
+          return dingtalkEditable(row)
+        }),
+        editDingtalk:(channelId,input)=>configurationCall(async()=>{
+          const fields=['expectedVersion','name','prompt','conversationType','targetKind','target']
+          if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).length!==fields.length||fields.some(key=>!Object.hasOwn(input,key))||Object.keys(input).some(key=>!fields.includes(key))||!['id','name'].includes(input.targetKind)||!['chat','chat-room'].includes(input.conversationType)||typeof input.expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedVersion)||['name','prompt','target'].some(key=>typeof input[key]!=='string'||input[key].includes('\0'))||!input.target.trim())throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
+          const {validateConfig:validateDingtalkConfig,validateDingtalkInstance,dingtalkEditable,dingtalkBindingKey,dingtalkConfigVersion}=await import('./channels/plugins/dingtalk-config.js')
+          const {dingtalkChannelPaths,assertDingtalkStoragePath,assertDingtalkTargetSwitch,openDingtalkIngress,readDingtalkBinding}=await import('./channels/plugins/dingtalk-storage.js')
+          const {bindDingtalkConfig}=await import('./channels/plugins/dingtalk-binding.js')
+          const {dwsEnvironment}=await import('./channels/plugins/dws-environment.js')
+          const {createNodeDwsRunner}=await import('../packages/dingtalk-core/dws-runner.js')
+          const current=(await updateConfig(file,next=>next,{checkOnly:true})).config.channelPlugins?.find(row=>row.channelId===channelId&&row.type==='dingtalk-dws')
+          if(!current)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
+          if(dingtalkConfigVersion(current)!==input.expectedVersion)throw failure('DINGTALK_CHANNEL_VERSION_CONFLICT')
+          const before=dingtalkEditable(current),row=structuredClone(current),body={...input,name:input.name.trim(),target:input.target.trim()}
+          if(body.name)row.config.dingtalk_name=body.name;else delete row.config.dingtalk_name
+          // 缺省空职责保持缺省，避免相同快照生成虚假的配置版本。
+          if(body.prompt||Object.hasOwn(row.config,'dingtalk_prompt'))row.config.dingtalk_prompt=body.prompt
+          const targetChanged=['conversationType','targetKind','target'].some(key=>body[key]!==before[key])
+          let binding,switched=false,includeAllScopes=false
+          if(targetChanged){
+            const oldConfig=validateDingtalkConfig(current.config),storage=dingtalkChannelPaths(paths,channelId,oldConfig.storageKey)
+            await assertDingtalkStoragePath(paths,storage.bindingFile)
+            const savedBinding=await readDingtalkBinding(storage.bindingFile)??oldConfig.binding
+            if(savedBinding){
+              if(oldConfig.binding&&dingtalkBindingKey(savedBinding)!==dingtalkBindingKey(oldConfig.binding))throw failure('DINGTALK_BINDING_CHANGED')
+              validateDingtalkConfig({...current.config,dingtalk_binding:savedBinding,...oldConfig.conversationType==='chat-room'?{dingtalk_group_id:oldConfig.groupId??savedBinding.conversationId}:{dingtalk_user_id:oldConfig.userId??savedBinding.peerUserId}})
+            }
+            const runner=dingtalkProfileRunner??createNodeDwsRunner({executable:oldConfig.executable??'dws',cwd:storage.workspace,env:dwsEnvironment(paths,storage.privateHome,storage.cache,{accountMode:oldConfig.accountMode})})
+            const running=ctx.get('channels')?.plugins.get(channelId)
+            if(!savedBinding&&(running?.bindingIdentity||running?.bindingActive===true))throw failure('DINGTALK_BINDING_REQUIRED')
+            const previousBinding=savedBinding
+            includeAllScopes=!previousBinding
+            for(const key of ['dingtalk_group_id','dingtalk_group_name','dingtalk_user_id','dingtalk_user_name','dingtalk_binding','dingtalk_storage_key'])delete row.config[key]
+            row.config.dingtalk_profile=previousBinding?.profile??oldConfig.profile
+            row.config.dingtalk_conversation_type=body.conversationType
+            row.config['dingtalk_'+(body.conversationType==='chat-room'?'group':'user')+'_'+body.targetKind]=body.target
+            row.config=await bindDingtalkConfig(row.config,{runner});binding=row.config.dingtalk_binding
+            if(binding.profile!==oldConfig.profile||previousBinding&&['profile','corpId','userId','actorId'].some(key=>binding[key]!==previousBinding[key]))throw failure('DINGTALK_BOUND_ACCOUNT_CHANGED')
+            switched=!previousBinding||dingtalkBindingKey(previousBinding)!==dingtalkBindingKey(binding)
+            if(!switched)row.config.dingtalk_storage_key=oldConfig.storageKey??'legacy'
+            else{
+              const legacy=dingtalkChannelPaths(paths,channelId)
+              await assertDingtalkStoragePath(paths,legacy.bindingFile)
+              const oldLegacy=await readDingtalkBinding(legacy.bindingFile)
+              row.config.dingtalk_storage_key=!includeAllScopes&&oldLegacy&&dingtalkBindingKey(oldLegacy)===dingtalkBindingKey(binding)?'legacy':dingtalkBindingKey(binding)
+              row.config.dingtalk_writes_authorized=false
+            }
+          }
+          validateDingtalkInstance(row)
+          const save=()=>updateConfig(file,async next=>{
+            const index=next.channelPlugins?.findIndex(value=>value.channelId===channelId&&value.type==='dingtalk-dws')??-1
+            if(index<0)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
+            if(dingtalkConfigVersion(next.channelPlugins[index])!==body.expectedVersion)throw failure('DINGTALK_CHANNEL_VERSION_CONFLICT')
+            if(switched){
+              await assertDingtalkTargetSwitch(paths,channelId,binding)
+              const storage=dingtalkChannelPaths(paths,channelId,row.config.dingtalk_storage_key)
+              await assertDingtalkStoragePath(paths,storage.bindingFile)
+              const saved=await readDingtalkBinding(storage.bindingFile)
+              if(saved&&dingtalkBindingKey(saved)!==dingtalkBindingKey(binding))throw failure('DINGTALK_BINDING_CHANGED')
+              const ingress=await openDingtalkIngress(paths,channelId,{storageKey:row.config.dingtalk_storage_key,fromAt:new Date().toISOString()})
+              await ingress.drain()
+            }
+            next.channelPlugins[index]=row
+            return next
+          })
+          let result
+          if(switched){
+            const tasks=ctx.get('application')?.tasks
+            if(!tasks)throw failure('CHANNEL_CONFIGURATION_UNAVAILABLE')
+            result=await tasks.withChannelTargetSwitch({channelId,nextTarget:{type:binding.conversationType,conversationId:binding.conversationId,peerId:binding.peerId},includeAllScopes},save)
+          }else result=await save()
+          return {changed:result.changed,channel:row,detail:dingtalkEditable(row)}
+        }),
+        addDingtalk:input=>configurationCall(async()=>{
+          const fields=['channelId','conversationType','targetKind','target','name','prompt']
+          if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).some(key=>!fields.includes(key))||!['id','name'].includes(input.targetKind)||!['chat','chat-room'].includes(input.conversationType))throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
+          const body=structuredClone(input),target='dingtalk_'+(body.conversationType==='chat-room'?'group':'user')+'_'+body.targetKind
+          const {validateDingtalkInstance}=await import('./channels/plugins/dingtalk-config.js')
+          const row={type:'dingtalk-dws',channelId:body.channelId,enabled:true,config:{
+            dingtalk_conversation_type:body.conversationType,[target]:body.target,
+            dingtalk_account_mode:'system',dingtalk_writes_authorized:false,dingtalk_listen:true,
+            ...body.name!==undefined?{dingtalk_name:body.name}:{},...body.prompt!==undefined?{dingtalk_prompt:body.prompt}:{},
+          }}
+          const {openDingtalkIngress}=await import('./channels/plugins/dingtalk-storage.js')
+          const configuredAt=new Date().toISOString()
+          const result=await updateConfig(file,async next=>{
+            if((next.channelPlugins??[]).some(value=>(value.channelId??value.config?.channelId??value.type)===row.channelId)||ctx.get('channels')?.plugins.has(row.channelId))throw failure('DINGTALK_CHANNEL_EXISTS')
+            const {dwsReadJson,selectDwsProfile}=await import('./channels/plugins/dingtalk-binding.js')
+            const {dwsEnvironment}=await import('./channels/plugins/dws-environment.js')
+            const {createNodeDwsRunner}=await import('../packages/dingtalk-core/dws-runner.js')
+            const runner=dingtalkProfileRunner??createNodeDwsRunner({cwd:paths.workspaces,env:dwsEnvironment(paths,undefined,undefined,{accountMode:'system'})})
+            let profiles
+            try{profiles=await dwsReadJson(runner,['profile','list'])}catch(error){
+              if(['ENOENT','EACCES','EPERM','ENOEXEC'].includes(error.code))throw failure('DINGTALK_CLI_UNAVAILABLE')
+              if(error.code?.startsWith('DINGTALK_'))throw error
+              throw failure('DINGTALK_PROFILE_LOOKUP_FAILED')
+            }
+            const current=selectDwsProfile(profiles)
+            row.config.dingtalk_profile=current.corpId+':'+current.userId
+            try{validateDingtalkInstance(row)}catch{throw failure('DINGTALK_CONFIG_INVALID')}
+            next.channelPlugins??=[];next.channelPlugins.push(row)
+            validateConfig(structuredClone(next),file)
+            // 只初始化补拉下界；不改运行快照、不加载适配器或启动订阅。
+            const ingress=await openDingtalkIngress(paths,row.channelId,{fromAt:configuredAt}),state=ingress.snapshot()
+            await ingress.saveBridgeState({...state,paused:true,pausedAt:state.pausedAt??configuredAt})
+            await ingress.drain()
+            return next
+          })
+          return {changed:result.changed,restartRequired:true,liveApplied:false,channel:row}
+        }),
+      })
+    }
     ctx.provide('runtimePaths',paths)
     ctx.provide('portablePaths',portablePaths(paths))
     const taskRoutes=await taskSessionRoutes(paths);ctx.provide('taskSessionRoutes',taskRoutes)

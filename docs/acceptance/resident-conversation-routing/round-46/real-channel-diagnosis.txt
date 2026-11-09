@@ -1,0 +1,25 @@
+真实冷启失败后的只读根因取证；仅同安装system环境、保存profile和当前账号自身，不写配置、不订阅、不打印身份字段值。
+INITIAL_BINDING_DIAG bzdzeje3b / call_472620b3aea34f97a25989538a9033d4
+{"readCommand":"profile list","exitCode":0,"jsonKeys":["success","currentProfile","profiles"],"stderrCodeHints":[]}
+{"readCommand":"contact user","exitCode":0,"jsonKeys":["result","success"],"stderrCodeHints":[]}
+{"readCommand":"contact +search-user","exitCode":0,"jsonKeys":["ok","outcome","data"],"stderrCodeHints":[]}
+{"readOnlyBindingResolution":true,"passed":false,"code":"DINGTALK_USER_RESPONSE_INVALID","errorName":"Error"}
+
+[exited with code 1]
+
+CURRENT_CONTRACT_STRUCTURE b4cgsdcuf / call_8c8e654b1df24a3c88d3ff21aa53cd8c
+--- DWS VERSION ---
+dws version v1.0.63 (4cd5d05393a8748e89d9265eb9f7ec85745a0331, 2026-10-03T04:49:47Z)
+
+--- PRECISE CURRENT USER SEARCH STRUCTURE ---
+{"rootKeys":["ok","outcome","data"],"rootTypes":{"ok":"boolean","outcome":"string","data":"object"},"ok":true,"outcome":"success","dataKeys":["count","users"],"dataTypes":{"count":"number","users":"array"},"usersCount":1,"itemShapes":[{"name":"string","openDingTalkId":"string","title":"string","userId":"string"}],"matchedCurrentActorCount":1,"rootFlags":{},"dataFlags":{"count":1}}
+
+[exited with code 0]
+
+精确官方契约入口（已实际读取，不重复查询）：dws schema --cli-path "contact +search-user" --compact --format json
+
+canonical_path=contact.shortcut_search_user; interface_mode=composite; outcomes=[success,failure].
+
+result.data_schema: object/additionalProperties=false/required=[count,users]; count integer/minimum0; users array of strict objects with name,flowerName,title,userId,openDingTalkId typed string, stable identity nonempty.
+
+契约与真实响应data.count/data.users结构一致；根envelope ok:boolean/outcome:string/data:object来自上列真实调用。未把整个CLI所有leaf假定为同一包装。

@@ -71,8 +71,8 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
     let value
     if(args[0]==='profile')value={success:true,profiles:[{profile:'synthetic-corp:synthetic-user',corpId:'synthetic-corp',userId:'synthetic-user',userName:'Synthetic Self',isOrgCurrent:true}]}
     else if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:'synthetic-corp',userId:'synthetic-user',orgUserName:'Synthetic Self'}}]}
-    else if(args.includes('+search-user'))value={count:1,users:[{userId:'synthetic-user',openDingTalkId:'same-account'}]}
-    else if(args.includes('conversation-info'))value={result:{openConversationId:flag(args,'--group'),singleChat:false}}
+    else if(args.includes('+search-user'))value={ok:true,outcome:'success',data:{count:1,users:[{userId:'synthetic-user',openDingTalkId:'same-account'}]}}
+    else if(args.includes('conversation-info'))value={success:true,result:{conversationInfo:{openConversationId:flag(args,'--group'),singleChat:false},friendlyHint:'',retryable:false}}
     else if(args.includes('+messages-send')||args[1]==='message'&&args[2]==='reply'){
       const message={messageId:'synthetic-visible-'+(sent.length+1),conversationId:flag(args,'--group'),text:flag(args,args.includes('--content')?'--content':'--markdown'),senderOpenDingTalkId:'same-account',openTaskId:'synthetic-send-'+(sent.length+1)}
       sent.push(message);value={sendReceipt:{openTaskId:message.openTaskId}}
@@ -556,6 +556,48 @@ test('Router close interrupts an active official Pi request before joining its t
   release.resolve();await h.restart();await h.service.whenIdle()
   assert.equal(requests,2,'cold recovery cannot issue the admitted business batch or repeat its settled tool')
   assert.equal((await h.query('router.get',{conversationId})).cursor,1);assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+})
+
+test('Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool',{timeout:nativeTestTimeout(40000)},async t=>{
+ const entered=Promise.withResolvers();let handle,nativeSignal,prepares=0,requests=0,interrupted=false
+ const h=await residentRouterHost(t,body=>{
+  const summary=handoff(body);if(summary)return summary
+  if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+  if(requestTools(body).includes('resident_router_settle')){requests++;return settle(body,router(body))}
+  return {text:'No other work'}
+ })
+ const registry=h.host.ctx.agents,create=registry.create
+ registry.create=async function(options){
+  if(options.meta?.runtimeOwner==='conversation-router'){
+   const beforeRequest=options.beforeRequest
+   options={...options,beforeRequest:async(actor,...args)=>{
+    await beforeRequest?.(actor,...args)
+    if(++prepares!==2)return
+    nativeSignal=actor.piSession.agent.signal;entered.resolve()
+    await new Promise((resolve,reject)=>nativeSignal.addEventListener('abort',()=>reject(nativeSignal.reason),{once:true}))
+   }}
+  }
+  const value=await create.call(this,options)
+  if(options.meta?.runtimeOwner==='conversation-router'){
+   handle=value;const interrupt=value.interrupt.bind(value)
+   value.interrupt=(...args)=>{const result=interrupt(...args);void result.then(()=>{interrupted=true},()=>{});return result}
+  }
+  return value
+ }
+ t.after(()=>{registry.create=create})
+ const message=channelMessage('native-prepare-cancel'),conversationId=h.host.ctx.channels.identity(message).sessionId
+ await h.receive(message);await entered.promise
+ const before=await h.query('router.get',{conversationId});assert.equal(before.cursor,1);assert.equal(requests,1)
+ try{await h.close()}catch(error){
+  const contains=value=>value===nativeSignal.reason||value?.errors?.some(contains)
+  t.diagnostic(JSON.stringify({case:'native-prepare-cancel',interrupted,nativeAborted:nativeSignal.aborted,aggregateContainsExactNativeReason:!!contains(error)}))
+  throw error
+ }
+ assert.equal(interrupted,true);assert.equal(nativeSignal.aborted,true);assert.equal(handle.session.isStreaming,false);assert.equal(registry.get(before.activeSessionId),undefined)
+ const cold=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+ assert.equal(cold.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled').length,0)
+ assert.equal(cold.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='resident_router_settle'&&!entry.message.isError).length,1)
+ await h.restart();await h.service.whenIdle();assert.equal(requests,1);assert.equal((await h.query('router.get',{conversationId})).cursor,1)
 })
 
 test('Router close preserves an actually committed undelivered packet and cold recovery admits it only once',{timeout:nativeTestTimeout(40000)},async t=>{

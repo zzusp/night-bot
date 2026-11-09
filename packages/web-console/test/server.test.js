@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {mkdtemp, mkdir, readFile, writeFile, rm, link} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
+import {createHash} from 'node:crypto'
 import {request as httpRequest} from 'node:http'
 import {createWebConsole, apply} from '../server/plugin.js'
 import {openWebLedger} from '../server/ledger.js'
@@ -186,14 +187,30 @@ test('渠道连接阶段只用真实 health 白名单，启用状态和私有错
     const health = {state, healthy, credentials: 'PRIVATE_HEALTH_CREDENTIAL', path: '/private/health'}
     Object.defineProperty(health, 'lastError', {get() {assert.fail('raw adapter error must not be read')}})
     f.channels.plugins.set(channelId, {health})
-    expected.push({channelId, type: 'fixture-chat', enabled: false, connectionState: index === 8 ? 'unknown' : state,
+    expected.push({channelId, type: 'fixture-chat', enabled: false, connectionState: index === 8 ? 'unknown' : state, restartRequired: false, liveApplied: false,
       errorCode: state === 'waiting-auth' ? 'CHANNEL_AUTH_REQUIRED' : state === 'error' ? 'CHANNEL_ADAPTER_ERROR' : null, connected: healthy})
     return {type: 'fixture-chat', channelId, enabled: false, config: {token: 'PRIVATE_CONFIG_CREDENTIAL'}}
   })
   for (const [channelId, health] of [['absent', undefined], ['invalid', {state: 'ready', healthy: 'PRIVATE_NOT_BOOLEAN'}]]) {
     f.app.config.channelPlugins.push({type: 'fixture-chat', channelId, enabled: true})
     if (health) f.channels.plugins.set(channelId, {health})
-    expected.push({channelId, type: 'fixture-chat', enabled: true, connectionState: health ? 'ready' : 'unknown', errorCode: null})
+    expected.push({channelId, type: 'fixture-chat', enabled: true, connectionState: health ? 'ready' : 'unknown', errorCode: null, restartRequired: false, liveApplied: !!health})
+  }
+  for (const writesAuthorized of [true, false, undefined]) {
+    const channelId = 'dws-authorization-' + String(writesAuthorized)
+    f.app.config.channelPlugins.push({type: 'dingtalk-dws', channelId, enabled: true,
+      config: {dingtalk_profile: 'PRIVATE_PROFILE', dingtalk_conversation_type: 'chat-room', dingtalk_writes_authorized: writesAuthorized}})
+    f.channels.plugins.set(channelId, {bindingActive:writesAuthorized!==undefined,health: {state: 'ready', healthy: true}})
+    expected.push({channelId, type: 'dingtalk-dws', enabled: true, connectionState: 'ready', errorCode: null,
+      restartRequired: false, liveApplied: writesAuthorized!==undefined, name: channelId, conversationType: 'chat-room', promptConfigured: false,
+      writesAuthorized: writesAuthorized === true, connected: true})
+  }
+  for(const item of expected){
+    const row=f.app.config.channelPlugins.find(row=>row.channelId===item.channelId)
+    const version=createHash('sha256').update(JSON.stringify(row)).digest('hex')
+    Object.assign(item,{savedVersion:version,runningVersion:version,runningConnectionState:item.connectionState,runningErrorCode:item.errorCode})
+    if(typeof item.connected==='boolean')item.runningConnected=item.connected
+    if(row.type==='dingtalk-dws')Object.assign(item,{runningName:item.name,runningConversationType:item.conversationType})
   }
   const result = await f.fetchApi('/api/channels')
   assert.equal(result.status, 200)

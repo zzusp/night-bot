@@ -22,8 +22,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
   const interrupt=handle=>{
     if(!interruptions.has(handle)){
       const signal=handle.agent.lifecycle.signal,wasAborted=signal.aborted
+      const nativeSignal=handle.session.agent.signal,nativeWasAborted=nativeSignal?.aborted
       const operation=handle.interrupt()
       if(!wasAborted&&signal.aborted)cancellationReasons.add(signal.reason)
+      if(nativeWasAborted===false&&nativeSignal.aborted)cancellationReasons.add(nativeSignal.reason)
       interruptions.set(handle,operation)
       void operation.catch(()=>{})
     }
@@ -166,7 +168,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     return [packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
   }
   async function drain(conversationId){
-    assertOpen()
+    assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     let row=await query('router.get',{conversationId})
     const events=await query('router.inbox',{conversationId,limit:30});assertOpen()
     if(!row){if(!events.length)return;row=(await command('router.ensure',{conversationId,sessionId:sessionId(conversationId,1)})).result.conversation}
@@ -210,6 +212,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
   }
   function schedule(conversationId){
     if(closed)return Promise.reject(closeError)
+    try{ctx.get('channels').assertGroupTarget(conversationId)}catch(error){return Promise.reject(error)}
     const previous=tails.get(conversationId)??Promise.resolve()
     const work=previous.catch(()=>{}).then(()=>drain(conversationId))
     return trackTail(conversationId,work)
@@ -220,7 +223,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     return work
   }
   async function resumeRouterBatch({conversationId,generation,sessionId:activeSessionId,packetId,failedEntryId}={}){
-    assertOpen()
+    assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     if(agents.currentInitiator?.()!==undefined)fail('ROUTER_RESUME_HOST_ONLY')
     if(![conversationId,activeSessionId,packetId,failedEntryId].every(value=>typeof value==='string'&&value.length)||!Number.isSafeInteger(generation)||generation<1)fail('ROUTER_RESUME_REQUEST_INVALID')
     if(tails.has(conversationId))fail('ROUTER_RESUME_BUSY')
@@ -256,7 +259,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     void work.then(()=>errors.delete(conversationId),error=>{if(attempted)errors.set(conversationId,error)}).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
   }
-  return {schedule,resumeRouterBatch,errors,
+  return {schedule,resumeRouterBatch,errors,hasInflight:conversationId=>tails.has(conversationId),
     async whenIdle(){for(;;){const work=[...tails.values()];await Promise.all(work);if(!tails.size)break}},
     async recover(){
       const conversations=new Set((await query('router.list')).map(row=>row.id))

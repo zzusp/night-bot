@@ -82,7 +82,7 @@ Web 服务的默认 provider 选择以显式 `searchProvider` / `fetchProvider` 
 
 ## 验证
 
-可选 Web 控制台位于 `packages/web-console`，提供 BoardUI 风格的中文对话、任务执行信息和只读渠道消息，并为认证安装操作者提供权限模式和单调用审批入口。它有独立依赖及构建，默认不加载；不增加 Bot 展示字段或修改核心 schema，禁用后 Bot 仍能独立工作。生产插件用 Node 内置服务托管静态页面，聊天复用现有渠道入口，执行记录读取 Pi 已提交上下文，Chat 与任务共用真实工具调用/结果历史，长正文按版本有界续读；任务复盘页只展示实际记忆/Skill 更新及来源，正文仍按当前阅读作用域授权。启用、认证和数据边界见 [Web 运维](docs/ops/web-console-local.md)，操作见 [使用说明](docs/manual/web-console.md)，验证见 [Web 验收](docs/acceptance/web-console/goal.md)。参考设计取自 [BoardUI 官方 MIT 源码](https://github.com/BoardUI/boardui)，许可保留在该包 `licenses/`。
+可选 Web 控制台位于 `packages/web-console`，提供 BoardUI 风格的中文对话、任务执行信息和只读渠道消息，并为认证安装操作者提供权限模式、单调用审批及钉钉群聊/私聊配置新增与编辑入口。新增渠道使用 Bot 运行环境唯一当前登录账号，未登录或账号歧义拒绝保存；编辑固定渠道标识并继承已保存账号，无需填写 profile，可修改名称、职责、会话类型及 ID/名称目标。编辑使用期望版本防覆盖，冲突保留草稿并要求显式重新加载；旧目标有未决依赖时拒绝身份切换，同一实际目标保留绑定和水位。配置在本安装保存，正常重启后应用；页面分开显示保存版本与当前插件健康，已加载不代表已激活。新增及真实目标切换默认关闭外发，不提供删除、热加载或外发授权；结果未知只读按准确字段/版本核对，不自动重发。它有独立依赖及构建，默认不加载；不增加 Bot 展示字段或修改核心 schema，禁用后 Bot 仍能独立工作。生产插件用 Node 内置服务托管静态页面，聊天复用现有渠道入口，执行记录读取 Pi 已提交上下文，Chat 与任务共用真实工具调用/结果历史，长正文按版本有界续读；任务复盘页只展示实际记忆/Skill 更新及来源，正文仍按当前阅读作用域授权。启用、认证和数据边界见 [Web 运维](docs/ops/web-console-local.md)，操作见 [使用说明](docs/manual/web-console.md)，验证见 [Web 验收](docs/acceptance/web-console/goal.md)。参考设计取自 [BoardUI 官方 MIT 源码](https://github.com/BoardUI/boardui)，许可保留在该包 `licenses/`。
 
 UI/UE 的唯一指导性文档是仓库根目录的 [DESIGN.md](DESIGN.md)，集中维护视觉、组件、导航、交互状态、恢复、文案与可访问性。界面修改先读该文档；手册与验收记录分别用于操作说明和版本证据，不另立设计规则。
 

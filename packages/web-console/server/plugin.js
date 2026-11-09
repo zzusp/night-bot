@@ -50,7 +50,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getPermissions = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const network = webListenOptions(config), {port} = network
@@ -66,6 +66,10 @@ export async function createWebConsole({channels, paths, config, getApplication,
   const application = () => {const value = getApplication(); if (!value) fail('BOT_NOT_READY', 503); return value}
   const permissions = () => {const value = getPermissions(); if (!value) fail('PERMISSIONS_UNAVAILABLE', 503); return value}
   const permissionView = value => permissionsView(value, [credential.token])
+  const channelView = async (app = application()) => {
+    const configuration = getChannelConfiguration()
+    return configuredChannels(app, channels, configuration ? await configuration.read() : undefined)
+  }
   const chatContext = id => {
     const chat = ledger.chat(identifier(id))
     if (!chat) fail('CHAT_NOT_FOUND', 404)
@@ -111,7 +115,42 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!['allow', 'reject', 'revoke'].includes(body.decision)) fail('PERMISSION_DECISION_INVALID')
       return send(response, 200, permissionView(await permissions().respond(permissionRequest[1], body.decision)))
     }
-    if (request.method === 'GET' && path === '/api/channels') return send(response, 200, configuredChannels(application(), channels))
+    if (request.method === 'GET' && path === '/api/channels') return send(response, 200, await channelView())
+    const dingtalkDetail=/^\/api\/channels\/dingtalk\/([^/]+)$/.exec(path)
+    if(dingtalkDetail&&['GET','PATCH'].includes(request.method)){
+      const app=application(),configuration=getChannelConfiguration()
+      if(!configuration)fail('CHANNEL_CONFIGURATION_UNAVAILABLE',503)
+      let channelId;try{channelId=decodeURIComponent(dingtalkDetail[1])}catch{fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)}
+      try{
+        if(request.method==='GET')return send(response,200,await configuration.getDingtalk(channelId))
+        const body=await jsonBody(request,['expectedVersion','name','prompt','conversationType','targetKind','target'])
+        const result=await configuration.editDingtalk(channelId,body),channel=configuredChannels(app,channels,[result.channel]).items[0]
+        return send(response,200,{ok:true,changed:result.changed,restartRequired:channel.restartRequired,liveApplied:channel.liveApplied,channel,detail:result.detail})
+      }catch(error){
+        const status={DINGTALK_CHANNEL_NOT_FOUND:404,DINGTALK_CHANNEL_VERSION_CONFLICT:409,DINGTALK_CHANNEL_SWITCH_BLOCKED:409,DINGTALK_CHANNEL_REQUEST_INVALID:400,DINGTALK_CONFIG_INVALID:400,CHANNEL_CONFIGURATION_UNAVAILABLE:503,CHANNEL_CONFIGURATION_OPERATOR_REQUIRED:403}[error.code]
+        if(status)fail(error.code,status)
+        if(error.code?.startsWith('DINGTALK_'))fail('DINGTALK_CONFIG_INVALID',400)
+        throw error
+      }
+    }
+    if (request.method === 'POST' && path === '/api/channels/dingtalk') {
+      const app = application()
+      const body = await jsonBody(request, ['channelId', 'conversationType', 'targetKind', 'target', 'name', 'prompt'])
+      const configuration = getChannelConfiguration()
+      if (!configuration) fail('CHANNEL_CONFIGURATION_UNAVAILABLE', 503)
+      let result
+      try {result = await configuration.addDingtalk(body)} catch (error) {
+        const status = {DINGTALK_CHANNEL_EXISTS: 409, DINGTALK_CHANNEL_REQUEST_INVALID: 400, DINGTALK_CONFIG_INVALID: 400,
+          DINGTALK_AUTH_REQUIRED: 409, DINGTALK_CURRENT_PROFILE_NOT_FOUND: 409, DINGTALK_CURRENT_PROFILE_AMBIGUOUS: 409,
+          DINGTALK_CLI_UNAVAILABLE: 503, DINGTALK_PROFILE_LOOKUP_FAILED: 503, DINGTALK_PROFILE_RESPONSE_INVALID: 502,
+          DINGTALK_QUERY_INVALID_JSON: 502, DINGTALK_QUERY_INCOMPLETE: 502, DINGTALK_QUERY_FAILED: 502,
+          CHANNEL_CONFIGURATION_UNAVAILABLE: 503, CHANNEL_CONFIGURATION_OPERATOR_REQUIRED: 403}[error.code]
+        if (status) fail(error.code, status)
+        throw error
+      }
+      return send(response, 200, {ok: true, changed: result.changed, restartRequired: true, liveApplied: false,
+        channel: configuredChannels(app, channels, [result.channel]).items[0]})
+    }
     if (request.method === 'GET' && path === '/api/conversations') return send(response, 200, conversations(application(), channels))
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))
     if (request.method === 'GET' && path === '/api/overview') {
@@ -120,7 +159,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
         tasks: () => tasks({offset: 0, limit: 12, archived: false}),
         running: () => tasks({offset: 0, limit: 8, state: 'running', archived: false}),
         waiting: () => tasks({offset: 0, limit: 8, state: 'waiting', archived: false}),
-        channels: () => configuredChannels(app, channels).items,
+        channels: async () => (await channelView(app)).items,
         conversations: () => conversations(app, channels).items,
       }
       const keys = Object.keys(sections), outcomes = await Promise.allSettled(Object.values(sections).map(read => Promise.resolve().then(read)))
@@ -294,7 +333,7 @@ export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
   const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
-    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getPermissions: () => ctx.get('toolPermissions'), listen: false})
+    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

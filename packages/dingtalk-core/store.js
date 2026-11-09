@@ -656,6 +656,7 @@ export async function openResidentStore(storageDomain) {
     getTaskWorkspaceDir: () => scheduler.get('runtime')?.taskWorkspaceDir,
     getTimezone: () => scheduler.get('runtime')?.timezone,
     getPlatformSchedule: sessionId => scheduler.get(`platform-schedule:${sessionId}`)?.platformSchedule,
+    listPlatformSchedules: groupId => [...scheduler.entries()].map(([,value])=>value.platformSchedule).filter(value=>value&&value.groupId===groupId).map(value=>structuredClone(value)),
     preparePlatformSchedule: input => serialize(`platform-schedule:${input.sessionId}`, async () => {
       const value = platformScheduleSchema.parse(input), key = `platform-schedule:${value.sessionId}`
       const current = scheduler.get(key)?.platformSchedule

@@ -15,12 +15,17 @@ export async function dwsReadJson(runner,args,profile){
   return noPartial(value,'DINGTALK_QUERY')
 }
 
-/** profile list 的选择器只解析本次显式参数，不修改 DWS 默认账号。 */
+/** 只解析 profile list；缺省取明确的全局当前账号，不修改 DWS 默认账号。 */
 export function selectDwsProfile(value,selector){
   if(value?.success!==true||!Array.isArray(value.profiles))throw failure('DINGTALK_PROFILE_RESPONSE_INVALID')
   const profiles=value.profiles
   if(!profiles.length)throw failure('DINGTALK_AUTH_REQUIRED')
   if(profiles.some(row=>!object(row)||!nonempty(row.profile)||!nonempty(row.corpId)||!nonempty(row.userId)))throw failure('DINGTALK_PROFILE_RESPONSE_INVALID')
+  if(selector===undefined){
+    const current=one(profiles.filter(row=>row.isCurrent===true),'DINGTALK_CURRENT_PROFILE')
+    if(current.isOrgCurrent!==true)throw failure('DINGTALK_CURRENT_PROFILE_NOT_FOUND')
+    return one(profiles.filter(row=>row.corpId===current.corpId&&row.isOrgCurrent===true),'DINGTALK_CURRENT_PROFILE')
+  }
   const exact=profiles.filter(row=>row.profile===selector||row.corpId+':'+row.userId===selector)
   if(exact.length)return one(exact,'DINGTALK_PROFILE')
   const split=selector.indexOf(':')
@@ -34,7 +39,9 @@ function employeeRows(value){
   return value.result.map(row=>row.orgEmployeeModel)
 }
 async function searchUsers(runner,profile,query){
-  const value=await dwsReadJson(runner,['contact','+search-user','--query',query],profile)
+  const envelope=await dwsReadJson(runner,['contact','+search-user','--query',query],profile)
+  if(envelope.ok!==true||envelope.outcome!=='success')throw failure('DINGTALK_USER_RESPONSE_INCOMPLETE')
+  const value=noPartial(envelope.data,'DINGTALK_USER_RESPONSE')
   if(!Array.isArray(value.users)||value.users.some(row=>!object(row)||!nonempty(row.openDingTalkId))||value.count!==value.users.length)throw failure('DINGTALK_USER_RESPONSE_INVALID')
   return value.users
 }
@@ -49,8 +56,10 @@ export async function resolveDwsAccount(runner,selector){
 }
 async function conversationInfo(runner,profile,args){
   const value=await dwsReadJson(runner,['chat','conversation-info',...args],profile)
-  if(!object(value.result)||!nonempty(value.result.openConversationId))throw failure('DINGTALK_CONVERSATION_RESPONSE_INVALID')
-  return value.result
+  if(value.success!==true||!object(value.result))throw failure('DINGTALK_CONVERSATION_RESPONSE_INVALID')
+  const result=noPartial(value.result,'DINGTALK_CONVERSATION_RESPONSE'),info=result.conversationInfo
+  if(!object(info)||!nonempty(info.openConversationId))throw failure('DINGTALK_CONVERSATION_RESPONSE_INVALID')
+  return info
 }
 async function resolveTarget(runner,config,account){
   if(config.conversationType==='chat-room'){

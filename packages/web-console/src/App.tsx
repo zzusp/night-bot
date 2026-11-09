@@ -53,7 +53,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [permissionIdentity, resetPermissionIdentity] = useState(() => ({ csrfToken: session.csrfToken, epoch: 0 }));
-  // 只重挂权限面板以失效旧审批异步操作；聊天草稿保留，DOM/key 不含令牌。
+  // 只重挂操作者权限与渠道表单，使旧异步回执失效；聊天草稿保留，DOM/key 不含令牌。
   if (permissionIdentity.csrfToken !== session.csrfToken) resetPermissionIdentity({ csrfToken: session.csrfToken, epoch: permissionIdentity.epoch + 1 });
   const olderChats = useResource<Page<ChatSummary>>(historyOffset ? `/chat?offset=${historyOffset}&limit=20` : null);
   const drawer = useRef<HTMLDialogElement>(null);
@@ -95,7 +95,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
       <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${section === 'chat' ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage id={id} /> : <EmptyState title="页面不存在" description="从侧栏选择对话、任务或渠道继续。" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : <EmptyState title="页面不存在" description="从侧栏选择对话、任务或渠道继续。" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
       {section === 'chat' && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
@@ -106,7 +106,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
             {overview.data?.tasks?.items.length ? overview.data.tasks.items.slice(0, 5).map(task => <a className="rail-task" key={task.taskId} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><div><Status value={task.state} /><time>{dateTime(task.updatedAt || task.createdAt)}</time></div><strong>{task.title || task.objective || '未命名任务'}</strong></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.tasks || (overview.error && !overview.data) ? '暂时无法读取任务，请刷新。' : '暂无任务，开始对话来安排第一项工作。'}</p>}
           </section>
           <section className="rail-section"><div className="rail-section-title"><h3>已配置渠道</h3><a href="#/channels">查看<RiArrowRightLine size={14} /></a></div>
-            {overview.data?.channels?.length ? overview.data.channels.slice(0, 5).map(item => <a className="rail-channel" key={item.channelId} href="#/channels"><span><RiGlobalLine size={18} /></span><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.enabled ? 'success' : 'neutral'}>{item.enabled ? '已启用' : '未启用'}</Badge></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.channels || (overview.error && !overview.data) ? '暂时无法读取渠道，请刷新。' : '尚未配置渠道'}</p>}
+            {overview.data?.channels?.length ? overview.data.channels.slice(0, 5).map(item => <a className="rail-channel" key={item.channelId} href="#/channels"><span><RiGlobalLine size={18} /></span><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.connectionState === 'pending-restart' ? 'warning' : item.enabled ? 'success' : 'neutral'}>{item.connectionState === 'pending-restart' ? '待重启' : item.enabled ? '已启用' : '未启用'}</Badge></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.channels || (overview.error && !overview.data) ? '暂时无法读取渠道，请刷新。' : '尚未配置渠道'}</p>}
           </section>
         </>}<div className="rail-footer"><RiShieldCheckLine size={14} /><span>状态来自 Bot 的实际记录</span></div>
       </aside>}

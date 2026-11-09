@@ -1,0 +1,64 @@
+{
+  "agent_summary": "获取群聊或单聊会话的详细信息",
+  "availability": "available",
+  "avoid_when": [
+    "常规读取会话详情使用 chat +conversation-info；按群名定位使用 chat +chat-search"
+  ],
+  "canonical_path": "chat.get_conversation_info",
+  "cli_path": "chat conversation-info",
+  "confirmation": "not_required",
+  "constraints": {
+    "mutually_exclusive": [
+      [
+        "group",
+        "user",
+        "open-dingtalk-id"
+      ]
+    ],
+    "require_one_of": [
+      [
+        "group",
+        "user",
+        "open-dingtalk-id"
+      ]
+    ]
+  },
+  "description": "获取指定会话的基础信息。\n发送本地文件消息请优先使用 dws chat message send --msg-type file --file <本地文件>，CLI 不再要求调用方获取或传递 spaceId。",
+  "effect": "read",
+  "examples": [
+    "dws chat conversation-info --group <openConversationId> --format json"
+  ],
+  "idempotency": "idempotent",
+  "interface_mode": "mcp",
+  "parameters": {
+    "conversation-id": {
+      "description": "群聊 openConversationId（群聊时使用）",
+      "required": false,
+      "type": "string"
+    },
+    "group": {
+      "description": "--conversation-id 的别名",
+      "required": false,
+      "type": "string"
+    },
+    "open-dingtalk-id": {
+      "description": "单聊对方 openDingTalkId（单聊时使用）",
+      "required": false,
+      "type": "string"
+    },
+    "user": {
+      "description": "单聊对方 userId（单聊时使用）",
+      "required": false,
+      "type": "string"
+    }
+  },
+  "risk": "low",
+  "use_when": [
+    "明确需要 +conversation-info 未公开的 --user 解析、底层字段或原始响应，并读取会话详情时"
+  ]
+}
+
+--- SAME TARGET CONVERSATION STRUCTURE ---
+{"exitCode":0,"structure":{"type":"object","fields":{"arguments":{"type":"array","length":0,"itemShapes":[]},"errorCode":{"type":"null"},"errorMsg":{"type":"null"},"result":{"type":"object","fields":{"conversationInfo":{"type":"object","fields":{"corpId":{"type":"string"},"corpName":{"type":"string"},"createAt":{"type":"string"},"extension":{"type":"object"},"memberCount":{"type":"number"},"openConversationId":{"type":"string"},"ownerNick":{"type":"string"},"singleChat":{"type":"boolean"},"title":{"type":"string"}}},"friendlyHint":{"type":"string"},"retryable":{"type":"boolean"}}},"success":{"type":"boolean"}}},"identityChecks":[{"path":"$.result.conversationInfo.openConversationId","targetMatches":true},{"path":"$.result.conversationInfo.singleChat","value":false}],"stderrCodeHints":[]}
+
+[exited with code 0]

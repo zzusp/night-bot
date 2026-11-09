@@ -5,6 +5,10 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 import {createHost} from '../src/host.js'
+import {loadConfig} from '../src/config.js'
+import {withLock,acquireLock} from '../src/runtime/files.js'
+import {createWebConsole} from '../packages/web-console/server/plugin.js'
+import {createNodeDwsRunner} from '../packages/dingtalk-core/dws-runner.js'
 import {apply as applyDws} from '../src/channels/plugins/dingtalk-dws.js'
 import {apply as applyApplication,inject} from '../src/application.js'
 import {randomUUID} from 'node:crypto'
@@ -573,7 +577,13 @@ test('default optional DWS keeps permanently unknown identity degraded and retai
     await h.receive(h.raw);await eventually(()=>h.statusStarted,'original status remains PROCESSING',t.signal)
     const deferred={...h.raw,messageId:'still-unconfirmed-real-message',text:'Await exact identity before admission',occurredAt:new Date(Date.parse(h.raw.occurredAt)-120000).toISOString()}
     h.emit(deferred)
-    const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'unknown identity pins durable recovery',t.signal)
+    const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'unknown identity pins durable recovery',t.signal).catch(async error=>{
+      let ingress,notifications
+      try{ingress=JSON.parse(await readFile(h.ingressFile,'utf8'))}catch(value){ingress={readError:{code:value.code,message:value.message}}}
+      try{notifications=(await h.app.tasks.store.query({kind:'notification.list'})).map(value=>({id:value.id,state:value.state,hasAck:!!value.ack}))}catch(value){notifications={queryError:{code:value.code,message:value.message}}}
+      t.diagnostic(JSON.stringify({case:'default-optional-dws-unknown-checkpoint',health:h.plugin.health,ingress,notifications,historyReads:h.historyReads,triaged:h.triaged,errors:h.f.errors.map(value=>({code:value.code,message:value.message})),realVendorExecuted:false}))
+      throw error
+    })
     await h.absent(deferred);await h.restart([deferred])
     await eventually(()=>h.plugin.health.conversations.some(group=>group.backfill?.lastError==='CHANNEL_NOTIFICATION_IDENTITY_PENDING'),'cold history exposes unresolved identity rather than pretending success',t.signal)
     await h.absent(deferred)
@@ -591,8 +601,8 @@ function pluginDependencies(f,runner,{actorId='self',peerId='peer'}={}){
   if(args[0]==='profile')value={success:true,profiles:[{profile:'fixture-corp:fixture-user',corpId:'fixture-corp',userId:'fixture-user',userName:'Fixture Self',isOrgCurrent:true}]}
   else if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:'fixture-corp',userId:'fixture-user',orgUserName:'Fixture Self'}}]}
   else if(args[0]==='contact'&&args.includes('get'))value={result:[{orgEmployeeModel:{corpId:'fixture-corp',userId:flag('--ids'),orgUserName:'Fixture Peer'}}]}
-  else if(args.includes('+search-user'))value={count:1,users:[{userId:flag('--query')==='Fixture Self'?'fixture-user':'peer-user',openDingTalkId:flag('--query')==='Fixture Self'?actorId:peerId}]}
-  else if(args.includes('conversation-info'))value={result:{openConversationId:args.includes('--group')?flag('--group'):'private',singleChat:!args.includes('--group')}}
+  else if(args.includes('+search-user'))value={ok:true,outcome:'success',data:{count:1,users:[{userId:flag('--query')==='Fixture Self'?'fixture-user':'peer-user',openDingTalkId:flag('--query')==='Fixture Self'?actorId:peerId}]}}
+  else if(args.includes('conversation-info'))value={success:true,result:{conversationInfo:{openConversationId:args.includes('--group')?flag('--group'):'private',singleChat:!args.includes('--group')},friendlyHint:'',retryable:false}}
   else return runner.run(args)
   return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
  }}
@@ -602,15 +612,16 @@ const dingtalkPublic=(extra={})=>({dingtalk_profile:'fixture-corp:fixture-user',
 const completeHistory=messages=>({messages,complete:true,hasMore:false,partial:false,failedCount:0,failures:[]})
 function boundDwsFixture(){
  const calls=[],streams=new Map(),state={authenticated:true,exitCode:0,messages:[]}
- const profile={profile:'fixture-corp:fixture-user',corpId:'fixture-corp',userId:'fixture-user',userName:'Fixture Self',isOrgCurrent:true}
+ const profile={profile:'fixture-corp:fixture-user',corpId:'fixture-corp',userId:'fixture-user',userName:'Fixture Self',isOrgCurrent:true,isCurrent:true}
  const runner={
   async run(args){
    calls.push([...args]);let value
    if(args[0]==='profile')return {exitCode:state.exitCode,stdout:JSON.stringify({success:true,profiles:state.authenticated?[profile]:[]}),stderr:''}
    assert.equal(args[args.indexOf('--profile')+1],profile.profile)
    if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:profile.corpId,userId:profile.userId,orgUserName:'Fixture Self'}}]}
-   else if(args.includes('+search-user'))value={count:1,users:[{userId:profile.userId,openDingTalkId:'self-open'}]}
-   else if(args.includes('conversation-info'))value={result:{openConversationId:args[args.indexOf('--group')+1],singleChat:false}}
+   else if(args[0]==='contact'&&args.includes('get'))value={result:[{orgEmployeeModel:{corpId:profile.corpId,userId:args[args.indexOf('--ids')+1],orgUserName:'Fixture Peer'}}]}
+   else if(args.includes('+search-user')){const self=args[args.indexOf('--query')+1]==='Fixture Self';value={ok:true,outcome:'success',data:{count:1,users:[{userId:self?profile.userId:'peer-user',openDingTalkId:self?'self-open':'peer-open'}]}}}
+   else if(args.includes('conversation-info'))value={success:true,result:{conversationInfo:{openConversationId:args.includes('--group')?args[args.indexOf('--group')+1]:'fixture-direct',singleChat:!args.includes('--group')},friendlyHint:'',retryable:false}}
    else if(args.includes('+chat-messages'))value=completeHistory(state.messages)
    else assert.fail('Unexpected isolated DWS command: '+args.slice(0,2).join(' '))
    return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
@@ -724,6 +735,61 @@ test('SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首
  }
 })
 
+test('DWS通讯录快捷查询按当前CLI成功封装解析账号和私聊，失败与不完整结果拒绝',async()=>{
+ const wire=boundDwsFixture(),config=validateDingtalkConfig(dingtalkPublic())
+ const binding=await resolveDingtalkBinding(config,{runner:wire.runner})
+ assert.equal(binding.actorId,'self-open');assert.equal(binding.conversationId,'fixture-room')
+ for(const target of [{dingtalk_user_id:'peer-user'},{dingtalk_user_name:'Fixture Peer'}]){
+  const direct=await resolveDingtalkBinding(validateDingtalkConfig(dingtalkPublic({dingtalk_conversation_type:'chat',dingtalk_group_id:undefined,...target})),{runner:wire.runner})
+  assert.equal(direct.actorId,'self-open');assert.equal(direct.peerId,'peer-open');assert.equal(direct.peerUserId,'peer-user');assert.equal(direct.conversationId,'fixture-direct')
+ }
+ const data={count:1,users:[{userId:wire.profile.userId,openDingTalkId:'self-open'}]},success={ok:true,outcome:'success',data}
+ const invalid=[
+  ['bare response',data,'DINGTALK_USER_RESPONSE_INCOMPLETE'],
+  ['failed envelope',{...success,ok:false},'DINGTALK_USER_RESPONSE_INCOMPLETE'],
+  ['failed outcome',{...success,outcome:'failure'},'DINGTALK_USER_RESPONSE_INCOMPLETE'],
+  ['missing data',{ok:true,outcome:'success'},'DINGTALK_USER_RESPONSE_INCOMPLETE'],
+  ['outer partial',{...success,partial:true},'DINGTALK_QUERY_INCOMPLETE'],
+  ...[{partial:true},{hasMore:true},{complete:false},{truncatedByPageLimit:true},{failedCount:1},{failures:['fixture failure']}].map(flags=>['incomplete data',{...success,data:{...data,...flags}},'DINGTALK_USER_RESPONSE_INCOMPLETE']),
+  ['count mismatch',{...success,data:{...data,count:2}},'DINGTALK_USER_RESPONSE_INVALID'],
+  ['invalid collection',{...success,data:{count:1,users:[null]}},'DINGTALK_USER_RESPONSE_INVALID'],
+  ['missing actor identity',{...success,data:{count:1,users:[{userId:wire.profile.userId}]}},'DINGTALK_USER_RESPONSE_INVALID'],
+  ['no matching account',{...success,data:{count:0,users:[]}},'DINGTALK_ACCOUNT_ACTOR_NOT_FOUND'],
+  ['ambiguous account',{...success,data:{count:2,users:[data.users[0],data.users[0]]}},'DINGTALK_ACCOUNT_ACTOR_AMBIGUOUS'],
+ ]
+ for(const [scenario,value,code] of invalid){
+  const calls=[],runner={async run(args){calls.push(args);return args.includes('+search-user')?{exitCode:0,stdout:JSON.stringify(value),stderr:''}:wire.runner.run(args)}}
+  await assert.rejects(resolveDingtalkBinding(config,{runner}),{code},scenario)
+  assert.equal(calls.some(args=>args[0]==='chat'),false,scenario+' must stop before target resolution')
+ }
+})
+
+test('DWS会话详情按当前MCP嵌套身份解析，失败与目标漂移拒绝',async()=>{
+ const wire=boundDwsFixture(),config=validateDingtalkConfig(dingtalkPublic()),info={openConversationId:config.groupId,singleChat:false}
+ const success={success:true,result:{conversationInfo:info,friendlyHint:'',retryable:false}}
+ assert.equal((await resolveDingtalkBinding(config,{runner:wire.runner})).conversationId,config.groupId)
+ const invalid=[
+  ['bare identity',{success:true,result:info},'DINGTALK_CONVERSATION_RESPONSE_INVALID'],
+  ['wrong envelope',{ok:true,outcome:'success',data:info},'DINGTALK_CONVERSATION_RESPONSE_INVALID'],
+  ['missing success',{result:success.result},'DINGTALK_CONVERSATION_RESPONSE_INVALID'],
+  ['failed MCP response',{...success,success:false},'DINGTALK_QUERY_INCOMPLETE'],
+  ['outer partial',{...success,partial:true},'DINGTALK_QUERY_INCOMPLETE'],
+  ['missing result',{success:true},'DINGTALK_CONVERSATION_RESPONSE_INVALID'],
+  ['missing nested identity',{success:true,result:{friendlyHint:'unavailable',retryable:true}},'DINGTALK_CONVERSATION_RESPONSE_INVALID'],
+  ['partial nested result',{success:true,result:{...success.result,partial:true}},'DINGTALK_CONVERSATION_RESPONSE_INCOMPLETE'],
+  ['missing conversation id',{success:true,result:{conversationInfo:{singleChat:false}}},'DINGTALK_CONVERSATION_RESPONSE_INVALID'],
+  ['different target',{success:true,result:{conversationInfo:{...info,openConversationId:'foreign-room'}}},'DINGTALK_GROUP_IDENTITY_MISMATCH'],
+  ['wrong conversation kind',{success:true,result:{conversationInfo:{...info,singleChat:true}}},'DINGTALK_GROUP_IDENTITY_MISMATCH'],
+ ]
+ for(const [scenario,value,code] of invalid){
+  const runner={async run(args){return args.includes('conversation-info')?{exitCode:0,stdout:JSON.stringify(value),stderr:''}:wire.runner.run(args)}}
+  await assert.rejects(resolveDingtalkBinding(config,{runner}),{code},scenario)
+ }
+ const runner={async run(args){return args.includes('conversation-info')?{exitCode:0,stdout:JSON.stringify(success),stderr:''}:wire.runner.run(args)}}
+ const direct=validateDingtalkConfig(dingtalkPublic({dingtalk_conversation_type:'chat',dingtalk_group_id:undefined,dingtalk_user_id:'peer-user'}))
+ await assert.rejects(resolveDingtalkBinding(direct,{runner}),{code:'DINGTALK_PEER_CONVERSATION_MISMATCH'})
+})
+
 test('DWS durable ingress pins survive stale bridge snapshots and complete pages missing known messages',async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-dws-ingress-')),paths={mode:'portable',installRoot:root,config:join(root,'data','config'),state:join(root,'data','state'),secrets:join(root,'data','secrets'),workspaces:join(root,'data','workspaces'),cache:join(root,'data','cache')},channelId='pin-fixture'
  t.after(()=>rm(root,{recursive:true,force:true}))
@@ -767,4 +833,202 @@ test('DWS lifecycle stop joins in-flight observer creation and its exact asynchr
  assert.equal(stopSettled,false);assert.equal(opened,1);assert.equal(closed,1)
  closeRelease.resolve();await Promise.all([ready,stopping]);assert.equal(stopSettled,true)
  await f.host.ctx.parallel('night/ready',app);assert.equal(opened,1);await f.close();assert.equal(closed,1);assert.equal(f.requests.length,0)
+})
+
+test('Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查', {timeout:nativeTestTimeout(30000)}, async t=>{
+ const profileWire=boundDwsFixture();let profileResponse,profileFailure,profileLookups=0
+ const dingtalkProfileRunner={async run(args){profileLookups++;assert.deepEqual(args,['profile','list','--format','json']);if(profileFailure)throw profileFailure;return profileResponse??profileWire.runner.run(args)}}
+ const f=await memoryHost(t,undefined,{dingtalkProfileRunner}),paths=f.host.ctx.runtimePaths,file=join(paths.config,'config.json'),port=f.host.ctx.get('channelConfiguration')
+ const existing={type:'fixture-channel',channelId:'existing-disabled',enabled:false,config:{privateValue:'PRIVATE_CONFIG_DO_NOT_EXPOSE'}}
+ f.config.channelPlugins=[existing]
+ await writeFile(file,JSON.stringify(f.config))
+ const body={channelId:'web-room-id',conversationType:'chat-room',targetKind:'id',target:'fixture-room',name:'隔离群聊',prompt:'只核对本次隔离证据'}
+ let saves=0,unknownAfterCommit=false
+ const web=await createWebConsole({channels:f.host.ctx.channels,paths,config:{channelId:'web-create-test',senderId:'fixture-operator',port:0},
+  getApplication:()=>({config:f.config}),getChannelConfiguration:()=>({read:()=>port.read(),async addDingtalk(input){
+   saves++;const result=await port.addDingtalk(input)
+   if(unknownAfterCommit)throw Error('PRIVATE_POST_COMMIT_FAILURE')
+   return result
+  }}),
+ })
+ let cookie,csrf
+ const api=async(path,{method='GET',body,headers={}}={})=>{
+  const response=await fetch(web.origin+path,{method,headers:{origin:web.origin,...cookie?{cookie}:{},...csrf?{'x-csrf-token':csrf}:{},...body!==undefined?{'content-type':'application/json'}:{},...headers},...body!==undefined?{body:JSON.stringify(body)}:{}})
+  return {status:response.status,body:await response.json(),headers:response.headers}
+ }
+ try{
+  assert.equal((await api('/api/channels/dingtalk',{method:'POST',body})).status,401)
+  const login=await api('/api/login',{method:'POST',body:{token:(await readFile(web.credentialPath,'utf8')).trim()}})
+  cookie=login.headers.get('set-cookie').split(';')[0];csrf=login.body.csrfToken
+  assert.equal(profileLookups,0,'Host startup and unauthenticated requests never probe DWS')
+  assert.equal((await api('/api/channels')).status,200);assert.equal(profileLookups,0,'GET never probes the vendor')
+  assert.equal((await api('/api/channels/dingtalk',{method:'POST',body,headers:{'x-csrf-token':''}})).status,403)
+  assert.equal((await api('/api/channels/dingtalk',{method:'POST',body,headers:{origin:'http://foreign.invalid'}})).status,403)
+  for(const extra of [{profile:'browser-account'},{env:{DWS_PROFILE:'browser-account'}},{binding:{}},{dingtalk_binding:{}},{enabled:false},{dingtalk_writes_authorized:true},{executable:'untrusted'},{accountMode:'private'},{configFile:'/untrusted'}]){
+   const result=await api('/api/channels/dingtalk',{method:'POST',body:{...body,...extra}})
+   assert.equal(result.status,400);assert.equal(result.body.error,'REQUEST_INVALID')
+  }
+  assert.equal(profileLookups,0,'forbidden browser profile/env fields are rejected before querying DWS')
+  for(const extra of [{targetKind:'any'},{conversationType:'group'},{target:''},{name:null},{prompt:12}]){
+   assert.equal((await api('/api/channels/dingtalk',{method:'POST',body:{...body,...extra}})).status,400)
+  }
+  assert.deepEqual(JSON.parse(await readFile(file,'utf8')),f.config)
+  await assert.rejects(access(dingtalkChannelPaths(paths,body.channelId).ingressFile),{code:'ENOENT'})
+  const current=profileWire.profile,otherOrg={...current,profile:'other-corp:other-user',corpId:'other-corp',userId:'other-user',isCurrent:false}
+  const responseFor=profiles=>({exitCode:0,stdout:JSON.stringify({success:true,profiles}),stderr:''})
+  const failures=[
+   [responseFor([]),undefined,409,'DINGTALK_AUTH_REQUIRED'],
+   [responseFor([{...current,isCurrent:false}]),undefined,409,'DINGTALK_CURRENT_PROFILE_NOT_FOUND'],
+   [responseFor([current,{...otherOrg,isCurrent:true}]),undefined,409,'DINGTALK_CURRENT_PROFILE_AMBIGUOUS'],
+   [responseFor([{...current,isOrgCurrent:false}]),undefined,409,'DINGTALK_CURRENT_PROFILE_NOT_FOUND'],
+   [responseFor([current,{...current,profile:'fixture-corp:another-user',userId:'another-user',isCurrent:false}]),undefined,409,'DINGTALK_CURRENT_PROFILE_AMBIGUOUS'],
+   [{exitCode:0,stdout:'{"success":true,"profiles":{}}'},undefined,502,'DINGTALK_PROFILE_RESPONSE_INVALID'],
+   [{exitCode:0,stdout:'invalid-json'},undefined,502,'DINGTALK_QUERY_INVALID_JSON'],
+   [{exitCode:0,stdout:'{"success":false}'},undefined,502,'DINGTALK_QUERY_INCOMPLETE'],
+   [{exitCode:1,stdout:''},undefined,502,'DINGTALK_QUERY_FAILED'],
+   [{exitCode:2,stdout:''},undefined,409,'DINGTALK_AUTH_REQUIRED'],
+   [undefined,Object.assign(Error('PRIVATE_MISSING_COMMAND'),{code:'ENOENT'}),503,'DINGTALK_CLI_UNAVAILABLE'],
+   [undefined,Error('PRIVATE_LOOKUP_TIMEOUT'),503,'DINGTALK_PROFILE_LOOKUP_FAILED'],
+  ]
+  for(const [response,failure,status,code]of failures){
+   profileResponse=response;profileFailure=failure
+   const result=await api('/api/channels/dingtalk',{method:'POST',body})
+   assert.equal(result.status,status,JSON.stringify(result.body));assert.equal(result.body.error,code)
+   assert.deepEqual(JSON.parse(await readFile(file,'utf8')),f.config)
+   await assert.rejects(access(dingtalkChannelPaths(paths,body.channelId).ingressFile),{code:'ENOENT'})
+   assert.doesNotMatch(JSON.stringify(result.body),/PRIVATE_|fixture-corp|fixture-user/)
+  }
+  profileFailure=undefined;profileResponse=responseFor([otherOrg,current])
+  assert.equal((await api('/api/session')).status,200,'vendor authentication failures must not revoke Web login')
+  await f.agent('channel-config-model')
+  await assert.rejects(async()=>f.host.ctx.agents.withInitiator(f.host.ctx.agents.get('channel-config-model'),()=>port.addDingtalk(body)),{code:'CHANNEL_CONFIGURATION_OPERATOR_REQUIRED'})
+  const liveConflict=await api('/api/channels/dingtalk',{method:'POST',body:{...body,channelId:'web-create-test'}})
+  assert.equal(liveConflict.status,409,'a currently registered adapter ID cannot be shadowed by saved configuration')
+  const prior='2026-01-02T03:04:05.000Z',preexistingIngress=await openDingtalkIngress(paths,'web-chat-name',{fromAt:prior})
+  await preexistingIngress.drain()
+  const requests=[body,{...body,channelId:'web-room-name',targetKind:'name',target:'Fixture Room'},
+   {...body,channelId:'web-chat-id',conversationType:'chat',target:'fixture-peer'},
+   {...body,channelId:'web-chat-name',conversationType:'chat',targetKind:'name',target:'Fixture Peer'}]
+  const before=new Date().toISOString()
+  const created=await Promise.all(requests.map(body=>api('/api/channels/dingtalk',{method:'POST',body})))
+  const after=new Date().toISOString()
+  for(const result of created){
+   assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);assert.equal(result.body.changed,true)
+   assert.equal(result.body.restartRequired,true);assert.equal(result.body.liveApplied,false)
+   assert.equal(result.body.channel.connectionState,'pending-restart');assert.equal(result.body.channel.connected,false)
+   assert.equal(result.body.channel.writesAuthorized,false)
+   assert.doesNotMatch(JSON.stringify(result.body),/fixture-corp|fixture-user|fixture-room|fixture-peer|dingtalk_|PRIVATE_/)
+  }
+  const saved=await loadConfig(file)
+  assert.deepEqual(saved.channelPlugins[0],existing)
+  assert.deepEqual(f.config.channelPlugins,[existing],'saving must not mutate the running application configuration')
+  for(const request of requests){
+   const row=saved.channelPlugins.find(row=>row.channelId===request.channelId),target='dingtalk_'+(request.conversationType==='chat-room'?'group':'user')+'_'+request.targetKind
+   assert.deepEqual(row,{type:'dingtalk-dws',channelId:request.channelId,enabled:true,config:{dingtalk_profile:profileWire.profile.profile,dingtalk_conversation_type:request.conversationType,[target]:request.target,dingtalk_account_mode:'system',dingtalk_writes_authorized:false,dingtalk_listen:true,dingtalk_name:request.name,dingtalk_prompt:request.prompt}})
+   const ingress=JSON.parse(await readFile(dingtalkChannelPaths(paths,request.channelId).ingressFile,'utf8'))
+   assert.equal(ingress.paused,true)
+   if(request.channelId==='web-chat-name')assert.equal(ingress.firstStartedAt,prior)
+   else assert.ok(ingress.firstStartedAt>=before&&ingress.firstStartedAt<=after)
+   assert.equal(ingress.recoveryFromAt,ingress.firstStartedAt)
+   assert.equal(f.host.ctx.channels.plugins.has(request.channelId),false,'no live plugin mounting is permitted')
+   await assert.rejects(access(dingtalkChannelPaths(paths,request.channelId).bindingFile),{code:'ENOENT'})
+  }
+  const stable=await readFile(file,'utf8'),firstIngress=await readFile(dingtalkChannelPaths(paths,body.channelId).ingressFile,'utf8'),lookupCount=profileLookups
+  assert.equal((await api('/api/channels/dingtalk',{method:'POST',body:{...body,target:'must-not-replace'}})).status,409)
+  assert.equal((await api('/api/channels/dingtalk',{method:'POST',body:{...body,channelId:existing.channelId}})).status,409)
+  assert.equal(await readFile(file,'utf8'),stable);assert.equal(await readFile(dingtalkChannelPaths(paths,body.channelId).ingressFile,'utf8'),firstIngress)
+  assert.equal(profileLookups,lookupCount,'duplicate IDs are rejected before DWS queries')
+  const listed=await api('/api/channels')
+  for(const result of created)assert.deepEqual(listed.body.items.find(row=>row.channelId===result.body.channel.channelId),result.body.channel)
+  assert.doesNotMatch(JSON.stringify(listed.body),/PRIVATE_|fixture-corp|dingtalk_binding|dingtalk_profile/)
+  unknownAfterCommit=true
+  const uncertainBody={...body,channelId:'web-save-unknown'},uncertain=await api('/api/channels/dingtalk',{method:'POST',body:uncertainBody})
+  assert.equal(uncertain.status,500);assert.equal(uncertain.body.error,'WEB_REQUEST_FAILED')
+  const calls=saves,recovered=await api('/api/channels')
+  assert.equal(saves,calls,'readback cannot replay a save whose response was unknown')
+  assert.equal(recovered.body.items.find(row=>row.channelId===uncertainBody.channelId).restartRequired,true)
+  assert.ok((await loadConfig(file)).channelPlugins.some(row=>row.channelId===uncertainBody.channelId))
+  assert.equal(f.requests.length,0,'configuration cannot invoke the task model')
+  await web.close();await f.close()
+  const coldConfig=await loadConfig(file),cold=await createHost(coldConfig)
+  try{
+   for(const request of [...requests,uncertainBody])assert.equal(cold.ctx.channels.plugins.get(request.channelId).health.state,'starting')
+   assert.deepEqual((await cold.ctx.get('channelConfiguration').read()).map(row=>row.channelId),coldConfig.channelPlugins.map(row=>row.channelId))
+   assert.equal(JSON.parse(await readFile(dingtalkChannelPaths(paths,body.channelId).ingressFile,'utf8')).firstStartedAt,JSON.parse(firstIngress).firstStartedAt)
+  }finally{await cold.close()}
+  // 冷配置已由默认加载器实际注册；另用原有假 DWS 跑正常启动绑定，不接触真实厂商。
+  await f.boot()
+  const wire=boundDwsFixture(),row=coldConfig.channelPlugins.find(row=>row.channelId===body.channelId)
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,{...validateDingtalkConfig(row.config),enabled:true,channelId:row.channelId},{runner:wire.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:f.root}})})
+  await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:prior}}},runtime:{getGroup:()=>({messages:[],outbox:[]})},tasks:{isOwnNotification:()=>false}})
+  await eventually(()=>wire.streams.has('group'),'saved group starts a fake DWS subscription')
+  assert.ok(wire.calls.some(args=>args[0]==='profile'))
+  assert.equal(f.host.ctx.channels.plugins.get(row.channelId).notifications.canDisclose(),false)
+  assert.equal(JSON.parse(await readFile(dingtalkChannelPaths(paths,row.channelId).ingressFile,'utf8')).firstStartedAt,JSON.parse(firstIngress).firstStartedAt)
+ }finally{await web.close()}
+})
+
+test('Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝', {timeout:nativeTestTimeout(30000)}, async t=>{
+ const profileWire=boundDwsFixture(),f=await memoryHost(t,undefined,{dingtalkProfileRunner:profileWire.runner}),paths=f.host.ctx.runtimePaths,file=join(paths.config,'config.json'),port=f.host.ctx.get('channelConfiguration')
+ await writeFile(file,JSON.stringify(f.config))
+ const entered=Promise.withResolvers(),release=Promise.withResolvers(),held=withLock(join(paths.config,'.configuration.lock'),async()=>{entered.resolve();await release.promise})
+ await entered.promise
+ const save=port.addDingtalk({channelId:'close-pending-channel',conversationType:'chat',targetKind:'id',target:'fixture-peer'})
+ let closed=false
+ const closing=f.close().then(()=>{closed=true})
+ try{
+  assert.equal(closed,false)
+  assert.throws(()=>port.read(),{code:'CHANNEL_CONFIGURATION_UNAVAILABLE'})
+  await assert.rejects(acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0}),{code:'NIGHT_DATA_IN_USE'})
+ }finally{release.resolve()}
+ await Promise.all([held,save,closing])
+ assert.equal(closed,true)
+ assert.ok((await loadConfig(file)).channelPlugins.some(row=>row.channelId==='close-pending-channel'))
+ await assert.rejects(access(join(paths.runtime,'.host.lock')),{code:'ENOENT'})
+})
+
+test('profile查询真实超时后等待进程退出，Host关闭期间保留安装锁', {timeout:nativeTestTimeout(30000)}, async t=>{
+ const ready=Promise.withResolvers(),termination=Promise.withResolvers(),signals=[]
+ const runner=createNodeDwsRunner({executable:process.execPath,runTimeoutMs:1000})
+ const nativeSpawn=runner.spawn,nativeRun=runner.run
+ let running,pid,queryError,settled=false,closed=false,closing
+ runner.spawn=function(args,hooks){
+  assert.deepEqual(args,['profile','list','--format','json'])
+  running=nativeSpawn.call(this,['-e','process.stdout.write("fixture-pid:"+process.pid+String.fromCharCode(10));setInterval(()=>{},1000)'],{...hooks,onStdoutLine(line){
+   if(line.startsWith('fixture-pid:')){pid=Number(line.slice('fixture-pid:'.length));ready.resolve()}
+   hooks.onStdoutLine(line)
+  }})
+  // 真实子进程保持运行；受控包装器延迟实际信号投递，不能把返回true当退出。
+  return {...running,terminate(signal){signals.push(signal);termination.resolve();return true}}
+ }
+ runner.run=async function(args){try{return await nativeRun.call(this,args)}catch(error){queryError=error;throw error}}
+ const f=await memoryHost(t,undefined,{dingtalkProfileRunner:runner}),paths=f.host.ctx.runtimePaths,file=join(paths.config,'config.json'),port=f.host.ctx.get('channelConfiguration')
+ await writeFile(file,JSON.stringify(f.config));const before=await readFile(file,'utf8')
+ const save=port.addDingtalk({channelId:'timeout-profile-channel',conversationType:'chat-room',targetKind:'name',target:'Isolated Fixture'})
+ save.then(()=>{settled=true},()=>{settled=true})
+ const outcome=save.then(value=>({value}),error=>({error}))
+ const prematureExit=outcome.then(({error})=>{throw error??new Error('profile query settled before its live-child assertion')})
+ try{
+  await Promise.race([ready.promise,prematureExit]);await Promise.race([termination.promise,prematureExit]);await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(settled,false,'the timed-out query cannot settle while its actual child is alive')
+  assert.equal(process.kill(pid,0),true)
+  closing=f.close().then(()=>{closed=true})
+  await assert.rejects(acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0}),{code:'NIGHT_DATA_IN_USE'})
+  assert.equal(closed,false);assert.equal(process.kill(pid,0),true)
+  assert.equal(await readFile(file,'utf8'),before)
+  await assert.rejects(access(dingtalkChannelPaths(paths,'timeout-profile-channel').ingressFile),{code:'ENOENT'})
+ }finally{
+  running?.terminate('SIGKILL')
+  await running?.waitForExit()
+ }
+ const result=await outcome;assert.equal(result.error?.code,'DINGTALK_PROFILE_LOOKUP_FAILED');await closing
+ assert.equal(queryError.message,'dws_command_timeout:1000','runner preserves the original timeout after joining')
+ assert.deepEqual(signals,['SIGTERM','SIGKILL']);assert.equal(settled,true);assert.equal(closed,true)
+ assert.throws(()=>process.kill(pid,0),{code:'ESRCH'})
+ await assert.rejects(access(join(paths.runtime,'.host.lock')),{code:'ENOENT'})
+ assert.equal(await readFile(file,'utf8'),before)
+ const completed=await createNodeDwsRunner({executable:process.execPath,cwd:f.root}).run(['-e','process.stdout.write("final-line-without-newline")'])
+ assert.equal(completed.exitCode,0);assert.equal(completed.stdout,'final-line-without-newline')
+ await assert.rejects(createNodeDwsRunner({executable:join(f.root,'missing-dws-executable'),cwd:f.root}).run(['profile','list']),{code:'ENOENT'})
+ t.diagnostic('真实PID存活时查询与Host关闭均未结算；实际退出后PID消失、锁释放、配置/水位未写；原超时保留，正常输出与spawn失败均排空。')
 })

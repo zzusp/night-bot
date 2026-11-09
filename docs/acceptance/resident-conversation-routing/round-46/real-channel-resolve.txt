@@ -1,0 +1,9 @@
+R46_FULL_READONLY_RESOLVE_START 2026-11-09T07:14:49.091135+00:00 HEAD 2db2aa7c27c9f1ced506de7740c6aac4b757119c UNCOMMITTED_WORKTREE True SCRIPT_SHA256 a8199b56ab9cc707329e8998d85128c0511eb1236112315beda97ea7e39942d6 SOURCE_PINS {"packages/dingtalk-core/dws-runner.js": {"bytes": 2276, "sha256": "f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa"}, "src/channels/plugins/dingtalk-binding.js": {"bytes": 8022, "sha256": "300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b"}, "src/channels/plugins/dingtalk-config.js": {"bytes": 7029, "sha256": "d868b9ac2ad35f7552599c856035d1ff5e5b4d364b3bb8cbf04fceb8bb434b3f"}, "src/channels/plugins/dingtalk-storage.js": {"bytes": 5481, "sha256": "d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d"}, "src/channels/plugins/dws-environment.js": {"bytes": 1937, "sha256": "70bc95982a242c172671f51bf579bf1598c4eecf7b5746a57d9706201b786a61"}, "src/runtime/paths.js": {"bytes": 5808, "sha256": "6f3f3c3855d073425cf591861cbe783da1cd703b16f1ae5210651fc594e4599a"}}
+ACTUAL_STDOUT_BEGIN
+{"readOnlyFullBindingResolution":true,"passed":true,"profileMatchesSaved":true,"targetMatchesSaved":true,"typeMatches":true,"actorPresent":true,"configUnchanged":true,"bindingUnchanged":true,"ingressUnchanged":true}
+ACTUAL_STDOUT_END
+ACTUAL_STDERR_BEGIN
+ACTUAL_STDERR_END
+R46_FULL_READONLY_RESOLVE_FINISH 2026-11-09T07:14:51.891103+00:00 EXIT 0 SOURCE_CHANGED []
+
+[exited with code 0]

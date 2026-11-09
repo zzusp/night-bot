@@ -1,12 +1,15 @@
 import {join,dirname,resolve} from 'node:path'
-import {lstat} from 'node:fs/promises'
+import {lstat,readdir} from 'node:fs/promises'
 import {inside} from '../../runtime/paths.js'
 import {hash} from '../../memory/format.js'
+import {dingtalkBindingKey,validateConfig} from './dingtalk-config.js'
 import {atomicWrite,readRegular,failure} from '../../runtime/files.js'
 
-export function dingtalkChannelPaths(paths,channelId){
+export function dingtalkChannelPaths(paths,channelId,storageKey){
   const namespace=channelId==='dingtalk-dws'?'dingtalk-dws':'dingtalk-dws-'+hash(channelId)
-  return {namespace,bindingFile:join(paths.config,'channels',namespace,'binding.json'),ingressFile:join(paths.state,'channels',namespace,'ingress.json'),privateHome:join(paths.secrets,namespace),workspace:join(paths.workspaces,'channels',namespace),cache:join(paths.cache,namespace)}
+  if(storageKey!==undefined&&storageKey!=='legacy'&&!/^[a-f0-9]{64}$/.test(storageKey))throw failure('DINGTALK_STORAGE_IDENTITY_INVALID')
+  const records=storageKey&&storageKey!=='legacy'?join(namespace,'targets',storageKey):namespace
+  return {namespace,bindingFile:join(paths.config,'channels',records,'binding.json'),ingressFile:join(paths.state,'channels',records,'ingress.json'),privateHome:join(paths.secrets,namespace),workspace:join(paths.workspaces,'channels',namespace),cache:join(paths.cache,namespace)}
 }
 export async function assertDingtalkStoragePath(paths,file){
   if(paths.mode!=='portable'||![paths.config,paths.state].some(root=>inside(root,file)))throw failure('DINGTALK_STORAGE_PATH_UNSAFE')
@@ -19,14 +22,23 @@ export async function assertDingtalkStoragePath(paths,file){
   }
   throw failure('DINGTALK_STORAGE_PATH_UNSAFE')
 }
+/** 只有真实缺席才返回 undefined；损坏的耐久身份证据不能被自动覆盖。 */
+export async function readDingtalkBinding(file){
+  const raw=await readRegular(file)
+  if(raw===undefined)return undefined
+  let binding;try{binding=JSON.parse(raw)}catch{throw failure('DINGTALK_BINDING_INVALID')}
+  if(!binding||typeof binding!=='object'||Array.isArray(binding))throw failure('DINGTALK_BINDING_INVALID')
+  try{return validateConfig({dingtalk_profile:binding.profile,dingtalk_conversation_type:binding.conversationType,
+    ...binding.conversationType==='chat-room'?{dingtalk_group_id:binding.conversationId}:{dingtalk_user_id:binding.peerUserId},dingtalk_binding:binding}).binding}catch{throw failure('DINGTALK_BINDING_INVALID')}
+}
 export async function readDingtalkIngress(file){
   const value=JSON.parse(await readRegular(file)??'{"paused":false}')
   if(!value||typeof value.paused!=='boolean'||['recoveryFromAt','pausedAt','firstStartedAt','backfillThroughAt','consumedAt'].some(key=>value[key]!==undefined&&(typeof value[key]!=='string'||!Number.isFinite(Date.parse(value[key])))))throw failure('DINGTALK_INGRESS_STATE_INVALID')
   if(value.deferredMessages!==undefined&&(!Array.isArray(value.deferredMessages)||value.deferredMessages.some(message=>!message||typeof message.messageId!=='string'||!message.messageId||message.messageId.length>256||typeof message.occurredAt!=='string'||!Number.isFinite(Date.parse(message.occurredAt)))))throw failure('DINGTALK_INGRESS_STATE_INVALID')
   return value
 }
-export async function openDingtalkIngress(paths,channelId,{fromAt,checkOnly=false}={}){
-  const file=dingtalkChannelPaths(paths,channelId).ingressFile
+export async function openDingtalkIngress(paths,channelId,{fromAt,checkOnly=false,storageKey}={}){
+  const file=dingtalkChannelPaths(paths,channelId,storageKey).ingressFile
   await assertDingtalkStoragePath(paths,file)
   let state=await readDingtalkIngress(file),tail=Promise.resolve(),lastError
   const previous=JSON.stringify(state)
@@ -67,5 +79,20 @@ export async function openDingtalkIngress(paths,channelId,{fromAt,checkOnly=fals
     }),
     completedRange:range=>save(current=>current.deferredMessages?.length?current:!current.backfillThroughAt||Date.parse(range.end)>Date.parse(current.backfillThroughAt)?{...current,backfillThroughAt:range.end}:current),
     async drain(){await tail;if(lastError)throw lastError},
+  }
+}
+
+/** 只检查该渠道旧身份的持久延迟消息；不移动或删除旧 binding/ingress。 */
+export async function assertDingtalkTargetSwitch(paths,channelId,nextBinding){
+  const base=dingtalkChannelPaths(paths,channelId),directory=join(dirname(base.bindingFile),'targets')
+  await assertDingtalkStoragePath(paths,join(directory,'probe.json'))
+  const keys=await readdir(directory).catch(error=>{if(error.code==='ENOENT')return [];throw error})
+  if(keys.some(key=>!/^[a-f0-9]{64}$/.test(key)))throw failure('DINGTALK_STORAGE_IDENTITY_INVALID')
+  for(const key of [undefined,...keys]){
+    const files=dingtalkChannelPaths(paths,channelId,key)
+    await assertDingtalkStoragePath(paths,files.bindingFile);await assertDingtalkStoragePath(paths,files.ingressFile)
+    const binding=await readDingtalkBinding(files.bindingFile)
+    if(binding&&dingtalkBindingKey(binding)===dingtalkBindingKey(nextBinding))continue
+    if((await readDingtalkIngress(files.ingressFile)).deferredMessages?.length)throw failure('DINGTALK_CHANNEL_SWITCH_BLOCKED')
   }
 }

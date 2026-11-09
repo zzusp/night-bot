@@ -15,10 +15,27 @@ export interface Task {
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];
   notifications?: Record<string, unknown>[];
 }
-export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown';
+export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown' | 'pending-restart';
 export interface Channel {
   channelId: string; type: string; enabled: boolean; connected?: boolean;
-  connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | null;
+  connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | 'DINGTALK_CHANNEL_SWITCH_BLOCKED' | null;
+  name?: string; conversationType?: 'chat' | 'chat-room'; promptConfigured?: boolean; restartRequired?: boolean; liveApplied?: boolean; writesAuthorized?: boolean; savedVersion?: string; runningVersion?: string | null;
+  runningConnectionState?: ChannelConnectionState; runningErrorCode?: Channel['errorCode']; runningConnected?: boolean; runningName?: string; runningConversationType?: 'chat' | 'chat-room';
+}
+export interface DingtalkChannelInput {
+  channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; prompt?: string;
+}
+export interface DingtalkChannelCreated {
+  ok: true; changed: true; restartRequired: true; liveApplied: false; channel: Channel;
+}
+export interface DingtalkChannelDetail {
+  channelId: string; version: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string;
+}
+export interface DingtalkChannelEdit {
+  expectedVersion: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string;
+}
+export interface DingtalkChannelUpdated {
+  ok: true; changed: boolean; restartRequired: boolean; liveApplied: boolean; channel: Channel; detail: DingtalkChannelDetail;
 }
 export interface Conversation { id: string; name: string; channelId: string; type: string; updatedAt?: string }
 export interface ChatSummary { id: string; title: string; updatedAt: string; status: string }
@@ -96,6 +113,18 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'DINGTALK_AUTH_REQUIRED') return 'Bot 运行环境尚未登录钉钉，请先完成登录再保存渠道。';
+    if (error.code === 'DINGTALK_CURRENT_PROFILE_NOT_FOUND') return 'Bot 运行环境未找到当前登录账号，请先确认当前账号再保存。';
+    if (error.code === 'DINGTALK_CURRENT_PROFILE_AMBIGUOUS') return 'Bot 运行环境存在多个当前账号，请先消除账号歧义；不会自动选择账号。';
+    if (error.code === 'DINGTALK_CLI_UNAVAILABLE') return 'Bot 运行环境的钉钉命令不可用或没有执行权限，未保存配置，请检查运行环境。';
+    if (error.code === 'DINGTALK_PROFILE_LOOKUP_FAILED') return '暂时无法读取 Bot 运行环境当前账号，未保存配置，请检查连接后重试。';
+    if (['DINGTALK_PROFILE_RESPONSE_INVALID', 'DINGTALK_QUERY_INVALID_JSON', 'DINGTALK_QUERY_INCOMPLETE', 'DINGTALK_QUERY_FAILED'].includes(error.code)) return '钉钉账号查询返回异常，未保存配置，请检查 Bot 运行环境后重试。';
+    if (error.code === 'DINGTALK_CHANNEL_VERSION_CONFLICT') return '渠道配置已被修改，未覆盖新版本。原草稿已保留，请明确重新加载最新配置后再编辑。';
+    if (error.code === 'DINGTALK_CHANNEL_SWITCH_BLOCKED') return '旧目标仍有未决任务、输入或投递依赖，暂不能切换目标。请先处理这些依赖；原草稿已保留。';
+    if (error.code === 'DINGTALK_CHANNEL_NOT_FOUND') return '未找到这条钉钉渠道配置。原草稿已保留，请重新核对渠道列表。';
+    if (error.code === 'DINGTALK_CHANNEL_EXISTS') return '此渠道标识已存在，未覆盖原配置。请使用新的渠道标识。';
+    if (['DINGTALK_CONFIG_INVALID', 'DINGTALK_CHANNEL_REQUEST_INVALID'].includes(error.code)) return '钉钉渠道配置未被接纳，请检查渠道标识和目标。';
+    if (error.code === 'CHANNEL_CONFIGURATION_UNAVAILABLE') return '当前安装暂不支持保存渠道配置。请检查运行方式或稍后重试。';
     if (error.code === 'SESSION_CHANGED') return '连接状态已变化，内容已保留。请重新确认连接后重试刚才的操作。';
     if (error.status === 401) return '登录已失效，请重新连接。';
     if (error.status === 403) return '当前连接没有访问权限，请重新登录或联系管理员。';
