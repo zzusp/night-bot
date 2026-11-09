@@ -74,13 +74,13 @@ node bin/night-bot-config.js data/config/config.json web --enabled true --channe
 
 ## Web 钉钉渠道新增与编辑
 
-认证安装操作者可在「渠道」页新增群聊或私聊配置，并通过卡片编辑已保存配置。新增时填写唯一渠道标识、会话类型、按 ID/名称的单目标及可选显示名称/职责；无需填写 profile。Host 只经可选插件解析 Bot 运行环境当前登录账号：全列表必须恰有一个 `isCurrent:true`，该账号所属组织恰有一个 `isOrgCurrent:true` 且为同一账号；其他组织各自的当前账号不构成歧义。未登录、无全局当前标记或上述标记歧义/不一致时拒绝保存，不回退到首项、最近项、浏览器、环境变量或默认账号。名称解析和账号绑定在正常重启后的既有可选插件流程完成，不在 Web 中登录厂商账号。账户模式固定为 `system`，不接受秘密、环境变量、任意 `binding` 或 `executable`。
+认证安装操作者可在「渠道」页新增群聊或私聊配置，并通过卡片编辑已保存配置。新增时填写唯一渠道标识、会话类型、按 ID/名称的单目标、外发授权及可选显示名称/职责；无需填写 profile。Host 只经可选插件解析 Bot 运行环境当前登录账号：全列表必须恰有一个 `isCurrent:true`，该账号所属组织恰有一个 `isOrgCurrent:true` 且为同一账号；其他组织各自的当前账号不构成歧义。未登录、无全局当前标记或上述标记歧义/不一致时拒绝保存，不回退到首项、最近项、浏览器、环境变量或默认账号。名称解析和账号绑定在正常重启后的既有可选插件流程完成，不在 Web 中登录厂商账号。账户模式固定为 `system`，不接受秘密、环境变量、任意 `binding` 或 `executable`。
 
 接入依赖中的 `contact +search-user` 当前按 DWS v1.0.63（`4cd5d053`）的 composite 响应解析：外层须为 `ok:true`、`outcome:"success"`，`data` 内含 `count` 与 `users`，计数须与用户数组一致；失败、部分或不完整结果拒绝。此结构仅用于该查询；`profile list`、`contact user get-self` 等原子命令保持各自原始响应合同，不全局解包 `data`，不回退接受缺少外层成功状态的裸 `users` 响应。`chat conversation-info` 使用 MCP 原子响应，要求 `success:true`，从 `result.conversationInfo` 读取身份，继续严格校验会话 ID、群聊/私聊种类与绑定漂移；不把裸 `result` 或 contact 的 `data` 当作该身份结构，失败或不完整结果拒绝。响应适配不代表当前渠道已接入，仍须在正常重启后核实账号、目标绑定与监听终态。
 
-`POST /api/channels/dingtalk` 只接收 `{channelId, conversationType, targetKind, target, name?, prompt?}`，会话类型为 `chat-room` / `chat`，目标方式为 `id` / `name`。它沿现有同源 cookie、Host/Origin 和 CSRF 校验，由持有本安装锁的 Host 在配置锁内原子保存，只新增、不覆盖，不从 live Web 派生离线 CLI 或绕过锁。非受控安装或保存端口不可用时返回 503 `CHANNEL_CONFIGURATION_UNAVAILABLE`，不会静默改写其它配置。
+`POST /api/channels/dingtalk` 只接收 `{channelId, conversationType, targetKind, target, name?, prompt?, writesAuthorized?}`，会话类型为 `chat-room` / `chat`，目标方式为 `id` / `name`。它沿现有同源 cookie、Host/Origin 和 CSRF 校验，由持有本安装锁的 Host 在配置锁内原子保存，只新增、不覆盖，不从 live Web 派生离线 CLI 或绕过锁。非受控安装或保存端口不可用时返回 503 `CHANNEL_CONFIGURATION_UNAVAILABLE`，不会静默改写其它配置。
 
-编辑使用认证 `GET /api/channels/dingtalk/:encodedId`，只回 `{channelId,version,name,prompt,conversationType,targetKind,target}`；名称与职责缺省为空串。`PATCH` 同路径，完整正文仅 `{expectedVersion,name,prompt,conversationType,targetKind,target}`，ID 只取路径；`expectedVersion` 为 GET 的 64 位小写 SHA256，Host 在原配置锁内对保存整 row 做 CAS，不能覆盖新版本。账号继承已保存 canonical，不选择 OS 当前账号；浏览器不读写 profile、binding、env 或秘密。target/name trim，空 name 清除显示名；prompt 保留原字符串和换行，不 trim；专用详情保持原 ID/名称目标表达，不因内部绑定解析自动改成另一种填写方式。
+编辑使用认证 `GET /api/channels/dingtalk/:encodedId`，只回 `{channelId,version,name,prompt,conversationType,targetKind,target,writesAuthorized}`；名称与职责缺省为空串。`PATCH` 同路径，完整正文仅 `{expectedVersion,name,prompt,conversationType,targetKind,target,writesAuthorized?}`，ID 只取路径；`expectedVersion` 为 GET 的 64 位小写 SHA256，Host 在原配置锁内对保存整 row 做 CAS，不能覆盖新版本。账号继承已保存 canonical，不选择 OS 当前账号；浏览器不读写 profile、binding、env 或秘密。target/name trim，空 name 清除显示名；prompt 保留原字符串和换行，不 trim；专用详情保持原 ID/名称目标表达，不因内部绑定解析自动改成另一种填写方式。
 
 PATCH 成功回 `{ok:true,changed,restartRequired,liveApplied,channel,detail}`；detail 与 GET 同型，`channel.savedVersion === detail.version`。允许 `changed:false`，仍以实际保存、加载与激活状态报告，不机械要求发生变化或待重启。版本过期为 409 `DINGTALK_CHANNEL_VERSION_CONFLICT`，保留原草稿，只在明确点击重新加载后换入新版本；目标仍有未决依赖为 409 `DINGTALK_CHANNEL_SWITCH_BLOCKED`，保留草稿并先处理旧依赖。未找到为 404 `DINGTALK_CHANNEL_NOT_FOUND`，输入拒绝为 400 `DINGTALK_CHANNEL_REQUEST_INVALID` / `DINGTALK_CONFIG_INVALID`。沿原同源、认证、CSRF 与配置关闭排空，不新增编辑绕锁端口。
 
@@ -88,9 +88,9 @@ PATCH 成功回 `{ok:true,changed,restartRequired,liveApplied,channel,detail}`�
 
 列表 `savedVersion` / `runningVersion` 分别报告保存与当前加载版本；不同则待重启，相同只证明已加载，钉钉 `liveApplied` 还要求真实绑定激活完成。`runningConnectionState`、`runningErrorCode`、可选 `runningConnected` 及加载后的 `runningName` / `runningConversationType` 独立报告当前插件状态，不用保存配置的待重启状态盖掉旧插件健康。冷启被未决依赖阻止时为 `connectionState:error` / `errorCode:DINGTALK_CHANNEL_SWITCH_BLOCKED` / `liveApplied:false`；不能将重复重启当作解除依赖，保存版本一致也不能声称新目标已接入。
 
-新增固定 `enabled:true`、`listen:true`、`writes:false`；成功回执含 `restartRequired:true`、`liveApplied:false`。GET 渠道安全行能读回已保存未加载的渠道，显示 `pending-restart` / `connected:false`，不返回 profile、目标、绑定或凭据。钉钉行的 `writesAuthorized` 仅报告已保存配置的外发授权，不能视为当前可发送；已有渠道可能已获外发授权，不因新渠道默认关闭而改写它们。按现有运行手册正常排空并重启才应用新增配置，不把保存、真实接入、发送验收混为一体。
+新增固定 `enabled:true`、`listen:true`，`writesAuthorized` 缺省为 false；显式布尔值映射到 `dingtalk_writes_authorized`，拒绝字符串、数字或 null。编辑遗漏该字段保留原值，明确 true/false 则授权或撤销；目标表达或会话类型变更与开启授权不能同次提交，请先保存目标，再重新编辑授权。授权包括正常回复、通知和附件及已排队未发送通知，保存后正常重启才应用；关闭不撤回既有发送。成功回执含 `restartRequired:true`、`liveApplied:false`。GET 渠道安全行能读回已保存未加载的渠道，显示 `pending-restart` / `connected:false`，不返回 profile、目标、绑定或凭据。钉钉行的 `writesAuthorized` 仅报告已保存配置的外发授权，不能视为当前可发送；已有渠道可能已获外发授权，不因新渠道默认关闭而改写它们。按现有运行手册正常排空并重启才应用新增配置，不把保存、真实接入、发送验收混为一体。
 
-重复 ID 返回 409 `DINGTALK_CHANNEL_EXISTS`，输入错误返回 400，均保留草稿且不覆盖已有配置。账号校验在配置写入前完成：未登录、无当前账号或当前账号歧义分别返回 409 `DINGTALK_AUTH_REQUIRED` / `DINGTALK_CURRENT_PROFILE_NOT_FOUND` / `DINGTALK_CURRENT_PROFILE_AMBIGUOUS`，不触发 Web 登录失效；命令不可用或查询失败返回相应 503，响应异常返回相应 502，均明确拒绝并保留草稿。500、断线或不完整成功响应按写结果未知处理，页面只读按原渠道标识核对；GET 同 ID 存在不能证明本次账号/目标已写入，缺席也不解锁重发。不要自动重发 POST、自动换 ID 或通过删除锁处理未知结果。认证换代清除表单并使旧异步回执失效；聊天草稿容器不因此重建。新增与编辑均不实现热加载、删除/启停、授权外发或真实厂商代发。编辑 500、断网或不完整成功回执同样按未知锁定，只读 GET 比较准确字段与版本；仅新版本与提交字段逐项一致可确认当前保存配置一致，版本未变或字段不符继续只读，不判定原提交未发生，不重发 PATCH。
+重复 ID 返回 409 `DINGTALK_CHANNEL_EXISTS`，输入错误返回 400，均保留草稿且不覆盖已有配置。账号校验在配置写入前完成：未登录、无当前账号或当前账号歧义分别返回 409 `DINGTALK_AUTH_REQUIRED` / `DINGTALK_CURRENT_PROFILE_NOT_FOUND` / `DINGTALK_CURRENT_PROFILE_AMBIGUOUS`，不触发 Web 登录失效；命令不可用或查询失败返回相应 503，响应异常返回相应 502，均明确拒绝并保留草稿。500、断线或不完整成功响应按写结果未知处理，页面只读按原渠道标识核对；GET 同 ID 存在不能证明本次账号/目标已写入，缺席也不解锁重发。不要自动重发 POST、自动换 ID 或通过删除锁处理未知结果。认证换代清除表单并使旧异步回执失效；聊天草稿容器不因此重建。新增与编辑可保存外发授权配置，不实现热加载、删除/启停或真实厂商代发按钮。编辑 500、断网或不完整成功回执同样按未知锁定，只读 GET 比较准确字段与版本；仅新版本与提交字段逐项一致可确认当前保存配置一致，版本未变或字段不符继续只读，不判定原提交未发生，不重发 PATCH。
 
 ## 安装权限与单次审批
 

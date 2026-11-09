@@ -23,16 +23,16 @@ export interface Channel {
   runningConnectionState?: ChannelConnectionState; runningErrorCode?: Channel['errorCode']; runningConnected?: boolean; runningName?: string; runningConversationType?: 'chat' | 'chat-room';
 }
 export interface DingtalkChannelInput {
-  channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; prompt?: string;
+  channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; prompt?: string; writesAuthorized?: boolean;
 }
 export interface DingtalkChannelCreated {
   ok: true; changed: true; restartRequired: true; liveApplied: false; channel: Channel;
 }
 export interface DingtalkChannelDetail {
-  channelId: string; version: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string;
+  channelId: string; version: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; writesAuthorized: boolean;
 }
 export interface DingtalkChannelEdit {
-  expectedVersion: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string;
+  expectedVersion: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; writesAuthorized?: boolean;
 }
 export interface DingtalkChannelUpdated {
   ok: true; changed: boolean; restartRequired: boolean; liveApplied: boolean; channel: Channel; detail: DingtalkChannelDetail;

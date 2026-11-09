@@ -32,7 +32,7 @@ const waitPatch = (page: Page, id: string) => page.waitForResponse(response => r
 async function readDetail(page: Page, id: string): Promise<DingtalkChannelDetail> {
   const response = await page.request.get(editEndpoint(id)); expect(response.status()).toBe(200)
   const detail = await response.json()
-  expect(Object.keys(detail).sort()).toEqual(['channelId', 'conversationType', 'name', 'prompt', 'target', 'targetKind', 'version'])
+  expect(Object.keys(detail).sort()).toEqual(['channelId', 'conversationType', 'name', 'prompt', 'target', 'targetKind', 'version', 'writesAuthorized'])
   expect(detail.version).toMatch(/^[a-f0-9]{64}$/)
   return detail
 }
@@ -86,9 +86,41 @@ test('新增群聊切换清除旧目标，键盘与中文 IME 不误交，保存
   const response = waitSave(page); await target.press('Enter'); const saved = await response
   expect(saved.status()).toBe(200)
   expect(await saved.json()).toMatchObject({ok: true, changed: true, restartRequired: true, liveApplied: false, channel: {channelId: 'browser-created-room', conversationType: 'chat-room', writesAuthorized: false, connected: false, connectionState: 'pending-restart'}})
-  expect(writes).toEqual([{channelId: 'browser-created-room', conversationType: 'chat-room', targetKind: 'id', target: 'fixture-room-id', name: '浏览器隔离群聊', prompt: '只保存本地测试配置，不连接真实账号'}])
+  expect(writes).toEqual([{channelId: 'browser-created-room', conversationType: 'chat-room', targetKind: 'id', target: 'fixture-room-id', name: '浏览器隔离群聊', prompt: '只保存本地测试配置，不连接真实账号', writesAuthorized: false}])
   await expect(cardFor(page, 'browser-created-room')).toContainText('待重启')
   await expect(cardFor(page, 'browser-created-room')).not.toContainText('健康检查正常')
+})
+
+test('外发授权默认关闭，新增显式授权、编辑撤销及目标变更不继承授权', async ({page}) => {
+  await login(page)
+  const id = 'browser-outbound-authorization', dialog = await openForm(page)
+  await fillRoom(dialog, id)
+  const authorization = dialog.getByLabel('外发授权', {exact: true})
+  await expect(authorization).toHaveValue('false')
+  await authorization.selectOption('true')
+  const created = waitSave(page)
+  await dialog.getByRole('button', {name: '保存钉钉渠道', exact: true}).click()
+  expect(await (await created).json()).toMatchObject({channel: {writesAuthorized: true}, restartRequired: true, liveApplied: false})
+  await expect(dialog).toContainText('已保存外发授权')
+  await dialog.getByRole('button', {name: '关闭', exact: true}).click()
+  const editing = await openEdit(page, id), control = editing.getByLabel('外发授权', {exact: true})
+  await expect(control).toHaveValue('true')
+  await control.selectOption('false')
+  const revoked = await saveEdit(page, editing, id)
+  expect(await revoked.json()).toMatchObject({detail: {writesAuthorized: false}, channel: {writesAuthorized: false}})
+  expect((await readDetail(page, id)).writesAuthorized).toBe(false)
+  await editing.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
+  await control.selectOption('true')
+  expect((await saveEdit(page, editing, id)).status()).toBe(200)
+  await editing.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
+  await expect(control).toHaveValue('true')
+  await editing.getByLabel('群 ID', {exact: true}).fill('fixture-new-target')
+  await expect(control).toHaveValue('false'); await expect(control).toBeDisabled()
+  await expect(editing).toContainText('请先保存目标，再重新编辑授权')
+  const changed = await saveEdit(page, editing, id)
+  expect(await changed.json()).toMatchObject({detail: {target: 'fixture-new-target', writesAuthorized: false}})
+  await editing.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
+  await expect(control).toBeEnabled(); await expect(control).toHaveValue('false')
 })
 
 test('新增私聊按名称提交且当前渠道不被当作已热加载', async ({page}) => {
@@ -99,7 +131,7 @@ test('新增私聊按名称提交且当前渠道不被当作已热加载', async
   await dialog.getByLabel('用户名称', {exact: true}).fill('隔离私聊目标')
   const response = waitSave(page); await dialog.getByRole('button', {name: '保存钉钉渠道', exact: true}).click(); const saved = await response
   expect(saved.status()).toBe(200)
-  expect(saved.request().postDataJSON()).toEqual({channelId: 'browser-created-direct', conversationType: 'chat', targetKind: 'name', target: '隔离私聊目标'})
+  expect(saved.request().postDataJSON()).toEqual({channelId: 'browser-created-direct', conversationType: 'chat', targetKind: 'name', target: '隔离私聊目标', writesAuthorized: false})
   expect(await saved.json()).toMatchObject({restartRequired: true, liveApplied: false, channel: {conversationType: 'chat', writesAuthorized: false, connected: false}})
   const rows = await page.request.get(savedChannels).then(response => response.json())
   expect(rows.items.find((row: {channelId: string}) => row.channelId === 'browser-created-direct')).toMatchObject({connectionState: 'pending-restart', restartRequired: true, liveApplied: false})
@@ -291,10 +323,10 @@ test('编辑回填固定标识与完整字段，同 ID 待重启及无变化或�
   await target.dispatchEvent('compositionend', {data: '人'})
   const pending = waitPatch(page, id); await target.press('Enter'); const response = await pending
   expect(response.status()).toBe(200)
-  expect(response.request().postDataJSON()).toEqual({expectedVersion: original.version, name: '编辑后的渠道', prompt, conversationType: 'chat', targetKind: 'name', target: '浏览器隔离私聊目标'})
+  expect(response.request().postDataJSON()).toEqual({expectedVersion: original.version, name: '编辑后的渠道', prompt, conversationType: 'chat', targetKind: 'name', target: '浏览器隔离私聊目标', writesAuthorized: false})
   const saved = await response.json(), detail = await readDetail(page, id)
   expect(saved).toMatchObject({ok: true, changed: true, restartRequired: true, liveApplied: false, detail})
-  expect(detail).toEqual({channelId: id, version: saved.detail.version, name: '编辑后的渠道', prompt, conversationType: 'chat', targetKind: 'name', target: '浏览器隔离私聊目标'})
+  expect(detail).toEqual({channelId: id, version: saved.detail.version, name: '编辑后的渠道', prompt, conversationType: 'chat', targetKind: 'name', target: '浏览器隔离私聊目标', writesAuthorized: false})
   expect(detail.version).not.toBe(original.version)
   const row = (await page.request.get(savedChannels).then(response => response.json())).items.find((row: {channelId: string}) => row.channelId === id)
   expect(row).toMatchObject({savedVersion: detail.version, runningVersion: original.version, restartRequired: true, liveApplied: false, connectionState: 'pending-restart'})
@@ -348,7 +380,7 @@ test('编辑旧版本明确冲突，保留原草稿并仅在显式重载后使�
     await dialog.getByLabel('显示名称（可选）', {exact: true}).fill('')
     await dialog.getByLabel('渠道职责（可选）', {exact: true}).fill('')
     const saved = await saveEdit(page, dialog, id); expect(saved.status()).toBe(200)
-    expect(saved.request().postDataJSON()).toEqual({expectedVersion: latest.version, name: '', prompt: '', conversationType: latest.conversationType, targetKind: latest.targetKind, target: latest.target})
+    expect(saved.request().postDataJSON()).toEqual({expectedVersion: latest.version, name: '', prompt: '', conversationType: latest.conversationType, targetKind: latest.targetKind, target: latest.target, writesAuthorized: latest.writesAuthorized})
     expect(await readDetail(page, id)).toMatchObject({name: '', prompt: '', target: latest.target}); expect(patches).toBe(2)
   } finally {await other.close()}
 })
@@ -360,6 +392,7 @@ test('编辑断线后比较真实保存快照，字段不一致继续锁定，�
   缩进仍是请求的一部分
 `
   await dialog.getByLabel('渠道职责（可选）', {exact: true}).fill(intendedPrompt)
+  await dialog.getByLabel('外发授权', {exact: true}).selectOption('true')
   let patches = 0, saved = false, reveal = false, reads = 0
   await page.route('**' + editEndpoint(id), async route => {
     if (route.request().method() === 'PATCH') {
@@ -381,9 +414,9 @@ test('编辑断线后比较真实保存快照，字段不一致继续锁定，�
   const other = await context.newPage()
   try {
     await other.goto('/#/channels'); const concurrent = await openEdit(other, id)
-    await concurrent.getByLabel('渠道职责（可选）', {exact: true}).fill('并发保存的不同职责')
+    await concurrent.getByLabel('外发授权', {exact: true}).selectOption('false')
     expect((await saveEdit(other, concurrent, id)).status()).toBe(200)
-    expect((await readDetail(page, id)).prompt).toBe('并发保存的不同职责')
+    expect((await readDetail(page, id)).writesAuthorized).toBe(false)
     reveal = true; await check.click()
     await expect(dialog).toContainText('当前保存版本或字段与本次请求不一致，保存结果仍未知')
     await expect(dialog.getByLabel('渠道职责（可选）', {exact: true})).toHaveValue(intendedPrompt)
@@ -391,7 +424,7 @@ test('编辑断线后比较真实保存快照，字段不一致继续锁定，�
     await expect(dialog.getByRole('button', {name: '保存渠道修改', exact: true})).toBeDisabled(); expect(patches).toBe(1)
     await concurrent.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
     await expect(concurrent.getByLabel('渠道职责（可选）', {exact: true})).toBeEnabled()
-    await concurrent.getByLabel('渠道职责（可选）', {exact: true}).fill(intendedPrompt)
+    await concurrent.getByLabel('外发授权', {exact: true}).selectOption('true')
     expect((await saveEdit(other, concurrent, id)).status()).toBe(200)
     const current = await readDetail(page, id)
     expect(current.prompt).toBe(intendedPrompt); expect(current.version).not.toBe(original.version)

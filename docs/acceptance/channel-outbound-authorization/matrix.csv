@@ -1,0 +1,12 @@
+case_id,case,round_1,round_2,round_3,result_note
+CA01,Host新增编辑与授权边界,PASS,NOT_RERUN,NOT_RERUN,编辑5项和新增定向1项通过
+CA02,生产守卫与Web构建,PASS,NOT_RERUN,NOT_RERUN,三守卫与类型生产构建通过
+CA03,浏览器授权与关联交互,PASS,NOT_RERUN,NOT_RERUN,14项通过
+CA04,Web完整测试,FAIL,NOT_RERUN,NOT_RERUN,31通过1原基线学习用例失败
+CA05,真实Web保存与冷启生效,PASS,NOT_RERUN,NOT_RERUN,保存不热改且冷启运行版本一致
+CA06,原通知真实发送及平台回读,PASS,NOT_RERUN,NOT_RERUN,delivered且独立完整查询匹配
+CA07,冷恢复不重复发送,PASS,PASS,NOT_RERUN,凭据恢复冷启后原通知次数仍1且收据不变
+CA08,新增定时提醒处理,FAIL,FAIL,NOT_RERUN,原期限已过且平台明确expired不能追认为准点成功
+CA09,恢复模型凭据及提醒终态,BLOCKED,PASS,NOT_RERUN,用户环境引用恢复且原消息分诊Router消费完成
+CA10,原提醒逾期说明及平台回读,NOT_RUN,PASS,NOT_RERUN,原链路delivered且独立完整回读匹配
+CA11,未来一次性提醒触发与实际发送,NOT_RUN,NOT_RUN,PASS,触发晚22毫秒且平台发送晚8秒仅一次
