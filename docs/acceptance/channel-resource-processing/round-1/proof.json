@@ -1,0 +1,144 @@
+{
+  "observedAt": "2026-11-09T15:05:11.234Z",
+  "source": {
+    "branch": "main",
+    "sha": "a6299b7d2db088b38d0cbed1abe1bfe2019f31d7",
+    "runtimeChanges": false
+  },
+  "batch": "resource-check-8a7dfbaa",
+  "task": {
+    "status": "completed",
+    "drained": true,
+    "boundSourceCount": 5,
+    "completionEventState": "consumed"
+  },
+  "cases": [
+    {
+      "kind": "image",
+      "name": "proof-image.png",
+      "validationCode": "IMG-6B74A570",
+      "result": 46,
+      "taskOriginalBytes": 23822,
+      "taskOriginalSha256": "fcb8929fc234f9e5af083597c431111ad321374685d7f8d8c4caf68440e11357",
+      "reportContainsCode": true,
+      "pluginStatus": "read",
+      "pluginError": null,
+      "materialStatus": "read",
+      "materialReason": null,
+      "materialBytes": 23822,
+      "materialSha256": "fcb8929fc234f9e5af083597c431111ad321374685d7f8d8c4caf68440e11357"
+    },
+    {
+      "kind": "text",
+      "name": "proof-text.txt",
+      "validationCode": "TXT-4DF475DA",
+      "result": 54,
+      "taskOriginalBytes": 124,
+      "taskOriginalSha256": "b042b8272ab12e1dc5815ea30a054566ced35eff7ff04d10b5edf564c5bbb7f9",
+      "reportContainsCode": true,
+      "pluginStatus": "read",
+      "pluginError": null,
+      "materialStatus": "read",
+      "materialReason": null,
+      "materialBytes": 124,
+      "materialSha256": "b042b8272ab12e1dc5815ea30a054566ced35eff7ff04d10b5edf564c5bbb7f9"
+    },
+    {
+      "kind": "sheet",
+      "name": "proof-sheet.xlsx",
+      "validationCode": "XLS-5F3FD61E",
+      "result": 65,
+      "taskOriginalBytes": 6527,
+      "taskOriginalSha256": "b4c02f7ae445b856469910a10d4d89c568b2ade8954ed68f6fdeff472d7cd2ee",
+      "reportContainsCode": true,
+      "pluginStatus": "read",
+      "pluginError": null,
+      "materialStatus": "read",
+      "materialReason": null,
+      "materialBytes": 760,
+      "materialSha256": "b0fb40f9a4950ea80d004136cddb70fb5ecc2e6d563f293e782fe0947bdcdd26"
+    },
+    {
+      "kind": "document",
+      "name": "proof-document.pdf",
+      "validationCode": "PDF-B32204B8",
+      "result": 41,
+      "taskOriginalBytes": 18901,
+      "taskOriginalSha256": "dc68e1b1a583074e2b48807d0a15d57b189e6d5afee5d909eab558a792819d0c",
+      "reportContainsCode": true,
+      "pluginStatus": "unavailable",
+      "pluginError": "coordination_resource_format_unsupported",
+      "materialStatus": "unavailable",
+      "materialReason": "RESOURCE_READ_FAILED",
+      "materialBytes": null,
+      "materialSha256": null
+    }
+  ],
+  "journal": {
+    "requireComplete": true,
+    "committedBytes": 614608,
+    "totalBytes": 614608,
+    "sha256": "aed4b36f2bff926ccbb34b3a68b354cb53abb47083116d56d3258c504b0296cd",
+    "tools": [
+      "find",
+      "read",
+      "read_image",
+      "todo_write",
+      "pwsh",
+      "write",
+      "task_result"
+    ],
+    "taskResultAccepted": true,
+    "pdfExtractionToolResultContainsActualCode": true,
+    "taskCallsSenderFixturePath": false
+  },
+  "delivery": {
+    "state": "unknown",
+    "sendAttemptCount": 1,
+    "readbackAttemptCount": 7,
+    "errorCode": "GROUP_REPLY_INTERNAL_DETAILS",
+    "knownNotSent": false,
+    "receiptPresent": false,
+    "publicBodyContainsTaskId": true,
+    "guardRejectsTaskId": true,
+    "attachmentStates": [
+      "prepared",
+      "prepared"
+    ],
+    "independentPlatformSearch": {
+      "complete": true,
+      "hasMore": false,
+      "failedCount": 0,
+      "matchingCount": 1,
+      "onlyOriginalRequest": true,
+      "queryRange": {
+        "endTime": "2026-11-09T23:04:16+08:00",
+        "order": "desc",
+        "semantics": "[start,end)",
+        "startTime": "2026-11-09T22:49:00+08:00"
+      }
+    }
+  },
+  "artifacts": {
+    "reportSha256": "de2fd902eb00dbb243fa36972a6f6ff9109f458ae2d05bdd48e43cc18ae82722",
+    "verificationSha256": "9196e86b6d9afef6f06be7a8903b31c15ddcbd1da9eebabd5b540eea04eb76cd",
+    "verificationKeys": [
+      "bindings",
+      "results",
+      "sha256",
+      "report",
+      "reportSha256",
+      "reportPathsChecked",
+      "finalFailures"
+    ]
+  },
+  "finalCheck": {
+    "at": "2026-11-09T15:08:39.215Z",
+    "serviceHttpStatus": 200,
+    "serviceStatus": "degraded",
+    "recoveryIssueCount": 2,
+    "temporaryCopiesRemoved": 10,
+    "trackedCodeUnchanged": true,
+    "notificationStillUnknown": true
+  }
+}
