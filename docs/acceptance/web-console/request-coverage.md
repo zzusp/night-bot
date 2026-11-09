@@ -1,6 +1,6 @@
 # 用户要求与交付范围核对
 
-核对日期 2026-11-09。远端 main a6299b7；#7 和 #8 已进入 main；#9 的实际 base 是 fix/channel-execution-session-layout，合并 b5df4b2 没有进入 main；#10、#11 尚未合并。git ls-tree main 没有 SettingsPage.tsx 与 src/settings/operator.js。#11 包含这些文件及 #10 的全部提交，main 是本分支祖先，不依赖先合并 #10 才能取得功能。本报告检查实际代码和远端，未访问用户部署环境，也没有部署。
+核对日期 2026-11-09。远端 main fcb39ce（已整合 #12 的四份资源验收文档）；#7 和 #8 已进入 main；#9 的实际 base 是 fix/channel-execution-session-layout，合并 b5df4b2 没有进入 main；#10、#11 尚未合并。git ls-tree main 没有 SettingsPage.tsx 与 src/settings/operator.js。#11 包含这些文件及 #10 的全部提交，main 是本分支祖先，不依赖先合并 #10 才能取得功能。本报告检查实际代码和远端，未访问用户部署环境，也没有部署。
 
 | 用户要求 | main 实际状态 | #11 实现／限制 |
 | --- | --- | --- |
