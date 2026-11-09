@@ -114,7 +114,6 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
         {attempt.state === 'missing' && <Button variant="secondary" disabled={checking} onClick={() => void send(attempt)}>重试这条消息</Button>}
       </div>}</div>}
       <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder={`给 ${brand.name} 发消息…`} />
-      <div className="composer-note"><span>关闭页面后，任务仍会继续</span></div>
     </div></div>
   </ConversationFrame>;
 }

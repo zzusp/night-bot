@@ -114,7 +114,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     assert.ok(f.requests.every(body => !body.tools?.length))
     const open = async actor => {
       web = await createWebConsole({channels, paths: f.host.ctx.runtimePaths, config: {channelId, senderId: actor, port: 0},
-        getApplication: () => ({tasks: {store}}), getReflection: () => reflection})
+        getApplication: () => ({tasks: {store}}), getReflection: () => reflection, getMemory: () => f.host.ctx.memory})
       const login = await fetch(web.origin + '/api/login', {method: 'POST', headers: {origin: web.origin, 'content-type': 'application/json'},
         body: JSON.stringify({token: (await readFile(web.credentialPath, 'utf8')).trim()})})
       assert.equal(login.status, 200)
@@ -125,6 +125,22 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
       }
     }
     const api = await open(senderId), endpoint = '/api/tasks/learn-one/learning'
+    const evolution = await api('/api/evolution')
+    assert.equal(evolution.status, 200); assert.equal(evolution.body.memory.acceptedCount, 1); assert.equal(evolution.body.skills.activeCount, 1)
+    const agent = await f.agent('evolution-reader', {actorId: owner})
+    const baseline = (await api('/api/evolution')).body
+    await f.host.ctx.memory.read(agent.agent, {topic: 'experience'})
+    await f.host.ctx.memory.search(agent.agent, {query: '核对'})
+    const learned = (await reflection.catalog(agent.agent))[0]
+    assert.ok(learned); await reflection.skill(learned, agent.agent)
+    const measured = (await api('/api/evolution')).body
+    assert.equal(measured.memory.readCount, (baseline.memory.readCount ?? 0) + 1)
+    assert.equal(measured.memory.searchCount, (baseline.memory.searchCount ?? 0) + 1)
+    assert.equal(measured.skills.loadCount, (baseline.skills.loadCount ?? 0) + 1)
+    const durableUsage = JSON.parse(await readFile(join(f.host.ctx.memory.store.directory(scope), 'usage.json'), 'utf8'))
+    assert.equal(durableUsage.readCount, measured.memory.readCount); assert.equal(durableUsage.loadCount, measured.skills.loadCount)
+    const measuredAgain = (await api('/api/evolution')).body
+    assert.deepEqual(measuredAgain.memory, measured.memory); assert.deepEqual(measuredAgain.skills, measured.skills)
     const index = await api(endpoint)
     assert.equal(index.status, 200); assert.equal(index.body.status, 'ready')
     assert.equal(index.body.reviews[0].status, 'done'); assert.equal(index.body.reviews[0].eventId, completion.id)
@@ -151,6 +167,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     assert.notEqual(current.body.changes.find(row => row.id === skill.id).version, skill.version)
     await web.close(); web = undefined
     const foreign = await open('another-reader'), summary = await foreign(endpoint)
+    const excluded = await foreign('/api/evolution'); assert.equal(excluded.body.memory.acceptedCount, 0); assert.equal(excluded.body.skills.activeCount, 0); assert.equal(excluded.body.memory.readCount, null)
     assert.equal(summary.status, 200); assert.ok(summary.body.changes.every(row => row.canRead === false))
     for (const change of summary.body.changes) assert.equal((await foreign(endpoint + '/changes/' + change.id + '?version=' + change.version)).status, 403)
     assert.equal(f.requests.length, requestCount + 1, 'HTTP reads never schedule retrospective or task inference')

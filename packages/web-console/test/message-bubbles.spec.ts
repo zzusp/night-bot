@@ -19,3 +19,9 @@ test('任务头部保留当前状态，目标和创建信息可键盘展开',asy
  await expect(page.locator('.detail-heading')).toBeVisible()
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});const details=page.locator('.task-description');await expect(details).not.toHaveAttribute('open','');await details.locator('summary').focus();await page.keyboard.press('Enter');await expect(details).toHaveAttribute('open','');await expect(details).toContainText('创建于');await page.keyboard.press('Enter');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
 })
+test('截图红框的输入框底部说明不再可见，保留发送入口',async({page})=>{
+ await page.goto('/#/chat/sample-plan');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ await expect(page.getByLabel('消息内容',{exact:true})).toBeVisible();await expect(page.getByText('关闭页面后，任务仍会继续',{exact:true})).toHaveCount(0)
+ await expect(page.getByText('Enter 发送 · Shift + Enter 换行',{exact:true})).toHaveClass(/sr-only/)
+ await expect(page.getByRole('button',{name:'发送消息',exact:true})).toBeVisible()
+})
