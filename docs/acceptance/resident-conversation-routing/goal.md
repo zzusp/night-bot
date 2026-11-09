@@ -2,7 +2,7 @@
 
 > 状态：ACTIVE
 > Goal ID：resident-conversation-routing
-> 最近维护：2026-11-09T13:05:14+08:00
+> 最近维护：2026-11-09T13:12:19+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -12,7 +12,7 @@
 ## 当前权限交付范围：full（2026-11-09）
 
 - 最新追加（2026-11-09）：用户要求“把full剩下的问题处理完，验证后交付”，并明确容器默认提供git、gh-cli、运行时GITHUB_TOKEN配置与Playwright基础无头浏览能力。本次沿原开发线继续，不恢复ask/auto或19be。上一阶段提交/定向通过事实保留，不把工具夹具通过扩大成默认真实task及所有运行中取消/恢复已验。
-- 当前必要闭合已完成：七源full增量及容器基础工具已实现；Windows真实task、可信token、材料最终目标、真实模型abort/父子孙排空、unknown/no-replay、staged-fsync取消/切档与外部cwd搬迁冷读，加10项既有严格路径回归，共17个不重复注册按批次版本通过，当前三守卫自然0。容器e367的git/gh/Playwright与API/CLI本地HTTP、JS/DOM/物理截图通过；最终七源镜像e1a5708c的真实bash/task_result、三token boolean及独立Pi/SQLite冷读取得completed/drained、Job registered1/settled1/producerReported终态。原初始化和reasoning声明夹具问题已解决，无生产阻断；不把direct Host+独立--check扩大成默认run全链，不把e367浏览器说成e1a重跑。R45正式证据/矩阵/库存已集中归档，旧手动hold取消限制保留，真实abort单项已补证。详见[round-45.md](round-45.md)及[review.md:2265](review.md#full真实task外部cwd与效果终态阶段末窄审2026-11-09)。Tests已完成本次四容器/专属卷清理，Main另核缺席；保留最终镜像及全部unknown现场。所有成员已交回本轮写权、无在途；当前唯一下一步为Main保存本轮提交、更新原PR2并独立核远端事实，不再新增工程测试或审查门。长期目标仍ACTIVE，ask/auto及19be暂停，R44 FAIL不变。
+- 当前必要闭合已完成：七源full增量及容器基础工具已实现；Windows真实task、可信token、材料最终目标、真实模型abort/父子孙排空、unknown/no-replay、staged-fsync取消/切档与外部cwd搬迁冷读，加10项既有严格路径回归，共17个不重复注册按批次版本通过，当前三守卫自然0。容器e367的git/gh/Playwright与API/CLI本地HTTP、JS/DOM/物理截图通过；最终七源镜像e1a5708c的真实bash/task_result、三token boolean及独立Pi/SQLite冷读取得completed/drained、Job registered1/settled1/producerReported终态。原初始化和reasoning声明夹具问题已解决，无生产阻断；不把direct Host+独立--check扩大成默认run全链，不把e367浏览器说成e1a重跑。R45正式证据/矩阵/库存已集中归档，旧手动hold取消限制保留，真实abort单项已补证。详见[round-45.md](round-45.md)及[review.md:2265](review.md#full真实task外部cwd与效果终态阶段末窄审2026-11-09)。Tests已完成本次四容器/专属卷清理，Main另核缺席；保留最终镜像及全部unknown现场。所有成员已交回本轮写权、无在途；本轮代码与R45保存点为624e613cea71d6e77e50c1981292cc43459236d6，31个提交blob逐项等实跑后工作树；已推送原功能分支并更新原PR2。独立gh回读URL=https://github.com/zzusp/night-bot/pull/2、number=2/state=OPEN/mergedAt=null/mergeable=MERGEABLE，base refactor/pi-native-retirement←head worktree-resident-conversation-routing；该观察点gh headRefOid与git ls-remote均精确等624e613，正文逐字等已检查文件，代码提交Actions实际run数0/statusCheckRollup为空。随后仅本文回填交付事实的文档提交与受验代码分开，不为文档自身SHA循环提交。本轮full追加、容器工具、相关验证、清理与原PR交付完成，无本次范围内剩余实施/验证动作；当前下一步为等待用户恢复移出范围事项或提供原缺失环境，不继续空轮询。长期目标仍ACTIVE，ask/auto及19be暂停，R44 FAIL不变，未合并、部署、真实发送或替实际安装切档；保留现有成员窗口。
 - 写入与验收边界：Core唯一写真实调用绑定责任层、必要private-fs/tool-permissions和可信full环境投影（最终责任层先核实）；task-session-service/session-workspaces初始化分流当前暂缓，Tests可写pi-approval-wire与必要routing-official-host夹具，Platform可写Dockerfile/package/lock及必要entrypoint；goal/spec/本轮正式记录/Git仍由Main单写。先取具体失败再修，不为覆盖率补测试，不重复已绿；源码稳定后仅做受影响复验/当前守卫和增量窄审，阶段结束集中维护下一轮正式报告/矩阵。构建/OS实跑仍唯一Tests，不改实际安装模式、不恢复Native scope实验或旧unknown，不关闭应用sandbox或提权换绿；无真实渠道发送、CI、合并或部署。完成后更新原PR2并独立核远端/实际源码版本。
 
 - 真人明确“优先实现full，另外两个权限模式不放在本次实施范围”。本次仅推进full实现、相关验证与交付；ask/auto移出本次，随后“还差多少/能否完成”和“Project Trust能否满足”按咨询处理，不自行恢复受限实施。本节替代下文早期三档实施及受限Native下一步，不删改历史FAIL或追认为PASS；其他Router/渠道/DSH清理等原任务范围不因本条自动扩大或取消。
