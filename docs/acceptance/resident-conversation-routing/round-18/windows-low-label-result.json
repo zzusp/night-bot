@@ -1,0 +1,27 @@
+{
+  "args": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^Windows scoped (Low |stage planning )",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "durationSeconds": 0.2592506408691406,
+  "sourceBefore": {
+    "test/pi-native-sandbox.test.js": "308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7",
+    "src/process/windows-acl.js": "57129f60016400c799c4a2d3dd71d8e8b2dc9477f9cbd9f0f0102183237bd2a3",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3"
+  },
+  "sourceAfter": {
+    "test/pi-native-sandbox.test.js": "308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7",
+    "src/process/windows-acl.js": "57129f60016400c799c4a2d3dd71d8e8b2dc9477f9cbd9f0f0102183237bd2a3",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "a0e5d611fdc614c5aab9bc7e3975e450543560cd5b3043a9ecd3a8f366a505ae",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "realVendorExecuted": false
+}

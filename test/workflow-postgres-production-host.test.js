@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { createProductionPostgresHost } from '../packages/dingtalk-dsh-assistant/workflow-postgres-production-host.js'
+import { createProductionPostgresHost } from '../packages/dingtalk-core/workflow-postgres-production-host.js'
 import { uatCatalogBaselineSql, uatCatalogBaselineCountSql,
-  uatSchemaProofSql } from '../packages/dingtalk-dsh-assistant/workflow-postgres-uat-host.js'
+  uatSchemaProofSql } from '../packages/dingtalk-core/workflow-postgres-uat-host.js'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const names = ['hiq_editor', 'hiq_background_db', 'hiq_admin']

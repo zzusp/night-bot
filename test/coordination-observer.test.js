@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { createCoordinationObserver as productionCoordinationObserver } from '../packages/dingtalk-dsh-assistant/coordination-observer.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { createCoordinationObserver as productionCoordinationObserver } from '../packages/dingtalk-core/coordination-observer.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 // Old view fixtures describe domain records, not SQLite. Adapt their query contract
 // to the new narrow read model while preserving every existing outcome assertion.
@@ -535,7 +535,7 @@ test(`historical ${state} occurrence cannot manufacture a current dispatch recei
 
 test('current Task detail remains readable without restarting models, exposing legacy relations or writing the ledger',async t=>{
   const f=await fixture(t,{members:[historicalMember('A'),historicalMember('B',{dependencies:['A']})]})
-  const {openTaskSessionService}=await import('../packages/dingtalk-dsh-assistant/task-session-service.js')
+  const {openTaskSessionService}=await import('../packages/dingtalk-core/task-session-service.js')
   const workspace=await mkdtemp(join(tmpdir(),'current-task-detail-'))
   const forbidden=async()=>assert.fail('read-only detail must never run a model or send'),noop=async()=>{}
   const sessions={run:forbidden,cancel:forbidden,close:noop}

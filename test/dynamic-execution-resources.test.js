@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { readExecutionResourceCatalog } from '../packages/dingtalk-dsh-assistant/execution-resource-catalog.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { readExecutionResourceCatalog } from '../packages/dingtalk-core/execution-resource-catalog.js'
 
 const catalog = { version: 1, resources: [
   { key: 'publish:example:uat', aliases: ['old:uat', 'cluster:example:uat'], purpose: 'publication', description: '示例共享发布目标' },

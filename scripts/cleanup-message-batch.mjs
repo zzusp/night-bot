@@ -1,8 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { inspectMessageBatchCleanup } from '../packages/dingtalk-dsh-assistant/message-ledger.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { inspectMessageBatchCleanup } from '../packages/dingtalk-core/message-ledger.js'
 const fail=code=>{throw Error(code)}
 const [mode,path]=process.argv.slice(2)
 if(!['--check','--execute'].includes(mode)||!path)fail('CLEANUP_ARGUMENTS_INVALID')

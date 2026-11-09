@@ -2,8 +2,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { installTaskOwnerSchema, validateTaskOwnerSchema } from '../packages/dingtalk-dsh-assistant/task-owner-store.js'
-import { validateTaskPlanSchema } from '../packages/dingtalk-dsh-assistant/execution-task-plan.js'
+import { installTaskOwnerSchema, validateTaskOwnerSchema } from '../packages/dingtalk-core/task-owner-store.js'
+import { validateTaskPlanSchema } from '../packages/dingtalk-core/execution-task-plan.js'
 
 const [mode, suppliedPath] = process.argv.slice(2)
 if (!['--check', '--execute'].includes(mode) || !suppliedPath || process.argv.length !== 4) {

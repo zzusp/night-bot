@@ -1,16 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {tmpdir} from 'node:os'
+import {v as parseWindowsStartRequest} from '../src/process/runner-launch-B2zsQ1Dz.js'
 import * as native from '../src/native-sandbox-protocol.js'
 import * as original from './fixtures/legacy-sandbox-interface.mjs'
-import * as canonical from '../packages/capability-compat/sandbox/index.js'
 
-// The SDK is retained only for its public error class; exported helper references
-// must differ, so this differential cannot accidentally compare an alias to itself.
+// Independent original algorithms prevent this differential from comparing aliases to themselves.
 test('sandbox protocol retains independent algorithms and canonical public error identity',()=>{
  assert.notEqual(native.approveEscalation,original.approveEscalation)
  assert.notEqual(native.SandboxUnavailableError,original.SandboxUnavailableError)
- assert.equal(native.SandboxUnavailableError,canonical.SandboxUnavailableError)
  for(const api of [native,original]) {
   assert.throws(()=>api.validateEscalationArgs('workspace-write',undefined))
   assert.throws(()=>api.validateEscalationArgs(undefined,'why'))
@@ -45,4 +43,26 @@ test('runner diagnostics demand executable-specific evidence and ignore informat
   assert.equal(api.classifyRunnerFailure(125,'fatal: optional feature unavailable',rules),undefined)
   assert.deepEqual(api.classifyRunnerFailure(125,'Fatal: denied',rules),{detail:'Fatal: denied'})
  }
+})
+
+test('Windows LPAC runner IPC rejects unowned fields, undefined policy and boundary widening',()=>{
+ const task=String.raw`C:\night-fixture\data\workspaces\tasks\one`,lpac={kind:'windows-lpac',version:1,mode:'workspace-write',installRoot:String.raw`C:\night-fixture`,workspaceRoot:task,taskRoot:task,writeRoots:[task+String.raw`\work`,task+String.raw`\tmp`],privateRoots:[task+String.raw`\sessions`],networkCapabilities:[]},request={type:'start',cwd:task+String.raw`\work`,env:{},lpac}
+ assert.deepEqual(parseWindowsStartRequest(request).lpac,lpac)
+ for(const invalid of [
+  {...request,unknown:true},{...request,lpac:undefined},{...request,lpac:{...lpac,unknown:true}},
+  {...request,cwd:task+String.raw`-other\work`},{...request,cwd:task+String.raw`\sessions`},
+  {...request,lpac:{...lpac,workspaceRoot:String.raw`C:\outside`}},
+  {...request,lpac:{...lpac,writeRoots:[task+String.raw`\sessions`]}},
+  {...request,lpac:{...lpac,writeRoots:[task+String.raw`\materials`]}},
+  {...request,lpac:{...lpac,writeRoots:[task]}},
+  {...request,lpac:{...lpac,networkCapabilities:['internetClient']}},
+  {...request,lpac:{...lpac,mode:'read-only'}},
+  {...request,lpac:{...lpac,taskRoot:null,writeRoots:[task+String.raw`\outputs`]}},
+  {...request,lpac:{...lpac,workspaceRoot:task.replace('tasks','other'),taskRoot:task.replace('tasks','other')}},
+  {...request,lpac:{...lpac,workspaceRoot:task+String.raw`\work`,taskRoot:task+String.raw`\work`,writeRoots:[]}},
+  {...request,lpac:{...lpac,workspaceRoot:task.replace('tasks','tasks.'),taskRoot:null,writeRoots:[]}},
+  {...request,lpac:{...lpac,workspaceRoot:task.replace('tasks','tasks '),taskRoot:null,writeRoots:[]}}
+ ])assert.throws(()=>parseWindowsStartRequest(invalid),/Windows (?:LPAC|policy)|Read-only Windows|invalid Windows/)
+ const ordinary={type:'start',cwd:request.cwd,env:{}}
+ assert.deepEqual(parseWindowsStartRequest(ordinary),ordinary)
 })

@@ -1,4 +1,4 @@
-import { createCloseObservation, observeClose } from '../packages/dingtalk-dsh-assistant/startup-metrics.js'
+import { createCloseObservation, observeClose } from '../packages/dingtalk-core/startup-metrics.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'

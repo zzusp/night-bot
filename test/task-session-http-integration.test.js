@@ -8,11 +8,11 @@ import test from 'node:test'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 import {providerHost,result} from './fixtures/provider-official-host.js'
 import {memoryHost} from './fixtures/memory-host.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
-import { taskNotificationRecovery } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
-import { taskNotificationOutbound } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
+import { taskNotificationRecovery } from '../packages/dingtalk-core/notification-delivery.js'
+import { taskNotificationOutbound } from '../packages/dingtalk-core/task-message-projections.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
 
 // Actual official Host, provider loopback, SQL and HTTP. No Owner/leaf drivers.
 test('official Single HTTP preserves one session, source revisions, idempotence and cancellation CAS',async t=>{

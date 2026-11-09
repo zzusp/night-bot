@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import test from 'node:test'
 import { createServer } from 'node:http'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
-import { buildTaskAssociationIndex } from '../packages/dingtalk-dsh-assistant/runtime.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
+import { buildTaskAssociationIndex } from '../packages/dingtalk-core/runtime.js'
 
 test('通用生产源码不绑定个人姓名，群回复署名遵循工作区与群职责', async () => {
   const source = await readFile(new URL('../packages/dingtalk-dsh-assistant/runtime.js', import.meta.url), 'utf8')

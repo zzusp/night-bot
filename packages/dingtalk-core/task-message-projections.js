@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { taskNotificationRecovery } from './notification-delivery.js'
+import { notificationAudience } from './group-notification.js'
 
 const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item)
@@ -29,6 +30,14 @@ export function mergeTaskResources(previous = [], incoming = []) {
 
 const imageFingerprint = image => createHash('sha256').update(image.mediaType ?? '').update('\0')
   .update(Buffer.from(image.data)).digest('hex')
+
+// residentStore keeps the historical transport-shaped message schema; the active
+// task service may provide neutral actorId/quote fields at this single boundary.
+const legacyQuote = value => {
+  const {actorId,senderOpenDingTalkId,senderId,text,content,messageId,senderName,occurredAt}=value
+  const actor=actorId??senderOpenDingTalkId??senderId
+  return {...messageId!==undefined?{messageId}:{},...actor!==undefined?{senderOpenDingTalkId:actor}:{},...senderName!==undefined?{senderName}:{},...occurredAt!==undefined?{occurredAt}:{},content:content??text??''}
+}
 
 async function saveStableImages(ctx, images, previousRefs = []) {
   const fingerprints = images.map(imageFingerprint)
@@ -75,8 +84,12 @@ export async function ingestTaskResidentMessage({ ctx, residentStore, message, r
     }
     if (images.length) imageRefs = [...(imageRefs ?? []), ...await measured('image-save', () => saveStableImages(ctx, images, previous?.imageRefs))]
   }
-  const { images: _images, ...facts } = message
+  const { images: _images, actorId, senderOpenDingTalkId, quote, quotedMessage, ...facts } = message
+  const actor = actorId ?? senderOpenDingTalkId
+  const sourceQuote = quote ?? quotedMessage
   return measured('resident-store', () => residentStore.ingest({ ...facts,
+    ...(actor !== undefined ? { senderOpenDingTalkId: actor } : {}),
+    ...(sourceQuote !== undefined ? { quotedMessage: legacyQuote(sourceQuote) } : {}),
     ...(imageRefs !== undefined ? { imageRefs } : {}),
     ...(unavailable.length || message.mediaUnavailable !== undefined ? { mediaUnavailable: unavailable } : {}) }))
 }
@@ -111,6 +124,7 @@ export function messageProcessingSources(sources, notifications, groupId, coordi
 
 export function taskNotificationOutbound(notification) {
   const payload = notification.payload
+  const audience = notificationAudience(payload)
   const receipt = notification.receipt
   const delivered = notification.state === 'delivered'
   const retired = ['failed', 'superseded'].includes(notification.state)
@@ -146,9 +160,9 @@ export function taskNotificationOutbound(notification) {
     ...(payload.taskIds ? { taskIds: payload.taskIds } : notification.taskId ? { taskIds: [notification.taskId] } : {}),
     ...(payload.coveredEventIds ? { coveredEventIds: payload.coveredEventIds } : {}),
     readbackRequired: true,
-    replyToMessageId: payload.sourceMessageId,
-    replyToSenderOpenDingTalkId: payload.actorId,
-    atOpenDingTalkIds: payload.atOpenDingTalkIds ?? [], ...(payload.atAll ? { atAll: true } : {}),
+    replyToMessageId: audience.replyToMessageId ?? payload.sourceMessageId,
+    replyToSenderOpenDingTalkId: audience.replyToActorId ?? payload.actorId,
+    atOpenDingTalkIds: audience.recipientActorIds ?? [], ...(audience.atAll ? { atAll: true } : {}),
     ...(payload.sourceRef ? { sourceRef: payload.sourceRef } : {}), ...(payload.artifactFiles?.length ? { artifactFiles: payload.artifactFiles } : {}),
     replyKind: payload.replyKind ?? 'substantive',
     matterSourceMessageIds: payload.sourceRef ? [payload.sourceRef.messageId] : payload.sourceMessageId ? [payload.sourceMessageId] : [],

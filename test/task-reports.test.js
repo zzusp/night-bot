@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTaskReportQueue, taskReports, taskReportReceipt, taskReportReceiptSchema, classifyTaskReportError } from '../packages/dingtalk-dsh-assistant/task-reports.js'
+import { createTaskReportQueue, taskReports, taskReportReceipt, taskReportReceiptSchema, classifyTaskReportError } from '../packages/dingtalk-core/task-reports.js'
 
 const value = (changes = {}) => ({ submissionId: 'report1', inputVersion: 2, runSequence: 1, kind: 'stage-completed', stageTask: '核验', summary: '已核验', evidence: ['test passed'], nextStep: '等待', ...changes })
 function fixture(options = {}) {

@@ -6,11 +6,11 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {createExecutionController} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import {createExecutionDelivery} from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import {createEngineeringRegistry,createEngineeringStageContract} from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
+import {createExecutionController} from '../packages/dingtalk-core/execution-controller.js'
+import {createExecutionDelivery} from '../packages/dingtalk-core/execution-delivery.js'
+import {createEngineeringRegistry,createEngineeringStageContract} from '../packages/dingtalk-core/workflow-engineering.js'
 const exec=promisify(execFile)
 test('remote-only 16-node two-repository flow retains actual workspaces, receipts and side-effect idempotency across cold restart',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'two-repo-chain-'));let store,controller;t.after(async()=>{await controller?.close();await store?.close();await rm(dir,{recursive:true,force:true})})

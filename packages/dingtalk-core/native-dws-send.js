@@ -124,7 +124,7 @@ export function nativeDwsObservation(event, commands) {
 }
 
 /** Original native operations are the authority; the existing outbox stores exact self IDs. */
-export function createNativeDwsObserver({ operations, residentStore, notificationCache = new Map(), querySendStatus, warn = () => {}, ingressWaitMs = 1500, probeWaitMs = 3000 }) {
+export function createNativeDwsObserver({ operations, residentStore, notificationCache = new Map(), querySendStatus, resolveNotificationScope = notification => ({ conversationId: notification.payload?.conversationId, querySendStatus }), warn = () => {}, ingressWaitMs = 1500, probeWaitMs = 3000 }) {
   const pending = new Map(), probes = new Map()
   let closed = false
   const stopped = Promise.withResolvers()
@@ -146,13 +146,13 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
       sendReceipt: { openTaskId: proof.openTaskId, conversationId: proof.conversationId, messageId: proof.messageId },
     } })
   }
-  async function probeStatus(key, openTaskId, conversationId, options, save) {
-    if (closed || !querySendStatus) return
+  async function probeStatus(key, openTaskId, conversationId, options, save, readStatus = querySendStatus) {
+    if (closed || !readStatus) return
     if (probes.has(key)) return bounded(probes.get(key), probeWaitMs)
     const promise = Promise.resolve().then(async () => {
-      const proof = nativeDwsStatus(await querySendStatus(openTaskId, options), openTaskId, conversationId)
+      const proof = nativeDwsStatus(await readStatus(openTaskId, options), openTaskId, conversationId)
       if (proof && !closed) await save(proof)
-    }).catch(error => warn(error)).finally(() => probes.delete(key))
+    }).catch(error => { warn(error); return { error } }).finally(() => probes.delete(key))
     probes.set(key, promise); return bounded(promise, probeWaitMs)
   }
   async function probe(operation) {
@@ -160,18 +160,26 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
     if (!send || recorded(operation)) return
     return probeStatus(operation.id, send.openTaskId, send.conversationId, { profile: send.profile }, proof => register(operation, proof))
   }
+  const receiptMessageId = value => value?.messageId ?? value?.messageRef?.openMessageId ?? value?.sendReceipt?.messageId ?? value?.result?.messageId ?? value?.result?.openMessageId
+  const notificationIdentityKnown = notification => [notification.receipt, notification.ack].some(value => { const id = receiptMessageId(value); return typeof id === 'string' && id.length > 0 })
+    || residentStore.getGroup(notification.payload?.conversationId)?.outbox.some(item => item.outboundId === notification.id && item.deliveredMessageId)
+  const unresolvedNotifications = groupId => [...notificationCache.values()].filter(notification => notification.payload?.conversationId === groupId
+    && notification.payload.audience !== 'operator' && ['starting', 'unknown'].includes(notification.state)
+    && resolveNotificationScope(notification) && !notificationIdentityKnown(notification))
   async function probeNotification(notification) {
-    if (!['starting', 'unknown'].includes(notification.state) || notification.payload?.audience === 'operator') return
+    const scope = resolveNotificationScope(notification)
+    if (!scope || !['starting', 'unknown'].includes(notification.state) || notification.payload?.audience === 'operator' || notificationIdentityKnown(notification)) return
     const groupId = notification.payload?.conversationId, openTaskId = notificationOpenTaskId(notification.ack ?? notification.receipt)
-    if (!openTaskId || residentStore.getGroup(groupId)?.outbox.some(item => item.outboundId === notification.id && item.deliveredMessageId)) return
-    return probeStatus(`notification:${notification.id}`, openTaskId, groupId, undefined, async proof => {
+    if (!openTaskId) return
+    return probeStatus(`notification:${notification.id}`, openTaskId, scope.conversationId, undefined, async proof => {
       // Identity is known before a file's byte readback finishes. Keep its current
       // delivery state: filtering an echo does not claim the attachment was verified.
       const current = notificationCache.get(notification.id) ?? notification
+      if (current.payload?.conversationId !== groupId || notificationOpenTaskId(current.ack ?? current.receipt) !== openTaskId) return
       await residentStore.projectTaskNotification({ groupId, outbound: {
         ...taskNotificationOutbound(current), deliveredMessageId: proof.messageId, sendReceipt: proof,
       } })
-    })
+    }, scope.querySendStatus)
   }
   async function observeStatuses(operation) {
     if (operation?.state !== 'succeeded') return
@@ -188,7 +196,7 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
     finish(operationId) { pending.get(operationId)?.resolve(); pending.delete(operationId) },
     notificationChanged(notification) {
       const key = `notification:${notification.id}`
-      if (notification.state === 'starting' && !notification.ack && !notification.receipt && notification.payload.audience !== 'operator') {
+      if (notification.state === 'starting' && !notification.ack && !notification.receipt && notification.payload.audience !== 'operator' && resolveNotificationScope(notification)) {
         if (!pending.has(key)) pending.set(key, { groupId: notification.payload.conversationId, ...Promise.withResolvers() })
       } else { pending.get(key)?.resolve(); pending.delete(key) }
     },
@@ -200,11 +208,21 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
     async beforeIngress(groupId) {
       const startedAt = Date.now()
       await bounded(Promise.all([...pending.values()].filter(item => item.groupId === groupId).map(item => item.promise)), ingressWaitMs)
-      if (closed || Date.now() - startedAt >= ingressWaitMs) return
-      await bounded(Promise.all([
+      if (closed) return
+      const remaining = ingressWaitMs - (Date.now() - startedAt)
+      const results = remaining > 0 ? await bounded(Promise.all([
         ...[...operations.values()].filter(item => sendOf(item)?.conversationId === groupId).map(probe),
-        ...[...notificationCache.values()].filter(item => item.payload?.conversationId === groupId).map(probeNotification),
-      ]), ingressWaitMs - (Date.now() - startedAt))
+        ...unresolvedNotifications(groupId).map(probeNotification),
+      ]), remaining) : undefined
+      if (closed) return
+      // 有界探针未得身份不等于真人；按当前缓存重新判定，交给原补读恢复。
+      const unresolved = unresolvedNotifications(groupId)
+      if (unresolved.length) {
+        const cause = results?.find(result => result?.error)?.error
+        const reason = cause ? 'status-error' : Date.now() - startedAt >= ingressWaitMs ? 'status-timeout'
+          : unresolved.some(item => !notificationOpenTaskId(item.ack ?? item.receipt)) ? 'send-pending' : 'status-unconfirmed'
+        throw Object.assign(new Error('CHANNEL_NOTIFICATION_IDENTITY_PENDING', cause ? { cause } : undefined), { code: 'CHANNEL_NOTIFICATION_IDENTITY_PENDING', reason })
+      }
     },
     async recover() {
       // Startup reprojects persisted proofs; network availability is never a boot gate.

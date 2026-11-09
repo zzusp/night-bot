@@ -1,0 +1,62 @@
+{
+  "variant": "registration-identity-readonly",
+  "identityOnly": true,
+  "pass": false,
+  "profileCreated": false,
+  "createAttempted": false,
+  "deleteAttempted": false,
+  "childCreated": false,
+  "jobCreated": false,
+  "aclChanged": false,
+  "impersonationPerformed": false,
+  "handlesClosed": true,
+  "nativeOwnerRetained": false,
+  "profileState": "not-created",
+  "storageApiBindingVerified": false,
+  "cleanupComplete": false,
+  "productionAdmissible": false,
+  "taskId": "byqe9oozb",
+  "exit": 2,
+  "check": {
+    "exit": 0,
+    "effects": 0
+  },
+  "sourceSha256": "ed363a8fee39241925d197395720f1730329ad9b5c0a3c7da4b684d60ac439ce",
+  "parametersSha256": "a89b84be12e983364c6565faecf7888664d0b13b8fc6d7161586c8b66c941c86",
+  "sourceUnchanged": true,
+  "sourceMarkerBound": true,
+  "identityObservations": [
+    {
+      "label": "host-root",
+      "comparison": "OrdinalIgnoreCase",
+      "matches": true
+    },
+    {
+      "label": "user-classes",
+      "comparison": "OrdinalIgnoreCase",
+      "matches": false
+    }
+  ],
+  "actualClassesIsHostRootSoftwareClasses": true,
+  "mappingParentObserved": false,
+  "errors": [
+    {
+      "stage": "pre-create identity",
+      "type": "Exception",
+      "message": "Native identity/path mismatch"
+    }
+  ],
+  "privateEvidenceIgnored": true,
+  "privateEvidenceHashes": {
+    "docs/tmp/sg11-profile-identity-check.log": "9804536929e9e67c301082d1a91d061e3ed23a59d2d32cc8da06259709905902",
+    "docs/tmp/sg11-profile-identity-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-identity-run.log": "2d9db211d864d6bb3279b5c82053cdcef213b33d034eeaa95adcb1204c53ca21",
+    "docs/tmp/sg11-profile-identity-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-identity-private-result.json": "6ecc6626d406d873c288ecf332919777c6a0386dad9d4aa35cbf797f71992074",
+    "docs/tmp/sg11-profile-identity-private-owner.json": "22b67291a3f6508e5d5ee92e23e037fd45795e1a2f10ae5b6a26478bf07f8b8a",
+    "docs/tmp/sg11-profile-identity-executor.json": "60c73eeac90ecf4ccb429f5d3df4d0b76a1619b04e9fcbb56dae059d7e7cfd1b"
+  },
+  "exactProcessObserved": false,
+  "priorUnknownCleanupProved": false,
+  "scope": "只读观察在user-classes比较处严格拒绝；Host root匹配，mapping-parent未到。没有SID derive/leaf/folder/Create/Delete，不将严格拒绝改为PASS或生产注册/存储准入证明。原实际和预期native名/SID/PID仅ignored私有证据。"
+}

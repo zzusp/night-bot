@@ -6,10 +6,10 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
-import {freezeCandidate,readCandidate,assertCandidateWorktree,withCandidateWorkspaceUse,verifyCandidate} from '../packages/dingtalk-dsh-assistant/execution-candidate.js'
-import {createWorktreeVerificationJobCheck} from '../packages/dingtalk-dsh-assistant/execution-check-job.js'
-import {createWorktreeAcceptanceRunner} from '../packages/dingtalk-dsh-assistant/execution-worktree-acceptance.js'
-import {normalizeWorktreeAcceptancePlan} from '../packages/dingtalk-dsh-assistant/task-workflow.js'
+import {freezeCandidate,readCandidate,assertCandidateWorktree,withCandidateWorkspaceUse,verifyCandidate} from '../packages/dingtalk-core/execution-candidate.js'
+import {createWorktreeVerificationJobCheck} from '../packages/dingtalk-core/execution-check-job.js'
+import {createWorktreeAcceptanceRunner} from '../packages/dingtalk-core/execution-worktree-acceptance.js'
+import {normalizeWorktreeAcceptancePlan} from '../packages/dingtalk-core/task-workflow.js'
 const exec=promisify(execFile)
 async function fixture(t,value='original'){
  const root=await mkdtemp(join(tmpdir(),'shared-source-')),source=join(root,'repository'),git=async(...args)=>(await exec('git',['-C',source,...args],{windowsHide:true})).stdout.trim()

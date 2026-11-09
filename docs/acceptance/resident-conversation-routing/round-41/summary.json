@@ -1,0 +1,289 @@
+{
+  "round": 41,
+  "result": "PASS_COMPONENT_ONLY",
+  "scope": "Original suspended SDK seal and LocalAppData environment; no Resume or full platform claim",
+  "hostTask": "bw76t7k0s",
+  "toolUseId": "call_15a945dabc044329b5f78602c20e2deb",
+  "driverSha256": "5976ef645f93a7d87f58171e69d20836dfd49f185528f08b44fd03f7c800a24d",
+  "nodePid": 64036,
+  "startedAt": "2026-11-08T21:21:52.270727+00:00",
+  "finishedAt": "2026-11-08T21:22:20.584686+00:00",
+  "nodeExitCode": 0,
+  "driverExitCode": 0,
+  "naturalWaitReturned": true,
+  "forcedTermination": false,
+  "componentWasProduced": true,
+  "componentPass": true,
+  "sourceCount": 251,
+  "sourceAggregateSha256": "bcda7a4c1ae09d79b643bc9efc8e979a9e981398c8a719f11930a42dc4486d05",
+  "sourceChanged": [],
+  "imageChanged": false,
+  "freshCheck": {
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 31662,
+    "stdoutSha256": "ad9ed50b2d9adabd7478ef01ae972abf18d99f1b1f4600ecca2de781975e5e78"
+  },
+  "steps": [
+    "original-factory-returned",
+    "original-owned-proof-committed",
+    "original-launch-environment-verified",
+    "original-suspended-frame-bound-nul-closed",
+    "no-business-scope-release-committed",
+    "original-profile-delete-returned",
+    "released-committed",
+    "task-service-closed",
+    "host-closed"
+  ],
+  "errors": [],
+  "unknownOwnershipCount": 0,
+  "environmentVerification": {
+    "ownedProofEntryId": "73f7a3c9",
+    "trustedMatchesActual": true,
+    "conflictingKeys": [
+      "LOCALAPPDATA",
+      "localappdata",
+      "LoCaLaPpDaTa"
+    ],
+    "otherKeys": [
+      "SystemRoot",
+      "WINDIR",
+      "ComSpec",
+      "PATH",
+      "PATHEXT",
+      "HOME",
+      "USERPROFILE",
+      "TEMP",
+      "TMP",
+      "TMPDIR"
+    ],
+    "conflictsOverridden": true,
+    "otherEnvironmentUnchanged": true,
+    "childEnvironmentNotObserved": true
+  },
+  "nulEndpoints": [
+    {
+      "id": 0,
+      "device": "NUL",
+      "namespacePath": "\\\\.\\NUL",
+      "flags": "r",
+      "fd": 3,
+      "opened": true,
+      "validationAttempted": true,
+      "closeAttempted": true,
+      "closed": true,
+      "flagsBefore": 0,
+      "flagsAfter": 0
+    },
+    {
+      "id": 1,
+      "device": "NUL",
+      "namespacePath": "\\\\.\\NUL",
+      "flags": "w",
+      "fd": 4,
+      "opened": true,
+      "validationAttempted": true,
+      "closeAttempted": true,
+      "closed": true,
+      "flagsBefore": 0,
+      "flagsAfter": 0
+    },
+    {
+      "id": 2,
+      "device": "NUL",
+      "namespacePath": "\\\\.\\NUL",
+      "flags": "w",
+      "fd": 5,
+      "opened": true,
+      "validationAttempted": true,
+      "closeAttempted": true,
+      "closed": true,
+      "flagsBefore": 0,
+      "flagsAfter": 0
+    }
+  ],
+  "nulRetained": 0,
+  "frameSnapshots": [
+    {
+      "stage": "original-frame-bound",
+      "pid": 42812,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": false,
+      "processCloseAttempted": false,
+      "jobCloseAttempted": false,
+      "pendingPreparation": false,
+      "processPresent": true,
+      "threadPresent": true,
+      "jobPresent": true
+    },
+    {
+      "stage": "original-seal-complete",
+      "pid": 42812,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": false,
+      "processCloseAttempted": false,
+      "jobCloseAttempted": false,
+      "pendingPreparation": false,
+      "processPresent": true,
+      "threadPresent": true,
+      "jobPresent": true
+    },
+    {
+      "stage": "native-drained",
+      "pid": 42812,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": false,
+      "processCloseAttempted": false,
+      "jobCloseAttempted": false,
+      "pendingPreparation": false,
+      "processPresent": true,
+      "threadPresent": true,
+      "jobPresent": true
+    },
+    {
+      "stage": "native-handles-closed",
+      "pid": 42812,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": true,
+      "processCloseAttempted": true,
+      "jobCloseAttempted": true,
+      "pendingPreparation": false,
+      "processPresent": false,
+      "threadPresent": false,
+      "jobPresent": false
+    }
+  ],
+  "nativeDrain": {
+    "pid": 42812,
+    "childCreated": true,
+    "processSettled": true,
+    "jobEmpty": true,
+    "exitCode": 1
+  },
+  "payloadResumed": false,
+  "sealResult": {
+    "profileOwned": true,
+    "profileSealed": true,
+    "nativeTokenQualified": true,
+    "observationHandlesClosed": true
+  },
+  "sealTargets": {
+    "fileObjects": 6,
+    "registryObjects": 2
+  },
+  "allEightSealEffectsAttemptedStatusZeroImmediatelyVerified": true,
+  "independentTempAbsent": true,
+  "independentSdkFileObjectsAbsent": 6,
+  "finalProfileState": "registration-and-folder-absent",
+  "retainedHandles": 0,
+  "retainedAllocations": 0,
+  "resourceTrail": [
+    {
+      "seq": 1,
+      "status": "planned",
+      "retainedHandles": 0,
+      "retainedAllocations": 0
+    },
+    {
+      "seq": 2,
+      "status": "unknown-retained",
+      "retainedHandles": 5,
+      "retainedAllocations": 1
+    },
+    {
+      "seq": 3,
+      "status": "unknown-retained",
+      "retainedHandles": 8,
+      "retainedAllocations": 1
+    },
+    {
+      "seq": 4,
+      "status": "unknown-retained",
+      "retainedHandles": 8,
+      "retainedAllocations": 1
+    },
+    {
+      "seq": 5,
+      "status": "released",
+      "retainedHandles": 0,
+      "retainedAllocations": 0
+    }
+  ],
+  "originalReleasedEntryId": "aa234f8a",
+  "originalSettledEntryId": "d87d53b3",
+  "producerReported": true,
+  "jobTerminal": "completed",
+  "taskStatus": "active",
+  "taskDrained": true,
+  "taskDecision": "wait",
+  "taskLimitations": [],
+  "proofPhases": [
+    "profile-owned",
+    "profile-seal-frozen"
+  ],
+  "releasedLiveProofCount": 2,
+  "originalRecorderColdEqualsReleasedLive": true,
+  "strictCold": {
+    "journalBytes": 98651,
+    "journalSha256": "2406bb99e2214f171d54dee985e03c138371099d0c31bec07e499e7d2ecf3b8a",
+    "auditRecords": 14,
+    "jobRecords": 7,
+    "jobAuditEqualsLive": true,
+    "unresolvedCount": 0
+  },
+  "workspaceInitialization": {
+    "state": "ready",
+    "directories": {
+      "work": {
+        "createdControl": 38932,
+        "initializationNeeded": true,
+        "control": 39956
+      },
+      "tmp": {
+        "createdControl": 38932,
+        "initializationNeeded": true,
+        "control": 39956
+      }
+    },
+    "nativeResources": {
+      "handles": {
+        "acquired": 16,
+        "closed": 16,
+        "retained": 0
+      },
+      "local": {
+        "acquired": 36,
+        "closed": 36,
+        "retained": 0
+      }
+    }
+  },
+  "installationRetained": true,
+  "readOnlyAdmission": false,
+  "runnerIpcAckQualified": false,
+  "productionScopeReady": false,
+  "inventoryRows": 5485,
+  "inventoryUnchangedSha256": "4cb87a89885f8359d2b813580994d40dcd2d74bbc76ac4aac9138498e0891f2f",
+  "matrixRowsBefore": 314,
+  "matrixRowsAfter": 315
+}

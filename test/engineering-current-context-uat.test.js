@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {isWebRequirementTargetAllowed} from '../packages/dingtalk-dsh-assistant/workflow-service.js'
+import {isWebRequirementTargetAllowed} from '../packages/dingtalk-core/workflow-service.js'
 import {validateScope} from '../scripts/local-acceptance-notification-outbox-uat.mjs'
 test('existing engineering context admits only configured original task repository without external target',()=>{
  const a={workflowId:'task-engineering',targetId:'dataset-web',repositoryId:'dataset-web',engineeringRepositories:[{repositoryId:'dataset-web'},{repositoryId:'dataset'}]};assert.equal(isWebRequirementTargetAllowed(a),true);assert.equal(isWebRequirementTargetAllowed({...a,targetId:'dataset'}),false);assert.equal(isWebRequirementTargetAllowed({...a,engineeringRepositories:[]}),false)

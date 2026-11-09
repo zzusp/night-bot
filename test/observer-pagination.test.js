@@ -1,13 +1,13 @@
 import {readFile} from 'node:fs/promises'
 import {runInNewContext} from 'node:vm'
-import {executionSessionTitle} from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
-import {latestExecutionRoundTiming} from '../packages/dingtalk-dsh-assistant/task-execution-timeline.js'
-import {observerWorkMetadata} from '../packages/dingtalk-dsh-assistant/observer-work-index.js'
+import {executionSessionTitle} from '../packages/dingtalk-core/session-workspaces.js'
+import {latestExecutionRoundTiming} from '../packages/dingtalk-core/task-execution-timeline.js'
+import {observerWorkMetadata} from '../packages/dingtalk-core/observer-work-index.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync, constants } from 'node:sqlite'
 import { dirname, join } from 'node:path'
-import { installObserverPagination, installObserverArchivePagination, observerPage, observerGroupQuery } from '../packages/dingtalk-dsh-assistant/observer-pagination.js'
+import { installObserverPagination, installObserverArchivePagination, observerPage, observerGroupQuery } from '../packages/dingtalk-core/observer-pagination.js'
 
 function fixture(t,{archives=false}={}) {
  const db = new DatabaseSync(':memory:');t.after(()=>db.close())

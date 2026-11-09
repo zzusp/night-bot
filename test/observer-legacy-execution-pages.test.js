@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
-import {installObserverLegacyExecutionPages,observerLegacyFamilyPage,observerLegacyRunPage} from '../packages/dingtalk-dsh-assistant/observer-legacy-execution-pages.js'
+import {installObserverLegacyExecutionPages,observerLegacyFamilyPage,observerLegacyRunPage} from '../packages/dingtalk-core/observer-legacy-execution-pages.js'
 function fixture(t){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close())
  db.exec(`CREATE TABLE business_tasks(task_id TEXT PRIMARY KEY);CREATE TABLE task_owners(task_id TEXT PRIMARY KEY);

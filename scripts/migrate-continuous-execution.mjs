@@ -1,4 +1,4 @@
-import{DatabaseSync}from'node:sqlite';import{createHash}from'node:crypto';import{pathToFileURL}from'node:url';import{resolve,isAbsolute}from'node:path';import{maintenanceStatus}from'../packages/dingtalk-dsh-assistant/execution-maintenance.js';
+import{DatabaseSync}from'node:sqlite';import{createHash}from'node:crypto';import{pathToFileURL}from'node:url';import{resolve,isAbsolute}from'node:path';import{maintenanceStatus}from'../packages/dingtalk-core/execution-maintenance.js';
 const fail=code=>{throw Error(code)};
 const audit=db=>Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({name})=>{const hash=createHash('sha256');for(const row of db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()){if(name==='execution_meta')delete row.schema_version;if(name==='execution_runs')delete row.max_claims;hash.update(JSON.stringify(row));hash.update('\n')}return[name,hash.digest('hex')]}));
 const integrity=db=>{if(Object.values(db.prepare('PRAGMA integrity_check').get())[0]!=='ok'||db.prepare('PRAGMA foreign_key_check').all().length)fail('MIGRATION_INTEGRITY_FAILED')};

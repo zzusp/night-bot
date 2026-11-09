@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { createTaskSessionObservability, createTaskObservationQueue } from '../packages/dingtalk-dsh-assistant/task-session-observability.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { createTaskSessionObservability, createTaskObservationQueue } from '../packages/dingtalk-core/task-session-observability.js'
 
 function storage(seed = new Map()) {
   const table = name => ({ get: key => seed.get(`${name}:${key}`),

@@ -1,0 +1,23 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "test/pi-native-shell-tools.test.js"
+  ],
+  "exit": 0,
+  "elapsedSeconds": 1.8232228755950928,
+  "sourceBefore": {
+    "src/native-tool-bash.js": "041e82791e244c95b2a20e569ce68cdf9c129f3b48352939b6251a8c66be36e2",
+    "src/native-tool-pwsh.js": "ef850d0ee5dfce8adfe064dfefe2282443c265913bdf934be56b60c27e288f37",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "test/pi-native-shell-tools.test.js": "8e9a594e9ddd0f9c0a020d0f8e58f18e49beac1dec093ae16a671bcba458d5a1"
+  },
+  "sourceAfter": {
+    "src/native-tool-bash.js": "041e82791e244c95b2a20e569ce68cdf9c129f3b48352939b6251a8c66be36e2",
+    "src/native-tool-pwsh.js": "ef850d0ee5dfce8adfe064dfefe2282443c265913bdf934be56b60c27e288f37",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "test/pi-native-shell-tools.test.js": "8e9a594e9ddd0f9c0a020d0f8e58f18e49beac1dec093ae16a671bcba458d5a1"
+  },
+  "logSha256": "f2ad1676ca962aaa8e4a4c9a3a339c8826ee452b97ce1ebb5a4cbef00363f7b2"
+}

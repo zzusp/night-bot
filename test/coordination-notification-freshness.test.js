@@ -6,8 +6,8 @@ import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
-import {openDynamicTaskStore} from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import {deliverTaskNotification,retryTaskNotification,taskNotificationRecovery} from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
+import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
+import {deliverTaskNotification,retryTaskNotification,taskNotificationRecovery} from '../packages/dingtalk-core/notification-delivery.js'
 
 // Frozen Topic results are not periodically re-read by the retired coordinator.
 // Recovery CAS, current question validity, and proven-not-sent retirement own the

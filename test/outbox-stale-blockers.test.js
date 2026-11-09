@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
-import {supersedeUnclaimedTaskRevisionNotifications as retire} from '../packages/dingtalk-dsh-assistant/message-ledger.js'
-import {taskNotificationAllowed} from '../packages/dingtalk-dsh-assistant/workflow-notifications.js'
+import {supersedeUnclaimedTaskRevisionNotifications as retire} from '../packages/dingtalk-core/message-ledger.js'
+import {taskNotificationAllowed} from '../packages/dingtalk-core/workflow-notifications.js'
 test('old wait/block conclusions retire atomically; unknown and delivered history stays reconcilable',()=>{
  const db=new DatabaseSync(':memory:')
  db.exec('CREATE TABLE task_reports(report_id TEXT,task_id TEXT,turn_id TEXT,report_type TEXT);CREATE TABLE task_owner_turns(turn_id TEXT,requirement_revision INTEGER);CREATE TABLE message_items(item_id TEXT,kind TEXT,body TEXT);CREATE TABLE execution_receipts(command_id TEXT,result TEXT);')

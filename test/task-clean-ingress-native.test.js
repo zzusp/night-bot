@@ -6,8 +6,8 @@ import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, waitUntil } from './fixtures/task-session-native-host.js'
-import { startDwsBridge, normalizeHistoryMessage } from '../packages/dingtalk-dsh-assistant/dws-bridge.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { startDwsBridge, normalizeHistoryMessage } from '../packages/dingtalk-core/dws-bridge.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 
 const epoch = '2026-10-13T14:00:00.000Z'
 test('own echoes require an exact group and receipt ID, including persisted file and image projections', { ...({ timeout: 10000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(10000) }, nativeLifecycle(10000, async (t) => {

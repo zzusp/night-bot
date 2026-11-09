@@ -1,0 +1,23 @@
+{
+  "removedResources": [
+    {
+      "container": "night-bot-sg12-default-pid1-r20",
+      "containerId": "1cdadb3e6bd7fa0d33809cb0eadcba1a2cd3c7a327d13c2fedfe0665f8ddb686",
+      "volume": "night-bot-sg12-default-pid1-r20-data",
+      "owner": "sg12-default-pid1-r20"
+    },
+    {
+      "container": "night-bot-sg12-default-pid1-r20-a2",
+      "containerId": "074425dbcb646377240d101a6f1588a57fb2d7b717744794cd499a53877d85e7",
+      "volume": "night-bot-sg12-default-pid1-r20-a2-data",
+      "owner": "sg12-default-pid1-r20-a2"
+    }
+  ],
+  "removedSupersededFiles": {
+    "docker-default-pid1-result.json": "52aa2201b51b6f3a300606d7544e8d990646827d050e307109f969d857fd3979",
+    "docker-default-pid1.log": "0047db02418f45a8ab2da1b3a109f8af592016b28524ab5411165d9f3179cbf5",
+    "docker-default-pid1-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "retainedFinalResultSha256": "1d8afdee67faba86d60f60da4f359d87c162866c3ec7f52bcc5f9ef4e71dde32",
+  "imageRetained": "sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b"
+}

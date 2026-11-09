@@ -1,0 +1,83 @@
+{
+  "taskId": "bibiyjwrq",
+  "rawResult": {
+    "file": "docs/acceptance/resident-conversation-routing/round-12/repaired-default-files-result.json",
+    "sha256": "084393f6ff4916e8f6f11dfac471b96adbb27837a474441ee3aa4bbe34891379"
+  },
+  "executorExit": 3,
+  "nodeRunnerExit": 1,
+  "termination": "Controlled stop of exact owned flow worker 92128 only; parent runner and wrapper returned afterward. NOT an unassisted natural pass.",
+  "rawTerminationFieldAccurate": false,
+  "rawTerminationFieldExplanation": "The original wrapper wrote a static no-worker-intervention label. That label is contradicted by this exact Check/stop/readback; original raw bytes are preserved.",
+  "stopSource": {
+    "file": "docs/tmp/sg12-owned-flow-worker-stop.ps1",
+    "sha256": "2d98d876be2b6c7361c0cc604e2a8e104f8976a0d2146f7c9c87a8a0743967a8"
+  },
+  "stopCheck": {
+    "file": "docs/tmp/sg12-owned-flow-worker-stop-check.json",
+    "sha256": "6c76ea117c77872b28caeb1d84d1c175fc8da05c99d552047fc1a4592486c276",
+    "effects": 0
+  },
+  "stopRun": {
+    "file": "docs/tmp/sg12-owned-flow-worker-stop-run.json",
+    "sha256": "f99fafabac8a7c0c8c6a79f02993d0a215b0ff4aa19f10d9a20a260a2c51700c",
+    "parentsStopped": false,
+    "treeStop": false
+  },
+  "independentProcessReadback": {
+    "observedAt": "2026-11-08T02:13:48.5452017Z",
+    "effects": 0,
+    "processes": [
+      {
+        "pid": 92128,
+        "absent": true
+      },
+      {
+        "pid": 37384,
+        "absent": true
+      },
+      {
+        "pid": 78844,
+        "absent": true
+      }
+    ]
+  },
+  "preStopCpuEvidence": {
+    "first": {
+      "at": "2026-11-08T01:49:06.3622397Z",
+      "seconds": 916.828125
+    },
+    "second": {
+      "at": "2026-11-08T01:56:25.9093537Z",
+      "seconds": 1642.8125
+    },
+    "finalCheck": {
+      "at": "2026-11-08T02:09:54.4193338Z",
+      "seconds": 2936.25
+    }
+  },
+  "registeredCaseCounts": {
+    "PASS": 32,
+    "FAIL": 0,
+    "SKIP": 0
+  },
+  "fileLevelFailures": 1,
+  "sourceMapSha256": "1af3e3ac7a4677c4bdc6b5106eb648ffcde4d4552e0c28646c8254adb4f07ecb",
+  "sourceCount": 1110,
+  "sourceChanged": [
+    {
+      "file": "AGENTS.md",
+      "before": "327018ce266440759f4c9e0ab3441034f505efbc690a287ac1cc0b7879b88d64",
+      "after": "7622ab5c5101b6f93b73827550b6f6d1230b13c7e1d1da163c791a9cac8f4e92"
+    }
+  ],
+  "driftClassification": "AGENTS only: explicitly authorized permission-contract documentation update; original source map is not rewritten.",
+  "retiredPathsStillAbsent": true,
+  "inspectorActivated": false,
+  "inspectorResourceCreated": false,
+  "cpuProfileCaptured": false,
+  "flowLivenessResolved": false,
+  "naturalPass": false,
+  "combinedFiveGroupPass": false,
+  "productionAdmissible": false
+}

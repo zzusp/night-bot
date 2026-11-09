@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { createMessageWorkflow } from '../packages/dingtalk-dsh-assistant/message-workflow.js'
-import { createMessageCoordinator } from '../packages/dingtalk-dsh-assistant/message-coordinator.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { createMessageWorkflow } from '../packages/dingtalk-core/message-workflow.js'
+import { createMessageCoordinator } from '../packages/dingtalk-core/message-coordinator.js'
 
 async function fixture(t, onTurn, handlers = {}) {
  const dir=await mkdtemp(join(tmpdir(),'native-coordination-'))

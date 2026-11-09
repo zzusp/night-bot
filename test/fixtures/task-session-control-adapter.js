@@ -1,5 +1,4 @@
-import {createTaskOwnerController} from '../../packages/dingtalk-dsh-assistant/task-owner-controller.js'
-import {createTaskWorkflowContracts} from '../../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
+import {createTaskWorkflowContracts} from '../../packages/dingtalk-core/task-workflow-contracts.js'
 export function requireControl(t,f){if(typeof f.controller.controlNode==='function')return true;t.skip('BLOCKED / not run: public controller.controlNode is not installed in this isolated test snapshot');return false}
 export async function nodeBinding(f,nodeId='verify'){
  const state=await f.controller.state(f.runId),plan=await f.controller.taskPlan(f.taskId),node=state.nodes.find(n=>n.nodeId===nodeId)
@@ -18,11 +17,10 @@ async function controlRun(f,action,commandId){
 export const stop=(f,commandId='session-stop')=>controlRun(f,'stop',commandId)
 export const continueRun=(f,commandId='session-continue')=>controlRun(f,'continue',commandId)
 export async function bindOriginalRequirement(f,requirement){
- const owner=createTaskOwnerController({ctx:{},store:f.store,artifacts:f.artifacts,controller:f.controller,modelConfig:()=>({}),advanceTask:async()=>{},authorizeStages:async()=>false,sessionRunner:{async run(){throw Error('No model run is needed merely to bind the real fixture requirement')},async close(){}}})
- const initial=await owner.ensure({taskId:f.taskId,sourceKey:'fixture-original',criteria:requirement.acceptanceCriteria,origin:{}})
+ const existing=await f.store.query({kind:'task.owner',taskId:f.taskId})
  const goal=await f.artifacts.put(requirement,{taskId:f.taskId}),plan=await f.controller.taskPlan(f.taskId)
- await f.store.command({id:'bind-original',kind:'task.requirement.bind-legacy',args:{taskId:f.taskId,expectedRequirementRevision:plan.task.requirementRevision,requirementRef:goal.ref,sessionId:initial.sessionId,criteria:requirement.acceptanceCriteria,sourceKey:'fixture-original',eventKey:'bind-original'}})
- await owner.close();return goal
+ await f.store.command({id:'bind-original',kind:'task.requirement.bind-legacy',args:{taskId:f.taskId,expectedRequirementRevision:plan.task.requirementRevision,requirementRef:goal.ref,sessionId:existing?.sessionId??'fixture-domain-'+f.taskId,criteria:requirement.acceptanceCriteria,sourceKey:'fixture-original',eventKey:'bind-original'}})
+ return goal
 }
 export async function applyRequirementDifference(f,{requirement,stages,input,stageId,predecessorOutputRef}){
  const prior=await f.controller.taskPlan(f.taskId),goal=await f.artifacts.put(requirement,{taskId:f.taskId})
@@ -36,7 +34,8 @@ export async function applyRequirementDifference(f,{requirement,stages,input,sta
 }
 export async function attemptOriginalCompletion(f,requirement){
  const helpers=createTaskWorkflowContracts({controller:f.controller,store:f.store,artifacts:f.artifacts})
- const owner=createTaskOwnerController({ctx:{},store:f.store,artifacts:f.artifacts,controller:f.controller,modelConfig:()=>({}),advanceTask:async()=>{},authorizeStages:async()=>false,authorizeCompletion:async({taskId,decision})=>helpers.authorizeCompletion({taskId,decision,requirement,plan:await f.controller.taskPlan(taskId)}),readDeliveryManifest:helpers.readDeliveryManifest,readStageArtifacts:helpers.readStageArtifacts,
- sessionRunner:{async close(){},async run({input,onSessionBound,onCandidate}){await onSessionBound();const ref=input.stages[0].outputRef;const decision={action:'complete',summary:'Attempt completion against the actual original goal',evidenceRefs:[ref],assessments:input.acceptanceItems.map(item=>({itemId:item.itemId,status:'satisfied',evidenceRefs:[ref]}))};await onCandidate(decision);return {status:'submitted',decision}}}})
- try{await owner.ensure({taskId:f.taskId,sourceKey:'fixture-original',criteria:requirement.acceptanceCriteria,origin:{}});return await owner.drive(f.taskId)}finally{await owner.close()}
+ const plan=await f.controller.taskPlan(f.taskId),bound=await f.artifacts.read(plan.task.requirementRef)
+ const items=await f.store.query({kind:'task.owner.acceptance',taskId:f.taskId}),ref=plan.stages[0].outputRef
+ const decision={action:'complete',summary:'Attempt completion against the actual original goal',evidenceRefs:[ref],assessments:items.map(item=>({itemId:item.itemId,status:'satisfied',evidenceRefs:[ref]}))}
+ return helpers.authorizeCompletion({taskId:f.taskId,decision,requirement:bound,plan})
 }

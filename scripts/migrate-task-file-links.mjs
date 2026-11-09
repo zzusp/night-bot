@@ -4,7 +4,7 @@ import { constants } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve, dirname, join, relative, isAbsolute, parse } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { checkedTaskDirectory } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
+import { checkedTaskDirectory } from '../packages/dingtalk-core/session-workspaces.js'
 
 const fail = code => { throw new Error(code) }
 const exists = path => lstat(path).catch(error => { if (error.code === 'ENOENT') return null; throw error })

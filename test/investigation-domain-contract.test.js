@@ -1,11 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createInvestigationWorkflow, createInvestigationWorkflowV8, createInvestigationWorkflowV7, createInvestigationWorkflowV6, createLegacyInvestigationWorkflow, validateInvestigationResult, validateAgentWorkResult, createInvestigationStageContract, createInvestigationCompletionPolicy } from '../packages/dingtalk-dsh-assistant/agent-work.js'
-import { defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskWorkflowContracts } from '../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
-import { createGeneralCapabilityStepWorkflow, verifyTaskAcceptance } from '../packages/dingtalk-dsh-assistant/task-general-workflow.js'
-import { externalWorkflowOwnerContract, legacyExternalWorkflowOwnerContract } from '../packages/dingtalk-dsh-assistant/task-release-workflows.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { createInvestigationWorkflow, createInvestigationWorkflowV8, createInvestigationWorkflowV7, createInvestigationWorkflowV6, createLegacyInvestigationWorkflow, validateInvestigationResult, validateAgentWorkResult, createInvestigationStageContract, createInvestigationCompletionPolicy } from '../packages/dingtalk-core/agent-work.js'
+import { defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createTaskWorkflowContracts } from '../packages/dingtalk-core/task-workflow-contracts.js'
+import { createGeneralCapabilityStepWorkflow, verifyTaskAcceptance } from '../packages/dingtalk-core/task-general-workflow.js'
+import { externalWorkflowOwnerContract, legacyExternalWorkflowOwnerContract } from '../packages/dingtalk-core/task-release-workflows.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 
 const requirement = { acceptanceCriteria: ['查明原因', '完成修复部署'],
   acceptanceItems: [{ itemId: 'acceptance-1', criterion: '查明原因' }, { itemId: 'acceptance-2', criterion: '完成修复部署' }] }

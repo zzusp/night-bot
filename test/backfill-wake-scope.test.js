@@ -6,10 +6,10 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {EventEmitter} from 'node:events';
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js';
-import {createMessageWorkflow} from '../packages/dingtalk-dsh-assistant/message-workflow.js';
-import {createMessageCoordinator} from '../packages/dingtalk-dsh-assistant/message-coordinator.js';
-import {startDwsBridge} from '../packages/dingtalk-dsh-assistant/dws-bridge.js';
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js';
+import {createMessageWorkflow} from '../packages/dingtalk-core/message-workflow.js';
+import {createMessageCoordinator} from '../packages/dingtalk-core/message-coordinator.js';
+import {startDwsBridge} from '../packages/dingtalk-core/dws-bridge.js';
 
 async function fixture(t,{command=false}={}) {
  const root=await mkdtemp(join(tmpdir(),'backfill-wake-native-'));

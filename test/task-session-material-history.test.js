@@ -5,11 +5,11 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
-import { openTaskSessionService } from '../packages/dingtalk-dsh-assistant/task-session-service.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
 import { nativeTaskHost, latestInput, topicTaskCalls } from './fixtures/task-session-native-host.js'
-import { createOfficialModelContentIndex, modelContentScope } from '../packages/dingtalk-dsh-assistant/model-context.js'
-import { canonicalExecutionJson } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { createOfficialModelContentIndex, modelContentScope } from '../packages/dingtalk-core/model-context.js'
+import { canonicalExecutionJson } from '../packages/dingtalk-core/execution-artifacts.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 async function temporary() {

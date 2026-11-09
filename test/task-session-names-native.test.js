@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { available, reason, nativeTaskHost, latestInput, topicTaskCalls } from './fixtures/task-session-native-host.js'
-import { inspectSession } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
+import { inspectSession } from '../packages/dingtalk-core/session-persistence.js'
 const call=(name,args)=>({name,args})
 for (const continuationTitle of ['English continuation title', '重新核对日志']) test(`真实任务链路：可选中文短名、原生标题一致，续办不改名：${continuationTitle}`,  { ...({skip: !available ? reason : false, timeout:30000}), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
  const root=await mkdtemp(join(tmpdir(),'execution-names-native-'));let host,delegated=false,continued=false,automaticTitles=0

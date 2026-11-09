@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { projectOwnerContext, measureOwnerContext } from '../packages/dingtalk-dsh-assistant/task-owner-context.js'
-import { executionDigest, readTaskMaterialIndexPage } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { ownerImmutableReadReceipts, retainOwnerContextBase } from '../packages/dingtalk-dsh-assistant/task-owner-session.js'
+import { projectOwnerContext, measureOwnerContext } from '../packages/dingtalk-core/task-owner-context.js'
+import { executionDigest, readTaskMaterialIndexPage } from '../packages/dingtalk-core/execution-artifacts.js'
+
 
 export function fixture() {
   const values = new Map()
@@ -91,26 +91,7 @@ test('explicitly superseded source versions are deferred while authorization-bou
   assert.ok(result.requiredRefs.includes(sources.current[0].text.contextRef))
 })
 
-test('read reuse requires complete original successful pages, exact digest, matching task/session and consistent overlap', () => {
-  const binding = { taskId: 'task', sessionId: 'owner' }, value = { kind: 'owner-context-section', value: 'AUTHORIZATION'.repeat(300) }
-  const ref = `sha256-${executionDigest(value)}.json`, text = JSON.stringify(value), split = 2000
-  const input = taskId => ({ seq: 0, type: 'user/message', surfaceOp: 'append', data: {
-    source: { taskOwner: { taskId, sessionId: 'owner' } }, content: [] } })
-  const call = (id, offset, seq) => ({ seq, type: 'tool/call', data: { callId: id, name: 'task_owner_read_artifact', arguments: { artifactRef: ref, offset } } })
-  const result = (id, artifact, seq, isError = false, surfaceOp = 'append') => ({ seq, type: 'tool/result', surfaceOp, data: { message: { content: [
-    { toolCallId: id, isError, content: [{ type: 'text', text: JSON.stringify({ artifact, totalLength: text.length }) }] },
-  ] } } })
-  const events = [input('task'), call('a', 0, 1), result('a', text.slice(0, split), 2), call('b', split, 3), result('b', text.slice(split), 4)]
-  const receipts = ownerImmutableReadReceipts(events, binding)
-  assert.equal(receipts.get(ref).kind, 'owner-context-section'); assert.deepEqual([...receipts.get(ref).retained], [2, 4])
-  for (const invalid of [events.slice(0, 3), [input('foreign'), ...events.slice(1)],
-    [events[0], events[1], result('a', text, 2, true)],
-    [events[0], events[1], result('a', text, 2, false, { op: 'replace', start: 2, end: 2 })],
-    [events[0], events[1], result('a', text.replace('AUTHORIZATION', 'CHANGED______'), 2)],
-    [...events, call('c', 10, 5), result('c', 'bad overlap', 6)],
-  ]) assert.equal(ownerImmutableReadReceipts(invalid, binding).size, 0)
-  assert.equal(ownerImmutableReadReceipts(events, { ...binding, sessionId: 'other' }).size, 0)
-})
+
 
 
 test('growing receipt lists and workflow catalog are deferred losslessly without hiding current obligations', async () => {
@@ -152,37 +133,3 @@ test('duplicate source text resolves within the same input while identities and 
   assert.deepEqual({ ...modelInput.currentSources[0], text: resolve(modelInput.currentSources[0].text) }, input.currentSources[0])
   assert.ok(JSON.stringify(modelInput.goal).length + JSON.stringify(modelInput.currentSources).length < JSON.stringify(input.goal).length + JSON.stringify(input.currentSources).length)
 })
-
-test('visible base survives continuation, updates removed constraints, and restores after compaction without historical assumptions', async () => {
-  const events = [], session = { surface: { nodes: [] }, snapshotEvents: () => events,
-    append(type, data, options = {}) {
-      const seq = events.length
-      events.push({ type, data: structuredClone(data), seq, ...options })
-      if (options.surfaceOp?.op === 'replace') this.surface.nodes = this.surface.nodes.filter(id => id !== options.surfaceOp.startSeq)
-      this.surface.nodes.push(seq)
-    } }
-  const binding = { taskId: 'one', sessionId: 'owner' }, f = fixture()
-  const text = '核验撤回限制，当前不授权部署。'.repeat(10)
-  const raw = { taskId: 'one', goal: { request: text, constraints: ['不部署'], sourceInstructions: [{ sourceKey: 'a', text }] },
-    currentSources: [{ sourceKey: 'a', text }], task: { requirementRevision: 1 }, events: [] }
-  const { modelInput } = await projectOwnerContext(raw, f.artifacts)
-  const dynamic = retainOwnerContextBase(session, binding, modelInput)
-  const currentBase = () => JSON.parse(events[session.surface.nodes.at(-1)].data.content[0].text).ownerContextBase
-  const merged = { ...currentBase(), ...dynamic }; delete merged.contextBaseDigest
-  assert.deepEqual(merged, modelInput)
-  assert.equal(merged.goal.request.sameAs.reduce((node, key) => node[key], merged), text)
-  retainOwnerContextBase(session, binding, { ...modelInput, events: [{ eventSeq: 2 }] })
-  assert.equal(events.length, 1, 'unchanged base does not append another event')
-  const changed = { ...modelInput, goal: { ...modelInput.goal, constraints: ['只允许隔离环境测试'] } }
-  retainOwnerContextBase(session, binding, changed)
-  assert.equal(session.surface.nodes.length, 1)
-  assert.deepEqual(currentBase().goal.constraints, ['只允许隔离环境测试'])
-  session.surface.nodes = [] // Compaction removed the visible base; audit still exists.
-  retainOwnerContextBase(session, binding, changed)
-  assert.equal(events.length, 3)
-  assert.deepEqual(currentBase().goal, changed.goal)
-  retainOwnerContextBase(session, { ...binding, sessionId: 'other' }, changed)
-  assert.equal(events.length, 4, 'another session cannot reuse this base')
-  assert.deepEqual(raw.goal.constraints, ['不部署'])
-})
-

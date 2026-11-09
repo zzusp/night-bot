@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
-import { installTaskPlanSchema, reduceTaskPlanCommand } from '../packages/dingtalk-dsh-assistant/execution-task-plan.js'
+import { installTaskPlanSchema, reduceTaskPlanCommand } from '../packages/dingtalk-core/execution-task-plan.js'
 import { installTaskOwnerSchema, validateTaskOwnerSchema, reduceTaskOwnerCommand,
-  queryTaskOwner, recoverTaskOwners } from '../packages/dingtalk-dsh-assistant/task-owner-store.js'
+  queryTaskOwner, recoverTaskOwners } from '../packages/dingtalk-core/task-owner-store.js'
 
 const at = '2026-09-25T00:00:00.000Z'
 const businessCondition = { kind: 'business-input', missing: '字段的业务规格', responsibleParty: '需求方', resumeWhen: '确认字段规格', evidenceRefs: [] }
@@ -390,7 +390,7 @@ test('Owner 执行途中取消，释放后不累计失败或再次唤醒', () =>
 })
 
 test('新接纳验收合同在消息入口与 Owner 一致，16/17/32/100 成功且非法字段拒绝', async () => {
-  const { messageSchemas } = await import('../packages/dingtalk-dsh-assistant/message-context.js')
+  const { messageSchemas } = await import('../packages/dingtalk-core/message-context.js')
   const intent = acceptanceCriteria => ({ kind: 'intent', actions: [{ intent: 'create', arguments: { objective: '完成目标', acceptanceCriteria }, dependsOn: [] }], constraints: [], requiredExecutionMaterials: [], replyPolicy: 'result' })
   for (const criteria of [...[16, 17, 32, 100].map(count => Array.from({ length: count }, (_, i) => `验收 ${i + 1}`)), ['x'.repeat(2001)], [' '.repeat(2000) + 'x']]) {
     assert.equal(messageSchemas.I.safeParse(intent(criteria)).success, true)

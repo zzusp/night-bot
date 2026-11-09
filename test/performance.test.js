@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test,{after} from 'node:test'
 import { createServer } from 'node:http'
-import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-dsh-assistant/store.js'
-import { projectPerformanceEvent, listPerformance, performanceProjectionSchema, workflowPerformance, coordinationCosts } from '../packages/dingtalk-dsh-assistant/performance.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { openResidentStore, residentDomainSpec } from '../packages/dingtalk-core/store.js'
+import { projectPerformanceEvent, listPerformance, performanceProjectionSchema, workflowPerformance, coordinationCosts } from '../packages/dingtalk-core/performance.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
 
 const base = Date.parse('2026-09-21T12:00:00+08:00')

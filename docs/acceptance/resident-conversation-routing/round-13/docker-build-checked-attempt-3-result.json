@@ -1,0 +1,20 @@
+{
+  "contextSha256": "5589bb6b284b4b0d25d4afa490483c5b2b7cd61f0991e2ae3f30abb0cb3b8290",
+  "sourceBoundToSealedContext": true,
+  "exit": 0,
+  "spawnFailure": false,
+  "startedAt": "2026-11-08T05:10:05.744Z",
+  "finishedAt": "2026-11-08T05:10:12.053Z",
+  "tag": "night-bot:sg12-check-def816be-r13-a3",
+  "sourceChanged": [],
+  "sourceCount": 491,
+  "logSha256": "d4d4238591e55d2d762f984ace5a9094410583b99f3b17284027e7d9ab43eb0b",
+  "image": {
+    "id": "sha256:c34333f096fc1ffa807b812acfe064b9832942a754053dd5fd4be75041d82813",
+    "os": "linux",
+    "architecture": "amd64",
+    "user": "node"
+  },
+  "realVendorExecuted": false,
+  "applicationRuntimeValidated": false
+}

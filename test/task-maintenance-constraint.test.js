@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTaskMaintenanceConstraint } from '../packages/dingtalk-dsh-assistant/task-maintenance-constraint.js'
+import { createTaskMaintenanceConstraint } from '../packages/dingtalk-core/task-maintenance-constraint.js'
 const fixture=()=>{
  const values=new Map([['requirement',{sourceInstructions:[{sourceKey:'original',sourceVersion:1,actorId:'requester',text:'original UI task'}]}]])
  let event,source,otherTouched=false,completeWrites=0
@@ -49,7 +49,7 @@ test('constraint rejects incomplete run and foreign artifacts before provenance 
 })
 
 test('retired maintenance constraint HTTP rejects local and foreign requests without invoking service',async t=>{
- const {createServer}=await import('node:http'),{handleRequest}=await import('../packages/dingtalk-dsh-assistant/http.js')
+ const {createServer}=await import('node:http'),{handleRequest}=await import('../packages/dingtalk-core/http.js')
  let seen
  const store={applyWorkflowMaintenanceConstraint:async r=>{seen=r;return{accepted:true}}}
  const server=createServer((request,response)=>handleRequest(request,response,store).catch(e=>{response.statusCode=500;response.end(String(e))}))

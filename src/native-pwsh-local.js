@@ -1,3 +1,4 @@
+import {preparedProcessSpec} from './process/contracts.js';
 import {runManagedShell} from './runtime/managed-shell-execution.js';
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-pwsh-local-MIT.txt. Application process/sandbox/jobs/policy services own effects.
 import z from "@deepseek-ai/schemastery";
@@ -247,7 +248,7 @@ var PwshLocalExecutor = class NativePwshLocalExecutor extends ShellExecutor {
 	*   killed while `result()` carries the same failure as its rejection.
 	*/
 	async executeArgv(spec, argvOrPrepare, onStarted) {
-		return runManagedShell({spec,prepare:argvOrPrepare,spawn:(argv,signal)=>this.ctx.subprocess.spawn(this.spawnSpec(spec, spec.stdoutMaxBytes, signal, argv)),onStarted,onSettled:(...args)=>this.onProcessDone(...args)});
+		return runManagedShell({spec,prepare:argvOrPrepare,spawn:(prepared,signal)=>this.ctx.subprocess.spawn(preparedProcessSpec(prepared,argv=>this.spawnSpec(spec, spec.stdoutMaxBytes, signal, argv))),onStarted,onSettled:(...args)=>this.onProcessDone(...args)});
 	}
 
 	/**

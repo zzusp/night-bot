@@ -1,0 +1,10 @@
+{
+  "exit": 0,
+  "startedAt": "2026-11-07T20:55:45.691Z",
+  "finishedAt": "2026-11-07T20:55:46.774Z",
+  "sourceCount": 425,
+  "sourceChanged": [],
+  "logSha256": "674db8cda39d976fb6c2a1de42cea3e327829d0fb7ef8827864b1c5dfdfacc05",
+  "scope": "prepared/IPC/refusal only; no native policy, Profile or OS probe",
+  "realVendorExecuted": false
+}

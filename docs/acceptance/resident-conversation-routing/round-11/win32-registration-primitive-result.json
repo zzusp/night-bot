@@ -1,0 +1,48 @@
+{
+  "variant": "registration-predicate-only",
+  "pass": false,
+  "profileCreated": false,
+  "createAttempted": false,
+  "deleteAttempted": false,
+  "registrationAbsenceVerified": false,
+  "profileFolderRemoved": false,
+  "storageApiBindingVerified": false,
+  "productionAdmissible": false,
+  "cleanupComplete": false,
+  "childCreated": false,
+  "jobCreated": false,
+  "impersonationPerformed": false,
+  "aclChanged": false,
+  "networkCapabilities": 0,
+  "handlesClosed": true,
+  "nativeOwnerRetained": false,
+  "profileState": "not-created",
+  "taskId": "buamlg1zc",
+  "exit": 2,
+  "check": {
+    "exit": 0,
+    "effects": 0
+  },
+  "sourceSha256": "1dc34c9555172349a71ed0a95a4f080962d848dc9a3de5b4e52d720aa6ebb01f",
+  "parametersSha256": "34d9d0ad18cd11146dd22471169862260e51a9d568920a0a2ee1946bd410eb7b",
+  "sourceUnchanged": true,
+  "errors": [
+    {
+      "stage": "pre-create identity",
+      "type": "Exception",
+      "message": "Native identity/path mismatch"
+    }
+  ],
+  "privateEvidenceIgnored": true,
+  "privateEvidenceHashes": {
+    "docs/tmp/sg11-profile-registration-check.log": "84ccd6271d10df7b073195cfa6a5b1f564272872b421f08722ccc00e5302ddc3",
+    "docs/tmp/sg11-profile-registration-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-registration-run.log": "d257ee214f113c5c9747a0aaedcf42e7b01484594026826414d60d3fa085672e",
+    "docs/tmp/sg11-profile-registration-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-registration-private-result.json": "df572f534d6be165a422b2504a508b64602ab40238e1d1d06a8d411d92616744",
+    "docs/tmp/sg11-profile-registration-private-owner.json": "7aea8cbc43ab5921c06be27246241d44a8030a3f3ca83fe7981c3597a7f81203",
+    "docs/tmp/sg11-profile-registration-executor.json": "ac45e47bb2221402c2f4074652f0fa7f00e490b9afa557dcf7d29056fc9a783c"
+  },
+  "scope": "仅全新注册native-leaf谓词原语；在Create前身份比较失败，未创建或删除Profile，未变ACL/令牌/网络。不能证明registration缺席、存储API绑定、LPAC/full或旧资源清理。未重试同条件。",
+  "nextBoundary": "区分实际Host root、USER_Classes和Mappings原生身份不符；由Platform给最小只读诊断方案，保原验证门，OS动作需具体前审。"
+}

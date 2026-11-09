@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { openUatRehearsalReceipts, readUatCatalogBaseline, reviewUatSql,
   verifyUatRows, uatSchemaProofSql, uatCatalogBaselineDigest, uatCatalogBaselineSql,
-  uatCatalogBaselineCountSql, narrowVerificationSql } from '../packages/dingtalk-dsh-assistant/workflow-postgres-uat-host.js'
+  uatCatalogBaselineCountSql, narrowVerificationSql } from '../packages/dingtalk-core/workflow-postgres-uat-host.js'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const target = { instance: 'postgresql/192.168.8.8:30770', database: 'hiq_editor', environment: 'uat' }

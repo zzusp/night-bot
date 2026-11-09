@@ -4,7 +4,7 @@ import {mkdtemp,writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
-import {verifyDeliveredEngineeringFacts} from '../packages/dingtalk-dsh-assistant/task-delivery-review.js'
+import {verifyDeliveredEngineeringFacts} from '../packages/dingtalk-core/task-delivery-review.js'
 const hash=x=>createHash('sha256').update(x).digest('hex')
 async function fixture(){
  const directory=await mkdtemp(join(tmpdir(),'project-review-')),path=join(directory,'dom.json'),commit='a'.repeat(40)

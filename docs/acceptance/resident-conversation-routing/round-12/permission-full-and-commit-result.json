@@ -1,0 +1,26 @@
+{
+  "startedAt": "2026-11-08T03:29:37.655391+00:00",
+  "finishedAt": "2026-11-08T03:30:47.319135+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^(operator full|default Host (nonportable|exact shared|actual staged))",
+    "test/pi-approval-wire.test.js"
+  ],
+  "runnerPid": 75456,
+  "exitCode": 1,
+  "naturalExit": true,
+  "controlledStop": false,
+  "sourceCount": 441,
+  "sourceSha256": "0db618e48c8543adcd1adcb430379529be9ec07c9b69a78ce62f5d3f7c5083bb",
+  "sourceChanged": [
+    "src/process/windows-profile.js"
+  ],
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "stdoutSha256": "3f63a72594645c342e768f6158ae59a5e3be74e2aca6df794422c0b9bb56c4cf",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "realVendorExecuted": false
+}

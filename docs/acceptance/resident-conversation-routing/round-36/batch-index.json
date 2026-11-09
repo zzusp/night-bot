@@ -1,0 +1,235 @@
+{
+  "round": 36,
+  "disposition": "PASS_NEW_ROOT_REAL_PROFILE_UNLAUNCHED_COMPONENT_ONLY",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceCount": 1125,
+  "aggregateSha256": "37c9bb7f56e2d07d07183e90857ee247b607f28ed0d5bc713118515448272170",
+  "sevenSourceMapsIdentical": true,
+  "hostTasks": {
+    "guard": "bqkm061l1",
+    "native": "b25egmf4e"
+  },
+  "files": {
+    "guard-source.json": {
+      "bytes": 123741,
+      "sha256": "20abd43a1c5c20abf739e52473b004054e91409c89d8343bf375f9f47aa49164",
+      "temporarySource": "docs/tmp/sg11-profile-fixed-check-source.json"
+    },
+    "guard.log": {
+      "bytes": 436,
+      "sha256": "bbf6b329dc30a257f34c3d50f5fdc07a55725f12cd541481de7fca9bf737113c",
+      "temporarySource": "docs/tmp/sg11-profile-fixed-check.log"
+    },
+    "guard-stderr.log": {
+      "bytes": 120,
+      "sha256": "f57910bedab606b4c6b676e0b8c10b5ae0762f8e5a8bbd038640d496de99d52b",
+      "temporarySource": "docs/tmp/sg11-profile-fixed-check-stderr.log"
+    },
+    "guard-result.json": {
+      "bytes": 126934,
+      "sha256": "29097b5d41bdfadbea8e48978e28c88711f0e7140cc79256b68c4f9cb86ac122",
+      "temporarySource": "docs/tmp/sg11-profile-fixed-check-result.json"
+    },
+    "guard-collector.py": {
+      "bytes": 4872,
+      "sha256": "43e51b3aac8360816219bf55809fbecacdac37372c00f5ac0a7bb846c67eaa03",
+      "temporarySource": "docs/tmp/sg11-profile-fixed-collector.py"
+    },
+    "native-console.log": {
+      "bytes": 229,
+      "sha256": "0d15ced598c1b0fe394348c0c8de5475cdd85841f2572fc1910976677c0fb6f7",
+      "temporarySource": "docs/tmp/sg11-profile-unlaunched-fixed-run-console.log"
+    },
+    "windows-profile-unlaunched-summary.json": {
+      "bytes": 8392,
+      "sha256": "e3c794cf808d156d241322d62188d721fd9cb65be2cc5f1e6e126bdc39458ece"
+    },
+    "archive-update.py": {
+      "bytes": 16357,
+      "sha256": "1c2c9ef083082dfc00f53c28e15e396e661ded0f638da77c1cc1f5589147ef39"
+    }
+  },
+  "report": {
+    "path": "docs/acceptance/resident-conversation-routing/round-36.md",
+    "bytes": 9949,
+    "sha256": "9c5e263081a534e5f99c5ed7e98d499ff487a2fe063d037bc4bfce066d356624"
+  },
+  "matrix": {
+    "path": "docs/acceptance/resident-conversation-routing/matrix.csv",
+    "beforeBytes": 196478,
+    "beforeSha256": "f0da44c0fd024d7f00794cf1d10583eddf0dbf5ef5827a9aa986f32a2ad374fa",
+    "afterBytes": 202662,
+    "afterSha256": "22334bdd73e9934a5a3f4444c69e27000e228d36ce5b881500a21149768e202a",
+    "businessRowsBefore": 296,
+    "businessRowsAfter": 297,
+    "columnAdded": "round_36",
+    "existingRowAnnotations": {
+      "source-import-native-guard": "PASS_THREE_ORIGINAL_GUARDS_EXIT0_PROFILE_944B_MANIFEST_CA04_1125_37C9_STABLE",
+      "all-required-regressions": "PARTIAL_NEW_PROFILE_UNLAUNCHED_COMPONENT_AND_THREE_GUARDS_PASS_FULL_LPAC_AND_OTHER_GROUPS_NOT_VALIDATED",
+      "sg11-final-remaining-checks": "PARTIAL_REAL_PROFILE_UNLAUNCHED_PROOF_RELEASED_SETTLED_STRICT_COLD_PASS_R35_UNKNOWN_RETAINED_FULL_CHAIN_NOT_VALIDATED"
+    },
+    "existingNotRerunRows": 293,
+    "newRow": {
+      "case_id": "sg11-profile-unlaunched-fixed-host",
+      "scenario": "修复后新根真实Host未launch Profile准备、原proof、唯一回收、released与Job settled及严格cold；不关闭旧unknown",
+      "round_1": "",
+      "round_2": "",
+      "round_3": "",
+      "round_4": "",
+      "round_5": "",
+      "round_6": "",
+      "round_7": "",
+      "round_8": "",
+      "round_9": "",
+      "round_10": "",
+      "round_11": "",
+      "round_12": "",
+      "round_13": "",
+      "round_14": "",
+      "round_15": "",
+      "round_16": "",
+      "round_17": "",
+      "round_18": "",
+      "round_19": "",
+      "round_20": "",
+      "round_21": "",
+      "round_22": "",
+      "round_23": "",
+      "round_24": "",
+      "round_25": "",
+      "round_26": "",
+      "round_27": "",
+      "round_28": "",
+      "round_29": "",
+      "round_30": "",
+      "round_31": "",
+      "round_32": "",
+      "round_33": "",
+      "round_34": "",
+      "round_35": "",
+      "round_36": "PASS_REAL_HOST_PROFILE_UNLAUNCHED_PROOF_RELEASED_PRODUCER_REPORTED_STRICT_COLD_NO_UNRESOLVED_NODE0_37C9"
+    },
+    "appendedRawSuffix": "sg11-profile-unlaunched-fixed-host,修复后新根真实Host未launch Profile准备、原proof、唯一回收、released与Job settled及严格cold；不关闭旧unknown,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,PASS_REAL_HOST_PROFILE_UNLAUNCHED_PROOF_RELEASED_PRODUCER_REPORTED_STRICT_COLD_NO_UNRESOLVED_NODE0_37C9\n",
+    "reverseVerifiedSha256": "f0da44c0fd024d7f00794cf1d10583eddf0dbf5ef5827a9aa986f32a2ad374fa"
+  },
+  "inventory": {
+    "path": "docs/acceptance/resident-conversation-routing/test-case-inventory.csv",
+    "bytes": 3320505,
+    "sha256": "aeb6cc97bcedbcce7b7d63aa984159a18b699b7b67f347deb2e4e057f5464fdb",
+    "identityRows": 5472,
+    "changed": false,
+    "newOrDeletedIdentities": 0
+  },
+  "privateEvidence": {
+    "docs/tmp/sg11-profile-unlaunched-fixed-probe.mjs": {
+      "bytes": 23240,
+      "sha256": "ba0b0d2e29ef9d4be8615c93f4d73986479782294e2e9382e48c988f56a5b9d3"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-check.json": {
+      "bytes": 118219,
+      "sha256": "013b54a4a95896a5500be8ea4602f4c113b6f4dd5a478d07a41838b67ad82610"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-check-execution.json": {
+      "bytes": 1311,
+      "sha256": "47ec927e63a3a48edbbede2d91c6d634c0f7dda7c40bbc6f22dfd2373e91d2da"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-checklist.md": {
+      "bytes": 18069,
+      "sha256": "878b101249b88a37c8e3f6408946da587c7d54b9138645644bb638c491a865d2"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-execute.py": {
+      "bytes": 6404,
+      "sha256": "1bd40f92137d7102181af57ee162b3db7505246c8e889d400471d0569cc8926f"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-execution.json": {
+      "bytes": 248373,
+      "sha256": "5fdaadb285d9e13ef2f1cb31b958d0ad05ce68fbcaa1874bfe06bc7fc92fbd92"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run.json": {
+      "bytes": 372359,
+      "sha256": "f00874409ff9f6432d5b56e73fcf19a912f51c9903bdc0a16b4baa69057c2f81"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run-check.json": {
+      "bytes": 118219,
+      "sha256": "013b54a4a95896a5500be8ea4602f4c113b6f4dd5a478d07a41838b67ad82610"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run-console.log": {
+      "bytes": 229,
+      "sha256": "0d15ced598c1b0fe394348c0c8de5475cdd85841f2572fc1910976677c0fb6f7"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "cleanup": {
+    "state": "CLEANED_EXACT_FIVE_GUARD_FILES",
+    "exactTemporaryFiles": {
+      "docs/tmp/sg11-profile-fixed-check-source.json": {
+        "bytes": 123741,
+        "sha256": "20abd43a1c5c20abf739e52473b004054e91409c89d8343bf375f9f47aa49164"
+      },
+      "docs/tmp/sg11-profile-fixed-check.log": {
+        "bytes": 436,
+        "sha256": "bbf6b329dc30a257f34c3d50f5fdc07a55725f12cd541481de7fca9bf737113c"
+      },
+      "docs/tmp/sg11-profile-fixed-check-stderr.log": {
+        "bytes": 120,
+        "sha256": "f57910bedab606b4c6b676e0b8c10b5ae0762f8e5a8bbd038640d496de99d52b"
+      },
+      "docs/tmp/sg11-profile-fixed-check-result.json": {
+        "bytes": 126934,
+        "sha256": "29097b5d41bdfadbea8e48978e28c88711f0e7140cc79256b68c4f9cb86ac122"
+      },
+      "docs/tmp/sg11-profile-fixed-collector.py": {
+        "bytes": 4872,
+        "sha256": "43e51b3aac8360816219bf55809fbecacdac37372c00f5ac0a7bb846c67eaa03"
+      }
+    },
+    "nativePrivateAssetsAndNewInstallation": "RETAINED_FOR_REVIEW",
+    "oldRound35InstallationAndEvidence": "UNTOUCHED",
+    "temporaryArchiveOrCleanupFilesCreated": 0,
+    "removedFiles": {
+      "docs/tmp/sg11-profile-fixed-check-source.json": {
+        "bytes": 123741,
+        "sha256": "20abd43a1c5c20abf739e52473b004054e91409c89d8343bf375f9f47aa49164"
+      },
+      "docs/tmp/sg11-profile-fixed-check.log": {
+        "bytes": 436,
+        "sha256": "bbf6b329dc30a257f34c3d50f5fdc07a55725f12cd541481de7fca9bf737113c"
+      },
+      "docs/tmp/sg11-profile-fixed-check-stderr.log": {
+        "bytes": 120,
+        "sha256": "f57910bedab606b4c6b676e0b8c10b5ae0762f8e5a8bbd038640d496de99d52b"
+      },
+      "docs/tmp/sg11-profile-fixed-check-result.json": {
+        "bytes": 126934,
+        "sha256": "29097b5d41bdfadbea8e48978e28c88711f0e7140cc79256b68c4f9cb86ac122"
+      },
+      "docs/tmp/sg11-profile-fixed-collector.py": {
+        "bytes": 4872,
+        "sha256": "43e51b3aac8360816219bf55809fbecacdac37372c00f5ac0a7bb846c67eaa03"
+      }
+    },
+    "priorIndexSha256": "52c69a194dfe3ac81c00ed8e57c997f8bc89d6433760f4304b179242b82c528e",
+    "effects": 5,
+    "nativePrivateAssetsAndInstallationsUntouched": true
+  },
+  "boundaries": {
+    "newInstallationRetained": true,
+    "sourceWindowReleasedBeforeArchive": true,
+    "oldRound35UnknownRetained": true,
+    "oldRound35InstallationAndEvidenceUntouched": true,
+    "productionScopeReady": false,
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "fullLpacMandatoryLaunchJobAckConptyValidated": false,
+    "existingNullBusinessTreesValidated": false,
+    "knownFolderFailedNonnullBranchExecuted": false,
+    "nativeBodyCallCountsInstrumented": false,
+    "hostOrNativeRerun": false,
+    "newNodeTestRegistrations": 0,
+    "gitWritesChannelCiDeploy": false
+  }
+}

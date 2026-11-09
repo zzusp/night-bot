@@ -2,9 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { defaultMessagePolicy } from '../packages/dingtalk-dsh-assistant/message-workflow.js'
-import { maintenanceStatus } from '../packages/dingtalk-dsh-assistant/execution-maintenance.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { defaultMessagePolicy } from '../packages/dingtalk-core/message-workflow.js'
+import { maintenanceStatus } from '../packages/dingtalk-core/execution-maintenance.js'
 const fail=code=>{throw Object.assign(Error(code),{code})}
 const hash=value=>createHash('sha256').update(value).digest('hex')
 const occurredAt=value=>typeof value==='number'?value:typeof value==='string'?Date.parse(value):NaN

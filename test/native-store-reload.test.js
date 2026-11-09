@@ -11,8 +11,8 @@ for(const mode of ['active-session','identity','unknown-effect','owner','write-t
 import {mkdtemp} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
 import {reconcileFailedStoreSessions} from '../scripts/native-store-reload.mjs'
 test('native reopen and node.drained preserve original lease without dispatch or success',async()=>{
  const root=await mkdtemp(join(tmpdir(),'native-store-reload-')),dbPath=join(root,'control.sqlite'),instanceId='reload'

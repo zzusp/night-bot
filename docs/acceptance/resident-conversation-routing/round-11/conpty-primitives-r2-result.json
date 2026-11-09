@@ -1,0 +1,52 @@
+{
+  "exit": 139,
+  "finishedAt": "2026-11-07T21:41:56.695Z",
+  "sourceCount": 15,
+  "sourceChanged": [],
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-primitives-r2-check.log": "0b3f8c4e2f47ffc5f9a73ff485a3e1a0af48d4cd5689c88d24f92f3ffa59407f",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-primitives-r2-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-primitives-r2-stdout.log": "b498a8fc16104a08addd5a453676c0a3e872958407cb3dc106879d1a31670197",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-primitives-r2-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-primitives-r2-executor.log": "1eceffb180cb1ef1962e5102440234b5f4c27237f287c110c8eb7040469c3a73"
+  },
+  "runStart": {
+    "event": "native-stage",
+    "sequence": 1,
+    "stage": "run-start",
+    "pid": 59784,
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "sourceSha256": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a"
+  },
+  "lastStage": {
+    "event": "native-stage",
+    "sequence": 32,
+    "stage": "operation-join.before"
+  },
+  "terminal": null,
+  "runJsonObserved": false,
+  "pass": false,
+  "handlesClosed": "not-observed",
+  "pseudoConsoleState": "not-observed",
+  "outputEof": "not-observed",
+  "closeReturned": "not-observed",
+  "productionAdmissible": false,
+  "exactPidReadback": {
+    "pid": 59784,
+    "observed": false,
+    "method": "independent PowerShell Get-Process -Id 59784",
+    "resourceCleanupProved": false,
+    "helperState": "not-observed"
+  },
+  "windowsCrashEventReadback": {
+    "method": "Get-WinEvent Application events1000/1001",
+    "startUtc": "2026-11-07T21:39:56Z",
+    "endUtc": "2026-11-07T21:43:56Z",
+    "observed": false,
+    "reason": "NoMatchingEventsFound",
+    "exceptionCode": "not-observed",
+    "faultModule": "not-observed"
+  }
+}

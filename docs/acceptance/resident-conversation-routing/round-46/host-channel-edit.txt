@@ -1,0 +1,308 @@
+R46 Host channel-edit staged evidence
+受验均为 HEAD 2db2aa7c27c9f1ced506de7740c6aac4b757119c 加未提交工作树；各批源码按原 pin/限制分别判断。
+真实 Host、HTTP、SQLite 和配置/绑定/水位文件；模型与 DWS IO 为隔离 fixture，不是厂商实发或真实私聊验收。
+原件按字节解码摘录，历史 FAIL/警告保留；无 pin 的批次不补造。
+
+=== bdc2rsmg4 ===
+早期 metadata/CAS/unknown 首项；无独立起止源码 pin，准备期 Python SyntaxWarning 保留
+ORIGINAL_BYTES 296 SHA256 fd23d67c8ef2c2d1031e5c8338752f50f04c8e9968fa8b70658c38932b3d8905
+ACTUAL_TOOL_OUTPUT_BEGIN
+<stdin>:2: SyntaxWarning: invalid escape sequence '\/'
+✔ Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位和deferred (5620.3157ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12226.3591
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== bxrvgxys3 ===
+早期身份/切换两项；无独立起止源码 pin
+ORIGINAL_BYTES 348 SHA256 d5251a3af75f854598be4b3da56d0ee9c594828703088a26784e397b69ba6190
+ACTUAL_TOOL_OUTPUT_BEGIN
+✔ Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位和deferred (1437.0502ms)
+✔ 同实际身份保水位与授权，异身份保存隔离并在冷启重新检查旧依赖 (1100.3357ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4971.1782
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== b5x9yve9j ===
+原完整四项 3PASS/1FAIL；冻结 query 夹具失败，不以 future 子项替代整批结论
+ORIGINAL_BYTES 1237 SHA256 5a34fc9876b75d14fdb80fef4b9eb429c10b891aabb9f7c0317cc027fe2a87a6
+ACTUAL_TOOL_OUTPUT_BEGIN
+✔ Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位和deferred (5155.9222ms)
+✔ 同实际身份保水位与授权，异身份保存隔离并在冷启重新检查旧依赖 (4057.8861ms)
+✖ 已接纳未落SQL的create/reopen阻止切换，跨await旧请求在激活后拒绝且可切回原身份 (1487.5754ms)
+✔ 未来与半提交的平台定时绑定阻止旧目标切换，结清后才放行 (1524.8093ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16946.6253
+
+✖ failing tests:
+
+test at test\pi-channel-edit.test.js:153:1
+✖ 已接纳未落SQL的create/reopen阻止切换，跨await旧请求在激活后拒绝且可切回原身份 (1487.5754ms)
+  TypeError: Cannot assign to read only property 'query' of object '#<Object>'
+      at pause (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/test/pi-channel-edit.test.js:164:14)
+      at TestContext.<anonymous> (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/test/pi-channel-edit.test.js:167:2)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+[exited with code 1]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== b4ijlhitg ===
+更新准确 DTO 断言后的 Web server 十九项；无独立成对源码 pin，不追认旧投影批次
+ORIGINAL_BYTES 2063 SHA256 4a29b798ba9ade3f32e79ea77be37f380102502ccfdbcd6098ab84f62e27602c
+ACTUAL_TOOL_OUTPUT_BEGIN
+✔ optional plugin disabled does not register lifecycle or open storage (1.937ms)
+✔ real HTTP requires token login, same-origin mutation and CSRF; logout revokes the session (204.8471ms)
+✔ DNS rebinding, cross-site fetch and request identity injection are rejected (114.013ms)
+✔ chat admission preserves configured identity and exact text; retries read the original receipt (123.6033ms)
+✔ uncertain admission is durable and never automatically replayed, including after restart (108.7418ms)
+✔ resolved Host refusal is rejected and never presented as admitted or replayed (110.92ms)
+✔ transport delivery uses durable exact receipts, supports readback after restart and refuses conflict (125.5602ms)
+✔ task/channel views only project existing facts and never return configuration secrets or private paths (136.2973ms)
+✔ 渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接 (94.3378ms)
+✔ partial overview failure preserves other sections without reflecting internal errors (85.2566ms)
+✔ overview isolates throwing channel health and conversation reads from healthy task sections (85.7115ms)
+✔ task details and dialogue whitelist nested facts and redact displayed credentials and paths (109.3085ms)
+✔ task blocker HTTP projection flattens all three real collections and excludes their private payloads (104.1651ms)
+✔ assets use security headers; missing assets do not stop APIs (154.1836ms)
+✔ closing a browser request does not abort already admitted channel work (91.2101ms)
+✔ pending ledger admission becomes unknown after reopening (48.6997ms)
+✔ conversation title and admission state follow durable insertion order across equal timestamps and clock rollback (71.3117ms)
+✔ credential reads reject hard links and malformed oversized files without replacing them (28.9973ms)
+✔ expired sessions fail closed and login attempts are bounded (2.0944ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2081.1568
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== bxqwx4e93 ===
+中间身份/冷启与提醒两项；不当作最终四项
+ORIGINAL_BYTES 346 SHA256 86d948e7cf93f38bd88ccd845315555fe151e6b38bff467fca54ac3c4ffd817b
+ACTUAL_TOOL_OUTPUT_BEGIN
+✔ 同实际身份保水位与授权，异身份保存隔离并在冷启重新检查旧依赖 (10166.3341ms)
+✔ 未来与半提交的平台定时绑定阻止旧目标切换，结清后才放行 (1816.9785ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20786.011
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== b02y2wlq8 ===
+Web来源成功 routed 修复后的 race 单项；后续 acceptHistory/严格读取增量另有最终四项
+ORIGINAL_BYTES 262 SHA256 e227a2a365146834f70d98f3c74751a0082e8a63035c4234c122791a747877b4
+ACTUAL_TOOL_OUTPUT_BEGIN
+✔ 已接纳未落SQL的create/reopen阻止切换，跨await旧请求在激活后拒绝且可切回原身份 (25535.5591ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32311.3726
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== bn9xy3gex ===
+严格损坏 binding 读取修复前四项；原17 pin保留，不追认最终四源
+ORIGINAL_BYTES 4057 SHA256 6965a892310134570bd42d1b63b8bf122a51988d7565e3f21e4eb7d942a803d8
+ACTUAL_TOOL_OUTPUT_BEGIN
+BEFORE
+2026-11-09T08:41:25Z
+a99745d1f730a39a0f8bf93da77a1e008eded3c288b246e28fe25455d34a6a76 *src/host.js
+5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 *src/channels/service.js
+316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 *src/channels/router-lifecycle.js
+21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b *src/channels/plugins/dingtalk-config.js
+44c7b1c2ea6bfc617683d2b107584d5503b529e2f4dc61026df9991d2c3d9577 *src/channels/plugins/dingtalk-storage.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+2dd401ba41d40a7bce6663457b944f220c49cd049a6843487914322d40dc84b2 *src/channels/plugins/dingtalk-dws.js
+bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 *src/channels/plugins/dingtalk-cli.js
+0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 *packages/dingtalk-core/task-session-service.js
+51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 *packages/dingtalk-core/platform-schedule.js
+91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 *packages/dingtalk-core/store.js
+82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 *packages/web-console/server/plugin.js
+91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 *packages/web-console/server/views.js
+85601aa18f9b7e2e69ef02130ca8a79d46bcb99115552e706848992d44d33e94 *test/pi-channel-edit.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 *test/fixtures/native-lifecycle.js
+00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a *test/fixtures/resident-router-host.js
+✔ Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位和deferred (1452.3247ms)
+✔ 同实际身份保水位与授权，异身份保存隔离并在冷启重新检查旧依赖 (1614.1477ms)
+✔ 已接纳未落SQL的create/reopen阻止切换，跨await旧请求在激活后拒绝且可切回原身份 (7715.245ms)
+✔ 未来与半提交的平台定时绑定阻止旧目标切换，结清后才放行 (5906.3276ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19034.0951
+AFTER
+2026-11-09T08:41:44Z
+a99745d1f730a39a0f8bf93da77a1e008eded3c288b246e28fe25455d34a6a76 *src/host.js
+5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 *src/channels/service.js
+316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 *src/channels/router-lifecycle.js
+21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b *src/channels/plugins/dingtalk-config.js
+44c7b1c2ea6bfc617683d2b107584d5503b529e2f4dc61026df9991d2c3d9577 *src/channels/plugins/dingtalk-storage.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+2dd401ba41d40a7bce6663457b944f220c49cd049a6843487914322d40dc84b2 *src/channels/plugins/dingtalk-dws.js
+bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 *src/channels/plugins/dingtalk-cli.js
+0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 *packages/dingtalk-core/task-session-service.js
+51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 *packages/dingtalk-core/platform-schedule.js
+91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 *packages/dingtalk-core/store.js
+82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 *packages/web-console/server/plugin.js
+91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 *packages/web-console/server/views.js
+85601aa18f9b7e2e69ef02130ca8a79d46bcb99115552e706848992d44d33e94 *test/pi-channel-edit.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 *test/fixtures/native-lifecycle.js
+00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a *test/fixtures/resident-router-host.js
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== bnqqq7wnn ===
+最终四项；精确命令 node --test test/pi-channel-edit.test.js；17源 BEFORE/AFTER 同且等最终冻结工作树
+ORIGINAL_BYTES 4060 SHA256 03d94a05e96f0f61f8d5d120bb30cfe451a214209d8dd7f5de901e48e0f1a17b
+ACTUAL_TOOL_OUTPUT_BEGIN
+BEFORE
+2026-11-09T08:55:12Z
+e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1 *src/host.js
+5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 *src/channels/service.js
+316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 *src/channels/router-lifecycle.js
+21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b *src/channels/plugins/dingtalk-config.js
+8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505 *src/channels/plugins/dingtalk-storage.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad *src/channels/plugins/dingtalk-dws.js
+bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 *src/channels/plugins/dingtalk-cli.js
+0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 *packages/dingtalk-core/task-session-service.js
+51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 *packages/dingtalk-core/platform-schedule.js
+91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 *packages/dingtalk-core/store.js
+82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 *packages/web-console/server/plugin.js
+91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 *packages/web-console/server/views.js
+8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48 *test/pi-channel-edit.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 *test/fixtures/native-lifecycle.js
+00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a *test/fixtures/resident-router-host.js
+✔ Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位和deferred (5691.2823ms)
+✔ 同实际身份保水位与授权，异身份保存隔离并在冷启重新检查旧依赖 (7283.4487ms)
+✔ 已接纳未落SQL的create/reopen阻止切换，跨await旧请求在激活后拒绝且可切回原身份 (28186.1398ms)
+✔ 未来与半提交的平台定时绑定阻止旧目标切换，结清后才放行 (25230.2371ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 73777.9191
+AFTER
+2026-11-09T08:56:27Z
+e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1 *src/host.js
+5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 *src/channels/service.js
+316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 *src/channels/router-lifecycle.js
+21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b *src/channels/plugins/dingtalk-config.js
+8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505 *src/channels/plugins/dingtalk-storage.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad *src/channels/plugins/dingtalk-dws.js
+bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 *src/channels/plugins/dingtalk-cli.js
+0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 *packages/dingtalk-core/task-session-service.js
+51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 *packages/dingtalk-core/platform-schedule.js
+91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 *packages/dingtalk-core/store.js
+82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 *packages/web-console/server/plugin.js
+91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 *packages/web-console/server/views.js
+8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48 *test/pi-channel-edit.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 *test/fixtures/native-lifecycle.js
+00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a *test/fixtures/resident-router-host.js
+
+[exited with code 0]
+
+ACTUAL_TOOL_OUTPUT_END
+
+=== strict-binding red regression ===
+原前台工具 call_a331308356164dfa99589eb8524cf34c；定位原 transcript:37752 调用 / :37754 结果，仅摘该条结果，无后台 task。
+精确命令 node --test --test-name-pattern=未来与半提交 test/pi-channel-edit.test.js；无独立起止 pin。
+原 null 文件被误当缺席，期望 INVALID、实际 SWITCH_BLOCKED；修后最终 bnqqq7wnn 覆盖 null/false/0/[]/{}、冷启 null/错 inline 均拒绝不覆盖。
+ACTUAL_TOOL_OUTPUT_BEGIN
+Exit code 1
+✖ 未来与半提交的平台定时绑定阻止旧目标切换，结清后才放行 (6597.9883ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12507.6892
+
+✖ failing tests:
+
+test at test\pi-channel-edit.test.js:248:1
+✖ 未来与半提交的平台定时绑定阻止旧目标切换，结清后才放行 (6597.9883ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    Comparison {
+  +   code: 'DINGTALK_CHANNEL_SWITCH_BLOCKED'
+  -   code: 'DINGTALK_BINDING_INVALID'
+    }
+  
+      at async TestContext.<anonymous> (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/test/pi-channel-edit.test.js:279:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: DINGTALK_CHANNEL_SWITCH_BLOCKED
+        at fail (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/packages/dingtalk-core/task-session-service.js:52:44)
+        at blocked (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/packages/dingtalk-core/task-session-service.js:1709:23)
+        at Object.withChannelTargetSwitch (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/packages/dingtalk-core/task-session-service.js:1719:226)
+        at async file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/host.js:139:20,
+    expected: { code: 'DINGTALK_BINDING_INVALID' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+ACTUAL_TOOL_OUTPUT_END

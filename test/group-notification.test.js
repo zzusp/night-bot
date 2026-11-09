@@ -53,22 +53,23 @@ test('platform source admission uses shared files, freezes selected members and 
   t.after(() => rm(root, { recursive: true, force: true }))
   const directory = await sessionWorkspace(root, 'platform')
   await writeFile(join(directory, 'acceptance.png'), Buffer.from([137,80,78,71]))
-  const group = { messages: [...messages, ...Array.from({ length: 22 }, (_, i) => ({ messageId: `later-${i}`, senderOpenDingTalkId: `later-member-${i}`, text: '近期背景' }))], outbox: [] }, store = { getGroup: () => group }, calls = []
-  assert.ok(!platformNotificationContext(group, messages[0]).some(message => message.senderOpenDingTalkId === 'review-id'), 'bounded first context is not a hard recipient whitelist')
+  const platformMessages = messages.map(({ senderOpenDingTalkId, ...message }) => ({ ...message, actorId: senderOpenDingTalkId }))
+  const group = { messages: [...platformMessages, ...Array.from({ length: 22 }, (_, i) => ({ messageId: `later-${i}`, actorId: `later-member-${i}`, text: '近期背景' }))], outbox: [] }, store = { getGroup: () => group }, calls = []
+  assert.ok(!platformNotificationContext(group, platformMessages[0]).some(message => message.actorId === 'review-id'), 'bounded first context is not a hard recipient whitelist')
   const notify = createPlatformNotifier({ store, root, appendOutbox: async args => { calls.push(args); group.outbox.push(args) } })
-  const input = { groupId: 'group', outboundId: 'fixed-notice', message: messages[0], unit: { unitId: 'fixed-unit', unitRevision: 1, fixedTopic: 'agent-platform' }, sessionId: 'platform-session',
-    decision: { text: '验收通过。', replyToMessageId: 'request', atOpenDingTalkIds: ['review-id'], files: [{ path: 'acceptance.png', caption: '验收结果' }] } }
+  const input = { groupId: 'group', outboundId: 'fixed-notice', message: platformMessages[0], unit: { unitId: 'fixed-unit', unitRevision: 1, fixedTopic: 'agent-platform' }, sessionId: 'platform-session',
+    decision: { text: '验收通过。', replyToMessageId: 'request', recipientActorIds: ['review-id'], files: [{ path: 'acceptance.png', caption: '验收结果' }] } }
   await notify(input)
   const first = calls[0], artifact = first.artifactFiles[0].artifact
   assert.equal(first.sourceRef.messageId, 'request'); assert.equal(first.sourceRef.actorId, 'origin-id')
-  assert.deepEqual(first.atOpenDingTalkIds, ['review-id']); assert.equal(first.replyToMessageId, undefined, 'final context source is not a native quote')
+  assert.deepEqual(first.recipientActorIds, ['review-id']); assert.equal(first.replyToMessageId, undefined, 'final context source is not a native quote')
   assert.equal(artifact.taskId, undefined); assert.equal(artifact.platformSource.sessionId, 'platform-session')
   await writeFile(join(directory, 'acceptance.png'), 'changed later')
   await notify({ ...input, decision: { text: 'different', atAll: true } })
-  assert.deepEqual(calls[1].artifactFiles, first.artifactFiles); assert.deepEqual(calls[1].atOpenDingTalkIds, ['review-id']); assert.equal(calls[1].atAll, undefined)
+  assert.deepEqual(calls[1].artifactFiles, first.artifactFiles); assert.deepEqual(calls[1].recipientActorIds, ['review-id']); assert.equal(calls[1].atAll, undefined)
   const files = createTaskArtifactFiles({ root: join(root, 'delivery-files') }), stored = await files.resolve(artifact)
   assert.deepEqual(await readFile(stored.path), Buffer.from([137,80,78,71]))
   await assert.rejects(files.validateManifest([artifact], { platformSource: { ...artifact.platformSource, groupId: 'foreign' } }), /MANIFEST_SCOPE_DENIED/)
   await assert.rejects(files.validateManifest([artifact], { taskId: 'fake-task', requirementRevision: 1 }), /MANIFEST_SCOPE_DENIED/)
-  await assert.rejects(notify({ ...input, outboundId: 'other-notice', decision: { text: '文件结果', atOpenDingTalkIds: [], files: [{ path: '../outside.png', caption: '结果' }] } }), /OUTSIDE_SESSION/)
+  await assert.rejects(notify({ ...input, outboundId: 'other-notice', decision: { text: '文件结果', recipientActorIds: [], files: [{ path: '../outside.png', caption: '结果' }] } }), /OUTSIDE_SESSION/)
 })

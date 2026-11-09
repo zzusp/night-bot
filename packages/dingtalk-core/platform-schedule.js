@@ -6,10 +6,10 @@ import {isDeepStrictEqual} from 'node:util'
 import {enqueueBusinessNotice} from '../../src/runtime/pi-business-notices.js'
 import { fixedUnitRequestId, platformTaskPage, platformScheduleSessionId as sessionKey, platformScheduleOutboundId as outboundKey } from './fixed-topics.js'
 import { sessionWorkspace, sessionTitle } from './session-workspaces.js'
-import { groupReplyInstructions } from './group-message.js'
+import {conversationReplyInstructions} from '../../src/channels/message-safety.js'
 import { z } from 'zod'
 import { createPlatformNotifier, platformNotificationContext, platformReplyParameters } from './platform-notification.js'
-import { groupNotificationInstructions } from './group-notification.js'
+import {conversationNotificationInstructions,conversationMessageActorId} from './group-notification.js'
 
 const fail=code=>Object.assign(new Error(code),{code})
 const output = { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
@@ -26,22 +26,25 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
   const hostScheduler=AsyncLocalStorage.snapshot(),watchers=new Map()
   let closed = false
   const watch=actor=>{if(watchers.has(actor)||!actor.piSession)return;watchers.set(actor,actor.piSession.subscribe(event=>{if(event.type==='agent_settled')recover()}))}
-  const flights = new Map(), mounted = new Map(), recovered = new Set()
+  const flights = new Map(), flightGroups = new Map(), recoveryGroups = new Set(), mounted = new Map(), recovered = new Set()
   let recovery = Promise.resolve(),recoveryRunning=false,recoveryRequested=false
   const source = binding => {
     if (closed) return null
     const message = store.getGroup(binding.groupId)?.messages.find(item => item.messageId === binding.messageId && item.messageVersion === binding.messageVersion)
+    if(binding.sourceMode==='direct')return message&&conversationMessageActorId(message)===binding.actorId?{message,sourceId:binding.sourceId}:null
     const unit = message?.units?.find(item => item.unitId === binding.unitId && item.unitRevision === binding.unitRevision && item.fixedTopic === 'agent-platform')
     return unit && message.activeUnitRefs?.some(ref => ref.unitId === unit.unitId && ref.unitRevision === unit.unitRevision)
       && fixedUnitRequestId(binding.groupId, message, unit) === binding.requestId ? { message, unit } : null
   }
+  const assertTarget=groupId=>ctx.get?.('channels')?.assertGroupTarget(groupId)
   const settle = (binding, outcome) => store.updatePlatformSchedule(binding.sessionId, { outcome, completedAt: new Date(now()).toISOString() })
   async function deliver(binding, decision) {
+    assertTarget(binding.groupId)
     const current = source(binding)
     if (!current) throw new Error('platform_schedule_source_stale')
     const outboundId = outboundKey(binding.requestId), message = current.message
-    await notify({ groupId: binding.groupId, outboundId, message, unit: current.unit, decision, sessionId: binding.sessionId,
-      preflight: () => { if (!source(binding)) throw new Error('platform_schedule_source_stale') } })
+    await notify({ groupId: binding.groupId, outboundId, message, unit: current.unit, directSource:binding.sourceMode==='direct'?{sourceId:binding.sourceId,actorId:binding.actorId}:undefined, decision, sessionId: binding.sessionId,
+      preflight: () => { assertTarget(binding.groupId);if (!source(binding)) throw new Error('platform_schedule_source_stale') } })
     await settle(binding, 'replied')
   }
   const mount = async agent => {
@@ -53,6 +56,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     let snapshot, submission = Promise.resolve()
     disposers.push(bindPlatformScheduleSource(agent,{isReady:()=>!closed&&mounted.get(agent)?.prepared===true}))
     const assert = exec => {
+      assertTarget(binding.groupId)
       if (exec.agent !== agent || !source(binding)) throw new Error('platform_schedule_source_stale')
     }
     disposers.push(agentCtx.get('tools').register({ name: 'platform_task_query', description: '查询本群到期执行时的真实任务快照，按 nextCall 读完所有页后答复。',
@@ -83,6 +87,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     if(typeof agent.requestPolicy?.addBeforeRequest!=='function')throw fail('platform_schedule_request_policy_required')
     disposers.push(agent.requestPolicy.addBeforeRequest(async ({actor,signal})=>{
       signal?.throwIfAborted()
+      assertTarget(binding.groupId)
       if(actor!==agent||closed)throw fail('platform_schedule_closed')
       let saved=store.getPlatformSchedule(binding.sessionId)
       if(!saved||saved.outcome)throw fail('platform_schedule_settled')
@@ -102,10 +107,10 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       const previous=store.getGroup(binding.groupId).outbox.find(item=>item.outboundId===outboundKey(binding.requestId))
       if(previous){await deliver(binding);throw fail('platform_schedule_settled')}
     }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'dingtalk-platform-schedule', order: 120, officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `这是宿主持有的独立平台定时会话，仅执行原用户已交办的一次事项，不创建业务任务，不重新安排同一提醒。原群=${binding.groupId}；约定时间=${binding.at}；默认时区=${binding.timezone}；本次恢复时刻=${new Date(now()).toISOString()}。原消息=${JSON.stringify(source(binding)?.unit.sourceRanges ?? [])}。事项：${binding.prompt}。到期汇报先调用 platform_task_query 读取本群最新事实，分页读全，再调用 platform_reply_submit 提交原群答复，普通自然语言不会发送。结合原消息的明确时区与实际执行时刻重新核对目标；已过期的有价值汇报补报一次并注明实际时间和延迟，失去意义的定点提醒可 text=null 静默结清，不得改排明天。只有不确定且影响执行才澄清。宿主的 schedule 送入会话回执不代表汇报已发送；只有原群通知账确认才称送达。`} }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'dingtalk-group-reply', order: 119, officialText: ({actor}) => actor===agent?groupReplyInstructions:'' }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'dingtalk-notification', order: 121,
-      officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `${groupNotificationInstructions}\n受信原请求与近期群上下文（不代表全部都要通知）：${JSON.stringify(platformNotificationContext(store.getGroup(binding.groupId), source(binding)?.message ?? {}))}`} }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-platform-schedule', order: 120, officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `这是宿主持有的独立平台定时会话，仅执行原用户已交办的一次事项，不创建业务任务，不重新安排同一提醒。原群=${binding.groupId}；约定时间=${binding.at}；默认时区=${binding.timezone}；本次恢复时刻=${new Date(now()).toISOString()}。原消息=${JSON.stringify(source(binding)?.unit?.sourceRanges ?? [{sourceId:binding.sourceId,text:source(binding)?.message.text}])}。事项：${binding.prompt}。到期汇报先调用 platform_task_query 读取本群最新事实，分页读全，再调用 platform_reply_submit 提交原群答复，普通自然语言不会发送。结合原消息的明确时区与实际执行时刻重新核对目标；已过期的有价值汇报补报一次并注明实际时间和延迟，失去意义的定点提醒可 text=null 静默结清，不得改排明天。只有不确定且影响执行才澄清。宿主的 schedule 送入会话回执不代表汇报已发送；只有原群通知账确认才称送达。`} }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-reply', order: 119, officialText: ({actor}) => actor===agent?conversationReplyInstructions:'' }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-notification', order: 121,
+      officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `${conversationNotificationInstructions}\n受信原请求与近期群上下文（不代表全部都要通知）：${JSON.stringify(platformNotificationContext(store.getGroup(binding.groupId), source(binding)?.message ?? {}))}`} }))
     mounted.set(agent, {disposers,prepared:!agent.piSession})
   }
   const stopPrepared=ctx.on?.('night/agent-prepare',({agent})=>mount(agent))
@@ -121,6 +126,8 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       for (const record of await schedule.catalog()) {
         const binding = store.getPlatformSchedule?.(record.sessionId)
         if (!binding || binding.outcome || !matchesNative(binding, record) || record.status !== 'inactive' || !record.lastDelivery || recovered.has(record.id)) continue
+        assertTarget(binding.groupId);recoveryGroups.add(binding.groupId)
+        try{
         let result=await controller.resolveAgent(record.sessionId)
         if(result.error)throw result.error
         if(closed)return
@@ -151,9 +158,10 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         if(status!=='admitted')throw fail('platform_schedule_delivery_unproven')
         recovered.add(record.id)
         const packet=recoveryInput(binding,record)
+        assertTarget(binding.groupId)
         await enqueueBusinessNotice(actor,packet)
         try{await actor.input.deliver(packet.id,{deliverAs:'followUp'})}catch(error){if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}
-
+        }finally{recoveryGroups.delete(binding.groupId)}
       }
   }
   const recover = () => {
@@ -167,6 +175,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
   const stopChanged = ctx.on?.('schedule/changed', recover)
   ctx.inject?.(['schedule'], () => { recover() })
   async function prepare(binding) {
+    assertTarget(binding.groupId)
     const schedule = ctx.get('schedule')
     if (!schedule?.create || !ctx.get('sessionController')) throw new Error('platform_native_schedule_unavailable')
     if (!source(binding)) throw new Error('platform_schedule_source_stale')
@@ -182,6 +191,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     }
     if (existing?.scheduleId || existing?.outcome) return { status: existing.outcome ?? 'cancelled', scheduleId: existing.scheduleId }
     if (Date.parse(binding.at) <= now()) return { status: 'expired', at: binding.at }
+    assertTarget(binding.groupId)
     await store.preparePlatformSchedule(binding)
     if (!await ctx.sessionPersistence.stat(binding.sessionId)) {
       const cwd = await sessionWorkspace(root, 'platform')
@@ -206,15 +216,17 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     return { status: 'scheduled', scheduleId: record.id, at: record.scheduledAt }
   }
   return {
+    hasInflight:groupId=>[...flightGroups.values()].includes(groupId)||recoveryGroups.has(groupId),
     async submit(sourceBinding, { title, prompt, at }) {
       if (typeof at !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(at) || !Number.isFinite(Date.parse(at))) throw new Error('platform_schedule_time_requires_offset')
       if (!z.string().datetime({ offset: true }).safeParse(at).success) throw new Error('platform_schedule_time_invalid')
       if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000) throw new Error('platform_schedule_invalid')
       const binding = { ...sourceBinding, sessionId: sessionKey(sourceBinding.requestId), title: title.trim(), prompt: prompt.trim(), at: new Date(at).toISOString() }
+      assertTarget(binding.groupId)
       const previous = flights.get(binding.sessionId) ?? Promise.resolve()
       const work = previous.catch(() => {}).then(() => prepare(binding))
-      flights.set(binding.sessionId, work)
-      try { return await work } finally { if (flights.get(binding.sessionId) === work) flights.delete(binding.sessionId) }
+      flights.set(binding.sessionId, work);flightGroups.set(work,binding.groupId)
+      try { return await work } finally { if (flights.get(binding.sessionId) === work) flights.delete(binding.sessionId);flightGroups.delete(work) }
     },
     async close() {
       closed = true;for(const detach of watchers.values())detach();watchers.clear(); stopPrepared?.(); stopCreated?.(); stopDisposed?.(); stopChanged?.()

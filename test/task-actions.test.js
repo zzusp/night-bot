@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTaskActionCoordinator, taskActions } from '../packages/dingtalk-dsh-assistant/task-actions.js'
+import { createTaskActionCoordinator, taskActions } from '../packages/dingtalk-core/task-actions.js'
 
 const input = (patch = {}) => ({ taskId: 't1', adapterId: 'fixture-write', inputVersion: 1, runSequence: 1, params: { resources: ['db/a'], value: 1 }, authorizationRefs: ['source-1'], ...patch })
 function fixture(options = {}) {

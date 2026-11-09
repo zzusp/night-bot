@@ -1,0 +1,29 @@
+{
+  "removedResources": [
+    {
+      "container": "night-bot-sg12-fake-ingress-r23",
+      "containerId": "9d9ebd387c01bac1ff3f5cca52f56857213b88d7240e0df00cd9cb5c8c620f71",
+      "volume": "night-bot-sg12-fake-ingress-r23-data",
+      "owner": "sg12-fake-ingress-r23"
+    }
+  ],
+  "resultSha256": "c54a6378f09c193e269ec3d68eac79f3113467882133d610c71a24d3a924231e",
+  "imageRetained": "sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b",
+  "forced": false,
+  "readbackResultSha256": "ac738647db09f0b3f68f424856ee84d7a48c177b11f9e0431e6f5690990d37ee",
+  "stoppedOriginalBeforeAndCopy": [
+    {
+      "name": "tasks.sqlite",
+      "sha256": "c37a6b1200cfd37c5110812551ab7fefd6793e87ea9da0ac91a1e6f8d77fd87b",
+      "length": 659456
+    }
+  ],
+  "stoppedOriginalAfter": [
+    {
+      "name": "tasks.sqlite",
+      "sha256": "c37a6b1200cfd37c5110812551ab7fefd6793e87ea9da0ac91a1e6f8d77fd87b",
+      "length": 659456
+    }
+  ],
+  "walPresent": false
+}

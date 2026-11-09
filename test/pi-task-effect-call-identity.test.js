@@ -1,3 +1,4 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm,writeFile} from 'node:fs/promises'
@@ -5,7 +6,7 @@ import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {providerHost,result} from './fixtures/provider-official-host.js'
 const effect={name:'provider_effect_once',args:{}}
-test('a verified new source may intentionally repeat identical arguments while duplicate input and cold recovery never replay its call',{timeout:20000},async t=>{
+test('a verified new source may intentionally repeat identical arguments while duplicate input and cold recovery never replay its call',{timeout:nativeTestTimeout(20000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-effect-call-identity-'));let h,cold,step=0;t.after(async()=>{await cold?.close();await h?.close();await rm(root,{recursive:true,force:true})})
  const text='Explicit authorized request: execute the same provider_effect_once with the same empty arguments again as a second intentional action.'
  h=await providerHost(t,{root,decide:request=>{step++;if(step===3)assert.ok(JSON.stringify(request.messages).includes(text),'the second action must follow the exact admitted new source');return step%2===1?[effect]:[result('wait','Requested action recorded')]}})

@@ -4,7 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
 const h='a'.repeat(64),ref=`tasks/one/sha256-${h}.json`
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'dsh-reset-owner-history-')),options={dbPath:join(dir,'control.sqlite'),instanceId:'owner-reset-test'}

@@ -77,7 +77,7 @@ test('resident indexes-only requires initialized identity and an unlocked owner 
 
 
 test('offline migration partitions an existing archive flag and preserves readable command history', async t => {
- const {openDynamicTaskStore}=await import('../packages/dingtalk-dsh-assistant/dynamic-task-store.js')
+ const {openDynamicTaskStore}=await import('../packages/dingtalk-core/dynamic-task-store.js')
  const root=await mkdtemp(join(tmpdir(),'observer-archive-migration-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const path=join(root,'ledger.sqlite'),backup=join(root,'backup.sqlite'),options={dbPath:path,instanceId:'fixture',initialize:true}
  let store=await openDynamicTaskStore(options),n=0

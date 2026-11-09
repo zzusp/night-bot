@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -22,6 +23,16 @@ export async function verifyOfficialPi(manifest) {
     versions[name] = version
   }
   return versions
+}
+
+
+export async function collectSourceEvidence() {
+  const hash = bytes => createHash('sha256').update(bytes).digest('hex')
+  return {
+    lockSha256: hash(await readFile(new URL('../pnpm-lock.yaml', import.meta.url))),
+    profileSha256: hash(await readFile(new URL('../test/fixtures/native-profile/package.json', import.meta.url))),
+    piVersions: await verifyOfficialPi(),
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

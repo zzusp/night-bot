@@ -1,4 +1,4 @@
-import { isolationDigest as hash, isolationBinding } from '../../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
+import { isolationDigest as hash, isolationBinding } from '../../packages/dingtalk-core/native-restart-isolation.js'
 import { sessionPersistenceFixture } from './session-persistence.js'
 
 export function restartFixture(launchAcknowledged = true, commandOverride) {

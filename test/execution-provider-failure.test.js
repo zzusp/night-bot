@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { classifyExecutionProviderFailure as classify } from '../packages/dingtalk-dsh-assistant/execution-provider-failure.js'
+import { classifyExecutionProviderFailure as classify } from '../packages/dingtalk-core/execution-provider-failure.js'
 
 for (const code of ['SERVER', 'RATE_LIMIT', 'TIMEOUT', 'TRANSPORT', 'EMPTY_RESPONSE']) test(`native provider retry contract: ${code}`, () => {
   assert.deepEqual(classify({ code, message: 'native failure' }), { category: 'transient', retryable: true, nextAction: 'retry-with-persisted-backoff' })

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { inspectSession, inboxHasPending } from '../packages/dingtalk-dsh-assistant/session-persistence.js'
+import { inspectSession, inboxHasPending } from '../packages/dingtalk-core/session-persistence.js'
 
 test('session inspection opens a read-only handle and closes it after reading', async () => {
   const calls = [], header = { id: 'fixture' }, events = [{ seq: 0, type: 'plugin:dingtalk/fixture', data: {} }]

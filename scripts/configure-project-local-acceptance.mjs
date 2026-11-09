@@ -1,14 +1,14 @@
 import { planReleasePolicyRestore } from './repair-release-target-policy.mjs'
-import {createLegacyVerificationJobCheck} from '../packages/dingtalk-dsh-assistant/execution-check-job.js'
+import {createLegacyVerificationJobCheck} from '../packages/dingtalk-core/execution-check-job.js'
 import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
 import yaml from 'js-yaml'
 import { DatabaseSync } from 'node:sqlite'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 import { isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomUUID, createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { createLocalAcceptanceRunner } from '../packages/dingtalk-dsh-assistant/execution-local-acceptance.js'
+import { createLocalAcceptanceRunner } from '../packages/dingtalk-core/execution-local-acceptance.js'
 
 const fail = code => { throw new Error(code) }
 const hash = value => createHash('sha256').update(value).digest('hex')

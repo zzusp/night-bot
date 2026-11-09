@@ -1171,13 +1171,14 @@ test('task-session补拉保留本人手动消息和DWS发送标记，由统一�
 })
 
 // 真实桥生命周期 + 可控 DWS 传输；不连接线上群。
-function ingressFixture({ initial = { paused: false }, readRange, saveError = false } = {}) {
+function ingressFixture({ initial = { paused: false }, readRange, saveError = false, receive, save, groupBackfillIntervalMs = 5 } = {}) {
   const groups = [{ groupId: 'pause-group', messages: [] }], subscriptions = [], reads = [], accepted = [], warnings = []
   let persisted = structuredClone(initial), health, subscribed
   const runtime = {
     listGroups: () => groups, getGroup: id => groups.find(group => group.groupId === id),
     isTaskSessionMode: () => true,
     async ingest(message) {
+      if (receive) await receive(message)
       if (!accepted.some(item => item.messageId === message.messageId)) {
         accepted.push(message); groups.find(group => group.groupId === message.groupId).messages.push(message)
       }
@@ -1199,9 +1200,9 @@ function ingressFixture({ initial = { paused: false }, readRange, saveError = fa
     },
   }
   const stop = startDwsBridge({ runtime, adapter, ingressState: initial,
-    async saveIngressState(state) { if (saveError) throw new Error('disk_write_failed'); persisted = structuredClone(state) },
+    async saveIngressState(state) { if (saveError) throw new Error('disk_write_failed'); if (save) await save(state); persisted = structuredClone(state) },
     onHealthChange(value) { health = value }, logger: { warn(error) { warnings.push(error.message) } },
-    humanPollIntervalMs: 0, groupBackfillIntervalMs: 5, outboxRetryIntervalMs: 0,
+    humanPollIntervalMs: 0, groupBackfillIntervalMs, outboxRetryIntervalMs: 0,
   })
   return { stop, subscriptions, reads, accepted, warnings, get health() { return health }, get persisted() { return persisted },
     subscribe(groupId) { const group = { groupId, messages: [] }; groups.push(group); subscribed(group) } }
@@ -1345,4 +1346,42 @@ test('default group bridge never starts or polls private channels, including aut
   onDecision({authorization:{kind:'workflow-approval',approverActorId:'outsider',requestId:'foreign'}})
   await new Promise(resolve=>setTimeout(resolve,15));await stop()
   assert.equal(privateReads,0);assert.equal(privateSubscriptions,0);assert.equal(authorizationQueries,0)
+})
+
+test('identity deferral pins its old message during pause drain and cold recovery reads the persisted bound',async t=>{
+  const {mkdtemp,rm}=await import('node:fs/promises'),{join}=await import('node:path'),{tmpdir}=await import('node:os'),{atomicWrite}=await import('../src/runtime/files.js')
+  const root=await mkdtemp(join(tmpdir(),'night-bridge-deferral-')),file=join(root,'ingress.json'),fixtures=[],entered=Promise.withResolvers(),release=Promise.withResolvers()
+  t.after(async()=>{release.resolve();for(const fixture of fixtures.toReversed())await fixture.stop();await rm(root,{recursive:true,force:true})})
+  const save=state=>atomicWrite(file,JSON.stringify(state)+'\n'),read=async()=>JSON.parse(await readFile(file,'utf8'))
+  await save({paused:false})
+  const f=ingressFixture({initial:await read(),groupBackfillIntervalMs:0,save,receive:async()=>{entered.resolve();await release.promise;throw Object.assign(Error('CHANNEL_NOTIFICATION_IDENTITY_PENDING'),{code:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})}});fixtures.push(f)
+  f.subscriptions[0].markReady();await untilIngress(()=>f.health.healthy)
+  const oldAt=new Date(Date.now()-120000).toISOString(),event=f.subscriptions[0].callback(ingressEvent('old-during-pause',oldAt))
+  await entered.promise
+  let paused=false
+  const pause=f.stop.setIngressPaused(true).then(value=>{paused=true;return value})
+  await untilIngress(()=>f.health.ingress.paused)
+  assert.equal(paused,false,'pause must still wait for the actual in-flight message')
+  release.resolve();await Promise.all([event,pause])
+  const pinned=await read();assert.equal(pinned.paused,true);assert.ok(Date.parse(pinned.recoveryFromAt)<=Date.parse(oldAt));assert.equal(f.accepted.length,0)
+  await f.stop()
+  const recovered=ingressFixture({initial:await read(),groupBackfillIntervalMs:0,save,readRange:async(_group,range)=>({complete:true,messages:Date.parse(range.start)<=Date.parse(oldAt)?[{groupId:'pause-group',messageId:'old-during-pause',text:'old-during-pause',occurredAt:oldAt}]:[]})});fixtures.push(recovered)
+  await recovered.stop.setIngressPaused(false);recovered.subscriptions[0].markReady()
+  await untilIngress(()=>recovered.health.healthy&&!recovered.health.ingress.recovering)
+  assert.deepEqual(recovered.accepted.map(message=>message.messageId),['old-during-pause'])
+  assert.ok(recovered.reads.every(range=>Date.parse(range.start)<=Date.parse(oldAt)))
+  assert.deepEqual(await read(),{paused:false})
+})
+
+test('identity deferral persistence failure is explicit and preserves the previous on-disk bound',async t=>{
+  const {mkdtemp,mkdir,rm}=await import('node:fs/promises'),{join}=await import('node:path'),{tmpdir}=await import('node:os'),{atomicWrite}=await import('../src/runtime/files.js')
+  const root=await mkdtemp(join(tmpdir(),'night-bridge-pin-failure-')),file=join(root,'ingress.json'),blocked=join(root,'blocked'),old={paused:false,recoveryFromAt:'2026-09-30T23:00:00.000Z'}
+  await atomicWrite(file,JSON.stringify(old)+'\n');await mkdir(blocked)
+  const f=ingressFixture({initial:old,groupBackfillIntervalMs:0,save:state=>atomicWrite(blocked,JSON.stringify(state)+'\n'),receive:async()=>{throw Object.assign(Error('CHANNEL_NOTIFICATION_IDENTITY_PENDING'),{code:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})}})
+  t.after(async()=>{await f.stop();await rm(root,{recursive:true,force:true})})
+  await f.subscriptions[0].callback(ingressEvent('unwritten-message','2026-09-30T22:00:00.000Z'))
+  assert.equal(f.health.groups[0].backfill.lastError,'CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED')
+  assert.equal(f.health.groups[0].backfill.recoveryRequired,true);assert.equal(f.health.healthy,false);assert.equal(f.accepted.length,0)
+  assert.ok(f.warnings.includes('CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED'))
+  assert.deepEqual(JSON.parse(await readFile(file,'utf8')),old)
 })

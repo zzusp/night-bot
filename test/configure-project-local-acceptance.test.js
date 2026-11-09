@@ -197,7 +197,7 @@ test('配置接入CLI错误不回显敏感配置原文', async t => {
 })
 
 test('受控恢复精确旧checks与移除taskmap，check零写/apply保留依赖查询，篡改与越界拒绝',async t=>{
- const {DatabaseSync}=await import('node:sqlite'),{executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js');
+ const {DatabaseSync}=await import('node:sqlite'),{executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js');
  const root=await mkdtemp(join(tmpdir(),'repository-restore-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const profile=join(root,'current.yml'),oldPath=join(root,'old.yml'),dbPath=join(root,'control.db'),proposalPath=join(root,'proposal.json');
  const repos=['backend','frontend','worker'].map(id=>({id,remote:'https://github.com/example/'+id,githubRepository:'example/'+id,baseRef:'main',baseBranch:'main',editablePaths:[],checks:[{id:'check',version:'1',steps:[command]}]}));

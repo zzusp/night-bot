@@ -7,10 +7,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskOwnerController } from '../packages/dingtalk-dsh-assistant/task-owner-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
 
 const workflow = id => ({ id, version: '1', nodes: [{
   id: 'produce', version: '1', executor: 'code', allowedEffects: ['pure'],
@@ -409,38 +408,12 @@ test('未来 UAT 缺适配器保留阻塞阶段；工程 workflow 在交接时�
 test('排查、方案、真人确认、开发、UAT 四阶段沿用同一业务 Task 且逐段交接产物', async t => {
   const { controller, store, artifacts } = await setup(t)
   const taskId = 'four-stage-task'
-  const turns = []
-  const owner = createTaskOwnerController({ ctx: {}, store, artifacts, controller,
-    modelConfig: () => ({}), advanceTask: id => controller.advanceTaskPlan(id),
-    authorizeStages: async () => false,
-    sessionRunner: { async run({ binding, input, onSessionBound, onCandidate, readArtifact }) {
-      await onSessionBound()
-      const events = await Promise.all(input.events.map(async event => ({ ...event,
-        payload: event.payloadRef ? await readArtifact(event.payloadRef) : null })))
-      turns.push({ binding, input: { ...input, events } })
-      const complete = input.stages.every(stage => stage.status === 'succeeded')
-      const evidenceRefs = input.stages.flatMap(stage => stage.evidenceRefs ?? [])
-      const decision = complete
-        ? { action: 'complete', summary: '全部阶段有产物', evidenceRefs,
-          assessments: input.acceptanceItems.map(item => ({ itemId: item.itemId, status: 'satisfied', evidenceRefs })) }
-        : { action: 'wait', summary: '等待当前阶段或真人确认', evidenceRefs: [], condition: {
-          kind: 'execution', missing: '当前阶段或真人确认尚未完成', responsibleParty: '阶段执行方或确认人',
-          resumeWhen: '阶段完成或取得真人确认', evidenceRefs: [] } }
-      await onCandidate(decision)
-      return { status: 'submitted', decision }
-    }, async close() {} } })
-  t.after(() => owner.close())
   await controller.createTaskPlan({ commandId: 'four-stage-create', taskId, stages: [
     { stageId: 'investigation', workflowId: 'investigate', input: 1 },
     { stageId: 'proposal', workflowId: 'investigate' },
     { stageId: 'engineering', workflowId: 'implement', gate: 'confirmation' },
     { stageId: 'uat', workflowId: 'implement' },
   ] })
-  await owner.ensure({ taskId, sourceKey: 'fixture-source', criteria: ['完成排查、方案、开发和 UAT'],
-    origin: { sourceMessageId: 'fixture-message', actorId: 'authorized-user' } })
-  await owner.drive(taskId)
-  assert.deepEqual(await owner.applyPending(), [])
-  const originalSessionId = (await store.query({ kind: 'task.owner', taskId })).sessionId
   let plan = await controller.advanceTaskPlan(taskId)
   const runIds = []
   for (let index = 0; index < 4; index++) {
@@ -451,16 +424,6 @@ test('排查、方案、真人确认、开发、UAT 四阶段沿用同一业务 
       assert.equal(stage.runId, null)
       if (index === 2) {
         assert.equal(stage.status, 'waiting_confirmation')
-        assert.equal((await store.query({ kind: 'run.list', taskId })).length, 2)
-        await owner.observe(taskId)
-        await owner.drive(taskId)
-        assert.deepEqual(await owner.applyPending(), [])
-        const confirmationTurn = turns.at(-1)
-        assert.equal(confirmationTurn.binding.sessionId, originalSessionId)
-        assert.ok(confirmationTurn.input.events.some(event => event.eventType === 'workflow.confirmation.required'
-          && event.payload.stageId === 'engineering' && event.payload.runId === null))
-        assert.ok(confirmationTurn.input.events.some(event => event.eventType === 'workflow.succeeded'
-          && event.payload.stageId === 'proposal' && event.payload.outputRef === previous.outputRef))
         assert.equal((await store.query({ kind: 'run.list', taskId })).length, 2)
         await controller.confirmTaskStage({ commandId: 'four-stage-confirm', taskId, planRevision: 1,
           stageId: stage.stageId, outputRef: previous.outputRef })
@@ -473,16 +436,7 @@ test('排查、方案、真人确认、开发、UAT 四阶段沿用同一业务 
     runIds.push(plan.stages[index].runId)
     await controller.whenIdle(runIds[index])
     plan = await controller.advanceTaskPlan(taskId)
-    await owner.observe(taskId)
-    await owner.drive(taskId)
-    assert.deepEqual(await owner.applyPending(), [])
-    const ownerTurn = turns.at(-1)
-    assert.equal(ownerTurn.binding.taskId, taskId)
-    assert.equal(ownerTurn.binding.sessionId, originalSessionId)
-    assert.ok(ownerTurn.input.events.some(event => event.eventType === 'workflow.succeeded'
-      && event.payload?.stageId === plan.stages[index].stageId
-      && event.payload.runId === runIds[index]
-      && event.payload.outputRef === plan.stages[index].outputRef))
+
   }
   plan = await controller.taskPlan(taskId)
   assert.equal(plan.task.status, 'succeeded')
@@ -490,8 +444,6 @@ test('排查、方案、真人确认、开发、UAT 四阶段沿用同一业务 
   assert.equal(new Set(runIds).size, 4)
   assert.equal((await store.query({ kind: 'run.list', taskId })).length, 4)
   assert.equal(await artifacts.read(plan.stages[3].outputRef), 5)
-  assert.equal((await store.query({ kind: 'task.owner', taskId })).sessionId, originalSessionId)
-  assert.ok(turns.length >= 5)
   await controller.advanceTaskPlan(taskId)
   assert.equal((await store.query({ kind: 'run.list', taskId })).length, 4)
 })
@@ -700,7 +652,7 @@ test('v1 迁移先零副作用检查，再备份升级并独立读回版本', as
 
 test('同Task两条测试后等待指定发送人验收，精确阶段条件与产物版本不可冒用', async t => {
   const { controller, store, artifacts } = await setup(t)
-  const { executionDigest } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+  const { executionDigest } = await import('../packages/dingtalk-core/execution-artifacts.js')
   const body = '先执行两条测试数据，我验证通过后，再刷69条正式数据'
   await store.command({ id: 'receive-stage-condition', kind: 'message.receive', args: { runId: 'stage-source', sourceKey: 'stage-source', sourceVersion: 1,
     actorId: 'lichen', conversationId: 'group', body, context: {}, policy: {} } })
@@ -736,7 +688,7 @@ test('同Task两条测试后等待指定发送人验收，精确阶段条件与�
   assert.equal((await store.query({ kind: 'run.list', taskId: 'condition-task' })).length, 2)
 })
 
-for (const viaOwner of [false, true]) test(`必要工程依赖插入保留等待Run和成功前缀，完成后返回原阶段 owner=${viaOwner}`, async t => {
+test('必要工程依赖插入保留等待Run和成功前缀，完成后返回原阶段', async t => {
   let { controller, store, artifacts, dbPath, instanceId } = await setup(t)
   const frontend = { ...workflow('task-engineering-frontend'), nodes: [
     { ...workflow('unused').nodes[0], id: 'prepare' },
@@ -762,25 +714,9 @@ for (const viaOwner of [false, true]) test(`必要工程依赖插入保留等待
   await assert.rejects(controller.insertTaskDependency({ ...request, commandId: 'stale-dependency', requirementRevision: 2 }), { code: 'TASK_PLAN_STALE' })
   await assert.rejects(controller.insertTaskDependency({ ...request, commandId: 'foreign-source', stage: { ...request.stage,
     sourceCondition: { ...request.stage.sourceCondition, sourceVersion: 2 } } }), { code: 'TASK_STAGE_SOURCE_CONDITION_INVALID' })
-  if (viaOwner) {
-    const decision = { action: 'advance', summary: '原需求失败明细下载需要真实后端导出实现，先完成此必要依赖再继续原前端', evidenceRefs: [],
-      planChange: { kind: 'insertDependency', stages: [{ workflowId: 'task-engineering', gate: 'none', sourceCondition: request.stage.sourceCondition }] } }
-    const owner = createTaskOwnerController({ctx:{},store,artifacts,controller,modelConfig:()=>({}),advanceTask:id=>controller.advanceTaskPlan(id),
-      authorizeStages:async({stages})=>stages[0].sourceCondition.repositoryId==='dataset',
-      prepareInitialStage:async()=>({workflowId:'task-engineering-backend',input:2}),
-      sessionRunner:{async run({onSessionBound,onCandidate}){await onSessionBound();await onCandidate(decision);return {status:'submitted',decision}},async close(){}}})
-    t.after(()=>owner.close())
-    await owner.ensure({taskId:'dependency-task',sourceKey:'dependency-source',criteria:['真实前后端完成'],origin:{actorId:'requester'}})
-    await assert.rejects(owner.drive('dependency-task'),{code:'TASK_OWNER_RUNTIME_PLAN_CHANGE_DISABLED'})
-    assert.deepEqual(await owner.applyPending(),[])
-    assert.equal((await controller.taskPlan('dependency-task')).stages.length,1)
-    assert.deepEqual((await controller.state(originalRunId)).nodes,original.nodes)
-    assert.equal((await controller.taskPlan('dependency-task')).task.planRevision,1)
-    return
-  } else {
+
     await controller.insertTaskDependency(request)
     assert.deepEqual((await controller.insertTaskDependency(request)).result, await store.query({ kind: 'receipt', commandId: 'insert-backend' }).then(receipt => receipt.result))
-  }
   plan = await controller.taskPlan('dependency-task')
   assert.equal(plan.stages[0].stageId,request.stage.stageId)
   assert.equal(plan.stages[1].status,'blocked')
@@ -789,7 +725,7 @@ for (const viaOwner of [false, true]) test(`必要工程依赖插入保留等待
   await assert.rejects(controller.recover({ commandId: 'resume-suspended-frontend', runId: originalRunId }), { code: 'TASK_DEPENDENCY_PENDING' })
   assert.deepEqual((await controller.state(originalRunId)).nodes, original.nodes)
   assert.deepEqual((await controller.state(originalRunId)).nodes, original.nodes)
-  if (!viaOwner) {
+  {
     await controller.close();await store.close()
     store=await openExecutionStore({dbPath,instanceId})
     controller=createExecutionController({store,artifacts,workflows:[frontend,workflow('task-engineering-backend')]})
@@ -810,7 +746,7 @@ for (const viaOwner of [false, true]) test(`必要工程依赖插入保留等待
   assert.deepEqual(continued.nodes[0],original.nodes[0])
   assert.equal(continued.nodes[1].leaseEpoch,original.nodes[1].leaseEpoch+1)
   assert.equal(continued.run.generation,original.run.generation)
-  if (!viaOwner) { await controller.close();await store.close() }
+  await controller.close();await store.close()
 })
 
 test('必要依赖拒绝活跃节点与新输入，未改原Run或阶段', async t => {
@@ -881,7 +817,7 @@ test('user-declared no-plan completion survives real Store close and cold reopen
   if(scenario==='audit-missing')db.prepare("DELETE FROM execution_events WHERE kind='task.completion.confirmed'").run();
   if(scenario==='requirement-mismatch')db.prepare('UPDATE business_tasks SET requirement_revision=2').run();
   if(scenario==='execution-active')db.prepare("UPDATE task_controls SET state='active'").run();
-  const {validateTaskPlanSchema}=await import('../packages/dingtalk-dsh-assistant/execution-task-plan.js');assert.throws(()=>validateTaskPlanSchema(db),{code:'TASK_PLAN_INVARIANT_FAILED'},scenario);db.exec('ROLLBACK');db.close();
+  const {validateTaskPlanSchema}=await import('../packages/dingtalk-core/execution-task-plan.js');assert.throws(()=>validateTaskPlanSchema(db),{code:'TASK_PLAN_INVARIANT_FAILED'},scenario);db.exec('ROLLBACK');db.close();
  }
 });
 

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createManagedEdits } from '../packages/dingtalk-dsh-assistant/execution-edit.js'
+import { createManagedEdits } from '../packages/dingtalk-core/execution-edit.js'
 
 const hash = text => createHash('sha256').update(text).digest('hex')
 test('结构化受管编辑：预期hash、创建/替换/删除、回执丢失只读对账、拒绝重放', async () => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { checkForUpdates, isNewerVersion, readCurrentVersion } from '../packages/dingtalk-dsh-assistant/version-check.js'
+import { checkForUpdates, isNewerVersion, readCurrentVersion } from '../packages/dingtalk-core/version-check.js'
 
 test('语义版本比较覆盖正式版与预发布版', () => {
   assert.equal(isNewerVersion('0.4.1', '0.4.0'), true)

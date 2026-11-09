@@ -1,0 +1,17 @@
+case,scope,round-1,round-2,round-3
+optional-boundary,默认核心无Web依赖与schema变更,PASS,PASS,PASS
+web-server,认证同源持久回执和真实Host集成,PASS_20,PASS_21,PASS_24
+browser-flows,完整浏览器及最终源码复验,PASS_10_PLUS_4,PASS_14,PASS_27
+pending-receipt,处理中回执不冒充已接纳且草稿保留,FAIL,PASS,PASS
+task-blockers,真实核心阻断对象在Web白名单投影展示,FAIL,PASS,PASS
+chat-lifecycle,跨页面和重新登录继续核对且迟到结果不抢路由,NOT_COVERED,NOT_COVERED,PASS
+auth-races,旧401与退出重登多标签CSRF恢复,NOT_COVERED,NOT_COVERED,PASS
+projection-privacy,显式任务展示字段和原始数据不变,PARTIAL,PARTIAL,PASS
+partial-errors,概览局部故障与首次错误不伪装空态,PARTIAL,PARTIAL,PASS
+chat-order,同毫秒及回拨不破坏最新状态和原始标题,NOT_COVERED,NOT_COVERED,PASS
+visual-accessibility,桌面手机浅深色与五路由axe,PASS,PASS,PASS
+build,独立依赖安装TypeScript和生产构建,PASS,PASS,PASS_BUILD_TYPECHECK
+core-regression,原始全量1失败与Windows断言修复后文件全量通过详见报告,RUNNING,FAIL_THEN_TARGETED_PASS,NOT_RERUN_NO_CORE_DELTA
+source-guards,源码导入哈希及独立依赖边界,NOT_RUN,PASS,PASS
+live-vendor,真实模型与厂商渠道验收,NOT_RUN,NOT_RUN,NOT_RUN
+release,合并部署和公网环境验收,NOT_RUN,NOT_RUN,NOT_RUN

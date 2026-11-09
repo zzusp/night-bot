@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { prepareMessageContext } from '../packages/dingtalk-dsh-assistant/message-context.js'
-import { messageTimestamp, normalizeHistoryMessage } from '../packages/dingtalk-dsh-assistant/dws-bridge.js'
-import { isDirectedTaskRequest } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
+import { prepareMessageContext } from '../packages/dingtalk-core/message-context.js'
+import { messageTimestamp, normalizeHistoryMessage } from '../packages/dingtalk-core/dws-bridge.js'
+import { isDirectedTaskRequest } from '../packages/dingtalk-core/workflow-service.js'
 
 test('群协调来源保留完整长正文、附件身份及独立发送者，不施加旧阶段字节限制', async () => {
   const body = '先执行两条，找我验证通过，再刷69条；行业审核保留。'.repeat(1000)

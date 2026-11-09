@@ -1,0 +1,63 @@
+{
+  "exit": 0,
+  "finishedAt": "2026-11-07T22:20:51.424169+00:00",
+  "sourceCount": 20,
+  "sourceChanged": [],
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-primitives-executor.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-primitives-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-primitives-stdout.log": "c08bff03b0dce945a83ee5f7bc50de0682f6da72b19c0364ed6f7bdd0951bbb8"
+  },
+  "runStart": {
+    "event": "native-stage",
+    "sequence": 1,
+    "stage": "run-start",
+    "pid": 80536,
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "sourceSha256": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a"
+  },
+  "lastStage": {
+    "event": "native-stage",
+    "sequence": 37,
+    "stage": "closeHandle.returned",
+    "endpoint": "output-read"
+  },
+  "terminal": {
+    "phase": "run",
+    "sourceSha256": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a",
+    "scope": "ConPTY resource primitives only",
+    "payloadCreated": false,
+    "profileCreated": false,
+    "jobCreated": false,
+    "aclChanged": false,
+    "productionAdmissible": false,
+    "pipesCreated": 2,
+    "outputBytes": 0,
+    "outputEof": true,
+    "closeReturned": true,
+    "handlesClosed": true,
+    "errors": [],
+    "resizeSucceeded": true,
+    "sameClosePromise": true,
+    "resizeAfterCloseRejected": true,
+    "outputEofWin32": 109,
+    "pseudoConsoleState": "close-returned",
+    "pseudoConsoleOwnershipRetained": false,
+    "operationStates": {
+      "output-drain": "fulfilled",
+      "pseudo-console-close": "fulfilled"
+    },
+    "resourcesRetained": false,
+    "pass": true
+  },
+  "pass": true,
+  "productionAdmissible": false,
+  "exactPidReadback": {
+    "pid": 80536,
+    "observed": false,
+    "method": "independent PowerShell Get-Process -Id 80536",
+    "priorResourceCleanupProved": false
+  }
+}

@@ -5,8 +5,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, writeFile, unlink, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import * as contract from '../packages/dingtalk-dsh-assistant/engineering-output-contract.js'
-import { validateEngineeringApproach } from '../packages/dingtalk-dsh-assistant/engineering-output-contract.js'
+import * as contract from '../packages/dingtalk-core/engineering-output-contract.js'
+import { validateEngineeringApproach } from '../packages/dingtalk-core/engineering-output-contract.js'
 const scope={editablePaths:[],allowedPrefixes:['src/']}
 test('technical approach tolerates filenames, extra metadata and optional repeated criteria',()=>{
  const plan={document:{name:'approach.md',markdown:'Use the existing merge handler.',revision:9},notes:{format:'new'}}

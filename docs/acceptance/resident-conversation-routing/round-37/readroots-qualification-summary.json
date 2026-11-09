@@ -1,0 +1,239 @@
+{
+  "round": 37,
+  "disposition": "PASS_RETAINED_READROOTS_FOREST_DACL_AND_INTERNAL_INHERITANCE_ONLY",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceCount": 19,
+  "aggregateSha256": "c34655b38cffadf86319bf8fe892cb521f28879aa88b2dc2dc153611819d81a7",
+  "sevenRecordedSourceMapsIdentical": true,
+  "input": {
+    "path": "docs/tmp/sg11-profile-unlaunched-fixed-run.json",
+    "bytes": 372359,
+    "sha256": "f00874409ff9f6432d5b56e73fcf19a912f51c9903bdc0a16b4baa69057c2f81"
+  },
+  "historicalDirectoryFieldPresent": false,
+  "rootDirectoryTypesVerifiedByThisRunNativeAndOriginalFileId": true,
+  "execution": {
+    "hostTaskId": "b3d4gbol0",
+    "toolUseId": "call_6e384faca0ad43f1bdd3a2d4cef63db4",
+    "command": "python -I docs/tmp/sg11-readroots-qualification-execute.py --run",
+    "startedAt": "2026-11-08T17:48:18.327830+00:00",
+    "finishedAt": "2026-11-08T17:48:22.614592+00:00",
+    "nodePid": 84576,
+    "exitCode": 0,
+    "naturalWaitReturned": true,
+    "qualificationWasProduced": true,
+    "qualified": true,
+    "intervention": null,
+    "forcedTermination": false,
+    "sourceChanged": [],
+    "inputChanged": false
+  },
+  "freshCheck": {
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 6991,
+    "stdoutSha256": "22e8557d6b882788da025a524089995664c041f8fa78f27cbd3327123d721460"
+  },
+  "freshArgvAndStdoutExactlyMatchReviewed": true,
+  "probeStartedAt": "2026-11-08T17:48:22.322Z",
+  "probeFinishedAt": "2026-11-08T17:48:22.481Z",
+  "beforeComplete": true,
+  "afterComplete": true,
+  "qualified": true,
+  "unchangedVerified": true,
+  "forest": [
+    {
+      "path": "materials",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    },
+    {
+      "path": "work",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    },
+    {
+      "path": "outputs",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    },
+    {
+      "path": "tmp",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    },
+    {
+      "path": "materials/runtime-evidence",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    },
+    {
+      "path": "materials/source-27f33cf856267a968aaa731d54176980.json",
+      "directory": false,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "c3b798596ee83ebed7bd50c12275f33c0c780215a5a0dd0d4865241530c474b3"
+    },
+    {
+      "path": "materials/runtime-evidence/process",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    },
+    {
+      "path": "materials/runtime-evidence/tools",
+      "directory": true,
+      "control": 35844,
+      "controlHex": "8c04",
+      "label": null,
+      "descriptorSha256": "1e1c94fa006845ff72ce25f5446f397e98ee41225175cd6cc8ae2d5c620c74af"
+    }
+  ],
+  "internalEdges": [
+    {
+      "status": "qualified",
+      "sameOwnedOriginal": true,
+      "byteEqualOriginal": true,
+      "flags": 25,
+      "nativeStatus": 1,
+      "parent": "materials",
+      "child": "materials/runtime-evidence"
+    },
+    {
+      "status": "qualified",
+      "sameOwnedOriginal": true,
+      "byteEqualOriginal": true,
+      "flags": 25,
+      "nativeStatus": 1,
+      "parent": "materials",
+      "child": "materials/source-27f33cf856267a968aaa731d54176980.json"
+    },
+    {
+      "status": "qualified",
+      "sameOwnedOriginal": true,
+      "byteEqualOriginal": true,
+      "flags": 25,
+      "nativeStatus": 1,
+      "parent": "materials/runtime-evidence",
+      "child": "materials/runtime-evidence/process"
+    },
+    {
+      "status": "qualified",
+      "sameOwnedOriginal": true,
+      "byteEqualOriginal": true,
+      "flags": 25,
+      "nativeStatus": 1,
+      "parent": "materials/runtime-evidence",
+      "child": "materials/runtime-evidence/tools"
+    }
+  ],
+  "counts": {
+    "beforeTargets": 8,
+    "afterTargets": 8,
+    "boundaryAncestors": 12,
+    "internalEdges": 4,
+    "edgeObservations": 4,
+    "protectedEdges": 0,
+    "inheritanceAttempts": 4,
+    "queryHandles": 40,
+    "localAllocations": 16,
+    "privateSecurityAllocations": 4,
+    "retainedHandles": 0,
+    "retainedAllocations": 0,
+    "ownershipKnown": true
+  },
+  "calls": {
+    "createFileW": 40,
+    "getFileInformationByHandleEx": 120,
+    "getFinalPathNameByHandleW": 40,
+    "getSecurityInfo": 16,
+    "getSecurityDescriptorLength": 20,
+    "localFree": 16,
+    "createPrivateObjectSecurityEx": 4,
+    "destroyPrivateObjectSecurity": 4,
+    "closeHandle": 40
+  },
+  "directoryTargets": 7,
+  "fileTargets": 1,
+  "afterSameOwnedBeforeCount": 8,
+  "afterByteEqualBeforeCount": 8,
+  "errors": [],
+  "qualificationFailures": [],
+  "drift": [],
+  "unknownOwnership": [],
+  "allActualHandlesAndAllocationsAttemptedClosed": true,
+  "securityQuery": {
+    "objectKind": 1,
+    "information": 23,
+    "includes": [
+      "owner",
+      "group",
+      "DACL",
+      "mandatory-label"
+    ],
+    "excludes": [
+      "audit-SACL"
+    ]
+  },
+  "inheritance": {
+    "flags": 25,
+    "objectType": null,
+    "token": null,
+    "genericMapping": [
+      1179785,
+      1179926,
+      1179808,
+      2032127
+    ],
+    "internalEdgesOnly": true,
+    "protectedChildDaclExcluded": true
+  },
+  "scope": "DACL baseline and captured internal inheritance only; not read-only admission",
+  "limitations": [
+    "No runtime admission or scopeReady change",
+    "No LPAC access or token/seal proof",
+    "No Low NRU/NXU origin/borrower proof",
+    "No NULL write-tree recovery proof",
+    "No atomic runtime mutation lock; before/after observations only",
+    "No fabricated internal edge or fixture",
+    "Full 0x17 descriptor is not audit-SACL access"
+  ],
+  "boundaries": {
+    "readOnlyAdmission": false,
+    "labelOriginQualified": false,
+    "productionScopeReady": false,
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "sourceWindowReleasedBeforeArchive": true,
+    "hostInstantiated": false,
+    "newSdkProfileTempOrBusinessChild": false,
+    "nativeBusinessSet": false,
+    "failedNonnullOrReleaseFailureInjected": false,
+    "protectedEdgeExecuted": false,
+    "existingNullWriteRecoveryValidated": false,
+    "oldRound35UnknownClosed": false,
+    "newNodeTestRegistrations": 0,
+    "guardOrOtherGroupRerun": false,
+    "gitWritesChannelCiDeploy": false
+  },
+  "privateEvidenceIndex": "batch-index.json"
+}

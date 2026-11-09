@@ -1,16 +1,16 @@
 import { scriptedCoordinator } from './fixtures/group-coordinator.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTaskStageContracts, readTaskStageHandoff } from '../packages/dingtalk-dsh-assistant/task-workflow-contracts.js'
+import { createTaskStageContracts, readTaskStageHandoff } from '../packages/dingtalk-core/task-workflow-contracts.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts, executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createLegacyInvestigationWorkflow, validateAgentWorkResult } from '../packages/dingtalk-dsh-assistant/agent-work.js'
-import { openWorkflowService } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { createEngineeringStageContract, engineeringWorkflowOwnerContract } from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts, executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { createLegacyInvestigationWorkflow, validateAgentWorkResult } from '../packages/dingtalk-core/agent-work.js'
+import { openWorkflowService } from '../packages/dingtalk-core/workflow-service.js'
+import { createEngineeringStageContract, engineeringWorkflowOwnerContract } from '../packages/dingtalk-core/workflow-engineering.js'
 
 function fixture() {
   const stage = { stageId: 'first', runId: 'run', workflowId: 'domain', workflowDigest: 'digest', status: 'succeeded', outputRef: 'output' }

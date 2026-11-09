@@ -1,0 +1,344 @@
+{
+  "round": 33,
+  "task": "bfdxues8h",
+  "component": "new-private-read-only-policy-temp-born-Low-DACL-only",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "startedAt": "2026-11-08T13:57:08.023809+00:00",
+  "finishedAt": "2026-11-08T13:57:09.064035+00:00",
+  "nodeExitCode": 0,
+  "componentPass": true,
+  "nativeStatus": "OBSERVED",
+  "executionLayers": {
+    "extraTextOnlyPreflight": {
+      "error": "AssertionError",
+      "failingArgumentIndex": 1,
+      "reason": "Forward-slash literal relative probe path compared with recorded Windows relative path",
+      "exitCodeRecordedSeparately": false,
+      "shellContinuedIntoCollector": true
+    },
+    "actualFreshCommandExactlyEqualsApproved": true,
+    "actualAbsoluteRootParameterExactlyEqualsApproved": true,
+    "freshCheckExitCode": 0,
+    "freshCheckStderrBytes": 0,
+    "freshOutputByteExactApproved": true,
+    "outerShellExitCode": 0,
+    "outerWorkflowAllGreen": false,
+    "nativeAttemptCount": 1,
+    "retries": 0,
+    "apiOrParameterChanges": false
+  },
+  "sourceBefore": {
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceChanged": [],
+  "creation": {
+    "attempted": true,
+    "created": true,
+    "unknown": false,
+    "status": 1
+  },
+  "requestedDescriptor": {
+    "controlHex": "9c14",
+    "labelControlHex": "0810",
+    "label": {
+      "level": 4096,
+      "mask": 1,
+      "flags": 3
+    },
+    "saclPresent": true,
+    "saclAutoInherited": true
+  },
+  "createdDescriptor": {
+    "controlHex": "9814",
+    "labelControlHex": "0810",
+    "label": {
+      "level": 4096,
+      "mask": 1,
+      "flags": 3
+    },
+    "saclPresent": true,
+    "saclAutoInherited": true
+  },
+  "initialization": {
+    "needed": true,
+    "attempted": true,
+    "status": 0,
+    "unknown": false,
+    "initialized": true,
+    "validated": true,
+    "sameLength": true,
+    "sameBytesExceptControl": true,
+    "controlXor": 1024
+  },
+  "freshInitializationEqualsImmediateCreation": true,
+  "rootAfterDescendantsByteExactBusinessBaseline": true,
+  "baselineObjects": [
+    {
+      "relativePath": "",
+      "directory": true,
+      "controlHex": "9c14",
+      "labelControlHex": "0810",
+      "label": {
+        "level": 4096,
+        "mask": 1,
+        "flags": 3
+      },
+      "saclPresent": true,
+      "saclAutoInherited": true
+    },
+    {
+      "relativePath": "child",
+      "directory": true,
+      "controlHex": "8c14",
+      "labelControlHex": "0810",
+      "label": {
+        "level": 4096,
+        "mask": 1,
+        "flags": 19
+      },
+      "saclPresent": true,
+      "saclAutoInherited": true
+    },
+    {
+      "relativePath": "child\\file",
+      "directory": false,
+      "controlHex": "8c14",
+      "labelControlHex": "0810",
+      "label": {
+        "level": 4096,
+        "mask": 1,
+        "flags": 16
+      },
+      "saclPresent": true,
+      "saclAutoInherited": true
+    }
+  ],
+  "baselineRebuilds": [
+    {
+      "component": "dacl",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": false,
+      "controlXor": 0
+    },
+    {
+      "component": "dacl",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": false,
+      "controlXor": 0
+    },
+    {
+      "component": "label",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": false,
+      "controlXor": 0
+    },
+    {
+      "component": "label",
+      "matchesOriginal": true,
+      "bytesEqualOriginal": false,
+      "controlXor": 0
+    }
+  ],
+  "pureReleaseBytesEqualOriginal": false,
+  "stages": [
+    {
+      "name": "dacl-add",
+      "securityInformation": 4,
+      "actualBeforeOutsideDaclMatchesOriginal": [
+        true,
+        true,
+        true
+      ],
+      "actualAfterOutsideDaclMatchesOriginal": [
+        true,
+        true,
+        true
+      ],
+      "matchesFixedStage": [
+        true,
+        true,
+        true
+      ],
+      "byteEqualsFixedStage": [
+        false,
+        false,
+        false
+      ],
+      "controlXor": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "dacl-release",
+      "securityInformation": 4,
+      "actualBeforeOutsideDaclMatchesOriginal": [
+        true,
+        true,
+        true
+      ],
+      "actualAfterOutsideDaclMatchesOriginal": [
+        true,
+        true,
+        true
+      ],
+      "matchesFixedStage": [
+        true,
+        true,
+        true
+      ],
+      "byteEqualsFixedStage": [
+        false,
+        false,
+        false
+      ],
+      "controlXor": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "mutations": [
+    {
+      "stage": "dacl-add",
+      "securityInformation": 4,
+      "attempted": true,
+      "status": 0,
+      "unknown": false
+    },
+    {
+      "stage": "dacl-release",
+      "securityInformation": 4,
+      "attempted": true,
+      "status": 0,
+      "unknown": false
+    }
+  ],
+  "finalObjects": [
+    {
+      "controlHex": "9c14",
+      "labelControlHex": "0810",
+      "label": {
+        "level": 4096,
+        "mask": 1,
+        "flags": 3
+      },
+      "saclPresent": true,
+      "saclAutoInherited": true
+    },
+    {
+      "controlHex": "8c14",
+      "labelControlHex": "0810",
+      "label": {
+        "level": 4096,
+        "mask": 1,
+        "flags": 19
+      },
+      "saclPresent": true,
+      "saclAutoInherited": true
+    },
+    {
+      "controlHex": "8c14",
+      "labelControlHex": "0810",
+      "label": {
+        "level": 4096,
+        "mask": 1,
+        "flags": 16
+      },
+      "saclPresent": true,
+      "saclAutoInherited": true
+    }
+  ],
+  "finalBytesEqualOriginal": [
+    true,
+    true,
+    true
+  ],
+  "actualOsBusinessBaselineRestored": true,
+  "resources": {
+    "getSecurityInfo": 21,
+    "setSecurityInfo": 3,
+    "initializationSet": 1,
+    "businessDaclSet": 2,
+    "businessLabelSet": 0,
+    "ntSet": 0,
+    "allocations": 30,
+    "localAllocations": 22,
+    "privateSecurityAllocations": 8,
+    "handles": 5,
+    "allClosedOnce": true,
+    "retainedAllocations": 0,
+    "retainedHandles": 0
+  },
+  "fixture": {
+    "relativePath": "data\\workspaces\\sg11-security-projection-born-low-fe8e0a22de5c440c9e5092e04802efc3",
+    "removedByProbe": true,
+    "retained": false,
+    "independentlyLstatAbsent": true,
+    "oldFiveRootsNonReparseAndRetained": true
+  },
+  "privateAssets": {
+    "docs/tmp/sg11-security-projection-born-low-probe.mjs": {
+      "bytes": 31151,
+      "sha256": "94b40116ee871e489783d71c9d22b1eb1a6f6944bfb6e78bf536b5237a32014f"
+    },
+    "docs/tmp/sg11-security-projection-born-low-check.json": {
+      "bytes": 2848,
+      "sha256": "5f5cd7d66a69c7a34d2970493ca6c6b7ce3812b2da9b73d31ed442ddc41ca5cc"
+    },
+    "docs/tmp/sg11-security-projection-born-low-check-execution.json": {
+      "bytes": 1972,
+      "sha256": "dcf87ab78fb6319d171ef6a85e06cb6ed2fd79c6ef648e86ea3f8dcd536327fd"
+    },
+    "docs/tmp/sg11-security-projection-born-low-checklist.md": {
+      "bytes": 8359,
+      "sha256": "496bd72ce2cea2000c8e5da610e6f7fe00eb7c346d6704c52517daf53a6e5c69"
+    },
+    "docs/tmp/sg11-security-projection-born-low-run-check.json": {
+      "bytes": 2848,
+      "sha256": "5f5cd7d66a69c7a34d2970493ca6c6b7ce3812b2da9b73d31ed442ddc41ca5cc"
+    },
+    "docs/tmp/sg11-security-projection-born-low-run.json": {
+      "bytes": 89586,
+      "sha256": "a6cd4fc7a8ef798f5a8892dbdf6acac0545174c1da62c275016308b7f8b250ca"
+    },
+    "docs/tmp/sg11-security-projection-born-low-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/tmp/sg11-security-projection-born-low-execution.json": {
+      "bytes": 2739,
+      "sha256": "256967ac92d7eaefb5b4a519232c189eab7d45e4bf3c07b576b77f83a5857bd7"
+    },
+    "docs/tmp/sg11-security-projection-born-low-execute.py": {
+      "bytes": 4763,
+      "sha256": "9dd37f70d7d54d8c3082f51341c1ff7a576dbed299afeb0a5904cb063359e450"
+    }
+  },
+  "errors": [],
+  "boundaries": {
+    "productionScopeReady": false,
+    "profileJobMandatoryConptyValidated": false,
+    "existingNullBusinessTreeFixed": false,
+    "newFfi": false,
+    "realModelOrChannel": false,
+    "gitCiDeploy": false,
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "nativeAncestorAndDeletionAtomicity": "Not proven by this component"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "head": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+  "dirtyWorkingTree": true,
+  "purpose": "Tests production-write handoff checkpoint; pending sources, NOT an executed-source manifest",
+  "files": {
+    "test/fixtures/memory-host.js": "923ca3c6d85c1180eb4411902b5176ae0374506cbde9e8d7ce1d1089dc3008c1",
+    "test/pi-runtime-data.test.js": "8eb45b7dec35eddb68858b6423bf03fde78d850b6c199130de0fae5e4ea4888b",
+    "test/pi-wire.test.js": "dac569f8b42cc268bd99616ee31667bae74bdefc84dc258ff99e3faa1a9fe3ab",
+    "test/pi-schedule-wire.test.js": "5f0c1fc8a5bd1066495d56dafafaeea93b47ec20ae8ff33027c0f43617dc4f61",
+    "test/pi-resident-router-flow.test.js": "a368d2ebc473bb6280440bcf5b14fdaf0ef57eb074b3ce38fad9ee4ba0a1e7c1",
+    "docs/tmp/tests-web-real-host-browser.mjs": "ff9cfa6430cd4f6e70f7e668d02098ba8d7ad552bd4d81dcd622b3d54c1f1ac3"
+  },
+  "pending": [
+    "receipt lifecycle correction",
+    "native UTF-8 fixture without diagnostic preload",
+    "formal authorized memory forget and final Chat screenshots"
+  ],
+  "testsInFlight": []
+}

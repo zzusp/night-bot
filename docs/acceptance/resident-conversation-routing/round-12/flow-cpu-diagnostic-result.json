@@ -1,0 +1,456 @@
+{
+  "purpose": "17 registered flow cases terminal, then one controlled CPU diagnosis; not natural business acceptance",
+  "sourceMap": "docs/acceptance/resident-conversation-routing/round-12/flow-diagnostic-source.json",
+  "sourceMapSha256": "f3561401cd033bad9e59d1c3924a006790c8e9e05ab41ca6cf5fca41d6a9fcf0",
+  "sourceCount": 453,
+  "nodeHash": "3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237",
+  "driverHash": "d249fedaa2d689093e091f3148105f0292bbf380c251176014119b1787f758ee",
+  "checkSha256": "1284d44834b7ecd93158da049b003c71b4067feec542bc88097c8f0d69c5fb35",
+  "startedAt": "2026-11-08T02:43:29.433Z",
+  "finishedAt": "2026-11-08T02:50:04.975Z",
+  "executorExit": 0,
+  "nodeRunnerExit": {
+    "code": 1,
+    "signal": null
+  },
+  "caseTerminals": [
+    {
+      "name": "all four default dispositions keep original handling independent of an unknown short reply and survive cold deduplication",
+      "status": "PASS"
+    },
+    {
+      "name": "durable receipt echoes tolerate later DWS flags without replacing existing message facts",
+      "status": "PASS"
+    },
+    {
+      "name": "in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued",
+      "status": "PASS"
+    },
+    {
+      "name": "a message arriving during tool-free handoff is delivered exactly once to the next generation",
+      "status": "PASS"
+    },
+    {
+      "name": "cold recovery completes the uniquely committed next generation after router.candidate.commit fails",
+      "status": "PASS"
+    },
+    {
+      "name": "cold recovery completes the uniquely committed next generation after router.publish fails",
+      "status": "PASS"
+    },
+    {
+      "name": "successive idle cycles retain the short handoff without reloading old payloads or self-triggering empty rotations",
+      "status": "PASS"
+    },
+    {
+      "name": "invalid tool-free handoff retains the current native generation without publishing a candidate: blank-intent",
+      "status": "PASS"
+    },
+    {
+      "name": "invalid tool-free handoff retains the current native generation without publishing a candidate: missing-source",
+      "status": "PASS"
+    },
+    {
+      "name": "invalid tool-free handoff retains the current native generation without publishing a candidate: utf8-budget",
+      "status": "PASS"
+    },
+    {
+      "name": "invalid tool-free handoff retains the current native generation without publishing a candidate: referents-object",
+      "status": "PASS"
+    },
+    {
+      "name": "legacy prepared replyRequest and cold unknown retain original payload bytes while neutral retries stay idempotent",
+      "status": "PASS"
+    },
+    {
+      "name": "cold Router resumes an exact legacy pending packet before a later event without changing its body or replaying either batch",
+      "status": "PASS"
+    },
+    {
+      "name": "an admitted failed Router batch resumes only through an explicit Host checkpoint after strict cold recovery",
+      "status": "PASS"
+    },
+    {
+      "name": "an admitted failed Router checkpoint refuses a newer pending business input before inference",
+      "status": "PASS"
+    },
+    {
+      "name": "a second failed Router continuation retains its checkpoint history and cannot replay the consumed proof",
+      "status": "PASS"
+    },
+    {
+      "name": "an unsettled Router cannot mask an unrelated conversation recovery failure",
+      "status": "PASS"
+    }
+  ],
+  "samples": 2843,
+  "topSampleFrames": [
+    {
+      "id": 10,
+      "count": 1180,
+      "frame": {
+        "functionName": "(idle)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      }
+    },
+    {
+      "id": 27,
+      "count": 214,
+      "frame": {
+        "functionName": "(program)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      }
+    },
+    {
+      "id": 36,
+      "count": 130,
+      "frame": {
+        "functionName": "handleErrorFromBinding",
+        "scriptId": "150",
+        "url": "node:internal/fs/promises",
+        "lineNumber": 152,
+        "columnNumber": 31
+      }
+    },
+    {
+      "id": 22,
+      "count": 128,
+      "frame": {
+        "functionName": "readdir",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      }
+    },
+    {
+      "id": 23,
+      "count": 109,
+      "frame": {
+        "functionName": "join",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 505,
+        "columnNumber": 6
+      }
+    },
+    {
+      "id": 4,
+      "count": 85,
+      "frame": {
+        "functionName": "handleEvent",
+        "scriptId": "1991",
+        "url": "node_modules/.pnpm/chokidar@4.0.3/node_modules/chokidar/esm/handler.js",
+        "lineNumber": 115,
+        "columnNumber": 24
+      }
+    },
+    {
+      "id": 41,
+      "count": 73,
+      "frame": {
+        "functionName": "_throttle",
+        "scriptId": "1989",
+        "url": "node_modules/.pnpm/chokidar@4.0.3/node_modules/chokidar/esm/index.js",
+        "lineNumber": 544,
+        "columnNumber": 13
+      }
+    },
+    {
+      "id": 7,
+      "count": 72,
+      "frame": {
+        "functionName": "join",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 505,
+        "columnNumber": 6
+      }
+    },
+    {
+      "id": 57,
+      "count": 63,
+      "frame": {
+        "functionName": "normalize",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 349,
+        "columnNumber": 11
+      }
+    },
+    {
+      "id": 21,
+      "count": 48,
+      "frame": {
+        "functionName": "readdir",
+        "scriptId": "150",
+        "url": "node:internal/fs/promises",
+        "lineNumber": 1002,
+        "columnNumber": 22
+      }
+    },
+    {
+      "id": 39,
+      "count": 47,
+      "frame": {
+        "functionName": "resolve",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 189,
+        "columnNumber": 9
+      }
+    },
+    {
+      "id": 26,
+      "count": 44,
+      "frame": {
+        "functionName": "(garbage collector)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      }
+    },
+    {
+      "id": 24,
+      "count": 34,
+      "frame": {
+        "functionName": "",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 585,
+        "columnNumber": 19
+      }
+    },
+    {
+      "id": 38,
+      "count": 28,
+      "frame": {
+        "functionName": "normalize",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 349,
+        "columnNumber": 11
+      }
+    },
+    {
+      "id": 8,
+      "count": 25,
+      "frame": {
+        "functionName": "",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 585,
+        "columnNumber": 19
+      }
+    },
+    {
+      "id": 19,
+      "count": 24,
+      "frame": {
+        "functionName": "ReaddirpStream",
+        "scriptId": "1990",
+        "url": "node_modules/.pnpm/readdirp@4.1.2/node_modules/readdirp/esm/index.js",
+        "lineNumber": 58,
+        "columnNumber": 15
+      }
+    },
+    {
+      "id": 32,
+      "count": 23,
+      "frame": {
+        "functionName": "fsWatchBroadcast",
+        "scriptId": "1991",
+        "url": "node_modules/.pnpm/chokidar@4.0.3/node_modules/chokidar/esm/handler.js",
+        "lineNumber": 138,
+        "columnNumber": 25
+      }
+    },
+    {
+      "id": 40,
+      "count": 22,
+      "frame": {
+        "functionName": "normalizeString",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 91,
+        "columnNumber": 24
+      }
+    },
+    {
+      "id": 6,
+      "count": 22,
+      "frame": {
+        "functionName": "_handleRead",
+        "scriptId": "1991",
+        "url": "node_modules/.pnpm/chokidar@4.0.3/node_modules/chokidar/esm/handler.js",
+        "lineNumber": 446,
+        "columnNumber": 15
+      }
+    },
+    {
+      "id": 91,
+      "count": 20,
+      "frame": {
+        "functionName": "_getWatchedDir",
+        "scriptId": "1989",
+        "url": "node_modules/.pnpm/chokidar@4.0.3/node_modules/chokidar/esm/index.js",
+        "lineNumber": 661,
+        "columnNumber": 18
+      }
+    },
+    {
+      "id": 54,
+      "count": 17,
+      "frame": {
+        "functionName": "copyObject",
+        "scriptId": "53",
+        "url": "node:internal/fs/utils",
+        "lineNumber": 212,
+        "columnNumber": 19
+      }
+    },
+    {
+      "id": 16,
+      "count": 14,
+      "frame": {
+        "functionName": "_handleRead",
+        "scriptId": "1991",
+        "url": "node_modules/.pnpm/chokidar@4.0.3/node_modules/chokidar/esm/handler.js",
+        "lineNumber": 446,
+        "columnNumber": 15
+      }
+    },
+    {
+      "id": 48,
+      "count": 14,
+      "frame": {
+        "functionName": "isWindowsReservedName",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 80,
+        "columnNumber": 30
+      }
+    },
+    {
+      "id": 72,
+      "count": 13,
+      "frame": {
+        "functionName": "join",
+        "scriptId": "38",
+        "url": "node:path",
+        "lineNumber": 505,
+        "columnNumber": 6
+      }
+    },
+    {
+      "id": 150,
+      "count": 12,
+      "frame": {
+        "functionName": "registerDestroyHook",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      }
+    }
+  ],
+  "workerBefore": {
+    "nativeCreatedAt": "2026-11-08T02:43:29.5550968Z",
+    "runnerCreatedAt": "2026-11-08T02:43:29.4399790Z",
+    "workerPid": 100756,
+    "ports": [
+      {
+        "host": "127.0.0.1",
+        "owner": 100756,
+        "port": 57182
+      }
+    ],
+    "cpuSeconds": 515.59375,
+    "parentPid": 69296,
+    "workerCreatedAt": "2026-11-08T02:43:29.5550960Z",
+    "runnerPid": 69296
+  },
+  "workerAfter": {
+    "parentPid": 69296,
+    "cpuSeconds": 536.296875,
+    "ports": [
+      {
+        "host": "127.0.0.1",
+        "port": 57182,
+        "owner": 100756
+      }
+    ],
+    "workerPid": 100756,
+    "runnerPid": 69296,
+    "nativeCreatedAt": "2026-11-08T02:43:29.5550968Z",
+    "runnerCreatedAt": "2026-11-08T02:43:29.4399790Z",
+    "workerCreatedAt": "2026-11-08T02:43:29.5550960Z"
+  },
+  "protocol": [
+    "Profiler.enable",
+    "Profiler.setSamplingInterval",
+    "Profiler.start",
+    "Profiler.stop",
+    "Profiler.disable"
+  ],
+  "cpuProfileCaptured": true,
+  "profileSha256": "5f76b92c3c18e1c6840142d365cef3501e32330ea0e8bc2b6b6bacb08ba64c51",
+  "ownClientDisconnected": true,
+  "controlledWorkerStop": true,
+  "cleanupCheck": {
+    "mode": "check",
+    "children": 0,
+    "born": "2026-11-08T02:43:29.5550968Z",
+    "pid": 100756,
+    "effects": 0,
+    "parentPid": 69296
+  },
+  "cleanupRun": {
+    "mode": "run",
+    "stopped": true,
+    "treeStop": false,
+    "parentsStopped": false,
+    "pid": 100756
+  },
+  "independentReadback": {
+    "checkedAt": "2026-11-08T02:51:03.8940090Z",
+    "expectedPids": [
+      47404,
+      69296,
+      100756
+    ],
+    "present": [],
+    "listeners": [],
+    "port": 57182,
+    "method": "CIM exact PIDs and Get-NetTCPConnection owner or exact port; read-only independent command after diagnostic executor returned"
+  },
+  "sourceChanged": [],
+  "driverUnchanged": true,
+  "sourceMapUnchanged": true,
+  "diagnosticSucceeded": true,
+  "rootCauseResolved": false,
+  "candidateEvidence": "CPU samples point to chokidar/readdirp filesystem-event work; no exact production responsibility proven yet",
+  "naturalBusinessPass": false,
+  "combinedFiveGroupPass": false,
+  "productionAdmissible": false,
+  "realVendorExecuted": false,
+  "rawEvidenceSha256": {
+    "docs/tmp/sg12-flow-profile-diagnostic.mjs": "d249fedaa2d689093e091f3148105f0292bbf380c251176014119b1787f758ee",
+    "docs/tmp/sg12-flow-profile-check.json": "1284d44834b7ecd93158da049b003c71b4067feec542bc88097c8f0d69c5fb35",
+    "docs/tmp/sg12-flow-profile-executor.log": "b6e234c2320b8d9e3885d40c118e7d7ecbb78c4f60ae17f70b987b4a3714738f",
+    "docs/tmp/sg12-flow-profile-executor-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg12-flow-profile-executor.json": "e41e1daa1e6b3f715a0cb63e32ecadcd311fe82eed258c8194330cb72a78b122",
+    "docs/tmp/sg12-flow-profile-stdout.log": "2471d0b6473b4f51b71587862c23c57b990a888d13fe4e8cae8cf6c1ebf78ec1",
+    "docs/tmp/sg12-flow-profile-stderr.log": "4e71960c1101442040aea6f4bb17f300d0560b421fc3e13a9364c34160cbd316",
+    "docs/tmp/sg12-flow-profile-private-owner.json": "845e083db97704ff39b88a80f4718cff1ad89260efa36674638ecaee60ed932d",
+    "docs/tmp/sg12-flow-profile-private-cpu.json": "5f76b92c3c18e1c6840142d365cef3501e32330ea0e8bc2b6b6bacb08ba64c51",
+    "docs/tmp/sg12-flow-profile-private-result.json": "1a6f430f7fc2ede483b754769f13be71f44368f9ec1fd0d3af66d2af736013df"
+  }
+}

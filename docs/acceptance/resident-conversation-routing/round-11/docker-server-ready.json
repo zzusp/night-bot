@@ -1,0 +1,16 @@
+{
+  "context": "default",
+  "serverReady": true,
+  "actualDockerInfo": {
+    "ServerVersion": "26.0.0",
+    "OSType": "linux",
+    "SecurityOptions": [
+      "name=seccomp,profile=unconfined",
+      "name=cgroupns"
+    ],
+    "Architecture": "x86_64"
+  },
+  "wslStatus": "existing default docker-desktop; WSL2 status exit0; no component installed or changed",
+  "desktopStartRecord": "docker-desktop-start.json",
+  "buildRunStatus": "NOT_RUN; waiting Night container source contract"
+}

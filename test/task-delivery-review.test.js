@@ -5,8 +5,8 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
 import {createServer} from 'node:http'
-import {verifyDeliveredEngineeringFacts} from '../packages/dingtalk-dsh-assistant/task-delivery-review.js'
-import {handleRequest} from '../packages/dingtalk-dsh-assistant/http.js'
+import {verifyDeliveredEngineeringFacts} from '../packages/dingtalk-core/task-delivery-review.js'
+import {handleRequest} from '../packages/dingtalk-core/http.js'
 const hash=x=>createHash('sha256').update(x).digest('hex')
 async function fixture(){
  const directory=await mkdtemp(join(tmpdir(),'delivered-facts-')),commit='a'.repeat(40),xml='<testsuite tests="3" errors="0" failures="0" skipped="0"></testsuite>',cleanup=JSON.stringify({exists:false,readOnly:true,query:'SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname=?)'})

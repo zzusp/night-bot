@@ -1,0 +1,29 @@
+{
+  "mode": "--run",
+  "removed": [
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-close-result.json",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-close.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-close.stderr.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-inject-fixed-result.json",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-inject-fixed.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-inject-fixed.stderr.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-final-result.json",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-final.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-durable-job-final.stderr.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-ephemeral-drain-fixed-result.json",
+    "docs/acceptance/resident-conversation-routing/round-19/host-ephemeral-drain-fixed.log",
+    "docs/acceptance/resident-conversation-routing/round-19/host-ephemeral-drain-fixed.stderr.log",
+    "docs/acceptance/resident-conversation-routing/round-19/ephemeral-drain-final-result.json",
+    "docs/acceptance/resident-conversation-routing/round-19/ephemeral-drain-final.log",
+    "docs/acceptance/resident-conversation-routing/round-19/ephemeral-drain-final.stderr.log",
+    "night-host-close-jobs-pQUPzv",
+    "night-host-close-jobs-fa9Js1",
+    "night-host-close-jobs-c7BoXl"
+  ],
+  "retained": [
+    "host-application-close",
+    "host-ephemeral-remove-final"
+  ],
+  "noLiveOwnerDeleted": true,
+  "scope": "exact task-owned failed fixtures and superseded evidence; no process termination or shared cleanup"
+}

@@ -1,0 +1,24 @@
+{
+  "startedAt": "2026-11-08T03:19:31.842350+00:00",
+  "finishedAt": "2026-11-08T03:19:50.956925+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^default Host ask",
+    "test/pi-approval-wire.test.js"
+  ],
+  "runnerPid": 39336,
+  "exitCode": 0,
+  "naturalExit": true,
+  "controlledStop": false,
+  "sourceCount": 441,
+  "sourceSha256": "29e752746230a765b4d328a939a2d6d16b8bd2c1db7e54e0dd90074551e133b7",
+  "sourceChanged": [],
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "worktree": "dirty uncommitted cooperative tree",
+  "stdoutSha256": "c56e45ed7794925f85387d42892b8822c513920a43ba2c5c78083b7a8eeca2a7",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "realVendorExecuted": false
+}

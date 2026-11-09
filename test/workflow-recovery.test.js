@@ -5,10 +5,10 @@ import { mkdtemp,rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openWorkflowService } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openWorkflowService } from '../packages/dingtalk-core/workflow-service.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
 
 // 只替代模型响应；恢复扫描、控制器、SQLite 和证据工件均为真实实现。
 async function automaticRecoveryFixture(t, { repeatFailure = false, codeFailure = false, source = false, unknownEffect = false, noSubmission = false } = {}) {

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createReleasePlatform } from '../packages/dingtalk-dsh-assistant/workflow-release-platform.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { createReleasePlatform } from '../packages/dingtalk-core/workflow-release-platform.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 
 const commitSha = 'a'.repeat(40)
 const imageDigest = `sha256:${'b'.repeat(64)}`

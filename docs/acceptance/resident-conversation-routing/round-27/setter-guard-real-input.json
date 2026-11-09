@@ -1,0 +1,16 @@
+{
+  "status": "PASS_PRE_SET_REFUSAL_ONLY",
+  "sourceSha256": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+  "rawSha256": "896664128bf13f9995d142ea2b6f07e7cd02b54333adaa0b70880b53d5901496",
+  "objects": 3,
+  "originalControls": [
+    38916,
+    34820,
+    34820
+  ],
+  "inheritanceCalls": 0,
+  "nativeCalls": 0,
+  "inputBytesUnchanged": true,
+  "legacyTreeSupported": false,
+  "restorationProved": false
+}

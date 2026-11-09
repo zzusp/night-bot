@@ -3,10 +3,10 @@ import {mkdtemp,mkdir,writeFile,readFile,appendFile,rm,realpath} from 'node:fs/p
 import {resolve,join,sep} from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
-import {openExecutionStore} from '../../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {taskDirectories} from '../../packages/dingtalk-dsh-assistant/session-workspaces.js'
-import {createExecutionController} from '../../packages/dingtalk-dsh-assistant/execution-controller.js'
+import {openExecutionStore} from '../../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../../packages/dingtalk-core/execution-artifacts.js'
+import {taskDirectories} from '../../packages/dingtalk-core/session-workspaces.js'
+import {createExecutionController} from '../../packages/dingtalk-core/execution-controller.js'
 const exec=promisify(execFile),object={type:'object'}
 export async function openTaskSessionControlFixture(t,{execute,expected='actual requested artifact',controllerFactory=createExecutionController,workflowFactory,validateOutput,ownerContract}={}){
  const temporary=resolve('docs/tmp/task-session-control');await mkdir(temporary,{recursive:true});const approved=await realpath(resolve('docs/tmp'));assert.ok((await realpath(temporary)).startsWith(approved+sep),'fixture temporary root must stay in repository docs/tmp')

@@ -1,3 +1,4 @@
+import {authorizedProcessPolicy} from './process/contracts.js';
 // MIT source-derived shell execution/control compatibility algorithms; see licenses/dsh-pwsh-sandbox-MIT.txt. Application process/sandbox/jobs/policy services own effects.
 import { SandboxUnavailableError } from "./native-sandbox-protocol.js";
 import { PwshLocalExecutor } from "./native-pwsh-local.js";
@@ -150,7 +151,7 @@ var SandboxPwshExecutor = class NativeSandboxPwshExecutor extends PwshLocalExecu
 		};
 	}
 	async execute(spec) {
-		const policy = spec.sandboxPolicy;
+		const policy = authorizedProcessPolicy(this.ctx, spec.sandboxPolicy);
 		const { mode } = policy;
 		if (mode === "danger-full-access") return SandboxPwshExecutor.decorateResult(await super.execute(spec), (result) => ({
 			...result,
@@ -167,7 +168,7 @@ var SandboxPwshExecutor = class NativeSandboxPwshExecutor extends PwshLocalExecu
 			}, signal);
 			signal.throwIfAborted();
 			confined = prepared;
-			return prepared.argv;
+			return prepared;
 		}, (process) => {
 			const facts = confined;
 			this.processFacts.set(process, {

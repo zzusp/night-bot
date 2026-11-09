@@ -1,4 +1,4 @@
-import { validUatAcceptancePolicy } from '../packages/dingtalk-dsh-assistant/uat-acceptance-policy.js'
+import { validUatAcceptancePolicy } from '../packages/dingtalk-core/uat-acceptance-policy.js'
 import { planUatSchemaTargetAppend } from './configure-uat-schema-target.mjs'
 import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { randomUUID, createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import yaml from 'js-yaml'
-import { createReleasePlatform } from '../packages/dingtalk-dsh-assistant/workflow-release-platform.js'
+import { createReleasePlatform } from '../packages/dingtalk-core/workflow-release-platform.js'
 const fail = code => { throw new Error(code) }
 const hash = value => createHash('sha256').update(value).digest('hex')
 const keys = (x, expected) => x && typeof x === 'object' && !Array.isArray(x) && isDeepStrictEqual(Object.keys(x).sort(), expected.sort())

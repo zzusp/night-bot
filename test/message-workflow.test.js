@@ -5,8 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { createMessageWorkflow } from '../packages/dingtalk-dsh-assistant/message-workflow.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { createMessageWorkflow } from '../packages/dingtalk-core/message-workflow.js'
 
 // 本文件只验证来源和执行层。协调语义使用真实 native 会话的 message-coordinator.test.js 验证。
 async function fixture(t, options = {}) {

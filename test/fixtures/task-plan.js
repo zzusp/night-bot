@@ -1,4 +1,4 @@
-import { prepareTaskPlan } from '../../packages/dingtalk-dsh-assistant/task-plan.js'
+import { prepareTaskPlan } from '../../packages/dingtalk-core/task-plan.js'
 
 // 仅测试使用：显式的一阶段覆盖，不推断真实业务要求间的语义关系。
 export function taskPlanFixture({ taskId = 'task-test', inputVersion = 1, runSequence = 1, revision = 1, sourceRefs = [{ messageId: 'm1', messageVersion: 1 }], workflowRefs = [], titles = ['执行并核验'], descriptions = ['结果符合要求'], verificationPolicy = 'semantic' } = {}) {

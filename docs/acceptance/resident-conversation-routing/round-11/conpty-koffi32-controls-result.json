@@ -1,0 +1,74 @@
+{
+  "exit": 0,
+  "finishedAt": "2026-11-07T22:19:56.942500+00:00",
+  "sourceCount": 20,
+  "sourceChanged": [],
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-controls-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-controls-check.log": "0b3f8c4e2f47ffc5f9a73ff485a3e1a0af48d4cd5689c88d24f92f3ffa59407f",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-controls-executor.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-controls-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-koffi32-controls-stdout.log": "b39d7e489a56783570b5c25eaa56839fddacba861cb990b431afec95b4e55515"
+  },
+  "runStart": {
+    "event": "native-stage",
+    "sequence": 1,
+    "stage": "run-start",
+    "pid": 78548,
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "sourceSha256": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a"
+  },
+  "callbacks": [
+    {
+      "event": "native-stage",
+      "sequence": 4,
+      "stage": "getCurrentProcessId.worker-callback",
+      "callbackError": null,
+      "returnType": "number",
+      "value": 78548
+    },
+    {
+      "event": "native-stage",
+      "sequence": 7,
+      "stage": "sleep.worker-callback",
+      "callbackError": null,
+      "returnType": "undefined"
+    }
+  ],
+  "terminal": {
+    "phase": "run-async-controls",
+    "sourceSha256": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a",
+    "scope": "Koffi asynchronous scalar/void controls only; no pipes or ConPTY",
+    "payloadCreated": false,
+    "profileCreated": false,
+    "jobCreated": false,
+    "aclChanged": false,
+    "productionAdmissible": false,
+    "pipesCreated": 0,
+    "outputBytes": 0,
+    "outputEof": false,
+    "closeReturned": false,
+    "handlesClosed": true,
+    "errors": [],
+    "scalarControlPassed": true,
+    "voidControlPassed": true,
+    "pseudoConsoleState": "not-created",
+    "pseudoConsoleOwnershipRetained": false,
+    "operationStates": {
+      "control-getCurrentProcessId": "fulfilled",
+      "control-sleep": "fulfilled"
+    },
+    "resourcesRetained": false,
+    "pass": true
+  },
+  "pass": true,
+  "productionAdmissible": false,
+  "exactPidReadback": {
+    "pid": 78548,
+    "observed": false,
+    "method": "independent PowerShell Get-Process -Id 78548",
+    "priorResourceCleanupProved": false
+  }
+}

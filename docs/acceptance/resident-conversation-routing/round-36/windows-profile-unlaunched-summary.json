@@ -1,0 +1,294 @@
+{
+  "round": 36,
+  "disposition": "PASS_NEW_ROOT_REAL_PROFILE_UNLAUNCHED_COMPONENT_ONLY",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceCount": 1125,
+  "aggregateSha256": "37c9bb7f56e2d07d07183e90857ee247b607f28ed0d5bc713118515448272170",
+  "sevenSourceMapsIdentical": true,
+  "guard": {
+    "taskId": "bqkm061l1",
+    "toolUseId": "call_ffbccd29fad64b71b4e1834c9cef7aab",
+    "command": [
+      "pwsh",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "pnpm check; exit $LASTEXITCODE"
+    ],
+    "startedAt": "2026-11-08T16:17:20.329343+00:00",
+    "finishedAt": "2026-11-08T16:17:30.401401+00:00",
+    "exitCode": 0,
+    "sourceChanged": [],
+    "originalOutputs": [
+      {
+        "source": "93e431a2a76938d32aefc070b093fcfb65691c70",
+        "retainedModules": 190,
+        "retiredModules": 10,
+        "excludedUiModules": 3,
+        "explicitlyAdaptedModules": 57,
+        "relativeImports": "closed",
+        "httpRoutes": "retained"
+      },
+      {
+        "productionImportFiles": 395,
+        "literalBareImports": 193,
+        "status": "declared-production-imports"
+      },
+      {
+        "runtimeJsFiles": 395,
+        "externalSdkImports": 0,
+        "legacyOrchestratorDefinitions": 0,
+        "legacySourceFilesVerified": 2,
+        "historicalFormatFilesRemoved": 9
+      }
+    ]
+  },
+  "nativeRun": {
+    "taskId": "b25egmf4e",
+    "toolUseId": "call_1be5787c86ea4031902eff808cc75b92",
+    "command": "python -I docs/tmp/sg11-profile-unlaunched-fixed-execute.py --run",
+    "startedAt": "2026-11-08T16:36:12.040691+00:00",
+    "finishedAt": "2026-11-08T16:36:45.972535+00:00",
+    "nodePid": 65636,
+    "exitCode": 0,
+    "naturalWaitReturned": true,
+    "componentPass": true,
+    "sourceChanged": [],
+    "intervention": null,
+    "forcedTermination": false
+  },
+  "freshCheck": {
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 118219,
+    "stdoutSha256": "013b54a4a95896a5500be8ea4602f4c113b6f4dd5a478d07a41838b67ad82610"
+  },
+  "freshArgvExactlyMatchesReviewed": true,
+  "freshStdoutExactlyMatchesReviewed": true,
+  "steps": [
+    "factory-returned",
+    "prepareScopeRoots-returned",
+    "independent-temp-observation-closed",
+    "commitOwnedProof-returned",
+    "explicit-revalidate-returned",
+    "deleteUnlaunched-returned",
+    "released-committed",
+    "task-service-closed",
+    "host-closed"
+  ],
+  "errors": [],
+  "task": {
+    "status": "active",
+    "drained": true,
+    "lastAction": "wait"
+  },
+  "scopeRoots": {
+    "read": 4,
+    "writePrivateTemp": 1,
+    "oldReadRootsDaclQualified": false
+  },
+  "observer": {
+    "handles": [
+      {
+        "id": 0,
+        "attempted": true,
+        "closed": true
+      }
+    ],
+    "allocations": [
+      {
+        "id": 0,
+        "attempted": true,
+        "closed": true
+      }
+    ],
+    "reads": 1,
+    "control": 39956,
+    "controlHex": "9c14",
+    "label": {
+      "level": 4096,
+      "mask": 1,
+      "flags": 3
+    },
+    "closedBeforeProof": true
+  },
+  "proof": {
+    "phase": "profile-owned",
+    "scopeCount": 5,
+    "objectRoles": {
+      "profile": 2,
+      "profile-ancestor": 6
+    },
+    "liveAndOriginalRecorderColdEqual": true
+  },
+  "jobAudit": [
+    {
+      "kind": "registered",
+      "seq": null,
+      "status": null,
+      "proofPhase": null,
+      "producerReported": null
+    },
+    {
+      "kind": "resource-ownership",
+      "seq": 1,
+      "status": "planned",
+      "proofPhase": null,
+      "producerReported": null
+    },
+    {
+      "kind": "resource-ownership",
+      "seq": 2,
+      "status": "unknown-retained",
+      "proofPhase": "profile-owned",
+      "producerReported": null
+    },
+    {
+      "kind": "resource-ownership",
+      "seq": 3,
+      "status": "released",
+      "proofPhase": null,
+      "producerReported": null
+    },
+    {
+      "kind": "settled",
+      "seq": null,
+      "status": "completed",
+      "proofPhase": null,
+      "producerReported": true
+    }
+  ],
+  "released": {
+    "kind": "windows-lpac",
+    "version": 1,
+    "status": "released",
+    "scopeCount": 5,
+    "scopeEffects": 0,
+    "retainedHandles": 0,
+    "retainedAllocations": 0,
+    "preparationPending": false,
+    "threadRestored": true,
+    "childSettled": true,
+    "jobEmpty": true,
+    "nativeHandlesClosed": true,
+    "scopeReleased": true,
+    "profileAbsent": true
+  },
+  "settled": {
+    "entryId": "2ae70eeb",
+    "status": "completed",
+    "producerReported": true
+  },
+  "journal": {
+    "bytes": 61199,
+    "sha256": "a018e16c707482e473bb8409645fa60a901987e94fddd7b1aa54f89e9bd0fc12",
+    "originalDecodePiJournalRequireComplete": true,
+    "explicitOriginalPortableCodec": true,
+    "actualDiskBytesIndependentlyMatched": true,
+    "sameJobColdAuditEqualsLive": true
+  },
+  "liveUnresolved": [],
+  "coldUnresolved": [],
+  "independentTempAbsent": true,
+  "independentSdkDirectoryCountAbsent": 2,
+  "profileLifecycle": {
+    "createdReceipt": {
+      "state": "owned",
+      "created": true,
+      "creationAttempted": true,
+      "threadRestored": true,
+      "launchAttempted": false,
+      "cleanupAttempted": false,
+      "deleteAttempted": false,
+      "sealed": false,
+      "sealState": "not-started",
+      "retainedHandles": 0,
+      "retainedAllocations": 1
+    },
+    "deletedReceipt": {
+      "state": "registration-and-folder-absent",
+      "created": true,
+      "creationAttempted": true,
+      "threadRestored": true,
+      "launchAttempted": false,
+      "cleanupAttempted": true,
+      "deleteAttempted": true,
+      "sealed": false,
+      "sealState": "not-started",
+      "retainedHandles": 0,
+      "retainedAllocations": 0
+    },
+    "finalReceipt": {
+      "state": "registration-and-folder-absent",
+      "created": true,
+      "creationAttempted": true,
+      "threadRestored": true,
+      "launchAttempted": false,
+      "cleanupAttempted": true,
+      "deleteAttempted": true,
+      "sealed": false,
+      "sealState": "not-started",
+      "retainedHandles": 0,
+      "retainedAllocations": 0
+    }
+  },
+  "privateEvidence": {
+    "docs/tmp/sg11-profile-unlaunched-fixed-probe.mjs": {
+      "bytes": 23240,
+      "sha256": "ba0b0d2e29ef9d4be8615c93f4d73986479782294e2e9382e48c988f56a5b9d3"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-check.json": {
+      "bytes": 118219,
+      "sha256": "013b54a4a95896a5500be8ea4602f4c113b6f4dd5a478d07a41838b67ad82610"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-check-execution.json": {
+      "bytes": 1311,
+      "sha256": "47ec927e63a3a48edbbede2d91c6d634c0f7dda7c40bbc6f22dfd2373e91d2da"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-checklist.md": {
+      "bytes": 18069,
+      "sha256": "878b101249b88a37c8e3f6408946da587c7d54b9138645644bb638c491a865d2"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-execute.py": {
+      "bytes": 6404,
+      "sha256": "1bd40f92137d7102181af57ee162b3db7505246c8e889d400471d0569cc8926f"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-execution.json": {
+      "bytes": 248373,
+      "sha256": "5fdaadb285d9e13ef2f1cb31b958d0ad05ce68fbcaa1874bfe06bc7fc92fbd92"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run.json": {
+      "bytes": 372359,
+      "sha256": "f00874409ff9f6432d5b56e73fcf19a912f51c9903bdc0a16b4baa69057c2f81"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run-check.json": {
+      "bytes": 118219,
+      "sha256": "013b54a4a95896a5500be8ea4602f4c113b6f4dd5a478d07a41838b67ad82610"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run-console.log": {
+      "bytes": 229,
+      "sha256": "0d15ced598c1b0fe394348c0c8de5475cdd85841f2572fc1910976677c0fb6f7"
+    },
+    "docs/tmp/sg11-profile-unlaunched-fixed-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "boundaries": {
+    "newInstallationRetained": true,
+    "sourceWindowReleasedBeforeArchive": true,
+    "oldRound35UnknownRetained": true,
+    "oldRound35InstallationAndEvidenceUntouched": true,
+    "productionScopeReady": false,
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "fullLpacMandatoryLaunchJobAckConptyValidated": false,
+    "existingNullBusinessTreesValidated": false,
+    "knownFolderFailedNonnullBranchExecuted": false,
+    "nativeBodyCallCountsInstrumented": false,
+    "hostOrNativeRerun": false,
+    "newNodeTestRegistrations": 0,
+    "gitWritesChannelCiDeploy": false
+  }
+}

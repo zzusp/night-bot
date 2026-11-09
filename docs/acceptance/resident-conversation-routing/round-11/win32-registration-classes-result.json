@@ -1,0 +1,85 @@
+{
+  "pass": false,
+  "identityOnly": true,
+  "profileCreated": false,
+  "createAttempted": false,
+  "deleteAttempted": false,
+  "registrationAbsenceVerified": false,
+  "profileFolderRemoved": false,
+  "storageApiBindingVerified": false,
+  "productionAdmissible": false,
+  "cleanupComplete": false,
+  "childCreated": false,
+  "jobCreated": false,
+  "impersonationPerformed": false,
+  "aclChanged": false,
+  "networkCapabilities": 0,
+  "nativeOwnerRetained": false,
+  "handlesClosed": true,
+  "profileState": "not-created",
+  "retainedHandles": [],
+  "taskId": "b22r691g5",
+  "head": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+  "worktreeState": "Uncommitted shared worktree; only the two explicit private probe inputs are bound by this probe result.",
+  "sourceCount": 2,
+  "sourceSha256": "3856fce15e07806e5dec45a49ff0baca04377433ebbe734a547707a47e7d1ad4",
+  "parameterSha256": "a57c5ab2209141e5a568e6fceca2b36d1b7327712e4b722e78292be1dfb90f6a",
+  "sourceChanged": [],
+  "check": {
+    "exit": 0,
+    "effects": 0
+  },
+  "run": {
+    "exit": 2,
+    "pid": 82968,
+    "startedAt": "2026-11-08T00:01:12.774857+00:00",
+    "finishedAt": "2026-11-08T00:01:17.315509+00:00",
+    "bindingVerified": true,
+    "stderrEmpty": true
+  },
+  "identityObservations": [
+    {
+      "label": "host-root",
+      "comparison": "OrdinalIgnoreCase",
+      "matches": true
+    },
+    {
+      "label": "user-classes",
+      "comparison": "OrdinalIgnoreCase",
+      "matches": true
+    }
+  ],
+  "linkObservations": [
+    {
+      "label": "user-classes",
+      "queryStatus": 0,
+      "type": 6,
+      "bytes": 138,
+      "absent": false
+    }
+  ],
+  "mappingParent": "NOT_REACHED_STRICT_NOLINK_GATE",
+  "errors": [
+    {
+      "stage": "pre-create identity",
+      "type": "Exception",
+      "message": "Registry link metadata not definitively absent: 0"
+    }
+  ],
+  "exactPidReadback": {
+    "pid": 82968,
+    "observed": false,
+    "method": "independent PowerShell Get-Process -Id 82968",
+    "priorResourceCleanupProved": false
+  },
+  "privateEvidence": {
+    "docs/tmp/sg11-profile-classes-check.log": "68772fd5a607841d9f3e687695eec4e4708359628c7d1a85b55fe191188b404e",
+    "docs/tmp/sg11-profile-classes-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-classes-run.log": "e4cd9e72120502ba1e64ddf3f2edf7ecd915b44a14d5dc7228060e438a5c8493",
+    "docs/tmp/sg11-profile-classes-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-classes-private-result.json": "d889e9f30584decd2547d447ca94bf93df26ccc1080bbdfc51a6c70e49d091be",
+    "docs/tmp/sg11-profile-classes-private-owner.json": "0f9b56ea5256526d29c4df246bf968bb74a3f4f15a84c3f14b307b5e67f54af3",
+    "docs/tmp/sg11-profile-classes-executor.json": "38ab480d0dae03d5406452b02013e48a0392f32da6d86bb569c9f52ad66baf3b"
+  },
+  "scope": "Read-only Host/root/Classes identity probe. REG_LINK metadata presence is a strict stop; no link following, mapping access, SID derive, Profile Create/Delete, storage binding, ACL or production admission."
+}

@@ -84,6 +84,6 @@ export function archiveTaskRows(db, taskId) {
   // Older binaries must not silently ignore physically archived tasks. This is
   // distinct from the never-deployed external-detail draft (which had no marker).
   db.prepare("INSERT INTO dynamic_meta(key,value) VALUES ('taskArchiveSchema','1') ON CONFLICT(key) DO UPDATE SET value='1'").run()
-  db.exec('PRAGMA user_version=3')
+  if(Number(db.prepare('PRAGMA user_version').get().user_version)<4)db.exec('PRAGMA user_version=3')
   return true
 }

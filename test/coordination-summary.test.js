@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
-import { coordinationSnapshot, coordinationNotificationState, formatCoordinationSnapshot, formatCoordinationAcceptance, formatCoordinationTime } from '../packages/dingtalk-dsh-assistant/coordination-summary.js'
+import { coordinationSnapshot, coordinationNotificationState, formatCoordinationSnapshot, formatCoordinationAcceptance, formatCoordinationTime } from '../packages/dingtalk-core/coordination-summary.js'
 import { currentCoordinationFixture } from './fixtures/current-coordination-contracts.js'
 
 const member = (id, state) => ({ id, taskId: id, state, control: state === 'cancelled' ? 'cancelled' : 'active',

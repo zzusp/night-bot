@@ -1,0 +1,20 @@
+[
+  {
+    "group": "node",
+    "exit": 0,
+    "sourceChanged": [],
+    "logSha256": "375e5fb1f61aee765aa51c18dbef3bab2b715b1e65b3700e78004f9a67183650"
+  },
+  {
+    "group": "build",
+    "exit": 0,
+    "sourceChanged": [],
+    "logSha256": "3bd49b23ede1e7d82f831b9551eedd8595d1a8f08acbb89c2d1f1ad03d5e8b33"
+  },
+  {
+    "group": "browser",
+    "exit": 0,
+    "sourceChanged": [],
+    "logSha256": "caf505b5b0b0c58804e5d0e391bfddb55906c2d4528b49b6d33f68f920a4ed88"
+  }
+]

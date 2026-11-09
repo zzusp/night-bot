@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import {mkdir,mkdtemp,writeFile,readFile,rm} from 'node:fs/promises'
 import {execFileSync} from 'node:child_process'
 import {join,resolve} from 'node:path'
-import {createTaskRemoteWorkspace} from '../packages/dingtalk-dsh-assistant/execution-workspace.js'
-import {resolveRemoteProjectBranches,createEngineeringRegistry} from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
-import {buildInternalAcceptancePlan} from '../packages/dingtalk-dsh-assistant/task-workflow.js'
-import {discoverProjectRunConfiguration,projectConfiguredService,projectConfiguredBuild,assertProjectRunConfiguration} from '../packages/dingtalk-dsh-assistant/execution-project-config.js'
-import {describeTaskNodeOutput} from '../packages/dingtalk-dsh-assistant/workflow-service.js'
+import {createTaskRemoteWorkspace} from '../packages/dingtalk-core/execution-workspace.js'
+import {resolveRemoteProjectBranches,createEngineeringRegistry} from '../packages/dingtalk-core/workflow-engineering.js'
+import {buildInternalAcceptancePlan} from '../packages/dingtalk-core/task-workflow.js'
+import {discoverProjectRunConfiguration,projectConfiguredService,projectConfiguredBuild,assertProjectRunConfiguration} from '../packages/dingtalk-core/execution-project-config.js'
+import {describeTaskNodeOutput} from '../packages/dingtalk-core/workflow-service.js'
 const git=(dir,...args)=>execFileSync('git',['-C',dir,...args],{windowsHide:true,encoding:'utf8'}).trim()
 async function fixture(t,id='arbitrary-project'){
  const parent=resolve('docs/tmp/remote-input-tests');await mkdir(parent,{recursive:true});const root=await mkdtemp(join(parent,'repo-'));t.after(()=>rm(root,{recursive:true,force:true}));const source=join(root,'original'),remote=join(root,'remote.git'),managed=join(root,'managed');await mkdir(source);await mkdir(managed);git(source,'init','-b','trunk');git(source,'config','user.name','Test');git(source,'config','user.email','test@example.invalid');await writeFile(join(source,'value.txt'),'source');git(source,'add','.');git(source,'commit','-m','source');const sourceCommit=git(source,'rev-parse','HEAD');execFileSync('git',['init','--bare',remote]);git(source,'push',remote,'HEAD:refs/heads/trunk');git(remote,'symbolic-ref','HEAD','refs/heads/trunk');git(source,'checkout','-b','feature/uat4-base');await writeFile(join(source,'uat-only.txt'),'must not enter development');git(source,'add','.');git(source,'commit','-m','target only');git(source,'push',remote,'HEAD:refs/heads/feature/uat4-base');const targetCommit=git(source,'rev-parse','HEAD');git(source,'checkout','-b','feature/clean','trunk');await writeFile(join(source,'full-feature.txt'),'keep every existing feature');git(source,'add','.');git(source,'commit','-m','full existing feature');git(source,'push',remote,'HEAD:refs/heads/feature/clean');return {root,source,remote,managed,sourceCommit,targetCommit,developmentCommit:git(source,'rev-parse','HEAD'),id}

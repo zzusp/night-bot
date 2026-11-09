@@ -1,0 +1,32 @@
+{
+  "group": "runtime",
+  "command": "pnpm test:runtime",
+  "exit": 0,
+  "startedAt": "2026-11-08T00:43:27.451879+00:00",
+  "finishedAt": "2026-11-08T01:30:47.380485+00:00",
+  "sourceCount": 1110,
+  "sourceMapSha256": "68a432a68686ddafa7d3528db642f25bfa45200fbb571af26afb7f6a151f5dd1",
+  "sourceChanged": [
+    {
+      "file": "AGENTS.md",
+      "before": "7d8821fbda3cca90660f4dd798418bf416ddcec87195772c4158260b79e0cf00",
+      "after": "327018ce266440759f4c9e0ab3441034f505efbc690a287ac1cc0b7879b88d64"
+    },
+    {
+      "file": "README.md",
+      "before": "8ab3a9daaff2fe442b743b5f88cb7665b3bcaf0e6d8096cc90f5973376279c4e",
+      "after": "8218ca1824fc5fee08ecfa264d53cbcebb1c5a16cee792e236b3bf7d749d4f01"
+    },
+    {
+      "file": "packages/web-console/src/styles/boardui.css",
+      "before": "c18df60556352e06cef7495c998b906892f1d65f3da75bd5ea95c44b57117885",
+      "after": "3de642e61704f127a0741eecadf50113d46d60108b4e2d6a4273af0abc75abce"
+    }
+  ],
+  "retiredPathsStillAbsent": true,
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-final-runtime.log": "e39911908b08f7b8efdd0a769e59b0e7d477d3f42e15f1642ac861f9112de438",
+    "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-final-runtime-stderr.log": "214eefa04b1c3a5faa802ed24f5381ead8ae3a14566a7cd1bfc58c446bbebbd9"
+  },
+  "scope": "Actual fixed pnpm group with original runner and no retries/skip override. Parse case results from original logs; process exit alone is not case or business PASS."
+}

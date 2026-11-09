@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { agentWorkDefinition, validateAgentWorkResult, createLegacyInvestigationWorkflow as createInvestigationWorkflow, classifyAgentWorkOutputError } from '../packages/dingtalk-dsh-assistant/agent-work.js'
-import { defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { agentWorkDefinition, validateAgentWorkResult, createLegacyInvestigationWorkflow as createInvestigationWorkflow, classifyAgentWorkOutputError } from '../packages/dingtalk-core/agent-work.js'
+import { defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
 
 const result = (extra = {}) => ({ outcome: 'completed', summary: '已读取代码，当前材料无法确认根因。', evidenceRefs: ['evidence-a'], limitations: ['缺少当时运行日志'], question: '', ...extra })
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createCoordinationSessions, createCoordinationStepGate, coordinationTools } from '../packages/dingtalk-dsh-assistant/coordination-sessions.js'
+import { createCoordinationSessions, createCoordinationStepGate, coordinationTools } from '../packages/dingtalk-core/coordination-sessions.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }

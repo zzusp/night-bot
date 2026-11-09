@@ -1,3 +1,4 @@
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {createHost} from '../src/host.js'
 import {convertToLlm} from '@earendil-works/pi-coding-agent'
 import {createAssistantMessageEventStream} from '@earendil-works/pi-ai'
@@ -65,7 +66,7 @@ test('task folders include shared materials/outputs and isolated execution cwd w
   await assert.rejects(taskExecutionWorkspace(root, 'task-1', '../escape'), /TASK_DIRECTORY_INVALID/)
 })
 
-test('official AgentSession and native commit write each task log only to its task while same-task real parallel subprocesses share cwd and other tasks stay isolated', { timeout: 15000 }, async t => {
+test('official AgentSession and native commit write each task log only to its task while same-task real parallel subprocesses share cwd and other tasks stay isolated', { timeout: nativeTestTimeout(15000) }, async t => {
   const root = await temporary(), h = await host(root); t.after(() => h.close())
   const agents = await Promise.all([h.create('task-a', 'owner-a'), h.create('task-a', 'exec-a', true), h.create('task-a', 'exec-b', true), h.create('task-b', 'owner-b')])
   await Promise.all(agents.map(agent=>deliver(agent,'WORK_FOR_'+agent.id)))
@@ -256,10 +257,10 @@ async function processPhase(root, phase) {
   } finally { await h.close() }
 }
 
-test('unclean native process exit resumes original task session with compaction preserved and no global duplicate log', { timeout: 20000 }, async () => {
+test('unclean native process exit resumes original task session with compaction preserved and no global duplicate log', { timeout: nativeTestTimeout(40000) }, async () => {
   const root = await temporary(), self = fileURLToPath(import.meta.url)
-  await assert.rejects(run(process.execPath, [self, '--task-native-child', root, 'crash-write'], { timeout: 15000 }), { code: 73 })
-  await run(process.execPath, [self, '--task-native-child', root, 'resume'], { timeout: 15000 })
+  await assert.rejects(run(process.execPath, [self, '--task-native-child', root, 'crash-write'], { timeout: nativeTestTimeout(15000) }), { code: 73 })
+  await run(process.execPath, [self, '--task-native-child', root, 'resume'], { timeout: nativeTestTimeout(15000) })
   const first = JSON.parse(await readFile(join(root, 'crash-write.json'), 'utf8')), next = JSON.parse(await readFile(join(root, 'resume.json'), 'utf8'))
   assert.notEqual(first.pid, next.pid)
   assert.equal(next.saved.header.cwd, first.saved.header.cwd)

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test, {after} from 'node:test'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { COORDINATION_RETIRED_REASON, retiredSourceOwnership } from '../packages/dingtalk-dsh-assistant/coordination-retirement.js'
-import { messageProcessingProjection } from '../packages/dingtalk-dsh-assistant/observer-message-projection.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { COORDINATION_RETIRED_REASON, retiredSourceOwnership } from '../packages/dingtalk-core/coordination-retirement.js'
+import { messageProcessingProjection } from '../packages/dingtalk-core/observer-message-projection.js'
 
 const domainResources=[]
 after(async()=>{for(const resource of domainResources)await resource.close()})

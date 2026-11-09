@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { defineExecutionWorkflow, createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { defineExecutionWorkflow, createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
 
 async function fixture(t, overrides = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-message-'))

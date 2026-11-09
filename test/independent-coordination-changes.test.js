@@ -6,12 +6,12 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { platformTaskPage } from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
-import { groupNotificationRouting, finalNotificationRouting, prepareGroupNotification } from '../packages/dingtalk-dsh-assistant/group-notification.js'
-import { COORDINATION_RETIRED_REASON } from '../packages/dingtalk-dsh-assistant/coordination-retirement.js'
-import { assertCoordinationHandoffProof, freezeCoordinationSourceOrder, selectCoordinationInstructions } from '../packages/dingtalk-dsh-assistant/coordination-changes.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { platformTaskPage } from '../packages/dingtalk-core/fixed-topics.js'
+import { groupNotificationRouting, finalNotificationRouting, prepareGroupNotification } from '../packages/dingtalk-core/group-notification.js'
+import { COORDINATION_RETIRED_REASON } from '../packages/dingtalk-core/coordination-retirement.js'
+import { assertCoordinationHandoffProof, freezeCoordinationSourceOrder, selectCoordinationInstructions } from '../packages/dingtalk-core/coordination-changes.js'
 
 // Source revision/transaction guarantees now run through Route -> Topic -> Task
 // Owner. Retired ordinal/DAG/barrier/reminder-edit algorithms remain audit data;

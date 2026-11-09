@@ -4,8 +4,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openTaskResidentRuntime } from '../packages/dingtalk-dsh-assistant/task-resident-runtime.js'
-import { startDwsBridge } from '../packages/dingtalk-dsh-assistant/dws-bridge.js'
+import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
+import { startDwsBridge } from '../packages/dingtalk-core/dws-bridge.js'
 
 const epoch = '2026-10-13T00:00:00Z'
 

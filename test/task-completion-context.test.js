@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
-import {currentOwnerCompletion,isQuietGroupMessage,assertMessageTaskUnfenced} from '../packages/dingtalk-dsh-assistant/message-ledger.js'
+import {currentOwnerCompletion,isQuietGroupMessage,assertMessageTaskUnfenced} from '../packages/dingtalk-core/message-ledger.js'
 function fixture(){
  const db=new DatabaseSync(':memory:')
  db.exec(`CREATE TABLE business_tasks(task_id TEXT,requirement_revision INTEGER,plan_revision INTEGER,plan_requirement_revision INTEGER);CREATE TABLE task_controls(task_id TEXT,control_revision INTEGER);CREATE TABLE task_owner_turns(turn_id TEXT,application_status TEXT,requirement_revision INTEGER,plan_revision INTEGER,control_revision INTEGER);CREATE TABLE task_reports(report_id TEXT,task_id TEXT,turn_id TEXT,report_type TEXT);CREATE TABLE task_events(task_id TEXT,event_type TEXT,handled_at TEXT);INSERT INTO business_tasks VALUES('task',2,3,2);INSERT INTO task_controls VALUES('task',4);INSERT INTO task_owner_turns VALUES('turn','applied',2,3,4);INSERT INTO task_reports VALUES('report','task','turn','complete');ALTER TABLE business_tasks ADD COLUMN requirement_ref TEXT;ALTER TABLE business_tasks ADD COLUMN status TEXT DEFAULT 'succeeded';ALTER TABLE task_controls ADD COLUMN state TEXT DEFAULT 'active';ALTER TABLE task_owner_turns ADD COLUMN decision_json TEXT;UPDATE task_owner_turns SET decision_json='{"action":"complete"}';CREATE TABLE task_plan_stages(task_id TEXT,plan_revision INTEGER,status TEXT);CREATE TABLE task_owners(task_id TEXT,current_turn_id TEXT,event_watermark INTEGER,processed_watermark INTEGER);INSERT INTO task_owners VALUES('task','turn',4,4)`)

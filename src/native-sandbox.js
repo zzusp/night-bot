@@ -1,3 +1,4 @@
+import {bindProcessFileRequest} from './process/contracts.js'
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {HarnessError} from './native-llm-protocol.js'
@@ -7,7 +8,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {LAUNCHER_BIN,LAUNCHER_FAILURE_EXIT,grantArgs,launcherPath,probe} from '@deepseek-ai/node-addon-system/landlock-run'
-import {AclWriteGrant,assertTempRootOutsideWorkspace,registerAclDiagnosisSkill,tempWriteSid,workspaceWriteSid} from './legacy-v4/dsh-sandbox-windows-acl/lib/index.js'
+import {AclWriteGrant,assertTempRootOutsideWorkspace,tempWriteSid,workspaceWriteSid} from './process/windows-acl.js'
 const chains={linux:['bwrap','landlock'],darwin:['seatbelt'],win32:['windows-acl']}
 const denial={bwrap:['read-only file system'],landlock:['permission denied'],seatbelt:['operation not permitted'],'windows-acl':['access is denied','access to the path','permission denied','operation not permitted'],custom:['read-only file system','permission denied']}
 const fatal={bwrap:[{fatalSignatures:['bwrap: ']}],landlock:[{allowedExitCodes:[LAUNCHER_FAILURE_EXIT],fatalSignatures:[`${LAUNCHER_BIN}: `],informationalLines:[`${LAUNCHER_BIN}: partial enforcement (older Landlock ABI)`]}],seatbelt:[{fatalSignatures:['sandbox-exec: ']}],'windows-acl':[{allowedExitCodes:[127],fatalSignatures:['windows-acl-run: ']}]}
@@ -34,7 +35,6 @@ export default class NativeSandbox extends Service{
   if(!Number.isFinite(this.timeout)||this.timeout<=0)throw new Error('sandbox probeTimeoutMs must be positive and finite')
   if(Boolean(this.command.length)!==Boolean(this.signatures.length)||this.signatures.some(s=>!s.trim()||/[\r\n]/u.test(s)))throw new Error('Custom sandbox runner requires non-empty single-line failure signatures')
   if(this.command.some(s=>typeof s!=='string'||s.includes('\0'))||this.command.length&&!this.command[0])throw new Error('Invalid sandbox runner argv')
-  if(process.platform==='win32'&&!this.command.length)ctx.inject(['skills'],registerAclDiagnosisSkill)
   ctx.effect(()=>()=>this.close(),'native sandbox cleanup')
  }
  async confine(argv,policy,signal){
@@ -42,12 +42,20 @@ export default class NativeSandbox extends Service{
   if(!Array.isArray(argv)||!argv.length||argv.some(s=>typeof s!=='string'||s.includes('\0')))throw new TypeError('Sandbox command must be exact non-empty argv')
   // Validate even operator-selected runners. Unsupported modes never fall through.
   sandboxProfile('bwrap',policy);policy={...policy,workspaceRoot:canonical(policy.workspaceRoot)}
-  if(this.command.length)return{argv:[...this.command,...sandboxProfile('bwrap',policy),'--',...argv],enforcement:'full',denialSignatures:[...denial.custom],runnerFailureRules:[{fatalSignatures:[...this.signatures]}]}
+  const actor=this.ctx.get('agents')?.currentInitiator(),authorization=this.ctx.get('tools')?.inspectProcessAuthorization?.({actor})
+  if(authorization?.kind==='scoped'){
+   if((this.internals.platform??process.platform)!=='linux'||!this.ctx.get('memoryPrivacy')?.installRoot)throw new NativeSandboxUnavailableError(policy.mode,'Approved scoped process privacy is unavailable on this platform; direct execution is not an alternative.')
+   return bindProcessFileRequest({argv:['bwrap',...sandboxProfile('bwrap',policy),'--',...argv],enforcement:'full',denialSignatures:[...denial.bwrap],runnerFailureRules:structuredClone(fatal.bwrap)},argv,policy)
+  }
+  if(this.command.length){
+   if((this.internals.platform??process.platform)==='win32')throw new NativeSandboxUnavailableError(policy.mode,'Custom Windows runners do not support the private LPAC launch contract.')
+   return bindProcessFileRequest({argv:[...this.command,...sandboxProfile('bwrap',policy),'--',...argv],enforcement:'full',denialSignatures:[...denial.custom],runnerFailureRules:[{fatalSignatures:[...this.signatures]}]},argv,policy)
+  }
   this.verdict??=this.choose();if(this.verdict==='unavailable')throw new NativeSandboxUnavailableError(policy.mode)
   const {runner,enforcement}=this.verdict;let prefix
   if(runner==='windows-acl')prefix=this.windowsArgv(policy)
   else prefix=[runner==='bwrap'?'bwrap':runner==='landlock'?this.landlockPath():this.seatbeltPath(),...sandboxProfile(runner,policy)]
-  signal?.throwIfAborted();return{argv:[...prefix,'--',...argv],enforcement,denialSignatures:[...denial[runner]],runnerFailureRules:structuredClone(fatal[runner])}
+  signal?.throwIfAborted();const prepared={argv:[...prefix,'--',...argv],enforcement,denialSignatures:[...denial[runner]],runnerFailureRules:structuredClone(fatal[runner])};return bindProcessFileRequest(prepared,argv,policy)
  }
  choose(){const chain=this.internals.chain??chains[this.internals.platform??process.platform]??[];if(!chain.length)return'unavailable';for(const runner of chain)if(!Object.hasOwn(fatal,runner))throw new Error(`Unknown sandbox backend ${runner}`);if(chain.length===1)return{runner:chain[0],enforcement:chain[0]==='windows-acl'?'partial':'full'};for(const runner of chain){const enforcement=this.probeRunner(runner);if(enforcement!=='unusable'){if(!['full','partial'].includes(enforcement))throw new Error('Invalid sandbox probe verdict');return{runner,enforcement}}}return'unavailable'}
  probeRunner(runner){
@@ -60,7 +68,7 @@ export default class NativeSandbox extends Service{
  }
  landlockPath(){return this.internals.landlockLauncher??launcherPath()}
  seatbeltPath(){return this.internals.seatbeltExec??'sandbox-exec'}
- windowsInvocation(){if(this.internals.windowsAclRunnerArgs)return[...this.internals.windowsAclRunnerArgs];const entry=this.internals.windowsAclRunnerEntry??fileURLToPath(import.meta.resolve('./legacy-v4/dsh-sandbox-windows-acl/lib/runner.js'));if(!existsSync(entry))throw new NativeSandboxUnavailableError('workspace-write','Windows ACL runner is absent');return[process.execPath,entry]}
+ windowsInvocation(){if(this.internals.windowsAclRunnerArgs)return[...this.internals.windowsAclRunnerArgs];const entry=this.internals.windowsAclRunnerEntry??fileURLToPath(import.meta.resolve('./process/windows-acl-runner.js'));if(!existsSync(entry))throw new NativeSandboxUnavailableError('workspace-write','Windows ACL runner is absent');return[process.execPath,entry]}
  windowsArgv(policy){const base=[...this.windowsInvocation(),'--workspace',policy.workspaceRoot];if(policy.mode==='read-only'||policy.sessionId===undefined)return[...base,'--temp',tmpdir(),'--mode',policy.mode];const capability=this.grant(policy.sessionId,policy.workspaceRoot);return[...base,'--temp',capability.dir,'--mode',policy.mode,'--write-sid',workspaceWriteSid(policy.workspaceRoot),'--temp-write-sid',capability.sid]}
  grant(session,workspace){
   assertTempRootOutsideWorkspace(workspace,tmpdir())

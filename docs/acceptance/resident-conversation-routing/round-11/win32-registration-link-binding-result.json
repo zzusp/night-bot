@@ -1,0 +1,225 @@
+{
+  "scope": "IdentityOnly BindClassesLink read-only fixed Host target binding; no Profile/storage/ACL/child/Job/impersonation",
+  "taskId": "bzu76cr6i",
+  "sourceSha256": "60e5ff1ed456456b06a09b803dc8813f2ab2852e4b4e13a9f808298cd2e9d823",
+  "parameterSha256": "e94fec51ab10bb53c34901ced68305f3b88f95f0568279421d15119fd6a9e948",
+  "check": {
+    "phase": "check",
+    "exit": 0,
+    "startedAt": "2026-11-08T00:29:52.376326+00:00",
+    "finishedAt": "2026-11-08T00:29:54.487100+00:00",
+    "sourceSha256": "60e5ff1ed456456b06a09b803dc8813f2ab2852e4b4e13a9f808298cd2e9d823",
+    "parameterSha256": "e94fec51ab10bb53c34901ced68305f3b88f95f0568279421d15119fd6a9e948",
+    "identityOnly": true,
+    "bindClassesLink": true,
+    "checkLogSha256": "a6a0188bf848420c1e1eef110df2464d701681faf6ff67f8a49d3fcff2e0a0fa",
+    "checkStderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "run": {
+    "phase": "run",
+    "exit": 0,
+    "pid": 84536,
+    "startedAt": "2026-11-08T00:30:35.961281+00:00",
+    "finishedAt": "2026-11-08T00:30:37.756158+00:00",
+    "sourceSha256": "60e5ff1ed456456b06a09b803dc8813f2ab2852e4b4e13a9f808298cd2e9d823",
+    "parameterSha256": "e94fec51ab10bb53c34901ced68305f3b88f95f0568279421d15119fd6a9e948",
+    "sourceChanged": [],
+    "identityOnly": true,
+    "bindClassesLink": true,
+    "bindingVerified": true,
+    "rawResultObserved": true,
+    "logSha256": "bdcffc783426b4567bbc8498d07e4e9fb88e2261c48b26d8ec367777396845f7",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "privateResultSha256": "5ea760629b26ccd06a3cf1fd33ca6cc89b5566f6fbd8571fdfd3fcba756dd2fa",
+    "profileCreated": false,
+    "nativeOwnerRetained": false,
+    "handlesClosed": true
+  },
+  "pass": true,
+  "identityOnly": true,
+  "bindClassesLink": true,
+  "variant": "registration-link-binding-readonly",
+  "identityObservations": [
+    {
+      "label": "host-root",
+      "matches": true
+    },
+    {
+      "label": "classes-software",
+      "matches": true
+    },
+    {
+      "label": "user-classes",
+      "matches": true
+    },
+    {
+      "label": "user-classes-link-before-value",
+      "matches": true
+    },
+    {
+      "label": "classes-target",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-0",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-1",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-2",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-3",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-4",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-5",
+      "matches": true
+    },
+    {
+      "label": "mapping-parent",
+      "matches": true
+    },
+    {
+      "label": "user-classes-link-after-value",
+      "matches": true
+    }
+  ],
+  "linkObservations": [
+    {
+      "label": "host-root",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "classes-software",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "user-classes-link-before",
+      "queryStatus": 0,
+      "type": 6,
+      "bytes": 138,
+      "expectedBytes": 138,
+      "readStatus": 0,
+      "readType": 6,
+      "readBytes": 138
+    },
+    {
+      "label": "classes-target",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-0",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-1",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-2",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-3",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-4",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-5",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-parent",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "user-classes-link-after",
+      "queryStatus": 0,
+      "type": 6,
+      "bytes": 138,
+      "expectedBytes": 138,
+      "readStatus": 0,
+      "readType": 6,
+      "readBytes": 138
+    }
+  ],
+  "linkValueBytesUnchanged": true,
+  "classesLinkBoundReadOnly": true,
+  "identityReadOnlyComplete": true,
+  "profileState": "not-created",
+  "handlesClosed": true,
+  "nativeOwnerRetained": false,
+  "retainedHandles": [],
+  "errors": [],
+  "exactPidReadback": {
+    "pid": 84536,
+    "observed": false,
+    "observedAt": "2026-11-08T00:38:41.8866136+00:00",
+    "method": "independent PowerShell Get-Process -Id 84536",
+    "priorResourceCleanupProved": false
+  },
+  "rawEvidenceSha256": {
+    "docs/tmp/sg11-profile-link-binding-check.log": "a6a0188bf848420c1e1eef110df2464d701681faf6ff67f8a49d3fcff2e0a0fa",
+    "docs/tmp/sg11-profile-link-binding-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-link-binding-run.log": "bdcffc783426b4567bbc8498d07e4e9fb88e2261c48b26d8ec367777396845f7",
+    "docs/tmp/sg11-profile-link-binding-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-link-binding-private-result.json": "5ea760629b26ccd06a3cf1fd33ca6cc89b5566f6fbd8571fdfd3fcba756dd2fa",
+    "docs/tmp/sg11-profile-link-binding-private-owner.json": "15f2519c311e210bf4131f6bdc79f054d2c0827b7c0928c9d99985bb2d0cdf37",
+    "docs/tmp/sg11-profile-link-binding-executor.json": "75a77f1a0c6b8cda878b290490e1165bc1b51b4771d5adcbb86ae5c078eb73ad"
+  },
+  "rawEvidenceIgnoredUntrackedUnstaged": true,
+  "oldUnknownCleanupProved": false,
+  "priorStrictRejectionRemainsFail": true,
+  "profileCreated": false,
+  "createAttempted": false,
+  "deleteAttempted": false,
+  "childCreated": false,
+  "jobCreated": false,
+  "impersonationPerformed": false,
+  "aclChanged": false,
+  "productionAdmissible": false,
+  "storageApiBindingVerified": false,
+  "cleanupComplete": false
+}

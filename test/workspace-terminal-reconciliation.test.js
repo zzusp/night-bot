@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
 import { createServer } from 'node:http'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
-import { reconcilePausedWorkspaceFailure } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
+import { reconcilePausedWorkspaceFailure } from '../packages/dingtalk-core/workflow-service.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
 
 async function fixture(t, mutate = () => {}) {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-workspace-terminal-'))

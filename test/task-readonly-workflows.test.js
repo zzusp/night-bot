@@ -1,12 +1,12 @@
 import { scriptedCoordinator } from './fixtures/group-coordinator.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assertRetiredWorkflowsDrained,readOnlyWorkflowOwnerContract,retiredWorkflowIds } from '../packages/dingtalk-dsh-assistant/task-readonly-workflows.js'
+import { assertRetiredWorkflowsDrained,readOnlyWorkflowOwnerContract,retiredWorkflowIds } from '../packages/dingtalk-core/task-readonly-workflows.js'
 
 test('旧可执行流程全部退出；历史材料产物读取合同仍保留',async()=>{
- const readonly=await import('../packages/dingtalk-dsh-assistant/task-readonly-workflows.js')
- const general=await import('../packages/dingtalk-dsh-assistant/task-general-workflow.js')
- const task=await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
+ const readonly=await import('../packages/dingtalk-core/task-readonly-workflows.js')
+ const general=await import('../packages/dingtalk-core/task-general-workflow.js')
+ const task=await import('../packages/dingtalk-core/task-workflow.js')
  for(const key of ['createReadOnlyTaskWorkflows','createLegacyReadOnlyTaskWorkflows'])assert.equal(readonly[key],undefined)
  for(const key of ['createGeneralTaskWorkflow','createGeneralIntakeWorkflow','createHistoricalGeneralCapabilityStepWorkflow','createLegacyGeneralCapabilityStepWorkflow'])assert.equal(general[key],undefined)
  for(const key of ['createAnalysisTaskWorkflow','createLegacyAnalysisTaskWorkflow'])assert.equal(task[key],undefined)
@@ -40,10 +40,10 @@ test('调查v5切换拒绝v4活动引用，终态历史无需套用新完成合�
 
 test('正式Host启动遇到旧待执行阶段时拒绝切换，保留原冻结计划且不执行节点',async t=>{
  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path')
- const {openExecutionStore}=await import('../packages/dingtalk-dsh-assistant/execution-store.js')
- const {openExecutionArtifacts}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
- const {createExecutionController,defineExecutionWorkflow}=await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
- const {openWorkflowService}=await import('../packages/dingtalk-dsh-assistant/workflow-service.js')
+ const {openExecutionStore}=await import('../packages/dingtalk-core/execution-store.js')
+ const {openExecutionArtifacts}=await import('../packages/dingtalk-core/execution-artifacts.js')
+ const {createExecutionController,defineExecutionWorkflow}=await import('../packages/dingtalk-core/execution-controller.js')
+ const {openWorkflowService}=await import('../packages/dingtalk-core/workflow-service.js')
  const root=await mkdtemp(join(tmpdir(),'retired-workflow-gate-')),dbPath=join(root,'control.db'),artifactDirectory=join(root,'artifacts')
  t.after(()=>rm(root,{recursive:true,force:true}))
  const store=await openExecutionStore({dbPath,instanceId:'retired-test',initialize:true}),artifacts=await openExecutionArtifacts({directory:artifactDirectory,initialize:true})

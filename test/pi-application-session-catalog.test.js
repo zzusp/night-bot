@@ -6,6 +6,7 @@ import NativeWorkspace from '../src/native-workspace.js'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {memoryHost} from './fixtures/memory-host.js'
 import {providerHost,result} from './fixtures/provider-official-host.js'
 
@@ -27,7 +28,7 @@ test('default Host metadata catalog has no Session facade and preserves actual c
  assert.equal(ctx.get('sessions'),undefined)
 })
 
-test('cold task recovery retains its unregistered actual native writer instead of declaring it drained',{timeout:20000},async t=>{
+test('cold task recovery retains its unregistered actual native writer instead of declaring it drained',{timeout:nativeTestTimeout(20000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-catalog-writer-'));let first,cold,writer
  t.after(async()=>{await writer?.close();await cold?.close();await first?.close();await rm(root,{recursive:true,force:true})})
  first=await providerHost(t,{root,decide:()=>[result()]});const id=await first.create('catalog-writer-original');await first.service.whenIdle()

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {classifyOutboxNotification as classify} from '../packages/dingtalk-dsh-assistant/outbox-audit-classification.js'
+import {classifyOutboxNotification as classify} from '../packages/dingtalk-core/outbox-audit-classification.js'
 function fixture(phase='receipt'){
  const n={outboundId:'old',runId:'query',groupId:'g',phase,status:'pending',createdAt:'2026-01-01T00:00:00Z'}
  const kept={outboundId:'final',runId:'done',groupId:'g',phase:'owner:latest',status:'sent',deliveredMessageId:'m',text:'当前完整结论\n\n- 代回',createdAt:'2026-01-02T00:00:00Z'}

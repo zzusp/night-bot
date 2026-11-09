@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import {createAgentStatusReadCapability} from '../packages/dingtalk-dsh-assistant/agent-query-status.js'
+import {createAgentStatusReadCapability} from '../packages/dingtalk-core/agent-query-status.js'
 const r={id:'uat3',kind:'kubernetes',kubeconfig:join(tmpdir(),'trusted','kube.yml'),server:'https://127.0.0.1:6443',skipTlsVerify:false,namespace:'uat3',deployment:'dataset'}
 test('平台读取仍拒绝相对凭据路径',()=>assert.throws(()=>createAgentStatusReadCapability({resources:[{...r,kubeconfig:'relative/kube.yml'}]}),/QUERY_STATUS_CONFIG_INVALID/))
 const d={metadata:{name:'dataset',namespace:'uat3',uid:'dep',resourceVersion:'1',generation:1},spec:{replicas:1},status:{readyReplicas:1,availableReplicas:1,observedGeneration:1}}

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { compactReplyReviewCandidates } from '../packages/dingtalk-dsh-assistant/decision.js'
-import { createTaskContextReadTool } from '../packages/dingtalk-dsh-assistant/task-topic-coordinator.js'
+import { compactReplyReviewCandidates } from '../packages/dingtalk-core/decision.js'
+import {registerResidentRouterTools} from '../src/channels/resident-router-business.js'
+import {officialToolsFixture} from './fixtures/pi-official-tools.js'
+import {createScope} from '../src/native-scope.js'
 
 const expand = data => data.candidates.map(({ sourceMessageRefs, taskFactRefs, ...candidate }) => ({ ...candidate,
   sourceMessages: sourceMessageRefs.map(ref => data.sourceMessages.find(item => item.ref === ref).value),
@@ -18,37 +20,48 @@ test('shared review wire format preserves every fact and distinguishes same iden
   assert.equal(variants.sourceMessages.length,2);assert.equal(variants.tasks.length,2)
   assert.deepEqual(expand(variants).at(-1).sourceMessages[0].text,'new version')
 })
-test('combined Task/review read is opt-in and validates source/group before exposing review', async () => {
-  let reviews=0, allowed=true
-  const task={taskId:'t',groupId:'g',objective:'scope',inputVersion:2,runSequence:2}
-  const tool=createTaskContextReadTool({request:{groupId:'g',requestId:'r'},assert(){assert.ok(allowed)},store:{getTask:id=>id==='t'?task:{taskId:id,groupId:'foreign'}},
-    readReplyReview(g,ids,compact){reviews++;assert.equal(g,'g');assert.deepEqual(ids,['r']);assert.equal(compact,true);return {candidates:[],candidateCount:0}}})
-  assert.deepEqual(await tool.execute({taskIds:['t']}),{tasks:[task]});assert.equal(reviews,0)
-  const combined=await tool.execute({taskIds:['t'],includeReplyReview:true});assert.deepEqual(combined.tasks,[task]);assert.equal(combined.replyReview.candidateCount,0);assert.equal(reviews,1)
-  await assert.rejects(tool.execute({taskIds:['foreign'],includeReplyReview:true}),/wrong_group/);assert.equal(reviews,1)
-  assert.equal((await tool.execute({taskIds:['t'],includeReplyReview:'yes'})).status,'invalid-arguments')
-  allowed=false;await assert.rejects(tool.execute({taskIds:['t'],includeReplyReview:true}));assert.equal(reviews,1)
+async function routerQuery(t,{hold}={}){
+  const state={generation:2,phase:'active'},calls=[],entered=Promise.withResolvers(),released=Promise.withResolvers()
+  const task={taskId:'t',groupId:'g',requirementRevision:2,controlRevision:1}
+  let scope
+  const f=await officialToolsFixture(t,({ctx,owner})=>{
+    scope=createScope(ctx,owner);owner.ctx=scope.ctx
+    return registerResidentRouterTools(scope.ctx,{conversationId:'g',generation:2,sessionId:owner.id},{
+    responsibilityFor:()=>'',command(){assert.fail('read-only query cannot command')},
+    async query(kind,args){
+      calls.push(kind)
+      if(kind===hold){entered.resolve();await released.promise}
+      if(kind==='router.get')return state
+      if(kind==='task.get')return args.taskId==='t'?task:{...task,groupId:'foreign'}
+      if(kind==='router.dependencies')return [{dependencyId:'d',taskId:'t'}]
+      if(kind==='task.list')return [task]
+      assert.fail('Unexpected read '+kind)
+    },
+  })})
+  f.deferCleanup(()=>scope.dispose())
+  t.after(()=>released.resolve())
+  return {...f,state,task,calls,entered,released,tool:f.ctx.tools.get('resident_task_query',f.owner)}
+}
+
+test('current Router task query preserves conversation isolation, dependencies and strict official arguments',async t=>{
+  const f=await routerQuery(t),exec={agent:f.owner}
+  assert.deepEqual(await f.tool.execute({taskId:'t'},exec),{task:f.task,dependencies:[{dependencyId:'d',taskId:'t'}]})
+  await assert.rejects(f.tool.execute({taskId:'foreign'},exec),{code:'ROUTER_TASK_FORBIDDEN'})
+  assert.equal(f.calls.filter(kind=>kind==='router.dependencies').length,1)
+  f.calls.length=0
+  await f.run([{id:'old-review-flag',name:'resident_task_query',args:{taskId:'t',includeReplyReview:true}}])
+  assert.equal(f.results.at(-1).isError,true)
+  assert.equal(f.calls.length,0,'unknown legacy review flag is rejected before any business query')
+  assert.equal(f.tool.parameters.properties.includeReplyReview,undefined)
 })
 
-
-for (const change of ['ended', 'revision', 'versionRequestId']) test('pending archived Task read cannot mark review after request '+change, async () => {
-  const request = { groupId: 'g', requestId: 'r', revision: 1, versionRequestId: 'v1' }
-  const entered = Promise.withResolvers(), released = Promise.withResolvers()
-  let current = true, reviews = 0
-  const tool = createTaskContextReadTool({ request, assert() { if (!current) throw new Error('request_ended') }, store: { getTask() {} },
-    readArchivedTask: async () => { entered.resolve(); await released.promise; return { taskId: 't', groupId: 'g', archivedAt: '2026-11-02' } },
-    readReplyReview() { reviews++; return {} } })
-  const pending = tool.execute({ taskIds: ['t'], includeReplyReview: true })
-  await entered.promise
-  if (change === 'ended') current = false
-  else request[change] = change === 'revision' ? 2 : 'v2'
-  released.resolve()
-  await assert.rejects(pending, /request_ended|coordination_task_read_stale/)
-  assert.equal(reviews, 0)
-})
-
-test('Route Task read does not advertise or accept Decision review option', async () => {
-  const tool = createTaskContextReadTool({request:{groupId:'g'},assert(){},store:{getTask(){throw new Error('must not read')}}})
-  assert.equal(tool.parameters.properties.includeReplyReview,undefined)
-  assert.equal((await tool.execute({taskIds:['t'],includeReplyReview:true})).status,'invalid-arguments')
+for(const boundary of ['task.get','router.dependencies','task.list'])for(const change of ['ended','generation','session'])test('Router read rejects stale '+change+' after awaited '+boundary,async t=>{
+  const f=await routerQuery(t,{hold:boundary}),exec={agent:f.owner}
+  const pending=f.tool.execute(boundary==='task.list'?{}:{taskId:'t'},exec)
+  await f.entered.promise
+  if(change==='ended')f.state.phase='handoff'
+  else if(change==='generation')f.state.generation++
+  else exec.agent={id:'foreign-session'}
+  f.released.resolve()
+  await assert.rejects(pending,{code:'ROUTER_GENERATION_STALE'})
 })

@@ -22,8 +22,8 @@ export default class NativeWeb extends Service {
   constructor(ctx,config={}) {
     super(ctx,'web')
     const env=launchEnvironmentOf(ctx)
-    this.searchProviderId=config.searchProvider??env.getFrom('DSH_WEB_SEARCH_PROVIDER',['process'])?.value
-    this.fetchProviderId=config.fetchProvider??env.getFrom('DSH_WEB_FETCH_PROVIDER',['process'])?.value
+    this.searchProviderId=config.searchProvider??env.getFrom('NIGHT_BOT_WEB_SEARCH_PROVIDER',['process'])?.value
+    this.fetchProviderId=config.fetchProvider??env.getFrom('NIGHT_BOT_WEB_FETCH_PROVIDER',['process'])?.value
     ctx.effect(()=>async()=>{
       this.closed=true
       this.lifetime.abort(new Error('Native web disposed'))

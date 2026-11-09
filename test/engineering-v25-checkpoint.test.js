@@ -7,11 +7,11 @@ import {join} from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {runInNewContext} from 'node:vm'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {createExecutionController,defineExecutionWorkflow as controllerDefinitionBuilder} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import {createExecutionDelivery} from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import {createEngineeringRegistry,createEngineeringStageContract} from '../packages/dingtalk-dsh-assistant/workflow-engineering.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
+import {createExecutionController,defineExecutionWorkflow as controllerDefinitionBuilder} from '../packages/dingtalk-core/execution-controller.js'
+import {createExecutionDelivery} from '../packages/dingtalk-core/execution-delivery.js'
+import {createEngineeringRegistry,createEngineeringStageContract} from '../packages/dingtalk-core/workflow-engineering.js'
 const exec=promisify(execFile)
 test('v25 real checks and local checkpoints retain succeeded edits, reject unsafe refresh and restore cold definitions',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'two-repo-chain-'));let store,controller;t.after(async()=>{await controller?.close();await store?.close();await rm(dir,{recursive:true,force:true})})
@@ -88,7 +88,7 @@ test('v25 real checks and local checkpoints retain succeeded edits, reject unsaf
   assert.equal(newStep.stepKey,oldStep.stepKey);assert.equal(newStep.outputRef,oldStep.outputRef);assert.equal(newStep.sessionId,oldStep.sessionId)
  }
  const originalRecord=(await store.query({kind:'workflow.list'})).find(r=>r.config.runId===first.runId&&r.digest===failed.run.workflowDigest)
- const localArgs={runId:first.runId,requestId:'fix-inline-local',kind:'local-acceptance',localAcceptance:{...localAcceptance,scenarios:localAcceptance.scenarios.map(s=>({...s,expected:'frontend-new'})),version:'2',scenarios:localAcceptance.scenarios.map(s=>({...s,expected:'frontend-new',description:'Corrected actual service assertion'}))},scope:{taskId,uatEnvironment:'uat3',requestDigest:(await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')).executionDigest({request:originalRecord.config.input.request,acceptanceCriteria:originalRecord.config.input.acceptanceCriteria})},maintenance}
+ const localArgs={runId:first.runId,requestId:'fix-inline-local',kind:'local-acceptance',localAcceptance:{...localAcceptance,scenarios:localAcceptance.scenarios.map(s=>({...s,expected:'frontend-new'})),version:'2',scenarios:localAcceptance.scenarios.map(s=>({...s,expected:'frontend-new',description:'Corrected actual service assertion'}))},scope:{taskId,uatEnvironment:'uat3',requestDigest:(await import('../packages/dingtalk-core/execution-artifacts.js')).executionDigest({request:originalRecord.config.input.request,acceptanceCriteria:originalRecord.config.input.acceptanceCriteria})},maintenance}
  await registry.updateCheckpoint(localArgs,controller,artifacts)
  const checkpoint=await controller.state(first.runId);for(const previous of retained){const current=checkpoint.nodes.find(n=>n.nodeId===previous.nodeId);assert.equal(current.outputRef,previous.outputRef);assert.equal(current.leaseEpoch,previous.leaseEpoch)}
  const afterLocalDetail=await currentPlanNodes(taskId,await controller.taskPlan(taskId))

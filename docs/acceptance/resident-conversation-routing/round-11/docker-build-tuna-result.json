@@ -1,0 +1,13 @@
+{
+  "exit": 1,
+  "spawnFailure": false,
+  "startedAt": "2026-11-07T20:12:14.038Z",
+  "finishedAt": "2026-11-07T20:12:17.526Z",
+  "tag": "night-bot:sg12-tuna-9066be8d-r3",
+  "sourceChanged": [],
+  "sourceCount": 490,
+  "logSha256": "303c507130a00ba6e0d58ffa8441b9a93504465995463e59b3d70efe7e68a0f7",
+  "image": null,
+  "realVendorExecuted": false,
+  "applicationRuntimeValidated": false
+}

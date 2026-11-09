@@ -32,7 +32,7 @@ test('新任务验收runner及依赖跨LF/CRLF打包身份一致，真实源码�
   const directory = join(fixture.directory, style); await mkdir(directory)
   await writeFile(join(directory, 'package.json'), '{"type":"module"}')
   for (const file of files) {
-   let source = (await readFile(new URL('../packages/dingtalk-dsh-assistant/' + file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+   let source = (await readFile(new URL('../packages/dingtalk-core/' + file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
    if (style === 'crlf') source = source.replace(/\n/g, '\r\n')
    if (style === 'changed' && file === 'execution-task-local-acceptance.js') source += '\n// deliberate implementation change\n'
    await writeFile(join(directory, file), source)

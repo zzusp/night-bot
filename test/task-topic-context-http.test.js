@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { openResidentStore } from '../packages/dingtalk-dsh-assistant/store.js'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 
 function memoryFacility() {
   const values = new Map()

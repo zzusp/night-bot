@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
-import { handleRequest } from '../packages/dingtalk-dsh-assistant/http.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
 import { spawnSync } from 'node:child_process'
-import { createGithubPullRequests } from '../packages/dingtalk-dsh-assistant/execution-pr.js'
+import { createGithubPullRequests } from '../packages/dingtalk-core/execution-pr.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
@@ -9,9 +9,9 @@ import { mkdtemp, readFile,writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { assertTaskRunScope,createTaskRunScope } from '../packages/dingtalk-dsh-assistant/execution-task-run-scope.js'
-import { assertMaintenanceDispatch,maintenanceState } from '../packages/dingtalk-dsh-assistant/execution-maintenance.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { assertTaskRunScope,createTaskRunScope } from '../packages/dingtalk-core/execution-task-run-scope.js'
+import { assertMaintenanceDispatch,maintenanceState } from '../packages/dingtalk-core/execution-maintenance.js'
 const d='a'.repeat(64), ref='sha256/input.json', cmd=(kind,args)=>({id:randomUUID(),kind,args})
 async function fixture(t,arm=true,withChild=false){
  const root=await mkdtemp(join(tmpdir(),'single-task-scope-')),dbPath=join(root,'control.sqlite'),instanceId=randomUUID()

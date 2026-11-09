@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHash} from 'node:crypto'
-import {verifyDeliveredEngineeringFacts,readAcceptedProjectDeliveryProof,readOwnerAcceptedDeliveryBinding,validateOwnerCandidateAcceptance,readAcceptedCandidateCompletionEvidence} from '../packages/dingtalk-dsh-assistant/task-delivery-review.js'
+import {verifyDeliveredEngineeringFacts,readAcceptedProjectDeliveryProof,readOwnerAcceptedDeliveryBinding,validateOwnerCandidateAcceptance,readAcceptedCandidateCompletionEvidence} from '../packages/dingtalk-core/task-delivery-review.js'
 const hash=x=>createHash('sha256').update(x).digest('hex')
 async function fixture(t,twoProjects=false){
  const directory=await mkdtemp(join(tmpdir(),'owner-release-proof-'));t.after(()=>rm(directory,{recursive:true,force:true}))

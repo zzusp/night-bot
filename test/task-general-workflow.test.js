@@ -3,13 +3,13 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile, symlink, mkdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createGeneralFileReadCapability, createGeneralCapabilityStepWorkflow, createGeneralMarkdownWriteCapability, verifyTaskAcceptance, createOwnerBlockerCheck } from '../packages/dingtalk-dsh-assistant/task-general-workflow.js'
-import { createTaskMarkdownFileAdapter } from '../packages/dingtalk-dsh-assistant/task-markdown-file.js'
-import { createExecutionDelivery } from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { executionDigest, openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createTaskArtifactFiles } from '../packages/dingtalk-dsh-assistant/task-artifact-files.js'
+import { createGeneralFileReadCapability, createGeneralCapabilityStepWorkflow, createGeneralMarkdownWriteCapability, verifyTaskAcceptance, createOwnerBlockerCheck } from '../packages/dingtalk-core/task-general-workflow.js'
+import { createTaskMarkdownFileAdapter } from '../packages/dingtalk-core/task-markdown-file.js'
+import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { executionDigest, openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createTaskArtifactFiles } from '../packages/dingtalk-core/task-artifact-files.js'
 
 test('Owner阻塞语义校验保留继续调查与真实外部依赖的独立判定', async () => {
   for (const status of ['continue', 'external-blocker']) {
@@ -76,7 +76,7 @@ test('Owner阻塞语义校验取消真实流及等待配置均返回未核验', 
   const second = new AbortController(), waiting = configWait(input, { signal: second.signal })
   second.abort(); assert.equal((await waiting).reason, 'OWNER_BLOCKER_CANCELLED')
 })
-import { createTaskArtifactWriteAdapter, createGeneralArtifactWriteCapability } from '../packages/dingtalk-dsh-assistant/task-artifact-write.js'
+import { createTaskArtifactWriteAdapter, createGeneralArtifactWriteCapability } from '../packages/dingtalk-core/task-artifact-write.js'
 
 test('受信文件读取只接受双重授权路径，独立回读能发现修改和链接逃逸', async t => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-general-files-'))
@@ -247,7 +247,7 @@ test('v5保留Markdown请求限额与file效果，拒绝prepared跨action', asyn
 })
 
 // 本组通过原生 llm.stream 形状测试领域判据，不调用真实模型或修改外部系统。
-import { createDomainAcceptanceCheck } from '../packages/dingtalk-dsh-assistant/task-general-workflow.js'
+import { createDomainAcceptanceCheck } from '../packages/dingtalk-core/task-general-workflow.js'
 
 const domainAcceptanceInput = () => ({ request: '调查并保存记录', constraints: ['不修改生产'],
   acceptanceItems: [
@@ -379,9 +379,9 @@ test('Markdown 新任务统一落点，旧任务及重启对账保持原路径�
 
 test('宿主历史回执精确摘要读取和Task需求绑定，普通文件不升级，领域仍独立判定',async()=>{
  const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
- const {createAgentResourceReadCapability}=await import('../packages/dingtalk-dsh-assistant/agent-query-resources.js');
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js');
- const {verifyTaskAcceptance}=await import('../packages/dingtalk-dsh-assistant/task-general-workflow.js');
+ const {createAgentResourceReadCapability}=await import('../packages/dingtalk-core/agent-query-resources.js');
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js');
+ const {verifyTaskAcceptance}=await import('../packages/dingtalk-core/task-general-workflow.js');
  const root=await mkdtemp(join(tmpdir(),'host-receipt-')),content=JSON.stringify({steps:[{http:200}],sourceBeforeDigest:'original'});await writeFile(join(root,'receipt.json'),content);
  const receipt={path:'receipt.json',digest:executionDigest(content),taskId:'task-a',requirementRevision:2};
  const resource={id:'files',kind:'files',root,paths:['receipt.json'],hostReceipts:[receipt]};

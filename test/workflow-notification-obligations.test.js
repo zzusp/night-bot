@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { createWorkflowNotifications, notificationSilence, sameDeliveredText, taskNotificationAllowed, notificationParagraphs, ownerReportNotificationText, workflowNotificationDisclosureAllowed } from '../packages/dingtalk-dsh-assistant/workflow-notifications.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { createWorkflowNotifications, notificationSilence, sameDeliveredText, taskNotificationAllowed, notificationParagraphs, ownerReportNotificationText, workflowNotificationDisclosureAllowed } from '../packages/dingtalk-core/workflow-notifications.js'
 
 test('内部修复方向即使继承确认事件也不投递到群', () => {
   assert.equal(taskNotificationAllowed({ phase: 'owner:repair:1', report: {

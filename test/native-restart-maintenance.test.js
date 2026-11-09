@@ -4,10 +4,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { inspectRetainedRestart } from '../scripts/native-restart-maintenance.mjs'
-import { readMaintenanceDrainProof } from '../packages/dingtalk-dsh-assistant/native-maintenance-drain.js'
+import { readMaintenanceDrainProof } from '../packages/dingtalk-core/native-maintenance-drain.js'
 import { maintenanceEvidenceFixture } from './fixtures/native-maintenance-drain.js'
 import { restartFixture } from './fixtures/native-restart-isolation.js'
-import { isolationDigest as hash, isolationBinding, hasRestartIsolation } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
+import { isolationDigest as hash, isolationBinding, hasRestartIsolation } from '../packages/dingtalk-core/native-restart-isolation.js'
 
 test('retained maintenance audit binds the native input, feedback, terminal history and original process identities', async t => {
  const root = await mkdtemp(join(tmpdir(), 'maintenance-proof-')); t.after(() => rm(root, { recursive: true, force: true }))

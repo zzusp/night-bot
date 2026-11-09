@@ -1,0 +1,127 @@
+{
+  "round": 38,
+  "scope": "Section 16.22 non-Native contract regression only",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "branch": "worktree-resident-conversation-routing",
+  "workingTree": "dirty collaboration tree",
+  "sourceCount": 252,
+  "sourceAggregateSha256": "136226787036ce295e09871220919bc6bf432b25e5f71683ef0b78fedbb8bc25",
+  "command": [
+    "node",
+    "--experimental-test-module-mocks",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=tap",
+    "test/pi-task-workspace-initialization.test.js",
+    "test/pi-task-workspace-resources.test.js"
+  ],
+  "startedAt": "2026-11-08T19:25:15.012704+00:00",
+  "finishedAt": "2026-11-08T19:26:15.393107+00:00",
+  "exitCode": 0,
+  "naturalWaitReturned": true,
+  "forcedTermination": false,
+  "sourceChanged": [],
+  "counts": {
+    "tests": 13,
+    "pass": 13,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "highLevelRealHostCases": 8,
+  "lowLevelFakeFfiResourceCases": 5,
+  "inventoryBefore": 5472,
+  "inventoryAfter": 5485,
+  "matrixBefore": 298,
+  "matrixAfter": 311,
+  "historicalInventoryPrefixSha256": "aeb6cc97bcedbcce7b7d63aa984159a18b699b7b67f347deb2e4e057f5464fdb",
+  "historicalMatrixReconstructionSha256": "77fa88290ad87de4d1d1bcce503c7626acb61e5af6ddb7ca80eeee0e59323e4b",
+  "notProven": [
+    "real Win32 ABI, Low birth SD or OS containment",
+    "legacy task without workspaceInitialization, dynamic coverage",
+    "simultaneous live Local alias rejection, dynamic coverage",
+    "Section 16.21 Native component",
+    "other required groups, live model/vendor, CI, merge or deployment"
+  ],
+  "caseMapping": [
+    {
+      "matrixCaseId": "sg11-workspace-web-once-cold",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: Web concurrency, current ready projection and cold replay preserve one initialization and existing work",
+      "tapLine": 6
+    },
+    {
+      "matrixCaseId": "sg11-workspace-failed-hidden-idle",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: partial failure stays hidden and idle across replay and restart without acknowledging its wake",
+      "tapLine": 12
+    },
+    {
+      "matrixCaseId": "sg11-workspace-original-double-error",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: native failure plus finish failure retains original errors and ownership with no second attempt",
+      "tapLine": 18
+    },
+    {
+      "matrixCaseId": "sg11-workspace-untrusted-ready-denied",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: request fresh and ready fields cannot authorize initialization, claim, archive or ensure",
+      "tapLine": 24
+    },
+    {
+      "matrixCaseId": "sg11-workspace-router-inner-replay",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: real Router batch and inner operation replay under a new outer receipt preserve per-task outcomes",
+      "tapLine": 30
+    },
+    {
+      "matrixCaseId": "sg11-workspace-router-plan-rollback",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: invalid real Router plans roll back before native directory creation",
+      "tapLine": 36
+    },
+    {
+      "matrixCaseId": "sg11-workspace-admissions-close-idle",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: idle and close await accepted initialization and same-task replay, then reject new admissions",
+      "tapLine": 42
+    },
+    {
+      "matrixCaseId": "sg11-workspace-sealed-restore-adopt",
+      "file": "test/pi-task-workspace-initialization.test.js",
+      "case": "Windows workspace initialization: sealed restore and adopt preserve ready identity and held review without another native creation",
+      "tapLine": 48
+    },
+    {
+      "matrixCaseId": "sg11-workspace-local-address-reuse",
+      "file": "test/pi-task-workspace-resources.test.js",
+      "case": "Windows task directory resources: successful LocalFree allows a later allocation at the same address",
+      "tapLine": 57
+    },
+    {
+      "matrixCaseId": "sg11-workspace-nonnull-status-failure",
+      "file": "test/pi-task-workspace-resources.test.js",
+      "case": "Windows task directory resources: nonnull out is owned and freed once before propagating conversion status failure",
+      "tapLine": 63
+    },
+    {
+      "matrixCaseId": "sg11-workspace-nonnull-throw-failure",
+      "file": "test/pi-task-workspace-resources.test.js",
+      "case": "Windows task directory resources: nonnull out is owned and freed once before propagating conversion throw failure",
+      "tapLine": 69
+    },
+    {
+      "matrixCaseId": "sg11-workspace-local-free-retained",
+      "file": "test/pi-task-workspace-resources.test.js",
+      "case": "Windows task directory resources: failed LocalFree retains its attempted allocation and forbids further allocation or retry",
+      "tapLine": 75
+    },
+    {
+      "matrixCaseId": "sg11-workspace-handle-close-retained",
+      "file": "test/pi-task-workspace-resources.test.js",
+      "case": "Windows task directory resources: one failed CloseHandle preserves original failure and retained ownership without retrying either handle",
+      "tapLine": 81
+    }
+  ]
+}

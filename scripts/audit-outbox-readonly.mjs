@@ -1,4 +1,4 @@
-import {classifyOutboxNotification} from '../packages/dingtalk-dsh-assistant/outbox-audit-classification.js'
+import {classifyOutboxNotification} from '../packages/dingtalk-core/outbox-audit-classification.js'
 import {writeFile,mkdir} from 'node:fs/promises'
 const origin='http://127.0.0.1:18998'
 async function get(path){if(!/^\/health$|^\/state\/(groups|tasks|workflows)(\?|$)/u.test(path))throw Error('READONLY_ROUTE_REQUIRED');const response=await fetch(origin+path);if(!response.ok)throw Error(`READ_FAILED:${response.status}:${path}`);return response.json()}

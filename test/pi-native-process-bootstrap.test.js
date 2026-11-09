@@ -6,6 +6,7 @@ import {join} from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {createLinuxLaunchFiles as create,consumeLinuxLaunchRequest as consume,cleanupLinuxLaunchFiles as cleanup,readLinuxStartupError as readError} from '../src/process/linux-launch.js'
+import {SUBPROCESS_CONTROL_ENV} from '../src/process/control.js'
 import {replaceLinuxTarget} from '../src/process/linux-bootstrap.js'
 import {o as environment,l as invocation} from '../src/process/runner-launch-B2zsQ1Dz.js'
 const fixture = t => {const files=create({cwd:process.cwd(),env:{}});t.after(()=>cleanup(files));return files}
@@ -72,7 +73,7 @@ test('real Linux bootstrap keeps optional PTC control transport on descriptor se
   if(process.platform!=='linux')return t.skip('Linux only')
   const {spawn}=await import('node:child_process')
   const {once}=await import('node:events')
-  const files=create({cwd:process.cwd(),env:{DSH_SUBPROCESS_CONTROL:'pipe'},control:'pipe'});t.after(()=>cleanup(files))
+  const files=create({cwd:process.cwd(),env:{[SUBPROCESS_CONTROL_ENV]:'pipe'},control:'pipe'});t.after(()=>cleanup(files))
   const prefix=invocation()
   const child=spawn(prefix[0],[...prefix.slice(1),'--',process.execPath,'--input-type=module','-e',`import {openInheritedControlChannel} from ${JSON.stringify(new URL('../src/process/control.js',import.meta.url).href)};const channel=openInheritedControlChannel();channel.end('fd-seven-proof');`],{env:environment(files.requestPath,prefix),stdio:['ignore','ignore','pipe','ignore','ignore','ignore','ignore','pipe']})
   let output='';child.stdio[7].on('data',chunk=>output+=chunk);let stderr='';child.stderr.on('data',chunk=>stderr+=chunk)

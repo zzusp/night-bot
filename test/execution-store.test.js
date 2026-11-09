@@ -6,12 +6,10 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { createTaskOwnerController } from '../packages/dingtalk-dsh-assistant/task-owner-controller.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 import { migrateExecutionEventsIndex } from '../scripts/migrate-execution-events-index.mjs'
 
-const moduleUrl = new URL('../packages/dingtalk-dsh-assistant/execution-store.js', import.meta.url).href
-const ownerControllerUrl = new URL('../packages/dingtalk-dsh-assistant/task-owner-controller.js', import.meta.url).href
+const moduleUrl = new URL('../packages/dingtalk-core/execution-store.js', import.meta.url).href
 const d = 'a'.repeat(64), changedDigest = 'b'.repeat(64)
 const command = (kind, args, id = randomUUID()) => ({ id, kind, args })
 const identity = n => ({ runId: n.runId, nodeId: n.nodeId, generation: n.generation, leaseEpoch: n.leaseEpoch })
@@ -479,7 +477,7 @@ test('Owner候选落盘后进程强杀，重开原Task重新领取且旧租约�
   assert.equal((await store.query({ kind: 'receipt', commandId: 'accept-after-kill' })).result.status, 'accepted')
 })
 
-test('Owner拒绝旧追加协议，已接纳推进强杀后重启只应用一次原决定', async t => {
+test('历史Owner持久决策拒绝旧追加协议，已接纳收据冷恢复不改原计划', async t => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-owner-applied-crash-'))
   const dbPath = join(root, 'control.sqlite'), instanceId = 'owner-action-crash'
   let store = await openExecutionStore({ dbPath, instanceId, initialize: true })
@@ -499,36 +497,15 @@ test('Owner拒绝旧追加协议，已接纳推进强杀后重启只应用一次
     decision:{action:'advance',summary:'legacy append rejected',evidenceRefs:[],appendStages:[{workflowId:'analysis',gate:'none'}]}})),{code:'TASK_OWNER_RUNTIME_PLAN_CHANGE_DISABLED'})
   assert.deepEqual(await store.query({kind:'task.plan',taskId:'task-owner'}),frozen)
   await store.command(command('task.owner.candidate',{...candidate,decision:{action:'advance',summary:'advance existing managed plan',evidenceRefs:[]}}))
-  await store.command(command('task.owner.accept', { taskId: 'task-owner', turnId: 'turn-accepted', leaseEpoch: 1 }))
+  await store.command(command('task.owner.accept', { taskId: 'task-owner', turnId: 'turn-accepted', leaseEpoch: 1 }, 'accepted-existing-plan'))
   await store.close(); store = null
-  const probe = child(t, `const {openExecutionStore}=await import(${JSON.stringify(moduleUrl)});
-    const {createTaskOwnerController}=await import(${JSON.stringify(ownerControllerUrl)});
-    const s=await openExecutionStore({dbPath:process.argv[1],instanceId:process.argv[2]});
-    const controller={taskPlan:taskId=>s.query({kind:'task.plan',taskId}),
-      extendTaskPlan:async({commandId,taskId,expectedPlanRevision,expectedControlRevision,requirementRevision,stages})=>s.command({id:commandId,kind:'task.plan.extend',args:{taskId,expectedPlanRevision,expectedControlRevision,requirementRevision,
-        stages:stages.map(stage=>({stageId:stage.stageId,workflowId:stage.workflowId,workflowDigest:'a'.repeat(64),unavailableReason:null,requirementRef:null,gate:stage.gate}))}})};
-    const owner=createTaskOwnerController({ctx:{},store:s,artifacts:{},controller,modelConfig:()=>({}),
-      authorizeStages:async()=>true,sessionRunner:{close:async()=>{}},
-      advanceTask:async()=>{process.send({type:'plan-applied'});await new Promise(()=>{})}});
-    await owner.applyPending()`, [dbPath, instanceId])
-  await probe.message('plan-applied')
-  assert.equal(probe.proc.kill('SIGKILL'), true)
-  assert.equal((await probe.exited).signal, 'SIGKILL')
   store = await openExecutionStore({ dbPath, instanceId })
-  const plan = await store.query({ kind: 'task.plan', taskId: 'task-owner' })
-  assert.equal(plan.stages.length, 1)
-  assert.equal(plan.task.requirementRevision, 1)
-  let resumedCalls = 0
-  const owner = createTaskOwnerController({ ctx: {}, store, artifacts: {},
-    controller: { taskPlan: taskId => store.query({ kind: 'task.plan', taskId }) },
-    modelConfig: () => ({}), authorizeStages: async () => true,
-    sessionRunner: { close: async () => {} }, advanceTask: async () => { resumedCalls++ } })
-  assert.deepEqual(await owner.applyPending(), [])
-  assert.deepEqual(await owner.applyPending(), [])
-  assert.equal(resumedCalls, 1)
-  assert.equal((await store.query({ kind: 'task.plan', taskId: 'task-owner' })).stages.length, 1)
-  assert.deepEqual(await store.query({ kind: 'task.owner.actions.pending', limit: 10 }), [])
-  await owner.close()
+  assert.deepEqual(await store.query({ kind: 'task.plan', taskId: 'task-owner' }), frozen)
+  const pending = await store.query({ kind: 'task.owner.actions.pending', limit: 10 })
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].turnId, 'turn-accepted')
+  assert.equal(pending[0].decision.action, 'advance')
+  assert.equal((await store.query({ kind: 'receipt', commandId: 'accepted-existing-plan' })).result.status, 'accepted')
 })
 
 test('顺序节点必须绑定输入；drained和业务输出落盘后，成功与后继ready原子提交', async t => {
@@ -866,7 +843,7 @@ for(const variant of ['clean','receipt','stage','run','undrained','effect','sour
   await f.open()
  }
  const owner=await f.store.query({kind:'task.owner',taskId:'task'})
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  const args={taskId:'task',eventKey:'reassess',payloadRef:'sha256/recovery.json',expectedOwnerRevision:owner.revision,expectedLeaseEpoch:owner.leaseEpoch+(variant==='lease'?1:0),expectedRequirementRevision:variant==='requirement'?2:1,expectedControlRevision:(await f.store.query({kind:'task.plan',taskId:'task'})).task.controlRevision+(variant==='control'?1:0),sources:[{sourceKey:'source',sourceVersion:variant==='source'?2:1,actorId:'requester',bodyDigest:executionDigest('按文档开发')}],requestDigest:d}
  if(variant!=='clean'){
   await assert.rejects(send('task.owner.reassess',args,'reassess'),/TASK_OWNER_REASSESS|TASK_AUTHORIZATION_SOURCE_STALE|TASK_OWNER_DISCARD_UNSAFE/)
@@ -985,7 +962,7 @@ for(const variant of ['capability','permission','execution','business-input','ap
   }finally{db.close()}await f.open()
  }
  const owner=await f.store.query({kind:'task.owner',taskId:'task'}),plan=await f.store.query({kind:'task.plan',taskId:'task'})
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  const args={taskId:'task',eventKey:'reassess-before-query',payloadRef:'sha256/recovery.json',expectedOwnerRevision:owner.revision,expectedLeaseEpoch:owner.leaseEpoch,expectedRequirementRevision:plan.task.requirementRevision,expectedControlRevision:plan.task.controlRevision,sources:[{sourceKey:'source',sourceVersion:1,actorId:'requester',bodyDigest:executionDigest('只读排查')}],requestDigest:d}
  if(['capability','permission','execution'].includes(variant)){
   await send('task.owner.reassess',args,'reassess-before-query')

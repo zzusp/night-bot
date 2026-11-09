@@ -1,0 +1,8 @@
+{
+  "removedPaths": [
+    "docs/tmp/sg12-build-context-r20"
+  ],
+  "sourceMapRetained": true,
+  "finalImageRetained": "sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b",
+  "buildResultsAndFailureLogsRetained": true
+}

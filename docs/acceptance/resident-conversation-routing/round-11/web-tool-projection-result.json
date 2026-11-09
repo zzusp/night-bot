@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "sourceCount": 9,
+  "sourceChanged": [],
+  "logSha256": "40c4e994ff21a5af0d30e43fd94ac5e76f192e3f65a3a39518ecbe584c2cc5c1",
+  "scope": "task projection and existing host HTTP scope only; not browser full chain"
+}

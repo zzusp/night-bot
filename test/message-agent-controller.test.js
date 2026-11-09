@@ -4,9 +4,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createMessageAgentController } from '../packages/dingtalk-dsh-assistant/message-agent.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createMessageAgentController } from '../packages/dingtalk-core/message-agent.js'
 
 const result = (extra={}) => ({outcome:'completed',summary:'查询结果',evidenceRefs:['source'],limitations:[],question:'',...extra})
 function runner() {
@@ -213,7 +213,7 @@ test('未绑定启动冲突保留失败flight，只有原生assertDrained成功�
 
 
 test('清理链前项失败仍依次关闭后续资源和真实Store，原始错误保留且owner锁释放',async t=>{
- const {closeExecutionResources}=await import('../packages/dingtalk-dsh-assistant/execution.js')
+ const {closeExecutionResources}=await import('../packages/dingtalk-core/execution.js')
  const root=await mkdtemp(join(tmpdir(),'close-resources-')),options={dbPath:join(root,'control.sqlite'),instanceId:'close-test'}
  t.after(()=>rm(root,{recursive:true,force:true}))
  const store=await openExecutionStore({...options,initialize:true}),order=[],first=Error('session-flight-error'),second=Error('message-close-error')

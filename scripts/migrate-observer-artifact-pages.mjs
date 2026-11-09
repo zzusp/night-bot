@@ -1,10 +1,10 @@
-import {installObserverArtifactBindings,queryObserverArtifactBinding,putObserverArtifactBinding} from '../packages/dingtalk-dsh-assistant/observer-artifact-bindings.js'
+import {installObserverArtifactBindings,queryObserverArtifactBinding,putObserverArtifactBinding} from '../packages/dingtalk-core/observer-artifact-bindings.js'
 import {DatabaseSync} from 'node:sqlite'
 import {createHash} from 'node:crypto'
 import {createReadStream,statSync,existsSync} from 'node:fs'
 import {readFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
 const args=process.argv.slice(2),apply=args.includes('--apply')
 const arg=key=>{const index=args.indexOf(key);return index<0?undefined:args[index+1]}
 const database=arg('--database'),directory=arg('--artifact-directory'),manifestPath=arg('--manifest')

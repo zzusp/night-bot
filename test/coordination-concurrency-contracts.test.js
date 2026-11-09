@@ -4,7 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
-import {openDynamicTaskStore} from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 
 async function fixture(t) {
   const directory=await mkdtemp(join(tmpdir(),'owner-races-'))

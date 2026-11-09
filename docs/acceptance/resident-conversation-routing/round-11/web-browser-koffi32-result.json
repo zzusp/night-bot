@@ -1,0 +1,199 @@
+{
+  "exit": 0,
+  "sourceCount": 481,
+  "sourceChanged": [],
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/web-browser-koffi32.log": "b6ad38f0c0992e01b12f3f0932597eea0aeda5b93e3da4d2cc205492282b5dd3",
+    "docs/acceptance/resident-conversation-routing/round-11/web-browser-koffi32-stderr.log": "e08de96c526d163ca31b0245ae623a2506a60d1ad452dfe20da75eddd96490ea",
+    "docs/acceptance/resident-conversation-routing/round-11/web-browser-koffi32-executor.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "finishedAt": "2026-11-07T22:25:54.714961+00:00",
+  "scope": "Complete existing Playwright suite: browser.spec.ts plus chat-lifecycle.spec.ts and table-expanded cases; isolated preview business data, actual HTTP/auth/static resources, not live vendor or full actual Host business rerun",
+  "pass": true,
+  "tests": 30,
+  "passed": 30,
+  "failed": 0,
+  "skipped": 0,
+  "caseResults": [
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 49,
+      "name": "访问令牌掩码、失败提示、真实登录和退出",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 71,
+      "name": "聊天经真实服务器接纳、IME不误发、回复与刷新后历史保留",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 97,
+      "name": "概览请求未完成时聊天仍独立读取、编辑与切换，释放后才显示连接",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 135,
+      "name": "任务列表筛选、分页、详情与执行记录",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 166,
+      "name": "执行上下文区分提交中和不可用，不展示空白成功状态",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 180,
+      "name": "真实形状的任务阻断项经白名单投影显示等待处理，不泄露操作输入",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 196,
+      "name": "丢失发送回执后先核对，恢复连接只读原收据且不重放",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 233,
+      "name": "协议 fixture：POST 202 pending accepted:false 保留草稿，核对 accepted 后才清空，仅发送一次",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 233,
+      "name": "协议 fixture：丢失 POST 回执后 pending 到 rejected 保留草稿并恢复编辑，仅发送一次",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 233,
+      "name": "协议 fixture：丢失 POST 回执后 pending 到 accepted 才清空草稿，仅发送一次",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 300,
+      "name": "渠道认证、错误、就绪与未知阶段分开显示，不从 enabled 推断健康",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 322,
+      "name": "学习记录区分已应用与候选，正文仅按已授权版本读取",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 351,
+      "name": "渠道会话按聊天展示、只读、保留不确定发送状态及空态",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 384,
+      "name": "请求失败保留已读内容并可恢复，失效登录后保留未发送草稿",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 404,
+      "name": "窄屏导航、键盘关闭与深色页面没有横向溢出",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 427,
+      "name": "主要页面通过 axe WCAG AA，减弱动态设置保持可操作",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 440,
+      "name": "深色聊天、任务、执行上下文与渠道通过 axe WCAG AA",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 457,
+      "name": "初次读取失败与真实空数据分开显示，恢复路径只有一个重试入口",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 495,
+      "name": "窄屏长发送者与工具名不撑宽消息区，未知来源不冒称当前用户",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 534,
+      "name": "任务阻断状态中文可读，未开始的执行与提交中的记录分开提示",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/browser.spec.ts",
+      "line": 550,
+      "name": "上翻历史后后台消息不拉回底部，键盘可回到最新消息",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 15,
+      "name": "未知发送跨页面恢复核对入口，只读核对后解除原草稿锁",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 36,
+      "name": "在途发送跨卸载后收到真实回执，新挂载的同一对话及时解锁",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 52,
+      "name": "旧对话回执不抢路由，也不锁住另一对话的输入",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 75,
+      "name": "旧401不能撤销已经完成的新登录，原文缩进及换行不被改写",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 100,
+      "name": "退出在途时不允许旧401提前进入重登，完成后迟到消息不能恢复已退出草稿",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 129,
+      "name": "同浏览器多标签登录更换cookie后只读同步会话，失败写操作不自动重放",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 151,
+      "name": "未决回执跨登录过期仍保留核对入口与原请求，不重新发送",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 173,
+      "name": "聊天和侧栏初读失败不伪装首次使用，概览局部失败明确显示且可恢复",
+      "status": "PASS"
+    },
+    {
+      "file": "packages/web-console/test/chat-lifecycle.spec.ts",
+      "line": 196,
+      "name": "退出被CSRF拒绝但同步新会话成功后，不再消费先前旧401的过期标记",
+      "status": "PASS"
+    }
+  ]
+}

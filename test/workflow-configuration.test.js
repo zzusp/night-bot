@@ -6,7 +6,7 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { createHash } from 'node:crypto'
 import LocalCredentialProvider from '../src/native-credentials.js'
-import { createWorkflowConfiguration } from '../packages/dingtalk-dsh-assistant/workflow-configuration.js'
+import { createWorkflowConfiguration } from '../packages/dingtalk-core/workflow-configuration.js'
 import { tmpdir } from 'node:os'
 
 const actor = { channel: 'web', actorId: 'configuration-owner' }

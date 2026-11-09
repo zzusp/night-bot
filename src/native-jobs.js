@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto'
 import {prepareJobJournal,JobLedgerError,unresolvedJobReceipts,unresolvedNativeJobReceipts,assertOfficialJobOwner} from './runtime/job-ledger.js'
 import {Service} from '@deepseek-ai/cordis'
+import {runWithProcessResourceRecorder} from './process/contracts.js'
 import z from '@deepseek-ai/schemastery'
 import {scopeOf,scopeChainOf} from './native-scope.js'
 const terminal=job=>!['running','stopping'].includes(job.status)
@@ -99,18 +100,20 @@ export default class NativeJobs extends Service {
   if(j.settlement)return j.settlement
   const finishedAt=Date.now();j.producerFinished=producerReported
   if(!['completed','failed','killed'].includes(outcome?.status)){outcome={status:'failed',detail:'invalid producer outcome'};producerReported=false}
-  if(!j.journal)return this.complete(j,outcome,cause,producerReported,finishedAt)
+  // 无耐久日志也必须保留运行中 producer 的排空不确定性。
   if(!producerReported)j.drainUncertain=true
+  if(!j.journal)return this.complete(j,outcome,cause,producerReported,finishedAt)
   if(j.owner?.piSession)j.completionNotice=!producerReported||j.waiters.size>0||cause==='teardown'||cause==='kill'||j.killReason!==undefined?'suppressed':'pending'
   return j.settlement=(async()=>{
-   try{await j.journal.settle(outcome,cause,{producerReported,finishedAt,...j.completionNotice===undefined?{}:{completionNotice:j.completionNotice,outputLimitBytes:j.outputLimitBytes}});this.complete(j,outcome,cause,producerReported,finishedAt)}
+   try{await j.journal.settle(outcome,cause,{producerReported,finishedAt,...j.completionNotice===undefined?{}:{completionNotice:j.completionNotice,outputLimitBytes:j.outputLimitBytes}});if(j.journal.resourceUnresolved)j.drainUncertain=true;this.complete(j,outcome,cause,producerReported,finishedAt)}
    catch(error){j.journalError=error;j.status='stopping';j.detail='job outcome journal is uncertain; recovery must not replay';const waiters=[...j.waiters];j.waiters.clear();for(const done of waiters)done(error);j.release();throw error}
   })()
  }
  complete(j,outcome,cause,producerReported,finishedAt){if(terminal(j))return;j.status=outcome.status;j.detail=outcome.status==='killed'&&j.killReason!==undefined?[outcome.detail,j.killReason].filter(x=>x!==undefined).join('; '):outcome.detail;j.result=outcome.result;j.progress=undefined;j.finishedAt=finishedAt;this.trim(j,Math.max(this.config.settledRetainBytes,j.total-j.cursor));const waiters=[...j.waiters];j.waiters.clear();for(const done of waiters)done();j.release();this.emit({type:'settled',job:this.view(j),cause,producerReported,awaited:waiters.length>0,...j.completionNotice===undefined?{}:{completionNotice:j.completionNotice},...j.journal?.terminalReceiptId?{terminalReceiptId:j.journal.terminalReceiptId}:{}},j.owner);this.output(j)}
  kill(id,caller,reason){const j=this.expect(id,caller);if(terminal(j)||j.producerFinished)return'already-finished';j.cancel(reason);j.status='stopping';j.killReason=reason;j.cause='kill';this.emit({type:'stopping',job:this.view(j)},j.owner);return'requested'}
- async wait(id,timeout,caller,signal){const j=this.expect(id,caller);if(j.journalError)throw j.journalError;if(!Number.isFinite(timeout)||timeout<=0)throw new Error('invalid wait timeout');if(!terminal(j)){if(signal?.aborted)throw new Error('wait aborted');await new Promise((resolve,reject)=>{let timer;const cleanup=()=>{clearTimeout(timer);j.waiters.delete(done);signal?.removeEventListener('abort',abort)},done=error=>{cleanup();if(error)reject(error);else resolve()},abort=()=>{cleanup();reject(new Error('wait aborted'))};j.waiters.add(done);signal?.addEventListener('abort',abort,{once:true});timer=setTimeout(done,timeout)})}return this.view(j)}
- remove(id,caller){const j=this.expect(id,caller);if(!terminal(j))throw new Error(`job ${id} is still ${j.status}`);this.drop(j)}
+ // timeout omitted joins the real terminal result; finite waits keep their observation deadline.
+ async wait(id,timeout,caller,signal){const j=this.expect(id,caller);if(j.journalError)throw j.journalError;if(timeout!==undefined&&(!Number.isFinite(timeout)||timeout<=0))throw new Error('invalid wait timeout');if(!terminal(j)){if(signal?.aborted)throw new Error('wait aborted');await new Promise((resolve,reject)=>{let timer;const cleanup=()=>{clearTimeout(timer);j.waiters.delete(done);signal?.removeEventListener('abort',abort)},done=error=>{cleanup();if(error)reject(error);else resolve()},abort=()=>{cleanup();reject(new Error('wait aborted'))};j.waiters.add(done);signal?.addEventListener('abort',abort,{once:true});if(timeout!==undefined)timer=setTimeout(done,timeout)})}return this.view(j)}
+ remove(id,caller){const j=this.expect(id,caller);if(j.journalError||j.drainUncertain)throw j.journalError??new JobLedgerError('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN');if(!terminal(j))throw new Error(`job ${id} is still ${j.status}`);this.drop(j)}
  drop(j){if(!this.records.delete(j.id))return;this.emit({type:'removed',job:this.view(j)},j.owner)}
  async disposeJobs(jobs,reason){for(const j of jobs)if(!terminal(j)&&!j.producerFinished){j.cause='teardown';try{j.cancel(reason);j.status='stopping';this.emit({type:'stopping',job:this.view(j)},j.owner)}catch(error){this.warn(error);void this.settle(j,{status:'failed',detail:`cancel threw during teardown; work may be orphaned: ${String(error)}`},'teardown',false)?.catch(error=>this.warn(error))}}await Promise.all(jobs.map(j=>j.settled));const uncertain=jobs.filter(j=>j.journalError||j.drainUncertain);if(uncertain.length)throw new AggregateError(uncertain.map(j=>j.journalError??new Error('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN')),'Job drain proof is uncertain');for(const j of jobs)this.drop(j)}
  async disposeAll(){this.closing=true;await Promise.allSettled([...this.admissions]);await this.disposeJobs([...this.records.values()],'jobs service disposed');const cleanup=[...this.cleanups.values()];this.cleanups.clear();await Promise.all(cleanup.map(fn=>fn()))}
@@ -133,7 +136,7 @@ function startJob(registry,spec,durable){
  let hooks
  try{
   durable?.onLaunch()
-  hooks=spec.run({id:job.id,append:(text,options)=>registry.append(job,text,options),updateProgress:line=>{if(terminal(job))return;job.progress=line;if(job.published)registry.emit({type:'progress',job:registry.view(job)},owner)}})
+  hooks=runWithProcessResourceRecorder(job.journal?.recordResource,()=>spec.run({id:job.id,append:(text,options)=>registry.append(job,text,options),updateProgress:line=>{if(terminal(job))return;job.progress=line;if(job.published)registry.emit({type:'progress',job:registry.view(job)},owner)}}))
   if(!hooks||typeof hooks.cancel!=='function'||!hooks.done?.then)throw new Error('invalid job producer hooks')
  }catch(error){registry.records.delete(job.id);job.release();throw error}
  job.cancel=reason=>hooks.cancel(reason)

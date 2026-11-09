@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp,writeFile,mkdir,rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createAgentQueryTools,verifyAgentEvidence,classifyAgentQueryError } from '../packages/dingtalk-dsh-assistant/agent-query-tools.js'
-import { createAgentResourceReadCapability } from '../packages/dingtalk-dsh-assistant/agent-query-resources.js'
-import { createAgentDatabaseReadCapability } from '../packages/dingtalk-dsh-assistant/agent-query-database.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { validateAgentWorkResult } from '../packages/dingtalk-dsh-assistant/agent-work.js'
+import { createAgentQueryTools,verifyAgentEvidence,classifyAgentQueryError } from '../packages/dingtalk-core/agent-query-tools.js'
+import { createAgentResourceReadCapability } from '../packages/dingtalk-core/agent-query-resources.js'
+import { createAgentDatabaseReadCapability } from '../packages/dingtalk-core/agent-query-database.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { validateAgentWorkResult } from '../packages/dingtalk-core/agent-work.js'
 const binding={kind:'message-unit',runId:'r',unitId:'u',inputVersion:1,inputDigest:'a'.repeat(64),sessionId:'s',leaseEpoch:1,sessionBound:true}
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'agent-query-'));t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,'docs'));await writeFile(join(root,'docs','a.md'),'hello project\npassword: hidden\n');const artifacts=await openExecutionArtifacts({directory:join(root,'artifacts'),initialize:true});const capability=createAgentResourceReadCapability({resources:[{id:'docs',kind:'files',root,paths:['docs']}]});return{root,artifacts,capability}}
 test('生产查询只接受实时只读副本，角色目录权限不误判；主库和可写事务均拒绝',async()=>{
@@ -46,7 +46,7 @@ test('会话安装复用authorize execute verify，并拒绝写能力、权限�
 })
 test('内置工具可见性只由实际登记且授权的资源决定',async t=>{
  const f=await fixture(t)
- const {createAgentStatusReadCapability}=await import('../packages/dingtalk-dsh-assistant/agent-query-status.js')
+ const {createAgentStatusReadCapability}=await import('../packages/dingtalk-core/agent-query-status.js')
  const database=createAgentDatabaseReadCapability({resources:[{id:'uat',connectionId:'alias',tables:[{schema:'public',table:'sample',columns:['id']}]}],connectDatabase:async()=>{throw Error('NOT_CALLED')}})
  const status=createAgentStatusReadCapability({resources:[{id:'health',url:'http://127.0.0.1:18998/health',fields:['status']}]})
  for(const [capability,key,id] of [[f.capability,'resourceIds','docs'],[database,'databaseIds','uat'],[status,'statusIds','health']]){
@@ -73,7 +73,7 @@ test('数据库工具拒绝SQL与高权限身份；结构化条件值使用参�
 })
 
 test('状态工具仅登记端点GET与标量字段，不将整份响应泄露给Agent',async()=>{
- const {createAgentStatusReadCapability}=await import('../packages/dingtalk-dsh-assistant/agent-query-status.js')
+ const {createAgentStatusReadCapability}=await import('../packages/dingtalk-core/agent-query-status.js')
  assert.throws(()=>createAgentStatusReadCapability({resources:[{id:'bad',url:'file:///secret',fields:['status']}]}),{code:'QUERY_STATUS_CONFIG_INVALID'})
  const capability=createAgentStatusReadCapability({resources:[{id:'health',url:'http://127.0.0.1:18998/health',fields:['status']}],fetchImpl:async(url,options)=>{assert.equal(options.method,'GET');assert.equal(options.redirect,'error');return new Response(JSON.stringify({status:'ok',password:'never-expose'}))}})
  const result=await capability.execute({input:{resourceId:'health'},scope:{statusIds:['health']}})
@@ -91,8 +91,8 @@ test('查询中权限撤销拒绝结果；秘密分页按全文先遮盖；无�
 })
 
 test('工具参数Schema拒绝原始SQL和动态URL，缺工具错误不能伪造correctable',async t=>{
- const {assertSupportedJsonSchema}=await import('../packages/capability-compat/tools/index.js')
- const {agentDatabaseParameters}=await import('../packages/dingtalk-dsh-assistant/agent-query-database.js')
+ const {assertSupportedJsonSchema}=await import('../src/native-tool-protocol.js')
+ const {agentDatabaseParameters}=await import('../packages/dingtalk-core/agent-query-database.js')
  assert.doesNotThrow(()=>assertSupportedJsonSchema(agentDatabaseParameters))
  const f=await fixture(t),db=createAgentDatabaseReadCapability({resources:[{id:'db',connectionId:'alias',tables:[{schema:'public',table:'t',columns:['id']}]}],connectDatabase:async()=>{throw Error('must not connect')}})
  const [tool]=createAgentQueryTools({capabilities:[db],resolveScope:async()=>({databaseIds:['db']}),artifacts:f.artifacts})
@@ -103,7 +103,7 @@ test('工具参数Schema拒绝原始SQL和动态URL，缺工具错误不能伪�
 
 test('真实Git批读取保持搜索文件分页、固定提交、遮盖及digest，200文件只启动一个cat-file',async t=>{
  const {execFile}=await import('node:child_process'),{promisify}=await import('node:util'),{readFile}=await import('node:fs/promises')
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  const root=await mkdtemp(join(tmpdir(),'agent-query-git-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const run=promisify(execFile),git=async(...args)=>(await run('git',['-C',root,...args],{windowsHide:true})).stdout.trim()
  await git('init');await git('config','user.name','Test');await git('config','user.email','test@example.invalid')

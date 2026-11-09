@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import LocalCredentialProvider from '../src/native-credentials.js'
-import { createWorkflowConfiguration } from '../packages/dingtalk-dsh-assistant/workflow-configuration.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { openExecutionRuntime } from '../packages/dingtalk-dsh-assistant/execution.js'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createRegisteredPostgresConnector } from '../packages/dingtalk-dsh-assistant/agent-query-database.js'
+import { createWorkflowConfiguration } from '../packages/dingtalk-core/workflow-configuration.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { openExecutionRuntime } from '../packages/dingtalk-core/execution.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createRegisteredPostgresConnector } from '../packages/dingtalk-core/agent-query-database.js'
 
 const identity = { channel: 'web', actorId: 'configuration-owner' }
 const boolean = { type: 'boolean' }

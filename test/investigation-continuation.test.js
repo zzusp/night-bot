@@ -5,12 +5,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { openWorkflowService } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { createInvestigationWorkflow } from '../packages/dingtalk-dsh-assistant/agent-work.js'
-import { createAgentQueryTools } from '../packages/dingtalk-dsh-assistant/agent-query-tools.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { openWorkflowService } from '../packages/dingtalk-core/workflow-service.js'
+import { createInvestigationWorkflow } from '../packages/dingtalk-core/agent-work.js'
+import { createAgentQueryTools } from '../packages/dingtalk-core/agent-query-tools.js'
 
 async function fixture(t,{blocked=false}={}) {
  const dir=await mkdtemp(join(tmpdir(),'investigation-continuation-'))

@@ -346,7 +346,7 @@ test('actual CLI process restart executes a persisted reminder and never repeats
   await f.close()
   const socket=createServer();await new Promise(r=>socket.listen(0,'127.0.0.1',r));const port=socket.address().port;await new Promise(r=>socket.close(r))
   const path=join(f.root,'cli-config.json')
-  await writeFile(path,JSON.stringify({...f.config,resident:{host:'127.0.0.1',port,groups:[],dws:{enabled:false,writesAuthorized:false},taskSessions:{instanceId:'cli-schedule-test',ownerActorId:'fixture-owner',webActorId:'fixture-owner',ingressEpoch:new Date().toISOString(),initialize:true}}}))
+  await writeFile(path,JSON.stringify({...f.config,resident:{host:'127.0.0.1',port,groups:[],taskSessions:{instanceId:'cli-schedule-test',ownerActorId:'fixture-owner',webActorId:'fixture-owner',ingressEpoch:new Date().toISOString(),initialize:true}}}))
   let output=''
   const start=async()=>{
     child=spawn(process.execPath,['bin/night-bot.js',path],{stdio:['ignore','pipe','pipe','ipc']});exited=once(child,'exit')

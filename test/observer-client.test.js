@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { describeMessageTraceItem } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
+import { describeMessageTraceItem } from '../packages/dingtalk-core/workflow-service.js'
 import { runInNewContext } from 'node:vm'
-import { taskNotificationOutbound } from '../packages/dingtalk-dsh-assistant/task-message-projections.js'
+import { taskNotificationOutbound } from '../packages/dingtalk-core/task-message-projections.js'
 
 test('card total elapsed is compact, terminal-stable and unknown on incomplete or future evidence', async () => {
  const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
@@ -420,7 +420,7 @@ test('界面只保留发送状态筛选，关系与撤回不影响主状态筛�
   const classify = runInNewContext(`(${source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))})`)
   const selectedOutbox = [{ status: 'sent', notificationState: 'delivered', supersededByOutboundId: 'new', recallStatus: 'recalled' }, { status: 'sent' }, { notificationState: 'unknown' },
     { notificationState: 'superseded', notificationKnownNotSent: true, supersededByOutboundId: 'new' }, { notificationState: 'failed', notificationKnownNotSent: true }]
-  const {observerOutboxState}=await import('../packages/dingtalk-dsh-assistant/observer-outbox-state.js')
+  const {observerOutboxState}=await import('../packages/dingtalk-core/observer-outbox-state.js')
   const filter = state => selectedOutbox.filter(message=>state==='all'||observerOutboxState(message)===state).length
   for(const message of selectedOutbox)assert.equal(observerOutboxState(message),classify(message).id)
   assert.match(source,/filter=\$\{encodeURIComponent\(filter\)\}/)
@@ -710,7 +710,7 @@ test('历史工作流消息按收信处理进度展示，不混入任务执行�
 })
 
 test('任务短名称合同拒绝超过30字，读模型回退截断不修改完整目标',async()=>{
- const {taskTitle,taskTitleSchema}=await import('../packages/dingtalk-dsh-assistant/task-input-contract.js');
+ const {taskTitle,taskTitleSchema}=await import('../packages/dingtalk-core/task-input-contract.js');
  assert.equal(taskTitleSchema.safeParse('字'.repeat(30)).success,true);
  assert.equal(taskTitleSchema.safeParse('字'.repeat(31)).success,false);
  const objective='针对孙鹏要求在生产环境Editor数据库process_id_temp表新增name列，调查结构并准备DDL';

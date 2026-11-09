@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import yaml from 'js-yaml'
-import { validateUatSchemaTarget } from '../packages/dingtalk-dsh-assistant/workflow-uat-schema-migration.js'
+import { validateUatSchemaTarget } from '../packages/dingtalk-core/workflow-uat-schema-migration.js'
 const fail = code => { throw new Error(code) }
 const hash = value => createHash('sha256').update(value).digest('hex')
 const keys = (x, expected) => x && typeof x === 'object' && !Array.isArray(x) && isDeepStrictEqual(Object.keys(x).sort(), expected.sort())

@@ -1,8 +1,8 @@
 import { parseArgs } from 'node:util'
 import { access, mkdir } from 'node:fs/promises'
 import { resolve, dirname } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
 
 const { values } = parseArgs({ options: {
   db: { type: 'string' }, instance: { type: 'string' }, artifacts: { type: 'string' }, check: { type: 'boolean' }, execute: { type: 'boolean' },

@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, writeFile, symlink, unlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts, readTaskMaterials } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskDirectoryResolver } from '../packages/dingtalk-dsh-assistant/execution.js'
-import { createTaskArtifactFiles } from '../packages/dingtalk-dsh-assistant/task-artifact-files.js'
-import { createTaskMarkdownFileAdapter } from '../packages/dingtalk-dsh-assistant/task-markdown-file.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts, readTaskMaterials } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
+import { createTaskDirectoryResolver } from '../packages/dingtalk-core/execution.js'
+import { createTaskArtifactFiles } from '../packages/dingtalk-core/task-artifact-files.js'
+import { createTaskMarkdownFileAdapter } from '../packages/dingtalk-core/task-markdown-file.js'
 
 const workflow = { id: 'storage-check', version: '1', nodes: [{ id: 'output', version: '1', executor: 'code', allowedEffects: ['pure'],
   inputSchema: { type: 'number' }, outputSchema: { type: 'number' }, mapInput: ({ requirement }) => requirement, execute: async ({ input }) => input + 1 }] }

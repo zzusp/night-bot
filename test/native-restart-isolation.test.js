@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { inspectIsolatedHostRestart } from '../packages/dingtalk-dsh-assistant/dynamic-operation-readback.js'
-import { isolationDigest as hash, isolationBinding, validIsolationReceipt, hasRestartIsolation, operationBlocksRecovery, verifyRestartIsolation } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
+import { inspectIsolatedHostRestart } from '../packages/dingtalk-core/dynamic-operation-readback.js'
+import { isolationDigest as hash, isolationBinding, validIsolationReceipt, hasRestartIsolation, operationBlocksRecovery, verifyRestartIsolation } from '../packages/dingtalk-core/native-restart-isolation.js'
 import { restartFixture } from './fixtures/native-restart-isolation.js'
 
 

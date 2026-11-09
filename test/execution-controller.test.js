@@ -3,11 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import { openExecutionArtifacts } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import { createTaskOwnerController } from '../packages/dingtalk-dsh-assistant/task-owner-controller.js'
-import { classifyExecutionFailure, recoveryRetryDelayMs, agentContinuationReasons, agentCorrectableOutputReasons } from '../packages/dingtalk-dsh-assistant/execution-recovery-policy.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
+import { openExecutionArtifacts, readTaskStageArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createExecutionController, defineExecutionWorkflow } from '../packages/dingtalk-core/execution-controller.js'
+import { classifyExecutionFailure, agentContinuationReasons, agentCorrectableOutputReasons } from '../packages/dingtalk-core/execution-recovery-policy.js'
 
 const number = { type: 'number' }
 const workflow = execute => ({ id: 'synthetic', version: '1', nodes: [
@@ -544,53 +543,34 @@ test('冻结待启动阶段在重启升级后按原摘要运行，合同也随�
     ownerContract: { ...current.ownerContract, validateCompletion: async () => false } }).digest)
 })
 
-test('失败结果在Owner唤醒前重启仍可读取，重复观察不重复事件或业务执行', async t => {
+test('失败领域结果重启后仍可读取，读取诊断不重复业务执行', async t => {
   let executions = 0
   const definition = workflow(async () => {
     executions++
     throw Object.assign(new Error('custom domain failure'), { code: 'CUSTOM_DOMAIN_FAILURE', evidence: [{ actual: 'failed' }] })
   })
   const { controller, store, artifacts, dbPath, instanceId } = await setup(t, definition)
-  const turns = []
-  const createOwner = (controller, store) => createTaskOwnerController({ ctx: {}, store, artifacts, controller,
-    modelConfig: () => ({}), authorizeStages: async () => false, advanceTask: async () => {},
-    sessionRunner: { async run({ input, onSessionBound, onCandidate, readArtifact }) {
-      await onSessionBound()
-      turns.push(input)
-      for (const stage of input.stageArtifacts) {
-        assert.deepEqual(stage.completionEvidenceRefs, [])
-        const materials = await Promise.all(stage.evidenceRefs.map(readArtifact))
-        assert.ok(materials.some(value => value.actual === 'failed'))
-        assert.ok(materials.some(value => value.code === 'CUSTOM_DOMAIN_FAILURE'))
-        assert.deepEqual(materials.find(value => value.code === 'CUSTOM_DOMAIN_FAILURE').recovery, {
-          category: 'implementation-error', responsibleParty: 'maintainer', nextAction: 'inspect-and-fix-implementation',
-        })
-      }
-      await assert.rejects(readArtifact('sha256-' + 'f'.repeat(64) + '.json'), { code: 'TASK_OWNER_ARTIFACT_NOT_ALLOWED' })
-      const decision = { action: 'wait', summary: '已读失败原因，等待所需能力', evidenceRefs: [],
-        condition: { kind: 'capability', missing: '测试能力尚不可用', responsibleParty: '维护人员', resumeWhen: '能力恢复后继续', evidenceRefs: [] } }
-      await onCandidate(decision)
-      return { status: 'submitted', decision }
-    }, async close() {} } })
-  let owner = createOwner(controller, store)
   await controller.createTaskPlan({ commandId: 'plan', taskId: 'task', stages: [{ stageId: 'one', workflowId: definition.id, input: 1 }] })
-  await owner.ensure({ taskId: 'task', sourceKey: 'source', criteria: ['交付结果'], origin: {} })
-  await owner.drive('task')
   const plan = await controller.advanceTaskPlan('task')
   await controller.whenIdle(plan.stages[0].runId)
-  await owner.close(); await controller.close(); await store.close()
+  await controller.close(); await store.close()
   const reopened = await openExecutionStore({ dbPath, instanceId })
   const resumed = createExecutionController({ store: reopened, artifacts, workflows: [definition] })
-  owner = createOwner(resumed, reopened)
-  t.after(async () => { await owner.close(); await resumed.close(); await reopened.close() })
-  await owner.observe('task')
-  const before = await reopened.query({ kind: 'task.owner', taskId: 'task' })
-  await owner.observe('task')
-  assert.equal((await reopened.query({ kind: 'task.owner', taskId: 'task' })).eventWatermark, before.eventWatermark)
-  assert.deepEqual(await owner.recover(), [])
-  const received = turns.at(-1)
-  assert.equal(received.stageArtifacts[0].diagnostics[0].waitReason.reference, 'CUSTOM_DOMAIN_FAILURE')
-  assert.ok(received.events.some(event => event.eventType === 'workflow.failed'))
+  t.after(async () => { await resumed.close(); await reopened.close() })
+  const current = await resumed.taskPlan('task')
+  const args = { taskId: 'task', stages: current.stages, controller: resumed, plan: current }
+  const received = await readTaskStageArtifacts(args)
+  for (const stage of received) {
+    assert.deepEqual(stage.completionEvidenceRefs, [])
+    const materials = await Promise.all(stage.evidenceRefs.map(ref => artifacts.read(ref)))
+    assert.ok(materials.some(value => value.actual === 'failed'))
+    assert.ok(materials.some(value => value.code === 'CUSTOM_DOMAIN_FAILURE'))
+    assert.deepEqual(materials.find(value => value.code === 'CUSTOM_DOMAIN_FAILURE').recovery, {
+      category: 'implementation-error', responsibleParty: 'maintainer', nextAction: 'inspect-and-fix-implementation',
+    })
+  }
+  assert.equal(received[0].diagnostics[0].waitReason.reference, 'CUSTOM_DOMAIN_FAILURE')
+  assert.deepEqual(await readTaskStageArtifacts(args), received)
   assert.equal(executions, 1)
 })
 
@@ -764,51 +744,6 @@ test('任务新输入按任务归属写入，执行输出和失败证据沿用�
   })
 })
 
-test('Owner恢复调用不热循环，输入条件变化立即唤醒同会话', async t => {
- const {controller,store,artifacts}=await setup(t,workflow())
- let attempts=0
- const owner=createTaskOwnerController({ctx:{},store,artifacts,controller,modelConfig:()=>({}),advanceTask:async()=>{},authorizeStages:async()=>true,
-  sessionRunner:{async run(){attempts++;throw Object.assign(Error('ECONNRESET'),{code:'ECONNRESET'})},async close(){}}})
- t.after(()=>owner.close())
- await controller.createTaskPlan({commandId:'owner-backoff-plan',taskId:'owner-backoff',stages:[{stageId:'first',workflowId:'synthetic',input:1}]})
- await owner.ensure({taskId:'owner-backoff',criteria:['完成'],sourceKey:'owner-backoff-source',origin:{}})
- await assert.rejects(owner.drive('owner-backoff'),{code:'ECONNRESET'})
- await owner.recover();await owner.recover();assert.equal(attempts,1)
- const before=await store.query({kind:'task.owner',taskId:'owner-backoff'})
- assert.ok(Date.parse(before.retryAt)>Date.now())
- await owner.event({taskId:'owner-backoff',eventKey:'new-condition',eventType:'authorization.changed'})
- await assert.rejects(owner.drive('owner-backoff'),{code:'ECONNRESET'})
- const after=await store.query({kind:'task.owner',taskId:'owner-backoff'})
- assert.equal(attempts,2);assert.equal(after.sessionId,before.sessionId)
- assert.equal(recoveryRetryDelayMs(Number.MAX_SAFE_INTEGER),60_000)
-})
-for(const stop of ['cancel','close'])test(`Owner模型已排空后${stop}仍取消完成授权，未接纳完成且不累计失败`,async t=>{
- const {controller,store,artifacts}=await setup(t,workflow())
- const entered=Promise.withResolvers(),stopped=Promise.withResolvers()
- let observedSignal
- const owner=createTaskOwnerController({ctx:{},store,artifacts,controller,modelConfig:()=>({}),advanceTask:async()=>{},authorizeStages:async()=>true,
-  authorizeCompletion:async({signal})=>{
-   observedSignal=signal;entered.resolve()
-   await new Promise((resolve,reject)=>{signal.addEventListener('abort',()=>{stopped.resolve();reject(signal.reason)},{once:true})})
-   return true
-  },
-  sessionRunner:{async run({onSessionBound,onCandidate}){
-   await onSessionBound()
-   const decision={action:'complete',summary:'等待实际业务验收',evidenceRefs:[]}
-   await onCandidate(decision);return{status:'submitted',decision}
-  },async cancel(){},async close(){}}})
- t.after(()=>owner.close())
- await controller.createTaskPlan({commandId:`cancel-owner-plan-${stop}`,taskId:`cancel-owner-${stop}`,stages:[{stageId:'first',workflowId:'synthetic',input:1}]})
- await owner.ensure({taskId:`cancel-owner-${stop}`,criteria:['完成'],sourceKey:'cancel-owner-source',origin:{}})
- const driving=owner.drive(`cancel-owner-${stop}`)
- await entered.promise
- if(stop==='cancel')await owner.cancel(`cancel-owner-${stop}`);else await owner.close()
- await stopped.promise
- assert.equal(await driving,null);assert.equal(observedSignal.aborted,true)
- const state=await store.query({kind:'task.owner',taskId:`cancel-owner-${stop}`})
- assert.equal(state.status,'pending');assert.equal(state.failureCount,0)
- assert.notEqual(state.applicationStatus,'pending')
-})
 test('超过32个节点的完整Run持续执行并保留全部成功产物', async t => {
   const definition={id:'many-nodes',version:'1',nodes:Array.from({length:80},(_,index)=>({
     id:`step-${index}`,version:'1',executor:'code',allowedEffects:['pure'],inputSchema:number,outputSchema:number,
@@ -955,7 +890,7 @@ for(const variant of ['v22-early','v22-early-effect','verified','verify-waiting'
  const sessions={async run(args){calls.plan++;await args.onSessionBound();if(variant.startsWith('v22-')&&calls.plan===1)return{status:'no_submission',reason:'execution_no_submission'};if(calls.plan===2&&variant==='planner-timeout')return{status:'no_submission',reason:'execution_timeout',failure:{code:'execution_timeout',phase:'execution'}};await args.onResult(calls.plan===2&&variant==='planner-invalid'?42:args.input);return{status:'submitted'}},async cancel(){},async assertDrained(){},async close(){}}
  const controller=createExecutionController({store:{query:q=>store.query(q),command:c=>{if(hold&&c.kind==='node.claim'&&c.args.nodeId==='prepare-local-acceptance')throw Error('fixture-stop-before-local');return store.command(c)}},artifacts,workflows:[old],sessions});t.after(async()=>{await controller.close();await store.close()})
  const send=(kind,args,id=kind)=>store.command({id,kind,args}),config={kind:'engineering',taskId:'task',runId:'run',uatEnvironment:'uat2',input:{request:'business',acceptanceCriteria:['criterion']},localAcceptanceConfig:{id:'wrong'}}
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  await send('workflow.register',{workflowId:old.id,digest:oldDef.digest,definitionVersion:variant.startsWith('v22-')?'22':'18',config},'old')
  await send('workflow.register',{workflowId:next.id,digest:nextDef.digest,definitionVersion:variant.startsWith('v22-')?'22':'18',config:{...config,localAcceptanceConfig:{id:'right'},localAcceptanceScope:{taskId:variant==='wrong-scope'?'foreign':'task',uatEnvironment:'uat2',requestDigest:executionDigest(config.input)},checkpoint:{kind:'local-acceptance',fromDigest:oldDef.digest,requestId:'local-fix'}}},'new')
  const requirement=await artifacts.put('request')
@@ -1004,8 +939,8 @@ test('历史materials参数重分类保留同节点同代并由Owner纠正',asyn
 })
 
 for(const variant of ['factory','paused-factory','paused-input-factory','active-input-factory','paused-run-input','declared-external','actual-effect'])test(`v18真实factory本地准备checkpoint ${variant}`,async t=>{
- const {createEngineeringTaskContextWorkflow}=await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {createEngineeringTaskContextWorkflow}=await import('../packages/dingtalk-core/task-workflow.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  const directory=await mkdtemp(join(tmpdir(),'real-local-checkpoint-')),store=await openExecutionStore({dbPath:join(directory,'control.db'),instanceId:'real-local',initialize:true}),artifacts=await openExecutionArtifacts({directory:join(directory,'artifacts'),initialize:true})
  t.after(()=>store.close());let plans=0,prepares=0;const calls={}
  const make=id=>{
@@ -1042,7 +977,7 @@ for(const variant of ['factory','paused-factory','paused-input-factory','active-
  }
  if(!['factory','paused-factory','paused-input-factory'].includes(variant)){await assert.rejects(controller.updateEngineeringCheckpoint(args),{code:variant==='actual-effect'?'ENGINEERING_CHECKPOINT_EFFECTS_PRESENT':'ENGINEERING_CHECKPOINT_NOT_ADMITTED'});assert.deepEqual((await controller.state('run')).nodes,before.nodes);return}
  await controller.updateEngineeringCheckpoint(args)
- if(['paused-factory','paused-input-factory','paused-run-input'].includes(variant)){const updated=await controller.state('run'),task=await controller.taskPlan('task');assert.equal(task.task.controlState,'paused');assert.equal(task.task.controlRevision,3);assert.equal(updated.run.pauseRequested,true);for(const i of [0,3,4,5,6,7])assert.deepEqual(updated.nodes[i],before.nodes[i]);await controller.recover({commandId:'paused-recover-local',runId:'run'});assert.deepEqual((await controller.state('run')).nodes,updated.nodes);assert.equal(prepares,0);assert.equal(plans,1);if(variant==='paused-input-factory'){const pending=await store.query({kind:'message.run',runId:'pending-status'});assert.equal(pending.run.status,'pending');assert.equal(pending.barriers[0].status,'pending');const {DatabaseSync}=await import('node:sqlite'),{assertMessageTaskUnfenced}=await import('../packages/dingtalk-dsh-assistant/message-ledger.js');const db=new DatabaseSync(join(directory,'control.db'),{readOnly:true});try{assert.throws(()=>assertMessageTaskUnfenced(db,'task'),{code:'MESSAGE_INPUT_PENDING'})}finally{db.close()}}assert.equal((await store.query({kind:'effect.list',runId:'run'})).length,0);return}
+ if(['paused-factory','paused-input-factory','paused-run-input'].includes(variant)){const updated=await controller.state('run'),task=await controller.taskPlan('task');assert.equal(task.task.controlState,'paused');assert.equal(task.task.controlRevision,3);assert.equal(updated.run.pauseRequested,true);for(const i of [0,3,4,5,6,7])assert.deepEqual(updated.nodes[i],before.nodes[i]);await controller.recover({commandId:'paused-recover-local',runId:'run'});assert.deepEqual((await controller.state('run')).nodes,updated.nodes);assert.equal(prepares,0);assert.equal(plans,1);if(variant==='paused-input-factory'){const pending=await store.query({kind:'message.run',runId:'pending-status'});assert.equal(pending.run.status,'pending');assert.equal(pending.barriers[0].status,'pending');const {DatabaseSync}=await import('node:sqlite'),{assertMessageTaskUnfenced}=await import('../packages/dingtalk-core/message-ledger.js');const db=new DatabaseSync(join(directory,'control.db'),{readOnly:true});try{assert.throws(()=>assertMessageTaskUnfenced(db,'task'),{code:'MESSAGE_INPUT_PENDING'})}finally{db.close()}}assert.equal((await store.query({kind:'effect.list',runId:'run'})).length,0);return}
  await send('runtime.maintenance.change',{active:false,expectedRevision:1,maintenanceId:'local',actorId:'owner',reason:'恢复'},'leave')
  await assert.rejects(async()=>{await controller.recover({commandId:'continue',runId:'run'});await controller.whenIdle('run')},/fixture-stop-before-external/)
  const after=await controller.state('run');assert.equal(after.run.runId,before.run.runId);assert.equal(after.run.generation,before.run.generation)
@@ -1075,10 +1010,10 @@ test('Host无新增修改证明正常提交独立审计，缺原修复仍拒绝'
 
 
 for (const variant of ['edit', 'revise', 'same-plan-repeat', 'no-change', 'prepared']) test(`v19 真实受管编辑网关与原方案自动纠正 ${variant}`, async t => {
-  const { createEngineeringTechnicalPlanWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
-  const { createManagedEdits } = await import('../packages/dingtalk-dsh-assistant/execution-edit.js')
-  const { createExecutionDelivery } = await import('../packages/dingtalk-dsh-assistant/execution-delivery.js')
-  const { executionDigest } = await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+  const { createEngineeringTechnicalPlanWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
+  const { createManagedEdits } = await import('../packages/dingtalk-core/execution-edit.js')
+  const { createExecutionDelivery } = await import('../packages/dingtalk-core/execution-delivery.js')
+  const { executionDigest } = await import('../packages/dingtalk-core/execution-artifacts.js')
   const { mkdir } = await import('node:fs/promises')
   const root = await mkdtemp(join(tmpdir(), 'dsh-v19-gateway-')), directory = join(root, 'workspace')
   await mkdir(directory)
@@ -1155,7 +1090,7 @@ for (const variant of ['edit', 'revise', 'same-plan-repeat', 'no-change', 'prepa
   t.after(async () => { await controller.close(); await store.close() })
   await controller.createTaskPlan({ commandId: 'plan', taskId: 'task', stages: [{ stageId: 'engineering', workflowId: definition.id, input: { request: '实现校验', baseCommit } }] })
   const taskPlan = await controller.taskPlan('task')
-  const { plannedStageRunId } = await import('../packages/dingtalk-dsh-assistant/execution-controller.js')
+  const { plannedStageRunId } = await import('../packages/dingtalk-core/execution-controller.js')
   const runId = plannedStageRunId('task', taskPlan.task.planRevision, 'engineering', 1)
   await store.command({ id: 'register', kind: 'workflow.register', args: { workflowId: definition.id, digest: defineExecutionWorkflow(definition).digest, definitionVersion: '19', config: { kind: 'engineering', taskId: 'task', runId } } })
   await controller.advanceTaskPlan('task')
@@ -1169,7 +1104,7 @@ for (const variant of ['edit', 'revise', 'same-plan-repeat', 'no-change', 'prepa
 
 
 test('v19 编辑工具登记只接受精确工程apply节点，不因readTools白名单扩大写权限', async () => {
-  const { createEngineeringTechnicalPlanWorkflow } = await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
+  const { createEngineeringTechnicalPlanWorkflow } = await import('../packages/dingtalk-core/task-workflow.js')
   const flow = createEngineeringTechnicalPlanWorkflow({ workflowId: 'task-engineering-v19-test', provider: 'test', model: 'test', discovery: { allowedPrefixes: ['src/'] },
     project: { targetCommit: 'a'.repeat(40), taskBase: 'a'.repeat(40) }, workspaceAdapter: {}, editAdapter: {},
     checks: [{ id: 'check', version: '1', run: async () => ({ passed: true, log: 'fixture' }) }], adapterIdentity: 'v19' })
@@ -1240,8 +1175,8 @@ for (const variant of ['restart','foreign-task','stale','principle','prefix','ef
 
 for(const boundary of ['normal','paused','unknown-effect','prepare-effect'])test(`原规划会话纠正本地准备失败且成功前缀不重跑 ${boundary}`,async t=>{
  const variant='factory';
- const {createEngineeringTaskContextWorkflow}=await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {createEngineeringTaskContextWorkflow}=await import('../packages/dingtalk-core/task-workflow.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  const directory=await mkdtemp(join(tmpdir(),'real-local-checkpoint-')),store=await openExecutionStore({dbPath:join(directory,'control.db'),instanceId:'real-local',initialize:true}),artifacts=await openExecutionArtifacts({directory:join(directory,'artifacts'),initialize:true,taskWorkspaceRoot:join(directory,'task-files'),getTaskDirectories:async taskId=>({logicalTaskId:taskId})})
  t.after(()=>store.close());let plans=0,prepares=0;const calls={}
  const make=id=>{
@@ -1287,8 +1222,8 @@ for(const boundary of ['normal','paused','unknown-effect','prepare-effect'])test
 })
 
 for(const boundary of ['trusted','paused','checkpoint-paused','checkpoint-cancelled','unrecorded','tampered-input','semantic-change','changed-mapper','changed-schema','changed-rules','missing-attestation'])test(`retained planner lineage with real SQLite ${boundary}`,async t=>{
- const {createEngineeringTaskContextWorkflow}=await import('../packages/dingtalk-dsh-assistant/task-workflow.js')
- const {executionDigest}=await import('../packages/dingtalk-dsh-assistant/execution-artifacts.js')
+ const {createEngineeringTaskContextWorkflow}=await import('../packages/dingtalk-core/task-workflow.js')
+ const {executionDigest}=await import('../packages/dingtalk-core/execution-artifacts.js')
  const root=await mkdtemp(join(tmpdir(),'dsh-retained-lineage-')),store=await openExecutionStore({dbPath:join(root,'control.db'),instanceId:'lineage',initialize:true}),artifacts=await openExecutionArtifacts({directory:join(root,'artifacts'),initialize:true,taskWorkspaceRoot:join(root,'task-files'),getTaskDirectories:async taskId=>({logicalTaskId:taskId})});t.after(()=>store.close())
  let preparations=0,plans=0
  const factory=createEngineeringTaskContextWorkflow({workflowId:'task-engineering-lineage',provider:'test',model:'test',discovery:{allowedPrefixes:['src/']},project:{uatEnvironment:'uat3',targetCommit:'a'.repeat(40),taskBase:'a'.repeat(40)},workspaceAdapter:{},editAdapter:{},checks:[{id:'check',version:'1',run:async()=>({passed:true})}],adapterIdentity:'fixture',localAcceptance:{identity:'fixture',scenarios:[{id:'ui'}]}})
@@ -1336,13 +1271,13 @@ for(const boundary of ['trusted','paused','checkpoint-paused','checkpoint-cancel
  const state=await controller.state('run',{includeRecovery:true})
  if(boundary==='trusted'){
   const gate=await controller.inspectNodeRecovery('run');assert.equal(gate.repairable,true,JSON.stringify(gate));assert.ok(gate.gates.every(g=>g.passed))
-  const {inspectExecutionInputLineage}=await import('../packages/dingtalk-dsh-assistant/execution-input-lineage.js')
+  const {inspectExecutionInputLineage}=await import('../packages/dingtalk-core/execution-input-lineage.js')
   const node=state.nodes[2],original=await artifacts.read(node.inputRef)
   const lineage=await inspectExecutionInputLineage({store,artifacts,run:state.run,node,input:original,definition:nextDef})
   assert.equal(lineage.trusted,true,JSON.stringify(lineage));assert.equal(lineage.chain.length,1);assert.ok(lineage.gates.every(g=>g.passed))
  }else if(boundary==='paused'){assert.equal((await controller.inspectNodeRecovery('run')).repairable,false)}
  else{
-  const {inspectExecutionInputLineage}=await import('../packages/dingtalk-dsh-assistant/execution-input-lineage.js')
+  const {inspectExecutionInputLineage}=await import('../packages/dingtalk-core/execution-input-lineage.js')
   const node=state.nodes[2],original=await artifacts.read(node.inputRef),history=await store.query({kind:'run.workflow-lineage',runId:'run'})
   const inspected={...nextDef,nodes:[...nextDef.nodes]}
   if(boundary==='changed-mapper')inspected.nodes[2]={...inspected.nodes[2],mapInput:()=>({otherBusiness:true})}

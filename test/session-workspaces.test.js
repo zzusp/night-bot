@@ -4,7 +4,7 @@ import { mkdtemp, symlink, mkdir, readFile, writeFile, readdir } from 'node:fs/p
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { createHash } from 'node:crypto'
-import { executionSessionTitle, sessionWorkspace, sessionPurposes, sessionTitle, nameSession, materializeExecutionDocument, renderExecutionDocument } from '../packages/dingtalk-dsh-assistant/session-workspaces.js'
+import { executionSessionTitle, sessionWorkspace, sessionPurposes, sessionTitle, nameSession, materializeExecutionDocument, renderExecutionDocument } from '../packages/dingtalk-core/session-workspaces.js'
 
 test('九种实际会话职责各有独立工作区，未知职责不创建目录', async () => {
   const root = await mkdtemp(join(tmpdir(), 'session-purposes-'))

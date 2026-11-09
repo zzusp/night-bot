@@ -1,0 +1,11 @@
+{
+  "pass": true,
+  "scope": "单句文案；既有隔离preview业务fixture、真实HTTP鉴权/静态资源，不重跑原完整业务链",
+  "text": "这里保留本对话关联的任务，包括已完成和已归档任务。展开可查看执行过程。",
+  "pageErrors": [],
+  "sourceCount": 9,
+  "sourceChanged": [],
+  "screenshotSha256": "171a745c3b21ef48f49fb86bf752463acebb5e2c8a1ed7d9c79ee1e6dd02f7cd",
+  "businessChainRerun": false,
+  "realVendorExecuted": false
+}

@@ -5,8 +5,8 @@ import { promisify } from 'node:util'
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createGitDelivery } from '../packages/dingtalk-dsh-assistant/execution-git.js'
-import { freezeCandidate, verifyCandidate } from '../packages/dingtalk-dsh-assistant/execution-candidate.js'
+import { createGitDelivery } from '../packages/dingtalk-core/execution-git.js'
+import { freezeCandidate, verifyCandidate } from '../packages/dingtalk-core/execution-candidate.js'
 
 const exec = promisify(execFile)
 const git = async (repo, ...args) => (await exec('git', ['-C', repo, ...args], { windowsHide: true })).stdout.trim()

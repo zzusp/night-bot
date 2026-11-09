@@ -5,9 +5,9 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { isolationBinding, isolationDigest, hasRestartIsolation } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
-import { openDynamicTaskStore, pendingTaskHumanReview } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { projectTaskTimeline, latestExecutionRoundTiming } from '../packages/dingtalk-dsh-assistant/task-execution-timeline.js'
+import { isolationBinding, isolationDigest, hasRestartIsolation } from '../packages/dingtalk-core/native-restart-isolation.js'
+import { openDynamicTaskStore, pendingTaskHumanReview } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { projectTaskTimeline, latestExecutionRoundTiming } from '../packages/dingtalk-core/task-execution-timeline.js'
 
 test('正常初始化与重启不触发全库完整性审计，任务身份保持', async t => {
   const prepare = DatabaseSync.prototype.prepare
@@ -1113,7 +1113,7 @@ test('unclean process restart fences started operations and retains result/wake 
   const directory = await mkdtemp(join(tmpdir(), 'dynamic-process-crash-'))
   let store
   t.after(async () => { try { await store?.close() } finally { await rm(directory, { recursive: true, force: true }) } })
-  const dbPath = join(directory, 'state.sqlite'), module = new URL('../packages/dingtalk-dsh-assistant/dynamic-task-store.js', import.meta.url).href
+  const dbPath = join(directory, 'state.sqlite'), module = new URL('../packages/dingtalk-core/dynamic-task-store.js', import.meta.url).href
   const script = `import {openDynamicTaskStore} from ${JSON.stringify(module)};
     const s=await openDynamicTaskStore({dbPath:${JSON.stringify(dbPath)},instanceId:'child',initialize:true});
     let i=0; const c=(kind,args)=>s.command({id:'c'+ ++i,kind,args});
@@ -1980,7 +1980,7 @@ test('archive retains durable task and execution history, refuses live tasks and
   assert.equal((await f.command('task.archive', { taskId: 'task', actorId: 'operator' })).result.task.archivedAt, archived.archivedAt)
   await f.reopen()
   assert.deepEqual(await f.query({ kind: 'task.list' }), [])
-  assert.deepEqual((await f.query({ kind: 'task.list', archived: true }))[0], archived)
+  assert.deepEqual((await f.query({ kind: 'task.list', archived: true }))[0], { ...archived, dependenciesReady: true })
 })
 
 

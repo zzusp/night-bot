@@ -1,6 +1,7 @@
 // Derived from dsh-win32-process 0.2.1-alpha.2, Copyright (c) 2026 DeepSeek.
 // MIT: licenses/dsh-subprocess-local-MIT.txt.
 import { createLazyRequire } from "./contracts.js";
+import { isAsyncFunction, isGeneratorFunction } from "node:util/types";
 /** Win32 code reporting a caller-provided buffer is too small. */
 const ERROR_INSUFFICIENT_BUFFER = 122;
 /** Job limit that terminates every member when the final Job handle closes. */
@@ -43,7 +44,7 @@ function win32Types() {
 	const koffi = requireKoffi();
 	const PVOID = koffi.pointer("void");
 	const PPVOID = koffi.pointer(PVOID);
-	const STARTUPINFOW = koffi.struct("DSH_STARTUPINFOW", {
+	const STARTUPINFOW = koffi.struct("NightBot_STARTUPINFOW", {
 		cb: "uint32",
 		lpReserved: "str16",
 		lpDesktop: "str16",
@@ -63,13 +64,17 @@ function win32Types() {
 		hStdOutput: PVOID,
 		hStdError: PVOID
 	});
-	const PROCESS_INFORMATION = koffi.struct("DSH_PROCESS_INFORMATION", {
+	const COORD = koffi.struct("NightBot_COORD", { X: "int16", Y: "int16" });
+	const STARTUPINFOEXW = koffi.struct("NightBot_STARTUPINFOEXW", { StartupInfo: STARTUPINFOW, lpAttributeList: PVOID });
+	const PROCESS_INFORMATION = koffi.struct("NightBot_PROCESS_INFORMATION", {
 		hProcess: PVOID,
 		hThread: PVOID,
 		dwProcessId: "uint32",
 		dwThreadId: "uint32"
 	});
 	/* v8 ignore start -- ABI guards are pinned by native header probes. */
+	if (COORD.size !== 4) throw new Error(`COORD layout mismatch: ${COORD.size}`);
+	if (STARTUPINFOEXW.size !== 112) throw new Error(`STARTUPINFOEXW layout mismatch: ${STARTUPINFOEXW.size}`);
 	if (STARTUPINFOW.size !== 104) throw new Error(`STARTUPINFOW layout mismatch: koffi computed ${STARTUPINFOW.size}, expected 104`);
 	if (PROCESS_INFORMATION.size !== 24) throw new Error(`PROCESS_INFORMATION layout mismatch: koffi computed ${PROCESS_INFORMATION.size}, expected 24`);
 	/* v8 ignore stop */
@@ -77,6 +82,8 @@ function win32Types() {
 		PVOID,
 		PPVOID,
 		STARTUPINFOW,
+		STARTUPINFOEXW,
+		COORD,
 		PROCESS_INFORMATION
 	};
 }
@@ -166,6 +173,7 @@ function bindings() {
 	const node = koffi.load(null);
 	cached = {
 		closeHandle: bind(kernel32, "CloseHandle", "int", [PVOID]),
+		isProcessInJob: bind(kernel32, "IsProcessInJob", "int", [PVOID, PVOID, koffi.pointer("int")]),
 		getLastError: bind(kernel32, "GetLastError", "uint32", []),
 		getFileType: bind(kernel32, "GetFileType", "uint32", [PVOID]),
 		formatMessageW: bind(kernel32, "FormatMessageW", "uint32", [
@@ -213,6 +221,11 @@ function bindings() {
 			koffi.pointer(STARTUPINFOW),
 			koffi.pointer(PROCESS_INFORMATION)
 		]),
+		getHandleInformation: bind(kernel32, "GetHandleInformation", "int", [PVOID, koffi.pointer("uint32")]),
+		initializeProcThreadAttributeList: bind(kernel32, "InitializeProcThreadAttributeList", "int", [PVOID, "uint32", "uint32", koffi.pointer("size_t")]),
+		updateProcThreadAttribute: bind(kernel32, "UpdateProcThreadAttribute", "int", [PVOID, "uint32", "size_t", PVOID, "size_t", PVOID, PVOID]),
+		deleteProcThreadAttributeList: bind(kernel32, "DeleteProcThreadAttributeList", "void", [PVOID]),
+		createProcessExtendedW: bind(kernel32, "CreateProcessW", "int", ["str16", "str16", PVOID, PVOID, "int", "uint32", PVOID, "str16", PVOID, koffi.pointer(PROCESS_INFORMATION)]),
 		readFile: bind(kernel32, "ReadFile", "int", [
 			PVOID,
 			PVOID,
@@ -270,6 +283,106 @@ function extendWin32ProcessBindings(create) {
 */
 function loadWin32ProcessBindings() {
 	return bindings();
+}
+let cachedConpty;
+function loadWin32ConptyBindings() {
+ if (cachedConpty !== undefined) return cachedConpty;
+ const { PVOID, PPVOID, COORD } = win32Types();
+ return cachedConpty = extendWin32ProcessBindings(({ kernel32, bind }) => ({
+  createPseudoConsole: bind(kernel32, "CreatePseudoConsole", "int32", [COORD, PVOID, PVOID, "uint32", PPVOID]),
+  resizePseudoConsole: bind(kernel32, "ResizePseudoConsole", "int32", [PVOID, COORD]),
+  closePseudoConsole: bind(kernel32, "ClosePseudoConsole", "void", [PVOID]),
+  createNamedPipeW: bind(kernel32, "CreateNamedPipeW", PVOID, ["str16", "uint32", "uint32", "uint32", "uint32", "uint32", "uint32", PVOID]),
+  connectNamedPipe: bind(kernel32, "ConnectNamedPipe", "int", [PVOID, PVOID]),
+  getNamedPipeClientProcessId: bind(kernel32, "GetNamedPipeClientProcessId", "int", [PVOID, PVOID])
+ }));
+}
+function pseudoConsoleSize(cols, rows) {
+ if (![cols, rows].every(value => Number.isInteger(value) && value > 0 && value <= 32767)) throw new TypeError('ConPTY dimensions must be positive signed SHORT integers');
+ return { X: cols, Y: rows };
+}
+function pseudoConsoleError(name, hresult) {
+ const error = new Error(`${name} failed (HRESULT 0x${(hresult >>> 0).toString(16).padStart(8, '0')})`);
+ error.api = name;
+ error.hresult = hresult >>> 0;
+ return error;
+}
+/** Native resource only: Close returning is not output EOF, Job0 or range completion. */
+function createPseudoConsole(api, { input, output, cols, rows, asynchronous = false }) {
+ const size = pseudoConsoleSize(cols, rows);
+ if (isNullPtr(input) || isNullPtr(output)) throw new TypeError('ConPTY requires explicit synchronous pipe endpoints');
+ const slot = Buffer.alloc(8);
+ const adopt = hresult => {
+  const handle = decodePtr(slot);
+  if (hresult !== 0 || isNullPtr(handle)) {
+   const error = hresult !== 0 ? pseudoConsoleError('CreatePseudoConsole', hresult) : new Error('CreatePseudoConsole succeeded without HPCON');
+   if (!isNullPtr(handle)) error.pseudoConsoleOwnership = { handle, state: 'unknown' };
+   throw error;
+  }
+  return ownPseudoConsole(api, handle);
+ };
+ if (!asynchronous) return adopt(api.createPseudoConsole(size, input, output, 0, slot));
+ // Native 创建/resize/close 可阻塞；Node reader 在整个调用窗持续排空输出。
+ return new Promise((resolve, reject) => {
+  const failed = error => {
+   const handle = decodePtr(slot);
+   if (!isNullPtr(handle)) error.pseudoConsoleOwnership = { handle, state: 'unknown' };
+   reject(error);
+  };
+  try {
+   api.createPseudoConsole.async(size, input, output, 0, slot, (error, result) => {
+    if (error) { failed(error); return; }
+    try { resolve(adopt(result)); } catch (error) { failed(error); }
+   });
+  } catch (error) { failed(error); }
+ });
+}
+function ownPseudoConsole(api, initialHandle) {
+ let handle = initialHandle, state = 'open', closing, resizing;
+ return {
+  get handle() { return handle; },
+  get state() { return state; },
+  resize(cols, rows) {
+   const size = pseudoConsoleSize(cols, rows);
+   if (state !== 'open' || resizing !== undefined) throw new Error('ConPTY resize requires an idle open pseudoconsole');
+   const hresult = api.resizePseudoConsole(handle, size);
+   if (hresult !== 0) throw pseudoConsoleError('ResizePseudoConsole', hresult);
+  },
+  resizeAsync(cols, rows) {
+   const size = pseudoConsoleSize(cols, rows);
+   if (state !== 'open' || resizing !== undefined) throw new Error('ConPTY resize requires an idle open pseudoconsole');
+   resizing = new Promise((resolve, reject) => {
+    try {
+     api.resizePseudoConsole.async(handle, size, (error, result) => {
+      if (error) { reject(error); return; }
+      if (result !== 0) { reject(pseudoConsoleError('ResizePseudoConsole', result)); return; }
+      resolve();
+     });
+    } catch (error) { reject(error); }
+   });
+   const pending = resizing;
+   return pending.finally(() => { resizing = undefined; });
+  },
+  close() {
+   if (closing !== undefined) return closing;
+   state = 'closing';
+   const pendingResize = resizing;
+   closing = (async () => {
+    // Join 失败的 resize 也必须完成，原调用者保留其错误；之后仍须回收 HPCON。
+    if (pendingResize !== undefined) await pendingResize.then(() => {}, () => {});
+    await new Promise((resolve, reject) => {
+     const failed = error => { state = 'unknown'; reject(error); };
+     try {
+      api.closePseudoConsole.async(handle, error => {
+       if (error) { failed(error); return; }
+       handle = null; state = 'close-returned'; resolve();
+      });
+     } catch (error) { failed(error); }
+    });
+   })();
+   return closing;
+  }
+ };
 }
 /* v8 ignore stop */
 /**
@@ -536,12 +649,19 @@ function waitForProcessExit(api, process) {
 		api.closeHandle(process);
 	}
 }
-function createKillOnCloseJob(api) {
+function allocateJobHandle(api) {
 	const job = api.createJobObjectW(null, null);
 	if (isNullPtr(job)) throwLastError(api, "CreateJobObjectW");
+	return job;
+}
+function configureKillOnCloseJob(api, job) {
 	const information = Buffer.alloc(144);
 	information.writeUInt32LE(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, 16);
-	if (api.setInformationJobObject(job, 9, information, information.length) === 0) {
+	return api.setInformationJobObject(job, 9, information, information.length);
+}
+function createKillOnCloseJob(api) {
+	const job = allocateJobHandle(api);
+	if (configureKillOnCloseJob(api, job) === 0) {
 		const win32Code = api.getLastError();
 		api.closeHandle(job);
 		throwWin32(api, "SetInformationJobObject", win32Code);
@@ -582,6 +702,307 @@ function targetCarrierHandles(api, descriptors) {
 		} }
 	};
 }
+function prepareLpacAttributes(api, packageSid, stdioHandles, pseudoConsole, job) {
+ const koffi = requireKoffi();
+ if (isNullPtr(packageSid)) throw new Error('LPAC requires an owned nonnull package SID');
+ if (isNullPtr(job)) throw new Error('LPAC requires the original owned Job at creation');
+ if (pseudoConsole !== undefined && stdioHandles.length) throw new Error('ConPTY must not inherit ordinary stdio handles');
+ const allocations = [];
+ let list;
+ let initialized = false;
+ let disposed = false;
+ let releaseFailure;
+ let attributeListState = 'uninitialized';
+ const ownership = () => ({ attributeListState, allocations: allocations.filter(item => item.state !== 'released').map(item => ({ ...item })) });
+ const allocate = (bytes) => {
+  const pointer = koffi.alloc('uint8', bytes.length);
+  allocations.push({ pointer, state: 'live' });
+  koffi.encode(pointer, 'uint8', bytes, bytes.length);
+  return pointer;
+ };
+ const dispose = () => {
+  if (disposed) { if (releaseFailure) throw releaseFailure; return; }
+  disposed = true;
+  const failures = [];
+  if (initialized) {
+   try { api.deleteProcThreadAttributeList(list); initialized = false; attributeListState = 'deleted'; }
+   catch (error) { attributeListState = 'unknown'; failures.push(error); }
+  }
+  // An unknown Delete call may still own pointers; do not free its backing data.
+  if (attributeListState !== 'unknown') for (const item of [...allocations].reverse()) {
+   try { freeNative(item.pointer); item.pointer = null; item.state = 'released'; }
+   catch (error) { item.state = 'unknown'; failures.push(error); }
+  }
+  if (failures.length) {
+   releaseFailure = new AggregateError(failures, 'LPAC startup attribute release failed');
+   releaseFailure.attributeOwnership = ownership();
+   throw releaseFailure;
+  }
+ };
+ try {
+  const capabilities = Buffer.alloc(24);
+  capabilities.writeBigUInt64LE(koffi.address(packageSid), 0);
+  const policy = Buffer.alloc(4);
+  policy.writeUInt32LE(1);
+  const jobs = Buffer.alloc(8);
+  jobs.writeBigUInt64LE(typeof job === 'bigint' ? job : koffi.address(job));
+  const attributes = [
+   [0x20009, allocate(capabilities), capabilities.length],
+   [0x2000f, allocate(policy), policy.length],
+   // JOB_LIST 将子进程在创建时纳入原 Job，消除 Create 与事后 Assign 间的崩溃孤儿窗口。
+   [0x2000d, allocate(jobs), jobs.length]
+  ];
+  if (stdioHandles.length) {
+   const addresses = [...new Set(stdioHandles.map(handle => {
+    if (isNullPtr(handle)) throw new Error('Null inherited LPAC endpoint');
+    const address = typeof handle === 'bigint' ? handle : koffi.address(handle);
+    if (address <= 0n || address === 0xffffffffffffffffn) throw new Error('Invalid inherited LPAC endpoint');
+    return address;
+   }))];
+   const handles = Buffer.alloc(addresses.length * 8);
+   addresses.forEach((address, index) => handles.writeBigUInt64LE(address, index * 8));
+   attributes.push([0x20002, allocate(handles), handles.length]);
+  }
+  if (pseudoConsole !== undefined) {
+   if (isNullPtr(pseudoConsole)) throw new Error('Null ConPTY handle');
+   // PSEUDOCONSOLE 传 HPCON 本身；SECURITY_CAPABILITIES/HANDLE_LIST 则传缓冲区。
+   attributes.push([0x20016, pseudoConsole, 8]);
+  }
+  const size = allocate(Buffer.alloc(8));
+  const measured = api.initializeProcThreadAttributeList(null, attributes.length, 0, size);
+  const error = measured === 0 ? api.getLastError() : 0;
+  if (measured !== 0 || error !== 122) throw new Error(`InitializeProcThreadAttributeList size query returned ${measured}/${error}`);
+  const required = Number(koffi.decode(size, 'size_t'));
+  if (!Number.isSafeInteger(required) || required <= 0) throw new Error('Invalid LPAC attribute allocation length');
+  list = allocate(Buffer.alloc(required));
+  if (api.initializeProcThreadAttributeList(list, attributes.length, 0, size) === 0) throwLastError(api, 'InitializeProcThreadAttributeList');
+  initialized = true;
+  attributeListState = 'initialized';
+  for (const [attribute, pointer, length] of attributes) {
+   if (api.updateProcThreadAttribute(list, 0, attribute, pointer, length, null, null) === 0) throwLastError(api, 'UpdateProcThreadAttribute');
+  }
+  return { pointer: list, dispose, ownership };
+ } catch (error) {
+  try { dispose(); } catch (cleanup) { const failure = new AggregateError([error, cleanup], 'LPAC attribute preparation and release failed'); failure.attributeOwnership = ownership(); throw failure; }
+  throw error;
+ }
+}
+
+const lpacLaunches = new WeakMap();
+const failedLpacLaunches = new WeakMap();
+/** 原 owner 接回挂起目标，在同步身份窗口之外提交证明，再一次 Resume。 */
+function createSuspendedLpacJobProcess(api, options) {
+ const extended = options.pseudoConsole !== undefined;
+ let job = null;
+ const inherited = [];
+ const preparationMemory = {};
+ let attributes, startup, processRecord, control, info;
+ let jobConfigured = false, assigned = false, childCreated = false, preparationReleased = false, preparationReleaseAttempted = false;
+ const releasePreparation = () => {
+  if (preparationReleaseAttempted) return;
+  preparationReleaseAttempted = true;
+  const failures = [];
+  for (const item of inherited) {
+   try {
+    if (api.setHandleInformation(item.handle, 1, item.flags & 1) === 0) throwLastError(api, 'SetHandleInformation', 'restore exact LPAC endpoint inheritability');
+    item.restored = true;
+   } catch (error) { failures.push(error); }
+  }
+  try { attributes?.dispose(); attributes = undefined; } catch (error) { failures.push(error); }
+  for (const item of Object.values(preparationMemory)) {
+   try { freeNative(item.pointer); item.pointer = null; item.state = 'released'; }
+   catch (error) { item.state = 'unknown'; failures.push(error); }
+  }
+  startup = processRecord = control = undefined;
+  if (failures.length) throw new AggregateError(failures, 'LPAC startup release failed before Resume');
+  preparationReleased = true;
+ };
+ try {
+  // 配置失败也保留已分配的准确句柄，交原 runner；此处没有 best-effort close。
+  job = allocateJobHandle(api);
+  if (configureKillOnCloseJob(api, job) === 0) throwLastError(api, 'SetInformationJobObject');
+  jobConfigured = true;
+  const stdio = extended ? undefined : targetCarrierHandles(api, options.stdio);
+  const handles = stdio === undefined ? [] : [...new Set([stdio.stdin, stdio.stdout, stdio.stderr, ...stdio.control === undefined ? [] : [stdio.control.handle]])];
+  for (const handle of handles) {
+   const flags = allocUint32();
+   try {
+    if (api.getHandleInformation(handle, flags) === 0) throwLastError(api, 'GetHandleInformation');
+    inherited.push({ handle, flags: decodeUint32(flags), restored: false });
+    if (api.setHandleInformation(handle, 1, 1) === 0) throwLastError(api, 'SetHandleInformation', 'enable allowlisted LPAC endpoint');
+   } finally { freeNative(flags); }
+  }
+  const crt = stdio?.control === undefined ? undefined : inheritedControlStdio(api, stdio);
+  if (crt !== undefined) { control = requireKoffi().alloc('uint8', crt.length); preparationMemory.control = { pointer: control, state: 'live' }; requireKoffi().encode(control, 'uint8', crt, crt.length); }
+  attributes = prepareLpacAttributes(api, options.packageSid, handles, options.pseudoConsole, job);
+  startup = requireKoffi().alloc(win32Types().STARTUPINFOEXW, 1);
+  preparationMemory.startup = { pointer: startup, state: 'live' };
+  requireKoffi().encode(startup, win32Types().STARTUPINFOEXW, {
+   StartupInfo: { cb: 112, dwFlags: extended ? 0 : 257, wShowWindow: 0,
+    hStdInput: stdio?.stdin ?? null, hStdOutput: stdio?.stdout ?? null, hStdError: stdio?.stderr ?? null,
+    ...crt === undefined ? {} : { cbReserved2: crt.length, lpReserved2: control } },
+   lpAttributeList: attributes.pointer
+  });
+  processRecord = allocProcessInfo();
+  preparationMemory.processRecord = { pointer: processRecord, state: 'live' };
+  const flags = 0x80000 | 0x400 | 4 | (extended ? 0 : 0x08000000);
+  const created = api.createProcessExtendedW(options.applicationName, buildCommandLine(options.command, options.args), null, null, extended ? 0 : 1, flags, encodeWindowsEnvironment(options.env), options.cwd, startup, processRecord);
+  const error = created === 0 ? api.getLastError() : 0;
+  if (created === 0) throwWin32(api, 'CreateProcessW', error, 'LPAC suspended target');
+  childCreated = assigned = true;
+  info = decodeProcessInfo(processRecord);
+  if (isNullPtr(info.hProcess) || isNullPtr(info.hThread)) throw new Error('LPAC CreateProcessW returned null process/thread handles');
+  const inJob = Buffer.alloc(4);
+  if (api.isProcessInJob(info.hProcess, job, inJob) === 0) throwLastError(api, 'IsProcessInJob', 'LPAC suspended target');
+  if (inJob.readUInt32LE() !== 1) throw new Error('LPAC target is not in the original creation Job');
+  // No reentrant preparation runs while an endpoint remains inheritable.
+  releasePreparation();
+  const frame = Object.freeze({pid:info.dwProcessId, process:info.hProcess, job, initialThread:info.hThread});
+  lpacLaunches.set(frame, {api, pid:frame.pid, process:frame.process, job, initialThread:frame.initialThread, pseudoConsole:options.pseudoConsole ?? null,
+   jobConfigured:true, assigned:true, childCreated:true, preparationReleased:true,
+   payloadResumed:false, resumeAttempted:false, initialThreadCloseAttempted:false,
+   processCloseAttempted:false, jobCloseAttempted:false});
+  return frame;
+ } catch (error) {
+  const failures = [error];
+  let childSettled = !childCreated, jobEmpty = !assigned;
+  if (childCreated) {
+   try { terminateJob(api, job, 1); } catch (cleanup) { failures.push(cleanup); }
+   if (info && !isNullPtr(info.hProcess)) try {
+    const wait = api.waitForSingleObject(info.hProcess, 0);
+    if (wait === 0) childSettled = true;
+    else if (wait === 0xffffffff) throwLastError(api, 'WaitForSingleObject', 'LPAC failed launch');
+    else if (wait !== 258) throw new Error(`Unexpected LPAC process wait result ${wait}`);
+   } catch (cleanup) { failures.push(cleanup); }
+   try { jobEmpty = isJobEmpty(api, job); } catch (cleanup) { failures.push(cleanup); }
+  }
+  if ((!childCreated || info !== undefined) && !preparationReleaseAttempted) {
+   try { releasePreparation(); } catch (cleanup) { failures.push(cleanup); }
+  }
+  // 原 runner 必须先用这些原句柄独立核排空并处理 Profile；底层不抢先关闭证明句柄。
+  const attributeOwnership = attributes?.ownership() ?? error.attributeOwnership;
+  const attributesRetained = attributeOwnership && (attributeOwnership.attributeListState === 'unknown' || attributeOwnership.allocations.length > 0);
+  const preparationComplete = preparationReleased && !attributesRetained;
+  const failure = new AggregateError(failures, 'LPAC launch failed; retain exact profile and grants');
+  failure.payloadResumed = false;
+  // 即使 CreateProcess 从未成功，原 owner 也要接回准备/Job 结果，不能凭普通异常推定可删。
+  failure.code = 'WINDOWS_LPAC_OWNERSHIP_RETAINED';
+  failure.nativeOwnership = {
+    pid: info?.dwProcessId ?? null, process: info?.hProcess ?? null,
+    initialThread: info?.hThread ?? null, initialThreadCloseAttempted:false,
+    job, jobConfigured, assigned, childCreated, childSettled,
+    jobEmpty, payloadResumed:false, preparationReleased:preparationComplete, pendingPreparation:undefined,
+    ...!preparationComplete ? { preparationResources: {
+     inherited: inherited.filter(item => !item.restored).map(item => ({ ...item })),
+     attributes: attributeOwnership,
+     allocations: Object.fromEntries(Object.entries(preparationMemory).filter(([, item]) => item.state !== 'released').map(([key, item]) => [key, { ...item }]))
+    } } : {}
+  };
+  failedLpacLaunches.set(failure,{api,packageSid:options.packageSid,...failure.nativeOwnership,processCloseAttempted:false,jobCloseAttempted:false});
+  throw failure;
+ }
+}
+
+function failedLpacState(api, failure) {
+ const state = failedLpacLaunches.get(failure);
+ if (state === undefined || state.api !== api) throw new Error('LPAC failure is not the original native launch attempt');
+ return state;
+}
+/** 失败归属只能取自原抛出对象，不信任可复制的 nativeOwnership 摘要。 */
+function inspectFailedLpacJobProcess(api, failure) {
+ const {api:unused,...state} = failedLpacState(api,failure);
+ return {...state};
+}
+function closeFailedLpacJobProcessHandles(api, failure) {
+ const state = failedLpacState(api,failure);
+ if (!state.preparationReleased || state.pendingPreparation !== undefined) throw new Error('Failed LPAC preparation has not joined and released');
+ if (state.childCreated && (state.process === null || pollProcessExit(api,state.process) === undefined)) throw new Error('Failed LPAC child settlement remains unproven');
+ if (state.job !== null && !isJobEmpty(api,state.job)) throw new Error('Failed LPAC original Job is not empty');
+ if (!state.childCreated && (state.process !== null || state.initialThread !== null)) throw new Error('Failed LPAC ownership contradicts child creation');
+ state.childSettled = true;state.jobEmpty = true;
+ const failures = [];
+ for (const [key,attempted,label] of [['initialThread','initialThreadCloseAttempted','failed LPAC initial thread'],['process','processCloseAttempted','failed LPAC direct process'],['job','jobCloseAttempted','failed LPAC original Job']]) {
+  if (state[key] === null) continue;
+  if (state[attempted]) { failures.push(new Error(label+' closure remains unknown')); continue; }
+  state[attempted] = true;
+  try { closeHandleChecked(api,state[key],label);state[key] = null; } catch (error) { failures.push(error); }
+ }
+ if (failures.length) throw new AggregateError(failures,'Failed LPAC native ownership remains unknown');
+}
+function lpacState(api, frame) {
+ const state = lpacLaunches.get(frame);
+ if (state === undefined || state.api !== api) throw new Error('LPAC native ownership does not match the original launch');
+ return state;
+}
+function inspectLpacJobProcess(api, frame) {
+ const {api:unused, ...state} = lpacState(api, frame);
+ return {...state};
+}
+function retainLpacLaunchFailure(api, frame, error) {
+ const state = lpacState(api, frame), failures = [error];
+ let childSettled = false, jobEmpty = false;
+ if (state.pendingPreparation === undefined || state.pendingPreparation.settled) {
+  try { terminateJob(api, state.job, 1); } catch (cleanup) { failures.push(cleanup); }
+  try { childSettled = pollProcessExit(api, state.process) !== undefined; } catch (cleanup) { failures.push(cleanup); }
+  try { jobEmpty = isJobEmpty(api, state.job); } catch (cleanup) { failures.push(cleanup); }
+ }
+ const failure = new AggregateError(failures, 'LPAC launch failed; original owner retains the suspended launch');
+ failure.code = 'WINDOWS_LPAC_OWNERSHIP_RETAINED';
+ failure.payloadResumed = state.payloadResumed;
+ failure.nativeOwnership = {...inspectLpacJobProcess(api, frame), childSettled, jobEmpty};
+ return failure;
+}
+/** 只消费原生 frame 一次；资格与耐久证明由原 WindowsJobRunner 在调用前完成。 */
+function resumeLpacJobProcess(api, frame) {
+ const state = lpacState(api, frame);
+ if (state.resumeAttempted || state.initialThreadCloseAttempted || state.processCloseAttempted || state.jobCloseAttempted || state.pendingPreparation !== undefined || !state.preparationReleased) throw new Error('LPAC launch cannot Resume from its current ownership state');
+ try {
+  if (pollProcessExit(api, state.process) !== undefined || isJobEmpty(api, state.job)) throw new Error('LPAC suspended target is no longer active');
+  const inJob = Buffer.alloc(4);
+  if (api.isProcessInJob(state.process, state.job, inJob) === 0) throwLastError(api, 'IsProcessInJob');
+  if (inJob.readUInt32LE() !== 1) throw new Error('LPAC target left the original Job');
+  state.resumeAttempted = true;
+  const previous = api.resumeThread(state.initialThread);
+  if (previous === 0xffffffff) throwLastError(api, 'ResumeThread', 'verified LPAC target');
+  state.payloadResumed = previous <= 1;
+  if (previous !== 1) throw new Error('LPAC target suspend count was not exactly one');
+  state.initialThreadCloseAttempted = true;
+  closeHandleChecked(api, state.initialThread, 'LPAC initial thread');
+  state.initialThread = null;
+  return {pid:state.pid, process:state.process, job:state.job};
+ } catch (error) { throw retainLpacLaunchFailure(api, frame, error); }
+}
+/** 排空以后一次关闭原句柄；关闭结果未知不重试、不伪造已释放。 */
+function closeLpacJobProcessHandles(api, frame) {
+ const state = lpacState(api, frame);
+ if (state.pendingPreparation !== undefined && !state.pendingPreparation.settled || !state.preparationReleased || state.process === null || state.job === null || pollProcessExit(api, state.process) === undefined || !isJobEmpty(api, state.job)) throw new Error('LPAC handle closure requires joined preparation, a settled target and an empty original Job');
+ const failures = [];
+ for (const [key,attempted,label] of [['initialThread','initialThreadCloseAttempted','LPAC initial thread'],['process','processCloseAttempted','LPAC direct process'],['job','jobCloseAttempted','LPAC original Job']]) {
+  if (state[key] === null) continue;
+  if (state[attempted]) { failures.push(new Error(label+' closure remains unknown')); continue; }
+  state[attempted] = true;
+  try { closeHandleChecked(api, state[key], label); state[key] = null; } catch (error) { failures.push(error); }
+ }
+ if (failures.length) throw new AggregateError(failures, 'LPAC native handle ownership remains unknown');
+}
+/** 同步调用方也使用同一挂起 frame；异步/生成器不能进入原生分配。 */
+function spawnLpacJobProcess(api, options) {
+ if (typeof options.prepareBeforeResume !== 'function' || isAsyncFunction(options.prepareBeforeResume) || isGeneratorFunction(options.prepareBeforeResume)) throw new Error('LPAC requires a synchronous non-generator owned-profile/token preparation before Resume');
+ const frame = createSuspendedLpacJobProcess(api, options), state = lpacState(api, frame);
+ try {
+  const prepared = options.prepareBeforeResume(frame);
+  if (prepared && typeof prepared.then === 'function') {
+   const pending = {settled:false};
+   state.pendingPreparation = pending;
+   pending.join = Promise.resolve(prepared).then(
+    () => {pending.settled=true;}, error => {pending.settled=true;pending.error=error;}
+   );
+   throw new Error('LPAC preparation returned a thenable; identity and resource ownership remain unknown, no Resume');
+  }
+ } catch (error) { throw retainLpacLaunchFailure(api, frame, error); }
+ return resumeLpacJobProcess(api, frame);
+}
+
 /** Shared suspended-create, Job-assignment, and resume lifecycle. */
 function spawnJobProcess(api, options, resolveStdio, createName, create) {
 	const job = createKillOnCloseJob(api);
@@ -760,4 +1181,4 @@ function closeHandleChecked(api, handle, detail) {
 	if (api.closeHandle(handle) === 0) throwLastError(api, "CloseHandle", detail);
 }
 //#endregion
-export { ERROR_INSUFFICIENT_BUFFER, Win32Error, allocPtrSlot, allocUint32, closeHandleChecked, decodePtr, decodeUint32, drainPipe, extendWin32ProcessBindings, isJobEmpty, isNullPtr, loadWin32ProcessBindings, pollProcessExit, probeCurrentTokenJobSupport, spawnCurrentTokenJobProcess, spawnInheritedJobProcess, spawnPipedProcess, terminateJob, throwLastError, throwWin32, waitForProcessExit };
+export { ERROR_INSUFFICIENT_BUFFER, Win32Error, allocPtrSlot, allocUint32, closeHandleChecked, decodePtr, decodeUint32, drainPipe, extendWin32ProcessBindings, isJobEmpty, isNullPtr, loadWin32ProcessBindings, loadWin32ConptyBindings, createPseudoConsole, createSuspendedLpacJobProcess, inspectFailedLpacJobProcess, closeFailedLpacJobProcessHandles, resumeLpacJobProcess, inspectLpacJobProcess, closeLpacJobProcessHandles, pollProcessExit, probeCurrentTokenJobSupport, spawnCurrentTokenJobProcess, spawnLpacJobProcess, spawnInheritedJobProcess, spawnPipedProcess, terminateJob, throwLastError, throwWin32, waitForProcessExit };

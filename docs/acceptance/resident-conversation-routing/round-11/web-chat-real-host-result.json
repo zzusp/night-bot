@@ -1,0 +1,86 @@
+{
+  "tasks": [
+    {
+      "taskId": "source-image-task",
+      "sessionId": "task-session-c7d362b3-df86-4682-b25d-1795e79be04f",
+      "status": "completed",
+      "drained": true,
+      "objectiveSha256": "eb79a29ff151711b43cd00ed2c9ca072b73295cb363246660e79a6efa9a97e74",
+      "resultSha256": "de891c1d0fd4e94ecaa8e01030c9c5b25f1b98e61bd86db247ba78e1cde541fc"
+    },
+    {
+      "taskId": "web-chat-task",
+      "sessionId": "task-session-01b9f3bc-5dcb-4eae-951a-d3a950697fa1",
+      "status": "completed",
+      "drained": true,
+      "objectiveSha256": "eb79a29ff151711b43cd00ed2c9ca072b73295cb363246660e79a6efa9a97e74",
+      "resultSha256": "de891c1d0fd4e94ecaa8e01030c9c5b25f1b98e61bd86db247ba78e1cde541fc"
+    }
+  ],
+  "sourceCharacters": 25991,
+  "objectiveCharacters": 21630,
+  "resultCharacters": 24224,
+  "image": {
+    "originalSha256": "b27b4adcdfde8aa43e2f82270a7d1838de57014f3c5b9a000d6c8fa04206cefc",
+    "bytes": 114,
+    "hostMaterialVerified": true,
+    "actualReadImage": true,
+    "officialRequestMime": "image/png",
+    "pixelsMatch": true
+  },
+  "crossConversation": {
+    "actualModelAHeldUntilBCompleted": true
+  },
+  "routerGenerationBefore": 1,
+  "routerGenerationAfter": 3,
+  "chatTaskSession": "task-session-01b9f3bc-5dcb-4eae-951a-d3a950697fa1",
+  "chatTaskIds": [
+    "web-chat-task"
+  ],
+  "toolInputOutputVisible": true,
+  "formalBodyPaginationLossless": true,
+  "learning": [
+    {
+      "kind": "memory",
+      "characters": 168,
+      "sha256": "562c1d56a161b341b5d9f281bbe64a35e9f53cc5ffca27dfaeddf8e3e048d9c2",
+      "version": "c08277dbf814bb41fdce117e3e88bcc8bcc59303ddb3e700679fdff239b12008",
+      "source": {
+        "taskId": "web-chat-task",
+        "eventId": "task-completed:complete:web-chat-task:1",
+        "reviewId": "47b99d2ee3344895b9167197ff36e4e59e84b5a6ed9b9cd4ff010b856ef84001"
+      },
+      "complete": true,
+      "uiTailVisible": true
+    },
+    {
+      "kind": "skill",
+      "characters": 8700,
+      "sha256": "013af7dd571c784b07bd0a2dd99e9b2ca7735f90185eb26fe6a7e58dfad843b7",
+      "version": "87110fa21b6a735a6a70cb840a91d4442b652d26dd493656fd7538ae41d88e38",
+      "source": {
+        "taskId": "web-chat-task",
+        "eventId": "task-completed:complete:web-chat-task:1",
+        "reviewId": "47b99d2ee3344895b9167197ff36e4e59e84b5a6ed9b9cd4ff010b856ef84001"
+      },
+      "complete": true,
+      "uiTailVisible": true
+    }
+  ],
+  "scopeDenied": true,
+  "staleVersion409": true,
+  "forgetInvalidated": true,
+  "explicitForgetModelRequests": 1,
+  "refreshNoModelReplay": true,
+  "readOnlyJournals": true,
+  "readOnlyLearning": true,
+  "modelRequests": 25,
+  "apiRoutesIntercepted": false,
+  "realVendorExecuted": false,
+  "scriptedLocalModel": true,
+  "dist": {
+    "index.html": "e811d08ec4b98ec7230810bf66ca35ae4090ba6f9213cd9f4507a16598579ad2",
+    "assets/index-CNj9MuPZ.js": "54d2b85fba411b86ee62eea017459cf18075197f3a6ff36dbe942bd8d0693d4f",
+    "assets/index-oNAAD19Z.css": "93cc56b2b9f60d37d46c7876726672fa7db19016122cb04d7a00f937d7a82add"
+  }
+}

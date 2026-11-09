@@ -10,18 +10,18 @@ import { postgresWrapperScope, postgresWrapperSchema, postgresWrapperInspection 
 export const nativeRestartProviderFiles = Object.freeze([
   {
     "path": "src/process/contracts.js",
-    "sha256": "2c3deb502db3abe91c40ffea9e204495771de2564aabe505d68eaf12b29b1b78",
-    "sha256CRLF": "7a08201ebd1b0fd420a18789befb20f9de8a3ccae460b2e624f520a57ed1e947"
+    "sha256": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "sha256CRLF": "88106daebe59eb6284328ec46865bf9a957d0575f7599d23817c2ec93e87d4d4"
   },
   {
     "path": "src/process/control.js",
-    "sha256": "923be45a0d625cb4da7beb2713f4e80a96ab092180c100be72c17546cbf201bc",
-    "sha256CRLF": "d11cadac0cb4fb96089529446a44b1a813b0f7341f5f43d36fb0d8cc1abf7ac6"
+    "sha256": "1b0d1a00d2bc45ddd09b153df494534924da4a23ca7e4d86209b0e1b1589f616",
+    "sha256CRLF": "a6b836e8714e1ceab57b4423358d0d79dea084680abff0b510b5d1347440303b"
   },
   {
     "path": "src/process/index.js",
-    "sha256": "710ca8e8a812e05352860bcbc4a469b2bdf28a49f7816dbcdac9dcb15abcd999",
-    "sha256CRLF": "953623535364f914ffadbf57be0fd544d5083891f2d31755a9dc93c7e3b705c5"
+    "sha256": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa",
+    "sha256CRLF": "f64ad7fff95eb7e2ae391a98f3f80c3a6c17eabc6c8c5692edf840eaca7ee727"
   },
   {
     "path": "src/process/output.js",
@@ -30,38 +30,18 @@ export const nativeRestartProviderFiles = Object.freeze([
   },
   {
     "path": "src/process/runner-launch-B2zsQ1Dz.js",
-    "sha256": "f78368931db8b45dee4f973d0de0ffdcab33fe783379554ca24eafdfbcc0f77b",
-    "sha256CRLF": "ecc25511d34529950a93248f2dee87f44430b75f32218dc99d39781e68114f95"
+    "sha256": "5fff180a72e00f57f7d8439abbb0e7f6809772cb406a970ea057ac3d5772949c",
+    "sha256CRLF": "16fe92aa30c99bc13f6c00af06fd362150c6667219191e0f4dfcb169c037d656"
   },
   {
     "path": "src/process/runner.js",
-    "sha256": "a6182b3cce75b0a2808f34fb9ea892132e14eb6b155097f90864dff10972f16a",
-    "sha256CRLF": "987c5993f1784dcb7ffb0be785f9fd0e80a68068186aaa8e7230c8901b846ba2"
+    "sha256": "427e2d87a8b7222901b65e51843f98a99bf36d0302f27804fdb5b2c8ee1628af",
+    "sha256CRLF": "e3905f948d1ccf06e469cef3e2acb4b4ecadf9b767dc886f56d7956e244fa750"
   },
   {
     "path": "src/process/win32.js",
-    "sha256": "8c9166f720b9002035167be149e3a2ee6291f4ab5da5879496361006dd779ff4",
-    "sha256CRLF": "cc2101c660c57ad54e6104135dd667892fbe7d9c83cbb44a044c90a0a01d11b3"
-  },
-  {
-    "path": "src/legacy-v4/dsh-win32-process/lib/index.js",
-    "sha256": "034c397a6da2d41904d156a5e3e520b6fc2e95b26643c7e4dd0ad83c3790bd23",
-    "sha256CRLF": "239d8c7607a062c5c5bd6175072a349898e5a5e8518ff83df7cdcf72959f3c41"
-  },
-  {
-    "path": "src/legacy-v4/dsh-subprocess/lib/control.js",
-    "sha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
-    "sha256CRLF": "9646167f3aa40b5ca717eff8d0635b482d9a62606161878aeca007b89044db18"
-  },
-  {
-    "path": "src/legacy-v4/dsh-sandbox-windows-acl/lib/runner.js",
-    "sha256": "67b71b8988583451a8c21451f06960f5266d3d27d133276aa74cd7096a612246",
-    "sha256CRLF": "b0584b10516d213b22b58c64034a7c40d6f71bcd98c2614187d93d58702645ae"
-  },
-  {
-    "path": "src/legacy-v4/dsh-sandbox-windows-acl/lib/types-Cl_DXjhk.js",
-    "sha256": "d42375a720d7f628a93cde5cd4a8964f3d75cd1d2fcd589d379d210883e91ee4",
-    "sha256CRLF": "bdb7b217029b3ce1457b4dd166905049fad25389d14e44b15249c32389e42482"
+    "sha256": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "sha256CRLF": "a254f7308be79c8d662bb54f4b161c32b3318763c59b9812501017c64d28d311"
   },
   {
     "path": "src/process/linux-launch.js",
@@ -87,6 +67,21 @@ export const nativeRestartProviderFiles = Object.freeze([
     "path": "src/process/linux-observation.js",
     "sha256": "65290b908cfc4111ca7442530e6fa633d85add4aeaaa73a5deea7678cf981c39",
     "sha256CRLF": "726eff73403aaf859f69815573568206f771f6f9882e976f1099d74b6aac0291"
+  },
+  {
+    "path": "src/native-sandbox.js",
+    "sha256": "9ae1d0927b6b05e8b37f2d9174d7ea118e0d7bdb772f4821327a8b0e94cbe25d",
+    "sha256CRLF": "332d646fcb92fd2e5fda860044016e64bc835031c69d2af00307679d02e865e5"
+  },
+  {
+    "path": "src/process/windows-acl.js",
+    "sha256": "15ec905ad74751f9e9c039d4a8c102ca1c2dcaf039462180821a074fe64325e8",
+    "sha256CRLF": "bd1a21bf5c79f98c636e393d22d1c7a6bd14fcc6f75bf839c37bfd162705bacd"
+  },
+  {
+    "path": "src/process/windows-acl-runner.js",
+    "sha256": "e8e44d3b69bee34bdcba776ad332eef31db2c2b74b0f22d87f0133b1bd175adc",
+    "sha256CRLF": "c828b76888b8271dbf0261f2fbeb42e681c57cc52fb43de54fc7c841a65a82a5"
   }
 ].map(Object.freeze))
 const nativeRuntimeRoot = fileURLToPath(new URL('../..', import.meta.url))

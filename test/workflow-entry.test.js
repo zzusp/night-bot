@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { verifyWorkflowActivation } from '../packages/dingtalk-dsh-assistant/legacy-resident-activation.js'
+import { verifyWorkflowActivation } from '../packages/dingtalk-core/legacy-resident-activation.js'
 
 test('配置不能替代持久active/workflow与封存证明', async () => {
   const store = { getGroup: () => ({ messages: [], outbox: [], coordinationRequests: {} }), listTasks: () => [] }
@@ -20,7 +20,7 @@ test('账本已激活但旧任务/消息/通知/协调未排空也禁止双引�
 
 test('固定相邻seal不能因workflow配置删除而恢复旧入口，sealed必须离线续接',async t=>{
  const {mkdtemp,writeFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join}=await import('node:path');const {createHash}=await import('node:crypto')
- const {verifyResidentWorkflowSeal}=await import('../packages/dingtalk-dsh-assistant/legacy-resident-activation.js')
+ const {verifyResidentWorkflowSeal}=await import('../packages/dingtalk-core/legacy-resident-activation.js')
  const root=await mkdtemp(join(tmpdir(),'workflow-seal-entry-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const ctx={storageDomain:{config:{backend:'json'}},storage:{backend:{get:()=>({root})}}}
  assert.equal((await verifyResidentWorkflowSeal(ctx)).seal,null)

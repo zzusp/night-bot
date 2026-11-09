@@ -185,3 +185,42 @@ export async function readTaskMaterials({ directories, artifacts, requirementRev
   finally { await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error }) }
   return index
 }
+
+/** 当前阶段的成功证明和诊断引用分开；领域扩展只来自冻结定义的受信合同。 */
+export async function readTaskStageArtifacts({ taskId, stages, controller, plan, readStageArtifacts, signal }) {
+  const result = []
+  for (const stage of stages.filter(item => item.status !== 'invalidated')) {
+    signal?.throwIfAborted()
+    const state = stage.runId ? await controller.state(stage.runId, { includeRecovery: true }) : null
+    if (state && (state.run?.taskId !== taskId || state.run.runId !== stage.runId
+      || state.run.workflowId !== stage.workflowId || state.run.workflowDigest !== stage.workflowDigest))
+      throw executionError('TASK_OWNER_STAGE_RUN_MISMATCH')
+    const succeeded = stage.status === 'succeeded' && stage.outputRef
+    const problemNodes = (state?.nodes ?? []).filter(node => ['waiting', 'failed'].includes(node.status))
+    if (!succeeded && !problemNodes.length) continue
+    const entry = { stageId: stage.stageId, status: stage.status, outputRef: succeeded ? stage.outputRef : null,
+      evidenceRefs: succeeded ? [...(stage.evidenceRefs ?? [])] : [],
+      completionEvidenceRefs: succeeded ? [...new Set([stage.outputRef, ...(stage.evidenceRefs ?? [])])] : [] }
+    if (succeeded && readStageArtifacts) {
+      const extension = await readStageArtifacts({ taskId, stage, state, plan, signal })
+      const known = new Set([stage.outputRef, ...(stage.evidenceRefs ?? []),
+        ...(state?.nodes ?? []).flatMap(node => [node.outputRef, ...(node.evidenceRefs ?? [])].filter(Boolean))])
+      if ([...(extension?.evidenceRefs ?? []), ...(extension?.completionEvidenceRefs ?? []),
+        ...(extension?.nodeArtifacts ?? []).map(node => node.artifactRef)].some(ref => !known.has(ref)))
+        throw executionError('TASK_OWNER_ARTIFACT_SCOPE_MISMATCH')
+      if (extension?.nodeArtifacts) entry.nodeArtifacts = extension.nodeArtifacts
+      if (extension?.domainEvidence !== undefined) entry.domainEvidence = structuredClone(extension.domainEvidence)
+      entry.evidenceRefs = [...new Set([...entry.evidenceRefs, ...(extension?.evidenceRefs ?? [])])]
+      if (extension?.completionEvidenceRefs) entry.completionEvidenceRefs = extension.completionEvidenceRefs
+    }
+    if (problemNodes.length) {
+      entry.diagnostics = problemNodes.map(node => ({ nodeId: node.nodeId, nodeRunId: node.nodeRunId,
+        status: node.status, generation: node.generation, leaseEpoch: node.leaseEpoch, drained: node.drained,
+        waitReason: node.waitReason, evidenceRefs: [...(node.evidenceRefs ?? [])] }))
+      entry.evidenceRefs = [...new Set([...entry.evidenceRefs,
+        ...(state.nodes ?? []).flatMap(node => [node.outputRef, ...(['waiting', 'failed'].includes(node.status) ? node.evidenceRefs ?? [] : [])].filter(Boolean))])]
+    }
+    result.push(entry)
+  }
+  return result
+}

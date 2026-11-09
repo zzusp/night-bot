@@ -8,6 +8,18 @@ const timing = (start, end) => {
 
 // 状态在拥有 Topic/来源账的后端判定，通知及业务 Task 完成不作语义完成门禁。
 export function messageProcessingProjection(message, topics, source, requests, stateOnly=false, details=true) {
+  const direct=source?.directRouting
+  if(direct?.triage){
+    const triaged=direct.triage.state==='committed',needsHandling=direct.triage.decision?.needsHandling===true
+    const done=triaged&&(!needsHandling||direct.event?.state==='consumed'),state=done?'processed':triaged?'processing':'routing'
+    if(stateOnly)return {processingState:state}
+    const completedAt=done?(needsHandling?direct.event?.consumedAt??null:source.routedAt??null):null
+    const base={processingState:state,processingBasis:needsHandling?'router-inbox':'triage-disposition',processingConclusion:direct.triage.decision?.reason??null,processingFailureCode:null,routingHold:null,processingSentAt:message.occurredAt??null,processingCompletedAt:completedAt,processingRecovery:null,processingRetrying:false}
+    if(!details)return base
+    const notices=source.notifications??[],allDelivered=notices.length&&notices.every(row=>row.versionMatched===true&&row.state==='delivered'&&Number.isFinite(instant(row.deliveredAt))),deliveredAt=allDelivered?new Date(Math.max(...notices.map(row=>instant(row.deliveredAt)))).toISOString():null
+    return {...base,processingFacts:{sourceId:source.sourceId,messageVersion:source.version,sourceState:done?'settled':'unsettled',sourceSettledAt:completedAt,receivedAt:source.receivedAt??null,notificationState:!notices.length?'unknown':allDelivered?'delivered':'unconfirmed',notifications:notices,semantic:timing(message.occurredAt,completedAt),notificationE2e:timing(source.receivedAt,deliveredAt),stages:source.stages??[],issues:[],recovery:[],fixedTopics:[],triage:direct.triage,routerEvent:direct.event}}
+  }
+
   const currentUnit = ref => !Array.isArray(message.activeUnitRefs) || message.activeUnitRefs.some(item => item.unitId === ref.unitId && item.unitRevision === ref.unitRevision)
   const retired = ref => source?.coordinationRetirement?.units?.some(item => item.unitId === ref.unitId && item.unitRevision === ref.unitRevision)
   const related = topics.flatMap(topic => {

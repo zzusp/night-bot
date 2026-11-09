@@ -32,7 +32,19 @@ export async function checkedTaskDirectory(path, create = false) {
   return path
 }
 
-export async function taskDirectories(workspaceRoot, logicalTaskId) {
+/** 初始化状态只来自 Host 任务账本；旧档案无字段时保持原复用语义。 */
+export function taskWorkspaceReady(task) {
+  if(!Object.hasOwn(task,'workspaceInitialization'))return true
+  const initial=task.workspaceInitialization
+  return initial?.state==='ready'&&initial.sessionId===task.sessionId&&typeof initial.creationCommandId==='string'&&initial.creationCommandId.length>0
+}
+
+export function assertTaskWorkspaceReady(task) {
+  if(!taskWorkspaceReady(task))throw Object.assign(new Error('TASK_WORKSPACE_NOT_READY'),{code:'TASK_WORKSPACE_NOT_READY',taskId:task.taskId})
+}
+
+export async function taskDirectories(workspaceRoot, logicalTaskId, {task} = {}) {
+  if(task){if(task.taskId!==logicalTaskId)throw new Error('TASK_DIRECTORY_IDENTITY_CONFLICT');assertTaskWorkspaceReady(task)}
   const materials = taskFilePath(workspaceRoot, logicalTaskId, 'materials')
   const work = taskFilePath(workspaceRoot, logicalTaskId, 'work')
   const tmp = taskFilePath(workspaceRoot, logicalTaskId, 'tmp')
@@ -41,9 +53,29 @@ export async function taskDirectories(workspaceRoot, logicalTaskId) {
   return { logicalTaskId, root: dirname(work), materials, work, tmp, outputs }
 }
 
+/** 仅消费未重放的 Host 初始化意图；普通 ensure、恢复和 adopt 不走此入口。 */
+export async function initializeTaskDirectories(workspaceRoot, task) {
+  const initial=task.workspaceInitialization
+  if(process.platform!=='win32'||initial?.state!=='initializing'||initial.sessionId!==task.sessionId
+    ||typeof initial.creationCommandId!=='string'||!initial.creationCommandId)throw new Error('TASK_WORKSPACE_INITIALIZATION_BINDING_INVALID')
+  const work=taskFilePath(workspaceRoot,task.taskId,'work'),tmp=taskFilePath(workspaceRoot,task.taskId,'tmp'),root=dirname(work)
+  await checkedTaskDirectory(dirname(root),true)
+  // Native 在持有完整父链时独占创建任务根与两写目录；EEXIST 不复用，不重试补标签。
+  const {createPrivateTaskWorkDirectories}=await import('../../src/process/windows-acl.js')
+  const native=createPrivateTaskWorkDirectories({work,tmp})
+  const identity=await lstat(root,{bigint:true})
+  try{
+    for(const area of ['materials','outputs','sessions','reviews'])await checkedTaskDirectory(taskFilePath(workspaceRoot,task.taskId,area),true)
+    await checkedTaskDirectory(root)
+    const after=await lstat(root,{bigint:true})
+    if(identity.ino!==after.ino||identity.dev!==after.dev)throw new Error('TASK_DIRECTORY_IDENTITY_CONFLICT')
+  }catch(error){error.nativeResources=native.nativeResources;throw error}
+  return {logicalTaskId:task.taskId,root,work,tmp,native,materials:taskFilePath(workspaceRoot,task.taskId,'materials'),outputs:taskFilePath(workspaceRoot,task.taskId,'outputs')}
+}
+
 /** A task owns one durable workspace; neither its title nor its model can choose the path. */
-export async function taskWorkspace(root, taskId) {
-  return (await taskDirectories(root, taskId)).root
+export async function taskWorkspace(root, taskId, task) {
+  return (await taskDirectories(root, taskId, {task})).root
 }
 
 /** Every execution of a task shares its task's native workspace and runtime directory. */

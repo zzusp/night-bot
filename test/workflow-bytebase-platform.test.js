@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import { createBytebaseDataChangePlatform } from '../packages/dingtalk-dsh-assistant/workflow-bytebase-platform.js'
-import { simpleNullableColumnDefinition } from '../packages/dingtalk-dsh-assistant/workflow-data-change.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
+import { createBytebaseDataChangePlatform } from '../packages/dingtalk-core/workflow-bytebase-platform.js'
+import { simpleNullableColumnDefinition } from '../packages/dingtalk-core/workflow-data-change.js'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const target = { instance: 'instances/prod', database: 'instances/prod/databases/app', environment: 'production' }

@@ -1,0 +1,10 @@
+{
+  "exit": 0,
+  "startedAt": "2026-11-07T21:00:33.759Z",
+  "finishedAt": "2026-11-07T21:00:34.152Z",
+  "sourceCount": 425,
+  "sourceChanged": [],
+  "logSha256": "01eb8d2b14052aec48d5e4dc48311e0333f3db96fd815282da7ae418ba22b6b5",
+  "scope": "three reviewed private policy P2 only; no native/OS/Profile/Host",
+  "realVendorExecuted": false
+}

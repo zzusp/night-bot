@@ -1,0 +1,246 @@
+{
+  "taskId": "b2n5wjbfb",
+  "scope": "Registration native-leaf predicate only; no LPAC child/API storage binding, DACL, future inheritance, production cleanup or provider admission proof",
+  "sourceSha256": "1ae4cdec90e211e77574b20f1aeb7c4514a081f2b9fd3ccf07c6d67c1e2da9d9",
+  "parameterSha256": "6e09d9710cc69ccdf42864bfe3c412ab289205ac26e86cd8a3dbf5023bc80ed0",
+  "check": {
+    "phase": "check",
+    "exit": 0,
+    "startedAt": "2026-11-08T00:58:09.577090+00:00",
+    "finishedAt": "2026-11-08T00:58:10.555890+00:00",
+    "sourceSha256": "1ae4cdec90e211e77574b20f1aeb7c4514a081f2b9fd3ccf07c6d67c1e2da9d9",
+    "parameterSha256": "6e09d9710cc69ccdf42864bfe3c412ab289205ac26e86cd8a3dbf5023bc80ed0",
+    "identityOnly": false,
+    "bindClassesLink": true,
+    "registrationPredicate": true,
+    "effects": 0,
+    "sourceChanged": [],
+    "checkLogSha256": "dc058fb2b397a159d2ba836e923e4e3d1de22ef2741e97dd0b64c67dd1ad54d7",
+    "checkStderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "run": {
+    "phase": "run",
+    "exit": 2,
+    "pid": 44572,
+    "startedAt": "2026-11-08T00:58:46.761902+00:00",
+    "finishedAt": "2026-11-08T00:58:49.142616+00:00",
+    "sourceSha256": "1ae4cdec90e211e77574b20f1aeb7c4514a081f2b9fd3ccf07c6d67c1e2da9d9",
+    "parameterSha256": "6e09d9710cc69ccdf42864bfe3c412ab289205ac26e86cd8a3dbf5023bc80ed0",
+    "sourceChanged": [],
+    "bindingVerified": true,
+    "rawResultObserved": true,
+    "identityOnly": false,
+    "bindClassesLink": true,
+    "registrationPredicate": true,
+    "logSha256": "6e33a7e26bae8c1b82b9db38e3660a3757fa3f202a0d38bca009d46a8fc3a87f",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "privateResultSha256": "8e0024b48dd6b19bede63dd9037460858b8421d499f923f7ef6e508c6ff74e1e"
+  },
+  "result": {
+    "variant": "registration-bound-predicate-only",
+    "identityOnly": false,
+    "bindClassesLink": true,
+    "registrationPredicate": true,
+    "profileCreated": true,
+    "createAttempted": true,
+    "deleteAttempted": false,
+    "registrationAbsenceVerified": false,
+    "profileFolderRemoved": false,
+    "storageApiBindingVerified": false,
+    "productionAdmissible": false,
+    "cleanupComplete": false,
+    "childCreated": false,
+    "jobCreated": false,
+    "impersonationPerformed": false,
+    "aclChanged": false,
+    "networkCapabilities": 0,
+    "pass": false,
+    "classesLinkBoundReadOnly": true,
+    "identityReadOnlyComplete": true,
+    "beforeStatus": 2,
+    "createHresult": 0,
+    "errors": [
+      {
+        "stage": "created registration binding",
+        "type": "Exception",
+        "message": "Moniker bytes mismatch"
+      }
+    ],
+    "nativeOwnerRetained": false,
+    "retainedHandles": [],
+    "handlesClosed": true,
+    "profileState": "unknown-retain-moniker-sid-binding",
+    "scope": "Registration native-leaf predicate only; no LPAC child/API storage binding, DACL, future inheritance, production cleanup or provider admission proof"
+  },
+  "identityObservations": [
+    {
+      "label": "host-root",
+      "matches": true
+    },
+    {
+      "label": "classes-software",
+      "matches": true
+    },
+    {
+      "label": "user-classes",
+      "matches": true
+    },
+    {
+      "label": "user-classes-link-before-value",
+      "matches": true
+    },
+    {
+      "label": "classes-target",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-0",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-1",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-2",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-3",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-4",
+      "matches": true
+    },
+    {
+      "label": "mapping-ancestor-5",
+      "matches": true
+    },
+    {
+      "label": "mapping-parent",
+      "matches": true
+    },
+    {
+      "label": "user-classes-link-after-value",
+      "matches": true
+    }
+  ],
+  "linkObservations": [
+    {
+      "label": "host-root",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "classes-software",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "user-classes-link-before",
+      "queryStatus": 0,
+      "type": 6,
+      "bytes": 138,
+      "expectedBytes": 138,
+      "readStatus": 0,
+      "readType": 6,
+      "readBytes": 138
+    },
+    {
+      "label": "classes-target",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-0",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-1",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-2",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-3",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-4",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-ancestor-5",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "mapping-parent",
+      "queryStatus": 2,
+      "type": 0,
+      "bytes": 0,
+      "absent": true
+    },
+    {
+      "label": "user-classes-link-after",
+      "queryStatus": 0,
+      "type": 6,
+      "bytes": 138,
+      "expectedBytes": 138,
+      "readStatus": 0,
+      "readType": 6,
+      "readBytes": 138
+    }
+  ],
+  "exactOwnerBindingRetainedPrivately": true,
+  "newProfileState": "unknown-retain-moniker-sid-binding",
+  "extraCreateOrDeleteAttempted": false,
+  "exactPidReadback": {
+    "pid": 44572,
+    "observed": false,
+    "observedAt": "2026-11-08T01:00:03.8737381+00:00",
+    "method": "independent PowerShell Get-Process -Id 44572",
+    "profileCleanupProved": false,
+    "priorResourceCleanupProved": false
+  },
+  "rawEvidenceSha256": {
+    "docs/tmp/sg11-profile-bound-predicate-check.log": "dc058fb2b397a159d2ba836e923e4e3d1de22ef2741e97dd0b64c67dd1ad54d7",
+    "docs/tmp/sg11-profile-bound-predicate-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-bound-predicate-run.log": "6e33a7e26bae8c1b82b9db38e3660a3757fa3f202a0d38bca009d46a8fc3a87f",
+    "docs/tmp/sg11-profile-bound-predicate-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-bound-predicate-private-result.json": "8e0024b48dd6b19bede63dd9037460858b8421d499f923f7ef6e508c6ff74e1e",
+    "docs/tmp/sg11-profile-bound-predicate-private-owner.json": "7cf5c39e409a2959a04819dbbc2bcb0a86f443151a259c05637f8982b056c251",
+    "docs/tmp/sg11-profile-bound-predicate-executor.json": "f04353144bb3af53fc6d51e06fc04ae8ea84b294bbcfb7edc48163520ed0edb8"
+  },
+  "rawEvidenceIgnoredUntrackedUnstaged": true,
+  "oldUnknownCleanupProved": false,
+  "productionAdmissible": false,
+  "storageApiBindingVerified": false,
+  "cleanupComplete": false
+}

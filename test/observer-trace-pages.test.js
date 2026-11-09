@@ -1,9 +1,9 @@
-import {describeMessageTraceItem} from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import {queryMessageTopics} from '../packages/dingtalk-dsh-assistant/message-topics.js'
+import {describeMessageTraceItem} from '../packages/dingtalk-core/workflow-service.js'
+import {queryMessageTopics} from '../packages/dingtalk-core/message-topics.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
-import {installObserverTracePages,observerTracePage} from '../packages/dingtalk-dsh-assistant/observer-trace-pages.js'
+import {installObserverTracePages,observerTracePage} from '../packages/dingtalk-core/observer-trace-pages.js'
 test('trace selects indexed IDs before fetching event bodies, including shared intents without duplicates',t=>{
  const db=new DatabaseSync(':memory:');t.after(()=>db.close())
  db.exec('CREATE TABLE message_runs(run_id TEXT PRIMARY KEY,body TEXT);CREATE TABLE message_items(item_id TEXT PRIMARY KEY,run_id TEXT,kind TEXT,body TEXT)')

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readUploadedSourceEvidence } from '../packages/dingtalk-dsh-assistant/workflow-source-evidence.js'
+import { readUploadedSourceEvidence } from '../packages/dingtalk-core/workflow-source-evidence.js'
 
 const commit = 'a'.repeat(40), sha256 = 'b'.repeat(64), artifactId = 'c'.repeat(32)
 const log = text => ({ step_id: 17, data: Buffer.from(text).toString('base64') })

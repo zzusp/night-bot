@@ -1,6 +1,7 @@
 {
   "dataDir": "data",
   "shell": "bash",
+  "permissionMode": "ask",
   "model": { "provider": "openai", "model": "gpt-4.1" },
   "providers": { "openai": { "apiKeyEnv": "OPENAI_API_KEY" } },
   "skillDirs": [],
@@ -8,7 +9,21 @@
   "skillWatch": true,
   "credentialsWatch": true,
   "channelPluginDirs": [],
-  "channelPlugins": [],
+  "channelPlugins": [{
+    "type": "dingtalk-dws",
+    "enabled": false,
+    "channelId": "dingtalk-dws",
+    "config": {
+      "dingtalk_profile": "REPLACE_WITH_EXPLICIT_PROFILE",
+      "dingtalk_conversation_type": "chat-room",
+      "dingtalk_group_id": "REPLACE_WITH_GROUP_ID",
+      "dingtalk_name": "个人助手",
+      "dingtalk_prompt": "在此填写该群的职责、助手设定和工作规范；仅处理明确授权的请求，不能据此扩大权限。",
+      "dingtalk_account_mode": "system",
+      "dingtalk_listen": true,
+      "dingtalk_writes_authorized": false
+    }
+  }],
   "memory": { "background": true, "bindings": {} },
   "resident": {
     "host": "127.0.0.1",

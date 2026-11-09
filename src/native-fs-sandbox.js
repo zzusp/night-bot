@@ -124,7 +124,13 @@ var SandboxedFileSystem = class NativeSandboxedFileSystem extends LocalFileSyste
 	* @returns the write outcome from the inherited backend.
 	*/
 	async writeText(target, content, expected, signal, sandboxPolicy) {
-		return super.writeText(await this.checkedTarget(target, sandboxPolicy), content, expected, signal);
+		const fresh = await this.checkedTarget(target, sandboxPolicy);
+		const actor = this.ctx.get('agents')?.currentInitiator(), permissions = this.ctx.get('toolPermissions');
+		if (actor && permissions) {
+			permissions.consumeFileAuthorization({actor, path: String(fresh.targetKey)});
+			signal = permissions.executionSignal(signal);
+		}
+		return super.writeText(fresh, content, expected, signal);
 	}
 	/**
 	* Enforce the per-call policy against `target` and return the EXACT target the

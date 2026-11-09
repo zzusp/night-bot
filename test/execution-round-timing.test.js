@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { latestExecutionRoundTiming } from '../packages/dingtalk-dsh-assistant/task-execution-timeline.js'
+import { latestExecutionRoundTiming } from '../packages/dingtalk-core/task-execution-timeline.js'
 
 const at = minute => new Date(Date.UTC(2026, 9, 20, 0, minute)).toISOString()
 const segment = (leaseEpoch, from, to, state = to == null ? 'running' : 'closed') =>

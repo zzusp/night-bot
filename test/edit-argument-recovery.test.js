@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import {mkdtemp} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {createExecutionController,defineExecutionWorkflow,plannedStageRunId} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts} from '../packages/dingtalk-core/execution-artifacts.js'
+import {createExecutionController,defineExecutionWorkflow,plannedStageRunId} from '../packages/dingtalk-core/execution-controller.js'
 for(const exact of [true,false])test(`effect-free rejected edit resumes original session only with exact Host proof: ${exact}`,async t=>{
  const root=await mkdtemp(join(tmpdir(),'edit-recovery-')),store=await openExecutionStore({dbPath:join(root,'control.sqlite'),instanceId:'edit-recovery',initialize:true}),artifacts=await openExecutionArtifacts({directory:join(root,'artifacts'),initialize:true})
  let prefix=0,finish=0;const visits=[],schema={type:'object'}

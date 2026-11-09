@@ -7,12 +7,12 @@ import {join,dirname} from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {createHash} from 'node:crypto'
-import {freezeCandidate} from '../packages/dingtalk-dsh-assistant/execution-candidate.js'
-import {createTaskLocalAcceptanceRunner} from '../packages/dingtalk-dsh-assistant/execution-task-local-acceptance.js'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {openExecutionArtifacts,executionDigest} from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
-import {createExecutionController,defineExecutionWorkflow} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
-import {createExecutionDelivery} from '../packages/dingtalk-dsh-assistant/execution-delivery.js'
+import {freezeCandidate} from '../packages/dingtalk-core/execution-candidate.js'
+import {createTaskLocalAcceptanceRunner} from '../packages/dingtalk-core/execution-task-local-acceptance.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {openExecutionArtifacts,executionDigest} from '../packages/dingtalk-core/execution-artifacts.js'
+import {createExecutionController,defineExecutionWorkflow} from '../packages/dingtalk-core/execution-controller.js'
+import {createExecutionDelivery} from '../packages/dingtalk-core/execution-delivery.js'
 
 // Only isolated SQLite/files and real loopback child processes. Synthetic seven-case
 // reports exercise recovery admission; they are never SG20 UI/backend evidence.

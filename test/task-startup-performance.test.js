@@ -4,8 +4,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
-import { checkTaskStoreIntegrity } from '../packages/dingtalk-dsh-assistant/task-store-integrity.js'
-import { createStartupMetrics } from '../packages/dingtalk-dsh-assistant/startup-metrics.js'
+import { checkTaskStoreIntegrity } from '../packages/dingtalk-core/task-store-integrity.js'
+import { createStartupMetrics } from '../packages/dingtalk-core/startup-metrics.js'
 
 async function directory(t) {
   const root = await mkdtemp(join(tmpdir(), 'task-startup-'))
@@ -42,7 +42,7 @@ test('corruption and foreign-key violations remain fail-closed without leaking c
 })
 
 test('startup metrics cannot change semantics and normal startup does not scan history', async t => {
-  const { openDynamicTaskStore } = await import('../packages/dingtalk-dsh-assistant/dynamic-task-store.js')
+  const { openDynamicTaskStore } = await import('../packages/dingtalk-core/dynamic-task-store.js')
   const samples = [], root = await directory(t)
   const options = { dbPath: join(root, 'tasks.sqlite'), instanceId: 'synthetic', initialize: true,
     startupObserver: sample => { samples.push(sample); throw new Error('observer failed') } }
@@ -61,7 +61,7 @@ test('startup metrics cannot change semantics and normal startup does not scan h
 })
 
 test('synthetic execution history is recovered once without changing completed results', async t => {
-  const { openDynamicTaskStore } = await import('../packages/dingtalk-dsh-assistant/dynamic-task-store.js')
+  const { openDynamicTaskStore } = await import('../packages/dingtalk-core/dynamic-task-store.js')
   const root = await directory(t), dbPath = join(root, 'tasks.sqlite'), options = { dbPath, instanceId: 'scale', initialize: true }
   let store = await openDynamicTaskStore(options)
   let id = 0

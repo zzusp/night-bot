@@ -1,0 +1,191 @@
+{
+  "round": 35,
+  "disposition": "ACCESS_VIOLATION_COMPONENT_UNKNOWN_RESOURCE_UNRESOLVED",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceCount": 1125,
+  "aggregateSha256": "f302cf519b33b09f8709d8ad49ef7887b3e929685d6f66ed0b3f88b52b988fb7",
+  "sourceChanged": [],
+  "hostTaskId": "bghshp88o",
+  "toolUseId": "call_c3072470231b42cd89ab742fb31dfcde",
+  "run": {
+    "startedAt": "2026-11-08T15:35:54.010884+00:00",
+    "finishedAt": "2026-11-08T15:37:52.638230+00:00",
+    "nodePid": 48888,
+    "exitCode": 3221225477,
+    "naturalWaitReturned": true,
+    "forcedTermination": false,
+    "intervention": null
+  },
+  "freshCheck": {
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 118189,
+    "stdoutSha256": "0c6861aa68d8c71a2038f225064793c991145244929046d2f26f80657d422de5"
+  },
+  "freshArgvExactlyMatchesReviewed": true,
+  "freshStdoutExactlyMatchesReviewed": true,
+  "componentPass": null,
+  "componentPassWasProduced": false,
+  "rawRunJsonExists": false,
+  "journal": {
+    "bytes": 42274,
+    "sha256": "a2366fff4e24eb9cd97733179beb029919231ea875d4159ec47291bb9bada5d1",
+    "strict": {
+      "passed": true,
+      "error": null
+    },
+    "committedBytes": 42274,
+    "totalBytes": 42274,
+    "uncommittedBytes": 0,
+    "lastCommitted": {
+      "id": "5f2ed82c",
+      "parentId": "45cfa2d2",
+      "type": "custom",
+      "customType": "night.commit",
+      "timestamp": "2026-11-08T15:37:52.532Z",
+      "domain": null,
+      "kind": null
+    }
+  },
+  "committedEntryCount": 26,
+  "jobAnchors": [
+    {
+      "entryId": "605221ca",
+      "timestamp": "2026-11-08T15:37:51.932Z",
+      "kind": "registered",
+      "seq": null,
+      "resourceStatus": null,
+      "privateProofPhase": null
+    },
+    {
+      "entryId": "45cfa2d2",
+      "timestamp": "2026-11-08T15:37:52.505Z",
+      "kind": "resource-ownership",
+      "seq": 1,
+      "resourceStatus": "planned",
+      "privateProofPhase": null
+    }
+  ],
+  "profileOwnedProofCommitted": false,
+  "settledCommitted": false,
+  "releasedCommitted": false,
+  "unknownRetainedCommitted": false,
+  "offlineDecoderSources": {
+    "src/runtime/portable.js": "bc9e612a760dec6e31628b547f0e78dd0bb6eb020108298af9072c0f7ebd230c",
+    "src/runtime/paths.js": "6f3f3c3855d073425cf591861cbe783da1cd703b16f1ae5210651fc594e4599a",
+    "src/runtime/files.js": "03962ce0c92b343a5afee4229160ce33f7a87963a946dc9f624c80d2c92164ce",
+    "src/runtime/pi-journal.js": "70a2b288dfcfbbdef4b1a84a4df2eda0bb7aec880eb70a3c16b724f8c2433e0e",
+    "src/runtime/pi-business-path-bindings.js": "a27fb36b29fe29ed48abcf17689576b8e718d7415dd61223b5b6e53ac55145e2"
+  },
+  "offlineDecoderPreparationError": "First inline read-only decoder failed at Node compilation because an escaped path separator became invalid JavaScript; no module execution or evidence write occurred. Corrected to node:path relative/sep.",
+  "sqlite": {
+    "authority": "Original dynamic.db with WAL; mode=ro and query_only=ON",
+    "taskStatus": "active",
+    "drained": false,
+    "recovering": false,
+    "runSequence": 1,
+    "sessionBound": true,
+    "executionRows": 0,
+    "taskEventRows": 0,
+    "databaseFilesChanged": [],
+    "originalToolEvidence": "sqlite-readback.json"
+  },
+  "crashQueries": [
+    {
+      "log": "Application",
+      "eventId": 1000,
+      "startUtc": "2026-11-08T15:35:54.010884+00:00",
+      "endUtc": "2026-11-08T15:37:53.0000000Z",
+      "matchingEvents": 0
+    },
+    {
+      "windowEndUtc": "2026-11-08T15:56:24.0620818Z",
+      "log": "Application",
+      "matchingEvents": 0,
+      "eventId": 1000,
+      "windowStartUtc": "2026-11-08T15:35:54.0108840Z"
+    }
+  ],
+  "faultModule": null,
+  "faultOffset": null,
+  "exactNodeCreationTime": null,
+  "accessViolationSource": "Node process exit code, not a matching Windows event",
+  "resourceAfterCrash": {
+    "installationExists": true,
+    "installationIsReparse": false,
+    "tempChildCount": 0,
+    "sdkProfileOrRegistrationObserved": false,
+    "osResourceReleased": null,
+    "locksRetained": true,
+    "lockOwnerPids": [
+      48888,
+      48888
+    ]
+  },
+  "coreAssessment": {
+    "factoryPlannedCommitReached": true,
+    "factoryAwaitReturned": null,
+    "sdkCreateCalledOrSucceeded": null,
+    "hostAwaitOrSettledDefectProven": false,
+    "noReplay": "Original source chain retained; no restart performed",
+    "faultMayHaveOccurredEarlierAndSurfacedLater": true
+  },
+  "privateEvidence": {
+    "docs/tmp/sg11-profile-unlaunched-probe.mjs": {
+      "bytes": 23228,
+      "sha256": "9e90a078b30cba1db279b0ae872b1bad3cadff1e88d763eaca8160cf77bb6aa4"
+    },
+    "docs/tmp/sg11-profile-unlaunched-check.json": {
+      "bytes": 118189,
+      "sha256": "0c6861aa68d8c71a2038f225064793c991145244929046d2f26f80657d422de5"
+    },
+    "docs/tmp/sg11-profile-unlaunched-check-execution.json": {
+      "bytes": 5278,
+      "sha256": "f9e3281cf241ecf5189982d8c7469475876a0f1a2d166fe22fbf4bc5a6c2a4ca"
+    },
+    "docs/tmp/sg11-profile-unlaunched-checklist.md": {
+      "bytes": 15582,
+      "sha256": "64bb20e673f7b98f23dc5468e16bc36c0d57b49b3a2e2acb80c91f785bd5d1ce"
+    },
+    "docs/tmp/sg11-profile-unlaunched-execute.py": {
+      "bytes": 6392,
+      "sha256": "31a3c20c9252f36223194c13e397463db5cccc8594d843b2b8e371eacb82bc70"
+    },
+    "docs/tmp/sg11-profile-unlaunched-execution.json": {
+      "bytes": 248122,
+      "sha256": "9fb5c6554e2dc7bff2b9eb472b27cbd45f38816d08f2cf5db07643f4413f0456"
+    },
+    "docs/tmp/sg11-profile-unlaunched-postmortem-journal.json": {
+      "bytes": 10733,
+      "sha256": "d601d999b050fffa35ac88ae8c4c1bc874e3ba71db46088e17a386857e0ef8ab"
+    },
+    "docs/tmp/sg11-profile-unlaunched-postmortem-state.json": {
+      "bytes": 3075,
+      "sha256": "493e677ce09445c1f3e2a7819e7ceb390e578f3a393307cace353fa79b90eb32"
+    },
+    "docs/tmp/sg11-profile-unlaunched-run-check.json": {
+      "bytes": 118189,
+      "sha256": "0c6861aa68d8c71a2038f225064793c991145244929046d2f26f80657d422de5"
+    },
+    "docs/tmp/sg11-profile-unlaunched-run-console.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/tmp/sg11-profile-unlaunched-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "boundaries": {
+    "productionScopeReady": false,
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "hostOrNativeRerun": false,
+    "secondDeleteOrTailRepairOrCleanup": false,
+    "gitWritesChannelCiDeploy": false,
+    "newNodeTestRegistrations": 0,
+    "sourceWindowReleasedBeforePostmortem": true,
+    "plannedSnapshotNotPostCrashState": true
+  }
+}

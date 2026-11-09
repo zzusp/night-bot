@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { recallOperatorNotification } from '../packages/dingtalk-dsh-assistant/task-notification-readback.js'
-import { recallTaskOperatorNotification } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
+import { recallOperatorNotification } from '../packages/dingtalk-core/task-notification-readback.js'
+import { recallTaskOperatorNotification } from '../packages/dingtalk-core/notification-delivery.js'
 const notice = () => ({ id: 'operator:request-a', kind: 'question', state: 'delivered', createdAt: new Date().toISOString(),
   payload: { audience: 'operator', humanRequestId: 'request-a' }, receipt: { messageId: 'a', conversationId: 'private', senderActorId: 'self' } })
 test('recall uses only exact private receipt; repeated recovery reads absence without recalling another message', async () => {

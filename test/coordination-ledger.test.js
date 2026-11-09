@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile, rename, rm } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { spawn } from 'node:child_process'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 import { currentCoordinationFixture as fixture } from './fixtures/current-coordination-contracts.js'
 
 const source = (id, version = 1) => ({ sourceId: id, groupId: 'group', messageId: 'message', version, actorId: 'author',

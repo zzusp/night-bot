@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createHostPlatformClients, apply } from '../packages/dingtalk-dsh-assistant/platform-host.js'
+import { createHostPlatformClients, apply } from '../packages/dingtalk-core/platform-host.js'
 
 test('Host 仅从本机路径装配凭据并只提供客户端对象', async () => {
   const observed = []

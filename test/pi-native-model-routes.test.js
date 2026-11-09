@@ -40,3 +40,32 @@ test('discovery uses exact provider-scoped credentials and refuses endpoint cred
  assert.throws(()=>f.routes.discover({provider:' fixture'}),{code:'DISCOVERY_PROVIDER_REQUIRED'})
  const available=f.routes.configurableProviders().find(provider=>provider.provider==='fixture');assert.equal(available.settingsNs,'fixture-settings');assert.deepEqual(available.settingsPath,['providers','fixture'])
 })
+
+test('双提供方同名模型保持联合身份，目录观察不解析选择、不推理也不泄露秘密',async t=>{
+ let requests=0
+ const server=createServer((_req,res)=>{requests++;res.writeHead(500);res.end()})
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
+ t.after(()=>new Promise(resolve=>server.close(resolve)))
+ const url=`http://127.0.0.1:${server.address().port}`
+ const raw={
+  alpha:{api:'openai-completions',apiKeyEnv:'ALPHA_KEY',baseURL:url+'/alpha/v1',displayName:'Alpha',headers:{'X-Private':'private-route-secret'},models:[{id:'shared',name:'Alpha shared',input:['text'],maxTokens:80,contextWindow:8192}]},
+  beta:{api:'openai-completions',apiKeyEnv:'BETA_KEY',baseURL:url+'/beta/v1',displayName:'Beta',models:[{id:'shared',name:'Beta shared',input:['text','image'],maxTokens:160,contextWindow:16384}]},
+ }
+ const f=fixture(raw);t.after(()=>f.official.close())
+ const selected={provider:'beta',model:'shared'}
+ assert.deepEqual(await f.routes.validateSelection(selected),selected)
+ const alpha=await f.official.resolve({provider:'alpha',model:'shared'}),beta=await f.official.resolve(selected)
+ assert.equal(alpha.model.provider,'alpha');assert.equal(beta.model.provider,'beta')
+ assert.equal(alpha.model.id,beta.model.id);assert.notEqual(alpha.model.baseUrl,beta.model.baseUrl)
+ const before={...selected},modelBefore=beta.model
+ const resolve=t.mock.method(f.official,'resolve',f.official.resolve.bind(f.official))
+ const view={providers:f.routes.listProviders(),configurable:f.routes.configurableProviders(),alpha:await f.routes.listModels('alpha'),beta:await f.routes.listModels('beta'),descriptors:[await f.routes.describeModel('alpha','shared'),await f.routes.describeModel('beta','shared')]}
+ assert.deepEqual(view.alpha,[{provider:'alpha',id:'shared',name:'Alpha shared',inputModalities:['text']}])
+ assert.deepEqual(view.beta,[{provider:'beta',id:'shared',name:'Beta shared',inputModalities:['text','image']}])
+ assert.deepEqual(view.descriptors.map(row=>[row.provider,row.id,row.defaultMaxTokens,row.context.contextWindow]),[['alpha','shared',80,8192],['beta','shared',160,16384]])
+ await assert.rejects(f.routes.describeModel('missing','shared'),{code:'MODEL_PROVIDER_UNAVAILABLE'})
+ assert.equal(resolve.mock.callCount(),0)
+ assert.deepEqual(selected,before);assert.equal(beta.model,modelBefore)
+ assert.equal(requests,0)
+ for(const secret of ['private-route-secret','private-metadata-fixture',url])assert.ok(!JSON.stringify(view).includes(secret))
+})

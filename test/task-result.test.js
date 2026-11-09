@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseTaskCheckpoint, parseTaskResult, taskCheckpointJsonSchema, taskResultJsonSchema, storedTaskCheckpointBaseSchema, storedTaskResultSchema } from '../packages/dingtalk-dsh-assistant/task-result.js'
+import { parseTaskCheckpoint, parseTaskResult, taskCheckpointJsonSchema, taskResultJsonSchema, storedTaskCheckpointBaseSchema, storedTaskResultSchema } from '../packages/dingtalk-core/task-result.js'
 import { taskPlanFixture, stageOutputFixture } from './fixtures/task-plan.js'
 const plan = taskPlanFixture()
 const stage = stageOutputFixture(plan)

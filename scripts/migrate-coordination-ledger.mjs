@@ -4,8 +4,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { openDynamicTaskStore, ingressTimestamp } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { migrationLedgerTables, migrationStateDigest } from '../packages/dingtalk-dsh-assistant/coordination-migration-state.js'
+import { openDynamicTaskStore, ingressTimestamp } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { migrationLedgerTables, migrationStateDigest } from '../packages/dingtalk-core/coordination-migration-state.js'
 
 const APPLICATION = 0x44535453
 const fail = (code, detail = code) => { throw Object.assign(new Error(detail), { code }) }

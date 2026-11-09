@@ -1,14 +1,14 @@
-import {topicMessages,topicMessageCount} from '../packages/dingtalk-dsh-assistant/topic-model.js'
+import {topicMessages,topicMessageCount} from '../packages/dingtalk-core/topic-model.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createObserverGroupPages} from '../packages/dingtalk-dsh-assistant/observer-group-pages.js'
-import {ObserverMemoryPages} from '../packages/dingtalk-dsh-assistant/observer-memory-pages.js'
+import {createObserverGroupPages} from '../packages/dingtalk-core/observer-group-pages.js'
+import {ObserverMemoryPages} from '../packages/dingtalk-core/observer-memory-pages.js'
 import {readFile,mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {runInNewContext} from 'node:vm'
-import {observerOutboxState} from '../packages/dingtalk-dsh-assistant/observer-outbox-state.js'
-import {stableId} from '../packages/dingtalk-dsh-assistant/topic-model.js'
+import {observerOutboxState} from '../packages/dingtalk-core/observer-outbox-state.js'
+import {stableId} from '../packages/dingtalk-core/topic-model.js'
 
 test('group paging uses SQL rows without reading source or resident history; commits update affected IDs',async t=>{
  let group={groupId:'g',topics:[],outbox:[],messages:Array.from({length:1000},(_,i)=>({messageId:`m${i}`,messageVersion:1,sequence:i,occurredAt:'2026-10-28T00:00:00Z',routingStatus:i%2?'pending':'failed',text:'payload',get resources(){throw new Error('hidden payload read')}}))}

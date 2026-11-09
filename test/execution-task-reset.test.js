@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {createExecutionController} from '../packages/dingtalk-dsh-assistant/execution-controller.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {createExecutionController} from '../packages/dingtalk-core/execution-controller.js'
 const h='a'.repeat(64),ref=id=>`tasks/${id}/sha256-${h}.json`
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'dsh-execution-reset-'))

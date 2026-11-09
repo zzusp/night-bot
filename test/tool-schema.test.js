@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import { toToolJsonSchema, toToolObjectJsonSchema } from '../packages/dingtalk-dsh-assistant/tool-schema.js'
-import { coordinatorDecisionSchema } from '../packages/dingtalk-dsh-assistant/message-coordinator.js'
-import { coordinationProposalSchema } from '../packages/dingtalk-dsh-assistant/independent-coordination-planner.js'
+import { toToolJsonSchema, toToolObjectJsonSchema } from '../packages/dingtalk-core/tool-schema.js'
+import { coordinatorDecisionSchema } from '../packages/dingtalk-core/message-coordinator.js'
+import { coordinationProposalSchema } from '../packages/dingtalk-core/independent-coordination-planner.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSupportedJsonSchema, validateJsonSchemaValue as violations } from '../packages/capability-compat/tools/index.js'
-import { taskCheckpointJsonSchema, taskResultJsonSchema, parseTaskCheckpoint } from '../packages/dingtalk-dsh-assistant/task-result.js'
-import { groupDecisionSubmissionJsonSchema, groupDecisionSchema, replyReviewJsonSchema } from '../packages/dingtalk-dsh-assistant/decision.js'
+import { assertSupportedJsonSchema, validateJsonSchemaValue as violations } from '../src/native-tool-protocol.js'
+import { taskCheckpointJsonSchema, taskResultJsonSchema, parseTaskCheckpoint } from '../packages/dingtalk-core/task-result.js'
+import { groupDecisionSubmissionJsonSchema, groupDecisionSchema, replyReviewJsonSchema } from '../packages/dingtalk-core/decision.js'
 import { taskPlanFixture, stageOutputFixture } from './fixtures/task-plan.js'
 const plan = taskPlanFixture()
 const stage = stageOutputFixture(plan)

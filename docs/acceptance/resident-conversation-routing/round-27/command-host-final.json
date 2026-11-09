@@ -1,0 +1,52 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=spec",
+    "--test-name-pattern=^(default Host ask creates one exact external file per actual Pi approval and preserves observed edit|operator full real pwsh background cancelled during preparation never spawns or publishes an external result)$",
+    "test/pi-approval-wire.test.js"
+  ],
+  "exit": 1,
+  "elapsedSeconds": 36.540348291397095,
+  "sourceBefore": {
+    "src/native-tool-bash.js": "11e004a2ea873f87600de756cb65b25c5d1a77a94efcb5e8f8966bac273ed060",
+    "src/native-tool-pwsh.js": "ef850d0ee5dfce8adfe064dfefe2282443c265913bdf934be56b60c27e288f37",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa",
+    "src/process/windows-profile.js": "4164922a215241c35988ef6dbbefa3766d0272e32167ac5e88fef41e8f15c29d",
+    "src/process/runner.js": "427e2d87a8b7222901b65e51843f98a99bf36d0302f27804fdb5b2c8ee1628af",
+    "src/process/runner-launch-B2zsQ1Dz.js": "5fff180a72e00f57f7d8439abbb0e7f6809772cb406a970ea057ac3d5772949c",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/native-jobs.js": "b6ecbade333d1d394d7f55408f32c3a4e84fa19c06e40f6843d2f82aa72a33e7",
+    "src/runtime/job-ledger.js": "5c0c65404ddc02bdf7bb2aa44035996998e0dc72232506a2bfdccae75e1d88d4",
+    "src/native-tools.js": "471ba0637f4a1ae8dd6461dc4063d2b6fa10b1ed8a76b994c58d20b84277e295",
+    "src/native-pwsh-local.js": "13b3f8dff9aafc622ddc808b159918e175af5a5fc9fc837a1786cd50093c29ee",
+    "src/runtime/managed-shell-execution.js": "3d3fc25d81970f69fed63be11f42b656d6ac12e4b71c56f792bce8c42050a7e3",
+    "test/pi-approval-wire.test.js": "90536e72d5affb31d72cadb99d5e7d8cc6509894ccd363adf3c3c1b69f5138ec",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020"
+  },
+  "sourceAfter": {
+    "src/native-tool-bash.js": "11e004a2ea873f87600de756cb65b25c5d1a77a94efcb5e8f8966bac273ed060",
+    "src/native-tool-pwsh.js": "ef850d0ee5dfce8adfe064dfefe2282443c265913bdf934be56b60c27e288f37",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa",
+    "src/process/windows-profile.js": "4164922a215241c35988ef6dbbefa3766d0272e32167ac5e88fef41e8f15c29d",
+    "src/process/runner.js": "427e2d87a8b7222901b65e51843f98a99bf36d0302f27804fdb5b2c8ee1628af",
+    "src/process/runner-launch-B2zsQ1Dz.js": "5fff180a72e00f57f7d8439abbb0e7f6809772cb406a970ea057ac3d5772949c",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/native-jobs.js": "b6ecbade333d1d394d7f55408f32c3a4e84fa19c06e40f6843d2f82aa72a33e7",
+    "src/runtime/job-ledger.js": "5c0c65404ddc02bdf7bb2aa44035996998e0dc72232506a2bfdccae75e1d88d4",
+    "src/native-tools.js": "471ba0637f4a1ae8dd6461dc4063d2b6fa10b1ed8a76b994c58d20b84277e295",
+    "src/native-pwsh-local.js": "13b3f8dff9aafc622ddc808b159918e175af5a5fc9fc837a1786cd50093c29ee",
+    "src/runtime/managed-shell-execution.js": "3d3fc25d81970f69fed63be11f42b656d6ac12e4b71c56f792bce8c42050a7e3",
+    "test/pi-approval-wire.test.js": "90536e72d5affb31d72cadb99d5e7d8cc6509894ccd363adf3c3c1b69f5138ec",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020"
+  },
+  "sourceChanged": [],
+  "logSha256": "fa2490f30198a00f939e1b8d9f962ece876811fe77168833c35ddb85e83a2c48"
+}

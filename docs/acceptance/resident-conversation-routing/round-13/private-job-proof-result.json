@@ -1,0 +1,32 @@
+{
+  "startedAt": "2026-11-08T05:18:58.132110+00:00",
+  "finishedAt": "2026-11-08T05:19:08.906649+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^official (resource audit|private resource proof)",
+    "test/pi-official-job-ledger.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "sourceBefore": {
+    "test/pi-official-job-ledger.test.js": "b185e6382226b7f113b34cdb7a661aeb25b34fd34105f175f29a7977cb5cc3cd",
+    "test/fixtures/pi-official-tools.js": "1b3e431c7cdf6c8e491bea98f67f8a7512963057425f5ece87fe6034604e1fa6",
+    "src/runtime/job-ledger.js": "5c0c65404ddc02bdf7bb2aa44035996998e0dc72232506a2bfdccae75e1d88d4",
+    "src/native-jobs.js": "b8d4e3757d9e3e45f8ee2899a5318999b72625eedaf9540aa4d93bf03c054962",
+    "src/process/contracts.js": "e9a7a9c7b32026d0753c3879d2b802ebfde8da42a5517e46b17d0dd738ee80cd",
+    "src/pi-session-persistence.js": "387d722ed7eff4a4dca38229b7b69c85825f106af4d6a35a4eeeced2cc478d37",
+    "src/runtime/pi-native-store.js": "a20a311fed8dcdc2df70e2f53cf14de73afa29a959d284eb5d6f1f8d60796dc6",
+    "src/runtime/pi-journal.js": "70a2b288dfcfbbdef4b1a84a4df2eda0bb7aec880eb70a3c16b724f8c2433e0e",
+    "src/runtime/pi-official-tools.js": "b1b024896ddefff3ab98c80a9f1537994ced0e5633b2b6d4a1c875575a608554"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "67ebd7f3a723a779217509a071d1662624d8be61c9ec8ed161c876a9fa017486",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "dirtyWorkingTree": true,
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "nativeExecuted": false,
+  "profileCreated": false
+}

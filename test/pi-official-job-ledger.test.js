@@ -1,7 +1,9 @@
 import test from 'node:test'
 import {createAgentSession} from '@earendil-works/pi-coding-agent'
 import assert from 'node:assert/strict'
-import {join} from 'node:path'
+import {join,win32} from 'node:path'
+import {appendFile,readdir,readFile,truncate} from 'node:fs/promises'
+import {currentProcessResourceRecorder} from '../src/process/contracts.js'
 import {setImmediate} from 'node:timers/promises'
 import {definition,officialToolsFixture} from './fixtures/pi-official-tools.js'
 import NativeAgents from '../src/native-agents.js'
@@ -173,10 +175,11 @@ test('official job terminal commit failure keeps outcome uncertain and never pub
  h.expectUnknown()
  const published=[];h.ctx.jobs.events.subscribe({owner:h.owner.id},event=>{if(event.type==='settled')published.push(event)})
  await h.run([{id:'uncertain-terminal',name:'launch'}])
- const waiting=h.ctx.jobs.wait(jobId,1000,h.owner.id),rejected=assert.rejects(waiting,/NIGHT_JOB_JOURNAL_UNCERTAIN/)
+ const waiting=h.ctx.jobs.wait(jobId,undefined,h.owner.id),rejected=assert.rejects(waiting,/NIGHT_JOB_JOURNAL_UNCERTAIN/)
  done.resolve({status:'completed'});await rejected
  assert.equal(h.starts,1);assert.deepEqual(published,[])
  assert.equal(h.ctx.jobs.get(jobId,h.owner.id).status,'stopping')
+ await assert.rejects(h.ctx.jobs.wait(jobId,undefined,h.owner.id),/NIGHT_JOB_JOURNAL_UNCERTAIN/);assert.throws(()=>h.ctx.jobs.remove(jobId,h.owner.id),/NIGHT_JOB_JOURNAL_UNCERTAIN/)
 })
 
 test('official parallel job admission reserves capacity while registration commit is pending',async t=>{
@@ -204,4 +207,142 @@ test('official teardown cancellation failure is not a producer exit or successfu
  const settled=(await h.store.readAudit()).filter(receipt=>receipt.kind==='settled')
  assert.equal(settled.length,1);assert.equal(settled[0].payload.producerReported,false)
  assert.equal(settled[0].payload.cause,'teardown');assert.equal(settled[0].payload.status,'failed')
+})
+
+const plannedResource=(digit='1')=>({kind:'windows-lpac',version:1,status:'planned',profileName:'nightbot-'+digit.repeat(32),profileSid:null,scopeCount:2,scopeEffects:0,retainedHandles:0,retainedAllocations:0,preparationPending:true,threadRestored:false,childSettled:false,jobEmpty:false,nativeHandlesClosed:false,scopeReleased:false,profileAbsent:false})
+const releasedResource=planned=>({...planned,status:'released',profileSid:'S-1-15-2-1-2-3-4-5-6-7',preparationPending:false,threadRestored:true,childSettled:true,jobEmpty:true,nativeHandlesClosed:true,scopeReleased:true,profileAbsent:true})
+
+test('official resource audit commits planned identity before the scripted native boundary and releases only with a durable receipt',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let pending=false,effects=0,record
+ const planned=plannedResource(),released=releasedResource(planned)
+ const h=await fixture(t,({ctx,owner})=>{
+  const original=owner.receipts
+  owner.receipts={...original,append(receipt){if(receipt.kind==='resource-ownership'&&receipt.payload.resource.status==='planned')pending=true;return original.append(receipt)},async commit(){if(pending){pending=false;entered.resolve();await release.promise}return original.commit()}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'resource commit gate',owner:owner.id,run(){record=currentProcessResourceRecorder();return{done:(async()=>{const entryId=await record(planned);assert.equal(typeof entryId,'string');effects++;await record(released);return{status:'completed'}})(),cancel(){release.resolve()}}}},exec)})))
+ })
+ await h.run([{id:'resource-before-effect',name:'launch'}]);await entered.promise;assert.equal(effects,0)
+ release.resolve();await h.settlement;assert.equal(effects,1)
+ const cold=await h.backend.readNative(h.owner.id,{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}}),resources=cold.audit.filter(receipt=>receipt.kind==='resource-ownership')
+ assert.deepEqual(resources.map(receipt=>receipt.payload.seq),[1,2]);assert.deepEqual(resources.map(receipt=>receipt.payload.resource.status),['planned','released'])
+ assert.ok(resources.every(receipt=>receipt.payload.toolCall.callId==='resource-before-effect'&&receipt.payload.owner===h.owner.id));assert.deepEqual(unresolvedNativeJobReceipts(cold.audit,h.owner.id),[])
+ await assert.rejects(record(released),{code:'NIGHT_JOB_JOURNAL_TERMINAL_DUPLICATE'});assert.equal(currentProcessResourceRecorder(),undefined)
+})
+
+test('official resource audit failed commit never acknowledges the scripted native boundary or publishes a terminal success',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let pending=false,effects=0,jobId
+ const h=await fixture(t,({ctx,owner})=>{
+  const original=owner.receipts
+  owner.receipts={...original,append(receipt){if(receipt.kind==='resource-ownership')pending=true;return original.append(receipt)},async commit(){if(pending){entered.resolve();await release.promise;throw Error('resource commit unavailable')}return original.commit()}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'resource commit failure',owner:owner.id,run(){const record=currentProcessResourceRecorder();return{done:(async()=>{await record(plannedResource());effects++;return{status:'completed'}})(),cancel(){release.resolve()}}}},exec)})))
+ })
+ h.expectUnknown();const published=[];h.ctx.jobs.events.subscribe({owner:h.owner.id},event=>{if(event.type==='settled')published.push(event)})
+ await h.run([{id:'resource-no-ack',name:'launch'}]);await entered.promise;assert.equal(effects,0)
+ const rejected=assert.rejects(h.ctx.jobs.wait(jobId,10000,h.owner.id),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'});release.resolve();await rejected
+ assert.equal(effects,0);assert.deepEqual(published,[]);assert.equal(h.ctx.jobs.get(jobId,h.owner.id).status,'stopping')
+ await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'})
+})
+
+test('official resource audit unknown survives producer failure and cold reopen while altered sequence binding or release proof cannot clear it',async t=>{
+ const planned=plannedResource(),unknown={...planned,status:'unknown-retained',profileSid:'S-1-15-2-1-2-3-4-5-6-7',preparationPending:false,retainedHandles:1,childSettled:true,jobEmpty:true,threadRestored:true};let starts=0
+ const h=await fixture(t,({ctx,owner})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'unknown resource retained',owner:owner.id,run(){starts++;const record=currentProcessResourceRecorder();return{done:(async()=>{await record(planned);await record(unknown);return{status:'failed',detail:'producer exited; owned resource remains unknown'}})(),cancel(){}}}},exec)}))))
+ h.expectUnknown();await h.run([{id:'resource-unknown-cold',name:'launch'}]);await h.settlement
+ await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'});await h.reopenReceipts()
+ const receipts=await h.store.readAudit(),pending=unresolvedNativeJobReceipts(receipts,h.owner.id);assert.equal(pending.length,1);assert.equal(pending[0].resourceOwnership.status,'unknown-retained');assert.equal(pending[0].uncertain,true);assert.equal(starts,1)
+ await assert.rejects(h.ctx.jobs.drainOwner(h.owner),/Job drain proof is uncertain/);assert.equal(starts,1)
+ const registered=receipts.find(receipt=>receipt.kind==='registered'),resource=receipts.find(receipt=>receipt.kind==='resource-ownership'),terminal=receipts.find(receipt=>receipt.kind==='settled'),base={...resource.payload,seq:2,resource:releasedResource(planned)}
+ for(const mutation of [{seq:3},{toolCall:{...base.toolCall,callId:'foreign-call'}},{resource:{...base.resource,profileName:'nightbot-'+'2'.repeat(32)}},{resource:{...base.resource,scopeCount:3}}]){
+  const altered={...resource,payload:{...base,...mutation}};assert.equal(unresolvedNativeJobReceipts([registered,resource,altered,terminal],h.owner.id)[0].uncertain,true)
+ }
+ assert.throws(()=>unresolvedNativeJobReceipts([registered,resource,{...resource,payload:{...base,resource:{...base.resource,profileAbsent:false}}},terminal],h.owner.id),{code:'NIGHT_JOB_RECEIPT_INVALID'})
+ const wrongSid={...resource,payload:{...base,seq:3,resource:{...base.resource,profileSid:'S-1-15-2-7-6-5-4-3-2-1'}}}
+ assert.equal(unresolvedNativeJobReceipts([...receipts.slice(0,-1),wrongSid,terminal],h.owner.id)[0].uncertain,true)
+})
+
+test('official resource audit isolates parallel call recorders and clears inherited ownership for ephemeral jobs',async t=>{
+ const seen=new Map(),recorders=new Map();let ephemeral=0
+ const h=await fixture(t,({ctx,owner})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:exec.callId,owner:owner.id,run(){
+  const record=currentProcessResourceRecorder(),digit=exec.callId==='resource-parallel-a'?'1':'2',planned=plannedResource(digit);recorders.set(exec.callId,record)
+  ctx.jobs.start({kind:'ephemeral',label:'no inherited resource owner',owner:owner.id,run(){assert.equal(currentProcessResourceRecorder(),undefined);ephemeral++;return{done:Promise.resolve({status:'completed'}),cancel(){}}}})
+  assert.equal(currentProcessResourceRecorder(),record)
+  return{done:(async()=>{await setImmediate();assert.equal(currentProcessResourceRecorder(),record);await record(planned);seen.set(exec.callId,planned.profileName);await record(releasedResource(planned));return{status:'completed'}})(),cancel(){}}
+ }},exec)}),{isConcurrencySafe:()=>true})))
+ await h.run([{id:'resource-parallel-a',name:'launch'},{id:'resource-parallel-b',name:'launch'}]);await h.ctx.jobs.drainOwner(h.owner)
+ assert.equal(ephemeral,2);assert.equal(recorders.size,2);assert.notEqual(recorders.get('resource-parallel-a'),recorders.get('resource-parallel-b'))
+ const cold=await h.backend.readNative(h.owner.id,{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}}),resources=cold.audit.filter(receipt=>receipt.kind==='resource-ownership')
+ assert.equal(resources.length,4);for(const receipt of resources)assert.equal(receipt.payload.resource.profileName,seen.get(receipt.payload.toolCall.callId))
+ assert.deepEqual(unresolvedNativeJobReceipts(cold.audit,h.owner.id),[]);assert.equal(currentProcessResourceRecorder(),undefined)
+})
+
+// 仅检验真实 Pi 提交/查询边界；这些脚本化 SD 字节不构成原生 ACL 证明。
+function privateResourceProof(resource,{fileIds=['a'.repeat(48),'b'.repeat(48)],borrowedFrom=null}={}){
+ const descriptor=Buffer.alloc(20);descriptor[0]=1;descriptor.writeUInt16LE(0x8000,2)
+ const label=Buffer.alloc(8);label[0]=2;label.writeUInt16LE(8,2)
+ const roots=fileIds.map((fileId,index)=>({path:win32.join('C:/','night-job-proof-fixture','scope-'+index),fileId,access:'write'}))
+ return {kind:'windows-lpac-private-proof',version:1,profileName:resource.profileName,profileSid:resource.profileSid,scopeCount:resource.scopeCount,phase:'scope-frozen',profile:{moniker:'00',classesLink:'00',registryRoot:null},roots,
+  objects:roots.map((root,index)=>({kind:1,role:'scope',name:root.path,fileId:root.fileId,directory:true,parent:null,original:descriptor.toString('hex'),candidate:descriptor.toString('hex'),addedAces:[],label:index===0&&borrowedFrom?{before:null,after:label.toString('hex'),borrowedFrom}:null}))}
+}
+const ownedResource=planned=>({...planned,status:'unknown-retained',profileSid:'S-1-15-2-1-2-3-4-5-6-7'})
+
+test('official private resource proof shares the durable resource sequence and never acknowledges before commit',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let record,pending=false,ack,effects=0,jobId
+ const planned=plannedResource(),owned=ownedResource(planned),proof=privateResourceProof(owned)
+ const h=await fixture(t,({ctx,owner})=>{
+  const original=owner.receipts
+  owner.receipts={...original,append(receipt){if(receipt.payload?.privateProof)pending=true;return original.append(receipt)},async commit(){if(pending){pending=false;entered.resolve();await release.promise}return original.commit()}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'private resource commit gate',owner:owner.id,run(){record=currentProcessResourceRecorder();return{done:(async()=>{await record(planned);ack=await record.withProof(owned,proof);effects++;await record(releasedResource(planned));return{status:'completed'}})(),cancel(){release.resolve()}}}},exec)})))
+ })
+ await h.run([{id:'private-resource-gate',name:'launch'}]);await entered.promise;assert.equal(effects,0);assert.equal(ack,undefined)
+ let queryFinished=false;const waiting=record.readScopeProofs(['a'.repeat(48)]).then(value=>{queryFinished=true;return value});await setImmediate();assert.equal(queryFinished,false)
+ release.resolve();await h.settlement;await waiting;assert.equal(effects,1)
+ const entries=await h.store.readAuditEntries(),resources=entries.filter(entry=>entry.receipt.kind==='resource-ownership');assert.deepEqual(resources.map(entry=>entry.receipt.payload.seq),[1,2,3]);assert.equal(ack,resources[1].entryId)
+ const live=await record.readScopeProofs(['a'.repeat(48)]);assert.equal(live.length,1);assert.equal(live[0].entryId,ack);assert.equal(live[0].jobId,jobId);assert.equal(live[0].resource.status,'released');assert.deepEqual(live[0].privateProof,proof)
+ const publicView=JSON.stringify({jobs:h.ctx.jobs.list(h.owner.id),results:h.results,requests:h.requests});for(const secret of ['privateProof','windows-lpac-private-proof','night-job-proof-fixture'])assert.equal(publicView.includes(secret),false)
+ await h.store.close();assert.deepEqual(await record.readScopeProofs(['a'.repeat(48)]),live);await h.reopenReceipts()
+})
+
+test('official private resource proof rejects altered bindings and failed commit without an ACK or native effect',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let pending=false,record,effects=0,ack,jobId
+ const planned=plannedResource(),owned=ownedResource(planned),proof=privateResourceProof(owned)
+ const h=await fixture(t,({ctx,owner})=>{
+  const original=owner.receipts
+  owner.receipts={...original,append(receipt){if(receipt.payload?.privateProof)pending=true;return original.append(receipt)},async commit(){if(pending){entered.resolve();await release.promise;throw Error('private proof commit unavailable')}return original.commit()}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'private proof rejection',owner:owner.id,run(){record=currentProcessResourceRecorder();return{done:(async()=>{
+   await record(planned)
+   for(const invalid of [{...proof,extra:true},{...proof,profileName:'nightbot-'+'2'.repeat(32)},{...proof,profileSid:'S-1-15-2-7-6-5-4-3-2-1'},privateResourceProof({...owned,scopeCount:3},{fileIds:['a'.repeat(48),'b'.repeat(48),'c'.repeat(48)]})])await assert.rejects(record.withProof(owned,invalid),{code:'NIGHT_JOB_RECEIPT_INVALID'})
+   ack=await record.withProof(owned,proof);effects++;return{status:'completed'}
+  })(),cancel(){release.resolve()}}}},exec)})))
+ })
+ h.expectUnknown();await h.run([{id:'private-proof-no-ack',name:'launch'}]);await entered.promise;assert.equal(effects,0)
+ const rejected=assert.rejects(h.ctx.jobs.wait(jobId,10000,h.owner.id),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'});release.resolve();await rejected
+ assert.equal(effects,0);assert.equal(ack,undefined);assert.equal(h.ctx.jobs.get(jobId,h.owner.id).status,'stopping');await assert.rejects(record.readScopeProofs(['a'.repeat(48)]),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'})
+ await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'})
+})
+
+test('official private resource proof retains the released source anchor and borrow closure across live and cold Pi reads',async t=>{
+ let record,sourceRef,sourceAck,launches=0;const ids=[]
+ const h=await fixture(t,({ctx,owner})=>ctx.tools.register(definition('launch',async(_args,exec)=>{
+  const index=launches++,planned=plannedResource(String(index+1)),owned=ownedResource(planned),proof=privateResourceProof(owned,index?{fileIds:['a'.repeat(48),'c'.repeat(48)],borrowedFrom:sourceRef}:{})
+  const id=await ctx.jobs.startDurable({kind:'fixture',label:'private source or borrower',owner:owner.id,run(){record=currentProcessResourceRecorder();return{done:(async()=>{await record(planned);const ack=await record.withProof(owned,proof);if(index===0)sourceAck=ack;await record(releasedResource(planned));return{status:'completed'}})(),cancel(){}}}},exec);ids.push(id);return{id}
+ })))
+ await h.run([{id:'private-source',name:'launch'}]);await h.ctx.jobs.wait(ids[0],10000,h.owner.id);sourceRef={owner:h.owner.id,jobId:ids[0],entryId:sourceAck,fileId:'a'.repeat(48)}
+ await h.run([{id:'private-borrower',name:'launch'}]);await h.ctx.jobs.wait(ids[1],10000,h.owner.id)
+ const live=await record.readScopeProofs(['a'.repeat(48)]);assert.equal(live.length,2);assert.deepEqual(live.map(row=>row.jobId),ids);assert.equal(live[0].entryId,sourceAck);assert.ok(live.every(row=>row.resource.status==='released'));assert.deepEqual(live[1].privateProof.objects[0].label.borrowedFrom,sourceRef)
+ await h.store.close();assert.deepEqual(await record.readScopeProofs(['a'.repeat(48)]),live);await h.reopenReceipts()
+})
+
+test('official private resource proof refuses missing or mismatched borrow anchors from actual committed Pi receipts',async t=>{
+ for(const kind of ['missing-entry','wrong-file-id'])await t.test(kind,async sub=>{
+  let record;const planned=plannedResource(),owned=ownedResource(planned)
+  const h=await fixture(sub,({ctx,owner})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:kind,owner:owner.id,run(){record=currentProcessResourceRecorder();return{done:(async()=>{await record(planned);let anchor={owner:owner.id,jobId:'missing-original-job',entryId:'missing-original-entry',fileId:'a'.repeat(48)};if(kind==='wrong-file-id'){const entryId=await record.withProof(owned,privateResourceProof(owned)),entry=(await owner.receipts.readEntries()).find(row=>row.entryId===entryId);anchor={owner:owner.id,jobId:entry.receipt.payload.jobId,entryId,fileId:'b'.repeat(48)}}const proof=privateResourceProof(owned,{borrowedFrom:anchor});await record.withProof(owned,proof);await record(releasedResource(planned));return{status:'completed'}})(),cancel(){}}}},exec)}))))
+  await h.run([{id:'private-'+kind,name:'launch'}]);await h.settlement;await assert.rejects(record.readScopeProofs(['a'.repeat(48)]),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'})
+ })
+})
+
+test('official private resource proof cold query rejects an actual uncommitted Pi tail without changing the file',async t=>{
+ let record;const planned=plannedResource(),owned=ownedResource(planned)
+ const h=await fixture(t,({ctx,owner})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'strict cold proof',owner:owner.id,run(){record=currentProcessResourceRecorder();return{done:(async()=>{await record(planned);await record.withProof(owned,privateResourceProof(owned));await record(releasedResource(planned));return{status:'completed'}})(),cancel(){}}}},exec)}))))
+ await h.run([{id:'private-cold-tail',name:'launch'}]);await h.settlement;await h.store.close()
+ const files=await readdir(join(h.root,'durable-jobs')),file=join(h.root,'durable-jobs',files.find(name=>name.endsWith('.pi.jsonl'))),before=await readFile(file)
+ const extra='{"uncommitted":';await appendFile(file,extra)
+ try{await assert.rejects(record.readScopeProofs(['a'.repeat(48)]),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'});assert.deepEqual(await readFile(file),Buffer.concat([before,Buffer.from(extra)]))}finally{await truncate(file,before.length);await h.reopenReceipts()}
 })

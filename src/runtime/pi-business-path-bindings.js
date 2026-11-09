@@ -17,14 +17,20 @@ export function validateAuditPathBindings(receipt,{original=true}={}){
  const binding=receipt.pathBindings
  if(binding===undefined)return
  const paths=fields(receipt)
- if(!exact(binding,['version','kind','originRoot','fields'])||binding.version!==1||binding.kind!=='install-relative'||typeof binding.originRoot!=='string'||!(isAbsolute(binding.originRoot)||win32.isAbsolute(binding.originRoot))||!exact(binding.fields,paths.map(([name])=>name))||!paths.length)throw fail('PI_SESSION_AUDIT_PATH_BINDING_INVALID')
+ if(!exact(binding,['version','kind','originRoot','fields'])||binding.version!==1||!['install-relative','external-absolute'].includes(binding.kind)||typeof binding.originRoot!=='string'||!(isAbsolute(binding.originRoot)||win32.isAbsolute(binding.originRoot))||!exact(binding.fields,paths.map(([name])=>name))||!paths.length)throw fail('PI_SESSION_AUDIT_PATH_BINDING_INVALID')
+ if(binding.kind==='external-absolute'){
+  if(receipt.domain!=='directory'||receipt.kind!=='changed')throw fail('PI_SESSION_AUDIT_PATH_BINDING_INVALID')
+  const value=binding.fields.cwd
+  if(typeof value!=='string'||value.includes(String.fromCharCode(0))||!(isAbsolute(value)||win32.isAbsolute(value))||receipt.payload.cwd!==value)throw fail('PI_SESSION_AUDIT_PATH_BINDING_INVALID')
+  return
+ }
  const base=slash(binding.originRoot).replace(/\/+$/,'')
  for(const [name,source]of paths){const value=binding.fields[name];if(!relative(value)||original&&!same(source,base+'/'+value))throw fail('PI_SESSION_AUDIT_PATH_BINDING_INVALID')}
 }
-export function stampAuditPathBindings(receipt,{originRoot,encode}){
+export function stampAuditPathBindings(receipt,{originRoot,encode,kind='install-relative'}){
  if(receipt.pathBindings!==undefined)throw fail('PI_SESSION_AUDIT_PATH_BINDING_HOST_ONLY')
  const paths=fields(receipt);if(!paths.length)return receipt
- const result={...receipt,pathBindings:{version:1,kind:'install-relative',originRoot,fields:Object.fromEntries(paths.map(([name,value])=>[name,encode(value)]))}}
+ const result={...receipt,pathBindings:{version:1,kind,originRoot,fields:Object.fromEntries(paths.map(([name,value])=>[name,encode(value)]))}}
  validateAuditPathBindings(result);return result
 }
 export function readAuditPathBindings(receipt,{decode,sourceHeader,logicalHeader}){
@@ -35,6 +41,8 @@ export function readAuditPathBindings(receipt,{decode,sourceHeader,logicalHeader
   if(sourceHeader?.portableCwd!==undefined&&!same(sourceHeader.cwd,logicalHeader.cwd))throw fail('PI_SESSION_PORTABLE_BUSINESS_PATH_UNPROVEN')
   return receipt
  }
+ // 外部业务 cwd 只记录原位置；安装迁移不授予或改写外部业务路径。
+ if(receipt.pathBindings.kind==='external-absolute')return receipt
  const payload=structuredClone(receipt.payload)
  for(const [name]of paths){const parts=name.split('.');let owner=payload;for(const key of parts.slice(0,-1))owner=owner[key];owner[parts.at(-1)]=decode(receipt.pathBindings.fields[name])}
  return {...receipt,payload}

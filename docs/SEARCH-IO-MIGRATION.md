@@ -5,8 +5,9 @@ The default model catalog now exposes `find` from the locked Pi 1.5 public
 relative result formatting and tool execution remain Pi-owned. The old `glob`
 name and its presentation ABI are removed, without an alias. The deployment
 `globMaxResults` configuration now bounds find results (100 by default); explicit
-higher limits are rejected. Night's custom `glob` operations port delegates
-matching to packaged ripgrep; it does not implement a second pattern matcher.
+higher limits are rejected. Night 的自定义 `glob` operations port 先枚举已授权
+普通文件，再用成熟库 Minimatch 在进程内匹配（`dot:true`、`matchBase:true`、
+`nonegate:true`、`nocomment:true`）；不为文件名查找启动 fd、rg 或其它子进程。
 
 Custom find operations use an explicit authorized file allowlist. This differs
 from Pi's default fd discovery: `.gitignore` is not applied, recursive symlinks
@@ -40,14 +41,14 @@ and composition with that retained process boundary.
 
 A streaming directory iterator checks canonical filesystem policy before adding
 each file. Unauthorized task/workspace, state, memory and private session paths
-never enter the ripgrep file list. Recursive symlinks are skipped. Directory
+既不会进入 find 匹配集合，也不会成为 grep 的 ripgrep 输入。Recursive symlinks are skipped. Directory
 traversal defaults to at most 10,000 entries and depth 64; failure at either bound
 returns a resource error before search. Paths and complete aggregate raw output
 are bounded by `rawOutputMaxBytes` (20 MB default). Explicit argv batches are
 bounded to 16 KB of filenames. The caller's current working directory is used.
 No raw search is performed over an unconstrained recursive directory argument.
 
-Immediately before each batch, canonical path and regular-file status are
+For grep, immediately before each batch, canonical path and regular-file status are
 checked again. The packaged executable receives `--no-config`, literal argv
 values and `--` before its explicit files. No shell or preprocessor is permitted.
 Output overflow is an error, not a silently partial parsed result. The registered
@@ -67,6 +68,8 @@ Canonical rechecks alone are not an OS transaction against arbitrary concurrent
 ancestor substitution. Portable Host processPrivacy/bubblewrap remains necessary
 for untrusted process containment. Linux tests retain that sandbox; Windows
 search/process containment is not certified by these Linux results.
+
+> 以下定向日志保留原迁移阶段结果，不是本轮同版全量；当前平台与清理状态见[唯一目标](acceptance/resident-conversation-routing/goal.md)。find 的进程内匹配不证明 grep/shell 的模型子进程隐私边界已可用。
 
 ## Targeted evidence
 

@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { currentCoordinationFixture as fixture } from './fixtures/current-coordination-contracts.js'
-import { createPlatformSchedules } from '../packages/dingtalk-dsh-assistant/platform-schedule.js'
-import { createPlatformNotifier } from '../packages/dingtalk-dsh-assistant/platform-notification.js'
-import { fixedUnitRequestId, platformScheduleSessionId, platformTaskPage } from '../packages/dingtalk-dsh-assistant/fixed-topics.js'
+import { createPlatformSchedules } from '../packages/dingtalk-core/platform-schedule.js'
+import { createPlatformNotifier } from '../packages/dingtalk-core/platform-notification.js'
+import { fixedUnitRequestId, platformScheduleSessionId, platformTaskPage } from '../packages/dingtalk-core/fixed-topics.js'
 
 // Adapter unit tests use a deterministic Schedule service double. Native rc2
 // creation/delivery is covered separately by fixed-topics-native.test.js.

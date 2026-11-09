@@ -1,0 +1,74 @@
+{
+  "taskId": "bti15uclm",
+  "scope": "Read-only observation of the exact retained owner from prior Create S_OK; no new Profile, deletion, derive, folder, ACL, child, Job or impersonation operations. Prior unknown remains unknown.",
+  "check": {
+    "exit": 0,
+    "effects": 0,
+    "bindingVerified": true
+  },
+  "startedAt": "2026-11-08T01:16:41.208261+00:00",
+  "finishedAt": "2026-11-08T01:16:43.872378+00:00",
+  "pid": 10320,
+  "exit": 2,
+  "termination": "natural exit 2; original Ordinal mismatch gate retained",
+  "source": {
+    "docs\\tmp\\sg11-profile-registration-owned-observation-parameters.json": "a9acef17d3433095df804f53ccd8bc6082aaac237a98bc11ef25e7e0b68c9ecb",
+    "docs/tmp/sg11-profile-registration.ps1": "54a29ff11751705d6f1f2a7fcd1a2ca8ea39ae6be1ce0103ff6818d8969e29d6",
+    "docs/tmp/sg11-profile-bound-predicate-private-owner.json": "7cf5c39e409a2959a04819dbbc2bcb0a86f443151a259c05637f8982b056c251",
+    "docs/tmp/sg11-profile-bound-predicate-private-result.json": "8e0024b48dd6b19bede63dd9037460858b8421d499f923f7ef6e508c6ff74e1e"
+  },
+  "sourceChanged": [],
+  "bindingVerified": true,
+  "identityCount": 14,
+  "allIdentityMatches": true,
+  "strictNoLinkCount": 11,
+  "fixedClassesLinkReadOnlyBound": true,
+  "monikerObservation": {
+    "label": "owned-moniker",
+    "queryStatus": 0,
+    "type": 1,
+    "bytes": 94,
+    "expectedBytes": 94,
+    "readStatus": 0,
+    "readType": 1,
+    "readBytes": 94,
+    "readBufferContentDefined": true,
+    "singleTerminalNul": true,
+    "ordinalMatches": false,
+    "ordinalIgnoreCaseMatches": true
+  },
+  "errors": [
+    {
+      "stage": "owned Moniker read-only observation",
+      "type": "Exception",
+      "message": "Moniker bytes mismatch"
+    }
+  ],
+  "profileState": "unknown-retain-moniker-sid-binding",
+  "createAttempted": false,
+  "deleteAttempted": false,
+  "nativeOwnerRetained": false,
+  "handlesClosed": true,
+  "retainedHandles": [],
+  "storageApiBindingVerified": false,
+  "cleanupComplete": false,
+  "productionAdmissible": false,
+  "exactPidReadback": {
+    "observedAt": "2026-11-08T01:17:46.0208140+00:00",
+    "pid": 10320,
+    "observed": false,
+    "method": "independent PowerShell Get-Process -Id 10320",
+    "priorProfileCleanupProved": false
+  },
+  "rawEvidenceSha256": {
+    "docs/tmp/sg11-profile-owned-moniker-check.log": "33ea2f91111f69114cd70dd4b09221af4d0e307fd7688f7afdaf99b052708244",
+    "docs/tmp/sg11-profile-owned-moniker-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-owned-moniker-check-executor.json": "556c62971ad2e3aa1a4e121cfc14e6aa4210f03f061e8623069277a608904e42",
+    "docs/tmp/sg11-profile-owned-moniker-run.log": "f67642be4b1459abd039f2d541b5285e8cd8a5c563747aa0bfb8e9ad130dd272",
+    "docs/tmp/sg11-profile-owned-moniker-run-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/tmp/sg11-profile-owned-moniker-private-result.json": "ec3c7dd246337c90c3d35ba4b37308234c3e525a1263395756f2f85b357fe79a",
+    "docs/tmp/sg11-profile-owned-moniker-private-owner.json": "8b4e4c99f967683137a96e147b2fbd7268b73ce80cac326417d07685e7253f8f",
+    "docs/tmp/sg11-profile-owned-moniker-executor.json": "57427f4bc80620bc18a246aa420e0f28ec1a1bb3bc16c7e37e2b65114d8d8e81"
+  },
+  "interpretation": "Current retained Moniker has successful type/size reads, one terminal NUL, Ordinal mismatch and OrdinalIgnoreCase match. This observes the current retained value only; it does not reconstruct the earlier second-read metadata, authorize case-folding or Delete, or close the prior unknown."
+}

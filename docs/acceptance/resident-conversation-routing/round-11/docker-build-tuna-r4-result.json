@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "spawnFailure": false,
+  "startedAt": "2026-11-07T20:13:47.872Z",
+  "finishedAt": "2026-11-07T20:14:53.934Z",
+  "tag": "night-bot:sg12-tuna-9066be8d-r4",
+  "sourceChanged": [],
+  "sourceCount": 490,
+  "logSha256": "e679c126f658453f09798420af015cfe144cc651779e4b3ae6ea0f389e88ebd4",
+  "image": {
+    "id": "sha256:e96a8ffbfeea73ec0197e0403d02e8a6f65df80fd7fe6021f77ceba2396710cd",
+    "os": "linux",
+    "architecture": "amd64",
+    "user": "node"
+  },
+  "realVendorExecuted": false,
+  "applicationRuntimeValidated": false
+}

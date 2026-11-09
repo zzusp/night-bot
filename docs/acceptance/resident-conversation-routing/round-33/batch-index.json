@@ -1,0 +1,244 @@
+{
+  "round": 33,
+  "task": "bfdxues8h",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceBefore": {
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceChanged": [],
+  "files": {
+    "windows-born-low-summary.json": {
+      "bytes": 9179,
+      "sha256": "2daad1db2740dd735d50ab890a65b4443fbe3b68704897ed7afb6c18798c4a11"
+    },
+    "windows-born-low-console.log": {
+      "bytes": 452,
+      "sha256": "ff61ba34f22b7eff28a22363c5195ce4022568fbc8db975f46ceb6ec8e21b601"
+    }
+  },
+  "privateAssets": {
+    "docs/tmp/sg11-security-projection-born-low-probe.mjs": {
+      "bytes": 31151,
+      "sha256": "94b40116ee871e489783d71c9d22b1eb1a6f6944bfb6e78bf536b5237a32014f"
+    },
+    "docs/tmp/sg11-security-projection-born-low-check.json": {
+      "bytes": 2848,
+      "sha256": "5f5cd7d66a69c7a34d2970493ca6c6b7ce3812b2da9b73d31ed442ddc41ca5cc"
+    },
+    "docs/tmp/sg11-security-projection-born-low-check-execution.json": {
+      "bytes": 1972,
+      "sha256": "dcf87ab78fb6319d171ef6a85e06cb6ed2fd79c6ef648e86ea3f8dcd536327fd"
+    },
+    "docs/tmp/sg11-security-projection-born-low-checklist.md": {
+      "bytes": 8359,
+      "sha256": "496bd72ce2cea2000c8e5da610e6f7fe00eb7c346d6704c52517daf53a6e5c69"
+    },
+    "docs/tmp/sg11-security-projection-born-low-run-check.json": {
+      "bytes": 2848,
+      "sha256": "5f5cd7d66a69c7a34d2970493ca6c6b7ce3812b2da9b73d31ed442ddc41ca5cc"
+    },
+    "docs/tmp/sg11-security-projection-born-low-run.json": {
+      "bytes": 89586,
+      "sha256": "a6cd4fc7a8ef798f5a8892dbdf6acac0545174c1da62c275016308b7f8b250ca"
+    },
+    "docs/tmp/sg11-security-projection-born-low-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/tmp/sg11-security-projection-born-low-execution.json": {
+      "bytes": 2739,
+      "sha256": "256967ac92d7eaefb5b4a519232c189eab7d45e4bf3c07b576b77f83a5857bd7"
+    },
+    "docs/tmp/sg11-security-projection-born-low-execute.py": {
+      "bytes": 4763,
+      "sha256": "9dd37f70d7d54d8c3082f51341c1ff7a576dbed299afeb0a5904cb063359e450"
+    }
+  },
+  "componentResult": {
+    "nodeExitCode": 0,
+    "componentPass": true,
+    "nativeAttempts": 1,
+    "finalIndependentOriginalBytes": [
+      true,
+      true,
+      true
+    ],
+    "resourcesClosed": true,
+    "newRootIndependentlyAbsent": true,
+    "outerWorkflowAllGreen": false
+  },
+  "executionLayers": {
+    "extraTextOnlyPreflight": {
+      "error": "AssertionError",
+      "failingArgumentIndex": 1,
+      "reason": "Forward-slash literal relative probe path compared with recorded Windows relative path",
+      "exitCodeRecordedSeparately": false,
+      "shellContinuedIntoCollector": true
+    },
+    "actualFreshCommandExactlyEqualsApproved": true,
+    "actualAbsoluteRootParameterExactlyEqualsApproved": true,
+    "freshCheckExitCode": 0,
+    "freshCheckStderrBytes": 0,
+    "freshOutputByteExactApproved": true,
+    "outerShellExitCode": 0,
+    "outerWorkflowAllGreen": false,
+    "nativeAttemptCount": 1,
+    "retries": 0,
+    "apiOrParameterChanges": false
+  },
+  "inventory": {
+    "path": "docs/acceptance/resident-conversation-routing/test-case-inventory.csv",
+    "bytes": 3321346,
+    "sha256": "b1bdb346d123d45f2ab44c652fd2eab83adb06c2576284e7286b1d245168a018",
+    "identityRows": 5472,
+    "changed": false,
+    "nativeComponentHasNodeTestRegistrations": false
+  },
+  "matrix": {
+    "path": "docs/acceptance/resident-conversation-routing/matrix.csv",
+    "beforeBytes": 178279,
+    "beforeSha256": "b803fc7c92de974e6475385f1a3ed0edc442d8371d38b9fa3120045f48f983ac",
+    "afterBytes": 184258,
+    "afterSha256": "28b87048d05b7920a1b96fc403971baa72af22947e5dcf46de1fe064b4378215",
+    "businessRowsBefore": 293,
+    "businessRowsAfter": 294,
+    "columnAdded": "round_33",
+    "existingRowAnnotations": {
+      "sg11-native-security-projection-setter": "NOT_RERUN_NULL_BASELINE_FAILURE_RETAINED_BORN_LOW_COMPONENT_SEPARATE"
+    },
+    "existingNotRerunRows": 292,
+    "newRow": {
+      "case_id": "sg11-born-low-private-temp-projection",
+      "scenario": "Host本次新建未发布read-only私有temp出生Low/NW；根write DACL add/release及独立全树原SD恢复，不含既有NULL树或生产Profile",
+      "round_1": "",
+      "round_2": "",
+      "round_3": "",
+      "round_4": "",
+      "round_5": "",
+      "round_6": "",
+      "round_7": "",
+      "round_8": "",
+      "round_9": "",
+      "round_10": "",
+      "round_11": "",
+      "round_12": "",
+      "round_13": "",
+      "round_14": "",
+      "round_15": "",
+      "round_16": "",
+      "round_17": "",
+      "round_18": "",
+      "round_19": "",
+      "round_20": "",
+      "round_21": "",
+      "round_22": "",
+      "round_23": "",
+      "round_24": "",
+      "round_25": "",
+      "round_26": "",
+      "round_27": "",
+      "round_28": "",
+      "round_29": "",
+      "round_30": "",
+      "round_31": "",
+      "round_32": "",
+      "round_33": "PASS_COMPONENT_BORN_LOW9C14_CHILD8C14_DACL2_FINAL_NATIVE_ORIGINAL_BYTES_ALL_RESOURCES_CLOSED_ROOT_REMOVED_OUTER_TEXT_PREFLIGHT_FAILED"
+    },
+    "appendedRawSuffix": "sg11-born-low-private-temp-projection,Host本次新建未发布read-only私有temp出生Low/NW；根write DACL add/release及独立全树原SD恢复，不含既有NULL树或生产Profile,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,PASS_COMPONENT_BORN_LOW9C14_CHILD8C14_DACL2_FINAL_NATIVE_ORIGINAL_BYTES_ALL_RESOURCES_CLOSED_ROOT_REMOVED_OUTER_TEXT_PREFLIGHT_FAILED\n",
+    "reverseVerifiedSha256": "b803fc7c92de974e6475385f1a3ed0edc442d8371d38b9fa3120045f48f983ac"
+  },
+  "reviewBoundary": "R32 and prior Node case results not rerun; old NULL baseline setter failure retained; born-Low private-temp component is a separate business row, not a production pass",
+  "cleanup": {
+    "exactTemporaryFiles": {
+      "docs/tmp/sg11-security-projection-born-low-archive.py": {
+        "bytes": 7003,
+        "sha256": "a495aedd4e782e837144fc16bb87d125cc075dfdb2e616074d12ae470e18d58c"
+      },
+      "docs/tmp/sg11-security-projection-born-low-matrix.py": {
+        "bytes": 2833,
+        "sha256": "6a5cf2077acc7cb724a357e51a2ad300e83598b49fadca0f322113a83a184ffd"
+      },
+      "docs/tmp/sg11-security-projection-born-low-matrix-delta.json": {
+        "bytes": 2064,
+        "sha256": "9d5a017d107fe8de64b051c0449723a4b71f6e14b373b29c3c81a91d5e1c2ccd"
+      }
+    },
+    "cleanupScript": "docs/tmp/sg11-security-projection-born-low-cleanup.py",
+    "state": "COMPLETED_EXACT_PATHS_INDEPENDENTLY_ABSENT",
+    "privateNineAndPreviousNativeEvidence": "RETAINED_LOCAL_IGNORED_NOT_CLEANUP_TARGETS",
+    "cleanupScriptFacts": {
+      "bytes": 2175,
+      "sha256": "2336a1f76973fda8c40c50965643900272cd1d8e8bca4f96a98e163761e63292"
+    },
+    "check": {
+      "mode": "--check",
+      "effects": 0,
+      "allExactHashesMatched": true
+    },
+    "run": {
+      "mode": "--run",
+      "effects": 4
+    },
+    "independentLstatAbsentPaths": [
+      "docs/tmp/sg11-security-projection-born-low-archive.py",
+      "docs/tmp/sg11-security-projection-born-low-matrix.py",
+      "docs/tmp/sg11-security-projection-born-low-matrix-delta.json",
+      "docs/tmp/sg11-security-projection-born-low-cleanup.py"
+    ]
+  },
+  "remaining": {
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "productionProfileMandatoryConpty": "NOT_VALIDATED",
+    "existingNullBusinessTrees": "NOT_FIXED",
+    "linuxStrongOwner": "NOT_VALIDATED",
+    "macos": "NOT_VALIDATED",
+    "finalOtherGroupsGuardsGitPr": "NOT_COMPLETED"
+  },
+  "consoleProvenance": {
+    "tool": "Bash",
+    "toolUseId": "call_6578d32913e84727af0e743e152d812e",
+    "backgroundTask": "bfdxues8h",
+    "originalOutputBasename": "bfdxues8h.output",
+    "originalBytes": 452,
+    "originalSha256": "ff61ba34f22b7eff28a22363c5195ce4022568fbc8db975f46ceb6ec8e21b601",
+    "publicCopyByteExact": true,
+    "privateOriginalPathDeliveredDirectlyToReview": true,
+    "reportCommandEqualsOriginalToolParameters": true,
+    "toolCommandUtf8Sha256": "1c22ccbd596c6e2606220f1faa8873dd1b82cc8bb90125af18c6ea924b38c886",
+    "collectorHashAssertAfterFailingLine5Reached": false,
+    "successMarkerAfterFailingLine5Reached": false
+  },
+  "archiveCommandFailure": {
+    "toolUseId": "call_9fcb542c5f9541e8978fc2b642123c36",
+    "toolExitCode": 2,
+    "originalToolCommandUtf8Sha256": "b725b65f8bbafa7e2ebcc84583e397d4145c4cae4a5e518c8a5ddd4cb0f90b7c",
+    "originalToolResultUtf8Sha256": "b21824c98942995d9c9e99bf652ae0f0dccc89de05e05920915e70a29910f2f8",
+    "cause": "Nested heredoc terminator truncated documentation Python before compilation completed",
+    "reportAndIndexWrittenByFailedInvocation": false,
+    "collectorAccidentallyEntered": true,
+    "replayRejectedAt": "execute.py:21 existing-output precondition, before fresh check or Native",
+    "freshCheckReached": false,
+    "nativeReached": false,
+    "ninePrivateAssetBytesAndHashesIndependentlyUnchanged": true,
+    "recordedInOriginalSessionTranscript": true,
+    "invocationSourceIsDataOnlyNotReplayEntry": true
+  },
+  "report": {
+    "path": "docs/acceptance/resident-conversation-routing/round-33.md",
+    "bytes": 11077,
+    "sha256": "28d8d08c979ab705854e0f71779f4347af6fcdc933d0653276573fc0198f07bc"
+  }
+}

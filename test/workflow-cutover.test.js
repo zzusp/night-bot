@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { inspectLegacyDrain, readWorkflowSeal, cutoverWorkflow } from '../packages/dingtalk-dsh-assistant/workflow-cutover.js'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import { inspectLegacyDrain, readWorkflowSeal, cutoverWorkflow } from '../packages/dingtalk-core/workflow-cutover.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 const clean = () => ({ unit: { name: 'dingtalk_dsh_assistant', version: 9 }, tables: { groups: { g: { groupId: 'g', messages: [], outbox: [], topics: [], taskReservations: [], coordinationRequests: {} } }, tasks: {}, scheduler: {} } })
 const stopped = async () => ({ stopped: true, pidPresent: false, listenerPresent: false, autostartDisabled: true })
 async function fixture(t) {
@@ -59,7 +59,7 @@ test('seal之后控制库接管失败仍阻旧入口，释放owner后原journal�
 // 使用与实际 profile 相同的 YAML 实现；仅加载解析器，不加载 profile 代码。
 const yaml = (await import('node:module')).createRequire(import.meta.url)('js-yaml')
 const { createHash } = await import('node:crypto')
-const { enrollEmptyWorkflowGroup } = await import('../packages/dingtalk-dsh-assistant/workflow-cutover.js')
+const { enrollEmptyWorkflowGroup } = await import('../packages/dingtalk-core/workflow-cutover.js')
 const { planWorkflowGroupEnrollment } = await import('../scripts/workflow-group-profile.mjs')
 const hash = value => createHash('sha256').update(value).digest('hex')
 async function enrolledFixture(t) {

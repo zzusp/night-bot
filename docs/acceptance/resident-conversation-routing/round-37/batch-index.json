@@ -1,0 +1,187 @@
+{
+  "round": 37,
+  "disposition": "PASS_RETAINED_READROOTS_FOREST_DACL_AND_INTERNAL_INHERITANCE_ONLY",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceCount": 19,
+  "aggregateSha256": "c34655b38cffadf86319bf8fe892cb521f28879aa88b2dc2dc153611819d81a7",
+  "sourceFiles": {
+    "docs/tmp/sg11-profile-unlaunched-fixed-probe.mjs": "ba0b0d2e29ef9d4be8615c93f4d73986479782294e2e9382e48c988f56a5b9d3",
+    "docs/tmp/sg11-readroots-qualification-checklist.md": "b533d60e792f35ac2918fa3937abad039d87a095ef6eacc25cca504e10ed9335",
+    "docs/tmp/sg11-readroots-qualification-probe.mjs": "5f35a20d0ed3ec865606b9db43f1d98579a0a00ae5aef9ee6f0f9ebb76ad8d2f",
+    "node_modules/.pnpm/@deepseek-ai+cordis@4.0.5-a_e1588418a9744123307a8718b38a09ff/node_modules/@deepseek-ai/cordis/lib/index.js": "6a9394c0877ff45218818c6e815edd038f8057e1a1deb390a8d43ec81c57691e",
+    "node_modules/.pnpm/@deepseek-ai+cosmokit@1.8.6-alpha.1/node_modules/@deepseek-ai/cosmokit/lib/index.js": "ba44c0871656e4c7cac2c3c8a2ff644e0d2eb9d6bda7f6355866d686d513268e",
+    "node_modules/.pnpm/@koromix+koffi-win32-x64@3.2.0/node_modules/@koromix/koffi-win32-x64/index.js": "f9991ec70a0f775487ffadc2461d69edd1555e3d9bf80de0bbdd2eec7d245c49",
+    "node_modules/.pnpm/@koromix+koffi-win32-x64@3.2.0/node_modules/@koromix/koffi-win32-x64/package.json": "64a8f27f667d885b34a003b159554ac2e089ef0972f08acdcef1d5b2be8b5967",
+    "node_modules/.pnpm/@koromix+koffi-win32-x64@3.2.0/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node": "c2345e8178dc3cac051e1066c7082028d3096959050bcf3e6d46a0e839e64b3f",
+    "node_modules/koffi/index.cjs": "a200e15ec168d00cb3155794808a98243051c61dd7f6989c23c57ee220c918b9",
+    "node_modules/koffi/package.json": "3b7a363693801907911dc932ef7a4cd4f89ba4e2b7cd3e8af6d78d0d1c2b3ee7",
+    "node_modules/koffi/src/koffi/index.cjs": "56aae37eedfd3fef699a32f67960e8e817b0c21c158d56e3ec655e7158a45628",
+    "node_modules/koffi/src/koffi/src/static.cjs": "a099c712ecb6d20eac6ddc23ce5bd06a45a191da07fdc203d9544c8a4ddf5f5a",
+    "package.json": "40436c7d767fb0381f08af6d58a65a76d0d82989618ae3db11eff5eb9f2cc536",
+    "src/native-http-proxy.js": "a8965403263895c5905f069966e52d784386982f9e8a5f05acbb29baa56a1e13",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "944b9419740fa342d4dcbd838b35567815dcc621a26bdc0e698d21df237eec13",
+    "src/runtime/http-dispatcher.js": "b416d2c8ed4f0b03c0daed958146e587dd793d19b3b0c58f0d4e817f88a87c23"
+  },
+  "sevenRecordedSourceMapsIdentical": true,
+  "input": {
+    "path": "docs/tmp/sg11-profile-unlaunched-fixed-run.json",
+    "bytes": 372359,
+    "sha256": "f00874409ff9f6432d5b56e73fcf19a912f51c9903bdc0a16b4baa69057c2f81"
+  },
+  "files": {
+    "readroots-qualification-summary.json": {
+      "bytes": 7073,
+      "sha256": "6a36af119da2d881b824fec8cf417537662f4252229d909a27c30d2ff1d7244d"
+    },
+    "native-console.log": {
+      "bytes": 446,
+      "sha256": "22050597734c27542e47969af0d27eb4aa30db2f74bd2f0ef3faceae70ba8dbb",
+      "temporarySource": "docs/tmp/sg11-readroots-qualification-run-console.log"
+    },
+    "archive-update.py": {
+      "bytes": 15003,
+      "sha256": "22196d66e6ebbfc4f989a6b69287de4f619125287f94d93924042d91c9da0002"
+    }
+  },
+  "report": {
+    "path": "docs/acceptance/resident-conversation-routing/round-37.md",
+    "bytes": 9951,
+    "sha256": "88da2771a87c283b88e8a8f4d318936ed9761f206e71931a67a9afce3243c21b"
+  },
+  "privateEvidence": {
+    "docs/tmp/sg11-readroots-qualification-probe.mjs": {
+      "bytes": 26987,
+      "sha256": "5f35a20d0ed3ec865606b9db43f1d98579a0a00ae5aef9ee6f0f9ebb76ad8d2f"
+    },
+    "docs/tmp/sg11-readroots-qualification-checklist.md": {
+      "bytes": 15575,
+      "sha256": "b533d60e792f35ac2918fa3937abad039d87a095ef6eacc25cca504e10ed9335"
+    },
+    "docs/tmp/sg11-readroots-qualification-check.json": {
+      "bytes": 6991,
+      "sha256": "22e8557d6b882788da025a524089995664c041f8fa78f27cbd3327123d721460"
+    },
+    "docs/tmp/sg11-readroots-qualification-check-execution.json": {
+      "bytes": 7421,
+      "sha256": "fe7e754d7fed3a79d696dcec4bea8660b2849d6481c162ea0bfdf748596a3387"
+    },
+    "docs/tmp/sg11-readroots-qualification-execute.py": {
+      "bytes": 8584,
+      "sha256": "efe49dba30f988f7f27d6987c5de763dda56b2d4cc776bf623bba7f779457879"
+    },
+    "docs/tmp/sg11-readroots-qualification-run-check.json": {
+      "bytes": 6991,
+      "sha256": "22e8557d6b882788da025a524089995664c041f8fa78f27cbd3327123d721460"
+    },
+    "docs/tmp/sg11-readroots-qualification-run-console.log": {
+      "bytes": 446,
+      "sha256": "22050597734c27542e47969af0d27eb4aa30db2f74bd2f0ef3faceae70ba8dbb"
+    },
+    "docs/tmp/sg11-readroots-qualification-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/tmp/sg11-readroots-qualification-run.json": {
+      "bytes": 84296,
+      "sha256": "8e3c2f6001b0997dab2f7231ad003c4e098bcdcd368f3868ad18c18f1bf31fcc"
+    },
+    "docs/tmp/sg11-readroots-qualification-execution.json": {
+      "bytes": 7638,
+      "sha256": "4e36bc96a4c32ddd46bfa89e6a74f7817961c024cc8522938ca8bc196849b462"
+    }
+  },
+  "matrix": {
+    "path": "docs/acceptance/resident-conversation-routing/matrix.csv",
+    "beforeBytes": 202662,
+    "beforeSha256": "22334bdd73e9934a5a3f4444c69e27000e228d36ce5b881500a21149768e202a",
+    "afterBytes": 208843,
+    "afterSha256": "77fa88290ad87de4d1d1bcce503c7626acb61e5af6ddb7ca80eeee0e59323e4b",
+    "businessRowsBefore": 297,
+    "businessRowsAfter": 298,
+    "columnAdded": "round_37",
+    "existingRowAnnotations": {
+      "all-required-regressions": "PARTIAL_RETAINED_FOUR_READROOTS_FOREST_DACL_AND_INTERNAL_INHERITANCE_PASS_NO_RO_ADMISSION_FULL_LPAC_OTHER_GROUPS_NOT_VALIDATED",
+      "sg11-final-remaining-checks": "PARTIAL_READROOTS_8_TARGETS_4_EDGES_STABLE_40_HANDLES_20_ALLOCATIONS_RELEASED_R35_UNKNOWN_AND_NULL_WRITE_RECOVERY_RETAINED"
+    },
+    "existingNotRerunRows": 295,
+    "newRow": {
+      "case_id": "sg11-readroots-qualification-forest",
+      "scenario": "原R36四readRoots完整forest只读观察；真实类型和原FileID绑定，DACL与内部继承窄资格，非RO准入",
+      "round_1": "",
+      "round_2": "",
+      "round_3": "",
+      "round_4": "",
+      "round_5": "",
+      "round_6": "",
+      "round_7": "",
+      "round_8": "",
+      "round_9": "",
+      "round_10": "",
+      "round_11": "",
+      "round_12": "",
+      "round_13": "",
+      "round_14": "",
+      "round_15": "",
+      "round_16": "",
+      "round_17": "",
+      "round_18": "",
+      "round_19": "",
+      "round_20": "",
+      "round_21": "",
+      "round_22": "",
+      "round_23": "",
+      "round_24": "",
+      "round_25": "",
+      "round_26": "",
+      "round_27": "",
+      "round_28": "",
+      "round_29": "",
+      "round_30": "",
+      "round_31": "",
+      "round_32": "",
+      "round_33": "",
+      "round_34": "",
+      "round_35": "",
+      "round_36": "",
+      "round_37": "PASS_READROOTS_FOREST_DACL_8_TARGETS_4_NATIVE_EDGES_BEFORE_AFTER_STABLE_NODE0_40_HANDLES_20_ALLOCATIONS_CLOSED_NO_ADMISSION"
+    },
+    "appendedRawSuffix": "sg11-readroots-qualification-forest,原R36四readRoots完整forest只读观察；真实类型和原FileID绑定，DACL与内部继承窄资格，非RO准入,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,PASS_READROOTS_FOREST_DACL_8_TARGETS_4_NATIVE_EDGES_BEFORE_AFTER_STABLE_NODE0_40_HANDLES_20_ALLOCATIONS_CLOSED_NO_ADMISSION\n",
+    "reverseVerifiedSha256": "22334bdd73e9934a5a3f4444c69e27000e228d36ce5b881500a21149768e202a"
+  },
+  "inventory": {
+    "path": "docs/acceptance/resident-conversation-routing/test-case-inventory.csv",
+    "bytes": 3320505,
+    "sha256": "aeb6cc97bcedbcce7b7d63aa984159a18b699b7b67f347deb2e4e057f5464fdb",
+    "identityRows": 5472,
+    "changed": false,
+    "newOrDeletedIdentities": 0
+  },
+  "cleanup": {
+    "newTenPrivateAssets": "RETAINED_FOR_REVIEW",
+    "oldRound35AndRound36AssetsInstallationsJournalsLocks": "UNMODIFIED_NO_CLEANUP",
+    "disposableIntermediateFilesCreated": 0,
+    "cleanupRequired": false
+  },
+  "boundaries": {
+    "readOnlyAdmission": false,
+    "labelOriginQualified": false,
+    "productionScopeReady": false,
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "sourceWindowReleasedBeforeArchive": true,
+    "hostInstantiated": false,
+    "newSdkProfileTempOrBusinessChild": false,
+    "nativeBusinessSet": false,
+    "failedNonnullOrReleaseFailureInjected": false,
+    "protectedEdgeExecuted": false,
+    "existingNullWriteRecoveryValidated": false,
+    "oldRound35UnknownClosed": false,
+    "newNodeTestRegistrations": 0,
+    "guardOrOtherGroupRerun": false,
+    "gitWritesChannelCiDeploy": false
+  }
+}

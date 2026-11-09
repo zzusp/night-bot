@@ -2,17 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as llm from '../src/native-llm-protocol.js'
 import * as tools from '../src/native-tool-protocol.js'
-import NativeTools from '../src/native-tools.js'
-test('internal execution entrypoints resolve owned services and the application scheduler capability',async()=>{
- const toolNamespace=await import('../packages/capability-compat/tools/index.js')
- assert.equal(toolNamespace.default,NativeTools)
- const modelNamespace=await import('../packages/capability-compat/llm/index.js')
- assert.equal(Object.hasOwn(modelNamespace,'default'),false)
- assert.equal(Object.hasOwn(modelNamespace,'LlmRuntime'),false)
- const alias=await import('../packages/capability-compat/tools/index.js')
- assert.equal(alias.TOOL_RUNTIME_SCHEDULER,tools.TOOL_RUNTIME_SCHEDULER)
- assert.equal(typeof alias.TOOL_RUNTIME_SCHEDULER,'symbol')
- assert.notEqual(alias.TOOL_RUNTIME_SCHEDULER,Symbol('night-bot.tool-scheduler'))
+test('native protocols expose an unforgeable scheduler capability without a legacy runtime',()=>{
+ assert.equal(Object.hasOwn(llm,'default'),false)
+ assert.equal(Object.hasOwn(llm,'LlmRuntime'),false)
+ assert.equal(typeof tools.TOOL_RUNTIME_SCHEDULER,'symbol')
+ assert.notEqual(tools.TOOL_RUNTIME_SCHEDULER,Symbol('night-bot.tool-scheduler'))
 })
 test('canonical model errors retain strict trusted identity and validated detached failure facts',async()=>{
  const cause=new Error('cause')
@@ -24,9 +18,7 @@ test('canonical model errors retain strict trusted identity and validated detach
  for(const invalid of [{status:99},{status:600},{providerRetryAfterMs:0},{requestId:''}])assert.throws(()=>new llm.LlmError('fixture','CODE',invalid))
 })
 test('model helper namespace preserves canonical errors without a legacy runtime',async()=>{
- const api=await import('../packages/capability-compat/llm/index.js')
- assert.equal(api.HarnessError,llm.HarnessError);assert.equal(api.LlmError,llm.LlmError)
- const request={};api.markAgentLoopRequest(request);assert.equal(llm.isAgentLoopRequest(request),true)
+ const request={};llm.markAgentLoopRequest(request);assert.equal(llm.isAgentLoopRequest(request),true)
 })
 
 test('tool schemas reject invalid nested values and SDK declarations expose constrained arguments',()=>{

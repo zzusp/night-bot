@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-dsh-assistant/workflow-trusted-platforms.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 
 const developmentSha = 'a'.repeat(40)
 const mergeSha = 'b'.repeat(40)

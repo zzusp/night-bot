@@ -1,0 +1,16 @@
+{
+  "command": [
+    "pnpm",
+    "check"
+  ],
+  "exit": 1,
+  "sourceCount": 1110,
+  "sourceMapSha256": "4eb317828a024c832f3bf547727827797b8bef8b37bae40490824e19ae1c0fc9",
+  "sourceChanged": [],
+  "retiredPathsStillAbsent": true,
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-guards.log": "f02423ec1bc09a9dfd8d040b3200c52a65ebea7e9fce00ff63ccea45598f34fe",
+    "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-guards-stderr.log": "6184aa550131895ecc9a7b388aebf296a1b105d7bdd181d87d942887dc22ee54"
+  },
+  "finishedAt": "2026-11-07T23:36:21.797211+00:00"
+}

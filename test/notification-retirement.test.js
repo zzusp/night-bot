@@ -5,8 +5,8 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
-import {openExecutionStore} from '../packages/dingtalk-dsh-assistant/execution-store.js'
-import {createNotificationRetirementHandler} from '../packages/dingtalk-dsh-assistant/notification-retirement.js'
+import {openExecutionStore} from '../packages/dingtalk-core/execution-store.js'
+import {createNotificationRetirementHandler} from '../packages/dingtalk-core/notification-retirement.js'
 
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'retire-notice-')),dbPath=join(root,'control.sqlite')

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { archiveTaskWorktree, inspectTaskWorktree } from '../packages/dingtalk-dsh-assistant/task-worktree-archive.js'
+import { archiveTaskWorktree, inspectTaskWorktree } from '../packages/dingtalk-core/task-worktree-archive.js'
 
 const exec = promisify(execFile)
 async function git(cwd, ...args) { return (await exec('git', ['-C', cwd, ...args], { encoding: 'utf8' })).stdout.trim() }

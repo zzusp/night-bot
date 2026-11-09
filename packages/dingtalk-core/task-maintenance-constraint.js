@@ -54,3 +54,27 @@ export function createTaskMaintenanceConstraint({ store, artifacts, controller, 
     return { accepted: true, replayed: false, sourceRef: source.ref, eventSeq: receipt.result.eventSeq }
   }
 }
+
+/** Keep recorded maintenance facts visible after their event watermark was consumed. */
+export async function readTaskMaintenanceConstraints({ taskId, plan, store, artifacts, signal }) {
+  const constraints = new Map()
+  let cursor = 0
+  for (;;) {
+    const page = await store.query({ kind: 'task.owner.events', taskId, afterSequenceId: cursor, limit: 200 })
+    for (const event of page) {
+      signal?.throwIfAborted()
+      if (event.eventType !== 'intent.received' || !event.payloadRef) continue
+      const fact = await artifacts.read(event.payloadRef)
+      if (fact?.kind !== 'constraint' || fact.repairSource?.kind !== 'engineering-maintenance' || !fact.repairSource.sourceRef) continue
+      const source = await artifacts.read(fact.repairSource.sourceRef)
+      if (source?.kind !== 'engineering-maintenance-constraint' || source.channel !== 'internal-maintenance'
+        || source.taskId !== taskId || source.requirementRef !== plan.task.requirementRef
+        || !plan.stages.some(stage => stage.stageId === source.stageId && stage.runId === source.runId)) continue
+      constraints.set(source.requestId, { eventSeq: event.eventSeq, payloadRef: event.payloadRef,
+        sourceRef: fact.repairSource.sourceRef, ...source })
+    }
+    if (page.length < 200) break
+    cursor = page.at(-1).eventSeq
+  }
+  return [...constraints.values()]
+}

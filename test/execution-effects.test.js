@@ -5,11 +5,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { openExecutionStore } from '../packages/dingtalk-dsh-assistant/execution-store.js'
+import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 import {
   installEffectsSchema, validateEffectsSchema, reduceEffectCommand, queryEffects, recoverEffects,
   assertRunEffectsDrained, assertNodeEffectsSettled,
-} from '../packages/dingtalk-dsh-assistant/execution-effects.js'
+} from '../packages/dingtalk-core/execution-effects.js'
 
 function fixture(file = ':memory:') {
   const db = new DatabaseSync(file)

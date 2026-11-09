@@ -1,0 +1,20 @@
+{
+  "sourceMapSha256": "46b3e4c2cc32840b72a50a82ca54a480680c007ecad5c44078e76aee33b43a70",
+  "sourceBoundToSealedDirectory": true,
+  "exit": 0,
+  "spawnFailure": false,
+  "startedAt": "2026-11-08T08:02:05.117Z",
+  "finishedAt": "2026-11-08T08:02:11.490Z",
+  "tag": "night-bot:sg12-current-r20",
+  "sourceChanged": [],
+  "sourceCount": 491,
+  "logSha256": "04a294094fda8124090afdec8daf7ab67d05d9dac22c6c8736db68d397ec355f",
+  "image": {
+    "id": "sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b",
+    "os": "linux",
+    "architecture": "amd64",
+    "user": "node"
+  },
+  "realVendorExecuted": false,
+  "applicationRuntimeValidated": false
+}

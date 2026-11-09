@@ -1,0 +1,362 @@
+{
+  "round": 44,
+  "result": "FAIL_BUSINESS_SCOPE_COMPONENT_HOST_MAINTENANCE_INHERITANCE_GUARD",
+  "scope": "Native scope Host maintenance inheritance ownership guard failed before scope-frozen; no-plan cleanup is not planned mandatory recovery",
+  "hostTask": "bwiohsajy",
+  "toolUseId": "call_1e06ec150bbc483d9cef584a81857b6e",
+  "driverSha256": "b67a986a438d84fe287dd9509263125871e2515b453861f6fbda4c90b27c1aba",
+  "nodePid": 97900,
+  "startedAt": "2026-11-09T01:04:44.871661+00:00",
+  "finishedAt": "2026-11-09T01:05:14.488538+00:00",
+  "nodeExitCode": 1,
+  "driverExitCode": 1,
+  "naturalWaitReturned": true,
+  "forcedTermination": false,
+  "componentWasProduced": true,
+  "componentPass": false,
+  "sourceCount": 251,
+  "sourceAggregateSha256": "796f66f535398140e258208ac3f7b3a3a79fd3d3f850ac26bcf9836dbe54dec4",
+  "sourceChanged": [],
+  "imageChanged": false,
+  "freshCheck": {
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 32159,
+    "stdoutSha256": "92bc5725c6a9915d5490aa833f8de6d4f4dbe54ca487852eef2aafe4c759ce83"
+  },
+  "errors": [
+    {
+      "name": "Error",
+      "message": "Native scope inheritance changed Host maintenance ownership",
+      "code": null,
+      "api": null,
+      "win32Code": null
+    },
+    {
+      "name": "AssertionError",
+      "message": "The expression evaluated to a falsy value:\n\n  assert.ok(out.settled&&out.releasedEntryId)\n",
+      "code": "ERR_ASSERTION",
+      "api": null,
+      "win32Code": null
+    }
+  ],
+  "unknownOwnershipCount": 0,
+  "steps": [
+    "original-factory-returned",
+    "original-owned-proof-committed",
+    "original-launch-environment-verified",
+    "original-suspended-frame-bound-nul-closed",
+    "original-business-scope-release-returned",
+    "original-profile-delete-returned",
+    "released-committed"
+  ],
+  "standingMode": "workspace-write",
+  "readRootCount": 4,
+  "writeRootCount": 2,
+  "scopeCount": 4,
+  "profilePrivateTempCreated": false,
+  "scopePreparationAttempted": true,
+  "scopePreparationReturned": false,
+  "scopeFrozenProduced": false,
+  "failedParentChildAndInheritanceCountsKnown": false,
+  "scopePerStageNativeStatusesExported": false,
+  "scopeEffectsSnapshots": [
+    {
+      "stage": "before-original-scope-preparation",
+      "scopeEffects": 0,
+      "preparationPending": false,
+      "scopeReleased": false
+    },
+    {
+      "stage": "producer-failure-after-joined-preparation",
+      "scopeEffects": 0,
+      "preparationPending": false,
+      "scopeReleased": false
+    },
+    {
+      "stage": "before-original-mandatory-release",
+      "scopeEffects": 0,
+      "preparationPending": false,
+      "scopeReleased": false
+    },
+    {
+      "stage": "original-mandatory-release-returned",
+      "scopeEffects": 0,
+      "preparationPending": false,
+      "scopeReleased": true
+    }
+  ],
+  "scopeReleaseResult": {
+    "scopeReleased": true
+  },
+  "scopeReleaseBranch": "no-plan-zero-effects",
+  "withPlanMandatoryRecoveryPassed": false,
+  "nulEndpoints": [
+    {
+      "id": 0,
+      "device": "NUL",
+      "namespacePath": "\\\\.\\NUL",
+      "flags": "r",
+      "fd": 3,
+      "opened": true,
+      "validationAttempted": true,
+      "closeAttempted": true,
+      "closed": true,
+      "flagsBefore": 0,
+      "flagsAfter": 0
+    },
+    {
+      "id": 1,
+      "device": "NUL",
+      "namespacePath": "\\\\.\\NUL",
+      "flags": "w",
+      "fd": 4,
+      "opened": true,
+      "validationAttempted": true,
+      "closeAttempted": true,
+      "closed": true,
+      "flagsBefore": 0,
+      "flagsAfter": 0
+    },
+    {
+      "id": 2,
+      "device": "NUL",
+      "namespacePath": "\\\\.\\NUL",
+      "flags": "w",
+      "fd": 5,
+      "opened": true,
+      "validationAttempted": true,
+      "closeAttempted": true,
+      "closed": true,
+      "flagsBefore": 0,
+      "flagsAfter": 0
+    }
+  ],
+  "nulRetained": 0,
+  "frameSnapshots": [
+    {
+      "stage": "original-frame-bound",
+      "pid": 58260,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": false,
+      "processCloseAttempted": false,
+      "jobCloseAttempted": false,
+      "pendingPreparation": false,
+      "processPresent": true,
+      "threadPresent": true,
+      "jobPresent": true
+    },
+    {
+      "stage": "original-seal-complete",
+      "pid": 58260,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": false,
+      "processCloseAttempted": false,
+      "jobCloseAttempted": false,
+      "pendingPreparation": false,
+      "processPresent": true,
+      "threadPresent": true,
+      "jobPresent": true
+    },
+    {
+      "stage": "native-drained",
+      "pid": 58260,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": false,
+      "processCloseAttempted": false,
+      "jobCloseAttempted": false,
+      "pendingPreparation": false,
+      "processPresent": true,
+      "threadPresent": true,
+      "jobPresent": true
+    },
+    {
+      "stage": "native-handles-closed",
+      "pid": 58260,
+      "jobConfigured": true,
+      "assigned": true,
+      "childCreated": true,
+      "preparationReleased": true,
+      "payloadResumed": false,
+      "resumeAttempted": false,
+      "initialThreadCloseAttempted": true,
+      "processCloseAttempted": true,
+      "jobCloseAttempted": true,
+      "pendingPreparation": false,
+      "processPresent": false,
+      "threadPresent": false,
+      "jobPresent": false
+    }
+  ],
+  "nativeDrain": {
+    "pid": 58260,
+    "childCreated": true,
+    "processSettled": true,
+    "jobEmpty": true,
+    "exitCode": 1
+  },
+  "payloadResumed": false,
+  "sealResult": {
+    "profileOwned": true,
+    "profileSealed": true,
+    "nativeTokenQualified": true,
+    "observationHandlesClosed": true
+  },
+  "sealTargets": {
+    "fileObjects": 6,
+    "registryObjects": 2
+  },
+  "allEightSealEffectsAttemptedStatusZeroImmediatelyVerified": true,
+  "finalProfileState": "registration-and-folder-absent",
+  "finalSealState": "unknown-retained",
+  "retainedHandles": 0,
+  "retainedAllocations": 0,
+  "resourceTrail": [
+    {
+      "seq": 1,
+      "status": "planned",
+      "scopeEffects": 0,
+      "retainedHandles": 0,
+      "retainedAllocations": 0,
+      "preparationPending": false,
+      "scopeReleased": true
+    },
+    {
+      "seq": 2,
+      "status": "unknown-retained",
+      "scopeEffects": 0,
+      "retainedHandles": 4,
+      "retainedAllocations": 1,
+      "preparationPending": true,
+      "scopeReleased": true
+    },
+    {
+      "seq": 3,
+      "status": "unknown-retained",
+      "scopeEffects": 0,
+      "retainedHandles": 7,
+      "retainedAllocations": 1,
+      "preparationPending": true,
+      "scopeReleased": false
+    },
+    {
+      "seq": 4,
+      "status": "unknown-retained",
+      "scopeEffects": 0,
+      "retainedHandles": 8,
+      "retainedAllocations": 1,
+      "preparationPending": true,
+      "scopeReleased": true
+    },
+    {
+      "seq": 5,
+      "status": "released",
+      "scopeEffects": 0,
+      "retainedHandles": 0,
+      "retainedAllocations": 0,
+      "preparationPending": false,
+      "scopeReleased": true
+    }
+  ],
+  "originalReleasedEntryId": "c2dd30cb",
+  "proofPhases": [
+    "profile-owned",
+    "profile-seal-frozen"
+  ],
+  "jobTerminal": "failed",
+  "taskStatus": "active",
+  "taskDrained": true,
+  "taskDecision": "blocked",
+  "taskLimitations": [
+    "TASK_EFFECT_UNCERTAIN_NO_REPLAY"
+  ],
+  "successSettledLiveStrictColdProduced": false,
+  "absentSuccessAndScopeFields": [
+    "scopePreparationResult",
+    "scopePreparationCommitted",
+    "scopePreparationAfter",
+    "scopeStageEvidence",
+    "scopeFrozenEntryId",
+    "scopeReleaseCommitted",
+    "settled",
+    "liveJobAudit",
+    "releasedLiveProofs",
+    "coldViaOriginalRecorder",
+    "cold"
+  ],
+  "workspaceInitialization": {
+    "state": "ready",
+    "birthEqualsFinal": true,
+    "directories": {
+      "work": {
+        "createdControl": 38932,
+        "initializationNeeded": true,
+        "control": 39956
+      },
+      "tmp": {
+        "createdControl": 38932,
+        "initializationNeeded": true,
+        "control": 39956
+      }
+    },
+    "nativeResources": {
+      "handles": {
+        "acquired": 16,
+        "closed": 16,
+        "retained": 0
+      },
+      "local": {
+        "acquired": 36,
+        "closed": 36,
+        "retained": 0
+      }
+    }
+  },
+  "environmentVerification": {
+    "ownedProofEntryId": "e3b63ad2",
+    "trustedMatchesActual": true,
+    "conflictingKeys": [
+      "LOCALAPPDATA",
+      "localappdata",
+      "LoCaLaPpDaTa"
+    ],
+    "otherKeys": [
+      "SystemRoot",
+      "WINDIR",
+      "ComSpec",
+      "PATH",
+      "PATHEXT",
+      "HOME",
+      "USERPROFILE",
+      "TEMP",
+      "TMP",
+      "TMPDIR"
+    ],
+    "conflictsOverridden": true,
+    "otherEnvironmentUnchanged": true,
+    "childEnvironmentNotObserved": true
+  },
+  "installationRetained": true,
+  "readOnlyAdmission": false,
+  "runnerIpcAckQualified": false,
+  "productionScopeReady": false,
+  "inventoryRows": 5485,
+  "inventoryUnchangedSha256": "4cb87a89885f8359d2b813580994d40dcd2d74bbc76ac4aac9138498e0891f2f",
+  "matrixRowsBefore": 316,
+  "matrixRowsAfter": 316
+}

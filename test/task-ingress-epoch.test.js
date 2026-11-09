@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 
 const epoch = '2026-10-13T12:00:00.000Z'
 const epochMillis = Date.parse(epoch)

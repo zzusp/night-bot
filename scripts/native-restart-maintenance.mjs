@@ -1,9 +1,9 @@
 import {JOB_REGISTERED,JOB_SETTLED} from '../src/runtime/job-ledger.js'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { isolationDigest as hash, isolationBinding, hasRestartIsolation } from '../packages/dingtalk-dsh-assistant/native-restart-isolation.js'
-import { restartScopeProbePlan, validRestartScopeObservation } from '../packages/dingtalk-dsh-assistant/native-restart-scope-probe.js'
-import { readNativeHistory } from '../packages/dingtalk-dsh-assistant/native-maintenance-drain.js'
+import { isolationDigest as hash, isolationBinding, hasRestartIsolation } from '../packages/dingtalk-core/native-restart-isolation.js'
+import { restartScopeProbePlan, validRestartScopeObservation } from '../packages/dingtalk-core/native-restart-scope-probe.js'
+import { readNativeHistory } from '../packages/dingtalk-core/native-maintenance-drain.js'
 export { readNativeHistory }
 
 function runFixedProbe(plan) {

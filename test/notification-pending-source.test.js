@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDynamicTaskStore } from '../packages/dingtalk-dsh-assistant/dynamic-task-store.js'
-import { deliverTaskNotification } from '../packages/dingtalk-dsh-assistant/notification-delivery.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { deliverTaskNotification } from '../packages/dingtalk-core/notification-delivery.js'
 import { currentCoordinationFixture } from './fixtures/current-coordination-contracts.js'
 import { available, reason, nativeTaskHost, latestInput, topicTaskCalls, waitUntil } from './fixtures/task-session-native-host.js'
 

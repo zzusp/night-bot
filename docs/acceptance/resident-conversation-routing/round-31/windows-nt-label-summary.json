@@ -1,0 +1,262 @@
+{
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "taskId": "bbwla9m75",
+  "variant": "sg11-private-nt-label-null-restoration",
+  "node": "v24.19.0",
+  "nativeStartedAt": "2026-11-08T12:56:25.307251+00:00",
+  "finishedAt": "2026-11-08T12:56:26.116300+00:00",
+  "checkExitCode": 0,
+  "freshCheckEqualsReviewedInitial": true,
+  "nodeExitCode": 1,
+  "collectorExitCode": 0,
+  "status": "FAILED",
+  "sourceBefore": {
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+  },
+  "sourceChanged": [],
+  "privateFiles": {
+    "docs/tmp/sg11-security-projection-nt-label-probe.mjs": {
+      "bytes": 31711,
+      "sha256": "440947e9da7647b05f239b946169e8606cfd482e89040a61ab8dfb6e202ad84d"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-checklist.md": {
+      "bytes": 8140,
+      "sha256": "cdcd6e318d413fb634eba89322422a969a046d5cec6b3bfdc6146bd3818d6500"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-check.json": {
+      "bytes": 2797,
+      "sha256": "b77611792ded0ede8b6956d7cf2d494dc66639d7e29544b2ee6da9adaf46955d"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-check-execution.json": {
+      "bytes": 1938,
+      "sha256": "f9fe8bbf804d222c2027a84615c7618ec57e127ea9d7a2acd2e6b00699a99dfe"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-run-check.json": {
+      "bytes": 2797,
+      "sha256": "b77611792ded0ede8b6956d7cf2d494dc66639d7e29544b2ee6da9adaf46955d"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-run.json": {
+      "bytes": 39644,
+      "sha256": "43735bc266c140bee4aed718ad2e244dbb8e8fda3cf12f7ff3db35854eb79a74"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-run-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/tmp/sg11-security-projection-nt-label-execution.json": {
+      "bytes": 2643,
+      "sha256": "ee05107b8b8f044e1a0eea9cc5af8484c3d8941903632d7b86137d918621e552"
+    }
+  },
+  "originals": [
+    {
+      "control": 39940,
+      "controlHex": "0x9c04",
+      "saclPointerNull": true,
+      "saclPresent": false,
+      "saclAutoInherited": true,
+      "label": null
+    },
+    {
+      "control": 35844,
+      "controlHex": "0x8c04",
+      "saclPointerNull": true,
+      "saclPresent": false,
+      "saclAutoInherited": true,
+      "label": null
+    },
+    {
+      "control": 35844,
+      "controlHex": "0x8c04",
+      "saclPointerNull": true,
+      "saclPresent": false,
+      "saclAutoInherited": true,
+      "label": null
+    }
+  ],
+  "creation": {
+    "attempted": true,
+    "created": true,
+    "unknown": false,
+    "status": 1
+  },
+  "creationControlComparison": {
+    "mask": 5388,
+    "requestedProjection": 5124,
+    "actualProjection": 4100,
+    "matched": false,
+    "onlyDaclAutoInheritedMissing": true,
+    "fullControlXor": 3072,
+    "saclWasRequested": false
+  },
+  "initialization": {
+    "needed": true,
+    "attempted": true,
+    "status": 0,
+    "unknown": false,
+    "initialized": true,
+    "validated": true,
+    "controlXor": 1024,
+    "sameLength": true,
+    "sameBytesExceptControl": true,
+    "emptyBefore": true,
+    "emptyAfter": true
+  },
+  "rootUnchangedAfterDescendants": true,
+  "lowStage": {
+    "matchesFixedStage": [
+      true,
+      true,
+      true
+    ],
+    "bytesEqualFixedStage": [
+      false,
+      false,
+      false
+    ],
+    "controlXor": [
+      0,
+      0,
+      0
+    ],
+    "actualAfterNonLabelMatchesOriginal": [
+      true,
+      true,
+      true
+    ]
+  },
+  "ntRestoration": {
+    "target": "root",
+    "alreadyExact": false,
+    "ntAttempted": true,
+    "statusSigned": 0,
+    "statusUnsigned": 0,
+    "statusHex": "0x00000000",
+    "actualAfter": [
+      {
+        "control": 37908,
+        "controlHex": "0x9414",
+        "saclPointerNull": true,
+        "saclPresent": true,
+        "saclAutoInherited": false,
+        "label": null
+      },
+      {
+        "control": 35860,
+        "controlHex": "0x8c14",
+        "saclPointerNull": false,
+        "saclPresent": true,
+        "saclAutoInherited": true,
+        "label": {
+          "level": 4096,
+          "flags": 19,
+          "mask": 1
+        }
+      },
+      {
+        "control": 35860,
+        "controlHex": "0x8c14",
+        "saclPointerNull": false,
+        "saclPresent": true,
+        "saclAutoInherited": true,
+        "label": {
+          "level": 4096,
+          "flags": 16,
+          "mask": 1
+        }
+      }
+    ],
+    "sameOwnedOriginal": [
+      false,
+      false,
+      false
+    ],
+    "bytesEqualOriginal": [
+      false,
+      false,
+      false
+    ],
+    "controlXorOriginal": [
+      2064,
+      16,
+      16
+    ],
+    "nonLabelMatchesOriginal": [
+      true,
+      true,
+      true
+    ],
+    "componentsMatchOriginal": [
+      {
+        "revision": true,
+        "reserved": true,
+        "owner": true,
+        "group": true,
+        "sacl": true,
+        "dacl": true
+      },
+      {
+        "revision": true,
+        "reserved": true,
+        "owner": true,
+        "group": true,
+        "sacl": false,
+        "dacl": true
+      },
+      {
+        "revision": true,
+        "reserved": true,
+        "owner": true,
+        "group": true,
+        "sacl": false,
+        "dacl": true
+      }
+    ]
+  },
+  "ntCalls": 1,
+  "skippedTargets": [],
+  "notReachedTargets": [
+    "child",
+    "child/file"
+  ],
+  "notReachedIsNotAlreadyExactSkip": true,
+  "finalSnapshotReached": false,
+  "restoredBusinessBaseline": null,
+  "resourceResult": {
+    "setSecurityInfoAttempts": 2,
+    "getSecurityInfoAttempts": 17,
+    "localAllocations": 18,
+    "privateSecurityAllocations": 2,
+    "allAllocationsSingleAttemptClosed": true,
+    "handles": 5,
+    "allHandlesSingleAttemptClosed": true,
+    "retainedAllocations": 0,
+    "retainedHandles": 0
+  },
+  "fixtureRetained": true,
+  "fixtureRemoved": false,
+  "newRootRelative": "data/workspaces/sg11-security-projection-nt-label-a4a62052df2046eab0087a2f6106810a",
+  "priorFailureRootsUntouched": 4,
+  "sensitiveSidSdFileIdIncluded": false,
+  "productionValidated": false,
+  "scopeReady": false,
+  "errors": [
+    {
+      "name": "AssertionError",
+      "message": "Nt restoration projection differs from fixed original\n\nfalse !== true\n",
+      "code": "ERR_ASSERTION"
+    }
+  ]
+}

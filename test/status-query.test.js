@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createStatusQueryHandler } from '../packages/dingtalk-dsh-assistant/status-query.js'
+import { createStatusQueryHandler } from '../packages/dingtalk-core/status-query.js'
 
 const request = () => ({ requestId: 'query-1', groupId: 'g1', topicId: 't1', revision: 2, sourceMessageIds: ['m1'], sourceMessages: [{ messageId: 'm1', text: '现在完成了吗？' }], taskSnapshots: [{ taskId: 'task1', topicRefs: [{ topicId: 't1', revision: 2 }], state: 'completed', observedAt: '2026-09-10T08:00:00Z' }], compactPolicy: '只回复明确向助手提出的问题。', replyCandidates: [] })
 const reply = { kind: 'reply', decision: { actions: [], basisMessageIds: ['m1'], reply: '截至 16:00 的报告显示已完成。' } }

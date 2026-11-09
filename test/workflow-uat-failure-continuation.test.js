@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-dsh-assistant/workflow-trusted-platforms.js'
-import { continueFailedUatStage } from '../packages/dingtalk-dsh-assistant/workflow-service.js'
-import { executionDigest } from '../packages/dingtalk-dsh-assistant/execution-artifacts.js'
+import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
+import { continueFailedUatStage } from '../packages/dingtalk-core/workflow-service.js'
+import { executionDigest } from '../packages/dingtalk-core/execution-artifacts.js'
 
 const target = { id: 'deploy', kind: 'uat-deployment', repository: 'HiQ-AI/dataset-web', environment: 'uat',
   service: 'dataset-web', runbookId: 'web-uat2-deployment', branch: 'feature/uat2-base',

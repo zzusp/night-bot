@@ -20,8 +20,10 @@ event stream, requests a scan after a committed completion and on normal recover
 and scans existing completion events at startup. A review is separate background
 work, after task completion has committed. It cannot undo that state, block the
 completion receipt or execute tools. A channel installation is not a prerequisite.
-The task service binds owner and native execution sessions to ledger owner/group
-principals; other integrations must supply authenticated bindings explicitly.
+The task service binds task execution sessions to ledger actor/group principals;
+other conversational integrations require explicit authenticated bindings. Router
+result assessment is separate from this tool-free retrospective: learning neither
+releases dependencies nor creates authority for a follow-up task.
 
 Each review receives bounded completion, execution and operation facts with stable
 IDs, not entire chats or raw command bodies. The configured model proposes at most
@@ -54,11 +56,14 @@ sessions; group and project reads follow memory grants. Task reviews currently
 learn in the task's group scope, or personal scope when the ledger has no group;
 project-specific automatic task-review routing is not inferred.
 
-Only these managed learned skills are created/updated automatically. Formal source
-skill templates and user-maintained `data/config/skills` are not overwritten by
-learning. This avoids turning every task into a new formal skill or silently
-rewriting a user's instructions. Deliberate formal templates are versioned in Git;
-learned skill files, reports and business artifacts are runtime data and are ignored.
+Only these managed learned skills are created/updated automatically. Generic
+loading/isolation contracts and no-body configuration may be versioned with the
+code; private source skill bodies and user-maintained `data/config/skills` are not
+written into the repository or overwritten by learning. This avoids turning every
+task into a new formal skill or silently rewriting a user's instructions. Learned
+skill files, reports, business artifacts and private skill packages are runtime data
+and are ignored; their `scripts`, `references` and `assets` stay beside the skill in
+the private installation directory.
 
 ## Durability, failures and forgetting
 

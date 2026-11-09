@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { createPostgresUatPlatform } from '../packages/dingtalk-dsh-assistant/workflow-postgres-uat-platform.js'
+import { createPostgresUatPlatform } from '../packages/dingtalk-core/workflow-postgres-uat-platform.js'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const project = 'projects/flbn'

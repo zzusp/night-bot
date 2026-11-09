@@ -1,0 +1,66 @@
+{
+  "exit": 0,
+  "image": "sha256:b3964940df2d6abcfc8e27dbfba00bca01ff5f00dbcd75e5bb8e1202eb77f713",
+  "driverSha256": "3f6bae8003132bd368266e63d1e5c66ad7e9e255eda5cb02182e09a3eb191a8f",
+  "stderr": "",
+  "observed": {
+    "uid": 1000,
+    "gid": 1000,
+    "kernel": "6.6.114.1-microsoft-standard-WSL2",
+    "status": {
+      "Uid": "1000\t1000\t1000\t1000",
+      "Gid": "1000\t1000\t1000\t1000",
+      "CapEff": "0000000000000000",
+      "NoNewPrivs": "1",
+      "Seccomp": "2"
+    },
+    "maxUserNamespaces": {
+      "value": "15629"
+    },
+    "unprivilegedUsernsClone": {
+      "errorCode": "ENOENT"
+    },
+    "apparmorRestrictUserns": {
+      "errorCode": "ENOENT"
+    },
+    "currentLsmLabel": {
+      "value": "kernel\u0000"
+    },
+    "versions": {
+      "node": "v24.13.0",
+      "pnpm": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "node:fs:2788\n      const stats = binding.lstat(base, true, undefined, true /* throwIfNoEntry */);\n                            ^\n\nError: ENOENT: no such file or directory, lstat '/opt/night-bot/data/temp'\n    at Object.realpathSync (node:fs:2788:29)\n    at ../../../../../setup-pnpm/store/v11/links/@/temp-dir/2.0.0/4198b35b752c049d4a3d393f440171b7cd6505e7cfe07700ea9fdea5db17538a/node_modules/temp-dir/index.js (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:138144:22)\n    at __require3 (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:24:53)\n    at ../../../../../setup-pnpm/store/v11/links/@/tempy/3.0.0/3d67cef696bf4252940e546ecc39f835e45f7d4463663a59cd65519fd5d12c64/node_modules/tempy/index.js (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:138171:31)\n    at __init (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:17:58)\n    at ../fetching/binary-fetcher/lib/index.js (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:138329:5)\n    at __init (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:17:58)\n    at ../installing/client/lib/index.js (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:141855:5)\n    at __init (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:17:58)\n    at lib/checkForUpdates.js (file:///usr/local/lib/node_modules/pnpm/dist/pnpm.mjs:142417:5) {\n  errno: -2,\n  code: 'ENOENT',\n  syscall: 'lstat',\n  path: '/opt/night-bot/data/temp'\n}\n\nNode.js v24.13.0\n"
+      },
+      "bwrap": {
+        "exit": 0,
+        "stdout": "bubblewrap 0.8.0\n",
+        "stderr": ""
+      },
+      "unshare": {
+        "exit": 0,
+        "stdout": "unshare from util-linux 2.38.1\n",
+        "stderr": ""
+      },
+      "dws": {
+        "exit": 0,
+        "stdout": "dws version v1.0.67 (63a7c4906c7dee10750011ea309b9eb78abb7eb0, 2026-11-04T08:18:40Z)\n",
+        "stderr": "版本检查: 当前 v1.0.67，未执行版本检查（已关闭检查、开发版本或宿主托管）。\n"
+      },
+      "strace": {
+        "exit": null,
+        "errorCode": "ENOENT"
+      },
+      "debianPackages": {
+        "exit": 1,
+        "stdout": "bubblewrap\t0.8.0-2+deb12u1\nutil-linux\t2.38.1-5+deb12u3\n",
+        "stderr": "dpkg-query: no packages found matching strace\n"
+      }
+    },
+    "namespaceAttempted": false,
+    "applicationStarted": false,
+    "realVendorExecuted": false
+  },
+  "containerRemovalIndependentlyVerified": true
+}
