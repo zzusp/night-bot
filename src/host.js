@@ -1,3 +1,4 @@
+import {createOperatorSettings} from './settings/operator.js'
 import {openToolPermissions} from './tool-permissions.js'
 import {configFileOf,updateConfig,validateConfig} from './config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
@@ -57,6 +58,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
     if(paths.mode==='portable'){
       const file=configFileOf(config)??join(paths.config,'config.json')
+      ctx.provide('operatorSettings',createOperatorSettings({file,paths,running:config,getCredentials:()=>ctx.get('credentials'),run:configurationCall}))
       ctx.provide('channelConfiguration',{
         read:()=>configurationCall(async()=>{
           const result=await updateConfig(file,next=>next,{checkOnly:true})
@@ -213,7 +215,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./pi-official-runtime.js', import.meta.url).href, config: { model: config.model, memoryModel: config.memory?.model??config.model, skillDirs:config.skillDirs, fileTools:config.fileTools, maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       { name: new URL('./native-session-controller.js', import.meta.url).href },
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
-      { name: new URL('./memory/service.js', import.meta.url).href, config: config.memory ?? {} },
+      { name: new URL('./memory/service.js', import.meta.url).href, config: {...config.memory,skillDirs:config.skillDirs??[]} },
       { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,

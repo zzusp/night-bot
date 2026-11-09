@@ -1,4 +1,4 @@
-# Scoped autonomous learning
+# Bot-shared autonomous learning
 
 Night Bot is a personal-assistant Agent initialization kit. It learns reusable
 reference material through conversation memory and post-completion task reviews;
@@ -40,21 +40,20 @@ A useful procedural lesson may propose steps, a reason, an evidence-backed
 assessment and bounded applicability. The model decides whether that experience
 justifies creating/updating a skill; a single well-evidenced reusable lesson can
 qualify. There is no fixed repetition threshold. Program checks require valid
-same-task evidence references, scoped ownership, bounded Markdown, deduplication
+same-task evidence references, authenticated ownership, bounded Markdown, deduplication
 and traceable revisions. They do not prove the model's assessment. Repeated events
 cannot inflate evidence or rewrite formal templates. Changed steps retain their
-review provenance. A scope can have at most 20 active learned skills; this is a
+review provenance. A Bot can have at most 20 active learned skills; this is a
 catalog size limit, not a requirement to manufacture more experiences. No
 executable scripts are generated.
 
-Learned Markdown lives under
-`data/memory/v1/<personal|group|project>/<scope-hash>/evolution/skills/<name>/SKILL.md`.
-The scoped `learned` provider makes active skills available through the existing
-`skills` catalog and `skill` tool. It rechecks the live principal on lookup and
-avoids cross-principal catalog caching. Personal skills are unavailable in group
-sessions; group and project reads follow memory grants. Task reviews currently
-learn in the task's group scope, or personal scope when the ledger has no group;
-project-specific automatic task-review routing is not inferred.
+Learned Markdown lives under `data/memory/v2/bot/evolution/skills/<name>/SKILL.md`.
+The common `learned` provider rechecks the live bound actor but selects the same Bot
+memory/skill namespace for every channel. Source conversation/task metadata remains
+traceable; it grants neither external writes nor access to original private transcripts.
+Bot-owned installed skills remain in configured installation roots and are shared by
+the default presets; learning does not overwrite these user-maintained resources.
+See MEMORY.md for copy-only v1 migration, conflict candidates, telemetry and limitations.
 
 Only these managed learned skills are created/updated automatically. Generic
 loading/isolation contracts and no-body configuration may be versioned with the
@@ -67,7 +66,7 @@ the private installation directory.
 
 ## Durability, failures and forgetting
 
-Per-scope evolution leases serialize review updates. Memory uses its own atomic
+The Bot evolution lease serialize review updates. Memory uses its own atomic
 journal and source deduplication. Review state keyed by the durable event ID,
 evidence reports and skill revisions are atomically written. Repeating a scan or
 cold restart skips completed reviews; a crash before state publication retries
@@ -92,7 +91,7 @@ originals and configuration through the layout-aware snapshot tool. Secrets are
 excluded by default. No vector database, graph store, plugin historical-data import,
 real business deployment or automatic external notification is involved.
 
-Each task also retains its own review report and scoped destination identifiers
+Each task also retains its own review report and Bot destination identifiers
 in task `reviews/`. Archive restore preserves those records without importing
 shared memory/skill collections or automatically re-running the old review.
 See [TASK-ARCHIVE](TASK-ARCHIVE.md).

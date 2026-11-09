@@ -12,7 +12,7 @@ test('渠道沿用 Web 对话与执行过程、正式任务记录、深链和只
   await page.getByRole('link', {name: '执行过程', exact: true}).click()
   await expect(page).toHaveURL(/view=execution/)
   await expect(page.getByText('Router · 会话安排', {exact: true})).toBeVisible()
-  await expect(page.getByText('执行尚未开始', {exact: true})).toBeVisible()
+  await expect(page.getByText('暂无已提交的会话安排', {exact: true})).toBeVisible()
   const group = page.locator('.chat-execution-group').filter({has: page.locator('summary code', {hasText: /^task-research$/})})
   await expect(group).not.toHaveAttribute('open')
   const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/conversations/room-product/tasks/task-research/session')

@@ -29,8 +29,9 @@ a home directory.
       tasks.sqlite                    # tasks, operations, notification ledger
       spills/                         # retained tool/process output, recovery evidence
         subprocess/
-    memory/                           # scoped Markdown facts, candidates, trusted grants
-      v1/<kind>/<scope-hash>/evolution/ # task reviews and scoped learned skills
+    memory/                           # Bot-shared Markdown facts and trusted bindings
+      v2/bot/evolution/               # shared task reviews and learned skills
+      v1/                             # retained legacy originals after migration
     attachments/v1/                   # original content-addressed files/images
     workspaces/                       # tasks/<id> complete task archives; conversations
     cache/attachments/                # rebuildable image variants

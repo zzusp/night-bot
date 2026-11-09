@@ -53,26 +53,30 @@ export interface Chat {
   conversationId: string; messages: Message[]; status: string; truncated?: boolean; canonicalConversationId?: string;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
-export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string }
+export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {
   id: string; reviewId: string; taskId: string; kind: 'memory' | 'skill'; action: 'upsert' | 'current-version';
-  status: 'applied' | 'candidate' | 'not-applied'; scope: 'personal' | 'group' | 'project'; name: string;
+  status: 'applied' | 'candidate' | 'not-applied'; scope: 'bot'|'personal' | 'group' | 'project'; name: string;
   version: string | number; canRead: boolean; source: LearningSource;
 }
 export interface TaskLearning { status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
 export interface LearningBody { id: string; kind: 'memory' | 'skill'; text: string; version: string | number; source: LearningSource; redacted: boolean; truncated?: boolean }
 export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; waiting: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
 
+export interface MemoryProvenance {channelId?: string;conversationId?: string;conversationName?: string;conversationType?: 'chat'|'chat-room';conversationKey?: string;taskId?: string;taskTitle?: string;messageId?: string;resolvedFrom?: string}
 export interface EvolutionItem {
-  id: string; kind: 'memory' | 'skill'; name: string; scope: 'personal' | 'group' | 'project';
-  status: 'applied' | 'candidate'; revision: string | number; updatedAt: string | null; taskId?: string;
+  id: string; kind: 'memory' | 'skill'; name: string; scope: 'bot'|'personal'|'group'|'project';
+  status: 'applied'|'candidate'|'disabled'|'invalid'|'shadowed'|'undiscovered'|'unsupported'; revision: string | number; updatedAt: string | null; taskId?: string;
+  origin?: 'installed'|'learned';location?:string;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;lastUsedAt?:string|null;updatedSinceUse?:boolean;
+  memoryUse?:{readCount:number;searchCount:number;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null}|null;
+  provenance?:MemoryProvenance|null;origins?:MemoryProvenance[];taskIds?:string[];migration?:{conflict?:boolean};
 }
 export interface EvolutionReady extends Page<EvolutionItem> {
-  status: 'ready'; coverage: 'authorized-scopes-current-state'; offset: number; limit: number;
-  memory: { acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null };
-  skills: { activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only' };
+  status: 'ready'; coverage: 'authorized-scopes-current-state'|'bot-shared-current-state'; offset: number; limit: number;
+  memory: {trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
+  skills: { activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
 }
 export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
 
@@ -108,7 +112,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
     const current = () => requestVersion === sessionVersion && !signal.aborted;
     // A resource/proxy failure is not proof that the browser session ended.
     // Confirm through the session endpoint; never replay the original operation.
-    if (path !== '/login' && path !== '/session' && current() &&
+    if (path !== '/login' && path !== '/session' && path !== '/appearance' && current() &&
       (response.status === 401 || (response.status === 403 && data?.error === 'CSRF_INVALID'))) {
       try {
         const check = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
@@ -147,6 +151,12 @@ export function errorText(error: unknown) {
     if (['DINGTALK_CONFIG_INVALID', 'DINGTALK_CHANNEL_REQUEST_INVALID'].includes(error.code)) return '钉钉渠道配置未被接纳，请检查渠道标识和目标。';
     if (error.code === 'CHANNEL_CONFIGURATION_UNAVAILABLE') return '当前安装暂不支持保存渠道配置。请检查运行方式或稍后重试。';
     if (error.code === 'WEB_CHAT_SINGLETON') return 'Web 仅保留一个可继续的对话。请返回当前 Web 对话；原历史记录未被修改。';
+    if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，请重新读取后再保存。';
+    if (error.code === 'SETTINGS_SECRET_READ_ONLY') return '此凭据由启动环境提供，请在环境中修改。';
+    if (error.code === 'SETTINGS_INPUT_INVALID') return '设置未被保存，请检查字段格式。';
+    if (error.code === 'CHANNEL_EDIT_REQUIRES_STOP') return '此渠道仍在运行，请先按运维流程停用并重启后再修改。';
+    if (error.code === 'CHANNEL_WEB_CONFIGURATION_UNSUPPORTED') return '此插件尚未声明网页配置表单，请按插件说明配置。';
+    if (error.code === 'SETTINGS_UNAVAILABLE' || error.code === 'SETTINGS_SAVE_UNAVAILABLE') return '设置暂不可用，请恢复服务后重新读取；保存结果可能需要核对。';
     if (error.code === 'SESSION_RESOURCE_UNAVAILABLE') return '当前请求暂不可用，登录状态正常。请稍后重试。';
     if (error.code === 'SESSION_CHECK_UNAVAILABLE') return '暂时无法核对登录状态，当前内容已保留。请恢复连接后重试。';
     if (error.code === 'SESSION_CHANGED') return '连接状态已变化，内容已保留。请重新确认连接后重试刚才的操作。';
@@ -161,3 +171,12 @@ export function errorText(error: unknown) {
   if (error instanceof DOMException && error.name === 'TimeoutError') return '连接超时，已保留当前内容。请检查连接后刷新。';
   return '暂时无法连接 Bot，已保留当前内容。请检查服务后刷新。';
 }
+
+export interface OperatorSettings {
+ version: string; appearance: import('./components/AssistantBrand').AssistantBrand;
+ model: {provider:string;model:string;api:string;baseURL:string};
+ secrets: Record<'model'|'github',{configured:boolean;writable:boolean;source:string}>;
+ restartRequired:boolean; githubScope:string;
+}
+export interface ChannelField {name:string;label:string;type:'string'|'boolean'|'credential-ref';required:boolean}
+export interface ChannelSettings {version:string;items:{type:string;name:string;configurable:boolean;fields:ChannelField[]|null}[];channels:{type:string;channelId:string;enabled:boolean;editable:boolean;config:Record<string,string|boolean>|null}[]}

@@ -1,7 +1,8 @@
+import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiCheckLine, RiFileCopyLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
+import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
@@ -50,17 +51,7 @@ export function Markdown({ text }: { text: string }) {
     img: ({ src, alt }) => <a href={typeof src === 'string' ? src : undefined} target="_blank" rel="noopener noreferrer">查看图片：{alt || '附件'}</a>,
   }}>{text}</ReactMarkdown></div>;
 }
-function CopyButton({ text, label = '复制消息' }: { text: string; label?: string }) {
-  const [state, setState] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(text); setState('已复制'); }
-    catch { setState('复制失败，请选中文字复制'); }
-    clearTimeout(timer.current); timer.current = setTimeout(() => setState(''), 2500);
-  };
-  return <span className="copy-action"><IconButton label={label} onClick={copy}>{state === '已复制' ? <RiCheckLine size={15} /> : <RiFileCopyLine size={15} />}</IconButton><span role="status">{state}</span></span>;
-}
+
 function MessageProvenance({ source }: { source?: MessageSource }) {
   return source ? <details className="message-source"><summary>查看记录来源</summary><dl>
     <dt>Pi 会话</dt><dd><code>{source.sessionId}</code></dd><dt>历史条目</dt><dd><code>{source.entryId}</code></dd>
@@ -92,7 +83,6 @@ function MessageBody({ message, history, plain = false }: { message: Message; hi
     {(page?.redacted || message.redacted) && <p className="message-scope">{message.role === 'tool' ? '仅展示获准公开的工具字段；其余输入、输出及敏感信息已隐藏。' : '路径及敏感凭据已隐藏。'}</p>}
     {message.truncated && (!history || message.textNextOffset == null) && <p className="message-scope">此条长记录的当前接口仅返回部分正文。</p>}
     <MessageProvenance source={page?.source || message.source} />
-    {text && <CopyButton text={text} label={offset || nextOffset != null ? '复制当前段' : '复制消息'} />}
   </>;
 }
 
@@ -137,6 +127,7 @@ function ToolActivity({ item, history }: { item: Extract<TranscriptItem, { kind:
   </article>;
 }
 export function MessageList({ messages, pending, empty, footer, userLabel = '你', history }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader }) {
+  const brand = useAssistantBrand();
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
@@ -155,8 +146,8 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} />;
         const message = item.message;
         return <article className={`message message-${message.role}`} key={message.id}>
-          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? 'N' : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
-            <strong>{message.senderName || (message.role === 'assistant' ? 'Night Bot' : userLabel)}</strong>
+          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? (brand.icon === 'moon' ? 'N' : brandGlyph(brand.icon)) : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
+            <strong>{message.role === 'assistant' ? brand.name : (message.senderName || userLabel)}</strong>
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>

@@ -91,7 +91,11 @@ accounts or credentials. If cleanup or relocation is needed, touch only material
 introduced by this task; never overwrite or move another session's existing skills.
 Run git check-ignore before and after copying, and inspect git diff --cached and
 git ls-files for skill paths before delivery.
-Autonomous learning uses scoped, evidence-linked memory and task retrospectives;
+Autonomous learning uses one Bot-shared, evidence-linked memory/Skills namespace;
+channels/conversations/tasks are provenance, not separate memory stores. Actor
+authentication, read-only/write consent, transcript isolation and secret/file fences
+remain enforced. Retain original v1 data and explicit migration receipts/conflicts.
+Autonomous learning uses task retrospectives;
 model inferences are not facts or authorization. Learning failures must not undo
 completed delivery; retain audit, restart idempotence and forgetting behavior.
 Do not add private owner identities, fixed ingress times or personal business policy;

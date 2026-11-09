@@ -24,17 +24,17 @@ test('evolution reports retained current state, unknown historical usage, filter
   const result = await inspectEvolution({store: f.store}, f.reflection, f.binding, {limit: 1})
   assert.equal(result.memory.acceptedCount, 1); assert.equal(result.memory.candidateCount, 1)
   assert.equal(result.memory.readCount, null); assert.equal(result.skills.loadCount, null)
-  assert.equal(result.skills.activeCount, 1); assert.equal(result.total, 3); assert.equal(result.nextOffset, 1)
+  assert.equal(result.skills.activeCount, 1); assert.equal(result.total, 4); assert.equal(result.nextOffset, 1)
   assert.equal(result.items.length, 1)
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE|private-session|task-one|memoryKey|steps|source/)
   const skills = await inspectEvolution({store: f.store}, f.reflection, f.binding, {kind: 'skill'})
-  assert.equal(skills.total, 1); assert.equal(skills.items[0].name, 'learned-learn')
+  assert.equal(skills.total, 2); assert.ok(skills.items.some(row=>row.name==='learned-learn'&&row.status==='applied'));assert.ok(skills.items.some(row=>row.name==='learned-stale'&&row.status==='unsupported'))
   await f.store.forget(f.scope, {topic: 'experience', key: 'first'})
   const forgotten = await inspectEvolution({store: f.store}, f.reflection, f.binding)
   assert.equal(forgotten.memory.acceptedCount, 0); assert.equal(forgotten.skills.activeCount, 0)
 })
 
-test('usage is concurrent-safe, durable and scoped; dashboard reads do not increment usage', async t => {
+test('usage is concurrent-safe, durable and Bot-wide; dashboard reads do not increment usage', async t => {
   const f = await fixture(t)
   await Promise.all(Array.from({length: 8}, () => recordUsage(f.store, f.scope, 'readCount')))
   await recordUsage(f.store, f.scope, 'searchCount'); await recordUsage(f.store, f.scope, 'loadCount')
@@ -42,8 +42,8 @@ test('usage is concurrent-safe, durable and scoped; dashboard reads do not incre
   assert.equal(value.memory.readCount, 8); assert.equal(value.memory.searchCount, 1); assert.equal(value.skills.loadCount, 1)
   assert.ok(value.memory.trackingSince); assert.ok(value.skills.lastUsedAt)
   assert.equal((await readUsage(new MarkdownMemoryStore(f.root), f.scope)).readCount, 8)
-  assert.equal((await inspectEvolution({store: f.store}, f.reflection, {actorId: 'other'})).memory.readCount, null)
-  assert.equal((await inspectEvolution({store: f.store}, f.reflection, {actorId: 'reader', groupId: 'room'})).memory.readCount, null)
+  assert.equal((await inspectEvolution({store: f.store}, f.reflection, {actorId: 'other'})).memory.readCount, 8)
+  assert.equal((await inspectEvolution({store: f.store}, f.reflection, {actorId: 'reader', groupId: 'room'})).memory.readCount, 8)
   assert.equal((await readUsage(f.store, f.scope)).readCount, 8)
   assert.doesNotMatch(await readFile(join(f.store.directory(f.scope), 'usage.json'), 'utf8'), /reader|name|query|body/)
   await assert.rejects(recordUsage(f.store, f.scope, 'invented'), {code: 'EVOLUTION_USAGE_INVALID'})
@@ -63,10 +63,10 @@ test('learned availability uses the same first 50 unexpired experience records a
   const result = await inspectEvolution({store: f.store}, f.reflection, f.binding, {kind: 'skill'})
   assert.equal(result.memory.acceptedCount, 51)
   assert.equal(result.skills.activeCount, 1)
-  assert.deepEqual(result.items.map(item => item.name), ['learned-first'])
+  assert.deepEqual(result.items.filter(row=>row.status==='applied').map(item => item.name), ['learned-first']);assert.equal(result.items.length,3)
 })
 
-test('personal and authorized project aggregates exclude other projects and expired records', async t => {
+test('legacy selectors address one Bot namespace without double-counting the shared snapshot', async t => {
   const f = await fixture(t)
   const binding = {...f.binding, projects: [{id: 'permitted'}]}
   const project = memoryScope(binding, {scope: 'project', projectId: 'permitted'})
@@ -77,6 +77,6 @@ test('personal and authorized project aggregates exclude other projects and expi
   await recordUsage(f.store, project, 'readCount')
   await recordUsage(f.store, foreign, 'readCount')
   const result = await inspectEvolution({store: f.store}, f.reflection, binding)
-  assert.equal(result.memory.acceptedCount, 2); assert.equal(result.memory.readCount, 2)
-  assert.deepEqual(result.items.map(item => item.scope).sort(), ['personal', 'project'])
+  assert.equal(result.memory.acceptedCount, 2); assert.equal(result.memory.readCount, 3)
+  assert.deepEqual(result.items.map(item => item.scope).sort(), ['bot', 'bot'])
 })

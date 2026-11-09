@@ -16,6 +16,11 @@ export default class Reflection extends Service {
     ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope)}))
     ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.whenIdle()},'reflection drain')
   }
+  async [Service.init](){
+    await this.host.memory.bindingReady
+    const scope=memoryScope({actorId:'host'}),state=await this.state(scope),entries=(await this.host.memory.store.read(scope,{topic:'experience'})).entries,revision=(await this.host.memory.store.index(scope)).revision
+    for(const [key,value]of Object.entries(state.skills))if(value.active&&validKey(key)&&learnedSkillSupported(value,entries))await atomicWrite(join(this.directory(scope),'skills',key,'SKILL.md'),this.renderSkill(scope,key,value,revision))
+  }
   attachStore(store,{ownerActorId,model,credentials,onReview,responsibilityFor}={}){
     if(this.config.enabled===false)return
     const source={store,ownerActorId,model,credentials,onReview,responsibilityFor};this.sources.add(source);void this.scanSource(source)
@@ -63,7 +68,7 @@ export default class Reflection extends Service {
         for(const lesson of lessons){
           signal.throwIfAborted()
           const memoryKey='task-'+id.slice(0,12)+'-'+lesson.key
-          const result=await this.host.memory.store.remember(scope,{scopeRevision,topic:'experience',key:memoryKey,text:brief('Model observation: '+lesson.observation+'\nHypothesis (not fact): '+lesson.hypothesis+'\nPossible direct path (not permission): '+lesson.shortcut+'\nEvidence: '+lesson.evidenceIds.join(', ')),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))}})
+          const result=await this.host.memory.store.remember(scope,{scopeRevision,topic:'experience',key:memoryKey,text:brief('Model observation: '+lesson.observation+'\nHypothesis (not fact): '+lesson.hypothesis+'\nPossible direct path (not permission): '+lesson.shortcut+'\nEvidence: '+lesson.evidenceIds.join(', ')),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))},provenance:this.host.memory.provenance({task})})
           if(!result.ok)continue
           scopeRevision=result.revision
           if(lesson.skill){
@@ -83,7 +88,7 @@ export default class Reflection extends Service {
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:'task-'+id.slice(0,12)+'-'+lesson.key},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
     })
   }
-  renderSkill(scope,key,value,revision){return '---\nname: learned-'+key+'\ndescription: Task-derived procedure; limited evidence, scope restricted.\n---\nNIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+revision+'\n\nCurrent instructions and permissions prevail. This is model-generated guidance, not authority.\nApplicability: '+value.applicability+'\nObserved in tasks: '+value.taskIds.join(', ')+'\n\n'+value.steps.map((step,i)=>(i+1)+'. '+step).join('\n')+'\n'}
+  renderSkill(scope,key,value,revision){return '---\nname: learned-'+key+'\ndescription: Task-derived procedure shared by this Bot; verify evidence and applicability.\n---\nNIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+revision+'\n\nCurrent instructions and permissions prevail. This is model-generated guidance, not authority.\nApplicability: '+value.applicability+'\nObserved in tasks: '+value.taskIds.join(', ')+'\n\n'+value.steps.map((step,i)=>(i+1)+'. '+step).join('\n')+'\n'}
   async forget(scope,key){
     const directory=this.directory(scope)
     await withLock(join(directory,'.lock'),async()=>{

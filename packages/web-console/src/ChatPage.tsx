@@ -1,3 +1,4 @@
+import {useAssistantBrand} from './components/AssistantBrand';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RiArrowRightUpLine, RiChatSmile2Line, RiFileList3Line, RiLightbulbLine } from '@remixicon/react';
 import { api, ApiError, errorText, type Chat, type Message } from './api';
@@ -34,6 +35,7 @@ export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepte
 }
 
 function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; onAccepted: () => void }) {
+  const brand = useAssistantBrand();
   const key = id || 'new';
   const route = useRoute();
   const execution = !!id && route.searchParams.get('view') === 'execution';
@@ -111,8 +113,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
         <Button variant="secondary" disabled={checking} busy={checking} onClick={() => void reconcile()}>核对发送状态</Button>
         {attempt.state === 'missing' && <Button variant="secondary" disabled={checking} onClick={() => void send(attempt)}>重试这条消息</Button>}
       </div>}</div>}
-      <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder="给 Night Bot 发消息…" />
-      <div className="composer-note"><span>关闭页面后，任务仍会继续</span></div>
+      <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder={`给 ${brand.name} 发消息…`} />
     </div></div>
   </ConversationFrame>;
 }
