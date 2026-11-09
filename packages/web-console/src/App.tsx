@@ -26,7 +26,7 @@ function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expi
   };
   return <main className="login-page"><div className="login-brand"><Logo /><Badge tone="neutral">个人工作空间</Badge></div>
     <section className="login-card"><div className="login-symbol"><RiShieldCheckLine size={26} /></div><h1>{expired ? '重新连接你的助手' : '欢迎回到 Night Bot'}</h1>
-      {expired && <p>登录已失效。请重新连接。</p>}
+      {expired && <p>浏览器会话已结束，请使用访问令牌重新连接。</p>}
       <form noValidate onSubmit={event => void submit(event)}><label htmlFor="access-token">访问令牌</label><div className="token-input"><input ref={input} id="access-token" type={show ? 'text' : 'password'} autoComplete="current-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} aria-invalid={!!error} aria-describedby="login-help login-error" placeholder="输入访问令牌" /><IconButton label={show ? '隐藏访问令牌' : '显示访问令牌'} aria-pressed={show} onClick={() => setShow(value => !value)}>{show ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}</IconButton></div>
         <p id="login-help" className="field-help">使用本机 Web 插件生成的令牌，由管理员提供。</p><div id="login-error" className="field-error" role={error ? 'alert' : undefined}>{error}</div><Button type="submit" busy={pending} disabled={pending} icon={<RiArrowRightLine size={17} />}>连接工作空间</Button>
       </form><div className="login-security"><RiShieldCheckLine size={14} />令牌不会保存在浏览器中</div>
@@ -46,6 +46,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const section = segments[0] || 'chat';
   let id: string | undefined;
   try { id = segments[1] ? decodeURIComponent(segments[1]) : undefined; } catch { id = undefined; }
+  const isConversation = section === 'chat' || (section === 'channels' && !!id);
   const overview = useResource<Overview>('/overview', 5000);
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
   const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
@@ -93,13 +94,13 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <div className="main-frame"><header className="topbar"><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div>
       <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '连接中断' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
         <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton>
-        {section === 'chat' && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
+        {isConversation && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
-      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${section === 'chat' ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
+      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
         {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
-      {section === 'chat' && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
+      {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
         {!!Object.keys(overview.data?.sectionErrors || {}).length && <p className="rail-empty" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
         {!overview.data && overview.loading ? <Loading /> : <>

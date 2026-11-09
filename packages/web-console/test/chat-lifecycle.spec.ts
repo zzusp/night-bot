@@ -206,7 +206,10 @@ test('退出被CSRF拒绝但同步新会话成功后，不再消费先前旧401�
   await page.route('**/api/recent-conversations?*', route => route.fulfill({json: recentSnapshot}))
   await page.route('**/api/conversations', route => route.fulfill({json: conversationSnapshot}))
   await context.clearCookies()
+  let firstOverview = true
   await page.route('**/api/overview', async route => {
+    if (!firstOverview) return route.continue()
+    firstOverview = false
     const response = await route.fetch(); expect(response.status()).toBe(401)
     readReady.resolve(); await readHeld.promise; await route.fulfill({response}); readDone.resolve()
   })

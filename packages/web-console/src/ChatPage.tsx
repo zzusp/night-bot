@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { RiArrowDownSLine, RiArrowRightUpLine, RiChatSmile2Line, RiFileList3Line, RiLightbulbLine } from '@remixicon/react';
+import { RiArrowRightUpLine, RiChatSmile2Line, RiFileList3Line, RiLightbulbLine } from '@remixicon/react';
 import { api, ApiError, errorText, type Chat, type Message } from './api';
 import { navigate, useResource, useRoute } from './hooks';
 import { Button, Composer, EmptyState, Logo } from './components/BoardPrimitives';
 import { Loading, MessageList, Notice } from './components/Shared';
-import { ExecutionHistory } from './components/ExecutionHistory';
+import { ConversationFrame } from './components/ConversationFrame';
+import { ConversationExecution } from './components/ConversationExecution';
 
 export interface Attempt { conversationId: string; requestId: string; text: string; createdAt: string; state: 'sending' | 'pending' | 'unknown' | 'missing' }
 interface Draft { text: string; attempt?: Attempt; error?: string; checking?: boolean }
@@ -25,18 +26,6 @@ export function createDrafts() {
 }
 export type Drafts = ReturnType<typeof createDrafts>;
 interface Receipt { conversationId: string; status: string; accepted?: boolean }
-
-function ChatExecutionGroup({ conversationId, taskId }: { conversationId: string; taskId?: string }) {
-  const [open, setOpen] = useState(!taskId);
-  const endpoint = `/chat/${encodeURIComponent(conversationId)}${taskId ? `/tasks/${encodeURIComponent(taskId)}` : ''}/session`;
-  return <details className="chat-execution-group" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary><RiArrowDownSLine className="chat-execution-chevron" size={18} aria-hidden="true" />
-      <span className="chat-execution-label"><strong>{taskId ? '任务执行' : 'Router · 会话安排'}</strong>{taskId && <code>{taskId}</code>}</span>
-      <span className="chat-execution-toggle">{open ? '收起记录' : '展开记录'}</span>
-    </summary>
-    {open && <ExecutionHistory endpoint={endpoint} router={!taskId} />}
-  </details>;
-}
 
 export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepted: () => void }) {
   const current = useResource<{conversationId: string}>('/chat-current');
@@ -102,26 +91,10 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const extra: Message[] = attempt && !messages.some(message => message.requestId === attempt.requestId)
     ? [{ id: attempt.requestId, role: 'user', text: attempt.text, createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
   const busy = attempt?.state === 'sending';
-  const taskHistoryBlocked = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
-  return <div className="chat-page">
-    {id && <nav className="filter-tabs chat-history-tabs" aria-label="会话视图">
-      <a href={`#/chat/${encodeURIComponent(id)}`} aria-current={!execution ? 'page' : undefined}>对话</a>
-      <a href={`#/chat/${encodeURIComponent(id)}?view=execution`} aria-current={execution ? 'page' : undefined}>执行过程</a>
-    </nav>}
+  return <ConversationFrame path={`/chat/${encodeURIComponent(id || '')}`} execution={execution}>
     {!execution && query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
     {!execution && query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
-    {execution && id ? <div className="chat-execution" key={id}>
-      <ChatExecutionGroup conversationId={id} />
-      <section className="chat-task-history" aria-label="本会话关联任务">
-        <header><h2>本会话关联任务</h2><p>含已完成和已归档任务，可展开查看。</p></header>
-        {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data && !taskHistoryBlocked} />}
-        {query.loading && !query.data ? <Loading>正在读取关联任务…</Loading>
-          : taskHistoryBlocked || (!query.data && query.error) ? <EmptyState title="关联任务暂不可读" description="请重新获取会话；当前不会读取关联任务的执行记录。" />
-          : query.data?.taskHistoryStatus !== 'ready' || query.data.taskIds === null ? <EmptyState title="关联任务暂不可读" description="Host 尚未提供可核验的任务关联，这不表示没有任务。" action={<Button variant="secondary" onClick={query.refresh}>重新获取</Button>} />
-          : query.data.taskIds.length ? query.data.taskIds.map(taskId => <ChatExecutionGroup key={taskId} conversationId={id} taskId={taskId} />)
-          : <EmptyState title="本会话暂无关联任务" description="Router 安排任务后会在这里显示。" />}
-      </section>
-    </div> : query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <MessageList messages={[...messages, ...extra]}
+    {execution && id ? <ConversationExecution endpoint={`/chat/${encodeURIComponent(id)}`} query={query} /> : query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <MessageList messages={[...messages, ...extra]}
       pending={['accepted', 'pending', 'running'].includes(query.data?.status || '')}
       footer={query.data?.status === 'ready' && messages.at(-1)?.role === 'user' ? <p className="muted chat-receipt" role="status">消息已接纳，后续回复会在这里显示。</p> : undefined}
       empty={query.error && !query.data ? <EmptyState title="对话暂不可读" description="使用上方按钮重新获取，或从侧栏选择其他对话。" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
@@ -141,5 +114,5 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
       <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder="给 Night Bot 发消息…" />
       <div className="composer-note"><span>关闭页面后，任务仍会继续</span></div>
     </div></div>
-  </div>;
+  </ConversationFrame>;
 }

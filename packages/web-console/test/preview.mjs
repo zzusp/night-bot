@@ -85,11 +85,13 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     {groupId: 'room-product', name: '产品协作', updatedAt: at(8)},
     {groupId: 'room-notes', name: '资料整理', updatedAt: at(60)},
     {groupId: 'room-empty', name: '新建讨论组', updatedAt: at(120)},
+    {groupId: 'custom-room', name: '自定义团队', updatedAt: at(130)},
+    {groupId: 'custom-direct', name: '自定义私聊', updatedAt: at(140)},
   ]
   const channels = {
     plugins, transports,
     identity: envelope => ({sessionId: `fixture-${envelope.channelId}-${envelope.conversationId}`}),
-    groupContext: id => rooms.some(room => room.groupId === id) ? {channelId: 'dingtalk-work', type: 'chat-room', conversationId: id} : undefined,
+    groupContext: id => rooms.some(room => room.groupId === id) ? {channelId: id.startsWith('custom-') ? 'custom-adapter' : 'dingtalk-work', type: id === 'custom-direct' ? 'chat' : 'chat-room', conversationId: id} : undefined,
     registerTransport(id, value) {if (transports.has(id)) throw Error('duplicate fixture transport'); transports.set(id, value); return () => transports.delete(id)},
     registerPlugin(id, value) {if (plugins.has(id)) throw Error('duplicate fixture plugin'); plugins.set(id, value); return () => plugins.delete(id)},
     async receive(envelope) {
@@ -104,6 +106,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   }
   plugins.set('dingtalk-work', {health: {healthy: true}})
   const tasks = empty ? [] : sampleTasks()
+  if (!empty) {tasks.find(task => task.taskId === 'task-history-16').groupId = 'custom-room'; tasks.find(task => task.taskId === 'task-history-17').groupId = 'custom-direct'}
   const snapshots = new Map(tasks.map(task => [task.session.sessionId, sampleSession(task)]))
   const persistence = {async readNative(sessionId, options) {
     if (options?.requireComplete !== true) throw Error('fixture requires complete Pi context')
@@ -122,8 +125,14 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
 保留换行`, dingtalk_writes_authorized: false,
       }},
       {type: 'sample-channel', channelId: '备用渠道', enabled: false},
+      {type: 'fixture-custom', channelId: 'custom-adapter', enabled: true},
     ]},
     tasks: {
+      store: {async query(query) {
+        if (query.kind === 'task.list') return tasks.filter(task => task.groupId === query.groupId).map(task => ({taskId: task.taskId, groupId: task.groupId}))
+        if (query.kind === 'task.get') {const task = tasks.find(task => task.taskId === query.taskId); return task && {taskId: task.taskId, groupId: task.groupId, sessionId: task.session.sessionId, sessionBound: true}}
+        if (query.kind === 'router.get') return null
+      }},
       async boardTasks(query) {return pageOf(tasks.filter(task => !query.state || task.state === query.state), query)},
       listObserverGroups() {return rooms},
       async taskDetail(id) {return tasks.find(task => task.taskId === id)},

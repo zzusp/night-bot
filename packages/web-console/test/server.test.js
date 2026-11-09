@@ -398,7 +398,10 @@ test('expired sessions fail closed and login attempts are bounded', () => {
   const sessions = browserSessions({token: 'secret', channelId: 'test', now: () => now}), headers = new Map(), response = {setHeader: (key, value) => headers.set(key, value)}
   const session = sessions.login('secret', response), request = {headers: {cookie: headers.get('set-cookie').split(';')[0], 'x-csrf-token': session.csrfToken}}
   assert.equal(sessions.require(request, true), session)
-  now += 13 * 60 * 60 * 1000
+  now = 12 * 60 * 60 * 1000 - 1
+  assert.equal(sessions.require(request, true), session)
+  assert.match(headers.get('set-cookie'), /Max-Age=43200/)
+  now += 1
   assert.throws(() => sessions.require(request), {code: 'AUTH_REQUIRED'})
   for (let i = 0; i < 5; i++) assert.throws(() => sessions.login('wrong', response), {code: 'AUTH_INVALID'})
   assert.throws(() => sessions.login('secret', response), {code: 'AUTH_RATE_LIMITED'})
@@ -537,4 +540,39 @@ test('Web operator names normalize before real channel schema validation and rec
       assert.equal(f.received.length, 1)
     })
   }
+})
+
+
+test('渠道执行接口按可见会话与真实任务归属读取，归档任务不依赖当前消息页', async t => {
+  const f = await fixture(t); await f.login()
+  const calls = []
+  f.app.tasks.store = {async query(query) {
+    calls.push(query)
+    if (query.kind === 'task.list') return [{taskId: 'archived-task', groupId: 'room-one'}, {taskId: 'foreign-task', groupId: 'other-room'}]
+    if (query.kind === 'task.get') return {taskId: query.taskId, groupId: query.taskId === 'foreign-task' ? 'other-room' : 'room-one', sessionId: null, sessionBound: false}
+    if (query.kind === 'router.get') return null
+  }}
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskHistoryStatus: 'ready'})
+  assert.deepEqual(calls[0], {kind: 'task.list', groupId: 'room-one', archived: 'all'})
+  assert.equal((await f.fetchApi('/api/conversations/room-one/session')).body.status, 'pending')
+  assert.equal((await f.fetchApi('/api/conversations/room-one/tasks/archived-task/session')).body.status, 'unavailable')
+  assert.equal((await f.fetchApi('/api/conversations/room-one/tasks/foreign-task/session')).status, 404)
+  assert.equal((await f.fetchApi('/api/conversations/room-one/tasks/foreign-task/session/messages/body?revision=r1')).status, 404)
+  const before = calls.length
+  for (const path of ['/tasks', '/session', '/tasks/archived-task/session']) assert.equal((await f.fetchApi('/api/conversations/hidden-room' + path)).status, 404)
+  assert.equal(calls.length, before, '不可见会话不能探测持久历史')
+  delete f.app.tasks.store
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: null, taskHistoryStatus: 'unavailable'})
+  assert.equal((await f.fetchApi('/api/conversations/room-one/session')).status, 503)
+  assert.equal(f.received.length, 0)
+})
+
+test('服务重启撤销浏览器会话但不轮换访问令牌，原令牌仍可显式重连', async t => {
+  const f = await fixture(t), token = (await readFile(f.web.credentialPath, 'utf8')).trim()
+  const login = await f.login(), oldCookie = login.response.headers.get('set-cookie').split(';')[0]
+  await f.restart()
+  assert.equal((await readFile(f.web.credentialPath, 'utf8')).trim(), token)
+  assert.equal((await f.fetchApi('/api/session', {headers: {cookie: oldCookie}})).status, 401)
+  assert.equal((await f.fetchApi('/api/login', {method: 'POST', body: {token}})).status, 200)
+  assert.equal(f.received.length, 0)
 })

@@ -76,6 +76,11 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const conversationId = channels.identity({type: 'chat', channelId, senderId, conversationId: id, messageId: 'session-view', text: 'session-view'}).sessionId
     return {chat, conversationId}
   }
+  const executionContext = (kind, id) => {
+    if (kind === 'chat') return chatContext(id).conversationId
+    if (!application().tasks.listObserverGroups().some(group => group.groupId === id)) fail('CONVERSATION_NOT_FOUND', 404)
+    return id
+  }
   const page = query => ({offset: pageNumber(query, 'offset', 0), limit: pageNumber(query, 'limit', 30, 100)})
   const taskOptions = query => {
     const state = query.get('state') || undefined
@@ -242,26 +247,34 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if (request.method === 'GET' && path === '/api/recent-conversations') return send(response, 200, recentConversations(application(), channels, ledger, channelId, page(url.searchParams)))
     if (request.method === 'GET' && path === '/api/chat-current') return send(response, 200, {conversationId: ledger.canonical()})
     if (request.method === 'GET' && path === '/api/chat') return send(response, 200, ledger.chats(page(url.searchParams)))
-    const chatTask = /^\/api\/chat\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    const conversationTasks = /^\/api\/conversations\/([^/]+)\/tasks$/.exec(path)
+    if (request.method === 'GET' && conversationTasks) {
+      const conversationId = executionContext('conversations', decodeURIComponent(conversationTasks[1]))
+      const store = application().tasks.store
+      if (!store?.query) return send(response, 200, {taskIds: null, taskHistoryStatus: 'unavailable'})
+      const tasks = await store.query({kind: 'task.list', groupId: conversationId, archived: 'all'})
+      return send(response, 200, {taskIds: [...new Set(tasks.filter(task => task.groupId === conversationId).map(task => task.taskId))], taskHistoryStatus: 'ready'})
+    }
+    const chatTask = /^\/api\/(chat|conversations)\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatTask) {
-      const {conversationId} = chatContext(decodeURIComponent(chatTask[1])), taskId = decodeURIComponent(chatTask[2])
+      const conversationId = executionContext(chatTask[1], decodeURIComponent(chatTask[2])), taskId = decodeURIComponent(chatTask[3])
       const store = application().tasks.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
       const value = await store.query({kind: 'task.get', taskId})
       if (!value || value.taskId !== taskId || value.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
       const task = {taskId, session: {sessionId: value.sessionId, sessionBound: value.sessionBound}}
       const options = {task, persistence: getSessionPersistence(), secrets: [credential.token]}
-      if (chatTask[3]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[3])}))
+      if (chatTask[4]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])}))
       if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
       return send(response, 200, await taskSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
     }
-    const chatSession = /^\/api\/chat\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {
-      const {conversationId} = chatContext(decodeURIComponent(chatSession[1]))
+      const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const store = application().tasks.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
       const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
-      if (chatSession[2]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[2])}))
+      if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
       if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
       return send(response, 200, await routerSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
     }
