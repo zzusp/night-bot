@@ -829,3 +829,17 @@ Windows LPAC 的精确业务范围不能只将旧 AclWriteGrant 的 SID 替换�
 异常关闭合同补充：Application 的 stopping hook、server 或 tasks 关闭失败，不能跳过其后可独立执行的关闭步骤；但 tasks.close 拒绝不构成其已排空证明，必须保留任务仍可能使用的 resident runtime/store。Host 同样不能因 permission/application 先报错而跳过官方 factory、原 Job 与 subprocess 的显式 join。比较三案：遇首错即停会漏掉其它 owner 的取消/排空，排除；全部尝试后无条件拆 root fiber/释放安装锁会在 owner 未证排空时拆依赖，排除；采用原顺序逐步尝试并保留全部原错误，任何前置步骤失败均保 root 依赖和安装锁，仅所有明确步骤成功后才继续 root dispose 及锁释放。Cordis 的 effect 清理错误会被框架记入日志，fiber Promise fulfilled 不能代替原 Job/进程 join 的真实结果。启动失败清理复用同一 Host close，不另建关闭框架、owner、重试循环或任意超时；失败仍须明确抛出，不把停止监听或局部清理成功写成整体安全关闭。Host/App 沿原两文件落地；可信临时 jobs.start 无冷proof仍须遵守 live producer 排空合同，取消抛错不得因无journal而提前解除不确定性。原 NativeJobs 的公开 remove 也不得仅凭 terminal 状态删除 journalError/drainUncertain 记录，否则 earlyCancel 的未知producer可从Host快照消失；沿原记录/错误/owner机制拒绝删除，不新建恢复账本，不将其改成普通调用的清未知权限。语法检查、正常镜像通过均不能替代错误路径的真实验证；旧 r16/r17 只绑定原受验封包，新源码另取实际行为证据。
 
 实施按既有模块单写：Core 配置/CLI/Host/审批/文件/API 与 Pi 审查，Platform 进程与 Windows/Linux 权限，Docs Web 及手册，Tests 实跑，Review 审查。验收至少包含目录外文件与命令真实正向、未批准零效果、拒绝/取消、参数或目标变化失效、操作者与群成员权限隔离、auto 严格结果与错误回人工、full 明确选择、冷恢复不重放及同版默认隔离。既有 Web、Docker、Windows 阶段结果不得冒充新权限验证。
+
+## 19. full剩余闭合与容器基础工具（2026-11-09 实施前增量）
+
+用户要求继续完成full剩余问题并验证交付，同时明确容器默认有git/gh-cli、运行时GITHUB_TOKEN和Playwright基础无头浏览。沿原goal/分支/PR2，不恢复ask/auto、19be或受限ACL实验，不改实际安装；上一阶段full定向结果保持原版本边界。初始静态候选包括full文件授权先于Host-owned写门返回、working_directory的cd授权参数、真实task无模式分流的Windows出生原语及最终TOKEN清洗。第一轮真实task反证已取得：初始化ready、work/tmp成功，materials edit/write仍拒绝；实际外部write首先报PERMISSION_CALL_UNBOUND且目标缺席。故先修真实调用绑定，暂缓新增full初始化分流；Host-owned早退仅作为绑定修复后必要关联风险，不将静态候选写成已动态漏洞。
+
+比较三个处理方向：只扩大既有独立actor夹具的通过结论，遗漏默认task创建与真实Job终态，排除；为full恢复整套私有区/工作区围栏或继续修LPAC，违反本轮范围与full OS账号合同，排除；选择在原责任层补齐full接线并保留Host归属/调用绑定，以真实task和准确镜像验收。无需新owner、调度器、业务schema、凭据平台或平行工具执行器。
+
+- 原生文件write/edit仍遵守任务档案Host归属：沿已有canonical target与taskRoot识别，在full早退之前校Host-owned区域，并在最终fresh目标重新核。只允许模型工具写档案work/tmp，不伪造metadata/materials/outputs/sessions/reviews；full外部业务写仍可用。该应用语义不宣称阻止full直接进程按OS账号访问这些文件。
+- working_directory使用真实当前工具调用的cd参数绑定准确目标、actor/call/参数/cwd/epoch；后续相对文件/搜索/命令使用真正的新cwd，不给予任意辅助FS无条件full旁路。默认受限模式不为此新增批准能力。真实cd基线首先在directory/changed审计的portable编码报NIGHT_WORK_OUTSIDE_INSTALL_ROOT：全局放宽encode会影响header/domain/archive，排除；无标记保留absolute会绕开离线路径证明，排除；仅为已授权directory/changed增加显式external-absolute绑定，要求标记与cwd原值精确一致，不随安装根迁移，运行时与维护继续共用strict Pi decoder。该路径记录不授予权限，后续每次调用仍校当前模式/epoch；不造恢复平台。
+- full真实task初始化的原begin/finish、task/session/creationCommandId、canonical/nonalias/EEXIST和失败不重试协议保持。普通OS账号初始化分流只在真实路径确认被不必要Native前置阻断时才实施；当前基线ready，暂不新增该路径。不制造Low/Native成功，不修改Windows ACL算法或ask/auto。
+- GITHUB_TOKEN仅由操作者运行环境提供，经真实full受控进程授权传到最终spawn；最终二次清洗仍须保这一明确allowlist，不恢复全Host环境或其它模型/渠道密钥，不由普通参数伪造full，不因环境注入将原值自动复制到镜像ARG/ENV、应用配置、argv、Job持久描述或普通日志。Linux私有单次launch文件短暂承载env并在消费后删除；容器daemon可查看运行时env。程序主动输出仍可能进入工具结果/Pi历史/spill，不能承诺全面日志脱敏。复用现有launchEnvironment/shellEnv和授权投影；实际责任文件以调用链为准，不只在上游注入后假定可用。
+- 容器保留现有git，签名Debian apt安装gh；Playwright生产依赖固定项目已有1.65.0，锁文件与allowBuilds策略保留，匹配版本CLI在构建期安装Chromium和官方系统依赖，浏览器放镜像层而非业务持久卷，CLI从业务cwd可用。优先成熟工具，不另加浏览器服务或模型工具平台。明确浏览器实际sandbox行为，不通过privileged、扩大宿主权限或关闭应用sandbox换绿。
+
+验证复用原真实task Host/Pi fixture与唯一Tests执行者：基线先暴露真实错误，再局部复验合法work/tmp/外部写与Host-owned拒绝、外部cd、运行中父子进程取消/drain、同档案冷恢复no-replay；相关文件提交的取消/epoch与已commit但结果失败反例使用现有持点，不造平行事务框架。准确新镜像必须实跑git/gh、fixture token仅进程内boolean/hash比对、Chromium本地HTTP导航/JS/DOM和物理截图；不调用真实GitHub业务或真实渠道，不把安装/--version当浏览器访问通过。源稳定后做必要共用回归、当前三守卫和增量窄审，阶段末一次更新本轮正式报告/矩阵；历史FAIL和旧unknown保留，公开证据不含凭据、真实SID或完整SD。无CI、合并、部署。

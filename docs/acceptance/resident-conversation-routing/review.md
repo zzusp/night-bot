@@ -2261,3 +2261,58 @@ SG11/SG12仍ACTIVE，readOnlyAdmission/runnerIpcAckQualified/productionScopeRead
 - **当前守卫与治理边界。** 亲读Main原`call_37274a1a9ac34c97b4a6c0fe8a8a1c5f`（47929/47930，UTC02:27:17.280至02:27:22.448）实际pnpm.cmd check，三守卫190/10/3/57、395生产文件/193bare、395runtimeJS/SDK0/legacy定义0/verified2/removed9，GUARD_EXIT0/SOURCE_CHANGED[]；原工具比较含289f的12相关源起止，本审独立核当前12项同原before。该守卫不替代grep运行结果，不要求重写与此增量无关的manifest或已取消19be的15槽consumer/pins。
 
 本节仅在原757606B/a25e1fe434b1671199aa46d98ec3c1fd16bc82f2cc96f4adb4d687edebcc4661全文前缀后集中追加；未改生产、测试、goal/spec、manifest/consumer、README/ops、matrix/库存、正式归档或旧现场。本审只做源码/原结果读取及离线hash/差量分析，没有代跑测试、pnpm check、probe/driver/归档器/Native或切实际安装模式，没有提交/push/CI/合并/部署或真实渠道外发。此窄审可交Main整合，唯一goal与总体交付状态仍由Main维护；本节不宣布SG11/SG12或全项目完成。
+
+### full真实task、外部cwd与效果终态阶段末窄审（2026-11-09）
+
+结论：本审已独立核七个生产文件完整实际差量、最终两测试源、Windows真实task/取消/未知效果、路径维护回归及容器最终业务与冷读原件，未发现该增量尚未解决的阻断。原取消用例手动释放模型hold的证据缺口已由单项真实abort复验补足，不改写旧批结果。本节仅收口本次full增量，不宣布SG11/SG12、所有平台或整个项目完成；ask/auto、19be及受限ACL实验仍排除，R44 FAIL与旧unknown现场保持。
+
+受审为HEAD `ca7bd0276ba4664a8614ce69fde47956f8c99f7e`、分支 `worktree-resident-conversation-routing` 加未提交协作工作树，不以HEAD单独代表受验源码。Main明确交本审于阶段末一次追加本节；生产/测试/goal/spec/正式R45/Git仍各按原单写。本审追加前亲核以下最终字节及完整SHA256：
+
+| 文件 | bytes | SHA256 |
+|---|---:|---|
+| src/native-tools.js | 24752 | 0d8829c3713998b95b0f68fb224106d5cc1db1a9091c3e670dd19e8d013370c8 |
+| src/tool-permissions.js | 20418 | a6fde5d9324fef25bc377f1c21f2fa9941efd25723aa5b3e2e295e63e54fc02b |
+| src/native-working-directory.js | 4926 | 7d055ae7cc8aef5f0db39f7a853713948cf95d53a438b716b2386442f74d63cd |
+| src/memory/private-fs.js | 5149 | 8b9bf149541e04204cc17e58dcce0b904d52b1045fe3ede9bd4ae550a7b6f621 |
+| src/memory/privacy.js | 12617 | 355243dd61e829d3c3e3ce1c2eda6f5abcf2282e16141d2232c9f9805ce48151 |
+| src/runtime/portable.js | 3043 | 53ed51fe3b2066bb7b71ef37495df86f7b164b60f753caff165e053f6087e96d |
+| src/runtime/pi-business-path-bindings.js | 3631 | 51cfd71b714a0452a1ce7613dc1f26ed5b5528acf40a361f5616d3a2ed0ef276 |
+| test/pi-approval-wire.test.js | 60159 | f7326d51c7a3c3e44ef863ef644c297f131d2e53f1aa63433f37a92b35d26f93 |
+| test/fixtures/routing-official-host.js | 9327 | ec683ac7d3e36c39eac7a9da1219e26edaad71465c5fb79401edba0577958d37 |
+
+#### 真实根因、反证与实现边界
+
+- 原默认task基线是自然1、0PASS/1FAIL的真实默认task基线：初始化ready、work/tmp成功，materials edit/write拒绝且原文保持，但外部write为PERMISSION_CALL_UNBOUND、目标缺席。本审早先按局部full早退分支作出的“当前已确认可达Host-owned写漏洞”判断已被该真实反证撤回，不列作已确认漏洞。修绑定后仍需防止早退暴露归属绕过；不把task自身completed/drained代替外部业务成功，不改写原FAIL，也不新增已被基线排除的full初始化分流。
+- `src/native-tools.js:197` 只将既有tools/execute waterfall放进原permissionExecutions.run(exec)。prepare/runBody原身份约束保留；exec的token/actor/call/rootCall/工具名/冻结参数与存活身份仍经原检查。真实task preflight现在可取得原exec，未伪造调用或跳过preflight、吞UNBOUND。`src/memory/private-fs.js` 按真实targetKey的taskRoot，在full早退前拒绝模型写metadata/materials/outputs/sessions/reviews等Host区；原fresh mutation检查继续执行，work/tmp及外部业务写可用。该应用归属门不宣称限制full直接进程按OS账号访问文件。
+- `src/tool-permissions.js` 为working_directory使用真实冻结cd参数及canonical cwd/root，只在full授只读目录检查；writing与非full仍拒绝这一新增授权。后续相对文件、搜索、进程跟随实际durable cwd，不授任意辅助FS旁路。每轮官方prompt在工具exec外ensure(actor)的真实调用已读；`src/native-working-directory.js:31` 仅将ensure接到专用 `PrivateFS.statWorkingDirectory`，set(cd目标)仍走原FS/active-call门。
+- `src/memory/private-fs.js:18` 和 `src/tool-permissions.js` 的元数据口只接受在册同一actor、官方port live和精确当前cwd；有真实exec时再核actor/identity/epoch及重建scope。仅super.resolve/stat，无read/list/write授权，不新增或消费file/process记录。generation/lifetime信号贯穿resolve/stat，逐次await后重核，resolved targetKey必须等原cwd；非full回原检查，不静默吞取消。不能将该方法描述为模型可调用的任意文件stat工具。
+- 外部cd的第二责任在原portable审计encode，不能仅修权限参数便称成功。比较全局放开encode、未标记绝对路径兜底、仅已知cwd显式绑定三案，前两会影响受控路径/搬迁证明，排除。`src/runtime/portable.js` 与 `src/runtime/pi-business-path-bindings.js` 仅directory/changed唯一cwd可用external-absolute，严格字段/绝对值/NUL及payload与标记同值校验；外部引用原值保留，不随安装根改写、不复制外部文件、不成为授权。通用encode/decode/header/domain、sandbox/artifact仍原安装workspaces门。原未标记receipt搬迁失败、caller禁自带binding、commit重算expected binding不动；runtime与维护仍共享严格journal decoder，离线requireComplete及无显式codec拒绝门保持。
+- `src/memory/privacy.js:74` 只在已绑定direct授权、真实工具名bash/pwsh的最终spawn投影中，从 `launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])` 取值；不回退project/user .env，不恢复全Host环境或其它模型/渠道密钥。undefined/空值不注入，类型/NUL错误只报固定PROCESS_GITHUB_TOKEN_INVALID，不拼原值。原工具参数、Job持久描述和scrubbedParentEnv未改；full grep虽有direct投影，也不进入shell令牌注入。
+- 隐私边界已沿实际链核清：Windows目标env经start IPC；Linux单次launch文件为0700目录/0600文件，consume后unlink；普通Job账本/view显式字段不含env，runner错误白名单不复制env。新错误也不带值。目标程序主动输出仍会进入stdout/stderr、Pi结果/历史或spill，当前没有通用输出脱敏；本节只确认注入不自动投影原值和哨兵用例的实际结果，不声称令牌无论怎样都不会落盘。本审未读取真实令牌。
+
+#### Windows真实task、生命周期与必要回归
+
+本审亲读以下原工具调用、完整已结束output及实际断言；均为本地脚本/HTTP模型，不是真实vendor，不由本审代跑。原output位于Tests原session tasks目录，名称与工具ID足以定位；必要结论在本节自包含，不依赖截断preview。
+
+| 原任务 / tool_use_id | 实际结果与UTC | output bytes / SHA256 |
+|---|---|---|
+| blr5aqt1d / call_341d5431f3854a6b96e62ca30b10f398 | 04:16:28.968335–04:17:12.424003，自然0；2PASS、0FAIL/CANCEL/SKIP；TAP42886.165ms、stderr空 | 3734 / 8f72fd7ce137d4d0d2f7d19fe5e3e9c7a0696ff9d20cb211c7edf168b63311cd |
+| b6umjczmb / call_c279d6e7285d4c56802d017ebf63c2b8 | 04:20:19.652633–04:21:01.461727，自然0；4PASS、0FAIL/CANCEL/SKIP；TAP41119.6054ms、stderr空 | 4093 / ceae3cc7ce1c766e315f759e3595dbbe20900c7a6f747b74159deb9ba091ed34 |
+| baec3wj1a / call_6b7c853dd12e46c39eee6e91dca11b67 | 04:23:46.935320–04:24:11.364153，自然0；11PASS、0FAIL/CANCEL/SKIP；TAP23810.9688ms、stderr空 | 5111 / 29be18eb324bb055f304c0be565e3d04470814f1f2d425899d3e14b8bcaf718a |
+| b4g5xog6x / call_d3a936a0781b48af8499a5c39f528f34 | 04:27:38.647801–04:27:51.419482，自然0；仅取消注册1PASS、0FAIL/CANCEL/SKIP；TAP12171.1838ms、stderr空 | 1540 / de90d8940d00548182b9714ff111af13756444b81ff4b44af6791b0c2f85c023 |
+
+- **默认task文件/cwd/token两注册。** 原test57b0820e的两注册使用真实task service/SQLite/目录/Pi工具，仅替换模型。16步包括work/tmp/外部write物理内容匹配，own及foreign materials的直接路径与Windows junction写入拒绝、两原文保持；外部cd后后续多轮relative write、真实grep Found 1 matches、pwsh实际cwd和回task目录均成功。filesystem-link.js确为Windows junction实现，不冒称特权文件symlink。task completed/drained并有committed task_result。独立token注册仅向可信Host注入假凭据，子进程hash/boolean证明githubTokenMatches/otherSecretAbsent双true，Pi entries/模型请求/工具结果/Job视图无两个sentinel原值；不外推任意logger或主动echo脱敏。
+- **旧四项准确保留。** 原fa851b41的四注册包括真实task运行中parent/child/grandchild关系、Job registered/settled各1、producerReported、三PID ESRCH、迟到效果缺席与cold零重启；但原取消注册在await cancel前手动hold.resolve，fixture又在await decide返回后才检查signal。因此原4PASS保留，OS树排空/冷启不重启有效，不能据此证明挂起模型由abort结束。另一个真实task使原native write物理提交后，仅同一definition.output.render单次抛错，原execute/FS/定义身份/intent链保持；文件原文和mtime不变，intent1/result0，coldModelCalls0、unknown保持。该unknown档案保留，不以取消、idle或恢复清除未知。另两staging注册是独立actor fixture：真实write/sync后inspectTemp持点，取消或切档后目标不发布、外部目录含临时文件为空；不混称全部默认task验证。
+- **单项补足真实模型abort。** 最终fixture只新增decide第三参数真实callOptions.signal，普通既有调用不改含义。最终取消注册先证明第二模型回调pending且signal未abort，再service.cancelTask；正常cancel/join前不release，只由该signal结束等待并断言已abort。hold仅t.after失败清理，未关模型server替代取消。其后继续核task cancelled/drained、Job耐久终态/producerReported、三真PID ESRCH、迟到效果缺席与同档案cold零新模型/producer。只此注册在f7326d51/ec683ac7复验，旧另三项未重跑，不拼为最终测试文件全量通过。
+- **11项范围。** 一项新增external cwd真实full cd→backup/restore→cold读取，原外部绝对值、Pi原bytes/entries及外部文件内容保持，伪造非directory external绑定拒绝。另10项来自原pi-native-working-directory四项、pi-native-business-portability三项、pi-maintenance-journal三项，覆盖canonical/取消/owner退休/调用归属/官方prompt、受控路径迁移、未标记receipt迁移拒绝、伪/缺sidecar不得commit，以及未提交尾/改记录/错header/无显式codec的维护拒绝。新增单项不扩为任意外部盘可迁移或默认自动恢复授权。
+- **分批分版来源核验。** 两注册原492输入聚合为 `0238d7b5ce426fbc9392eee617a5328a8c5392edcade1cc67589c00791695ca2`，test57b0820e全文47764B当时是后续文件的精确前缀。旧四项同492集合、fa851b41全文57149B，聚合 `c459e8e40460281f85555a50400b061b598f514565d8aca00937b3722a6903a2`；追加external测试后的d29e8406再加三回归文件为495输入，11项聚合 `cc8b8504de9b28588d2fd70988f6d07b85d47d3e848e5fcf0694d343ea827bac`。各原运行起止SOURCE_CHANGED[]，不能混用集合或将重复取消计新独立覆盖。本审曾独立核原前缀/聚合；最终仅在内存准确逆回取消测试控制点及fixture第三参数，全文精确恢复d29e8406与旧fixture1a4988dc，495输入也精确重建cc8b8504。最终取消复验492聚合 `2f7354350e6487355eb63a194994fb36f8bd9bcf3650ac591c04c68e6e3803a5`，本审另逐项读当前492输入重算完全相同。七生产源各批不变，但未声称最终两个测试文件全量重跑。
+- **当前守卫原件。** 本审亲读Tests `call_e37f0f2aa7d74318988b38cb254eb4be`，原命令确为pnpm check，已结束bx3g5nqk1为889B/SHA `f74bdba2c162610643abe2a305e1ca4f11b14dfefb94bd76146bd17299786e7c`、自然0。三守卫为190 retained/10 retired/3 excluded/57 adapted，395 production files/193 bare imports，395 runtimeJS/SDK0/旧编排定义0/verified2/removed9。原输出也含依赖准备/playwright1.65.0信息；该调用没有独立源码起止pin，不补造SOURCE_CHANGED或借旧a2d/7d48/053守卫替代新七源。守卫通过不替代业务实跑。
+
+#### 容器最终业务与独立冷读
+
+- 亲读 `call_a607f6fac0404f0b8ec8a6270eacc1c5` 及bifysjlf6原1540B/SHA `cd9c9fa0991424de62f230e16de4d22528121a6217663a0d0de3f3526e9108a7`：UTC04:41:55.254962–04:41:59.753884、自然0。镜像为 `sha256:e1a5708cb8934ae40eac0763b68617fce7d1b2fe43edd43e64bbd755c7a649fa`。最终脚本原引用call_d6147dd9a38a47e7b3105ae1a99a03d2已继续读源；本审仅AST/literal提取并在内存应用off/low模型声明和恢复既有task两处准确变更，所得脚本SHA精确等原结果 `6f9297eb67a0892dc86c1a6ba7a38960fa2c558e2c4112d8fbca42c2fa478fdf`，未执行它。
+- 该脚本确走两次本地HTTP模型、真实bash/task_result、既有无副作用准备失败task的正式recover；没有伪造工具输出。真实子进程用安装的gh执行auth token，只在进程内比较fixture值，githubTokenMatches/otherSecretAbsent/ghFixtureMatches三true；task completed/drained、alerts空，Pi/请求/结果/Job无sentinel。初次initialize/模型声明准备失败保留，不包装成首次无准备成功，也不算生产源码缺陷。原Docker参数保network none、cap-drop ALL、no-new-privileges、正式seccomp、root只读和独立data卷；full进程按容器OS账号权限执行，不宣称仍保应用工作区OS围栏或管理员提权。
+- 亲读 `call_7872348f961d42658481400b97cdd84a` 及bk8qgegn0原1529B/SHA `9370a92562b4b8b83271aabfc2d25c7c64c790e958f7538c35306c3ca703358f`：UTC04:43:43.935483–04:43:46.826104、自然0，同镜像。原脚本SHA `74e919aa9e8e55e0a31064ac5ca77777cb2579a52d17de4549d902b97d8aadbb`；创建Host后只读SQL(readOnly:true)与readNative(requireComplete:true)，不调recover/模型/工具。独立读回bash非error/exit0、Job registered1/settled1/completed/producerReported、task completed/drained和三boolean；镜像内七生产源SHA逐项等本节候选，本审另核当前七项相同。此冷读证明耐久终态，未重放或再执行原bash。
+- 两次容器run都是显式entrypoint node的direct Host夹具；默认--check在独立记录，不将两者拼写为默认CMD端到端新验收。按Main/Tests交接，浏览器API/CLI/截图保留e367基础层原实证的版本边界，不称e1a重新导航/JS/DOM/截图；本节没有重新执行或重审该浏览器批。没有真实GitHub业务、真实渠道或厂商模型调用。本审未另做Docker inspect/清理，最终容器状态与专属卷清理由Main/Tests原职责核收，不以工具退出0代替独立资源清理证明。
+
+本节只在原review764803B/SHA `fd0c60256e5b0e50ba14a702fbecc6ae58bb184b59e9db19850e476af5ad8c7a` 全文前缀后追加，历史原文/FAIL及旧hold限制均保留；未改生产、测试、goal/spec、README/ops、manifest、matrix/库存、R45正式归档或旧现场。本审执行仅为源码/原工具结果读取、内存AST/精确差量与hash核验；没有跑测试、pnpm check、服务、Docker/OS/Native、probe/driver/归档器，没有切实际安装模式、提交/push/CI/合并/部署或真实外发。该窄审交回Main集中R45与Git，之后不为同一结果再添评审或重复验证门。

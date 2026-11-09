@@ -61,7 +61,7 @@ ARG DEBIAN_SECURITY_URL
 RUN node --input-type=module -e "import {rootCertificates} from 'node:tls'; import {writeFileSync} from 'node:fs'; writeFileSync('/tmp/night-debian-roots.pem',rootCertificates.join('\n')+'\n',{mode:0o644})" \
     && node --input-type=module -e "import {readFileSync,writeFileSync} from 'node:fs'; const p='/etc/apt/sources.list.d/debian.sources'; let s=readFileSync(p,'utf8'); for(const [key,path] of [['DEBIAN_ARCHIVE_URL','debian'],['DEBIAN_SECURITY_URL','debian-security']]){const u=new URL(process.env[key]); if(u.protocol!=='https:'||u.username||u.password||/[?#]/.test(process.env[key]))throw Error('Invalid Debian HTTPS mirror'); const from='URIs: http://deb.debian.org/'+path; if(!s.split('\n').includes(from))throw Error('Unexpected Debian source'); s=s.replace(from+'\n','URIs: '+u.href.replace(/\/$/,'')+'\n');} writeFileSync(p,s);" \
     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true update \
-    && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils git grep procps tini util-linux \
+    && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils gh git grep procps tini util-linux \
     && rm -f /tmp/night-debian-roots.pem \
     && rm -rf /var/lib/apt/lists/* \
     && chmod u-s /usr/bin/bwrap
@@ -72,6 +72,12 @@ RUN ln -s ../lib/node_modules/pnpm/bin/pnpm.mjs /usr/local/bin/pnpm \
     && ln -s ../lib/node_modules/pnpm/bin/pnpx.mjs /usr/local/bin/pnpx
 WORKDIR /opt/night-bot
 COPY --from=build /opt/night-bot/node_modules ./node_modules
+# 浏览器与系统库在镜像构建期安装，不写入持久 data 卷。
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN node node_modules/playwright/cli.js install --with-deps chromium \
+    && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" \
+    && ln -s /opt/night-bot/node_modules/playwright/cli.js /usr/local/bin/playwright \
+    && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml config.example.json LICENSE THIRD_PARTY.md ./
 COPY licenses ./licenses
 COPY bin ./bin

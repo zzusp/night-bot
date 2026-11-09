@@ -42,6 +42,7 @@
     "minimatch": "11.0.3",
     "node-pty": "1.2.0-beta.15",
     "pg": "^8.23.0",
+    "playwright": "1.65.0",
     "sharp": "0.35.5",
     "turndown": "7.2.4",
     "undici": "8.12.3",

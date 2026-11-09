@@ -5,6 +5,7 @@ import {dirname,isAbsolute,join,resolve,relative,sep} from 'node:path'
 import {inside,packageRoot} from '../runtime/paths.js'
 import {spillAccess} from '../runtime/spill-access.js'
 import {failure} from '../runtime/files.js'
+import {launchEnvironmentOf} from '../native-environment.js'
 
 const origin=(agent,fallback)=>agent?.piSession?officialWorkingDirectoryOrigin(agent):agent?.session.header.cwd??fallback
 const canonical=path=>{try{return realpathSync.native(path)}catch{return resolve(path)}}
@@ -70,7 +71,16 @@ export async function installProcessPrivacy(ctx,privacy){
     const agent=ctx.agents.currentInitiator();if(!agent)return spec
     const workspace=canonical(origin(agent,privacy.workspaces)),task=privacy.taskRoot(workspace)===workspace?workspace:undefined
     const authorization=processAuthorization(ctx,privacy,spec,agent,workspace,task)
-    if(authorization?.kind==='direct')return retainProcessPolicy(spec,{...spec,cwd:authorization.cwd,argv:authorization.argv})
+    if(authorization?.kind==='direct'){
+      let env=spec.env
+      if(['bash','pwsh'].includes(ctx.get('tools')?.currentPermissionExecution?.()?.name)){
+        // 凭据仅在已绑定的 full shell 最后启动边界注入，不进入工具参数或 Job 描述。
+        const token=launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])?.value
+        if(token!==undefined&&(typeof token!=='string'||token.includes(String.fromCharCode(0))))throw failure('PROCESS_GITHUB_TOKEN_INVALID')
+        if(token)env={...env,GITHUB_TOKEN:token}
+      }
+      return retainProcessPolicy(spec,{...spec,cwd:authorization.cwd,argv:authorization.argv,...env===undefined?{}:{env}})
+    }
     if(!privacy.installRoot){if(authorization?.kind==='scoped')throw failure('PROCESS_SCOPED_AUTHORIZATION_UNAVAILABLE');return spec}
     if(privacy.installRoot){const safe=/^(?:PATH|LANG|LANGUAGE|LC_.*|TERM|COLORTERM|TZ|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SSL_CERT_FILE|SSL_CERT_DIR|NODE_EXTRA_CA_CERTS|CURL_CA_BUNDLE|NIGHT_BOT_SHELL|NIGHT_BOT_SESSION_ID)$/i;const env={};for(const key of new Set([...Object.keys(process.env),...Object.keys(spec.env??{})])){const value=Object.hasOwn(spec.env??{},key)?spec.env[key]:process.env[key];let allowed=safe.test(key);if(/^NIGHT_BOT_/i.test(key)&&!Object.hasOwn(spec.env??{},key))allowed=false;if(allowed&&/proxy$/i.test(key)&&value)try{const url=new URL(value);if(url.username||url.password)allowed=false}catch{}env[key]=allowed?value:undefined}if(process.platform==='win32'){
       // 系统依赖只取Host实际值；模型同名/异大小写覆盖不成为可信依赖。

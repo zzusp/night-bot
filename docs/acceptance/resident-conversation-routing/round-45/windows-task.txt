@@ -1,0 +1,33 @@
+FULL_TASK_FILES_CWD_ENV_START 2026-11-09T04:16:28.968335+00:00 HEAD ca7bd0276ba4664a8614ce69fde47956f8c99f7e UNCOMMITTED_WORKTREE True TRACKED_INPUT_COUNT 492 AGGREGATE 0238d7b5ce426fbc9392eee617a5328a8c5392edcade1cc67589c00791695ca2
+KEY_PINS {"src/native-tools.js": "0d8829c3713998b95b0f68fb224106d5cc1db1a9091c3e670dd19e8d013370c8", "src/tool-permissions.js": "a6fde5d9324fef25bc377f1c21f2fa9941efd25723aa5b3e2e295e63e54fc02b", "src/native-working-directory.js": "7d055ae7cc8aef5f0db39f7a853713948cf95d53a438b716b2386442f74d63cd", "src/memory/private-fs.js": "8b9bf149541e04204cc17e58dcce0b904d52b1045fe3ede9bd4ae550a7b6f621", "src/memory/privacy.js": "355243dd61e829d3c3e3ce1c2eda6f5abcf2282e16141d2232c9f9805ce48151", "src/runtime/portable.js": "53ed51fe3b2066bb7b71ef37495df86f7b164b60f753caff165e053f6087e96d", "src/runtime/pi-business-path-bindings.js": "51cfd71b714a0452a1ce7613dc1f26ed5b5528acf40a361f5616d3a2ed0ef276", "test/pi-approval-wire.test.js": "57b0820eedc0d96c3e05c3a200f4eb1eb3d0f2a8dc08de6fa684fe9ba97106dc", "test/fixtures/routing-official-host.js": "1a4988dc2e860096d2fbbe07fbb9f9a95f14daf37a77b2700b1c335120fe0cf4"} EXACT_ARGV ["node", "--test", "--test-concurrency=1", "--test-reporter=tap", "--test-name-pattern=^(operator full default task preserves Host-owned materials while work tmp and external writes complete|operator full native task child receives only the trusted GitHub fixture token without durable disclosure)$", "test/pi-approval-wire.test.js"]
+ACTUAL_TAP_BEGIN
+TAP version 13
+# Subtest: operator full default task preserves Host-owned materials while work tmp and external writes complete
+ok 1 - operator full default task preserves Host-owned materials while work tmp and external writes complete
+  ---
+  duration_ms: 33049.76
+  type: 'test'
+  ...
+# {"case":"full-default-task-files","workspaceInitialization":"ready","status":"completed","drained":true,"modelSteps":16,"tools":[{"name":"write","isError":false},{"name":"write","isError":false},{"name":"write","isError":false},{"name":"read","isError":false},{"name":"edit","isError":true,"message":"Task archive areas are Host-owned; write process files under work/ or tmp/."},{"name":"read","isError":false},{"name":"write","isError":true,"message":"Task archive areas are Host-owned; write process files under work/ or tmp/."},{"name":"write","isError":true,"message":"Task archive areas are Host-owned; write process files under work/ or tmp/."},{"name":"write","isError":true,"message":"Task archive areas are Host-owned; write process files under work/ or tmp/."},{"name":"write","isError":true,"message":"Task archive areas are Host-owned; write process files under work/ or tmp/."},{"name":"working_directory","isError":false},{"name":"write","isError":false},{"name":"grep","isError":false},{"name":"pwsh","isError":false},{"name":"working_directory","isError":false},{"name":"task_result","isError":false}],"hostMaterialUnchanged":true,"alerts":[]}
+# Subtest: operator full native task child receives only the trusted GitHub fixture token without durable disclosure
+ok 2 - operator full native task child receives only the trusted GitHub fixture token without durable disclosure
+  ---
+  duration_ms: 7664.4855
+  type: 'test'
+  ...
+# {"case":"full-native-task-env","githubTokenMatches":true,"otherSecretAbsent":true,"status":"completed","drained":true}
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 42886.165
+ACTUAL_TAP_END
+ACTUAL_STDERR_BEGIN
+ACTUAL_STDERR_END
+FULL_TASK_FILES_CWD_ENV_FINISH 2026-11-09T04:17:12.424003+00:00 EXIT 0 SOURCE_CHANGED [] AFTER_AGGREGATE 0238d7b5ce426fbc9392eee617a5328a8c5392edcade1cc67589c00791695ca2
+
+[exited with code 0]

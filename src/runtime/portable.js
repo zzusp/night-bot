@@ -1,5 +1,5 @@
 import {stampAuditPathBindings,readAuditPathBindings} from './pi-business-path-bindings.js'
-import {relative,resolve,sep} from 'node:path'
+import {isAbsolute,relative,resolve,sep} from 'node:path'
 import {inside} from './paths.js'
 import {failure} from './files.js'
 /** Typed application paths and explicitly marked standing-business paths only.
@@ -15,7 +15,11 @@ export function portablePaths(paths){
     const path=resolve(paths.installRoot,value);if(!inside(paths.workspaces,path))throw failure('NIGHT_PORTABLE_PATH_INVALID');return path
   }
   return {encode,decode,
-    auditReceipt:receipt=>stampAuditPathBindings(receipt,{originRoot:paths.installRoot,encode}),
+    auditReceipt:receipt=>{
+      const cwd=receipt.domain==='directory'&&receipt.kind==='changed'?receipt.payload.cwd:undefined
+      const external=typeof cwd==='string'&&isAbsolute(cwd)&&!inside(paths.workspaces,resolve(cwd))
+      return stampAuditPathBindings(receipt,{originRoot:paths.installRoot,kind:external?'external-absolute':'install-relative',encode:external?value=>value:encode})
+    },
     readAuditReceipt:(receipt,context)=>readAuditPathBindings(receipt,{decode,...context}),
     header:header=>({...header,...header.cwd!==undefined?{portableCwd:encode(header.cwd)}:{}}),
     readHeader:header=>{const {portableCwd,...rest}=header;return {...rest,...portableCwd!==undefined?{cwd:decode(portableCwd)}:{}}},

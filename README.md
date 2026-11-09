@@ -36,7 +36,9 @@ node bin/night-bot-dingtalk.js data/config/config.json list
 
 `--check` 只校验拟改配置、不创建锁或写盘；去掉该参数才保存。配置 CLI 不能把磁盘保存宣称为在线生效，按返回的 `restartRequired` 正常停机重启。钉钉专用 CLI 另提供 `add/set/enable/disable`，名称和 Prompt 通过 `--json` 内的 `dingtalk_name/dingtalk_prompt` 设置；显式 `env` 导入仅消费 `DINGTALK_*`，不与普通函数参数混用，详细命令见渠道文档。
 
-直接部署沿平台运维流程；Docker 的构建、受控持久卷、模型/渠道环境变量、容器内 DWS 登录和沙箱前置见 [Docker 运维](docs/ops/docker-deployment.md)。镜像包含固定版本 DWS，默认核心仍不加载钉钉；容器不能使用 privileged、Docker socket 或关闭应用沙箱。当前实际 build/run 与平台未验项统一见[本轮目标](docs/acceptance/resident-conversation-routing/goal.md)，不能仅凭镜像定义宣称 Docker 已可用。
+直接部署沿平台运维流程；Docker 的构建、受控持久卷、模型/渠道环境变量、容器内 DWS 登录和沙箱前置见 [Docker 运维](docs/ops/docker-deployment.md)。镜像包含固定版本 DWS，默认核心仍不加载钉钉；容器不能使用 privileged 或 Docker socket，受限档不得关闭应用沙箱求通过，显式 `full` 的应用与容器边界见下文。当前实际 build/run 与平台未验项统一见[本轮目标](docs/acceptance/resident-conversation-routing/goal.md)，不能仅凭镜像定义宣称 Docker 已可用。
+
+镜像默认提供 `git`、GitHub CLI（`gh`）和 Playwright/Chromium 基础无头工具；工具、分版浏览器访问及最终镜像真实默认 task 的 bash/token、作业与任务排空结果见[第45轮](docs/acceptance/resident-conversation-routing/round-45.md)。这不代表默认 `run` 全链或所有 `full` 场景通过。GitHub 认证按运行时显式注入 `GITHUB_TOKEN`，不嵌入镜像或应用配置；token 的临时传输、输出留存风险，以及 Chromium 默认未启用自身 sandbox 的边界，均见上述规程。
 
 ### 工具权限
 

@@ -18,7 +18,7 @@ const fail=code=>Object.assign(new Error(code),{code,status:409})
 const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value
 const digest=value=>createHash('sha256').update(JSON.stringify(stable(value))).digest('hex')
 const canonical=path=>{let root=resolve(path),tail=[];while(!existsSync(root)){const parent=resolve(root,'..');if(parent===root)break;tail.unshift(basename(root));root=parent}return resolve(realpathSync(root),...tail)}
-const fileTools=['read','read_window','read_image','write','edit','ls','find','grep']
+const fileTools=['read','read_window','read_image','write','edit','ls','find','grep','working_directory']
 const treeTools=['ls','find','grep']
 const rowSchema=z.object({id:z.string(),actorId:z.string(),taskId:z.string().nullable(),conversationId:z.string().nullable(),callId:z.string(),toolName:z.string(),status:z.enum(['pending','allowed-once','rejected','cancelled']),createdAt:z.string(),decidedAt:z.string().optional(),display:z.object({summary:z.string(),target:z.string().nullable(),cwd:z.string(),command:z.string().nullable(),parametersDigest:z.string()})}).strict()
 
@@ -99,7 +99,9 @@ export async function openToolPermissions({ctx,mode='ask',saveMode,resolveModel}
  }
  const fileScope=(exec,path,writing,lookup=false)=>{
   const actor=exec.agent,cwd=canonical(actor.ctx.get('workingDirectory').get(actor)),target=canonical(path),tree=treeTools.includes(exec.name)
-  const root=canonical(resolve(cwd,exec.arguments.path??'.'))
+  const directory=exec.name==='working_directory'
+  if(directory&&(currentMode!=='full'||writing)){if(lookup)return;throw fail('PERMISSION_FILE_TOOL_REQUIRED')}
+  const root=canonical(resolve(cwd,directory?exec.arguments.cd??'.':exec.arguments.path??'.'))
   if(tree?!inside(root,target):root!==target){if(lookup)return;throw fail('PERMISSION_FILE_ARGUMENT_CHANGED')}
   if(currentMode!=='full'&&privatePath(actor,target,writing))throw fail('PERMISSION_PRIVATE_PATH_DENIED')
   const old=records.get(exec),operation=!writing&&old?.scope.kind==='file'&&old.scope.operation==='write'?'write':writing?'write':'read'
@@ -169,6 +171,25 @@ export async function openToolPermissions({ctx,mode='ask',saveMode,resolveModel}
    if(record.scope.kind!=='file'||record.scope.path!==scope.path||record.scope.cwd!==scope.cwd||writing&&record.scope.operation!=='write')throw fail('PERMISSION_SCOPE_CHANGED')
    return record.grant?{kind:'direct',path:target,full:currentMode==='full'}:undefined
   },
+  canStatWorkingDirectory({actor,path}){
+   if(currentMode!=='full')return false
+   const initiator=ctx.agents.currentInitiator()
+   if(closed||ctx.agents.get(actor?.id)!==actor||actor.lifecycle?.signal?.aborted||initiator!==undefined&&initiator!==actor)throw fail('PERMISSION_CALL_INACTIVE')
+   officialWorkingDirectoryOrigin(actor)
+   if(path!==actor.ctx.get('workingDirectory').get(actor))throw fail('PERMISSION_SCOPE_CHANGED')
+   const exec=ctx.tools.currentPermissionExecution()
+   if(exec){
+    if(exec.agent!==actor||initiator!==actor)throw fail('PERMISSION_CALL_UNBOUND')
+    active(exec)
+    const record=records.get(exec)
+    if(record){
+     valid(exec,record)
+     const scope=record.scope.kind==='process'?processScope(exec):fileScope(exec,record.scope.path,record.scope.operation==='write')
+     if(JSON.stringify(stable(scope))!==JSON.stringify(stable(record.scope)))throw fail('PERMISSION_SCOPE_CHANGED')
+    }
+   }
+   return true
+  },
   async authorizeProcess(exec){
    active(exec);if(!['bash','pwsh'].includes(exec.name))throw fail('PERMISSION_PROCESS_TOOL_REQUIRED')
    return authorize(exec,processScope(exec))
@@ -201,6 +222,10 @@ export async function openToolPermissions({ctx,mode='ask',saveMode,resolveModel}
    if(['read','write','edit'].includes(exec.name)&&typeof exec.arguments.path==='string'){
     const cwd=canonical(exec.agent.ctx.get('workingDirectory').get(exec.agent)),path=canonical(resolve(cwd,exec.arguments.path)),writing=['write','edit'].includes(exec.name)
     if(currentMode==='full'||writing&&!inside(officialWorkingDirectoryOrigin(exec.agent),path))await api.authorizeFile({actor:exec.agent,path,writing})
+   }
+   if(exec.name==='working_directory'&&currentMode==='full'){
+    const cwd=canonical(exec.agent.ctx.get('workingDirectory').get(exec.agent))
+    await api.authorizeFile({actor:exec.agent,path:canonical(resolve(cwd,exec.arguments.cd??'.'))})
    }
    if(['bash','pwsh'].includes(exec.name)&&(currentMode==='full'||exec.arguments.permission_scope!==undefined||exec.arguments.sandbox_permissions!==undefined||exec.arguments.workdir!==undefined&&!inside(officialWorkingDirectoryOrigin(exec.agent),canonical(resolve(exec.agent.ctx.get('workingDirectory').get(exec.agent),exec.arguments.workdir)))))await api.authorizeProcess(exec)
   },

@@ -8,6 +8,8 @@
 
 **Docker daemon ready、源码核查、镜像定义和基础探针均不能代替 build、实际任务、隔离与业务验收。** 当前结果以[唯一目标](../acceptance/resident-conversation-routing/goal.md)最新轮次为准；未完成的真实模型、登录、厂商交付和 Web 浏览器验证独立报告。
 
+本次实施与验收范围为操作者明确选择的 `full`；`ask`/`auto` 合同及历史结果保留，但受限执行尚未完成、本次不交付。下方示例显式选择 `full`，不改变产品默认 `ask`，也不隐式修改未提供模式参数的已有实例。
+
 ## 沙箱与运行前置
 
 受限 `ask`/`auto` 档的模型进程隐私使用真实 bwrap，容器不替代应用沙箱。所有档位入口均检查非 root 与受控卷；受限档另检查当前应用基础 bwrap profile，失败返回 `NIGHT_DOCKER_BWRAP_UNAVAILABLE`，不进入应用、不自动切为 `full`。显式 `full` 不执行该应用 bwrap 前置，也不承诺应用层进程隔离；父容器约束仍保持。镜像移除 bwrap setuid 位，不依赖提权。
@@ -78,12 +80,25 @@ $common = @(
   '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m,mode=1777',
   '--mount', 'type=volume,source=night-bot-data,target=/opt/night-bot/data'
 )
-docker run --rm --network none --name night-bot-check @common night-bot:sg12 --check
+docker run --rm --network none --name night-bot-check @common -e NIGHT_BOT_PERMISSION_MODE=full night-bot:sg12 --check
 ```
 
 只用本实例专属命名卷，不复用其他实例的 SQLite、Pi journal、技能或账号。镜像内 `data` 及空的 `data/temp` 为 UID/GID `1000:1000`、权限 `0700`，确保工具版本自检时 `TMPDIR` 已存在；Docker 初始化新卷，入口只接受同 UID 的真实目录，不替外部共享目录 chown/chmod。不要用 `--user root` 或 `volume-nocopy` 绕过所有权约束。
 
 `--check` 不初始化或保存配置、不创建 data 子目录、不向卷写入编译或工具缓存、不登录、不连接模型/渠道或发送消息。它只读核查卷与 `data/temp` 均为同 UID、规范路径下的真实目录，且 `data/temp` 权限精确为 `0700` 并可读写进入；缺失或不安全即失败，不自动 mkdir/chmod/chown。仅该自检分支在首个 Node 进程前设置 `NODE_DISABLE_COMPILE_CACHE=1`，检查 Node/pnpm 版本；`ask`/`auto` 另检查 bwrap 版本并跑一次临时 namespace 探针，显式 `full` 不跑该探针。默认自检不调用可选 DWS CLI；镜像内 DWS 的固定发行资产及摘要在构建时核验，不将其 CLI 版本探测作为核心启动前置。正常 `run` 的缓存、HOME 与插件环境导入不受该自检设置影响。有效档位先取显式非空 `NIGHT_BOT_PERMISSION_MODE`，否则读取已有配置，缺省为 `ask`。Docker 的卷初始化不属于入口检查。`NIGHT_DOCKER_PREFLIGHT_OK` 只证明对应档位的这些前置，`full` 自检成功不证明受限档可用；失败不继续登录或启动业务，也不删除 unknown/WAL/历史来重试。
+
+### 内置工具与基础无头访问
+
+镜像保留 Debian `git` 并安装 `gh`；根生产依赖固定 Playwright `1.65.0`，构建期安装 Chromium 及系统库，浏览器放在镜像层 `/opt/playwright`，不是持久卷下载缓存。`/usr/local/bin/playwright` 已接入 PATH。基础工具/浏览器实证绑定镜像 ID `e3677dda58c0`，版本为 git `2.39.5`、gh `2.23.0`、Playwright `1.65.0`、Chromium `158.0.8127.18`；真实业务 cwd 下 API/CLI 的本地页导航、JavaScript/DOM 与物理截图通过。最终镜像 `e1a5708cb893`（本轮重建的 `night-bot:sg11-full-tools-03fd3aeb`）复用同一构建的浏览器层，未在该镜像重跑浏览器；该可变 tag 不作为旧镜像的固定身份。分版证据统一见[第45轮](../acceptance/resident-conversation-routing/round-45.md)，不据基础工具探针宣称默认应用 `run` 全链或真实 GitHub 业务通过。
+
+在已存在任务的 `work/` 内，可直接使用 CLI；以下 URL 仅为示例，实际页面仍需业务授权和容器网络可达，本轮实跑使用的是容器本地页：
+
+```sh
+playwright --version
+playwright screenshot --browser chromium https://example.com/ ./page.png
+```
+
+从任意业务 cwd 使用 JS API 时，应从 `/opt/night-bot/node_modules/playwright/index.mjs` 绝对路径导入 `chromium`，不承诺 bare `import 'playwright'` 能跨目录解析。临时浏览器 profile 使用既有 `TMPDIR=/opt/night-bot/data/temp`。默认 `chromiumSandbox:false` 会加入 `--no-sandbox`；这里不承诺浏览器自身 OS 隔离，也不能将父容器约束称为 Chromium sandbox 已启用。上述实跑保持 UID 1000、cap-drop、no-new-privileges、固定 seccomp、只读根，未加 `--ipc=host` 或提权参数。
 
 ## 一次配置环境参数
 
@@ -91,7 +106,7 @@ docker run --rm --network none --name night-bot-check @common night-bot:sg12 --c
 
 ```dotenv
 NIGHT_BOT_ACTOR_ID=local-operator
-NIGHT_BOT_PERMISSION_MODE=ask
+NIGHT_BOT_PERMISSION_MODE=full
 NIGHT_BOT_MODEL_PROVIDER=openai
 NIGHT_BOT_MODEL=YOUR_MODEL
 NIGHT_BOT_MODEL_KEY_ENV=OPENAI_API_KEY
@@ -113,6 +128,14 @@ OPENAI_API_KEY=REPLACE_LOCALLY
 只为确有需求且理解上述访问范围的安装选择 `full`，不新增宿主挂载或更改已审策略。各档分别验证；`full` 成功不能抵替 `ask`/`auto` 隔离验收，也不能据旧受限结果宣称本版三档已验收。
 
 Docker daemon 管理者可读取容器环境，env 文件与 daemon 权限均属于秘密边界。不要采集完整 `docker inspect`、`env` 或进程环境。HOME、DWS 配置/keychain、cache/temp 为镜像内部固定接线，用户无需另传 `DWS_*`，也不支持把这些目录改到受控 data 外。
+
+### GitHub token 的运行时注入
+
+需要 `gh` 环境认证时，由操作者通过秘密管理器或受控宿主会话提供 `GITHUB_TOKEN`，按下方启动命令只传 `-e GITHUB_TOKEN`，不在命令中写 token 值；不使用 GitHub 时去掉该选项。环境认证无需 `gh auth login`。镜像没有 token build ARG/ENV，入口不将 token 保存到应用配置，也不把它放进工具参数或持久 Job 描述。
+
+Host 仅在已授权、绑定显式 `full` 的 bash/pwsh 最终 spawn 边界，从可信进程环境直接注入 `GITHUB_TOKEN`；这些 shell 启动的子孙进程仍按正常环境继承。`grep` 工具没有额外注入，不能据此推断其他后代绝不会包含 token；全局秘密清理规则不放宽。最终镜像 `e1a5708cb893` 的真实默认 task 已通过 bash/token、正式 task_result、Job `completed`/`producerReported` 与 task `completed/drained` 验证，独立冷读确认原执行及镜像七源一致。此结果来自独立默认 `--check` 后的 direct Host 夹具，不覆盖默认 `run` 全链；无真实 GitHub 或厂商调用，不宣称全部 `full` 通过，证据统一见[第45轮](../acceptance/resident-conversation-routing/round-45.md)。
+
+Docker daemon 管理者可读取容器 env。Linux 私有单次 launch 文件会短暂承载 env，消费后删除，因此不能承诺 token 绝对不落盘。目标程序若主动打印 token，stdout/stderr 可进入工具结果、Pi 历史及 spill，没有通用自动脱敏保证；不要 echo token、打印完整环境或用 `gh auth token` 将真值输出到日志/验收材料。
 
 ## 可选钉钉与多渠道
 
@@ -171,11 +194,11 @@ Web 的 token 文件由插件生成，服务日志只应显示文件路径；按
 
 ## 启动同一容器后交互登录
 
-前置自检通过、env 文件准备完毕后，直接启动应用。下面示例包含可选 Web 的 loopback 发布；未启用 Web 时省略 `--publish`。
+前置自检通过、env 文件准备完毕后，直接启动应用。下面示例假定操作者已在宿主会话安全设置 `GITHUB_TOKEN`，只按键名注入；不需要 GitHub 时去掉 `-e GITHUB_TOKEN`。示例包含可选 Web 的 loopback 发布；未启用 Web 时省略 `--publish`。
 
 ```powershell
 $envFile = (Resolve-Path 'data/secrets/docker.env').Path
-docker run --detach --name night-bot @common --env-file $envFile --publish 127.0.0.1:3080:3080 night-bot:sg12
+docker run --detach --name night-bot @common --env-file $envFile -e GITHUB_TOKEN --publish 127.0.0.1:3080:3080 night-bot:sg12
 docker logs night-bot
 docker exec -it night-bot dws auth login --device
 ```
@@ -232,6 +255,9 @@ docker run --rm --network none @common night-bot:sg12 --check
 6. 停机再起同一卷，实例、直接来源/版本/actor、渠道绑定、Pi 历史和投递账本保留，无重复发送/重放/身份混淆。真实模型、真实认证/厂商交付另报，不从 fake 外推。
 
 ## 官方来源
+
+- [Playwright 1.65.0 浏览器安装](https://github.com/microsoft/playwright/blob/v1.65.0/docs/src/browsers.md)与[Chromium 启动实现](https://github.com/microsoft/playwright/blob/v1.65.0/packages/playwright-core/src/server/chromium/chromium.ts)：镜像浏览器路径及默认 `chromiumSandbox:false` 行为。
+- [GitHub CLI 环境认证](https://cli.github.com/manual/gh_help_environment)：`GH_TOKEN` 优先于 `GITHUB_TOKEN`；本文运行时示例仅注入后者，不要求落盘登录。
 
 - [DWS v1.0.67 发行](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/tag/v1.0.67)、[固定版安装脚本](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/blob/v1.0.67/scripts/install.sh)和[登录说明](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli#readme)：固定资产、glibc 和 headless 登录。
 - [Linux keychain](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/blob/v1.0.67/internal/keychain/keychain_linux.go)和[DEK](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/blob/v1.0.67/internal/keychain/file_dek.go)：持久化与加密边界。
