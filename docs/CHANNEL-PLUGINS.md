@@ -232,3 +232,32 @@ available CLI login. 本节最初的账号策略检查仅覆盖 Windows 环境/�
 - Windows 的安装模式只在当前实现支持的隐私边界内宣称能力：`find` 在已授权普通文件表内进程内 glob，不启动 `rg`；`grep`、shell 和后台作业仍需要模型子进程 privacy，缺失时失败关闭并保留 `MEMORY_PROCESS_PRIVACY_UNAVAILABLE`。这不由小文件演示或旧 DSH 的 Linux sandbox 记录覆盖。Linux 运行前置和验证入口见 [Linux 隔离运行](ops/linux-contained-runtime.md)；未满足 bubblewrap/内核前置时不得关闭 sandbox 或改成无隔离执行。
 
 旧仓源码、历史 README、fake/SDK 注入、`acceptHistoryMessage`、listener ready、health=ok、send accepted 或本地脚本通过都不能证明 Night Bot 已等价替代真实 DWS 监听、模型执行、群内交付、附件回读、同账号回声过滤或持久复盘。旧仓保持只读，不导入历史数据、身份、业务设定、凭据或绝对路径；替代结论以当前 Night Bot 源码、定向测试和实际部署环境的独立证据为准。
+
+## Optional Web configuration declaration
+
+API version 1 manifests may expose an operator-only form without executing the
+plugin during discovery. `displayName` is presentation text. `webConfig.fields`
+is an array of at most 16 declarations, for example:
+
+```json
+{"apiVersion":1,"type":"example-chat","entry":"index.mjs","displayName":"Example Chat","webConfig":{"fields":[{"name":"roomId","label":"目标会话","type":"string","required":true},{"name":"credentialRef","label":"凭据引用","type":"credential-ref","required":true},{"name":"listen","label":"监听","type":"boolean","required":true}]}}
+```
+
+Field names use letters/digits/underscores and cannot shadow prototype or
+Host-selected `type`/`channelId`/`enabled`. Types are `string`, `boolean` and
+`credential-ref`; secret-like names cannot be declared as plain strings. A
+credential reference is a symbolic environment/store name, never a secret body.
+Only declared fields are read back. Strings are bounded; credential-bearing URL
+components are rejected. No custom HTML, scripts, paths to executables, schemas
+with arbitrary code, or plugin uploads are accepted through this surface.
+
+A missing/unsupported declaration leaves the plugin available to the existing
+operator configuration flow, while Web explicitly reports that no form is
+available. New Web instances default disabled. Enabling requires confirmation
+and a normal restart; startup still applies the plugin's existing validator and
+Host lifecycle. Discovery and save never import an inactive plugin. Runtime
+identity, authorization and side-effect rules remain plugin-owned, and are not
+inferred from DingTalk. The generic editor refuses changes to enabled or still
+running instances, including a saved-disabled instance awaiting restart. Stop it
+through its documented operator process and restart before editing; Web does not
+claim a safe generic live target switch or provide deletion/hot loading.

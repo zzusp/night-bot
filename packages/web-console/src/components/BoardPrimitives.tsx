@@ -1,3 +1,4 @@
+import {useAssistantBrand, brandGlyph} from './AssistantBrand'
 // Visual geometry adapted from BoardUI (MIT), revision ec5c5eb.
 // See ../styles/boardui.css and ../../licenses/boardui-MIT.txt.
 import { RiArrowUpLine, RiChatAiLine, RiMoonClearFill } from '@remixicon/react'
@@ -63,10 +64,11 @@ export function EmptyState({ title, description, action, icon }: { title: string
 }
 
 export function Logo({ compact = false, className }: { compact?: boolean; className?: string }) {
+  const brand=useAssistantBrand();
   return (
-    <span className={classes('board-logo', className)} role={compact ? 'img' : undefined} aria-label={compact ? 'Night Bot' : undefined}>
-      <span className="board-logo-mark" aria-hidden="true"><RiMoonClearFill /></span>
-      {!compact && <span>Night Bot</span>}
+    <span className={classes('board-logo', className)} role={compact ? 'img' : undefined} aria-label={compact ? brand.name : undefined}>
+      <span className="board-logo-mark" aria-hidden="true">{brand.icon === 'moon' ? <RiMoonClearFill /> : brandGlyph(brand.icon)}</span>
+      {!compact && <span>{brand.name}</span>}
     </span>
   )
 }
@@ -81,7 +83,8 @@ export interface ComposerProps {
   placeholder?: string
 }
 
-export function Composer({ value, onChange, onSend, disabled = false, busy = false, error, placeholder = '与 Night Bot 对话…' }: ComposerProps) {
+export function Composer({ value, onChange, onSend, disabled = false, busy = false, error, placeholder }: ComposerProps) {
+  const brand=useAssistantBrand();
   const id = useId()
   const textarea = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
@@ -129,7 +132,7 @@ export function Composer({ value, onChange, onSend, disabled = false, busy = fal
           ref={textarea}
           rows={1}
           value={value}
-          placeholder={placeholder}
+          placeholder={placeholder || `与 ${brand.name} 对话…`}
           disabled={disabled}
           autoComplete="off"
           aria-invalid={displayedError ? true : undefined}

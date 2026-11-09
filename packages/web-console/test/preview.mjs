@@ -1,3 +1,8 @@
+import {Context} from '@deepseek-ai/cordis'
+import NativeCredentials from '../../../src/native-credentials.js'
+import {createLaunchEnvironmentSnapshot} from '../../../src/native-environment.js'
+import {runtimePaths,prepareRuntimePaths} from '../../../src/runtime/paths.js'
+import {createOperatorSettings} from '../../../src/settings/operator.js'
 // 仅供本地浏览器验收的隔离样例。真实 HTTP/鉴权/SQLite/静态资源由生产插件提供；
 // 渠道和任务服务是明确标注的 fixture，不接入真实账号、模型或外部消息系统。
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises'
@@ -75,8 +80,8 @@ function sampleSession(task) {
 
 export async function startPreview({port = 3080, empty = false, replyDelayMs = 500} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-browser-fixture-'))
-  const paths = {secrets: join(root, 'secrets'), state: join(root, 'state')}
-  for (const path of Object.values(paths)) await mkdir(path, {mode: 0o700})
+  const paths = runtimePaths({installRoot:root,dataDir:'data'})
+  await prepareRuntimePaths(paths)
   const credentialDir = join(paths.secrets, 'web-console-' + digest(CHANNEL_ID).slice(0, 16))
   await mkdir(credentialDir, {mode: 0o700})
   await writeFile(join(credentialDir, 'access-token'), FIXTURE_TOKEN + '\n', {mode: 0o600})
@@ -204,6 +209,15 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       return {changed: true, restartRequired: true, liveApplied: false, channel: structuredClone(row)}
     },
   }
+  const secretContext=new Context();secretContext.provide('launchEnvironment',createLaunchEnvironmentSnapshot([]))
+  await secretContext.plugin(NativeCredentials,{path:paths.credentials,watch:false})
+  const settingsFile=join(paths.config,'config.json')
+  const settingsConfig={installRoot:root,dataDir:'data',model:{provider:'fixture-model',model:'fixture'},providers:{'fixture-model':{api:'openai-completions',baseURL:'http://127.0.0.1:9/v1',apiKeyEnv:'FIXTURE_MODEL_KEY',models:[{id:'fixture'}]}},channelPlugins:structuredClone(app.config.channelPlugins),channelPluginDirs:['plugins']}
+  await mkdir(join(root,'plugins','custom'),{recursive:true})
+  await writeFile(join(root,'plugins/custom/night-channel.json'),JSON.stringify({apiVersion:1,type:'fixture-custom',entry:'index.mjs',displayName:'自定义测试渠道',webConfig:{fields:[{name:'room',label:'目标会话',type:'string',required:true},{name:'credential',label:'凭据引用',type:'credential-ref'},{name:'listen',label:'监听',type:'boolean',required:true}]}}))
+  await writeFile(join(root,'plugins/custom/index.mjs'),'export function apply(){}')
+  await writeFile(settingsFile,JSON.stringify(settingsConfig),{mode:0o600})
+  const operatorSettings=createOperatorSettings({file:settingsFile,paths,running:settingsConfig,getCredentials:()=>secretContext.credentials})
   let web
   try {
     // Simulate a pre-singleton installation without relaxing the production API.
@@ -217,7 +231,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       }
       legacy.close()
     }
-    web = await createWebConsole({channels, paths, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence, getChannelConfiguration: () => channelConfiguration})
+    web = await createWebConsole({channels, paths, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence, getChannelConfiguration: () => channelConfiguration, getOperatorSettings:()=>operatorSettings})
     if (!empty) {
       const login = await fetch(web.origin + '/api/login', {method: 'POST', headers: {origin: web.origin, 'content-type': 'application/json'}, body: JSON.stringify({token: FIXTURE_TOKEN})})
       if (!login.ok) throw Error('fixture login failed')
@@ -231,6 +245,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     }
   } catch (error) {
     await web?.close()
+    await secretContext.fiber.dispose()
     await rm(root, {recursive: true, force: true})
     throw error
   }
@@ -239,6 +254,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     return closing ??= (async () => {
       await Promise.allSettled([...replies])
       await web.close()
+      await secretContext.fiber.dispose()
       const withinTemp = relative(resolve(tmpdir()), resolve(root))
       if (!withinTemp || withinTemp.startsWith('..') || isAbsolute(withinTemp) || !withinTemp.startsWith('night-web-browser-fixture-')) throw Error('fixture cleanup boundary invalid')
       await rm(root, {recursive: true, force: true})

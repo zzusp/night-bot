@@ -45,7 +45,8 @@ export default class NativeCredentials extends Service {
  queueRefresh(){return this.enqueue(async()=>{if(this.closed)return;try{const text=await this.read();if(!this.closed&&text!==this.text)this.accept(text)}catch{this.warn('reload failed; keeping last good snapshot')}})}
  inherited(ref){const e=launchEnvironmentOf(this.host).getFrom(ref,['process']);return e?.value.length?e.value:undefined}
  fallback(ref){const e=launchEnvironmentOf(this.host).getFrom(ref,['project-env','user-env']);return e?.value.length?e:undefined}
- async resolve(ref){credentialRef(ref);const v=this.inherited(ref);if(v!==undefined)return{value:v,source:'env'};if(this.snapshot.refs.has(ref))return{value:this.snapshot.refs.get(ref),source:'file'};const e=this.fallback(ref);if(e)return{value:e.value,source:e.source}}
+ resolveCurrent(ref){credentialRef(ref);const v=this.inherited(ref);if(v!==undefined)return{value:v,source:'env'};if(this.snapshot.refs.has(ref))return{value:this.snapshot.refs.get(ref),source:'file'};const e=this.fallback(ref);if(e)return{value:e.value,source:e.source}}
+ async resolve(ref){return this.resolveCurrent(ref)}
  async describe(ref){const e=await this.resolve(ref);return e?{configured:true,source:e.source,writable:e.source!=='env'}:{configured:false,writable:true}}
  assertWritable(ref){credentialRef(ref);if(this.inherited(ref)!==undefined)throw new Error('Credential reference is read-only in launching environment')}
  async set(ref,value,options){this.assertWritable(ref);nonempty(value);return this.edit('refs',ref,()=>value,false,options)}

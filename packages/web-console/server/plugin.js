@@ -49,7 +49,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -101,6 +101,12 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!['GET', 'HEAD'].includes(request.method)) fail('METHOD_NOT_ALLOWED', 405)
       return staticResponse(path, request, response, resolve(dist))
     }
+    if(request.method==='GET'&&path==='/api/appearance') {
+      // Public presentation only: never expose configuration or credential metadata.
+      let value={name:'Night Bot',icon:'moon'}
+      try {const settings=getOperatorSettings();if(settings?.appearance)value=await settings.appearance()}catch{}
+      return send(response,200,value)
+    }
     if (request.method === 'POST' && path === '/api/login') {
       const body = await jsonBody(request, ['token'], 1024)
       return send(response, 200, sessionView(sessions.login(body.token, response)))
@@ -108,6 +114,25 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const session = sessions.require(request, !['GET', 'HEAD'].includes(request.method))
     if (request.method === 'GET' && path === '/api/session') return send(response, 200, sessionView(session))
     if (request.method === 'POST' && path === '/api/logout') {await jsonBody(request, []); sessions.logout(session, response); return send(response, 200, {ok: true})}
+    if (path === '/api/settings' || path.startsWith('/api/settings/')) {
+      const settings=getOperatorSettings()
+      if(!settings) fail('SETTINGS_UNAVAILABLE',503)
+      try {
+        if(request.method==='GET'&&path==='/api/settings') return send(response,200,await settings.view())
+        if(request.method==='GET'&&path==='/api/settings/channels') return send(response,200,await settings.plugins())
+        if(request.method==='PUT'&&path==='/api/settings/appearance') return send(response,200,await settings.saveAppearance(await jsonBody(request,['name','icon','expectedVersion'],4096)))
+        if(request.method==='PUT'&&path==='/api/settings/model') return send(response,200,await settings.saveModel(await jsonBody(request,['model','api','baseURL','expectedVersion'],4096)))
+        const secret=/^\/api\/settings\/secrets\/(model|github)$/.exec(path)
+        if(request.method==='PUT'&&secret) return send(response,200,await settings.saveSecret(secret[1],await jsonBody(request,['action','value','confirm','expectedVersion'],16384)))
+        if(request.method==='POST'&&path==='/api/settings/channels') return send(response,200,await settings.saveChannel(await jsonBody(request,['type','channelId','enabled','config','expectedVersion'],16384)))
+        fail('NOT_FOUND',404)
+      } catch(error) {
+        const codes={SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409}
+        if(codes[error.code]) fail(error.code,codes[error.code])
+        if(['JSON_REQUIRED','REQUEST_TOO_LARGE','JSON_INVALID','REQUEST_INVALID','NOT_FOUND'].includes(error.code))throw error
+        fail('SETTINGS_SAVE_UNAVAILABLE',503)
+      }
+    }
     if (request.method === 'GET' && path === '/api/permissions') return send(response, 200, permissionView(permissions().view()))
     if (request.method === 'PUT' && path === '/api/permissions') {
       const body = await jsonBody(request, ['mode'], 1024)
@@ -367,7 +392,7 @@ export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
   const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
-    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), listen: false})
+    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

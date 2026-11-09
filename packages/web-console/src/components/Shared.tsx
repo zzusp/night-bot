@@ -1,3 +1,4 @@
+import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -137,6 +138,7 @@ function ToolActivity({ item, history }: { item: Extract<TranscriptItem, { kind:
   </article>;
 }
 export function MessageList({ messages, pending, empty, footer, userLabel = '你', history }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader }) {
+  const brand = useAssistantBrand();
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
@@ -155,8 +157,8 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} />;
         const message = item.message;
         return <article className={`message message-${message.role}`} key={message.id}>
-          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? 'N' : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
-            <strong>{message.senderName || (message.role === 'assistant' ? 'Night Bot' : userLabel)}</strong>
+          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? (brand.icon === 'moon' ? 'N' : brandGlyph(brand.icon)) : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
+            <strong>{message.role === 'assistant' ? brand.name : (message.senderName || userLabel)}</strong>
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>
