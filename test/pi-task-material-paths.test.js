@@ -16,3 +16,17 @@ test('typed material evidence rejects extra fields, traversal, foreign raw paths
  const p=bindTaskMaterialPaths(packet(),origin);alter(p);assert.throws(()=>resolveTaskMaterialPaths(p,destination,join(destination,name)),{code:'TASK_MATERIAL_PATH_BINDING_INVALID'})
  }
 })
+
+test('原始文件描述符与受控pdf/docx路径一起迁移，拒绝伪造及遗漏绑定',()=>{
+ for(const extension of ['pdf','docx','opaque']){
+  const p=packet(),fileName=resource.replace(/png$/,extension)
+  p.resources[0].path=join(origin,fileName)
+  p.resources[0].value={file:{name:'original.'+extension,mediaType:'application/octet-stream',path:p.resources[0].path,bytes:3,sha256:'c'.repeat(64)}}
+  const marked=bindTaskMaterialPaths(p,origin),saved=JSON.stringify(marked),restored=resolveTaskMaterialPaths(marked,destination,join(destination,name))
+  assert.equal(restored.resources[0].path,join(destination,fileName));assert.equal(restored.resources[0].value.file.path,restored.resources[0].path)
+  assert.equal(JSON.stringify(marked),saved);assert.equal(restored.resources[0].value.file.name,p.resources[0].value.file.name)
+  for(const change of [v=>delete v.pathBindings.fields['resources.0.value.file.path'],v=>v.resources[0].value.file.path=join(origin,'outside.pdf'),v=>v.pathBindings.fields['resources.0.value.file.name']='outside.pdf']){
+   const bad=structuredClone(marked);change(bad);assert.throws(()=>resolveTaskMaterialPaths(bad,destination,join(destination,name)),{code:'TASK_MATERIAL_PATH_BINDING_INVALID'})
+  }
+ }
+})

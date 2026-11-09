@@ -211,6 +211,8 @@ Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAP
 
 插件保留带署源的历史、资源、mention、文件与 receipt/readback 适配能力，typed 入站保留真实发送人及原引用。额外 operator 私聊须显式开启 `dingtalk_operator_notifications` 并提供非空 `dingtalk_operator_peers`，且单独核对账号、对端及授权；不要因业务私聊实例已配置就启用 operator 范围。
 
+资源读取保留图片、UTF-8 文本、XLSX、在线 adoc 的既有返回形态；其它可下载附件（如 PDF、Word、未知二进制）返回完整 `file: {data: Uint8Array, name, mediaType}`，不把平台 ID 当路径或公开链接。Host 校验名称、MIME、大小与完整性，在本任务 materials 发布安全哈希名原件，计算字节数/SHA-256，并将 `{name,mediaType,path,bytes,sha256}` 传给任务。文件描述符不携带账号、签名链接、下载目录或内联二进制；临时文件在返回字节后清理。单资源上限 8 MiB，文件不可读时明确 unavailable，不以静默文本降级掩盖错误。该形态不增加格式解析器，不自动执行文件，不覆盖历史 unavailable 快照。
+
 群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。对于 Router/任务队列的通知，关闭 `dingtalk_operator_notifications` 仍使用该 DWS 插件自身 adapter 查询发送身份，经持久渠道 context 将内部 conversation 映射为原生会话并精确核对，再在消息事实和来源持久登记之前过滤自己的消息；身份回读不改变附件交付状态，也不替代文件字节验证。
 
 同会话队列通知仍为 `starting` / `unknown` 且身份未决时，不能排除回声的 typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，不能把超时、查询失败或未确认当作真人来源。bridge 沿既有持久 `recoveryFromAt` 补读水位恢复，水位写入失败保留错误，不靠注入或重放业务修补。本次 resolver 只接队列通知；原 native operation 的 send/status 分支未统一 typed scope/query 接线，不据此外推 shell 原生发送的通用回声能力或验收。有界等待只限制调用方等待时间，当前 observer 关闭不 join/cancel 在途状态查询，底层 CLI 仍可运行至 runner 自身超时；runner 超时后也未等待 child 的真实退出，不能从 bridge 消息/水位排空外推全部旁路进程已排空。正常退出只按本次实际可观察实例及资源逐项核实。上述为实现合同，不代表现场已通过；当前 DWS/profile 是否推送同账号在单成员群中的原始消息仍须实测。`dingtalk_listen:false` 下的 `acceptHistoryMessage`、SDK 注入和 fake 仅验证本地链路；真实订阅、原始入站、群内交付/回读和复盘须分项留证。

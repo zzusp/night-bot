@@ -1,0 +1,90 @@
+{
+  "observedAt": "2026-11-09T16:08:03.756Z",
+  "source": {
+    "branch": "feature/channel-file-material-delivery",
+    "baseSha": "fcb39ced89b12724b94b6a1be861b47964d5c02b",
+    "uncommittedRuntimeChanges": true,
+    "runtimeSha256": {
+      "packages/dingtalk-core/dws-adapter.js": "daad248115291534a0269c3cd506f741dc10b0f2e433ba686e0517f79e5365ce",
+      "packages/dingtalk-core/task-session-service.js": "303755789daea421f4636f3554ae8386c302f7eb8694fc6d30548caf3a1b509e",
+      "src/tasks/material-paths.js": "67e7bbf488d9c32852e0fd316733fefe9367fee5b50471cc81e8b2e0e366d24d"
+    }
+  },
+  "platform": {
+    "sendCount": 3,
+    "sendStatuses": [
+      "SUCCESS",
+      "SUCCESS",
+      "SUCCESS"
+    ],
+    "requestedCount": 3,
+    "foundCount": 3,
+    "complete": true,
+    "messagesComplete": true,
+    "hasMore": false,
+    "failedCount": 0,
+    "failures": [],
+    "notFoundMessageIds": []
+  },
+  "cases": [
+    {
+      "name": "material-proof.pdf",
+      "expectedValidationCode": "PDF-2B07084C",
+      "expectedSum": 61,
+      "bytes": 19599,
+      "sha256": "1a88828dd650237acab45cf314689136d970305a5ff14d37c47ecb78f9da5d42",
+      "plugin": {
+        "name": "material-proof.pdf",
+        "mediaType": "application/pdf",
+        "bytes": 19599,
+        "sha256": "1a88828dd650237acab45cf314689136d970305a5ff14d37c47ecb78f9da5d42",
+        "complete": true,
+        "hasOriginalBytes": true
+      },
+      "taskContentVerified": false
+    },
+    {
+      "name": "material-proof.docx",
+      "expectedValidationCode": "DOC-6CA56875",
+      "expectedSum": 43,
+      "bytes": 911,
+      "sha256": "9018542d7962bfaa47e7abd1fb5f85443c97e79a2fe60b2ba123f29d5a737b87",
+      "plugin": {
+        "name": "material-proof.docx",
+        "mediaType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "bytes": 911,
+        "sha256": "9018542d7962bfaa47e7abd1fb5f85443c97e79a2fe60b2ba123f29d5a737b87",
+        "complete": true,
+        "hasOriginalBytes": true
+      },
+      "taskContentVerified": false
+    }
+  ],
+  "liveTask": {
+    "newSourceCount": 0,
+    "newRequestAccepted": false,
+    "guard": {
+      "passed": false,
+      "code": "CHANNEL_NOTIFICATION_IDENTITY_PENDING",
+      "reason": "send-pending"
+    },
+    "wordMessageDurablyDeferred": true,
+    "deliveryVerified": false
+  },
+  "historicalNotification": [
+    {
+      "state": "unknown",
+      "errorCode": "GROUP_REPLY_INTERNAL_DETAILS",
+      "knownNotSent": false,
+      "receiptPresent": false,
+      "ackPresent": false,
+      "sendAttemptCount": 1
+    }
+  ],
+  "boundaries": {
+    "ledgerManuallyChanged": false,
+    "inputsResent": false,
+    "guardBypassed": false,
+    "watermarkCleared": false
+  }
+}

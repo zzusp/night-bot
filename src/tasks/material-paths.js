@@ -13,11 +13,11 @@ export function bindTaskMaterialPaths(material, materialsDirectory) {
     if (!resource || typeof resource !== 'object') fail()
     if (resource.status !== 'read') continue
     if (typeof resource.path !== 'string') fail()
-    if (dirname(resource.path) !== origin || !/^resource-[a-f0-9]{16}-[a-f0-9]{16}\.(txt|png|jpg|webp|gif|bin)$/.test(basename(resource.path))) fail()
+    if (dirname(resource.path) !== origin || !/^resource-[a-f0-9]{16}-[a-f0-9]{16}\.[a-z0-9]{1,16}$/.test(basename(resource.path))) fail()
     fields[`resources.${index}.path`] = basename(resource.path)
-    if (resource.value?.image) {
-      if (resource.value.image.path !== resource.path) fail()
-      fields[`resources.${index}.value.image.path`] = basename(resource.path)
+    for (const kind of ['image', 'file']) if (resource.value?.[kind]) {
+      if (resource.value[kind].path !== resource.path) fail()
+      fields[`resources.${index}.value.${kind}.path`] = basename(resource.path)
     }
   }
   return {...material, pathBindings:{version:1,kind:'task-material-relative',origin,fields}}
