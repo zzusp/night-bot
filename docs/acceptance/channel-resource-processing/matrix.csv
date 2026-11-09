@@ -1,0 +1,13 @@
+case_id,case,round_1,result_note
+CR01,四个附件实际发送并平台回读,PASS,各发送一次且四条平台消息保留对应资源引用
+CR02,PNG插件读取与任务视觉处理,PASS,原字节哈希一致且隐藏校验码和17加29等于46正确
+CR03,TXT插件读取与任务内容处理,PASS,原字节哈希一致且隐藏校验码和6乘9等于54正确
+CR04,XLSX插件转换与任务内容处理,PASS,插件转JSON冻结且校验码和商品总和65正确
+CR05,PDF插件交付任务可达材料,FAIL,格式不支持且正式材料状态unavailable并无可达文件或链接
+CR06,PDF模型自行下载解析,PASS_WITH_LIMITATION,DWS加Python取得原文件且校验码和13加28等于41正确但不代表插件通过
+CR07,来源绑定与任务业务终态,PASS,五来源已绑定且completed与drained成立并完整Pi日志校验通过
+CR08,完成回复实际送达,FAIL,内部标识门禁报错且通知unknown并无回执且平台只查到原请求
+CR09,两份报告附件送达,BLOCKED,均prepared并依赖尚未delivered的正文通知
+CR10,原生image消息,NOT_RUN,用户CLI本地图片不能直接以image发送且本次PNG按file附件发送
+CR11,钉钉在线文档,NOT_RUN,现有代码有适配但本轮未创建或读取真实在线文档
+CR12,Word附件,NOT_RUN,静态白名单不支持但本轮未发送Word样本
