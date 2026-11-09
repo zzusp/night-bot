@@ -157,7 +157,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
   const reset = () => { setDraft(emptyChannel()); setErrors({}); setError(null); setFeedback(''); setSaved(false); setUnknownSave(null); };
   return <>
     <Button variant={editing ? 'secondary' : 'primary'} icon={editing ? <RiEditLine size={15} /> : <RiAddLine size={17} />} aria-haspopup="dialog"
-      aria-label={editing ? `编辑钉钉渠道：${channelId}` : undefined} onClick={() => { setOpen(true); if (editing && !version) void load(); }}>{editing ? '编辑配置' : '添加钉钉渠道'}</Button>
+      aria-label={editing ? `编辑配置：${channelId}` : undefined} onClick={() => { setOpen(true); if (editing && !version) void load(); }}>{editing ? '编辑配置' : '添加钉钉渠道'}</Button>
     <dialog ref={dialog} className="channel-create-dialog" aria-labelledby={`${prefix}-title`} aria-describedby={`${prefix}-boundary`}
       onClose={() => setOpen(false)} onCancel={event => { if (writing.current) event.preventDefault(); }}>
       <header className="channel-create-heading"><div><h2 id={`${prefix}-title`}>{title}</h2></div>

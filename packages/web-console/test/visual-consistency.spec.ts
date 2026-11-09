@@ -38,6 +38,13 @@ for (const theme of ['light', 'dark']) {
     await type.press('Alt+ArrowDown')
     await page.screenshot({path: test.info().outputPath(`${theme}-native-select-open.png`)})
     await type.press('Escape')
+    // Chromium/headless may deliver Escape to the dialog when the native popup
+    // is not held open. Verify its focus restoration before reopening the form.
+    if (!await dialog.count()) {
+      await expect(page.getByRole('button', {name: '添加钉钉渠道', exact: true})).toBeFocused()
+      await page.getByRole('button', {name: '添加钉钉渠道', exact: true}).click()
+      await type.focus()
+    }
     await expect(type).toBeFocused()
     await page.setViewportSize({width: 390, height: 844})
     const prompt = dialog.getByLabel('渠道职责（可选）')
