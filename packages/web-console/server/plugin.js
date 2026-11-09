@@ -209,7 +209,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'})
       let value
       try {value = await memory.inspectEvolution(identity.binding, options)} catch {fail('EVOLUTION_UNAVAILABLE', 503)}
-      return send(response, 200, {...value, items: value.items.map(item => ({...item, name: visibleText(item.name, [credential.token]).text}))})
+      const origin = value => value && typeof value==='object' ? Object.fromEntries(['channelId','conversationId','conversationName','conversationType','conversationKey','taskId','taskTitle','messageId','resolvedFrom'].filter(key=>typeof value[key]==='string').map(key=>[key,visibleText(value[key],[credential.token],{maxLength:256}).text])) : null
+      return send(response, 200, {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))})
     }
     const learning = /^\/api\/tasks\/([^/]+)\/learning(?:\/changes\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && learning) {

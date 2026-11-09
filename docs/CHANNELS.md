@@ -7,10 +7,11 @@ adapter; no DWS executable is required for the core or local protocol tests.
 Trusted adapters submit `{type, channelId, conversationId, senderId, messageId,
 text}` and optional `senderName` / `conversationName` to `ctx.channels.receive`. The adapter authenticates these identities;
 this is a Host API, not an unauthenticated public HTTP endpoint. Stable namespaces
-separate channel providers, conversations, private senders and rooms. Private
-sessions use personal memory; room sessions use only that room's memory. Every
+separate channel providers, conversations, private senders and rooms. All authenticated bound sessions share the Bot memory/skills store; channel and
+room identity remain source metadata. Every
 room message retains its actual sender in durable source metadata and model input.
-No private note is injected into a room. Models cannot select another principal.
+No other conversation transcript is injected. Models cannot select another principal;
+shared memory is reference data, not identity or authority.
 
 Display names are presentation metadata, never identity or permission keys. The
 authenticated sender ID and recorded sender name remain together in durable

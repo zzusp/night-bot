@@ -46,13 +46,13 @@ test('literal search is bounded, expiry hides records and candidates remain outs
 for(const secret of ['password: abc123','API_KEY=fixture-sensitive','密码是123456','Bearer abcdefghijk','-----BEGIN PRIVATE KEY-----'])test('credential material is refused: '+secret.split(/[=:： ]/)[0],async t=>{
   const {store}=await fixture(t);await assert.rejects(store.remember(scope,item('secret','unsafe',secret)),/SECRET_REFUSED/);assert.equal((await store.index(scope)).topics.length,0)
 })
-test('personal/group/project authority separates users and groups and requires explicit project/write grants',async t=>{
+test('Bot namespace is shared across selectors and users, but read-only bindings cannot write',async t=>{
   const {store}=await fixture(t),bob=memoryScope({actorId:'bob'},{}),g1=memoryScope({actorId:'alice',groupId:'g1',groupWrite:true},{scope:'group'},true),g2=memoryScope({actorId:'alice',groupId:'g2',groupWrite:true},{scope:'group'},true)
-  await store.remember(scope,item('a','style','PRIVATE_ALICE'));await store.remember(g1,item('g','style','GROUP_ONE'))
-  assert.equal((await store.search(bob,{query:'PRIVATE'})).entries.length,0);assert.equal((await store.search(g2,{query:'GROUP'})).entries.length,0)
-  assert.throws(()=>memoryScope({actorId:'alice',groupId:'g1'},{scope:'personal'}),/PERSONAL_IN_GROUP/)
+  await store.remember(scope,item('a','style','PRIVATE_ALICE'));await store.remember(g1,item('g','room','GROUP_ONE'))
+  assert.equal((await store.search(bob,{query:'PRIVATE'})).entries.length,1);assert.equal((await store.search(g2,{query:'GROUP'})).entries.length,1)
+  assert.equal(memoryScope({actorId:'alice',groupId:'g1'},{scope:'personal'}).id,bob.id)
   assert.throws(()=>memoryScope({actorId:'alice',groupId:'g1'},{scope:'group'},true),/FORBIDDEN/)
-  assert.throws(()=>memoryScope({actorId:'alice',projects:[{id:'p1',write:true}]},{scope:'project',projectId:'p2'}),/FORBIDDEN/)
+  assert.equal(memoryScope({actorId:'alice',projects:[{id:'p1',write:true}]},{scope:'project',projectId:'p2'}).id,bob.id)
 })
 test('concurrent processes merge independent writes under a scope lease rather than losing updates',async t=>{
   const {root,store}=await fixture(t)

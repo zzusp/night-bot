@@ -215,7 +215,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./pi-official-runtime.js', import.meta.url).href, config: { model: config.model, memoryModel: config.memory?.model??config.model, skillDirs:config.skillDirs, fileTools:config.fileTools, maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       { name: new URL('./native-session-controller.js', import.meta.url).href },
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
-      { name: new URL('./memory/service.js', import.meta.url).href, config: config.memory ?? {} },
+      { name: new URL('./memory/service.js', import.meta.url).href, config: {...config.memory,skillDirs:config.skillDirs??[]} },
       { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,

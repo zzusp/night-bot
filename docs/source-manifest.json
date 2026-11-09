@@ -775,8 +775,8 @@
       "source": "session-skill-refresh.js",
       "sourceSha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32",
       "status": "adapted",
-      "sha256": "5742a4f221077d013a7a813f0e58a7b523e15a5cf7c69a46aaab074617938c0f",
-      "adaptation": "Official Pi successful native result/version receipts with exact NativeTools execution observations, path/read_window references, cold committed evidence and no duplicate history."
+      "sha256": "5f00bad4be14a613fdbbed2fe0755005816f0c5c5f09af36e5cbf96edd94b3af",
+      "adaptation": "Official Pi successful native result/version receipts with exact NativeTools execution observations, path/read_window references, cold committed evidence and no duplicate history. Observe committed successful native skill and exact file-read results for Bot-wide usage; catalog preparation does not count as a call."
     },
     {
       "source": "session-workspaces.js",

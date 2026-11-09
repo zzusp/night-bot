@@ -20,16 +20,17 @@ The portable default is `<install>/data/memory/`:
 ```text
 memory/
   bindings.json                 # trusted session-to-principal grants, private
-  v1/
-    personal/<scope-sha256>/
-    group/<scope-sha256>/
-    project/<scope-sha256>/
-      index.md                  # short topic links/counts, no fact bodies
-      topics/<topic-sha256>.md   # current facts in one topic
-      candidates.md             # unapproved; absent when empty
-      scope.json                # revision, bounded dedup/forget fingerprints
-      pending.json              # transient redo transaction; normally absent
-      .lock/                    # cross-process scope lease; normally absent
+  v2/bot/                       # one common namespace for this Bot
+    index.md                    # short topic links/counts, no fact bodies
+    topics/<topic-sha256>.md     # current facts, with source metadata
+    candidates.md               # unapproved; absent when empty
+    scope.json                  # revision, dedup/forget and migration receipts
+    pending.json                # redo transaction; normally absent
+    usage.json                  # observed memory read/search and entry returns
+    skill-usage.sqlite          # verified skill tool/command/file-read events
+    evolution/                  # shared task reviews and learned skills
+    migration.json              # copy/import result and conflict count
+  v1/                           # retained legacy originals; not active stores
 ```
 
 Markdown has a JSON-compatible YAML front matter envelope with format/scope/
@@ -50,9 +51,8 @@ arbitrary scope ID. A trusted application can call:
 ```js
 await host.ctx.memory.bindSession(sessionId, {
   actorId: authenticatedActorId,
-  // groupId: authenticatedGroupId,
+  // groupId: authenticatedGroupId,  // identity/provenance, not a memory partition
   // groupWrite: true,             // only if the caller may change shared memory
-  projects: [{ id: authorizedProjectId, write: false }],
 })
 ```
 
@@ -62,18 +62,20 @@ reassigned to another principal/group; create a new session for that identity.
 Do not bind an aggregate multi-person coordinator as one private user. No identity
 is inferred from free text, model output, or a guessed DingTalk ID. The task service binds task execution sessions from trusted ledger actor/group identities before model work. Conversational roles, including Router generations, require their own authenticated bindings; a handoff summary cannot select a new principal. This is independent of DWS and does not restore a task Owner role.
 
-Personal memory is unavailable in group-bound sessions, even for the same actor.
-Group reads are confined to the bound group; group writes require `groupWrite`.
-Projects require individual read/write grants. Unbound and read-only sessions get
-failure feedback rather than a false saved acknowledgment. Delegated agents do not
-automatically inherit a binding. Generic model file tools cannot read raw application state; Linux model processes mask it in a mount namespace. Trusted plugins and administrative programs retain service-account authority. Non-Linux model processes fail closed until equivalent privacy enforcement is implemented. See DATA-LAYOUT.md for dependency and temporary-path boundaries.
+All authenticated, bound Bot conversations read the same `bot` namespace. Channels,
+private/room types, sender identity and tasks are provenance, not memory partitions.
+The historical personal/group/project selectors are aliases to this shared store;
+new tools advertise `bot`. Read-only presets still cannot write, a group binding
+without `groupWrite` still cannot mutate, and explicit human source/quote checks
+remain mandatory. A binding does not grant task control or another conversation's
+raw transcript. Unbound sessions receive failure feedback. Generic model file tools cannot read raw application state; Linux model processes mask it in a mount namespace. Trusted plugins and administrative programs retain service-account authority. Non-Linux model processes fail closed until equivalent privacy enforcement is implemented. See DATA-LAYOUT.md for dependency and temporary-path boundaries.
 
 ## Remember, correct and forget
 
 These unambiguous commands are executed before inference in the current turn:
 
 ```text
-记住 preferences/style：简短回答
+记住 公共 preferences/style：简短回答
 修改记忆 preferences/style：详细回答
 忘记 preferences/style
 记住 本群 facts/name：本群用于项目协作
@@ -109,7 +111,7 @@ No automatic external notification is sent on a background error.
 
 ## Persistence, forgetting and failures
 
-Writers acquire a per-scope cross-process lease, reload current Markdown, and use
+Writers acquire the Bot memory cross-process lease, reload current Markdown, and use
 private temporary files, fsync and atomic rename. A redo journal commits topics,
 candidates, index and revision as one logical operation. A failed post-journal write
 reports `MEMORY_COMMIT_UNCERTAIN`; the next locked access finishes recovery. Read
@@ -131,3 +133,36 @@ extraction quality, all natural-language intent variations and channel-specific
 identity integration require their own acceptance.
 
 Task experience and managed learned skills are documented in [SELF-EVOLUTION](SELF-EVOLUTION.md). Forgetting an experience removes its derived learned skill and review lesson; raw task facts and Pi history remain evidence.
+
+
+## Source, migration and observation
+
+New facts/candidates retain Host-verified channel ID, chat/chat-room type, conversation
+ID/name at write time, and task ID/title when supplied by the real task ledger.
+The latest source and up to 32 distinct origin descriptors survive corrections;
+metadata is never accepted from model-supplied memory arguments. Unknown historical
+origins remain unknown. Read/search responses retain that provenance. Observed
+per-entry returns/hits and the last access source are counted separately from writes
+or semantic adoption; dashboard/index reads do not increment them.
+
+On portable startup, the installation Host lease excludes old writers. The service
+copies old v1 stores into v2/bot before serving actors: same key/body is deduplicated,
+differing same-key bodies become named candidates, old sources remain intact, and
+per-source migration receipts prevent repeats or resurrecting a subsequently forgotten
+fact. Legacy counters import once; they are not reconstructed calls. Differing learned
+skill names are qualified instead of overwritten. Original v1 files remain as an offline
+backup; review collisions are retained in the migration state. Unsafe links, corruption
+and incomplete writes fail closed. For legacy non-portable layouts, stop every old
+writer before upgrading; do not run old and new binaries against the same memory root.
+Do not delete retained originals until their backup and import result have been reviewed.
+The copy is an intentional Bot-memory upgrade, not arbitrary SDK/plugin history import.
+
+The Web self-evolution page inventories all SKILL.md resources beneath Bot-owned
+skills/configured roots (including invalid, shadowed, disabled or undiscovered files)
+and shared learned state. Current file hash/mtime is not a full change history.
+Successful native `skill` results are paired with actual official Pi results; authenticated
+`/skill:name` references are counted only after Pi admission commits; actual reads of
+an exact skill file are tracked separately. Resource preparation/catalog work is never
+counted as invocation, nor does reading prove adoption or successful script execution.
+Tracking begins at the stated timestamp, is not a complete pre-upgrade call history,
+and cannot prove semantic use. Failed/revoked calls do not become successful counts.

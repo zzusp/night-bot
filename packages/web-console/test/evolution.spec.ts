@@ -5,10 +5,10 @@ import { FIXTURE_TOKEN } from './preview.mjs';
 // UI-only synthetic values; production-source accuracy is covered by
 // server.test.js, pi-evolution.test.js and the real Host reflection tests.
 const snapshot = {
-  status: 'ready', coverage: 'authorized-scopes-current-state',
+  status: 'ready', coverage: 'bot-shared-current-state',
   memory: { acceptedCount: 21, candidateCount: 1, readCount: 7, searchCount: 2, lastUsedAt: '2026-11-09T03:00:00Z', trackingSince: '2026-11-08T03:00:00Z' },
-  skills: { activeCount: 1, candidateCount: 0, loadCount: 3, lastUsedAt: '2026-11-09T03:00:00Z', trackingSince: '2026-11-08T03:00:00Z', coverage: 'learned-skills-only' },
-  items: Array.from({ length: 23 }, (_, index) => ({ id: `fixture-${index}`, name: index === 22 ? 'learned-验收技能' : `工作偏好/验收记忆-${index + 1}`, kind: index === 22 ? 'skill' : 'memory', scope: 'personal', status: index === 21 ? 'candidate' : 'applied', revision: 2, updatedAt: '2026-11-09T02:00:00Z' })),
+  skills: { activeCount: 1, candidateCount: 0, loadCount: 3, lastUsedAt: '2026-11-09T03:00:00Z', trackingSince: '2026-11-08T03:00:00Z', coverage: 'bot-installed-and-learned', installedCount:2,installedAvailableCount:2,modelUseCount:2,userUseCount:1,fileReadCount:4,callTrackingSince:'2026-11-09T00:00:00Z',inventoryComplete:true },
+  items: Array.from({ length: 23 }, (_, index) => ({ id: `fixture-${index}`, name: index === 22 ? 'learned-验收技能' : `工作偏好/验收记忆-${index + 1}`, kind: index === 22 ? 'skill' : 'memory', scope: 'bot', status: index === 21 ? 'candidate' : 'applied', revision: 2, updatedAt: '2026-11-09T02:00:00Z' })),
   total: 23, offset: 0, limit: 20, nextOffset: 20, revision: 'fixture-v1',
 };
 async function login(page: Page) {
@@ -32,13 +32,13 @@ test('自进化菜单、真实语义、筛选分页和返回保留 URL', async (
   await expect(page).toHaveTitle('自进化 — Night Bot');
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(20);
   await expect(page.locator('.evolution-card').first()).toContainText('读取次数7');
-  await page.getByText('统计范围', { exact: true }).click();
-  await expect(page.locator('.evolution-coverage')).toContainText('不包含外部安装技能');
-  await expect(page.locator('.evolution-coverage')).toContainText('不是完整变更历史');
+  await page.getByText('采集范围与口径', { exact: true }).click();
+  await expect(page.locator('.evolution-coverage')).toContainText('盘点本 Bot 安装目录的技能文件');
+  await expect(page.locator('.evolution-coverage')).toContainText('不是完整历史');
   await page.getByRole('button', { name: '下一页', exact: true }).click();
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(3);
   await expect(page.locator('.evolution-table')).toContainText('候选，未应用');
-  await page.getByRole('navigation', { name: '自进化记录类型' }).getByRole('link', { name: '学习技能', exact: true }).click();
+  await page.getByRole('navigation', { name: '自进化记录类型' }).getByRole('link', { name: 'Skills', exact: true }).click();
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(1);
   await page.goBack();
   await expect(page).toHaveURL(/kind=all&offset=20/);
