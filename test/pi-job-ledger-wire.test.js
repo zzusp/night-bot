@@ -58,7 +58,8 @@ test('cold Pi activation refuses an unresolved job journal instead of polling or
   await assert.rejects(handle.deliver('cold-input'),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'});
   assert.equal(modelCalls,0);assert.deepEqual(cold.ctx.jobs.list(handle.actor.id),[]);
   await assert.rejects(handle.dispose(),{code:'PI_BUSINESS_DRAIN_UNPROVEN'});
-  await assert.rejects(cold.close(),error=>error instanceof AggregateError&&error.errors.some(cause=>cause.code==='PI_BUSINESS_DRAIN_UNPROVEN'));
+  const drainUnproven=error=>error?.code==='PI_BUSINESS_DRAIN_UNPROVEN'||error instanceof AggregateError&&error.errors.some(drainUnproven);
+  await assert.rejects(cold.close(),error=>error instanceof AggregateError&&drainUnproven(error));
   assert.equal(cold.ctx.agents.get(handle.actor.id),handle.actor);
   process.send({modelCalls,producerRecords:cold.ctx.jobs.list(handle.actor.id).length,ownershipRetained:true});
  `

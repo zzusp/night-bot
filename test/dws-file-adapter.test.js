@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, writeFile, rm, readdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -85,4 +85,57 @@ test('真实CLI文件投影缺少类型时仅唯一fileId能证明文件，原�
     await assert.rejects(denied.adapter.readMessageFile({ groupId: 'g', messageId: 'm', expected }), /message_type_mismatch/u)
     assert.equal(denied.calls(), 1)
   }
+})
+
+for (const mode of ['outside', 'existing', 'symlink']) test(`image ingress preserves unrelated files and rejects ${mode} download paths`, { skip: mode === 'symlink' && process.platform === 'win32' ? 'File symlinks require Windows developer mode or elevation' : false }, async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dws-image-safety-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const cwd = path.join(root, 'runner')
+  await mkdir(cwd)
+  const victim = path.join(mode === 'existing' ? cwd : root, 'existing.png')
+  await writeFile(victim, data)
+  const adapter = createDwsAdapter({ enabled: true, runner: { cwd, run: async args => {
+    let localPath = victim
+    if (mode === 'symlink') {
+      const output = args.includes('--output') ? path.resolve(cwd, args[args.indexOf('--output') + 1]) : cwd
+      localPath = path.join(output, 'linked.png')
+      await symlink(victim, localPath)
+    }
+    return ok({ localPath, sizeBytes: data.length })
+  } } })
+  const result = await adapter.loadMessageImages({ groupId: 'g', messageId: 'm', resourceRefs: message.resourceRefs })
+  assert.equal(result.images.length, 0)
+  assert.equal(result.mediaUnavailable.length, 1)
+  assert.deepEqual(await readFile(victim), data)
+  assert.deepEqual(await readdir(cwd), mode === 'existing' ? ['existing.png'] : [])
+})
+
+test('image ingress bounds each download and cleans successful and rejected temporary downloads', async t => {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'dws-image-bounds-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  let bytes = data, extension = '.png'
+  const adapter = createDwsAdapter({ enabled: true, runner: { cwd, run: async args => {
+    const output = args.includes('--output') ? path.resolve(cwd, args[args.indexOf('--output') + 1]) : cwd
+    const localPath = path.join(output, 'image' + extension)
+    await writeFile(localPath, bytes)
+    return ok({ localPath, sizeBytes: bytes.length })
+  } } })
+  const load = () => adapter.loadMessageImages({ groupId: 'g', messageId: 'm', resourceRefs: message.resourceRefs })
+  const valid = await load()
+  assert.equal(valid.images.length, 1)
+  assert.deepEqual(Buffer.from(valid.images[0].data), data)
+  assert.equal(valid.images[0].mediaType, 'image/png')
+  assert.deepEqual(await readdir(cwd), [])
+  for (const invalid of [Buffer.alloc(0), Buffer.alloc(8 * 1024 * 1024 + 1)]) {
+    bytes = invalid
+    const result = await load()
+    assert.equal(result.images.length, 0)
+    assert.equal(result.mediaUnavailable.length, 1)
+    assert.deepEqual(await readdir(cwd), [])
+  }
+  bytes = Buffer.from('ordinary text'); extension = '.txt'
+  const result = await load()
+  assert.equal(result.images.length, 0)
+  assert.equal(result.mediaUnavailable.length, 1)
+  assert.deepEqual(await readdir(cwd), [])
 })

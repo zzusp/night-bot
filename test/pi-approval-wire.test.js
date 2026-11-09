@@ -155,9 +155,10 @@ test('default Host ask creates one exact external file per actual Pi approval an
  const shell=f.agent.ctx.get('shell'),original=shell.execute;let executions=0
  shell.execute=function(spec){executions++;return Reflect.apply(original,this,[spec])}
  try{for(const decision of ['reject','cancel']){
-  const command='[IO.File]::WriteAllText('+permissionPsQuote(commandTarget)+",'must-not-commit')",args={description:'验证命令未批准无效果',command,permission_scope:{readPaths:[],writePaths:[commandTarget]}}
-  const pending=f.run('pwsh',args).catch(error=>{assert.equal(decision,'cancel');assert.equal(error.code,'PI_OFFICIAL_ACTOR_NOT_LIVE');return error}),request=await pendingPermission(f,pending)
-  assert.equal(request.actorId,f.agent.id);assert.equal(request.toolName,'pwsh');assert.equal(request.display.command,command);assert.notEqual(request.callId,row.callId)
+  const tool=process.platform==='win32'?'pwsh':'bash'
+  const command=tool==='pwsh'?'[IO.File]::WriteAllText('+permissionPsQuote(commandTarget)+",'must-not-commit')":"printf %s must-not-commit > '"+commandTarget.replaceAll("'","'\\''")+"'",args={description:'验证命令未批准无效果',command,permission_scope:{readPaths:[],writePaths:[commandTarget]}}
+  const pending=f.run(tool,args).catch(error=>{assert.equal(decision,'cancel');assert.equal(error.code,'PI_OFFICIAL_ACTOR_NOT_LIVE');return error}),request=await pendingPermission(f,pending)
+  assert.equal(request.actorId,f.agent.id);assert.equal(request.toolName,tool);assert.equal(request.display.command,command);assert.notEqual(request.callId,row.callId)
   await permissionTick(20);assert.equal(executions,0);assert.equal(await readFile(commandTarget,'utf8'),'untouched')
   if(decision==='reject')await f.permissions.respond(request.id,'reject');else await f.agent.cancel({kind:'user'})
   await pending;assert.equal(executions,0);assert.equal(await readFile(commandTarget,'utf8'),'untouched')

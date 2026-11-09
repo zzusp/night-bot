@@ -92,15 +92,19 @@ export default class Reflection extends Service {
   async forget(scope,key){
     const directory=this.directory(scope)
     await withLock(join(directory,'.lock'),async()=>{
-      const state=await this.state(scope)
+      const state=await this.state(scope),changedReviews=[]
       for(const [name,skill]of Object.entries(state.skills))if(skill.memoryKeys.includes(key)){
         delete state.skills[name];await rm(join(directory,'skills',name),{recursive:true,force:true})
       }
       for(const [id,review]of Object.entries(state.reviews))if(review.lessons){
         const kept=review.lessons.filter(lesson=>'task-'+id.slice(0,12)+'-'+lesson.key!==key)
-        if(kept.length!==review.lessons.length){review.lessons=kept;review.forgotten=true;review.destinations=(review.destinations??[]).filter(destination=>destination.memory?.key!==key);await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n');for(const source of this.sources)await source.onReview?.(review.taskId,review)}
+        if(kept.length!==review.lessons.length){review.lessons=kept;review.forgotten=true;review.destinations=(review.destinations??[]).filter(destination=>destination.memory?.key!==key);changedReviews.push([id,review])}
       }
+      for(const [id,review]of changedReviews)await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n')
+      // Commit forgetting before external archive callbacks.
+      // A failed callback must never restore learned content on restart.
       await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');this.host.skills.invalidateCache()
+      for(const [,review]of changedReviews)for(const source of this.sources)await source.onReview?.(review.taskId,review)
     })
   }
   // Host 检视只接受已认证渠道 binding；模型工具仍走官方 live actor 权限。

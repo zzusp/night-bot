@@ -88,7 +88,7 @@ export async function openWebLedger(directory, scope) {
       const validate = envelope => {
         if (envelope.type !== 'chat' || envelope.channelId !== channelId || envelope.senderId !== senderId
           || typeof envelope.deliveryKey !== 'string' || typeof envelope.text !== 'string'
-          || !db.prepare('SELECT id FROM requests WHERE conversation=? LIMIT 1').get(envelope.conversationId)) fail('WEB_DELIVERY_SCOPE_INVALID', 403)
+          || !db.prepare("SELECT id FROM requests WHERE conversation=? AND json_extract(payload, '$[3]')=? AND json_extract(payload, '$[4]')=? LIMIT 1").get(envelope.conversationId, senderId, channelId)) fail('WEB_DELIVERY_SCOPE_INVALID', 403)
       }
       const payload = envelope => JSON.stringify([envelope.channelId, envelope.conversationId, envelope.senderId, envelope.text, envelope.replyToMessageId ?? null])
       const readback = envelope => {
@@ -111,7 +111,7 @@ export async function openWebLedger(directory, scope) {
         readback,
         async readMessage(envelope) {
           if (envelope.type !== 'chat' || envelope.channelId !== channelId) fail('WEB_DELIVERY_SCOPE_INVALID', 403)
-          const row = db.prepare('SELECT * FROM requests WHERE id=? AND conversation=?').get(envelope.messageId, envelope.conversationId)
+          const row = db.prepare("SELECT * FROM requests WHERE id=? AND conversation=? AND json_extract(payload, '$[3]')=? AND json_extract(payload, '$[4]')=?").get(envelope.messageId, envelope.conversationId, senderId, channelId)
           if (!row) fail('WEB_MESSAGE_NOT_FOUND', 404)
           return {messageId: row.id, conversationId: row.conversation, senderId, text: row.text, occurredAt: row.created_at}
         },

@@ -158,7 +158,7 @@
       "source": "dws-adapter.js",
       "sourceSha256": "591384cee4b1f9ec2fdeaf79131e107f33b49e1b5a58792e382a075a8801ca54",
       "status": "adapted",
-      "sha256": "4c5e9fc34d042e47b34e087c183992c52d71693c12ebe2d526d9d8984ae78f19",
+      "sha256": "68d44d1844b0dab5ca3fc25c961d6ff30860c3845733cf4aaa7861b071c85c13",
       "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes."
     },
     {

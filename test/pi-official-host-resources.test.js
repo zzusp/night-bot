@@ -84,7 +84,7 @@ test('materialization refuses symlinked private cache without writing its target
  await assert.rejects(resources.context.skills(f.a.actor),{code:'PI_OFFICIAL_RESOURCE_PATH_UNSAFE'})
 })
 
-test('real Reflection learned skills use current authorized scope and revision; revoked resources are no longer published',async t=>{
+test('real Reflection learned skills use the Bot-shared scope and revision; revocation stops publication to all authenticated actors',async t=>{
  const {default:Reflection}=await import('../src/memory/reflection.js'),{MarkdownMemoryStore}=await import('../src/memory/store.js'),{memoryScope}=await import('../src/memory/scope.js'),{atomicWrite}=await import('../src/runtime/files.js')
  const f=await fixture(t),store=new MarkdownMemoryStore(f.paths.memory);t.after(()=>store.close())
  const aBinding={actorId:'human-a',projects:[]},bBinding={actorId:'human-b',projects:[]},scope=memoryScope(aBinding)
@@ -101,10 +101,14 @@ test('real Reflection learned skills use current authorized scope and revision; 
  assert.equal(resources.length,1);assert.equal(resources[0].name,'learned-verify')
  assert.ok((await readUsage(store,scope)).loadCount>loadsBefore,'automatic resource materialization loads bodies without model execution; provider retries may load more than once')
  const content=await readFile(resources[0].filePath,'utf8')
- assert.match(content,/Read current evidence/);assert.match(content,/NIGHT_LEARNED_SCOPE=personal\//);assert.ok(!content.includes('STALE DISK BODY'))
- assert.deepEqual(await b.context.skills(f.b.actor),[])
+ assert.match(content,/Read current evidence/);assert.match(content,/NIGHT_LEARNED_SCOPE=bot\//);assert.ok(!content.includes('STALE DISK BODY'))
+ const shared=await b.context.skills(f.b.actor)
+ assert.equal(shared.length,1);assert.equal(shared[0].name,'learned-verify')
+ assert.equal(await readFile(shared[0].filePath,'utf8'),content)
+ assert.notEqual(shared[0].filePath,resources[0].filePath,'shared content still uses actor-owned resource caches')
  await reflection.forget(scope,'evidence')
  assert.deepEqual(await a.context.skills(f.a.actor),[])
+ assert.deepEqual(await b.context.skills(f.b.actor),[])
  assert.equal(await readFile(resources[0].filePath,'utf8'),content,'old private Host cache is not claimed physically erased')
 })
 

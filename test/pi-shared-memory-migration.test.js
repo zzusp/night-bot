@@ -32,3 +32,13 @@ test('迁移保留不同旧技能与复盘依据；拒绝链接目录，不读�
  await migrateSharedMemory(store);const current=JSON.parse(await readFile(join(store.directory(shared),'evolution','state.json'),'utf8'));assert.equal(current.skills.check.supports[0].memoryKey,'lesson-one');assert.equal(current.reviews[hash('completed-event')].taskId,'task-one')
  await rm(join(store.directory(shared),'evolution','reviews',hash('completed-event')+'.json'));await rm(join(store.directory(shared),'migration.json'));await migrateSharedMemory(store);assert.equal(JSON.parse(await readFile(join(store.directory(shared),'evolution','reviews',hash('completed-event')+'.json'),'utf8')).taskId,'task-one')
 })
+
+test('migration rejects a symlinked v1 ancestor before importing external records',async t=>{
+ const {root,store}=await fixture(t),external=await fixture(t),scope={kind:'personal',id:hash('outside'),actor:hash('actor')}
+ await external.store.remember(scope,{topic:'facts',key:'outside',text:'Must remain outside the destination',source:{sessionId:'session',messageId:'message'}})
+ const original=await readFile(join(external.store.directory(scope),'scope.json'),'utf8')
+ await symlink(join(external.root,'v1'),join(root,'v1'),'dir')
+ await assert.rejects(migrateSharedMemory(store),{code:'MEMORY_MIGRATION_PATH_UNSAFE'})
+ assert.equal((await store.read(memoryScope({actorId:'any'}),{topic:'facts'})).entries.length,0)
+ assert.equal(await readFile(join(external.store.directory(scope),'scope.json'),'utf8'),original)
+})

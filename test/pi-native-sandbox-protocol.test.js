@@ -46,12 +46,17 @@ test('runner diagnostics demand executable-specific evidence and ignore informat
 })
 
 test('Windows LPAC runner IPC rejects unowned fields, undefined policy and boundary widening',()=>{
- const task=String.raw`C:\night-fixture\data\workspaces\tasks\one`,lpac={kind:'windows-lpac',version:1,mode:'workspace-write',installRoot:String.raw`C:\night-fixture`,workspaceRoot:task,taskRoot:task,writeRoots:[task+String.raw`\work`,task+String.raw`\tmp`],privateRoots:[task+String.raw`\sessions`],networkCapabilities:[]},request={type:'start',cwd:task+String.raw`\work`,env:{},lpac}
+ const task=String.raw`C:\night-fixture\data\workspaces\tasks\one`,lpac={kind:'windows-lpac',version:1,mode:'workspace-write',installRoot:String.raw`C:\night-fixture`,tempRoot:String.raw`C:\night-fixture\data\temp`,workspaceRoot:task,taskRoot:task,readRoots:['materials','work','outputs','tmp'].map(name=>task+'\\'+name),writeRoots:[task+String.raw`\work`,task+String.raw`\tmp`],privateRoots:[task+String.raw`\sessions`],networkCapabilities:[]},request={type:'start',cwd:task+String.raw`\work`,env:{},lpac}
  assert.deepEqual(parseWindowsStartRequest(request).lpac,lpac)
  for(const invalid of [
   {...request,unknown:true},{...request,lpac:undefined},{...request,lpac:{...lpac,unknown:true}},
   {...request,cwd:task+String.raw`-other\work`},{...request,cwd:task+String.raw`\sessions`},
   {...request,lpac:{...lpac,workspaceRoot:String.raw`C:\outside`}},
+  {...request,lpac:{...lpac,tempRoot:undefined}},
+  {...request,lpac:{...lpac,tempRoot:String.raw`C:\outside`}},
+  {...request,lpac:{...lpac,readRoots:undefined}},
+  {...request,lpac:{...lpac,readRoots:[task+String.raw`\sessions`]}},
+  {...request,lpac:{...lpac,readRoots:[lpac.tempRoot]}},
   {...request,lpac:{...lpac,writeRoots:[task+String.raw`\sessions`]}},
   {...request,lpac:{...lpac,writeRoots:[task+String.raw`\materials`]}},
   {...request,lpac:{...lpac,writeRoots:[task]}},
