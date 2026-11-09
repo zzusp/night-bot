@@ -370,13 +370,12 @@ test('渠道会话按聊天展示、隐藏输入框、保留不确定发送状�
     await expect(page.locator('.message-assistant .message-links a')).toHaveCount(2)
     const targets = await page.locator('.message-assistant .message-links a').evaluateAll(links => links.map(link => {
       const target = link.getBoundingClientRect()
-      const copy = link.closest('article')!.querySelector('[aria-label="复制消息"]')!.getBoundingClientRect()
-      return {width: target.width, height: target.height, overlapsCopy: target.left < copy.right && target.right > copy.left && target.top < copy.bottom && target.bottom > copy.top}
+      return {width: target.width, height: target.height}
     }))
     for (const target of targets) {
       expect(target.width).toBeGreaterThanOrEqual(24)
       expect(target.height).toBeGreaterThanOrEqual(24)
-      expect(target.overlapsCopy).toBe(false)
+      await expect(page.getByRole('button', {name: '复制消息'})).toHaveCount(0)
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }

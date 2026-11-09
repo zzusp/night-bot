@@ -40,3 +40,15 @@
 @media (max-width: 520px) {
   .evolution-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.evolution-table td:first-child { width: 35%; }
+.evolution-table td:not(:first-child) { white-space: normal; }
+.evolution-use-counts { display: grid; gap: 5px; min-width: 80px; font-size: 11px; }
+.evolution-source { max-width: 260px; overflow-wrap: anywhere; }
+.evolution-source summary { cursor: pointer; }
+.evolution-source dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 5px 10px; margin-top: 10px; font-size: 11px; }
+.evolution-source dd { margin: 0; overflow-wrap: anywhere; }
+.evolution-location { overflow-wrap: anywhere; font-size: 11px; }
+.evolution-update-hint { display: block; font-size: 11px; color: var(--board-info); margin-top: 5px; }
+.evolution-item .board-badge { margin-top: 8px; }
+@media(max-width:760px){ .evolution-table { min-width: 680px; } }

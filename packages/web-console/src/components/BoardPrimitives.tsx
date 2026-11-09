@@ -150,8 +150,8 @@ export function Composer({ value, onChange, onSend, disabled = false, busy = fal
           {waiting ? <Spinner /> : <RiArrowUpLine aria-hidden="true" />}
         </button>
       </form>
-      <div className="board-composer-meta">
-        <span id={`${id}-help`}>Enter 发送 · Shift + Enter 换行</span>
+      <div className="board-composer-meta sr-only">
+        <span id={`${id}-help`} className="sr-only">Enter 发送 · Shift + Enter 换行</span>
         <span role="status" aria-live="polite">{waiting ? '正在处理消息…' : ''}</span>
       </div>
       {displayedError && <p id={`${id}-error`} className="board-composer-error" role="alert">{displayedError}</p>}

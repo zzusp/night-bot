@@ -53,26 +53,30 @@ export interface Chat {
   conversationId: string; messages: Message[]; status: string; truncated?: boolean; canonicalConversationId?: string;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
-export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string }
+export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {
   id: string; reviewId: string; taskId: string; kind: 'memory' | 'skill'; action: 'upsert' | 'current-version';
-  status: 'applied' | 'candidate' | 'not-applied'; scope: 'personal' | 'group' | 'project'; name: string;
+  status: 'applied' | 'candidate' | 'not-applied'; scope: 'bot'|'personal' | 'group' | 'project'; name: string;
   version: string | number; canRead: boolean; source: LearningSource;
 }
 export interface TaskLearning { status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
 export interface LearningBody { id: string; kind: 'memory' | 'skill'; text: string; version: string | number; source: LearningSource; redacted: boolean; truncated?: boolean }
 export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; waiting: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
 
+export interface MemoryProvenance {channelId?: string;conversationId?: string;conversationName?: string;conversationType?: 'chat'|'chat-room';conversationKey?: string;taskId?: string;taskTitle?: string;messageId?: string;resolvedFrom?: string}
 export interface EvolutionItem {
-  id: string; kind: 'memory' | 'skill'; name: string; scope: 'personal' | 'group' | 'project';
-  status: 'applied' | 'candidate'; revision: string | number; updatedAt: string | null; taskId?: string;
+  id: string; kind: 'memory' | 'skill'; name: string; scope: 'bot'|'personal'|'group'|'project';
+  status: 'applied'|'candidate'|'disabled'|'invalid'|'shadowed'|'undiscovered'|'unsupported'; revision: string | number; updatedAt: string | null; taskId?: string;
+  origin?: 'installed'|'learned';location?:string;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;lastUsedAt?:string|null;updatedSinceUse?:boolean;
+  memoryUse?:{readCount:number;searchCount:number;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null}|null;
+  provenance?:MemoryProvenance|null;origins?:MemoryProvenance[];taskIds?:string[];migration?:{conflict?:boolean};
 }
 export interface EvolutionReady extends Page<EvolutionItem> {
-  status: 'ready'; coverage: 'authorized-scopes-current-state'; offset: number; limit: number;
-  memory: { acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null };
-  skills: { activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only' };
+  status: 'ready'; coverage: 'authorized-scopes-current-state'|'bot-shared-current-state'; offset: number; limit: number;
+  memory: {trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
+  skills: { activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
 }
 export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
 

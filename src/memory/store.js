@@ -1,3 +1,4 @@
+import {memoryDirectory} from './scope.js'
 import {join} from 'node:path'
 import {readdir,unlink} from 'node:fs/promises'
 import {randomUUID} from 'node:crypto'
@@ -11,7 +12,7 @@ const active=(entry,now)=>!entry.expiresAt||Date.parse(entry.expiresAt)>now
  * short index and metadata under one cross-process scope lease. */
 export class MarkdownMemoryStore {
   constructor(root,{now=Date.now,beforeApply}={}){this.root=root;this.now=now;this.beforeApply=beforeApply;this.pending=new Set();this.closed=false}
-  directory(scope){if(!['personal','group','project'].includes(scope.kind)||!/^[a-f0-9]{64}$/.test(scope.id))throw failure('MEMORY_SCOPE_INVALID');return join(this.root,'v1',scope.kind,scope.id)}
+  directory(scope){return memoryDirectory(this.root,scope)}
   async transaction(scope,work){
     if(this.closed)throw failure('MEMORY_STORE_CLOSED')
     const operation=this.runTransaction(scope,work);this.pending.add(operation)
@@ -58,7 +59,7 @@ export class MarkdownMemoryStore {
     const terms=query.toLocaleLowerCase().split(/\s+/).filter(Boolean)
     return this.transaction(scope,s=>({revision:s.meta.revision,mode:'literal-keyword',entries:[...s.topics].flatMap(([topic,value])=>value.entries.filter(e=>active(e,this.now())&&terms.every(term=>(topic+' '+e.key+' '+e.text).toLocaleLowerCase().includes(term))).map(e=>({topic,...e}))).slice(0,limit)}))
   }
-  async remember(scope,{topic,key,text,source,originSource,expectedRevision,expiresAt,candidate=false,scopeRevision}={}){
+  async remember(scope,{topic,key,text,source,originSource,provenance,expectedRevision,expiresAt,candidate=false,scopeRevision}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
     text=checkedText(text)
     checkedText(topic);checkedText(key)
@@ -70,7 +71,7 @@ export class MarkdownMemoryStore {
       const topicState=s.topics.get(topic)??{topic,entries:[]},entries=candidate?s.candidates:topicState.entries,prior=entries.find(e=>e.key===key&&(candidate?e.topic===topic:true))
       if(expectedRevision!==undefined&&(prior?.revision??0)!==expectedRevision)throw failure('MEMORY_REVISION_CONFLICT')
       if(candidate&&(s.meta.forgotten.includes(hash(text))||topicState.entries.some(e=>e.key===key)))return {ok:false,code:'MEMORY_CANDIDATE_SUPPRESSED'}
-      const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...expiresAt?{expiresAt}:{}}
+      const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...(provenance?{provenance:structuredClone(provenance)}:{}),origins:[...new Map([...(prior?.origins??[]),...prior?.provenance?[prior.provenance]:[],...provenance?[provenance]:[]].map(value=>[JSON.stringify(value),value])).values()].slice(-32),...expiresAt?{expiresAt}:{}}
       if(originSource)entry.originSource={sessionId:originSource.sessionId,messageId:originSource.messageId,observedAt:originSource.observedAt,quoteSha256:originSource.quoteSha256,actor:originSource.actor}
       if(prior){entries.splice(entries.indexOf(prior),1);if(prior.text!==text)s.meta.forgotten.push(hash(prior.text))}
       entries.push(entry)

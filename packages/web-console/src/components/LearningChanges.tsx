@@ -18,7 +18,7 @@ function ChangeRecord({ change, endpoint, onRefresh }: { change: LearningChange;
     <header><div><span className="eyebrow">{change.kind === 'memory' ? '记忆' : '技能'}</span><h4>{change.name || '未命名记录'}</h4></div>
       <Badge tone={applied ? 'success' : change.status === 'candidate' ? 'warning' : 'neutral'}>{applied ? '已应用' : change.status === 'candidate' ? '候选，未应用' : '未应用'}</Badge>
     </header>
-    <dl className="learning-metadata"><div><dt>作用域</dt><dd>{{ personal: '个人', group: '群组', project: '项目' }[change.scope]}</dd></div>
+    <dl className="learning-metadata"><div><dt>作用域</dt><dd>{{ bot:'Bot 公共', personal: '个人', group: '群组', project: '项目' }[change.scope]}</dd></div>
       <div><dt>变更</dt><dd>{change.action === 'upsert' ? '创建或更新' : '当前版本记录'}</dd></div><div><dt>版本</dt><dd><code>{String(change.version)}</code></dd></div>
     </dl>
     <LearningProvenance source={change.source} />

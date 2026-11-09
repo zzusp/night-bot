@@ -103,7 +103,7 @@ export class OfficialAgentFactory {
    }
    await store.commit()
    let publishInternal
-   const admission=await createBusinessAdmission({store,authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
+   const admission=await createBusinessAdmission({store,onSkillCommand:value=>ownerCtx.get('memory')?.recordUserSkill?.(actor,value),authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
     const authorizeCommand=options.authorizeSkillCommand??ports.authorizeSkillCommand
     if(typeof authorizeCommand!=='function')return false
     await bundle.bridge.refreshResources();await bundle.bridge.resourceLoader.reload()

@@ -36,15 +36,15 @@ test('real model tools read on demand, honor source consent and revoke stale rec
   assert.equal((await f.host.ctx.memory.read(h.agent,{topic:'preferences',key:'evil'})).entries.length,0)
   assert.match(JSON.stringify(f.requests.at(-1)),/MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED/)
 })
-test('different users, groups and project grants remain isolated through the default Host',async t=>{
+test('authenticated users and channels share Bot memory while message authority remains bound',async t=>{
   const f=await memoryHost(t),a=await f.agent('a',{actorId:'alice'}),b=await f.agent('b',{actorId:'bob'}),g1=await f.agent('g1',{actorId:'alice',groupId:'one',groupWrite:true}),g2=await f.agent('g2',{actorId:'alice',groupId:'two',groupWrite:true}),p=await f.agent('p',{actorId:'alice',projects:[{id:'p1',write:true}]})
   await f.say(a.agent,'记住 preferences/style：ONLY_ALICE');await f.say(g1.agent,'记住 本群 facts/name：ONLY_GROUP_ONE')
-  assert.equal((await f.host.ctx.memory.search(b.agent,{query:'ONLY'})).entries.length,0)
-  assert.equal((await f.host.ctx.memory.search(g2.agent,{query:'ONLY'})).entries.length,0)
-  await assert.rejects(f.host.ctx.memory.read(g1.agent,{scope:'personal',topic:'preferences'}),/PERSONAL_IN_GROUP/)
+  assert.equal((await f.host.ctx.memory.search(b.agent,{query:'ONLY'})).entries.length,2)
+  assert.equal((await f.host.ctx.memory.search(g2.agent,{query:'ONLY'})).entries.length,2)
+  assert.equal((await f.host.ctx.memory.read(g1.agent,{scope:'personal',topic:'preferences'})).entries[0].text,'ONLY_ALICE')
   await f.say(p.agent,'记住 项目[p1] facts/version：v2')
-  await assert.rejects(f.host.ctx.memory.read(p.agent,{scope:'project',projectId:'p2',topic:'facts'}),/FORBIDDEN/)
-  assert.equal((await f.host.ctx.memory.read(p.agent,{scope:'project',projectId:'p1',topic:'facts'})).entries[0].text,'v2')
+  assert.equal((await f.host.ctx.memory.read(p.agent,{scope:'project',projectId:'p2',topic:'facts',key:'version'})).entries[0].text,'v2')
+  assert.equal((await f.host.ctx.memory.read(p.agent,{scope:'project',projectId:'p1',topic:'facts',key:'version'})).entries[0].text,'v2')
 })
 test('bindings and Markdown facts survive a real default Host cold reopen',async t=>{
   const f=await memoryHost(t),h=await f.agent('cold',{actorId:'alice'});await f.say(h.agent,'记住 facts/project：night-bot')
@@ -105,7 +105,7 @@ test('read-only and group read-only bindings cannot persist or forget memory',as
   assert.equal((await f.host.ctx.memory.read(h.agent,{topic:'preferences'})).entries.length,0)
 })
 
-test('generic model file tools cannot bypass another user memory through raw filesystem paths',async t=>{
+test('generic model file tools cannot bypass the shared memory service through raw application files',async t=>{
   let path,attempt=false
   const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'read',args:{path:path}}}})
   const a=await f.agent('private-a',{actorId:'alice'}),b=await f.agent('private-b',{actorId:'bob'})

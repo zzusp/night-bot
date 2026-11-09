@@ -1,7 +1,7 @@
 import {resolveTaskMaterialPaths} from './material-paths.js'
 import {validateTaskIdentity} from './session-audit.js'
 import {createTaskArtifactFiles} from '../../packages/dingtalk-core/task-artifact-files.js'
-import {memoryScope} from '../memory/scope.js'
+import {memoryScope,memoryDirectory} from '../memory/scope.js'
 import {validateTaskLedger} from './ledger-archive.js'
 import {DatabaseSync} from 'node:sqlite'
 import {validatePiArchiveSession} from '../pi-session-persistence.js'
@@ -58,7 +58,7 @@ export class TaskArchives{
       }
       const reviewCoverage=[]
       for(const row of current.tables.task_events){const event=row.body;if(event.kind!=='task.completed')continue;const id=archiveHash(event.id),destination=join(root,'reviews',id+'.json');const owner=current.tables.tasks[0].body.ownerActorId
-        if(owner){const binding={actorId:owner,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}},scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'}),source=join(this.paths.memory,'v1',scope.kind,scope.id,'evolution','reviews',id+'.json'),saved=await readRegular(source)
+        if(owner){const binding={actorId:owner,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}},scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'}),source=join(memoryDirectory(this.paths.memory,scope),'evolution','reviews',id+'.json'),saved=await readRegular(source)
           if(saved){const report=JSON.parse(saved);if(report.taskId!==taskId||report.eventId!==event.id)throw failure('TASK_ARCHIVE_REVIEW_SCOPE_INVALID');if(!report.destinations)report.destinations=(report.lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:'task-'+id.slice(0,12)+'-'+lesson.key},...lesson.skill?{skill:{scope,key:lesson.key,status:'historical-reference-not-revalidated'}}:{}}));await atomicWrite(destination,json(report))}}
         const report=JSON.parse(await readRegular(destination)??'null');reviewCoverage.push({eventId:event.id,status:report?.status??'not-recorded',...report?{path:'reviews/'+id+'.json'}:{}})
       }

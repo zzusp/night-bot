@@ -1,3 +1,4 @@
+import {responseTiming} from './response-times.js'
 import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
@@ -208,7 +209,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'})
       let value
       try {value = await memory.inspectEvolution(identity.binding, options)} catch {fail('EVOLUTION_UNAVAILABLE', 503)}
-      return send(response, 200, {...value, items: value.items.map(item => ({...item, name: visibleText(item.name, [credential.token]).text}))})
+      const origin = value => value && typeof value==='object' ? Object.fromEntries(['channelId','conversationId','conversationName','conversationType','conversationKey','taskId','taskTitle','messageId','resolvedFrom'].filter(key=>typeof value[key]==='string').map(key=>[key,visibleText(value[key],[credential.token],{maxLength:256}).text])) : null
+      return send(response, 200, {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))})
     }
     const learning = /^\/api\/tasks\/([^/]+)\/learning(?:\/changes\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && learning) {
@@ -280,6 +282,34 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const tasks = await store.query({kind: 'task.list', groupId: conversationId, archived: 'all'})
       return send(response, 200, {taskIds: [...new Set(tasks.filter(task => task.groupId === conversationId).map(task => task.taskId))], taskHistoryStatus: 'ready'})
     }
+    const responseTimes = /^\/api\/(chat|conversations)\/([^/]+)\/response-times$/.exec(path)
+    if (request.method === 'GET' && responseTimes) {
+      if ([...url.searchParams.keys()].some(key=>!['offset','limit'].includes(key))) fail('PAGE_INVALID')
+      const id=decodeURIComponent(responseTimes[2]),conversationId=executionContext(responseTimes[1],id),app=application(),store=app.tasks.store
+      if(!store?.query) return send(response,200,{status:'unavailable',items:[],total:0,nextOffset:null})
+      const offset=pageNumber(url.searchParams,'offset',0),limit=pageNumber(url.searchParams,'limit',20,50)
+      let messages
+      if(responseTimes[1]==='chat') {const rows=ledger.chat(id).messages.filter(row=>row.role==='user').toReversed();messages={items:rows.slice(offset,offset+limit).map(row=>({messageId:row.id,messageVersion:1,text:row.text})),total:rows.length,nextOffset:offset+limit<rows.length?offset+limit:null}}
+      else messages=await app.tasks.observerGroupPage(conversationId,{collection:'messages',filter:'all',offset,limit})
+      if(!messages) fail('CONVERSATION_NOT_FOUND',404)
+      const refs=messages.items.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
+      const context=await store.query({kind:'observer.message-contexts',groupId:conversationId,messages:refs,messageIds:refs.map(row=>row.messageId)})
+      const items=await Promise.all(messages.items.map(async row=>{const source=context.sources.find(source=>source.messageId===row.messageId&&source.version===(row.messageVersion??1));const routing=source?await store.query({kind:'router.source-status',sourceId:source.sourceId}):null;return {...responseTiming(row,context.sources,context.notifications,routing,{secrets:[credential.token]}),preview:visibleText(row.text??'',[credential.token],{maxLength:120}).text}}))
+      return send(response,200,{status:'ready',items,total:messages.total,nextOffset:messages.nextOffset,scope:'host-received-to-first-confirmed-source-reply',coverage:responseTimes[1]==='chat'?'retained-web-message-window':'paged-channel-messages'})
+    }
+    // Task summary retains the same conversation ownership gate as its journal.
+    const taskSummary = /^\/api\/(chat|conversations)\/([^/]+)\/tasks\/([^/]+)$/.exec(path)
+    if (request.method === 'GET' && taskSummary) {
+      if ([...url.searchParams.keys()].length) fail('PAGE_INVALID')
+      const conversationId = executionContext(taskSummary[1], decodeURIComponent(taskSummary[2])), taskId = decodeURIComponent(taskSummary[3])
+      const app = application(), store = app.tasks.store
+      if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
+      const raw = await store.query({kind: 'task.get', taskId})
+      if (!raw || raw.taskId !== taskId || raw.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
+      const detail = await app.tasks.taskDetail(taskId)
+      if (!detail || detail.taskId !== taskId || detail.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
+      return send(response, 200, taskView(detail, [credential.token]))
+    }
     const chatTask = /^\/api\/(chat|conversations)\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatTask) {
       const conversationId = executionContext(chatTask[1], decodeURIComponent(chatTask[2])), taskId = decodeURIComponent(chatTask[3])
@@ -298,7 +328,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const store = application().tasks.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
+      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
       if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
       return send(response, 200, await routerSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
