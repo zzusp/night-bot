@@ -46,6 +46,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const section = segments[0] || 'chat';
   let id: string | undefined;
   try { id = segments[1] ? decodeURIComponent(segments[1]) : undefined; } catch { id = undefined; }
+  const isConversation = section === 'chat' || (section === 'channels' && !!id);
   const overview = useResource<Overview>('/overview', 5000);
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
   const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
@@ -93,13 +94,13 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <div className="main-frame"><header className="topbar"><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div>
       <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '连接中断' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
         <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton>
-        {section === 'chat' && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
+        {isConversation && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
-      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${section === 'chat' ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
+      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
         {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
-      {section === 'chat' && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
+      {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
         {!!Object.keys(overview.data?.sectionErrors || {}).length && <p className="rail-empty" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
         {!overview.data && overview.loading ? <Loading /> : <>

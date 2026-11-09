@@ -4,6 +4,7 @@ import { api, ApiError, errorText, type Chat, type Message } from './api';
 import { navigate, useResource, useRoute } from './hooks';
 import { Button, Composer, EmptyState, Logo } from './components/BoardPrimitives';
 import { Loading, MessageList, Notice } from './components/Shared';
+import { ConversationFrame } from './components/ConversationFrame';
 import { ConversationExecution } from './components/ConversationExecution';
 
 export interface Attempt { conversationId: string; requestId: string; text: string; createdAt: string; state: 'sending' | 'pending' | 'unknown' | 'missing' }
@@ -90,11 +91,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const extra: Message[] = attempt && !messages.some(message => message.requestId === attempt.requestId)
     ? [{ id: attempt.requestId, role: 'user', text: attempt.text, createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
   const busy = attempt?.state === 'sending';
-  return <div className="chat-page">
-    {id && <nav className="filter-tabs chat-history-tabs" aria-label="会话视图">
-      <a href={`#/chat/${encodeURIComponent(id)}`} aria-current={!execution ? 'page' : undefined}>对话</a>
-      <a href={`#/chat/${encodeURIComponent(id)}?view=execution`} aria-current={execution ? 'page' : undefined}>执行过程</a>
-    </nav>}
+  return <ConversationFrame path={`/chat/${encodeURIComponent(id || '')}`} execution={execution}>
     {!execution && query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
     {!execution && query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
     {execution && id ? <ConversationExecution endpoint={`/chat/${encodeURIComponent(id)}`} query={query} /> : query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <MessageList messages={[...messages, ...extra]}
@@ -117,5 +114,5 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
       <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder="给 Night Bot 发消息…" />
       <div className="composer-note"><span>关闭页面后，任务仍会继续</span></div>
     </div></div>
-  </div>;
+  </ConversationFrame>;
 }

@@ -6,7 +6,7 @@ test('渠道沿用 Web 对话与执行过程、正式任务记录、深链和只
   await page.goto('/#/channels/room-product')
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
-  await expect(page.getByRole('heading', {name: '产品协作', exact: true, level: 2})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '产品协作', exact: true, level: 1})).toBeVisible()
   await expect(page.getByText('讨论参与者', {exact: true})).toBeVisible()
   await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(0)
   await page.getByRole('link', {name: '执行过程', exact: true}).click()
