@@ -59,7 +59,7 @@ test('default ingress shares room arrangements without merging private senders o
     const input=triageInput(body)
     return input?triageReply(input,()=>({needsHandling:false})):{text:'Unexpected model request'}
   })
-  const alice=channelMessage('same',{text:'ROOM_ALICE'}),bob=channelMessage('second',{senderId:'bob',text:'ROOM_BOB'})
+  const alice=channelMessage('same',{text:'ROOM_ALICE',senderName:'Alice display',conversationName:'Room display'}),bob=channelMessage('second',{senderId:'bob',text:'ROOM_BOB'})
   const privateAlice=channelMessage('same',{type:'chat',text:'PRIVATE_ALICE'}),privateBob=channelMessage('same',{type:'chat',senderId:'bob',text:'PRIVATE_BOB'})
   const otherChannel=channelMessage('same',{channelId:'other-channel',text:'OTHER_CHANNEL'}),otherRoom=channelMessage('same',{conversationId:'other-room',text:'OTHER_ROOM'})
   const identity=input=>h.host.ctx.channels.identity(input).sessionId
@@ -70,6 +70,8 @@ test('default ingress shares room arrangements without merging private senders o
   const sources=await h.query('source.list')
   for(const input of [alice,bob,privateAlice,privateBob,otherChannel,otherRoom])
     assert.ok(sources.some(source=>source.text===input.text),'authenticated original survives namespace isolation')
+  assert.equal(sources.find(source=>source.text===alice.text).senderName,'Alice display')
+  assert.equal(h.service.listObserverGroups().find(group=>group.groupId===identity(alice)).name,'Room display')
   const sameRoom=sources.filter(source=>[alice.text,bob.text].includes(source.text))
   assert.equal(sameRoom.length,2);assert.notEqual(sameRoom[0].actorId,sameRoom[1].actorId)
   assert.equal(new Set(sameRoom.map(source=>source.groupId)).size,1)

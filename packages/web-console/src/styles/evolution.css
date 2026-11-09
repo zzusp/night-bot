@@ -1,0 +1,42 @@
+.evolution-page > .page-heading { flex-wrap: wrap; gap: 16px; }
+.evolution-pending { min-height: 360px; display: grid; place-items: center; }
+.evolution-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--board-gap); margin-bottom: 16px; }
+.evolution-card { min-width: 0; padding: 22px; background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); }
+.evolution-card > header { display: flex; align-items: center; gap: 9px; }
+.evolution-card > header > svg { color: var(--board-info); }
+.evolution-card h3 { font-size: 14px; font-weight: 500; }
+.evolution-card header .board-badge { margin-left: auto; }
+.evolution-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; margin: 24px 0; }
+.evolution-metrics dt { color: var(--board-muted); font-size: 12px; }
+.evolution-metrics dd { margin: 6px 0 0; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.evolution-last-used, .evolution-tracking { color: var(--board-muted); font-size: 11px; line-height: 1.8; }
+.evolution-last-used time { color: var(--board-text); margin-left: 8px; }
+.evolution-coverage { color: var(--board-muted); font-size: 12px; margin: 18px 0 26px; }
+.evolution-coverage summary { width: fit-content; }
+.evolution-coverage p { line-height: 1.8; margin-top: 8px; max-width: 760px; }
+.evolution-list-label { color: var(--board-muted); font-size: 12px; }
+.evolution-table-wrap { min-height: 320px; border: 1px solid var(--board-border); background: var(--board-surface); border-radius: 14px; overflow-x: auto; }
+.evolution-table { width: 100%; border-collapse: collapse; text-align: left; }
+.evolution-table th { color: var(--board-muted); font-size: 11px; font-weight: 500; padding: 13px 18px; border-bottom: 1px solid var(--board-border); }
+.evolution-table td { padding: 18px; border-bottom: 1px solid var(--board-border); font-size: 12px; vertical-align: top; }
+.evolution-table tbody tr:last-child td { border-bottom: 0; }
+.evolution-table td:first-child { width: 60%; }
+.evolution-table td:not(:first-child) { white-space: nowrap; }
+.evolution-table time { color: var(--board-muted); font-size: 11px; }
+.evolution-item { display: flex; gap: 12px; min-width: 0; }
+.evolution-item > div { min-width: 0; }
+.evolution-item-icon { color: var(--board-muted); flex-shrink: 0; padding-top: 2px; }
+.evolution-item strong { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.evolution-item-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--board-muted); font-size: 11px; margin-top: 6px; overflow-wrap: anywhere; }
+.evolution-item .text-link { display: inline-block; margin-top: 8px; font-size: 11px; }
+@media (max-width: 760px) {
+  .evolution-summary { grid-template-columns: 1fr; }
+  .evolution-card { padding: 18px; }
+  .evolution-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .evolution-metrics dd { font-size: 20px; }
+  .evolution-table th, .evolution-table td { padding: 14px 12px; }
+  .evolution-table { min-width: 490px; }
+}
+@media (max-width: 520px) {
+  .evolution-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

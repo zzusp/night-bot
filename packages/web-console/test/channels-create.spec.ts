@@ -12,7 +12,7 @@ async function login(page: Page, initial = true) {
   if (initial) await page.goto('/#/channels')
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
-  await expect(page.getByRole('heading', {name: '所有对话，在这里汇合', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '渠道', exact: true, level: 2})).toBeVisible()
 }
 async function openForm(page: Page) {
   await page.getByRole('button', {name: '添加钉钉渠道', exact: true}).click()

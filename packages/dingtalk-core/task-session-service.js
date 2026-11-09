@@ -1685,12 +1685,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(await ownNotificationAtIngress({groupId:identity.sessionId,messageId:identity.envelope.messageId}))return {accepted:false,processing:'ignored',reason:'own-notification',channelType:identity.envelope.type,conversationId:identity.envelope.conversationId}
     const channel=await channels.registerConversation(input),e=channel.envelope
     const group=residentStore.getGroup(channel.sessionId),configuredResponsibility=ctx.get('channels').responsibility(channel.sessionId)
-    if(!group)await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationId,responsibility:configuredResponsibility??'Respect authenticated channel participants and the current user request.'})
-    else if(configuredResponsibility!==undefined&&group.responsibility!==configuredResponsibility)await residentStore.updateGroup({groupId:channel.sessionId,responsibility:configuredResponsibility})
+    if(!group)await residentStore.subscribe({groupId:channel.sessionId,name:e.conversationName??(e.type==='chat-room'?'未命名群聊':'未命名单聊'),responsibility:configuredResponsibility??'Respect authenticated channel participants and the current user request.'})
+    else if(e.conversationName&&group.name!==e.conversationName||configuredResponsibility!==undefined&&group.responsibility!==configuredResponsibility)await residentStore.updateGroup({groupId:channel.sessionId,...e.conversationName?{name:e.conversationName}:{},...configuredResponsibility!==undefined?{responsibility:configuredResponsibility}:{}})
     const principal=senderId=>channels.identity({...e,senderId}).principal
     const occurredAt=channels.groupContext(channel.sessionId).messageFacts[e.messageId].occurredAt
     const response=await ingest({
-      groupId:channel.sessionId,messageId:e.messageId,messageVersion:e.messageVersion??1,actorId:channel.principal,senderName:e.senderId,text:e.text,
+      groupId:channel.sessionId,messageId:e.messageId,messageVersion:e.messageVersion??1,actorId:channel.principal,...e.senderName?{senderName:e.senderName}:{},text:e.text,
       sourceKind:'channel',channelType:e.type,channelId:e.channelId,occurredAt,timestamp:occurredAt,
       ...e.resourceRefs?{resourceRefs:e.resourceRefs}:{},
       ...e.quotedMessage?{quotedMessage:{messageId:e.quotedMessage.messageId,text:e.quotedMessage.text??'',

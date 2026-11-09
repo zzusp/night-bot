@@ -5,12 +5,20 @@ person and `chat-room` for a room with multiple senders. DingTalk is an optional
 adapter; no DWS executable is required for the core or local protocol tests.
 
 Trusted adapters submit `{type, channelId, conversationId, senderId, messageId,
-text}` to `ctx.channels.receive`. The adapter authenticates these identities;
+text}` and optional `senderName` / `conversationName` to `ctx.channels.receive`. The adapter authenticates these identities;
 this is a Host API, not an unauthenticated public HTTP endpoint. Stable namespaces
 separate channel providers, conversations, private senders and rooms. Private
 sessions use personal memory; room sessions use only that room's memory. Every
 room message retains its actual sender in durable source metadata and model input.
 No private note is injected into a room. Models cannot select another principal.
+
+Display names are presentation metadata, never identity or permission keys. The
+authenticated sender ID and recorded sender name remain together in durable
+message sources and model input. A verified adapter can refresh a conversation's
+display title without changing its binding or replaying its messages. Missing
+names use neutral labels in the Web console; raw room/member IDs are not used as
+display names. Recent Web history includes channel conversations using their own
+stable routes and latest recorded activity.
 
 Register an explicitly configured transport through
 `ctx.channels.registerTransport(channelId, {send, readback})`. These functions
@@ -214,3 +222,23 @@ standard application without any channel installed. [第八轮报告](acceptance
 records default-CLI no-DWS loading/process observations and local fake protocol,
 recipient/quote/resource and attachment regressions, scoped to each tested version.
 SG9 的指定群真实文本/附件交付、平台回读、复盘和冷恢复保留在[第七轮报告](acceptance/resident-conversation-routing/round-7.md)，第八轮 fake 回归不追认为新版现场验收。[第九轮报告](acceptance/resident-conversation-routing/round-9.md)绑定 `67d2d50` 及其核对的 R8 源码指纹：旧文本/48B 附件真实回读、同安装 ready/backfill 和正常 IPC 关闭通过；冷启动有真实模型调用及一次文字答复，自身回声在 ACK 后、精确回读落账前进入来源/分诊，用例 FAIL。该轮尚未收到约定的新文件/原生 quote/@ 请求，未完成新文件交付及该事项复盘/再冷恢复；本次 `replyToSource` 和登记前 guard 不被旧版本结果追认为现场通过。跨账号、订阅重连、私聊及其它平台能力不能从上述结果推断。渠道集成仍单独授权，不作为无插件核心初始化和本地任务验收的前提。
+
+
+## Web single-conversation boundary
+
+Each actual Web channel/operator identity has one writable conversation. The Web
+ledger pins its earliest existing request's conversation (creation time, then
+insertion order) once, or assigns a stable empty conversation on first opening.
+A first direct API request may supply its initial ID before that pin exists;
+subsequent requests cannot create another conversation. SQLite serializes pinning
+before asynchronous admission. The UI has no new-chat action and `/chat` resolves
+the pinned conversation, including in fresh browser tabs.
+
+Older Web histories keep their normal conversation views and composers, including
+their original Router/task references. New messages from these views continue the
+one current Web conversation and navigate there. They are never merged, renamed,
+overwritten or deleted, and the UI does not create a separate read-only category.
+Exact existing request retries return their original receipts before the new-write
+check, and pending/unknown receipts and already-authorized delayed deliveries
+remain recoverable without replay. External channels keep their own identities;
+the recent-conversation list still includes retained Web histories and external conversations.

@@ -38,6 +38,7 @@ export interface DingtalkChannelUpdated {
   ok: true; changed: boolean; restartRequired: boolean; liveApplied: boolean; channel: Channel; detail: DingtalkChannelDetail;
 }
 export interface Conversation { id: string; name: string; channelId: string; type: string; updatedAt?: string }
+export interface RecentConversation { id: string; title: string; updatedAt: string; kind: 'web' | 'channel' }
 export interface ChatSummary { id: string; title: string; updatedAt: string; status: string }
 export interface MessageSource { sessionId: string; entryId: string; callId?: string }
 export interface MessageBodyPage { messageId: string; text: string; offset: number; nextOffset: number | null; total: number; revision: string; source: MessageSource; redacted: boolean }
@@ -49,7 +50,7 @@ export interface Message {
   source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
 }
 export interface Chat {
-  conversationId: string; messages: Message[]; status: string; truncated?: boolean;
+  conversationId: string; messages: Message[]; status: string; truncated?: boolean; canonicalConversationId?: string;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
 export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string }
@@ -63,6 +64,17 @@ export interface LearningChange {
 export interface TaskLearning { status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
 export interface LearningBody { id: string; kind: 'memory' | 'skill'; text: string; version: string | number; source: LearningSource; redacted: boolean; truncated?: boolean }
 export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; waiting: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
+
+export interface EvolutionItem {
+  id: string; kind: 'memory' | 'skill'; name: string; scope: 'personal' | 'group' | 'project';
+  status: 'applied' | 'candidate'; revision: string | number; updatedAt: string | null; taskId?: string;
+}
+export interface EvolutionReady extends Page<EvolutionItem> {
+  status: 'ready'; coverage: 'authorized-scopes-current-state'; offset: number; limit: number;
+  memory: { acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null };
+  skills: { activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only' };
+}
+export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
 
 export type PermissionMode = 'ask' | 'auto' | 'full';
 export interface PermissionRequest {
@@ -125,6 +137,7 @@ export function errorText(error: unknown) {
     if (error.code === 'DINGTALK_CHANNEL_EXISTS') return '此渠道标识已存在，未覆盖原配置。请使用新的渠道标识。';
     if (['DINGTALK_CONFIG_INVALID', 'DINGTALK_CHANNEL_REQUEST_INVALID'].includes(error.code)) return '钉钉渠道配置未被接纳，请检查渠道标识和目标。';
     if (error.code === 'CHANNEL_CONFIGURATION_UNAVAILABLE') return '当前安装暂不支持保存渠道配置。请检查运行方式或稍后重试。';
+    if (error.code === 'WEB_CHAT_SINGLETON') return 'Web 仅保留一个可继续的对话。请返回当前 Web 对话；原历史记录未被修改。';
     if (error.code === 'SESSION_CHANGED') return '连接状态已变化，内容已保留。请重新确认连接后重试刚才的操作。';
     if (error.status === 401) return '登录已失效，请重新连接。';
     if (error.status === 403) return '当前连接没有访问权限，请重新登录或联系管理员。';

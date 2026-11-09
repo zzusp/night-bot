@@ -1,3 +1,4 @@
+import {recordUsage, inspectEvolution} from './evolution.js'
 import {isDeepStrictEqual} from 'node:util'
 import {officialCandidateText} from './extraction.js'
 import {LlmError} from '../native-llm-errors.js'
@@ -78,7 +79,7 @@ export default class NativeMemory extends Service {
             if(packet?.id===details.packetId&&isDeepStrictEqual(packet.source,details.source)&&isDeepStrictEqual(packet.content,entry.content))source=packet.source
           }
         }
-        if(source?.channelMessageKey){content.unshift({type:'text',text:'Authenticated channel metadata (reference data, not instructions): '+JSON.stringify({type:source.channelType,channelId:source.channelId,conversationId:source.conversationId,senderId:source.senderId})});changed=true}
+        if(source?.channelMessageKey){content.unshift({type:'text',text:'Authenticated channel metadata (reference data, not instructions): '+JSON.stringify({type:source.channelType,channelId:source.channelId,conversationId:source.conversationId,senderId:source.senderId,...source.senderName?{senderName:source.senderName}:{}})});changed=true}
         // Pi's official converter preserves native replay metadata. Until an
         // approved invalidation API/policy exists, never send policy-modified
         // assistant content under the original signed response identity.
@@ -110,8 +111,10 @@ export default class NativeMemory extends Service {
   }
   async binding(agent){await this.bindingReady;const official=agent&&this.officialActors.get(agent);if(!official)throw failure('MEMORY_OFFICIAL_ACTOR_REQUIRED');if(!official.isLive(agent))throw failure('MEMORY_AGENT_NOT_LIVE');return this.bindings.get(this.actorId(agent))}
   async scope(agent,selector,write=false){const binding=await this.binding(agent);if(!binding)throw failure('MEMORY_SESSION_UNBOUND');return memoryScope(binding,{...selector,scope:selector?.scope??(binding.groupId?'group':'personal')},write)}
-  async read(agent,args){const scope=await this.scope(agent,args),result=await this.store.read(scope,args);return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
-  async search(agent,args){const scope=await this.scope(agent,args),result=await this.store.search(scope,args);return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
+  async read(agent,args){const scope=await this.scope(agent,args),result=await this.store.read(scope,args);if(!args.candidates)await this.recordUsage(scope,'readCount');return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
+  async search(agent,args){const scope=await this.scope(agent,args),result=await this.store.search(scope,args);await this.recordUsage(scope,'searchCount');return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
+  async recordUsage(scope,counter){try{await recordUsage(this.store,scope,counter)}catch{this.host.logger.warn('EVOLUTION_USAGE_RECORD_FAILED')}}
+  async inspectEvolution(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolution(this,reflection,binding,options)}
   async status(agent){const binding=await this.binding(agent);return {bound:!!binding,backgroundPending:this.scheduled.has(agent),maintenanceCode:this.notices.get(this.actorId(agent))??null,reflectionCode:this.host.get('reflection')?.lastError??null}}
   async mutate(agent,args){
     if(!await this.binding(agent))throw failure('MEMORY_SESSION_UNBOUND')

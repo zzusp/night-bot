@@ -38,7 +38,13 @@ function ChatExecutionGroup({ conversationId, taskId }: { conversationId: string
   </details>;
 }
 
-export default function ChatPage({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; onAccepted: () => void }) {
+export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepted: () => void }) {
+  const current = useResource<{conversationId: string}>('/chat-current');
+  if (!props.id && !current.data) return current.error ? <Notice error={current.error} onRetry={current.refresh} /> : <Loading>正在读取 Web 对话…</Loading>;
+  return <ChatContent {...props} id={props.id || current.data?.conversationId} />;
+}
+
+function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; onAccepted: () => void }) {
   const key = id || 'new';
   const route = useRoute();
   const execution = !!id && route.searchParams.get('view') === 'execution';
@@ -55,7 +61,7 @@ export default function ChatPage({ id, drafts, onAccepted }: { id?: string; draf
     if (receipt.status === 'accepted' && receipt.accepted !== false) {
       settle(value, () => emptyDraft);
       if (mounted.current && liveKey.current === key) {
-        if (!id) navigate(`/chat/${encodeURIComponent(receipt.conversationId)}`);
+        if (!route.pathname.split('/').filter(Boolean)[1] || receipt.conversationId !== id) navigate(`/chat/${encodeURIComponent(receipt.conversationId)}`);
         query.refresh(); onAccepted();
       }
       return;
@@ -81,13 +87,14 @@ export default function ChatPage({ id, drafts, onAccepted }: { id?: string; draf
   const send = async (retry?: Attempt) => {
     const current = drafts.get(key);
     if (current.checking || (!retry && current.attempt) || (retry && (current.attempt?.requestId !== retry.requestId || current.attempt.state !== 'missing')) || !current.text.trim()) return;
-    const value: Attempt = { ...(retry ?? { conversationId: id || crypto.randomUUID(), requestId: crypto.randomUUID(), text: current.text, createdAt: new Date().toISOString() }), state: 'sending' };
+    if (!retry && (!query.data || query.error)) return;
+    const value: Attempt = { ...(retry ?? { conversationId: query.data?.canonicalConversationId || id || crypto.randomUUID(), requestId: crypto.randomUUID(), text: current.text, createdAt: new Date().toISOString() }), state: 'sending' };
     drafts.update(key, previous => ({ ...previous, attempt: value, error: undefined, checking: false }));
     try {
       const result = await api<Receipt>('/chat', { method: 'POST', body: { conversationId: value.conversationId, requestId: value.requestId, text: value.text } });
       applyReceipt(result, value);
     } catch (err) {
-      if (err instanceof ApiError && [400, 401, 403, 413, 429].includes(err.status)) settle(value, previous => ({ text: previous.text, error: errorText(err) }));
+      if (err instanceof ApiError && ([400, 401, 403, 413, 429].includes(err.status) || err.code === 'WEB_CHAT_SINGLETON')) settle(value, previous => ({ text: previous.text, error: errorText(err) }));
       else await reconcile(value);
     }
   };
@@ -106,7 +113,7 @@ export default function ChatPage({ id, drafts, onAccepted }: { id?: string; draf
     {execution && id ? <div className="chat-execution" key={id}>
       <ChatExecutionGroup conversationId={id} />
       <section className="chat-task-history" aria-label="本会话关联任务">
-        <header><h2>本会话关联任务</h2><p>这里保留本对话关联的任务，包括已完成和已归档任务。展开可查看执行过程。</p></header>
+        <header><h2>本会话关联任务</h2><p>含已完成和已归档任务，可展开查看。</p></header>
         {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data && !taskHistoryBlocked} />}
         {query.loading && !query.data ? <Loading>正在读取关联任务…</Loading>
           : taskHistoryBlocked || (!query.data && query.error) ? <EmptyState title="关联任务暂不可读" description="请重新获取会话；当前不会读取关联任务的执行记录。" />
@@ -117,8 +124,8 @@ export default function ChatPage({ id, drafts, onAccepted }: { id?: string; draf
     </div> : query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <MessageList messages={[...messages, ...extra]}
       pending={['accepted', 'pending', 'running'].includes(query.data?.status || '')}
       footer={query.data?.status === 'ready' && messages.at(-1)?.role === 'user' ? <p className="muted chat-receipt" role="status">消息已接纳，后续回复会在这里显示。</p> : undefined}
-      empty={query.error && !query.data ? <EmptyState title="对话暂不可读" description="使用上方按钮重新获取，或从侧栏选择其他对话。" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div><span className="eyebrow">你的个人助手，随时就绪</span>
-        <h2>今天，有什么可以帮你？</h2><p>把想法、问题或任务告诉 Night Bot，<br />在这里对话，也在这里了解工作的进展。</p>
+      empty={query.error && !query.data ? <EmptyState title="对话暂不可读" description="使用上方按钮重新获取，或从侧栏选择其他对话。" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
+        <h2>今天，有什么可以帮你？</h2>
         <div className="suggestions">{[
           { icon: RiFileList3Line, title: '梳理一项任务', description: '把目标拆成清晰的行动', prompt: '我想和你一起梳理一项任务：' },
           { icon: RiLightbulbLine, title: '一起想想办法', description: '分析问题，找到下一步', prompt: '帮我分析一下这个问题：' },
@@ -131,7 +138,7 @@ export default function ChatPage({ id, drafts, onAccepted }: { id?: string; draf
         <Button variant="secondary" disabled={checking} busy={checking} onClick={() => void reconcile()}>核对发送状态</Button>
         {attempt.state === 'missing' && <Button variant="secondary" disabled={checking} onClick={() => void send(attempt)}>重试这条消息</Button>}
       </div>}</div>}
-      <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt} placeholder="给 Night Bot 发消息…" />
+      <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder="给 Night Bot 发消息…" />
       <div className="composer-note"><span>关闭页面后，任务仍会继续</span></div>
     </div></div>
   </div>;

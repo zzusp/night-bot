@@ -23,7 +23,7 @@ test('未知发送跨页面恢复核对入口，只读核对后解除原草稿�
   await page.route('**/api/requests/**', route => readbackAvailable ? route.continue() : route.abort('failed'))
   await input.fill('跨页面保留未知发送及核对入口'); await input.press('Enter')
   await expect(page.getByRole('button', {name: '核对发送状态', exact: true})).toBeVisible()
-  await go(page, '/tasks'); await expect(page.getByRole('heading', {name: '每一项工作，都有迹可循'})).toBeVisible()
+  await go(page, '/tasks'); await expect(page.getByRole('heading', {name: '任务', exact: true, level: 2})).toBeVisible()
   await go(page, '/chat/sample-plan')
   await expect(input).toBeDisabled()
   await expect(input).toHaveValue('跨页面保留未知发送及核对入口')
@@ -42,14 +42,14 @@ test('在途发送跨卸载后收到真实回执，新挂载的同一对话及�
   })
   const input = page.getByLabel('消息内容', {exact: true})
   await input.fill('原对话延迟回执'); await input.press('Enter'); await ready.promise
-  await go(page, '/tasks'); await expect(page.getByRole('heading', {name: '每一项工作，都有迹可循'})).toBeVisible()
+  await go(page, '/tasks'); await expect(page.getByRole('heading', {name: '任务', exact: true, level: 2})).toBeVisible()
   await go(page, '/chat/sample-plan'); await expect(input).toBeDisabled()
   held.resolve()
   await expect(input).toBeEnabled(); await expect(input).toHaveValue('')
   await expect(page.locator('.message-user').last()).toContainText('原对话延迟回执')
 })
 
-test('旧对话回执不抢路由，也不锁住另一对话的输入', async ({page}) => {
+test('当前对话的迟到回执不抢路由，旧Web入口仍能正常发送', async ({page}) => {
   await login(page)
   const held = deferred(), ready = deferred(), completed = deferred()
   let sends = 0
@@ -63,9 +63,9 @@ test('旧对话回执不抢路由，也不锁住另一对话的输入', async ({
   const input = page.getByLabel('消息内容', {exact: true})
   await input.fill('新对话的迟到回执'); await input.press('Enter'); await ready.promise
   await go(page, '/chat/sample-notes'); await expect(input).toBeEnabled()
-  await input.fill('另一个对话可以独立发送'); await input.press('Enter')
-  await expect(input).toBeEnabled(); await expect(input).toHaveValue('')
-  await go(page, '/tasks'); await expect(page.getByRole('heading', {name: '每一项工作，都有迹可循'})).toBeVisible()
+  await input.fill('旧入口继续当前Web对话'); await input.press('Enter')
+  await expect(page).toHaveURL(/\/#\/chat\/sample-plan$/)
+  await go(page, '/tasks'); await expect(page.getByRole('heading', {name: '任务', exact: true, level: 2})).toBeVisible()
   const lateResponse = page.waitForResponse(response => response.request().method() === 'POST' && response.request().postDataJSON()?.text === '新对话的迟到回执')
   held.resolve(); await completed.promise; await (await lateResponse).finished(); await renderResponses(page)
   await expect(page).toHaveURL(/\/#\/tasks$/)
@@ -171,7 +171,7 @@ test('未决回执跨登录过期仍保留核对入口与原请求，不重新�
 })
 
 test('聊天和侧栏初读失败不伪装首次使用，概览局部失败明确显示且可恢复', async ({page}) => {
-  await page.route('**/api/chat?*', route => route.fulfill({status: 503, json: {error: 'UNAVAILABLE'}}))
+  await page.route('**/api/recent-conversations?*', route => route.fulfill({status: 503, json: {error: 'UNAVAILABLE'}}))
   await page.route('**/api/chat/sample-plan', route => route.fulfill({status: 503, json: {error: 'UNAVAILABLE'}}))
   await page.route('**/api/overview', async route => {
     const response = await route.fetch(), data = await response.json()
@@ -201,6 +201,10 @@ test('退出被CSRF拒绝但同步新会话成功后，不再消费先前旧401�
   // 仅隔离侧栏并行刷新，让待测的真实 overview 401 决定过期事件顺序。
   const chatSnapshot = await page.request.get('/api/chat?offset=0&limit=20').then(response => response.json())
   await page.route('**/api/chat?*', route => route.fulfill({json: chatSnapshot}))
+  const recentSnapshot = await page.request.get('/api/recent-conversations?offset=0&limit=20').then(response => response.json())
+  const conversationSnapshot = await page.request.get('/api/conversations').then(response => response.json())
+  await page.route('**/api/recent-conversations?*', route => route.fulfill({json: recentSnapshot}))
+  await page.route('**/api/conversations', route => route.fulfill({json: conversationSnapshot}))
   await context.clearCookies()
   await page.route('**/api/overview', async route => {
     const response = await route.fetch(); expect(response.status()).toBe(401)

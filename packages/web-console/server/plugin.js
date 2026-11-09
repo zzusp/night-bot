@@ -2,10 +2,9 @@ import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
 import {resolve, join, relative, isAbsolute, sep} from 'node:path'
-import {randomUUID} from 'node:crypto'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
-import {configuredChannels, conversationMessages, conversations, permissionsView, taskDialogueView, taskView} from './views.js'
+import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView} from './views.js'
 import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
@@ -50,19 +49,20 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
+  const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
   const network = webListenOptions(config), {port} = network
   const namespace = 'web-console-' + digest(channelId).slice(0, 16)
   const secrets = await controlledDirectory(paths.secrets, namespace)
   const state = await controlledDirectory(paths.state, namespace)
   const credential = await accessCredential(secrets)
   const sessions = browserSessions({token: credential.token, channelId})
-  const ledger = await openWebLedger(state)
+  const ledger = await openWebLedger(state, {channelId, senderId})
   const inflight = new Set()
   let origin, stopped = false, closePromise, startPromise
-  const sessionView = session => ({authenticated: true, csrfToken: session.csrfToken, operator: {name: config.operatorName ?? '本机操作者'}, channelId})
+  const sessionView = session => ({authenticated: true, csrfToken: session.csrfToken, operator: {name: operatorName}, channelId})
   const application = () => {const value = getApplication(); if (!value) fail('BOT_NOT_READY', 503); return value}
   const permissions = () => {const value = getPermissions(); if (!value) fail('PERMISSIONS_UNAVAILABLE', 503); return value}
   const permissionView = value => permissionsView(value, [credential.token])
@@ -167,6 +167,19 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const sectionErrors = Object.fromEntries(keys.flatMap((key, index) => outcomes[index].status === 'rejected' ? [[key, 'SECTION_UNAVAILABLE']] : []))
       return send(response, 200, {status: 'connected', timestamp: new Date().toISOString(), ...values, sectionErrors})
     }
+    if (request.method === 'GET' && path === '/api/evolution') {
+      if ([...url.searchParams.keys()].some(key => !['kind', 'offset', 'limit'].includes(key))) fail('PAGE_INVALID')
+      const kind = url.searchParams.get('kind') ?? 'all'
+      if (!['all', 'memory', 'skill'].includes(kind)) fail('PAGE_INVALID')
+      const options = {kind, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 20, 50)}
+      application()
+      const memory = getMemory()
+      if (!memory?.inspectEvolution) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
+      const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'})
+      let value
+      try {value = await memory.inspectEvolution(identity.binding, options)} catch {fail('EVOLUTION_UNAVAILABLE', 503)}
+      return send(response, 200, {...value, items: value.items.map(item => ({...item, name: visibleText(item.name, [credential.token]).text}))})
+    }
     const learning = /^\/api\/tasks\/([^/]+)\/learning(?:\/changes\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && learning) {
       const body = learning[2] !== undefined, allowed = body ? ['version'] : []
@@ -224,8 +237,10 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, await conversationMessages(application(), decodeURIComponent(conversation[1]), {
         limit: pageNumber(params, 'limit', 50, 100), messageOffset: pageNumber(params, 'messageOffset', offset), outboxOffset: pageNumber(params, 'outboxOffset', offset),
         messageRevision: params.get('messageRevision'), outboxRevision: params.get('outboxRevision'),
-      }))
+      }, channels))
     }
+    if (request.method === 'GET' && path === '/api/recent-conversations') return send(response, 200, recentConversations(application(), channels, ledger, channelId, page(url.searchParams)))
+    if (request.method === 'GET' && path === '/api/chat-current') return send(response, 200, {conversationId: ledger.canonical()})
     if (request.method === 'GET' && path === '/api/chat') return send(response, 200, ledger.chats(page(url.searchParams)))
     const chatTask = /^\/api\/chat\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatTask) {
@@ -268,9 +283,15 @@ export async function createWebConsole({channels, paths, config, getApplication,
       application()
       const body = await jsonBody(request, ['conversationId', 'requestId', 'text'])
       const requestId = identifier(body.requestId), previous = ledger.request(requestId)
-      const conversationId = identifier(body.conversationId ?? previous?.conversationId ?? randomUUID())
+      let conversationId = identifier(body.conversationId ?? previous?.conversationId ?? ledger.canonical())
+      // Historical URLs remain normal entry points; new messages continue the one
+      // current conversation. Exact old receipts retain their original scope.
+      if (!previous || previous.conversationId !== conversationId) {
+        const existing = ledger.hasChat(conversationId) ? ledger.chat(conversationId) : null
+        if (existing) conversationId = existing.canonicalConversationId
+      }
       if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > 32000) fail('CHAT_TEXT_INVALID')
-      const envelope = {type: 'chat', channelId, senderId, conversationId, messageId: requestId, text: body.text}
+      const envelope = {type: 'chat', channelId, senderId, senderName: operatorName, conversationId, messageId: requestId, text: body.text}
       const groupId = channels.identity(envelope).sessionId
       const reservation = ledger.reserve({requestId, conversationId, groupId, text: body.text, senderId, channelId})
       if (reservation.duplicate) return send(response, reservation.status === 'unknown' ? 409 : reservation.status === 'rejected' ? 422 : 202, {...reservation, accepted: reservation.status === 'accepted'})
@@ -333,7 +354,7 @@ export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
   const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
-    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), listen: false})
+    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

@@ -40,7 +40,7 @@ export async function apply(ctx,config={},dependencies={}){
     await assertDingtalkStoragePath(paths,ingressFile)
     await withLock(bindingFile+'.lock',async()=>{
       const saved=await readSavedBinding()
-      const binding=await resolveDingtalkBinding({...config,binding:saved??config.binding},{runner})
+      const binding=await resolveDingtalkBinding({...config,binding:saved??config.binding},{runner,onDisplayName:name=>{config.conversationName=name}})
       if(saved===undefined)await atomicWrite(bindingFile,JSON.stringify(binding)+'\n')
       Object.assign(config,{profile:binding.profile,binding,groupId:config.conversationType==='chat-room'?binding.conversationId:undefined,groups:config.conversationType==='chat-room'?[binding.conversationId]:[],directPeers:config.conversationType==='chat'?[binding.peerId]:[],assistantActorId:binding.actorId})
     })
@@ -81,7 +81,7 @@ export async function apply(ctx,config={},dependencies={}){
     const message=normalize(raw,raw.groupId??raw.conversationId)
     if(type!==config.conversationType||type==='chat'&&message.senderOpenDingTalkId!==config.binding.peerId)throw failure('DWS_CHAT_NOT_AUTHORIZED')
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
-    const channelInput={type,channelId,conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text||'[attachment]',...message.occurredAt?{sentAt:message.occurredAt}:{},...typeof message.mentionedAgent==='boolean'?{mentionedAgent:message.mentionedAgent}:{},...message.mentions?{mentions:message.mentions}:{},...message.messageAiSendFlag?{platformFlags:{messageAiSendFlag:message.messageAiSendFlag,automated:message.messageAiSendFlag==='DWS'}}:{},...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}}
+    const channelInput={type,channelId,...config.conversationName?{conversationName:config.conversationName}:{},...message.senderName&&message.senderName.trim()!==message.senderOpenDingTalkId?{senderName:message.senderName}:{},conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text||'[attachment]',...message.occurredAt?{sentAt:message.occurredAt}:{},...typeof message.mentionedAgent==='boolean'?{mentionedAgent:message.mentionedAgent}:{},...message.mentions?{mentions:message.mentions}:{},...message.messageAiSendFlag?{platformFlags:{messageAiSendFlag:message.messageAiSendFlag,automated:message.messageAiSendFlag==='DWS'}}:{},...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}}
     const identity=ctx.channels.identity(channelInput)
     if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId})){
       await ingressStore.consumed(message)
@@ -112,7 +112,7 @@ export async function apply(ctx,config={},dependencies={}){
       if(settings.name!==undefined)config.name=settings.name
       if(settings.prompt!==undefined)config.prompt=settings.prompt
       return {enabled:config.enabled,name:config.name??channelId,promptConfigured:!!config.prompt}
-    }),accountPolicy,adapter,notifications,acceptHistoryMessage,responsibility:context=>readyBound&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
+    }),accountPolicy,adapter,notifications,acceptHistoryMessage,conversationDisplayName:context=>readyBound&&!closed&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.conversationName:undefined,responsibility:context=>readyBound&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
     const context=ctx.channels.groupContext(notification.payload?.conversationId)
     if(context?.channelId!==channelId||context.type!=='chat-room')return
     return {conversationId:context.conversationId,querySendStatus:id=>adapter.querySendStatus(id)}

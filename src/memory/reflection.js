@@ -1,3 +1,4 @@
+import {learnedSkillSupported} from './evolution.js'
 import {officialReflectionText} from './reflection-inference.js'
 import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
@@ -154,13 +155,15 @@ export default class Reflection extends Service {
     const agent=this.host.agents.currentInitiator()??requestedAgent;if(!agent)return []
     const binding=await this.host.memory.binding(agent);if(!binding)return []
     const result=[]
-    for(const {scope}of readableScopes(binding)){const state=await this.state(scope);for(const [key,skill]of Object.entries(state.skills))if(skill.active){const current=await this.host.memory.store.read(scope,{topic:'experience'});if(new Set((skill.supports??[]).filter(row=>current.entries.some(e=>e.key===row.memoryKey)).map(row=>row.taskId)).size<1)continue;result.push({name:'learned-'+key,description:'Scoped task-derived procedure; verify current applicability.',provider:'learned',source:'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})}}
+    for(const {scope}of readableScopes(binding)){const state=await this.state(scope);for(const [key,skill]of Object.entries(state.skills))if(skill.active){const current=await this.host.memory.store.read(scope,{topic:'experience'});if(!learnedSkillSupported(skill,current.entries))continue;result.push({name:'learned-'+key,description:'Scoped task-derived procedure; verify current applicability.',provider:'learned',source:'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})}}
     return result
   }
   async skill(candidate,agent){
     const allowed=(await this.catalog(agent)).find(row=>row.name===candidate.name&&row.locator.scope.id===candidate.locator.scope.id);if(!allowed)return
     const {scope,key}=allowed.locator,state=await this.state(scope),value=state.skills[key],revision=(await this.host.memory.store.index(scope)).revision
-    return {...allowed,content:this.renderSkill(scope,key,value,revision)}
+    const content=this.renderSkill(scope,key,value,revision)
+    await this.host.memory.recordUsage(scope,'loadCount')
+    return {...allowed,content}
   }
   async whenIdle(){while(this.jobs.size)await Promise.allSettled([...this.jobs])}
 }

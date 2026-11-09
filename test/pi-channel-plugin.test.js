@@ -34,10 +34,12 @@ test('optional DWS plugin registers the typed boundary, preserves authenticated 
   const runner={cwd:f.root,async run(){commands++;throw Error('No real CLI calls in plugin registration test')},spawn(){commands++;throw Error('No subscription requested')}}
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('dingtalk-dws',{dingtalk_group_id:'room-fixture'}),pluginDependencies(f,runner))})
   const plugin=f.host.ctx.channels.plugins.get('dingtalk-dws');assert.ok(plugin);if(plugin.accountPolicy.mode==='private')assert.ok(plugin.accountDirectory.startsWith(join(f.root,'data','secrets')));else{assert.equal(plugin.accountDirectory,undefined);assert.equal(plugin.accountPolicy.sharedAcrossInstances,true)}
+  const historical=await f.host.ctx.channels.registerConversation({type:'chat-room',channelId:'dingtalk-dws',conversationId:'room-fixture',senderId:'authenticated-sender',messageId:'historical',text:'retained'})
   await f.host.ctx.parallel('night/ready',{config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00Z'}}},runtime:{},tasks:{isOwnNotification:()=>false}})
+  assert.equal(f.host.ctx.channels.groupContext(historical.sessionId).conversationName,'Verified room title')
   let captured;const receive=f.host.ctx.channels.receive.bind(f.host.ctx.channels);f.host.ctx.channels.receive=input=>{captured=input;return receive(input)}
-  const response=await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'real-source-1',senderOpenDingTalkId:'authenticated-sender',text:'quoted boundary proof',occurredAt:'2026-11-05T10:00:00.000Z',quotedMessage:{messageId:'original-quoted-message',text:'earlier context',senderOpenDingTalkId:'quoted-person'}})
-  assert.equal(captured.sentAt,'2026-11-05T10:00:00.000Z');assert.deepEqual(captured.quotedMessage,{messageId:'original-quoted-message',text:'earlier context',senderId:'quoted-person'});
+  const response=await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'real-source-1',senderOpenDingTalkId:'authenticated-sender',senderName:'Verified sender name',text:'quoted boundary proof',occurredAt:'2026-11-05T10:00:00.000Z',quotedMessage:{messageId:'original-quoted-message',text:'earlier context',senderOpenDingTalkId:'quoted-person'}})
+  assert.equal(captured.conversationName,'Verified room title');assert.equal(captured.senderName,'Verified sender name');assert.equal(captured.senderId,'authenticated-sender');assert.equal(captured.sentAt,'2026-11-05T10:00:00.000Z');assert.deepEqual(captured.quotedMessage,{messageId:'original-quoted-message',text:'earlier context',senderId:'quoted-person'});
   assert.equal(response.channelType,'chat-room');assert.match(JSON.stringify(f.requests.at(-1)),/authenticated-sender/)
   await assert.rejects(plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'bad-source',text:'missing sender'}),/AUTHENTICATED_IDENTITY_REQUIRED/)
   assert.equal(commands,0);assert.equal(f.host.ctx.channels.canDeliver({state:'prepared',payload:{conversationId:response.sessionId}}),false)
@@ -49,6 +51,8 @@ test('optional DWS plugin registers the typed boundary, preserves authenticated 
   assert.equal(nativeInput.details.source.principal,f.host.ctx.channels.identity(captured).principal)
   assert.deepEqual(nativeInput.details.source.quotedMessage,captured.quotedMessage)
   assert.equal(nativeInput.content[0].text,'quoted boundary proof')
+  await plugin.acceptHistoryMessage({groupId:'room-fixture',messageId:'missing-name',senderOpenDingTalkId:'authenticated-sender',senderName:'authenticated-sender',text:'No display name supplied'})
+  assert.equal(captured.senderName,undefined)
 })
 test('standard application composition exposes channel-neutral health and single task creation with no channel installed',{timeout:15000},async t=>{
   const f=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:'{"lessons":[]}'}:body.tools?.some(t=>t.function.name==='task_result')?{tool:'task_result',args:{decision:{action:'complete',summary:'core application verified',evidence:[],limitations:[]}}}:undefined)
@@ -602,7 +606,7 @@ function pluginDependencies(f,runner,{actorId='self',peerId='peer'}={}){
   else if(args.includes('get-self'))value={result:[{orgEmployeeModel:{corpId:'fixture-corp',userId:'fixture-user',orgUserName:'Fixture Self'}}]}
   else if(args[0]==='contact'&&args.includes('get'))value={result:[{orgEmployeeModel:{corpId:'fixture-corp',userId:flag('--ids'),orgUserName:'Fixture Peer'}}]}
   else if(args.includes('+search-user'))value={ok:true,outcome:'success',data:{count:1,users:[{userId:flag('--query')==='Fixture Self'?'fixture-user':'peer-user',openDingTalkId:flag('--query')==='Fixture Self'?actorId:peerId}]}}
-  else if(args.includes('conversation-info'))value={success:true,result:{conversationInfo:{openConversationId:args.includes('--group')?flag('--group'):'private',singleChat:!args.includes('--group')},friendlyHint:'',retryable:false}}
+  else if(args.includes('conversation-info'))value={success:true,result:{conversationInfo:{openConversationId:args.includes('--group')?flag('--group'):'private',singleChat:!args.includes('--group'),title:'Verified room title'},friendlyHint:'',retryable:false}}
   else return runner.run(args)
   return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
  }}

@@ -89,25 +89,42 @@ export function configuredChannels(application, channels, savedRows = applicatio
   })}
 }
 
+// Names are display-only. Never substitute a known provider/internal identity for a missing name.
+const displayName = (candidates, ids, fallback) => candidates.map(value => typeof value === 'string' ? value.trim() : '').find(value => value && !ids.includes(value)) || fallback
+
 export function conversations(application, channels) {
   return {items: application.tasks.listObserverGroups().map(group => {
     const context = channels.groupContext(group.groupId)
-    return {id: group.groupId, name: group.name || context?.conversationId || group.groupId,
+    return {id: group.groupId, name: displayName([context?.conversationName, group.name], [context?.conversationId, group.groupId, context?.channelId], context?.type === 'chat-room' ? '未命名群聊' : '未命名会话'),
       channelId: context?.channelId ?? null, type: context?.type ?? null,
-      ...(group.updatedAt ? {updatedAt: group.updatedAt} : {})}
+      ...((context?.updatedAt ?? group.updatedAt) ? {updatedAt: context?.updatedAt ?? group.updatedAt} : {})}
   })}
 }
 
-export async function conversationMessages(application, id, options) {
+// Merge only this Web ledger with visible channel conversations; IDs remain route keys.
+export function recentConversations(application, channels, ledger, webChannelId, {offset = 0, limit = 20} = {}) {
+  const web = ledger.chats({offset: 0, limit: offset + limit})
+  const remote = conversations(application, channels).items.filter(item => item.channelId !== webChannelId)
+    .map(item => ({id: item.id, title: item.name, updatedAt: item.updatedAt ?? '', kind: 'channel'}))
+  const items = [...web.items.map(item => ({...item, kind: 'web'})), ...remote]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
+    .slice(offset, offset + limit)
+  const total = web.total + remote.length
+  return {items, total, nextOffset: offset + items.length < total ? offset + items.length : null}
+}
+
+export async function conversationMessages(application, id, options, channels) {
   const query = {limit: options.limit, filter: 'all'}
   const [messages, outbox] = await Promise.all([
     application.tasks.observerGroupPage(id, {...query, collection: 'messages', offset: options.messageOffset, ...(options.messageRevision ? {revision: options.messageRevision} : {})}),
     application.tasks.observerGroupPage(id, {...query, collection: 'outbox', offset: options.outboxOffset, ...(options.outboxRevision ? {revision: options.outboxRevision} : {})}),
   ])
   if (!messages || !outbox) fail('CONVERSATION_NOT_FOUND', 404)
+  const context = channels?.groupContext(id)
+  const knownIds = [id, context?.conversationId, context?.channelId, ...Object.keys(context?.participants ?? {}), ...Object.values(context?.participants ?? {})]
   const items = [
     ...messages.items.map(message => ({id: message.messageId, role: 'user', text: message.text ?? '',
-      createdAt: message.occurredAt ?? null, status: message.processingState ?? 'unknown', senderName: message.senderName ?? '', taskIds: message.taskSessionRefs ?? []})),
+      createdAt: message.occurredAt ?? null, status: message.processingState ?? 'unknown', senderName: displayName([context?.participantNames?.[message.actorId ?? message.senderOpenDingTalkId], message.senderName], [...knownIds, message.actorId, message.senderOpenDingTalkId], '渠道成员'), taskIds: message.taskSessionRefs ?? []})),
     ...outbox.items.map(message => ({id: message.outboundId, role: 'assistant', text: message.text ?? '',
       createdAt: message.sentAt ?? message.deliveredAt ?? message.sendStartedAt ?? null,
       status: message.notificationState ?? message.status ?? 'unknown', taskIds: message.taskIds ?? []})),
