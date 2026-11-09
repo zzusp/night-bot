@@ -7,24 +7,26 @@ import { Loading, MessageList, Notice, Search, Status } from './components/Share
 
 const conversationType = (type?: string | null) => type === 'chat-room' ? '群聊' : type === 'chat' ? '单聊' : '会话类型未记录';
 
-const emptyChannel = (): DingtalkChannelInput => ({ channelId: '', conversationType: 'chat-room', targetKind: 'id', target: '', name: '', prompt: '' });
+const emptyChannel = (): DingtalkChannelInput => ({ channelId: '', conversationType: 'chat-room', targetKind: 'id', target: '', name: '', prompt: '', writesAuthorized: false });
 type FieldErrors = Partial<Record<keyof DingtalkChannelInput, string>>;
 
 type PendingSave = { channelId: string; edit?: DingtalkChannelEdit };
 const detailPath = (channelId: string) => `/channels/dingtalk/${encodeURIComponent(channelId)}`;
 const validDetail = (value: DingtalkChannelDetail, channelId: string) => value?.channelId === channelId &&
   typeof value.version === 'string' && /^[a-f0-9]{64}$/.test(value.version) && typeof value.name === 'string' && typeof value.prompt === 'string' &&
-  ['chat', 'chat-room'].includes(value.conversationType) && ['id', 'name'].includes(value.targetKind) && typeof value.target === 'string';
+  ['chat', 'chat-room'].includes(value.conversationType) && ['id', 'name'].includes(value.targetKind) && typeof value.target === 'string' && typeof value.writesAuthorized === 'boolean';
 const detailDraft = (value: DingtalkChannelDetail): DingtalkChannelInput => ({ channelId: value.channelId, name: value.name, prompt: value.prompt,
-  conversationType: value.conversationType, targetKind: value.targetKind, target: value.target });
+  conversationType: value.conversationType, targetKind: value.targetKind, target: value.target, writesAuthorized: value.writesAuthorized });
 const sameFields = (value: DingtalkChannelDetail, fields: DingtalkChannelEdit) => value.name === fields.name && value.prompt === fields.prompt &&
-  value.conversationType === fields.conversationType && value.targetKind === fields.targetKind && value.target === fields.target;
+  value.conversationType === fields.conversationType && value.targetKind === fields.targetKind && value.target === fields.target && value.writesAuthorized === fields.writesAuthorized;
 
 function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; channelId?: string }) {
   const editing = channelId !== undefined;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => ({ ...emptyChannel(), channelId: channelId ?? '' }));
-  const [version, setVersion] = useState<string | null>(null);
+  const [loadedDetail, setLoadedDetail] = useState<DingtalkChannelDetail | null>(null);
+  const version = loadedDetail?.version ?? null;
+  const targetEdited = editing && loadedDetail !== null && (draft.conversationType !== loadedDetail.conversationType || draft.targetKind !== loadedDetail.targetKind || draft.target.trim() !== loadedDetail.target);
   const [stale, setStale] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState<'loading' | 'saving' | 'checking' | null>(null);
@@ -49,7 +51,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
     'aria-describedby': `${prefix}-${key}-help${errors[key] ? ` ${prefix}-${key}-error` : ''}`,
   });
   const edit = (key: 'channelId' | 'target' | 'name' | 'prompt', value: string) => {
-    setDraft(previous => ({ ...previous, [key]: value }));
+    setDraft(previous => ({ ...previous, [key]: value, ...(key === 'target' ? {writesAuthorized: false} : {}) }));
     setErrors(previous => ({ ...previous, [key]: undefined }));
   };
   const load = async () => {
@@ -59,7 +61,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
       const result = await api<DingtalkChannelDetail>(detailPath(channelId));
       if (!live.current) return;
       if (!validDetail(result, channelId)) throw new ApiError(502, 'INVALID_RESPONSE');
-      setDraft(detailDraft(result)); setVersion(result.version); setStale(false); setSaved(false);
+      setDraft(detailDraft(result)); setLoadedDetail(result); setStale(false); setSaved(false);
       setErrors({}); setFeedback('');
     } catch (cause) { if (live.current) setError(cause); }
     finally { writing.current = false; if (live.current) setBusy(null); }
@@ -73,7 +75,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
         if (!validDetail(result, pending.channelId)) throw new ApiError(502, 'INVALID_RESPONSE');
         if (result.version !== pending.edit.expectedVersion && sameFields(result, pending.edit)) {
           setFeedback('只读核对确认当前保存配置与本次字段一致，版本已更新。实际应用与连接状态请查看渠道列表。');
-          setVersion(result.version); setDraft(detailDraft(result)); setSaved(true); setUnknownSave(null);
+          setLoadedDetail(result); setDraft(detailDraft(result)); setSaved(true); setUnknownSave(null);
         } else setFeedback(result.version === pending.edit.expectedVersion
           ? '保存版本未变化，仍不能确认本次保存结果。原草稿保持锁定，请继续只读核对，不要重复保存。'
           : '当前保存版本或字段与本次请求不一致，保存结果仍未知。原草稿保持锁定，请继续只读核对，不要重复保存。');
@@ -105,7 +107,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
     const first = Object.keys(invalid)[0];
     if (first) { (form.current?.elements.namedItem(first) as HTMLElement | null)?.focus(); return; }
     const patch: DingtalkChannelEdit | undefined = editing ? { expectedVersion: version!, name: body.name ?? '', prompt: body.prompt ?? '',
-      conversationType: body.conversationType, targetKind: body.targetKind, target: body.target } : undefined;
+      conversationType: body.conversationType, targetKind: body.targetKind, target: body.target, writesAuthorized: body.writesAuthorized === true } : undefined;
     writing.current = true; setBusy('saving');
     try {
       if (patch) {
@@ -115,7 +117,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
           result.channel?.channelId !== channelId || result.channel.type !== 'dingtalk-dws' || !validDetail(result.detail, channelId!) ||
           result.channel.savedVersion !== result.detail.version || (result.channel.runningVersion !== null && !/^[a-f0-9]{64}$/.test(result.channel.runningVersion ?? '')) ||
           result.channel.restartRequired !== result.restartRequired || result.channel.liveApplied !== result.liveApplied || !sameFields(result.detail, patch)) throw new ApiError(502, 'INVALID_RESPONSE');
-        setDraft(detailDraft(result.detail)); setVersion(result.detail.version);
+        setDraft(detailDraft(result.detail)); setLoadedDetail(result.detail);
         const application = result.restartRequired ? '保存配置待重启；当前运行态尚未应用此配置。'
           : result.liveApplied ? '保存配置已应用到运行态；连接与监听以渠道状态为准。' : '保存配置尚未激活，请查看渠道状态并处理阻断。';
         setFeedback(`${result.changed ? '配置已保存' : '配置未变化'}。${application}`);
@@ -123,7 +125,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
         const result = await api<DingtalkChannelCreated>('/channels/dingtalk', { method: 'POST', body });
         if (!live.current) return;
         if (result.ok !== true || result.changed !== true || result.restartRequired !== true || result.liveApplied !== false || result.channel?.channelId !== body.channelId) throw new ApiError(502, 'INVALID_RESPONSE');
-        setFeedback(`渠道「${body.channelId}」已保存，待重启后接入；当前尚未连接，未授权外发。`);
+        setFeedback(`渠道「${body.channelId}」已保存，待重启后接入；当前尚未连接，${body.writesAuthorized ? '已保存外发授权' : '未授权外发'}。`);
       }
       setSaved(true); onSaved();
     } catch (cause) {
@@ -156,8 +158,8 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
         <IconButton label={`关闭${title}`} disabled={!!busy} onClick={() => setOpen(false)}><RiCloseLine size={19} /></IconButton></header>
       <div className="channel-create-body">
         <p className="channel-create-boundary" id={`${prefix}-boundary`}>{editing
-          ? '渠道标识固定，沿用已保存账号，无需填写账号或凭据。修改后的保存配置须正常重启才应用，无变化以实际状态为准；修改同一实际目标保留绑定和水位，真正切换目标须先处理旧依赖，新目标外发授权关闭。此处不提供删除、热加载或外发授权。'
-          : '使用 Bot 运行环境当前登录账号，无需填写账号或凭据。本次新增保存后待重启，不会立即连接钉钉。默认接收消息，未授权外发；可从渠道卡片编辑已保存配置，此处不提供删除或代发。'}</p>
+          ? '渠道标识固定，沿用已保存账号，无需填写账号或凭据。修改后的保存配置须正常重启才应用，无变化以实际状态为准；修改同一实际目标保留绑定和水位，更换目标须先处理旧依赖，保存后重新编辑才能授权新目标外发。此处不提供删除或热加载。'
+          : '使用 Bot 运行环境当前登录账号，无需填写账号或凭据。本次新增保存后待重启，不会立即连接钉钉。默认仅接收消息，外发需在下方明确授权；可从渠道卡片编辑已保存配置，此处不提供删除或代发。'}</p>
         {error != null && <Notice error={error} />}
         {feedback && <p className="channel-create-feedback" role="status">{feedback}</p>}
         {editing && (!version || stale) && !unknownSave && <Button variant="secondary" busy={busy === 'loading'} disabled={!!busy} onClick={() => void load()}>重新加载最新配置</Button>}
@@ -170,9 +172,9 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
               <p id={`${prefix}-channelId-help`} className="field-help">{editing ? '固定标识不可修改；编辑不会更换已保存账号。' : '本安装中唯一的标识，重复标识不会覆盖已有渠道。'}</p>
               {errors.channelId && <p id={`${prefix}-channelId-error`} className="field-error" role="alert">{errors.channelId}</p>}</div>
             <div className="channel-create-field"><label htmlFor={`${prefix}-conversationType`}>会话类型</label>
-              <select id={`${prefix}-conversationType`} value={draft.conversationType} onChange={event => { setDraft(previous => ({ ...previous, conversationType: event.target.value as DingtalkChannelInput['conversationType'], target: '' })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="chat-room">群聊</option><option value="chat">私聊</option></select></div>
+              <select id={`${prefix}-conversationType`} value={draft.conversationType} onChange={event => { setDraft(previous => ({ ...previous, conversationType: event.target.value as DingtalkChannelInput['conversationType'], target: '', writesAuthorized: false })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="chat-room">群聊</option><option value="chat">私聊</option></select></div>
             <div className="channel-create-field"><label htmlFor={`${prefix}-targetKind`}>目标填写方式</label>
-              <select id={`${prefix}-targetKind`} value={draft.targetKind} onChange={event => { setDraft(previous => ({ ...previous, targetKind: event.target.value as DingtalkChannelInput['targetKind'], target: '' })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="id">按 ID</option><option value="name">按名称</option></select></div>
+              <select id={`${prefix}-targetKind`} value={draft.targetKind} onChange={event => { setDraft(previous => ({ ...previous, targetKind: event.target.value as DingtalkChannelInput['targetKind'], target: '', writesAuthorized: false })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="id">按 ID</option><option value="name">按名称</option></select></div>
             <div className="channel-create-field"><label htmlFor={`${prefix}-target`}>{targetLabel}</label>
               <input {...field('target')} autoComplete="off" value={draft.target} onChange={event => edit('target', event.target.value)} />
               <p id={`${prefix}-target-help`} className="field-help">{editing ? '名称须唯一匹配；实际身份切换受旧目标未决依赖约束。' : '名称须唯一匹配；新增目标在重启接入时核对。'}</p>
@@ -185,6 +187,14 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
               <textarea {...field('prompt')} rows={3} value={draft.prompt} onChange={event => edit('prompt', event.target.value)} />
               <p id={`${prefix}-prompt-help`} className="field-help">描述此渠道的用途；不作为发送授权或操作凭据。</p>
               {errors.prompt && <p id={`${prefix}-prompt-error`} className="field-error" role="alert">{errors.prompt}</p>}</div>
+            <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-writesAuthorized`}>外发授权</label>
+              <select {...field('writesAuthorized')} value={draft.writesAuthorized === true ? 'true' : 'false'} disabled={locked || targetEdited}
+                onChange={event => setDraft(previous => ({ ...previous, writesAuthorized: event.target.value === 'true' }))}>
+                <option value="false">关闭：仅接收消息</option><option value="true">开启：允许回复和通知</option>
+              </select>
+              <p id={`${prefix}-writesAuthorized-help`} className="field-help">{targetEdited
+                ? '目标已修改，外发授权已关闭；请先保存目标，再重新编辑授权。'
+                : '允许 Bot 向此会话发送回复、通知和附件，包括已排队未发送的通知。保存后须正常重启才生效；关闭不会撤回已发送的消息。'}</p></div>
           </fieldset>
           <div className="channel-create-actions"><Button type="submit" variant="primary" busy={busy === 'saving'} disabled={locked}>{editing ? '保存渠道修改' : '保存钉钉渠道'}</Button>
             {saved && (editing ? <Button disabled={!!busy} onClick={() => void load()}>重新读取并编辑</Button> : <Button onClick={reset}>添加另一个渠道</Button>)}<Button variant="ghost" disabled={!!busy} onClick={() => setOpen(false)}>关闭</Button></div>

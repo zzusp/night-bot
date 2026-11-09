@@ -81,5 +81,5 @@ export const dingtalkBindingKey=binding=>hash(JSON.stringify([binding.profile,bi
 export function dingtalkEditable(row){
   const config=row.config,prefix=config.dingtalk_conversation_type==='chat-room'?'dingtalk_group_':'dingtalk_user_'
   const targetKind=config[prefix+'name']!==undefined?'name':'id'
-  return {channelId:row.channelId,version:dingtalkConfigVersion(row),name:config.dingtalk_name??'',prompt:config.dingtalk_prompt??'',conversationType:config.dingtalk_conversation_type,targetKind,target:config[prefix+targetKind]}
+  return {channelId:row.channelId,version:dingtalkConfigVersion(row),name:config.dingtalk_name??'',prompt:config.dingtalk_prompt??'',conversationType:config.dingtalk_conversation_type,targetKind,target:config[prefix+targetKind],writesAuthorized:config.dingtalk_writes_authorized===true}
 }

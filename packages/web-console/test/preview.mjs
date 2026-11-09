@@ -157,7 +157,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     const prefix = 'dingtalk_' + (conversationType === 'chat-room' ? 'group_' : 'user_')
     const targetKind = Object.hasOwn(config, prefix + 'id') ? 'id' : 'name'
     return {channelId: row.channelId, version: digest(JSON.stringify(row)), name: config.dingtalk_name ?? '',
-      prompt: config.dingtalk_prompt ?? '', conversationType, targetKind, target: config[prefix + targetKind]}
+      prompt: config.dingtalk_prompt ?? '', conversationType, targetKind, target: config[prefix + targetKind], writesAuthorized: config.dingtalk_writes_authorized === true}
   }
   const channelConfiguration = {
     async read() {return structuredClone(savedRows)},
@@ -165,10 +165,12 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     async editDingtalk(channelId, input) {
       const row = rowFor(channelId), current = detailFor(row)
       if (input.expectedVersion !== current.version) throw channelError('DINGTALK_CHANNEL_VERSION_CONFLICT')
+      const targetChanged = ['conversationType', 'targetKind', 'target'].some(key => input[key] !== current[key])
+      if (targetChanged && input.writesAuthorized === true) throw channelError('DINGTALK_CHANNEL_REQUEST_INVALID')
       const fields = {name: input.name.trim(), prompt: input.prompt, conversationType: input.conversationType,
-        targetKind: input.targetKind, target: input.target.trim()}
+        targetKind: input.targetKind, target: input.target.trim(), writesAuthorized: targetChanged ? false : input.writesAuthorized ?? current.writesAuthorized}
       if (Object.entries(fields).every(([key, value]) => current[key] === value)) return {changed: false, channel: structuredClone(row), detail: current}
-      const config = {...row.config, dingtalk_conversation_type: fields.conversationType}
+      const config = {...row.config, dingtalk_conversation_type: fields.conversationType, dingtalk_writes_authorized: fields.writesAuthorized}
       for (const field of ['dingtalk_group_id', 'dingtalk_group_name', 'dingtalk_user_id', 'dingtalk_user_name']) delete config[field]
       config['dingtalk_' + (fields.conversationType === 'chat-room' ? 'group_' : 'user_') + fields.targetKind] = fields.target
       for (const field of ['name', 'prompt']) {
@@ -184,7 +186,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       const targetField = 'dingtalk_' + (input.conversationType === 'chat-room' ? 'group_' : 'user_') + input.targetKind
       const row = {type: 'dingtalk-dws', channelId: input.channelId, enabled: true, config: {
         dingtalk_profile: 'fixture-corp:fixture-user', dingtalk_conversation_type: input.conversationType,
-        [targetField]: input.target, dingtalk_writes_authorized: false,
+        [targetField]: input.target, dingtalk_writes_authorized: input.writesAuthorized === true,
         ...(input.name === undefined ? {} : {dingtalk_name: input.name}),
         ...(input.prompt === undefined ? {} : {dingtalk_prompt: input.prompt}),
       }}

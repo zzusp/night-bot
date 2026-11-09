@@ -869,7 +869,7 @@ test('Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目�
    assert.equal(result.status,400);assert.equal(result.body.error,'REQUEST_INVALID')
   }
   assert.equal(profileLookups,0,'forbidden browser profile/env fields are rejected before querying DWS')
-  for(const extra of [{targetKind:'any'},{conversationType:'group'},{target:''},{name:null},{prompt:12}]){
+  for(const extra of [{targetKind:'any'},{conversationType:'group'},{target:''},{name:null},{prompt:12},{writesAuthorized:'true'},{writesAuthorized:null},{writesAuthorized:1}]){
    assert.equal((await api('/api/channels/dingtalk',{method:'POST',body:{...body,...extra}})).status,400)
   }
   assert.deepEqual(JSON.parse(await readFile(file,'utf8')),f.config)
@@ -906,17 +906,17 @@ test('Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目�
   assert.equal(liveConflict.status,409,'a currently registered adapter ID cannot be shadowed by saved configuration')
   const prior='2026-01-02T03:04:05.000Z',preexistingIngress=await openDingtalkIngress(paths,'web-chat-name',{fromAt:prior})
   await preexistingIngress.drain()
-  const requests=[body,{...body,channelId:'web-room-name',targetKind:'name',target:'Fixture Room'},
-   {...body,channelId:'web-chat-id',conversationType:'chat',target:'fixture-peer'},
+  const requests=[body,{...body,channelId:'web-room-name',targetKind:'name',target:'Fixture Room',writesAuthorized:true},
+   {...body,channelId:'web-chat-id',conversationType:'chat',target:'fixture-peer',writesAuthorized:true},
    {...body,channelId:'web-chat-name',conversationType:'chat',targetKind:'name',target:'Fixture Peer'}]
   const before=new Date().toISOString()
   const created=await Promise.all(requests.map(body=>api('/api/channels/dingtalk',{method:'POST',body})))
   const after=new Date().toISOString()
-  for(const result of created){
+  for(const [index,result] of created.entries()){
    assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);assert.equal(result.body.changed,true)
    assert.equal(result.body.restartRequired,true);assert.equal(result.body.liveApplied,false)
    assert.equal(result.body.channel.connectionState,'pending-restart');assert.equal(result.body.channel.connected,false)
-   assert.equal(result.body.channel.writesAuthorized,false)
+   assert.equal(result.body.channel.writesAuthorized,requests[index].writesAuthorized===true)
    assert.doesNotMatch(JSON.stringify(result.body),/fixture-corp|fixture-user|fixture-room|fixture-peer|dingtalk_|PRIVATE_/)
   }
   const saved=await loadConfig(file)
@@ -924,7 +924,7 @@ test('Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目�
   assert.deepEqual(f.config.channelPlugins,[existing],'saving must not mutate the running application configuration')
   for(const request of requests){
    const row=saved.channelPlugins.find(row=>row.channelId===request.channelId),target='dingtalk_'+(request.conversationType==='chat-room'?'group':'user')+'_'+request.targetKind
-   assert.deepEqual(row,{type:'dingtalk-dws',channelId:request.channelId,enabled:true,config:{dingtalk_profile:profileWire.profile.profile,dingtalk_conversation_type:request.conversationType,[target]:request.target,dingtalk_account_mode:'system',dingtalk_writes_authorized:false,dingtalk_listen:true,dingtalk_name:request.name,dingtalk_prompt:request.prompt}})
+   assert.deepEqual(row,{type:'dingtalk-dws',channelId:request.channelId,enabled:true,config:{dingtalk_profile:profileWire.profile.profile,dingtalk_conversation_type:request.conversationType,[target]:request.target,dingtalk_account_mode:'system',dingtalk_writes_authorized:request.writesAuthorized===true,dingtalk_listen:true,dingtalk_name:request.name,dingtalk_prompt:request.prompt}})
    const ingress=JSON.parse(await readFile(dingtalkChannelPaths(paths,request.channelId).ingressFile,'utf8'))
    assert.equal(ingress.paused,true)
    if(request.channelId==='web-chat-name')assert.equal(ingress.firstStartedAt,prior)

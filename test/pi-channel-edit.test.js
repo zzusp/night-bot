@@ -39,10 +39,10 @@ test('Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位�
   cookie=login.headers.get('set-cookie').split(';')[0];csrf=login.body.csrfToken
   const loaded=await api(url);assert.equal(loaded.status,200)
   const first=loaded.body
-  assert.deepEqual(Object.keys(first).sort(),['channelId','version','name','prompt','conversationType','targetKind','target'].sort())
+  assert.deepEqual(Object.keys(first).sort(),['channelId','version','name','prompt','conversationType','targetKind','target','writesAuthorized'].sort())
   assert.match(first.version,/^[a-f0-9]{64}$/);assert.equal(first.target,'old-room');assert.equal(first.prompt,'第一行\n第二行')
   assert.equal((await api(url,{method:'PATCH',body:draft(first),headers:{'x-csrf-token':''}})).status,403)
-  for(const forbidden of [{profile:'foreign-account'},{channelId:'replacement'},{binding:{}},{writesAuthorized:true},{enabled:false}]){
+  for(const forbidden of [{profile:'foreign-account'},{channelId:'replacement'},{binding:{}},{writesAuthorized:'true'},{writesAuthorized:null},{writesAuthorized:1},{dingtalk_writes_authorized:true},{enabled:false}]){
    assert.equal((await api(url,{method:'PATCH',body:{...draft(first),...forbidden}})).status,400)
   }
   const same=await api(url,{method:'PATCH',body:draft(first)})
@@ -65,6 +65,21 @@ test('Web编辑白名单、CAS与unknown回查不改原账号、绑定、水位�
   assert.deepEqual(saved.channelPlugins[1],other)
   assert.equal(saved.channelPlugins[0].config.dingtalk_profile,binding.profile);assert.equal(saved.channelPlugins[0].config.dingtalk_writes_authorized,true)
   assert.equal(saved.channelPlugins[0].config.dingtalk_listen,false)
+  assert.equal(await readFile(storage.bindingFile,'utf8'),bindingBytes);assert.equal(await readFile(storage.ingressFile,'utf8'),ingressBytes)
+  loseResponse=false
+  for(const writesAuthorized of [false,true]){
+   const current=(await api(url)).body
+   const updated=await api(url,{method:'PATCH',body:{...draft(current),writesAuthorized}})
+   assert.equal(updated.status,200);assert.equal(updated.body.detail.writesAuthorized,writesAuthorized)
+   assert.equal(updated.body.channel.writesAuthorized,writesAuthorized);assert.equal(updated.body.restartRequired,true)
+   assert.equal(JSON.parse(await readFile(file,'utf8')).channelPlugins[0].config.dingtalk_writes_authorized,writesAuthorized)
+   assert.equal(f.config.channelPlugins[0].config.dingtalk_writes_authorized,true,'saving cannot change the running snapshot')
+  }
+  const current=(await api(url)).body,stableAuthorization=await readFile(file,'utf8')
+  assert.equal((await api(url,{method:'PATCH',body:{...draft(current),target:'new-room',writesAuthorized:true}})).status,400)
+  assert.equal(await readFile(file,'utf8'),stableAuthorization)
+  await f.agent('channel-authorization-model')
+  await assert.rejects(async()=>f.host.ctx.agents.withInitiator(f.host.ctx.agents.get('channel-authorization-model'),()=>port.editDingtalk(channelId,{...draft(current),writesAuthorized:true})),{code:'CHANNEL_CONFIGURATION_OPERATOR_REQUIRED'})
   assert.equal(await readFile(storage.bindingFile,'utf8'),bindingBytes);assert.equal(await readFile(storage.ingressFile,'utf8'),ingressBytes)
   assert.equal(vendorCalls,0);assert.equal(f.requests.length,0)
   assert.equal((await api('/api/channels/dingtalk/missing')).status,404)
@@ -97,6 +112,25 @@ async function mountEditPlugin(f,saved,vendor){
  const {apply}=await import('../src/channels/plugins/dingtalk-dws.js'),{validateConfig}=await import('../src/channels/plugins/dingtalk-config.js')
  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>apply(ctx,{...validateConfig(saved.config),channelId:saved.channelId,enabled:saved.enabled},{runner:vendor.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:f.root},observeLogin:async()=>async()=>{}})})
 }
+
+test('外发授权保存不热改，冷启动后按保存值控制实际transport且不发送消息',{timeout:nativeTestTimeout(45000)},async t=>{
+ const vendor=editVendor(),f=await memoryHost(t,undefined,{dingtalkProfileRunner:vendor.runner})
+ const file=join(f.host.ctx.runtimePaths.config,'config.json'),original=row()
+ await put(file,{...f.config,channelPlugins:[original]})
+ await put(dingtalkChannelPaths(f.host.ctx.runtimePaths,channelId).bindingFile,binding)
+ for(const writesAuthorized of [false,true]){
+  const port=f.host.ctx.get('channelConfiguration'),detail=await port.getDingtalk(channelId)
+  const result=await port.editDingtalk(channelId,{...draft(detail),writesAuthorized})
+  assert.equal(result.detail.writesAuthorized,writesAuthorized)
+  await f.close();await f.boot()
+  const saved=JSON.parse(await readFile(file,'utf8')).channelPlugins[0]
+  assert.equal((await f.host.ctx.get('channelConfiguration').getDingtalk(channelId)).writesAuthorized,writesAuthorized)
+  await mountEditPlugin(f,saved,vendor);await mountEditApp(f,[saved])
+  assert.equal(f.host.ctx.channels.transports.get(channelId).canSend(),writesAuthorized)
+ }
+ assert.equal(f.requests.length,0)
+ assert.equal(vendor.calls.some(args=>args.some(arg=>/send/i.test(arg))),false)
+})
 
 // 名称表达变化先解析实际身份；同身份保留完整水位，真正换身份拒绝旧 deferred。
 test('同实际身份保水位与授权，异身份保存隔离并在冷启重新检查旧依赖',{timeout:nativeTestTimeout(45000)},async t=>{

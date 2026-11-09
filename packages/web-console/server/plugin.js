@@ -123,7 +123,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       let channelId;try{channelId=decodeURIComponent(dingtalkDetail[1])}catch{fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)}
       try{
         if(request.method==='GET')return send(response,200,await configuration.getDingtalk(channelId))
-        const body=await jsonBody(request,['expectedVersion','name','prompt','conversationType','targetKind','target'])
+        const body=await jsonBody(request,['expectedVersion','name','prompt','conversationType','targetKind','target','writesAuthorized'])
         const result=await configuration.editDingtalk(channelId,body),channel=configuredChannels(app,channels,[result.channel]).items[0]
         return send(response,200,{ok:true,changed:result.changed,restartRequired:channel.restartRequired,liveApplied:channel.liveApplied,channel,detail:result.detail})
       }catch(error){
@@ -135,7 +135,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     if (request.method === 'POST' && path === '/api/channels/dingtalk') {
       const app = application()
-      const body = await jsonBody(request, ['channelId', 'conversationType', 'targetKind', 'target', 'name', 'prompt'])
+      const body = await jsonBody(request, ['channelId', 'conversationType', 'targetKind', 'target', 'name', 'prompt', 'writesAuthorized'])
       const configuration = getChannelConfiguration()
       if (!configuration) fail('CHANNEL_CONFIGURATION_UNAVAILABLE', 503)
       let result
