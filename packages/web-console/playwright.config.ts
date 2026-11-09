@@ -14,7 +14,9 @@ export default defineConfig({
   globalSetup: './test/browser-setup.mjs',
   use: {
     browserName: 'chromium',
-    channel: 'msedge',
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ? {launchOptions: {executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}}
+      : process.platform === 'win32' ? {channel: 'msedge'} : {}),
     baseURL: 'http://127.0.0.1:3081',
     viewport: {width: 1440, height: 960},
     locale: 'zh-CN',

@@ -1,10 +1,22 @@
 {
   "profile": "product-admin",
-  "sourceRoots": ["packages/web-console/src"],
+  "sourceRoots": [
+    "packages/web-console/src"
+  ],
   "locale": "zh-CN",
   "canonicalMap": "DESIGN.md",
-  "requiredCapabilities": ["Form", "Scrollbar", "Toast", "CRUD"],
-  "requiredCommands": ["unit", "typecheck", "build", "browser"],
+  "requiredCapabilities": [
+    "Form",
+    "Scrollbar",
+    "Toast",
+    "CRUD"
+  ],
+  "requiredCommands": [
+    "unit",
+    "typecheck",
+    "build",
+    "browser"
+  ],
   "commands": {
     "unit": "pnpm --dir packages/web-console test",
     "typecheck": "pnpm --dir packages/web-console typecheck",
@@ -14,5 +26,8 @@
   "evidence": {
     "crudFullFlow": "packages/web-console/test/browser.spec.ts",
     "failurePaths": "packages/web-console/test/server.test.js"
+  },
+  "ownership": {
+    "Select/Listbox": "native"
   }
 }

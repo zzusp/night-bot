@@ -85,12 +85,12 @@ test('聊天经真实服务器接纳、IME不误发、回复与刷新后历史�
   await input.type('保留原始上下文')
   expect(sends).toBe(0)
   await input.press('Enter')
-  await expect(page.locator('.message-assistant')).toContainText('这是本地隔离验收回复')
+  await expect(page.locator('.message-assistant').last()).toContainText('这是本地隔离验收回复')
   expect(sends).toBe(1)
   await expect(input).toHaveValue('')
   await page.reload()
-  await expect(page.locator('.message-user')).toContainText('验证中文输入法')
-  await expect(page.locator('.message-assistant')).toContainText('回复写入独立的 SQLite 交付账本')
+  await expect(page.locator('.message-user').last()).toContainText('验证中文输入法')
+  await expect(page.locator('.message-assistant').last()).toContainText('回复写入独立的 SQLite 交付账本')
   await screenshot(page, 'chat')
 })
 
@@ -195,6 +195,7 @@ test('真实形状的任务阻断项经白名单投影显示等待处理，不�
 
 test('丢失发送回执后先核对，恢复连接只读原收据且不重放', async ({page}) => {
   await login(page)
+  const initialMessages = await page.locator('.message-user').count()
   let admissions = 0, admittedConversation = ''
   await page.route('**/api/requests/**', route => route.abort('failed'))
   await page.route('**/api/chat', async route => {
@@ -218,8 +219,8 @@ test('丢失发送回执后先核对，恢复连接只读原收据且不重放',
   await page.unroute('**/api/requests/**')
   await page.getByRole('button', {name: '核对发送状态', exact: true}).click()
   await expect(page).toHaveURL(new RegExp('/chat/' + admittedConversation))
-  await expect(page.locator('.message-user')).toHaveCount(1)
-  await expect(page.locator('.message-assistant')).toContainText('这是本地隔离验收回复')
+  await expect(page.locator('.message-user')).toHaveCount(initialMessages + 1)
+  await expect(page.locator('.message-assistant').last()).toContainText('这是本地隔离验收回复')
   expect(admissions).toBe(1)
   await expect(input).toHaveValue('')
   await expect(input).toBeEnabled()
@@ -250,6 +251,7 @@ for (const fixture of [
       return route.fulfill({json: {...submitted, status: receiptStatus}})
     })
     await page.route('**/api/chat/*', async route => {
+      if (!submitted) return route.continue()
       expect(new URL(route.request().url()).pathname).toBe(`/api/chat/${submitted?.conversationId}`)
       return route.fulfill({json: {conversationId: submitted?.conversationId, status: 'ready', messages: [
         {id: 'protocol-fixture-message', role: 'user', text: submitted?.text, requestId: submitted?.requestId, createdAt: '2026-11-07T00:00:00.000Z'},
@@ -348,7 +350,7 @@ test('学习记录区分已应用与候选，正文仅按已授权版本读取',
   await screenshot(page, 'learning-scope-and-version')
 })
 
-test('渠道会话按聊天展示、只读、保留不确定发送状态及空态', async ({page}) => {
+test('渠道会话按聊天展示、隐藏输入框、保留不确定发送状态及空态', async ({page}) => {
   await login(page)
   await page.goto('/#/channels')
   await expect(page.locator('.channel-card')).toHaveCount(3)
@@ -359,7 +361,10 @@ test('渠道会话按聊天展示、只读、保留不确定发送状态及空�
   await page.locator('.conversation-list').getByRole('link', {name: /产品协作/}).click()
   await expect(page.locator('.message')).toHaveCount(4)
   await expect(page.locator('.message').getByText('待核实', {exact: true})).toBeVisible()
-  await expect(page.locator('.channel-chat-header').getByText('只读', {exact: true})).toBeVisible()
+  await expect(page.locator('.channel-chat').getByRole('textbox')).toHaveCount(0)
+  await expect(page.locator('.channel-chat-header').getByText('只读', {exact: true})).toHaveCount(0)
+  await expect(page.locator('.channel-chat-header h2')).toHaveText('产品协作')
+  await expect(page.locator('.header-location h1')).toHaveText('产品协作')
   expect(await page.getByLabel('消息内容', {exact: true}).count()).toBe(0)
   for (const width of [1440, 390]) {
     await page.setViewportSize({width, height: 960})
@@ -413,7 +418,7 @@ test('窄屏导航、键盘关闭与深色页面没有横向溢出', async ({pag
   await expect(open).toBeFocused()
   await open.click()
   await page.getByRole('dialog', {name: '导航', exact: true}).locator('a[href="#/tasks"]').click()
-  await expect(page.getByRole('heading', {name: '每一项工作，都有迹可循', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '任务', exact: true, level: 2})).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await screenshot(page, 'mobile-tasks')
   await page.setViewportSize({width: 1440, height: 960})
@@ -566,4 +571,19 @@ test('上翻历史后后台消息不拉回底部，键盘可回到最新消息',
   await page.keyboard.press('Enter')
   await expect.poll(() => transcript.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(1)
   await expect(latest).toHaveCount(0)
+})
+
+test('最近对话包含渠道名称，点击后标题和发送人保留显示名称', async ({page}) => {
+  const named={id:'stable-room-id',name:'已认证群名称',channelId:'team-channel',type:'chat-room'}
+  await page.route('**/api/recent-conversations?*',route=>route.fulfill({json:{items:[{id:named.id,title:named.name,kind:'channel',updatedAt:'2026-11-09T12:00:00Z'}],total:1,nextOffset:null}}))
+  await page.route('**/api/conversations',route=>route.fulfill({json:{items:[named]}}))
+  await page.route('**/api/conversations/stable-room-id/messages?*',route=>route.fulfill({json:{items:[{id:'message-one',role:'user',senderName:'已认证发送人',text:'原消息'}],pages:{messages:{total:1,nextOffset:null},outbox:{total:0,nextOffset:null}}}}))
+  await login(page)
+  const sidebar=page.locator('.desktop-sidebar').getByRole('navigation',{name:'最近对话'})
+  await sidebar.getByRole('link',{name:'已认证群名称'}).click()
+  await expect(page).toHaveURL(/#\/channels\/stable-room-id$/)
+  await expect(page.locator('.header-location h1')).toHaveText('已认证群名称')
+  await expect(page.locator('.channel-chat-header h2')).toHaveText('已认证群名称')
+  await expect(page.locator('.channel-chat .transcript')).toContainText('已认证发送人')
+  await expect(page.locator('.channel-chat')).not.toContainText('stable-room-id')
 })

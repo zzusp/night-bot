@@ -5,6 +5,7 @@ import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHash} from 'node:crypto'
 import {request as httpRequest} from 'node:http'
+import Channels from '../../../src/channels/service.js'
 import {createWebConsole, apply} from '../server/plugin.js'
 import {openWebLedger} from '../server/ledger.js'
 import {accessCredential, browserSessions} from '../server/security.js'
@@ -19,7 +20,10 @@ async function fixture(t, options = {}) {
   const received = [], transports = new Map(), plugins = new Map()
   const channels = {
     transports, plugins,
-    identity: envelope => ({sessionId: 'conversation-' + envelope.channelId + '-' + envelope.conversationId}),
+    identity: envelope => {
+      if (options.validateIdentity) Channels.prototype.identity.call({host: {runtimePaths: {workspaces: root}}}, envelope)
+      return {sessionId: 'conversation-' + envelope.channelId + '-' + envelope.conversationId, binding: {actorId: 'verified-web-operator'}}
+    },
     groupContext: id => id === 'room-one' ? {channelId: 'team-chat', type: 'chat-room', conversationId: 'team'} : undefined,
     registerTransport(id, value) {assert.equal(transports.has(id), false); transports.set(id, value); return () => transports.delete(id)},
     registerPlugin(id, value) {plugins.set(id, value); return () => plugins.delete(id)},
@@ -49,8 +53,17 @@ async function fixture(t, options = {}) {
       },
     },
   }
-  const config = {channelId: 'web', senderId: 'configured-operator', operatorName: '操作者', port: 0}
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, dist})
+  const config = {channelId: 'web', senderId: 'configured-operator', operatorName: Object.hasOwn(options, 'operatorName') ? options.operatorName : '操作者', port: 0}
+  if (options.history) {
+    const directory = join(paths.state, 'web-console-' + createHash('sha256').update(config.channelId).digest('hex').slice(0, 16))
+    await mkdir(directory, {mode: 0o700})
+    const old = await openWebLedger(directory)
+    for (const conversationId of ['canonical-old', 'retained-old']) {
+      old.reserve({requestId: 'seed-' + conversationId, conversationId, groupId: 'conversation-web-' + conversationId, text: conversationId, senderId: config.senderId, channelId: config.channelId})
+    }
+    old.close()
+  }
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -69,7 +82,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -111,7 +124,7 @@ test('chat admission preserves configured identity and exact text; retries read 
   const first = await f.fetchApi('/api/chat', {method: 'POST', body: input})
   assert.equal(first.status, 202); assert.equal(first.body.status, 'accepted')
   assert.equal(f.received.length, 1)
-  assert.deepEqual(f.received[0], {type: 'chat', channelId: 'web', senderId: 'configured-operator', conversationId: first.body.conversationId, messageId: input.requestId, text: input.text})
+  assert.deepEqual(f.received[0], {type: 'chat', channelId: 'web', senderId: 'configured-operator', senderName: '操作者', conversationId: first.body.conversationId, messageId: input.requestId, text: input.text})
   const duplicate = await f.fetchApi('/api/chat', {method: 'POST', body: input})
   assert.equal(duplicate.body.conversationId, first.body.conversationId); assert.equal(f.received.length, 1)
   assert.equal((await f.fetchApi('/api/chat', {method: 'POST', body: {...input, text: 'changed'}})).status, 409)
@@ -390,4 +403,138 @@ test('expired sessions fail closed and login attempts are bounded', () => {
   for (let i = 0; i < 5; i++) assert.throws(() => sessions.login('wrong', response), {code: 'AUTH_INVALID'})
   assert.throws(() => sessions.login('secret', response), {code: 'AUTH_RATE_LIMITED'})
   now += 30_000; assert.ok(sessions.login('secret', response))
+})
+
+
+test('evolution endpoint authenticates, binds operator scope, validates pagination and redacts names', async t => {
+  const calls = []
+  const f = await fixture(t, {memory: {async inspectEvolution(binding, options) {
+    calls.push({binding, options})
+    return {status: 'ready', items: [{id: 'one', kind: 'memory', name: 'record /private/secret.txt'}], total: 1}
+  }}})
+  assert.equal((await f.fetchApi('/api/evolution')).status, 401)
+  await f.login()
+  const result = await f.fetchApi('/api/evolution?kind=skill&offset=2&limit=10')
+  assert.equal(result.status, 200)
+  assert.deepEqual(calls, [{binding: {actorId: 'verified-web-operator'}, options: {kind: 'skill', offset: 2, limit: 10}}])
+  assert.doesNotMatch(JSON.stringify(result.body), /private\/secret/)
+  for (const query of ['kind=other', 'limit=51', 'offset=-1', 'actorId=other']) assert.equal((await f.fetchApi('/api/evolution?' + query)).status, 400)
+  assert.equal(calls.length, 1)
+})
+
+test('evolution unavailable service and failed reads never become zero counts', async t => {
+  const f = await fixture(t)
+  await f.login()
+  assert.deepEqual((await f.fetchApi('/api/evolution')).body, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
+  const failed = await fixture(t, {memory: {inspectEvolution() {throw Error('/private/body')}}})
+  await failed.login()
+  const result = await failed.fetchApi('/api/evolution')
+  assert.equal(result.status, 503)
+  assert.deepEqual(result.body, {error: 'EVOLUTION_UNAVAILABLE'})
+})
+
+test('recent history exposes channel routes alongside Web chats and preserves verified operator name', async t => {
+  const f=await fixture(t);await f.login()
+  const initial=await f.fetchApi('/api/recent-conversations?offset=0&limit=20')
+  assert.equal(initial.status,200)
+  assert.deepEqual(initial.body.items.map(item=>({id:item.id,title:item.title,kind:item.kind})),[{id:'room-one',title:'项目讨论',kind:'channel'}])
+  const sent=await f.fetchApi('/api/chat',{method:'POST',body:{conversationId:'recent-web',requestId:'recent-input',text:'Recent Web input'}})
+  assert.equal(sent.status,202)
+  assert.equal(f.received.at(-1).senderName,'操作者')
+  const combined=await f.fetchApi('/api/recent-conversations?offset=0&limit=1')
+  assert.equal(combined.body.total,2);assert.equal(combined.body.items[0].kind,'web');assert.equal(combined.body.nextOffset,1)
+  const next=await f.fetchApi('/api/recent-conversations?offset=1&limit=1')
+  assert.equal(next.body.items[0].id,'room-one');assert.equal(next.body.nextOffset,null)
+})
+
+test('singleton Web HTTP blocks arbitrary extra chats, concurrent creation and survives restart', async t => {
+  const f = await fixture(t); await f.login()
+  const current = (await f.fetchApi('/api/chat-current')).body.conversationId
+  assert.equal((await f.fetchApi(`/api/chat/${current}`)).body.canonicalConversationId, current)
+  const results = await Promise.all(Array.from({length: 8}, (_, i) => f.fetchApi('/api/chat', {method: 'POST', body: {requestId: `parallel-${i}`, text: `hello ${i}`}})))
+  assert.ok(results.every(result => result.status === 202 && result.body.conversationId === current))
+  assert.equal((await f.fetchApi('/api/chat')).body.total, 1)
+  const denied = await f.fetchApi('/api/chat', {method: 'POST', body: {conversationId: 'attempt-extra', requestId: 'extra', text: 'no new chat'}})
+  assert.equal(denied.status, 409); assert.equal(denied.body.error, 'WEB_CHAT_SINGLETON')
+  assert.equal((await f.fetchApi('/api/requests/extra')).status, 404)
+  assert.equal((await f.fetchApi('/api/chat/attempt-extra')).status, 404)
+  assert.equal(f.received.length, 8)
+  await f.restart(); await f.login()
+  assert.equal((await f.fetchApi('/api/chat-current')).body.conversationId, current)
+  assert.equal((await f.fetchApi('/api/recent-conversations')).body.items.filter(item => item.kind === 'channel').length, 1)
+})
+
+test('singleton ledger pins earliest scope history, keeps histories and unknown receipts without replay', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-singleton-'))
+  t.after(() => rm(root, {recursive: true, force: true}))
+  let ledger = await openWebLedger(root)
+  const input = (id, conversationId, senderId = 'operator', channelId = 'custom-web') => ({requestId: id, conversationId, senderId, channelId, groupId: 'group-' + conversationId, text: id})
+  const foreign = input('foreign-request', 'foreign-chat', 'other-operator')
+  const first = input('first', 'first-chat'), old = input('old-unknown', 'old-chat')
+  ledger.reserve(foreign); ledger.reserve(first); ledger.settle(first.requestId, 'accepted'); ledger.reserve(old)
+  ledger.close()
+  ledger = await openWebLedger(root, {channelId: 'custom-web', senderId: 'operator'})
+  assert.equal(ledger.canonical(), 'first-chat')
+  assert.equal(ledger.chat('old-chat').canonicalConversationId, 'first-chat')
+  assert.equal(ledger.chat('foreign-chat').canonicalConversationId, 'first-chat')
+  assert.equal(ledger.chat('first-chat').canonicalConversationId, 'first-chat')
+  assert.equal(ledger.reserve(old).status, 'unknown')
+  assert.equal(ledger.reserve(old).duplicate, true)
+  assert.throws(() => ledger.reserve({...old, text: 'changed'}), {code: 'CHAT_REQUEST_CONFLICT'})
+  assert.throws(() => ledger.reserve(input('extra', 'old-chat')), {code: 'WEB_CHAT_SINGLETON'})
+  assert.throws(() => ledger.reserve(input('extra-new', 'new-chat')), {code: 'WEB_CHAT_SINGLETON'})
+  assert.equal(ledger.chats().total, 3)
+  // Already-authorized old deliveries may finish; singleton pinning must not erase them.
+  await ledger.transport('custom-web', 'operator').send({type: 'chat', channelId: 'custom-web', senderId: 'operator', conversationId: 'old-chat', deliveryKey: 'old-delivery', text: 'retained reply'})
+  assert.equal(ledger.chat('old-chat').messages.at(-1).text, 'retained reply')
+  ledger.close()
+  ledger = await openWebLedger(root, {channelId: 'custom-web', senderId: 'operator'})
+  assert.equal(ledger.canonical(), 'first-chat'); assert.equal(ledger.request('old-unknown').status, 'unknown')
+  ledger.close()
+})
+
+
+test('historical Web routes stay normal entry points but new requests continue only canonical history', async t => {
+  const f = await fixture(t, {history: true}); await f.login()
+  const before = (await f.fetchApi('/api/chat/retained-old')).body
+  assert.equal(before.canonicalConversationId, 'canonical-old')
+  assert.equal('readOnly' in before, false)
+  const input = {conversationId: 'retained-old', requestId: 'normal-old-entry', text: 'continue normally'}
+  const accepted = await f.fetchApi('/api/chat', {method: 'POST', body: input})
+  assert.equal(accepted.status, 202); assert.equal(accepted.body.conversationId, 'canonical-old')
+  assert.equal(f.received[0].conversationId, 'canonical-old')
+  assert.equal((await f.fetchApi('/api/chat', {method: 'POST', body: input})).body.duplicate, true)
+  assert.equal(f.received.length, 1)
+  const after = (await f.fetchApi('/api/chat/retained-old')).body
+  assert.deepEqual(after.messages, before.messages)
+  const recovered = await f.fetchApi('/api/chat', {method: 'POST', body: {conversationId: 'retained-old', requestId: 'seed-retained-old', text: 'retained-old'}})
+  assert.equal(recovered.status, 409); assert.equal(recovered.body.status, 'unknown'); assert.equal(recovered.body.duplicate, true)
+  assert.equal(f.received.length, 1)
+  assert.equal((await f.fetchApi('/api/chat')).body.total, 2)
+})
+
+test('concurrent first explicit Web IDs admit one conversation, not two', async t => {
+  const f = await fixture(t); await f.login()
+  const results = await Promise.all(['first-a', 'first-b'].map(id => f.fetchApi('/api/chat', {method: 'POST', body: {conversationId: id, requestId: id, text: id}})))
+  assert.deepEqual(results.map(row => row.status).sort(), [202, 409])
+  assert.equal(f.received.length, 1)
+  assert.equal((await f.fetchApi('/api/chat-current')).body.conversationId, f.received[0].conversationId)
+  assert.equal((await f.fetchApi('/api/chat')).body.total, 1)
+})
+
+
+test('Web operator names normalize before real channel schema validation and receipt reservation', async t => {
+  for (const [operatorName, expected] of [['', '本机操作者'], ['   ', '本机操作者'], ['x'.repeat(257), 'x'.repeat(256)], ['  显示名  ', '显示名'], [42, '本机操作者']]) {
+    await t.test(JSON.stringify(operatorName).slice(0, 40), async t => {
+      const f = await fixture(t, {operatorName, validateIdentity: true}); await f.login()
+      assert.equal((await f.fetchApi('/api/session')).body.operator.name, expected)
+      const input = {requestId: 'name-check', text: 'hello'}
+      const result = await f.fetchApi('/api/chat', {method: 'POST', body: input})
+      assert.equal(result.status, 202); assert.equal(result.body.accepted, true)
+      assert.equal(f.received[0].senderName, expected)
+      assert.equal((await f.fetchApi('/api/requests/name-check')).body.status, 'accepted')
+      assert.equal((await f.fetchApi('/api/chat', {method: 'POST', body: input})).body.duplicate, true)
+      assert.equal(f.received.length, 1)
+    })
+  }
 })

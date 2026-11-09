@@ -50,3 +50,20 @@ test('channel delivery with a durable input but no completion receipt stays unce
  const result=await f.host.ctx.channels.receive(next)
  assert.equal(result.duplicate,true);assert.equal(result.ok,false);assert.equal(result.code,'CHANNEL_DELIVERY_UNCERTAIN');assert.equal(f.requests.length,requests)
 })
+
+test('adapter names survive durable channel input without becoming identity or authority',async t=>{
+ const f=await memoryHost(t),api=f.host.ctx.channels
+ const input={...message('chat-room','name-room','verified-id','named','hello'),senderName:'姓名',conversationName:'项目群'}
+ const result=await api.receive(input),identity=api.identity(input)
+ assert.equal(api.identity({...input,senderName:'Other',conversationName:'Renamed'}).sessionId,identity.sessionId)
+ assert.equal(api.groupContext(result.sessionId).conversationName,'项目群')
+ assert.equal(api.groupContext(result.sessionId).participantNames[identity.principal],'姓名')
+ const actor=f.host.ctx.agents.get(result.sessionId),packet=actor.admission.current().messages[0]
+ assert.equal(packet.source.senderId,'verified-id');assert.equal(packet.source.senderName,'姓名')
+ assert.match(JSON.stringify(f.requests.at(-1)),/姓名/)
+ await assert.rejects(actor.input.enqueue({...packet,source:{...packet.source,senderName:'Forged'}}),/ADMISSION_DENIED|MESSAGE_ID_CONFLICT|ID_CONFLICT/)
+ await f.close();await f.boot()
+ assert.equal(f.host.ctx.channels.groupContext(result.sessionId).conversationName,'项目群')
+ assert.equal((await f.host.ctx.channels.receive({...input,senderName:'Updated name'})).duplicate,true)
+ assert.equal(f.host.ctx.channels.groupContext(result.sessionId).participantNames[identity.principal],'Updated name')
+})

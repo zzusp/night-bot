@@ -1,12 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
-import {readFile} from 'node:fs/promises'
+import {readFile,writeFile} from 'node:fs/promises'
 import {memoryHost} from './fixtures/memory-host.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {memoryScope} from '../src/memory/scope.js'
+import {readUsage} from '../src/memory/evolution.js'
 import {createPiProjectionRequest} from '../src/runtime/pi-request-context.js'
 
 async function completed(store,id,groupId){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded local task',ownerActorId:'owner',...groupId?{groupId}:{}});const binding=(await command('task.claim',{taskId:id})).result.binding;return (await command('task.complete',{binding,summary:'Verified bounded task result'})).completionEvent}
@@ -24,9 +25,24 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   await completed(store,'two');f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()
   const available=await f.host.ctx.skills.list({scope:a.agent});assert.ok(available.some(s=>s.name==='learned-inspect-first'))
   const skill=await f.host.ctx.skills.get('learned-inspect-first',{scope:a.agent});assert.match(skill.content,/not authority/)
+  const usageScope=await f.host.ctx.memory.scope(a.agent,{})
+  assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).readCount,1)
+  assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).loadCount,1)
+  await f.host.ctx.memory.search(a.agent,{query:'Model'})
+  assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).searchCount,1)
+  await assert.rejects(f.host.ctx.memory.read(a.agent,{scope:'group',topic:'experience'}))
+  assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).readCount,1)
   assert.equal((await f.host.ctx.skills.list({scope:other.agent})).filter(s=>s.provider==='learned').length,0)
   f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle();assert.equal(analyses,2)
   const scope=await f.host.ctx.memory.scope(a.agent,{}),state=JSON.parse(await readFile(join(f.host.ctx.reflection.directory(scope),'state.json'),'utf8'));assert.equal(Object.keys(state.reviews).length,2)
+  await assert.rejects(f.host.ctx.agents.withInitiator(a.agent,()=>f.host.ctx.memory.inspectEvolution({actorId:'owner'})),{code:'EVOLUTION_HOST_REQUIRED'})
+  const usagePath=join(f.host.ctx.memory.store.directory(scope),'usage.json'),savedUsage=await readFile(usagePath,'utf8')
+  await writeFile(usagePath,'invalid telemetry data')
+  try{
+    assert.ok((await f.host.ctx.memory.read(a.agent,{topic:'experience'})).entries.length)
+    assert.match((await f.host.ctx.skills.get('learned-inspect-first',{scope:a.agent})).content,/not authority/)
+    await assert.rejects(f.host.ctx.memory.inspectEvolution({actorId:'owner'}))
+  }finally{await writeFile(usagePath,savedUsage)}
   const rememberedSkill=skill.content
   const key=(await f.host.ctx.memory.read(a.agent,{topic:'experience'})).entries[0].key
   const manager=a.session.sessionManager

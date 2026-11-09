@@ -101,7 +101,7 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
     // Preserve a real prepared notification across shutdown. Only transport
     // availability is removed; real triage/admission and delivery gates remain.
     host.ctx.channels.transports.delete(channelId)
-    const pendingInput = {conversationId: 'pending-chat', requestId: 'pending-greeting', text: '这条回复在恢复渠道后送达。'}
+    const pendingInput = {conversationId: 'web-chat', requestId: 'pending-greeting', text: '这条回复在恢复渠道后送达。'}
     assert.equal((await api('/api/chat', pendingInput)).body.accepted, true)
     const prepared = await eventually(async () => (await app.tasks.store.query({kind: 'notification.list'}))
       .find(value => value.payload.sourceMessageId === pendingInput.requestId && value.state === 'prepared'), 'prepared reply while transport unavailable', t.signal)
@@ -113,8 +113,8 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
     await eventually(async () => (await app.tasks.store.query({kind: 'notification.get', notificationId: prepared.id}))?.state === 'delivered', 'automatic delivery recovery after restart', t.signal)
     await app.tasks.whenIdle()
     assert.equal(f.requests.length, beforeRecoveryRequests, 'restoring a prepared delivery cannot rerun the original message')
-    const recovered = (await api('/api/chat/pending-chat')).body.messages.filter(message => message.role === 'assistant')
-    assert.equal(recovered.length, 1)
+    const recovered = (await api('/api/chat/web-chat')).body.messages.filter(message => message.role === 'assistant')
+    assert.equal(recovered.length, 2)
     assert.equal((await app.tasks.store.query({kind: 'notification.list'})).length, 2)
   } finally {await host?.close()}
 })

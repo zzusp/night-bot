@@ -71,7 +71,7 @@ async function resolveTarget(runner,config,account){
     }
     const info=await conversationInfo(runner,account.profile,['--group',groupId])
     if(info.openConversationId!==groupId||info.singleChat!==false)throw failure('DINGTALK_GROUP_IDENTITY_MISMATCH')
-    return {conversationId:groupId}
+    return {conversationId:groupId,...nonempty(info.title)?{conversationName:info.title}:{}}
   }
   let userId=config.userId,userName=config.userName
   if(userId){
@@ -86,13 +86,15 @@ async function resolveTarget(runner,config,account){
   if(!nonempty(peer.userId)||peer.openDingTalkId===account.actorId)throw failure('DINGTALK_PEER_IDENTITY_INVALID')
   const info=await conversationInfo(runner,account.profile,['--open-dingtalk-id',peer.openDingTalkId])
   if(info.singleChat!==true)throw failure('DINGTALK_PEER_CONVERSATION_MISMATCH')
-  return {conversationId:info.openConversationId,peerId:peer.openDingTalkId,peerUserId:peer.userId}
+  return {conversationId:info.openConversationId,peerId:peer.openDingTalkId,peerUserId:peer.userId,...nonempty(peer.name??(userId?userName:undefined))?{conversationName:peer.name??userName}:{}}
 }
-export async function resolveDingtalkBinding(config,{runner}={}){
+export async function resolveDingtalkBinding(config,{runner,onDisplayName}={}){
   if(!runner||typeof runner.run!=='function')throw failure('DINGTALK_BINDING_RUNNER_REQUIRED')
   const account=await resolveDwsAccount(runner,config.profile),target=await resolveTarget(runner,config,account)
-  const binding={version:1,...account,conversationType:config.conversationType,...target}
+  const {conversationName,...targetIdentity}=target
+  const binding={version:1,...account,conversationType:config.conversationType,...targetIdentity}
   if(config.binding&&(Object.keys(binding).some(key=>binding[key]!==config.binding[key])||Object.keys(config.binding).some(key=>binding[key]!==config.binding[key])))throw failure('DINGTALK_BINDING_CHANGED')
+  onDisplayName?.(conversationName)
   return binding
 }
 export async function bindDingtalkConfig(publicConfig,{runner}={}){

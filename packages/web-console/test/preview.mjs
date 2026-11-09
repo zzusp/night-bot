@@ -6,6 +6,7 @@ import {join, resolve, relative, isAbsolute} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {setTimeout as delay} from 'node:timers/promises'
 import {createWebConsole} from '../server/plugin.js'
+import {openWebLedger} from '../server/ledger.js'
 import {digest} from '../server/security.js'
 
 export const FIXTURE_TOKEN = 'night-web-fixture-only-00000000000000000000'
@@ -196,6 +197,17 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   }
   let web
   try {
+    // Simulate a pre-singleton installation without relaxing the production API.
+    if (!empty) {
+      const state = join(paths.state, 'web-console-' + digest(CHANNEL_ID).slice(0, 16))
+      await mkdir(state, {recursive: true, mode: 0o700})
+      const legacy = await openWebLedger(state)
+      for (const [conversationId, text] of [['sample-plan', '帮我梳理一下这周的工作'], ['sample-notes', '整理一份清晰的会议提纲']]) {
+        legacy.reserve({conversationId, requestId: `seed-${conversationId}`, text, channelId: CHANNEL_ID, senderId: SENDER_ID, groupId: `fixture-${CHANNEL_ID}-${conversationId}`})
+        legacy.settle(`seed-${conversationId}`, 'accepted')
+      }
+      legacy.close()
+    }
     web = await createWebConsole({channels, paths, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence, getChannelConfiguration: () => channelConfiguration})
     if (!empty) {
       const login = await fetch(web.origin + '/api/login', {method: 'POST', headers: {origin: web.origin, 'content-type': 'application/json'}, body: JSON.stringify({token: FIXTURE_TOKEN})})
@@ -204,6 +216,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       for (const [conversationId, text] of [['sample-plan', '帮我梳理一下这周的工作'], ['sample-notes', '整理一份清晰的会议提纲']]) {
         const response = await fetch(web.origin + '/api/chat', {method: 'POST', headers: {origin: web.origin, cookie, 'content-type': 'application/json', 'x-csrf-token': session.csrfToken}, body: JSON.stringify({conversationId, requestId: `seed-${conversationId}`, text})})
         if (response.status !== 202) throw Error('fixture chat admission failed')
+        await channels.receive({type: 'chat', channelId: CHANNEL_ID, senderId: SENDER_ID, conversationId, messageId: `seed-${conversationId}`, text})
       }
       await Promise.all([...replies])
     }

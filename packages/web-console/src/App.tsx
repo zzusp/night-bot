@@ -1,6 +1,6 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
-import { RiAddLine, RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiShieldCheckLine, RiSunLine } from '@remixicon/react';
-import { api, errorText, setSession, type ChatSummary, type Overview, type Page, type Session } from './api';
+import { RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiSeedlingLine, RiShieldCheckLine, RiSunLine } from '@remixicon/react';
+import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session } from './api';
 import { dateTime, navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
 import { Loading, Notice, Status } from './components/Shared';
@@ -8,6 +8,7 @@ import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
 import ChannelsPage from './ChannelsPage';
 import PermissionsPanel from './components/PermissionsPanel';
+import EvolutionPage from './EvolutionPage';
 
 function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expired: boolean }) {
   const [token, setToken] = useState('');
@@ -25,11 +26,11 @@ function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expi
   };
   return <main className="login-page"><div className="login-brand"><Logo /><Badge tone="neutral">个人工作空间</Badge></div>
     <section className="login-card"><div className="login-symbol"><RiShieldCheckLine size={26} /></div><h1>{expired ? '重新连接你的助手' : '欢迎回到 Night Bot'}</h1>
-      <p>{expired ? '登录已失效。重新连接后，可以继续查看任务和对话。' : '对话、任务与渠道，一个安静而有序的工作空间。'}</p>
+      {expired && <p>登录已失效。请重新连接。</p>}
       <form noValidate onSubmit={event => void submit(event)}><label htmlFor="access-token">访问令牌</label><div className="token-input"><input ref={input} id="access-token" type={show ? 'text' : 'password'} autoComplete="current-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} aria-invalid={!!error} aria-describedby="login-help login-error" placeholder="输入访问令牌" /><IconButton label={show ? '隐藏访问令牌' : '显示访问令牌'} aria-pressed={show} onClick={() => setShow(value => !value)}>{show ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}</IconButton></div>
         <p id="login-help" className="field-help">使用本机 Web 插件生成的令牌，由管理员提供。</p><div id="login-error" className="field-error" role={error ? 'alert' : undefined}>{error}</div><Button type="submit" busy={pending} disabled={pending} icon={<RiArrowRightLine size={17} />}>连接工作空间</Button>
       </form><div className="login-security"><RiShieldCheckLine size={14} />令牌不会保存在浏览器中</div>
-    </section><span className="login-caption">Night Bot · 让想法成为行动</span></main>;
+    </section></main>;
 }
 
 class PageBoundary extends Component<{ children: ReactNode; resetKey: string }, { failed: boolean }> {
@@ -47,19 +48,21 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   try { id = segments[1] ? decodeURIComponent(segments[1]) : undefined; } catch { id = undefined; }
   const overview = useResource<Overview>('/overview', 5000);
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
+  const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
+  const conversations = useResource<{items: Conversation[]}>('/conversations', 5000);
   const [rail, setRail] = useState(true);
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const [logoutError, setLogoutError] = useState<unknown>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [permissionIdentity, resetPermissionIdentity] = useState(() => ({ csrfToken: session.csrfToken, epoch: 0 }));
-  // 只重挂操作者权限与渠道表单，使旧异步回执失效；聊天草稿保留，DOM/key 不含令牌。
+  // 重挂权限、渠道表单与自进化快照，使旧回执失效；聊天草稿保留，DOM/key 不含令牌。
   if (permissionIdentity.csrfToken !== session.csrfToken) resetPermissionIdentity({ csrfToken: session.csrfToken, epoch: permissionIdentity.epoch + 1 });
-  const olderChats = useResource<Page<ChatSummary>>(historyOffset ? `/chat?offset=${historyOffset}&limit=20` : null);
+  const olderChats = useResource<Page<RecentConversation>>(historyOffset ? `/recent-conversations?offset=${historyOffset}&limit=20` : null);
   const drawer = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const currentChats = historyOffset ? olderChats : chats;
-  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? '渠道会话' : '渠道' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
+  const currentChats = historyOffset ? olderChats : recent;
+  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
   useEffect(() => { document.title = `${title} — Night Bot`; }, [title]);
   useEffect(() => { if (section !== 'chat') titleRef.current?.focus(); drawer.current?.close(); }, [route.pathname, section]);
   const toggleTheme = () => {
@@ -72,18 +75,17 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     catch (err) { setLogoutError(err); }
     finally { setLogoutBusy(false); }
   };
-  const refresh = () => { overview.refresh(); chats.refresh(); };
-  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }];
+  const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); olderChats.refresh(); };
+  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }];
   const sidebar = (mobile = false) => <>
     <div className="sidebar-brand"><Logo />{mobile && <IconButton label="关闭导航" onClick={() => drawer.current?.close()}><RiCloseLine size={19} /></IconButton>}</div>
-    <Button className="new-chat" variant="secondary" icon={<RiAddLine size={18} />} onClick={() => { navigate('/chat'); drawer.current?.close(); }}>新对话</Button>
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
-    <div className="sidebar-history"><div className="sidebar-label"><span>最近对话</span><span>{chats.data?.total ?? ''}</span></div>
+    <div className="sidebar-history"><div className="sidebar-label"><span>最近对话</span><span>{recent.data?.total ?? ''}</span></div>
       {currentChats.error && <button className="sidebar-retry" onClick={currentChats.refresh}>读取失败，点击刷新</button>}
-      {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/chat/${encodeURIComponent(chat.id)}`} key={chat.id} aria-current={section === 'chat' && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}><RiChat3Line size={16} /><span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">{currentChats.error && !currentChats.data ? '对话列表暂不可读' : '从第一段对话开始'}</p>}
+      {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/${chat.kind === 'channel' ? 'channels' : 'chat'}/${encodeURIComponent(chat.id)}`} key={chat.kind + ':' + chat.id} aria-current={section === (chat.kind === 'channel' ? 'channels' : 'chat') && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}>{chat.kind === 'channel' ? <RiGlobalLine size={16} /> : <RiChat3Line size={16} />}<span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">{currentChats.error && !currentChats.data ? '对话列表暂不可读' : '从第一段对话开始'}</p>}
       {(historyOffset > 0 || currentChats.data?.nextOffset != null) && <div className="history-pagination">{historyOffset > 0 && <button onClick={() => setHistoryOffset(Math.max(0, historyOffset - 20))}>上一页</button>}{currentChats.data?.nextOffset != null && <button onClick={() => setHistoryOffset(currentChats.data!.nextOffset!)}>更早对话</button>}</div>}
     </div>
-    <div className="sidebar-bottom"><div className="workspace-note"><span className="workspace-dot" /><div><strong>你的专属工作空间</strong><span>任务持续运行，对话随时继续</span></div></div>
+    <div className="sidebar-bottom">
       <div className="operator"><span className="operator-avatar">{session.operator.name.slice(0, 1) || 'N'}</span><div><strong>{session.operator.name || '操作者'}</strong><span>本机工作空间</span></div><IconButton label="退出登录" disabled={logoutBusy} onClick={() => void logout()}><RiLogoutBoxRLine size={18} /></IconButton></div>
     </div></>;
   return <div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar">{sidebar()}</aside>
@@ -95,7 +97,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
       <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${section === 'chat' ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : <EmptyState title="页面不存在" description="从侧栏选择对话、任务或渠道继续。" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
       {section === 'chat' && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}

@@ -10,6 +10,7 @@ import NativeAgents from '../src/native-agents.js'
 import NativeSkills from '../src/native-skills.js'
 import {createOfficialHostResourceResolver} from '../src/pi-official-host-resources.js'
 import {runtimePaths,prepareRuntimePaths} from '../src/runtime/paths.js'
+import {recordUsage,readUsage} from '../src/memory/evolution.js'
 
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'night-official-resources-')),ctx=new Context(),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
@@ -88,14 +89,17 @@ test('real Reflection learned skills use current authorized scope and revision; 
  const f=await fixture(t),store=new MarkdownMemoryStore(f.paths.memory);t.after(()=>store.close())
  const aBinding={actorId:'human-a',projects:[]},bBinding={actorId:'human-b',projects:[]},scope=memoryScope(aBinding)
  f.ctx.memory.store=store;f.ctx.memory.binding=async actor=>actor===f.a.actor?aBinding:bBinding
+ f.ctx.memory.recordUsage=(scope,counter)=>recordUsage(store,scope,counter)
  const reflection=new Reflection(f.ctx,{enabled:false})
  await store.remember(scope,{topic:'experience',key:'evidence',text:'limited task evidence',source:{sessionId:'session',messageId:'message'}})
  const skill={active:true,supports:[{taskId:'task',memoryKey:'evidence'}],taskIds:['task'],memoryKeys:['evidence'],steps:['Read current evidence'],applicability:'Local tasks',revision:1}
  await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{verify:skill}}))
  await atomicWrite(join(reflection.directory(scope),'skills','verify','SKILL.md'),'STALE DISK BODY')
  f.ctx.skills.invalidateCache()
- const a=await f.resolve(f.a),b=await f.resolve(f.b),resources=await a.context.skills(f.a.actor)
+ const a=await f.resolve(f.a),b=await f.resolve(f.b),loadsBefore=(await readUsage(store,scope))?.loadCount??0
+ const resources=await a.context.skills(f.a.actor)
  assert.equal(resources.length,1);assert.equal(resources[0].name,'learned-verify')
+ assert.ok((await readUsage(store,scope)).loadCount>loadsBefore,'automatic resource materialization loads bodies without model execution; provider retries may load more than once')
  const content=await readFile(resources[0].filePath,'utf8')
  assert.match(content,/Read current evidence/);assert.match(content,/NIGHT_LEARNED_SCOPE=personal\//);assert.ok(!content.includes('STALE DISK BODY'))
  assert.deepEqual(await b.context.skills(f.b.actor),[])
