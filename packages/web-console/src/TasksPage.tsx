@@ -43,9 +43,9 @@ export function TaskDetail({ id }: { id: string }) {
   return <div className="page-content detail-page"><a className="back-link" href="#/tasks"><RiArrowLeftLine size={16} />全部任务</a>
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
     {!task ? query.loading ? <Loading /> : <EmptyState title="无法读取任务" description="请刷新，或返回任务列表选择其他任务。" /> : <>
-      <div className="detail-heading"><div><span className="eyebrow">任务详情</span><h2>{task.title || '未命名任务'}</h2></div><Status value={task.state} /></div>
-      <div className="detail-meta"><span>创建于 {dateTime(task.createdAt)}</span><span>更新于 {dateTime(task.updatedAt)}</span>{task.session && <span>执行会话 <Status value={task.session.status} /></span>}</div>
-      {task.objective && <div className="task-objective"><Markdown text={task.objective} /></div>}
+      <div className="detail-heading"><div><h2>{task.title || '未命名任务'}</h2></div><Status value={task.state} /></div>
+      <div className="detail-meta"><span>更新于 {dateTime(task.updatedAt)}</span>{task.session && <span>执行会话 <Status value={task.session.status} /></span>}</div>
+      <details className="task-description"><summary>任务目标与创建信息</summary><p className="muted">创建于 {dateTime(task.createdAt)}</p>{task.objective && <div className="task-objective"><Markdown text={task.objective} /></div>}</details>
       <div className="filter-tabs detail-tabs" role="group" aria-label="任务详情视图"><button type="button" aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>执行信息</button><button type="button" aria-pressed={tab === 'dialogue'} onClick={() => setTab('dialogue')}>执行记录</button><button type="button" aria-pressed={tab === 'learning'} onClick={() => setTab('learning')}>复盘与学习</button></div>
       {tab === 'learning' ? <LearningChanges key={id} taskId={id} /> : tab === 'dialogue' ? <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} /></div> :
       <div className="detail-columns"><div className="detail-main">

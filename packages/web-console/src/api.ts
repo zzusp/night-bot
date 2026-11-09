@@ -53,7 +53,7 @@ export interface Chat {
   conversationId: string; messages: Message[]; status: string; truncated?: boolean; canonicalConversationId?: string;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
-export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string }
+export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {

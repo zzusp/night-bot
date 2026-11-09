@@ -16,7 +16,7 @@ export function ExecutionHistory({ endpoint, router = false, status }: { endpoin
   const blocked = forbidden || denied;
   const latest = () => { setPage({ offset: 0 }); query.refresh(); };
   return <div className="execution-history">
-    <div className="execution-scope"><span>{router ? '当前 Router 上下文 · 换代、压缩或分支后，可能不含更早记录' : '当前执行上下文 · 会话压缩或分支后，可能不包含更早记录'}</span>
+    <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录 · 任务执行详情见关联任务' : '当前执行上下文 · 会话压缩或分支后，可能不包含更早记录'}</span>
       <div>{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
     </div>
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
@@ -25,7 +25,7 @@ export function ExecutionHistory({ endpoint, router = false, status }: { endpoin
       : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? '执行尚未开始' : '执行记录正在提交'} description={query.data.reason === 'SESSION_NOT_STARTED' ? '会话开始处理后，记录会自动显示。' : 'Bot 正在保存记录，提交完成后会自动更新。'} />
       : query.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" description="当前无法安全读取此会话，请稍后重新获取。" action={<Button variant="secondary" onClick={latest}>重新获取</Button>} />
       : <MessageList key={`${endpoint}:${page.offset}`} messages={query.data?.items || []} userLabel="用户" history={query.data?.revision ? { endpoint, revision: query.data.revision } : undefined}
-        empty={<EmptyState title="暂无可展示的执行记录" description="记录会随着会话推进而更新。" />} />}
+        empty={<EmptyState title="暂无可展示的执行记录" description={router ? "当前上下文没有可展示的安排记录；工具执行和处理结果请查看关联任务。" : "当前上下文没有可展示的执行记录。"} />} />}
     <div className="execution-pagination">{page.offset > 0 && <Button variant="secondary" onClick={latest}>回到最新</Button>}
       {query.data?.nextOffset != null && <Button variant="secondary" disabled={query.loading || !!query.error} onClick={() => setPage({ offset: query.data!.nextOffset!, revision: query.data!.revision })}>查看更早记录</Button>}
     </div>

@@ -298,7 +298,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const store = application().tasks.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
+      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
       if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
       return send(response, 200, await routerSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))

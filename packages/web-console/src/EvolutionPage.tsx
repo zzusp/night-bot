@@ -39,7 +39,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
     {query.error && <Notice error={query.error} stale={!!ready} onRetry={query.refresh} />}
     {!data && query.loading ? <div className="evolution-pending"><Loading>正在读取自进化记录…</Loading></div>
       : !ready ? <EmptyState title={query.error instanceof ApiError && query.error.status === 403 ? '无权查看自进化记录' : '自进化记录暂不可读'} description="请确认服务和当前身份的访问权限后重新获取。" action={!query.error ? <Button variant="secondary" onClick={query.refresh}>重新获取</Button> : undefined} />
-      : <><UsageSummary data={ready} />
+      : <><p className="muted">当前 Web 身份的记忆与学习技能；不含渠道群组、外部安装技能及采集前的调用历史。</p><UsageSummary data={ready} />
         <details className="evolution-coverage"><summary>统计范围</summary><p>仅显示当前身份获准访问的记忆与复盘形成的技能，不包含外部安装技能。记录从新增采集开始，不追溯此前调用。搜索不代表命中或采纳；技能资源加载包含运行时准备，不代表模型调用或执行。</p><p>下方展示当前保留条目的最近更新，不是完整变更历史。候选尚未应用，已遗忘条目不再显示。</p></details>
         <div className="list-toolbar"><nav className="filter-tabs" aria-label="自进化记录类型">{[['all', '全部'], ['memory', '记忆'], ['skill', '学习技能']].map(([value, label]) => <a key={value} href={`#/evolution?kind=${value}`} aria-current={kind === value ? 'page' : undefined}>{label}</a>)}</nav><span className="evolution-list-label">最近更新</span></div>
         <div className="evolution-table-wrap">{!ready.items.length ? <EmptyState title={offset ? '这一页已没有记录' : '暂无自进化记录'} description={offset ? '记录可能已变化，请返回第一页。' : '当前授权范围内尚无记忆或学习技能。'} action={offset ? <Button variant="secondary" onClick={() => changePage(0)}>返回第一页</Button> : undefined} />

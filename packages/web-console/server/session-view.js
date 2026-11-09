@@ -270,13 +270,26 @@ async function taskProjection({task, ...options}) {
       return identities.length === 1 && identities[0].version === 1 && identities[0].payload?.taskId === taskId && identities[0].payload?.sessionId === sessionId
     }})
 }
-async function routerProjection({conversationId, readRouter, ...options}) {
+async function routerProjection({conversationId, readRouter, readRotations, ...options}) {
   const router = await readRouter(), sessionId = router?.activeSessionId
   const base = {conversationId, sessionId: sessionId ?? null, scope: 'current-router-session-context', items: [], total: 0, nextOffset: null}
   if (!router || !sessionId) return {...base, status: 'pending', reason: 'SESSION_NOT_STARTED'}
   if (router.id !== conversationId || !Number.isSafeInteger(router.generation) || router.generation < 1) fail('SESSION_IDENTITY_INVALID', 503)
-  const value = await projection({...options, base, identity: {sessionId, conversationId, generation: router.generation}, notStarted: true,
+  let value = await projection({...options, revision: undefined, base: {...base, generation: router.generation, activeGeneration: router.generation}, identity: {sessionId, conversationId, generation: router.generation}, notStarted: true,
     validIdentity: snapshot => snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === conversationId && snapshot.header.generation === router.generation})
+  // Idle rotation starts a fresh context containing only private handoff data.
+  // Select only a published, same-conversation predecessor; never expose handoff.
+  if (value.status === 'ready' && !value.items.length && readRotations) {
+    const rotations = await readRotations()
+    const previous = rotations.filter(row => row.state === 'published' && row.conversationId === conversationId
+      && Number.isSafeInteger(row.oldGeneration) && row.oldGeneration > 0 && row.oldGeneration < router.generation
+      && typeof row.oldSessionId === 'string' && row.oldCommit).sort((a, b) => b.oldGeneration - a.oldGeneration)[0]
+    if (previous) value = await projection({...options, revision: undefined,
+      base: {...base, sessionId: previous.oldSessionId, generation: previous.oldGeneration, activeGeneration: router.generation, scope: 'previous-committed-router-context'},
+      identity: {sessionId: previous.oldSessionId, conversationId, generation: previous.oldGeneration},
+      validIdentity: snapshot => snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === conversationId && snapshot.header.generation === previous.oldGeneration})
+  }
+  if (options.revision && value.status === 'ready' && options.revision !== value.revision) fail('SESSION_PAGE_STALE', 409)
   const current = await readRouter()
   if (current?.activeSessionId !== sessionId || current?.generation !== router.generation || current?.phase !== router.phase) fail('SESSION_PAGE_STALE', 409)
   return value
