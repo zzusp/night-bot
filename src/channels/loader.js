@@ -7,7 +7,7 @@ const builtin=new URL('./plugins/dingtalk-dws.js',import.meta.url).href
 const invalid=code=>{throw new Error('NIGHT_CHANNEL_PLUGIN_'+code)}
 /** Installed channel code is trusted host code. Discovery never executes it;
  * only explicitly enabled instances are loaded by the host lifecycle. */
-export async function channelPluginRows(config,paths){
+export async function discoverChannelPlugins(config,paths){
   const definitions=new Map([['dingtalk-dws',{entry:builtin}]])
   if(config.channelPluginDirs!==undefined&&!Array.isArray(config.channelPluginDirs))invalid('DIRECTORY_INVALID')
   for(const directory of config.channelPluginDirs??[]){
@@ -21,9 +21,13 @@ export async function channelPluginRows(config,paths){
       if(definitions.has(manifest.type))invalid('TYPE_DUPLICATE')
       const entry=await realpath(resolve(base,manifest.entry))
       if(!inside(await realpath(base),entry))invalid('ENTRY_OUTSIDE_PACKAGE')
-      definitions.set(manifest.type,{entry:pathToFileURL(entry).href})
+      definitions.set(manifest.type,{entry:pathToFileURL(entry).href,displayName:manifest.displayName,webConfig:manifest.webConfig})
     }
   }
+  return definitions
+}
+export async function channelPluginRows(config,paths){
+  const definitions=await discoverChannelPlugins(config,paths)
   const rows=[],ids=new Set()
   for(const instance of config.channelPlugins??[]){
     if(!instance||typeof instance.type!=='string'||typeof instance.enabled!=='boolean')invalid('CONFIG_INVALID')

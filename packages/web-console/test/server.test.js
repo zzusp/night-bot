@@ -63,7 +63,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getOperatorSettings: () => options.settings, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -82,7 +82,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -575,4 +575,24 @@ test('服务重启撤销浏览器会话但不轮换访问令牌，原令牌仍�
   assert.equal((await f.fetchApi('/api/session', {headers: {cookie: oldCookie}})).status, 401)
   assert.equal((await f.fetchApi('/api/login', {method: 'POST', body: {token}})).status, 200)
   assert.equal(f.received.length, 0)
+})
+
+
+test('设置API沿用浏览器鉴权、同源和CSRF，拒绝注入且异常不反射凭据',async t=>{
+ const calls=[],settings={appearance:async()=>({name:'测试助手',icon:'robot'}),view:async()=>({appearance:{name:'测试助手',icon:'robot'},secrets:{github:{configured:true}}}),saveSecret:async(kind,body)=>{calls.push({kind,action:body.action});if(body.value==='FAIL_TEST_SECRET')throw Error('FAIL_TEST_SECRET');return {ok:true}},saveAppearance:async()=>({ok:true})}
+ const f=await fixture(t,{settings})
+ assert.deepEqual((await f.fetchApi('/api/appearance')).body,{name:'测试助手',icon:'robot'})
+ assert.equal((await f.fetchApi('/api/settings')).status,401)
+ await f.login()
+ assert.equal((await f.fetchApi('/api/settings')).body.appearance.name,'测试助手')
+ const secret={action:'replace',value:'TEST_ONLY_SECRET',confirm:true,expectedVersion:'version'}
+ assert.equal((await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:secret,headers:{'x-csrf-token':'forged'}})).status,403)
+ assert.equal((await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:secret,headers:{origin:'https://evil.invalid'}})).status,403)
+ assert.equal(calls.length,0)
+ assert.equal((await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:{...secret,path:'/private/secret'}})).status,400)
+ assert.equal((await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:secret})).status,200)
+ const failed=await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:{...secret,value:'FAIL_TEST_SECRET'}})
+ assert.equal(failed.status,503);assert.doesNotMatch(JSON.stringify(failed.body),/FAIL_TEST_SECRET/)
+ assert.equal((await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:{...secret,value:'x'.repeat(17000)}})).status,413)
+ assert.equal(f.received.length,0)
 })
