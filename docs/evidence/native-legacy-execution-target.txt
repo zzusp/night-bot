@@ -1,0 +1,13 @@
+✔ native execution namespaces preserve every original public name and map defaults to native owners (17.262908ms)
+✔ canonical model errors retain strict trusted identity and validated detached failure facts (1.281694ms)
+✔ historical Session and model namespaces expose canonical native implementations (0.631833ms)
+✔ tool schema validation and both code SDK renderers agree with independent original helpers (6.499664ms)
+✔ native product attribution and invalid credential guidance preserve secrecy without visual setup references (0.728649ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 181.258428

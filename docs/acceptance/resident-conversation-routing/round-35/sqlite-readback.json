@@ -1,0 +1,27 @@
+{
+  "round": 35,
+  "source": {
+    "toolUseId": "call_80689ec584cc4433acf3ad1d5552d84f",
+    "toolName": "Bash",
+    "commandMarker": "SG11_POSTMORTEM_FINAL_READBACK_END",
+    "transcriptInputLine": 50007,
+    "transcriptResultLine": 50008,
+    "toolResultContentSha256": "31fb3837dad1a9eeb452a0eb6e0c49039561def21eadbb19ce9aa7c7f3e3b13c",
+    "toolResultContentCharacters": 1976
+  },
+  "kind": "Exact selected lines from the original read-only tool result, not a fresh SQLite query",
+  "originalOutputExcerpt": [
+    "ISOLATED_TABLE_COUNTS dynamic_executions 0 []",
+    "ISOLATED_TABLE_COUNTS dynamic_task_events 0 []",
+    "ADDITIONAL_TASK_FACTS {\"status\": \"active\", \"drained\": false, \"recovering\": false, \"runSequence\": 1, \"sessionBound\": true}"
+  ],
+  "taskFacts": {
+    "status": "active",
+    "drained": false,
+    "recovering": false,
+    "runSequence": 1,
+    "sessionBound": true
+  },
+  "sqliteReopened": false,
+  "hostOrNativeRun": false
+}

@@ -1,0 +1,36 @@
+✔ native personal skills are discovered cheaply, loaded independently by both sessions, and references stay execution-owned (4083.742256ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":482,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3557,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":42,"aborted":false}
+✔ an unavailable native skill is a correctable read and does not leave unknown external effects (3665.492251ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":116,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3521,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":28,"aborted":false}
+✔ task session rejects business tools and late replacements while keeping the original evidence reader (868.332875ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":89,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":741,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":38,"aborted":false}
+✔ unconfigured native profiles expose no bundled personal skills (608.706179ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":71,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":515,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✔ an execution same-name replacement does not inherit the native loader read-only accounting (2907.835012ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":128,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2750,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":30,"aborted":false}
+✔ 已读技能和引用变化只提示相关路径，原生重读后消除提示且保留旧版本审计 (413.815641ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":109,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":291,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ 执行会话续办恢复已读版本，入口未变而引用改变也能在首次模型步骤看到 (2952.671252ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2885,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16953.262792

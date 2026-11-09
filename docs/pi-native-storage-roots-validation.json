@@ -1,0 +1,63 @@
+{
+  "base": "0facdf8",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 634,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 16,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Own credential/storage cases overlap default; one workflow query uses full native fixture"
+  },
+  "formatWorkflow": {
+    "pass": 42,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Earlier focused collection; credential/attachment/workflow cases overlap other groups"
+  },
+  "domain": {
+    "pass": 390,
+    "fail": 0,
+    "skip": 0
+  },
+  "maintenanceBackupAndWorkflowConfiguration": {
+    "pass": 36,
+    "fail": 0,
+    "skip": 0
+  },
+  "remainingDirectDshDevDependencies": 71,
+  "removedContract": "Implicit credential/attachment DSH home fallback and resolveLegacyHome; flat credential migration; original credential-provider differential/mixed-writer tests and direct declaration",
+  "preserved": "Own v1 refs/grants, explicit Host backup paths, immutable attachments/codec identities, inode-fenced concurrent writers, cancellation/drain, invalid-reload last-good state, comment retention and watcher replacement/deletion",
+  "lockfile": "Only removed direct importer; no new versions/integrity entries. Existing dependency snapshots retained.",
+  "frozenInstall": "Carried registry metadata/attestation ERR_PNPM_FETCH_503; no install policy bypass. Existing installed dependencies used for tests.",
+  "notices": "Retained credential, attachment, lock and instruction/normalization derivations remain attributed; no notice removed solely because a default/API name changed",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-storage-roots-default.txt",
+      "sha256": "88680bdafc87c85d77970c62107f7d028cdbc0992a1ad06f2c1502ef2ca0dcb6"
+    },
+    {
+      "path": "docs/evidence/pi-native-storage-roots-focused.txt",
+      "sha256": "68415a91b4582034251c3c53cc1abebed9ca3d37f0646e747bc4dbecb2fc1ffd"
+    },
+    {
+      "path": "docs/evidence/pi-native-storage-roots-formatWorkflow.txt",
+      "sha256": "2d98b908098d4c7f60fde6aa38cb4a54a6893cd8c66e3f73f2761397d276bdb6"
+    },
+    {
+      "path": "docs/evidence/pi-native-storage-roots-domain.txt",
+      "sha256": "5c25f65c000cb22a4ae38d80077eb049cd28160f513a68625231c8ca9ebb2d49"
+    },
+    {
+      "path": "docs/evidence/pi-native-storage-roots-integration.txt",
+      "sha256": "488a34a70299c8e79c61d17cdb306162fd63440051c75c0a98f751e718699126"
+    },
+    {
+      "path": "docs/evidence/pi-native-storage-roots-checks.txt",
+      "sha256": "78c9d49f386ab4fa10c1cde881d12e8cd5dbcd4a9de6cbf60b4842e5b1836d1b"
+    }
+  ]
+}

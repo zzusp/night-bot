@@ -1,0 +1,39 @@
+✔ native preset row validation retains legacy nested diagnostics (43.339596ms)
+✔ native preset revisions retain immutable declarations, old leases and exact parent composition (1471.548944ms)
+✔ native preset selection commits to Pi before returning and locks after the first turn (199.073013ms)
+✔ a session starting during preset lookup keeps its original composition and waits for selection settlement (263.722493ms)
+✔ failed preset selection commit fences model requests and later selection on that live agent (184.139689ms)
+✔ preset roster exposes failed imports, missing services and root service leaks without admitting them (164.196276ms)
+✔ prepared calls retain their admitted adapter after replacement and are consumed exactly once (8.201934ms)
+✔ native LLM topology changes validate atomically and contain broken observers (1.675729ms)
+✔ native LLM directory and discovery isolate snapshots and reject cancelled results (2.255818ms)
+✔ native LLM preserves middleware authority and distinguishes provider failures from plugin exceptions (6.301127ms)
+✔ native LLM rejects unsupported efforts and invalid model metadata before dispatch (1.971442ms)
+✔ native LLM strips foreign replay and projects files/images before provider I/O (8.085369ms)
+✔ native LLM failure normalization preserves structured facts and reads hostile messages once (5.626847ms)
+✔ native LLM propagates iterator cleanup failure without disguising it as provider rejection (3.36472ms)
+✔ native presets retain legacy initial facts, tie preference, custom math, live defaults, wire and command metadata (50.766188ms)
+✔ unconfined executors, reserved table names, invalid defaults and prototype-inherited names cannot select permissions (15.292763ms)
+✔ Auto remains fixed/current-only, child never policy preserves its identity and restore requires a live gate (9.88853ms)
+✔ a removed or asynchronous Auto gate cannot leave a broad permission selection behind (5.325205ms)
+✔ seeded and partially initialized sessions preserve effective knobs instead of adopting a new default (8.866779ms)
+✔ permission command changes use the approval switch notice and catalog observers cannot veto registration or disposal (6.120656ms)
+✔ native manager commits child catalog, lists cold Pi children and resumes without provider redispatch or tool replay (1802.634952ms)
+✔ native child control rejects foreign/stale lineage and invalid human input before model execution (218.863401ms)
+✔ native children retain structured validation, corrective Pi iteration and conclude only on a committed result (244.999868ms)
+✔ human queue prompts cold-resume a child with durable request and time-zone attribution (427.629086ms)
+✔ native activation capacity is per forest and interrupt acknowledgement waits separately from tool drain (265.50736ms)
+✔ native startup commit failure returns no accepted receipt and runs no child model or effects (119.514767ms)
+✔ native local terminal persistence failure is reported as an error result and still releases the activation (155.15087ms)
+✔ native discovery preserves unavailable/unknown branches without loading or resuming any child (111.229619ms)
+✔ native scoped descendant drain stops one forest, waits for its body, and leaves unrelated parents admitted (282.685277ms)
+✔ external provider capability refusal has zero starts and provider removal preserves an already owned run (118.867232ms)
+✔ closing the actual native Host cancels a child and drains its admitted tool before releasing activation ownership (147.554813ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4168.750272

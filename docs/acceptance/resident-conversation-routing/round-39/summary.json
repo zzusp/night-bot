@@ -1,0 +1,116 @@
+{
+  "round": 39,
+  "result": "FAIL",
+  "scope": "Original suspended SDK seal component; not full OS acceptance",
+  "hostTask": "b00nfcgdy",
+  "toolUseId": "call_4525ad2e645f4ae5b22ba64cc5b7d8c5",
+  "driverSha256": "4487a4bfdeb7078c8c0a11534eba64409dbf0fb9c9834704e1a407d16cf1e9b5",
+  "nodePid": 100716,
+  "startedAt": "2026-11-08T19:47:09.513283+00:00",
+  "finishedAt": "2026-11-08T19:47:35.681349+00:00",
+  "nodeExitCode": 1,
+  "driverExitCode": 1,
+  "naturalWaitReturned": true,
+  "forcedTermination": false,
+  "componentWasProduced": true,
+  "componentPass": false,
+  "sourceCount": 251,
+  "sourceAggregateSha256": "b124530d35a98b1873b9c82de0b083837ce659b42f3075e668b810b901b9128b",
+  "sourceChanged": [],
+  "imageChanged": false,
+  "freshCheck": {
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 31296,
+    "stdoutSha256": "621e166dbd7fd2294b0ee569858b909a98a83586692e38cb5c73ac13c6ae7f45"
+  },
+  "steps": [
+    "original-factory-returned",
+    "original-owned-proof-committed",
+    "original-profile-delete-returned",
+    "released-committed"
+  ],
+  "failure": {
+    "firstCode": "ENOENT",
+    "operation": "probe open('NUL', 'r') resolved relative to worktree",
+    "secondCode": "ERR_ASSERTION",
+    "secondAssertion": "out.settled&&out.releasedEntryId"
+  },
+  "frameCreationAttempted": false,
+  "terminationAttempted": false,
+  "nulCount": 0,
+  "nulRetained": 0,
+  "sealState": "not-started",
+  "sealEffects": [],
+  "originalCleanupAttempted": true,
+  "originalFinalProfileState": "registration-and-folder-absent",
+  "originalFinalRetainedHandles": 0,
+  "originalFinalRetainedAllocations": 0,
+  "resourceTrail": [
+    {
+      "seq": 1,
+      "status": "planned",
+      "retainedHandles": 0,
+      "retainedAllocations": 0
+    },
+    {
+      "seq": 2,
+      "status": "unknown-retained",
+      "retainedHandles": 5,
+      "retainedAllocations": 1
+    },
+    {
+      "seq": 3,
+      "status": "released",
+      "retainedHandles": 0,
+      "retainedAllocations": 0
+    }
+  ],
+  "originalReleasedEntryId": "2e7461b2",
+  "originalReceiptBindingVerified": true,
+  "jobTerminal": "failed",
+  "taskStatus": "active",
+  "taskDrained": true,
+  "taskDecision": "blocked",
+  "taskLimitations": [
+    "TASK_EFFECT_UNCERTAIN_NO_REPLAY"
+  ],
+  "successSettledProduced": false,
+  "strictColdProofProduced": false,
+  "workspaceInitialization": {
+    "state": "ready",
+    "directories": {
+      "work": {
+        "createdControl": 38932,
+        "initializationNeeded": true,
+        "control": 39956
+      },
+      "tmp": {
+        "createdControl": 38932,
+        "initializationNeeded": true,
+        "control": 39956
+      }
+    },
+    "nativeResources": {
+      "handles": {
+        "acquired": 16,
+        "closed": 16,
+        "retained": 0
+      },
+      "local": {
+        "acquired": 36,
+        "closed": 36,
+        "retained": 0
+      }
+    }
+  },
+  "installationRetained": true,
+  "unknownOwnershipCount": 0,
+  "readOnlyAdmission": false,
+  "runnerIpcAckQualified": false,
+  "productionScopeReady": false,
+  "inventoryRows": 5485,
+  "inventoryUnchangedSha256": "4cb87a89885f8359d2b813580994d40dcd2d74bbc76ac4aac9138498e0891f2f",
+  "matrixRowsBefore": 311,
+  "matrixRowsAfter": 313
+}

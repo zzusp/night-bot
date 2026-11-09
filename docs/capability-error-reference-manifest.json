@@ -1,0 +1,23 @@
+[
+  {
+    "package": "@deepseek-ai/dsh-authorization",
+    "sourceVersion": "0.2.1-alpha.2",
+    "originalSha256": "cfe0784f14f5cc55e0e1c18fc82290967e41e48afb964dc4f6384f84e4bab1ef",
+    "fixture": "test/fixtures/legacy-authorization-interface.mjs",
+    "fixtureSha256": "d374bb5aaec39fbca23107274d4639d77136f55eb8a84a424e2f60984c41a76f",
+    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
+  },
+  {
+    "package": "@deepseek-ai/dsh-workspace",
+    "sourceVersion": "0.2.1-alpha.2",
+    "originalSha256": "a33af459cfc7af29dd17412443a63655fd5037dd348b0dec20a413ce60c6c8bc",
+    "fixture": "test/fixtures/legacy-workspace-interface.mjs",
+    "fixtureSha256": "0c8856b26c03b8c284a58453c94edf587b55fea1f160c6142728fe5305e60f79",
+    "fixtureSupportAdaptation": "local already-verified values/brands/domain helpers; original registry/lifecycle algorithms and error constructors unchanged",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent",
+    "primitiveSupportAdaptation": "Inlined the pure identity cast instead of keeping a separate nominal-brand source copy; registry/lifecycle algorithms unchanged."
+  }
+]

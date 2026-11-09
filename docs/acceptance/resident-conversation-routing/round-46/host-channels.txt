@@ -1,0 +1,967 @@
+R46 Web新增钉钉渠道：Core后端实跑证据
+源码状态：HEAD 2db2aa7c27c9f1ced506de7740c6aac4b757119c + 未提交工作树（下列5文件）
+Node.js v24.19.0；两个命令均自然退出0；合计23 PASS / 0 FAIL / 0 SKIP。
+首组使用Node默认spec reporter（不是TAP）；第二组显式TAP。未为切换输出格式重复执行已通过的首组。
+实际边界：隔离memoryHost/本地HTTP与假DWS；默认冷加载器注册保存的5实例后不发送night/ready；随后独立注入假runner验证保存群聊正常绑定/订阅及水位。未调用真实厂商、真实模型或用户3082服务。
+未知保存用例：真实Host已提交后测试包装层抛错，HTTP返回500；GET读取真实磁盘，未重放POST。
+关闭用例：真实配置锁阻塞保存，Host关闭等待提交并保持安装锁；后续配置调用拒绝。
+没有commit/push/PR/部署。正式R46轮次、矩阵、总inventory与三guard由Main负责。
+
+SHA256（实跑后读取；上述文件从语法检查/实跑至该核验没有后续源码修改）：
+f227f53c6aee8369159ed515a704ec03d1379418291d75b3c5fb1b9ec93e2503  src/host.js
+afbd054ed1bbb5c1abd664d0608fc3b2792eecfc0feb4d2bc728dd7a3db8da06  packages/web-console/server/plugin.js
+c6b44f036948be21465e616ed8ed4a77cc5b3fb600af3ba1c0dbec643956144d  packages/web-console/server/views.js
+f7ecee35add959b4580909841f59cef30fb3449b16f9120412a8c0be82141640  packages/web-console/test/server.test.js
+e71dadbcd9da31e67eb85eb0d5540b4ac903d5b6d004712bb1b135ab7c0f7571  test/pi-channel-plugin.test.js
+
+
+实际命令：node --test --test-concurrency=1 --test-name-pattern='Web新增钉钉|Host关闭等待|core initializes|SG12 钉钉CLI' test/pi-channel-plugin.test.js
+后台任务：bjeu5olas
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (1961.1149ms)
+✔ SG12 钉钉CLI check完整零写，disabled跨日启用保留实际首次下界且查询不被午夜替代 (1778.9417ms)
+✔ Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查 (6130.3703ms)
+✔ Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝 (1149.9871ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13560.9085
+
+[exited with code 0]
+
+
+
+实际命令：node --test --test-concurrency=1 --test-reporter=tap packages/web-console/test/server.test.js
+后台任务：bl05svzzu
+TAP version 13
+# Subtest: optional plugin disabled does not register lifecycle or open storage
+ok 1 - optional plugin disabled does not register lifecycle or open storage
+  ---
+  duration_ms: 1.5962
+  type: 'test'
+  ...
+# Subtest: real HTTP requires token login, same-origin mutation and CSRF; logout revokes the session
+ok 2 - real HTTP requires token login, same-origin mutation and CSRF; logout revokes the session
+  ---
+  duration_ms: 155.9028
+  type: 'test'
+  ...
+# Subtest: DNS rebinding, cross-site fetch and request identity injection are rejected
+ok 3 - DNS rebinding, cross-site fetch and request identity injection are rejected
+  ---
+  duration_ms: 117.0353
+  type: 'test'
+  ...
+# Subtest: chat admission preserves configured identity and exact text; retries read the original receipt
+ok 4 - chat admission preserves configured identity and exact text; retries read the original receipt
+  ---
+  duration_ms: 111.9965
+  type: 'test'
+  ...
+# Subtest: uncertain admission is durable and never automatically replayed, including after restart
+ok 5 - uncertain admission is durable and never automatically replayed, including after restart
+  ---
+  duration_ms: 90.5427
+  type: 'test'
+  ...
+# Subtest: resolved Host refusal is rejected and never presented as admitted or replayed
+ok 6 - resolved Host refusal is rejected and never presented as admitted or replayed
+  ---
+  duration_ms: 95.1251
+  type: 'test'
+  ...
+# Subtest: transport delivery uses durable exact receipts, supports readback after restart and refuses conflict
+ok 7 - transport delivery uses durable exact receipts, supports readback after restart and refuses conflict
+  ---
+  duration_ms: 97.8683
+  type: 'test'
+  ...
+# Subtest: task/channel views only project existing facts and never return configuration secrets or private paths
+ok 8 - task/channel views only project existing facts and never return configuration secrets or private paths
+  ---
+  duration_ms: 136.8596
+  type: 'test'
+  ...
+# Subtest: 渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接
+ok 9 - 渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接
+  ---
+  duration_ms: 58.2412
+  type: 'test'
+  ...
+# Subtest: partial overview failure preserves other sections without reflecting internal errors
+ok 10 - partial overview failure preserves other sections without reflecting internal errors
+  ---
+  duration_ms: 55.6774
+  type: 'test'
+  ...
+# Subtest: overview isolates throwing channel health and conversation reads from healthy task sections
+ok 11 - overview isolates throwing channel health and conversation reads from healthy task sections
+  ---
+  duration_ms: 65.1889
+  type: 'test'
+  ...
+# Subtest: task details and dialogue whitelist nested facts and redact displayed credentials and paths
+ok 12 - task details and dialogue whitelist nested facts and redact displayed credentials and paths
+  ---
+  duration_ms: 111.2738
+  type: 'test'
+  ...
+# Subtest: task blocker HTTP projection flattens all three real collections and excludes their private payloads
+ok 13 - task blocker HTTP projection flattens all three real collections and excludes their private payloads
+  ---
+  duration_ms: 76.8136
+  type: 'test'
+  ...
+# Subtest: assets use security headers; missing assets do not stop APIs
+ok 14 - assets use security headers; missing assets do not stop APIs
+  ---
+  duration_ms: 123.0963
+  type: 'test'
+  ...
+# Subtest: closing a browser request does not abort already admitted channel work
+ok 15 - closing a browser request does not abort already admitted channel work
+  ---
+  duration_ms: 71.0574
+  type: 'test'
+  ...
+# Subtest: pending ledger admission becomes unknown after reopening
+ok 16 - pending ledger admission becomes unknown after reopening
+  ---
+  duration_ms: 26.4622
+  type: 'test'
+  ...
+# Subtest: conversation title and admission state follow durable insertion order across equal timestamps and clock rollback
+ok 17 - conversation title and admission state follow durable insertion order across equal timestamps and clock rollback
+  ---
+  duration_ms: 38.0587
+  type: 'test'
+  ...
+# Subtest: credential reads reject hard links and malformed oversized files without replacing them
+ok 18 - credential reads reject hard links and malformed oversized files without replacing them
+  ---
+  duration_ms: 24.2255
+  type: 'test'
+  ...
+# Subtest: expired sessions fail closed and login attempts are bounded
+ok 19 - expired sessions fail closed and login attempts are bounded
+  ---
+  duration_ms: 0.8283
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1589.2958
+
+[exited with code 0]
+
+
+
+批次2：外发授权安全摘要（追加；第一批23注册的原结果和原SHA保留）
+Main后续明确要求DWS行返回writesAuthorized:boolean，取已保存config.dingtalk_writes_authorized===true；该字段表示配置授权，不代表当前可发送。
+本批只修改views.js、server.test.js既有投影用例、pi-channel-plugin.test.js新增集成中的false断言。Host及Web路由生产源码未变。
+仅复验两个受影响注册；2 PASS / 0 FAIL / 0 SKIP，自然退出0，duration_ms 14712.1707。并非新增2个独立用例；其余21个未受影响注册沿用第一批，不重复执行。
+原始执行前后采样5文件SOURCE_BEFORE/SOURCE_AFTER逐项相等，见本批原输出。第一批只有事后SHA核验，不将其冒写成预采样证明。
+未知POST后的同IDGET只证明同标识配置存在，不证明本次profile/target匹配；未增加fingerprint或重放机制。原有冷加载未发night/ready与假DWS边界不变。
+实际命令：node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='渠道连接阶段|Web新增钉钉' packages/web-console/test/server.test.js test/pi-channel-plugin.test.js
+后台任务：bv9u3liku
+tool_use_id：call_c8e32c2131584d3780bc725b5ae91773
+原output绝对路径：C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bv9u3liku.output
+
+SOURCE_BEFORE
+f227f53c6aee8369159ed515a704ec03d1379418291d75b3c5fb1b9ec93e2503 *src/host.js
+afbd054ed1bbb5c1abd664d0608fc3b2792eecfc0feb4d2bc728dd7a3db8da06 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+6921ccc7c3178d59c10dedc8906e9b6d9297139ee761e03343dba8ff88f4a374 *test/pi-channel-plugin.test.js
+TAP version 13
+# Subtest: 渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接
+ok 1 - 渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接
+  ---
+  duration_ms: 180.5318
+  type: 'test'
+  ...
+# Subtest: Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+ok 2 - Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+  ---
+  duration_ms: 8612.2872
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14712.1707
+
+NODE_EXIT_CODE=0
+SOURCE_AFTER
+f227f53c6aee8369159ed515a704ec03d1379418291d75b3c5fb1b9ec93e2503 *src/host.js
+afbd054ed1bbb5c1abd664d0608fc3b2792eecfc0feb4d2bc728dd7a3db8da06 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+6921ccc7c3178d59c10dedc8906e9b6d9297139ee761e03343dba8ff88f4a374 *test/pi-channel-plugin.test.js
+
+[exited with code 0]
+
+
+
+批次3：移除浏览器profile，显式新增时使用运行环境当前账号
+用户新要求覆盖批次1/2的旧profile输入合同。前批23/2及浏览器旧10仍为原版本历史，不相加冒称本次新契约全部通过。
+新Web DTO仅{channelId,conversationType,targetKind,target,name?,prompt?}，profile/env等禁字段直接400。CLI显式profile合同不改。
+选择语义：profile list全表严格唯一isCurrent=true，且该账号在所属组织严格唯一isOrgCurrent=true；不同组织各有isOrgCurrent正常，不按全表组织默认数量误拒绝。不取首项、最近账号或缺标记回退。
+Host在配置锁内、重复ID检查后才懒建原Node DWS runner与system dwsEnvironment，执行profile list只读解析；内部持久化corpId:userId，浏览器不接收/返回profile或账号身份。默认启动和GET不探测DWS，不启动订阅；保存仍外发false/待重启。
+12类账号/CLI/查询拒绝由真实HTTP+Host验证：配置和ingress无写入，Web会话保留；多组织两个orgCurrent且全局current在第二项的成功路径已验证。未知POST同ID读回仍只证明配置存在，不证明本次profile/target。
+本批5 PASS / 0 FAIL / 0 SKIP，自然退出0，duration_ms 21133.7252：默认无DWS、原显式CLI/水位、原账号歧义/目标漂移、更新后的真实HTTP/Host新增及关闭排空。7相关文件起止SHA逐项相等。
+测试只通过createHost可信构造参数dingtalkProfileRunner注入原有假runner，参数不接受浏览器/config/env覆盖。本批Core未调用真实厂商/模型，未操作用户预览、真实Night Bot Test群或真实登录态。真实群验证由Tests依Main授权单独执行，此处不代报结果。
+默认冷加载器仍只注册保存实例、不向真实runner发night/ready；后续单独注入假DWS验证保存群聊绑定/订阅和原水位。无热加载或外发。
+实际命令：node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='Web新增钉钉|Host关闭等待|core initializes|SG12 账号歧义|SG12 钉钉CLI' test/pi-channel-plugin.test.js
+后台任务：bwa4kknn4
+tool_use_id：call_623e2594b4154c688bb2139e2a04ddc4
+原output绝对路径：C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bwa4kknn4.output
+
+SOURCE_BEFORE
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+61485446cc67713ddb0e2af28ec352a8481df17093cb4cef099cf53fbdfc7671 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+TAP version 13
+# Subtest: core initializes without a DWS executable or plugin, and disabled plugins never register a transport
+ok 1 - core initializes without a DWS executable or plugin, and disabled plugins never register a transport
+  ---
+  duration_ms: 4754.7701
+  type: 'test'
+  ...
+# Subtest: SG12 钉钉CLI check完整零写，disabled跨日启用保留实际首次下界且查询不被午夜替代
+ok 2 - SG12 钉钉CLI check完整零写，disabled跨日启用保留实际首次下界且查询不被午夜替代
+  ---
+  duration_ms: 2035.1108
+  type: 'test'
+  ...
+# Subtest: SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试
+ok 3 - SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试
+  ---
+  duration_ms: 3031.5263
+  type: 'test'
+  ...
+# Subtest: Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+ok 4 - Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+  ---
+  duration_ms: 7056.7658
+  type: 'test'
+  ...
+# Subtest: Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝
+ok 5 - Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝
+  ---
+  duration_ms: 1102.8155
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21133.7252
+
+NODE_EXIT_CODE=0
+SOURCE_AFTER
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+61485446cc67713ddb0e2af28ec352a8481df17093cb4cef099cf53fbdfc7671 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+
+[exited with code 0]
+
+
+
+批次4：DWS查询超时必须排空真实进程后才允许Host关闭与释放安装锁
+Review确认新增管理调用直接使用Node DWS runner，原run超时在发出SIGTERM后立即reject，无法证明进程实际退出；旧抛Error的假runner与配置锁阻塞用例不覆盖此反例。
+最小责任层修复仅在packages/dingtalk-core/dws-runner.js：保留done的exit/error协议，新增独立close Promise作为waitForExit；run正常、spawn失败和超时均在finally等真实close；异常先请求TERM/KILL，保留原超时错误，终止异常与原错误聚合。没有实际close时，配置调用不settle，Host继续持锁。不接入另一套进程平台，不声称已覆盖跨进程树托管。
+真实进程注册在test/pi-channel-plugin.test.js:928：使用process.execPath启动真实Node长驻子进程；受控包装器延迟真正信号投递，故意让terminate返回true但PID仍存活，并非声称Windows进程原生忽略TERM。观察超时已发TERM/KILL时save与Host.close仍pending、.host.lock仍冲突、config原文未改且ingress不存在；finally通过原生句柄实际KILL并等待close，再断言原dws_command_timeout:1000、Host返回错误DINGTALK_PROFILE_LOOKUP_FAILED、PID ESRCH、Host关闭完成/锁消失、配置仍未改。同一注册还实际运行无换行末行输出和不存在的可执行文件，分别验证完整stdout与ENOENT终态。
+本批先后结果按真实版本保留，不能合并为最终整树一次全绿，也不把旧5/23/2或浏览器结果相加为新独立用例数：
+- bggwne1fh：2 PASS / 1 FAIL / 0 SKIP，自然1，11991.565ms。Web新增与原Host关闭两个注册在当前runner f78fa8d6通过；新增注册失败为fixture child源码换行转义导致SyntaxError/exit1，对应DINGTALK_QUERY_FAILED；提前创建的assert.rejects又形成unhandledRejection，掩盖首错。该批8源起止相同，test源9fa3a59f。
+- bxpxkz605：只修首错观测为永不reject的outcome后单项运行；0 PASS / 0 FAIL / 1 CANCELLED / 0 SKIP，自然1，66398.7186ms，注册为testTimeoutFailure（60000ms）。ready未收到是同一child源码语法错误，不能当作产品timeout排空已验。8源起止相同，test源2ff9e783。
+- 最终修正：child源码输出换行改String.fromCharCode(10)，独立vm.Script编译确认旧源码SyntaxError、新源码有效；ready与termination均同查询提前终态竞争，立即暴露首错，不降低生命周期断言。
+- bd2eid1uq：只复验上述新增注册，1 PASS / 0 FAIL / 0 CANCELLED / 0 SKIP，自然0，4426.5688ms；8源起止相同。runner始终f78fa8d6，最终test源2c383c25。前两已绿注册代码未改，无需重复；本批为同runner版本的分次有效证据，不冒称最终测试文件整文件整跑。
+本批Host/账号选择/Web DTO/错误映射与批次3同SHA；Core未调用真实DWS/模型、未触用户预览或真实群、不提交/推送。三guard、最终正式R46/矩阵/inventory、冷启与真实群验收仍由Main/Tests按既有分工完成。
+命令1：node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='profile查询真实超时|Web新增钉钉|Host关闭等待' test/pi-channel-plugin.test.js
+命令2：node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='profile查询真实超时' test/pi-channel-plugin.test.js
+命令3：node --test --test-reporter=tap --test-name-pattern='profile查询真实超时' test/pi-channel-plugin.test.js
+各命令外层记录8文件SOURCE_BEFORE/SOURCE_AFTER与NODE_EXIT_CODE，并保留Node自然退出码。
+
+原始输出：bggwne1fh
+tool_use_id：call_4e6d22de570c4377a23ffc1bb7012924
+原output绝对路径：C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bggwne1fh.output
+
+SOURCE_BEFORE
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+9fa3a59fd2746216b9418c4df377409bc811ccc2daf29e53f938520b0a62f028 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+TAP version 13
+# Subtest: Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+ok 1 - Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+  ---
+  duration_ms: 7199.7474
+  type: 'test'
+  ...
+# Subtest: Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝
+ok 2 - Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝
+  ---
+  duration_ms: 1208.5412
+  type: 'test'
+  ...
+# Subtest: profile查询真实超时后等待进程退出，Host关闭期间保留安装锁
+not ok 3 - profile查询真实超时后等待进程退出，Host关闭期间保留安装锁
+  ---
+  duration_ms: 1234.8983
+  type: 'test'
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:928:1'
+  failureType: 'unhandledRejection'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      Comparison {
+    +   code: 'DINGTALK_QUERY_FAILED'
+    -   code: 'DINGTALK_PROFILE_LOOKUP_FAILED'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    code: 'DINGTALK_PROFILE_LOOKUP_FAILED'
+  actual:
+  error: 'DINGTALK_QUERY_FAILED'
+  stack: |-
+    failure (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/runtime/files.js:5:42)
+    dwsReadJson (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/channels/plugins/dingtalk-binding.js:13:32)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/host.js:84:26
+    async save (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/config.js:77:45)
+    async withLock (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/runtime/files.js:85:16)
+    async file:///D:/codex/worktrees/resident-conversation-plan/night-bot/src/host.js:77:24
+  operator: 'rejects'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 2
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11991.565
+
+NODE_EXIT_CODE=1
+SOURCE_AFTER
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+9fa3a59fd2746216b9418c4df377409bc811ccc2daf29e53f938520b0a62f028 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+
+[exited with code 1]
+
+
+原始输出：bxpxkz605
+tool_use_id：call_aac8f0018ad446188521964380d333d6
+原output绝对路径：C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bxpxkz605.output
+
+SOURCE_BEFORE
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+2ff9e78326854723a6977dd6900b1a28115cf0313a01cb4963827488086ccf8e *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+TAP version 13
+# Subtest: profile查询真实超时后等待进程退出，Host关闭期间保留安装锁
+not ok 1 - profile查询真实超时后等待进程退出，Host关闭期间保留安装锁
+  ---
+  duration_ms: 60205.6844
+  type: 'test'
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:928:1'
+  failureType: 'testTimeoutFailure'
+  error: 'test timed out after 60000ms'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 0
+# cancelled 1
+# skipped 0
+# todo 0
+# duration_ms 66398.7186
+
+NODE_EXIT_CODE=1
+SOURCE_AFTER
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+2ff9e78326854723a6977dd6900b1a28115cf0313a01cb4963827488086ccf8e *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+
+[exited with code 1]
+
+
+原始输出：bd2eid1uq
+tool_use_id：call_787ee6b2fd6447b5a7080052af8030cd
+原output绝对路径：C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bd2eid1uq.output
+
+SOURCE_BEFORE
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+2c383c25c493c0b4072f3af830690fa487c0a63efc5e7c82971b53fe5b9d23c0 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+TAP version 13
+# Subtest: profile查询真实超时后等待进程退出，Host关闭期间保留安装锁
+ok 1 - profile查询真实超时后等待进程退出，Host关闭期间保留安装锁
+  ---
+  duration_ms: 2132.0314
+  type: 'test'
+  ...
+# 真实PID存活时查询与Host关闭均未结算；实际退出后PID消失、锁释放、配置/水位未写；原超时保留，正常输出与spawn失败均排空。
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4426.5688
+
+NODE_EXIT_CODE=0
+SOURCE_AFTER
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+2c383c25c493c0b4072f3af830690fa487c0a63efc5e7c82971b53fe5b9d23c0 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+
+[exited with code 0]
+
+
+批次5：当前CLI两叶子、Router真实取消归因与剩余恢复单项（2026-11-09）
+源码状态：HEAD 2db2aa7c27c9f1ced506de7740c6aac4b757119c + 未提交工作树；每次运行的实际起止指纹逐项列在对应原件摘要中，不用HEAD替代运行源码。此为R46续批，不新建round，不将重复执行注册累计为用例总数。
+
+本阶段结论与明确边界：
+1. 当前contact +search-user按composite ok=true/outcome=success/data读取；会话详情按MCP success=true/result.conversationInfo读取。只改src/channels/plugins/dingtalk-binding.js:41与:57两个叶子，不改全局dwsReadJson、不为旧裸fake增加兜底；三处受影响fake已同步。群/私聊ID和姓名正向、通讯录16个负例及会话11个负例在bxy注册13/14通过。失败/partial/缺字段/计数不一致/歧义/目标漂移仍拒绝。
+2. Tests的真实只读取证独立保留于real-channel-diagnosis.txt、dws-contact-search-schema.json、dws-conversation-info-schema.json与real-channel-resolve.txt；Core不执行真实DWS。DWS v1.0.63（commit 4cd5d05393a8748e89d9265eb9f7ec85745a0331）的真实匿名结果支持当前叶子；MCP schema没有输出schema，不将真实result.conversationInfo冒称schema输出定义。最终300f3148版完整只读resolve自然exit0，profile/target/type匹配、actor存在、config/binding/ingress未改；这不等于冷启、consumer、监听或交付通过。
+3. bxy的error恢复曾观测隔离ingress.json原子rename EPERM并无recoveryFromAt；unknown曾是Host.close聚合失败。b83增强诊断显示真实Pi native AbortError，但堆栈只是创建点，不能推断factory.interrupt拒绝。bxb失败在更早水位checkpoint，临时探针没有证明关闭分组。临时inspect/interrupt探针均已清理。
+4. b84真实Pi request preparation红回归明确interrupted=true、nativeAborted=true、aggregateContainsExactNativeReason=true：factory.interrupt已完成，running交付拒绝携带同一个native signal.reason。正确责任层是Router自身取消理由集合。src/channels/router-lifecycle.js:25/:28仅新增两行：中断前捕获当前Pi signal及aborted；仅当本次false→true才加入原生reason对象。只影响running过滤；interrupted/stopped、join、PAUSED、durability失败仍拒绝；factory完全未改，不按AbortError名字吞错。
+5. bo036的7注册6 PASS/1 FAIL：5个Router close全部通过（新真实Pi回归、原活动请求、提交未投递、late handle、PAUSED反证），error冷恢复通过。新回归还检查已提交resident_router_settle只有一条、持久admission无伪取消、冷恢复cursor不退且不重放业务工具。唯一unknown失败在test/pi-channel-plugin.test.js:580的重启前水位等待，不是关闭失败。
+6. bs3仅给unknown checkpoint增加失败时health/ingress/通知/历史范围诊断，没有更改成功路径、断言或时限。独立移除此catch重建的SHA精确回到01f21f60版；本次bba80935版单项完整冷恢复自然PASS，但失败现场未再现且诊断未触发。旧unknown水位超时根因仍未收敛，不能认定已修复或直接归为EPERM；不追认bo036全绿，不将分批结果拼成当前整树一次全绿。6个已绿注册未重跑。
+7. 单项终态即交回Host/server/binding/storage/memory-host共享源给Platform实施编辑；不因证据归档续冻。本批不实施编辑、不触用户预览、不发真实消息、不提交/push/PR/CI/部署。真实冷启与监听、编辑实现及Main最终guards/正式R46矩阵尚不在此结果内。
+
+运行原件与自包含摘要（各工具保存的.output是原件；以下保必要结果、错误、指纹与命令，不复制大量重复聚合堆栈）：
+
+--- blyl17v63：仅通讯录叶子中间版：16 PASS，不能当最终MCP版整跑 ---
+tool_use_id: call_608cbe8d87474305a34d491117010a47
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/blyl17v63.output
+实际命令: node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='optional DWS plugin|real DWS runner|multiple DWS instances|system-account plugins|group-only DWS|configured channel responsibilities|default optional DWS|SG12 默认真实登录|SG12 账号歧义|DWS lifecycle|Web新增钉钉|DWS通讯录' test/pi-channel-plugin.test.js
+SOURCE_BEFORE/AFTER逐项相同（8项）：
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+c8b62cc0de163dce52da9e3aa945ef4c231f94303daefe7072918f1ed7d30b20 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+7c92a25da00b1e115fe1444e20428b5b88415e1fac81d4044d2bdb3fc439dc9f *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+原件必要输出：
+# Subtest: optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data
+ok 1 - optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data
+# Subtest: real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata
+ok 2 - real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata
+# Subtest: multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization
+ok 3 - multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization
+# Subtest: system-account plugins use the existing CLI context and describe shared login without creating a private vault
+ok 4 - system-account plugins use the existing CLI context and describe shared login without creating a private vault
+# Subtest: group-only DWS never subscribes to private messages or polls private history
+ok 5 - group-only DWS never subscribes to private messages or polls private history
+# Subtest: configured channel responsibilities isolate all model roles through the default application
+ok 6 - configured channel responsibilities isolate all model roles through the default application
+# Subtest: default optional DWS filters exact echo before registration while content readback is pending
+ok 7 - default optional DWS filters exact echo before registration while content readback is pending
+# Subtest: default optional DWS defers unresolved timeout identity and cold backfills the original older message once
+ok 8 - default optional DWS defers unresolved timeout identity and cold backfills the original older message once
+# Subtest: default optional DWS defers unresolved error identity and cold backfills the original older message once
+ok 9 - default optional DWS defers unresolved error identity and cold backfills the original older message once
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+ok 10 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+# Subtest: SG12 默认真实登录文件观察从待认证接绑定，恢复context安全且普通使用不触发重试
+ok 11 - SG12 默认真实登录文件观察从待认证接绑定，恢复context安全且普通使用不触发重试
+# Subtest: SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试
+ok 12 - SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试
+# Subtest: DWS通讯录快捷查询按当前CLI成功封装解析账号和私聊，失败与不完整结果拒绝
+ok 13 - DWS通讯录快捷查询按当前CLI成功封装解析账号和私聊，失败与不完整结果拒绝
+# Subtest: DWS lifecycle retains one observer across serial and concurrent ready and never recreates after stop
+ok 14 - DWS lifecycle retains one observer across serial and concurrent ready and never recreates after stop
+# Subtest: DWS lifecycle stop joins in-flight observer creation and its exact asynchronous close tail
+ok 15 - DWS lifecycle stop joins in-flight observer creation and its exact asynchronous close tail
+# Subtest: Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+ok 16 - Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+# tests 16
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 94997.0755
+NODE_EXIT_CODE=0
+
+--- b6q1uhrx8：第三处通讯录fake的受影响Router注册：1 PASS，仍是中间版 ---
+tool_use_id: call_13cb9b98f3494d53bf884f31082f28b9
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/b6q1uhrx8.output
+实际命令: node --test --test-reporter=tap --test-name-pattern='durable receipt echoes tolerate later DWS flags' test/pi-resident-router-flow.test.js
+SOURCE_BEFORE/AFTER逐项相同（9项）：
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+c8b62cc0de163dce52da9e3aa945ef4c231f94303daefe7072918f1ed7d30b20 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+7c92a25da00b1e115fe1444e20428b5b88415e1fac81d4044d2bdb3fc439dc9f *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+14e93d50e531b086280ec5eccd6ec19e0622040269f40b3eeeb9cd40bc9c6bc6 *test/pi-resident-router-flow.test.js
+原件必要输出：
+# Subtest: durable receipt echoes tolerate later DWS flags without replacing existing message facts
+ok 1 - durable receipt echoes tolerate later DWS flags without replacing existing message facts
+# tests 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 16429.398
+NODE_EXIT_CODE=0
+
+--- bxybvum1e：两个最终CLI叶子与三处fake：18注册16 PASS/2 FAIL，不能称全绿 ---
+tool_use_id: call_628a5cefc5a84191be4c8b1e92969b79
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bxybvum1e.output
+实际命令: node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='optional DWS plugin|real DWS runner|multiple DWS instances|system-account plugins|group-only DWS|configured channel responsibilities|default optional DWS|SG12 默认真实登录|SG12 账号歧义|DWS lifecycle|Web新增钉钉|DWS通讯录|DWS会话详情|durable receipt echoes tolerate later DWS flags' test/pi-channel-plugin.test.js test/pi-resident-router-flow.test.js
+SOURCE_BEFORE/AFTER逐项相同（9项）：
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+01f21f604c3c5dda39e100e515777efdc0d8d0656caf9fe5880645600ba14021 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+964824ef1689cee8ce45af0b382b85ae265f1837c21d0d8c56b1f78ee8210c05 *test/pi-resident-router-flow.test.js
+原件必要输出：
+# Subtest: optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data
+ok 1 - optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data
+# Subtest: real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata
+ok 2 - real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata
+# Subtest: multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization
+ok 3 - multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization
+# Subtest: system-account plugins use the existing CLI context and describe shared login without creating a private vault
+ok 4 - system-account plugins use the existing CLI context and describe shared login without creating a private vault
+# Subtest: group-only DWS never subscribes to private messages or polls private history
+ok 5 - group-only DWS never subscribes to private messages or polls private history
+# Subtest: configured channel responsibilities isolate all model roles through the default application
+ok 6 - configured channel responsibilities isolate all model roles through the default application
+# Subtest: default optional DWS filters exact echo before registration while content readback is pending
+ok 7 - default optional DWS filters exact echo before registration while content readback is pending
+# Subtest: default optional DWS defers unresolved timeout identity and cold backfills the original older message once
+ok 8 - default optional DWS defers unresolved timeout identity and cold backfills the original older message once
+# Subtest: default optional DWS defers unresolved error identity and cold backfills the original older message once
+not ok 9 - default optional DWS defers unresolved error identity and cold backfills the original older message once
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:534:39'
+  error: 'Timed out: typed deferral persists its original lower bound'
+error恢复失败现场摘录：{"case":"default-optional-dws-deferred-diagnostic","mode":"error","phase":"typed-deferral","health":{"ingress":{"paused":false,"recovering":false},"healthy":true,"humanReplies":{"state":"disabled","generation":0,"reconnect":{"attempt":0}},"configured":true,"state":"listening","conversations":[{"conversationId":"race-room","listener":{"state":"ready","generation":1,"startedAt":"2026-11-09T07:15:38.582Z","readyAt":"2026-11-09T07:15:38.584Z","lastEventAt":"2026-11-09T07:15:43.200Z","lastEventError":"EPERM: operation not permitted, rename 'C:\\\\Users\\\\64554\\\\AppData\\\\Local\\\\Temp\\\\night-memory-wire-HuxRTP\\\\data\\\\state\\\\channels\\\\dingtalk-dws\\\\.write-4040a0fa-ee21-41f3-b7e4-491375f351b5' -> 'C:\\\\Users\\\\64554\\\\AppData\\\\Local\\\\Temp\\\\night-memory-wire-HuxRTP\\\\data\\\\state\\\\channels\\\\dingtalk-dws\\\\ingress.json'"},"backfill":{"state":"ok","completionScope":"durable-receipt","startedAt":"2026-11-09T07:16:08.605Z","succeededAt":"2026-11-09T07:16:08.609Z"},"reconnect":{"attempt":0}}]},"ingress":{"paused":false,"firstStartedAt":"2026-01-01T00:00:00Z","backfillThroughAt":"2026-11-09T07:16:08.606Z","consumedAt":"2026-11-09T07:15:38.595Z","consumedMessageId":"race-request"}}
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+not ok 10 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:574:1'
+  error: 'Host shutdown failed; ownership retained'
+# Subtest: SG12 默认真实登录文件观察从待认证接绑定，恢复context安全且普通使用不触发重试
+ok 11 - SG12 默认真实登录文件观察从待认证接绑定，恢复context安全且普通使用不触发重试
+# Subtest: SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试
+ok 12 - SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试
+# Subtest: DWS通讯录快捷查询按当前CLI成功封装解析账号和私聊，失败与不完整结果拒绝
+ok 13 - DWS通讯录快捷查询按当前CLI成功封装解析账号和私聊，失败与不完整结果拒绝
+# Subtest: DWS会话详情按当前MCP嵌套身份解析，失败与目标漂移拒绝
+ok 14 - DWS会话详情按当前MCP嵌套身份解析，失败与目标漂移拒绝
+# Subtest: DWS lifecycle retains one observer across serial and concurrent ready and never recreates after stop
+ok 15 - DWS lifecycle retains one observer across serial and concurrent ready and never recreates after stop
+# Subtest: DWS lifecycle stop joins in-flight observer creation and its exact asynchronous close tail
+ok 16 - DWS lifecycle stop joins in-flight observer creation and its exact asynchronous close tail
+# Subtest: Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+ok 17 - Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查
+# Subtest: durable receipt echoes tolerate later DWS flags without replacing existing message facts
+ok 18 - durable receipt echoes tolerate later DWS flags without replacing existing message facts
+# tests 18
+# pass 16
+# fail 2
+# cancelled 0
+# skipped 0
+# duration_ms 180493.4652
+NODE_EXIT_CODE=1
+
+--- b83nkdczw：临时增强关闭诊断：两恢复注册都到Host.close失败，未用栈创建点归因factory ---
+tool_use_id: call_a9dae459d5ac45ab9937e121f188ee75
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/b83nkdczw.output
+实际命令: node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='defers unresolved error identity|keeps permanently unknown identity' test/pi-channel-plugin.test.js
+SOURCE_BEFORE/AFTER逐项相同（9项）：
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+ad422137e502480e438455bb09f65fe713caeccf6553413da3b7a26af4fc27c4 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+964824ef1689cee8ce45af0b382b85ae265f1837c21d0d8c56b1f78ee8210c05 *test/pi-resident-router-flow.test.js
+原件必要输出：
+# Subtest: default optional DWS defers unresolved error identity and cold backfills the original older message once
+not ok 1 - default optional DWS defers unresolved error identity and cold backfills the original older message once
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:534:39'
+  error: 'Host shutdown failed; ownership retained'
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+not ok 2 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:574:1'
+  error: 'Host shutdown failed; ownership retained'
+# tests 2
+# pass 0
+# fail 2
+# cancelled 0
+# skipped 0
+# duration_ms 21408.4229
+NODE_EXIT_CODE=1
+
+--- bxbayy0ub：临时interrupt探针：更早水位checkpoint失败，未到关闭，不能证明聚合分组 ---
+tool_use_id: call_9090d60e02d54c8eb2530a6d7b4319ca
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bxbayy0ub.output
+实际命令: node --test --test-reporter=tap --test-name-pattern='keeps permanently unknown identity' test/pi-channel-plugin.test.js
+SOURCE_BEFORE/AFTER逐项相同（4项）：
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+9a97650dceaa69ca5974b23f074c80bb3561ad55bbd5264982a5592350c2745b *src/channels/router-lifecycle.js
+dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e *src/pi-official-agent-factory.js
+fc4901c3720f7e4539c30bcfeaedd437d5d6c127ce905fa3353c6ecd6f8bcfb1 *test/pi-channel-plugin.test.js
+原件必要输出：
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+not ok 1 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:593:1'
+  error: 'Timed out: unknown identity pins durable recovery'
+# tests 1
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# duration_ms 39844.5154
+NODE_EXIT_CODE=1
+
+--- b84bv6dyd：真实Pi prepare原生取消红回归：interrupt已fulfilled，Router聚合保留相同native reason ---
+tool_use_id: call_f887247fa3da453a8c174cf1c0ed602c
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/b84bv6dyd.output
+实际命令: node --test --test-reporter=tap --test-name-pattern='Router close joins the exact native Pi cancellation' test/pi-resident-router-flow.test.js
+SOURCE_BEFORE/AFTER逐项相同（3项）：
+9a97650dceaa69ca5974b23f074c80bb3561ad55bbd5264982a5592350c2745b *src/channels/router-lifecycle.js
+dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e *src/pi-official-agent-factory.js
+7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c *test/pi-resident-router-flow.test.js
+原件必要输出：
+# Subtest: Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool
+not ok 1 - Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-resident-router-flow.test.js:561:1'
+  error: 'Task service shutdown failed'
+# {"case":"native-prepare-cancel","interrupted":true,"nativeAborted":true,"aggregateContainsExactNativeReason":true}
+# tests 1
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# duration_ms 10785.6845
+NODE_EXIT_CODE=1
+
+--- bo036no8a：两行Router修复后：5条关闭+error恢复PASS；unknown更早checkpointFAIL ---
+tool_use_id: call_c0da562a24894dd6adeb63eace5ea870
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bo036no8a.output
+实际命令: node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='defers unresolved error identity|keeps permanently unknown identity|Router close' test/pi-channel-plugin.test.js test/pi-resident-router-flow.test.js
+SOURCE_BEFORE/AFTER逐项相同（11项）：
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+01f21f604c3c5dda39e100e515777efdc0d8d0656caf9fe5880645600ba14021 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c *test/pi-resident-router-flow.test.js
+3b036ee74ff7b13b1d6c51b4676acee9db14bdd31eb0bb9a6d8ca66bf2b0695e *src/channels/router-lifecycle.js
+dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e *src/pi-official-agent-factory.js
+原件必要输出：
+# Subtest: default optional DWS defers unresolved error identity and cold backfills the original older message once
+ok 1 - default optional DWS defers unresolved error identity and cold backfills the original older message once
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+not ok 2 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+  location: 'D:\\codex\\worktrees\\resident-conversation-plan\\night-bot\\test\\pi-channel-plugin.test.js:574:1'
+  error: 'Timed out: unknown identity pins durable recovery'
+# Subtest: Router close interrupts an active official Pi request before joining its tail without replaying the settled tool
+ok 3 - Router close interrupts an active official Pi request before joining its tail without replaying the settled tool
+# Subtest: Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool
+ok 4 - Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool
+# Subtest: Router close preserves an actually committed undelivered packet and cold recovery admits it only once
+ok 5 - Router close preserves an actually committed undelivered packet and cold recovery admits it only once
+# Subtest: Router close joins and disposes an actual late-created official handle without admitting a batch or rotating generation
+ok 6 - Router close joins and disposes an actual late-created official handle without admitting a batch or rotating generation
+# Subtest: Router close cannot swallow an admission PAUSED failure produced before its own interruption
+ok 7 - Router close cannot swallow an admission PAUSED failure produced before its own interruption
+# tests 7
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# duration_ms 115635.5509
+NODE_EXIT_CODE=1
+
+--- bs3prkqa6：只加unknown失败诊断后单项自然PASS；旧checkpoint超时未再现、根因未收敛 ---
+tool_use_id: call_f7c77f10a6e04c328edbd28ea5ded7e9
+原件: C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bs3prkqa6.output
+实际命令: node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='keeps permanently unknown identity' test/pi-channel-plugin.test.js
+SOURCE_BEFORE/AFTER逐项相同（12项）：
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+05ae13a946db24165569c4f957a25b274345f9b38f1bee6618ae0af5ada1a607 *packages/web-console/test/server.test.js
+bba8093572a32f198597e4f71c7ca6d5d8008033b8f2dc3d25df0b847bc3bdb2 *test/pi-channel-plugin.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c *test/pi-resident-router-flow.test.js
+3b036ee74ff7b13b1d6c51b4676acee9db14bdd31eb0bb9a6d8ca66bf2b0695e *src/channels/router-lifecycle.js
+dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e *src/pi-official-agent-factory.js
+d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d *src/channels/plugins/dingtalk-storage.js
+原件必要输出：
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+ok 1 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+# tests 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 29603.9024
+NODE_EXIT_CODE=0
+
+最终交接版本锚点：binding 300f3148、router-lifecycle 3b036ee7、factory dbde124a（未改）、router-flow测试7d22c65d、pi-channel测试bba80935（相对01f21f60只加失败诊断）。完整SHA见bs3逐项表；产品共享源后续由Platform继续修改时，以上仍仅绑定本阶段实际受验版本。
+本批没有新增独立临时文件；原子写EPERM与更早unknown超时按原结果保留，不增加存储重试、不吞错，不以未复现冒称根因已解决。
+
+批次6：渠道编辑最终冻结后的5项既有实际回归（2026-11-09）
+本批仅执行Main指定的既有注册，未修改产品或原测试、未新增注册。已先与Platform核新增编辑测试不完整覆盖这些业务路径，因此保留全部5项。Platform交出严格binding窄修及LF恢复后的最终17pin，执行脚本先逐项核验（17项全OK），再采22项源/测试起止指纹；不是此前旧编辑4PASS版本，也不追认旧bo036/bs3覆盖新编辑源。
+
+实际源码版本：HEAD 2db2aa7c27c9f1ced506de7740c6aac4b757119c + worktree-resident-conversation-routing未提交工作树；Node.js v24.19.0。原件同时保留当时git status，验证结论只绑定下列真实运行的22项指纹。默认隔离夹具、本地脚本模型与fake DWS；未访问真实厂商、未发送真实消息、未触用户预览、未提交/push/PR/CI/部署。
+
+结果：5个实际注册全部PASS；0 FAIL / 0 CANCELLED / 0 SKIP，自然NODE_EXIT_CODE=0，duration_ms=78902.2783。17冻结pin均匹配，22项SOURCE_BEFORE/AFTER逐项相同。执行为一个Node命令、test-concurrency=1，与Platform另行受管的编辑测试独立并行；本证据不代报该编辑测试的结果。
+范围与证明：
+- test/pi-channel-plugin.test.js:53：无渠道安装的默认完整应用组合、健康与单次任务创建仍可用，不要求managed渠道路径。
+- test/pi-channel-plugin.test.js:574：永久unknown身份仍降级、跨冷恢复保留原水位、不假装交付成功，现编辑版真实通过。旧水位超时归因没有新证据，不由本次PASS倒推旧根因已修复。
+- test/pi-resident-router-flow.test.js:561：真实Pi准备期精确native取消仍正常关闭，已提交settle工具保持一次、冷恢复不重放。
+- test/pi-schedule-wire.test.js:259：实际platform bridge恢复原source并约束真实到期交付，superseded=false与true两个分支分别通过，不以future半提交门禁替代due submit/recovery。
+
+本批不是全量pnpm test，也不是所有旧18注册最终同版全绿；没有扩重跑其余已绿用例。与旧3b036ee7/d7b0c082阶段分开：本次实际受验Router为316cd343、storage为8ee4e62b、task service为0ee89b70、platform schedule为51730436；完整成对SHA见原件正文。
+
+后台任务：bxyrkvzl4
+tool_use_id：call_360b1c39183a4bcd8d661fef08c59993
+原件：C:/Users/64554/AppData/Local/Temp/claude/cf8b4922935aa0b7/6362b021-e76c-4d2c-a44d-761acccd857b/tasks/bxyrkvzl4.output
+原件SHA256：1b6e0ff88de3c8ba228843ecc3c128e93c152ecf4954454184c1b1e7c6e76b4b
+成对源表SHA256（SOURCE_BEFORE各行+LF）：8f47b6c864b70078396d210626be178f97446a515b7cb1b157055f5eb5efb205
+实际命令：node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='^(standard application composition exposes channel-neutral health and single task creation with no channel installed|default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound|Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool|real platform bridge restores original source and gates actual due delivery: superseded=(false|true))$' test/pi-channel-plugin.test.js test/pi-resident-router-flow.test.js test/pi-schedule-wire.test.js
+
+原件正文（仅规范换行为LF）：
+src/host.js: OK
+src/channels/service.js: OK
+src/channels/router-lifecycle.js: OK
+src/channels/plugins/dingtalk-config.js: OK
+src/channels/plugins/dingtalk-storage.js: OK
+src/channels/plugins/dingtalk-binding.js: OK
+src/channels/plugins/dingtalk-dws.js: OK
+src/channels/plugins/dingtalk-cli.js: OK
+packages/dingtalk-core/task-session-service.js: OK
+packages/dingtalk-core/platform-schedule.js: OK
+packages/dingtalk-core/store.js: OK
+packages/web-console/server/plugin.js: OK
+packages/web-console/server/views.js: OK
+test/pi-channel-edit.test.js: OK
+test/fixtures/memory-host.js: OK
+test/fixtures/native-lifecycle.js: OK
+test/fixtures/resident-router-host.js: OK
+
+VERIFICATION_HEAD
+2db2aa7c27c9f1ced506de7740c6aac4b757119c
+
+VERIFICATION_BRANCH
+worktree-resident-conversation-routing
+
+WORKTREE_BEFORE
+ M .gitignore
+ M DESIGN.md
+ M README.md
+ M docs/acceptance/resident-conversation-routing/goal.md
+ M docs/manual/web-console.md
+ M docs/ops/web-console-local.md
+ M docs/source-manifest.json
+ M packages/dingtalk-core/dws-runner.js
+ M packages/dingtalk-core/platform-schedule.js
+ M packages/dingtalk-core/store.js
+ M packages/dingtalk-core/task-session-service.js
+ M packages/web-console/server/plugin.js
+ M packages/web-console/server/views.js
+ M packages/web-console/src/App.tsx
+ M packages/web-console/src/ChannelsPage.tsx
+ M packages/web-console/src/api.ts
+ M packages/web-console/src/styles/app.css
+ M packages/web-console/test/preview.mjs
+ M packages/web-console/test/server.test.js
+ M src/channels/plugins/dingtalk-binding.js
+ M src/channels/plugins/dingtalk-cli.js
+ M src/channels/plugins/dingtalk-config.js
+ M src/channels/plugins/dingtalk-dws.js
+ M src/channels/plugins/dingtalk-storage.js
+ M src/channels/router-lifecycle.js
+ M src/channels/service.js
+ M src/host.js
+ M test/fixtures/memory-host.js
+ M test/pi-channel-plugin.test.js
+ M test/pi-resident-router-flow.test.js
+?? docs/acceptance/resident-conversation-routing/round-46/
+?? docs/spec/web-dingtalk-channel-create.md
+?? packages/web-console/test/channels-create.spec.ts
+?? test/pi-channel-edit.test.js
+
+NODE_VERSION
+v24.19.0
+
+SOURCE_BEFORE
+e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1 *src/host.js
+5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 *src/channels/service.js
+316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 *src/channels/router-lifecycle.js
+21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b *src/channels/plugins/dingtalk-config.js
+8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505 *src/channels/plugins/dingtalk-storage.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad *src/channels/plugins/dingtalk-dws.js
+bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 *src/channels/plugins/dingtalk-cli.js
+0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 *packages/dingtalk-core/task-session-service.js
+51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 *packages/dingtalk-core/platform-schedule.js
+91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 *packages/dingtalk-core/store.js
+82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 *packages/web-console/server/plugin.js
+91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 *packages/web-console/server/views.js
+8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48 *test/pi-channel-edit.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 *test/fixtures/native-lifecycle.js
+00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a *test/fixtures/resident-router-host.js
+bba8093572a32f198597e4f71c7ca6d5d8008033b8f2dc3d25df0b847bc3bdb2 *test/pi-channel-plugin.test.js
+7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c *test/pi-resident-router-flow.test.js
+5f0c1fc8a5bd1066495d56dafafaeea93b47ec20ae8ff33027c0f43617dc4f61 *test/pi-schedule-wire.test.js
+dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e *src/pi-official-agent-factory.js
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+TAP version 13
+# Subtest: standard application composition exposes channel-neutral health and single task creation with no channel installed
+ok 1 - standard application composition exposes channel-neutral health and single task creation with no channel installed
+  ---
+  duration_ms: 13382.7104
+  type: 'test'
+  ...
+# Subtest: default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+ok 2 - default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound
+  ---
+  duration_ms: 10980.4391
+  type: 'test'
+  ...
+# Subtest: Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool
+ok 3 - Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool
+  ---
+  duration_ms: 17737.8723
+  type: 'test'
+  ...
+# Subtest: real platform bridge restores original source and gates actual due delivery: superseded=false
+ok 4 - real platform bridge restores original source and gates actual due delivery: superseded=false
+  ---
+  duration_ms: 10972.8322
+  type: 'test'
+  ...
+# Subtest: real platform bridge restores original source and gates actual due delivery: superseded=true
+ok 5 - real platform bridge restores original source and gates actual due delivery: superseded=true
+  ---
+  duration_ms: 5869.0094
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 78902.2783
+
+NODE_EXIT_CODE=0
+SOURCE_AFTER
+e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1 *src/host.js
+5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57 *src/channels/service.js
+316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259 *src/channels/router-lifecycle.js
+21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b *src/channels/plugins/dingtalk-config.js
+8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505 *src/channels/plugins/dingtalk-storage.js
+300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b *src/channels/plugins/dingtalk-binding.js
+4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad *src/channels/plugins/dingtalk-dws.js
+bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28 *src/channels/plugins/dingtalk-cli.js
+0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391 *packages/dingtalk-core/task-session-service.js
+51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422 *packages/dingtalk-core/platform-schedule.js
+91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481 *packages/dingtalk-core/store.js
+82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8 *packages/web-console/server/plugin.js
+91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46 *packages/web-console/server/views.js
+8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48 *test/pi-channel-edit.test.js
+4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0 *test/fixtures/memory-host.js
+ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829 *test/fixtures/native-lifecycle.js
+00c9a40a36254accceb6f72178f6805736bf844f303bf00698dd237c028c0e3a *test/fixtures/resident-router-host.js
+bba8093572a32f198597e4f71c7ca6d5d8008033b8f2dc3d25df0b847bc3bdb2 *test/pi-channel-plugin.test.js
+7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c *test/pi-resident-router-flow.test.js
+5f0c1fc8a5bd1066495d56dafafaeea93b47ec20ae8ff33027c0f43617dc4f61 *test/pi-schedule-wire.test.js
+dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e *src/pi-official-agent-factory.js
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+
+[exited with code 0]
+
+本阶段终态已交Main与Platform；以下只待Main按最终源码整合正式R46结果、矩阵与必要guards。本会话不新增轮次、不继续重跑、不对其他阶段未核结果作通过声明。批次1–5全部原字节保留。

@@ -1,0 +1,59 @@
+{
+  "base": "5087735",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 26,
+      "pass": 26,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 660,
+      "pass": 660,
+      "fail": 0,
+      "skipped": 0
+    },
+    "integration": {
+      "tests": 34,
+      "pass": 34,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    }
+  },
+  "remainingDirectDshDevDependencies": 44,
+  "removed": "src/native-deadline.js (150 lines), unused idleWatchdog/public TimeoutReason constructor, corresponding original notice; HTTP compiler resource-disposal scaffolding",
+  "replacement": "Node timers/promises clock with separate cancellation and expiration controllers, explicit synchronous disposal and active-clock guard. Private WeakSet classifies only actually emitted clock reasons; reason-name/fields remain for Night diagnostics. No new authorization or external-effect receipt meaning.",
+  "preserved": "Timer bounds and public hint clamping, internal nonpositive no-timer sentinel, fused upstream reason identity, disposal without public abort, nested code classification and actual caller-owned termination/drain. HTTP cleanup uses finally.",
+  "validation": "Own clock expiry/disposal/nesting/spoof/class-constructor checks and real HTTP body timeout, Pi tool timing, shell timeout/background, process drain, scoped readback and cold job recovery.",
+  "limitations": "Underlying shell, HTTP public-address/DNS/proxy/redirect/charset/body implementations remain attributed. HTTP helper cleanup initially removed the provider id constant as well; focused imports caught it, restored before passing tests or commit. No new Windows kernel claim.",
+  "packages": "No dependency/lock changes; latest standard frozen install remains successful at 44 root DSH dev declarations",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-owned-deadlines-focused.txt",
+      "sha256": "beb4356479f79a1eade5c913ccddc3fc57dab633d3259e4c033cb451746b7c4a"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-deadlines-default.txt",
+      "sha256": "5876c3fd6809bc883402743c86015c57f897ddf11299a4b895f00cf2ddbba73f"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-deadlines-integration.txt",
+      "sha256": "e7cac2cbaf2dd36ad8c66ad346b0228d9ffdee97bc3d66baec3821239723cb2f"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-deadlines-containment.txt",
+      "sha256": "fc073aa2bab34a6c54c41a75c5890135c8d39a6354d19a450fb823e5bf3f9785"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-deadlines-checks.txt",
+      "sha256": "c2eaebbefb3f59c97d1a5b1d5a44881ee5d9e1f7e7bf7c027208d70456eb9610"
+    }
+  ]
+}

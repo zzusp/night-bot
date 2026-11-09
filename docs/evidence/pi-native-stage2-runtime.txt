@@ -1,0 +1,523 @@
+✔ native provider failure resumes original executor after persisted backoff; successful write never replays: restart=false (9980.345106ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":378,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":9567,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":34,"aborted":false}
+✔ native provider failure resumes original executor after persisted backoff; successful write never replays: restart=true (9382.756838ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":76,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":9256,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":51,"aborted":false}
+✔ one unreadable provider terminal stops only its recovery and unrelated native task still completes (6320.507052ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":85,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6213,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✔ provider short budget exhaustion remains technical wait; bounded cold owner review resumes safely: recovered=false (6171.840415ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":59,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6093,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ provider short budget exhaustion remains technical wait; bounded cold owner review resumes safely: recovered=true (5802.17663ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":60,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5663,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":79,"aborted":false}
+✔ business human answer replaces pending provider recovery input before any original session resumes (4168.112021ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":676,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3472,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ lifecycle timeout drains an acquired native host before removing its workspace (81.459302ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":21,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ anonymous field v12 error restores original execution with complete diagnostics and no human request or duplicate effect (2349.823674ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2326,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✔ requirement supplement during provider cooldown wakes current owner after restart and resumes original executor once (3444.569264ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":872,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2555,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ owner may honestly wait at each bounded provider review; all three reviews survive restart without replay (1548.567546ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":39,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1498,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ unified lifecycle construction cancellation closes the late real service before deleting its root (58.718926ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：none (1543.053671ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":222,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1305,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：empty (6106.132817ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":39,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6053,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：tool-limit (837.36618ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":785,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：topic (1198.603196ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":36,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1150,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ 待实施批准期间事实追问保留来源并明确通知，内部证据不外发且不恢复旧执行 (1555.475125ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1486,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ 积压的两条事实追问均送达且无关来源不空转：同一唤醒=true (856.090747ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":73,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":769,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ 积压的两条事实追问均送达且无关来源不空转：同一唤醒=false (875.145135ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":820,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ operator technical reply retains business sources and shared scope protocol in the same resumed execution permission=false (1173.702436ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1113,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ operator technical reply retains business sources and shared scope protocol in the same resumed execution permission=true (1253.366494ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1185,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ 技术申请进入Web和登录人私聊，精确引用及真实作者恢复原任务，零技术群询问 (435.709794ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":417,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":18,"aborted":false}
+✔ 人工外发问题在入账前拒绝已知运行标识，内部证据与业务链接原样保留 (178.428723ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":112,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ native human request waits without repeat wakes; authenticated HTTP reply resumes the original session from actual source text (385.146087ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":37,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":333,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ an execution result cannot bypass human waiting; reply reads the original execution and continues the original task (1903.444254ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":63,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1824,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ a native blocked decision without a human question is corrected into an explicit durable request (165.745208ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":115,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ original-group human input preserves clarification but fences explicit authorization change: changed=false (2261.265884ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2208,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ original-group human input preserves clarification but fences explicit authorization change: changed=true (1029.277967ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":972,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ Web answer recalls its delivered operator notification once without recalling group replies (495.025925ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":427,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":30,"aborted":false}
+✔ anonymous missing-original-file wait preserves authorized repair progress, inspection and same-session recovery (3618.449497ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3557,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ Topic coordination without a real group reply binding fails closed rather than contacting the requester or operator: direct=false (183.16237ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":54,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":118,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ Topic coordination without a real group reply binding fails closed rather than contacting the requester or operator: direct=true (194.634137ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":46,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":139,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ native file read accepts historical draft and material job records without launching or reconciling a job (881.218661ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":208,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":650,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✔ native execution consumes serial tool results and wakes the coordinator only for a reported stage and final result (2557.50461ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":60,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2478,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ native shell retains its original process, reads output to terminal and persists the owned job receipt: background=false (2327.16012ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":59,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2253,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native shell retains its original process, reads output to terminal and persists the owned job receipt: background=true (2276.348267ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2216,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native background producer projects its terminal receipt before any job read or execution submission: killed=false (958.160421ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":885,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":28,"aborted":false}
+✔ native background producer projects its terminal receipt before any job read or execution submission: killed=true (608.796133ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":531,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":37,"aborted":false}
+✔ native missing-job read stays a real error without creating unknown effects or blocking later work (1753.327667ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1692,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native background HTTP service remains usable by the next tool and drains its original job: explicitStop=false (1920.982782ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":51,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1855,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native background HTTP service remains usable by the next tool and drains its original job: explicitStop=true (1923.488121ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1864,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ cancelling a native job records terminal cancellation and drains the actual owned process: background=false (460.343404ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":397,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ cancelling a native job records terminal cancellation and drains the actual owned process: background=true (392.256858ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":337,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ unknown operation keeps native reads available; owner can investigate readonly but cannot clear missing evidence or replay (870.220842ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":816,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ restart reconciles an original persisted native terminal receipt and resumes the same executor without replay (1614.657296ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1601,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ operator exact error resolution has zero-write HTTP check, retains partial effects and resumes original execution without replay (3040.038964ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2960,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":38,"aborted":false}
+✔ task model defaults and explicit selection preserve the execution selection (1.661683ms)
+✔ native create and resume use the current exact task model on the original session; missing model never creates or resumes (429.226457ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":211,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":205,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native service isolates task model from delegated execution: old config (583.127415ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":570,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native service isolates task model from delegated execution: explicit-owner (540.976361ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":529,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ task folders include shared materials/outputs and isolated execution cwd without moving legacy folders (19.688133ms)
+✔ native AgentLoop and live flush write each task log only to its task while same-task real parallel subprocesses share cwd and other tasks stay isolated (251.530631ms)
+✔ native child agents create, run and resume in the parent task without pre-registration (187.318724ms)
+✔ native child binding rejects forged parents, cross-task cwd and unrelated resume identities (45.066733ms)
+✔ durable registration precedes session creation, survives router close/reinstall and rejects cwd or task rebinding (41.507703ms)
+✔ legacy records are inspectable but cannot be silently adopted into task persistence (22.895865ms)
+✔ concurrent installation and conflicting registrations keep one native routing owner and immutable durable task binding (49.613365ms)
+✔ cancelled native persistence calls retain their abort reason and never create a session (15.379146ms)
+✔ task and log directory links fail before creating anything outside the configured root (10.344152ms)
+✔ cached native backend rejects a replaced root link at every persistence public entry point (42.899722ms)
+✔ cached native backend rejects a replaced project link at every persistence public entry point (37.555522ms)
+✔ cached native backend rejects a replaced session link at every persistence public entry point (38.743029ms)
+✔ cached native backend rejects a replaced log link at every persistence public entry point (42.752401ms)
+✔ cached task routes reject a replaced routing-index directory before registration or native access (21.794627ms)
+✔ unclean native process exit resumes original task session with compaction preserved and no global duplicate log (1848.828675ms)
+✔ registered task writers require exact active Host scope while readonly access and unrelated legacy sessions remain available (35.599458ms)
+✔ execution progress due is exactly ten minutes and respects the current running lifecycle (1.011268ms)
+✔ native execution documents keep each input round and the owner reads the new duty and plan (1686.166084ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":4,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1662,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ native progress review reads the current execution document without replaying or bypassing human wait: false (1842.302129ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1823,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ native progress review reads the current execution document without replaying or bypassing human wait: true (2108.037628ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2093,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ scripted progress decision waits for evidence or steers the original execution once: detour=false (2460.825598ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2444,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ scripted progress decision waits for evidence or steers the original execution once: detour=true (2477.105447ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2463,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ task provider transient classifier only accepts the exact verified provider errors (1.776986ms)
+✔ native owner provider error keeps the same session and submitted decisions take priority: trailing=false (346.467358ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":196,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":136,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native owner provider error keeps the same session and submitted decisions take priority: trailing=true (65.878154ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":26,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":32,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ stale owner no-submission drains and resumes the same session with the supplement without technical backoff (323.544669ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":311,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ service retries a transient native owner with its claimed wake and same session after cooldown (5243.716075ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5193,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ normal empty owner completion resumes automatically with the same session and wake: restart=false (5270.491895ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5222,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ normal empty owner completion resumes automatically with the same session and wake: restart=true (5229.625003ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":40,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5177,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ restart recovers only a legacy acknowledged no-submission with exact transient native proof: true (328.144793ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":297,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":30,"aborted":false}
+✔ restart recovers only a legacy acknowledged no-submission with exact transient native proof: false (220.126144ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":207,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ owner technical failures have a durable bounded budget across leases and restart; later real input preserves a recovery entrance: noSubmission=false (785.060199ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":733,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ owner technical failures have a durable bounded budget across leases and restart; later real input preserves a recovery entrance: noSubmission=true (741.962154ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":689,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ owner recovery admission cannot hot-loop on non-provider runtime failure: newInput=true (104.737171ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":48,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ owner recovery admission cannot hot-loop on non-provider runtime failure: newInput=false (93.500709ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":29,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ same-host recovery drains the original native process without replaying an unknown operation (1004.994424ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":19,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":965,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ 原生网页工具错误不建立未知效果，仍可完成后续读取 (1803.520005ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1789,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native DWS observer binds send and status operations, filters early echoes and persists exact identities (505.720854ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":491,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native completion freezes files and resumes remaining delivery after the explanation is archived (660.251619ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":604,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ running reminder and coordinator clarification preserve one native shell job with received and consumed receipts (2577.269917ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2561,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native completion race drains then resumes the original execution without replaying its shell effect (3154.844038ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3137,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ real coordinator input enforces explicit context semantics without default cancellation: missing (533.372736ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":476,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":56,"aborted":false}
+✔ real coordinator input enforces explicit context semantics without default cancellation: preserve (969.701788ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":957,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ real coordinator input enforces explicit context semantics without default cancellation: replan (1046.598831ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1031,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ real coordinator input enforces explicit context semantics without default cancellation: cancel (659.414465ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":640,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ owner injects one authoritative source body across task, Web identity and materials (266.863206ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":58,"aborted":false}
+ℹ {"scope":"actual native owner scripted adapter UTF-8 JSON bytes","bodyCopies":[0,0],"metrics":[{"currentHostBytes":2781,"oldHostBytes":2,"toolHistoryBytes":2,"systemBytes":32574,"schemaBytes":10245,"adapterRequestBytes":56568},{"currentHostBytes":2781,"oldHostBytes":2,"toolHistoryBytes":2449,"systemBytes":32574,"schemaBytes":10245,"adapterRequestBytes":59415}]}
+ℹ {"lifecyclePhase":"business","elapsedMs":187,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":21,"aborted":false}
+✔ 不同群成员续办已完成任务，旧授权拒绝显式重试仍保留原任务和会话 (792.055222ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":771,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ 话题历史自身通知不阻断人工补充-native-user (781.716906ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":766,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 话题历史自身通知不阻断人工补充-colleague (791.047742ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":770,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ 话题历史未准入真实消息仍拒绝更新且不发送成功回复-native-user (794.679514ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":776,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ 180 legacy task Host markers retire without changing audit or foreign context, including compacted surface replay (77.677515ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"scope":"actual native foldSurface UTF-8 JSON message bytes; source/task identity retained","legacyHostCount":180,"beforeBytes":65206,"afterBytes":983,"newInputBytes":282,"retainedBaselineBytes":0,"afterCompactionBytes":1170,"rawAuditEvents":367}
+ℹ {"lifecyclePhase":"business","elapsedMs":62,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+{"contextProof":{"ownerRequests":11,"latestInputBytes":4819,"totalRequestBytes":107015}}
+✔ owner keeps one current Host snapshot and delegates non-recursive execution context across three generations (2806.251689ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":75,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2711,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ 32 continuations bound owner Host input and execution-read tool results while preserving authority and unknown effects (67284.519582ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":81,"aborted":false}
+ℹ {"scope":"native owner scripted adapter, UTF-8 JSON bytes; no provider tokens","metrics":[{"lease":1,"inputVersion":0,"currentInputBytes":2118,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":2720,"messagesBytes":38678,"adapterRequestBytes":59380},{"lease":2,"inputVersion":1,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":48947,"adapterRequestBytes":69649},{"lease":2,"inputVersion":1,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":50547,"adapterRequestBytes":71249},{"lease":2,"inputVersion":1,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":53488,"adapterRequestBytes":74190},{"lease":2,"inputVersion":1,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":54973,"adapterRequestBytes":75675},{"lease":2,"inputVersion":1,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":56485,"adapterRequestBytes":77187},{"lease":6,"inputVersion":5,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":116623,"adapterRequestBytes":137325},{"lease":6,"inputVersion":5,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":118223,"adapterRequestBytes":138925},{"lease":6,"inputVersion":5,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":121164,"adapterRequestBytes":141866},{"lease":6,"inputVersion":5,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":122649,"adapterRequestBytes":143351},{"lease":6,"inputVersion":5,"currentInputBytes":2970,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3671,"messagesBytes":124161,"adapterRequestBytes":144863},{"lease":33,"inputVersion":32,"currentInputBytes":2980,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3682,"messagesBytes":573932,"adapterRequestBytes":594634},{"lease":33,"inputVersion":32,"currentInputBytes":2980,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3682,"messagesBytes":575536,"adapterRequestBytes":596238},{"lease":33,"inputVersion":32,"currentInputBytes":2980,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3682,"messagesBytes":578480,"adapterRequestBytes":599182},{"lease":33,"inputVersion":32,"currentInputBytes":2980,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3682,"messagesBytes":579969,"adapterRequestBytes":600671},{"lease":33,"inputVersion":32,"currentInputBytes":2980,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3682,"messagesBytes":581484,"adapterRequestBytes":602186},{"lease":34,"inputVersion":32,"currentInputBytes":2423,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3059,"messagesBytes":615749,"adapterRequestBytes":636451},{"lease":34,"inputVersion":32,"currentInputBytes":2423,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3059,"messagesBytes":618693,"adapterRequestBytes":639395},{"lease":34,"inputVersion":32,"currentInputBytes":2423,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3059,"messagesBytes":620182,"adapterRequestBytes":640884},{"lease":34,"inputVersion":32,"currentInputBytes":2423,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3059,"messagesBytes":621697,"adapterRequestBytes":642399},{"lease":35,"inputVersion":32,"currentInputBytes":2381,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3017,"messagesBytes":629119,"adapterRequestBytes":649821},{"lease":35,"inputVersion":32,"currentInputBytes":2381,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3017,"messagesBytes":632063,"adapterRequestBytes":652765},{"lease":35,"inputVersion":32,"currentInputBytes":2381,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3017,"messagesBytes":633552,"adapterRequestBytes":654254},{"lease":35,"inputVersion":32,"currentInputBytes":2381,"retainedHostCount":0,"retainedBaselineBytes":0,"hostMessagesBytes":3017,"messagesBytes":635067,"adapterRequestBytes":655769}]}
+ℹ {"lifecyclePhase":"business","elapsedMs":67187,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ configured group responsibility reaches group and task models and its reply signature survives notification formatting (310.597896ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":257,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ simple existing-file delivery uses one executor and owner reads the delivered evidence (630.505347ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":617,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native service routes authenticated source, delegates parallel execution, persists wake before owner wait, and sends confirmation and completion with readback (1874.604382ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":54,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1807,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native sequential handoff preserves one executor before independent review of the fixed artifact (1527.996498ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1447,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ native service runs eleven independent members within the configured concurrency and completes (10076.329943ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":10014,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ native executor resumes in the same titled task workspace and all task sessions share the process cwd (1418.574214ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1366,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native service reopens an unknown notification for readback without resending completed business work (5325.903696ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5273,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native service cancellation stops the real execution process, drains the session, and rejects late completion (678.787682ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":48,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":618,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native requirement update resumes the same owner with new sources and fences the interrupted old execution result (1013.129597ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":953,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ native capacity queues promote every task and execution: tasks=1, executions=1 (2819.40824ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2752,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":18,"aborted":false}
+✔ native capacity queues promote every task and execution: tasks=1, executions=2 (3239.83814ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3173,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ native capacity queues promote every task and execution: tasks=2, executions=1 (3042.12661ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":54,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2974,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ native capacity queues promote every task and execution: tasks=2, executions=3 (2589.120605ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2517,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":30,"aborted":false}
+✔ native shared resources queue without occupying task capacity and promote on drain (7858.681633ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":7790,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ native delegation rejects changed keys on receipt replay and preserves omitted continuation keys (2395.307245ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2335,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ recovering an idle owner with no pending wake does not consume a task slot (311.315948ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":59,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":234,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":18,"aborted":false}
+✔ native session creation failure has bounded recovery retries: persistent=false (2226.385929ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":65,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2144,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ native session creation failure has bounded recovery retries: persistent=true (2153.921598ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":51,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2088,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native model failures settle without repeated owner requests: persistent=false (436.929049ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":69,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":356,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native model failures settle without repeated owner requests: persistent=true (386.620243ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":52,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":308,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":26,"aborted":false}
+✔ empty owner recovery reviews the retained execution without replaying its completed native write (7600.100579ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":78,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":7499,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✔ native owner empty-summary corrections are bounded and may recover: correctOnce=false (216.362545ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":158,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ native owner empty-summary corrections are bounded and may recover: correctOnce=true (219.035435ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":53,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":152,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native topic routing rejects incomplete source coverage and accepts correction in the same real session (435.58197ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":66,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":352,"aborted":false}
+ℹ {"topicCorrectionActivity":"final-drain","routeCalls":2}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ resident.apply boots and disposes with only its declared native service dependencies (114.05243ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":33,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":69,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ resident listener startup failure disposes native resources and permits reopening the same task database (109.528959ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":97,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native board keeps a drained coordinator running while its delegated target is executing (634.731831ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":571,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ native single-member completion keeps an unknown tool effect unresolved without replay (769.741814ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":70,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":685,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ native recovery no-op preserves an undrained task writer conflict alert (266.816581ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":210,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ execution document publication failure after claim drains the committed execution and exposes an alert (234.766961ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":222,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ resource read retries preserve image facts and duplicate ingress reuses the source (235.263014ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":219,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ 周期恢复与调度跨过百条已排空历史，不展开执行正文也不启动模型 (105.194971ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":93,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ 群身份与入站校验不展开展示消息，展示层仍实时过滤通知 (57.220506ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ native personal skills are discovered cheaply, loaded independently by both sessions, and references stay execution-owned (2419.008283ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":227,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2166,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":24,"aborted":false}
+✔ an unavailable native skill is a correctable read and does not leave unknown external effects (2772.04971ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":75,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2641,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":55,"aborted":false}
+✔ task session rejects business tools and late replacements while keeping the original evidence reader (512.168651ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":95,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":400,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ unconfigured native profiles expose no bundled personal skills (466.219024ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":67,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":386,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ an execution same-name replacement does not inherit the native loader read-only accounting (1737.345886ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1666,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ 已读技能和引用变化只提示相关路径，原生重读后消除提示且保留旧版本审计 (265.07787ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":53,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":198,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ 执行会话续办恢复已读版本，入口未变而引用改变也能在首次模型步骤看到 (2257.293495ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":48,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2194,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+ℹ tests 142
+ℹ suites 0
+ℹ pass 142
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 297811.745326

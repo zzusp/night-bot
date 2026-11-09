@@ -1,0 +1,1291 @@
+{
+  "scope": "Static top-level lexical reference closure only; factory dependency is not a retirement disposition or PASS. Nested registrations remain owned by Tests inventory.",
+  "file": "test/topic-runtime.test.js",
+  "sourceSha256": "5eaecbc80a62f1f2ca2c2861137ae2978fc6496a7fc29687d7775b3819de9504",
+  "helperClosure": [
+    "createTopicCoordinator",
+    "setup",
+    "quotedReminderRouting"
+  ],
+  "directRegistrations": 144,
+  "factoryDependent": 134,
+  "factoryIndependent": 10,
+  "registrations": [
+    {
+      "name": "启动失败持久退避，预设未恢复不派发，到期沿原请求恢复并清除故障",
+      "line": 89,
+      "registrationSha256": "4b156e75e68694873e22ffb1f5c8864546c99394a8dc173e9c635938a03fbae1",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "重启保留启动退避，校验异常保留原故障，历史零输入失败可恢复",
+      "line": 118,
+      "registrationSha256": "9e0a0b7c51ba898a9a488dd9c3fea0da7b175bc2bb7475626ae2828de619f649",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "普通协议耗尽与已派发后失败均不被启动补偿重放",
+      "line": 144,
+      "registrationSha256": "8caab3c9b4417f3e7b7531bcd706fb91733470e2bb7c3cab7170f088c6314ca0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "连续启动失败增加独立退避次数，并发恢复只派发一次",
+      "line": 168,
+      "registrationSha256": "11c9ef48cafd62bcbca531788884dba7b2f383af32c008b8c25bd7f4e0a03a34",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "manual request recovery fences message version, units and request token and coalesces repeated clicks",
+      "line": 192,
+      "registrationSha256": "e586df65ce71fcdb5111e97dd48d1dd338f70114aa17755d06a8267ed90ac45d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "messageProcessingRequests preserves startup compensation and exposes only detached read-only fields",
+      "line": 215,
+      "registrationSha256": "5a47dbc2260592f0dcfb4df2680049a71f3e7c952fd9f356c993e5ed115f021d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "messageProcessingRequests classifies legacy zero-input exhaustion by the existing startup recovery rule",
+      "line": 233,
+      "registrationSha256": "7cbba04d50b04a4b5ee2bc4632b541e1f3209b9b63eccea927fe3dbfc05446fa",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "messageProcessingRequests route scope requires current unrouted message versions and live status",
+      "line": 252,
+      "registrationSha256": "ba83bbaafaaad1dcaedf4ca83e8e9e06871d456cb7a947d166bcec1b4b9df595",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "messageProcessingRequests decision scope includes only current unprocessed delta units",
+      "line": 271,
+      "registrationSha256": "00a01cb6c3a0211dfb2e0e86a4bb9e2504116d4225223832d71d1e06088a39b1",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "messageProcessingRequests excludes replaced Topic revisions and removed Unit ownership before rescheduling",
+      "line": 299,
+      "registrationSha256": "5dd61a419b7eb34aa9df1b5f68f698a27321b28cc9e85b40db77acc596a93ab0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Topic 固定版本投影在摘要缺失时仍是无损 JSON",
+      "line": 345,
+      "registrationSha256": "4a01ee0f4c73ac3dd83ba2595e6641fa62fb6911ecb4f6846868149b37e7863f",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "Topic 工具统一返回 lossless JSON",
+      "line": 356,
+      "registrationSha256": "8f5b0ccebbd3efd720ba12ce0dbe2c00399c1efb393a04b38293d29e6e64e995",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "工具参数错误返回精简字段问题且不产生副作用",
+      "line": 376,
+      "registrationSha256": "6af3cbc3c52c99c47398049517ca8cbeea299b849e92510a50a6f8c4fb06ff44",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "联合分支错误返回具体多余字段和动作路径，不只返回 Invalid input",
+      "line": 388,
+      "registrationSha256": "e05f43b53eb164bf3b3060fd8415dff079a820a51f4a3554cb89a7934f83cb74",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "归类期间消息版本变化返回刷新后的当前请求",
+      "line": 402,
+      "registrationSha256": "deb7dd568345a4b6ff750949c4b4d6f8a4a9e4d8d3e054308fbe4e3c1deefb97",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "超长引用元数据完整续读后才能路由",
+      "line": 430,
+      "registrationSha256": "3d894a0a4ecd7efaf1140ac100838bcae21625458fe5cb69a2e068c25e316dec",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "路由首包按 JSON 实际长度预算并可续读转义原文",
+      "line": 449,
+      "registrationSha256": "a2fa5af017fec3d78f57a24754f36ca908cbc8875e316902e8165b9b833542c1",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "大澄清候选走只读分页且未读完不能提交澄清",
+      "line": 463,
+      "registrationSha256": "3814151d28e33baaa6143204ffe7bcc0e360359dbee9ee073b120943f7928012",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "活跃路由审计已见候选及新建理由，拒绝猜造候选",
+      "line": 486,
+      "registrationSha256": "df268217a94f0c06892b577bbcbc2f3ca3a168fe4cbced9724cd2d9140074fdc",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "多依据普通回复应指向语义接收人而非最后解释者",
+      "line": 506,
+      "registrationSha256": "e41be2a3df75faadd6b76610a1a2948c670e416ce8f6976440f281f14400bf6b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "普通回复只接受固定Topic真人来源及受信参与者收件人",
+      "line": 523,
+      "registrationSha256": "c32bd95de445c5af0eff4ded213d76c40c77b38dcaa1f147b388bf5b50bb5104",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "引用默认通知作者、重复身份去重，明确空收件人仅普通消息可用",
+      "line": 542,
+      "registrationSha256": "4be4f904fb1ad4bd8d103d3e1c6cdfa1d7a030ac0ab83e63486d3f1a50b4372d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "引用其他人消息或外群助手消息不取得本群回复归属",
+      "line": 560,
+      "registrationSha256": "1733181b2286199e1e0e0f8c16f27fd62fe5aa9d7dee9558d143cc92b6c26c4d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同批混合来源并发推进，跨Topic同源只确认一次，各自来源仍能回复",
+      "line": 581,
+      "registrationSha256": "c29f1f9cd9646902f96435f4e574d054adab129a88fd711010104575493a7a47",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Topic 决策信封受字符预算约束，缺失增量读完后才可提交",
+      "line": 630,
+      "registrationSha256": "332ebaf73f413368ed70de1408bef73b3d5d79b76a9c76920b3dadc37d04cf29",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "超长直接引用保持当前事项可见，引用续读前拒绝决策",
+      "line": 659,
+      "registrationSha256": "9bb3fd9f7dcaa2310139a0da18cd8baca643a2c4e7c28072aff3f6826146f0d8",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "长历史不进入新决策首屏，路由回执保持精简",
+      "line": 677,
+      "registrationSha256": "051f118c61622b89900f4f0ec08b73db184fd5fb80fbb6b779e6f23f55b1d19a",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同消息多事项的引用与原始点名只发送一次",
+      "line": 700,
+      "registrationSha256": "bca58c5558ea04b9f15771727f730ee693293d67b85e6e455f4d5a23a41a18d6",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "拆分确认和条件后，各话题仍能读取完整同条原文且不取得其他事项效果所有权",
+      "line": 721,
+      "registrationSha256": "2e42f0d9321e9a29f776e8b792d3d03883dacc0d1e7c550eff3849035a719c1b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "压缩移除已见决策正文后需重新取得必要增量",
+      "line": 750,
+      "registrationSha256": "673c2491a30fd83d329ecbbea98e6b82c34b7246353f786f29fc8176b5a47b82",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "历史超长单消息按连续UTF-16片段完整读回且保持40k预算",
+      "line": 767,
+      "registrationSha256": "8c6e16766e0ff84ef9464769bb5a693bd215ddd23a675c11250b36e86388b1fa",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "归类协议区分 Topic 归属与历史资料查询",
+      "line": 783,
+      "registrationSha256": "f91eecd814996700abd8e356a757bca1fd3b839e75d64cfa92ba23c87a4859c0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "消息仅在全部关联 Topic 完成后收口为已投递",
+      "line": 792,
+      "registrationSha256": "42cfdfe8ef554befce3f6aeb1243d845bc5aacbab0db4f4d3ae2e4605c9ef203",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "明确无需进入 Topic 的消息在归类完成后直接收口",
+      "line": 811,
+      "registrationSha256": "48e5177eab11e1081a6106bc85bd50db97d295d3e233d4f74775d33c0f9b66f7",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "引用已送达助手回复的对象纠正可以沟通而不变更任务",
+      "line": 828,
+      "registrationSha256": "253d82d95608bdff534e7afbb5968a35db931b541b1af9509d5eff2d1171b9d0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "连续话题版本刷新关联Task状态摘要，保留未答来源并拒绝旧决策",
+      "line": 854,
+      "registrationSha256": "8095a19d609c3725d3fb3a7de03e4c20de8a4aacebed7c27889bad3be5c66314",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "关联Task默认摘要有界，正文按需读取，跨群不泄露，超量显式续查",
+      "line": 879,
+      "registrationSha256": "16e3315da298724b3e9142b01ad7b0d6b11e179226a597e672c5ac15e7c93353",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "关联Task内联后发生版本变化，旧快照不能放行Task动作",
+      "line": 908,
+      "registrationSha256": "35ba72d9a08b9125b02f59e40a7d8d1dcfa53a3c51a1a99ecafe01593332e99d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "归类 exact batch 零副作用拒绝漏项，新增消息进入下一批",
+      "line": 926,
+      "registrationSha256": "cff85083d47d949331682fd3d1616d62ed03835e690b2de03a0d95c376301a78",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "A/B 独立提交不要求覆盖其他 Topic，先完成 B 不消费 A",
+      "line": 942,
+      "registrationSha256": "e4b9d5c72c66a5bf2c777a8ba115ed5746e5e3cd0ec16027b58784220ced22e9",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "超长消息路由必须按冻结原文坐标连续读完，未读完不能原子接受",
+      "line": 952,
+      "registrationSha256": "4d450ee1de60f75bb2d2664b70dd7150deaec26d31ab51eee13ac76b6be5244f",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "#1066 单消息拆成三个事项，各自建 Task 且已完成事项不等待兄弟事项反馈",
+      "line": 971,
+      "registrationSha256": "732685a78d1812630c0b74b7d969d4fef3f2c711e9e3af2d1af1f409e7d7c16f",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同消息复核不能改 unitKey 重授执行权，显式拆分保留旧固定版本",
+      "line": 1018,
+      "registrationSha256": "806b8319d2e92a25d5236aefeb63de0dd2678afdfdeef3b66a28da5602bf8cbf",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "未知输入返回 routing-required，归到 B 后原 A 草稿自动重验提交",
+      "line": 1038,
+      "registrationSha256": "1e2412d26df4d5adeab7b98d81833266bbb88af32a7b0bb2fd4dfaab14b54bb5",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "待归类输入不阻止已准备的其他 Topic 决策进入公平队列",
+      "line": 1058,
+      "registrationSha256": "a9883a877adb85c4e2878ccc7ac9340c51b9461022e50dedfe230bcd78ca3017",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "待路由的新建任务草稿遇同话题撤销时失效，不能自动补建",
+      "line": 1075,
+      "registrationSha256": "2486f9ef9f2cce2440e748a2affaab71f905b2db5940b46bb4ce21069ee74a59",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "路由等待期间回复候选变化，缓存草稿仍须重新审阅",
+      "line": 1095,
+      "registrationSha256": "ba8d4537d194fda39bc09c56e51ee10c21da412a14c4d6ced8298011506c4bc3",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "异步决策预处理期间来了新消息，原请求仍仅派发一次且提交受保护",
+      "line": 1115,
+      "registrationSha256": "3eb32dab210ad9e487827e0a781a05a8ab36291ba264e0caf7fa0e4eff8a9595",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "新消息等待归类时决策协议提醒不消耗重试次数",
+      "line": 1135,
+      "registrationSha256": "ecbc565b6540dc271de07266c2314ebe7d11952822498d576dcb3b11f691b76b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同 Topic 新增输入使旧决策失效且新依据必须覆盖本次增量",
+      "line": 1150,
+      "registrationSha256": "a441cdb22f6476b1c0697a932e33520a1a24af442a28dff847c17b825f537f38",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Topic 上下文已交办时，仅同步同事或省略助手称呼仍可创建任务",
+      "line": 1164,
+      "registrationSha256": "e914de75496f514090036b5644a099de8b53f73213f86a58b4cfbf5398dfc6f0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "事项正文剥离称呼后仍提供完整来源供语义判断",
+      "line": 1198,
+      "registrationSha256": "a1e0e28bb5c3d7b87726ae5b29b0f21cdae77813d6871633dda1d4de6d43c747",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同一消息多个事项保留分工原文并按语义选择动作",
+      "line": 1223,
+      "registrationSha256": "377bd7861f898ea89ef2a017c359fcfc7b35697690c1dc5bd80e6ebad76fe21e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "明确他人负责、纠正误介入和多人身份不确定都可在原 Topic 静默留痕",
+      "line": 1253,
+      "registrationSha256": "1aa35decaa6392254a6f78594d35572de327f504d01ba49c67bebf3d8671d4c1",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "引用消息正文不能作为当前消息的 contextRefs",
+      "line": 1281,
+      "registrationSha256": "2ea5f523009e32373327624f256ddb1cee6917f6c3fefbd37d356364b1795953",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "引用中助手的另一事项不自动承接当前需求",
+      "line": 1303,
+      "registrationSha256": "629fac36d066ec730108dd4156619f8f8655743f5102b6ecb3f451f67027e688",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "已建 Task 后故障，重启恢复只保留一个 Task 与 Outbox",
+      "line": 1318,
+      "registrationSha256": "254eb063833fc254b50a30b6968f51f846eec9e9bc71e4a91aaf1418d423ea62",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "旧决定已应用取消动作后恢复不重复取消且缺路由时不发回复",
+      "line": 1340,
+      "registrationSha256": "d600fc5233b8e73226ce96a222f9b6aa7d4374bbc48212564c77d66338390c5b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "任务动作拒绝时零回复；动作全部落账后才发送承接回复",
+      "line": 1368,
+      "registrationSha256": "cc9b6eb3e8f3eae8402527dde9a35a990be1cdd3ae661e86eecad2566e858e04",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同revision拒绝后新请求跨重启稳定，共享消息不转授权且已发回复不重放",
+      "line": 1392,
+      "registrationSha256": "bcf017378a8d26f659c454c3af9c4a1e4cc8e95000217806fd3ad89dca9bf387",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "审阅工具同源契约通过真实 DSH 校验，并按请求种类限制字段",
+      "line": 1436,
+      "registrationSha256": "6037ab2bfeb685073aa68e974479cec88915a51ca58c12e2a86456d012659ebb",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Host 审阅拒绝跨种类决策及原生投影未执行的空文本约束",
+      "line": 1456,
+      "registrationSha256": "aa4767e392b9162694da864c9235003909000f17c6c737d4d68a09622bcec250",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "内部审阅按请求绑定 Task 版本，拒绝错种类和版本变更",
+      "line": 1471,
+      "registrationSha256": "e7740905ced0ca698d353ad497728ae375dc396c38a6b0df0f1b10db764ba978",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "完成审阅一次提交通知草稿，Task 落盘后才写入 Outbox",
+      "line": 1483,
+      "registrationSha256": "6925f30518bdbd4fe7b9d22428949dd0ad06e717f37e664c4749fb9f82cae8e2",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "完成审阅后新增历史候选使通知草稿失效",
+      "line": 1508,
+      "registrationSha256": "a19c8f6be16eb8f1d3a19357202e81cf544ab74073a4641d43693ca0b8339b25",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "完成审阅只内联受限的近期 Topic 消息",
+      "line": 1525,
+      "registrationSha256": "cbae081e115ab75008e69a96c43cbea1724100c92b56e4ee4f84b9a4ed340bf9",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "内部检查点必须结构化确认，不能携带相互矛盾的 guidance",
+      "line": 1550,
+      "registrationSha256": "9292308d454da21369fc2d6e05649c7d46e89aaaaff82ea7f9aa93bc23ef89de",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "话题上下文剩余预算连一个字符也装不下时保留已装入消息",
+      "line": 1561,
+      "registrationSha256": "08da2d7944512a6a27327d09c45b0b6d2bb1644314b20c232b1bafdf4ac13380",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "协调方使指定 Task 审阅失效后拒绝迟到结果",
+      "line": 1589,
+      "registrationSha256": "554729b41fe0a7f03191d7719f3ac90c3e2ad468fde91bbd5a90adfbe6e6b4a3",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "历史Topic搜索分页及固定版本读回，跨群与越界拒绝",
+      "line": 1598,
+      "registrationSha256": "49860ee01acda14a7231ac8b07a936591b7e6ec9be610ede67d6637950f9045f",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "普通已处理话题补齐空摘要，不重做任务动作，之后不重复补齐",
+      "line": 1618,
+      "registrationSha256": "d6d9eb583c182e6c02db9991f331a903db2768d6c8d15f79ce619b80071d1eec",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "历史 Topic 先根据引用消息补 summary，再据此重生成 title",
+      "line": 1638,
+      "registrationSha256": "d28ee2374181c90c4cf0a6421d0b5925e0a378b1ad399b363baa926bb7c9f37d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Task 通知要求真实 Topic 引用及参与人，并拒绝旧 Task 输入",
+      "line": 1667,
+      "registrationSha256": "24450021857d11008765e1bc04effe7e66a755a165f09e06f23f753c84f66557",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同Topic新版本保留尚未接纳的同轮请求与持久协调账",
+      "line": 1682,
+      "registrationSha256": "5cc3d9b79fa4dd8f69817b09cd8237aea100732aad8aaf74fcd9ecaf763ebae8",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "普通Task通知与完成通知一致：引用消息时省略at默认关联发送人",
+      "line": 1697,
+      "registrationSha256": "e1091cc16f76c2e1879af2907ef6b5af348a362765de7f02b30fc1d0f95395b2",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "审阅后历史候选变化必须重新读取，不能用旧快照发新回复",
+      "line": 1710,
+      "registrationSha256": "08b0061b469a3eab1ef5b0aeec1cd8d3e68593cbaca24bea5204c42e12ebbd4e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "审阅后的Task瞬态运行状态不使候选事实失效，正文来源和归属仍须重读",
+      "line": 1725,
+      "registrationSha256": "5c0f9e9b0ea4948326c5584cdf4474dac5571f3817b6477f871c033ee4eb687b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "无关 B 的新历史回复不使 A 的候选审阅失效",
+      "line": 1753,
+      "registrationSha256": "19a25064a44266b8071f1d4f5bb8f1d13237c87c4d01e4ecbebf3e35b1d30dc0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "决策进入 Store 队列后候选变化仍在原子提交点拦截",
+      "line": 1766,
+      "registrationSha256": "01a616189ebd030a506fdec0e5af8795a385f1942ddf5404a5b334aaf85091e8",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Task 通知在 Outbox 落盘前再次核对输入版本",
+      "line": 1782,
+      "registrationSha256": "bb99553150a8a87bad9c0b32444e75283364387f3407d6a86a73604e39c64f23",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Task 通知读取最新相关候选后可提交，重试不产生第二条 Outbox",
+      "line": 1796,
+      "registrationSha256": "7ddd6019f9010d9ae1101f9c07096a0163a93a3560a59f66847d9da22d1ba00c",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "未知回复请求不可用且不产生 Outbox",
+      "line": 1819,
+      "registrationSha256": "8ba471c5611a08c3ea27fccfb7eeb1f2ab25d0b0cdd765bdbc656e984a6540f2",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "本地已知瞬时错误最多三次，跨重启保存预算并保持冲突保留",
+      "line": 1827,
+      "registrationSha256": "fbb063d14d304b205b13606bb0b4c721672611fd3c237608b70b7db2d92727a0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "未知错误停住，普通消息重试不解锁；显式原操作对账恢复",
+      "line": 1848,
+      "registrationSha256": "3bd669ef2ae5c6c48394ec3e821d28052bda934e381915f588e03a861871515a",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "取消控制可越过已阻塞保留，普通上下文和进行中保留仍拒绝",
+      "line": 1868,
+      "registrationSha256": "df4e018e5e0a9efff2ef0c455a6f91c7ae4540dbf333bf46020705204eee55f0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "部分成功时不能用已应用动作或Outbox的对账解锁另一未知操作",
+      "line": 1882,
+      "registrationSha256": "528de9fa2f8f4616bbcc46834c6ae89bc22a189fc469a173ebb2ef36aaaacd7b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "已接受决策已落盘后到期对账完成，不重复执行动作",
+      "line": 1907,
+      "registrationSha256": "9fa5cb5fdb8be76d51ee9914726d49c864f06e3602992b5440b4dc1eab72486e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "共享消息由主 Topic 统一回复，其他 Topic 不重复确认或实质回答",
+      "line": 1928,
+      "registrationSha256": "f75273ac8cad11a04ec9510aee3742b69ff8eeca653a75898a2acc5e010effc6",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "非空回复必须声明 kind，不能用省略审阅绕过共享确认门禁",
+      "line": 1954,
+      "registrationSha256": "d9538f811c914c5f065c07ba5e2de10b842198e43e2c9e50cb1c53cdccf7dc62",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "改归属后空 Topic 可以用 removedMessageIds 静默完成，但不能创建任务",
+      "line": 1962,
+      "registrationSha256": "f89fb4f92723a573d20911141000bdb03298d02ea2dc029fc025ad624d1c8aab",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同事报告影响原任务路线或时间时可静默回流，保留授权且恢复不重放",
+      "line": 1978,
+      "registrationSha256": "52a913742cfee499a00ddb742597ccfe5f44a96eccf092c2d31a71652ef51974",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "静默事实声明不能放行变更合同、混合动作或无效来源，正常回复仍可用",
+      "line": 2023,
+      "registrationSha256": "fa9c9f46dbb401e2da8afa28134e6251f628e8817b37a4098ec9d265f1df656b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "已有任务中的他人分工静默保留，后续助手补充不受同步提及阻挡",
+      "line": 2048,
+      "registrationSha256": "b57e9477958de4ac44bf11c905e902f2ca25f6703ad3ab3d70e0724f85bdbc91",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "显式归属复核冻结已处理消息，修订后原 Task 仍可读取旧 Topic 版本",
+      "line": 2072,
+      "registrationSha256": "321a71963c6d07d2d84afc62f538cb8f6ef258f575ad1bd463a3be5e59e59695",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "精确消息重试清除失败等待且不重放已完成动作",
+      "line": 2092,
+      "registrationSha256": "a3e629868f77945d1be6e639e8ce9fc9ff059415daa8d48647a26889fbd0c0df",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "嵌套暂停需全部释放且 release 幂等，关闭后拒绝所有工具新意图",
+      "line": 2111,
+      "registrationSha256": "5d421ce940a56a51077cb88841953b09b3ca5d21ace6163b9b6deeef6dc1a750",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "归类快照只携带当前事实，失败决策按需查询可见精简进度",
+      "line": 2129,
+      "registrationSha256": "d180bb08b1a95359c3805db4bfb37092076a51a4fea5cd1d00c32f85d35aeb71",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "动作仍要求确认草稿，Outbox 拒绝保留已应用动作且恢复不重复执行",
+      "line": 2148,
+      "registrationSha256": "f8162038a664883d62a332a96ccdcddac0881ae08c82c18d20a11514027292bf",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "模型停稳后仅有限次提醒，同一归类请求仍可提交",
+      "line": 2170,
+      "registrationSha256": "4384971274a5bfd08aa9c9fca0bf9120eb4573c9da0dd177e595bf9aa76d3d29",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "材料清单从当前surface分页形成，跨请求与压缩摘要不冒充正文",
+      "line": 2194,
+      "registrationSha256": "83df6181d76d857d6ab9497cd314c9d28f21e39763ee5c0f8a26f09c7badcd58",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "审阅先落Task执行事件，重启同报告换提交时间仍恢复原response且不再次注入",
+      "line": 2215,
+      "registrationSha256": "87475545da8b2297485d202d39575a35e8b2031b9530363ac99293e75601b9c0",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "审阅持久化失败不得resolve，重提相同判断后只保存一份",
+      "line": 2237,
+      "registrationSha256": "2aaca266d2f209e99b2e191cacad796383f6384ccdb95b8950dcc1efd00f9632",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "耗尽审阅不自动reset，显式reset只清账与旧Promise不创建新审阅",
+      "line": 2252,
+      "registrationSha256": "3988e6003706818563c09f0e8ea8939def2e2d6bfa065f7c5b4fac4cbefaa3d5",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "完成审阅重启恢复时重建preparedNotification，保持原审批且不新增模型请求",
+      "line": 2272,
+      "registrationSha256": "44d25e0677bbf5f12dfd0f5f23a1273e534f7ec442380d4e86930a748e77fa65",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "审阅身份忽略提交时间，但流程引用、最后检查点和Topic修订变化会换身份",
+      "line": 2290,
+      "registrationSha256": "542cd42b23d2766284596486a3a789548f953d80d4bc1de6b4d62812a786bdab",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "原生 surface 流程正文与连续页跨请求复用，压缩后历史日志不能冒充可见",
+      "line": 2310,
+      "registrationSha256": "70b20438b370fd23b4295d2db8a5b9f4a997d157dc30c1ddaca95be19465bc20",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "审阅复用当前流程正文，压缩或禁用后重新门禁而不是沿用已读标记",
+      "line": 2331,
+      "registrationSha256": "89beb61b2f38343c199f2547c43108490c8de78e2d81240f615679097f05ba66",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "稳定请求跨重启识别已消费消息，原文可见时恢复只发送短提醒",
+      "line": 2358,
+      "registrationSha256": "e75647a8c695f17c71aef8bd4d901ec3c3b60dcea037843d3936be7b3c4ddba4",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "协议提醒到上限后持久停住，新增输入仍能形成新请求",
+      "line": 2379,
+      "registrationSha256": "a96bba86efd7c7014f20455b980a3d62348b06317a8fc5ebef06fdb024601c09",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "只读快路径共享决策门禁，成功时不向常驻再注入请求",
+      "line": 2398,
+      "registrationSha256": "6205dc5f109b702275d4f1830993bc804af2a67826346b7e8a3b2cf309f9b800",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "只读快路径拒绝动作和候选变化，Task事实在真实提交临界点变更时零Outbox",
+      "line": 2416,
+      "registrationSha256": "cde5c465b5c4d632844bc4325e02a4a561446ecaf6fac2fa53e079d18d54bc2e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "原生 Pi 业务队列仍停放未接纳原请求时，恢复提醒不会再排入第二份正文",
+      "line": 2436,
+      "registrationSha256": "fb2d8b93539a8d6ec56dfe88229551f78b3d5346c17a04a7a3972e0dcb2a7544",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "显式恢复递增持久epoch，不会被此前已消费提醒身份吞掉",
+      "line": 2471,
+      "registrationSha256": "d31cb557e89ac3e798a1044b946f54cb6a6400f0940d33f19141c17058327dc3",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "同请求材料只保留一份正文，跨请求或内容变化不复用",
+      "line": 2491,
+      "registrationSha256": "41f2f923a85705ba6f3813ef661d8247f74adaf26c7a8ae43e0f5eb7fbb60b03",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "结构校验一次返回全部引用歧义及字段位置，整批零副作用",
+      "line": 2503,
+      "registrationSha256": "f15736a7ff2add2d5228ace3e141171d5369048beec5a4f0ffa0bcf0855f82e5",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "精确引用提醒首屏省略34个无关话题，A设置B不改变收件人且完整目录仍可读取",
+      "line": 2531,
+      "registrationSha256": "98a7b2a71d840fb3a458ff23b2fb9f807836622b4d4d5698d54c22c2ec52c085",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "引用提醒内的新业务仍可按需查目录并拆成独立事项，不被强制归入原提醒",
+      "line": 2546,
+      "registrationSha256": "71eb9e3a427a0eba46130f0a2049fa049eeafcaeb40b8732eb082a304687607e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "精确关联未通过时保留普通话题目录，路由不自行猜测关联",
+      "line": 2564,
+      "registrationSha256": "cbb8dbd019b81f4aa747866cdf498c7aa64f1cfc0dae9b2b3d4f580687ff6505",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "普通新事项不调用提醒关联，混合批次保留原目录",
+      "line": 2573,
+      "registrationSha256": "1c79e5a399afd4b04b1b9920a4c3951c5618d3f41ee2e566dc8a3e3ac6931248",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "精确引用查询异常显式报告并释放未派发路由请求，恢复后沿原路径重试",
+      "line": 2584,
+      "registrationSha256": "875e88c47f5d5bd78dd296cf7bd7f7f1b12cf87622e794438961a16bbec11d31",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "引用关联等待期间版本变化只重建原批次，新增消息不丢失也不混入旧请求",
+      "line": 2594,
+      "registrationSha256": "da299320c9321aa920f22f35acdc5f2484444de735e0ad42edb2ff625d560355",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "引用关联等待期间关闭不会派发尚未准备的路由",
+      "line": 2622,
+      "registrationSha256": "15c3ecc85f2e074393374e547e5dc2be3c967c5d7ab5a751f701c77a32c0d553",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "quotedReminderRouting"
+      ]
+    },
+    {
+      "name": "紧凑目录连续分页无漏项，引用同消息全部旧事项保留摘要",
+      "line": 2632,
+      "registrationSha256": "fbbef69a802a06e0c75612713bf3820465320a02f225e9ac7a7f116a78cc5b73",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "路由关联摘要包含引用命中Task的其他固定Topic，不只保留被引用单项",
+      "line": 2668,
+      "registrationSha256": "c3bc2e1c4325d8cb5f5c0965ec7abfb3929a2ec58549ccbd9ac1e89f5d37cf1e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "决策一次报告独立动作的版本和归属问题，不写Task或Outbox",
+      "line": 2679,
+      "registrationSha256": "fbab774b23b042f738d807cb9b33d17ec66b5033961dfd2fc656d08673142490",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "决策首包提供固定流程索引、合法 section 与批量正文读取，并拒绝跨请求",
+      "line": 2700,
+      "registrationSha256": "57708a651316606c8511b2d162db15a03b1dfb6979b640ef0c80abbe5cf26489",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "固定请求绑定审阅身份与当前Topic，路由缺Topic明确拒绝且不猜测其他事项",
+      "line": 2729,
+      "registrationSha256": "81314ead434e25aa643baae2f5acdbaad11b8e2c4323e17ae2bdd56976cc4582",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "超长流程索引通过声明的 promptIndex 分页完整读取且保持决策首包预算",
+      "line": 2764,
+      "registrationSha256": "3206b14f5de50d6783f0b1e6d015f82875a145d10aa76bcc53314c52e72e9a31",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "读取流程后更新或禁用，new-task 提交拒绝旧版本且不写 Task 或 Outbox",
+      "line": 2785,
+      "registrationSha256": "1e9f047bbbde54f95f5188d740b97186cff0f62b67b62cd80ba738e5271e5160",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "无动作且从未入 Outbox 的 blocked 决策可并发安全重判，保留失败证据与原输入",
+      "line": 2808,
+      "registrationSha256": "147377411e54817961acf6229bc28cdac4d4a1e63f259af0e556a481afc1f022",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "重判与旧 not-applied 恢复并发时旧恢复 CAS 不得复活已拒绝草稿",
+      "line": 2838,
+      "registrationSha256": "fbc7f643e20b5cce0c58b183d248c4a35657c59b4da512fd1166e9ae4852e0d5",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "纯闲聊完整归类收口但不新建话题或触发业务决策",
+      "line": 2857,
+      "registrationSha256": "78f766c4be01c58020eb223516fcd4a49781e2ffb697d1184026be21fa5a65d3",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "遗漏范围按 UTF-16 保留 emoji 和多个独立事项的原文",
+      "line": 2882,
+      "registrationSha256": "86d139c5f53f815bd93a219a4f2ca03ccb084b068007c0b9dd6b7a65c155ce77",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "混合消息只为具体事项建话题，闲聊片段保留在忽略范围",
+      "line": 2897,
+      "registrationSha256": "6d1fe8c1c53050caece292efe126ad62b3460b691bca4ee1e13578db30acf831",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "new messages cannot reopen archived tasks; normal new-task path remains available",
+      "line": 2926,
+      "registrationSha256": "4dc5f222a80671227add236f9f27c3caf56c35e07bc77f2eab55417e727efaba",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "fixed route categories are offered by active mode and bypass business decisions",
+      "line": 2953,
+      "registrationSha256": "8abc7b222f73c3f4962a1784bceb90817620bfb68b4df0dc009fc39ae0a07053",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "Route and Topic receive only referenced group person identities without filtering business requests or existing-topic facts",
+      "line": 2972,
+      "registrationSha256": "e52677e343bd32dfcb95a8d1b58c407bd10942137c3f6ee3ba0d704e390677d3",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "same-round latest input must be consumed; stale and queued submissions cannot commit; restart keeps accepted receipt",
+      "line": 3035,
+      "registrationSha256": "828e6bd63993fbb27f39877a91eda42c4dd905ad4daa8f455775b515b631408e",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "latest revision cannot borrow the old consumption marker while its envelope awaits Task facts",
+      "line": 3063,
+      "registrationSha256": "5d9417495b8c6e3f80c754849349afbe74edf25ba9f0d56bdbb82622b058e29d",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "omitted Topic presentation fields retain values while explicit changes update independently",
+      "line": 3093,
+      "registrationSha256": "e3752cd5f17285ff84d446e852c0331166f346886dbeb2306db059b87e252ff1",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "compact review still marks exact candidate snapshot read and rejects changed candidates before acceptance",
+      "line": 3112,
+      "registrationSha256": "718c40b2c872061e598a654346b3d788723d86c11f3b65871116f12fdd4e59c9",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "accepted presentation cannot overwrite a later concurrent summary while applying Task actions",
+      "line": 3125,
+      "registrationSha256": "f9e8c7f6d425550fe4caec8882271a6e002e852158efc02db8f8422370a1967b",
+      "factoryDependent": true,
+      "factoryReferences": [
+        "setup"
+      ]
+    },
+    {
+      "name": "historical presentation folds omitted fields and explicit clears across revisions",
+      "line": 3139,
+      "registrationSha256": "c50259b5a494e5df1c71c68bcde87b43abf43b246af5b91b1bc8f19bfd3551c8",
+      "factoryDependent": false,
+      "factoryReferences": []
+    },
+    {
+      "name": "Pi writer failure blocks official business visibility instead of skipping gates",
+      "line": 3155,
+      "registrationSha256": "f3c46d9b289c64b465a8e429ae1c497b678dd8b7c0a3059834fd556e3ca11790",
+      "factoryDependent": false,
+      "factoryReferences": []
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "base": "73c296c",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default": {
+      "tests": 642,
+      "pass": 642,
+      "fail": 0,
+      "skipped": 0
+    },
+    "installed-default": {
+      "tests": 642,
+      "pass": 642,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    }
+  },
+  "remainingDirectDshDevDependencies": 47,
+  "removedSource": "src/native-output-retention.js (302 lines) and old-service differential test",
+  "removedDirectDevDependency": "@deepseek-ai/dsh-output-retention",
+  "removedNotice": "licenses/dsh-output-retention-MIT.txt after no local implementation/test copy remains; transitive original dev packages retain own package licenses",
+  "replacement": "Application text-only Unicode scalar windows: independent prefix and bounded suffix deque, exact UTF8 omitted bytes, native byte-count accounting and bounded-chunk suffix selection; detached item snapshots. Not an arbitrary byte stream ABI.",
+  "preserved": "Job notice bounds, grep line/item caps, canonical model/card agreement and full scoped spill readback; inherited job/search code keeps attribution",
+  "freshInstall": {
+    "command": "pnpm install --frozen-lockfile --store-dir /tmp/night-bot-pnpm-store",
+    "exitCode": 0,
+    "supplyChainPolicyEntries": 630,
+    "durationSeconds": 8.5,
+    "followupDefaultPass": 642,
+    "scope": "Existing task cache, not empty-cache build; no network/policy changes"
+  },
+  "limits": "Only string inputs accepted; two runtime callers provide text. Other session/tool/platform source forks remain. No new Windows acceptance claim.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-output-window-focused.txt",
+      "sha256": "c570b585df9dd144f81780c7df45b4b52558b95c7688d51423dd2b5b28473a42"
+    },
+    {
+      "path": "docs/evidence/pi-native-output-window-default.txt",
+      "sha256": "0453274032e203e70b0c10a6835280f81f426d9e9684f4e270bece68812538a7"
+    },
+    {
+      "path": "docs/evidence/pi-native-output-window-installed-default.txt",
+      "sha256": "ca65a5d79274bd9f5cf51400f90bf9fde4e7f041f566f5c75edadfdafb73e6ae"
+    },
+    {
+      "path": "docs/evidence/pi-native-output-window-containment.txt",
+      "sha256": "08b1eabf78ebff5fb9f7ebef81e5152392557806c5eb2a03011cd10ecbaf59d3"
+    },
+    {
+      "path": "docs/evidence/pi-native-output-window-checks.txt",
+      "sha256": "fb9619012249af3c5b86d8500434673bfca504391be0e494fce26751d4688538"
+    },
+    {
+      "path": "docs/evidence/pi-native-output-window-install.txt",
+      "sha256": "1ab34703e821993e8fead7906e199b0fe54b1cdb45a8a4ee083add8f3dccf99d"
+    }
+  ]
+}

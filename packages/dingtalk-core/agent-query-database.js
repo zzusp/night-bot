@@ -1,0 +1,164 @@
+import pg from 'pg'
+import { readFile } from 'node:fs/promises'
+import { executionDigest, executionError } from './execution-artifacts.js'
+const fail=code=>{throw executionError(code)}
+const quote=value=>'"'+value.replaceAll('"','""')+'"'
+const identifier=value=>typeof value==='string'&&/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)
+const metadataOperations=['constraints','indexes','dependencies','table_stats']
+const metadataQueries={
+ constraints:`SELECT c.conname AS constraint_name,c.contype AS constraint_type,c.conrelid::regclass::text AS table_name,
+  c.confrelid::regclass::text AS referenced_table,c.convalidated AS validated,c.condeferrable AS deferrable,
+  c.condeferred AS initially_deferred,pg_get_constraintdef(c.oid,true) AS definition
+  FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid OR t.oid=c.confrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+  WHERE n.nspname=$1 AND t.relname=$2 ORDER BY c.conrelid,c.conname,c.oid`,
+ indexes:`SELECT i.relname AS index_name,x.indisprimary AS is_primary,x.indisunique AS is_unique,
+  x.indisvalid AS is_valid,x.indisready AS is_ready,pg_get_indexdef(x.indexrelid) AS definition,
+  pg_get_expr(x.indpred,x.indrelid) AS predicate FROM pg_index x JOIN pg_class t ON t.oid=x.indrelid
+  JOIN pg_namespace n ON n.oid=t.relnamespace JOIN pg_class i ON i.oid=x.indexrelid
+  WHERE n.nspname=$1 AND t.relname=$2 ORDER BY i.relname`,
+ dependencies:`SELECT d.deptype AS dependency_type,
+  pg_describe_object(d.classid,d.objid,d.objsubid) AS dependent_object,
+  pg_describe_object(d.refclassid,d.refobjid,d.refobjsubid) AS referenced_object,
+  CASE WHEN d.classid='pg_class'::regclass AND d.objid=t.oid THEN 'outgoing' ELSE 'incoming' END AS direction
+  FROM pg_depend d JOIN pg_class t ON (d.classid='pg_class'::regclass AND d.objid=t.oid)
+   OR (d.refclassid='pg_class'::regclass AND d.refobjid=t.oid) JOIN pg_namespace n ON n.oid=t.relnamespace
+  WHERE n.nspname=$1 AND t.relname=$2 ORDER BY d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.refobjsubid`,
+ table_stats:`SELECT n.nspname AS table_schema,t.relname AS table_name,t.relkind AS relation_kind,
+  t.reltuples AS estimated_rows,t.relpages AS estimated_pages,pg_table_size(t.oid) AS table_bytes,
+  pg_indexes_size(t.oid) AS index_bytes,pg_total_relation_size(t.oid) AS total_bytes,
+  s.last_analyze,s.last_autoanalyze FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
+  LEFT JOIN pg_stat_all_tables s ON s.relid=t.oid WHERE n.nspname=$1 AND t.relname=$2`,
+}
+const columnAttributes='column_name,ordinal_position,column_default,is_nullable,data_type,character_maximum_length,character_octet_length,numeric_precision,numeric_precision_radix,numeric_scale,datetime_precision,udt_schema,udt_name,domain_schema,domain_name,collation_schema,collation_name,is_identity,identity_generation,identity_start,identity_increment,identity_minimum,identity_maximum,identity_cycle,is_generated,generation_expression'
+const columnCatalog=`information_schema.columns c JOIN pg_namespace n ON n.nspname=c.table_schema
+ JOIN pg_class t ON t.relnamespace=n.oid AND t.relname=c.table_name JOIN pg_attribute a ON a.attrelid=t.oid AND a.attname=c.column_name`
+const columnProjection=`${columnAttributes},format_type(a.atttypid,a.atttypmod) AS formatted_type,col_description(t.oid,a.attnum) AS column_comment`
+export const agentDatabaseParameters={type:'object',properties:{resourceId:{type:'string'},operation:{type:'string',enum:['tables','columns',...metadataOperations,'select']},table:{type:'string',description:'表名使用 schema.table，例如 public.tw_process_drafts；仅已登记且唯一的短表名可省略 schema。'},columns:{type:'array',items:{type:'string'}},filters:{type:'array',items:{type:'object',properties:{column:{type:'string'},operator:{type:'string',enum:['eq','ne','lt','lte','gt','gte','like']},value:{oneOf:[{type:'string'},{type:'number'},{type:'boolean'},{type:'null'}]}},required:['column','operator','value'],additionalProperties:false}},limit:{type:'integer'},offset:{type:'integer'}},required:['resourceId','operation'],additionalProperties:false}
+export function validateDatabaseConfigurationConnections(connections,resources){
+ const alias=value=>typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value)&&!['constructor','prototype','__proto__'].includes(value)
+ if(!connections||typeof connections!=='object'||Array.isArray(connections)
+  ||Object.entries(connections).some(([id,binding])=>!resources.some(resource=>resource.connectionId===id)
+   ||!binding||typeof binding!=='object'||Array.isArray(binding)||Object.keys(binding).length!==2
+   ||!alias(binding.configAlias)||!alias(binding.passwordAlias)||binding.configAlias===binding.passwordAlias))fail('QUERY_DATABASE_CONFIG_INVALID')
+ return structuredClone(connections)
+}
+/** 凭据仅Host读取；不将连接配置或数据库错误正文交给模型。 */
+export function createRegisteredPostgresConnector({credentialsPath,configuration,connections,Client=pg.Client}){
+ const managed=configuration!==undefined||connections!==undefined
+ if(managed?(credentialsPath!==undefined||typeof configuration?.read!=='function'||typeof configuration?.readSecret!=='function'
+  ||!connections||typeof connections!=='object'||Array.isArray(connections)
+  ||Object.values(connections).some(binding=>!binding||typeof binding.configAlias!=='string'||!binding.configAlias||typeof binding.passwordAlias!=='string'||!binding.passwordAlias))
+  :typeof credentialsPath!=='string'||!credentialsPath)fail('QUERY_DATABASE_CONFIG_INVALID')
+ return async resource=>{
+  let config,password
+  try{
+   if(managed){
+    const binding=Object.hasOwn(connections,resource.connectionId)?connections[resource.connectionId]:null
+    if(!binding)fail('QUERY_DATABASE_UNCONFIGURED')
+    config=await configuration.read(binding.configAlias)
+    password=await configuration.readSecret(binding.passwordAlias)
+    if(!config||typeof config!=='object'||Array.isArray(config)||Object.keys(config).some(key=>!['host','port','db','user'].includes(key)))fail('QUERY_DATABASE_CONFIG_INVALID')
+   }else{
+    const saved=JSON.parse(await readFile(credentialsPath,'utf8')).connections
+    config=saved&&Object.hasOwn(saved,resource.connectionId)?saved[resource.connectionId]:null
+    if(!config)fail('QUERY_DATABASE_UNCONFIGURED')
+    password=config.password
+   }
+  }catch(error){
+   if(error.code?.startsWith('QUERY_')||error.code?.startsWith('WORKFLOW_CONFIG_'))throw error
+   fail('QUERY_DATABASE_UNCONFIGURED')
+  }
+  if(managed&&(['host','db','user'].some(key=>typeof config?.[key]!=='string'||!config[key]||config[key].includes('\0'))
+   ||!(typeof config.port==='number'||typeof config.port==='string'&&/^\d+$/.test(config.port))
+   ||!Number.isInteger(Number(config.port))||Number(config.port)<1||Number(config.port)>65535
+   ||typeof password!=='string'||!password||password.includes('\0')))fail('QUERY_DATABASE_CONFIG_INVALID')
+  let client
+  try{
+   client=new Client({host:config.host,port:managed?Number(config.port):config.port,database:config.db,user:config.user,password,
+    connectionTimeoutMillis:5000,query_timeout:10000,statement_timeout:8000,options:'-c default_transaction_read_only=on -c statement_timeout=8000'})
+   await client.connect();return client
+  }catch(error){if(client)await client.end().catch(()=>{});fail(['28P01','28000'].includes(error.code)?'QUERY_DATABASE_AUTH_FAILED':'QUERY_DATABASE_UNAVAILABLE')}
+ }
+}
+export function createAgentDatabaseReadCapability({resources,connectDatabase,configurationConnections}){
+ if(!Array.isArray(resources)||typeof connectDatabase!=='function'||new Set(resources.map(r=>r.id)).size!==resources.length)fail('QUERY_DATABASE_CONFIG_INVALID')
+ for(const r of resources)if(!r.id||!r.connectionId||(r.dataAccess!==undefined&&r.dataAccess!=='all-tables-readonly')||!Array.isArray(r.tables)||(r.dataAccess!=='all-tables-readonly'&&!r.tables.length)||r.tables.some(t=>!identifier(t.schema)||!identifier(t.table)||!Array.isArray(t.columns)||!t.columns.length||t.columns.some(c=>!identifier(c)))
+  ||(r.metadataSchemas!==undefined&&(!Array.isArray(r.metadataSchemas)||!r.metadataSchemas.length||r.metadataSchemas.some(s=>!identifier(s))))
+  ||(r.identityPolicy!==undefined&&(r.identityPolicy!=='host-enforced-readonly'||r.environment!=='uat'))
+  ||(r.environment!==undefined&&!['uat','production'].includes(r.environment)))fail('QUERY_DATABASE_CONFIG_INVALID')
+ const registry=new Map(resources.map(r=>[r.id,structuredClone(r)])),produced=new WeakSet()
+ const authorize=async({input,scope})=>{if(!registry.has(input.resourceId))fail('QUERY_DATABASE_RESOURCE_UNSUPPORTED');return scope.databaseIds?.includes(input.resourceId)===true}
+ return {id:'query_readonly_database',effectClass:'read',identity:'agent-db-read-v5:'+executionDigest(configurationConnections?{resources,configurationConnections}:resources),description:'Host结构化只读数据库查询。dataAccess=all-tables-readonly时可读取该连接数据库所有普通表/分区表及物化表的列和数据，最终受数据库账号权限约束；不调用任意SQL、函数、视图或外部连接。其它资源只读登记的表/列；metadataSchemas仅允许结构查询，不授予行数据读取。必须使用schema.table；投影/过滤列校验，值参数绑定，最多100行，offset分页，只读事务和超时/结果上限。资源/表/列能力缺失与真实数据库42501权限拒绝分别报告；已开放只读查询不要求逐次写权限授权。',parameters:agentDatabaseParameters,authorize,
+  available: scope => resources.some(resource => scope?.databaseIds?.includes(resource.id)),
+  async execute({input,scope,binding,signal}){
+   if(!await authorize({input,scope}))fail('QUERY_SCOPE_DENIED')
+   if(!['tables','columns',...metadataOperations,'select'].includes(input.operation))fail('QUERY_ARGUMENT_INVALID')
+   const resource=registry.get(input.resourceId),allTables=resource.dataAccess==='all-tables-readonly',limit=input.limit??30,offset=input.offset??0
+   if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>10000)fail('QUERY_LIMIT_INVALID')
+   if(input.operation!=='tables'&&typeof input.table==='string'&&!input.table.includes('.')){
+    const matches=resource.tables.filter(table=>table.table===input.table)
+    if(matches.length!==1)throw executionError('QUERY_ARGUMENT_INVALID','table须使用schema.table；请根据tables返回的table_schema与table_name填写完整表名。')
+    input={...input,table:`${matches[0].schema}.${matches[0].table}`}
+   }
+   const metadataTable=typeof input.table==='string'?input.table.split('.'):[]
+   const metadataAllowed=metadataTable.length===2&&metadataTable.every(identifier)&&(allTables||resource.metadataSchemas?.includes(metadataTable[0]))
+   const table=resource.tables.find(t=>`${t.schema}.${t.table}`===input.table)
+   if(metadataOperations.includes(input.operation)?!metadataAllowed:input.operation!=='tables'&&!table&&!allTables&&!(input.operation==='columns'&&metadataAllowed))fail('QUERY_DATABASE_TABLE_UNSUPPORTED')
+   if(input.operation==='select'&&(metadataTable.length!==2||!metadataTable.every(identifier)))fail('QUERY_ARGUMENT_INVALID')
+   let columns=input.columns??table?.columns
+   if(input.operation==='select'){
+    if(input.columns!==undefined&&(!Array.isArray(columns)||!columns.length||columns.length>50||columns.some(c=>!identifier(c))))fail('QUERY_ARGUMENT_INVALID')
+    if(!Array.isArray(input.filters??[])||(input.filters??[]).length>20||(input.filters??[]).some(f=>!identifier(f.column)||!['eq','ne','lt','lte','gt','gte','like'].includes(f.operator)||![null,'string','number','boolean'].includes(f.value===null?null:typeof f.value)))fail('QUERY_ARGUMENT_INVALID')
+    if(!allTables&&(!columns?.length||columns.length>50||columns.some(c=>!table.columns.includes(c))||(input.filters??[]).some(f=>!table.columns.includes(f.column))))fail('QUERY_DATABASE_COLUMN_UNSUPPORTED')
+   }
+   let client
+   const abort=()=>{void client?.end().catch(()=>{})}
+   try{
+    signal?.throwIfAborted();client=await connectDatabase(resource,{binding,signal});signal?.addEventListener('abort',abort,{once:true});signal?.throwIfAborted()
+    await client.query('BEGIN READ ONLY');await client.query("SET LOCAL statement_timeout='8000ms'")
+    const schemas=[...new Set([...resource.tables.map(t=>t.schema),...(resource.metadataSchemas??[])])]
+    // 生产副本的角色目录可保留主库权限；实际不可写性由副本身份和只读事务证明。
+    if(resource.environment==='production'){
+     if((await client.query('SELECT pg_is_in_recovery() AS in_recovery')).rows[0]?.in_recovery!==true)fail('QUERY_DATABASE_NOT_READONLY')
+    }else if(resource.identityPolicy!=='host-enforced-readonly'){
+     const role=(await client.query("SELECT rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows[0]
+     if(!role||Object.values(role).some(v=>v===true))fail('QUERY_DATABASE_IDENTITY_NOT_READONLY')
+     const rights=(await client.query({text:"SELECT EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname=ANY($1::text[]) AND has_schema_privilege(n.oid,'CREATE')) AS schema_write, EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1::text[]) AND c.relkind IN ('r','p','v','f') AND (has_table_privilege(c.oid,'INSERT') OR has_table_privilege(c.oid,'UPDATE') OR has_table_privilege(c.oid,'DELETE') OR has_table_privilege(c.oid,'TRUNCATE') OR has_any_column_privilege(c.oid,'INSERT') OR has_any_column_privilege(c.oid,'UPDATE'))) AS data_write",values:[schemas]})).rows[0]
+     if(rights.schema_write||rights.data_write)fail('QUERY_DATABASE_IDENTITY_NOT_READONLY')
+    }
+    if((await client.query('SHOW transaction_read_only')).rows[0].transaction_read_only!=='on')fail('QUERY_DATABASE_NOT_READONLY')
+    let rows
+    if(allTables&&input.operation==='select'){
+     const relation=(await client.query({text:'SELECT t.relkind AS relation_kind FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname=$1 AND t.relname=$2',values:metadataTable})).rows[0]
+     if(!relation)fail('QUERY_NOT_FOUND')
+     // Views/foreign tables can invoke functions or another connection; plain table SELECT only.
+     if(!['r','p','m'].includes(relation.relation_kind))fail('QUERY_DATABASE_OBJECT_UNSUPPORTED')
+     const known=(await client.query({text:'SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position',values:metadataTable})).rows.map(row=>row.column_name)
+     columns=input.columns??known.slice(0,50)
+     if(!columns.length||columns.some(c=>!known.includes(c))||(input.filters??[]).some(f=>!known.includes(f.column)))fail('QUERY_ARGUMENT_INVALID')
+    }
+    if(input.operation==='tables')rows=(await client.query({text:'SELECT table_schema,table_name,table_type FROM information_schema.tables WHERE '+(allTables?"table_type='BASE TABLE'":'table_schema=ANY($1::text[])')+' ORDER BY table_schema,table_name',values:allTables?[]:[schemas]})).rows.filter(row=>allTables||resource.metadataSchemas?.includes(row.table_schema)||resource.tables.some(t=>t.schema===row.table_schema&&t.table===row.table_name))
+    else if(input.operation==='columns')rows=(await client.query(metadataAllowed
+     ?{text:`SELECT ${columnProjection} FROM ${columnCatalog} WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position`,values:metadataTable}
+     :{text:`SELECT ${columnProjection} FROM ${columnCatalog} WHERE table_schema=$1 AND table_name=$2 AND column_name=ANY($3::text[]) ORDER BY ordinal_position`,values:[table.schema,table.table,table.columns]})).rows
+    else if(metadataOperations.includes(input.operation))rows=(await client.query({text:metadataQueries[input.operation],values:metadataTable})).rows
+    else{
+     const values=[],ops={eq:'=',ne:'<>',lt:'<',lte:'<=',gt:'>',gte:'>=',like:'LIKE'}
+     const filters=(input.filters??[]).map(f=>{if(!Object.hasOwn(ops,f.operator))fail('QUERY_ARGUMENT_INVALID');values.push(f.value);return `${quote(f.column)} ${ops[f.operator]} $${values.length}`})
+     values.push(limit+1,offset)
+     const text=`SELECT ${columns.map(quote).join(',')} FROM ${quote(allTables?metadataTable[0]:table.schema)}.${quote(allTables?metadataTable[1]:table.table)}${filters.length?' WHERE '+filters.join(' AND '):''} LIMIT $${values.length-1} OFFSET $${values.length}`
+     rows=(await client.query({text,values,queryMode:'extended'})).rows
+    }
+    const selected=input.operation==='select'?rows.slice(0,limit):rows.slice(offset,offset+limit)
+    const nextOffset=input.operation==='select'?(rows.length>limit?offset+limit:null):(offset+limit<rows.length?offset+limit:null)
+    const output={resourceId:resource.id,table:input.table??null,operation:input.operation,rows:JSON.parse(JSON.stringify(selected)),limit,offset,nextOffset,
+     coverage:{kind:'database',queryDigest:executionDigest({...input,offset:0,limit:0}),offset,endOffset:offset+selected.length,nextOffset},
+     observedAt:new Date().toISOString(),transactionReadOnly:true,productionReplicaVerified:resource.environment==='production'}
+    if(Buffer.byteLength(JSON.stringify(output))>24000)fail('QUERY_CAPACITY')
+    produced.add(output);return output
+   }catch(e){if(signal?.aborted)throw e;if(e.code?.startsWith('QUERY_')||e.code?.startsWith('WORKFLOW_CONFIG_'))throw e;fail(e.code==='57014'?'QUERY_TIMEOUT':e.code==='42P01'?'QUERY_NOT_FOUND':e.code==='42703'?'QUERY_ARGUMENT_INVALID':e.code==='42501'?'QUERY_DATABASE_PERMISSION_DENIED':['28P01','28000'].includes(e.code)?'QUERY_DATABASE_AUTH_FAILED':'QUERY_DATABASE_UNAVAILABLE')}
+   finally{signal?.removeEventListener('abort',abort);if(client){await client.query('ROLLBACK').catch(()=>{});await client.end().catch(()=>{})}}
+  },
+  async verify({input,scope,output}){return {passed:await authorize({input,scope})&&produced.has(output),outputDigest:executionDigest(output),sourceRefs:[`database:${input.resourceId}:${input.table??'catalog'}:${executionDigest(output)}`]}}
+ }
+}

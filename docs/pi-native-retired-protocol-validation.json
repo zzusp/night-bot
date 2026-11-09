@@ -1,0 +1,93 @@
+{
+  "base": "9709c68",
+  "completeDshIndependence": false,
+  "results": {
+    "default": {
+      "tests": 636,
+      "pass": 636,
+      "fail": 0,
+      "skipped": 0
+    },
+    "runtime": {
+      "tests": 142,
+      "pass": 142,
+      "fail": 0,
+      "skipped": 0
+    },
+    "domain": {
+      "tests": 390,
+      "pass": 390,
+      "fail": 0,
+      "skipped": 0
+    },
+    "routing": {
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    },
+    "additional": {
+      "tests": 34,
+      "pass": 34,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "remainingDirectDshDevDependencies": 49,
+  "removedRootDeclarations": [
+    "dsh-jobs",
+    "dsh-ptc-runtime",
+    "dsh-spill",
+    "dsh-storage",
+    "dsh-fs",
+    "dsh-session-persistence"
+  ],
+  "method": "Acorn parsed 926 source/test/script/package/bin files including subpath literals, zero references. Reviewed dynamic dispatch entrypoints. All four full suites run with six root symlinks absent; restored in finally. Containment also runs during absence with application bubblewrap enabled.",
+  "lockProof": "All package/snapshot bytes and every non-root-dev lock field exactly match prior commit; no overrides/integrities/peer graph changes",
+  "retained": "Nested dependencies and all source forks/notices preserved; Windows case skipped on Linux",
+  "freshInstall": "Known npm HTTP503 remains; no retry or policy/route changes",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-default.txt",
+      "sha256": "259a96450fda76770ef76457221a37c16892efb67e8cd4c4f5f4a3e781f8decc"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-runtime.txt",
+      "sha256": "583a175537b272b5467385fc2e26699a0f6fe069f9991a39d884e9f1ac444e01"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-domain.txt",
+      "sha256": "14933dd46a461a87e9175e801bee2231304cc2e05e09e54978e9822e51b5d6a1"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-routing.txt",
+      "sha256": "9d516a8a02ee0e1dec9edb2c1ebe9ff2d36f65acedd228b517a09ed2bed27605"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-containment.txt",
+      "sha256": "268d2b35e0787ede5c6587ab864bb2d42ff8da11ef5413b16b5d9dc101f049c8"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-additional.txt",
+      "sha256": "dc1e59bb6d0250cfbe1530bab600383c07cc9e2c36eac900f7937e064c476463"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-inventory.txt",
+      "sha256": "513ee59d860b398081986ce22c5c6c998a146dd4c362ace490b74286a011e1cc"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-checks.txt",
+      "sha256": "95c890be4f04476d3559fa4f35ad7a65d53bd8a02e5f2391d057fc3cfbc02e5c"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-protocol-links.txt",
+      "sha256": "174ac9f75083f6e52021065e52145746ea6ee4dd31b8ed310b26b9ada21462b7"
+    }
+  ]
+}

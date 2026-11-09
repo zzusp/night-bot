@@ -1,0 +1,91 @@
+{
+  "scope": "仅Core源域两条已验退休登记与既有guard实跑；不更改产品源或Platform清单，不批量更新未知hash。",
+  "head": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+  "worktreeState": "已知协作dirty工作树，本域冻结SHA为当前版本边界",
+  "beforeHashes": {
+    "docs/source-manifest.json": "e63b1ce1570fdcc5802235d35ba8c1aa366f2573c64f3f3108daa3fbaedec60a",
+    "scripts/check-coverage.mjs": "992230852b2e3d2d7b07336e6b4f83a85c8f9e21c7fc0397d181d8ae22ec224b"
+  },
+  "frozenHashes": {
+    "docs/source-manifest.json": "596a3d48f07e141aec93bd635c5435a676ea70d16808e8945229ae821d4838ef",
+    "scripts/check-coverage.mjs": "0252645a94e1f390cfaf3e56d9ec3e7ca2a9d931cce194f88aa90d57223868d0"
+  },
+  "originalSourcePins": 203,
+  "originalPinsEqualHEAD": true,
+  "differenceVerification": "将两条retired登记逆变后逐字节hash等原manifest；删除唯一新增retiredDrivers行后hash等原coverage。其余记录及所有既有守卫保持。",
+  "retiredDrivers": [
+    "claude-execution-session.js",
+    "execution-session.js",
+    "resident.js",
+    "storage-v8-schema.js",
+    "task-owner-controller.js",
+    "task-owner-session.js",
+    "task-session-history.js",
+    "task-session.js",
+    "task-topic-coordinator.js",
+    "topic-runtime.js"
+  ],
+  "newRetirements": [
+    {
+      "source": "task-topic-coordinator.js",
+      "sourceSha256": "99d99b8c70ce1fc73e3a2095e6161dba92f6da13d45149761dde9473c55a53f6",
+      "status": "retired-driver",
+      "adaptation": "Portable triage resumes its existing Pi session, exposes first-tier reply tools and retains second-tier Topic decisions. Native raw-input admission uses an immutable declared rejection result for structured model correction without executing the tool body.",
+      "lastRetainedSha256": "3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20",
+      "retirementEvidence": "docs/acceptance/resident-conversation-routing/round-11/topic-execution-retirement.json",
+      "retirementReason": "旧 Topic 会话工厂及仅供其内部使用的 group_* helper 已无真实外部消费者，当前职责由分诊与常驻 Router 承担；保留历史模型、审计和权限/版本合同，不提供兼容工厂。"
+    },
+    {
+      "source": "topic-runtime.js",
+      "sourceSha256": "f500c4480cffebd416d1a5e62586548ccc0305b250aa05e573da64df9b9fe8d1",
+      "status": "retired-driver",
+      "adaptation": "历史Topic coordinator仅供退休前消费者迁接；有界上下文、去隐藏正文、历史查询分页、分词预算与来源/已送回复关联纯体改由topic-model数据owner承载，无兼容re-export。旧请求/群作用域、关联目录3000字符预算、readCall、seenTopicVersions及真实续页偏移仍保留；当前conversation Router不加载或恢复该执行角色。原上游来源/历史journal和HTTP审计合同不机械改名。",
+      "lastRetainedSha256": "f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c",
+      "retirementEvidence": "docs/acceptance/resident-conversation-routing/round-11/topic-execution-retirement.json",
+      "retirementReason": "混合测试消费者已逐注册迁退，保留历史原体并迁接有效 Store/Pi 合同，当前12项实跑通过；旧 Topic 执行及 group_* 注册取消，历史账本、审计及 unknown/no-replay 合同保留，静态退役不计为 PASS。"
+    }
+  ],
+  "run": {
+    "toolUseId": "call_fd5582eb14c349608eb3ddcf8df892ef",
+    "command": "pnpm check",
+    "startedAt": "2026-11-07T23:34:28.537Z",
+    "finishedAt": "2026-11-07T23:34:32.405Z",
+    "resultIsError": true,
+    "rawResult": "Exit code 1\n$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs\n{\"source\":\"93e431a2a76938d32aefc070b093fcfb65691c70\",\"retainedModules\":190,\"retiredModules\":10,\"excludedUiModules\":3,\"explicitlyAdaptedModules\":57,\"relativeImports\":\"closed\",\"httpRoutes\":\"retained\"}\n{\"productionImportFiles\":393,\"literalBareImports\":191,\"status\":\"declared-production-imports\"}\nfile:///D:/codex/worktrees/resident-conversation-plan/night-bot/scripts/check-native-runtime.mjs:39\r\nfor(const entry of legacy.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded legacy/platform source change: '+entry.target)\r\n                                                                                             ^\r\n\r\nError: Unrecorded legacy/platform source change: src/process/windows-acl.js\r\n    at file:///D:/codex/worktrees/resident-conversation-plan/night-bot/scripts/check-native-runtime.mjs:39:94\r\n\r\nNode.js v24.19.0\r\n[ELIFECYCLE] Command failed with exit code 1."
+  },
+  "checks": {
+    "coverage": {
+      "exitCode": 0,
+      "retainedModules": 190,
+      "retiredModules": 10,
+      "excludedUiModules": 3,
+      "explicitlyAdaptedModules": 57,
+      "relativeImports": "closed"
+    },
+    "productionImports": {
+      "exitCode": 0,
+      "productionImportFiles": 393,
+      "literalBareImports": 191
+    },
+    "nativeRuntime": {
+      "exitCode": 1,
+      "failure": "Unrecorded legacy/platform source change: src/process/windows-acl.js",
+      "laterProcessPinsNotReached": true
+    },
+    "pnpmCheck": {
+      "exitCode": 1,
+      "overallPassed": false
+    }
+  },
+  "unintegratedPlatformBoundary": {
+    "path": "src/process/windows-acl.js",
+    "registered": "bb3e47106a21bf762b9a418c154830736894da824b13e5e3b53ccbbb636e0330",
+    "actual": "5c43642a1ba7156c7aa8841105b7ccff988db8c71f63025aa632da6819ea6fd5",
+    "manifestOwner": "Platform",
+    "modifiedByCore": false
+  },
+  "diffCheck": {
+    "exitCode": 0
+  },
+  "finalOverallThreeGuardsAndGit": "root保留总体整合与最终检查；本次两项通过不替代最终整合版全检查。"
+}

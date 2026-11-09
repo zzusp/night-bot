@@ -1,0 +1,67 @@
+{
+  "base": "6ede2db",
+  "completeDshIndependence": false,
+  "results": {
+    "focused": {
+      "tests": 44,
+      "pass": 39,
+      "fail": 0,
+      "skipped": 5
+    },
+    "default": {
+      "tests": 648,
+      "pass": 648,
+      "fail": 0,
+      "skipped": 0
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1
+    },
+    "integration": {
+      "tests": 34,
+      "pass": 34,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "remainingDirectDshDevDependencies": 47,
+  "replacement": "Application byte ring with private state and adaptive bounded allocation; ingress/result copies, whole-stream cursor offsets, lazy exclusive private files, short-write loop, spool budget retirement, fsync/seal and per-failure degradation to tail. Original collector source removed.",
+  "retainedInternalContract": "OutputCollector constructor and readFrom/snapshot/seal/finalize are retained only as the current platform provider boundary; not an external DSH plugin ABI implementation",
+  "sourceSha256": "c515195a74ece81854ab9c57f8dd7d1ba5ed8fe5943496c60dc7fdd89e9093cc",
+  "provenance": "Process output row moved from active fork files to historical replacedSources with replacement hash. Remaining five platform files keep original attribution and exact hashes. All checked by native source guard.",
+  "restartProof": "Only reviewed output module LF/CRLF hashes updated; native core source manifest updated accordingly. No arbitrary deployed hash acceptance or review/exclusion relaxation.",
+  "preserved": "Full-output path semantics and independent raw byte cursors; bounded diagnostic tails, owner-only files, stdout/stderr separation, scoped spill readback, process cancellation/drain and unknown-effect cold recovery",
+  "limits": [
+    "Windows FFI/process-tree/ACL implementation remains inherited and unverified here",
+    "Five Windows/PowerShell-specific restart tests and one Windows containment case skipped",
+    "Trusted local path IO still has ancestor-replacement TOCTOU exposure; planned root symlink substitution is refused",
+    "Bare primitive callers retain a private OS temporary fallback; portable Host keeps its existing owned process spill root",
+    "Partial spill unlink/OS I/O failures can leave unadvertised artifacts; complete path is withheld; no claim of perfect OS fault recovery"
+  ],
+  "installation": "Latest frozen install at prior output-window phase succeeded with all 630 policy entries; this phase makes no package/lock changes",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-process-output-focused.txt",
+      "sha256": "83eeef07daff1c65b7f82e3ebf5e06b80a59e415d6f6c607c11e82a2c1737813"
+    },
+    {
+      "path": "docs/evidence/pi-native-process-output-default.txt",
+      "sha256": "871cb15d4fa077d0922f60e6e7e028a165a513ca028557fc5b1d3053c8f990fc"
+    },
+    {
+      "path": "docs/evidence/pi-native-process-output-containment.txt",
+      "sha256": "894e6446fa3ab9df932cb942d83cfc719cac8f6d9c757afdc6bbb688dec9c407"
+    },
+    {
+      "path": "docs/evidence/pi-native-process-output-integration.txt",
+      "sha256": "f589a20f63c880f0e2f773f72664e3fe6bded66e9bed1bed3cc1faff993e29fd"
+    },
+    {
+      "path": "docs/evidence/pi-native-process-output-checks.txt",
+      "sha256": "dae84a9410bd0bc84e178bc0e9b917d86c397bacc9d112e7b6eda016b5bd747b"
+    }
+  ]
+}

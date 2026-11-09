@@ -1,0 +1,16 @@
+✔ native shell model schemas and foreground output match retained source bindings (16.759172ms)
+✔ native shell tools reject disabled background and unadvertised escalation before execution (5.319786ms)
+✔ native bash and pwsh local execution preserve argv environment output and exit contracts (24.236267ms)
+✔ native shell preparation timeout waits for admitted preparation exit and never spawns late argv (15.382459ms)
+✔ native shell same-code ancestor deadline keeps caller identity even after owned timer fires (66.151864ms)
+✔ native shell foreground timeout waits for provider close before final result (7.063233ms)
+✔ native shell provider creation failure settles done and preserves one infrastructure rejection without retry (1.93772ms)
+✔ native shell exit marker protocol retains legacy DSH environment prefix and trailing-only status parsing (0.946336ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 187.188302

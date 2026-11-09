@@ -1,0 +1,42 @@
+? Verifying lockfile against supply-chain policies (630 entries)...
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+   ╭──────────────────────────────────────────────────────────────────────╮
+   │                                                                      │
+   │                 Update available! 11.25.0 → 12.16.1.                 │
+   │                 Changelog: https://pnpm.io/v/12.16.1                 │
+   │   To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -   │
+   │                                                                      │
+   ╰──────────────────────────────────────────────────────────────────────╯
+
+✓ Lockfile passes supply-chain policies (630 entries in 9.2s)
+
+devDependencies:
+- @deepseek-ai/dsh-attachment 0.2.1-alpha.2
+- @deepseek-ai/dsh-attachment-local 0.2.1-alpha.2
+- @deepseek-ai/dsh-authorization 0.2.1-alpha.2
+- @deepseek-ai/dsh-bash-sandbox 0.2.1-alpha.2
+- @deepseek-ai/dsh-brand 0.2.1-alpha.2
+- @deepseek-ai/dsh-credentials-local 0.2.1-alpha.2
+- @deepseek-ai/dsh-fs 0.2.1-alpha.2
+- @deepseek-ai/dsh-fs-observation-policy 0.2.1-alpha.2
+- @deepseek-ai/dsh-fs-sandbox 0.2.1-alpha.2
+- @deepseek-ai/dsh-jobs 0.2.1-alpha.2
+- @deepseek-ai/dsh-launch-environment 0.2.1-alpha.2
+- @deepseek-ai/dsh-permission-presets 0.2.1-alpha.2
+- @deepseek-ai/dsh-ptc-runtime 0.2.1-alpha.2
+- @deepseek-ai/dsh-pwsh-sandbox 0.2.1-alpha.2
+- @deepseek-ai/dsh-sandbox-windows-acl 0.2.1-alpha.2
+- @deepseek-ai/dsh-session-persistence 0.2.1-alpha.2
+- @deepseek-ai/dsh-skill 0.2.1-alpha.2
+- @deepseek-ai/dsh-spill 0.2.1-alpha.2
+- @deepseek-ai/dsh-spill-local 0.2.1-alpha.2
+- @deepseek-ai/dsh-storage 0.2.1-alpha.2
+- @deepseek-ai/dsh-timeout 0.2.1-alpha.2
+- @deepseek-ai/dsh-tool-call-timeout-policy 0.2.1-alpha.2
+- @deepseek-ai/dsh-tool-subagent-control 0.2.1-alpha.2
+- @deepseek-ai/dsh-typert-protocol 0.2.1-alpha.2
+- @deepseek-ai/dsh-workspace 0.2.1-alpha.2
+
+Done in 10.2s using pnpm v11.25.0

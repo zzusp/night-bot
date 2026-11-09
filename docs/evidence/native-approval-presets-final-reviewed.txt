@@ -1,0 +1,32 @@
+✔ actual Pi tool grants require durable approval pairs, remain one-call only and fail closed without an answerer (1597.161093ms)
+✔ cancelling a real Pi turn seals a pending approval and persists cancellation before the turn closes (150.980707ms)
+✔ idle waits for terminal flush settlement and a failed terminal sink fences future message admission (184.049961ms)
+✔ native approval retains borrowed identity, policy notices, closed outcomes and legacy audit vocabulary (24.670588ms)
+✔ an approval outside an open turn or on a stale session cannot append or grant (3.863567ms)
+✔ missing, throwing and rogue answerers fail closed while never and cancelled requests do not prompt (16.303558ms)
+✔ asked must flush before the answerer and decided must flush before returning a grant (3.36833ms)
+✔ audit append and Pi journal failures never become unlogged grants (13.565889ms)
+✔ a policy revoked while an answerer waits cannot grant from its late allowed answer (3.108268ms)
+✔ service-only owner disposal seals late answers and still commits a cancelled pair through the surviving Pi writer (3.416052ms)
+✔ an answerer may close the approval service without waiting on its own request (2.460681ms)
+✔ an already admitted decision drains its durable commit while service closing refuses new requests (4.549913ms)
+✔ approval answer dispatch keeps the exact requesting actor scope and excludes unrelated answerers (2.326779ms)
+✔ native presets retain legacy initial facts, tie preference, custom math, live defaults, wire and command metadata (24.209693ms)
+✔ unconfined executors, reserved table names, invalid defaults and prototype-inherited names cannot select permissions (9.488831ms)
+✔ Auto remains fixed/current-only, child never policy preserves its identity and restore requires a live gate (5.731244ms)
+✔ a removed or asynchronous Auto gate cannot leave a broad permission selection behind (4.113184ms)
+✔ seeded and partially initialized sessions preserve effective knobs instead of adopting a new default (7.236384ms)
+✔ permission command changes use the approval switch notice and catalog observers cannot veto registration or disposal (4.76099ms)
+✔ Pi parallel batches retain bounded safe concurrency, exclusive barriers, permission guards and model-order receipts (1626.445208ms)
+✔ cancelling a Pi parallel batch stops replenishment and drains started effects before idle (180.934327ms)
+✔ one concluding tool ends a Pi parallel batch after all admitted sibling receipts commit (115.918531ms)
+✔ a later tool reclassified as exclusive waits for the running safe pool to drain (181.180044ms)
+✔ malformed repeated call ids preserve no-effect recovery and conservative unstarted receipts (97.434233ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3299.711316

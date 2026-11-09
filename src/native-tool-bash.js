@@ -1,0 +1,765 @@
+import {createBashToolDefinition,createPowerShellToolDefinition,truncateTail} from '@earendil-works/pi-coding-agent';
+import {constants as osConstants} from 'node:os';
+import {authorizedProcessPolicy} from './process/contracts.js';
+// 保留的授权/耐久Job算法源自MIT实现；见licenses/dsh-tool-bash-MIT.txt与licenses/dsh-tool-pwsh-MIT.txt。 Application process/sandbox/jobs/policy services own effects.
+import z from "@deepseek-ai/schemastery";
+import { isAbsolute, resolve } from "node:path";
+import { TOOL_ABORTED, defineTool } from "./native-tool-protocol.js";
+import { HarnessError } from "./native-llm-protocol.js";
+import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from "./native-sandbox-protocol.js";
+
+//#region lib/types/background.js
+/**
+* Generic-job adaptation for bash process handles: the terminal outcome the
+* registry records, the pull sources it pumps, and the ring read a foreground
+* call renders when it stops waiting.
+*
+* @module @deepseek-ai/dsh-tool-bash/background
+*/
+/**
+* Sandbox facts worth the terminal detail: a runner that never ran the
+* command, or a denial (with the escalation hint this composition offers).
+* @param sandbox - settled sandbox facts, when this was a confined process.
+* @param escalationModes - escalation targets advertised by this composition.
+* @returns the markers to append, oldest first.
+*/
+function sandboxNotes(sandbox, escalationModes) {
+	if (sandbox?.runnerFailed) return [`[sandbox: the sandbox runner itself failed under ${sandbox.mode} mode — the command did not run; this is a sandbox problem, not a command failure]`];
+	if (sandbox?.denied) {
+		const notes = [sandboxDenialMarker(sandbox.mode)];
+		if (escalationModes.length > 0) notes.push(escalationHintMarker("command"));
+		return notes;
+	}
+	return [];
+}
+/**
+* Map a settled background process onto the generic job-outcome vocabulary:
+* `killed` stays `killed` (detail: the signal when one is known), everything
+* else is `completed` with the exit code as detail. A nonzero command exit is
+* reported, not failed, exactly like the foreground rendering. Sandbox facts
+* join the detail, since a job's terminal reason is the one line every
+* reader — the model's status line, the roster row — shows.
+* @param proc - the settled process handle.
+* @param escalationModes - escalation targets advertised by this composition.
+* @returns the outcome for the `ctx.jobs` registration.
+*/
+function processOutcome(proc, escalationModes = []) {
+	const base = proc.status === "killed" ? {
+		status: "killed",
+		detail: proc.signal !== null ? `signal: ${proc.signal}` : "killed before exit"
+	} : {
+		status: "completed",
+		detail: `exit code: ${proc.exitCode ?? 0}`
+	};
+	const notes = sandboxNotes(proc.sandbox, escalationModes);
+	return notes.length === 0 ? base : {
+		...base,
+		detail: `${base.detail}; ${notes.join(" ")}`
+	};
+}
+/**
+* The process's non-consuming stream readers as registry pull sources. They
+* bind lazily because the process is spawned inside the starter, after the
+* registry admitted the job; a read before the spawn yields nothing, and the
+* pump keeps the model's consuming cursor untouched. A rejected spawn's
+* stderr reader carries the provider's `subprocess failed before reporting an
+* outcome: …` note.
+* @param proc - the started process's observed streams, once the starter has spawned it.
+* @returns one source per stream, stdout first.
+*/
+function processSources(proc) {
+	const source = (channel) => ({
+		channel,
+		read: (fromByte) => {
+			const live = proc();
+			return live === void 0 ? {
+				text: "",
+				nextOffset: fromByte,
+				lossy: false
+			} : live.observed[channel].readFrom(fromByte);
+		}
+	});
+	return [source("stdout"), source("stderr")];
+}
+/**
+* The ring chunks of one consuming registry read as the shell tools render a
+* process read: stdout chunks in order, then every stderr chunk in one
+* `[stderr]` section, so the output a foreground call hands over when it
+* stops waiting reads exactly like the `job_output` reads that follow it.
+* @param chunks - the chunks since the model cursor, in offset order.
+* @returns the delta text, possibly empty.
+*/
+function ringDelta(chunks) {
+	const out = chunks.filter((chunk) => chunk.channel !== "stderr").map((chunk) => chunk.text).join("");
+	const err = chunks.filter((chunk) => chunk.channel === "stderr").map((chunk) => chunk.text).join("");
+	const separator = out.length > 0 && !out.endsWith("\n") ? "\n" : "";
+	return out + (err.length > 0 ? `${separator}[stderr]\n${err}` : "");
+}
+/**
+* Adapt asynchronous shell preparation after job admission without exposing a partial process.
+* @param start - starts the process with job-owned cancellation.
+* @param outcome - projects the settled process into the job outcome.
+* @returns synchronous job hooks whose completion includes preparation and process settlement.
+*/
+function processJob(start, outcome, preparationSignal) {
+	const controller = new AbortController();
+	const ready = Promise.withResolvers();
+	let process;
+	return {
+		ready: ready.promise,
+		cancel: (reason) => {
+			if (controller.signal.aborted) return;
+			controller.abort(reason);
+			process?.kill();
+		},
+		done: (async () => {
+			try {
+				const preparation = new AbortController();
+				const abortPreparation = () => preparation.abort(preparationSignal.reason);
+				preparationSignal?.addEventListener("abort", abortPreparation, { once: true });
+				if (preparationSignal?.aborted) abortPreparation();
+				try {
+					process = await start(preparationSignal === void 0 ? controller.signal : AbortSignal.any([controller.signal, preparation.signal]));
+				} finally {
+					preparationSignal?.removeEventListener("abort", abortPreparation);
+				}
+				ready.resolve({});
+				try {
+					if (controller.signal.aborted) process.kill();
+				} finally {
+					await process.done;
+				}
+				return outcome(process);
+			} catch (error) {
+				ready.resolve({ error });
+				return {
+					status: controller.signal.aborted && process === void 0 ? "killed" : "failed",
+					detail: error instanceof Error ? error.message : String(error)
+				};
+			}
+		})()
+	};
+}
+//#endregion
+//#region lib/types/render.js
+/**
+* Model-facing result rendering for the bash tool.
+*
+* @module @deepseek-ai/dsh-tool-bash/render
+*/
+/** Pi owns the ordinary output tail and exit formatting; only application facts remain here. */
+function renderResult(result,escalationModes=[]){
+ const notices=sandboxNotes(result.sandbox,escalationModes)
+ if(result.piOutput.truncated)notices.push('[输出为截断窗口；原stdout/stderr、各自truncated和已有spillPath见本次工具结构结果]')
+ for(const name of ['stdout','stderr']){
+  const stream=result[name]
+  if(stream.truncated)notices.push(`[${name} output truncated; full output: ${stream.spillPath??'(unavailable)'}]`)
+ }
+ if(result.timedOut)notices.push(`[timed out after ${result.timeoutMs}ms]`)
+ if(result.stopped!==undefined)notices.push(`[stopped: ${result.stopped}]`)
+ if(result.signal!==null)notices.push(`[killed by signal: ${result.signal}]`)
+ return [result.piOutput.text,...notices].join('\n')
+}
+async function executeOfficialShell(createTool,args,exec,spec,run){
+ let value,window
+ const timeout=args.run_in_background===true||args.timeoutMs===undefined?undefined:args.timeoutMs/1000
+ const tool=createTool(spec.workdir,{exposeSessionEnvironment:false,operations:{
+  async exec(command,cwd,options){
+   if(command!==args.command||cwd!==spec.workdir||options.signal!==exec.signal||options.timeout!==timeout)throw new Error('Pi shell operation does not match the admitted call')
+   // 不使用Pi收集的Host env；run只消费原授权调用解析出的executionEnv和scope。
+   value=await run()
+   // 仅完成原Job启动/转交；SDK的占位exit_code/wall_time不进入业务结果。
+   if(value.kind!=='foreground')return{exitCode:0}
+   const text=ringDelta([{channel:'stdout',text:value.stdout.text},{channel:'stderr',text:value.stderr.text}])
+   window=truncateTail(text)
+   // Pi1.5无输出存储port。只交官方显示尾窗，原完整结构/pull/spill不动，不新增OS tmp日志。
+   options.onData(Buffer.from(window.content,'utf8'))
+   const signalCode=value.signal===null?undefined:osConstants.signals[value.signal]
+   return{exitCode:value.exitCode??(signalCode===undefined?null:128+signalCode)}
+  }
+ }})
+ let rendered
+ try{rendered=await tool.execute(exec.callId,{command:args.command,...timeout===undefined?{}:{timeout}},exec.signal)}catch(error){
+  // 原进程已结算但无退出码：保留Pi准确展示和原结构事实，不伪造exit0或覆盖已知超时。
+  if(value?.kind!=='foreground'||value.exitCode!==null||!error.message.endsWith('Command terminated without an exit code'))throw error
+  rendered={content:[{type:'text',text:error.message}]}
+ }
+ if(value.kind!=='foreground')return value
+ return{...value,piOutput:{text:rendered.content.map(block=>block.text).join('\n'),truncated:window.truncated||value.stdout.truncated||value.stderr.truncated}}
+}
+/**
+* Shape a foreground call that stopped waiting into the text the model sees:
+* the output captured so far (one consuming registry read taken at that
+* point, so `job_output` continues exactly after it), then the still-running
+* marker and the job hand-off guidance.
+* @param promoted - the promoted result value: the job id, the wait that
+*   expired, and the output so far.
+* @returns the model-facing text for a promoted call.
+*/
+function renderPromoted(promoted) {
+	return `${promoted.output.length > 0 ? promoted.output.endsWith("\n") ? promoted.output : `${promoted.output}\n` : ""}[still running after ${promoted.timeoutMs}ms; moved to background job ${promoted.jobId}]\nThe command keeps running in the background. You will be notified when it finishes; read newer output with job_output, stop it with job_kill.`;
+}
+/**
+* Shape the one consuming registry read a foreground call embeds in its
+* result when it stops waiting: the output produced so far, plus the
+* dropped-output notice (naming the job's spill files) when the model cursor
+* fell behind the ring, and the sandbox notices. Later `job_output` reads
+* render the same ring through the job tools.
+* @param delta - the read's chunks as rendered text.
+* @param lossy - whether bytes before the delta were evicted unread.
+* @param spillPaths - the complete-stream files the job currently advertises.
+* @param sandbox - settled sandbox facts, when this was a confined process.
+* @param escalationModes - escalation targets advertised by this composition.
+* @returns the delta text with any loss or sandbox notice appended.
+*/
+function renderJobRead(delta, lossy, spillPaths, sandbox, escalationModes = []) {
+	const notices = [];
+	if (lossy) notices.push(`[some output was dropped from memory; full output: ${spillPaths.length > 0 ? spillPaths.join(", ") : "(unavailable)"}]`);
+	if (sandbox?.runnerFailed) notices.push(`[sandbox: the sandbox runner itself failed under ${sandbox.mode} mode — the command did not run; this is a sandbox problem, not a command failure]`);
+	else if (sandbox?.denied) {
+		notices.push(sandboxDenialMarker(sandbox.mode));
+		if (escalationModes.length > 0) notices.push(escalationHintMarker("command"));
+	}
+	if (notices.length === 0) return delta;
+	return `${delta}${delta.length > 0 && !delta.endsWith("\n") ? "\n" : ""}${notices.join("\n")}`;
+}
+//#endregion
+//#region lib/types/index.js
+/**
+* Model-facing Consumer of the `ctx.shell` capability seam. While a job
+* registry is composed, every call registers its process with `ctx.jobs` as
+* it starts: `run_in_background` returns the id at once, and a foreground call
+* waits on its job until the command finishes or the wait times out, at which
+* point it returns the same id. Without a registry the tool is foreground-only
+* and the executor's deadline kills the command.
+*
+* TODO(permissions): deployment policy belongs in `tools/pre-execute` and
+* sandboxing executors; see docs/architecture.md § Where new behavior goes.
+* @module @deepseek-ai/dsh-tool-bash
+*/
+const name = "night-native-tool-bash";
+const inject = [
+	"tools",
+	"shell",
+	"systemPrompt",
+	"shellEnv",
+	"workingDirectory"
+];
+/** Runtime configuration schema for the bash tool plugin. */
+const Config = z.object({
+	enableRunInBackground: z.boolean().default(true),
+	promoteOnTimeout: z.boolean().default(true)
+});
+function validateBashArgs(args, effectiveMode,toolName) {
+	if (args.command.trim().length === 0) throw new Error("invalid command: expected a non-empty string");
+	if (args.description.trim().length === 0) throw new Error("invalid description: expected a non-empty string");
+	if (args.timeoutMs !== void 0 && (!Number.isFinite(args.timeoutMs) || args.timeoutMs <= 0)) throw new Error(`invalid timeoutMs: expected a positive number, got ${JSON.stringify(args.timeoutMs)}`);
+	if (toolName === "bash" && args.sandbox_permissions !== void 0 && args.sandbox_permissions === effectiveMode) return;
+	const justification = args.sandbox_permissions === void 0 && args.justification?.trim() === "" ? void 0 : args.justification;
+	validateEscalationArgs(args.sandbox_permissions, justification);
+}
+function presentBashCall(args) {
+	if (args.run_in_background === true) return {
+		card: "generic",
+		title: args.command,
+		kind: "execute",
+		rawInput: args.command,
+		content: [{
+			type: "text",
+			text: args.description
+		}]
+	};
+	return {
+		card: "terminal",
+		title: args.command,
+		description: args.description,
+		...args.workdir !== void 0 ? { cwd: args.workdir } : {}
+	};
+}
+/**
+* Present completed foreground output as a terminal; background acknowledgements
+* and execution errors use generic fenced output without an exit-status pill.
+*/
+function presentBashResult(args, result) {
+	const block = result.content.length === 1 ? result.content[0] : void 0;
+	if (block === void 0 || block.type !== "text") return void 0;
+	const raw = block.text;
+	const isBackground = typeof args === "object" && args !== null && args.run_in_background === true;
+	const isPromoted = result.value?.kind === "promoted";
+	if (isBackground || isPromoted || result.isError) return {
+		card: "generic",
+		content: [{
+			type: "text",
+			text: `\`\`\`console\n${raw.replace(/\n+$/, "")}\n\`\`\``
+		}]
+	};
+	const body=raw,exit={exitCode:result.value.exitCode,signal:result.value.signal};
+	return {
+		card: "terminal",
+		output: body,
+		...exit
+	};
+}
+/** Resolve a relative per-call override against the Session's current directory. */
+function resolveWorkdir(modelWorkdir, sessionCwd) {
+	if (modelWorkdir === void 0) return sessionCwd;
+	if (sessionCwd !== void 0 && !isAbsolute(modelWorkdir)) return resolve(sessionCwd,modelWorkdir);
+	return modelWorkdir;
+}
+/** Detach the executor DTO from readonly Service Definition types into plain JSON data. */
+function canonicalBashResult(result, cwd) {
+	const output = (stream) => ({
+		text: stream.text,
+		truncated: stream.truncated,
+		...stream.spillPath !== void 0 ? { spillPath: stream.spillPath } : {}
+	});
+	return {
+		cwd,
+		exitCode: result.exitCode,
+		signal: result.signal,
+		timedOut: result.timedOut,
+		aborted: result.aborted,
+		timeoutMs: result.timeoutMs,
+		stdout: output(result.stdout),
+		stderr: output(result.stderr),
+		...result.sandbox !== void 0 ? { sandbox: {
+			mode: result.sandbox.mode,
+			denied: result.sandbox.denied,
+			...result.sandbox.enforcement !== void 0 ? { enforcement: result.sandbox.enforcement } : {},
+			...result.sandbox.runnerFailed !== void 0 ? { runnerFailed: result.sandbox.runnerFailed } : {}
+		} } : {}
+	};
+}
+/** The structured abort the foreground paths throw when the caller cancels the call. */
+function toolAborted() {
+	const error = new HarnessError("tool call aborted", TOOL_ABORTED);
+	error.name = "AbortError";
+	return error;
+}
+/** Canonical background-handle properties shared by the bash output union. */
+const BACKGROUND_OUTPUT_PROPERTIES = {
+	kind: {
+		type: "string",
+		required: true,
+		const: "background"
+	},
+	jobId: {
+		type: "string",
+		required: true
+	},
+	cwd: {
+		type: "string",
+		required: true
+	}
+};
+export function applyShellTool(ctx, config = {},toolName="bash") {
+ const createOfficialTool=toolName==="bash"?createBashToolDefinition:createPowerShellToolDefinition;
+ const official=createOfficialTool(process.cwd(),{exposeSessionEnvironment:false,operations:{exec(){throw new Error("Unbound Pi shell operation")}}});
+	const backgroundEnabled = config.enableRunInBackground ?? true;
+	const promoteOnTimeout = (config.promoteOnTimeout ?? true) && backgroundEnabled;
+	const defaultMode = ctx.shell.sandboxMode;
+	const escalationModes = defaultMode === void 0 ? [] : ESCALATION_TARGETS;
+	const sandboxPolicy = defaultMode === void 0 ? void 0 : ctx.get("sandboxPolicy");
+	if (defaultMode !== void 0 && sandboxPolicy === void 0) throw new Error("tool-bash: the mounted bash executor confines but ctx.sandboxPolicy is missing");
+	/** Resolve the complete standing policy for this call when a confining executor is mounted. */
+	const resolveSandboxPolicy = (exec) => sandboxPolicy?.resolve(exec.agent === void 0 ? {} : exec.agent.piSession ? {actor:exec.agent} : {session:exec.agent.session});
+	/**
+	* Resolve a sandbox-escalation request through `ctx.approval` BEFORE
+	* anything executes, delegating the shared fail-closed sequence (strict
+	* widening, channel resolution, outcome mapping) to
+	* {@link approveEscalation}. This tool contributes only the composition
+	* guard (the fields are unadvertised without a sandboxing executor, yet
+	* schema validation checks advertised keys only, so an unadvertised
+	* `sandbox_permissions` still reaches execute) and the approval
+	* ingredients. The shared policy resolver is required whenever the executor
+	* advertises confinement, so a split composition fails at tool-plugin load.
+	*/
+	const approveBashEscalation = (mode, justification, exec, standingPolicy) => {
+		if (escalationModes.length === 0) throw new Error("sandbox_permissions is not available in this composition (no sandboxing executor to escalate)");
+		const effectiveMode = standingPolicy.mode;
+		return approveEscalation({
+			requestedMode: mode,
+			justification,
+			effectiveMode,
+			subject: "command"
+		}, {
+			approver: ctx.get("approval"),
+			agent: exec.agent,
+			callId: exec.callId,
+			toolName,
+			signal: exec.signal
+		});
+	};
+	ctx.systemPrompt.section({
+		name: `tool:${toolName}`,
+		order: ctx.systemPrompt.getSectionOrder(toolName==="bash"?"TOOL_BASH":"TOOL_PWSH"),
+		text: "命令结果采用Pi官方格式；检查Command exited with code及结构exitCode。超时转后台需按jobId收集，取消必须等待原范围排空。"
+	});
+	/**
+	* One registration of the `bash` tool. With a registry, every call
+	* registers its process as a job at its start; without one the tool is
+	* foreground-only and the executor's deadline kills the command.
+	*/
+	const bashTool = (jobs) => {
+		const background = jobs !== void 0;
+		const promote = background && promoteOnTimeout;
+		/** Register the command as a job; the process spawns inside the starter, after admission. */
+		const startJob = async (registry, args, exec, spec) => {
+			let proc;
+			let stopped;
+			let ready;
+			const id = await registry.startDurable({
+					kind: toolName,
+					label: args.command,
+					...exec.agent ? { owner: exec.agent.id } : {},
+					output: processSources(() => proc),
+					run: () => {
+						const hooks = processJob(async (signal) => {
+							proc = await ctx.shell.execute({
+								...spec,
+								signal
+							});
+							return proc;
+						}, (started) => processOutcome(started, escalationModes), args.run_in_background === true ? exec.signal : void 0);
+						ready = hooks.ready;
+						return {
+							done: hooks.done,
+							cancel: (reason) => {
+								stopped = reason;
+								hooks.cancel(reason);
+							}
+						};
+					}
+				}, exec);
+			// 同一调用在启动准备期间保持有效；启动后取消权仅归原作业。
+			if (args.run_in_background === true) {
+				const prepared = await ready;
+    if(Object.hasOwn(prepared,"error")){
+     // ready失败不是原Job的耐久终态；完成同Job结算后才允许工具调用返回。
+     try{await registry.wait(id,undefined,exec.agent?.id);registry.remove(id,exec.agent?.id);}
+     catch(settlement){throw new AggregateError([prepared.error,settlement],'Shell preparation and durable Job settlement failed');}
+     throw prepared.error;
+    }
+			}
+			return {
+				id,
+				process: () => proc,
+				stopped: () => stopped
+			};
+		};
+		/** Wait on a registered foreground command until it settles or the timeout passes. */
+		const waitOnJob = async (registry, attached, exec, spec) => {
+			const owner = exec.agent?.id;
+			const timeoutMs = spec.timeoutMs;
+			/**
+			* Stop the job on this call's own account and stay on it until it
+			* settles, so the settlement is `awaited` and no completion notice
+			* follows a result this call already carries; the record then leaves
+			* with the call, as the model never saw the id.
+			*/
+			const stop = async (reason) => {
+				registry.kill(attached.id, owner, reason);
+    // 原调用的超时/abort只负责发取消，不能截断prepare、范围drain和耐久结算。
+				const settled = await registry.wait(attached.id, undefined, owner);
+				registry.remove(attached.id, owner);
+				return settled;
+			};
+			let view;
+			try {
+				view = await registry.wait(attached.id, timeoutMs, owner, exec.signal);
+			} catch {
+				await stop("tool call aborted");
+				throw toolAborted();
+			}
+			if ((view.status === "running" || view.status === "stopping") && attached.process() === void 0) {
+				await stop("timed out during preparation");
+				return {
+					kind: "foreground",
+					cwd: spec.workdir,
+					exitCode: null,
+					signal: null,
+					timedOut: true,
+					aborted: false,
+					timeoutMs,
+					stdout: {
+						text: "",
+						truncated: false
+					},
+					stderr: {
+						text: "",
+						truncated: false
+					},
+					...spec.sandboxPolicy !== void 0 ? { sandbox: {
+						mode: spec.sandboxPolicy.mode,
+						denied: false
+					} } : {}
+				};
+			}
+			if (view.status === "running" || view.status === "stopping") {
+				const read = registry.read(attached.id, owner);
+				return {
+					kind: "promoted",
+					cwd: spec.workdir,
+					jobId: attached.id,
+					timeoutMs,
+					output: renderJobRead(ringDelta(read.chunks), read.lossy, read.job.output.spillPaths ?? [], attached.process()?.sandbox, escalationModes)
+				};
+			}
+			registry.remove(attached.id, owner);
+			const process = attached.process();
+			if (process === void 0) throw new Error(view.detail);
+			const result = await process.result();
+			const stopped = attached.stopped();
+			return {
+				kind: "foreground",
+				...canonicalBashResult(result, spec.workdir),
+				...stopped !== void 0 ? { stopped } : {}
+			};
+		};
+		return defineTool({
+			name: toolName,
+			description: `${official.description} Night保留timeoutMs（毫秒）、workdir、精确permission_scope及耐久后台Job；完整输出使用应用原结构/pull/spill，Pi只接显示尾窗，不写OS临时日志。`,
+			parameters: {
+				description: {
+					type: "string",
+					required: true,
+					description: "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
+				},
+				command: {
+					type: "string",
+					required: true,
+					description: official.parameters.properties.command.description
+				},
+				timeoutMs: {
+					type: "number",
+					description: promote ? "Timeout in milliseconds. The executor applies its configured default and cap; on expiry the command moves to the background as a job instead of being killed." : "Timeout in milliseconds. The executor applies its configured default and cap, and kills the command on expiry."
+				},
+				workdir: {
+					type: "string",
+					description: "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
+				},
+				permission_scope: {
+					type: "object",
+					description: "需要批准的外部命令范围；这里只声明待审批路径，不授予权限。路径必须存在；创建新文件请优先使用文件工具，不要自行扩大到父目录。",
+					additionalProperties: false,
+					properties: {
+						readPaths: { type: "array", required: true, items: { type: "string" } },
+						writePaths: { type: "array", required: true, items: { type: "string" } }
+					}
+				},
+				...background ? { run_in_background: {
+					type: "boolean",
+					description: "在后台运行，完成准备并提交启动后返回作业 ID（用 job_output 收集、job_kill 停止）；不等待进程结束，不设命令超时。"
+				} } : {},
+				...escalationModes.length > 0 ? {
+					sandbox_permissions: {
+						type: "string",
+						enum: [...escalationModes],
+						description: sandboxPermissionsDescription("command")
+					},
+					justification: {
+						type: "string",
+						description: "Required with sandbox_permissions: one sentence for the user explaining why this exact command needs the wider access. Use the language of the user’s current request."
+					}
+				} : {}
+			},
+			output: {
+				schema: { oneOf: [
+					{
+						type: "object",
+						additionalProperties: false,
+						properties: BACKGROUND_OUTPUT_PROPERTIES
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						properties: {
+							kind: {
+								type: "string",
+								required: true,
+								const: "promoted"
+							},
+							cwd: {
+								type: "string",
+								required: true
+							},
+							jobId: {
+								type: "string",
+								required: true
+							},
+							timeoutMs: {
+								type: "number",
+								required: true
+							},
+							output: {
+								type: "string",
+								required: true
+							}
+						}
+					},
+					{
+						type: "object",
+						additionalProperties: false,
+						properties: {
+							kind: {
+								type: "string",
+								required: true,
+								const: "foreground"
+							},
+							cwd: {
+								type: "string",
+								required: true
+							},
+							exitCode: {
+								required: true,
+								oneOf: [{ type: "integer" }, { type: "null" }]
+							},
+							signal: {
+								required: true,
+								oneOf: [{ type: "string" }, { type: "null" }]
+							},
+							timedOut: {
+								type: "boolean",
+								required: true
+							},
+							aborted: {
+								type: "boolean",
+								required: true
+							},
+       piOutput:{type:'object',required:true,additionalProperties:false,properties:{text:{type:'string',required:true},truncated:{type:'boolean',required:true}}},
+							stopped: { type: "string" },
+							timeoutMs: {
+								type: "number",
+								required: true
+							},
+							stdout: {
+								type: "object",
+								additionalProperties: false,
+								required: true,
+								properties: {
+									text: {
+										type: "string",
+										required: true
+									},
+									truncated: {
+										type: "boolean",
+										required: true
+									},
+									spillPath: { type: "string" }
+								}
+							},
+							stderr: {
+								type: "object",
+								additionalProperties: false,
+								required: true,
+								properties: {
+									text: {
+										type: "string",
+										required: true
+									},
+									truncated: {
+										type: "boolean",
+										required: true
+									},
+									spillPath: { type: "string" }
+								}
+							},
+							sandbox: {
+								type: "object",
+								additionalProperties: false,
+								properties: {
+									mode: {
+										type: "string",
+										required: true
+									},
+									denied: {
+										type: "boolean",
+										required: true
+									},
+									enforcement: { type: "string" },
+									runnerFailed: { type: "boolean" }
+								}
+							}
+						}
+					}
+				] },
+				render: (_args, value) => [{
+					type: "text",
+					text: value.kind === "background" ? `started background job ${value.jobId}` : value.kind === "promoted" ? renderPromoted(value) : renderResult(value, escalationModes)
+				}],
+				presentationMeta: (_args, value) => ({ cwd: value.cwd })
+			},
+			async execute(args, exec) {
+				const standingPolicy = resolveSandboxPolicy(exec);
+				validateBashArgs(args, standingPolicy?.mode,toolName);
+				const approvedMode = args.sandbox_permissions !== void 0 && args.justification !== void 0 ? await approveBashEscalation(args.sandbox_permissions, args.justification, exec, standingPolicy) : void 0;
+				const policy = authorizedProcessPolicy(ctx, approvedMode === void 0 ? standingPolicy : {
+					...standingPolicy,
+					mode: approvedMode
+				});
+				const cwd = exec.agent === void 0 ? void 0 : await ctx.workingDirectory.ensure(exec.agent, exec.signal);
+				const workdir = resolveWorkdir(args.workdir, cwd);
+				const executionEnv = ctx.shellEnv.collect(exec);
+				const request = {
+					command: args.command,
+					...workdir !== void 0 ? { workdir } : {},
+					...args.timeoutMs !== void 0 ? { timeoutMs: args.timeoutMs } : {},
+					executionEnv,
+					...policy !== void 0 ? { sandboxPolicy: policy } : {}
+				};
+    const baseSpec=ctx.shell.resolve(request);
+    const run=async()=>{
+				if (args.run_in_background === true) {
+					if (!backgroundEnabled) throw new Error("run_in_background is disabled for this deployment (enableRunInBackground: false)");
+					if (jobs === void 0) throw new Error("background jobs unavailable: the application job service and controller are required");
+					if (exec.signal.aborted) throw toolAborted();
+					const spec = {...baseSpec,onExpiry:"none"};
+					return {
+						kind: "background",
+						jobId: (await startJob(jobs, args, exec, spec)).id,
+						cwd: spec.workdir
+					};
+				}
+				if (jobs !== void 0 && promote) {
+					const spec = {...baseSpec,onExpiry:"none"};
+					let attached;
+					try {
+						attached = await startJob(jobs, args, exec, spec);
+					} catch (error) {
+						if (!["background jobs unavailable: no job controller serves this agent", "background job limit reached for this owner"].includes(error.message)) throw error;
+						ctx.logger.warn(`${toolName}: job registration refused, running in the foreground with the timeout kill instead: ${String(error)}`);
+					}
+					if (attached !== void 0) return waitOnJob(jobs, attached, exec, spec);
+				}
+				const spec = {...baseSpec,signal:exec.signal};
+				const result = await (await ctx.shell.execute(spec)).result();
+				if (result.aborted) throw toolAborted();
+				return {
+					kind: "foreground",
+					...canonicalBashResult(result, spec.workdir)
+				};
+    };
+    return executeOfficialShell(createOfficialTool,args,exec,baseSpec,run);
+			},
+			presentCall: presentBashCall,
+			presentResult: presentBashResult
+		});
+	};
+	if (!backgroundEnabled) {
+		ctx.tools.register(bashTool(void 0));
+		return;
+	}
+	let foregroundOnly = ctx.get("jobs") === void 0 ? ctx.tools.register(bashTool(void 0)) : void 0;
+	ctx.inject(["jobs"], (jobCtx) => {
+		foregroundOnly?.();
+		foregroundOnly = void 0;
+		const unregister = ctx.tools.register(bashTool(jobCtx.jobs));
+		jobCtx.effect(() => () => {
+			unregister();
+			if (ctx.fiber.state === 2) foregroundOnly = ctx.tools.register(bashTool(void 0));
+		});
+	});
+}
+//#endregion
+function apply(ctx,config={}){return applyShellTool(ctx,config,"bash")}
+export { Config, apply, inject, name };

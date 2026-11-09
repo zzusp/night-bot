@@ -1,0 +1,25 @@
+FULL_REAL_CANCEL_ABORT_RETEST_START 2026-11-09T04:27:38.647801+00:00 HEAD ca7bd0276ba4664a8614ce69fde47956f8c99f7e UNCOMMITTED_WORKTREE True TRACKED_INPUT_COUNT 492 AGGREGATE 2f7354350e6487355eb63a194994fb36f8bd9bcf3650ac591c04c68e6e3803a5 TEST_PIN f7326d51c7a3c3e44ef863ef644c297f131d2e53f1aa63433f37a92b35d26f93 FIXTURE_PIN ec683ac7d3e36c39eac7a9da1219e26edaad71465c5fb79401edba0577958d37 EXACT_ARGV ["node", "--test", "--test-concurrency=1", "--test-reporter=tap", "--test-name-pattern=^operator full default task cancellation drains real running descendants and cold recovery never restarts them$", "test/pi-approval-wire.test.js"]
+ACTUAL_TAP_BEGIN
+TAP version 13
+# Subtest: operator full default task cancellation drains real running descendants and cold recovery never restarts them
+ok 1 - operator full default task cancellation drains real running descendants and cold recovery never restarts them
+  ---
+  duration_ms: 10038.5921
+  type: 'test'
+  ...
+# {"case":"full-real-running-task-cancel","descendants":3,"allPidsAbsent":true,"pendingModelAborted":true,"control":"cancelled","drained":true,"producerReported":true,"registeredJobs":1,"settledJobs":1}
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12171.1838
+ACTUAL_TAP_END
+ACTUAL_STDERR_BEGIN
+ACTUAL_STDERR_END
+FULL_REAL_CANCEL_ABORT_RETEST_FINISH 2026-11-09T04:27:51.419482+00:00 EXIT 0 SOURCE_CHANGED [] AFTER_AGGREGATE 2f7354350e6487355eb63a194994fb36f8bd9bcf3650ac591c04c68e6e3803a5
+
+[exited with code 0]

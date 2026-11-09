@@ -1,0 +1,7 @@
+{
+  "package.json": "4fda002d0c72c4248d343abdc94cbca8e4f9132ef5e67e796ea4b706332c41dd",
+  "test/pi-native-sandbox.test.js": "2faabdc06d98170a80a9937dd8dd92d8b0d6dd7440d0e4b89d7537658d2695f7",
+  "src/process/win32.js": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a",
+  "src/native-sandbox.js": "877b3a3be8d5f705505b6cf8c784c67039907fe5f08d39780aa3dff6c3ba655a",
+  "src/process/contracts.js": "3bfc078c03bc79f32836640c58fa14e4accbf8ef4685f937ba7a05449cac7a40"
+}

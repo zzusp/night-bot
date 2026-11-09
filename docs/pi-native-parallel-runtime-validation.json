@@ -1,0 +1,127 @@
+{
+  "base": "b11f97e",
+  "completeDshIndependence": false,
+  "results": {
+    "default": {
+      "tests": 740,
+      "pass": 740,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 61509.619072
+    },
+    "runtime": {
+      "tests": 155,
+      "pass": 155,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 307320.3798
+    },
+    "domain": {
+      "tests": 390,
+      "pass": 390,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 8541.944971
+    },
+    "routing": {
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 17509.164074
+    },
+    "containment": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 1,
+      "duration_ms": 28122.042775
+    },
+    "process": {
+      "tests": 41,
+      "pass": 41,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 670.395317
+    },
+    "job-recovery": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 24470.316748
+    },
+    "dynamic-execution": {
+      "tests": 41,
+      "pass": 41,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 6227.306023
+    }
+  },
+  "remainingDirectDshDevDependencies": 41,
+  "installation": {
+    "command": "pnpm install --frozen-lockfile --store-dir /tmp/night-bot-pnpm-store",
+    "status": "success",
+    "seconds": 0.44,
+    "cache": "existing pinned store; no dependency/lock mutation"
+  },
+  "sequence": "Runtime 155 passed before final PTY incomplete-observation fix; process 41, job-recovery 14, default 740 and containment 20 pass / 1 Windows skip validate the final process source. Domain 390 and routing 47 also pass; targeted format/rejection regressions preserved evidence gates. Suites overlap and counts must not be summed.",
+  "integrationFixes": [
+    "Generate route wire from the exact Zod input schema, including fixedTopic and defaulted optional arrays",
+    "Static output-validated argumentRejection preserves structured correction without executing tool code or effects",
+    "Strict explicit-timezone calendar-valid date-time support admits actual observedHostExitSchema; unknown formats remain rejected",
+    "Port sole topic-runtime runtime case to Pi fixture rather than restoring removed old assembler exports",
+    "PTY missing rows under incomplete snapshots remain unknown; incomplete final observation cannot prove drain",
+    "Port shared dynamic-execution Host to actual native Pi composition; strict journal inspection preserves all job-settled evidence assertions (41 pass)"
+  ],
+  "remaining": [
+    "Mutable Session/publication/audit facade and strict audit codec retain source attribution",
+    "Message/provider projections, query indices, SDK schema authoring and platform backends retain derived code and notices",
+    "Linux process-group fallback retains observation/signal race; not equivalent to cgroup/kernel ownership",
+    "Windows kernel and live vendor integration remain unverified",
+    "Extra historical decision.test.js expects workflowRefs/workflowReason in modern schema and fails identically on b11f97e; not widened to hide mismatch"
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-default.txt",
+      "sha256": "0edabb102c7b97be726839dca8d5827e7393ba60df3c625d67f9cc534689d64c"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-runtime.txt",
+      "sha256": "dd4b0fb97d7705ff5086d32e55858f470c2213dd1e5bd3490fe943f1bf5133f1"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-domain.txt",
+      "sha256": "e165d4d3cb6d5ccc81983126874293baca0cf86b60e3a31c097e88afed0c6e69"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-routing.txt",
+      "sha256": "5cc4ec1f1e94cbbd140ff68aa64826dfa457cdb714dfe2c9c894cc4e6ce581d3"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-containment.txt",
+      "sha256": "88a9f0cc1b131119687a1e384540df318f7e4f4e8a58916d88c12d56441bd748"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-process.txt",
+      "sha256": "ad2024e4f71c52fb86f216dec0ef084ec17de5af20fcb512dc5b9e01e5fdbfed"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-job-recovery.txt",
+      "sha256": "6f9e5cde017704fef79db916de6c1d3796beaa98e6fa3773b0b53a01dfdfc8cf"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-checks.txt",
+      "sha256": "6029f6a7d6332e936309e3b57ce49c4271e69b4d94db5268fd9c1e2a0cb5487a"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-install.txt",
+      "sha256": "0d45d7a154164a188fe62ad3a4ab32fab5314ad5356bdd45de25dcfcd867c54e"
+    },
+    {
+      "path": "docs/evidence/pi-native-parallel-runtime-dynamic-execution.txt",
+      "sha256": "f97a3a432f70683e4cec551bed08a6c6d0fa74eb1c15a1ca17a3ebce990dce23"
+    }
+  ]
+}

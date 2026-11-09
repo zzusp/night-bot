@@ -1,0 +1,13 @@
+{
+  "exit": 0,
+  "finishedAt": "2026-11-07T22:34:04.661035+00:00",
+  "sourceCount": 21,
+  "sourceChanged": [],
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/win32-ordinary-renamed.log": "5d4ac1ebc70161021f2ca87dcba38a8fb8339ccbb96bc0bc8fd18a199cb4f5e4",
+    "docs/acceptance/resident-conversation-routing/round-11/win32-ordinary-renamed-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/win32-ordinary-renamed-executor.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "pass": true,
+  "scope": "First three existing process fork cases; first actual spawn asserts same-process ordinary Windows Job instead of silent fallback; not LPAC/full"
+}

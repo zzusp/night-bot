@@ -1,0 +1,49 @@
+{
+  "args": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^(Host close memoizes|Application stopping and task close errors|Host factory and real Job drain errors|Host startup failure uses)",
+    "test/pi-official-host-runtime.test.js"
+  ],
+  "exitCode": 1,
+  "naturalExit": true,
+  "durationSeconds": 22.840364694595337,
+  "sourceBefore": {
+    "test/pi-official-host-runtime.test.js": "16364e718013a99c560f211109d3878828ee870e5ec0ab6bc2935b07a0a50981",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/application.js": "72e476414e10db57445d357b20d3cdfedf27c43537298cad6bcdba83e20189fd",
+    "src/runtime/files.js": "03962ce0c92b343a5afee4229160ce33f7a87963a946dc9f624c80d2c92164ce",
+    "src/native-jobs.js": "b8d4e3757d9e3e45f8ee2899a5318999b72625eedaf9540aa4d93bf03c054962",
+    "src/process/index.js": "538a81af8f03841c78df3372281baccf6c48b4ef95adcec381734d220416d249",
+    "src/tool-permissions.js": "b450b019e837316f28267e45dca63578e4d4af26750bf61b30fbef9cc9231919",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/native-profile-preflight.js": "7e037b0fa244cac8325e939163284f109388bf420606873805fccd4ae38a6420",
+    "src/native-agent-presets.js": "ecdaaf620124d2f51d5c6a6cbd680e4378a7bdf982ad4e0e5b602585d5621d35",
+    "packages/dingtalk-core/task-session-service.js": "b9057bcff6f102f05ca507809fb69d890723635e3a8f0c2575df977f737ce87d",
+    "packages/dingtalk-core/task-resident-runtime.js": "37b8bbcfdc8488cc1c2f62c8bc399eecf515c34467e81f233c735b0f6dea340f",
+    "packages/dingtalk-core/store.js": "9a9c8f9fbbd5931779c5cc82f11871f148360a34d243e255179dc7711df4c7f4"
+  },
+  "sourceAfter": {
+    "test/pi-official-host-runtime.test.js": "16364e718013a99c560f211109d3878828ee870e5ec0ab6bc2935b07a0a50981",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/application.js": "72e476414e10db57445d357b20d3cdfedf27c43537298cad6bcdba83e20189fd",
+    "src/runtime/files.js": "03962ce0c92b343a5afee4229160ce33f7a87963a946dc9f624c80d2c92164ce",
+    "src/native-jobs.js": "b8d4e3757d9e3e45f8ee2899a5318999b72625eedaf9540aa4d93bf03c054962",
+    "src/process/index.js": "538a81af8f03841c78df3372281baccf6c48b4ef95adcec381734d220416d249",
+    "src/tool-permissions.js": "b450b019e837316f28267e45dca63578e4d4af26750bf61b30fbef9cc9231919",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/native-profile-preflight.js": "7e037b0fa244cac8325e939163284f109388bf420606873805fccd4ae38a6420",
+    "src/native-agent-presets.js": "ecdaaf620124d2f51d5c6a6cbd680e4378a7bdf982ad4e0e5b602585d5621d35",
+    "packages/dingtalk-core/task-session-service.js": "b9057bcff6f102f05ca507809fb69d890723635e3a8f0c2575df977f737ce87d",
+    "packages/dingtalk-core/task-resident-runtime.js": "37b8bbcfdc8488cc1c2f62c8bc399eecf515c34467e81f233c735b0f6dea340f",
+    "packages/dingtalk-core/store.js": "9a9c8f9fbbd5931779c5cc82f11871f148360a34d243e255179dc7711df4c7f4"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "970782d578d5b4b9354d7760186a36979baa575f053de10fae1c638c98eda52b",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "realVendorExecuted": false
+}

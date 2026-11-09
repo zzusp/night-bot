@@ -1,0 +1,33 @@
+{
+  "startedAt": "2026-11-08T05:58:57.682767+00:00",
+  "finishedAt": "2026-11-08T05:58:58.007066+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^Windows (privacy |scope projection )",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "nodeVersion": "v24.19.0",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceBefore": {
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3",
+    "src/memory/privacy.js": "02c4f0b22a28e3e7bf59eaf4331610f2fa7ab1c8265facbb3c95ff826a2bb8b5",
+    "test/pi-native-sandbox.test.js": "012b24b0d5ed79aa8aef3b42a65ae34960070f5bab9fd42c5b6126793d661345"
+  },
+  "sourceAfter": {
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3",
+    "src/memory/privacy.js": "02c4f0b22a28e3e7bf59eaf4331610f2fa7ab1c8265facbb3c95ff826a2bb8b5",
+    "test/pi-native-sandbox.test.js": "012b24b0d5ed79aa8aef3b42a65ae34960070f5bab9fd42c5b6126793d661345"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "3880f4172f5004ed01dce1200f61f53db4b132357b74b89bc8b17216e892f48d",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "profileCreated": false,
+  "realVendorExecuted": false
+}

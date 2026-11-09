@@ -1,0 +1,21 @@
+✔ real default Host learns completed SQLite task evidence, deduplicates, creates evidence-justified scoped skills without a fixed repetition threshold and cold reopens (1459.23846ms)
+✔ invalid reflection evidence cannot invent memory or block committed task delivery; retry state is durable (186.394896ms)
+✔ actual task service attaches the default Host reflection consumer and recovers preexisting durable completion events (205.899938ms)
+✔ a real default Host task turn completes through the native submit tool and automatically schedules a review (478.646349ms)
+✔ default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections (3701.764685ms)
+✔ sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun (734.083811ms)
+✔ task-required attachment bytes are local and independently restored without the original attachment store (924.853377ms)
+✔ a committed restore marker blocks startup, can be finalized idempotently, and does not resume work (731.631355ms)
+✔ default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact (432.267017ms)
+✔ explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals (621.403283ms)
+✔ restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation (524.808117ms)
+✔ an archive filesystem failure after a committed completion reports maintenance without reversing task state (405.116223ms)
+✔ task index restoration preserves decision chronology independently of command-id lexical order (45.406493ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9597.294591

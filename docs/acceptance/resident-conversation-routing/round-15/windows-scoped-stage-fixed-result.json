@@ -1,0 +1,37 @@
+{
+  "startedAt": "2026-11-08T06:14:24.718640+00:00",
+  "finishedAt": "2026-11-08T06:14:24.994327+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^Windows scoped stage planning ",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "sourceBefore": {
+    "src/process/windows-acl.js": "f52e3ac42b1bef2b155f07e9cf74e03c7de350da6357e35fe91ba720779bea9d",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3",
+    "src/memory/privacy.js": "02c4f0b22a28e3e7bf59eaf4331610f2fa7ab1c8265facbb3c95ff826a2bb8b5",
+    "test/pi-native-sandbox.test.js": "302cd32225032bf8d1c06d5ba22d953a00cac566254a933d387308cea9cc7b56"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "f52e3ac42b1bef2b155f07e9cf74e03c7de350da6357e35fe91ba720779bea9d",
+    "src/process/win32.js": "f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3",
+    "src/memory/privacy.js": "02c4f0b22a28e3e7bf59eaf4331610f2fa7ab1c8265facbb3c95ff826a2bb8b5",
+    "test/pi-native-sandbox.test.js": "302cd32225032bf8d1c06d5ba22d953a00cac566254a933d387308cea9cc7b56"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "39857e82e7a1ae265570efffa6c4603c612ba2d067b21ef3ea465c6276c9ab13",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "nativeExecuted": false,
+  "profileCreated": false,
+  "realVendorExecuted": false,
+  "inheritanceFixture": "Independent scripted ordinary OI/CI byte projection; not a Native inheritance or ACL IO proof."
+}

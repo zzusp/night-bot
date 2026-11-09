@@ -1,0 +1,340 @@
+{
+  "pass": true,
+  "containerId": "9d9ebd387c01bac1ff3f5cca52f56857213b88d7240e0df00cd9cb5c8c620f71",
+  "image": "sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b",
+  "source": {
+    "packages/dingtalk-core/dws-adapter.js": "4c5e9fc34d042e47b34e087c183992c52d71693c12ebe2d526d9d8984ae78f19",
+    "packages/dingtalk-core/dws-bridge.js": "082218473340959f3ffe9d8e6b0b364e87d6bd3c2819535135e54734408fea8c",
+    "packages/dingtalk-core/dws-runner.js": "b4671c153cee3c77b349b092ce582d2c5e81c524332a77711d69ce1258344b69",
+    "src/channels/plugins/dingtalk-ingress.js": "a10ecc730f390f0b2a66b4b9f596f7c10bebbacf85fce5d2b54b541089fd552f",
+    "src/channels/plugins/dingtalk-storage.js": "d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d",
+    "src/channels/router-ledger.js": "425b730e772d84b8dd06253695badc44584652137765c1737fd1988ea069198c",
+    "src/channels/service.js": "184c4daf01a20f81c0d1cd71efa6606473545e43292c620aee694fb7f6f7093b",
+    "src/channels/message-safety.js": "2e80fb622a426291d49298bf8686b3a08ebe2b758fd941c94ed0a34a154fe9c3",
+    "src/channels/resident-router-business.js": "33d6abab1c07a1812fba10c1b74f3e54c1d304a185a00d20407715c6c89ed5f8",
+    "src/channels/triage.js": "1b41c85eeffbf837124606d7b567d2c577de1da07bbf328389341272966c3917",
+    "packages/web-console/server/views.js": "844b62ef73dfe25d8e975ad58de5d6842de9a1d0bd383b29a731f38f8f9c8651",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/application.js": "72e476414e10db57445d357b20d3cdfedf27c43537298cad6bcdba83e20189fd",
+    "src/native-jobs.js": "deee4fd455a7caa5129800cfa745bd3929130fa80d6d08c1f803a6bad2fd7bf5",
+    "src/channels/router-lifecycle.js": "9a97650dceaa69ca5974b23f074c80bb3561ad55bbd5264982a5592350c2745b",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/runtime/pi-business-admission.js": "5e48f095770a3930bfdd8bcb385b5e40338b468018346ce6d0e2755d3a36c24b",
+    "src/runtime/pi-official-session.js": "5877722630415971c06f7993af2f4bbb70f853da630893e5704691c506fc7343",
+    "scripts/docker-entrypoint.sh": "def816be0b4bbf669a8a9178000355fd98527bd1e7ac2213e404089d79b8f8ad",
+    "bin/night-bot-run.js": "222bbafa0b1e9f9ac71758668a53b8eff458bbdd5bb3d3634624c15dcea27f08",
+    "src/channels/plugins/dingtalk-dws.js": "45fc900064077be7d2b740106d6a953cff09f0ea0aa9d3f87ab7743e304a5406",
+    "src/channels/plugins/dingtalk-auth.js": "7e01f2b86c21a6d9d26d1a5999664740116e6ca58e6ec95034046ab5d3e829d7",
+    "src/channels/plugins/dws-environment.js": "70bc95982a242c172671f51bf579bf1598c4eecf7b5746a57d9706201b786a61",
+    "src/channels/plugins/dingtalk-binding.js": "e1df02040e9a56a1b0b2479cf2815e35fabb6292e644f4becd6de6e04646279f",
+    "src/channels/plugins/dingtalk-config.js": "d868b9ac2ad35f7552599c856035d1ff5e5b4d364b3bb8cbf04fceb8bb434b3f",
+    "packages/web-console/server/plugin.js": "00b2d7f722512f8a15b7dbf17088da1ff9d9ca345853e884dcb9feaa0940b00f"
+  },
+  "originalResultSha256": "c54a6378f09c193e269ec3d68eac79f3113467882133d610c71a24d3a924231e",
+  "driverSha256": "d4df5acca7747103ec46458e7ed51775e6cbaeb979ecf6f64d5b887618d3b973",
+  "realVendorExecuted": false,
+  "readOnlyVolume": true,
+  "queryOnly": true,
+  "stoppedSnapshot": true,
+  "exit": 0,
+  "readback": {
+    "snapshotFiles": [
+      {
+        "name": "tasks.sqlite",
+        "sha256": "c37a6b1200cfd37c5110812551ab7fefd6793e87ea9da0ac91a1e6f8d77fd87b",
+        "length": 659456
+      }
+    ],
+    "sources": [
+      {
+        "actorId": "channel-actor-e89b36dc9f4306fb3e674ca7436299eeb7d97c1876051aeec46eef3abc2eab65",
+        "channel": "im",
+        "groupId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+        "id": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+        "initialRouteDecision": null,
+        "messageId": "history-r23",
+        "quote": null,
+        "receivedAt": "2026-11-08T09:14:21.827Z",
+        "resources": [],
+        "routeReceipt": {
+          "decisionId": "triage:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+          "kind": "triage"
+        },
+        "routed": true,
+        "routedAt": "2026-11-08T09:14:22.354Z",
+        "senderName": "fixture-peer",
+        "sourceId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+        "stages": [
+          {
+            "attempt": 0,
+            "completedAt": "2026-11-08T09:14:21.877Z",
+            "quality": "observed",
+            "requestId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "shared": false,
+            "spanId": "ingress:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "stage": "ingress",
+            "startedAt": "2026-11-08T09:14:21.827Z"
+          },
+          {
+            "attempt": 0,
+            "completedAt": "2026-11-08T09:14:21.828Z",
+            "phase": "source-read",
+            "quality": "observed",
+            "requestId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "shared": false,
+            "spanId": "ingress:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4:0",
+            "stage": "ingress",
+            "startedAt": "2026-11-08T09:14:21.827Z"
+          },
+          {
+            "attempt": 0,
+            "completedAt": "2026-11-08T09:14:21.848Z",
+            "phase": "resident-store",
+            "quality": "observed",
+            "requestId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "shared": false,
+            "spanId": "ingress:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4:1",
+            "stage": "ingress",
+            "startedAt": "2026-11-08T09:14:21.828Z"
+          }
+        ],
+        "text": "Synthetic historical acknowledgement, no action requested.",
+        "timestamp": "2026-11-08T09:14:06.602Z",
+        "version": 1
+      },
+      {
+        "actorId": "channel-actor-e89b36dc9f4306fb3e674ca7436299eeb7d97c1876051aeec46eef3abc2eab65",
+        "channel": "im",
+        "groupId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+        "id": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+        "initialRouteDecision": null,
+        "messageId": "live-r23",
+        "quote": null,
+        "receivedAt": "2026-11-08T09:14:22.517Z",
+        "resources": [],
+        "routeReceipt": {
+          "decisionId": "triage:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+          "kind": "triage"
+        },
+        "routed": true,
+        "routedAt": "2026-11-08T09:14:22.754Z",
+        "senderName": "fixture-peer",
+        "sourceId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+        "stages": [
+          {
+            "attempt": 0,
+            "completedAt": "2026-11-08T09:14:22.534Z",
+            "quality": "observed",
+            "requestId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "shared": false,
+            "spanId": "ingress:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "stage": "ingress",
+            "startedAt": "2026-11-08T09:14:22.517Z"
+          },
+          {
+            "attempt": 0,
+            "completedAt": "2026-11-08T09:14:22.518Z",
+            "phase": "source-read",
+            "quality": "observed",
+            "requestId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "shared": false,
+            "spanId": "ingress:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0:0",
+            "stage": "ingress",
+            "startedAt": "2026-11-08T09:14:22.518Z"
+          },
+          {
+            "attempt": 0,
+            "completedAt": "2026-11-08T09:14:22.525Z",
+            "phase": "resident-store",
+            "quality": "observed",
+            "requestId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "shared": false,
+            "spanId": "ingress:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0:1",
+            "stage": "ingress",
+            "startedAt": "2026-11-08T09:14:22.518Z"
+          }
+        ],
+        "text": "Synthetic live acknowledgement, no action requested.",
+        "timestamp": "2026-11-08T09:14:22.419Z",
+        "version": 1
+      }
+    ],
+    "triage": [
+      {
+        "commandId": "triage:67d6ba36a6530140b2dafcf09883c8217293bee5db939a1d74cf80bcf6bdb2f5",
+        "conversationId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+        "decision": {
+          "messageVersion": 1,
+          "needsHandling": false,
+          "reason": "Synthetic acknowledgement only; no task or reply requested.",
+          "reply": null,
+          "sourceId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4"
+        },
+        "id": "triage:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+        "messageVersion": 1,
+        "notificationId": null,
+        "sourceId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+        "state": "committed"
+      },
+      {
+        "commandId": "triage:b2dd90f504096bb4e3a9bf41bd08b6b73e88d4082dec166dbdca632b35030e19",
+        "conversationId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+        "decision": {
+          "messageVersion": 1,
+          "needsHandling": false,
+          "reason": "Synthetic acknowledgement only; no task or reply requested.",
+          "reply": null,
+          "sourceId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0"
+        },
+        "id": "triage:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+        "messageVersion": 1,
+        "notificationId": null,
+        "sourceId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+        "state": "committed"
+      }
+    ],
+    "binding": {
+      "version": 1,
+      "profile": "fixture-corp:fixture-user",
+      "corpId": "fixture-corp",
+      "userId": "fixture-user",
+      "actorId": "self-open",
+      "conversationType": "chat-room",
+      "conversationId": "fixture-room"
+    },
+    "ingress": {
+      "paused": true,
+      "firstStartedAt": "2026-11-08T09:14:09.862Z",
+      "backfillThroughAt": "2026-11-08T09:14:21.739Z",
+      "consumedAt": "2026-11-08T09:14:22.419Z",
+      "consumedMessageId": "live-r23",
+      "recoveryFromAt": "2026-11-08T09:13:53.128Z",
+      "pausedAt": "2026-11-08T09:14:23.128Z"
+    },
+    "calls": [
+      [
+        "profile",
+        "list",
+        "--format",
+        "json"
+      ],
+      [
+        "profile",
+        "list",
+        "--format",
+        "json"
+      ],
+      [
+        "contact",
+        "user",
+        "get-self",
+        "--format",
+        "json",
+        "--profile",
+        "fixture-corp:fixture-user"
+      ],
+      [
+        "contact",
+        "+search-user",
+        "--query",
+        "Fixture Self",
+        "--format",
+        "json",
+        "--profile",
+        "fixture-corp:fixture-user"
+      ],
+      [
+        "chat",
+        "conversation-info",
+        "--group",
+        "fixture-room",
+        "--format",
+        "json",
+        "--profile",
+        "fixture-corp:fixture-user"
+      ],
+      [
+        "event",
+        "+listen-im",
+        "--kind",
+        "group",
+        "--events",
+        "message",
+        "--chat-id",
+        "fixture-room",
+        "--format",
+        "ndjson",
+        "--profile",
+        "fixture-corp:fixture-user"
+      ],
+      [
+        "chat",
+        "+chat-messages",
+        "--group",
+        "fixture-room",
+        "--start",
+        "2026-11-08T09:14:09.862Z",
+        "--end",
+        "2026-11-08T09:14:11.764Z",
+        "--order",
+        "asc",
+        "--page-all",
+        "--page-limit",
+        "50",
+        "--format",
+        "json",
+        "--profile",
+        "fixture-corp:fixture-user"
+      ],
+      [
+        "chat",
+        "+chat-messages",
+        "--group",
+        "fixture-room",
+        "--start",
+        "2026-11-08T09:13:41.764Z",
+        "--end",
+        "2026-11-08T09:14:21.739Z",
+        "--order",
+        "asc",
+        "--page-all",
+        "--page-limit",
+        "50",
+        "--format",
+        "json",
+        "--profile",
+        "fixture-corp:fixture-user"
+      ]
+    ],
+    "model": [
+      {
+        "messageIds": [
+          "history-r23"
+        ],
+        "sourceIds": [
+          "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4"
+        ],
+        "tool": "channel_triage_submit"
+      },
+      {
+        "messageIds": [
+          "live-r23"
+        ],
+        "sourceIds": [
+          "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0"
+        ],
+        "tool": "channel_triage_submit"
+      }
+    ],
+    "listenerStop": [
+      {
+        "pid": 198,
+        "signal": "SIGTERM"
+      }
+    ],
+    "leaseAbsent": true,
+    "serviceLog": "(node:152) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+  },
+  "stdoutSha256": "6c191c714703800777ce9918b7df9ac5d263b63245ac9750e073bd76bc5de34b",
+  "stderrSha256": "cc85ed3ff1b6bb61112132dd5e3ca7a6d367ba82df483a939919a6f3df8d8eb5"
+}

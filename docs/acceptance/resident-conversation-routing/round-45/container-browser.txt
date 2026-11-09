@@ -1,0 +1,18 @@
+说明：本机 checkout 前缀以 <checkout> 代替；完整重复的 seccomp JSON 投影为与源码逐项相等及其 SHA，其他结果保留。原始输出 SHA256=4474ba8ac4f169a322aa5be3352c1449c0f8119f6e36b351d7c17db89c971854。
+API/CLI 两图原件同 SHA，现仅保留 browser.png，原 docs/tmp 两图已按 --check/--run 清理。
+
+BROWSER_CONTAINER_START 2026-11-09T04:10:05.182979+00:00 IMAGE_ID sha256:e3677dda58c04eb6c1320e58afe6e7c41dcd96122926fb90b146038b4aebcfa9 CONTRACT ["--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--security-opt", "seccomp=<checkout>\\docs\\ops\\docker-bwrap-seccomp.json", "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777", "--mount", "type=volume,source=night-bot-sg11-full-tools-tests-63ee0b,target=/opt/night-bot/data", "--env", "NODE_DISABLE_COMPILE_CACHE=1"] APPLICATION_HOST_NOT_STARTED True
+{"case":"chromium-real-http-js-dom-api","passed":true,"browserVersion":"158.0.8127.18","cwd":"/opt/night-bot/data/workspaces/container-browser-proof","applicationSandboxUnchanged":true,"browserInternalSandbox":"Playwright default chromiumSandbox=false"}
+Navigating to http://127.0.0.1:34359/
+Waiting for selector #ready...
+Capturing screenshot into browser-cli.png
+
+{"file":"browser-api.png","bytes":10466,"physicalPng":true}
+{"file":"browser-cli.png","bytes":10466,"physicalPng":true}
+{"case":"playwright-path-cli-from-business-cwd","passed":true,"localHttpRequests":2,"externalNetwork":"Docker network none"}
+BROWSER_CONTAINER_FINISH 2026-11-09T04:10:07.102107+00:00 EXIT 0
+PHYSICAL_HOST_SCREENSHOT docs\tmp\full-container-browser-api-63ee0b.png 10466 05d5baeceeb1a77baa8300a35c6299305d08b185db264cd8ed065900d0e1996b
+PHYSICAL_HOST_SCREENSHOT docs\tmp\full-container-browser-cli-63ee0b.png 10466 05d5baeceeb1a77baa8300a35c6299305d08b185db264cd8ed065900d0e1996b
+{"runtimeState": {"Status": "exited", "Running": false, "Paused": false, "Restarting": false, "OOMKilled": false, "Dead": false, "Pid": 0, "ExitCode": 0, "Error": "", "StartedAt": "2026-11-09T04:10:05.592709468Z", "FinishedAt": "2026-11-09T04:10:07.013399222Z"}, "readOnlyRoot": true, "capDrop": ["ALL"], "noNewPrivileges": true, "fixedSeccompMatchesSource": true, "seccompSourceSha256": "9264f1689d786e212fcfc1dc63eed5d08a2be4c236a252d5676f43f40691201f"}
+
+[exited with code 0]

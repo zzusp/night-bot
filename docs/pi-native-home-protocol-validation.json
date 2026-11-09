@@ -1,0 +1,47 @@
+{
+  "base": "6f4dcee",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 636,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 21,
+    "overlap": "subset of default"
+  },
+  "taskSkills": {
+    "pass": 7
+  },
+  "archiveChannel": {
+    "pass": 41,
+    "overlap": "includes default archive/channel cases"
+  },
+  "removedNotice": "licenses/dsh-home-paths-MIT.txt after removing path expansion/environment/display implementations and skill copy",
+  "remainingDirectDshDevDependencies": 58,
+  "preserved": "Physical owned paths and .agents default, scoped reads/cancellation, public skillDirs normalization, persisted Night instruction logical scopes; context identity version forces refresh",
+  "limits": "Prior own instruction metadata simulated from generated fixture shape, not a DSH data import. No Windows kernel validation. Other DSH-derived discovery/reconciliation algorithms retain notice.",
+  "freshInstall": "Known npm metadata/attestation HTTP503 remains; no attempt this phase",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-home-protocol-focused.txt",
+      "sha256": "ff76d4063c43bec2f91cbe8565b32c454296b4f65b10d80aef5ca7110d2c00b9"
+    },
+    {
+      "path": "docs/evidence/pi-native-home-protocol-default.txt",
+      "sha256": "f2654288440a35386d156974c754e8848a2c8dc2688816b0e8fe9fb388355a47"
+    },
+    {
+      "path": "docs/evidence/pi-native-home-protocol-integration.txt",
+      "sha256": "bdf9c8c520a6b16d8ba9a9dbb290087399fa1d59232fea6a8cb64e2c0f897ce7"
+    },
+    {
+      "path": "docs/evidence/pi-native-home-protocol-archive-channel.txt",
+      "sha256": "78ecddc6fc782d3f3a6d08785819d4a2560c6be41d83d478e7e71c9aa89dba16"
+    },
+    {
+      "path": "docs/evidence/pi-native-home-protocol-checks.txt",
+      "sha256": "dae84a9410bd0bc84e178bc0e9b917d86c397bacc9d112e7b6eda016b5bd747b"
+    }
+  ]
+}

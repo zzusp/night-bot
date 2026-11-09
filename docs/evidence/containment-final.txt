@@ -1,0 +1,89 @@
+$ node scripts/test-pi.mjs containment
+﹣ 受信原生完整模式允许原临时Git工作树及MSYS，默认模式保留产物边界 (0.685725ms) # SKIP
+✔ 原生Host已授权完整模式在恢复绑定时保留，原生逐次模式与只读模式均不改历史身份 (569.598986ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":470,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":73,"aborted":false}
+ℹ Permission recovery phases: [{"phase":"begin","elapsedMs":0},{"phase":"host-ready","elapsedMs":470},{"phase":"created","elapsedMs":508},{"phase":"disposed","elapsedMs":517},{"phase":"resumed","elapsedMs":537},{"phase":"readback","elapsedMs":542}]
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✖ official execution artifact binding makes native FS and shell share one root and reject outside writes (197.671716ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":186,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (977.46498ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":7,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":959,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (1040.059416ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1018,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":21,"aborted":false}
+✖ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (394.823563ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":358,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":35,"aborted":false}
+ℹ tests 6
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3530.117486
+
+✖ failing tests:
+
+test at test/task-artifact-scope-native.test.js:144:1
+✖ official execution artifact binding makes native FS and shell share one root and reject outside writes (197.671716ms)
+  AssertionError [ERR_ASSERTION]: [{"name":"bash","sessionId":"execution-session-task-a","result":{"isError":true,"error":{"message":"sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.","info":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"content":[{"type":"text","text":"Error: sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access."}]}},{"name":"bash","sessionId":"execution-session-task-a","result":{"isError":true,"error":{"message":"sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.","info":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"content":[{"type":"text","text":"Error: sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access."}]}}]
+      at file:///workspace/night-bot/test/task-artifact-scope-native.test.js:185:14 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-artifact-scope-native.test.js:245:42
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (977.46498ms)
+  Error: ENOENT: no such file or directory, open '/workspace/night-bot/.artifact-stages-rMSxGS/tasks/retained-artifacts/outputs/stage-1-shell.txt'
+      at async open (node:internal/fs/promises:697:25)
+      at async readFile (node:internal/fs/promises:1348:14) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/workspace/night-bot/.artifact-stages-rMSxGS/tasks/retained-artifacts/outputs/stage-1-shell.txt',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-artifact-scope-native.test.js:245:42
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (1040.059416ms)
+  Error: ENOENT: no such file or directory, open '/workspace/night-bot/.artifact-stages-CZ3ziC/tasks/retained-artifacts/outputs/stage-1-shell.txt'
+      at async open (node:internal/fs/promises:697:25)
+      at async readFile (node:internal/fs/promises:1348:14) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/workspace/night-bot/.artifact-stages-CZ3ziC/tasks/retained-artifacts/outputs/stage-1-shell.txt',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-artifact-scope-native.test.js:343:1
+✖ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (394.823563ms)
+  AssertionError [ERR_ASSERTION]: [{"alertId":"operation:operation-83ee9f4cb1b231c0a6ce03f91ec7dced936ca021","taskId":"A","fingerprint":"unknown-operation:operation-83ee9f4cb1b231c0a6ce03f91ec7dced936ca021","detail":"执行效果未知，已阻止后续操作；须核实原始效果。","status":"active","lastSeenAt":"2026-11-04T16:10:57.996Z"}]
+  + actual - expected
+
+  + 'active'
+  - 'completed'
+
+      at file:///workspace/night-bot/test/task-artifact-scope-native.test.js:382:12 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'active',
+    expected: 'completed',
+    operator: 'strictEqual',
+    diff: 'simple',
+    lifecyclePhase: 'business'
+  }
+[ELIFECYCLE] Command failed with exit code 1.

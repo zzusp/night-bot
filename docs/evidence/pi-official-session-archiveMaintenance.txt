@@ -1,0 +1,40 @@
+✔ retained maintenance audit binds the native input, feedback, terminal history and original process identities (31.402758ms)
+✔ maintenance preserves original ledger and history: false (4.025248ms)
+✔ maintenance preserves original ledger and history: true (2.203361ms)
+✔ maintenance accepts reviewed non-OOM exit only with full original-scope exclusion (1.363336ms)
+✔ maintenance rejects no explicit approval (0.387501ms)
+✔ maintenance rejects wrong current Host (0.231868ms)
+✔ maintenance rejects stale digest (0.306279ms)
+✔ maintenance rejects new live task (0.306069ms)
+✔ maintenance rejects other unfinished execution (0.602273ms)
+✔ maintenance rejects live group (0.36671ms)
+✔ maintenance rejects uncancelled original (0.29998ms)
+✔ maintenance rejects not recovery (0.217116ms)
+✔ maintenance rejects another unresolved call (0.18001ms)
+✔ maintenance rejects old settled receipt (0.203766ms)
+✔ maintenance rejects wrong registration (0.16713ms)
+✔ maintenance rejects unreviewed scope (0.180391ms)
+✔ maintenance rejects residual producer (0.427401ms)
+✔ maintenance rejects residual writer (0.511688ms)
+✔ maintenance rejects listener (0.491477ms)
+✔ maintenance rejects stale observation (0.32002ms)
+✔ maintenance rejects lost retained artifacts (0.370375ms)
+✔ maintenance retains only unaudited restart work; corrupt audit rejects: false (1.050186ms)
+✔ maintenance retains only unaudited restart work; corrupt audit rejects: true (0.403775ms)
+✔ a legacy provider maintenance proposal is refused before history/probe reads and cannot alter unknown effects (0.262874ms)
+✔ offline maintenance reads exact committed Pi history without taking a writer lease (38.049212ms)
+✔ offline proof rejects uncommitted Pi tails while ordinary read-only inspection leaves them untouched (26.313326ms)
+✔ offline Pi evidence rejects changed records and unsupported headers without rewriting bytes (13.036956ms)
+✔ offline Pi evidence rejects symbolic/hard-linked files and a linked ancestor (17.415054ms)
+✔ old v4 physical logs cannot substitute for missing Pi evidence (10.620402ms)
+✔ portable maintenance uses the same explicit controlled-path codec as live Pi inspection (16.270166ms)
+✔ native task archive seals, backs up and restores exact Pi bytes with held effects (297.746786ms)
+✔ native task archives require typed task identity and strict complete commit (142.795996ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1402.053306

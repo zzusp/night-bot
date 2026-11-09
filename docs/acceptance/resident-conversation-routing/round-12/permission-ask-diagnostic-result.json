@@ -1,0 +1,20 @@
+{
+  "startedAt": "2026-11-08T03:03:07.783594+00:00",
+  "finishedAt": "2026-11-08T03:03:20.127777+00:00",
+  "exit": 1,
+  "source": {
+    "src/tool-permissions.js": "1a2f14be3b131269e925d794db2a8bd40f7399e033ece30e8a4c83f7d0b4e126",
+    "src/host.js": "300cd9d8a87f04621cb604b23e31c970c92e282fe3bf2e9a8a26131020beb1ec",
+    "src/native-tools.js": "471ba0637f4a1ae8dd6461dc4063d2b6fa10b1ed8a76b994c58d20b84277e295",
+    "src/native-approval.js": "90742b721e7a5c470d404e7a36a6fb41c7898b6492a56fe38db6bb4d23d8d512",
+    "src/native-fs-sandbox.js": "8c910258615ccf55cb488ed9a092143d22dfff154f6c28c2e0d086334aa95032",
+    "src/memory/private-fs.js": "0df6bba691fc6d513a38e092ee19a47ec995b31baeaf4207ab3d5da41d897492",
+    "src/pi-file-tools.js": "9d8cc5a0ebe8ae3988d0541412dfcf92e5df1849275eb5d18578f5fd08330722",
+    "test/pi-approval-wire.test.js": "66eff59e8fa1436b3636e1017241c60bcdb276e655327445f0ef9e88cc2dfa2a",
+    "test/fixtures/memory-host.js": "923ca3c6d85c1180eb4411902b5176ae0374506cbde9e8d7ce1d1089dc3008c1"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "7c29079b94084634e0a784fd30dea611fbcb4b0fbbcbe92f1172f474959dc3fc",
+  "stderr": "",
+  "purpose": "actual toolResult diagnosis, not replacement for stable-source acceptance"
+}

@@ -1,0 +1,13 @@
+R46 真实本地预览（非3081 fixture）
+Origin: http://127.0.0.1:3082/#/channels
+Launcher: bin/night-bot-run.js (controlled IPC supervisor)
+Permission mode preserved: full
+Only configured adapters: web-console
+Playwright/MS Edge headful: login authenticated=true; dialogVisible=true; empty-field validationVisible=true; pageErrorCount=0; configuredChannels=1.
+Only opened the actual form and submitted empty fields for local validation; no fake DingTalk target was saved. The helper's literal businessPostCount=0 is not treated as an observed network counter.
+Screenshot: real-web-preview.png (ignored), bytes=90992, sha256=0de3352a0cde267f39fc95f68b57f82252767c5b3b21af3d91c8cef07a32463d; Main visually inspected the original screenshot.
+Current core status=degraded; recoveryIssueCount=1.
+User test chat remains accepted and unreplied: missing provider credential first, then authorized source gateway returned 401/session_expired; active TRIAGE_NO_DISPOSITION is retained, not cleared or relabeled success. Real model reply remains blocked pending refreshed credentials.
+Service/browser remain open for user review; no deployment, vendor channel send, model permission mode switch, or business replay.
+
+附件清理说明（2026-11-09）：以上为去 profile 前候选的当时观察，原文字结果保留；其 real-web-preview.png 已按精确路径/长度/SHA 经 --check 后清理，由 browser-channels-no-profile 的浅深色窄屏图及 real-night-bot-test-pending.png 替代。旧可见 Edge 后来自然退出，不将本段“remain open”作为当前浏览器存活证明。最终编辑版截图尚待实际构建与浏览器验证，现有图片不追认为编辑已验。

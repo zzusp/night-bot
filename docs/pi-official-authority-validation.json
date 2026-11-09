@@ -1,0 +1,208 @@
+{
+  "base": "c2edaee158c0faa5581fe5fe7f71d241dc15af8e",
+  "completeDshIndependence": false,
+  "completeOfficialSessionMigration": false,
+  "officialCapabilitiesRequired": true,
+  "results": {
+    "default": {
+      "tests": 805,
+      "pass": 805,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 72502.452939
+    },
+    "runtime": {
+      "tests": 155,
+      "pass": 155,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 279837.48527
+    },
+    "routing": {
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 20683.036717
+    },
+    "domain": {
+      "tests": 391,
+      "pass": 391,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 10545.114909
+    },
+    "containment": {
+      "tests": 22,
+      "pass": 21,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 1,
+      "duration_ms": 33823.376459
+    },
+    "postRetirementPtc": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 1874.477283
+    },
+    "process": {
+      "tests": 51,
+      "pass": 51,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 953.063054
+    },
+    "decision": {
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 246.817848
+    },
+    "execution": {
+      "tests": 94,
+      "pass": 94,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 13627.861045
+    },
+    "dynamicExecution": {
+      "tests": 41,
+      "pass": 41,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 7080.880042
+    }
+  },
+  "countsOverlap": true,
+  "validationSequence": "805 default and 21 containment checks passed on final production code. Two proven-unused development declarations were then retired; frozen install (621 policies), runtime 155, routing 47, domain 391 and real isolated Node PTC 2 passed afterwards. No production code changed during that dependency retirement.",
+  "dependencies": {
+    "officialAdded": [
+      "@earendil-works/pi-schema@1.5.0",
+      "@earendil-works/pi-codemode@1.5.0"
+    ],
+    "retiredDirectDevelopment": [
+      "@deepseek-ai/dsh-api-session-controller",
+      "@deepseek-ai/dsh-session-query"
+    ],
+    "remainingDirectDshDevelopment": 39,
+    "directRegistryDshProduction": 0,
+    "frozenSupplyChainEntries": 621,
+    "frozenSeconds": 6.3
+  },
+  "officialAdopted": [
+    "buildSessionProjection for live/cold context and source entries",
+    "convertToLlm for ordinary native model messages and summaries",
+    "Pi tool catalog fold/delta APIs",
+    "pi-schema strict/coerce:false validation with lossless application capture",
+    "pi-codemode/declarations TypeScript rendering",
+    "resizeImage for native inline image bounds"
+  ],
+  "retired": [
+    "Host context shadow/nativeHostMessage/production deriveMessages consumers",
+    "Unused generic Session derive cache, no-op SessionPreparation/disposal and sequence-range helpers",
+    "Unused query corpus/title/fulltext/trace/general history ABI",
+    "Lossy DSH schema subset projection, bespoke generic value/admission algorithms and TypeScript renderer",
+    "Linux proc parser/scanner/identity/tree/group implementation from retained process bundle"
+  ],
+  "preserved": [
+    "Task archives and channel branches remain ancestors",
+    "Strict committed Pi reads, portable decoding, writer ownership and read-only cancellation/drain",
+    "Permission and authenticated source boundaries, learned-memory revocation, image/path budgets",
+    "Source/Topic/task authority, one current task input and 32 continuation bounds, unknown external effect reconciliation",
+    "PTY/process cancellation and conservative unknown observation, real isolated Node tool RPC"
+  ],
+  "remaining": [
+    "Replace pi-loop lifecycle/inbox/tool-batch framing with the verified official AgentSession component",
+    "Remove Session/surface state and write-side projection(events)/resetLeaf rebuild, using official entry/branch/edit APIs",
+    "Retire remaining Night custom system/developer and auxiliary non-native request adapters after native writing is connected",
+    "Python SDK/optional Node PTC are separate tool-support work; no execution capability was withdrawn",
+    "Attributed platform/ACL/filesystem and other source copies still require notices; Windows kernel remains unverified"
+  ],
+  "signatureDecision": {
+    "current": "MEMORY_SIGNED_ASSISTANT_POLICY_CONFLICT fails closed only when revocation would modify signed assistant content; other legal memory paths remain",
+    "officialOptions": [
+      "Whole assistant plus associated tool results omitted through official null context edits/turn_end entry IDs",
+      "Official branch removes a larger suffix"
+    ],
+    "notProven": "Opaque fixture signatures prove byte preservation, not real vendor acceptance or cryptographic signature chains; these are context omission, not physical journal/archive erasure"
+  },
+  "search": {
+    "connectedNightFulltextFeature": false,
+    "officialSelectorsAndTranscriptSearch": true,
+    "publicHeadlessMessageHitApi": "not exported by locked/latest 1.5.0; no custom replacement or private imports added"
+  },
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-official-authority-default.txt",
+      "sha256": "faddeb11bcab7f6cb25db89e0ef88a7deaf6fd1db1e8afa14bafdcaf222593e3"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-runtime.txt",
+      "sha256": "2f39a6a3d4cf97a440ae06f85676eeadd33335f8b998da0b4e000d84f74eb1c1"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-routing.txt",
+      "sha256": "e5cc5f4ad1e88ae07009e9c961d6b86892d2d0c87deb3c1ea1974d2472312794"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-domain.txt",
+      "sha256": "addf45a19c2fc6cde22023df51dc7965e37f6c6b47f5b054dcefc922e8db8073"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-containment.txt",
+      "sha256": "83e8e6fc1277b6fec62753840171f2d2cc625af032c4d4c5feef363e5875bb9f"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-postRetirementPtc.txt",
+      "sha256": "66466c7f1032ddad6a07cc53c62db8cb226c8b8a52279604351eddd31e2129c0"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-frozen.txt",
+      "sha256": "8decd4bf8194a8238fbefda5634a88d745dbdc86c5cea392d6af0145abe32ae6"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-checks.txt",
+      "sha256": "351f8e0f6cc52860275cce7658a79affba870ddd4fa3cf97a03c60db32ce8bf3"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-sdkProof.txt",
+      "sha256": "0723e209ee5912fff4bf1718e69a14945c817e6414981f4a739337bfd5d7f7d8"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-sdkDurableProof.txt",
+      "sha256": "bf327a96ec15a8838f21390b53a8ea863d468ba4ae398b62cd20d3d704b127cf"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-signedOmitProof.txt",
+      "sha256": "657db40680530fb6c0dec4bfcdd2dc52089cb554dc85e16b5fc306078d123313"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-process.txt",
+      "sha256": "38c213ff379623e406f0370d7d9527d1ba393237a18cd2da3f344f54c3e2f853"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-decision.txt",
+      "sha256": "040f2e46b65915faaabbd619b14ff41508e855e0a67066d0a1cac7b2cb35c11e"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-execution.txt",
+      "sha256": "9f688a6f8676a14788297602d32a867dc406914cd9990f9122842a6e7769b0d7"
+    },
+    {
+      "path": "docs/evidence/pi-official-authority-dynamicExecution.txt",
+      "sha256": "b42bd1637c55dd80714a1a2e434bdd1180f887e72001f975324e739dd4d29ba2"
+    }
+  ]
+}

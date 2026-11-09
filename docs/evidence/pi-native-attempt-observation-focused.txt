@@ -1,0 +1,30 @@
+✔ application observation preserves immutable Night audit and has no framing or commit API (3.957987ms)
+✔ max-token observation cannot publish a partial tool call or misalign replay metadata (0.715093ms)
+✔ actual Pi tool continuation persists one assistant result per step without obsolete assistant frames (1736.816512ms)
+✔ native model retry flushes Pi retry receipts and never repeats the preceding completed tool (1787.453036ms)
+✔ native execution forwards actual Pi events, response identity and signatures with one-way audit (8.817558ms)
+✔ output policy remains authoritative and observed settlement never redispatches provider (1.870036ms)
+✔ nested native invocations cannot lend a terminal message to another request (1.682444ms)
+✔ pre-aborted native capture never enters request factory (0.44035ms)
+✔ native event retention is bounded without redispatching or dropping final content (6.003115ms)
+✔ middleware delta redaction is honored even when final text remains identical (0.855563ms)
+✔ observed settlement maps admitted text/reasoning/tools to Pi without consuming a source or invoking an observer (2.602715ms)
+✔ application observation errors settle once as Pi errors and cannot dispatch their partial tools (2.986761ms)
+✔ provider rejection produces one failed Pi terminal without entering an additional stream (0.407612ms)
+✔ aborted observed settlement keeps failure classification and drops partial content (0.329324ms)
+✔ Pi parallel batches retain bounded safe concurrency, exclusive barriers, permission guards and model-order receipts (2021.680424ms)
+✔ cancelling a Pi parallel batch stops replenishment and drains started effects before idle (251.792646ms)
+✔ one concluding tool ends a Pi parallel batch after all admitted sibling receipts commit (235.842302ms)
+✔ a later tool reclassified as exclusive waits for the running safe pool to drain (263.686053ms)
+✔ malformed repeated call ids preserve no-effect recovery and conservative unstarted receipts (218.721857ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1658.832414ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (3023.254863ms)
+✔ headless Host refuses startup when the required native provider failed to mount (59.511387ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6772.716547

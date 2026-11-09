@@ -1,0 +1,20 @@
+{
+  "frontendSourceSetSha256": "b1ad52c5724bdbe76b19aac7be29f041795ac9af7fc507bcb63c6b169992e1d8",
+  "files": {
+    "packages/web-console/src/ChannelsPage.tsx": "7b135b0fc4899324a2889c6f697d487f053e53655174d040c470e9a814a986cb",
+    "packages/web-console/src/ChatPage.tsx": "74fe081081ceb2680267d5e854bdaa1054859ebe2831e009551f142130efa7b2",
+    "packages/web-console/src/TasksPage.tsx": "a4ad7a1a16bd774e5ace45eaa8e318e6e1f93385d3fe529f33edb24adc82b8ec",
+    "packages/web-console/src/api.ts": "0e299fb27f0e9b5db5f7a221bda225a42b39fc57fa91c8e274c5604fca146632",
+    "packages/web-console/src/components/ExecutionHistory.tsx": "94002090d1b38fe19a0c3b457939dc04b98be0c69b968e523a3217469c5998f5",
+    "packages/web-console/src/components/LearningChanges.tsx": "a2e95066204f86ae4b849ec111f9d4f502695ee16bc55508c4c833450820a37d",
+    "packages/web-console/src/components/Shared.tsx": "7b3dfe89e59653f525df8ea39d7850b0dba2fdef98c75bcd0ce020f18e9ca4f9",
+    "packages/web-console/src/hooks.ts": "53f0cb1b3161de5ea1b5093af189adf814a821b15e27bc70482f453bf0f5cc3d",
+    "packages/web-console/src/styles/app.css": "cbaa5bbf1915c645ab0349b938740555fc6a0dbc2d3c3a2000d75f1c8962f48e",
+    "packages/web-console/dist/index.html": "9fc50d2f5ca1d4ad20347eb9729ff9eccfd2bbc42b0bd1cfe6091e07085e8d38",
+    "packages/web-console/dist/assets/index-BKF6wqgH.css": "beb0406a66786d843ccd7f5c0006f7f0f715a7953e35c34aa2aeec20c11c4c20",
+    "packages/web-console/dist/assets/index-BLG5xPVo.js": "5285c1170c7172307259e56c27d12d199edab144efc551874b3a48a8c7dc8d77",
+    "packages/web-console/test/browser.spec.ts": "7e722e3fb02f63c8251231b89367c929c017f312c85e9dadd2150f61dd49869b",
+    "packages/web-console/test/preview.mjs": "3a8b0e95f54a308da6868e5edc1c9ac1eb3d3f717ae8c5fe1f190be414a349c5",
+    "packages/web-console/server/session-view.js": "8af3caa8c2e28bc892f993658c7751a0ea7237ccb93d0226f5fbb5598a318ecc"
+  }
+}

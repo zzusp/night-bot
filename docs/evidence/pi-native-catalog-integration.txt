@@ -1,0 +1,71 @@
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (903.964176ms)
+✔ optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data (435.322371ms)
+✔ standard application composition exposes channel-neutral health and single task creation with no channel installed (620.037518ms)
+✔ discovered third-party plugins load only enabled instances and release transports on host close (356.226069ms)
+✔ real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata (397.237569ms)
+✔ manifest validation rejects duplicate types, escaped entries and duplicate enabled channel identities (146.797129ms)
+✔ generic message readers use neutral identities and enforce conversation scope (183.104596ms)
+✔ multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization (369.323597ms)
+✔ DWS private credentials use supported roots; Windows defaults to the protected current-user login (1.466389ms)
+✔ system-account plugins use the existing CLI context and describe shared login without creating a private vault (209.93542ms)
+✔ group-only DWS never subscribes to private messages or polls private history (204.769043ms)
+✔ default application archives two isolated tasks with local sessions, immutable outputs and review destinations; offline single-task backup restores at a new root without the shared collections (4248.999869ms)
+✔ sealed archives reject corrupt bytes and symlinks; lost shared index is rebuilt explicitly with tasks paused and no task rerun (870.053576ms)
+✔ task-required attachment bytes are local and independently restored without the original attachment store (1326.736662ms)
+✔ a committed restore marker blocks startup, can be finalized idempotently, and does not resume work (1061.411203ms)
+✔ default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact (647.837464ms)
+✔ explicit offline packing preserves Night Bot own Pi bytes and frozen artifacts without importing plugin journals (726.507832ms)
+✔ restored historical sources, Topic facts and notifications cannot re-enter live routing or send preparation (1229.292941ms)
+✔ an archive filesystem failure after a committed completion reports maintenance without reversing task state (642.143872ms)
+✔ task index restoration preserves decision chronology independently of command-id lexical order (46.602684ms)
+✔ native provider failure resumes original executor after persisted backoff; successful write never replays: restart=false (10759.23692ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":621,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":10110,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✔ native provider failure resumes original executor after persisted backoff; successful write never replays: restart=true (7881.978717ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":73,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":7793,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ one unreadable provider terminal stops only its recovery and unrelated native task still completes (5690.816031ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":51,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5626,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ provider short budget exhaustion remains technical wait; bounded cold owner review resumes safely: recovered=false (4113.979952ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":48,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4054,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ provider short budget exhaustion remains technical wait; bounded cold owner review resumes safely: recovered=true (3372.978674ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3314,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ business human answer replaces pending provider recovery input before any original session resumes (2717.340809ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":517,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2186,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ lifecycle timeout drains an acquired native host before removing its workspace (69.023912ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":39,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":20,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ anonymous field v12 error restores original execution with complete diagnostics and no human request or duplicate effect (2007.130006ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1992,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ requirement supplement during provider cooldown wakes current owner after restart and resumes original executor once (3443.129823ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":796,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2629,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ owner may honestly wait at each bounded provider review; all three reviews survive restart without replay (1763.456238ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1696,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ unified lifecycle construction cancellation closes the late real service before deleting its root (49.312165ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":39,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43525.673542

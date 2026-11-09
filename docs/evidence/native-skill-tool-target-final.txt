@@ -1,0 +1,15 @@
+✔ native skill schema and model result rendering match retained source contracts (10.309837ms)
+✔ native skill catalog reads Pi visibility only, suppresses duplicate catalog and replaces changed entries (3.666347ms)
+✔ native skill historical publication is audit-only and malformed seeds never become visible authority (1.197268ms)
+✔ native skill tool and catalog honor exact registration visibility and invocation policy (2.619736ms)
+✔ native user skill gestures are direct-user-only, deduplicated, bounded and preserve caller scope (1.665805ms)
+✔ external body-only skill edits notify the next real Pi request and require an explicit reread (1838.034386ms)
+✔ actual Pi skill catalogs deduplicate committed visibility, honor direct gestures and publish empty replacement after removal (1545.841755ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1966.760224

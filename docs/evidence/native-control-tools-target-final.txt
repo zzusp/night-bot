@@ -1,0 +1,26 @@
+✔ actual Pi native todo and working-directory bindings retain durable state and scoped directory ownership (1538.15461ms)
+✔ actual Pi native send-message tool resumes a cold direct child and rejects an unrelated target without effects (376.546095ms)
+✔ actual Pi native delegation tool starts a Pi child with durable lineage and adjacent return guidance (227.926519ms)
+✔ native todo and working-directory schemas and outputs match retained source contracts (14.355933ms)
+✔ native todo whole-list replacement preserves validation, projection version and turn reset (1.695037ms)
+✔ native working directory binding passes exact caller and cancellation to capability owner (0.439973ms)
+✔ native adjacent-agent tools retain stable marker and exact native control attribution (1.016172ms)
+✔ native manager commits child catalog, lists cold Pi children and resumes without provider redispatch or tool replay (1688.877407ms)
+✔ native child control rejects foreign/stale lineage and invalid human input before model execution (163.952308ms)
+✔ native children retain structured validation, corrective Pi iteration and conclude only on a committed result (188.25287ms)
+✔ human queue prompts cold-resume a child with durable request and time-zone attribution (331.09369ms)
+✔ native activation capacity is per forest and interrupt acknowledgement waits separately from tool drain (200.840435ms)
+✔ native startup commit failure returns no accepted receipt and runs no child model or effects (109.151437ms)
+✔ native local terminal persistence failure is reported as an error result and still releases the activation (106.829034ms)
+✔ native discovery preserves unavailable/unknown branches without loading or resuming any child (89.910996ms)
+✔ native scoped descendant drain stops one forest, waits for its body, and leaves unrelated parents admitted (238.498307ms)
+✔ external provider capability refusal has zero starts and provider removal preserves an already owned run (87.202415ms)
+✔ closing the actual native Host cancels a child and drains its admitted tool before releasing activation ownership (129.889232ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3469.091578

@@ -1,0 +1,108 @@
+{
+  "kind": "explicit-source-derived-platform-backend-not-from-scratch",
+  "license": "MIT Copyright (c) 2026 DeepSeek",
+  "adaptations": [
+    "local Cordis service and lazy loading contracts",
+    "shared proxy overlay explicitly retained",
+    "local runner path, JavaScript distribution only; no tsx or packaged-DSH bootstrap",
+    "local Windows FFI source fork",
+    "Historical adaptation retained old worker markers at its checkpoint; SG11 replaces both current endpoints with NIGHT_BOT markers without legacy fallback",
+    "Linux private request/bootstrap/PATH dispatch and weaker fallback observation replaced with owned modules; libc execve, systemd/PTY and Windows forks remain",
+    "Common managed lifecycle replaced with application implementation; Linux scope/PTY, libc execve and Windows platform owners remain attributed and kernel parity is not claimed",
+    "PTY fallback preserves unknown tracked identities under incomplete proc snapshots and rejects quiescence proof until a complete final observation; no unverified-PID signal path added",
+    "Linux proc decoding, identity sampling, snapshot/tree/group observation replaced with owned module; retained stdin/syscall detector injected and Mac/Windows backends remain attributed",
+    "SG11：本地ACL直接复用canonical Win32/control；新worker仅使用NIGHT_BOT控制标记，保旧source/sourceSha256来源事实，不为旧worker增加fallback。",
+    "SG11：index/runner-launch 通过私有 start IPC 传递并严格解析 Host Windows LPAC 策略；普通进程拒绝非 Windows Job fallback，terminal 拒绝 node-pty fallback。",
+    "SG11：runner 已接 owned Profile、原耐久资源/私有scope proof ACK、挂起Job后的scope准备与mandatory cleanup；原准备门未通过时继续拒绝唯一Resume，禁止 current-token 回退。失败先join准备、原Job归零、撤权/SDK回收与released ACK；未知保持归属，不把静态接线或账面终态当生产Native通过。",
+    "SG11：Win32 增加 ConPTY HRESULT/异步 void Close 原语、LPAC startup attributes 与 suspended→Job→同步可信准备→首次 Resume 边界；失败保准确 native/preparation ownership，关闭返回不代表 EOF/Job0/full cleanup；两个内部 FFI 结构名改为 NightBot，保原 ABI 和 MIT。",
+    "SG11：index/runner-launch 增加严格绑定的terminal启动/resize与scope proof结果解析；父端复用原runner/Profile消费NamedPipe/HPCON及EOF/range结算，保实际ready后IO/resize与取消join。ConPTY生产消费者、Profile及mandatory完整回收尚未取得本版Native证据，scopeReady=false保持；本条仅记录适配来源，不宣称三平台隔离完成。"
+  ],
+  "files": [
+    {
+      "path": "src/process/index.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/index.js",
+      "sourceSha256": "20c29aded30123bb9b4ec5cf9df64bf3f2f26fb60cd6f48ad67b31b6e56c5ce3",
+      "adaptedSha256": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa"
+    },
+    {
+      "path": "src/process/runner.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/runner.js",
+      "sourceSha256": "4e21528dfdb3e92bdce2340945dc4dcb202e4a4af0bbeb8b97585f67735d30c1",
+      "adaptedSha256": "427e2d87a8b7222901b65e51843f98a99bf36d0302f27804fdb5b2c8ee1628af"
+    },
+    {
+      "path": "src/process/runner-launch-B2zsQ1Dz.js",
+      "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+      "sourceFile": "lib/runner-launch-B2zsQ1Dz.js",
+      "sourceSha256": "6df08adc4a27f278878a5f4cde8b551b51e647b922ac7d6591fd62d272ced153",
+      "adaptedSha256": "5fff180a72e00f57f7d8439abbb0e7f6809772cb406a970ea057ac3d5772949c"
+    },
+    {
+      "path": "src/process/control.js",
+      "sourcePackage": "dsh-subprocess@0.2.1-alpha.2",
+      "sourceFile": "lib/control.js",
+      "sourceSha256": "4afd0f7d7a7054b6fc8d727ea3f76731a78c9a972ddb6d5d2eef81cac4ffee3a",
+      "adaptedSha256": "1b0d1a00d2bc45ddd09b153df494534924da4a23ca7e4d86209b0e1b1589f616"
+    },
+    {
+      "path": "src/process/win32.js",
+      "sourcePackage": "dsh-win32-process@0.2.1-alpha.2",
+      "sourceFile": "lib/index.js",
+      "sourceSha256": "622bc3a9e97c46e784fe41c9a0a8535da2808019e4ac3f66d17cdad70c9ac0c9",
+      "adaptedSha256": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d"
+    }
+  ],
+  "replacedSources": [
+    {
+      "path": "src/process/output.js",
+      "historicalSource": {
+        "path": "src/process/output.js",
+        "sourcePackage": "dsh-subprocess-local@0.2.1-alpha.2",
+        "sourceFile": "lib/output.js",
+        "sourceSha256": "4f77ef6da608d36df168c99177e9b527e7145df1418845eba567635e64a4c2a3",
+        "adaptedSha256": "1557cbbf8c2204f17fd8d7f7af7d31862924bee82ac07ec31631965cc9277003"
+      },
+      "replacementSha256": "c515195a74ece81854ab9c57f8dd7d1ba5ed8fe5943496c60dc7fdd89e9093cc",
+      "implementation": "Application private circular byte buffer, complete-output spool and independent cursor/snapshot interface; original chunk-list collector source removed. Platform provider/runner and control source remain attributed."
+    }
+  ],
+  "ownedSources": [
+    {
+      "path": "src/process/linux-launch.js",
+      "sha256": "48e674fdaff9887179b1bdc832d8ea3609b0a5979c07e24df9d0b1d7f774dcad",
+      "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
+    },
+    {
+      "path": "src/process/linux-bootstrap.js",
+      "sha256": "d23ccca8e2962111d619bb6f99e7a5fc9a5fb8447d9726f21e099e6f816f3047",
+      "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
+    },
+    {
+      "path": "src/process/linux-owner.js",
+      "sha256": "5a0b69dd65407c83a9c8f0ece50934029d3f9a16c529559022c70b9e3a22869a",
+      "role": "Application Linux bootstrap/private request/ownership implementation; no Windows/kernel parity claim"
+    },
+    {
+      "path": "src/process/managed-process.js",
+      "sha256": "f5843963fe330bbc27298018ebdbb71a63329943040a3ef069e1797b7af13aad",
+      "role": "Application process lifecycle: direct settlement, output grace, separate owner drain, cancellation and escalation"
+    },
+    {
+      "path": "src/process/linux-observation.js",
+      "role": "Application Linux process sampling and explicit alive/dead/unknown identity; non-atomic proc observation, not kernel ownership",
+      "sha256": "65290b908cfc4111ca7442530e6fa633d85add4aeaaa73a5deea7678cf981c39"
+    },
+    {
+      "path": "src/runtime/managed-shell-execution.js",
+      "sha256": "3d3fc25d81970f69fed63be11f42b656d6ac12e4b71c56f792bce8c42050a7e3",
+      "role": "Application shell lifecycle over managed process ranges: direct settlement plus descendant drain, cancellation, output cursors and promotion; Windows kernel not validated"
+    },
+    {
+      "path": "src/process/windows-profile.js",
+      "sha256": "4524f774c9cb0e223d43acc509c5301554bd5dad21e54902e41b8d7ced1573e0",
+      "role": "Application-owned Profile lifecycle and unpublished read-only private temporary-root qualification: request fixed Low/NW at creation, require exact actual SACL/full control, retain creation SD, conditionally initialize the same DACL on the same FileID once, then establish the actual business baseline. Existing business trees and ConPTY pipe defaults remain unchanged. Reused ACL/Win32 implementations retain their notices; scopeReady=false, full Profile/mandatory cleanup/ConPTY Native acceptance remains unproven. 私有 SD 与精确创建期判词薄消费 ACL 共享原语，原同步借用/释放、创建期与业务基线分离及一次初始化后验保持；不新增 token/seal 算法，不据抽取等价追认新版本 Native 通过。 同一 Profile 保留创建期 SHGetKnownFolderPath 的可信 LocalAppData，启动环境大小写无关替换调用方 LOCALAPPDATA；不透传宿主环境、不增加目录授权，准确挂起组件已实测环境覆盖、创建、SDK seal 与受控回收；业务 scope 挂起组件因 Host 维护权校验失败，未进入冻结/授予或有 plan mandatory；原拒绝点仅增加已有计算值的非枚举 Error.cause 私有诊断，不新增 Native 观察或权限，Resume/ConPTY 及生产准入仍未通过。 R43已定位scope候选新增OW后缺少Host WRITE_DAC；prepare/release两个纯planner入口现传原可信Host SID，供精确0x60000维护ACE授予与同源共享撤权使用。不新增token/Native查询，不改身份恢复、维护权与LPAC拒权守卫；候选尚未通过新Native验收。"
+    }
+  ]
+}

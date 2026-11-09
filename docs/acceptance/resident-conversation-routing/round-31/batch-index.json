@@ -1,0 +1,336 @@
+{
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "assets": {
+    "null-label-guard-result.json": {
+      "bytes": 2433,
+      "sha256": "a75ce4601312e91920dd904a03437d2f199559440da60407a69a1b3e13a0d0ab"
+    },
+    "null-label-guard-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "null-label-guard.log": {
+      "bytes": 1867,
+      "sha256": "bee12ee7a172974323da5388b112ca3c2bf9ac6deffa6033191404eddad21b5f"
+    },
+    "windows-nt-label-summary.json": {
+      "bytes": 7227,
+      "sha256": "d6bd2e08555cd9adf6c53267f731a0d425670372e0a97bd0a9ee68e04431abd4"
+    }
+  },
+  "inventory": {
+    "rows": 5468,
+    "beforeSha256": "a8051a1e6570249d0a69a4c74d0f176d327cf8cb844b03b101defa05d010465a",
+    "afterSha256": "fdbca7918643bb7131b4b2fc363b40ad312d63969c7f1bee17fe816d5d73d0bf",
+    "currentSourceMetadataRows": 28,
+    "newCaseEvidenceRows": 6,
+    "identitiesAndRegistrationHashesPreserved": true,
+    "inverseExact": true,
+    "changes": [
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "sandbox backends preserve literal argv, policy mode and honest enforcement metadata",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "native sandbox probes in preference order once and retains partial enforcement",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "native sandbox unavailable verdict is cached and cannot dispatch unconfined argv",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "native sandbox validates custom runners, exact argv, cancellation and policy before grants",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "native sandbox owns isolated metadata snapshots and read-only profiles",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows capability contract keeps workspace grant shared and session temp grants isolated",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows temp capability failure cleans private directory before propagating",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows privacy intersects requested task writes and unwraps the original argv exactly once",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows LPAC rejects async and generator preparation before any native API access",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "308",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows owned ACL candidate refuses inherit-only OWNER RIGHTS without mutating the source",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "314",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows custom runners refuse both confined modes before wrapper or capability grants",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "323",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows privacy recognises TASKS casing through real installation paths and POSIX stays case sensitive",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "329",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "ConPTY dimensions reject invalid signed SHORT values before native API access",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "344",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows LPAC job configuration return-zero retains the exact allocated handle without native child creation",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "351",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows LPAC job configuration throw retains the exact allocated handle without native child creation",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "line": "351",
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows privacy projects only Host-bound external roots and rejects neighbouring or private scopes",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scope projection deduplicates case-insensitive roots and upgrades only matching reads to writes",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped DACL grants preserve original descriptor parts and unrelated ACEs without ACL-control rights",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped DACL cleanup subtracts only attributed copies and refuses insufficient ownership before mutation",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped inheritance inputs omit SACLs and inherited child ACEs while merge preserves private descriptor parts",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped stage planning freezes computed descendant deltas without rebasing and stops at protected children",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped stage planning rejects unreproducible baselines and propagation that changes unrelated ACEs",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped Low labels preserve native Low Untrusted and readonly descriptors while lowering only write labels",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_id": "docs/acceptance/resident-conversation-routing/round-18/windows-low-label.log",
+          "evidence_sha256": "a0e5d611fdc614c5aab9bc7e3975e450543560cd5b3043a9ecd3a8f366a505ae",
+          "evidence_round": "18",
+          "version_boundary": "Uncommitted HEAD 6d79b0a; windows-low-label; actual test SHA 308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7. Pure Low label source/release and scripted inheritance planning, plus two affected DACL forest registrations. Historical resource/proof objects are fixture inputs, not real committed Job evidence. Not Native ACL/LPAC or production profile admission.",
+          "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_18_EVIDENCE",
+          "evidence_test_sha256": "308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7",
+          "evidence_selection_basis": "Exact complete registration name from actual Node result and unchanged explicit source pins. Seven exact complete names from the actual pure helper run, not inferred from other registrations or later source hashes."
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped Low shared release retains active borrowers then restores the original label through a released source",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_id": "docs/acceptance/resident-conversation-routing/round-18/windows-low-label.log",
+          "evidence_line": "4",
+          "evidence_sha256": "a0e5d611fdc614c5aab9bc7e3975e450543560cd5b3043a9ecd3a8f366a505ae",
+          "evidence_round": "18",
+          "version_boundary": "Uncommitted HEAD 6d79b0a; windows-low-label; actual test SHA 308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7. Pure Low label source/release and scripted inheritance planning, plus two affected DACL forest registrations. Historical resource/proof objects are fixture inputs, not real committed Job evidence. Not Native ACL/LPAC or production profile admission.",
+          "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_18_EVIDENCE",
+          "evidence_test_sha256": "308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7",
+          "evidence_selection_basis": "Exact complete registration name from actual Node result and unchanged explicit source pins. Seven exact complete names from the actual pure helper run, not inferred from other registrations or later source hashes."
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped Low origin rejects missing anchors wrong FileID cycles drift conflicts and unproven inherited new identities",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_id": "docs/acceptance/resident-conversation-routing/round-18/windows-low-label.log",
+          "evidence_line": "5",
+          "evidence_sha256": "a0e5d611fdc614c5aab9bc7e3975e450543560cd5b3043a9ecd3a8f366a505ae",
+          "evidence_round": "18",
+          "version_boundary": "Uncommitted HEAD 6d79b0a; windows-low-label; actual test SHA 308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7. Pure Low label source/release and scripted inheritance planning, plus two affected DACL forest registrations. Historical resource/proof objects are fixture inputs, not real committed Job evidence. Not Native ACL/LPAC or production profile admission.",
+          "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_18_EVIDENCE",
+          "evidence_test_sha256": "308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7",
+          "evidence_selection_basis": "Exact complete registration name from actual Node result and unchanged explicit source pins. Seven exact complete names from the actual pure helper run, not inferred from other registrations or later source hashes."
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped Low inheritance strips only inherited labels and preserves DACL owner group during merge",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_id": "docs/acceptance/resident-conversation-routing/round-18/windows-low-label.log",
+          "evidence_line": "6",
+          "evidence_sha256": "a0e5d611fdc614c5aab9bc7e3975e450543560cd5b3043a9ecd3a8f366a505ae",
+          "evidence_round": "18",
+          "version_boundary": "Uncommitted HEAD 6d79b0a; windows-low-label; actual test SHA 308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7. Pure Low label source/release and scripted inheritance planning, plus two affected DACL forest registrations. Historical resource/proof objects are fixture inputs, not real committed Job evidence. Not Native ACL/LPAC or production profile admission.",
+          "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_18_EVIDENCE",
+          "evidence_test_sha256": "308de00de7c56eaaf4239251fcd4a8677520cdac7a01de012b503752d4725ee7",
+          "evidence_selection_basis": "Exact complete registration name from actual Node result and unchanged explicit source pins. Seven exact complete names from the actual pure helper run, not inferred from other registrations or later source hashes."
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped Low stages freeze label propagation and reject nonlabel changes protected inheritance and unreproducible controls",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_id": "docs/acceptance/resident-conversation-routing/round-27/setter-guard-final.log",
+          "evidence_line": "4",
+          "evidence_sha256": "a8d99c3aef6b92703fc81d75d540203ae4d35f34feac979fe477a15246e8ad8d",
+          "evidence_round": "27",
+          "version_boundary": "Uncommitted HEAD 6d79b0a; setter-guard-final Node exit 0; test 8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa; full pins: round-27/setter-guard-final.json. Current file SHA does not qualify prior runs. Full-account Windows, controlled protocol or offline helper evidence only, not containment/LPAC/ConPTY/Linux/macOS qualification.",
+          "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_27_EVIDENCE",
+          "evidence_test_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_selection_basis": "Exact unique full spec PASS name; actual Node exit and start/end pins checked, not a file-level aggregate."
+        }
+      },
+      {
+        "file": "test/pi-native-sandbox.test.js",
+        "case_name": "Windows scoped Low read borrowers retain NRU NXU labels until the final reader exits",
+        "occurrence": "1",
+        "fieldsBefore": {
+          "current_source_sha256": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa",
+          "evidence_id": "docs/acceptance/resident-conversation-routing/round-21/windows-low-read-dependency.log",
+          "evidence_line": "1",
+          "evidence_sha256": "5ee608b3e06ea9fda83afba11865848b46fcdffacec8956eac189a18bda007a3",
+          "evidence_round": "21",
+          "version_boundary": "Uncommitted HEAD 6d79b0a; windows-low-read-dependency; actual test SHA 8105f17e917261c9b40419f705eb4291a304f266caff2e3c07ee176f1a463962. Pure NRU/NXU read-borrower origin/release and inherited-read root protection. Historical resource/proof objects are fixture inputs, not real committed Job evidence. Not Native ACL/LPAC or production profile admission.",
+          "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_21_EVIDENCE",
+          "evidence_test_sha256": "8105f17e917261c9b40419f705eb4291a304f266caff2e3c07ee176f1a463962",
+          "evidence_selection_basis": "Exact complete registration name from actual Node result and unchanged explicit source pins. One exact complete name from the NRU/NXU read-dependency pure helper run, not inferred from other registrations or later source hashes."
+        }
+      }
+    ]
+  },
+  "cleanup": {
+    "status": "CHECK_ZERO_EFFECTS_THEN_RUN_COMPLETED_INDEPENDENT_ABSENCE_VERIFIED",
+    "pureScratch": [
+      "docs/tmp/sg11-null-label-guard-test.log",
+      "docs/tmp/sg11-null-label-guard-stderr.log",
+      "docs/tmp/sg11-null-label-guard-result.json"
+    ],
+    "ntPrivateEvidenceRetained": true,
+    "failureRootsRetained": 5,
+    "cleanupScript": "docs/tmp/sg11-null-label-guard-cleanup.py",
+    "absentPathCount": 4
+  },
+  "matrix": {
+    "rows": 293,
+    "beforeSha256": "5c9ecd41bd7273a752b48b916271f72ca626db139fb0e8c9f23e9b3c3b10d801",
+    "afterSha256": "39412c578cf4cbaeba693ff0bf8db3f7d176fe2f1d88c1ae624f202c43780a50",
+    "oldColumnBytesPreserved": true,
+    "changedBusinessRows": {
+      "sg11-scoped-low-origin-sharing": "PASS_THREE_ORIGINAL_LOW_PURE_PLAN_CASES_63AF_NO_NATIVE",
+      "sg11-scoped-low-read-borrowers": "PASS_ORIGINAL_READ_BORROWER_PURE_PLAN_63AF_NO_NATIVE",
+      "sg11-scoped-low-label-stages": "PASS_TWO_ORIGINAL_LOW_INHERIT_FREEZE_CASES_NULL_REFUSAL_BRANCHES_EXPLICIT_RELEASE_63AF_NO_NATIVE",
+      "sg11-native-security-projection-setter": "FAIL_NT_LABEL16_ROOT_STATUS0_CONTROL810_DESCENDANTS_STILL_LOW_NT1_SETINFO2_NATIVE1_RETAINED_PINS_STABLE"
+    },
+    "otherRows": "NOT_RERUN_ROUND_31"
+  }
+}

@@ -1,0 +1,35 @@
+✔ native kernel sandbox enforces read-only within and outside workspace (343.268234ms)
+✔ native kernel sandbox enforces workspace-write within and outside workspace (235.777568ms)
+(node:68803) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ native code transport uses a real isolated Node RPC worker and enforces workspace writes (2342.177731ms)
+﹣ 受信原生完整模式允许原临时Git工作树及MSYS，默认模式保留产物边界 (0.775089ms) # SKIP
+✔ 原生Host已授权完整模式在恢复绑定时保留，原生逐次模式与只读模式均不改历史身份 (545.386027ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":408,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":100,"aborted":false}
+ℹ Permission recovery phases: [{"phase":"begin","elapsedMs":0},{"phase":"host-ready","elapsedMs":408},{"phase":"created","elapsedMs":452},{"phase":"disposed","elapsedMs":465},{"phase":"resumed","elapsedMs":502},{"phase":"readback","elapsedMs":506}]
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":37,"aborted":false}
+✔ official execution artifact binding makes native FS and shell share one root and reject outside writes (1212.397048ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1176,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":35,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (3094.546559ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3075,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":18,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (2482.062537ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2462,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (1661.895467ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1624,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":36,"aborted":false}
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 14037.094362

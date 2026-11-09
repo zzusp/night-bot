@@ -1,0 +1,364 @@
+{
+  "checkedAt": "2026-11-07T18:19:04.6788585+08:00",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "tools": [
+    {
+      "name": "node.exe",
+      "found": true,
+      "path": "D:\\soft\\node-v24.19.0\\node.exe",
+      "parentRules": [
+        {
+          "sid": "local-account-redacted",
+          "rights": "Modify, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "local-account-redacted",
+          "rights": "Modify, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "local-account-redacted",
+          "rights": "Modify, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-11",
+          "rights": "Modify, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-11",
+          "rights": "-536805376",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "name": "pwsh.exe",
+      "found": true,
+      "path": "C:\\Program Files\\WindowsApps\\OpenAI.CodexPrimaryRuntime.v26-1104-709-0_26.1104.709.0_x64__3k8sg7r9htsxt\\dependencies\\native\\powershell\\pwsh.exe",
+      "parentRules": [
+        {
+          "sid": "unresolved",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-15-3-1024-3635283841-2530182609-996808640-1887759898-3848208603-3313616867-983405619-2501854204",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-19",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-20",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-12",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "name": "git.exe",
+      "found": true,
+      "path": "C:\\Program Files\\Git\\mingw64\\bin\\git.exe",
+      "parentRules": [
+        {
+          "sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-3-0",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "name": "rg.exe",
+      "found": false
+    },
+    {
+      "name": "grep.exe",
+      "found": true,
+      "path": "C:\\Program Files\\Git\\usr\\bin\\grep.exe",
+      "parentRules": [
+        {
+          "sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-18",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "FullControl",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-544",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-5-32-545",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "S-1-3-0",
+          "rights": "268435456",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "ReadAndExecute, Synchronize",
+          "type": "Allow",
+          "inherited": true
+        },
+        {
+          "sid": "unresolved",
+          "rights": "-1610612736",
+          "type": "Allow",
+          "inherited": true
+        }
+      ]
+    }
+  ],
+  "apis": [
+    {
+      "library": "userenv.dll",
+      "export": "DeriveAppContainerSidFromAppContainerName",
+      "available": true
+    },
+    {
+      "library": "kernel32.dll",
+      "export": "InitializeProcThreadAttributeList",
+      "available": true
+    },
+    {
+      "library": "kernel32.dll",
+      "export": "UpdateProcThreadAttribute",
+      "available": true
+    },
+    {
+      "library": "kernel32.dll",
+      "export": "QueryInformationJobObject",
+      "available": true
+    },
+    {
+      "library": "advapi32.dll",
+      "export": "GetTokenInformation",
+      "available": true
+    }
+  ],
+  "backends": [
+    {
+      "name": "wsl.exe",
+      "installed": true
+    },
+    {
+      "name": "docker.exe",
+      "installed": true
+    },
+    {
+      "name": "podman.exe",
+      "installed": false
+    }
+  ],
+  "mutations": 0,
+  "networkCalls": 0,
+  "appContainerCreated": false
+}

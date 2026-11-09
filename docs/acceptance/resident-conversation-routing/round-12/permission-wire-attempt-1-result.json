@@ -1,0 +1,12 @@
+{
+  "startedAt": "2026-11-08T02:52:28.665788+00:00",
+  "finishedAt": "2026-11-08T02:53:13.630217+00:00",
+  "pid": 79112,
+  "exit": 1,
+  "sourceCount": 392,
+  "sourceMapSha256": "4c7110ed465544c8db6f2de3a8c0ea18ab1113a6114601cb86b45c71d93d6d99",
+  "sourceChanged": [],
+  "stdoutSha256": "954583d25392e570781ea1edf8e5c289e053f11170a847a30b62e91f73926800",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "realVendorExecuted": false
+}

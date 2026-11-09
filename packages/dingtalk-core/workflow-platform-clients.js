@@ -1,0 +1,841 @@
+import { promisify } from 'node:util'
+import { execFile as execFileCallback } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { join, resolve, dirname, basename } from 'node:path'
+import { tmpdir } from 'node:os'
+import { executionDigest } from './execution-artifacts.js'
+import { narrowVerificationSql } from './workflow-postgres-uat-host.js'
+import { sourceUploadTarget, uploadUatSource } from './workflow-source-upload.js'
+import { readUploadedSourceEvidence } from './workflow-source-evidence.js'
+
+const execFile = promisify(execFileCallback)
+const fail = code => { throw new Error(code) }
+const sha = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value)
+const evidence = (system, identity) => `${system}:${identity}`
+const safePath = value => typeof value === 'string' && /^[A-Za-z0-9._/-]+$/.test(value)
+const safeName = value => typeof value === 'string' && /^[A-Za-z0-9._-]+$/.test(value)
+const digest = value => typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value)
+
+/** 只接受受信 Host 注入的凭据与固定端点；异常不透传服务端响应或认证头。 */
+export function createPlatformClients({ githubToken, woodpeckerToken, sourceUploadToken, kubeconfig,
+  kubeServer, kubeSkipTlsVerify = false, bytebaseBaseUrl, bytebaseToken, bytebaseCredentials, registryBearerToken,
+  githubTagWritesEnabled = false, githubMergeWritesEnabled = false, registryDockerCliEnabled = false,
+  fetchImpl = fetch, execFileImpl = execFile, attestations } = {}) {
+  async function request(url, token, options = {}) {
+    const { allowUnprotected = false, allowRulesPlanUnavailable = false, ...fetchOptions } = options
+    if (!url.startsWith('https://')) fail('PLATFORM_HTTPS_REQUIRED')
+    let response
+    try {
+      response = await fetchImpl(url, { ...fetchOptions, headers: {
+        Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      }, signal: AbortSignal.timeout(30000) })
+    } catch { fail('PLATFORM_REQUEST_FAILED') }
+    if (!response.ok) {
+      if (allowUnprotected && response.status === 404) {
+        let body; try { body = await response.json() } catch { fail('PLATFORM_RESPONSE_INVALID') }
+        if (body?.message === 'Branch not protected') return {}
+      }
+      if (allowRulesPlanUnavailable && response.status === 403) {
+        let body; try { body = await response.json() } catch { fail('PLATFORM_RESPONSE_INVALID') }
+        if (body?.message === 'Upgrade to GitHub Pro or make this repository public to enable this feature.')
+          return { rulesUnavailable: 'plan' }
+      }
+      fail(`PLATFORM_HTTP_${response.status}`)
+    }
+    if (response.status === 204) return {}
+    try { return await response.json() } catch { fail('PLATFORM_RESPONSE_INVALID') }
+  }
+  let bytebaseCookie
+  async function bytebaseRequest(path, options = {}) {
+    if (!bytebaseBaseUrl?.startsWith('https://') || !/^\/v1\/[A-Za-z0-9._/%?=&:-]+$/.test(path))
+      fail('BYTEBASE_READ_NOT_CONFIGURED')
+    if (!bytebaseToken && !bytebaseCookie) {
+      if (typeof bytebaseCredentials?.username !== 'string'
+        || typeof bytebaseCredentials?.password !== 'string') fail('BYTEBASE_READ_NOT_CONFIGURED')
+      let response
+      try { response = await fetchImpl(`${bytebaseBaseUrl.replace(/\/$/, '')}/v1/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: bytebaseCredentials.username,
+          password: bytebaseCredentials.password, web: true }), signal: AbortSignal.timeout(30000),
+      }) } catch { fail('BYTEBASE_AUTH_FAILED') }
+      if (!response.ok) fail('BYTEBASE_AUTH_FAILED')
+      const cookies = response.headers?.getSetCookie?.() ?? []
+      const access = cookies.map(item => /^access-token=([^;]+)/.exec(item)?.[1]).find(Boolean)
+      if (!access) fail('BYTEBASE_AUTH_FAILED')
+      bytebaseCookie = `access-token=${access}`
+    }
+    return request(`${bytebaseBaseUrl.replace(/\/$/, '')}${path}`, bytebaseToken,
+      { ...options, headers: { ...(bytebaseCookie ? { Cookie: bytebaseCookie } : {}), ...options.headers } })
+  }
+  const githubUrl = (repository, suffix) => {
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) fail('GITHUB_REPOSITORY_INVALID')
+    return `https://api.github.com/repos/${repository}/${suffix}`
+  }
+  async function observeBranchPolicy(repository, branch) {
+    if (!safePath(branch)) fail('GITHUB_BRANCH_INVALID')
+    const path = encodeURIComponent(branch)
+    const current = await request(githubUrl(repository, `branches/${path}`), githubToken)
+    if (!sha(current?.commit?.sha) || typeof current.protected !== 'boolean') fail('GITHUB_RULES_UNCONFIRMED')
+    const protection = current.protected
+      ? await request(githubUrl(repository, `branches/${path}/protection`), githubToken, { allowUnprotected: true }) : {}
+    const rules = []
+    for (let page = 1; page <= 100; page++) {
+      const rows = await request(githubUrl(repository, `rules/branches/${path}?per_page=100&page=${page}`), githubToken,
+        { allowRulesPlanUnavailable: page === 1 && current.protected === false })
+      if (rows?.rulesUnavailable === 'plan') {
+        // Official protected=false filtering covers branch protection and rulesets.
+        // A plan error alone is never evidence of an unprotected branch.
+        const seen = new Set(); let matched = false
+        for (let listPage = 1; listPage <= 100; listPage++) {
+          const branches = await request(githubUrl(repository, `branches?protected=false&per_page=100&page=${listPage}`), githubToken)
+          if (!Array.isArray(branches) || branches.length > 100 || branches.some(row =>
+            typeof row.name !== 'string' || !row.name || row.protected !== false || !sha(row.commit?.sha)
+            || seen.has(row.name))) fail('GITHUB_RULES_UNCONFIRMED')
+          for (const row of branches) {
+            if (seen.has(row.name)) fail('GITHUB_RULES_UNCONFIRMED')
+            seen.add(row.name)
+            if (row.name === branch) {
+              if (row.commit.sha !== current.commit.sha) fail('GITHUB_RULES_UNCONFIRMED')
+              matched = true
+            }
+          }
+          if (branches.length < 100) {
+            if (!matched) fail('GITHUB_RULES_UNCONFIRMED')
+            const after = await request(githubUrl(repository, `branches/${path}`), githubToken)
+            if (after.protected !== false || after.commit?.sha !== current.commit.sha) fail('GITHUB_RULES_UNCONFIRMED')
+            return { protection, rules: [], observation: { status: 'confirmed-unprotected', repository, branch,
+              commitSha: current.commit.sha, pages: listPage, source: 'branches?protected=false' } }
+          }
+        }
+        fail('GITHUB_RULES_INCOMPLETE')
+      }
+      if (!Array.isArray(rows) || rows.length > 100) fail('GITHUB_RULES_INVALID')
+      rules.push(...rows)
+      if (rows.length < 100) return { protection, rules, observation: { status: 'confirmed-rules', repository,
+        branch, commitSha: current.commit.sha, pages: page } }
+    }
+    fail('GITHUB_RULES_INCOMPLETE')
+  }
+  const github = {
+    async readRequiredChecks({ repository, branch }) {
+      if (!safePath(branch)) fail('GITHUB_BRANCH_INVALID')
+      const checks = []
+      const { protection, rules, observation } = await observeBranchPolicy(repository, branch)
+      const append = (name, appId) => {
+        if (typeof name !== 'string' || !name.trim() || (appId != null && !Number.isInteger(appId))) fail('GITHUB_RULES_INVALID')
+        if (!checks.some(item => item.name === name && item.appId === appId)) checks.push({ name, ...(appId == null ? {} : { appId }) })
+      }
+      const required = protection?.required_status_checks
+      if (required) {
+        if (!Array.isArray(required.contexts) || !Array.isArray(required.checks)) fail('GITHUB_RULES_INVALID')
+        for (const check of required.checks) append(check.context, check.app_id)
+        for (const name of required.contexts) if (!required.checks.some(check => check.context === name)) append(name)
+      }
+      for (const rule of rules.filter(item => item.type === 'required_status_checks')) {
+        if (!Array.isArray(rule.parameters?.required_status_checks)) fail('GITHUB_RULES_INVALID')
+        for (const check of rule.parameters.required_status_checks) append(check.context, check.integration_id)
+      }
+      return { complete: true, checks, observation,
+        evidenceRef: evidence('github-required-checks', executionDigest({ checks, observation })) }
+    },
+    async readBranch({ repository, branch }) {
+      if (!safePath(branch)) fail('GITHUB_BRANCH_INVALID')
+      const row = await request(githubUrl(repository, `branches/${branch.split('/').map(encodeURIComponent).join('/')}`), githubToken)
+      if (!sha(row?.commit?.sha)) fail('GITHUB_BRANCH_UNCONFIRMED')
+      return { commitSha: row.commit.sha, evidenceRef: evidence('github-branch', `${repository}:${branch}:${row.commit.sha}`) }
+    },
+    async readPullRequest({ repository, number }) {
+      if (!Number.isInteger(number) || number < 1) fail('GITHUB_PR_INVALID')
+      const row = await request(githubUrl(repository, `pulls/${number}`), githubToken)
+      return { number, merged: !!row.merged_at, state: row.state, draft: row.draft === true,
+        mergeable: row.mergeable, baseBranch: row.base?.ref, baseRepository: row.base?.repo?.full_name,
+        headRepository: row.head?.repo?.full_name, headCommitSha: row.head?.sha,
+        baseCommitSha: row.base?.sha, mergeCommitSha: row.merge_commit_sha,
+        evidenceRef: evidence('github-pr', `${repository}:${number}:${row.updated_at}`) }
+    },
+    async readVersionedFile({ repository, commitSha, path }) {
+      if (!sha(commitSha) || !safePath(path) || path.split('/').some(part => part === '..' || part === '.')) fail('GITHUB_SOURCE_FILE_INVALID')
+      const row = await request(githubUrl(repository, `contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${commitSha}`), githubToken)
+      if (row?.encoding !== 'base64' || typeof row.content !== 'string' || row.type !== 'file') fail('GITHUB_SOURCE_FILE_UNCONFIRMED')
+      const bytes = Buffer.from(row.content, 'base64'), content = bytes.toString('utf8')
+      if (!bytes.equals(Buffer.from(content, 'utf8'))) fail('GITHUB_SOURCE_FILE_UNCONFIRMED')
+      return { content, evidenceRef: evidence('github-source-file', `${repository}:${commitSha}:${path}:${createHash('sha256').update(bytes).digest('hex')}`) }
+    },
+    async readChecks({ repository, commitSha, includeStatuses = false }) {
+      if (!sha(commitSha)) fail('GITHUB_CHECK_SHA_INVALID')
+      const checks = [], seen = new Set()
+      for (let page = 1; page <= 100; page++) {
+        const row = await request(githubUrl(repository,
+          `commits/${commitSha}/check-runs?per_page=100&page=${page}`), githubToken,
+        { headers: { Accept: 'application/vnd.github+json' } })
+        if (!Number.isInteger(row?.total_count) || !Array.isArray(row.check_runs)) fail('GITHUB_CHECK_LIST_INVALID')
+        for (const check of row.check_runs) {
+          if (!Number.isInteger(check.id) || seen.has(check.id) || typeof check.name !== 'string') fail('GITHUB_CHECK_LIST_INVALID')
+          seen.add(check.id)
+          if (includeStatuses && check.head_sha !== commitSha) fail('GITHUB_CHECK_SHA_MISMATCH')
+          checks.push({ id: check.id, name: check.name, status: check.status, conclusion: check.conclusion,
+            ...(includeStatuses ? { appId: check.app?.id, source: 'check-run' } : {}) })
+        }
+        if (checks.length === row.total_count) {
+          if (includeStatuses) {
+            const contexts = new Set()
+            let complete = false
+            for (let statusPage = 1; statusPage <= 100; statusPage++) {
+              const statuses = await request(githubUrl(repository, `commits/${commitSha}/statuses?per_page=100&page=${statusPage}`), githubToken)
+              if (!Array.isArray(statuses)) fail('GITHUB_STATUS_LIST_INVALID')
+              // GitHub returns newest first; only the latest status per context is current.
+              for (const status of statuses) {
+                if (typeof status.context !== 'string' || !status.context || !Number.isInteger(status.id)) fail('GITHUB_STATUS_LIST_INVALID')
+                if (contexts.has(status.context)) continue
+                contexts.add(status.context)
+                checks.push({ id: status.id, name: status.context, source: 'commit-status',
+                  status: status.state === 'pending' ? 'in_progress' : 'completed', conclusion: status.state })
+              }
+              if (statuses.length < 100) { complete = true; break }
+            }
+            if (!complete) fail('GITHUB_STATUS_LIST_INCOMPLETE')
+          }
+          return { complete: true, checks,
+          evidenceRef: evidence('github-checks', `${repository}:${commitSha}:${checks.map(item => `${item.id}:${item.conclusion}`).join(',')}`) }
+        }
+        if (row.check_runs.length !== 100 || checks.length > row.total_count) fail('GITHUB_CHECK_LIST_INCOMPLETE')
+      }
+      fail('GITHUB_CHECK_LIST_INCOMPLETE')
+    },
+    async readCommit({ repository, commitSha }) {
+      if (!sha(commitSha)) fail('GITHUB_COMMIT_INVALID')
+      const row = await request(githubUrl(repository, `git/commits/${commitSha}`), githubToken)
+      if (row?.sha !== commitSha || !sha(row.tree?.sha)) fail('GITHUB_COMMIT_UNCONFIRMED')
+      return { commitSha, treeSha: row.tree.sha,
+        evidenceRef: evidence('github-commit', `${repository}:${commitSha}:${row.tree.sha}`) }
+    },
+    async resolveApprovedPullRequest({ repository, baseBranch, mergeCommitSha }) {
+      if (!safePath(baseBranch) || !sha(mergeCommitSha)) fail('GITHUB_PR_IDENTITY_INVALID')
+      // API 的普通列表没有 commit SHA 过滤；分页扫全 merged PR，不能由空首页推断唯一性。
+      const matches = []
+      for (let page = 1; page <= 100; page++) {
+        const rows = await request(githubUrl(repository,
+          `pulls?state=closed&base=${encodeURIComponent(baseBranch)}&per_page=100&page=${page}`), githubToken)
+        if (!Array.isArray(rows)) fail('GITHUB_PR_LIST_INVALID')
+        for (const row of rows) if (row.merged_at && row.merge_commit_sha === mergeCommitSha) matches.push(row)
+        if (rows.length < 100) {
+          if (matches.length !== 1) fail('GITHUB_PR_NOT_UNIQUE')
+          const row = matches[0]
+          return { number: row.number, merged: true, unique: true, baseBranch,
+            mergeCommitSha, evidenceRef: evidence('github-pr', `${repository}:${row.number}:${row.updated_at}`) }
+        }
+      }
+      fail('GITHUB_PR_LIST_INCOMPLETE')
+    },
+    async readTag({ repository, tag }) {
+      if (!safeName(tag)) fail('GITHUB_TAG_INVALID')
+      const url = githubUrl(repository, `git/ref/tags/${encodeURIComponent(tag)}`)
+      let response
+      try { response = await fetchImpl(url, { headers: { Accept: 'application/vnd.github+json',
+        ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}) }, signal: AbortSignal.timeout(30000) }) }
+      catch { fail('GITHUB_TAG_READ_FAILED') }
+      if (response.status === 404) {
+        // 私有仓库的权限不足也可能被隐藏为 404，独立确认仓库可读。
+        const repo = await request(`https://api.github.com/repos/${repository}`, githubToken)
+        if (repo.full_name !== repository) fail('GITHUB_REPOSITORY_UNCONFIRMED')
+        return { exists: false, evidenceRef: evidence('github-tag-absent', `${repository}:${tag}`) }
+      }
+      if (!response.ok) fail(`GITHUB_TAG_HTTP_${response.status}`)
+      let row
+      try { row = await response.json() } catch { fail('GITHUB_TAG_RESPONSE_INVALID') }
+      if (row?.object?.type !== 'commit' || !sha(row.object.sha)) fail('GITHUB_TAG_UNCONFIRMED')
+      return { exists: true, commitSha: row.object.sha,
+        evidenceRef: evidence('github-tag', `${repository}:${tag}:${row.object.sha}`) }
+    },
+  }
+  if (githubTagWritesEnabled) github.createTag = async ({ target, commitSha, tag }) => {
+    if (!safeName(tag) || !sha(commitSha) || target?.releaseTag !== tag || !safePath(target?.branch)) fail('GITHUB_TAG_WRITE_INVALID')
+    const head = await github.readBranch({ repository: target.repository, branch: target.branch })
+    if (head.commitSha !== commitSha) fail('GITHUB_TAG_BRANCH_MOVED')
+    const prior = await github.readTag({ repository: target.repository, tag })
+    if (prior.exists) fail('GITHUB_TAG_ALREADY_EXISTS')
+    await request(githubUrl(target.repository, 'git/refs'), githubToken, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: `refs/tags/${tag}`, sha: commitSha }) })
+    const after = await github.readTag({ repository: target.repository, tag })
+    if (after.commitSha !== commitSha) fail('GITHUB_TAG_READBACK_MISMATCH')
+    return after
+  }
+  if (githubMergeWritesEnabled) {
+    github.readAtomicPushPolicy = async ({ repository, branch }) => {
+      // repository由上层Host已选中的target绑定；此处只拒绝非UAT ref。
+      if (!/^feature\/uat[1-9]-base$/.test(branch)) fail('UAT_ATOMIC_TARGET_INVALID')
+      const { protection, rules, observation } = await observeBranchPolicy(repository, branch)
+      // 不借管理员豁免越过PR/direct-push限制。只承接已核验checks与FF可满足的规则。
+      if (protection.required_pull_request_reviews || protection.restrictions || protection.lock_branch?.enabled || protection.required_signatures?.enabled
+        || rules.some(rule => !['required_status_checks', 'non_fast_forward', 'deletion'].includes(rule.type))) fail('UAT_ATOMIC_PUSH_POLICY_UNSUPPORTED')
+      return { allowed: true, evidenceRef: evidence('github-atomic-policy', executionDigest({ repository, branch, protection, rules, observation })) }
+    }
+    github.atomicFastForward = async ({ repository, branch, number, headCommitSha, expectedBase, expectedTree }) => {
+      if (!Number.isInteger(number) || number < 1 || ![headCommitSha, expectedBase, expectedTree].every(sha)) fail('GITHUB_MERGE_INPUT_INVALID')
+      await github.readAtomicPushPolicy({ repository, branch })
+      const pr = await github.readPullRequest({ repository, number })
+      if (pr.merged || pr.state !== 'open' || pr.draft || pr.baseBranch !== branch || pr.baseRepository !== repository
+        || pr.headRepository !== repository || pr.headCommitSha !== headCommitSha) fail('UAT_ATOMIC_PR_DRIFT')
+      const directory = await mkdtemp(join(tmpdir(), 'dsh-uat-atomic-'))
+      const remote = `https://github.com/${repository}.git`, ref = `refs/heads/${branch}`
+      const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
+        GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${githubToken}`).toString('base64')}`,
+        GIT_CONFIG_KEY_1: 'core.hooksPath', GIT_CONFIG_VALUE_1: process.platform === 'win32' ? 'NUL' : '/dev/null' }
+      const git = async args => (await execFileImpl('git', ['-C', directory, ...args], { env, windowsHide: true, timeout: 120000, maxBuffer: 1024 * 1024 })).stdout.trim()
+      try {
+        await git(['init', '--bare'])
+        await git(['fetch', '--no-tags', '--no-write-fetch-head', '--', remote, expectedBase, headCommitSha])
+        await git(['merge-base', '--is-ancestor', expectedBase, headCommitSha])
+        if (await git(['rev-parse', `${headCommitSha}^{tree}`]) !== expectedTree) fail('UAT_ATOMIC_TREE_MISMATCH')
+        await github.readAtomicPushPolicy({ repository, branch })
+        await git(['push', '--porcelain', `--force-with-lease=${ref}:${expectedBase}`, '--', remote, `${headCommitSha}:${ref}`])
+        return { mergeCommitSha: headCommitSha, evidenceRef: evidence('git-atomic-uat', `${repository}:${branch}:${expectedBase}:${headCommitSha}`) }
+      } catch (error) {
+        // 不泄漏Git凭据、CLI输出；不重试push，不切换其他写通道。
+        if (error.message === 'UAT_ATOMIC_TREE_MISMATCH') throw error
+        fail('UAT_ATOMIC_PUSH_UNCONFIRMED')
+      } finally {
+        if (dirname(resolve(directory)) !== resolve(tmpdir()) || !basename(directory).startsWith('dsh-uat-atomic-')) fail('UAT_ATOMIC_TEMP_PATH_INVALID')
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  }
+  const woodpeckerUrl = (baseUrl, suffix) => {
+    if (baseUrl !== 'https://woodpecker.hiqdat.dev') fail('WOODPECKER_ENDPOINT_NOT_ALLOWED')
+    return `${baseUrl}/api/${suffix}`
+  }
+  const woodpecker = {
+    async listPipelines({ baseUrl, repositoryId }) {
+      if (!Number.isInteger(repositoryId) || repositoryId < 1) fail('WOODPECKER_REPOSITORY_INVALID')
+      const pipelines = [], numbers = new Set()
+      for (let page = 1; page <= 100; page++) {
+        const rows = await request(woodpeckerUrl(baseUrl,
+          `repos/${repositoryId}/pipelines?page=${page}&perPage=100`), woodpeckerToken)
+        if (!Array.isArray(rows)) fail('WOODPECKER_LIST_INVALID')
+        for (const row of rows) {
+          if (!Number.isInteger(row.number) || numbers.has(row.number) || !sha(row.commit)
+            || typeof row.branch !== 'string' || !row.branch || typeof row.status !== 'string') fail('WOODPECKER_LIST_INVALID')
+          numbers.add(row.number)
+          pipelines.push({ number: row.number, commitSha: row.commit, branch: row.branch,
+            ref: row.ref ?? `refs/heads/${row.branch}`, status: row.status })
+        }
+        if (rows.length === 0) return { complete: true, hasMore: false, pipelines,
+          evidenceRef: evidence('woodpecker-list', `${repositoryId}:${pipelines.length}:${Math.max(0, ...numbers)}`) }
+      }
+      fail('WOODPECKER_LIST_INCOMPLETE')
+    },
+    async readBuildEvidence({ baseUrl, repositoryId, pipelineNumber, expectedPipelineStatus = 'success' }) {
+      if (!Number.isInteger(repositoryId) || repositoryId < 1
+        || !Number.isInteger(pipelineNumber) || pipelineNumber < 1
+        || !['success', 'failure', 'error', 'killed'].includes(expectedPipelineStatus)) fail('WOODPECKER_PIPELINE_INVALID')
+      const pipeline = await request(woodpeckerUrl(baseUrl,
+        `repos/${repositoryId}/pipelines/${pipelineNumber}`), woodpeckerToken)
+      if (pipeline.number !== pipelineNumber || !sha(pipeline.commit) || pipeline.status !== expectedPipelineStatus
+        || !Array.isArray(pipeline.workflows)) fail('WOODPECKER_BUILD_UNCONFIRMED')
+      const steps = pipeline.workflows.flatMap(workflow => Array.isArray(workflow.children) ? workflow.children : [])
+        .filter(step => step.name === 'buildkit-build-and-push')
+      if (steps.length !== 1 || !Number.isInteger(steps[0].id)
+        || steps[0].state !== 'success' || steps[0].exit_code !== 0)
+        fail('WOODPECKER_BUILD_STEP_UNCONFIRMED')
+      // 生产原生 Tag 可能也携带源码包变量；本次只增加 UAT manual 的消费证明。
+      const uploadedSource = pipeline.event === 'tag' ? undefined : await readUploadedSourceEvidence({ pipeline,
+        readStepLogs: stepId => request(woodpeckerUrl(baseUrl,
+          `repos/${repositoryId}/logs/${pipelineNumber}/${stepId}`), woodpeckerToken) })
+      const logs = await request(woodpeckerUrl(baseUrl,
+        `repos/${repositoryId}/logs/${pipelineNumber}/${steps[0].id}`), woodpeckerToken)
+      if (!Array.isArray(logs) || logs.some(row => row.step_id !== steps[0].id
+        || row.data !== null && (typeof row.data !== 'string'
+          || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(row.data))))
+        fail('WOODPECKER_BUILD_LOG_INVALID')
+      const lines = logs.filter(row => row.data !== null)
+        .map(row => Buffer.from(row.data, 'base64').toString('utf8').trim())
+      const exported = lines.map(line => /^#\d+ exporting manifest (sha256:[0-9a-f]{64}) done$/.exec(line))
+        .filter(Boolean).map(match => match[1])
+      const pushed = lines.map(line => /^#\d+ pushing manifest for (registry\.cn-sh1\.ctyun\.cn\/[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+)@(sha256:[0-9a-f]{64}) \d+(?:\.\d+)?s done$/.exec(line))
+        .filter(Boolean)
+      if (exported.length !== 1 || pushed.length !== 1 || exported[0] !== pushed[0][2])
+        fail('WOODPECKER_BUILD_DIGEST_UNCONFIRMED')
+      return { pipelineNumber, commitSha: pipeline.commit, image: pushed[0][1], imageDigest: pushed[0][2],
+        pipelineStatus: pipeline.status, buildStepStatus: steps[0].state, buildStepExitCode: steps[0].exit_code,
+        ...(uploadedSource ? { uploadedSource } : {}),
+        evidenceRef: evidence('woodpecker-build', `${repositoryId}:${pipelineNumber}:${steps[0].id}:${pushed[0][2]}`) }
+    },
+    async triggerBuild({ target, commitSha, operationKey }) {
+      const { baseUrl, repositoryId, cronName } = target?.woodpecker ?? {}
+      if (!sha(commitSha) || !safeName(cronName) || !Number.isInteger(repositoryId)) fail('WOODPECKER_TRIGGER_INVALID')
+      const assertCurrent = async () => {
+        const head = await github.readBranch({ repository: target.repository, branch: target.branch })
+        if (head.commitSha !== commitSha) fail('WOODPECKER_BRANCH_MOVED')
+        const scan = await woodpecker.listPipelines({ baseUrl, repositoryId })
+        if (scan.pipelines.some(row => row.commitSha === commitSha && row.branch === target.branch
+          && ['created', 'pending', 'running', 'blocked', 'success'].includes(row.status))) fail('WOODPECKER_EQUIVALENT_BUILD_EXISTS')
+      }
+      if (sourceUploadTarget(target)) {
+        let mutationAttempted = false
+        try {
+          await assertCurrent()
+          const receipt = await uploadUatSource({ target, commitSha, githubToken, sourceUploadToken,
+            fetchImpl: (...args) => { mutationAttempted = true; return fetchImpl(...args) },
+            execFileImpl, beforeUpload: assertCurrent })
+          // 201 只是接收；另查返回的精确流水线，不能把任意同 SHA 构建当成此次上传。
+          const pipeline = await request(woodpeckerUrl(baseUrl,
+            `repos/${repositoryId}/pipelines/${receipt.pipelineNumber}`), woodpeckerToken)
+          if (pipeline.number !== receipt.pipelineNumber || pipeline.event !== 'manual'
+            || pipeline.branch !== target.branch || pipeline.commit !== commitSha
+            || pipeline.variables?.SOURCE_PACKAGE_ID !== receipt.artifactId
+            || pipeline.variables?.SOURCE_PACKAGE_SHA256 !== receipt.sha256
+            || pipeline.variables?.SOURCE_COMMIT_SHA !== commitSha) fail('WOODPECKER_SOURCE_DISPATCH_UNCONFIRMED')
+          return { ...receipt, evidenceRef: `woodpecker-source-dispatch:${repositoryId}:${receipt.pipelineNumber}:${commitSha}:${receipt.artifactId}:${receipt.sha256}` }
+        } catch (error) {
+          // 同提交竞态交给既有只读对账；真正调用 PUT 后即使超时也不能声称未发送。
+          if (mutationAttempted || error.message === 'WOODPECKER_EQUIVALENT_BUILD_EXISTS') throw error
+          const cause = /^(?:SOURCE_UPLOAD_[A-Z_]+|WOODPECKER_BRANCH_MOVED|WOODPECKER_LIST_[A-Z_]+|PLATFORM_[A-Z_0-9]+)$/.test(error.message)
+            ? error.message : 'SOURCE_UPLOAD_PREPARATION_FAILED'
+          return { status: 'failed', reason: 'RELEASE_BUILD_NOT_SENT', phase: 'preflight', mutationAttempted: false,
+            cause, operationKey, commitSha, evidenceRef: `woodpecker-source-not-sent:${repositoryId}:${commitSha}:${cause}` }
+        }
+      }
+      await assertCurrent()
+      const crons = await request(woodpeckerUrl(baseUrl, `repos/${repositoryId}/cron`), woodpeckerToken)
+      if (!Array.isArray(crons)) fail('WOODPECKER_CRON_INVALID')
+      const found = crons.filter(row => row.name === cronName && row.branch === target.branch)
+      if (found.length !== 1 || !Number.isInteger(found[0].id)) fail('WOODPECKER_CRON_UNCONFIRMED')
+      await request(woodpeckerUrl(baseUrl, `repos/${repositoryId}/cron/${found[0].id}`), woodpeckerToken,
+        { method: 'POST' })
+      return { evidenceRef: evidence('woodpecker-cron-dispatch', `${repositoryId}:${found[0].id}:${commitSha}`) }
+    },
+  }
+  const kubernetes = {
+    async readPods({ namespace, deployment, deploymentUid }) {
+      if (!safeName(namespace) || !safeName(deployment) || !safeName(deploymentUid) || !kubeconfig) fail('KUBE_TARGET_INVALID')
+      const readList = async type => {
+        try {
+          const result = await execFileImpl('kubectl', ['--kubeconfig', kubeconfig,
+            ...(kubeServer ? ['--server', kubeServer] : []),
+            ...(kubeSkipTlsVerify ? ['--insecure-skip-tls-verify'] : []), '--request-timeout=15s', '-n', namespace,
+            'get', type, '-o', 'json'], { maxBuffer: 4 * 1024 * 1024 })
+          return JSON.parse(result.stdout)
+        } catch { fail('KUBE_POD_READ_FAILED') }
+      }
+      const replicaSets = await readList('replicasets')
+      const podList = await readList('pods')
+      if (!Array.isArray(replicaSets?.items) || !Array.isArray(podList?.items)) fail('KUBE_POD_LIST_INVALID')
+      const owned = new Set(replicaSets.items.filter(row => row.metadata?.ownerReferences?.some(ref =>
+        ref.kind === 'Deployment' && ref.uid === deploymentUid && ref.name === deployment))
+        .map(row => row.metadata?.uid).filter(Boolean))
+      if (!owned.size) fail('KUBE_REPLICASET_NOT_FOUND')
+      const pods = podList.items.filter(row => row.metadata?.ownerReferences?.some(ref =>
+        ref.kind === 'ReplicaSet' && owned.has(ref.uid)))
+      if (!pods.length) fail('KUBE_PODS_NOT_FOUND')
+      return { complete: true, deploymentUid, pods: pods.map(row => {
+        const container = row.status?.containerStatuses?.find(item => item.name === row.spec?.containers?.[0]?.name)
+        const imageDigest = container?.imageID?.match(/sha256:[a-f0-9]{64}$/)?.[0]
+        return { deploymentUid, imageDigest,
+          ready: row.status?.phase === 'Running' && container?.ready === true
+            && row.metadata?.deletionTimestamp == null,
+        }
+      }), evidenceRef: evidence('kube-pods', `${namespace}:${deployment}:${deploymentUid}:${pods.map(row => row.metadata?.resourceVersion).join(',')}`) }
+    },
+    async readDeployment({ namespace, deployment }) {
+      if (!safeName(namespace) || !safeName(deployment) || !kubeconfig) fail('KUBE_TARGET_INVALID')
+      let row
+      try {
+        const result = await execFileImpl('kubectl', ['--kubeconfig', kubeconfig,
+          ...(kubeServer ? ['--server', kubeServer] : []),
+          ...(kubeSkipTlsVerify ? ['--insecure-skip-tls-verify'] : []), '--request-timeout=15s', '-n', namespace,
+          'get', 'deployment', deployment, '-o', 'json'], { maxBuffer: 1024 * 1024 })
+        row = JSON.parse(result.stdout)
+      } catch { fail('KUBE_DEPLOYMENT_READ_FAILED') }
+      const status = row?.status
+      return { uid: row?.metadata?.uid, desiredReplicas: row?.spec?.replicas,
+        readyReplicas: status?.readyReplicas ?? 0,
+        generation: row?.metadata?.generation, observedGeneration: status?.observedGeneration,
+        ready: status?.readyReplicas === row?.spec?.replicas && status?.availableReplicas === row?.spec?.replicas,
+        evidenceRef: evidence('kube-deployment', `${namespace}:${deployment}:${row?.metadata?.resourceVersion}`) }
+    },
+    async readEntry({ url }) {
+      if (typeof url !== 'string' || !url.startsWith('https://')) fail('ENTRY_URL_INVALID')
+      let response
+      try { response = await fetchImpl(url, { method: 'GET', signal: AbortSignal.timeout(15000) }) }
+      catch { fail('ENTRY_READ_FAILED') }
+      return { accessible: response.ok, evidenceRef: evidence('entry', `${url}:${response.status}`) }
+    },
+  }
+  const registry = {}
+  if (registryBearerToken || registryDockerCliEnabled) registry.readManifest = async ({ image, digest: expected }) => {
+    if (!/^registry\.cn-sh1\.ctyun\.cn\/[A-Za-z0-9._/-]+$/.test(image)
+      || !digest(expected)) fail('REGISTRY_TARGET_INVALID')
+    const name = image.slice('registry.cn-sh1.ctyun.cn/'.length)
+    let bytes, body, response
+    if (registryDockerCliEnabled) {
+      try {
+        const result = await execFileImpl('docker', ['buildx', 'imagetools', 'inspect', '--raw', `${image}@${expected}`],
+          { timeout: 30000, maxBuffer: 4 * 1024 * 1024, encoding: 'buffer' })
+        bytes = Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout, 'utf8')
+      } catch { fail('REGISTRY_READ_FAILED') }
+    } else {
+      try { response = await fetchImpl(`https://registry.cn-sh1.ctyun.cn/v2/${name}/manifests/${expected}`,
+        { headers: { Authorization: `Bearer ${registryBearerToken}`,
+          Accept: ['application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json',
+            'application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'].join(', ') },
+          signal: AbortSignal.timeout(30000) }) }
+      catch { fail('REGISTRY_READ_FAILED') }
+      if (!response.ok) fail(`REGISTRY_HTTP_${response.status}`)
+      try { bytes = Buffer.from(await response.arrayBuffer()) } catch { fail('REGISTRY_MANIFEST_INVALID') }
+    }
+    try { body = JSON.parse(bytes.toString('utf8')) }
+    catch { fail('REGISTRY_MANIFEST_INVALID') }
+    const actual = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+    if (actual !== expected || response && response.headers?.get?.('docker-content-digest') !== expected) fail('REGISTRY_DIGEST_MISMATCH')
+    const platformDigests = Array.isArray(body.manifests)
+      ? body.manifests.filter(item => item.platform?.os !== 'unknown' && item.platform?.architecture !== 'unknown')
+        .map(item => item.digest) : [expected]
+    if (!platformDigests.length || platformDigests.some(value => !digest(value))) fail('REGISTRY_PLATFORM_DIGEST_INVALID')
+    return { digest: actual, platformDigests,
+      evidenceRef: evidence('registry-manifest', `${name}:${actual}`) }
+  }
+  const bytebaseProject = 'projects/flbn'
+  const bytebaseInstance = 'instances/flbnpguaf'
+  const bytebaseDatabases = new Set(['hiq_editor', 'hiq_background_db', 'hiq_admin'])
+  const bytebaseTarget = (project, target) => {
+    if (project !== bytebaseProject || target?.instance !== bytebaseInstance
+      || target?.environment !== 'production'
+      || !bytebaseDatabases.has(target.database?.slice(`${bytebaseInstance}/databases/`.length))
+      || !target.database.startsWith(`${bytebaseInstance}/databases/`)) fail('BYTEBASE_TARGET_NOT_ALLOWED')
+  }
+  const bytebaseResource = (project, name, type) => {
+    if (project !== bytebaseProject || typeof name !== 'string'
+      || !new RegExp(`^projects/flbn/${type}/[A-Za-z0-9_-]+$`).test(name)) fail('BYTEBASE_RESOURCE_NOT_ALLOWED')
+    return name
+  }
+  const bytebaseList = async (project, type) => {
+    if (project !== bytebaseProject || !['issues', 'plans'].includes(type)) fail('BYTEBASE_LIST_NOT_ALLOWED')
+    const result = [], seen = new Set()
+    let pageToken = ''
+    for (let page = 0; page < 100; page++) {
+      const suffix = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''
+      const body = await bytebaseRequest(`/v1/${project}/${type}?pageSize=1000${suffix}`)
+      if (!Array.isArray(body?.[type])) fail('BYTEBASE_LIST_UNCONFIRMED')
+      result.push(...body[type])
+      if (!body.nextPageToken) return result
+      if (typeof body.nextPageToken !== 'string' || seen.has(body.nextPageToken)) fail('BYTEBASE_LIST_INCOMPLETE')
+      seen.add(body.nextPageToken)
+      pageToken = body.nextPageToken
+    }
+    fail('BYTEBASE_LIST_INCOMPLETE')
+  }
+  const bytebaseTitle = operationKey => {
+    if (typeof operationKey !== 'string' || !/^[a-f0-9]{64}$/.test(operationKey))
+      fail('BYTEBASE_OPERATION_KEY_INVALID')
+    return `Assistant data change ${operationKey}`
+  }
+  const bytebaseIssueAttempts = new Set()
+  const bytebaseRolloutAttempts = new Set()
+  const bytebaseTaskAttempts = new Set()
+  const bytebaseReadTaskRuns = async (taskId, project) => {
+    bytebaseResource(project, taskId.split('/rollout/')[0], 'plans')
+    if (!/^projects\/flbn\/plans\/[A-Za-z0-9_-]+\/rollout\/stages\/[A-Za-z0-9_-]+\/tasks\/[A-Za-z0-9_-]+$/.test(taskId))
+      fail('BYTEBASE_TASK_NOT_ALLOWED')
+    const rows = [], seen = new Set()
+    let pageToken = ''
+    for (let page = 0; page < 100; page++) {
+      const suffix = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''
+      const body = await bytebaseRequest(`/v1/${taskId}/taskRuns?pageSize=1000${suffix}`)
+      // ProtoJSON 默认省略空 repeated 字段；只有完整空对象能证明原生空列表。
+      if (body && Object.getPrototypeOf(body) === Object.prototype && Object.keys(body).length === 0) return rows
+      if (!Array.isArray(body?.taskRuns)) fail('BYTEBASE_TASK_RUN_LIST_UNCONFIRMED')
+      rows.push(...body.taskRuns)
+      if (!body.nextPageToken) return rows
+      if (typeof body.nextPageToken !== 'string' || seen.has(body.nextPageToken)) fail('BYTEBASE_TASK_RUN_LIST_INCOMPLETE')
+      seen.add(body.nextPageToken)
+      pageToken = body.nextPageToken
+    }
+    fail('BYTEBASE_TASK_RUN_LIST_INCOMPLETE')
+  }
+  const bytebase = {
+    async getDatabase({ project, target }) {
+      if (!bytebaseBaseUrl?.startsWith('https://') || !bytebaseToken && !bytebaseCredentials
+        || !/^projects\/[A-Za-z0-9._-]+$/.test(project ?? '')
+        || !/^instances\/[A-Za-z0-9._-]+$/.test(target?.instance ?? '')
+        || !/^instances\/[A-Za-z0-9._-]+\/databases\/[A-Za-z0-9._-]+$/.test(target?.database ?? '')
+        || !target.database.startsWith(`${target.instance}/databases/`)
+        || !['production', 'uat'].includes(target?.environment)) fail('BYTEBASE_READ_NOT_CONFIGURED')
+      const row = await bytebaseRequest(`/v1/${target.database}`)
+      const environment = { 'environments/prod': 'production', 'environments/uat': 'uat' }[row.effectiveEnvironment]
+      if (row.project !== project || row.name !== target.database
+        || row.instanceResource?.name !== target.instance || environment !== target.environment)
+        fail('BYTEBASE_DATABASE_IDENTITY_UNCONFIRMED')
+      return { project: row.project, instance: row.instanceResource.name, database: row.name,
+        environment, evidenceRef: evidence('bytebase-database',
+          `${row.name}:${row.effectiveEnvironment}:${row.successfulSyncTime ?? ''}`) }
+    },
+    async getIssueBundle({ project, issueId }) {
+      bytebaseResource(project, issueId, 'issues')
+      const issueRow = await bytebaseRequest(`/v1/${issueId}`)
+      if (issueRow?.name !== issueId || issueRow.type !== 'DATABASE_CHANGE'
+        || typeof issueRow.description !== 'string') fail('BYTEBASE_ISSUE_UNCONFIRMED')
+      let identity
+      try { identity = JSON.parse(issueRow.description) } catch { fail('BYTEBASE_ISSUE_UNCONFIRMED') }
+      if (issueRow.title !== bytebaseTitle(identity?.operationKey)
+        || !/^[a-f0-9]{64}$/.test(identity?.packageDigest ?? '')) fail('BYTEBASE_ISSUE_UNCONFIRMED')
+      const planId = bytebaseResource(project, issueRow.plan, 'plans')
+      const planRow = await bytebaseRequest(`/v1/${planId}`)
+      const spec = planRow?.specs?.length === 1 ? planRow.specs[0] : null
+      const sheetId = bytebaseResource(project, spec?.changeDatabaseConfig?.sheet, 'sheets')
+      const targets = spec?.changeDatabaseConfig?.targets
+      if (planRow.name !== planId || planRow.issue !== issueId || planRow.title !== issueRow.title
+        || targets?.length !== 1) fail('BYTEBASE_PLAN_UNCONFIRMED')
+      const target = { instance: bytebaseInstance, database: targets[0], environment: 'production' }
+      bytebaseTarget(project, target)
+      if (identity.target?.database !== target.database || identity.target?.instance !== target.instance
+        || identity.target?.environment !== target.environment) fail('BYTEBASE_ISSUE_UNCONFIRMED')
+      const sheetRow = await bytebaseRequest(`/v1/${sheetId}?raw=true`)
+      if (sheetRow?.name !== sheetId || typeof sheetRow.content !== 'string'
+        || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(sheetRow.content))
+        fail('BYTEBASE_SHEET_UNCONFIRMED')
+      const sql = Buffer.from(sheetRow.content, 'base64').toString('utf8')
+      const sqlSha256 = createHash('sha256').update(sql).digest('hex')
+      if (sqlSha256 !== identity.applySqlSha256) fail('BYTEBASE_SHEET_UNCONFIRMED')
+      let task = null
+      if (planRow.hasRollout === true) {
+        const rollout = await bytebaseRequest(`/v1/${planId}/rollout`)
+        const stages = rollout?.stages
+        const tasks = Array.isArray(stages) ? stages.flatMap(stage => stage.tasks ?? []) : []
+        if (rollout.name !== `${planId}/rollout` || stages?.length !== 1
+          || stages[0].environment !== 'environments/prod' || tasks.length !== 1
+          || tasks[0].target !== target.database || tasks[0].specId !== spec.id
+          || tasks[0].databaseUpdate?.sheet !== sheetId) fail('BYTEBASE_ROLLOUT_UNCONFIRMED')
+        const taskId = tasks[0].name
+        if (!/^projects\/flbn\/plans\/[A-Za-z0-9_-]+\/rollout\/stages\/[A-Za-z0-9_-]+\/tasks\/[A-Za-z0-9_-]+$/.test(taskId))
+          fail('BYTEBASE_TASK_UNCONFIRMED')
+        task = { id: taskId, planId, status: tasks[0].status }
+      } else if (planRow.hasRollout !== false && planRow.hasRollout !== undefined) fail('BYTEBASE_ROLLOUT_STATE_UNCONFIRMED')
+      return { issue: { id: issueId, project, planId, ...(task ? { taskId: task.id } : {}),
+        packageDigest: identity.packageDigest, operationKey: identity.operationKey },
+      sheet: { id: sheetId, project, sha256: sqlSha256, target },
+      plan: { id: planId, project, sheetId },
+      task }
+    },
+    async getIssueApproval({ project, issueId, planId, sheetId, sheetSha256, target,
+      packageDigest, scopeDigest }) {
+      bytebaseTarget(project, target)
+      const bundle = await this.getIssueBundle({ project, issueId })
+      if (bundle.plan.id !== planId || bundle.sheet.id !== sheetId
+        || bundle.sheet.sha256 !== sheetSha256 || bundle.issue.packageDigest !== packageDigest
+        || executionDigest(bundle.sheet.target) !== executionDigest(target)
+        || !/^[a-f0-9]{64}$/.test(scopeDigest ?? '')) fail('BYTEBASE_APPROVAL_IDENTITY_CHANGED')
+      const issue = await bytebaseRequest(`/v1/${issueId}`)
+      if (issue.name !== issueId || issue.plan !== planId || !['OPEN', 'DONE'].includes(issue.status))
+        fail('BYTEBASE_APPROVAL_ISSUE_NOT_ACTIVE')
+      const binding = { source: 'bytebase', human: false, issueId, planId, sheetId, target,
+        sheetSha256, packageDigest, scopeDigest,
+        requestId: issueId, evidenceRef: evidence('bytebase-approval', `${issueId}:${issue.updateTime ?? ''}`) }
+      if (['PENDING', 'CHECKING'].includes(issue.approvalStatus))
+        return { ...binding, decision: 'pending', comment: '等待 Bytebase 真人审批' }
+      if (issue.approvalStatus === 'SKIPPED')
+        return { ...binding, decision: 'unconfigured', comment: 'Bytebase 未要求真人审批（SKIPPED）；须由管理员启用原生人工审批规则并重新送审本次精确 SQL，SKIPPED 工单不能直接执行' }
+      if (!['APPROVED', 'REJECTED'].includes(issue.approvalStatus)) fail('BYTEBASE_APPROVAL_STATUS_UNCONFIRMED')
+      const comments = [], seen = new Set()
+      let pageToken = ''
+      for (;;) {
+        const suffix = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''
+        const page = await bytebaseRequest(`/v1/${issueId}/issueComments?pageSize=1000${suffix}`)
+        if (!Array.isArray(page.issueComments)) fail('BYTEBASE_APPROVAL_COMMENTS_UNCONFIRMED')
+        comments.push(...page.issueComments)
+        if (!page.nextPageToken) break
+        if (typeof page.nextPageToken !== 'string' || seen.has(page.nextPageToken))
+          fail('BYTEBASE_APPROVAL_COMMENTS_INCOMPLETE')
+        seen.add(page.nextPageToken)
+        pageToken = page.nextPageToken
+      }
+      const ordered = comments.slice().sort((a, b) => Date.parse(a.createTime) - Date.parse(b.createTime))
+      const lastRevision = ordered.filter(row => row.planSpecUpdate || row.planUpdate).at(-1)
+      const decision = ordered.filter(row => row.approval).at(-1)
+      if (!decision || decision.approval.status !== issue.approvalStatus
+        || !/^users\/[^/\s]+$/.test(decision.creator ?? '')
+        || !decision.name?.startsWith(`${issueId}/issueComments/`)
+        || !Number.isFinite(Date.parse(decision.createTime))
+        || lastRevision && (!Number.isFinite(Date.parse(lastRevision.createTime))
+          || Date.parse(decision.createTime) <= Date.parse(lastRevision.createTime)))
+        fail('BYTEBASE_HUMAN_APPROVAL_UNCONFIRMED')
+      const approvers = issue.approvers
+      if (!Array.isArray(approvers) || !approvers.some(row => row.principal === decision.creator
+        && row.status === issue.approvalStatus)
+        || issue.approvalStatus === 'APPROVED' && (approvers.length === 0
+          || approvers.some(row => row.status !== 'APPROVED')))
+        fail('BYTEBASE_HUMAN_APPROVAL_UNCONFIRMED')
+      return { ...binding, decision: issue.approvalStatus.toLowerCase(), human: true,
+        decidedBy: decision.creator, requestId: decision.name,
+        comment: decision.comment ?? '', evidenceRef: evidence('bytebase-approval', decision.name) }
+    },
+    async findIssueByOperationKey({ project, operationKey }) {
+      const title = bytebaseTitle(operationKey)
+      const rows = (await bytebaseList(project, 'issues')).filter(row => row.title === title)
+      if (rows.length > 1) fail('BYTEBASE_ISSUE_NOT_UNIQUE')
+      if (!rows.length) return null
+      return this.getIssueBundle({ project, issueId: rows[0].name })
+    },
+    async getRolloutPolicy({ project, target }) {
+      await this.getDatabase({ project, target })
+      if (target.environment !== 'production') fail('BYTEBASE_ROLLOUT_ENVIRONMENT_UNCONFIRMED')
+      const name = 'environments/prod/policies/rollout_policy'
+      let policy
+      try { policy = await bytebaseRequest(`/v1/${name}`) }
+      catch { fail('BYTEBASE_ROLLOUT_POLICY_UNCONFIRMED') }
+      if (policy?.name !== name || policy.type !== 'ROLLOUT_POLICY' || policy.resourceType !== 'ENVIRONMENT'
+        || !policy.rolloutPolicy || typeof policy.rolloutPolicy !== 'object'
+        || ![undefined, true, false].includes(policy.rolloutPolicy.automatic)) fail('BYTEBASE_ROLLOUT_POLICY_UNCONFIRMED')
+      // Proto3 boolean 缺省为 false；这是服务器原生默认手动策略，不是请求失败兜底。
+      return { name, automatic: policy.rolloutPolicy.automatic === true,
+        evidenceRef: evidence('bytebase-rollout-policy', `${name}:${executionDigest(policy)}`) }
+    },
+    async createIssueBundle({ project, target, operationKey, packageDigest,
+      applySqlSha256, applySql, previousIssueId, proposalSummary }) {
+      bytebaseTarget(project, target)
+      const title = bytebaseTitle(operationKey)
+      if (!/^[a-f0-9]{64}$/.test(packageDigest ?? '')
+        || createHash('sha256').update(applySql ?? '').digest('hex') !== applySqlSha256)
+        fail('BYTEBASE_ISSUE_INPUT_INVALID')
+      const existing = await this.findIssueByOperationKey({ project, operationKey })
+      if (existing) return existing
+      if (previousIssueId) {
+        const previous = await this.getIssueBundle({ project, issueId: previousIssueId })
+        const review = await bytebaseRequest(`/v1/${previousIssueId}`)
+        if (previous.task || review.approvalStatus !== 'REJECTED'
+          || executionDigest(previous.sheet.target) !== executionDigest(target))
+          fail('BYTEBASE_REVISION_SOURCE_UNCONFIRMED')
+      }
+      if (bytebaseIssueAttempts.has(operationKey)) fail('BYTEBASE_CREATE_RESULT_UNKNOWN')
+      const policy = await this.getRolloutPolicy({ project, target })
+      if (policy.automatic) fail('BYTEBASE_AUTOMATIC_ROLLOUT_NOT_ALLOWED_FOR_REVIEW')
+      bytebaseIssueAttempts.add(operationKey)
+      // Sheet/Plan/Rollout/Issue 不是原子 API。任一步结果未知由外部效果账只读对账，绝不自动重发。
+      const sheetRow = await bytebaseRequest(`/v1/${project}/sheets`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: Buffer.from(applySql).toString('base64') }) })
+      const sheetId = bytebaseResource(project, sheetRow?.name, 'sheets')
+      const planRow = await bytebaseRequest(`/v1/${project}/plans`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description: operationKey,
+          specs: [{ id: randomUUID(), changeDatabaseConfig: { targets: [target.database], sheet: sheetId } }] }) })
+      const planId = bytebaseResource(project, planRow?.name, 'plans')
+      const issueRow = await bytebaseRequest(`/v1/${project}/issues`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description: JSON.stringify({ operationKey, packageDigest,
+          applySqlSha256, target, ...(proposalSummary ? { proposalSummary } : {}),
+          ...(previousIssueId ? { previousIssueId } : {}) }), type: 'DATABASE_CHANGE', plan: planId }) })
+      const issueId = bytebaseResource(project, issueRow?.name, 'issues')
+      return this.getIssueBundle({ project, issueId })
+    },
+    async activateRollout({ project, issueId, issueCreationOperationKey, executeOperationKey, approvalRequestId,
+      planId, sheetId, target, applySqlSha256, packageDigest }) {
+      bytebaseTitle(issueCreationOperationKey)
+      bytebaseTitle(executeOperationKey)
+      const bundle = await this.getIssueBundle({ project, issueId })
+      if (bundle.issue.operationKey !== issueCreationOperationKey || !approvalRequestId
+        || bundle.plan.id !== planId || bundle.sheet.id !== sheetId || bundle.sheet.sha256 !== applySqlSha256
+        || bundle.issue.packageDigest !== packageDigest || executionDigest(bundle.sheet.target) !== executionDigest(target)
+        || executeOperationKey !== executionDigest({ stage: 'execute-task', packageDigest: bundle.issue.packageDigest,
+          issueId, approvalRequestId })) fail('BYTEBASE_ROLLOUT_IDENTITY_CHANGED')
+      if (bundle.task) return bundle
+      if (bytebaseRolloutAttempts.has(executeOperationKey)) fail('BYTEBASE_ROLLOUT_RESULT_UNKNOWN')
+      bytebaseRolloutAttempts.add(executeOperationKey)
+      await bytebaseRequest(`/v1/${planId}/rollout`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent: planId, target: 'environments/prod' }) })
+      const readback = await this.getIssueBundle({ project, issueId })
+      if (!readback.task) fail('BYTEBASE_ROLLOUT_UNCONFIRMED')
+      return readback
+    },
+    async findIssueByTaskPlan({ project, planId }) {
+      bytebaseResource(project, planId, 'plans')
+      const plan = await bytebaseRequest(`/v1/${planId}`)
+      if (plan.name !== planId) fail('BYTEBASE_PLAN_UNCONFIRMED')
+      return { issueId: bytebaseResource(project, plan.issue, 'issues') }
+    },
+    async getTaskExecution({ project, issueId, taskId }) {
+      const bundle = await this.getIssueBundle({ project, issueId })
+      if (bundle.task?.id !== taskId) fail('BYTEBASE_TASK_IDENTITY_CHANGED')
+      const runs = await bytebaseReadTaskRuns(taskId, project)
+      if (runs.length > 1) fail('BYTEBASE_TASK_RUN_NOT_UNIQUE')
+      const row = runs[0]
+      if (row && (typeof row.name !== 'string' || !row.name.startsWith(`${taskId}/taskRuns/`)
+        || !['PENDING', 'RUNNING', 'DONE', 'FAILED', 'CANCELED'].includes(row.status)))
+        fail('BYTEBASE_TASK_RUN_UNCONFIRMED')
+      return { task: bundle.task, taskRun: row ? { id: row.name, taskId,
+        status: row.status } : null }
+    },
+    async runTask({ project, issueId, taskId, issueCreationOperationKey, executeOperationKey, approvalRequestId,
+      planId, sheetId, target, applySqlSha256, packageDigest }) {
+      bytebaseTitle(issueCreationOperationKey)
+      bytebaseTitle(executeOperationKey)
+      const bundle = await this.getIssueBundle({ project, issueId })
+      if (bundle.issue.operationKey !== issueCreationOperationKey || bundle.task?.id !== taskId || !approvalRequestId
+        || bundle.plan.id !== planId || bundle.sheet.id !== sheetId || bundle.sheet.sha256 !== applySqlSha256
+        || bundle.issue.packageDigest !== packageDigest || executionDigest(bundle.sheet.target) !== executionDigest(target)
+        || executeOperationKey !== executionDigest({ stage: 'execute-task', packageDigest: bundle.issue.packageDigest,
+          issueId, approvalRequestId }))
+        fail('BYTEBASE_TASK_NOT_READY')
+      const runs = await bytebaseReadTaskRuns(taskId, project)
+      if (runs.length > 1) fail('BYTEBASE_TASK_RUN_NOT_UNIQUE')
+      if (runs.length) {
+        if (typeof runs[0].name !== 'string' || !runs[0].name.startsWith(`${taskId}/taskRuns/`)
+          || !['PENDING', 'RUNNING', 'DONE'].includes(runs[0].status)) fail('BYTEBASE_TASK_ALREADY_RUN')
+        return { taskId }
+      }
+      if (bundle.task.status !== 'NOT_STARTED') fail('BYTEBASE_TASK_NOT_READY')
+      if (bytebaseTaskAttempts.has(executeOperationKey)) fail('BYTEBASE_TASK_RESULT_UNKNOWN')
+      bytebaseTaskAttempts.add(executeOperationKey)
+      const stage = taskId.slice(0, taskId.lastIndexOf('/tasks/'))
+      await bytebaseRequest(`/v1/${stage}/tasks:batchRun`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent: stage, tasks: [taskId] }) })
+      return { taskId }
+    },
+    async queryVerification({ project, target, sql, taskRunId, expectedChange }) {
+      bytebaseTarget(project, target)
+      const select = narrowVerificationSql(sql)
+      let expected
+      try { expected = JSON.parse(expectedChange) } catch { fail('BYTEBASE_VERIFICATION_NOT_ALLOWED') }
+      if (!select || !Array.isArray(expected?.rows) || expected.rows.length < 1
+        || expected.rows.length > 1000
+        || expected.rows.some(row => !row || Object.keys(row).length !== 1
+          || !Number.isSafeInteger(row[select.column]))
+        || !/^projects\/flbn\/plans\/[A-Za-z0-9_-]+\/rollout\/stages\/[A-Za-z0-9_-]+\/tasks\/[A-Za-z0-9_-]+\/taskRuns\/[A-Za-z0-9_-]+$/.test(taskRunId ?? ''))
+        fail('BYTEBASE_VERIFICATION_NOT_ALLOWED')
+      const taskId = taskRunId.slice(0, taskRunId.lastIndexOf('/taskRuns/'))
+      const planId = taskId.slice(0, taskId.indexOf('/rollout/'))
+      const plan = await bytebaseRequest(`/v1/${planId}`)
+      const issueId = bytebaseResource(project, plan?.issue, 'issues')
+      const bundle = await this.getIssueBundle({ project, issueId })
+      if (bundle.task?.id !== taskId || bundle.sheet.target.database !== target.database)
+        fail('BYTEBASE_VERIFICATION_TASK_CHANGED')
+      const taskExecution = await this.getTaskExecution({ project, issueId, taskId })
+      if (taskExecution.task.status !== 'DONE' || taskExecution.taskRun?.id !== taskRunId
+        || taskExecution.taskRun.status !== 'DONE') fail('BYTEBASE_TASK_RUN_UNCONFIRMED')
+      const body = await bytebaseRequest(`/v1/${target.database}:query`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: target.database, statement: sql, limit: expected.rows.length + 1 }) })
+      const result = body?.results?.[0]
+      if (body?.results?.length !== 1 || result.error || result.columnNames?.length !== 1
+        || result.columnNames[0] !== select.column || result.rows?.length !== expected.rows.length
+        || result.rows.some(row => row.values?.length !== 1)) fail('BYTEBASE_VERIFICATION_UNCONFIRMED')
+      const observedRows = result.rows.map(row => {
+        const value = row.values[0]
+        const observed = Number(value.int32Value ?? value.int64Value)
+        if (!Number.isSafeInteger(observed)) fail('BYTEBASE_VERIFICATION_UNCONFIRMED')
+        return { [select.column]: observed }
+      })
+      if (JSON.stringify(observedRows) !== JSON.stringify(expected.rows))
+        fail('BYTEBASE_VERIFICATION_UNCONFIRMED')
+      return { passed: true, target, packageDigest: bundle.issue.packageDigest,
+        observedChange: JSON.stringify(observedRows),
+        readbackId: evidence('bytebase-verification', `${taskRunId}:${executionDigest(result.rows)}`) }
+    },
+  }
+  return { github, woodpecker, kubernetes, registry,
+    attestations: attestations?.read ? { read: attestations.read } : {}, bytebase }
+}

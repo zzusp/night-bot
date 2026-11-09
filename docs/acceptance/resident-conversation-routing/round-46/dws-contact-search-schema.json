@@ -1,0 +1,91 @@
+{
+  "agent_summary": "按关键词搜索通讯录用户",
+  "availability": "available",
+  "avoid_when": [
+    "需要该 Shortcut 未公开的底层参数、原始响应或不同执行语义时，改用对应原子命令"
+  ],
+  "canonical_path": "contact.shortcut_search_user",
+  "cli_path": "contact +search-user",
+  "confirmation": "not_required",
+  "description": "当你只知道某人的姓名、花名或部分名字，需要把它解析成 userId 及部门等信息以便后续发消息、排日程或指派任务时使用；输入搜索关键词（--query），返回匹配的用户列表。\n\n参数约束：\n  - --query 不能为空白",
+  "effect": "read",
+  "examples": [
+    "dws contact +search-user --query \"张三\""
+  ],
+  "idempotency": "idempotent",
+  "interface_mode": "composite",
+  "interface_reason": "Reviewed Contact Shortcut adapter: the executable CLI owns strict success, collection, item, stable-identity, and unified-output validation.",
+  "parameters": {
+    "query": {
+      "description": "搜索关键词；--query 不能为空白（必填）",
+      "required": true,
+      "type": "string"
+    }
+  },
+  "result": {
+    "data_schema": {
+      "additionalProperties": false,
+      "description": "按关键词搜索通讯录用户",
+      "properties": {
+        "count": {
+          "description": "当前响应中通过严格校验的项目数量",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "users": {
+          "description": "按关键词搜索通讯录用户",
+          "items": {
+            "additionalProperties": false,
+            "description": "至少带 userId 或 openDingTalkId 之一的通讯录用户",
+            "properties": {
+              "flowerName": {
+                "description": "用户花名",
+                "type": "string"
+              },
+              "name": {
+                "description": "用户姓名",
+                "type": "string"
+              },
+              "openDingTalkId": {
+                "description": "稳定开放用户 ID",
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": {
+                "description": "职位名称",
+                "type": "string"
+              },
+              "userId": {
+                "description": "稳定用户 ID",
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "users"
+      ],
+      "type": "object"
+    },
+    "outcomes": [
+      "success",
+      "failure"
+    ],
+    "sensitive_paths": [
+      "users.flowerName",
+      "users.name",
+      "users.openDingTalkId",
+      "users.title",
+      "users.userId"
+    ]
+  },
+  "risk": "low",
+  "use_when": [
+    "当你只知道某人的姓名、花名或部分名字，需要把它解析成 userId 及部门等信息以便后续发消息、排日程或指派任务时使用；输入搜索关键词（--query），返回匹配的用户列表。"
+  ]
+}

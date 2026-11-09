@@ -1,0 +1,22 @@
+$ node --test test/pi-*.test.js && node scripts/check-coverage.mjs
+✔ configuration rejects relative state (9.547809ms)
+✔ configuration rejects same workspace (2.164664ms)
+✔ configuration rejects nested state (2.389154ms)
+✔ configuration rejects missing model (1.489767ms)
+✔ configuration rejects missing provider (1.31943ms)
+✔ configuration rejects public API (1.402185ms)
+✔ configuration rejects inconsistent DWS flags (1.383336ms)
+✔ configuration rejects inline key (1.29265ms)
+✔ configuration rejects fake production model (2.008499ms)
+✔ configuration keeps disabled transport and provider env reference (2.641635ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (812.967074ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (913.277989ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1836.299111
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":1,"relativeImports":"closed","httpRoutes":"retained"}

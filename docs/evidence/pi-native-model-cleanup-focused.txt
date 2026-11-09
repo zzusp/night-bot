@@ -1,0 +1,40 @@
+✔ internal execution entrypoints resolve owned services and keep foreign scheduler capabilities separate (11.322892ms)
+✔ canonical model errors retain strict trusted identity and validated detached failure facts (1.528643ms)
+✔ historical Session and model namespaces expose canonical native implementations (6.829355ms)
+✔ tool schema validation and both code SDK renderers agree with independent original helpers (10.439678ms)
+✔ native product attribution and invalid credential guidance preserve secrecy without visual setup references (0.824527ms)
+✔ prepared calls retain their admitted adapter after replacement and are consumed exactly once (14.385958ms)
+✔ native LLM topology changes validate atomically and contain broken observers (4.076179ms)
+✔ native LLM directory and discovery isolate snapshots and reject cancelled results (3.766759ms)
+✔ native LLM preserves middleware authority and distinguishes provider failures from plugin exceptions (6.972387ms)
+✔ native LLM rejects unsupported efforts and invalid model metadata before dispatch (2.666379ms)
+✔ native LLM strips foreign replay and projects files/images before provider I/O (4.370195ms)
+✔ native LLM failure normalization preserves structured facts and reads hostile messages once (4.488062ms)
+✔ native LLM propagates iterator cleanup failure without disguising it as provider rejection (1.651657ms)
+✔ local immutable message construction preserves role, source and detached content (2.279959ms)
+✔ loop request ownership is exact-object and cannot be copied, inherited or proxied (0.261713ms)
+✔ local assistant stream assembly retains malformed-delta tolerance and finish facts (1.221362ms)
+✔ compact assistant streams round-trip original timed chunks and reject corrupt durable records (1.957676ms)
+✔ native provider advertises the pinned Pi SDK catalog and preserves model context and input modalities (110.238615ms)
+ℹ {"catalogProviders":41,"piModelsValidated":1592,"requestsSent":0}
+✔ declared model controls, reasoning and retry limits are resolved directly without provider I/O (9.562413ms)
+✔ owned retry policy resolves explicit bounded/unbounded defaults: undefined (5.904396ms)
+✔ owned retry policy resolves explicit bounded/unbounded defaults: {"mode":"normal"} (1.341242ms)
+✔ owned retry policy resolves explicit bounded/unbounded defaults: {"mode":"normal","maxRetries":0,"retryableCodes":["CUSTOM"],"backoff":{"initialDelayMs":10,"maxDelayMs":40,"jitterRatio":0}} (0.221041ms)
+✔ owned retry policy resolves explicit bounded/unbounded defaults: {"mode":"always","backoff":{"maxDelayMs":50000}} (0.12691ms)
+✔ resolved retry codes detach caller arrays and remain immutable (0.432028ms)
+✔ native retry policy refuses invalid configuration {"mode":"x"} (0.68694ms)
+✔ native retry policy refuses invalid configuration {"mode":"normal","maxRetries":-1} (0.107571ms)
+✔ native retry policy refuses invalid configuration {"mode":"normal","retryableCodes":[]} (0.083826ms)
+✔ native retry policy refuses invalid configuration {"mode":"normal","retryableCodes":["A","A"]} (0.118358ms)
+✔ native retry policy refuses invalid configuration {"mode":"normal","backoff":{"initialDelayMs":100,"maxDelayMs":1}} (0.150315ms)
+✔ native retry policy refuses invalid configuration {"mode":"always","backoff":{"jitterRatio":2}} (0.167621ms)
+✔ native retry policy refuses invalid configuration {"mode":"normal","unknown":1} (0.077586ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1179.464286

@@ -1,0 +1,62 @@
+{
+  "base": "b4de3a0fe5d01095937dad1d82fd62b3ba07a188",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 628,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 13,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "subagentControl": {
+    "pass": 18,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Earlier focused run; subset of default except no added cold test yet"
+  },
+  "archiveChannelAndProviderRecovery": {
+    "pass": 31,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Archive/channel cases overlap default; native provider recovery adds integration coverage"
+  },
+  "remainingDirectDshDevDependencies": 80,
+  "removedSourceCopies": [
+    "src/native-chunked-list.js",
+    "test/fixtures/legacy-subagent-interface.mjs"
+  ],
+  "removedNotice": "licenses/dsh-chunked-list-MIT.txt",
+  "retainedNotices": "Subagent, session query, zone, tool and process sources remain attributed",
+  "ownBackupUpgrade": "Projection v6 checkpoints are discarded and v7 rebuilt from full Pi audit history; missing required history refuses restoration",
+  "windows": "No new platform claims; actual Windows ACL/process acceptance remains unverified",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-catalog-default.txt",
+      "sha256": "fee6f42a1350c757ca702b7f798b645efbdaba3fc83bb562a3858917c88ed414"
+    },
+    {
+      "path": "docs/evidence/pi-native-catalog-focused.txt",
+      "sha256": "cefe93af7d6b8032b29d4a6a23ec2680358453d6b9c9f993b630fde247b7464e"
+    },
+    {
+      "path": "docs/evidence/pi-native-catalog-control.txt",
+      "sha256": "7063b7d5f6a504ed59590184e975de83b21d6533bdfc958098b7061bef29f776"
+    },
+    {
+      "path": "docs/evidence/pi-native-catalog-integration.txt",
+      "sha256": "55cd59a998e523e4c4482b072670d1c98ab8a4a2855593027baaf24b80dad5e3"
+    },
+    {
+      "path": "docs/evidence/pi-native-catalog-checks.txt",
+      "sha256": "b852293673a42c5f8bb77aec71683a9a0a3da97474ff26ff9fb3643ed5c393f9"
+    },
+    {
+      "path": "docs/evidence/pi-native-catalog-frozen.txt",
+      "sha256": "6ef8dc945a0eb4768d372f4ff9fa3ca93d65cec68163e6348f95fd6e98062ae5"
+    }
+  ]
+}

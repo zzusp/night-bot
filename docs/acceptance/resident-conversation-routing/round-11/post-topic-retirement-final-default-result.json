@@ -1,0 +1,16 @@
+{
+  "group": "default",
+  "command": "pnpm test",
+  "exit": 1,
+  "startedAt": "2026-11-07T23:44:07.568895+00:00",
+  "finishedAt": "2026-11-08T00:43:25.654569+00:00",
+  "sourceCount": 1110,
+  "sourceMapSha256": "68a432a68686ddafa7d3528db642f25bfa45200fbb571af26afb7f6a151f5dd1",
+  "sourceChanged": [],
+  "retiredPathsStillAbsent": true,
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-final-default.log": "9294da9c5cee503d257376e9f1ae41371c45ec700280ce01a84fee3bcaad4858",
+    "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-final-default-stderr.log": "fb109ba5b1a1d9f431a799956a64fdafac95d74291ff042e2a3b39a2e7536a13"
+  },
+  "scope": "Actual fixed pnpm group with original runner and no retries/skip override. Parse case results from original logs; process exit alone is not case or business PASS."
+}

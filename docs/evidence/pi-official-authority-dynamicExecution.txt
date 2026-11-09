@@ -1,0 +1,53 @@
+✔ 自身资源查询在回读期间失效时不向后续模型步骤交付旧证明 (92.698667ms)
+✔ 自身资源查询仅由 Host 回调提供，配置不能冒充内部工具 (33.664631ms)
+✔ 自身资源查询不能被原生注册接口同名覆盖，仍调用 Host 绑定 (39.611549ms)
+✔ 32 continued inputs retire recursive Host snapshots on actual SDK requests and replay (4576.485179ms)
+ℹ {"scope":"official provider-visible fields at scripted adapter entry, UTF-8 JSON bytes; no provider tokens","rawAuditInputTextBytes":153256,"metrics":[{"version":1,"rawInputBytes":48342,"currentInputBytes":1837,"hostBytes":2295,"messagesBytes":6013,"adapterRequestBytes":6890},{"version":2,"rawInputBytes":48342,"currentInputBytes":1837,"hostBytes":2295,"messagesBytes":6308,"adapterRequestBytes":7185},{"version":3,"rawInputBytes":48342,"currentInputBytes":1837,"hostBytes":2295,"messagesBytes":6603,"adapterRequestBytes":7480},{"version":4,"rawInputBytes":283,"currentInputBytes":1825,"hostBytes":2281,"messagesBytes":6884,"adapterRequestBytes":7761},{"version":5,"rawInputBytes":283,"currentInputBytes":1825,"hostBytes":2281,"messagesBytes":7179,"adapterRequestBytes":8056},{"version":32,"rawInputBytes":284,"currentInputBytes":1826,"hostBytes":2285,"messagesBytes":15167,"adapterRequestBytes":16044}]}
+✔ upgrade shadows every already stored recursive v1/v2/v3 input without rewriting originals (67.791723ms)
+ℹ {"scope":"execution Host messages, UTF-8 JSON bytes","beforeBytes":193198,"afterBytes":2148}
+✔ dynamic execution uses independent identities, task-parallel sessions and a generic submit tool (35.968111ms)
+✔ durable native submit is recollected without another model turn after result callback crash (41.458448ms)
+✔ continuation preserves native history while new input and requirement revisions remain authenticated (53.489595ms)
+✔ 原生网页及job只读身份不覆盖显式写效果，同名替换不继承只读身份 (222.007664ms)
+✔ native preset-only tools and workspace instructions are retained; managed subprocesses drain before result settlement (45.000299ms)
+✔ dynamic native sessions use configured shell and delegation without a session tool whitelist (43.140907ms)
+▶ dynamic background requests retain native capability and native errors can be corrected in the same conversation
+  ✔ true (32.070726ms)
+  ✔ false (48.74175ms)
+✔ dynamic background requests retain native capability and native errors can be corrected in the same conversation (81.516453ms)
+✔ native process drain failure retains the execution slot and cannot report a settled result (24.579903ms)
+✔ drain recovery rechecks original handles once, preserves tool history, and never replays the tool (54.506903ms)
+✔ lease change during process observation cannot release the retained execution (34.08485ms)
+✔ missing process quiescence capability never becomes a drain proof on retry (1.210958ms)
+✔ process tracking handles async terminal allocation and isolates parallel native call ownership (11.947563ms)
+✔ a later foreground drain failure still stops the same executors retained background processes (34.887846ms)
+✔ retained process scopes keep services alive between tools and isolate parallel execution cleanup (0.615073ms)
+✔ native recovery validates durable identity and refuses missing bound sessions before releasing a lease (35.190058ms)
+✔ maintenance proof accepts actual committed Pi history after cold inspection without another model or tool run (55.782086ms)
+✔ trusted native read preserves historical job data without treating it as a launch: draft registered and running acknowledgement (35.406494ms)
+✔ trusted native read preserves historical job data without treating it as a launch: material registered without result (32.487095ms)
+✔ read name does not exempt a side-effecting or replaced tool from background identity guard: write (33.715919ms)
+✔ read name does not exempt a side-effecting or replaced tool from background identity guard: replace (38.200523ms)
+✔ real structured native job identity is validated even when returned by a trusted read (29.665071ms)
+✔ unverifiable shell background identity in text still cannot report false success (41.41397ms)
+✔ terminal native shell output is data, not a background launch: nested historical receipts in foreground stdout (33.980556ms)
+✔ terminal native shell output is data, not a background launch: historical job JSON in foreground stderr (47.25842ms)
+✔ terminal native shell output is data, not a background launch: job marker printed by a completed foreground command (28.756548ms)
+✔ foreground shell exemption retains identity checks: malformed (37.03479ms)
+✔ foreground shell exemption retains identity checks: background-request (30.499734ms)
+✔ foreground shell exemption retains identity checks: structured-job (58.326101ms)
+✔ foreground shell exemption retains identity checks: replace (55.648748ms)
+✔ unverifiable background job without its native registry cannot report false success (28.355576ms)
+✔ one failed process termination still attempts cleanup of every other managed handle (0.632679ms)
+✔ configured native preset is chosen once and resume retains the persisted preset without changing permissions (45.563276ms)
+✔ anonymous field v12 native failure retains raw diagnostics and derives failure independently of HTTP200 (20.95383ms)
+✔ oversized execution Host survives reopen with exact source and recovery directories (90.857878ms)
+ℹ {"oversizedExecutionHostBytes":[2404,2404,2404]}
+ℹ tests 41
+ℹ suites 0
+ℹ pass 41
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7080.880042

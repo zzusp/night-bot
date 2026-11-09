@@ -1,0 +1,25 @@
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (41.63737ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (97.827329ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (49.44076ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (8.379828ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (30.284498ms)
+✔ legacy flat documents migrate once under writer admission and watcher follows external atomic changes (166.414626ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (28.819552ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (146.691163ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (42.75186ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (19.686922ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (45.909648ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (7.433732ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (6.460794ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (10.859539ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (11.168124ms)
+✔ directory validation retains caller attribution through the injected filesystem service (4.697735ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (4.072943ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1676.553515

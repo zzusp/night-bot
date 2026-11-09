@@ -1,0 +1,23 @@
+{
+  "command": "node --test --test-concurrency=1 test/pi-native-credentials.test.js test/pi-native-restart-provider.test.js test/pi-resident-router-flow.test.js",
+  "exit": 1,
+  "startedAt": "2026-11-08T01:38:31.263501+00:00",
+  "finishedAt": "2026-11-08T02:10:01.519067+00:00",
+  "pid": 78844,
+  "termination": "natural subprocess return; no worker intervention",
+  "sourceCount": 1110,
+  "sourceMapSha256": "1af3e3ac7a4677c4bdc6b5106eb648ffcde4d4552e0c28646c8254adb4f07ecb",
+  "sourceChanged": [
+    {
+      "file": "AGENTS.md",
+      "before": "327018ce266440759f4c9e0ab3441034f505efbc690a287ac1cc0b7879b88d64",
+      "after": "7622ab5c5101b6f93b73827550b6f6d1230b13c7e1d1da163c791a9cac8f4e92"
+    }
+  ],
+  "retiredPathsStillAbsent": true,
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-12/repaired-default-files.log": "8b3b92ab339ee2483349417a1c6081ab54c188c724dbe660b0534693b72e0c86",
+    "docs/acceptance/resident-conversation-routing/round-12/repaired-default-files-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "Actual full original three files after minimal fixes; all original assertions retained. No test name filtering, skip override or retry."
+}

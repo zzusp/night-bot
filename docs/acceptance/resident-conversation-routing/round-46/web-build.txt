@@ -1,0 +1,72 @@
+R46 前端构建原回执（仅移除ANSI颜色）
+Command: pnpm --dir packages/web-console build
+Source: call_3bb46d6503194dc992ba72e48f953bc7
+Original timestamp: 2026-11-09T06:01:43.520Z
+构建自然返回；实际tsc --noEmit && vite build完成，尾部SHA对应受验4前端源。该调用未预采样起始pin，不补造独立SOURCE_BEFORE。
+
+$ tsc --noEmit && vite build
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 278 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.50 kB │ gzip:   0.30 kB
+dist/assets/index-DHx-n-rW.css   48.02 kB │ gzip:   9.09 kB
+dist/assets/index-D3Bz00bX.js   452.86 kB │ gzip: 137.72 kB
+
+✓ built in 383ms
+4f75a874f7234ebe5937320a722eca858097185bf3250f12270dc947525e3909 *packages/web-console/src/ChannelsPage.tsx
+9c3b567a20581e4e529ccf7c578a7bf3ca2ec1af2fff5ef614faa72de94fb80c *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+
+
+## 最终无 profile 构建
+原始回执：f0bcb53a-ea67-4af1-97b4-47cd9ac527dc.jsonl:9738；tool_use_id=call_a2c7373a63c245ca815289b79d8d4e53。
+按原件摘录，仅去 ANSI；没有补造构建前采样，实际版本另由最终浏览器输入与产物起止 SHA 绑定。
+$ tsc --noEmit && vite build
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 278 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.50 kB │ gzip:   0.30 kB
+dist/assets/index-DHx-n-rW.css   48.02 kB │ gzip:   9.09 kB
+dist/assets/index-zHd46ULp.js   453.36 kB │ gzip: 138.04 kB
+
+✓ built in 339ms
+
+--- Final no-profile build sources ---
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+ChannelsPage.tsx NUL=0 LF-only
+api.ts NUL=0 LF-only
+
+
+## 编辑表单实际构建
+原件：f0bcb53a-ea67-4af1-97b4-47cd9ac527dc.jsonl:10610；tool_use_id=call_5a5d5cadd3374042a6c7dababd56f562；is_error=false。
+请求记录时间2026-11-09T07:58:36.949Z，结果记录时间2026-11-09T07:58:48.338Z；同一工具请求先收紧TSX回执校验再执行 pnpm --dir packages/web-console build，不能把两记录时间当作 pnpm 内部起止。
+没有构建前后成对源码pin；以下仅为Main在构建完成后独立读到的当前4源与3资产SHA，不补造预采样，也不以构建代替浏览器或Host验证。
+
+$ tsc --noEmit && vite build
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 278 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.50 kB │ gzip:   0.30 kB
+dist/assets/index-BtkjQZWV.css   48.57 kB │ gzip:   9.17 kB
+dist/assets/index-ZIphw3--.js   459.84 kB │ gzip: 140.20 kB
+
+✓ built in 364ms
+
+POST_BUILD_INDEPENDENT_PINS
+fbf8ef09794147ab2565f75e508fdbd6b6f321b7f02a09c758e48a87c07ecdf3 *packages/web-console/src/ChannelsPage.tsx
+b58209e05ab7ee070abe8f48f59ead3c0175d2dc42f18f490648398637e8b4cd *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+84254d55143d1a453e82d17a777013a62bb3366b3b878230a9c052e4309494ee *packages/web-console/src/styles/app.css
+d15a318586a04f3aa18a56ae517776693bf4b0e4bfcb54c6c9588a1df676435f *packages/web-console/dist/index.html
+2252d5f3a2bb87bdf038d9e67021025b342ee6e02905eb676bb90c185642c406 *packages/web-console/dist/assets/index-ZIphw3--.js
+ac983620a543ca48dde27af3be27caaffd57f1f1fd81be24e9faa295b77b539e *packages/web-console/dist/assets/index-BtkjQZWV.css

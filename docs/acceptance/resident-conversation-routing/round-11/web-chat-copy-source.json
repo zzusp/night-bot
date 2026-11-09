@@ -1,0 +1,11 @@
+{
+  "docs/tmp/tests-web-chat-copy.mjs": "1211b118e23ce06d6839bbc4de789957814fa5fd94268bf337061cbcf7e40d94",
+  "packages/web-console/test/preview.mjs": "3a8b0e95f54a308da6868e5edc1c9ac1eb3d3f717ae8c5fe1f190be414a349c5",
+  "packages/web-console/server/session-view.js": "a38fdbe8d0cab8bcfd22f7a10a16b576fa4bd0da0793d87429560270a74e3f91",
+  "packages/web-console/server/plugin.js": "313171bdfd88786988cff952e2033b6452e524b6ab6dffd6b79b584ff742705d",
+  "packages/web-console/src/ChatPage.tsx": "24cc27707a5506d313ed7490164bac2a58c2c18562576344e3d01db7bd9f1076",
+  "packages/web-console/src/components/Shared.tsx": "e8f9b6e97c842fb0974c0a9039f8c34f5fca3396860bd2a838cf75a21f0d41ad",
+  "packages/web-console/dist/index.html": "af60150f83e5fa59fdca3b2d1eb4baf609f45f96026dd4a39da2db7b9d87a092",
+  "packages/web-console/dist/assets/index-CmiISysY.js": "7c1b6ff3b63e29db5a7496ce66a66b492edac92ef91971fb8b84c4454a22716e",
+  "packages/web-console/dist/assets/index-oNAAD19Z.css": "93cc56b2b9f60d37d46c7876726672fa7db19016122cb04d7a00f937d7a82add"
+}

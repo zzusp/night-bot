@@ -1,0 +1,128 @@
+{
+  "taskId": "b0o72thqz",
+  "status": "CANCELLED",
+  "stopMechanism": "Host TaskStop for this exact background task; no by-name or global kill; no source-change guard trick",
+  "head": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+  "branch": "worktree-resident-conversation-routing",
+  "reason": "Runtime emitted no new events after a failed service-close cleanup; exact worker kept consuming CPU/memory. Controlled stop expressly authorized; not a passing run.",
+  "identityCheckedBeforeStop": [
+    {
+      "name": "python.exe",
+      "pid": 46588,
+      "parentPid": 108300,
+      "createdUtc": "2026-11-07T10:06:39.0343490Z"
+    },
+    {
+      "name": "pwsh.exe",
+      "pid": 45352,
+      "parentPid": 46588,
+      "createdUtc": "2026-11-07T10:48:03.0062700Z"
+    },
+    {
+      "name": "node.exe",
+      "pid": 38192,
+      "parentPid": 45352,
+      "createdUtc": "2026-11-07T10:48:03.5681380Z"
+    },
+    {
+      "name": "cmd.exe",
+      "pid": 82164,
+      "parentPid": 38192,
+      "createdUtc": "2026-11-07T10:48:03.8892270Z"
+    },
+    {
+      "name": "node.exe",
+      "pid": 46408,
+      "parentPid": 82164,
+      "createdUtc": "2026-11-07T10:48:03.9864610Z"
+    },
+    {
+      "name": "cmd.exe",
+      "pid": 95992,
+      "parentPid": 46408,
+      "createdUtc": "2026-11-07T10:48:04.6165320Z"
+    },
+    {
+      "name": "node.exe",
+      "pid": 85824,
+      "parentPid": 95992,
+      "createdUtc": "2026-11-07T10:48:04.6777500Z"
+    },
+    {
+      "name": "node.exe",
+      "pid": 103600,
+      "parentPid": 85824,
+      "createdUtc": "2026-11-07T10:48:04.7699410Z"
+    },
+    {
+      "name": "node.exe",
+      "pid": 59744,
+      "parentPid": 103600,
+      "createdUtc": "2026-11-07T11:13:15.6879160Z"
+    }
+  ],
+  "health": {
+    "firstObservedUtc": "2026-11-07T12:37:18.186578+00:00",
+    "lastLogWriteUtc": "2026-11-07T12:06:44.419415+00:00",
+    "firstWorkerCpuSeconds": 8384.40625,
+    "firstWorkerWorkingSetBytes": 3285626880,
+    "secondObservedUtc": "2026-11-07T12:44:50.6690706+00:00",
+    "secondWorkerCpuSeconds": 9493.640625,
+    "secondWorkerWorkingSetBytes": 3583578112,
+    "workerHandles": 241,
+    "workerFile": "test/task-session-service-native.test.js",
+    "tcpConnectionsForExactTree": 0,
+    "extraBusinessChildProcesses": 0
+  },
+  "independentReadback": {
+    "atUtc": "2026-11-07T12:45:34.4381732+00:00",
+    "survivingOriginalIdentities": [],
+    "childrenOfOriginalPids": [],
+    "nonDocFiles": 1200,
+    "nonDocChanged": [],
+    "nonDocDigest": "4b685fa052b861da86c6f7e6e12d50a213e95dfa6f7caab0e37a69618f21b1a8",
+    "docsExecutableAndFixtureFiles": 701,
+    "docsChanged": [],
+    "docsDigest": "294f1abd9e1154995dcb5bdd6053c0f70235ea99ba73233b4b01b97c1182d595",
+    "trackedNonDocDiff": []
+  },
+  "runtime": {
+    "command": "pnpm test:runtime",
+    "status": "CANCELLED",
+    "naturalExitCode": null,
+    "rootSummaryPresent": false,
+    "logBytes": 65346,
+    "logLines": 480,
+    "logSha256": "1d93555caba88055473727099725dc2febacb72dec3374e96b1cb8343b822392",
+    "observedSpecEventsNotRootTotals": {
+      "PASS": 94,
+      "FAIL": 49,
+      "SKIP": 12
+    },
+    "lastEvidence": "runtime.log:474-480: cleanup deadline/resource.close failure, then late-settlement failed/pending=[]; not successful business/cleanup completion",
+    "completeAssertionDetails": "UNAVAILABLE: Node spec reporter never reached root summary/flush"
+  },
+  "originalResultsPreserved": {
+    "path": "baseline-results.json",
+    "sha256": "894ee6c8e5312203bf8bd20bc023c9afa8edb4c2caf978e17759fbbfc670363a",
+    "containsOnlyNaturalDefaultResult": true,
+    "default": "exit1/tests1226/pass1194/fail6/skipped26/cancelled0; pnpm check not reached"
+  },
+  "notRunAfterCancellation": [
+    "routing",
+    "domain",
+    "containment",
+    "web-node",
+    "web-build",
+    "web-browser"
+  ],
+  "resourceBoundary": {
+    "originalDriverAndAllObservedSourceConsumersStopped": true,
+    "observedProcessHandlesReleasedWithExitedProcesses": true,
+    "businessCloseVerified": false,
+    "unknownReceipts": "PRESERVED_NOT_RECONCILED",
+    "fixtureDirectories": "RETAINED_NOT_UNIQUELY_MAPPED; no global Temp scan, recursive deletion or live WAL/lock deletion",
+    "noProfileCreatedDuringBaselineStop": true
+  },
+  "next": "Safe source-consumer drain permits assigned edits; preserve all failed/unknown states. Modified same-version complete required validation remains outstanding."
+}

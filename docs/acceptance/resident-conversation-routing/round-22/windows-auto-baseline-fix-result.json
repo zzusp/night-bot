@@ -1,0 +1,30 @@
+{
+  "args": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^Windows scoped stage planning rejects unreproducible baselines and propagation that changes unrelated ACEs$",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "selectedNames": [
+    "Windows scoped stage planning rejects unreproducible baselines and propagation that changes unrelated ACEs"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "durationSeconds": 0.28200000000651926,
+  "sourceBefore": {
+    "test/pi-native-sandbox.test.js": "4207b915973fce09dfe81829399009a53c3eaac9e69305eab78788b85df3fa80",
+    "src/process/windows-acl.js": "2b5fa6292053af031c7ae66afbc0c8c94a6af33a95b4b8045bdaa2b0ac62fd36",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329"
+  },
+  "sourceAfter": {
+    "test/pi-native-sandbox.test.js": "4207b915973fce09dfe81829399009a53c3eaac9e69305eab78788b85df3fa80",
+    "src/process/windows-acl.js": "2b5fa6292053af031c7ae66afbc0c8c94a6af33a95b4b8045bdaa2b0ac62fd36",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "4fdbfa05ad8f8e1188bcc5508dce7ba60eca9d8f1e287b33bfe1ed85787fc15c",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "realVendorExecuted": false
+}

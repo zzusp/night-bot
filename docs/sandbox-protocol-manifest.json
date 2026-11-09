@@ -1,0 +1,8 @@
+{
+  "sourcePackage": "@deepseek-ai/dsh-sandbox",
+  "sourceVersion": "0.2.1-alpha.2",
+  "sourceSha256": "b56373befbfcfe281c17c8892e9a4b2cdcb96851290b3ed0ff56b08915e2f743",
+  "local": "escalation argument/approval choreography, canonical writable roots, runner diagnostic helpers",
+  "externalRemaining": "SandboxUnavailableError identity; abstract SandboxProvider is not copied or mounted",
+  "serviceReplacementCredit": 0
+}

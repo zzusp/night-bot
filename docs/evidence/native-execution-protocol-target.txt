@@ -1,0 +1,45 @@
+✔ native LLM prepared-call ownership, defaults and RPC surface match public contract (16.830753ms)
+✔ native LLM topology changes validate atomically and contain broken observers (3.792991ms)
+✔ native LLM directory and discovery isolate snapshots and reject cancelled results (4.269339ms)
+✔ native LLM preserves middleware authority and distinguishes provider failures from plugin exceptions (4.467668ms)
+✔ native LLM rejects unsupported efforts and invalid model metadata before dispatch (2.30038ms)
+✔ native LLM strips foreign replay and projects files/images before provider I/O (4.073533ms)
+✔ native LLM failure normalization preserves structured facts and reads hostile messages once (1.636598ms)
+✔ native LLM propagates iterator cleanup failure without disguising it as provider rejection (1.198828ms)
+✔ local immutable message construction preserves role, source and detached content (2.059356ms)
+✔ native loop request ownership is exact-object and cannot be copied or borrowed from legacy markers (0.189456ms)
+✔ local assistant stream assembly retains malformed-delta tolerance and finish facts (1.798412ms)
+✔ compact assistant streams round-trip original timed chunks and reject corrupt durable records (3.697457ms)
+✔ Scope algorithms agree with independent original private-state implementation (11.992237ms)
+✔ every retained SDK Scope peer shares the application authority (3.694972ms)
+✔ native child depth, option and descriptor helpers preserve legacy delegation boundaries (12.778583ms)
+✔ native chunked catalog storage retains legacy sharing, order and strict checkpoint validation (11.206751ms)
+✔ native human time-zone normalization preserves legacy strict IANA and UTC vocabulary (17.448915ms)
+✔ native registry and pipeline preserve valid public metadata, role denials, output failures and cancellation contracts (37.791926ms)
+✔ native registry restrictions intersect inherited capabilities without hiding scope-owned submission tools (11.729249ms)
+✔ native monotonic guard applies after permissive middleware and prevents hidden/unknown side effects with audit (6.792804ms)
+✔ native execution drains a started body before recording cancellation and never invokes an already cancelled body (3.281409ms)
+✔ native output contract validates body and post-policy values and isolates observers (7.255292ms)
+✔ native staged scheduler preserves deferred contexts, turn completion, projection, post-policy and final content order (2.051384ms)
+✔ native PTC dispatch preserves capability collapse, ordered parallel commits, audit and structured results (9.557884ms)
+✔ an early PTC program return drains started effects and rejects queued work without replay (4.7343ms)
+✔ PTC calls cannot expose capabilities removed by a child restriction and fail closed without a runtime (3.846381ms)
+✔ disposing one duplicate guard registration never removes another active permission boundary (2.080938ms)
+✔ a collapsed direct capability cannot run its content finalizer to hide the denial (2.533861ms)
+✔ invalid admission and post-policy decisions fail closed without forging successful effects (1.722158ms)
+✔ validated output values retain identity from post-policy to the final immutable audit snapshot (2.770649ms)
+✔ an execution wrapper cannot replace away the original caller cancellation (1.612973ms)
+✔ tool failures with hostile Error getters still settle one auditable error result (4.516422ms)
+✔ a journal flush failure prevents tool and wrapper effects before dispatch (1.811412ms)
+✔ cancellation during the durable intent barrier never reaches an execution wrapper (2.775145ms)
+✔ code audit failure aborts admission and still drains all started effects and outstanding audit work (4.486516ms)
+✔ code result rendering preserves shallow JSON formatting and handles deeply nested JSON with bounded indentation (64.03517ms)
+✔ structured error facts are read once before the final audit snapshot (1.809239ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 379.335267

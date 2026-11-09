@@ -1,0 +1,24 @@
+{
+  "startedAt": "2026-11-08T04:02:53.336348+00:00",
+  "finishedAt": "2026-11-08T04:02:56.493580+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^official resource audit",
+    "test/pi-official-job-ledger.test.js"
+  ],
+  "runnerPid": 94356,
+  "exitCode": 0,
+  "naturalExit": true,
+  "sourceCount": 462,
+  "sourceSha256": "f3119a1d02e6e16f524cda7e0d5fc36349795968978230f1b2960fe43e48a5b3",
+  "sourceChanged": [],
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "stdoutSha256": "d1a8e17a2a0b2e23327de30237a4c51e3cfeb11163dbf518323fd57f12539f59",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeProfileExecuted": false,
+  "realVendorExecuted": false
+}

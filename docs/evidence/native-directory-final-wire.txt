@@ -1,0 +1,19 @@
+✔ native directory preserves legacy canonical changes, model notices and original-project recovery (26.654141ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (3.537034ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (4.327657ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (2.482474ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (2.545118ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (4.821102ms)
+✔ directory validation retains caller attribution through the injected filesystem service (3.345977ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (2.850499ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1305.415791ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (2994.546468ms)
+✔ headless Host refuses startup when the required native provider failed to mount (55.253551ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4499.439286

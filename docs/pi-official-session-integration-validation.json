@@ -1,0 +1,98 @@
+{
+  "baseCommit": "4d7130bd24c6bd7895d185ed1e9fa49da1744fbc",
+  "officialPiVersion": "1.5.0",
+  "defaultFactorySwitched": false,
+  "completeOfficialSessionMigration": false,
+  "completeDshIndependence": false,
+  "directDshDevDependencies": 39,
+  "productionDshDependencies": 0,
+  "results": {
+    "default": {
+      "pass": 858,
+      "fail": 0
+    },
+    "officialComponentsIntegration": {
+      "pass": 45,
+      "fail": 0
+    },
+    "rootDurabilityAndSessionAfterFinalWrapperChanges": {
+      "pass": 4,
+      "fail": 0
+    },
+    "modelAndProvider": {
+      "pass": 44,
+      "fail": 0
+    },
+    "toolsApproval": {
+      "pass": 50,
+      "fail": 0
+    },
+    "contextMemoryResources": {
+      "pass": 50,
+      "fail": 0
+    },
+    "cwdSandboxBusinessPorts": {
+      "pass": 28,
+      "fail": 0
+    },
+    "nativeStoreAndLegacyPersistence": {
+      "pass": 38,
+      "fail": 0
+    },
+    "archiveAndLegacyMaintenance": {
+      "pass": 41,
+      "fail": 0
+    },
+    "archiveMaintenanceAfterNativeRefusalCases": {
+      "pass": 32,
+      "fail": 0
+    }
+  },
+  "resultsOverlap": true,
+  "fullRuntimeSuiteThisStage": false,
+  "evidence": {
+    "default": {
+      "path": "docs/evidence/pi-official-session-default.txt",
+      "sha256": "8dcb9159a1b6ee8476a3d5e24d0e0a1df58711e75be29907e7ad3b27a3238ee9"
+    },
+    "integration": {
+      "path": "docs/evidence/pi-official-session-integration.txt",
+      "sha256": "5cd89a3b5ea056e2883a4ab00b12d74fde7bb95a8fa80d468a384b1bfb8ff05f"
+    },
+    "archive": {
+      "path": "docs/evidence/pi-official-session-archive.txt",
+      "sha256": "a1a2fda2c53d838fabbf302cdf2526f67020b6d7104e2d5e99a82213b3ca8c92"
+    },
+    "archiveMaintenance": {
+      "path": "docs/evidence/pi-official-session-archiveMaintenance.txt",
+      "sha256": "979cf02c820de10ba90ec4b87dff9f3e2508e7dfa12464d665aba61565b979de"
+    },
+    "context": {
+      "path": "docs/evidence/pi-official-session-context.txt",
+      "sha256": "d3995543b9472f8d2edb7c703f132dd715a92f28581f74e791bacceececc232d"
+    },
+    "businessPolicy": {
+      "path": "docs/evidence/pi-official-session-businessPolicy.txt",
+      "sha256": "dd4be79660240f6dcc8ee2006487582b246b96508fdbb76477a9388d2db3a0d0"
+    },
+    "toolsApproval": {
+      "path": "docs/evidence/pi-official-session-toolsApproval.txt",
+      "sha256": "cf972d742f2f6853f9bb6c91442a5ecd55225b8a021001f89caf8382b2a0f9c2"
+    }
+  },
+  "boundaries": [
+    "Production default remains existing Pi loop until durable business admission, lifecycle and all task/channel consumers switch together.",
+    "Official entries persist directly; typed Night receipts, leases, fsync and effect reconciliation remain application responsibilities.",
+    "Native task archives round-trip original Pi bytes; native maintenance requires defined business drain receipts and fails closed today.",
+    "Signed-memory forgetting deletes facts but blocks provider dispatch if policy would rewrite signed history; typed reason propagated by official-session prompt wrapper. No signature is removed or fabricated.",
+    "No automatic historical signed-turn omission, no custom session search, no private Pi deep imports.",
+    "New session assembly requires explicit SettingsManager; old always/custom retry policy is not claimed equivalent to official retry settings.",
+    "Tool additionalContexts retained as native result metadata; official business packet admission remains pending.",
+    "No full background Memory extraction through new official actor yet.",
+    "Explicit old Night backup format upgrade into native writer is planned but not implemented. Existing old-format backup/upgrade path retained.",
+    "No licenses removed in this stage; retained derived source still requires attribution.",
+    "Existing observer-archive-interaction test refers to an already deleted observer web-client and was not repaired in this stage."
+  ],
+  "historicalCheckpoint": true,
+  "supersededBy": "docs/PI-NATIVE-DEFAULT-STATUS.md"
+}

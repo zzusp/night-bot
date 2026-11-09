@@ -1,0 +1,26 @@
+✔ native workspace public lifecycle, membership, ordering, archive and pin behavior match legacy (59.058576ms)
+✔ workspace canonical paths reuse symlinks and validate immutable session cwd before membership (8.172265ms)
+✔ default workspace initializes once and its tombstone prevents automatic recreation after deletion (15.867853ms)
+✔ header-only bootstrap is deterministic and filters missing, invalid or mismatched session accounts (9.555722ms)
+✔ archive checks activity before writing, commits before stop, contains provider failures and is idempotent (6.092098ms)
+✔ native workspace does not publish an uncommitted registration through path lookup (6.342556ms)
+✔ known pending mutations recover only their named row and unexplained corruption remains intact (14.45673ms)
+✔ failed history listing cannot commit an empty initialized workspace registry (3.655343ms)
+✔ active workspace creation drains before its shared storage facility closes (7.925184ms)
+✔ a workspace resolver can close its owner without deadlocking or creating a directory after shutdown (7.297116ms)
+✔ archive stop providers can close the owner after durable archival without waiting on their own operation (8.401791ms)
+✔ workspace entities retain the registry owner after their creating caller scope is disposed (8.014798ms)
+✔ explicit valid rebinding prunes a stale raw account so restart cannot acquire duplicate session owners (14.054717ms)
+✔ workspace record/order failures roll back without exposing a partial registration and failed rollback stays recoverable (18.425175ms)
+✔ failed workspace record deletion restores the durable order and published entity (12.538592ms)
+✔ asynchronous commit observers always see a coherent published workspace order (19.860755ms)
+✔ archived-session admission follows live/cached subagent lineage and keeps forks independent (0.498302ms)
+✔ native workspace archive blocks real Pi requests including subagent lineage and unarchive restores admission (1280.767408ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1399.089307

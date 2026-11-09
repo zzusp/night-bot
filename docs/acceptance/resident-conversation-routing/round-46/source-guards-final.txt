@@ -1,0 +1,122 @@
+R46 final no-profile production guards
+SOURCE_BEFORE
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":190,"retiredModules":10,"excludedUiModules":3,"explicitlyAdaptedModules":57,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":395,"literalBareImports":193,"status":"declared-production-imports"}
+{"runtimeJsFiles":395,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":2,"historicalFormatFilesRemoved":9}
+
+CHECK_EXIT_CODE=0
+SOURCE_AFTER
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+SOURCE_CHANGED=[]
+
+
+R46 final runner-join production guards
+
+
+SOURCE_BEFORE
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+file:///D:/codex/worktrees/resident-conversation-plan/night-bot/scripts/check-coverage.mjs:29
+  if (hash !== entry.sha256) throw new Error('Unrecorded core change: ' + entry.source)
+                                   ^
+
+Error: Unrecorded core change: dws-runner.js
+    at file:///D:/codex/worktrees/resident-conversation-plan/night-bot/scripts/check-coverage.mjs:29:36
+
+Node.js v24.19.0
+[ELIFECYCLE] Command failed with exit code 1.
+
+CHECK_EXIT_CODE=1
+SOURCE_AFTER
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+SOURCE_CHANGED=[]
+
+
+R46 final runner-join guards after derived-source registration
+
+
+SOURCE_BEFORE
+dc31214dcb294554d84cd3ee27f8f1a5fa0762dd2e0adf8f6c020571ae67a34d *docs/source-manifest.json
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":190,"retiredModules":10,"excludedUiModules":3,"explicitlyAdaptedModules":57,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":395,"literalBareImports":193,"status":"declared-production-imports"}
+{"runtimeJsFiles":395,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":2,"historicalFormatFilesRemoved":9}
+
+CHECK_EXIT_CODE=0
+SOURCE_AFTER
+dc31214dcb294554d84cd3ee27f8f1a5fa0762dd2e0adf8f6c020571ae67a34d *docs/source-manifest.json
+f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa *packages/dingtalk-core/dws-runner.js
+6cf4fea62583690d832649aff755d140752f27120ae1d0092341f75cdc32af96 *src/host.js
+b82a96eb77642dbe3d8ca73bda707f4f5a9038cd2898e5ae7331180fa67c0907 *src/channels/plugins/dingtalk-binding.js
+36d40ce51bd134107f0428ce9b2d4eb84bb4f35ee4bd7a728141eecce7bbe902 *packages/web-console/server/plugin.js
+74133e685efca02cdc941b5c0db0aeeaa43dc0999729383a010dba61783ff717 *packages/web-console/server/views.js
+533ac0bd515ff50aa91def72bcdc94cb8132aec7a05ab95cb6e47886b7692802 *packages/web-console/src/ChannelsPage.tsx
+5c9e97258a1e3fff1597beacb390abd28b77465b80a174efee16335d0ce2bc57 *packages/web-console/src/api.ts
+c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28 *packages/web-console/src/App.tsx
+b1cf3d684ac59a4b486f08e2afae9e9d0d8c43ddc756dd012cca76bc46867cec *packages/web-console/src/styles/app.css
+SOURCE_CHANGED=[]
+
+
+R46 complete channel-edit production guards
+START_UTC 2026-11-09T08:56:39.115267+00:00
+HEAD 2db2aa7c27c9f1ced506de7740c6aac4b757119c UNCOMMITTED_WORKTREE true
+SOURCE_BEFORE {"docs/source-manifest.json": "c514571dd05c502d8b98e73eb1412be3f2814fd9eaf7b01aec918879eeb988ed", "package.json": "810c075c2780b48f9cface408c9b4970a6c3299d5de99cec5f1c3d3055bbeb68", "packages/dingtalk-core/dws-runner.js": "f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa", "packages/dingtalk-core/platform-schedule.js": "51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422", "packages/dingtalk-core/store.js": "91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481", "packages/dingtalk-core/task-session-service.js": "0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391", "packages/web-console/server/plugin.js": "82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8", "packages/web-console/server/views.js": "91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46", "packages/web-console/src/App.tsx": "c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28", "packages/web-console/src/ChannelsPage.tsx": "fbf8ef09794147ab2565f75e508fdbd6b6f321b7f02a09c758e48a87c07ecdf3", "packages/web-console/src/api.ts": "b58209e05ab7ee070abe8f48f59ead3c0175d2dc42f18f490648398637e8b4cd", "packages/web-console/src/styles/app.css": "84254d55143d1a453e82d17a777013a62bb3366b3b878230a9c052e4309494ee", "packages/web-console/test/channels-create.spec.ts": "7daf6edd8f8ca5597fe806acfb9b9049d3db4e8e79b2044db45d935c0a83ad17", "packages/web-console/test/preview.mjs": "f820de0c95142ef3a6c1aad4583d00d1b7e8004e2989de8ac3e29168d3d94f41", "packages/web-console/test/server.test.js": "cebb80fce6e983b3cbf1f3c23b585af8144f7a03c251c4d9103f26be03bcedac", "pnpm-lock.yaml": "ba269662dcca351301db4a1cb12e8d4900a149ffce1212420beb745cab601e91", "scripts/check-coverage.mjs": "0252645a94e1f390cfaf3e56d9ec3e7ca2a9d931cce194f88aa90d57223868d0", "scripts/check-native-runtime.mjs": "0a846bafbb2175ff70b863774b535f9ba3af2a97940c0d6d9aa89630eae0aa54", "scripts/check-production-imports.mjs": "f2cbab61168df4292e5962f8ae7b23896fb6c46d6f49f40ae3e60614917059b8", "src/channels/plugins/dingtalk-binding.js": "300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b", "src/channels/plugins/dingtalk-cli.js": "bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28", "src/channels/plugins/dingtalk-config.js": "21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b", "src/channels/plugins/dingtalk-dws.js": "4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad", "src/channels/plugins/dingtalk-storage.js": "8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505", "src/channels/router-lifecycle.js": "316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259", "src/channels/service.js": "5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57", "src/host.js": "e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1", "test/fixtures/memory-host.js": "4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0", "test/pi-channel-edit.test.js": "8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48", "test/pi-channel-plugin.test.js": "bba8093572a32f198597e4f71c7ca6d5d8008033b8f2dc3d25df0b847bc3bdb2", "test/pi-resident-router-flow.test.js": "7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c"}
+$ node scripts/check-coverage.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":190,"retiredModules":10,"excludedUiModules":3,"explicitlyAdaptedModules":57,"relativeImports":"closed","httpRoutes":"retained"}
+
+
+EXIT_CODE 0
+$ node scripts/check-production-imports.mjs
+{"productionImportFiles":395,"literalBareImports":193,"status":"declared-production-imports"}
+
+
+EXIT_CODE 0
+$ node scripts/check-native-runtime.mjs
+{"runtimeJsFiles":395,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":2,"historicalFormatFilesRemoved":9}
+
+
+EXIT_CODE 0
+SOURCE_AFTER {"docs/source-manifest.json": "c514571dd05c502d8b98e73eb1412be3f2814fd9eaf7b01aec918879eeb988ed", "package.json": "810c075c2780b48f9cface408c9b4970a6c3299d5de99cec5f1c3d3055bbeb68", "packages/dingtalk-core/dws-runner.js": "f78fa8d6d11bbe3a4712ed248a87f5a4cf5ce9dcf11b8710fb0258e6ea40c5fa", "packages/dingtalk-core/platform-schedule.js": "51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422", "packages/dingtalk-core/store.js": "91d1c48e0e323d9d77f4ec90da4308b4c591ff309fa7516fde53a308e031e481", "packages/dingtalk-core/task-session-service.js": "0ee89b708e90989bb8a804b24204149974c9f6304bbb109639e2bb02f65c7391", "packages/web-console/server/plugin.js": "82bcc04363e2c0b06dc1249b2b8d033700173a8bb674242405cdc391b2dd35a8", "packages/web-console/server/views.js": "91dcb4d1723f92ae0bc17b24f70c5366f921c9cc54a7f56dc7ae7661ab45be46", "packages/web-console/src/App.tsx": "c50bf992f270bc971b01e8fffbdc9cda14ae1e57e8917882ebc8b9ae80346a28", "packages/web-console/src/ChannelsPage.tsx": "fbf8ef09794147ab2565f75e508fdbd6b6f321b7f02a09c758e48a87c07ecdf3", "packages/web-console/src/api.ts": "b58209e05ab7ee070abe8f48f59ead3c0175d2dc42f18f490648398637e8b4cd", "packages/web-console/src/styles/app.css": "84254d55143d1a453e82d17a777013a62bb3366b3b878230a9c052e4309494ee", "packages/web-console/test/channels-create.spec.ts": "7daf6edd8f8ca5597fe806acfb9b9049d3db4e8e79b2044db45d935c0a83ad17", "packages/web-console/test/preview.mjs": "f820de0c95142ef3a6c1aad4583d00d1b7e8004e2989de8ac3e29168d3d94f41", "packages/web-console/test/server.test.js": "cebb80fce6e983b3cbf1f3c23b585af8144f7a03c251c4d9103f26be03bcedac", "pnpm-lock.yaml": "ba269662dcca351301db4a1cb12e8d4900a149ffce1212420beb745cab601e91", "scripts/check-coverage.mjs": "0252645a94e1f390cfaf3e56d9ec3e7ca2a9d931cce194f88aa90d57223868d0", "scripts/check-native-runtime.mjs": "0a846bafbb2175ff70b863774b535f9ba3af2a97940c0d6d9aa89630eae0aa54", "scripts/check-production-imports.mjs": "f2cbab61168df4292e5962f8ae7b23896fb6c46d6f49f40ae3e60614917059b8", "src/channels/plugins/dingtalk-binding.js": "300f3148f2c92af1a5e10674f78d0e068cbee58b65cfe6a794f900bd04c57a8b", "src/channels/plugins/dingtalk-cli.js": "bb8c8d6f8469565b24e78bad5dfb3f51ee39980570e95f4e0b3682c450178c28", "src/channels/plugins/dingtalk-config.js": "21ce32082e211a9b830633ea9c6091a2f8bce0aa52e459b5461f7d13a39f3a8b", "src/channels/plugins/dingtalk-dws.js": "4dcd1f065dbd59afb820d1a12db94c521adefc5ef34310d34ee4c174ba7578ad", "src/channels/plugins/dingtalk-storage.js": "8ee4e62b701f4594185f69249e2ba687881a2e38bee3a07216463ee820552505", "src/channels/router-lifecycle.js": "316cd3431f890c5bf8f811148b43c4658614fd58d41bec20270fd8eaf3a7e259", "src/channels/service.js": "5f19fdd8cf3587e43509f7a01c0e20bbd212f70cd84da63df42007bc1cf93c57", "src/host.js": "e5b4e0d99b00463e9e223e4285dd073e23190059d5e09cfd57d3c6abeeca3cb1", "test/fixtures/memory-host.js": "4323a15a01e7f83468405d6db8e1b21f14687d660de8a8bd99318c1fa9b4e4e0", "test/pi-channel-edit.test.js": "8f36d9356645db6ede373c5a250f04f1bb4bca34482a04f14d7072a28194ec48", "test/pi-channel-plugin.test.js": "bba8093572a32f198597e4f71c7ca6d5d8008033b8f2dc3d25df0b847bc3bdb2", "test/pi-resident-router-flow.test.js": "7d22c65d628bcd0f65c68faaa64b4c94da76b2968ae9b937212a74c4023e020c"}
+SOURCE_CHANGED []
+FINISH_UTC 2026-11-09T08:56:40.272952+00:00

@@ -1,0 +1,9 @@
+{
+  "sourcePackage": "@deepseek-ai/dsh-llm",
+  "sourceVersion": "0.2.1-alpha.2",
+  "sourceSha256": "aa958631d989ea6ef9b6d0399261e7c52361c8137da33d13cfad6ebd36af41d9",
+  "local": "immutable messages, request marker, context/file/image/tool projections, compact assistant-stream records/readers/validation, message brands, retry vocabulary",
+  "excluded": "legacy LlmRuntime service, LlmAdapter abstract provider class, product attribution and canonical errors",
+  "authority": "Pi loop marks application-owned exact request objects; Pi SessionManager durable context remains authoritative",
+  "timerConstant": "Node maximum delay 2147483647 retained as protocol validation bound, not a new timer"
+}

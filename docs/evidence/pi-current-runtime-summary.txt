@@ -1,0 +1,10 @@
+Source checkpoint: 9a925a6
+Full runtime group, concurrency 2; actual application bubblewrap retained.
+ℹ tests 161
+ℹ suites 0
+ℹ pass 161
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 313832.781691

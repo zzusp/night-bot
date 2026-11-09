@@ -1,0 +1,11 @@
+说明：仅省略 Playwright screenshot 帮助正文；原始输出 SHA256=3134336fca45e229f933b7d379ffebd7b5d8c3393ee26750fa4eeb8318fd71e9。
+
+BINARY_CONTAINER_START 2026-11-09T04:08:56.267403+00:00 IMAGE_ID sha256:e3677dda58c04eb6c1320e58afe6e7c41dcd96122926fb90b146038b4aebcfa9 DEFAULT_ENTRYPOINT_CHECK_PREVIOUSLY_PASSED True
+git version 2.39.5
+gh version 2.23.0 (2023-02-27 Debian 2.23.0+dfsg1-1)
+{"case":"gh-fixture-only-local-auth-token","fixtureMatches":true,"noNetworkBusinessCall":true}
+Version 1.65.0
+{"uid":1000,"capabilitiesZero":true,"noNewPrivileges":true,"seccompFilter":true,"tempMode":448}
+BINARY_CONTAINER_FINISH 2026-11-09T04:08:58.471335+00:00 EXIT 0 APP_START_NOT_TESTED True
+
+[exited with code 0]

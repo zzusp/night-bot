@@ -1,0 +1,22 @@
+✔ actual Pi native glob and grep run packaged ripgrep and preserve safe literal argv and match receipts (1973.594403ms)
+✔ actual Pi native image reader retains image bytes and native attachment mismatch guidance (353.090492ms)
+✔ actual Pi capped grep persists the complete private result and read retrieves omitted matches (425.943647ms)
+✔ native file schemas and search argv/parse/render contracts match retained source (33.27541ms)
+✔ native search launches packaged binary with no-config and plain argv and rejects partial raw output (2.795525ms)
+✔ native search rejects malformed or cancelled work before dispatch and preserves invalid-pattern taxonomy (0.863322ms)
+✔ native job schemas, model output and byte bounds match retained source protocol (26.190004ms)
+✔ native job controls clamp waits, preserve caller signal and hide producer logs and ownership (2.249838ms)
+✔ native job notices preserve wake budgets, user resets, truncation and awaited/killed suppression (3.562933ms)
+✔ output windows retain contiguous whole-scalar edges and exact omitted UTF-8 counts (1.958051ms)
+✔ every stream prefix agrees with independent whole-text edge selection across small budgets (13.824073ms)
+✔ large discarded middles and subsequent appends keep bounded edges without mutating prior snapshots (5.822987ms)
+✔ output admission rejects binary data and invalid limits before changing state (0.788541ms)
+✔ item windows keep the first admitted values with exact counts and detached result arrays (0.254351ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3032.615593

@@ -1,0 +1,19 @@
+✔ skill discovery uses explicit and agents roots, ignores DSH environment roots and leaves their bytes untouched (31.594086ms)
+✔ Pi parser preserves strict legacy framing, CRLF body, invocation spellings and ambiguous delimiter fallback (6.168342ms)
+✔ skill discovery and body reload obey the filesystem service; only declared bundled roots use trusted host reads (7.187492ms)
+✔ nontext or invalid files are ignored and filesystem I/O failures are never downgraded into an empty catalog (2.930455ms)
+✔ first-party write/edit observations invalidate caches synchronously even when OS watching is disabled (9.162804ms)
+✔ missing skill roots become live without broad ancestor recursion and watchers drain on disposal (28.47342ms)
+✔ a physical root replacement is rewatched and project watcher ownership stays bounded (113.047422ms)
+✔ symlink skill bundles load through the same filesystem policy and disposed providers reject further reads (4.023401ms)
+✔ default headless Host observes external skill edits through its scoped native provider (774.40328ms)
+✔ watcher startup failure keeps readable candidates explicitly incomplete and later healthy discovery can recover (9.79613ms)
+✔ cancellation after filesystem resolution prevents subsequent catalog or body reads (3.168108ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1833.341219

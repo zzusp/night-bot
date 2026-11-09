@@ -1,0 +1,17 @@
+{
+  "package.json": "4fda002d0c72c4248d343abdc94cbca8e4f9132ef5e67e796ea4b706332c41dd",
+  "pnpm-lock.yaml": "631e2d48f05547005977585310d311e71de85ff830f658c823da4745b4bd65f9",
+  "src/process/win32.js": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a",
+  "src/process/windows-acl.js": "5c43642a1ba7156c7aa8841105b7ccff988db8c71f63025aa632da6819ea6fd5",
+  "src/native-bash-local.js": "1beec763b4a1d00f49b4a7fd79e8d57a080fb2c9f8590a27d6e6e97b89004fe8",
+  "src/native-pwsh-local.js": "13b3f8dff9aafc622ddc808b159918e175af5a5fc9fc837a1786cd50093c29ee",
+  "src/native-bash-sandbox.js": "e5ea755dd44fc29e983ca9667bd0e2719f674809e192bd818199b9f9fc6bab7f",
+  "src/native-pwsh-sandbox.js": "e22887f63b6818f2e4b09fc269332789e06c7cd2e68d6cd4e2b8367385114f88",
+  "src/process/index.js": "a81579eebad76290452b7c45a9959ac533743accadbd7334af0c70aa510c2b33",
+  "src/process/runner-launch-B2zsQ1Dz.js": "1da7afe90363977a730ec21925c52b6a78d7d8847ce1c6b9098df7cf92b35fe4",
+  "src/process/runner.js": "1b42f8c090e949e79ef98b6b277ca517416c0ac95694e78a35f13b512ca08eb0",
+  "src/process/contracts.js": "3bfc078c03bc79f32836640c58fa14e4accbf8ef4685f937ba7a05449cac7a40",
+  "src/memory/privacy.js": "04ed53a7198a566eb213368a70b7239940fdc212324f3483e562a561a52cc65a",
+  "src/native-sandbox.js": "877b3a3be8d5f705505b6cf8c784c67039907fe5f08d39780aa3dff6c3ba655a",
+  "docs/tmp/sg11-conpty-primitives.mjs": "d4154a2fe6717f0a46fd85ec6dd775c1eb9092c19448c380261af54805757fb2"
+}

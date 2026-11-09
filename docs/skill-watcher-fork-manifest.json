@@ -1,0 +1,16 @@
+{
+  "sourcePackage": "@deepseek-ai/dsh-skill-filesystem",
+  "version": "0.2.1-alpha.2",
+  "sourceFileSha256": "783214a95cc531c82567925ed0afabfdee5c091a56c4b1c1e1bce523b948ee02",
+  "sourceSection": "SkillWatchManager class and watch/path admission helpers before discoverRoot",
+  "localFile": "src/native-skill-watcher.js",
+  "adaptedSha256": "5978fe6b08d6c7b35ccae16f5a8d1ad127963b1549dec10aa402633cc1195100",
+  "adaptations": [
+    "local imports/constants and total diagnostic conversion",
+    "reuse local canonicalizeWatchPath helper",
+    "export watcher/config seam",
+    "bound changing-root admission to8 attempts; callers retain incomplete observation and retry later",
+    "bind root watch admission to filesystem dev/inode identity and observe lexical root replacement with the existing watchFile backend; close both subscriptions together"
+  ],
+  "claim": "explicit MIT platform watcher source fork, not a from-scratch rewrite or whole-migration completion"
+}

@@ -1,0 +1,31 @@
+✔ native filesystem roots, ranks, body/metadata and flat or bundled skill locators preserve legacy behavior (83.962043ms)
+✔ Pi parser preserves strict legacy framing, CRLF body, invocation spellings and ambiguous delimiter fallback (2.789988ms)
+✔ skill discovery and body reload obey the filesystem service; only declared bundled roots use trusted host reads (10.693789ms)
+✔ nontext or invalid files are ignored and filesystem I/O failures are never downgraded into an empty catalog (4.22382ms)
+✔ first-party write/edit observations invalidate caches synchronously even when OS watching is disabled (7.932544ms)
+✔ missing skill roots become live without broad ancestor recursion and watchers drain on disposal (23.699545ms)
+✔ a physical root replacement is rewatched and project watcher ownership stays bounded (115.996906ms)
+✔ symlink skill bundles load through the same filesystem policy and disposed providers reject further reads (5.129356ms)
+✔ default headless Host observes external skill edits through its scoped native provider (880.569079ms)
+✔ watcher startup failure keeps readable candidates explicitly incomplete and later healthy discovery can recover (5.028965ms)
+✔ cancellation after filesystem resolution prevents subsequent catalog or body reads (1.850221ms)
+✔ native skill catalogs preserve ranked provider precedence and nearest-scope shadowing (19.010984ms)
+✔ runtime duplicates are first-wins and duplicate disposal cannot remove the winner (2.310075ms)
+✔ skill lookup options, candidates and opaque locators are passed through by identity (2.994627ms)
+✔ incomplete discovery and provider failures are not cached and invalid catalog shapes fail loudly (3.361851ms)
+✔ provider invalidation retries one changed revision and reports repeated instability without caching (2.558238ms)
+✔ cache is bounded by cwd and scope identity; cancelled cache hits and uncooperative loads reject (10.875894ms)
+✔ stale names invalidate only the selected live provider and observer failures remain contained (2.75799ms)
+✔ provider lifecycle is aborted on duplicate/failure/disposal and original registration identity cannot leak (2.630287ms)
+✔ unregistered providers cannot publish a late loaded body and registry close cancels discovery (3.077392ms)
+✔ closed skill registries reject registration before executing a provider factory (1.226039ms)
+✔ unloading only the registry aborts borrowed provider lifecycles registered in another owner scope (3.921565ms)
+✔ external body-only skill edits notify the next real Pi request and require an explicit reread (1958.195185ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2100.15156

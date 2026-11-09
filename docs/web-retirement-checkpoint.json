@@ -1,0 +1,29 @@
+{
+  "sourceCheckpoint": "457270a",
+  "officialCapability": "Pi 1.5.0 public core tools have no web_fetch/web_search equivalent; tool search is not network search.",
+  "replacement": [
+    "Independent web tool registration, validation, ordered search fanout and bounded presentation",
+    "Independent URL/origin/MIME/charset admission"
+  ],
+  "retainedAttribution": {
+    "licenses/dsh-tool-web-MIT.txt": [
+      "src/runtime/web-html.js"
+    ],
+    "licenses/dsh-web-fetch-http-MIT.txt": [
+      "src/native-http-fetch.js DNS/NAT64/address pinning and connector"
+    ],
+    "licenses/dsh-web-MIT.txt": [
+      "src/native-capability-errors.js WebError"
+    ]
+  },
+  "removedTestCopy": "test/fixtures/legacy-web-interface.mjs",
+  "dependencyCandidates": [
+    "@deepseek-ai/dsh-tool-web",
+    "@deepseek-ai/dsh-web-fetch-http"
+  ],
+  "validation": {
+    "passed": 44,
+    "failed": 0,
+    "logSha256": "57cd5f87f33fba3c8d623c5283f15b462045fe4b7d8b588a700d7f83bec02906"
+  }
+}

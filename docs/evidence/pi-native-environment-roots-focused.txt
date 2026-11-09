@@ -1,0 +1,17 @@
+✔ native environment snapshot preserves source ordering and immutable launch-time values (2.342704ms)
+✔ environment lookup keeps provenance, explicit empty values and selected-source precedence (1.050617ms)
+✔ native dotenv layers preserve credential precedence without materializing secrets in embedding mode (12.737372ms)
+✔ dotenv bootstrap guards reject repository proxy and home CA changes before applying either layer (4.807802ms)
+✔ omitting a user directory never reads DSH_HOME dotenv and keeps repository bootstrap rejection (3.46638ms)
+✔ Pi auth preserves API key and OAuth grants under the existing namespace and lists only owned records (2.864336ms)
+✔ concurrent OAuth refresh remains inside durable store modify exclusion (1.667992ms)
+✔ credential service and ambient auth share precedence without leaking missing or invalid keys (0.971558ms)
+✔ absent durable store and unaddressable routes never report a successful sign-in (0.279609ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 101.672818

@@ -1,0 +1,9 @@
+{
+  "docs/tmp/dws-cursor-cause.mjs": "6f3e6886de437f64a506f866e394a1e14a0e84b35a6ca712f69cea57e1cd42fc",
+  "test/pi-channel-plugin.test.js": "76b9b29dae904debbe49a355537683923a8733ef13750d7644f58b269e38f4db",
+  "test/fixtures/memory-host.js": "773dcbbde4e07fb024423d3ab95a3d1a8d03c3953687460be048cea7e7f44aaa",
+  "src/runtime/files.js": "03962ce0c92b343a5afee4229160ce33f7a87963a946dc9f624c80d2c92164ce",
+  "src/channels/plugins/dingtalk-storage.js": "57c43c3607e8c74cb2060a07699bac8ce7eaf766e64dfba8599705f0d16a9b0b",
+  "src/channels/plugins/dingtalk-dws.js": "617a1cbcd408c3d7b2b6efec9c4ccaa58a1131980625f2f9ae934df840d30d64",
+  "packages/dingtalk-core/dws-bridge.js": "082218473340959f3ffe9d8e6b0b364e87d6bd3c2819535135e54734408fea8c"
+}

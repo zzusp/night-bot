@@ -1,0 +1,28 @@
+✔ default production Host delivers a real Pi request and native file effect at due time (2544.98596ms)
+✔ default preset exposes working session-bound schedule tools through actual Pi wire (1308.652373ms)
+✔ cold restart delivers overdue durable schedule once and subsequent restart does not replay (1132.181409ms)
+✔ crash between durable Pi inbox and schedule receipt reuses the original message without effects replay (486.466056ms)
+✔ receipt committed before process wake is recovered from the durable inbox once (497.408833ms)
+✔ a busy Pi driver cannot execute queued reminder input before its durable receipt: failure=false (455.671645ms)
+✔ a busy Pi driver cannot execute queued reminder input before its durable receipt: failure=true (679.379436ms)
+✔ explicit cancellation during receipt admission clears the reminder and cold restart does not resurrect it (510.012409ms)
+✔ delete, exact-session ownership, cancellation, optimistic edits and archive do not activate a model (131.388937ms)
+✔ cold delegated sessions are refused without resuming or scheduling them (101.181555ms)
+✔ all original timing selectors and strict invalid-rule boundaries use native durable storage (177.901266ms)
+✔ read-only permissions survive cold reminder activation (826.796704ms)
+✔ cold activation preserves the committed session model instead of replacing it with the Host default (780.786542ms)
+✔ model tools refuse delegated callers before creating any schedule (140.416706ms)
+✔ overdue recurring reminders coalesce missed occurrences into one actual Pi batch (106.21836ms)
+✔ a partially committed recurring batch resumes its frozen message once after restart (245.670511ms)
+✔ calendar rules retain DST gap/overlap semantics and cron missed-occurrence coalescing (12.833213ms)
+✔ real platform bridge restores original source and gates actual due delivery: superseded=false (976.640407ms)
+✔ real platform bridge restores original source and gates actual due delivery: superseded=true (816.209305ms)
+✔ actual CLI process restart executes a persisted reminder and never repeats its file effect (4125.026548ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16587.802199

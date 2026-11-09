@@ -1,0 +1,26 @@
+✔ real Pi call owns a committed job receipt and cold inspection never relaunches its producer (2081.906834ms)
+✔ cold Pi activation refuses an unresolved job journal instead of polling or restarting its producer (417.059312ms)
+✔ actual Pi native job output consumes delta and final result once and suppresses an awaited completion wake (1909.055266ms)
+✔ actual Pi job kill acknowledges before producer exit and preserves foreign-owner read guard (284.077475ms)
+✔ actual Pi native job completion wakes an idle owner with one durable bounded notice (190.415721ms)
+✔ trusted facts retain deterministic metadata and session identity without a home/profile ABI (19.157451ms)
+✔ invalid or overlapping declarations fail atomically without reserving earlier keys (5.724539ms)
+✔ mutable declarations cannot gain reserved authority or leak their original name/key registration (1.770463ms)
+✔ resolver failures and undeclared/non-string/async output cannot publish a partial environment (2.643467ms)
+✔ contributor lifetimes are scoped and no profile or ambient home is consulted (5.405526ms)
+✔ launch-home metadata is ignored and listing never executes a resolver (2.39547ms)
+✔ ordinary managed children cannot inherit ambient application or retired execution namespaces (0.771026ms)
+✔ native bash and pwsh local execution preserve argv environment output and exit contracts (56.070271ms)
+✔ native shell preparation timeout waits for admitted preparation exit and never spawns late argv (17.740388ms)
+✔ native shell same-code ancestor deadline keeps caller identity even after owned timer fires (72.647825ms)
+✔ native shell foreground timeout waits for provider close before final result (9.484454ms)
+✔ native shell provider creation failure settles done and preserves one infrastructure rejection without retry (3.287487ms)
+✔ execution fact names and trailing-only exit markers have explicit bounded contracts (0.365598ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2648.59792

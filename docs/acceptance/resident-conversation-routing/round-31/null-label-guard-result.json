@@ -1,0 +1,42 @@
+{
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "--test-name-pattern=^Windows scoped Low ",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "startedAt": "2026-11-08T12:55:04.016530+00:00",
+  "finishedAt": "2026-11-08T12:55:04.251012+00:00",
+  "nodeExitCode": 0,
+  "nodeVersion": "v24.19.0",
+  "platform": "win32",
+  "sourceBefore": {
+    "test/pi-native-sandbox.test.js": "8deea75f371508b6e69c88a2fdc36c15914b40655996e2d73b0e7a0e81053807",
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa",
+    "src/native-sandbox.js": "9ae1d0927b6b05e8b37f2d9174d7ea118e0d7bdb772f4821327a8b0e94cbe25d",
+    "src/memory/privacy.js": "51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6"
+  },
+  "sourceAfter": {
+    "test/pi-native-sandbox.test.js": "8deea75f371508b6e69c88a2fdc36c15914b40655996e2d73b0e7a0e81053807",
+    "src/process/windows-acl.js": "63afcbaf395fb5f1a26ead54b27f38a6f04f5bda3bfde43ce9c86be831c55ca2",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/windows-profile.js": "22513f6ec3eb97772a2ef037e92e0593b95f51eb57834a125c8e128e1baa523f",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa",
+    "src/native-sandbox.js": "9ae1d0927b6b05e8b37f2d9174d7ea118e0d7bdb772f4821327a8b0e94cbe25d",
+    "src/memory/privacy.js": "51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6"
+  },
+  "sourceChanged": [],
+  "logSha256": "bee12ee7a172974323da5388b112ca3c2bf9ac6deffa6033191404eddad21b5f",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "scope": "pure planning/freeze functions and scripted inheritance; no Native/production or kernel containment claim"
+}

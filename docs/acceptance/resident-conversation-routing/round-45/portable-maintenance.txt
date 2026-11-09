@@ -1,0 +1,87 @@
+FULL_CODEC_GUARDS_START 2026-11-09T04:23:46.935320+00:00 HEAD ca7bd0276ba4664a8614ce69fde47956f8c99f7e UNCOMMITTED_WORKTREE True TRACKED_INPUT_COUNT 495 AGGREGATE cc8b8504de9b28588d2fd70988f6d07b85d47d3e848e5fcf0694d343ea827bac
+EXACT_ARGV ["node", "--test", "--test-concurrency=1", "--test-reporter=tap", "--test-name-pattern=native directory canonical changes|caller cancellation and owner retirement|directory validation retains caller attribution|official directory context|own backup restores actual actor cwd|unmarked current native receipts|Host stamps only registered controlled fields|offline proof rejects uncommitted Pi tails|offline Pi evidence rejects changed records|portable maintenance uses the same explicit controlled-path codec|^operator full external cwd survives cold backup relocation without rewriting its absolute business path$", "test/pi-native-working-directory.test.js", "test/pi-native-business-portability.test.js", "test/pi-maintenance-journal.test.js", "test/pi-approval-wire.test.js"] TEST_PIN d29e84068af70153cb8ca85144d38bde7f08e21e1772fd509471723819d1d133
+ACTUAL_TAP_BEGIN
+TAP version 13
+# Subtest: operator full external cwd survives cold backup relocation without rewriting its absolute business path
+ok 1 - operator full external cwd survives cold backup relocation without rewriting its absolute business path
+  ---
+  duration_ms: 8935.3425
+  type: 'test'
+  ...
+# {"permissionTool":"working_directory","results":[{"role":"toolResult","toolCallId":"call-1","toolName":"working_directory","content":[{"type":"text","text":"<fixture>\\\\external-business"}],"details":{"nativeResult":{"isError":false,"content":[{"type":"text","text":"<fixture>\\\\external-business"}],"value":{"cwd":"<fixture>\\\\external-business"}}},"isError":false,"durationMs":175,"timestamp":1794198232772}],"reviewCalls":0}
+# {"case":"full-external-cwd-backup-cold","externalAbsolutePreserved":true,"piBytesUnchanged":true,"otherDomainExternalBindingRefused":true}
+# Subtest: offline proof rejects uncommitted Pi tails while ordinary read-only inspection leaves them untouched
+ok 2 - offline proof rejects uncommitted Pi tails while ordinary read-only inspection leaves them untouched
+  ---
+  duration_ms: 169.7036
+  type: 'test'
+  ...
+# Subtest: offline Pi evidence rejects changed records and unsupported headers without rewriting bytes
+ok 3 - offline Pi evidence rejects changed records and unsupported headers without rewriting bytes
+  ---
+  duration_ms: 105.9268
+  type: 'test'
+  ...
+# Subtest: portable maintenance uses the same explicit controlled-path codec as live Pi inspection
+ok 4 - portable maintenance uses the same explicit controlled-path codec as live Pi inspection
+  ---
+  duration_ms: 73.5949
+  type: 'test'
+  ...
+# Subtest: own backup restores actual actor cwd, artifact binding and permissions without changing signed Pi entries or user paths
+ok 5 - own backup restores actual actor cwd, artifact binding and permissions without changing signed Pi entries or user paths
+  ---
+  duration_ms: 5082.4575
+  type: 'test'
+  ...
+# Subtest: unmarked current native receipts read at the original root and fail closed after own backup relocation
+ok 6 - unmarked current native receipts read at the original root and fail closed after own backup relocation
+  ---
+  duration_ms: 1156.7855
+  type: 'test'
+  ...
+# Subtest: Host stamps only registered controlled fields; forged or missing new sidecars cannot commit or publish a broader path
+ok 7 - Host stamps only registered controlled fields; forged or missing new sidecars cannot commit or publish a broader path
+  ---
+  duration_ms: 301.9105
+  type: 'test'
+  ...
+# Subtest: native directory canonical changes, reliable notices and original-project recovery have explicit outcomes
+ok 8 - native directory canonical changes, reliable notices and original-project recovery have explicit outcomes
+  ---
+  duration_ms: 99.3252
+  type: 'test'
+  ...
+# Subtest: caller cancellation and owner retirement after filesystem work prevent durable cwd changes
+ok 9 - caller cancellation and owner retirement after filesystem work prevent durable cwd changes
+  ---
+  duration_ms: 36.2311
+  type: 'test'
+  ...
+# Subtest: directory validation retains caller attribution through injected filesystem service
+ok 10 - directory validation retains caller attribution through injected filesystem service
+  ---
+  duration_ms: 32.3717
+  type: 'test'
+  ...
+# Subtest: official directory context samples current committed cwd without a legacy assembly or Session projection
+ok 11 - official directory context samples current committed cwd without a legacy assembly or Session projection
+  ---
+  duration_ms: 65.2322
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23810.9688
+ACTUAL_TAP_END
+ACTUAL_STDERR_BEGIN
+ACTUAL_STDERR_END
+FULL_CODEC_GUARDS_FINISH 2026-11-09T04:24:11.364153+00:00 EXIT 0 SOURCE_CHANGED [] AFTER_AGGREGATE cc8b8504de9b28588d2fd70988f6d07b85d47d3e848e5fcf0694d343ea827bac
+
+[exited with code 0]

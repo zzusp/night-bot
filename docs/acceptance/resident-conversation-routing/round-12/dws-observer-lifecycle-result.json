@@ -1,0 +1,24 @@
+{
+  "startedAt": "2026-11-08T03:24:22.476855+00:00",
+  "finishedAt": "2026-11-08T03:24:52.523099+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^DWS lifecycle",
+    "test/pi-channel-plugin.test.js"
+  ],
+  "runnerPid": 70860,
+  "exitCode": 0,
+  "naturalExit": true,
+  "sourceCount": 440,
+  "sourceSha256": "9dc73dac204d97b80ed752671ea9f120de7974e2787fda05873ff89ff912114c",
+  "sourceChanged": [],
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "stdoutSha256": "fc9a1ac20b4477ec127616969f5a35591e17b79f6ec49266048f922947d48494",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "observerFactory": "scripted lifecycle seam; real optional plugin and Host",
+  "realVendorExecuted": false
+}

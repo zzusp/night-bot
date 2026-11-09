@@ -1,0 +1,23 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^Windows (scoped DACL cleanup|scoped stage planning|scoped Low stages|owned ACL candidate)",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "exit": 0,
+  "sourceBefore": {
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "test/pi-native-sandbox.test.js": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+  },
+  "sourceAfter": {
+    "src/process/windows-acl.js": "f5c414c965b77049e4cfa216638456816cb70f6ccdf988e6eb0e7805f36bf25f",
+    "src/process/contracts.js": "a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329",
+    "src/process/win32.js": "730d4649449c92a68a80700dda2b9fc1bd7e50ee89538fb06b0f559489125d3d",
+    "test/pi-native-sandbox.test.js": "8a2013697f241a0ca2858140bc51b665c3756f87cc2b3e17693811c1da90deaa"
+  },
+  "logSha256": "a8d99c3aef6b92703fc81d75d540203ae4d35f34feac979fe477a15246e8ad8d"
+}

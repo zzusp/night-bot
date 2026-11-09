@@ -1,0 +1,47 @@
+import {readFile,readdir,access} from 'node:fs/promises'
+import {createHash} from 'node:crypto'
+import {resolve,dirname} from 'node:path'
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex')
+const manifest=JSON.parse(await readFile('package.json','utf8'))
+const isDsh=value=>/^(?:npm:)?@deepseek-ai\/dsh(?:[-/@]|$)/.test(value)
+for(const section of ['dependencies','devDependencies','optionalDependencies','peerDependencies'])for(const [name,range]of Object.entries(manifest[section]??{}))if(isDsh(name)||isDsh(range))throw new Error('Retired DSH dependency reintroduced: '+section+': '+name)
+// Retired source copies and their differential-only direct dependencies must not
+// silently become part of a later install or validation path again.
+for(const name of ['dsh-agent', 'dsh-agent-loop', 'dsh-base', 'dsh-bash-local', 'dsh-fs-local', 'dsh-goal', 'dsh-goal-round-driver', 'dsh-llm', 'dsh-pwsh-local', 'dsh-sandbox', 'dsh-sandbox-policy', 'dsh-session', 'dsh-session-persistence-jsonl', 'dsh-session-projection', 'dsh-storage-domain', 'dsh-storage-json', 'dsh-subprocess', 'dsh-subprocess-local', 'dsh-system-prompt', 'dsh-web','dsh-tool-web','dsh-web-fetch-http','dsh-sandbox-local','dsh-session-title','dsh-http-proxy','dsh-credentials','dsh-tool-skill','dsh-util-code-language','dsh-user-approval','dsh-util-values','dsh-working-directory','dsh-chunked-list','dsh-util-time','dsh-llm-pi-ai','dsh-skill-filesystem','dsh-agent-instructions','dsh-shell-env','dsh-shell','dsh-tool-bash','dsh-tool-pwsh','dsh-launch-environment','dsh-credentials-local','dsh-timeout','dsh-tool-call-timeout-policy','dsh-tool-subagent-control','dsh-subagent','dsh-tool-subagent','dsh-tool-todo','dsh-tool-working-directory','dsh-fs-sandbox','dsh-fs-observation-policy','dsh-bash-sandbox','dsh-pwsh-sandbox','dsh-brand','dsh-authorization','dsh-workspace','dsh-skill','dsh-sandbox-windows-acl','dsh-typert-protocol','dsh-attachment','dsh-attachment-local','dsh-permission-presets','dsh-jobs','dsh-ptc-runtime','dsh-spill','dsh-storage','dsh-fs','dsh-session-persistence','dsh-spill-local','dsh-output-retention','dsh-tool-fs','dsh-tool-fs-search','dsh-tool-jobs','dsh-schedule','dsh-tool-schedule','dsh-typert-registry','dsh-api-session-controller','dsh-session-query'])if(manifest.devDependencies?.['@deepseek-ai/'+name])throw new Error('Retired differential dependency reintroduced: '+name)
+const coreManifest=JSON.parse(await readFile('packages/dingtalk-core/package.json','utf8'))
+for(const section of ['dependencies','devDependencies','optionalDependencies','peerDependencies'])if(Object.entries(coreManifest[section]??{}).some(([name,range])=>isDsh(name)||isDsh(range)))throw new Error('External registry SDK core dependency reintroduced: '+section)
+for(const path of ['scripts/release-artifacts.mjs','scripts/test-suites.mjs','scripts/deploy-local.ps1','scripts/install-profile.ps1','scripts/start-resident.ps1','scripts/dump-profile.ps1','scripts/start-web.ps1','scripts/restart-web.ps1','scripts/recover-data-change-approval.ps1','scripts/web-module-loader.cjs','src/legacy-v4','packages/scope-compat','packages/capability-compat','src/native-scope-guard.js','test/fixtures/legacy-skill-interface.mjs','src/native-chunked-list.js','test/fixtures/legacy-subagent-interface.mjs','test/fixtures/legacy-llm-interface.mjs','test/fixtures/legacy-tools-interface.mjs','src/native-typert-protocol.js','src/native-brand.js','src/native-output-retention.js','src/native-prompt-render.js','src/native-deadline.js','src/native-tool-fs.js','src/native-code-language.js','src/native-llm.js','src/native-llm-retry.js','src/pi-provider-retry.js','src/pi-provider-context.js','src/runtime/pi-native-provider-context.js','src/runtime/pi-tool-catalog.js','src/pi-loop.js','src/native-sessions.js','src/native-session-protocol.js','src/native-projections.js','src/native-session-query.js','src/native-session-title.js','src/native-subagents.js','src/native-subagent-errors.js','src/runtime/child-catalog.js','src/runtime/committed-session-query.js','src/runtime/session-image-selection.js']){
+ try{await access(path)}catch(error){if(error.code==='ENOENT')continue;throw error}
+ throw new Error('Retired comparison source reintroduced: '+path)
+}
+const retiredSubagents=JSON.parse(await readFile('docs/retired-subagent-source-manifest.json','utf8'))
+for(const entry of [...retiredSubagents.files,...(retiredSubagents.retiredUtilities??[])]){try{await access(entry.target)}catch(error){if(error.code==='ENOENT')continue;throw error}throw new Error('Cancelled subagent source reintroduced: '+entry.target)}
+const piLicense=JSON.parse(await readFile('docs/pi-license-source.json','utf8'))
+if(digest(await readFile(piLicense.localLicense))!==piLicense.sha256)throw new Error('Pinned Pi license text changed')
+for(const name of ['pi-agent-core','pi-ai','pi-coding-agent','pi-schema','pi-codemode']){
+ const dependency='@earendil-works/'+name,source=piLicense.packages.find(row=>row.name===dependency)
+ if(!source||source.version!==manifest.dependencies[dependency])throw new Error('Pi dependency/license provenance mismatch: '+dependency)
+}
+let files=0
+async function walk(directory){for(const entry of await readdir(directory,{withFileTypes:true})){const path=directory+'/'+entry.name;if(entry.isDirectory())await walk(path);else if(entry.isFile()&&/\.(?:js|cjs|mjs)$/.test(path)){
+ files++;const text=await readFile(path,'utf8')
+ if(/(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\bcreateLazyRequire\s*\(\s*|\bimport\.meta\.resolve\s*\(\s*|\brequire\s*\(\s*)['"]@deepseek-ai\/dsh(?:-[^'"]+|(?:\/[^'"]*)?)['"]/.test(text))throw new Error('External SDK runtime import: '+path)
+ if(/\b(?:var|class)\s+(?:LlmRuntime|ToolRuntime|SessionStore)\b/.test(text))throw new Error('Legacy runtime orchestrator definition: '+path)
+ if(/\bagent\/assistant-stream\b|\b(?:var|class)\s+AssistantStreamAttempt\b|\bfunction\s+bridgeDshStream\b/.test(text))throw new Error('Retired assistant-frame/stream bridge ABI reintroduced: '+path)
+ if(/\b(?:var|class)\s+(?:AssistantStreamAccumulator|BlockAssembler)\b/.test(text))throw new Error('Retired assistant assembler reintroduced: '+path)
+ if(path==='src/native-session-protocol.js'&&/\bderiveMessages\s*\(/.test(text))throw new Error('Retired duplicate session history derivation reintroduced')
+ if(/\b(?:var|class)\s+SessionPreparation\b|\bfunction\s+projectToolUpdates\b/.test(text))throw new Error('Retired preparation/tool-projection adapter reintroduced: '+path)
+ if(/\bnativeHostMessage\s*\(|\.hostMessages\b/.test(text))throw new Error('Retired Host history shadow reintroduced: '+path)
+ for(const [,specifier]of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*)['"](\.{1,2}\/[^'"\r\n]+)['"]/g))await access(resolve(dirname(path),specifier))
+}}}
+for(const directory of ['src','bin','packages/dingtalk-core'])await walk(directory)
+const legacy=JSON.parse(await readFile('docs/legacy-runtime-source-manifest.json','utf8'))
+for(const entry of legacy.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded legacy/platform source change: '+entry.target)
+for(const entry of [...legacy.removedHistoricalFormats.files,legacy.removedHistoricalFormats.worker,...(legacy.retiredImageSelection?.files??[]),...(legacy.retiredPlatformSources?.files??[])]){try{await access(entry.target)}catch(error){if(error.code==='ENOENT')continue;throw error}throw new Error('Removed historical format source reintroduced: '+entry.target)}
+const processSources=JSON.parse(await readFile('docs/process-fork-manifest.json','utf8'))
+for(const entry of processSources.files)if(digest(await readFile(entry.path))!==entry.adaptedSha256)throw new Error('Unrecorded process fork change: '+entry.path)
+for(const entry of processSources.replacedSources??[])if(digest(await readFile(entry.path))!==entry.replacementSha256)throw new Error('Unrecorded owned process module change: '+entry.path)
+for(const entry of processSources.ownedSources??[])if(digest(await readFile(entry.path))!==entry.sha256)throw new Error('Unrecorded owned process source: '+entry.path)
+const schedule=JSON.parse(await readFile('docs/schedule-source-manifest.json','utf8'))
+for(const entry of schedule.files)if(digest(await readFile(entry.target))!==entry.sha256)throw new Error('Unrecorded schedule source adaptation: '+entry.target)
+console.log(JSON.stringify({runtimeJsFiles:files,externalSdkImports:0,legacyOrchestratorDefinitions:0,legacySourceFilesVerified:legacy.files.length,historicalFormatFilesRemoved:legacy.removedHistoricalFormats.files.length+1}))

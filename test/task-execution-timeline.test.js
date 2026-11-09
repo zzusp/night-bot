@@ -1,0 +1,209 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createServer } from 'node:http'
+import {nativeResidentSnapshot} from './fixtures/native-domain-snapshot.js'
+import {memoryHost} from './fixtures/memory-host.js'
+import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
+import { readTaskLifecycle, projectTaskLifecycle, projectTaskTimeline, projectTaskElapsed } from '../packages/dingtalk-core/task-execution-timeline.js'
+import { openResidentStore } from '../packages/dingtalk-core/store.js'
+import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import { handleRequest } from '../packages/dingtalk-core/http.js'
+
+const start = Date.parse('2026-10-16T10:00:00Z'), iso = minute => new Date(start + minute * 60000).toISOString()
+test('card total elapsed includes completed-to-reopen gaps and all waiting/paused time', () => {
+  const task = { taskId: 't', createdAt: iso(0), updatedAt: iso(999), status: 'active', control: 'paused', runSequence: 2, requirementRevision: 2 }
+  assert.deepEqual(projectTaskElapsed(task, Date.parse(iso(70))), { complete: true, closedMs: 0, activeSince: iso(0) })
+  const ended = { ...task, status: 'completed', completion: { at: iso(75), requirementRevision: 2 } }
+  assert.deepEqual(projectTaskElapsed(ended, Date.parse(iso(100))), { complete: true, closedMs: 75 * 60000, activeSince: null })
+  assert.deepEqual(projectTaskElapsed({ ...ended, updatedAt: iso(9999) }, Date.parse(iso(1000))), projectTaskElapsed(ended, Date.parse(iso(100))))
+  const cancelled = { ...task, control: 'cancelled', cancelledAt: iso(80) }
+  assert.deepEqual(projectTaskElapsed(cancelled, Date.parse(iso(100))), { complete: true, closedMs: 80 * 60000, activeSince: null })
+  assert.deepEqual(projectTaskElapsed({ ...cancelled, status: 'cancelled' }, Date.parse(iso(100))), projectTaskElapsed(cancelled, Date.parse(iso(100))))
+})
+
+test('card total elapsed rejects missing, stale, future, contradictory or reversed endpoint evidence', () => {
+  const task = { createdAt: iso(0), status: 'completed', control: 'active', requirementRevision: 2, completion: { at: iso(10), requirementRevision: 2 } }
+  const unknown = { complete: false, closedMs: null, activeSince: null }
+  for (const patch of [{ createdAt: null }, { createdAt: 'invalid' }, { createdAt: iso(30) },
+    { completion: null }, { completion: { at: iso(10), requirementRevision: 1 } },
+    { completion: { at: iso(30), requirementRevision: 2 } }, { status: 'failed' },
+    { control: 'cancelled', cancelledAt: iso(10) }, { cancelledAt: iso(10) },
+    { status: 'cancelled', cancelledAt: iso(10) }, { status: 'active' },
+    { status: 'active', completion: null, cancelledAt: iso(10) },
+    { status: 'active', control: 'unknown', completion: null },
+    { status: 'cancelled', cancelledAt: null }, { status: 'cancelled', cancelledAt: iso(30) }]) {
+    assert.deepEqual(projectTaskElapsed({ ...task, ...patch }, Date.parse(iso(20))), unknown, JSON.stringify(patch))
+  }
+  assert.deepEqual(projectTaskElapsed(task, NaN), unknown)
+  assert.deepEqual(projectTaskElapsed({ ...task, completion: null, updatedAt: iso(10) }, Date.parse(iso(20))), unknown)
+  assert.deepEqual(projectTaskElapsed({ ...task, completion: { at: iso(0), requirementRevision: 2 } }, Date.parse(iso(20))), { complete: true, closedMs: 0, activeSince: null })
+})
+async function fixture(t) {
+  t.mock.timers.enable({ apis: ['Date'], now: start })
+  const root = await mkdtemp(join(tmpdir(), 'task-lifecycle-'))
+  const config = { dbPath: join(root, 'control.sqlite'), instanceId: 'lifecycle', initialize: true }
+  let store = await openDynamicTaskStore(config), counter = 0
+  const command = (kind, args, id = `fixture-${++counter}`) => store.command({ id, kind, args })
+  const query = q => store.query(q)
+  t.after(async () => { await store.close(); await rm(root, { recursive: true, force: true }) })
+  await command('task.create', { taskId: 't', request: '原任务' })
+  const at = minute => t.mock.timers.setTime(Date.parse(iso(minute)))
+  async function complete(minute) {
+    const binding = (await command('task.claim', { taskId: 't', force: true })).result.binding
+    at(minute)
+    await command('task.complete', { binding, summary: 'PRIVATE_RESULT_NOT_FOR_TIMELINE' }, `complete:t:${binding.requirementRevision}`)
+    await command('task.drained', { binding })
+  }
+  async function reopen(minute, id = `reopen-${minute}`) {
+    at(minute)
+    const current = await query({ kind: 'task.get', taskId: 't' })
+    return command('task.reopen', { taskId: 't', request: '沿原任务继续', expectedRequirementRevision: current.requirementRevision,
+      expectedControlRevision: current.controlRevision }, id)
+  }
+  const read = async (get = id => query({ kind: 'receipt.get', id })) => readTaskLifecycle(
+    await query({ kind: 'task.get', taskId: 't' }), await query({ kind: 'wake.list', taskId: 't' }), get)
+  return { root, get store() { return store }, command, query, at, complete, reopen, read, async restart() { await store.close(); store = await openDynamicTaskStore({ ...config, initialize: false }) } }
+}
+
+test('multiple completions/reopens retain real intervals and idle gaps through immutable receipts and restart', async t => {
+  const f = await fixture(t)
+  await f.complete(10); await f.reopen(15, 'open-second')
+  await f.complete(25); await f.reopen(30, 'open-third')
+  const before = await f.query({ kind: 'task.get', taskId: 't' })
+  assert.equal(before.completion, null)
+  const life = await f.read()
+  assert.equal(life.complete, true)
+  assert.deepEqual(life.segments.map(({ startedAt, endedAt, active, label }) => ({ startedAt, endedAt, active, label })), [
+    { startedAt: iso(0), endedAt: iso(10), active: false, label: '已完成' },
+    { startedAt: iso(15), endedAt: iso(25), active: false, label: '重开后完成' },
+    { startedAt: iso(30), endedAt: null, active: true, label: '重开后处理中' },
+  ])
+  assert.deepEqual(life.events.map(event => event.kind), ['created', 'completed', 'reopened', 'completed', 'reopened'])
+  assert.equal(JSON.stringify(life).includes('PRIVATE_RESULT'), false)
+  assert.deepEqual(await f.query({ kind: 'task.get', taskId: 't' }), before, 'read projection never writes or schedules the task')
+  await f.restart()
+  assert.deepEqual(await f.read(), life)
+})
+
+test('completed task stays fixed; revision changes do not confuse run sequence or exact completion receipt', async t => {
+  const f = await fixture(t)
+  await f.command('task.revise', { taskId: 't', request: '新增要求' })
+  await f.complete(10)
+  await f.reopen(15)
+  await f.complete(20)
+  const task = await f.query({ kind: 'task.get', taskId: 't' })
+  assert.equal(task.runSequence, 2); assert.equal(task.requirementRevision, 3)
+  const life = await f.read()
+  assert.equal(life.complete, true)
+  assert.equal(life.active, false)
+  assert.deepEqual(life.segments.map(segment => [segment.startedAt, segment.endedAt]), [[iso(0), iso(10)], [iso(15), iso(20)]])
+  assert.equal(life.segments[1].label, '重开后完成')
+  f.at(60)
+  assert.deepEqual(await f.read(), life)
+})
+
+test('missing or foreign completion receipt does not invent a historical endpoint', async t => {
+  const f = await fixture(t)
+  await f.complete(10); await f.reopen(15)
+  for (const replacement of [null, { result: { task: { taskId: 'other', status: 'completed', runSequence: 1, requirementRevision: 1,
+    completion: { at: iso(10), requirementRevision: 1 } } } }]) {
+    const life = await f.read(id => id === 'complete:t:1' ? replacement : f.query({ kind: 'receipt.get', id }))
+    assert.equal(life.complete, false)
+    assert.equal(life.segments.length, 1)
+    assert.equal(life.segments[0].startedAt, iso(15))
+    assert.equal(life.events.some(event => event.kind === 'completed'), false)
+  }
+  const missingOpen = await f.read(id => id.startsWith('reopen-') ? null : f.query({ kind: 'receipt.get', id }))
+  assert.equal(missingOpen.complete, false)
+  assert.equal(missingOpen.segments.length, 0)
+})
+
+test('duplicate replay never adds lifecycle segments and backward reopen time never paints overlapping periods', async t => {
+  const f = await fixture(t)
+  await f.complete(10)
+  const args = { taskId: 't', request: '继续', expectedRequirementRevision: 1, expectedControlRevision: 1 }
+  f.at(15)
+  await f.command('task.reopen', args, 'exact-open')
+  await f.command('task.reopen', args, 'exact-open')
+  assert.equal((await f.read()).segments.length, 2)
+  const task = await f.query({ kind: 'task.get', taskId: 't' })
+  const backwards = projectTaskLifecycle(task, [{ sequence: 2, at: iso(8), completedAt: iso(10) }])
+  assert.equal(backwards.complete, false)
+  assert.equal(backwards.segments.length, 1)
+  assert.equal(backwards.segments[0].endedAt, iso(10))
+})
+
+test('missing reopen history or terminal time remains incomplete; known cancellation uses its own true timestamp', async t => {
+  const f = await fixture(t)
+  await f.complete(10); await f.reopen(15)
+  const task = await f.query({ kind: 'task.get', taskId: 't' })
+  assert.equal(projectTaskLifecycle(task).segments.length, 0)
+  const missing = projectTaskLifecycle({ ...task, status: 'completed', completion: null }, [{ sequence: 2, at: iso(15), completedAt: iso(10) }])
+  assert.equal(missing.complete, false)
+  assert.equal(missing.segments.length, 1)
+  f.at(20)
+  await f.command('task.control', { taskId: 't', control: 'cancelled' })
+  const cancelled = await f.read()
+  assert.equal(cancelled.complete, true)
+  assert.equal(cancelled.segments[1].status, 'cancelled')
+  assert.equal(cancelled.segments[1].endedAt, iso(20))
+})
+
+test('real detail HTTP reads multiple lifecycle intervals without creating jobs, logs or new state', async t => {
+  const f = await fixture(t)
+  await f.complete(10); await f.reopen(15); await f.complete(20)
+  const storage=await nativeResidentSnapshot()
+  const residentStore=await openResidentStore(storage.domains),native=await memoryHost(t)
+  const legacy = { getAgentConfig: () => ({ workspaceDir: f.root }), getGroup: () => undefined }
+  const service = await openTaskSessionService({ ctx:native.host.ctx, legacy, residentStore, store: f.store,
+    config: { dbPath: f.store.info.dbPath, instanceId: 'lifecycle', workspaceDir: f.root } })
+  const runtime = { ...legacy, getTaskSessionDetail: id => service.taskDetail(id) }
+  const server = createServer((req, res) => handleRequest(req, res, runtime).catch(error => { res.writeHead(500); res.end(error.message) }))
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const url = `http://127.0.0.1:${server.address().port}/state/tasks/t/detail`
+  try {
+    const before = await f.query({ kind: 'task.get', taskId: 't' })
+    const response = await fetch(url)
+    assert.equal(response.status, 200)
+    const detail = await response.json()
+    assert.deepEqual(detail.timeline.executions, [], 'Single has no independent execution-node sessions')
+    assert.equal(detail.timeline.task.complete, true)
+    assert.equal(detail.timeline.task.segments.length, 2)
+    assert.equal(detail.timeline.task.segments[1].endedAt, iso(20))
+    assert.equal(JSON.stringify(detail.timeline).includes('PRIVATE_RESULT'), false)
+    assert.deepEqual(await f.query({ kind: 'task.get', taskId: 't' }), before)
+    await f.reopen(25)
+    const current = await (await fetch(url)).json()
+    assert.equal(current.timeline.task.segments.length, 3)
+    assert.equal(current.timeline.task.segments[2].startedAt, iso(25))
+    assert.equal(current.timeline.task.segments[2].active, true)
+    assert.equal(current.timeline.task.events.filter(event => event.kind === 'reopened').length, 2)
+    assert.equal(native.requests.length, 0)
+  } finally { await new Promise(resolve => server.close(resolve)); await service.close(); await residentStore.close(); await storage.close() }
+})
+
+
+test('完成结论仅投影真实completed输出，保留多执行与历史轮次、不借状态或摘要补齐', () => {
+  const final = (inputVersion, receivedAt, summary = '已核对') => ({ inputVersion, leaseEpoch: inputVersion, receivedAt,
+    payload: { output: { status: 'completed', summary, evidence: ['真实依据'], limitations: ['仅此小目标'], artifacts: ['output.txt'] } } })
+  const first = final(1, iso(10)), next = final(2, iso(20))
+  const executions = [
+    { taskId: 't', executionId: 'e', sessionId: 's', results: [first, first], result: next },
+    { taskId: 't', executionId: 'e2', sessionId: 's2', result: final(1, null, '历史有正文无时间') },
+    { taskId: 't', executionId: 'empty', status: 'succeeded', result: final(1, iso(30), '  '), stageProgress: { summary: '不是结论' } },
+    { taskId: 't', executionId: 'blocked', result: { payload: { output: { status: 'blocked', summary: '尚未完成' } } } },
+    { taskId: 't', executionId: 'failed', result: { ...first, payload: { ...first.payload, error: { code: 'FAILED' } } } },
+    { taskId: 'other', executionId: 'foreign', result: first },
+  ]
+  const before = JSON.stringify(executions)
+  const timeline = projectTaskTimeline({ taskId: 't' }, executions, [])
+  assert.equal(timeline.executions[0].conclusions.length, 2)
+  assert.deepEqual(timeline.executions[0].conclusions[1], { id: `e:2:2:${iso(20)}`, executionId: 'e', inputVersion: 2, at: iso(20), summary: '已核对', evidence: ['真实依据'], limitations: ['仅此小目标'], artifacts: ['output.txt'] })
+  assert.equal(timeline.executions[1].conclusions[0].at, null)
+  assert.ok(timeline.executions.slice(2).every(row => !row.conclusions.length))
+  assert.equal(JSON.stringify(executions), before)
+  assert.equal(projectTaskTimeline({ taskId: 't' }, [{ taskId: 't', executionId: 'legacy', status: 'succeeded' }], []).executions[0].conclusions.length, 0)
+})

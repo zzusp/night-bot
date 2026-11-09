@@ -1,0 +1,167 @@
+{
+  "schema": 2,
+  "sourceFingerprint": "0b3799325503d509dabc03dcdf86ea47d593ffd68ac139f28fae1bf6a0001fde",
+  "workingTreeDirty": true,
+  "status": "official-pi-default-with-retained-derived-source",
+  "checkpoint": "741696438f5feef82504b3282dc7b975333070ee",
+  "completeDshSourceRemoval": false,
+  "dependencies": {
+    "productionDsh": [],
+    "developmentDsh": [],
+    "lockedDsh": []
+  },
+  "runtime": {
+    "modules": 400,
+    "externalDshImports": []
+  },
+  "authority": {
+    "sdk": "@earendil-works/pi-coding-agent",
+    "version": "1.5.0",
+    "session": "public AgentSession and SessionManager",
+    "metadata": "read-only application session catalog",
+    "business": "Night authorization, queues, task state and effect receipts"
+  },
+  "sourceAccounting": {
+    "retained": 194,
+    "retired": [
+      {
+        "source": "claude-execution-session.js",
+        "evidence": "docs/retired-workflow-session-contracts.md"
+      },
+      {
+        "source": "execution-session.js",
+        "evidence": "docs/retired-workflow-session-contracts.md"
+      },
+      {
+        "source": "resident.js",
+        "evidence": "docs/retired-resident-entry.md"
+      },
+      {
+        "source": "storage-v8-schema.js",
+        "evidence": "docs/retired-predecessor-storage.md"
+      },
+      {
+        "source": "task-session-history.js",
+        "evidence": "docs/retired-predecessor-storage.md"
+      },
+      {
+        "source": "task-session.js",
+        "evidence": "docs/retired-workflow-session-contracts.md"
+      }
+    ],
+    "excludedUi": 3
+  },
+  "retainedNamespaceOverrides": [
+    {
+      "name": "@deepseek-ai/dsh-scope",
+      "target": "link:./packages/scope-compat"
+    },
+    {
+      "name": "@deepseek-ai/dsh-web",
+      "target": "link:./packages/capability-compat/web"
+    },
+    {
+      "name": "@deepseek-ai/dsh-authorization",
+      "target": "link:./packages/capability-compat/authorization"
+    },
+    {
+      "name": "@deepseek-ai/dsh-workspace",
+      "target": "link:./packages/capability-compat/workspace"
+    },
+    {
+      "name": "@deepseek-ai/dsh-fs",
+      "target": "link:./packages/capability-compat/fs"
+    },
+    {
+      "name": "@deepseek-ai/dsh-skill",
+      "target": "link:./packages/capability-compat/skill"
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox",
+      "target": "link:./packages/capability-compat/sandbox"
+    },
+    {
+      "name": "@deepseek-ai/dsh-llm",
+      "target": "link:./packages/capability-compat/llm"
+    },
+    {
+      "name": "@deepseek-ai/dsh-tools",
+      "target": "link:./packages/capability-compat/tools"
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-persistence",
+      "target": "link:./packages/capability-compat/session-persistence"
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox-windows-acl",
+      "target": "link:./packages/capability-compat/sandbox-windows-acl"
+    }
+  ],
+  "retainedDshNoticeFiles": [
+    "dsh-agent-MIT.txt",
+    "dsh-agent-instructions-MIT.txt",
+    "dsh-agent-preset-registry-MIT.txt",
+    "dsh-app-boot-MIT.txt",
+    "dsh-attachment-local-MIT.txt",
+    "dsh-authorization-MIT.txt",
+    "dsh-bash-local-MIT.txt",
+    "dsh-bash-sandbox-MIT.txt",
+    "dsh-credentials-MIT.txt",
+    "dsh-fs-MIT.txt",
+    "dsh-fs-local-MIT.txt",
+    "dsh-fs-observation-policy-MIT.txt",
+    "dsh-fs-sandbox-MIT.txt",
+    "dsh-http-proxy-MIT.txt",
+    "dsh-llm-MIT.txt",
+    "dsh-permission-presets-MIT.txt",
+    "dsh-pwsh-local-MIT.txt",
+    "dsh-pwsh-sandbox-MIT.txt",
+    "dsh-sandbox-MIT.txt",
+    "dsh-sandbox-windows-acl-MIT.txt",
+    "dsh-schedule-MIT.txt",
+    "dsh-scope-MIT.txt",
+    "dsh-session-MIT.txt",
+    "dsh-session-persistence-MIT.txt",
+    "dsh-session-title-MIT.txt",
+    "dsh-shell-MIT.txt",
+    "dsh-shell-env-MIT.txt",
+    "dsh-skill-MIT.txt",
+    "dsh-skill-filesystem-MIT.txt",
+    "dsh-spill-MIT.txt",
+    "dsh-spill-local-MIT.txt",
+    "dsh-subagent-MIT.txt",
+    "dsh-subprocess-local-MIT.txt",
+    "dsh-system-prompt-MIT.txt",
+    "dsh-tool-bash-MIT.txt",
+    "dsh-tool-call-timeout-policy-MIT.txt",
+    "dsh-tool-fs-search-MIT.txt",
+    "dsh-tool-jobs-MIT.txt",
+    "dsh-tool-pwsh-MIT.txt",
+    "dsh-tool-schedule-MIT.txt",
+    "dsh-tool-skill-MIT.txt",
+    "dsh-tool-todo-MIT.txt",
+    "dsh-tool-web-MIT.txt",
+    "dsh-tool-working-directory-MIT.txt",
+    "dsh-tools-MIT.txt",
+    "dsh-user-approval-MIT.txt",
+    "dsh-util-time-MIT.txt",
+    "dsh-util-values-MIT.txt",
+    "dsh-web-MIT.txt",
+    "dsh-web-fetch-http-MIT.txt",
+    "dsh-workspace-MIT.txt"
+  ],
+  "limits": [
+    "Zero external packages does not imply zero copied or derived implementation. Retained code and test copies require their notices.",
+    "Mutable Session, projection/query drivers and historical-data import are retired; attributed platform/policy implementations and local namespace aliases remain.",
+    "Effectful codemode stays disabled: official nested summaries are post-execution and bounded; abort/idle does not join host tools.",
+    "Windows kernel isolation and real vendor integration require separate verification."
+  ],
+  "evidence": [
+    "docs/retired-notice-copy-audit.json",
+    "docs/NODE-RPC-RETIREMENT.md",
+    "docs/retired-session-drivers.md",
+    "docs/FS-IO-MIGRATION.md",
+    "docs/SEARCH-IO-MIGRATION.md",
+    "docs/acceptance/pi-native-retirement-local/goal.md"
+  ]
+}

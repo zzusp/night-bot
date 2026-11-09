@@ -1,0 +1,10 @@
+说明：仅将本机 checkout 前缀替换为 <checkout>；原始输出 SHA256=cd9c9fa0991424de62f230e16de4d22528121a6217663a0d0de3f3526e9108a7。
+
+CONTAINER_FULL_TASK_REASONING_FIX_START 2026-11-09T04:41:55.254962+00:00 IMAGE_ID sha256:e1a5708cb8934ae40eac0763b68617fce7d1b2fe43edd43e64bbd755c7a649fa SCRIPT_SHA256 6f9297eb67a0892dc86c1a6ba7a38960fa2c558e2c4112d8fbca42c2fa478fdf CONTRACT ["--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--security-opt", "seccomp=<checkout>\\docs\\ops\\docker-bwrap-seccomp.json", "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777", "--mount", "type=volume,source=night-bot-sg11-full-tools-tests-63ee0b,target=/opt/night-bot/data", "--env", "NIGHT_BOT_PERMISSION_MODE=full", "--env", "NODE_DISABLE_COMPILE_CACHE=1"]
+(node:1) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"case":"container-recovered-task-before-assertions","modelRequests":2,"taskModelSteps":2,"tools":[{"name":"bash","isError":false},{"name":"task_result","isError":false}],"alerts":[],"error":null}
+{"case":"container-default-task-full-native-bash-token","githubTokenMatches":true,"otherSecretAbsent":true,"ghFixtureMatches":true,"status":"completed","drained":true,"noCredentialInPiRequestsJob":true,"modelTransport":"local fixture HTTP","sandbox":{"mode":"danger-full-access","denied":false},"entrypointBoundary":"direct Host fixture after separate default --check"}
+CONTAINER_FULL_TASK_REASONING_FIX_FINISH 2026-11-09T04:41:59.753884+00:00 EXIT 0
+
+[exited with code 0]

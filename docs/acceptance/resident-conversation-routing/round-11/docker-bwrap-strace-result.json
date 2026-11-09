@@ -1,0 +1,66 @@
+{
+  "exit": 0,
+  "containerExit": 0,
+  "containerId": "fbf45e30db691f9246321de47c87586d8f77b8ad4ff42aca1945ed500bafd7e1",
+  "imageId": "sha256:29687f6ea17d26028ab3f8575edd6b2ae71191f0e11e4ca07d06d586edc6e45c",
+  "running": false,
+  "pid": 0,
+  "user": "node",
+  "securityOpt": [
+    "no-new-privileges",
+    "seccomp=builtin"
+  ],
+  "capDrop": [
+    "ALL"
+  ],
+  "readOnly": true,
+  "network": "none",
+  "tmpfs": {
+    "/tmp": "rw,nosuid,nodev,size=64m,mode=1777"
+  },
+  "observed": {
+    "uid": 1000,
+    "gid": 1000,
+    "stracePackage": {
+      "exit": 0,
+      "stdout": "strace\t6.1-0.1\n",
+      "stderr": ""
+    },
+    "command": [
+      "strace",
+      "-f",
+      "-qq",
+      "-s",
+      "128",
+      "-e",
+      "trace=clone,clone3,unshare,setns,mount,prctl",
+      "-o",
+      "/tmp/night-bwrap.trace",
+      "bwrap",
+      "--ro-bind",
+      "/",
+      "/",
+      "--dev",
+      "/dev",
+      "--unshare-pid",
+      "--proc",
+      "/proc",
+      "--die-with-parent",
+      "--",
+      "true"
+    ],
+    "tracedProcessPid": 13,
+    "exit": 1,
+    "signal": null,
+    "stdout": "",
+    "stderr": "bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces. See <https://deb.li/bubblewrap> or <file:///usr/share/doc/bubblewrap/README.Debian.gz>.\n",
+    "trace": "16    prctl(PR_CAPBSET_READ, CAP_MAC_OVERRIDE) = 0\n16    prctl(PR_CAPBSET_READ, 0x30 /* CAP_??? */) = -1 EINVAL (Invalid argument)\n16    prctl(PR_CAPBSET_READ, CAP_CHECKPOINT_RESTORE) = 0\n16    prctl(PR_CAPBSET_READ, 0x2c /* CAP_??? */) = -1 EINVAL (Invalid argument)\n16    prctl(PR_CAPBSET_READ, 0x2a /* CAP_??? */) = -1 EINVAL (Invalid argument)\n16    prctl(PR_CAPBSET_READ, 0x29 /* CAP_??? */) = -1 EINVAL (Invalid argument)\n16    prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) = 0\n16    clone(child_stack=NULL, flags=CLONE_NEWNS|CLONE_NEWUSER|CLONE_NEWPID|SIGCHLD) = -1 EPERM (Operation not permitted)\n",
+    "traceReadError": null,
+    "applicationStarted": false,
+    "realVendorExecuted": false
+  },
+  "stderr": "",
+  "driverSha256": "c0d4e3dbd4b297e615fb3fce45b15903aef8b7be58ca1f7191f6af6c8bc9b588",
+  "applicationStarted": false,
+  "realVendorExecuted": false
+}

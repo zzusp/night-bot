@@ -1,0 +1,23 @@
+{
+  "startedAt": "2026-11-08T03:19:52.112689+00:00",
+  "finishedAt": "2026-11-08T03:24:10.508812+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "test/pi-resident-router-flow.test.js"
+  ],
+  "runnerPid": 39012,
+  "exitCode": 0,
+  "naturalExit": true,
+  "controlledStop": false,
+  "sourceCount": 440,
+  "sourceSha256": "782a3476ffe0b5dd24d0bdbb0b334f380bb073e564d8d527d58583d6b8cca87d",
+  "sourceChanged": [],
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "worktree": "dirty uncommitted cooperative tree",
+  "stdoutSha256": "acea6e99aeb93bc2635e5464fa7a3cce6a7c90677edcb1e7d176fef314f770fa",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "realVendorExecuted": false
+}

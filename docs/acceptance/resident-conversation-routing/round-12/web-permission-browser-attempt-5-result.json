@@ -1,0 +1,149 @@
+{
+  "passed": true,
+  "phase": "keyboard-mobile",
+  "checks": [
+    "权限读取失败停写，显式GET恢复",
+    "键盘打开/焦点约束/Escape恢复、390px浅深色无页面横滚"
+  ],
+  "network": [
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/session"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/session",
+      "status": 401
+    },
+    {
+      "event": "request",
+      "method": "POST",
+      "path": "/api/login"
+    },
+    {
+      "event": "response",
+      "method": "POST",
+      "path": "/api/login",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/overview"
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/chat"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/overview",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "PUT",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "PUT",
+      "path": "/api/permissions",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 500
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 200
+    },
+    {
+      "event": "request",
+      "method": "GET",
+      "path": "/api/permissions"
+    },
+    {
+      "event": "response",
+      "method": "GET",
+      "path": "/api/permissions",
+      "status": 200
+    }
+  ],
+  "pageErrors": [],
+  "sourceCount": 463,
+  "sourceChanged": [],
+  "apiIntercepted": false,
+  "model": "local scripted HTTP endpoint",
+  "transportTiming": "真实permission方法只控制时序；故障发生在实际持久化之后",
+  "realVendorExecuted": false
+}

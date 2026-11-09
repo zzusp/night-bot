@@ -1,0 +1,41 @@
+Frozen install failed before successful package-policy verification. pnpm reported ERR_PNPM_FETCH_503 for registry metadata/attestation. No policy was disabled or bypassed; existing installed dependencies were used for local tests.
+[WARN] Request took 70086ms: https://registry.npmjs.org/@aws-sdk%2Fnested-clients
+[WARN] Request took 70100ms: https://registry.npmjs.org/@aws-sdk%2Fxml-builder
+[WARN] Request took 70084ms: https://registry.npmjs.org/@deepseek-ai%2Fcordis-plugin-include
+[WARN] Request took 70081ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-fs-search
+[WARN] Request took 70104ms: https://registry.npmjs.org/@aws-sdk%2Fcredential-provider-process
+[WARN] Request took 70123ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-anonymous-user-id
+[WARN] Request took 70089ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-fs
+[WARN] Request took 70116ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-agent-preset-registry
+[WARN] Request took 70095ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-goal
+[WARN] Request took 70111ms: https://registry.npmjs.org/@aws-sdk%2Ftypes
+[WARN] Request took 70074ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-command-goal
+[WARN] Request took 70199ms: https://registry.npmjs.org/@deepseek-ai%2Fcordis-plugin-loader
+[WARN] Request took 70110ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-attachment
+[WARN] Request took 70167ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-api-gateway
+[WARN] Request took 70075ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-command-compact
+[WARN] Request took 70175ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-compaction-tool-result-pruner
+[WARN] Request took 70088ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-app-boot
+[WARN] Request took 70245ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-atomic-write
+[WARN] Request took 70229ms: https://registry.npmjs.org/@babel%2Fruntime
+[WARN] Request took 70171ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-commands
+[WARN] Request took 70160ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-base
+[WARN] Request took 70164ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-bash-sandbox
+[WARN] Request took 70181ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-present
+[WARN] Request took 70186ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-compaction
+[WARN] Request took 70118ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-deepseek-llm-api-extensions
+[WARN] Request took 70123ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-deepseek-account-platform
+[WARN] Request took 70121ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-pwsh
+[WARN] Request took 70255ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-bash-local
+[WARN] Request took 70120ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-config-editor
+[WARN] Request took 70138ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-credentials
+[WARN] Request took 70177ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-client-file-upload
+[WARN] Request took 70315ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-compaction-image-offload
+[WARN] Request took 70074ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-skill
+[WARN] Request took 70146ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-tool-subagent
+[WARN] Request took 70186ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-user-approval
+[WARN] Request took 70080ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-util-code-language
+[WARN] Request took 70083ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-util-time
+[WARN] Request took 70081ms: https://registry.npmjs.org/@deepseek-ai%2Fdsh-web-fetch-http
+✗ Lockfile failed supply-chain policy check (630 entries in 3m 42.1s)
+[ERR_PNPM_FETCH_503] GET https://registry.npmjs.org/@aws-sdk%2Fcredential-provider-http: Service Unavailable - 503

@@ -1,0 +1,19 @@
+{
+  "payloadPath": "docs/tmp/sg11-linux-six-payload",
+  "sourceInputs": {
+    "test/native-shell-kernel-wire.test.js": "test/native-shell-kernel-wire.test.js",
+    "test/native-managed-shell-kernel.test.js": "test/native-managed-shell-kernel.test.js",
+    "test/native-memory-privacy-kernel.test.js": "test/native-memory-privacy-kernel.test.js",
+    "test/fixtures/memory-host.js": "test/fixtures/memory-host.js",
+    "test/fixtures/sg11-linux-provider-observer.mjs": "docs/tmp/sg11-linux-provider-observer.mjs"
+  },
+  "payloadFiles": {
+    "test/native-shell-kernel-wire.test.js": "9d5c50be37cb4261ef780a7d8f785b12e2217360852e65ffa456417220b888f0",
+    "test/native-managed-shell-kernel.test.js": "b63d3220f86dfc6589eac1172c7c27de86b0b4e59b4f5c9cd78997fd7d97f887",
+    "test/native-memory-privacy-kernel.test.js": "5f3ba7b5d424c24ab6b21342eb6c869171e31a0e3356ed1446a238fa5d79b57b",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "test/fixtures/sg11-linux-provider-observer.mjs": "03e28cd7b39127069fd8b947a82459dc3c8037421c471cf9f5be8ecfd266e8b5"
+  },
+  "readOnlyContainerTarget": "/opt/night-bot/test",
+  "realVendorExecuted": false
+}

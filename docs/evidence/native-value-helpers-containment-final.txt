@@ -1,0 +1,38 @@
+✔ native kernel sandbox enforces read-only within and outside workspace (158.388831ms)
+✔ native kernel sandbox enforces workspace-write within and outside workspace (139.178182ms)
+✔ actual Pi bash execution uses native trusted facts and strips ambient DSH authority (3097.052051ms)
+✔ actual Pi native confined bash retains one managed effect through explicit background and job collection (2140.643717ms)
+✔ actual Pi native confined bash retains one managed effect through timeout promotion and job collection (445.910395ms)
+(node:107617) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ native code transport uses a real isolated Node RPC worker and enforces workspace writes (1926.685678ms)
+﹣ 受信原生完整模式允许原临时Git工作树及MSYS，默认模式保留产物边界 (1.22032ms) # SKIP
+✔ 原生Host已授权完整模式在恢复绑定时保留，原生逐次模式与只读模式均不改历史身份 (581.658292ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":352,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":165,"aborted":false}
+ℹ Permission recovery phases: [{"phase":"begin","elapsedMs":0},{"phase":"host-ready","elapsedMs":352},{"phase":"created","elapsedMs":426},{"phase":"disposed","elapsedMs":450},{"phase":"resumed","elapsedMs":478},{"phase":"readback","elapsedMs":516}]
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":63,"aborted":false}
+✔ official execution artifact binding makes native FS and shell share one root and reject outside writes (1171.320871ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":4,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1155,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (3105.160324ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3062,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":41,"aborted":false}
+✔ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (3227.071805ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3193,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":32,"aborted":false}
+✔ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (2257.2899ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2236,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+ℹ tests 12
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 20292.826325

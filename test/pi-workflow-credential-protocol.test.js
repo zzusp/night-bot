@@ -1,0 +1,17 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {Context} from '@deepseek-ai/cordis'
+import {mkdtemp,rm} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+import {createHash} from 'node:crypto'
+import * as protocol from '../src/native-credential-protocol.js'
+import NativeCredentials from '../src/native-credentials.js'
+import {createWorkflowConfiguration} from '../packages/dingtalk-core/workflow-configuration.js'
+const digest=value=>createHash('sha256').update(value).digest('hex')
+test('native credential scope-id and reference helpers enforce durable address grammar',()=>{
+ for(const [scope,id]of [['owner','record'],['dingtalk-dsh-assistant','workflow-configuration-'+digest('fixture')]]){const key=protocol.credentialKey(scope,id);assert.equal(key,scope+'/'+id);assert.equal(protocol.parseCredentialKey(key),key);assert.equal(protocol.credentialKeyScope(key),scope);assert.equal(protocol.credentialKeyId(key),id)}
+ for(const key of ['bad','owner/bad/id','Upper/id','owner/!'])assert.throws(()=>protocol.parseCredentialKey(key))
+ for(const [ref,valid]of [['API_KEY',true],['_TOKEN',true],['bad-name',false],['42bad',false]])assert.equal(protocol.isCredentialRefName(ref),valid)
+})
+test('workflow configuration keeps durable historical keys, redacted secrets and frozen revisions on native credentials',{timeout:10000},async t=>{const root=await mkdtemp(join(tmpdir(),'night-workflow-credential-')),path=join(root,'credentials.json'),contexts=[];t.after(async()=>{for(const ctx of contexts.toReversed())await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})});const open=async()=>{const ctx=new Context();contexts.push(ctx);await ctx.plugin(NativeCredentials,{path,watch:false});return ctx.get('credentials')},credentials=await open(),instanceId='native-workflow-fixture',identity={channel:'web',actorId:'fixture-owner'},factory=creds=>createWorkflowConfiguration({credentials:creds,instanceId,workflowIds:['task-data-change'],webActorId:identity.actorId}),configuration=factory(credentials);assert.equal((await configuration.state(identity)).revision,0);await configuration.saveVariable({name:'password',kind:'secret',format:'text',description:'synthetic fixture',value:'SYNTHETIC_WORKFLOW_SECRET',expectedRevision:0},identity);await configuration.bindWorkflow({workflowId:'task-data-change',variables:[{alias:'password',name:'password'}],expectedRevision:1},identity);const snapshot=await configuration.snapshot({runId:'run-1',workflowId:'task-data-change'});assert.equal(JSON.stringify(snapshot).includes('SYNTHETIC_WORKFLOW_SECRET'),false);const keys=(await credentials.listRecords()).map(r=>r.key).sort();assert.deepEqual(keys,[`dingtalk-dsh-assistant/workflow-configuration-${digest(instanceId)}`,`dingtalk-dsh-assistant/workflow-run-${digest(instanceId)}-${digest('run-1')}`].sort());await contexts[0].fiber.dispose();const restored=factory(await open()),state=await restored.state(identity);assert.equal(state.revision,2);assert.equal(Object.hasOwn(state.variables[0],'value'),false);assert.deepEqual(await restored.snapshot({runId:'run-1',workflowId:'task-data-change'}),snapshot);await restored.saveVariable({name:'password',kind:'secret',format:'text',description:'rotated synthetic fixture',value:'ROTATED_SYNTHETIC_WORKFLOW_SECRET',expectedRevision:2},identity);assert.equal(await restored.forRun({runId:'run-1',workflowId:'task-data-change'}).readSecret('password'),'SYNTHETIC_WORKFLOW_SECRET')})

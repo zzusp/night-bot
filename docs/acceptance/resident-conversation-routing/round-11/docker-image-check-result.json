@@ -1,0 +1,22 @@
+{
+  "exit": 1,
+  "containerExit": 1,
+  "containerId": "f31449cd9c5df93878c4c56455a3e70197cb63785b49c6c4478dae1cea7eae0b",
+  "imageId": "sha256:e96a8ffbfeea73ec0197e0403d02e8a6f65df80fd7fe6021f77ceba2396710cd",
+  "running": false,
+  "pid": 0,
+  "securityOpt": [
+    "no-new-privileges",
+    "seccomp=builtin"
+  ],
+  "capDrop": [
+    "ALL"
+  ],
+  "readOnly": true,
+  "network": "none",
+  "user": "node",
+  "preflightPassed": false,
+  "applicationStarted": false,
+  "realVendorExecuted": false,
+  "logSha256": "6e0785dea0b114c88d85040cd616b08ecda5c19b76d9740b98736447edcc4f7f"
+}

@@ -1,0 +1,11 @@
+✔ actual Pi bash execution uses native trusted facts and strips ambient DSH authority (3547.618201ms)
+✔ actual Pi native confined bash retains one managed effect through explicit background and job collection (2885.691276ms)
+✔ actual Pi native confined bash retains one managed effect through timeout promotion and job collection (705.503578ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3947.912661

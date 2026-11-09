@@ -1,0 +1,6 @@
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":37,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":372,"literalBareImports":170,"status":"declared-production-imports"}
+{"runtimeJsFiles":372,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":7,"historicalFormatFilesRemoved":9}
+$ node scripts/audit-runtime.mjs
+{"status":"native-runtime-with-explicit-legacy-protocols","directRuntimeDshDependencies":0,"removedActiveDshServices":49,"standaloneFromDshLibraries":true}

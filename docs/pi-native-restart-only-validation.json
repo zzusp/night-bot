@@ -1,0 +1,36 @@
+{
+  "base": "796b103",
+  "completeDshIndependence": false,
+  "focused": {
+    "pass": 50,
+    "fail": 0,
+    "skip": 1,
+    "skipReason": "Windows Postgres wrapper fixture"
+  },
+  "regression": {
+    "pass": 654,
+    "fail": 0,
+    "skip": 1,
+    "composition": "631 pi-* tests plus restart HTTP/maintenance backup cases; overlap with focused",
+    "skipReason": "Platform-specific case"
+  },
+  "remainingDirectDshDevDependencies": 73,
+  "frozenInstall": "Carried blocker: registry ERR_PNPM_FETCH_503 during metadata/attestation; no package changes or new installation attempted in this phase",
+  "removedContract": "Explicit DSH profile backend/rc.2 provider hash branch from restart plans. Maintenance proposals with dshHome refuse before history/probe calls.",
+  "preserved": "Native reviewed LF/CRLF source fingerprints, owner/host identity and digest bindings, source-process exclusion, unknown historical outcomes and zero-write maintenance audit",
+  "platform": "Actual Windows kernel/ACL acceptance remains unverified; vendored platform implementations and notices retained",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-restart-only-focused.txt",
+      "sha256": "058b1033211e390774be13a231d6fb9a9558582a94ea049e5121fcc6da78a124"
+    },
+    {
+      "path": "docs/evidence/pi-native-restart-only-regression.txt",
+      "sha256": "15f1316c4c17c331dd954e4d9adbbcc20a2e67572cf69e0bb134a0283f4046e2"
+    },
+    {
+      "path": "docs/evidence/pi-native-restart-only-checks.txt",
+      "sha256": "0b413ad47dd2254d956cadc2e62296cf16a994b262d68fe7bf483b3b19613f74"
+    }
+  ]
+}

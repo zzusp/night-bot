@@ -1,0 +1,15 @@
+✔ local process fork runs exact argv and retains bounded output/spill without shared reader cursors (89.598643ms)
+✔ local process fork refuses pre-aborted or invalid requests before launch (11.505403ms)
+✔ local process fork cancellation terminates and observes its managed range (28.940421ms)
+✔ local process contract strips ambient secrets and private harness markers with explicit caller layers later (0.811762ms)
+✔ source-derived Linux bootstrap consumes private launch request and execs with exact target environment (143.169118ms)
+✔ local managed terminal transports real PTY output and awaits whole-session termination (105.402078ms)
+✔ direct command exit does not claim descendant quiescence before termination (158.188212ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 685.982917

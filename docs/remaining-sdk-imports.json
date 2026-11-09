@@ -1,0 +1,361 @@
+{
+  "status": "historical-snapshot",
+  "note": "历史静态清单，包含已退休路径；不代表当前导入。当前证据见 runtime-audit.json 与 check-production-imports.mjs。",
+  "scope": "bounded literal static import inventory, not a dynamic/transitive closure",
+  "imports": {
+    "@deepseek-ai/dsh-session-format-catalog/message-projections": [
+      {
+        "file": "src/native-session-query.js",
+        "binding": "{ currentSessionMessageProjections }"
+      }
+    ],
+    "@deepseek-ai/dsh-session": [
+      {
+        "file": "src/native-session-query.js",
+        "binding": "{ Session, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent }"
+      },
+      {
+        "file": "src/native-subagents.js",
+        "binding": "{ SessionLogOffset, SessionSeq }"
+      },
+      {
+        "file": "src/pi-loop.js",
+        "binding": "{ SessionLogOffset, SessionPreparation, SessionSeq, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent }"
+      },
+      {
+        "file": "src/native-sessions.js",
+        "binding": "{Session,SessionId,SessionForkError,buildForkSeed}"
+      },
+      {
+        "file": "src/native-session-title.js",
+        "binding": "{ SessionSeq }"
+      }
+    ],
+    "@deepseek-ai/dsh-llm": [
+      {
+        "file": "src/native-session-query.js",
+        "binding": "{ HarnessError }"
+      },
+      {
+        "file": "src/pi-provider-context.js",
+        "binding": "{ LlmError, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, offloadedImageText, requestImageHandleText, requiredImageOffload }"
+      },
+      {
+        "file": "src/native-subagents.js",
+        "binding": "{ HarnessError, ReasoningEffortId, boundContextSummary, contentHasImage, createUserMessage, errorChain, joinAssistantStreamText }"
+      },
+      {
+        "file": "src/native-tool-pwsh.js",
+        "binding": "{ HarnessError }"
+      },
+      {
+        "file": "src/pi-loop.js",
+        "binding": "{ AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, LlmError, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, markAgentLoopRequest }"
+      },
+      {
+        "file": "src/native-tools.js",
+        "binding": "{HarnessError}"
+      },
+      {
+        "file": "src/native-tool-skill.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "src/pi-provider-discovery.js",
+        "binding": "{ attributionHeaders, LlmError }"
+      },
+      {
+        "file": "src/pi-messages.js",
+        "binding": "{ createAssistantMessage }"
+      },
+      {
+        "file": "src/native-working-directory.js",
+        "binding": "{createUserMessage}"
+      },
+      {
+        "file": "src/native-approval.js",
+        "binding": "{createUserMessage}"
+      },
+      {
+        "file": "src/native-agent-instructions.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "src/native-pi-provider.js",
+        "binding": "{  LlmError, attributionHeaders }"
+      },
+      {
+        "file": "src/native-session-title.js",
+        "binding": "{ isAgentLoopRequest }"
+      },
+      {
+        "file": "src/pi-native-stream.js",
+        "binding": "{createAssistantMessage}"
+      },
+      {
+        "file": "src/native-tool-jobs.js",
+        "binding": "{ boundContextSummary, createUserMessage }"
+      },
+      {
+        "file": "src/native-code-transport.js",
+        "binding": "{createUserMessage}"
+      },
+      {
+        "file": "src/native-tool-bash.js",
+        "binding": "{ HarnessError }"
+      },
+      {
+        "file": "src/native-tool-fs-search.js",
+        "binding": "{ HarnessError }"
+      },
+      {
+        "file": "src/native-sandbox.js",
+        "binding": "{HarnessError}"
+      },
+      {
+        "file": "src/native-llm.js",
+        "binding": "{LlmError,HarnessError,callConfigEquals,freezeMessage,fileHandleText,contentHasFile,contentHasImage,projectFilesToText,projectImagesForTextModel,projectToolUpdates}"
+      },
+      {
+        "file": "packages/dingtalk-core/task-general-workflow.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/task-session.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/task-owner-session.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/model-context.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/status-query.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/host-context.js",
+        "binding": "{ createDeveloperMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/group-coordinator-session.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/independent-coordination-planner.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/execution-session.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/session-skill-refresh.js",
+        "binding": "{ createUserMessage }"
+      },
+      {
+        "file": "packages/dingtalk-core/fake-llm.js",
+        "binding": "{ LlmAdapter }"
+      },
+      {
+        "file": "packages/dingtalk-core/coordination-sessions.js",
+        "binding": "{ createUserMessage }"
+      }
+    ],
+    "@deepseek-ai/dsh-tools": [
+      {
+        "file": "src/native-subagents.js",
+        "binding": "{ ToolArgsError, assertObjectJsonSchema, validateJsonSchemaValue }"
+      },
+      {
+        "file": "src/native-tool-working-directory.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "src/native-tool-pwsh.js",
+        "binding": "{ TOOL_ABORTED, defineTool }"
+      },
+      {
+        "file": "src/pi-loop.js",
+        "binding": "{ TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER }"
+      },
+      {
+        "file": "src/native-tools.js",
+        "binding": "{assertSupportedJsonSchema,validateJsonSchemaValue,ToolNotFoundError,ToolOutputError,TOOL_RUNTIME_SCHEDULER,renderToolsSdk,renderToolsSdkPy}"
+      },
+      {
+        "file": "src/native-tool-skill.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "src/native-tool-todo.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "src/native-tool-web.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "src/native-tool-fs.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "src/native-tool-jobs.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "src/native-code-transport.js",
+        "binding": "{defineTool,parameterSchemaSpecToJsonSchema,CodeRunFailedError,TOOL_RUNTIME_SCHEDULER}"
+      },
+      {
+        "file": "src/native-tool-bash.js",
+        "binding": "{ TOOL_ABORTED, defineTool }"
+      },
+      {
+        "file": "src/native-tool-fs-search.js",
+        "binding": "{ defineTool }"
+      },
+      {
+        "file": "packages/dingtalk-core/agent-query-tools.js",
+        "binding": "{ validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/task-session.js",
+        "binding": "{ validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/task-owner-session.js",
+        "binding": "{ assertSupportedJsonSchema, validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/group-coordinator-session.js",
+        "binding": "{ assertSupportedJsonSchema, validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/execution-session.js",
+        "binding": "{ assertSupportedJsonSchema, validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/claude-execution-session.js",
+        "binding": "{ assertSupportedJsonSchema, validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/execution-controller.js",
+        "binding": "{ assertSupportedJsonSchema, validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/agent-work.js",
+        "binding": "{ validateJsonSchemaValue }"
+      },
+      {
+        "file": "packages/dingtalk-core/task-workflow-contracts.js",
+        "binding": "{ validateJsonSchemaValue }"
+      }
+    ],
+    "@deepseek-ai/dsh-subagent": [
+      {
+        "file": "src/native-subagents.js",
+        "binding": "{SubagentError,SubagentDepthError}"
+      },
+      {
+        "file": "packages/dingtalk-core/runtime.js",
+        "binding": "{ snapshotSubagentDescriptor }"
+      }
+    ],
+    "@deepseek-ai/dsh-sandbox": [
+      {
+        "file": "src/native-tool-pwsh.js",
+        "binding": "{ ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs }"
+      },
+      {
+        "file": "src/native-tool-fs.js",
+        "binding": "{ ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs }"
+      },
+      {
+        "file": "src/native-pwsh-sandbox.js",
+        "binding": "{ SandboxUnavailableError }"
+      },
+      {
+        "file": "src/native-bash-sandbox.js",
+        "binding": "{ SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature, matchesSignature as matchesSignature$1 }"
+      },
+      {
+        "file": "src/native-fs-sandbox.js",
+        "binding": "{ writableRoots }"
+      },
+      {
+        "file": "src/native-tool-bash.js",
+        "binding": "{ ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs }"
+      }
+    ],
+    "@deepseek-ai/dsh-session-persistence": [
+      {
+        "file": "src/pi-loop.js",
+        "binding": "{ SessionPersistenceNotFoundError }"
+      }
+    ],
+    "@deepseek-ai/dsh-authorization": [
+      {
+        "file": "src/native-authorization.js",
+        "binding": "{AuthorizationError,AuthorizationDeclinedError}"
+      }
+    ],
+    "@deepseek-ai/dsh-skill": [
+      {
+        "file": "src/native-tool-skill.js",
+        "binding": "{ escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent }"
+      }
+    ],
+    "@deepseek-ai/dsh-fs": [
+      {
+        "file": "src/native-tool-fs.js",
+        "binding": "{ FsError }"
+      },
+      {
+        "file": "src/native-fs-local.js",
+        "binding": "{ FileSystem, FsError, FsTargetKey, FsVersion }"
+      },
+      {
+        "file": "src/native-fs-observation-policy.js",
+        "binding": "{ FsError }"
+      },
+      {
+        "file": "src/native-fs-sandbox.js",
+        "binding": "{ FsError }"
+      }
+    ],
+    "@deepseek-ai/dsh-session-title": [
+      {
+        "file": "src/native-session-title.js",
+        "binding": "{SessionTitleInvalidError}"
+      }
+    ],
+    "@deepseek-ai/dsh-workspace": [
+      {
+        "file": "src/native-workspace.js",
+        "binding": "{WorkspaceActiveSessionError,WorkspaceArchivedSessionPinError,WorkspaceMoveInvalidError,WorkspaceOrderInvalidError,WorkspaceUnknownSessionError}"
+      }
+    ],
+    "@deepseek-ai/dsh-web": [
+      {
+        "file": "src/native-web.js",
+        "binding": "{WebError}"
+      }
+    ],
+    "@deepseek-ai/dsh-sandbox-windows-acl": [
+      {
+        "file": "src/native-sandbox.js",
+        "binding": "{AclWriteGrant,assertTempRootOutsideWorkspace,registerAclDiagnosisSkill,tempWriteSid,workspaceWriteSid}"
+      }
+    ],
+    "@deepseek-ai/dsh-session-persistence-jsonl": [
+      {
+        "file": "src/pi-session-persistence.js",
+        "binding": "LegacyJsonlPersistence"
+      }
+    ]
+  }
+}

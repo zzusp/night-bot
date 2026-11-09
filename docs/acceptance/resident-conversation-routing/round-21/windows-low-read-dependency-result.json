@@ -1,0 +1,27 @@
+{
+  "args": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-name-pattern=^Windows scoped Low read borrowers retain NRU NXU labels until the final reader exits$",
+    "test/pi-native-sandbox.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "durationSeconds": 0.33126211166381836,
+  "sourceBefore": {
+    "test/pi-native-sandbox.test.js": "8105f17e917261c9b40419f705eb4291a304f266caff2e3c07ee176f1a463962",
+    "src/process/windows-acl.js": "4cf27e7237b8a3cc5cb78731e16d01420b703fd859ed91bb70788205465eda45",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3"
+  },
+  "sourceAfter": {
+    "test/pi-native-sandbox.test.js": "8105f17e917261c9b40419f705eb4291a304f266caff2e3c07ee176f1a463962",
+    "src/process/windows-acl.js": "4cf27e7237b8a3cc5cb78731e16d01420b703fd859ed91bb70788205465eda45",
+    "src/process/contracts.js": "62a6ddc58f4d052619c680fa59d936efd28931fa8c8236623c46238ff5fa82b3"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "5ee608b3e06ea9fda83afba11865848b46fcdffacec8956eac189a18bda007a3",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nativeExecuted": false,
+  "realVendorExecuted": false
+}

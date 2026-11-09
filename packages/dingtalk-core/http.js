@@ -1,0 +1,681 @@
+import {taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity} from '../../src/tasks/effect-reconciliation.js'
+import {ObserverMemoryPages} from './observer-memory-pages.js'
+import { randomUUID } from 'node:crypto'
+const mixedTopicPages=new WeakMap()
+const topicDecisionVersions = new WeakMap()
+import { messageProcessingProjection } from './observer-message-projection.js'
+import { checkForUpdates } from './version-check.js'
+import { z } from 'zod'
+import { fixedTopicCorrectionSchema } from './fixed-topic-correction.js'
+import { fingerprint, isPendingDecision, topicDecisionRecovery } from './topic-model.js'
+import { taskContextProgressImpactSchema, taskContextSemanticsProblem } from './task-input-contract.js'
+
+const WEB_ORIGINS = new Set(['http://127.0.0.1:3080', 'http://localhost:3080'])
+
+function localConfigurationRequest(request) {
+  if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.socket?.remoteAddress)
+    || request.headers.origin && !WEB_ORIGINS.has(request.headers.origin)) return false
+  try {
+    const host = request.headers.host
+    if (typeof host !== 'string' || host.length > 200) return false
+    const address = new URL(`http://${host}`)
+    return ['127.0.0.1', 'localhost', '[::1]'].includes(address.hostname) && address.host === host.toLowerCase()
+      && !address.username && !address.password && address.pathname === '/' && !address.search && !address.hash
+      && (!request.socket.localPort || Number(address.port || 80) === request.socket.localPort)
+  } catch { return false }
+}
+
+export function applyResidentCorsHeaders(request, response) {
+  const origin = request.headers.origin
+  if (WEB_ORIGINS.has(origin)) response.setHeader('access-control-allow-origin', origin)
+  response.setHeader('vary', 'Origin')
+  response.setHeader('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS')
+  response.setHeader('access-control-allow-headers', 'content-type')
+}
+
+async function readJson(request) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > 1024 * 1024) throw new Error('request_too_large')
+    chunks.push(chunk)
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+}
+
+function send(response, status, value) {
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+  })
+  response.end(JSON.stringify(value))
+}
+
+function pageNumber(url, name, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+  const raw = url.searchParams.get(name)
+  if (raw === null) return fallback
+  if (!/^\d+$/u.test(raw)) throw new Error(`invalid_${name}`)
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < (name === 'limit' ? 1 : 0) || value > maximum) throw new Error(`invalid_${name}`)
+  return value
+}
+
+function topicSummary(topic) {
+  const unfinished = topic.decisions?.findLast(isPendingDecision)
+  const pendingUnits = new Set(topic.entries.filter((entry) => entry.revision > topic.processedRevision).map((entry) => entry.unitId ?? `legacy:${entry.messageId}`))
+  return {
+    legacyReadonly: true, topicId: topic.topicId, groupId: topic.groupId, title: topic.title,
+    revision: topic.revision, processedRevision: topic.processedRevision, status: topic.status,
+    ...(topic.mergedInto ? { mergedInto: topic.mergedInto, mergeReceipt: topic.mergeReceipt } : {}),
+    summary: String(topic.summary ?? '').slice(0, 1000),
+    summaryRevision: topic.summaryRevision,
+    openQuestionCount: topic.openQuestions?.length ?? 0,
+    pendingRevisionCount: Math.max(0, topic.revision - topic.processedRevision),
+    pendingUnitCount: pendingUnits.size,
+    ...(unfinished ? { processing: { decisionId: unfinished.decisionId, status: unfinished.status, appliedOperations: (unfinished.operations ?? []).filter((item) => item.status === 'applied').length, totalOperations: unfinished.operations?.length ?? 0, ...(unfinished.error ? { error: String(unfinished.error).slice(0, 1000) } : {}) } } : {}),
+    createdAt: topic.createdAt, updatedAt: topic.updatedAt,
+  }
+}
+// The daily overview does not inspect message ownership or decision history.
+function topicOverview(topic, { list = false } = {}) {
+  return { legacyReadonly: true, topicId: topic.topicId, groupId: topic.groupId, title: topic.title,
+    revision: topic.revision, summaryRevision: topic.summaryRevision, status: topic.status,
+    summary: list ? String(topic.summary ?? '').slice(0, 240) : topic.summary,
+    updatedAt: topic.updatedAt, ...(topic.mergedInto ? { mergedInto: topic.mergedInto } : {}) }
+}
+function workflowTopicSummary(topic) {
+  return { topicId: topic.topicId, groupId: topic.conversationId, title: topic.title,
+    revision: topic.revision, processedRevision: topic.revision, status: 'active',
+    summary: String(topic.summary ?? ''), summaryRevision: topic.contextRevision ?? topic.revision,
+    openQuestionCount: 0, pendingRevisionCount: 0, pendingUnitCount: 0,
+    createdAt: topic.createdAt, updatedAt: topic.updatedAt, engine: 'workflow-v2' }
+}
+
+async function groupSummary(group, runtime, workflowMailboxes, workflowTopics = []) {
+  if (!group) return null
+  const { topics: _topics, routeHistory: _routeHistory, taskReservations: _taskReservations, ...summary } = group
+  const coordinator = workflowMailboxes?.coordinators?.[group.groupId]
+  if (coordinator) summary.coordinator = coordinator
+  const topics = runtime.listTopics(group.groupId).filter(topic => !topic.mergedInto)
+  const sources = await runtime.messageProcessingSources?.(group.groupId) ?? []
+  const requests = await runtime.messageProcessingRequests?.(group.groupId) ?? []
+  const sourceFor = message => {
+    const matches = sources.filter(source => source.groupId === group.groupId && source.messageId === message.messageId && source.version === message.messageVersion)
+    return matches.length === 1 ? matches[0] : undefined
+  }
+  summary.messages = (summary.messages ?? []).map((message) => ({
+    ...message,
+    ...messageProcessingProjection(message, topics, sourceFor(message), requests.filter(request => request.groupId === group.groupId)),
+    topicRefs: topics.flatMap((topic) => {
+      const state = new Map()
+      for (const entry of topic.entries?.filter((item) => item.messageId === message.messageId) ?? []) state.set(entry.unitId ?? `legacy:${entry.messageId}`, entry)
+      return [...state.values()].filter((entry) => entry.action === 'add' && entry.messageVersion === message.messageVersion).map((entry) => ({ topicId: topic.topicId, revision: topic.revision, title: topic.title, unitId: entry.unitId, unitRevision: entry.unitRevision }))
+    }),
+  }))
+  const workflowMessages = (workflowMailboxes?.messages ?? []).filter((message) => message.groupId === group.groupId)
+  const byMessageId = new Map(summary.messages.map(message => [message.messageId, message]))
+  for (const message of workflowMessages) {
+    // 补读的旧资料不能挡住原生控制账的会话入口和状态；缺省显示资料仍保留。
+    const defined = Object.fromEntries(Object.entries(message).filter(([, value]) => value !== undefined))
+    const merged = { ...byMessageId.get(message.messageId), ...defined, sourceKind: 'workflow-v2' }
+    byMessageId.set(message.messageId, { ...merged, ...messageProcessingProjection(merged, topics, sourceFor(merged), requests.filter(request => request.groupId === group.groupId)) })
+  }
+  summary.messages = [...byMessageId.values()]
+  const existingOutboundIds = new Set((summary.outbox ?? []).map((message) => message.outboundId))
+  summary.outbox = [...(summary.outbox ?? []), ...(workflowMailboxes?.outbox ?? []).filter((message) => message.groupId === group.groupId && !existingOutboundIds.has(message.outboundId))]
+  const pendingUnits = new Set(topics.flatMap((topic) => topic.entries.filter((entry) => entry.revision > topic.processedRevision).map((entry) => entry.unitId ?? `legacy:${entry.messageId}`)))
+  summary.topicProgress = {
+    total: topics.length + workflowTopics.filter(topic=>topic.conversationId===group.groupId).length,
+    pending: topics.filter((topic) => topic.revision > topic.processedRevision).length,
+    pendingRevisions: topics.reduce((count, topic) => count + Math.max(0, topic.revision - topic.processedRevision), 0),
+    pendingUnits: pendingUnits.size,
+    unroutedMessages: (group.messages ?? []).filter((message) => message.routingStatus === 'pending' || message.routingStatus === 'failed').length + workflowMessages.filter(message=>!message.topicRefs?.length && ['pending','failed'].includes(message.routingStatus)).length,
+  }
+  return summary
+}
+
+const requiredText = z.string().trim().min(1)
+const topicRefsSchema = z.array(z.strictObject({ topicId: requiredText, revision: z.number().int().positive() })).min(1)
+const createTaskInputSchema = z.strictObject({
+  requestId: requiredText.max(200), groupId: requiredText, title: requiredText.max(120), objective: requiredText.max(16000),
+  context: z.string().max(32000).optional(), acceptanceCriteria: z.array(requiredText.max(2000)).max(100).optional(), topicRefs: topicRefsSchema.optional(),
+})
+const contextTaskInputSchema = z.strictObject({ requestId: requiredText.max(200), context: requiredText.max(32000),
+  progressImpact: taskContextProgressImpactSchema, authorizationChange: z.enum(['none', 'changed']).optional(),
+  expectedRequirementRevision: z.number().int().positive(), expectedControlRevision: z.number().int().positive() })
+  .superRefine((value, ctx) => { const message = taskContextSemanticsProblem(value); if (message) ctx.addIssue({ code: 'custom', path: ['progressImpact'], message }) })
+const cancelTaskInputSchema = z.strictObject({ requestId: requiredText.max(200), reason: requiredText.max(2000), expectedControlRevision: z.number().int().positive() })
+const reopenTaskInputSchema = z.strictObject({ requestId: requiredText.max(200), context: requiredText.max(32000),
+  expectedRequirementRevision: z.number().int().positive(), expectedControlRevision: z.number().int().positive(),
+  maintenanceEvidence: z.strictObject({ directory: requiredText, expectedProposalDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).optional() })
+
+export function residentErrorStatus(error) {
+  if(/^TASK_EFFECT_.*(?:STALE|CONFLICT|BUSY|NOT_QUIESCENT|OWNER_LIVE|ALREADY_SETTLED|ALREADY_RECONCILED)$/.test(error?.code??''))return 409
+  if(['OBSERVER_PAGE_PROVIDER_REQUIRED','OBSERVER_PAGINATION_MIGRATION_REQUIRED','OBSERVER_TEXT_MIGRATION_REQUIRED'].includes(error?.code))return 503
+  if(error?.code==='OBSERVER_PAGE_STALE')return 409
+  const message = error instanceof Error ? error.message : String(error)
+  if (/^(?:MESSAGE_RETRY_|TASK_NOTIFICATION_RECOVERY_|DYNAMIC_NOTIFICATION_RECOVERY_)/.test(message)) return 409
+  if (/^(?:DYNAMIC|TASK_SESSION)_.+(?:FORBIDDEN|AUTHENTICATED_SOURCE_REQUIRED|WEB_ACTOR_REQUIRED)$/.test(message)) return 403
+  if (/^DYNAMIC_.*(?:STALE|CONFLICT|BUSY|TERMINAL|NOT_ACTIVE|NOT_QUIESCENT|UNRESOLVED|FENCED|RECONCILIATION_REQUIRED)$/.test(message)) return 409
+  if (message === 'DYNAMIC_NOT_FOUND') return 404
+  if (/TASK_(?:REQUIREMENT|CONTROL|REQUEST|SESSION).*?(?:CONFLICT|STALE|BUSY)|TASK_SESSION_TERMINAL/.test(message)) return 409
+  if (/TASK_(?:(?:SESSION|NOTIFICATION)_)?NOT_FOUND/.test(message)) return 404
+  if (/LEGACY_TASK_READONLY|WORKFLOW_RETIRED|TOPIC_ROUTING_RETIRED/.test(message)) return 410
+  return /^(group_has_(active_tasks|referenced_topics|pending_decisions|pending_outbox|pending_topic_facts)|task-stale|task_input_version_(conflict|stale)|task_request_identity_conflict|task_input_pending|task_topic_version_invalid|task_result_context_changed|task_prompts_version_conflict|task_web_(task-stale|topic-stale|routing-required)|web_task_version_conflict)(:|$)/u.test(message) ? 409 : 400
+}
+
+async function submitWebTask(request, response, runtime, kind, taskId) {
+  try {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+    if (taskId) {
+      const task = runtime.getTaskSessionIdentity ? await runtime.getTaskSessionIdentity(taskId) : await runtime.getTaskSessionDetail?.(taskId)
+      if (task?.legacyReadonly || !task && await runtime.isWorkflowTask?.(taskId)) return send(response, 410, { error: 'LEGACY_TASK_READONLY' })
+    }
+    const body = await readJson(request)
+    if(Object.hasOwn(body,'topicId')||Object.hasOwn(body,'topicRefs'))return send(response,410,{error:'TOPIC_ROUTING_RETIRED'})
+    const parsed = (kind === 'createTask' ? createTaskInputSchema : kind === 'cancelTask' ? cancelTaskInputSchema : kind === 'reopenTask' ? reopenTaskInputSchema : contextTaskInputSchema).safeParse(body)
+    if (!parsed.success) return send(response, 400, { error: 'web_task_request_invalid', issues: parsed.error.issues.map(({ path, message }) => ({ path, message })) })
+    const value = await runtime[kind]({ ...parsed.data, ...(taskId ? { taskId } : {}) })
+    return send(response, value?.status === 'task-stale' ? 409 : value?.status === 'accepted' ? 202 : 200, value)
+  } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+}
+
+export async function handleRequest(request, response, store, { testApiEnabled = false, transport = 'fake-dws', outboundAuthorized = false, modelMode = 'fake', checkForUpdatesImpl = checkForUpdates, effectOperatorAuth } = {}) {
+  applyResidentCorsHeaders(request, response)
+  const url = new URL(request.url ?? '/', 'http://localhost')
+  // 浏览器预检不执行业务操作，须先于旧写入口清退规则响应。
+  if (request.method === 'OPTIONS') return send(response, 204, null)
+  const retiredTopicWrite=request.method!=='GET'&&( /\/(?:topics|fixed-topics)(?:\/|$)/u.test(url.pathname)||/\/routing-hold$/u.test(url.pathname)||url.pathname.startsWith('/runtime/task-topics/'))
+  if(retiredTopicWrite||url.searchParams.has('topicId')&&/^\/(?:state\/)?tasks(?:\/|$)/u.test(url.pathname)){
+    response.setHeader('cache-control','no-store')
+    return send(response,410,{error:'TOPIC_ROUTING_RETIRED',message:'活动 Topic 路由已退休；请使用原消息来源与事项接口。历史 Topic 仅供审计读取。'})
+  }
+  if(request.method==='GET'&&/^\/state\/(?:topics|fixed-topics)(?:\/|$)/u.test(url.pathname))response.setHeader('x-night-bot-legacy-readonly','true')
+
+  const effectRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/([^/]+)\/(inspect|close)$/u.exec(url.pathname)
+  const effectActionRoute = request.method === 'POST' && /^\/tasks\/([^/]+)\/effects\/new-action$/u.exec(url.pathname)
+  if (effectRoute || effectActionRoute) {
+    if (!localConfigurationRequest(request)) return send(response,403,{error:'TASK_LOCAL_IDENTITY_REQUIRED'})
+    if (!effectOperatorAuth?.available) return send(response,503,{error:'EFFECT_OPERATOR_PRIVACY_UNAVAILABLE'})
+    if (!await effectOperatorAuth.authorize(request)) return send(response,403,{error:'EFFECT_OPERATOR_CAPABILITY_REQUIRED'})
+    try {
+      const taskId=decodeURIComponent((effectRoute??effectActionRoute)[1]),intentEntryId=effectRoute?decodeURIComponent(effectRoute[2]):undefined,body=await readJson(request)
+      if(effectOperatorAuth.containsSecret({taskId,intentEntryId,body}))return send(response,400,{error:'EFFECT_OPERATOR_SECRET_IN_REQUEST'})
+      let result
+      if(effectActionRoute){
+        const {operatorText,...proposal}=z.object({operatorText:z.string().min(1).max(16000).refine(value=>value.trim().length>0)}).passthrough().parse(body)
+        const identity=taskEffectActionAuthorizationIdentity(proposal)
+        if(identity.taskId!==taskId)return send(response,400,{error:'TASK_EFFECT_PROPOSAL_IDENTITY_MISMATCH'})
+        if(!store.authorizeTaskEffectAction)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
+        result=await store.authorizeTaskEffectAction({...identity,operatorText})
+      }else if(effectRoute[3]==='inspect'){
+        z.strictObject({}).parse(body)
+        if(!store.inspectTaskEffect)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
+        result=await store.inspectTaskEffect({taskId,intentEntryId})
+      }else{
+        const {operatorText,...proposal}=z.object({operatorText:z.string().min(1).max(16000).refine(value=>value.trim().length>0)}).passthrough().parse(body)
+        const identity=taskEffectReconciliationIdentity(proposal)
+        if(identity.taskId!==taskId||identity.intentEntryId!==intentEntryId)return send(response,400,{error:'TASK_EFFECT_PROPOSAL_IDENTITY_MISMATCH'})
+        if(!store.reconcileTaskEffect)return send(response,503,{error:'TASK_EFFECT_OPERATOR_UNAVAILABLE'})
+        result=await store.reconcileTaskEffect({...identity,operatorText})
+      }
+      return send(response,200,effectOperatorAuth.redact(result))
+    }catch(error){const code=error?.code;return send(response,error?.name==='ZodError'||!code?400:residentErrorStatus(error),effectOperatorAuth.redact({error:typeof code==='string'&&/^(?:TASK_EFFECT_|TASK_SESSION_|DYNAMIC_)[A-Z_]+$/.test(code)?code:'TASK_EFFECT_OPERATOR_REQUEST_INVALID'}))}
+  }
+  const routingHold = request.method === 'POST' && /^\/config\/groups\/([^/]+)\/messages\/([^/]+)\/routing-hold$/u.exec(url.pathname)
+  if (routingHold) {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+    if (!store.updateMessageRoutingHold) return send(response, 503, { error: 'routing_hold_unavailable' })
+    try {
+      const identity = { messageVersion: z.number().int().positive(), epoch: z.number().int().nonnegative() }
+      const schema = z.union([
+        z.strictObject({ ...identity, resume: z.literal(true) }),
+        z.strictObject({ ...identity, scope: z.array(z.string().trim().min(1).max(200)).min(1).max(100).refine(values => new Set(values).size === values.length), confirmClosedScope: z.literal(true) }),
+      ])
+      const body=await readJson(request)
+      const parsed = schema.safeParse(body)
+      if (!parsed.success) return send(response, 400, { error: 'routing_hold_request_invalid' })
+      const { confirmClosedScope, ...input } = parsed.data
+      const result = await store.updateMessageRoutingHold({ groupId: decodeURIComponent(routingHold[1]), messageId: decodeURIComponent(routingHold[2]), ...input })
+      return send(response, 200, result)
+    } catch (error) { return send(response, error.message === 'topic_routing_hold_stale' ? 409 : 400, { error: error.message }) }
+  }
+  // Only current task sessions may use this endpoint. Legacy archive stays retired.
+  if (request.method === 'POST' && /^\/tasks\/[^/]+\/archive$/u.test(url.pathname) && store.isTaskSessionMode?.()) {
+    try {
+      if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+      const taskId = decodeURIComponent(url.pathname.slice('/tasks/'.length, -'/archive'.length))
+      const task = store.getTaskSessionIdentity ? await store.getTaskSessionIdentity(taskId) : await store.getTaskSessionDetail(taskId)
+      if (task?.legacyReadonly || !task && (await store.getTask?.(taskId) || await store.isWorkflowTask?.(taskId))) return send(response, 410, { error: 'LEGACY_TASK_READONLY' })
+      if (!z.strictObject({}).safeParse(await readJson(request)).success) return send(response, 400, { error: 'web_task_request_invalid' })
+      return send(response, 200, await store.archiveTask({ taskId }))
+    } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  if (request.method === 'POST' && /^\/tasks\/[^/]+\/reopen$/u.test(url.pathname) && store.isTaskSessionMode?.()) {
+    return submitWebTask(request, response, store, 'reopenTask', decodeURIComponent(url.pathname.slice('/tasks/'.length, -'/reopen'.length)))
+  }
+  // Retired configuration and fixed-run controls must never reach a runtime fallback.
+  if (/^\/config\/workflow-(?:variables|bindings)(?:\/|$)/u.test(url.pathname)
+    || ['/state/workflows', '/state/workflows/catalog', '/runtime/execution-purge', '/runtime/maintenance/task-run', '/runtime/topics/reconcile', '/runtime/topics/reconcile/check', '/runtime/maintenance/seal', '/runtime/maintenance/resume'].includes(url.pathname)
+    || request.method !== 'GET' && url.pathname === '/runtime/maintenance'
+    || /^\/config\/groups\/[^/]+\/(?:topics\/[^/]+\/decisions\/[^/]+\/operations\/[^/]+|coordination\/[^/]+)\/retry$/u.test(url.pathname)
+    || testApiEnabled && /^\/test\/tasks(?:\/(?:wait|resume|followup|result))?$/u.test(url.pathname)
+    || /^\/runtime\/maintenance\/tasks\/[^/]+\/completed-observations$/u.test(url.pathname)
+    || /^\/tasks\/[^/]+\/(?:reset-execution|prepare-purged-run|rerun|execution-control|review-delivery|confirm-completion|confirm-stage|retry-investigation|handoff-data-change-approval|maintenance-constraint|reassess-readonly|repair-stage-authorizations|retire-prepared-effect|retry-owner|reissue-repository|reopen|pause|resume|archive|title)$/u.test(url.pathname)
+    || /^\/workflows(?:\/|$)/u.test(url.pathname)
+    || /^\/authorizations\/[^/]+\/(?:decision|reissue)$/u.test(url.pathname)
+    || request.method !== 'GET' && /^\/tasks\/[^/]+\/(?:reports\/[^/]+\/retry|notifications\/[^/]+\/(?:retry|send-completion)|information-wait-notice)$/u.test(url.pathname)
+    || request.method === 'DELETE' && /^\/tasks\/[^/]+$/u.test(url.pathname)) {
+    response.setHeader('cache-control', 'no-store')
+    return send(response, 410, { error: 'WORKFLOW_RETIRED', message: '旧工作流与参数管理已清退；历史记录仅供读取。' })
+  }
+  if (request.method === 'GET' && url.pathname === '/runtime/maintenance') {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'workflow_local_identity_required' })
+    if (!store.getWorkflowMaintenance) return send(response, 404, { error: 'workflow_maintenance_unavailable' })
+    return send(response, 200, { ...await store.getWorkflowMaintenance(), legacyReadonly: true })
+  }
+  if (request.method === 'GET' && url.pathname === '/health') {
+    const recoveryIssues = store.listRecoveryIssues()
+    const inboundConfigured = transport === 'dws'
+    const dwsBridge = inboundConfigured ? store.getDwsBridgeHealth?.() ?? { healthy: false, groups: [] } : undefined
+    const inboundProcessing = inboundConfigured && dwsBridge.healthy === true && !dwsBridge.ingress?.paused
+    const activityAudit = store.getActivityAuditStatus?.()
+    const executionStore = store.getWorkflowExecutionHealth?.()
+    return send(response, 200, {
+      status: recoveryIssues.length === 0 && (!executionStore || executionStore.healthy) && (!inboundConfigured || inboundProcessing) ? 'ok' : 'degraded', transport,
+      inboundConfigured, inboundProcessing, outboundAuthorized, modelMode,
+      recoveryIssueCount: recoveryIssues.length,
+      ...(executionStore ? { executionStore } : {}),
+      ...(activityAudit ? { activityAudit: { total: activityAudit.total, pending: activityAudit.pending, audited: activityAudit.audited, unavailableCount: activityAudit.unavailable.length } } : {}),
+      ...(dwsBridge !== undefined ? { dwsBridge } : {}),
+    })
+  }
+  if (request.method === 'GET' && url.pathname === '/state/recovery-issues') return send(response, 200, store.listRecoveryIssues())
+  if (request.method === 'GET' && url.pathname === '/state/activity-audit') return send(response, 200, store.getActivityAuditStatus?.() ?? { total: 0, pending: 0, audited: 0, unavailable: [] })
+  const observerGroup = request.method==='GET' && /^\/state\/groups\/([^/]+)\/(messages|outbox)$/u.exec(url.pathname)
+  if(observerGroup){
+    try{
+      if(!store.observerGroupPage)return send(response,503,{error:'observer_unavailable'})
+      const collection=observerGroup[2],filter=url.searchParams.get('filter')||'all'
+      const allowed=collection==='messages'?['all','routing','processing','needs_clarification','processed','failed','unknown']:['all','queued','sending','confirmation','confirmed','cancelled','failed']
+      if(!allowed.includes(filter))throw new Error('OBSERVER_PAGE_INVALID')
+      const page=await store.observerGroupPage(decodeURIComponent(observerGroup[1]),{collection,filter,offset:pageNumber(url,'offset',0),limit:pageNumber(url,'limit',10,100),revision:url.searchParams.get('pageRevision')||undefined})
+      return send(response,page?200:404,page??{error:'group_not_found'})
+    }catch(error){return send(response,error.code==='OBSERVER_PAGE_STALE'?409:error.code==='OBSERVER_PAGINATION_MIGRATION_REQUIRED'?503:400,{error:error.message})}
+  }
+  if (request.method === 'GET' && url.pathname === '/state/groups') {
+    try {
+      const groupId = url.searchParams.get('groupId')
+      if(url.searchParams.get('summary')==='true'&&store.listObserverGroups)return send(response,200,store.listObserverGroups())
+      const workflowMailboxes = await store.getWorkflowMailboxes?.()
+      const workflowTopics = await store.listWorkflowTopics?.(groupId ?? undefined) ?? []
+      return send(response, 200, groupId ? await groupSummary(store.getGroup(groupId), store, workflowMailboxes, workflowTopics)
+        : await Promise.all(store.listGroups().map(group => groupSummary(group, store, workflowMailboxes, workflowTopics))))
+    } catch { return send(response, 503, { error: 'message_processing_unavailable' }) }
+  }
+  if (request.method === 'GET' && url.pathname === '/state/fixed-topics') {
+    if (!store.listFixedTopics) return send(response, 503, { error: 'fixed_topics_unavailable' })
+    const fixedTopics = store.listFixedTopics(url.searchParams.get('groupId') || undefined)
+    return send(response, fixedTopics ? 200 : 404, fixedTopics ? { fixedTopics } : { error: 'group_not_subscribed' })
+  }
+  const fixedTopic = request.method === 'GET' && /^\/state\/fixed-topics\/([^/]+)$/u.exec(url.pathname)
+  if (fixedTopic) {
+    if (!store.listFixedTopicMessagesPage) return send(response, 503, { error: 'fixed_topic_pagination_unavailable' })
+    try {
+      const page = await store.listFixedTopicMessagesPage({ topicId: decodeURIComponent(fixedTopic[1]),
+        groupId: url.searchParams.get('groupId') || undefined,
+        offset: pageNumber(url, 'offset', 0), limit: pageNumber(url, 'limit', 25, 100),
+        revision: url.searchParams.get('pageRevision') || undefined })
+      return send(response, page ? 200 : 404, page ?? { error: 'fixed_topic_not_found' })
+    } catch (error) { return send(response, error.code === 'OBSERVER_PAGE_STALE' ? 409 : 400, { error: error.message }) }
+  }
+  if (request.method === 'GET' && url.pathname === '/state/topics') {
+    try {
+      const offset = pageNumber(url, 'offset', 0), limit = pageNumber(url, 'limit', 50, 100)
+      const groupId=url.searchParams.get('groupId')??undefined
+      const summarize = url.searchParams.get('view') === 'overview' ? topic => topicOverview(topic, { list: true }) : topicSummary
+      if(store.listTopicsPage && !store.listWorkflowTopics) { const page=await store.listTopicsPage({groupId,offset,limit,includeMerged:url.searchParams.get('includeMerged')==='true',revision:url.searchParams.get('pageRevision')||undefined});return send(response,200,{...page,items:undefined,topics:page.items.map(summarize)}) }
+      if(store.listWorkflowTopics && (!store.listWorkflowTopicIndex||!store.getWorkflowTopicById))return send(response,503,{error:'workflow_topic_pagination_provider_required'})
+      const local=store.listTopics(groupId).filter(topic=>!topic.mergedInto||url.searchParams.get('includeMerged')==='true')
+      const workflow=await store.listWorkflowTopicIndex?.(groupId)??[]
+      const descriptors=[...local.map(topic=>({id:`local:${topic.topicId}`,sort:topic.updatedAt??topic.createdAt,revision:topic.revision,summaryRevision:topic.summaryRevision})),...workflow.map(topic=>({...topic,id:`workflow:${topic.topicId}`}))]
+      let pages=mixedTopicPages.get(store);if(!pages){pages=new ObserverMemoryPages();mixedTopicPages.set(store,pages)}
+      const key=JSON.stringify([groupId??null,url.searchParams.get('includeMerged')==='true'])
+      pages.replace(key,JSON.stringify(descriptors),descriptors.map((item,index)=>({...item,order:String(index).padStart(12,'0')})))
+      const byId=new Map(local.map(topic=>[`local:${topic.topicId}`,topic]))
+      const page=await pages.page(key,{offset,limit,revision:url.searchParams.get('pageRevision')||undefined},async id=>id.startsWith('local:')?summarize(byId.get(id)):workflowTopicSummary(await store.getWorkflowTopicById(id.slice(9))))
+      return send(response,200,{...page,items:undefined,topics:page.items})
+    } catch (error) { return send(response,error.code==='OBSERVER_PAGE_STALE'?409:400, { error: error.message }) }
+  }
+  if (request.method === 'GET' && /^\/state\/topics\/[^/]+$/u.test(url.pathname)) {
+    try {
+      const groupId = url.searchParams.get('groupId')
+      if (!groupId) return send(response, 400, { error: 'group_id_required' })
+      const topicId = decodeURIComponent(url.pathname.slice('/state/topics/'.length))
+      const revision = pageNumber(url, 'revision', undefined), offset = pageNumber(url, 'offset', 0), limit = pageNumber(url, 'limit', 50, 100)
+      if (url.searchParams.get('view') === 'overview') {
+        const topic = store.getTopic?.(groupId, topicId)
+        if (topic) return send(response, 200, { topic: topicOverview(topic) })
+        const historical = await store.getWorkflowTopicById?.(topicId)
+        return send(response, historical?.conversationId === groupId ? 200 : 404,
+          historical?.conversationId === groupId ? { topic: workflowTopicSummary(historical) } : { error: 'topic_not_found' })
+      }
+      if (!store.getTopic?.(groupId, topicId)) {
+        const workflowContext=await store.getWorkflowTopicContext?.({groupId,topicId,offset,limit,...(url.searchParams.has('pageRevision')?{pageRevision:url.searchParams.get('pageRevision')}:{})})
+        if(!workflowContext)return send(response,404,{error:'topic_not_found'})
+        return send(response,200,{...workflowContext,topic:{...workflowTopicSummary(workflowContext.topic),openQuestions:[]}})
+      }
+      const context = await store.getTopicContext({ groupId, topicId, ...(revision === undefined ? {} : { revision }), offset, limit, includeTaskRefs:false })
+      return send(response, 200, { ...context, topic: { ...topicSummary(context.topic), summary: context.topic.summary, openQuestions: context.topic.openQuestions } })
+    } catch (error) { return send(response,error.code==='OBSERVER_PAGE_STALE'?409:error.code==='OBSERVER_PAGINATION_MIGRATION_REQUIRED'?503:400,{ error: error.message }) }
+  }
+  if (/^\/(?:state\/coordination-(?:sources|work)(?:\/|$)|coordination\/)/u.test(url.pathname))
+    return send(response, 410, { error: 'INDEPENDENT_COORDINATION_RETIRED' })
+  if (request.method === 'GET' && url.pathname === '/state/tasks') {
+    try {
+      const paged = url.searchParams.has('limit') || url.searchParams.has('offset')
+      if (url.searchParams.has('view') && !paged) throw new Error('OBSERVER_PAGE_INVALID')
+      if (paged && ([...url.searchParams.keys()].some(key => !['offset','limit','state','archived','groupId','topicId','revision','view'].includes(key)) || [...new Set(url.searchParams.keys())].some(key => url.searchParams.getAll(key).length !== 1) || url.searchParams.has('archived') && !['true','false','all'].includes(url.searchParams.get('archived')) || url.searchParams.has('view') && url.searchParams.get('view') !== 'summary')) throw new Error('OBSERVER_PAGE_INVALID')
+      const options = paged ? { offset: pageNumber(url, 'offset', 0), limit: pageNumber(url, 'limit', 20, 100),
+        state: url.searchParams.get('state') || undefined, archived: url.searchParams.get('archived')==='all'?'all':url.searchParams.get('archived') === 'true',
+        groupId: url.searchParams.get('groupId') || undefined,topicId:url.searchParams.get('topicId')||undefined, revision: url.searchParams.get('revision') || undefined,
+        ...(url.searchParams.get('view') === 'summary' ? { summary: true } : {}) } : undefined
+      if (options?.state && !['queued','running','waiting','completed'].includes(options.state)) throw new Error('OBSERVER_PAGE_INVALID')
+      return send(response, 200, await (store.listTaskView?.(options) ?? store.listTasks()))
+    } catch(error) { return send(response, error.code === 'OBSERVER_PAGE_STALE' ? 409 : error.code === 'OBSERVER_PAGINATION_MIGRATION_REQUIRED' ? 503 : 400, {error:error.message}) }
+  }
+
+  const topicDecisions = request.method === 'GET' && /^\/state\/topics\/([^/]+)\/decisions$/u.exec(url.pathname)
+  if (topicDecisions) {
+    try {
+      const groupId = url.searchParams.get('groupId')
+      if (!groupId) return send(response, 400, { error: 'group_id_required' })
+      const topic = store.getTopic?.(groupId, decodeURIComponent(topicDecisions[1]))
+      if (!topic) return send(response, 404, { error: 'topic_not_found' })
+      const offset = pageNumber(url, 'offset', 0), limit = pageNumber(url, 'limit', 10, 100)
+      // Resident writes replace the decisions array, including status-only updates
+      // that need not advance the Topic's message revision or updatedAt.
+      if (!topicDecisionVersions.has(topic.decisions)) topicDecisionVersions.set(topic.decisions, randomUUID())
+      const revision = fingerprint([topicDecisionVersions.get(topic.decisions), topic.revision, topic.updatedAt])
+      if (url.searchParams.has('pageRevision') && url.searchParams.get('pageRevision') !== revision) return send(response, 409, { error: 'topic_context_stale' })
+      const total = topic.decisions.length
+      // Stored order is oldest first. Select a page before reversing or serializing.
+      const items = topic.decisions.slice(Math.max(0, total - offset - limit), Math.max(0, total - offset)).reverse()
+      return send(response, 200, { items, total, offset, limit, revision, nextOffset: offset + items.length < total ? offset + items.length : null })
+    } catch (error) { return send(response, 400, { error: error.message }) }
+  }
+  const topicState = request.method === 'GET' && /^\/state\/topics\/([^/]+)\/context$/u.exec(url.pathname)
+  if (topicState) {
+    try {
+      const groupId = url.searchParams.get('groupId')
+      if (!groupId) return send(response, 400, { error: 'group_id_required' })
+      const topicId = decodeURIComponent(topicState[1]), topic = store.getTopic?.(groupId, topicId)
+      if (!topic) return send(response, 404, { error: 'topic_not_found' })
+      const revision = pageNumber(url, 'revision', topic.revision), offset = pageNumber(url, 'cursor', 0)
+      const limit = pageNumber(url, 'limit', 50, 100), intentCursor = pageNumber(url, 'intentCursor', 0)
+      if (revision !== topic.revision) return send(response, 409, { error: 'topic_context_stale' })
+      const context = await store.getTopicContext({ groupId, topicId, revision, offset, limit, intentOffset:intentCursor,intentLimit:limit,includeTaskRefs:false })
+      if(context.intentTotal===undefined||!store.getTopicTasksPage)return send(response,503,{error:'topic_context_pagination_provider_required'})
+      const decisions = context.topic.decisions ?? []
+      const taskPage=await store.getTopicTasksPage({groupId,topicId,offset:pageNumber(url,'taskCursor',0),limit})
+      const tasks=taskPage.items
+      if (store.getTopic(groupId, topicId)?.revision !== revision) return send(response, 409, { error: 'topic_context_stale' })
+      const taskRefs = tasks.map(task => ({ taskId: task.taskId, title: task.title, state: task.state ?? task.status, inputVersion: task.inputVersion ?? task.requirementRevision }))
+      return send(response, 200, { groupId, topicId, revision, current: { topicTitle: context.topic.title,
+        summary: context.topic.summary, status: context.topic.status, openQuestions: context.topic.openQuestions,
+        sourceCount: context.total,taskTotal:taskPage?.total??taskRefs.length,taskNextCursor:taskPage?.nextOffset??null, hasMoreFacts: offset + context.messages.length < context.total, tasks: taskRefs },
+        facts: context.messages.map(message => ({ factId: message.messageId, kind: '来源消息', text: message.text,
+          sourceRefs: [{ groupId, messageId: message.messageId, messageVersion: message.messageVersion }] })),
+        intentRuns: decisions.map(item => ({ intentRunId: item.decisionId,
+          createdAt: item.createdAt, status: item.status, sourceRunIds: item.decision?.basisMessageIds ?? [],
+          reason: item.decision?.reason ?? item.error ?? null, decision: item.decision, operations: item.operations })),
+        intentNextCursor: intentCursor + limit < context.intentTotal ? intentCursor + limit : null,
+        nextCursor: offset + context.messages.length < context.total ? offset + context.messages.length : null, total: context.total })
+    } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  const workflowTrace = request.method === 'GET' && /^\/state\/workflows\/([^/]+)\/trace$/u.exec(url.pathname)
+  if (workflowTrace) {
+    if (!store.getWorkflowMessageTrace) return send(response, 404, { error: 'workflow_disabled' })
+    try { const value = await store.getWorkflowMessageTrace(decodeURIComponent(workflowTrace[1]),
+      { offset: pageNumber(url, 'cursor', 0), limit: pageNumber(url, 'limit', 50, 100),...(url.searchParams.has('pageRevision')?{revision:url.searchParams.get('pageRevision')}:{}),...(url.searchParams.has('unitCursor')?{unitCursor:pageNumber(url,'unitCursor',0)}:{}) }); return send(response, value ? 200 : 404, value ?? { error: 'message_not_found' }) }
+    catch (error) { return send(response,error.code==='OBSERVER_PAGE_STALE'?409:residentErrorStatus(error), { error: error.message }) }
+  }
+  const workflowEvidence = request.method === 'GET' && /^\/state\/workflows\/([^/]+)\/evidence\/([^/]+)$/u.exec(url.pathname)
+  if (workflowEvidence) {
+    if (!store.getWorkflowMessageEvidence) return send(response, 404, { error: 'workflow_disabled' })
+    try { const value = await store.getWorkflowMessageEvidence(decodeURIComponent(workflowEvidence[1]), decodeURIComponent(workflowEvidence[2]),
+      { offset: pageNumber(url, 'cursor', 0), limit: pageNumber(url, 'limit', 2000, 8000), hash: url.searchParams.get('hash') }); return send(response, value ? 200 : 404, value ?? { error: 'evidence_not_found' }) }
+    catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  const workflowTopicState = request.method === 'GET' && /^\/state\/workflows\/topics\/([^/]+)\/context$/u.exec(url.pathname)
+  if (workflowTopicState) {
+    if (!store.getWorkflowTopicState) return send(response, 404, { error: 'workflow_disabled' })
+    try { const value = await store.getWorkflowTopicState(decodeURIComponent(workflowTopicState[1]),
+      { offset: pageNumber(url, 'cursor', 0), limit: pageNumber(url, 'limit', 50, 100), intentCursor: pageNumber(url, 'intentCursor', 0), expectedRevision: url.searchParams.has('revision') ? pageNumber(url, 'revision', 0) : null }); return send(response, value ? 200 : 404, value ?? { error: 'topic_not_found' }) }
+    catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  const workflowNodeOutput = request.method === 'GET' && /^\/state\/tasks\/([^/]+)\/runs\/([^/]+)\/nodes\/([^/]+)\/(output|document)$/u.exec(url.pathname)
+  if (workflowNodeOutput) {
+    if (!store.getWorkflowTaskNodeOutput) return send(response, 404, { error: 'workflow_disabled' })
+    try { const download = workflowNodeOutput[4] === 'document'
+      const value = await store.getWorkflowTaskNodeOutput(...workflowNodeOutput.slice(1, 4).map(decodeURIComponent),
+        { offset: pageNumber(url, 'cursor', 0), limit: pageNumber(url, 'limit', 1200, 8000), outputRef: url.searchParams.get('ref'),
+          ...(url.searchParams.has('detailRevision') ? { detailRevision: url.searchParams.get('detailRevision') } : {}), ...(download ? { document: true } : {}) })
+      if (download && value) {
+        response.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': `attachment; filename="node-output.md"; filename*=UTF-8''${encodeURIComponent(value.name)}`, 'Cache-Control': 'no-store' })
+        return response.end(value.content)
+      }
+      return send(response, value ? 200 : 404, value ?? { error: 'output_not_found' }) }
+    catch (error) { return send(response, error.code === 'TASK_OUTPUT_CHANGED' ? 409 : residentErrorStatus(error), { error: error.message }) }
+  }
+  const taskDecisions = request.method === 'GET' && /^\/state\/tasks\/([^/]+)\/decisions$/u.exec(url.pathname)
+  if (taskDecisions) {
+    if (!store.getTaskSessionDecisions) return send(response, 404, { error: 'task_session_disabled' })
+    try {
+      return send(response, 200, await store.getTaskSessionDecisions(decodeURIComponent(taskDecisions[1]), {
+        ...(url.searchParams.has('before') ? { before: pageNumber(url, 'before', 0) } : {}), limit: pageNumber(url, 'limit', 20, 100),
+      }))
+    } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  const legacyHistoryPage=request.method==='GET'&&/^\/state\/tasks\/([^/]+)\/legacy-history$/u.exec(url.pathname)
+  if(legacyHistoryPage){
+    if(!store.getLegacyTaskHistoryPage)return send(response,503,{error:'legacy_history_pagination_provider_required'})
+    try{const page=await store.getLegacyTaskHistoryPage(decodeURIComponent(legacyHistoryPage[1]),{offset:pageNumber(url,'offset',0),limit:pageNumber(url,'limit',20,100),...(url.searchParams.has('revision')?{revision:url.searchParams.get('revision')}:{})});if(page&&(!Array.isArray(page.items)||page.items.length>pageNumber(url,'limit',20,100)))throw new Error('legacy_history_pagination_provider_invalid');return send(response,page?200:404,page??{error:'task_not_found'})}
+    catch(error){return send(response,error.code==='OBSERVER_PAGE_STALE'?409:error.code==='OBSERVER_PAGINATION_MIGRATION_REQUIRED'?503:residentErrorStatus(error),{error:error.message})}
+  }
+  const taskHistory = request.method === 'GET' && /^\/state\/tasks\/([^/]+)\/(detail|executions)$/u.exec(url.pathname)
+  if (taskHistory) {
+    const detail = taskHistory[2] === 'detail'
+    const method = detail ? 'getTaskSessionDetail' : 'getTaskSessionExecutions'
+    const legacyMethod = detail ? 'getWorkflowTaskDetail' : 'getWorkflowTaskExecutions'
+    try {
+      const options = detail ? undefined : { offset: pageNumber(url, 'offset', 0), limit: pageNumber(url, 'limit', 20, 100), ...(url.searchParams.has('revision') ? { revision: url.searchParams.get('revision') } : {}), ...(url.searchParams.has('summary') ? { summary: url.searchParams.get('summary') === 'true' } : {}) }
+      const taskId = decodeURIComponent(taskHistory[1])
+      const current = await store[method]?.(taskId, options)
+      const legacy = current == null ? await store[legacyMethod]?.(taskId, options) : undefined
+      const value = current ?? (legacy ? { ...legacy, legacyReadonly: true } : undefined)
+      return send(response, value ? 200 : 404, value ?? { error: 'task_not_found' })
+    } catch (error) { return send(response, ['TASK_DETAIL_STALE','OBSERVER_PAGE_STALE'].includes(error.code) ? 409 : error.code === 'OBSERVER_PAGINATION_MIGRATION_REQUIRED' ? 503 : residentErrorStatus(error), { error: error.message }) }
+  }
+  const workflowTaskRuns = request.method === 'GET' && /^\/state\/tasks\/([^/]+)\/runs$/u.exec(url.pathname)
+  if (workflowTaskRuns) {
+    if (!store.getWorkflowTaskRuns) return send(response, 404, { error: 'workflow_disabled' })
+    try { const value = await store.getWorkflowTaskRuns(decodeURIComponent(workflowTaskRuns[1]),
+      { offset: pageNumber(url, 'cursor', 0), limit: pageNumber(url, 'limit', 20, 100),...(url.searchParams.has('revision')?{revision:url.searchParams.get('revision')}:{}) }); return send(response, value ? 200 : 404, value ?? { error: 'task_not_found' }) }
+    catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  if (request.method === 'GET' && url.pathname === '/state/task-timings') return send(response, 200, store.listTaskTimings())
+  if (request.method === 'GET' && url.pathname === '/state/performance') return send(response, 200, store.listPerformance(Object.fromEntries(['day', 'sessionId', 'groupId', 'taskId', 'requestId', 'submissionId'].filter(key => url.searchParams.has(key)).map(key => [key, url.searchParams.get(key)]))))
+  const authorizationDetail=request.method==='GET'&&/^\/state\/authorizations\/([^/]+)$/u.exec(url.pathname)
+  if(authorizationDetail){try{const taskId=url.searchParams.get('taskId');if(!taskId)throw new Error('OBSERVER_PAGE_INVALID');const page=await store.listAuthorizationRequests({offset:0,limit:1,taskId,requestId:decodeURIComponent(authorizationDetail[1])});return send(response,page.items.length?200:404,page.items[0]??{error:'authorization_not_found'})}catch(error){return send(response,error.code==='OBSERVER_PAGINATION_MIGRATION_REQUIRED'?503:400,{error:error.message})}}
+  if (request.method === 'GET' && url.pathname === '/state/authorizations') {
+    try{const paged=url.searchParams.has('limit')||url.searchParams.has('offset'),filter=url.searchParams.get('filter')||'all'
+      if(!['all','pending','answered','superseded','approved','rejected'].includes(filter))throw new Error('OBSERVER_PAGE_INVALID')
+      return send(response,200,await store.listAuthorizationRequests(paged?{offset:pageNumber(url,'offset',0),limit:pageNumber(url,'limit',10,100),filter,revision:url.searchParams.get('pageRevision')||undefined}:undefined))
+    }catch(error){return send(response,error.code==='OBSERVER_PAGE_STALE'?409:error.code==='OBSERVER_PAGINATION_MIGRATION_REQUIRED'?503:400,{error:error.message})}
+  }
+  const reconcileTopics = request.method === 'POST' && /^\/runtime\/task-topics\/reconcile(\/check)?$/u.exec(url.pathname)
+  if (reconcileTopics) {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+    if (!store.reconcileWebTaskTopics) return send(response, 404, { error: 'task_session_disabled' })
+    try {
+      const parsed = z.strictObject({ groupId: requiredText, requestId: requiredText.optional(), expectedDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional() }).safeParse(await readJson(request))
+      if (!parsed.success) return send(response, 400, { error: 'task_topic_reconcile_invalid' })
+      return send(response, 200, await store.reconcileWebTaskTopics({ ...parsed.data, checkOnly: !!reconcileTopics[1] }))
+    } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  const dialogue = /^(?:\/state)?\/tasks\/([^/]+)\/dialogue$/u.exec(url.pathname)
+  if (dialogue && ((request.method === 'GET' && url.pathname.startsWith('/state/')) || (request.method === 'POST' && !url.pathname.startsWith('/state/')))) {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+    if (!store.getTaskDialogue || !store.sendTaskDialogue) return send(response, 404, { error: 'task_session_disabled' })
+    const taskId = decodeURIComponent(dialogue[1])
+    try {
+      if (request.method === 'GET') return send(response, 200, await store.getTaskDialogue(taskId))
+      const parsed = z.strictObject({ requestId: requiredText.max(200), text: requiredText.max(10000) }).safeParse(await readJson(request))
+      if (!parsed.success) return send(response, 400, { error: 'task_dialogue_invalid' })
+      return send(response, 202, await store.sendTaskDialogue({ ...parsed.data, taskId }))
+    } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  const humanReply = request.method === 'POST' && /^\/tasks\/([^/]+)\/human-requests\/([^/]+)\/reply(\/check)?$/u.exec(url.pathname)
+  if (humanReply) {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+    if (!store.respondTaskHumanRequest) return send(response, 404, { error: 'task_session_disabled' })
+    try {
+      const parsed = z.strictObject({ requestId: requiredText.max(200), reply: requiredText.max(20000),
+        expectedRequirementRevision: z.number().int().positive(), expectedControlRevision: z.number().int().positive(),
+        artifactScopeCorrection: z.strictObject({ coordinationId: requiredText, expectedRevision: z.number().int().positive(), reason: requiredText.max(2000) }).optional(),
+        executionPermissionCorrection: z.strictObject({ executionId: requiredText, expectedInputVersion: z.number().int().positive(), mode: z.enum(['read-only', 'workspace-write', 'danger-full-access']), reason: requiredText.max(2000) }).optional(),
+        nativeFailureResolutions: z.array(z.strictObject({ operationId: requiredText, expectedOperationDigest: z.string().regex(/^[a-f0-9]{64}$/u) })).min(1).max(8)
+          .refine(items => new Set(items.map(item => item.operationId)).size === items.length).optional(),
+        nativeRestartResolutions: z.array(z.strictObject({ operationId: requiredText, expectedOperationDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+          expectedIsolationDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+          scopeEvidence: z.strictObject({ hostPid: z.number().int().positive(), hostLogPath: requiredText, hostLogSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+            hostExit: z.strictObject({ observedAt: z.iso.datetime({ offset: true }), evidenceRef: requiredText.max(2000) }).optional(),
+            postgresWrapper: z.strictObject({ scriptSha256: z.string().regex(/^[a-f0-9]{64}$/u), historicalEvidenceRef: requiredText.max(2000),
+              pgBin: requiredText, port: z.number().int().min(1).max(65535), ownerText: requiredText.max(300) }).optional(),
+            producerScopeReviewed: z.literal(true), localEffectsOnlyConfirmed: z.literal(true), excludeOriginalSourcesConfirmed: z.literal(true),
+            probeExecutionId: requiredText.optional(), probeCallId: requiredText.optional() }).optional() })).min(1).max(8)
+          .refine(items => new Set(items.map(item => item.operationId)).size === items.length).optional() }).safeParse(await readJson(request))
+      if (!parsed.success) return send(response, 400, { error: 'human_reply_invalid' })
+      return send(response, 200, await store.respondTaskHumanRequest({ ...parsed.data,
+        taskId: decodeURIComponent(humanReply[1]), humanRequestId: decodeURIComponent(humanReply[2]), ...(humanReply[3] ? { checkOnly: true } : {}) }))
+    } catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  if (request.method === 'GET' && url.pathname === '/state/activities') return send(response, 200, store.listActivities(url.searchParams.get('taskId') ?? undefined))
+  if (request.method === 'GET' && url.pathname === '/state/supervisor/alerts') {
+    try{if(!url.searchParams.has('limit'))return send(response,200,store.listAlerts())
+      const view=url.searchParams.get('view')||'active',type=url.searchParams.get('type')||'all'
+      if(!['active','resolved'].includes(view)||!['all','runtime','message-channel','leaf-session','goal'].includes(type))throw new Error('OBSERVER_PAGE_INVALID')
+      if(!store.listAlertPage)return send(response,503,{error:'observer_unavailable'})
+      return send(response,200,await store.listAlertPage({view,type,offset:pageNumber(url,'offset',0),limit:pageNumber(url,'limit',10,100),revision:url.searchParams.get('pageRevision')||undefined}))
+    }catch(error){return send(response,error.code==='OBSERVER_PAGE_STALE'?409:400,{error:error.message})}
+  }
+  if (request.method === 'PUT' && url.pathname === '/config/message-ingress') {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'message_ingress_local_identity_required' })
+    if (transport !== 'dws' || !store.setMessageIngressPaused) return send(response, 503, { error: 'message_ingress_unavailable' })
+    try {
+      const parsed = z.strictObject({ paused: z.boolean() }).safeParse(await readJson(request))
+      if (!parsed.success) return send(response, 400, { error: 'message_ingress_invalid' })
+      return send(response, 200, await store.setMessageIngressPaused(parsed.data.paused))
+    } catch (error) { return send(response, 503, { error: error.message }) }
+  }
+  if (request.method === 'GET' && url.pathname === '/state/dws-bridge') return send(response, 200, store.getDwsBridgeHealth?.() ?? { healthy: false, groups: [] })
+  if (request.method === 'GET' && url.pathname === '/state/environment') return send(response, 200, await store.inspectEnvironment())
+  if (request.method === 'GET' && url.pathname === '/state/task-model-options') return send(response, 200, await store.getTaskModelOptions({ provider: url.searchParams.get('provider'), model: url.searchParams.get('model') }))
+  if (request.method === 'GET' && url.pathname === '/state/agent-config') {
+    const { taskPrompts, taskPromptsVersion, taskGuidance, leafSessionPrompt, ...configuration } = store.getAgentConfig()
+    return send(response, 200, configuration)
+  }
+  if (request.method === 'GET' && url.pathname === '/state/version') return send(response, 200, await checkForUpdatesImpl({ force: url.searchParams.get('refresh') === 'true' }))
+  if (request.method === 'POST' && url.pathname === '/tasks') return submitWebTask(request, response, store, 'createTask')
+  const reportRoute = /^\/tasks\/([^/]+)\/reports\/([^/]+)(\/retry)?$/u.exec(url.pathname)
+  if (reportRoute && request.method === 'GET' && !reportRoute[3]) {
+    try {
+      // 此操作无 body 参数；身份仅由路径确定，禁止 body 覆盖 task/submission。
+      const identity = { taskId: decodeURIComponent(reportRoute[1]), submissionId: decodeURIComponent(reportRoute[2]) }
+      const value = await store.getTaskReport(identity)
+      return value === undefined ? send(response, 404, { error: 'task_report_not_found' }) : send(response, 200, value)
+    } catch (error) {
+      const status = /^task_report_not_found(:|$)/u.test(error.message) ? 404 : /^task_report_retry_(stale|requires_failed)(:|$)/u.test(error.message) ? 409 : residentErrorStatus(error)
+      return send(response, status, { error: error.message })
+    }
+  }
+  if (request.method === 'POST' && /^\/tasks\/[^/]+\/context$/u.test(url.pathname)) {
+    const taskId = decodeURIComponent(url.pathname.slice('/tasks/'.length, -'/context'.length))
+    return submitWebTask(request, response, store, 'appendTaskContext', taskId)
+  }
+  if (request.method === 'PUT' && url.pathname === '/config/agent') {
+    const body = await readJson(request)
+    if (['taskPrompts', 'taskPromptsVersion', 'taskGuidance', 'leafSessionPrompt', 'workflowVariables', 'workflowBindings'].some(field => Object.hasOwn(body, field))) return send(response, 410, { error: 'WORKFLOW_RETIRED' })
+    try { return send(response, 200, await store.updateAgentConfig(body)) }
+    catch (error) { return send(response, error.message === 'AGENT_CONFIG_SAVE_FAILED' ? 500 : residentErrorStatus(error), { error: error.message, ...(error.readback ? { readback: error.readback } : {}) }) }
+  }
+  if (request.method === 'GET' && url.pathname === '/config/groups/search') return send(response, 200, await store.searchGroups(url.searchParams.get('q') ?? ''))
+  if (request.method === 'POST' && url.pathname === '/config/groups') return send(response, 200, await store.subscribe(await readJson(request)))
+  if (request.method === 'POST' && url.pathname.startsWith('/config/groups/') && url.pathname.endsWith('/backfill')) {
+    const groupId = decodeURIComponent(url.pathname.slice('/config/groups/'.length, -'/backfill'.length))
+    return send(response, 200, await store.backfillGroup({ groupId, ...(await readJson(request)) }))
+  }
+  if (request.method === 'POST' && url.pathname.startsWith('/config/groups/') && url.pathname.endsWith('/messages/agent-delivery')) {
+    const groupId = decodeURIComponent(url.pathname.slice('/config/groups/'.length, -'/messages/agent-delivery'.length))
+    return send(response, 200, await store.markMessagesAgentDelivery({ groupId, ...(await readJson(request)) }))
+  }
+  const fixedCorrection = request.method === 'POST' ? /^\/config\/groups\/([^/]+)\/fixed-topics\/out-of-scope\/corrections$/u.exec(url.pathname) : null
+  if (fixedCorrection) {
+    if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+    try {
+      const parsed = fixedTopicCorrectionSchema.safeParse(await readJson(request))
+      if (!parsed.success) return send(response, 400, { error: 'FIXED_TOPIC_CORRECTION_INVALID' })
+      if (!store.correctFixedTopicClassification) return send(response, 503, { error: 'FIXED_TOPIC_CORRECTION_UNAVAILABLE' })
+      return send(response, 200, await store.correctFixedTopicClassification({ ...parsed.data, groupId: decodeURIComponent(fixedCorrection[1]) }))
+    } catch (error) {
+      if (error instanceof SyntaxError) return send(response, 400, { error: 'FIXED_TOPIC_CORRECTION_INVALID' })
+      const code = error.code ?? error.message
+      return send(response, code === 'FIXED_TOPIC_CORRECTION_GROUP_NOT_FOUND' ? 404 : /^FIXED_TOPIC_CORRECTION_/.test(code) ? 409 : 500,
+        { error: /^FIXED_TOPIC_CORRECTION_/.test(code) ? code : 'FIXED_TOPIC_CORRECTION_SAVE_FAILED' })
+    }
+  }
+  const messageRetry = request.method === 'POST' ? /^\/config\/groups\/([^/]+)\/messages\/([^/]+)\/retry$/u.exec(url.pathname) : null
+  const notificationRetry = request.method === 'POST' ? /^\/config\/groups\/([^/]+)\/notifications\/([^/]+)\/retry$/u.exec(url.pathname) : null
+  if (messageRetry || notificationRetry) {
+    try {
+      if (!localConfigurationRequest(request)) return send(response, 403, { error: 'TASK_LOCAL_IDENTITY_REQUIRED' })
+      const token = z.string().regex(/^[a-f0-9]{64}$/u)
+      const schema = messageRetry ? z.strictObject({sourceId:requiredText,messageVersion:z.number().int().positive(),phase:z.enum(['triage','router'])})
+        : z.strictObject({ expectedToken: token })
+      const body=await readJson(request)
+      if(messageRetry&&['routing','decision','host'].includes(body.phase))return send(response,410,{error:'TOPIC_ROUTING_RETIRED'})
+      const parsed = schema.safeParse(body)
+      if (!parsed.success) return send(response, 400, { error: 'MESSAGE_RECOVERY_REQUEST_INVALID' })
+      const match = messageRetry ?? notificationRetry
+      const identity = { groupId: decodeURIComponent(match[1]), [messageRetry ? 'messageId' : 'notificationId']: decodeURIComponent(match[2]) }
+      const value = await store[messageRetry ? 'retryDecisionFailedMessage' : 'retryNotification']({ ...parsed.data, ...identity })
+      return send(response, 200, value)
+    } catch (error) {
+      if (error instanceof SyntaxError) return send(response, 400, { error: 'MESSAGE_RECOVERY_REQUEST_INVALID' })
+      // 外部鉴权/网络异常不向浏览器透传正文；原账保留诊断，页面提示先解除阻塞。
+      const code = error.code ?? error.message
+      const safe = /^(?:MESSAGE_RETRY_|TASK_NOTIFICATION_RECOVERY_|DYNAMIC_NOTIFICATION_RECOVERY_|TASK_(?:SESSION|NOTIFICATION)_NOT_FOUND|DYNAMIC_COORDINATION_(?:SOURCE_STALE|FROZEN))/.test(code)
+      return send(response, safe ? residentErrorStatus(error) : 409, { error: safe ? code : 'MESSAGE_RECOVERY_BLOCKED' })
+    }
+  }
+  if (request.method === 'POST' && /^\/tasks\/[^/]+\/cancel$/u.test(url.pathname)) {
+    const taskId = decodeURIComponent(url.pathname.slice('/tasks/'.length, -'/cancel'.length))
+    return submitWebTask(request, response, store, 'cancelTask', taskId)
+  }
+  if (request.method === 'POST' && url.pathname.startsWith('/config/groups/') && url.pathname.endsWith('/history/hydrate')) {
+    const groupId = decodeURIComponent(url.pathname.slice('/config/groups/'.length, -'/history/hydrate'.length))
+    return send(response, 200, await store.hydrateGroupHistory({ groupId }))
+  }
+  if (request.method === 'PUT' && url.pathname.startsWith('/config/groups/')) return send(response, 200, await store.updateGroup({ groupId: decodeURIComponent(url.pathname.slice('/config/groups/'.length)), ...(await readJson(request)) }))
+  if (request.method === 'DELETE' && url.pathname.startsWith('/config/groups/')) {
+    try { return send(response, 200, await store.unsubscribe({ groupId: decodeURIComponent(url.pathname.slice('/config/groups/'.length)) })) }
+    catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
+  }
+  if (!testApiEnabled || !url.pathname.startsWith('/test/')) return send(response, 404, { error: 'not_found' })
+  if (request.method === 'POST' && url.pathname === '/test/subscriptions') return send(response, 200, await store.subscribe(await readJson(request)))
+  if (request.method === 'POST' && url.pathname === '/test/inbound') return send(response, 200, await store.ingest(await readJson(request)))
+  if (request.method === 'POST' && url.pathname === '/test/outbox/ack') return send(response, 200, await store.acknowledge(await readJson(request)))
+  if (request.method === 'POST' && url.pathname === '/test/supervisor/probe') return send(response, 200, await store.reportCarrierIssue(await readJson(request)))
+  return send(response, 404, { error: 'not_found' })
+}

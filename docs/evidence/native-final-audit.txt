@@ -1,0 +1,1 @@
+{"status":"native-runtime-with-explicit-legacy-protocols","directRuntimeDshDependencies":0,"removedActiveDshServices":49,"standaloneFromDshLibraries":true}

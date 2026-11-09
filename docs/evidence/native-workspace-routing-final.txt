@@ -1,0 +1,192 @@
+✔ real native completed task retires its definitively unsent start confirmation without re-dispatch (1538.988221ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":11,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1487,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":40,"aborted":false}
+✔ 脚本化普通回复目标只选固定输入真人来源 (2.462514ms)
+✔ 来源语义戳在首次Topic完成后落账，不等待同群其他判断 (848.930037ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":7,"aborted":false}
+ℹ {"metric":"settled-topic-to-source-projection","delayMs":6,"slowTopicStillBlocked":true}
+ℹ {"lifecyclePhase":"business","elapsedMs":818,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✔ completed task catalogue stays within the tool budget and advances by returned entries without losing tasks (2.585911ms)
+✔ task catalogue continuation carries the exact normalized query and current snapshot identity (1.331749ms)
+✔ native request-bound review and Topic reads accept empty args while routing never guesses a Topic (386.811755ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":96,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":277,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ native revised Topic supplies current linked Task reads without rescanning the catalogue (766.13354ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":74,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":678,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native task context reports invalid arguments and reads explicit archived identity (529.695864ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":53,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":464,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native batch followup reopens each original completed task and session once from one coordination topic (1266.45766ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1180,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":39,"aborted":false}
+✔ 普通回复显式多收件人贯穿原生通知格式化 quoted=true (524.73852ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":107,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":392,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ 普通回复显式多收件人贯穿原生通知格式化 quoted=false (616.595948ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":108,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":471,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":36,"aborted":false}
+✔ 旧回复冻结恢复 prepared (312.244807ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":284,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":27,"aborted":false}
+✔ 旧回复冻结恢复 projected (212.323187ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":191,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ 旧回复冻结恢复 revision-conflict (226.258153ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":199,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":26,"aborted":false}
+✔ 旧回复冻结恢复 taskIds-conflict (184.443327ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":168,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ native task service preserves Topic routing, task association, ignored input and recovery idempotency (1142.599671ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1127,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ Topic外发标识在接纳前被拒绝，原轮修改后只创建一项任务且保留业务编号链接 (309.208342ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":249,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ native Topic handoff keeps the explicit requester as task and completion notification owner (375.709173ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":323,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ replan fences an execution claim before commit (177.93531ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":161,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ replan fences an execution claim after commit (201.16681ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":183,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":18,"aborted":false}
+✔ concurrent same-topic revision is busy while a different task makes progress (294.325765ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":280,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ failed old-drain ends its timing and releases admission for later work (236.089982ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":224,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ Web material failure recovers once and retries the same request without repeating work (245.382607ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":232,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ Web replan blocks a new Owner while old-generation cancellation is in flight (160.414045ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":144,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ Web replan drains the old Owner without waiting for the new Owner (384.215431ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":297,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":42,"aborted":false}
+✔ native Web Topic edits reject stale requirement and control revisions without changing task or topics (350.834044ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":58,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":279,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ business notices 423–424 and named owners remain in the original Topic without assistant tasks or replies (513.656352ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":35,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":468,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ scripted native aggregation keeps list requirements, screenshot delivery and later acceptance in one Topic and Task (752.432942ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":40,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":687,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":25,"aborted":false}
+✔ scripted native routing checks scope before reusing an old Topic and reconsiders a new technical matter (254.103191ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":198,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ scripted native routing permits distinct delivery goals on the same page (192.216961ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":60,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":122,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ native Topic context accepts a requirement that only mentions notification recipients (331.283273ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":276,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native proposal prompt preserves original authorization and asks without claiming task execution (193.436741ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":70,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":112,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ native Web reopen preserves task identity and rejects stale input; HTTP retry is idempotent (355.129803ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":335,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ 协调暂停时混合消息拒绝协调来源，普通话题Host重试仍按原版本完成 (280.686866ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":267,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 明确交办的澄清沿真实通知账送达；待判来源不结清，冷恢复不重问且自身回声不解锁 (472.03065ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":235,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":224,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ 普通讨论不追问 (117.786482ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":55,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 未声明需要澄清的交办不自动发问 (118.445014ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":48,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":57,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 其他助手通知不追问 (120.024327ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":58,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ 正文仅提到助手不算向助手交办 (110.316975ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ 发送许可前 epoch 已恢复时拒绝旧澄清，不产生网络发送 (139.414692ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":62,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":32,"aborted":false}
+✔ 只有冻结出箱尚未prepare的冷启动沿原正文恢复一次，不重调模型 (165.587091ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":111,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ 未知澄清发送冷恢复仅只读核验，hold继续等待且不重发 (183.512183ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":132,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ 明确交办cc前缀不被无@元数据误否决 (139.484417ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":52,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":73,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ 明确交办带前置空白的点名不被无@元数据误否决 (134.853041ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":68,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ 范围声明只更新屏障CAS，不改变澄清通知身份：发送前=false (203.920258ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":71,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":118,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":15,"aborted":false}
+✔ 范围声明只更新屏障CAS，不改变澄清通知身份：发送前=true (165.856598ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":55,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":100,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ 本地 API 恢复待判后真实调度并收束原始来源 (542.777007ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":519,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+ℹ tests 47
+ℹ suites 0
+ℹ pass 47
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21774.117519

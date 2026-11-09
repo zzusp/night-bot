@@ -1,0 +1,158 @@
+{
+  "scope": "两旧执行源的真实check/apply原始工具记录与独立缺席回查；不执行旧运行时，不改来源清单，不将静态退休计为PASS。",
+  "head": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+  "worktreeState": "已知协作dirty工作树，当前保留源码SHA为版本边界",
+  "executions": [
+    {
+      "toolUseId": "call_e970b2de99ef4b12a78e200f4ebf7b92",
+      "command": "python - --check packages/dingtalk-core/task-topic-coordinator.js 3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20 <<'PY'\nimport hashlib,json,sys\nfrom pathlib import Path\nmode,name,expected=sys.argv[1:]\nif mode not in ('--check','--apply') or name!='packages/dingtalk-core/task-topic-coordinator.js':raise SystemExit('EXACT_RETIREMENT_TARGET_REQUIRED')\nroot=Path.cwd();target=root/name\nif target.is_symlink() or not target.is_file():raise SystemExit('REGULAR_TARGET_REQUIRED')\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\nbefore=sha(target)\nif before!=expected:raise SystemExit('SOURCE_CHANGED')\nkeep=root/'packages/dingtalk-core/topic-model.js';keep_before=sha(keep)\nneedles=['task-topic-coordinator','openTaskTopicCoordinator','taskIndexPage','registerTopicRoleInstructions','createTaskContextReadTool']\nconsumers=[]\nfor base in ('src','packages','bin','scripts','test'):\n for p in (root/base).rglob('*'):\n  rel=p.relative_to(root)\n  if any(part in ('node_modules','dist','data','.git') for part in rel.parts) or p.suffix not in ('.js','.mjs','.cjs','.json') or p==target or p.is_symlink() or not p.is_file():continue\n  text=p.read_text(encoding='utf-8-sig')\n  hits=[word for word in needles if word in text]\n  if hits:consumers.append({'path':rel.as_posix(),'references':hits})\nif consumers:raise SystemExit(json.dumps({'remainingConsumers':consumers},ensure_ascii=False))\nif mode=='--apply':\n if sha(target)!=expected:raise SystemExit('SOURCE_CHANGED_BEFORE_DELETE')\n target.unlink()\nif sha(keep)!=keep_before:raise SystemExit('HISTORY_MODEL_CHANGED')\nprint(json.dumps({'mode':mode,'target':name,'sha256':before,'remainingConsumers':consumers,'historyModelSha256':keep_before,'historyModelUnchanged':True,'effects':int(mode=='--apply'),'targetPresent':target.exists(),'manifestsModified':False},ensure_ascii=False))\nPY",
+      "startedAt": "2026-11-07T22:43:03.036Z",
+      "finishedAt": "2026-11-07T22:43:05.922Z",
+      "resultIsError": true,
+      "rawResult": "Exit code 1\n{\"remainingConsumers\": [{\"path\": \"scripts/check-coverage.mjs\", \"references\": [\"task-topic-coordinator\"]}]}"
+    },
+    {
+      "toolUseId": "call_d487c1308dd64bbaa4809562c5695308",
+      "command": "python - --check packages/dingtalk-core/task-topic-coordinator.js 3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20 <<'PY'\nimport hashlib,json,sys\nfrom pathlib import Path\nmode,name,expected=sys.argv[1:]\nif mode not in ('--check','--apply') or name!='packages/dingtalk-core/task-topic-coordinator.js':raise SystemExit('EXACT_RETIREMENT_TARGET_REQUIRED')\nroot=Path.cwd();target=root/name\nif target.is_symlink() or not target.is_file():raise SystemExit('REGULAR_TARGET_REQUIRED')\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\nbefore=sha(target)\nif before!=expected:raise SystemExit('SOURCE_CHANGED')\nkeep=root/'packages/dingtalk-core/topic-model.js';keep_before=sha(keep)\nneedles=['task-topic-coordinator','openTaskTopicCoordinator','taskIndexPage','registerTopicRoleInstructions','createTaskContextReadTool']\nconsumers=[];accounting=[]\nfor base in ('src','packages','bin','scripts','test'):\n for p in (root/base).rglob('*'):\n  rel=p.relative_to(root)\n  if any(part in ('node_modules','dist','data','.git') for part in rel.parts) or p.suffix not in ('.js','.mjs','.cjs','.json') or p==target or p.is_symlink() or not p.is_file():continue\n  text=p.read_text(encoding='utf-8-sig');hits=[word for word in needles if word in text]\n  if not hits:continue\n  lines=[line for line in text.splitlines() if any(word in line for word in needles)]\n  if rel.as_posix()=='scripts/check-coverage.mjs' and hits==['task-topic-coordinator'] and len(lines)==1 and lines[0].startswith('const adapted = new Set('):\n   accounting.append({'path':rel.as_posix(),'kind':'source-accounting-only','rootFollowup':'move retired source accounting with original provenance retained'});continue\n  consumers.append({'path':rel.as_posix(),'references':hits})\nif consumers:raise SystemExit(json.dumps({'remainingConsumers':consumers},ensure_ascii=False))\nif mode=='--apply':\n if sha(target)!=expected:raise SystemExit('SOURCE_CHANGED_BEFORE_DELETE')\n target.unlink()\nif sha(keep)!=keep_before:raise SystemExit('HISTORY_MODEL_CHANGED')\nprint(json.dumps({'mode':mode,'target':name,'sha256':before,'remainingConsumers':consumers,'accountingReferences':accounting,'historyModelSha256':keep_before,'historyModelUnchanged':True,'effects':int(mode=='--apply'),'targetPresent':target.exists(),'manifestsModified':False},ensure_ascii=False))\nPY",
+      "startedAt": "2026-11-07T22:43:42.452Z",
+      "finishedAt": "2026-11-07T22:43:45.509Z",
+      "resultIsError": false,
+      "rawResult": "{\"mode\": \"--check\", \"target\": \"packages/dingtalk-core/task-topic-coordinator.js\", \"sha256\": \"3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20\", \"remainingConsumers\": [], \"accountingReferences\": [{\"path\": \"scripts/check-coverage.mjs\", \"kind\": \"source-accounting-only\", \"rootFollowup\": \"move retired source accounting with original provenance retained\"}], \"historyModelSha256\": \"e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d\", \"historyModelUnchanged\": true, \"effects\": 0, \"targetPresent\": true, \"manifestsModified\": false}",
+      "result": {
+        "mode": "--check",
+        "target": "packages/dingtalk-core/task-topic-coordinator.js",
+        "sha256": "3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20",
+        "remainingConsumers": [],
+        "accountingReferences": [
+          {
+            "path": "scripts/check-coverage.mjs",
+            "kind": "source-accounting-only",
+            "rootFollowup": "move retired source accounting with original provenance retained"
+          }
+        ],
+        "historyModelSha256": "e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d",
+        "historyModelUnchanged": true,
+        "effects": 0,
+        "targetPresent": true,
+        "manifestsModified": false
+      }
+    },
+    {
+      "toolUseId": "call_46082240b4c44e1892dd58df61b85a71",
+      "command": "python - --apply packages/dingtalk-core/task-topic-coordinator.js 3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20 <<'PY'\nimport hashlib,json,sys\nfrom pathlib import Path\nmode,name,expected=sys.argv[1:]\nif mode not in ('--check','--apply') or name!='packages/dingtalk-core/task-topic-coordinator.js':raise SystemExit('EXACT_RETIREMENT_TARGET_REQUIRED')\nroot=Path.cwd();target=root/name\nif target.is_symlink() or not target.is_file():raise SystemExit('REGULAR_TARGET_REQUIRED')\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\nbefore=sha(target)\nif before!=expected:raise SystemExit('SOURCE_CHANGED')\nkeep=root/'packages/dingtalk-core/topic-model.js';keep_before=sha(keep)\nneedles=['task-topic-coordinator','openTaskTopicCoordinator','taskIndexPage','registerTopicRoleInstructions','createTaskContextReadTool']\nconsumers=[];accounting=[]\nfor base in ('src','packages','bin','scripts','test'):\n for p in (root/base).rglob('*'):\n  rel=p.relative_to(root)\n  if any(part in ('node_modules','dist','data','.git') for part in rel.parts) or p.suffix not in ('.js','.mjs','.cjs','.json') or p==target or p.is_symlink() or not p.is_file():continue\n  text=p.read_text(encoding='utf-8-sig');hits=[word for word in needles if word in text]\n  if not hits:continue\n  lines=[line for line in text.splitlines() if any(word in line for word in needles)]\n  if rel.as_posix()=='scripts/check-coverage.mjs' and hits==['task-topic-coordinator'] and len(lines)==1 and lines[0].startswith('const adapted = new Set('):\n   accounting.append({'path':rel.as_posix(),'kind':'source-accounting-only','rootFollowup':'move retired source accounting with original provenance retained'});continue\n  consumers.append({'path':rel.as_posix(),'references':hits})\nif consumers:raise SystemExit(json.dumps({'remainingConsumers':consumers},ensure_ascii=False))\nif mode=='--apply':\n if sha(target)!=expected:raise SystemExit('SOURCE_CHANGED_BEFORE_DELETE')\n target.unlink()\nif sha(keep)!=keep_before:raise SystemExit('HISTORY_MODEL_CHANGED')\nprint(json.dumps({'mode':mode,'target':name,'sha256':before,'remainingConsumers':consumers,'accountingReferences':accounting,'historyModelSha256':keep_before,'historyModelUnchanged':True,'effects':int(mode=='--apply'),'targetPresent':target.exists(),'manifestsModified':False},ensure_ascii=False))\nPY",
+      "startedAt": "2026-11-07T22:55:56.855Z",
+      "finishedAt": "2026-11-07T22:56:00.251Z",
+      "resultIsError": false,
+      "rawResult": "{\"mode\": \"--apply\", \"target\": \"packages/dingtalk-core/task-topic-coordinator.js\", \"sha256\": \"3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20\", \"remainingConsumers\": [], \"accountingReferences\": [{\"path\": \"scripts/check-coverage.mjs\", \"kind\": \"source-accounting-only\", \"rootFollowup\": \"move retired source accounting with original provenance retained\"}], \"historyModelSha256\": \"e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d\", \"historyModelUnchanged\": true, \"effects\": 1, \"targetPresent\": false, \"manifestsModified\": false}",
+      "result": {
+        "mode": "--apply",
+        "target": "packages/dingtalk-core/task-topic-coordinator.js",
+        "sha256": "3507daafbbd23b989d343232686600cede13a299ee736198c4fae751ba807a20",
+        "remainingConsumers": [],
+        "accountingReferences": [
+          {
+            "path": "scripts/check-coverage.mjs",
+            "kind": "source-accounting-only",
+            "rootFollowup": "move retired source accounting with original provenance retained"
+          }
+        ],
+        "historyModelSha256": "e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d",
+        "historyModelUnchanged": true,
+        "effects": 1,
+        "targetPresent": false,
+        "manifestsModified": false
+      }
+    },
+    {
+      "toolUseId": "call_1a3ff7b993254434b22e75d380728259",
+      "command": "python - --check <<'PY'\nimport hashlib,json,sys\nfrom pathlib import Path\nmode=sys.argv[1]\nif mode not in ('--check','--apply'):raise SystemExit('CHECK_OR_APPLY_REQUIRED')\nroot=Path.cwd();name='packages/dingtalk-core/topic-runtime.js';target=root/name\nexpected='f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c'\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\nif target.is_symlink() or not target.is_file() or sha(target)!=expected:raise SystemExit('REGULAR_FROZEN_TARGET_REQUIRED')\npreserved={'packages/dingtalk-core/topic-model.js':'e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d','test/topic-runtime.test.js':'9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a'}\nif any(sha(root/p)!=v for p,v in preserved.items()):raise SystemExit('PRESERVED_SOURCE_CHANGED')\nif (root/'packages/dingtalk-core/task-topic-coordinator.js').exists():raise SystemExit('COORDINATOR_NOT_RETIRED')\nneedles=['topic-runtime','createTopicCoordinator','TASK_REVIEW_MAX_CHARS'];consumers=[];accounting=[];runners=[]\nfor base in ('src','packages','bin','scripts','test'):\n for p in (root/base).rglob('*'):\n  rel=p.relative_to(root)\n  if any(part in ('node_modules','dist','data','.git') for part in rel.parts) or p.suffix not in ('.js','.mjs','.cjs','.json') or p==target or p.is_symlink() or not p.is_file():continue\n  text=p.read_text(encoding='utf-8-sig');hits=[word for word in needles if word in text]\n  if not hits:continue\n  lines=[line for line in text.splitlines() if any(word in line for word in needles)]\n  if rel.as_posix()=='scripts/check-coverage.mjs' and hits==['topic-runtime'] and len(lines)==1 and lines[0].startswith('const adapted = new Set('):\n   accounting.append({'path':rel.as_posix(),'kind':'source-accounting-only','rootFollowup':'move retired source accounting with original provenance retained'});continue\n  if rel.as_posix()=='scripts/test-pi.mjs' and hits==['topic-runtime'] and len(lines)==1 and lines[0].startswith('  domain: [') and \"'topic-runtime'\" in lines[0]:\n   runners.append({'path':rel.as_posix(),'kind':'retained historical test filename, not retired module import'});continue\n  consumers.append({'path':rel.as_posix(),'references':hits})\nif consumers:raise SystemExit(json.dumps({'remainingConsumers':consumers},ensure_ascii=False))\nif mode=='--apply':\n if sha(target)!=expected or any(sha(root/p)!=v for p,v in preserved.items()):raise SystemExit('SOURCE_CHANGED_BEFORE_DELETE')\n target.unlink()\nif any(sha(root/p)!=v for p,v in preserved.items()):raise SystemExit('PRESERVED_SOURCE_CHANGED_AFTER_OPERATION')\nprint(json.dumps({'mode':mode,'target':name,'sha256':expected,'remainingConsumers':consumers,'accountingReferences':accounting,'retainedTestRunners':runners,'preservedHashes':preserved,'effects':int(mode=='--apply'),'targetPresent':target.exists(),'manifestsModified':False},ensure_ascii=False))\nPY",
+      "startedAt": "2026-11-07T23:08:59.259Z",
+      "finishedAt": "2026-11-07T23:09:02.146Z",
+      "resultIsError": false,
+      "rawResult": "{\"mode\": \"--check\", \"target\": \"packages/dingtalk-core/topic-runtime.js\", \"sha256\": \"f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c\", \"remainingConsumers\": [], \"accountingReferences\": [{\"path\": \"scripts/check-coverage.mjs\", \"kind\": \"source-accounting-only\", \"rootFollowup\": \"move retired source accounting with original provenance retained\"}], \"retainedTestRunners\": [{\"path\": \"scripts/test-pi.mjs\", \"kind\": \"retained historical test filename, not retired module import\"}], \"preservedHashes\": {\"packages/dingtalk-core/topic-model.js\": \"e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d\", \"test/topic-runtime.test.js\": \"9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a\"}, \"effects\": 0, \"targetPresent\": true, \"manifestsModified\": false}",
+      "result": {
+        "mode": "--check",
+        "target": "packages/dingtalk-core/topic-runtime.js",
+        "sha256": "f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c",
+        "remainingConsumers": [],
+        "accountingReferences": [
+          {
+            "path": "scripts/check-coverage.mjs",
+            "kind": "source-accounting-only",
+            "rootFollowup": "move retired source accounting with original provenance retained"
+          }
+        ],
+        "retainedTestRunners": [
+          {
+            "path": "scripts/test-pi.mjs",
+            "kind": "retained historical test filename, not retired module import"
+          }
+        ],
+        "preservedHashes": {
+          "packages/dingtalk-core/topic-model.js": "e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d",
+          "test/topic-runtime.test.js": "9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a"
+        },
+        "effects": 0,
+        "targetPresent": true,
+        "manifestsModified": false
+      }
+    },
+    {
+      "toolUseId": "call_91d3e712469843f28861e9804ab0a03b",
+      "command": "python - --apply <<'PY'\nimport hashlib,json,sys\nfrom pathlib import Path\nmode=sys.argv[1]\nif mode not in ('--check','--apply'):raise SystemExit('CHECK_OR_APPLY_REQUIRED')\nroot=Path.cwd();name='packages/dingtalk-core/topic-runtime.js';target=root/name\nexpected='f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c'\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\nif target.is_symlink() or not target.is_file() or sha(target)!=expected:raise SystemExit('REGULAR_FROZEN_TARGET_REQUIRED')\npreserved={'packages/dingtalk-core/topic-model.js':'e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d','test/topic-runtime.test.js':'9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a'}\nif any(sha(root/p)!=v for p,v in preserved.items()):raise SystemExit('PRESERVED_SOURCE_CHANGED')\nif (root/'packages/dingtalk-core/task-topic-coordinator.js').exists():raise SystemExit('COORDINATOR_NOT_RETIRED')\nneedles=['topic-runtime','createTopicCoordinator','TASK_REVIEW_MAX_CHARS'];consumers=[];accounting=[];runners=[]\nfor base in ('src','packages','bin','scripts','test'):\n for p in (root/base).rglob('*'):\n  rel=p.relative_to(root)\n  if any(part in ('node_modules','dist','data','.git') for part in rel.parts) or p.suffix not in ('.js','.mjs','.cjs','.json') or p==target or p.is_symlink() or not p.is_file():continue\n  text=p.read_text(encoding='utf-8-sig');hits=[word for word in needles if word in text]\n  if not hits:continue\n  lines=[line for line in text.splitlines() if any(word in line for word in needles)]\n  if rel.as_posix()=='scripts/check-coverage.mjs' and hits==['topic-runtime'] and len(lines)==1 and lines[0].startswith('const adapted = new Set('):\n   accounting.append({'path':rel.as_posix(),'kind':'source-accounting-only','rootFollowup':'move retired source accounting with original provenance retained'});continue\n  if rel.as_posix()=='scripts/test-pi.mjs' and hits==['topic-runtime'] and len(lines)==1 and lines[0].startswith('  domain: [') and \"'topic-runtime'\" in lines[0]:\n   runners.append({'path':rel.as_posix(),'kind':'retained historical test filename, not retired module import'});continue\n  consumers.append({'path':rel.as_posix(),'references':hits})\nif consumers:raise SystemExit(json.dumps({'remainingConsumers':consumers},ensure_ascii=False))\nif mode=='--apply':\n if sha(target)!=expected or any(sha(root/p)!=v for p,v in preserved.items()):raise SystemExit('SOURCE_CHANGED_BEFORE_DELETE')\n target.unlink()\nif any(sha(root/p)!=v for p,v in preserved.items()):raise SystemExit('PRESERVED_SOURCE_CHANGED_AFTER_OPERATION')\nprint(json.dumps({'mode':mode,'target':name,'sha256':expected,'remainingConsumers':consumers,'accountingReferences':accounting,'retainedTestRunners':runners,'preservedHashes':preserved,'effects':int(mode=='--apply'),'targetPresent':target.exists(),'manifestsModified':False},ensure_ascii=False))\nPY",
+      "startedAt": "2026-11-07T23:09:24.434Z",
+      "finishedAt": "2026-11-07T23:09:27.569Z",
+      "resultIsError": false,
+      "rawResult": "{\"mode\": \"--apply\", \"target\": \"packages/dingtalk-core/topic-runtime.js\", \"sha256\": \"f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c\", \"remainingConsumers\": [], \"accountingReferences\": [{\"path\": \"scripts/check-coverage.mjs\", \"kind\": \"source-accounting-only\", \"rootFollowup\": \"move retired source accounting with original provenance retained\"}], \"retainedTestRunners\": [{\"path\": \"scripts/test-pi.mjs\", \"kind\": \"retained historical test filename, not retired module import\"}], \"preservedHashes\": {\"packages/dingtalk-core/topic-model.js\": \"e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d\", \"test/topic-runtime.test.js\": \"9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a\"}, \"effects\": 1, \"targetPresent\": false, \"manifestsModified\": false}",
+      "result": {
+        "mode": "--apply",
+        "target": "packages/dingtalk-core/topic-runtime.js",
+        "sha256": "f2ad70ae22180a87366aa313d35e6f4f37dfcdb6912b2d8e1d4fa442e51f025c",
+        "remainingConsumers": [],
+        "accountingReferences": [
+          {
+            "path": "scripts/check-coverage.mjs",
+            "kind": "source-accounting-only",
+            "rootFollowup": "move retired source accounting with original provenance retained"
+          }
+        ],
+        "retainedTestRunners": [
+          {
+            "path": "scripts/test-pi.mjs",
+            "kind": "retained historical test filename, not retired module import"
+          }
+        ],
+        "preservedHashes": {
+          "packages/dingtalk-core/topic-model.js": "e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d",
+          "test/topic-runtime.test.js": "9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a"
+        },
+        "effects": 1,
+        "targetPresent": false,
+        "manifestsModified": false
+      }
+    }
+  ],
+  "initialRejectedCheckPreserved": true,
+  "readback": {
+    "retiredPaths": {
+      "packages/dingtalk-core/task-topic-coordinator.js": {
+        "lexists": false
+      },
+      "packages/dingtalk-core/topic-runtime.js": {
+        "lexists": false
+      }
+    },
+    "preservedHashes": {
+      "packages/dingtalk-core/topic-model.js": "e4be97584679b1aa03430cdb908ffd6c29e21a78f09798437fa5936fb4ed584d",
+      "test/topic-runtime.test.js": "9e569637bf7663ad2c99f675297ec3a995841ecb3f7779ba455165f0b273013a"
+    }
+  },
+  "diffCheck": {
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "currentContractsEvidence": "docs/acceptance/resident-conversation-routing/round-11/topic-current-contract-result.json",
+  "sourceAccountingAndThreeGuards": "待root单写source-manifest/check-coverage退休登记，再由Tests执行；本证据不宣称已通过",
+  "gitActionsByCore": []
+}

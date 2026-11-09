@@ -1,0 +1,19 @@
+✔ native restart scope binds reviewed native provider bytes and excludes legacy installation layout (14.891894ms)
+✔ legacy restart scope remains an explicit reviewed compatibility choice without relaxing evidence requirements (0.631647ms)
+✔ trusted facts retain deterministic metadata and session identity without a home/profile ABI (16.004974ms)
+✔ invalid or overlapping declarations fail atomically without reserving earlier keys (3.633281ms)
+✔ mutable declarations cannot gain reserved authority or leak their original name/key registration (1.445028ms)
+✔ resolver failures and undeclared/non-string/async output cannot publish a partial environment (2.182434ms)
+✔ contributor lifetimes are scoped and no profile or ambient home is consulted (3.467193ms)
+✔ launch-home metadata is ignored and listing never executes a resolver (2.181003ms)
+✔ ordinary managed children cannot inherit ambient application or retired execution namespaces (0.885289ms)
+✔ shell tools pass exact execution facts, working directory and cancellation to the executor (8.743669ms)
+✔ native shell tools reject disabled background and unadvertised escalation before execution (3.215073ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 122.540325

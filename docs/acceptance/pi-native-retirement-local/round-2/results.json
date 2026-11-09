@@ -1,0 +1,159 @@
+{
+  "sourceFingerprint": "0b3799325503d509dabc03dcdf86ea47d593ffd68ac139f28fae1bf6a0001fde",
+  "validationSource": {
+    "base": "741696438f5feef82504b3282dc7b975333070ee",
+    "workingTreeDirty": true
+  },
+  "results": [
+    {
+      "name": "runtime",
+      "stage": "current",
+      "tests": 161,
+      "pass": 149,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 12
+    },
+    {
+      "name": "directory-queue",
+      "stage": "current",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "lease-and-failed-work",
+      "stage": "current",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "default-complete",
+      "stage": "before-final-fixes",
+      "tests": 1162,
+      "pass": 1123,
+      "fail": 12,
+      "cancelled": 1,
+      "skipped": 26
+    },
+    {
+      "name": "late-regressions",
+      "stage": "rejected-atomic-retirement",
+      "tests": 92,
+      "pass": 89,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 1
+    },
+    {
+      "name": "reminders-and-routing",
+      "stage": "before-final-queue",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "unresolved-job",
+      "stage": "before-final-queue",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "routing",
+      "stage": "before-final-queue",
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "domain",
+      "stage": "before-final-queue",
+      "tests": 391,
+      "pass": 391,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "containment",
+      "stage": "before-final-queue",
+      "tests": 22,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 17
+    },
+    {
+      "name": "schedule",
+      "stage": "before-final-queue",
+      "tests": 22,
+      "pass": 22,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  ],
+  "continuations": {
+    "leases": 32,
+    "businessCalls": 33,
+    "officialSummaryCalls": 30,
+    "nativeCompactionEntries": 25,
+    "originalWriteCalls": 1
+  },
+  "checks": [
+    {
+      "source": "93e431a2a76938d32aefc070b093fcfb65691c70",
+      "retainedModules": 194,
+      "retiredModules": 6,
+      "excludedUiModules": 3,
+      "explicitlyAdaptedModules": 47,
+      "relativeImports": "closed",
+      "httpRoutes": "retained"
+    },
+    {
+      "productionImportFiles": 400,
+      "literalBareImports": 189,
+      "status": "declared-production-imports"
+    },
+    {
+      "runtimeJsFiles": 400,
+      "externalSdkImports": 0,
+      "legacyOrchestratorDefinitions": 0,
+      "legacySourceFilesVerified": 5,
+      "historicalFormatFilesRemoved": 9
+    }
+  ],
+  "coldRestart": {
+    "taskId": "task-8f44cfd527e23890adc1a77e58e89d64",
+    "state": "completed",
+    "action": "complete",
+    "modelMode": "real",
+    "health": "ok",
+    "workspace": "data/workspaces/tasks/task-8f44cfd527e23890adc1a77e58e89d64",
+    "proofSha256": "abff1f9599a29167c677bb1b48e8069e91f91819822464158056745876bdee30",
+    "journalSha256": "8f52ff7d09038a6f36082190ea8d5b216db20a88aac07f411c5b341fd7f159cc",
+    "calls": [
+      "write",
+      "read",
+      "task_result"
+    ],
+    "resultContains703": true
+  },
+  "finalDefaultFullRerun": "NOT_RUN",
+  "blocked": [
+    "API key environment reference has no value",
+    "Windows model process privacy success path unavailable"
+  ]
+}

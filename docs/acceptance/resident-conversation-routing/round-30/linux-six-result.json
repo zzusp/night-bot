@@ -1,0 +1,143 @@
+{
+  "startedAt": "2026-11-08T12:23:06.392Z",
+  "image": "sha256:beec97219da9aede1f0e33eefca5899b36f7a39e5969b442170ea3540e22431b",
+  "sourceMapSha256": "88bc62104ce17e4bc534f5899576e4709a9ac6d254f1fc0c0131535daf569723",
+  "runtimeHashes": {
+    "package.json": "40436c7d767fb0381f08af6d58a65a76d0d82989618ae3db11eff5eb9f2cc536",
+    "pnpm-lock.yaml": "0ffcb3b02f659e439cc858fe5176f69a39b5d4b9bdbb185fedd6c891d57b2438",
+    "pnpm-workspace.yaml": "b16b376a2c61b466c5577e2686f000ffad011bd9eb3935533818a43558add8a4",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/native-tool-bash.js": "11e004a2ea873f87600de756cb65b25c5d1a77a94efcb5e8f8966bac273ed060",
+    "src/native-jobs.js": "b6ecbade333d1d394d7f55408f32c3a4e84fa19c06e40f6843d2f82aa72a33e7",
+    "src/native-bash-sandbox.js": "d55703d8c1858daa2e90f3bc64e28faa50e258fb6da093c336c1421b37639e89",
+    "src/process/index.js": "c5028b994efd3f927d3d56b7ed45789f8fb717c3312cae4d43ae6ed9de7e88aa",
+    "src/runtime/managed-shell-execution.js": "3d3fc25d81970f69fed63be11f42b656d6ac12e4b71c56f792bce8c42050a7e3",
+    "src/memory/privacy.js": "51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6"
+  },
+  "payloadFiles": {
+    "test/native-shell-kernel-wire.test.js": "9d5c50be37cb4261ef780a7d8f785b12e2217360852e65ffa456417220b888f0",
+    "test/native-managed-shell-kernel.test.js": "b63d3220f86dfc6589eac1172c7c27de86b0b4e59b4f5c9cd78997fd7d97f887",
+    "test/native-memory-privacy-kernel.test.js": "5f3ba7b5d424c24ab6b21342eb6c869171e31a0e3356ed1446a238fa5d79b57b",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "test/fixtures/sg11-linux-provider-observer.mjs": "03e28cd7b39127069fd8b947a82459dc3c8037421c471cf9f5be8ecfd266e8b5"
+  },
+  "driverSha256": "e30b1ddf442fe0eb9d32a15629e6b8b21ce729fcebd564afecf8b81afbe60945",
+  "realVendorExecuted": false,
+  "events": [
+    {
+      "pid": 21,
+      "file": "native-managed-shell-kernel.test.js",
+      "sequence": 1,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 21,
+      "file": "native-managed-shell-kernel.test.js",
+      "sequence": 2,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 60,
+      "file": "native-memory-privacy-kernel.test.js",
+      "sequence": 1,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 60,
+      "file": "native-memory-privacy-kernel.test.js",
+      "sequence": 2,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 91,
+      "file": "native-shell-kernel-wire.test.js",
+      "sequence": 1,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    },
+    {
+      "pid": 91,
+      "file": "native-shell-kernel-wire.test.js",
+      "sequence": 2,
+      "kind": "ordinary",
+      "outcome": "returned",
+      "selected": "fallback"
+    }
+  ],
+  "caseResults": [
+    {
+      "name": "real Linux confined shell joins cancellation of a process that refuses TERM",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "Linux owned subprocess direct exit cannot settle shell completion while a descendant remains",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "portable model processes cannot read the vault or inherit provider/environment credential values",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "task archive fences absolute writes, symlink escapes and private journals in an actual model shell; task temporary files stay local",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "actual Pi native confined bash retains one managed effect through explicit background and job collection",
+      "passed": true,
+      "directive": null
+    },
+    {
+      "name": "actual Pi native confined bash retains one managed effect through timeout promotion and job collection",
+      "passed": true,
+      "directive": null
+    }
+  ],
+  "businessPass": true,
+  "strongOwnerPass": false,
+  "overallPass": false,
+  "containerId": "6d06bf2a82c3422d9a2c7c5f0a1d420a20f824851ea0e8f390fdbe422ee19edc",
+  "actualIsolation": {
+    "nonRoot": true,
+    "network": "none",
+    "capDropAll": true,
+    "noNewPrivileges": true,
+    "readOnlyRoot": true,
+    "readOnlyTestPayload": true,
+    "seccompMatchesOriginal": true,
+    "privileged": false,
+    "appArmorProfile": ""
+  },
+  "attachCliExit": 0,
+  "containerState": {
+    "status": "exited",
+    "running": false,
+    "exitCode": 0,
+    "oomKilled": false
+  },
+  "waitExitCode": 0,
+  "runtimeInputs": {
+    "node": "v24.13.0",
+    "platform": "linux",
+    "uid": 1000,
+    "payloadFiles": 5,
+    "sourceInputsVerified": true
+  },
+  "providerObservedInEachFile": true,
+  "containerRemoved": true,
+  "logSha256": "765df8cf21222060b18e6a6ebb642ea6cebe79c2efa49c844c0603d8c184ee77",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "finishedAt": "2026-11-08T12:23:17.608Z"
+}

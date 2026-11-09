@@ -1,0 +1,35 @@
+✔ Scope algorithms agree with independent original private-state implementation (11.745829ms)
+✔ every retained SDK Scope peer shares the application authority (10.959953ms)
+✔ native directory preserves legacy canonical changes, model notices and original-project recovery (27.770537ms)
+✔ session directories remain independent from immutable cwd and missing paths never append (3.838517ms)
+✔ directory operations serialize per session and sample the previous committed cwd after earlier changes (4.63624ms)
+✔ caller cancellation and owner disposal after filesystem work prevent durable cwd changes (2.702274ms)
+✔ directory service close aborts and drains filesystem work, and notice errors never undo a committed change (2.624647ms)
+✔ fallback directory becomes a durable event and rejected operations do not poison later changes (3.211281ms)
+✔ directory validation retains caller attribution through the injected filesystem service (3.735823ms)
+✔ directory context is resampled after downstream prompt assembly changes the committed cwd (3.222819ms)
+✔ native workspace public lifecycle, membership, ordering, archive and pin behavior match legacy (74.265463ms)
+✔ workspace canonical paths reuse symlinks and validate immutable session cwd before membership (6.959011ms)
+✔ default workspace initializes once and its tombstone prevents automatic recreation after deletion (7.068808ms)
+✔ header-only bootstrap is deterministic and filters missing, invalid or mismatched session accounts (6.611948ms)
+✔ archive checks activity before writing, commits before stop, contains provider failures and is idempotent (6.998591ms)
+✔ native workspace does not publish an uncommitted registration through path lookup (5.363676ms)
+✔ known pending mutations recover only their named row and unexplained corruption remains intact (17.014661ms)
+✔ failed history listing cannot commit an empty initialized workspace registry (3.762362ms)
+✔ active workspace creation drains before its shared storage facility closes (5.325689ms)
+✔ a workspace resolver can close its owner without deadlocking or creating a directory after shutdown (3.752367ms)
+✔ archive stop providers can close the owner after durable archival without waiting on their own operation (4.37779ms)
+✔ workspace entities retain the registry owner after their creating caller scope is disposed (6.294379ms)
+✔ explicit valid rebinding prunes a stale raw account so restart cannot acquire duplicate session owners (19.003129ms)
+✔ workspace record/order failures roll back without exposing a partial registration and failed rollback stays recoverable (11.270692ms)
+✔ failed workspace record deletion restores the durable order and published entity (11.341989ms)
+✔ asynchronous commit observers always see a coherent published workspace order (9.134411ms)
+✔ archived-session admission follows live/cached subagent lineage and keeps forks independent (0.347885ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 361.84622

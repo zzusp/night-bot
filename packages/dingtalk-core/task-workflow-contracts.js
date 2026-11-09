@@ -1,0 +1,643 @@
+import { executionDigest, executionError, readTaskStageArtifacts } from './execution-artifacts.js'
+import { validateJsonSchemaValue } from '../../src/native-tool-protocol.js'
+import { selectTaskDeliveryFiles } from './task-group-file-delivery.js'
+import { dataChangeProposalRepairPolicy } from './workflow-data-change.js'
+import { createHash } from 'node:crypto'
+import { readTaskMaintenanceConstraints } from './task-maintenance-constraint.js'
+
+/** 只识别 Host 已保存的 Node 检查器“显式测试文件不存在”证据，不按业务描述猜测修复方向。 */
+export async function inspectEngineeringCheckPrerequisite({ state, artifacts }) {
+  const waiting = state.nodes.filter(node => node.status === 'waiting')
+  if (waiting.length !== 1 || waiting[0].nodeId !== 'verify-candidate'
+    || waiting[0].waitReason?.reference !== 'ENGINEERING_VERIFICATION_FAILED') return null
+  const groups = new Map()
+  for (const ref of waiting[0].evidenceRefs ?? []) {
+    const value = await artifacts.read(ref)
+    if (value.kind !== 'engineering-verification-failure') continue
+    const key = JSON.stringify([value.candidateDigest,value.checkId,value.checkVersion,value.logSha256])
+    const group = groups.get(key) ?? [];group.push(value);groups.set(key,group)
+  }
+  for (const group of groups.values()) {
+    group.sort((a,b)=>a.part-b.part)
+    if (group.length !== group[0].parts || group.some((part,index)=>part.part!==index || part.parts!==group.length || part.encoding!=='base64')) continue
+    const bytes = Buffer.concat(group.map(part=>Buffer.from(part.data,'base64')))
+    if (bytes.length !== group[0].logBytes || createHash('sha256').update(bytes).digest('hex') !== group[0].logSha256) continue
+    let log;try { log=JSON.parse(bytes.toString('utf8')) } catch { continue }
+    for (const step of log.steps ?? []) {
+      if (!Array.isArray(step.args) || step.exitCode !== 1) continue
+      const at=step.args.indexOf('--test'), paths=step.args.slice(at+1)
+      if (at < 0 || !paths.length || paths.some(path=>typeof path!=='string'||!path.startsWith('tests/')||!path.endsWith('.test.cjs'))) continue
+      if (step.stderr?.trim() === `Could not find '${paths.join(', ')}'`)
+        return { reason:'ENGINEERING_CHECK_INPUT_MISSING', checkId:group[0].checkId, missingPaths:paths,
+          evidenceRefs:[...waiting[0].evidenceRefs] }
+    }
+  }
+  return null
+}
+
+/** 业务准备合同由各领域提供；只接纳受信函数，不解释模型生成的执行代码。 */
+export function createTaskStageContracts({ contracts, controller, artifacts,
+  readOwnerContract = id => controller.workflowDefinition(id).ownerContract }) {
+  const byId = new Map()
+  for (const contract of contracts) {
+    if (!contract?.id || !contract.version || typeof contract.prepare !== 'function' || byId.has(contract.id))
+      throw executionError('TASK_STAGE_CONTRACT_INVALID')
+    if (contract.consumes !== undefined && (!Array.isArray(contract.consumes) || !contract.consumes.length
+      || contract.consumes.some(item => !item?.id || !Array.isArray(item.versions) || !item.versions.length
+        || item.versions.some(version => typeof version !== 'string' || !version)
+        || new Set(item.versions).size !== item.versions.length)
+      || new Set(contract.consumes.map(item => item.id)).size !== contract.consumes.length))
+      throw executionError('TASK_STAGE_CONTRACT_INVALID')
+    byId.set(contract.id, contract)
+  }
+  return {
+    get descriptors() {
+      return [...byId.values()].map(({ id, version, materialPolicy, consumes }) => {
+        const owner = readOwnerContract(id)
+        const resultContract = owner?.resultContract ?? (owner ? { id: owner.id, version: owner.version } : null)
+        return { id, version,
+          ...(materialPolicy ? { materialPolicy: structuredClone(materialPolicy) } : {}),
+          ...(consumes ? { consumes: structuredClone(consumes) } : {}),
+          ...(resultContract ? { resultContract: structuredClone(resultContract) } : {}) }
+      })
+    },
+    async prepare(context) {
+      const { stage, plan, taskId, requirement } = context
+      const contract = byId.get(stage.workflowId)
+      if (!contract) throw executionError('TASK_STAGE_CONTRACT_UNAVAILABLE')
+      const index = context.stageIndex ?? plan.stages.findIndex(item => item.stageId === stage.stageId)
+      if (plan.task.taskId !== taskId || index > 0 && plan.task.planRequirementRevision !== plan.task.requirementRevision)
+        throw executionError('TASK_STAGE_REQUIREMENT_STALE')
+      const policy = contract.materialPolicy
+      const validateMaterials = materials => {
+        if (!policy) return
+        if (!Array.isArray(materials) || materials.length > policy.maxCount)
+          throw executionError('TASK_STAGE_MATERIAL_CAPACITY')
+        const roles = materials.map(item => item?.role ?? 'supplemental')
+        if (roles.some(role => !policy.roles.includes(role))
+          || policy.required.some(role => !roles.includes(role))
+          || policy.singleton.some(role => roles.filter(value => value === role).length > 1))
+          throw executionError('TASK_STAGE_MATERIAL_ROLE_INVALID')
+      }
+      validateMaterials(requirement.materials ?? [])
+      let handoff = null
+      if (index > 0) handoff = await readTaskStageHandoff({ taskId, plan, stage: plan.stages[index - 1], controller, artifacts })
+      if (handoff && contract.consumes && !contract.consumes.some(item => item.id === handoff.contract.id
+        && item.versions.includes(handoff.contract.version))) throw executionError('TASK_STAGE_HANDOFF_UNSUPPORTED')
+      const definitionVersion = stage.workflowDigest
+        ? controller.workflowDefinition(stage.workflowId, stage.workflowDigest).version : undefined
+      const stageRequirement = stage.sourceCondition ? { ...requirement, request: stage.sourceCondition.objective, objective: stage.sourceCondition.objective } : requirement
+      const prepared = await contract.prepare({ ...context, requirement: stageRequirement, stageIndex: index, handoff, definitionVersion })
+      if (!prepared?.input || typeof prepared.input !== 'object') throw executionError('TASK_STAGE_INPUT_INVALID')
+      if (prepared.input.materials !== undefined) validateMaterials(prepared.input.materials)
+      const definition = controller.workflowDefinition(prepared.workflowId ?? stage.workflowId, stage.workflowDigest ?? undefined)
+      const first = definition.nodes[0]
+      const mapped = first.mapInput({ requirement: prepared.input, previousOutput: undefined, dependencyOutputs: {} })
+      const errors = validateJsonSchemaValue(first.inputSchema, mapped)
+      if (errors.length) throw executionError('TASK_STAGE_INPUT_INVALID', errors.join('; '))
+      return prepared
+    },
+  }
+}
+
+/** 只从当前计划成功阶段和其冻结定义构造交接；引用存在不构成准入。 */
+export async function readTaskStageHandoff({ taskId, plan, stage, controller, artifacts }) {
+  if (plan.task.taskId !== taskId || plan.task.planRequirementRevision !== plan.task.requirementRevision
+    || !plan.stages.some(item => item.stageId === stage?.stageId && item.runId === stage.runId
+      && item.outputRef === stage.outputRef && item.status === 'succeeded')
+    || !stage?.outputRef || !stage.runId) throw executionError('TASK_STAGE_HANDOFF_STALE')
+  const state = await controller.state(stage.runId), final = state?.nodes?.at(-1)
+  if (state?.run?.taskId !== taskId || state.run.runId !== stage.runId || state.run.status !== 'succeeded'
+    || state.run.workflowId !== stage.workflowId || state.run.workflowDigest !== stage.workflowDigest
+    || state.pendingInputCount || final?.status !== 'succeeded' || final.outputRef !== stage.outputRef
+    || final.generation !== state.run.generation) throw executionError('TASK_STAGE_HANDOFF_STALE')
+  const owner = controller.workflowDefinition(stage.workflowId, stage.workflowDigest).ownerContract
+  if (!owner) throw executionError('WORKFLOW_OWNER_CONTRACT_UNAVAILABLE')
+  const value = await artifacts.read(stage.outputRef)
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || owner.resultContract?.requiredFields.some(field => !Object.hasOwn(value, field)))
+    throw executionError('WORKFLOW_RESULT_CONTRACT_INVALID')
+  return { kind: 'workflow-stage-result', contract: { id: owner.resultContract?.id ?? owner.id,
+    version: owner.resultContract?.version ?? owner.version }, taskId,
+    requirementRevision: plan.task.requirementRevision, planRevision: plan.task.planRevision,
+    stageId: stage.stageId, runId: stage.runId, workflowDigest: stage.workflowDigest, outputRef: stage.outputRef, value }
+}
+
+// 只在本进程中把受信合同准备的输入交给 Controller；模型/持久 JSON 不能伪造票据。
+const repairAdmissions = new WeakMap()
+const repairPolicyFor = context => context.state.run.workflowId === 'task-data-change'
+  ? dataChangeProposalRepairPolicy : context.contract
+const requiredContract = context => {
+  if (!context.contract) throw executionError('WORKFLOW_OWNER_CONTRACT_UNAVAILABLE')
+  return context.contract
+}
+async function inspectRepair(context) {
+  const { stage, state, plan, store } = context
+  const contract = repairPolicyFor(context)
+  if (!contract?.inspectRepair) return null
+  const inspected = await contract.inspectRepair(context)
+  const known = new Set(state.nodes.flatMap(node => [node.outputRef, ...(node.evidenceRefs ?? [])].filter(Boolean)))
+  if (!Array.isArray(inspected?.evidenceRefs) || inspected.evidenceRefs.some(ref => !known.has(ref)))
+    throw executionError('WORKFLOW_OWNER_ARTIFACT_SCOPE_MISMATCH')
+  const effects = await store.query({ kind: 'effect.list', runId: stage.runId })
+  return { ...inspected, stageId: stage.stageId, runId: stage.runId,
+    repairable: inspected?.repairable === true && plan.task.controlState === 'active'
+      && state.run.status === 'waiting' && state.nodes.every(node => node.drained)
+      && !state.pendingInputCount && effects.every(effect => ['succeeded', 'failed'].includes(effect.state)),
+    repairBinding: { stageId: stage.stageId, runId: stage.runId, generation: state.run.generation,
+      runRevision: state.run.revision, requirementRevision: plan.task.requirementRevision } }
+}
+function assertRepairContext(value, state) {
+  if (value?.taskId !== state.run.taskId || value.runId !== state.run.runId || value.generation !== state.run.generation)
+    throw executionError('WORKFLOW_REPAIR_CONTEXT_MISMATCH')
+}
+
+async function verifyProposalRepairEvidence(context, observed, evidenceRefs) {
+  if (!observed.evidenceRefs.every(ref => evidenceRefs.includes(ref))) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  const extra = evidenceRefs.filter(ref => !observed.evidenceRefs.includes(ref))
+  if (!extra.length) return
+  const { taskId, stage, state, plan, store, artifacts } = context
+  const queries = await store.query({ kind: 'task.owner.query-evidence', taskId, requirementRevision: plan.task.requirementRevision })
+  const wrappers = new Set()
+  let cursor = 0
+  for (;;) {
+    const page = await store.query({ kind: 'task.owner.events', taskId, afterSequenceId: cursor, limit: 200 })
+    for (const event of page) if (event.eventType === 'workflow.failed') wrappers.add(event.payloadRef)
+    if (page.length < 200) break
+    cursor = page.at(-1).eventSeq
+  }
+  for (const ref of extra) {
+    const value = await artifacts.read(ref), record = queries.find(item => item.artifactRef === ref)
+    if (record) {
+      const binding = value?.execution
+      if (value.kind !== 'agent-query-evidence' || binding?.kind !== 'task-owner' || binding.taskId !== taskId
+        || binding.requirementRevision !== plan.task.requirementRevision || binding.turnId !== record.turnId
+        || binding.leaseEpoch !== record.leaseEpoch || !value.verification?.sourceRefs?.length
+        || value.verification.outputDigest !== executionDigest(value.result)) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+      continue
+    }
+    if (!wrappers.has(ref) || value?.taskId !== taskId || value.stageId !== stage.stageId || value.runId !== stage.runId
+      || value.planRevision !== plan.task.planRevision || value.workflowId !== stage.workflowId
+      || !value.currentExecution?.repairBinding || executionDigest(value.currentExecution.repairBinding) !== executionDigest(observed.repairBinding)
+      || !value.diagnostics?.some(diagnostic => state.nodes.some(node => ['waiting', 'failed'].includes(node.status)
+        && diagnostic.nodeRunId === node.nodeRunId && diagnostic.generation === state.run.generation
+        && diagnostic.leaseEpoch === node.leaseEpoch))) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  }
+}
+
+/** Controller 写入前独立回查资格和准备票据，普通 changeInput 不取得修复权限。 */
+export async function validateWorkflowRepairAdmission({ state, plan, definition, repair, input, expectedRevision, store, artifacts, repairAdmission }) {
+  const ticket = repairAdmissions.get(repairAdmission)
+  if (!ticket || ticket.workflowDigest !== state.run.workflowDigest || ticket.workflowDigest !== definition.digest
+    || ticket.inputDigest !== executionDigest(input) || ticket.repairDigest !== executionDigest(repair)
+    || expectedRevision !== repair.runRevision) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  const stage = plan?.stages.find(item => item.stageId === repair.stageId && item.status === 'running')
+  if (!stage || plan.task.taskId !== repair.taskId || state.run.taskId !== repair.taskId
+    || stage.runId !== state.run.runId || stage.runId !== repair.runId
+    || stage.workflowId !== state.run.workflowId || stage.workflowDigest !== state.run.workflowDigest)
+    throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  const context = { taskId: repair.taskId, stage, state, plan, definition, contract: definition.ownerContract,
+    store: Object.freeze({ query: request => store.query(request) }), artifacts: Object.freeze({ read: ref => artifacts.read(ref) }) }
+  const contract = repairPolicyFor(context)
+  if (!contract.inspectRepair || !contract.prepareRepair) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  const observed = await inspectRepair(context)
+  const { contextRef, taskId, ...binding } = repair
+  if (!observed.repairable || executionDigest(observed.repairBinding) !== executionDigest(binding))
+    throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  if (observed.validationSource && !input.sources?.some(source => executionDigest(source) === executionDigest(observed.validationSource)))
+    throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+  if (observed.mode === 'repair-proposal') await verifyProposalRepairEvidence(context, observed, ticket.evidenceRefs)
+  const material = await artifacts.read(contextRef)
+  assertRepairContext(material, state)
+  if (ticket.contextDigest !== executionDigest(material)) throw executionError('WORKFLOW_REPAIR_CONTEXT_MISMATCH')
+  return state.run.workflowDigest
+}
+
+/** 领域合同的公共接入：按冻结定义取规则，公共身份与控制账写入仍由 Host 负责。 */
+export function createTaskWorkflowContracts({ controller, store, artifacts, prepareRepairContext, validateFiles, verifyFileDelivery,
+  completionPolicy = contract => contract, verifyAcceptance, readTaskEvidence, readAcceptedCandidateEvidence, prepareDataChangeRepairInput, inspectWorkflowRevision, reviseWorkflow }) {
+  const readableStore = Object.freeze({ query: query => store.query(query) })
+  const readableArtifacts = Object.freeze({ read: ref => artifacts.read(ref) })
+  // 只传递本次真实验收回执给紧接的持久化，不能由模型 JSON 提供；清单变化即失效。
+  const verifiedDecisions = new WeakMap()
+  const acceptanceVerifications = new Map()
+  async function directEvidenceFor(taskId, plan) {
+    const evidence = await readTaskEvidence?.({ taskId, requirementRevision: plan.task.requirementRevision }) ?? []
+    if (!Array.isArray(evidence) || evidence.some(item => !item.evidenceRef
+      || item.artifactRef !== item.evidenceRef || item.taskId !== taskId
+      || item.requirementRevision !== plan.task.requirementRevision))
+      throw executionError('TASK_OWNER_ARTIFACT_SCOPE_MISMATCH')
+    const candidates=await readAcceptedCandidateEvidence?.({taskId,plan}) ?? []
+    if(!Array.isArray(candidates)||candidates.some(item=>item.kind!=='original-owner-candidate'
+      ||item.taskId!==taskId||item.requirementRevision!==plan.task.requirementRevision
+      ||!item.evidenceRef||item.artifactRef!==item.evidenceRef||item.ownerCandidate?.accepted!==true
+      ||item.ownerCandidate.businessCompleted!==false))throw executionError('TASK_OWNER_ARTIFACT_SCOPE_MISMATCH')
+    return [...evidence,...candidates]
+  }
+  async function contextFor(taskId, stage, plan, suppliedState) {
+    const state = suppliedState ?? await controller.state(stage.runId, { includeRecovery: true })
+    if (!state?.run || state.run.taskId !== taskId || state.run.runId !== stage.runId
+      || state.run.workflowId !== stage.workflowId || state.run.workflowDigest !== stage.workflowDigest)
+      throw executionError('WORKFLOW_OWNER_STAGE_MISMATCH')
+    let definition
+    try { definition = controller.workflowDefinition(stage.workflowId, stage.workflowDigest) }
+    catch (error) { if (error.code !== 'WORKFLOW_VERSION_UNAVAILABLE') throw error }
+    return { taskId, stage, state, plan, definition, contract: definition?.ownerContract,
+      store: readableStore, artifacts: readableArtifacts }
+  }
+  async function inspectCurrentStageBase(context) {
+    const domain = await inspectRepair(context)
+    if (domain?.reason === 'ENGINEERING_CHECK_INPUT_MISSING') return domain
+    if (domain?.repairable) return domain
+    const recovery = await controller.inspectNodeRecovery?.(context.stage.runId, context.state)
+    if (!recovery) return domain
+    const { stage, state, plan } = context
+    const known = new Set(state.nodes.flatMap(node => [node.outputRef, ...(node.evidenceRefs ?? [])].filter(Boolean)))
+    if (!Array.isArray(recovery.evidenceRefs) || recovery.evidenceRefs.some(ref => !known.has(ref)))
+      throw executionError('WORKFLOW_OWNER_ARTIFACT_SCOPE_MISMATCH')
+    return { ...recovery, stageId: stage.stageId, runId: stage.runId,
+      repairable: recovery.repairable === true && plan.task.controlState === 'active'
+        && plan.task.planRequirementRevision === plan.task.requirementRevision
+        && recovery.generation === state.run.generation && recovery.runRevision === state.run.revision,
+      repairBinding: { stageId: stage.stageId, runId: stage.runId, generation: state.run.generation,
+        runRevision: state.run.revision, requirementRevision: plan.task.requirementRevision } }
+  }
+  async function inspectCurrentStage(context) { return inspectCurrentStageBase(context) }
+  async function readPolicyArtifacts(context) {
+    const policy = completionPolicy(context.contract, context)
+    if (!policy?.readArtifacts) return {}
+    const extension = await policy.readArtifacts(context)
+    const known = new Set([context.stage.outputRef, ...(context.stage.evidenceRefs ?? []),
+      ...context.state.nodes.filter(node => node.status === 'succeeded'
+        && node.generation === context.state.run.generation).flatMap(node => [node.outputRef, ...(node.evidenceRefs ?? [])].filter(Boolean))])
+    if ([...(extension?.evidenceRefs ?? []), ...(extension?.completionEvidenceRefs ?? []),
+      ...(extension?.nodeArtifacts ?? []).map(node => node.artifactRef)].some(ref => !known.has(ref)))
+      throw executionError('TASK_OWNER_ARTIFACT_SCOPE_MISMATCH')
+    return structuredClone(extension ?? {})
+  }
+  async function verifyCurrentRepairEvidence(context, observed, evidenceRefs) {
+    if (!evidenceRefs?.length || !observed.evidenceRefs.every(ref => evidenceRefs.includes(ref)))
+      throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+    const extra = evidenceRefs.filter(ref => !observed.evidenceRefs.includes(ref))
+    if (!extra.length) return observed.evidenceRefs
+    const { taskId, plan } = context
+    const entries = await readTaskStageArtifacts({ taskId, stages: plan.stages, controller, plan,
+      readStageArtifacts: async ({stage,state}) => readPolicyArtifacts(await contextFor(taskId,stage,plan,state)) })
+    const allowed = new Set([plan.task.requirementRef, ...entries.flatMap(stage =>
+      [stage.outputRef, ...(stage.evidenceRefs ?? []), ...(stage.nodeArtifacts ?? []).map(node => node.artifactRef)])].filter(Boolean))
+    const remaining = extra.filter(ref => !allowed.has(ref))
+    if (remaining.length) {
+      let cursor = 0
+      for (;;) {
+        const page = await store.query({kind:'task.owner.events',taskId,afterSequenceId:cursor,limit:200})
+        for (const event of page) if (event.eventType === 'system.recovery' && remaining.includes(event.payloadRef)) {
+          const diagnostic = await artifacts.read(event.payloadRef), current = diagnostic?.plan?.task
+          if (diagnostic?.kind === 'owner-action-failure' && diagnostic.taskId === taskId
+            && current?.requirementRevision === plan.task.requirementRevision
+            && current.planRevision === plan.task.planRevision && current.controlRevision === plan.task.controlRevision) allowed.add(event.payloadRef)
+        }
+        if (page.length < 200) break
+        cursor = page.at(-1).eventSeq
+      }
+    }
+    const unrecognized = extra.filter(ref => !allowed.has(ref))
+    if (unrecognized.length) {
+      if (observed.mode !== 'repair-proposal') throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+      await verifyProposalRepairEvidence(context,observed,[...observed.evidenceRefs,...unrecognized])
+    }
+    for (const ref of extra) await artifacts.read(ref)
+    return [...observed.evidenceRefs, ...unrecognized]
+  }
+  async function readDeliveryManifest({ taskId, plan, requirement, decision }) {
+    if (!plan || plan.task.taskId !== taskId) throw executionError('WORKFLOW_OWNER_STAGE_MISMATCH')
+    const missing = [], entries = [], outputs = [], files = [], states = []
+    const directEvidence = await directEvidenceFor(taskId, plan)
+    const current = !plan.stages.length || plan.task.planRequirementRevision === plan.task.requirementRevision
+    if (!current) missing.push({ kind: 'requirement', code: 'TASK_STAGE_REQUIREMENT_STALE' })
+    if (plan.stages.length && plan.task.planStatus !== 'succeeded') missing.push({ kind: 'plan', code: 'TASK_DELIVERY_PLAN_INCOMPLETE' })
+    for (const stage of plan.stages) {
+      if (!current || stage.status !== 'succeeded' || !stage.outputRef) {
+        missing.push({ kind: 'stage', stageId: stage.stageId, code: 'TASK_DELIVERY_STAGE_INCOMPLETE' }); continue
+      }
+      const context = await contextFor(taskId, stage, plan), final = context.state.nodes.at(-1)
+      if (context.state.run.status !== 'succeeded' || context.state.pendingInputCount
+        || final?.status !== 'succeeded' || final.outputRef !== stage.outputRef
+        || final.generation !== context.state.run.generation) throw executionError('WORKFLOW_OWNER_STAGE_MISMATCH')
+      const contract = context.contract
+      if (!contract) {
+        missing.push({ kind: 'stage', stageId: stage.stageId, code: 'WORKFLOW_OWNER_CONTRACT_UNAVAILABLE' }); continue
+      }
+      const output = await artifacts.read(stage.outputRef), result = contract.resultContract
+      const absent = (result?.requiredFields ?? []).filter(field => !output || typeof output !== 'object' || !Object.hasOwn(output, field))
+      if (absent.length) missing.push({ kind: 'artifact', stageId: stage.stageId, code: 'WORKFLOW_RESULT_CONTRACT_INVALID', fields: absent })
+      outputs.push(output)
+      states.push(context.state)
+      entries.push({ stageId: stage.stageId, runId: stage.runId, workflowId: stage.workflowId,
+        workflowDigest: stage.workflowDigest, outputRef: stage.outputRef,
+        contract: { id: contract.id, version: contract.version },
+        resultContract: { id: result?.id ?? contract.id, version: result?.version ?? contract.version },
+        outputDigest: executionDigest(output), generation: context.state.run.generation,
+        ...(context.state.run.revision === undefined ? {} : { runRevision: context.state.run.revision }),
+        requiredFields: result?.requiredFields ?? [], valid: absent.length === 0,
+        evidenceRefs: [...new Set([stage.outputRef, ...(stage.evidenceRefs ?? [])])] })
+    }
+    if (!plan.stages.length && !directEvidence.length) missing.push({ kind: 'stage', code: 'TASK_DELIVERY_STAGE_INCOMPLETE' })
+    const items = await store.query({ kind: 'task.owner.acceptance', taskId })
+    const known = new Set([...entries.flatMap(entry => entry.evidenceRefs), ...directEvidence.map(item => item.evidenceRef)])
+    const assessments = decision?.assessments ?? []
+    const acceptance = items.map(item => {
+      const matching = assessments.filter(value => value.itemId === item.itemId), assessment = matching[0]
+      const evidenceRefs = assessment?.evidenceRefs ?? []
+      const verified = matching.length === 1 && assessment.status === 'satisfied' && evidenceRefs.length > 0
+        && evidenceRefs.every(ref => known.has(ref))
+      if (!verified) missing.push({ kind: 'acceptance', itemId: item.itemId, code: 'TASK_DELIVERY_ACCEPTANCE_UNSATISFIED' })
+      return { itemId: item.itemId, criterion: item.criterion,
+        status: verified ? 'satisfied' : 'pending', evidenceRefs,
+        stageIds: entries.filter(entry => evidenceRefs.some(ref => entry.evidenceRefs.includes(ref))).map(entry => entry.stageId) }
+    })
+    if (!items.length || assessments.length !== items.length || assessments.some(value => !items.some(item => item.itemId === value.itemId)))
+      missing.push({ kind: 'acceptance', code: 'TASK_DELIVERY_ASSESSMENTS_INCOMPLETE' })
+    for (const entry of entries) entry.acceptanceItemIds = acceptance.filter(item => item.status === 'satisfied'
+      && item.stageIds.includes(entry.stageId)).map(item => item.itemId)
+    const required = [...(requirement?.scope?.artifactFiles ?? []), ...(requirement?.fileDelivery?.files ?? [])]
+    const unique = [...new Map(required.map(item => [JSON.stringify([item.role, item.fileName]), item])).values()]
+    for (const item of unique) {
+      let selected
+      try { selected = selectTaskDeliveryFiles(outputs, { taskId, requirementRevision: plan.task.requirementRevision, fileDelivery: { files: [item] } }) }
+      catch (error) {
+        if (error.code !== 'TASK_REQUIRED_FILE_MISSING_OR_AMBIGUOUS') throw error
+        missing.push({ kind: 'file', ...item, code: error.code }); continue
+      }
+      if (!validateFiles) { missing.push({ kind: 'file', ...item, code: 'TASK_DELIVERY_FILE_VERIFIER_UNAVAILABLE' }); continue }
+      const file = selected[0]
+      const producer = entries.find((entry, index) => {
+        try { return selectTaskDeliveryFiles([outputs[index]], { taskId, requirementRevision: plan.task.requirementRevision,
+          fileDelivery: { files: [item] } })[0].artifactId === file.artifactId } catch (error) {
+          if (error.code !== 'TASK_REQUIRED_FILE_MISSING_OR_AMBIGUOUS') throw error
+          return false
+        }
+      })
+      const state = states[entries.indexOf(producer)]
+      if (file.producer?.runId !== producer.runId
+        || !state.nodes.some(node => node.nodeRunId === file.producer?.nodeRunId && node.status === 'succeeded'
+          && node.generation === state.run.generation)) throw executionError('TASK_DELIVERY_FILE_PRODUCER_MISMATCH')
+      files.push({ ...file, stageId: producer.stageId, runId: producer.runId, outputRef: producer.outputRef,
+        acceptanceItemIds: producer.acceptanceItemIds })
+      if (!producer.acceptanceItemIds.length) missing.push({ kind: 'file', ...item, code: 'TASK_DELIVERY_FILE_ASSESSMENT_REQUIRED' })
+    }
+    // 使用原始描述符一次验证整个批次，保留总大小/数量和摘要边界。
+    if (files.length) {
+      const descriptors = files.map(({ stageId, runId, outputRef, acceptanceItemIds, ...file }) => file)
+      const verified = await validateFiles(descriptors, { taskId, requirementRevision: plan.task.requirementRevision })
+      if (!Array.isArray(verified) || executionDigest(verified) !== executionDigest(descriptors))
+        throw executionError('TASK_DELIVERY_FILE_VERIFICATION_FAILED')
+    }
+    if (requirement?.fileDelivery && (!verifyFileDelivery || await verifyFileDelivery(plan, requirement) !== true))
+      missing.push({ kind: 'delivery', code: 'TASK_DELIVERY_FILE_RECEIPT_REQUIRED' })
+    const manifest = { kind: 'task-delivery-manifest', version: 1, taskId, requirementRevision: plan.task.requirementRevision,
+      planRevision: plan.task.planRevision, validation: 'structure-and-evidence-binding',
+      complete: missing.length === 0, missing, artifacts: entries, queryEvidence: directEvidence.filter(item=>item.kind!=='original-owner-candidate').map(({ artifactRef, evidenceRef, queryId, taskId, turnId, leaseEpoch, requirementRevision }) =>
+        ({ artifactRef, evidenceRef, queryId, taskId, turnId, leaseEpoch, requirementRevision })),
+      ...(directEvidence.some(item=>item.kind==='original-owner-candidate')?{candidateEvidence:directEvidence.filter(item=>item.kind==='original-owner-candidate').map(({artifactRef,evidenceRef,taskId,requirementRevision,ownerCandidate})=>({artifactRef,evidenceRef,taskId,requirementRevision,ownerCandidate}))}:{}), files, acceptance,
+      businessValidation: { status: 'unverified', policy: 'domain-items-v1', items: [] } }
+    const verified = decision && verifiedDecisions.get(decision)
+    if (verified && verified.manifestDigest === executionDigest(manifest)
+      && verified.decisionDigest === executionDigest(decision)) manifest.businessValidation = structuredClone(verified.receipt)
+    return manifest
+  }
+  return {
+    readDeliveryManifest,
+    async readStageArtifacts({ taskId, stage, state, plan }) {
+      const context = await contextFor(taskId, stage, plan, state)
+      if (context.state.run.status !== 'succeeded' || context.state.nodes.at(-1)?.outputRef !== stage.outputRef)
+        throw executionError('WORKFLOW_OWNER_STAGE_MISMATCH')
+      // 旧终态仍可读原引用；未绑定合同不能套当前领域扩展。
+      return readPolicyArtifacts(context)
+    },
+    async authorizeCompletion({ taskId, decision, plan, requirement, signal }) {
+      const reject = (gate, context = {}) => {
+        const metadata = { taskId, gate, ...context }
+        throw Object.assign(executionError('TASK_OWNER_COMPLETION_UNVERIFIED',
+          `完成验收门禁未通过：${JSON.stringify(metadata)}`), { completionGate: metadata })
+      }
+      if (decision && typeof decision === 'object') verifiedDecisions.delete(decision)
+      if (!plan || plan.task.taskId !== taskId || (plan.stages.length && (plan.task.planStatus !== 'succeeded'
+        || plan.task.planRequirementRevision !== plan.task.requirementRevision
+        || plan.stages.some(stage => stage.status !== 'succeeded' || !stage.outputRef)))) reject('plan-current-and-complete', { taskStatus: plan?.task?.status, requirementRevision: plan?.task?.requirementRevision,
+          planRequirementRevision: plan?.task?.planRequirementRevision, incompleteStageIds: plan?.stages?.filter(stage => stage.status !== 'succeeded' || !stage.outputRef).map(stage => stage.stageId) ?? [] })
+      const contexts = []
+      for (const stage of plan.stages) {
+        const context = await contextFor(taskId, stage, plan)
+        requiredContract(context)
+        const final = context.state.nodes.at(-1)
+        if (context.state.run.status !== 'succeeded' || final?.status !== 'succeeded' || final.outputRef !== stage.outputRef) reject('stage-final-binding', { stageId: stage.stageId, runId: stage.runId, runStatus: context.state.run.status,
+          finalStatus: final?.status, outputRefMatches: final?.outputRef === stage.outputRef })
+        contexts.push({ ...context, output: await artifacts.read(stage.outputRef),
+          ...(context.state.run.requirementRef ? { input: await artifacts.read(context.state.run.requirementRef) } : {}) })
+      }
+      const directEvidence = await directEvidenceFor(taskId, plan)
+      const known = new Set([...plan.stages.flatMap(stage => [stage.outputRef, ...(stage.evidenceRefs ?? [])]),
+        ...directEvidence.map(item => item.evidenceRef)])
+      // A successful child receipt is valid evidence of its already bound stage. Normalize
+      // references only; the Owner's criteria and satisfied statuses remain untouched.
+      const aliases = new Map()
+      for (const context of contexts) for (const node of context.state.nodes) {
+        if (node.status !== 'succeeded' || !node.drained || node.generation !== context.state.run.generation) continue
+        for (const ref of [node.outputRef, ...(node.evidenceRefs ?? [])].filter(Boolean)) {
+          if (known.has(ref)) continue
+          const previous = aliases.get(ref)
+          if (previous && previous !== context.stage.outputRef) reject('acceptance-evidence-ambiguous', { evidenceRef: ref })
+          aliases.set(ref, context.stage.outputRef)
+        }
+      }
+      const submitted = [...(decision.evidenceRefs ?? []), ...(decision.assessments ?? []).flatMap(item => item.evidenceRefs ?? [])]
+      const unknown = [...new Set(submitted.filter(ref => !known.has(ref) && !aliases.has(ref)))]
+      if (unknown.length) reject('acceptance-evidence-binding', { unknownEvidenceRefs: unknown, completionEvidenceRefs: [...known] })
+      for (const ref of new Set(submitted.filter(ref => !known.has(ref)))) {
+        const value = await artifacts.read(ref)
+        if (value === undefined || value === null || value.passed === false || value.failed === true
+          || ['failed','rejected','cancelled'].includes(value.status) || typeof value.kind === 'string' && value.kind.endsWith('-failure'))
+          reject('acceptance-evidence-result-failed', { evidenceRef: ref, completionEvidenceRefs: [...known] })
+      }
+      const normalize = refs => refs && [...new Set(refs.map(ref => aliases.get(ref) ?? ref))]
+      decision.evidenceRefs = normalize(decision.evidenceRefs)
+      if (decision.assessments) decision.assessments = decision.assessments.map(item => ({ ...item, evidenceRefs: normalize(item.evidenceRefs) }))
+      const items = await store.query({ kind: 'task.owner.acceptance', taskId })
+      if (!decision.evidenceRefs?.length || !decision.evidenceRefs.every(ref => known.has(ref))
+        || !items.length || decision.assessments?.length !== items.length
+        || !items.every(item => decision.assessments.some(assessment => assessment.itemId === item.itemId
+          && assessment.status === 'satisfied' && assessment.evidenceRefs?.length
+            && assessment.evidenceRefs.every(ref => known.has(ref) && decision.evidenceRefs.includes(ref))))) reject('acceptance-evidence-binding', { itemIds: items.map(item => item.itemId), completionEvidenceRefs: [...known] })
+      const manifest = await readDeliveryManifest({ taskId, plan, requirement, decision })
+      if (!manifest.complete) reject('delivery-manifest', { missing: manifest.missing })
+      const planning = await store.query({ kind: 'task.owner.planning', taskId })
+      if (!planning || planning.truncated) reject('planning-evidence-complete')
+      for (const context of contexts) {
+        const refs = new Set([context.stage.outputRef, ...(context.stage.evidenceRefs ?? [])])
+        context.acceptanceItems = items.flatMap(item => {
+          const evidenceRefs = decision.assessments.find(value => value.itemId === item.itemId).evidenceRefs.filter(ref => refs.has(ref))
+          return evidenceRefs.length ? [{ itemId: item.itemId, criterion: item.criterion, evidenceRefs }] : []
+        })
+        context.extension = await readPolicyArtifacts(context)
+        // Semantic acceptance reads native current runtime receipts, not reference strings.
+        context.runtimeEvidence = context.stage.workflowId === 'task-uat-deployment'
+          ? await Promise.all(context.state.nodes.filter(node => node.current !== false
+            && node.generation === context.state.run.generation && node.status === 'succeeded'
+            && node.drained === true && ['inspect-built', 'inspect-runtime'].includes(node.nodeId)
+            && node.outputRef).map(async node => ({ nodeId: node.nodeId, artifactRef: node.outputRef,
+              output: await artifacts.read(node.outputRef) }))) : []
+      }
+      const semanticStages = contexts.map(({ stage, state, output, input, contract, extension, runtimeEvidence }) => ({ stage, input, contractId: contract.id,
+        output: { ...output, hostExecution: { taskId, stageId: stage.stageId, runId: stage.runId,
+          workflowId: stage.workflowId, workflowDigest: stage.workflowDigest, position: stage.position,
+          predecessorOutputRef: stage.predecessorOutputRef, planning,
+          run: { status: state.run.status, generation: state.run.generation,
+            createdAt: state.run.createdAt, updatedAt: state.run.updatedAt },
+          ...(extension.domainEvidence === undefined ? {} : { domainEvidence: extension.domainEvidence }),
+          ...(runtimeEvidence.length ? { runtimeEvidence } : {}),
+          nodes: state.nodes.map(node => ({ nodeId: node.nodeId, executor: node.executor,
+            position: node.position, generation: node.generation, status: node.status,
+            inputRef: node.inputRef, outputRef: node.outputRef })) } } }))
+      const stages = contexts.map(context => ({ stage: context.stage, output: context.output,
+        input: context.input, contractId: context.contract.id }))
+      const receipts = []
+      const sharedItems = items.map(item => ({ itemId: item.itemId, criterion: item.criterion,
+        evidenceRefs: decision.assessments.find(value => value.itemId === item.itemId).evidenceRefs }))
+      const sharedRefs = new Set(sharedItems.flatMap(item => item.evidenceRefs))
+      const maintenanceConstraints = await readTaskMaintenanceConstraints({ taskId, plan, store, artifacts, signal })
+      const sharedContext = { maintenanceConstraints, requirement: { ...requirement, acceptanceItems: sharedItems, signal }, decision,
+        stages: semanticStages.filter(item => [item.stage.outputRef, ...(item.stage.evidenceRefs ?? [])].some(ref => sharedRefs.has(ref))),
+        directEvidence: directEvidence.filter(item => sharedRefs.has(item.evidenceRef)), acceptanceItems: sharedItems }
+      let sharedVerification
+      const verifyShared = typeof verifyAcceptance === 'function' ? () => sharedVerification ??= (async () => {
+        signal?.throwIfAborted()
+        const owner = await store.query({ kind: 'task.owner', taskId })
+        if (typeof plan.task.requirementRef !== 'string'
+          || ![plan.task.requirementRevision, plan.task.planRevision, plan.task.controlRevision,
+            owner?.authorizationRevision, owner?.inputFenceRevision].every(Number.isSafeInteger)) {
+          const verified = await verifyAcceptance(sharedContext)
+          signal?.throwIfAborted()
+          return verified
+        }
+        const { signal: ignoredSignal, ...frozenRequirement } = sharedContext.requirement
+        // A retry after a late stage event must not recheck identical frozen evidence.
+        // New requirements, controls, authorizations, facts or assessments require a new check.
+        const digest = executionDigest({ taskId, requirementRef: plan.task.requirementRef,
+          requirementRevision: plan.task.requirementRevision, planRevision: plan.task.planRevision,
+          controlRevision: plan.task.controlRevision, authorizationRevision: owner?.authorizationRevision ?? null,
+          inputFenceRevision: owner?.inputFenceRevision ?? null, requirement: frozenRequirement,
+          decision, maintenanceConstraints, stages: sharedContext.stages, directEvidence: sharedContext.directEvidence,
+          acceptanceItems: sharedItems })
+        let cached = acceptanceVerifications.get(taskId)
+        if (cached?.digest !== digest) {
+          cached = { digest, promise: Promise.resolve().then(() => verifyAcceptance(sharedContext)) }
+          acceptanceVerifications.set(taskId, cached)
+          if (acceptanceVerifications.size > 256) acceptanceVerifications.delete(acceptanceVerifications.keys().next().value)
+        }
+        try {
+          const verified = await cached.promise
+          signal?.throwIfAborted()
+          if (verified !== true && acceptanceVerifications.get(taskId) === cached) acceptanceVerifications.delete(taskId)
+          return verified
+        } catch (cause) {
+          if (acceptanceVerifications.get(taskId) === cached) acceptanceVerifications.delete(taskId)
+          throw cause
+        }
+      })() : undefined
+      // 引用只分派验收责任，不证明满足。各领域核验本域事实，语义验收共享所有条目的显式绑定证据。
+      for (const contractId of new Set(stages.map(item => item.contractId))) {
+        const domainStages = stages.filter(item => item.contractId === contractId)
+        const domainRefs = new Set(domainStages.flatMap(item => [item.stage.outputRef, ...(item.stage.evidenceRefs ?? [])]))
+        const acceptanceItems = items.flatMap(item => {
+          const assessment = decision.assessments.find(value => value.itemId === item.itemId)
+          const evidenceRefs = assessment.evidenceRefs.filter(ref => domainRefs.has(ref))
+          return evidenceRefs.length ? [{ itemId: item.itemId, criterion: item.criterion, evidenceRefs }] : []
+        })
+        const domainDecision = { ...decision,
+          evidenceRefs: decision.evidenceRefs.filter(ref => domainRefs.has(ref)),
+          assessments: acceptanceItems.map(item => ({ itemId: item.itemId, status: 'satisfied', evidenceRefs: item.evidenceRefs })) }
+        const domainRequirement = { ...requirement, acceptanceCriteria: acceptanceItems.map(item => item.criterion), acceptanceItems }
+        const verifyDomain = verifyShared
+        for (const context of contexts.filter(item => item.contract.id === contractId)) {
+          const policy = completionPolicy(context.contract, context)
+          const general = policy?.id === 'general-capability-result' && policy.version === '2'
+          if (!policy || await policy.validateCompletion({ ...context, requirement: domainRequirement,
+            decision: domainDecision, stages: domainStages, acceptanceItems: general ? [] : context.acceptanceItems,
+            verifyAcceptance: verifyDomain, maintenanceConstraints, signal }) !== true) reject('domain-completion', { stageId: context.stage.stageId,
+              runId: context.stage.runId, contract: { id: context.contract.id, version: context.contract.version },
+              policy: { id: policy?.id, version: policy?.version }, itemIds: context.acceptanceItems.map(item => item.itemId) })
+          // 已冻结的通用合同内置领域验收；保留其效果检查，在此用显式绑定证据完成语义验收。
+          if (general && acceptanceItems.length && (!verifyDomain || await verifyDomain() !== true))
+            reject('shared-semantic-acceptance', { stageId: context.stage.stageId, itemIds: acceptanceItems.map(item => item.itemId) })
+        }
+        for (const item of acceptanceItems) receipts.push({ ...item, validators: domainStages.map(value => {
+          const context = contexts.find(context => context.stage.stageId === value.stage.stageId)
+          const contract = completionPolicy(context.contract, context)
+          return { stageId: value.stage.stageId, runId: value.stage.runId, workflowDigest: value.stage.workflowDigest,
+            outputRef: value.stage.outputRef, contract: { id: contract.id, version: contract.version },
+            policyDigest: executionDigest({ id: contract.id, version: contract.version, rulesDigest: contract.rulesDigest ?? null,
+              validateCompletion: contract.validateCompletion.toString() }) }
+        }) })
+      }
+      if (directEvidence.some(item => sharedRefs.has(item.evidenceRef))) {
+        if (!verifyShared || await verifyShared() !== true) reject('shared-semantic-acceptance')
+        for (const item of sharedItems.filter(item => item.evidenceRefs.some(ref => directEvidence.some(value => value.evidenceRef === ref)))) {
+          const existing = receipts.find(value => value.itemId === item.itemId)
+          const validators = [{ kind: item.evidenceRefs.some(ref=>directEvidence.some(value=>value.evidenceRef===ref&&value.kind==='original-owner-candidate')) ? 'original-owner-candidate' : 'task-query', requirementRevision: plan.task.requirementRevision,
+            evidenceRefs: item.evidenceRefs.filter(ref => directEvidence.some(value => value.evidenceRef === ref)) }]
+          if (existing) existing.validators.push(...validators)
+          else receipts.push({ ...item, validators })
+        }
+      }
+      verifiedDecisions.set(decision, { decisionDigest: executionDigest(decision), manifestDigest: executionDigest(manifest),
+        receipt: { status: 'accepted', policy: 'domain-items-v1', items: receipts } })
+      return true
+    },
+    async inspectCurrentExecution(taskId, suppliedPlan) {
+      const plan = suppliedPlan ?? await controller.taskPlan(taskId)
+      const stage = plan?.stages.find(item => ['running', 'blocked'].includes(item.status))
+      if (!stage?.runId) return null
+      const context = await contextFor(taskId, stage, plan)
+      return inspectCurrentStage(context)
+    },
+    async repairCurrentStage({ taskId, decision, commandId }) {
+      const replay = await store.query({ kind: 'receipt', commandId })
+      if (replay) return replay
+      const plan = await controller.taskPlan(taskId)
+      const stage = plan?.stages.find(item => ['running', 'blocked'].includes(item.status))
+      if (!stage?.runId) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+      const context = await contextFor(taskId, stage, plan)
+      const observed = await inspectCurrentStage(context)
+      if (!observed && !context.contract) throw executionError('WORKFLOW_OWNER_CONTRACT_UNAVAILABLE')
+      if (!observed?.repairable || executionDigest(observed.repairBinding) !== executionDigest(decision.repair)
+        || !decision.evidenceRefs?.length)
+        throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+      const proposalEvidenceRefs = await verifyCurrentRepairEvidence(context, observed, decision.evidenceRefs)
+      if (decision.workflowRevision) throw executionError('WORKFLOW_REVISION_DISABLED')
+
+      if (observed.mode === 'resume-agent') {
+        if (typeof decision.summary !== 'string' || !decision.summary.trim()) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+        for (const ref of decision.evidenceRefs) await artifacts.read(ref)
+        const saved = await artifacts.put({ kind: 'execution-recovery-context', taskId, runId: stage.runId,
+          nodeRunId: observed.nodeRunId, generation: observed.generation, problemKey: observed.problemKey,
+          requirementRevision: plan.task.requirementRevision, planRevision: plan.task.planRevision, controlRevision: plan.task.controlRevision,
+          diagnosis: decision.summary, strategy: decision.summary, evidenceRefs: decision.evidenceRefs }, { taskId })
+        return controller.resumeNode({ commandId, runId: stage.runId, expectedRevision: observed.runRevision,
+          nodeRunId: observed.nodeRunId, generation: observed.generation, leaseEpoch: observed.leaseEpoch,
+          inputDigest: observed.inputDigest, contextRef: saved.ref })
+      }
+      const contract = repairPolicyFor(context)
+      if (!contract.inspectRepair || !contract.prepareRepair) throw executionError('WORKFLOW_REPAIR_NOT_ADMITTED')
+      const requirement = await artifacts.read(plan.task.requirementRef)
+      const prepared = await contract.prepareRepair({ ...context, requirement, observed, prepareRepairContext, prepareDataChangeRepairInput, decision })
+      const material = await artifacts.read(prepared.contextRef)
+      assertRepairContext(material, context.state)
+      const repair = { ...observed.repairBinding, taskId, contextRef: prepared.contextRef }
+      const repairAdmission = Object.freeze({})
+      repairAdmissions.set(repairAdmission, { workflowDigest: stage.workflowDigest, inputDigest: executionDigest(prepared.input),
+        repairDigest: executionDigest(repair), contextDigest: executionDigest(material), evidenceRefs: [...proposalEvidenceRefs] })
+      return controller.changeInput({ commandId, runId: stage.runId, inputId: commandId, sourceKey: commandId,
+        input: prepared.input, expectedRevision: observed.repairBinding.runRevision, repair, repairAdmission })
+    },
+  }
+}

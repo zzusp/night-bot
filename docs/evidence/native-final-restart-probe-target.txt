@@ -1,0 +1,44 @@
+✔ maintenance reopen through HTTP creates a current reconciliation request without replay: succeeded (279.880137ms)
+✔ maintenance reopen through HTTP creates a current reconciliation request without replay: scope-missing (148.324056ms)
+✔ real HTTP/service/ledger check is zero-write; reply is digest-bound/idempotent; missing-result drain uses the same audit (100.30313ms)
+✔ formal check/probe/reply preserves unknown and original arguments: direct launch (105.740136ms)
+﹣ formal check/probe/reply preserves unknown and original arguments: PG wrapper (0.253683ms) # Windows task workspace required
+✔ wrapper isolation binds the original command and task; identity and arbitrary pwsh remain unsupported (12.095454ms)
+✔ actual PowerShell AST verifies serve preamble without executing database identity or prepare (690.13694ms)
+✔ actual read-only PowerShell verifies wrapper bytes, ownership, opts and config without invoking any database program (920.482285ms)
+✔ only the two bounded local launch recipes are supported; arbitrary shell extensions reject (1.299049ms)
+✔ observed non-OOM Host exit preserves unknown effects and requires full bounded isolation (14.846402ms)
+✔ actual PowerShell preserves observed-exit milliseconds and timezone through JSON decoding (807.516741ms)
+✔ existing native probe proves bounded isolation without a new service: PG (2.557017ms)
+✔ existing native probe proves bounded isolation without a new service: Maven (1.039208ms)
+✔ scoped probe rejects host still alive (0.651483ms)
+✔ scoped probe rejects old host runner alive (0.84857ms)
+✔ scoped probe rejects unattributed legacy producer alive (0.969102ms)
+✔ scoped probe rejects residual writer (0.742089ms)
+✔ scoped probe rejects listener remains (0.462888ms)
+✔ scoped probe rejects provider version changed (0.61697ms)
+✔ scoped probe rejects wrong fatal evidence (0.600385ms)
+✔ scoped probe rejects discarded local effects (0.618012ms)
+✔ scoped probe rejects fake echo command (1.33985ms)
+✔ scoped probe rejects missing final LF (0.765294ms)
+✔ scoped probe rejects LF converted to CRLF (0.595307ms)
+✔ scoped probe rejects probe not producer-settled (0.495146ms)
+✔ scoped probe rejects probe failed (0.486714ms)
+✔ scoped probe rejects foreign probe (0.691133ms)
+✔ scoped probe rejects no reviewed scope (0.469758ms)
+✔ managed plan is rebuilt from original native evidence and bound to the current investigation (1.520834ms)
+﹣ actual PowerShell producer filter excludes unrelated Claude and retains DSH ownership and original-source descendants (0.067832ms) # SKIP
+﹣ managed probe passes authoritative LF-preserving bytes through real native pwsh, jobs, persistence and strict reader: OOM (1.249604ms) # Windows native pwsh required
+﹣ managed probe passes authoritative LF-preserving bytes through real native pwsh, jobs, persistence and strict reader: observed exit (0.223337ms) # Windows native pwsh required
+﹣ managed probe passes authoritative LF-preserving bytes through real native pwsh, jobs, persistence and strict reader: retained PG wrapper (0.143256ms) # Windows native pwsh required
+﹣ managed native entry rejects tampering and policy denial; a failed real producer stays failed and its original call remains readable (0.170006ms) # Windows native pwsh required
+✔ native restart scope binds reviewed native provider bytes and excludes legacy installation layout (14.641281ms)
+✔ legacy restart scope remains an explicit reviewed compatibility choice without relaxing evidence requirements (0.984214ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 6
+ℹ todo 0
+ℹ duration_ms 2841.994924

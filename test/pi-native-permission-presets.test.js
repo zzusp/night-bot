@@ -1,0 +1,35 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import NativePresets from '../src/native-permission-presets.js'
+import NativeApproval from '../src/native-approval.js'
+import NativePolicy from '../src/native-policy.js'
+import {nativeBusinessPolicyFixture} from './fixtures/native-business-policy.js'
+const presets=()=>({read:{sandbox:'read-only',approval:'ask',name:'Read'},write:{sandbox:'workspace-write',approval:'ask',description:'Workspace'},alias:{sandbox:'workspace-write',approval:'ask'},wide:{sandbox:'danger-full-access',approval:'never'}})
+async function fixture(t,{table=presets(),sandboxMode='workspace-write',approval='ask',defaultPreset='write',unconfined=false}={}){
+ const h=await nativeBusinessPolicyFixture(t),commands=[];new NativeApproval(h.ctx,{policy:approval});new NativePolicy(h.ctx,{mode:sandboxMode,workspaceRoot:h.root});h.ctx.provide('shell',unconfined?{}:{sandboxMode});h.ctx.provide('commands',{register:command=>commands.push(command)});let selected=defaultPreset;new NativePresets(h.ctx,{presets:table,defaultPreset:{get:()=>selected}});await h.ctx.fiber.await()
+ return {...h,commands,registry:h.ctx.get('permissionPresets'),selectDefault:value=>selected=value,async agent(id,{pin=true,...options}={}){const a=await h.actor(id,{cwd:h.root,...options});if(pin)await h.ctx.permissionPresets.pinInitialPermission(a.actor);return a}}
+}
+test('owned presets pin one composite fact, retain explicit tie identity and publish live defaults',async t=>{
+ const h=await fixture(t),a=await h.agent('one'),r=h.registry,initial=r.current(a.actor),initialFacts=await a.facts();await r.set(a.actor,'alias');const tied=r.current(a.actor);await r.set(a.actor,'wide');const before=await a.facts();await r.set(a.actor,'wide');const noop=JSON.stringify(await a.facts())===JSON.stringify(before);await h.ctx.approval.setPolicy(a.actor,'ask');const custom=r.current(a.actor);await r.set(a.actor,'read');h.selectDefault('wide');const newer=await h.agent('two')
+ assert.deepEqual({initial,tied,noop,custom,current:r.current(a.actor),future:r.current(newer.actor)},{initial:'write',tied:'alias',noop:true,custom:'custom',current:'read',future:'wide'})
+ assert.deepEqual(initialFacts,[{version:1,domain:'permission',kind:'selected',payload:{preset:'write',sandbox:'workspace-write',approval:'ask'}}]);assert.equal(r.catalog().defaultPreset,'wide');assert.deepEqual(r.catalog().options.map(o=>o.value),['read','write','alias','wide']);assert.equal(r.optionOf('custom').value,'custom');assert.equal(h.commands.length,1);assert.equal(h.commands[0].name,'permission');assert.deepEqual(h.commands[0].input,{hint:'<preset>'});assert.equal(r.permissionState(a.actor).preset,'read');assert.equal(h.ctx.get('sessionProjections'),undefined)
+})
+test('unconfined executors, reserved table names, invalid defaults and prototype-inherited names cannot select permissions',async t=>{
+ await assert.rejects(fixture(t,{unconfined:true}),/confine/);for(const name of ['auto','custom'])await assert.rejects(fixture(t,{table:{...presets(),[name]:{sandbox:'read-only',approval:'never'}}}),/reserved/);await assert.rejects(fixture(t,{defaultPreset:'missing'}),/unknown/)
+ const h=await fixture(t),a=await h.agent('one'),before=await a.facts();for(const name of ['constructor','toString','__proto__','missing'])await assert.rejects(h.registry.set(a.actor,name),/unknown/);assert.deepEqual(await a.facts(),before);await assert.rejects(h.registry.set({id:a.actor.id,session:{append(){assert.fail('no legacy policy append')}}},'wide'),{code:'PI_PERMISSION_ACTOR_UNBOUND'});h.selectDefault('auto');assert.throws(()=>h.registry.defaultPreset,/unknown default/)
+})
+test('Auto remains fixed/current-only; existing native never policy preserves identity and restore requires live gate',async t=>{
+ const h=await fixture(t),a=await h.agent('auto-parent');let admissions=0;const dispose=h.registry.registerAuto(()=>{admissions++});assert.ok(h.registry.names.includes('auto'));assert.ok(!h.registry.catalog().defaultOptions.some(o=>o.value==='auto'));await h.registry.set(a.actor,'auto');assert.equal(admissions,1);assert.equal(h.registry.current(a.actor),'auto')
+ const restored=await h.agent('auto-restored',{seeded:true,initialFacts:await a.facts()});assert.equal(admissions,3);await h.ctx.approval.setPolicy(restored.actor,'never');assert.equal(h.registry.current(restored.actor),'auto');dispose();assert.ok(!h.registry.names.includes('auto'));const before=await restored.facts();assert.throws(()=>h.registry.pinInitialPermission(restored.actor),/without active integration/);assert.deepEqual(await restored.facts(),before)
+})
+test('removed or asynchronous Auto gate cannot leave broad permission selection behind',async t=>{
+ const h=await fixture(t),a=await h.agent('one');let remove;remove=h.registry.registerAuto(()=>remove());const before=await a.facts();await assert.rejects(h.registry.set(a.actor,'auto'),/revoked/);assert.deepEqual(await a.facts(),before);const second=h.registry.registerAuto(async()=>{});await assert.rejects(h.registry.set(a.actor,'auto'),/synchronous/);assert.deepEqual(await a.facts(),before);second()
+})
+test('existing seeded and partially initialized native facts preserve effective knobs instead of new default',async t=>{
+ const h=await fixture(t),parent=await h.agent('parent');await h.registry.set(parent.actor,'read');h.selectDefault('wide');const seeded=await h.agent('seeded',{seeded:true,initialFacts:await parent.facts()});assert.equal(h.registry.current(seeded.actor),'read');assert.equal(h.registry.permissionState(seeded.actor).sandbox,'read-only');assert.equal(h.registry.permissionState(seeded.actor).approval,'ask')
+ const partial=await h.agent('partial',{pin:false});await h.ctx.approval.setPolicy(partial.actor,'never');await h.registry.pinInitialPermission(partial.actor);assert.equal(h.registry.permissionState(partial.actor).sandbox,'workspace-write');assert.equal(h.registry.permissionState(partial.actor).approval,'never');assert.equal(h.registry.current(partial.actor),'custom')
+})
+test('permission command awaits composite policy; visible reply and catalog survive observer failures without injected user history',async t=>{
+ const h=await fixture(t),a=await h.agent('command'),command=h.commands.find(c=>c.name==='permission');assert.ok(command);assert.equal(command.handler({agent:a.actor,rawInput:''}).kind,'success');assert.equal(command.handler({agent:a.actor,rawInput:'missing'}).kind,'error');assert.deepEqual(await command.handler({agent:a.actor,rawInput:'wide'}),{kind:'success',text:'preset wide'});assert.equal(h.registry.current(a.actor),'wide');assert.match(h.ctx.approval.officialText({actor:a.actor}),/disabled/);assert.equal(h.ctx.sandboxPolicy.resolve({actor:a.actor}).mode,'danger-full-access');assert.deepEqual(a.store.manager.buildSessionProjection().messages,[])
+ h.ctx.on('permission-presets/catalog-changed',()=>{throw Error('fixture observer')});let seen=0;h.ctx.on('permission-presets/catalog-changed',()=>{seen++});const dispose=h.registry.registerAuto(()=>{});dispose();assert.equal(seen,2)
+})

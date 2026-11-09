@@ -1,0 +1,871 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import test from 'node:test'
+import { describeMessageTraceItem } from '../packages/dingtalk-core/workflow-service.js'
+import { runInNewContext } from 'node:vm'
+import { taskNotificationOutbound } from '../packages/dingtalk-core/task-message-projections.js'
+
+test('card total elapsed is compact, terminal-stable and unknown on incomplete or future evidence', async () => {
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const code=source.slice(source.indexOf('    const taskCardElapsed ='),source.indexOf('    function ExecutionSessionDuration('))
+ const elapsed=runInNewContext(`${code};taskCardElapsed`), now=Date.parse('2026-11-03T12:00:00Z')
+ const closed=minutes=>({complete:true,closedMs:minutes*60000,activeSince:null})
+ assert.equal(elapsed(closed(0),now).value,'<1m')
+ assert.equal(elapsed(closed(35),now).value,'35m')
+ assert.equal(elapsed(closed(243),now).value,'4h 3m')
+ assert.equal(elapsed(closed(1560),now).value,'1d 2h')
+ assert.equal(elapsed(closed(60),now).value,'1h')
+ assert.equal(elapsed(closed(243),now+86400000).value,'4h 3m')
+ const active={complete:true,closedMs:0,activeSince:new Date(now-63*60000).toISOString()}
+ assert.equal(elapsed(active,now).value,'1h 3m')
+ assert.equal(elapsed(active,now+60000).value,'1h 4m')
+ for(const invalid of [null,{}, {complete:false}, {complete:true,closedMs:-1,activeSince:null}, {complete:true,closedMs:0}, {...active,activeSince:new Date(now+1).toISOString()}])assert.equal(elapsed(invalid,now).value,'—')
+ assert.match(elapsed(active,now).description,/任务从创建到当前或最终结束.*含排队、等待、暂停及完成至重开的间隔.*不累加并行执行/)
+})
+
+test('inbox failure copy distinguishes inactive task context from unknown side effects', async () => {
+ const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+ const code = source.slice(source.indexOf('    const messageFailureHint ='), source.indexOf('    const traceReason ='))
+ const hint = runInNewContext(`${code}; messageFailureHint`)
+ assert.match(hint('DYNAMIC_TASK_NOT_ACTIVE'), /补充尚未应用.*恢复原任务/)
+ assert.doesNotMatch(hint('DYNAMIC_TASK_NOT_ACTIVE'), /未知/)
+ assert.match(hint('DYNAMIC_OPERATION_UNRESOLVED'), /效果未知.*不得重放/)
+ assert.doesNotMatch(hint('unexpected'), /效果未知/)
+ assert.match(source, /messageFailureHint\(message.processingFailureCode\)/)
+})
+
+test('the complete board renders its initial loading state before any collection exists',async()=>{
+ const original=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const source=original.replace("module.exports = { name: 'dingtalk-dsh-observer-client'","module.exports = { ObserverContent, name: 'dingtalk-dsh-observer-client'")
+ let client
+ const react={Fragment:'fragment',useState:value=>[typeof value==='function'?value():value,()=>{}],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect(){},createElement:(type,props,...children)=>({type,props,children})}
+ const window={sessionStorage:{getItem:()=>null},__ModuleLoader__:{load:({factory})=>{client=factory(name=>name==='react'?react:new Proxy({},{get:(_,key)=>key}))}}}
+ runInNewContext(source,{window,Map,Set,Date,JSON,URLSearchParams,console})
+ assert.doesNotThrow(()=>client.ObserverContent({openSession:async()=>{}}))
+})
+
+async function topicHarness(name) {
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const fragment=source.slice(source.indexOf('    function useTopicRequest('),source.indexOf('    function TaskStepOutput('))
+ const states=[],refs=[],effects=[],requests=[];let stateIndex=0,refIndex=0,effectIndex=0,pendingEffects=[]
+ const component=runInNewContext(`${fragment};${name}`,{
+  useState:initial=>{const i=stateIndex++;if(!(i in states))states[i]=initial;return [states[i],v=>states[i]=typeof v==='function'?v(states[i]):v]},
+  useRef:initial=>{const i=refIndex++;return refs[i]??(refs[i]={current:initial})},
+  useEffect:(fn,deps)=>{const i=effectIndex++,old=effects[i];if(!old||deps.some((v,n)=>v!==old.deps[n]))pendingEffects.push(()=>{old?.cleanup?.();effects[i]={deps,cleanup:fn()}})},
+  get:(path,{signal})=>new Promise((resolve,reject)=>requests.push({path,signal,resolve,reject})),AbortController,URLSearchParams,
+  React:{createElement:(type,props,...children)=>({type,props,children}),Fragment:'fragment'},Button:'button',
+  ui:{textSm:12,textMd:14,space4:16},colors:{muted:'gray',border:'gray'},tableFrame:{},tableFooter:{},toolbar:{},
+  readout:(label,value)=>({type:'readout',children:[label,JSON.stringify(value)]}),fmt:value=>value,taskStateLabel:value=>value,
+  emptyState:text=>({type:'empty',children:[text]}),SelectMenu:'select',FixedTopicDetail:'fixed',
+ })
+ return {requests,render(props){stateIndex=refIndex=effectIndex=0;const tree=component(props);const batch=pendingEffects;pendingEffects=[];batch.forEach(fn=>fn());return tree},
+  dispose(){effects.forEach(effect=>effect?.cleanup?.())}}
+}
+const topicNodes=value=>value&&typeof value==='object'?[value,...(value.children??[]).flatMap(topicNodes)]:[]
+const flushTopics=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve()}
+
+test('topic overview reuses slow polling reads, preserves content on refresh failure and loads history only on disclosure',async()=>{
+ const h=await topicHarness('TopicOverview'),selection={groupId:'g',topicId:'first',title:'第一话题'}
+ const render=updatedAt=>h.render({selection,updatedAt,onOpenTask(){}})
+ render(1);render(2);render(3);assert.equal(h.requests.length,1);assert.equal(h.requests[0].signal.aborted,false)
+ assert(h.requests[0].path.includes('view=overview'))
+ h.requests[0].resolve({topic:{...selection,summary:'当前摘要',status:'active'}});await flushTopics()
+ let tree=render(3);assert(JSON.stringify(tree).includes('当前摘要'))
+ assert(!topicNodes(tree).some(node=>node.type?.name==='TopicRecords'))
+ const disclosure=topicNodes(tree).find(node=>node.type==='details')
+ disclosure.props.onToggle({currentTarget:{open:true}});tree=render(3)
+ assert(topicNodes(tree).some(node=>node.type?.name==='TopicRecords'))
+ render(4);assert(JSON.stringify(render(5)).includes('当前摘要'));assert.equal(h.requests.length,2)
+ h.requests[1].reject(new Error('temporary'));await flushTopics();tree=render(5)
+ assert(JSON.stringify(tree).includes('当前摘要'))
+ const status=topicNodes(tree).find(node=>node.type?.name==='TopicPageStatus')
+ assert.equal(status.props.error,'temporary');status.props.onRetry();render(5);assert.equal(h.requests.length,3)
+ h.dispose();assert.equal(h.requests[2].signal.aborted,true)
+ h.requests[2].resolve({topic:{...selection,summary:'过期响应'}});await flushTopics()
+ assert(!JSON.stringify(render(5)).includes('过期响应'))
+})
+
+test('topic history pages use their own snapshot and survive unrelated overview updates',async()=>{
+ const h=await topicHarness('TopicRecords'),selection={groupId:'g',topicId:'topic',revision:4}
+ const render=()=>h.render({selection,kind:'messages'})
+ render();assert(h.requests[0].path.includes('revision=4'));h.requests[0].resolve({messages:[{messageId:'m1',text:'第一条'}],topic:{},revision:4,total:51,offset:0,limit:25});await flushTopics()
+ let tree=render();assert(JSON.stringify(tree).includes('第一条'))
+ const pager=topicNodes(tree).find(node=>node.type?.name==='TopicPager');pager.props.onChange(25);render()
+ assert(h.requests[1].path.includes('offset=25'));assert(h.requests[1].path.includes('revision=4'));assert.equal(h.requests[0].signal.aborted,true)
+ h.requests[1].reject(Object.assign(new Error('stale'),{status:409}));await flushTopics();render()
+ assert(h.requests[2].path.includes('offset=0'));assert(!h.requests[2].path.includes('revision=4'))
+ h.dispose()
+})
+
+test('topic list cancels old group reads, rejects stale responses and preserves the last good page on errors',async()=>{
+ const h=await topicHarness('TopicBrowser')
+ const render=updatedAt=>h.render({groups:[{groupId:'other',name:'其他群'}],updatedAt,onOpenTask(){}})
+ let tree=render(1);render(2);assert.equal(h.requests.length,2,'fixed registry and one list page only')
+ const listRequest=h.requests.find(request=>request.path.startsWith('/state/topics?'))
+ assert(listRequest.path.includes('limit=10'))
+ listRequest.resolve({topics:[{topicId:'a',groupId:'g',title:'第一话题'}],total:11,offset:0,limit:10,nextOffset:10});await flushTopics()
+ tree=render(2);assert(JSON.stringify(tree).includes('第一话题'))
+ render(3);const pending=h.requests.at(-1)
+ const filter=topicNodes(tree).find(node=>node.type==='select');filter.props.onChange('other');tree=render(3)
+ assert.equal(pending.signal.aborted,true);assert(!JSON.stringify(tree).includes('第一话题'))
+ pending.resolve({topics:[{topicId:'old',title:'旧群迟到'}],total:1});await flushTopics()
+ assert(!JSON.stringify(render(3)).includes('旧群迟到'))
+ const next=h.requests.at(-1);assert(next.path.includes('groupId=other'))
+ next.resolve({topics:[{topicId:'b',groupId:'other',title:'其他话题'}],total:1,offset:0,limit:10,nextOffset:null});await flushTopics();render(3)
+ render(4);h.requests.at(-1).reject(new Error('offline'));await flushTopics()
+ tree=render(4);assert(JSON.stringify(tree).includes('其他话题'));assert(JSON.stringify(tree).includes('offline'))
+ h.dispose()
+})
+
+test('成果时间记录仅混排真实巡查决定，保留无动作wait、按身份去重和时间排序', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const code = source.slice(source.indexOf('    const taskOutcomeRecords ='), source.indexOf('    function TaskOutcomeRecords('))
+  const merge = runInNewContext(`${code}; taskOutcomeRecords`)
+  const stage = { id: 'stage', at: '2026-10-22T01:00:00Z', summary: '阶段产物', evidence: ['https://example.com/readback'], activity: '继续核对边界' }
+  const review = { id: 'review', recordedAt: '2026-10-22T01:10:00Z', triggers: [{ kind: 'execution.progress.review' }, { kind: 'execution.progress.review' }],
+    decision: { action: 'wait', summary: '方向正常，继续等待', evidence: ['真实记录'], limitations: ['尚未完成'] } }
+  const records = merge({ executions: [{ id: 'e', title: '执行', milestones: [stage, stage] }] }, [review, review,
+    { id: 'ordinary', recordedAt: '2026-10-22T01:20:00Z', triggers: [{ kind: 'execution.result' }], decision: { summary: '普通决定' } }])
+  assert.equal(records.length, 2)
+  assert.equal(records[0].type, '统筹巡查'); assert.equal(records[0].action, 'wait')
+  assert.equal(records[1].type, '阶段成果')
+  assert.equal(records[1].evidence[0], 'https://example.com/readback')
+  assert.equal(records[1].activity, '继续核对边界')
+  assert.equal(records[0].evidence[0], '真实记录')
+  const legacy = merge({ executions: [{ id: 'legacy', milestones: [{ id: 'old', summary: '历史报告' }] }] })[0]
+  assert.equal(legacy.evidence.length, 0)
+  assert.equal(legacy.activity, undefined)
+  assert.equal(merge(undefined, []).length, 0)
+  assert.match(source, /nextBefore !== null/)
+  assert.match(source, /已加载范围内暂无阶段成果或巡查结论/)
+  assert.match(source, /报告时活动：/)
+  assert.match(source, /报告本身不代表已独立核验/)
+  assert.doesNotMatch(code, /progressReview|checkedAt/)
+})
+
+test('顶部提示成功五秒关闭、手动关闭、持续错误不被刷新重开且清理定时器', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const fragment = source.slice(source.indexOf('    function FeedbackNotice('), source.indexOf('    function ObserverContent('))
+  let visible = true, deps, cleanup, pendingEffect, nextId = 0
+  const timers = new Map()
+  const Notice = runInNewContext(`${fragment}; FeedbackNotice`, {
+    useState: () => [visible, value => { visible = value }],
+    useEffect: (effect, next) => { if (!deps || next.some((value, i) => value !== deps[i])) { cleanup?.(); deps = next; pendingEffect = effect } },
+    window: { setTimeout: (fn, delay) => { assert.equal(delay, 5000); timers.set(++nextId, fn); return nextId }, clearTimeout: id => timers.delete(id) },
+    React: { createElement: (type, props, ...children) => ({ type, props, children }) }, Button: 'button', card: {}, colors: {},
+  })
+  const render = props => { let result = Notice(props); if (pendingEffect) { const effect = pendingEffect; pendingEffect = undefined; cleanup = effect(); result = Notice(props) } return result }
+  let tree = render({ text: '已归档' })
+  assert.equal(tree.props.role, 'status'); assert.equal(timers.size, 1)
+  render({ text: '已归档' }); assert.equal(nextId, 1, '轮询不能延长成功提示寿命')
+  timers.get(1)(); assert.equal(render({ text: '已归档' }), null)
+  tree = render({ text: '连接失败', error: true }); assert.equal(timers.size, 0); assert.equal(tree.props.role, 'alert')
+  assert.equal(tree.children[1].props['aria-label'], '关闭提示'); tree.children[1].props.onClick()
+  assert.equal(render({ text: '连接失败', error: true }), null)
+  tree = render({ text: '新错误', error: true }); assert.equal(tree.props.role, 'alert')
+  tree = render({ text: '操作完成' }); tree.children[1].props.onClick(); assert.equal(render({ text: '操作完成' }), null)
+  cleanup(); assert.equal(timers.size, 0)
+  assert.equal((source.match(/React\.createElement\(FeedbackNotice,/g) || []).length, 3)
+})
+
+test('消息与话题详情只展示有绑定的会话并支持分页', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.match(source, /message\.runId \? React\.createElement\(Button[\s\S]*'处理过程'/)
+  assert.match(source, /\/state\/workflows\/\$\{encodeURIComponent\(runId\)\}\/trace/)
+  assert.match(source, /nativeSession && session\?\.sessionId && session\.sessionBound !== false \? React\.createElement\(Button/)
+  assert.match(source, /setCursorHistory\(\(items\) => \[\.\.\.items, cursor\]\)/)
+  assert.match(source, /TopicPager/)
+  assert.match(source, /判断记录分页/)
+  assert.match(source, /判断依据与执行记录/)
+})
+
+test('精简判断轨迹不包含技术详情，并展示容量受阻原因', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const reasonCode = source.slice(source.indexOf('const traceReason = ') + 'const traceReason = '.length, source.indexOf('    const readableValue ='))
+  const reason = runInNewContext(`(${reasonCode})`)
+  assert.match(reason('MESSAGE_CONTEXT_CAPACITY:IB:$:33000/32000'), /上下文容量受阻.*后续判断已停止/)
+  assert.match(reason('MESSAGE_MATERIAL_CAPACITY:R:u1'), /必要材料未能完整提供/)
+  assert.equal(reason({ code: 'FAILED' }), '{"code":"FAILED"}')
+  assert.match(reason('ENGINEERING_ACCEPTANCE_REQUIRED'), /缺少业务验收.*后续提交已停止/)
+  assert.match(reason('ENGINEERING_ACCEPTANCE_FAILED'), /业务验收未通过.*后续提交已停止/)
+})
+
+test('收信箱只使用后端当前版本状态，不因缺少topics或routed字段假成功', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const start = source.indexOf('      const messageWorkflowState =')
+  const end = source.indexOf('      const filteredMessages =', start)
+  const state = runInNewContext(`(() => { ${source.slice(start, end)}; return messageWorkflowState })()`)
+  assert.equal(state({ routingStatus: 'pending', workflowStatus: 'waiting_authorization' }), 'routing')
+  assert.equal(state({ routingStatus: 'failed' }), 'failed')
+  assert.equal(state({ routingStatus: 'routed', processingState: 'processing' }), 'processing')
+  assert.equal(state({ routingStatus: 'routed', processingState: 'processed' }), 'processed')
+  assert.equal(state({ routingStatus: 'routed', processingState: 'needs_clarification' }), 'needs_clarification')
+  for (const sourceKind of ['dingtalk', 'workflow-v2', 'task-session', 'web', undefined]) {
+    assert.equal(state({ routingStatus: 'routed', sourceKind, workflowStatus: 'completed' }), 'unknown')
+  }
+  assert.doesNotMatch(source.slice(start, end), /topics|processedRevision/)
+  assert.match(source, /unknown: \{ label: '状态未知'/)
+  assert.doesNotMatch(source, /历史未记录处理过程|id: 'waiting_authorization', label: '等待授权'/)
+})
+
+test('收信箱分开表达材料读取责任及通知回读，详情可用键盘展开', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.match(source, /React\.createElement\('details'[\s\S]*React\.createElement\('summary'[\s\S]*'等待与通知'/)
+  assert.match(source, /message\.blockingSources/)
+  assert.match(source, /恢复条件/)
+  assert.match(source, /acknowledged: '已确认发送，待回读'/)
+  assert.match(source, /unknown: '发送结果待核对'/)
+  assert.match(source, /delivered: '已回读送达'/)
+})
+
+test('运行看板复用宿主插槽与共享导航，清退流程目录和变量配置', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.match(source, /inject: \['slots', 'sessions', 'uiWorkspace', 'layout'\]/)
+  assert.match(source, /priority: -10/)
+  assert.match(source, /restoreSessionSelection\(\)/)
+  assert.match(source, /style: navigationTabStyle\(activePage === page\.id\)/)
+  assert.match(source, /'aria-label': '运行看板视图'/)
+  assert.match(source, /\/state\/groups/)
+  assert.match(source, /\/state\/tasks/)
+  assert.doesNotMatch(source, /WorkflowBrowser|ConfigurationBrowser|WorkflowConfigurationBindings|workflow-variables|workflow-bindings|state\/workflows\/catalog/)
+  assert.doesNotMatch(source, /window\.(confirm|alert|prompt)\(/)
+})
+
+test('任务卡不请求或展示执行轮次耗时统计', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /get\('\/state\/task-timings'\)/)
+  assert.doesNotMatch(source, /taskTimings|timingsByTaskId|timingBreakdown|timingPart/)
+  assert.doesNotMatch(source, /本轮用时|当前执行轮次统计不完整|未细分为运行状态中/)
+})
+
+test('运行看板提供统一视觉尺度、响应式布局和可见键盘焦点', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.match(source, /const ui = \{ textSm: 12, textMd: 14, textLg: 16, textXl: 20/u)
+  assert.match(source, /@media \(max-width: 960px\)/u)
+  assert.match(source, /@media \(max-width: 720px\)/u)
+  assert.match(source, /:focus-visible/u)
+  assert.match(source, /observer-task-board/u)
+  assert.match(source, /observer-topics-layout/u)
+  assert.match(source, /onRetry:.*setRetry/u)
+})
+
+test('发件状态按实际投递环节展示，pending不会伪装为已回读', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const expression = source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))
+  const classify = runInNewContext(`(${expression})`)
+  const scenarios = [
+    [{ status: 'pending', readbackRequired: true }, 'confirmation', '待确认'],
+    [{ status: 'pending', readbackRequired: false }, 'confirmation', '待确认'],
+    [{ status: 'pending', deliveryPendingReason: 'preflight_failed', deliveryError: 'CLI_ORG_NOT_AUTHORIZED' }, 'failed', '异常'],
+    [{ status: 'pending', deliveryPendingReason: 'preflight_history_partial' }, 'failed', '异常'],
+    [{ status: 'pending', deliveryPendingReason: 'send_failed', deliveryError: 'timeout' }, 'failed', '异常'],
+    [{ status: 'pending', deliveryError: 'legacy_error' }, 'failed', '异常'],
+    [{ status: 'pending', deliveryBlockedAt: '2026-09-11T00:00:00Z', deliveryError: 'server_rejected' }, 'failed', '异常'],
+    [{ status: 'pending', deliveryPendingReason: 'postflight_failed', deliveryError: 'CLI_ORG_NOT_AUTHORIZED' }, 'confirmation', '待确认'],
+    [{ status: 'pending', deliveryPendingReason: 'delivery_unknown' }, 'confirmation', '待确认'],
+    [{ status: 'pending', deliveryPendingReason: 'message_not_observed' }, 'confirmation', '待确认'],
+    [{ status: 'sent', deliveredMessageId: 'actual-message-id' }, 'confirmed', '已送达'],
+    [{ status: 'sent' }, 'confirmation', '待确认'],
+    [{ status: 'sent', recallStatus: 'recalled' }, 'confirmation', '待确认'],
+    [{ status: 'superseded', supersededByOutboundId: 'new' }, 'confirmation', '待确认'],
+    [{ status: 'superseded', deliveredMessageId: 'actual' }, 'confirmed', '已送达'],
+    [{ status: 'superseded', notificationKnownNotSent: true }, 'cancelled', '已取消'],
+    [{ status: 'sent', deliveredMessageId: 'actual', supersededByOutboundId: 'new' }, 'confirmed', '已送达'],
+    [{ status: 'superseded', recallStatus: 'failed', recallError: 'replacement_delivery_unknown' }, 'confirmation', '待确认'],
+    [{ status: 'sent', recallStatus: 'failed', recallError: 'dws_recall_failed:1:1001' }, 'confirmation', '待确认'],
+  ]
+  for (const [message, id, label] of scenarios) {
+    const result = classify(message)
+    assert.equal(result.id, id)
+    assert.equal(result.label, label)
+  }
+  for (const [state, phase, id, label] of [
+    ['prepared', undefined, 'queued', '待发送'], ['starting', undefined, 'sending', '发送中'],
+    ['unknown', 'send', 'confirmation', '待确认'], ['unknown', 'readback', 'confirmation', '待确认'],
+    ['delivered', undefined, 'confirmed', '已送达'],
+  ]) {
+    const outbound = taskNotificationOutbound({ id: 'notice', state, payload: { text: '通知', conversationId: 'g' },
+      ...(phase ? { deliveryError: { phase, message: '诊断' } } : {}),
+      ...(state === 'delivered' ? { receipt: { messageId: 'verified' } } : {}) })
+    const result = classify(outbound)
+    assert.equal(result.id, id)
+    assert.equal(result.label, label)
+    assert.ok(result.hint || result.detail)
+  }
+  assert.match(source, /message\.deliveryError/)
+  assert.match(source, /最近尝试.*fmt\(message\.deliveryAttemptedAt\)/)
+  assert.match(source, /message\.deliveryAttemptCount/)
+})
+
+test('任务通知明确区分待发送、发送中、结果未知和确定的发送前阻止', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const expression = source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))
+  const classify = runInNewContext(`(${expression})`)
+  const scenarios = [
+    [{ notificationState: 'prepared', deliveryPendingReason: 'task-notification-prepared' }, 'queued', '待发送'],
+    [{ notificationState: 'starting', deliveryPendingReason: 'task-notification-starting' }, 'sending', '发送中'],
+    [{ notificationState: 'unknown', deliveryPendingReason: 'task-notification-unknown' }, 'confirmation', '待确认'],
+    [{ notificationState: 'unknown', deliveryPendingReason: 'task-notification-unknown', deliveryError: 'send timed out', notificationFailurePhase: 'send' }, 'confirmation', '待确认'],
+    [{ notificationState: 'unknown', deliveryPendingReason: 'task-notification-unknown', deliveryError: 'collection missing', notificationFailurePhase: 'readback' }, 'confirmation', '待确认'],
+    [{ notificationState: 'unknown', deliveryBlockedAt: '2026-10-14T00:00:00Z', notificationKnownNotSent: false }, 'confirmation', '待确认'],
+    [{ notificationState: 'failed', deliveryPendingReason: 'task-notification-pre-send-rejected', notificationKnownNotSent: true }, 'failed', '异常'],
+    [{ notificationState: 'failed', deliveryPendingReason: 'task-notification-failed', deliveryError: 'delivery failed' }, 'failed', '异常'],
+    [{ notificationState: 'failed', deliveryPendingReason: 'task-notification-task-terminal', notificationKnownNotSent: true }, 'cancelled', '已取消'],
+    [{ notificationState: 'failed', deliveryPendingReason: 'task-notification-superseded', notificationKnownNotSent: true }, 'cancelled', '已取消'],
+    [{ notificationState: 'failed', deliveryPendingReason: 'task-notification-confirmation-reassessment-required', notificationKnownNotSent: true }, 'failed', '异常'],
+    [{ notificationState: 'delivered', deliveredMessageId: 'observed-message' }, 'confirmed', '已送达'],
+    [{ deliveryPendingReason: 'task-notification-prepared' }, 'queued', '待发送'],
+    [{ deliveryPendingReason: 'task-notification-starting' }, 'sending', '发送中'],
+    [{ deliveryPendingReason: 'task-notification-unknown', deliveryError: 'readback failed' }, 'confirmation', '待确认'],
+    [{ deliveryPendingReason: 'task-notification-pre-send-rejected' }, 'failed', '异常'],
+    [{ deliveryPendingReason: 'task-notification-failed' }, 'failed', '异常'],
+    [{ deliveryPendingReason: 'task-notification-task-terminal' }, 'failed', '异常'],
+    [{ deliveryPendingReason: 'task-notification-superseded' }, 'failed', '异常'],
+    [{ deliveryPendingReason: 'task-notification-confirmation-reassessment-required' }, 'failed', '异常'],
+  ]
+  for (const [facts, id, label] of scenarios) {
+    const result = classify({ status: 'pending', ...facts })
+    assert.equal(result.id, id)
+    assert.equal(result.label, label)
+    if (facts.deliveryPendingReason === 'task-notification-task-terminal' || facts.deliveryPendingReason === 'task-notification-superseded' || facts.deliveryPendingReason === 'task-notification-confirmation-reassessment-required') {
+      assert.equal(result.retryDisabled, true)
+      assert.doesNotMatch(result.label, /已发送|已回读|待发送/)
+    }
+    if (facts.notificationState === 'unknown' || facts.deliveryPendingReason === 'task-notification-unknown') {
+      assert.doesNotMatch(`${result.label} ${result.detail}`, /待发送|未发送|发送前受阻/)
+      assert.equal(result.state, 'warning')
+    }
+  }
+  assert.match(classify({ notificationState: 'failed', deliveryPendingReason: 'task-notification-pre-send-rejected' }).detail, /本次未发送/)
+  assert.doesNotMatch(classify({ notificationState: 'failed', notificationKnownNotSent: false }).detail, /未发送/)
+  assert.match(classify({ notificationState: 'failed', notificationKnownNotSent: true }).detail, /已确认本次未发送/)
+  assert.equal(classify({ notificationState: 'unknown', recallStatus: 'recalled' }).id, 'confirmation')
+  assert.equal(classify({ notificationState: 'unknown', supersededByOutboundId: 'replacement' }).id, 'confirmation')
+  const filter = source.slice(source.indexOf("label: '筛选发送状态'"), source.indexOf('      const messagesTable ='))
+  assert.match(filter, /notificationState: 'starting'/)
+  assert.doesNotMatch(filter, /筛选发送原因|筛选替代关系|筛选撤回结果/)
+  assert.match(filter, /notificationState: 'unknown'/)
+  assert.match(filter, /notificationState: 'failed'/)
+  assert.match(filter, /notificationState: 'superseded', notificationKnownNotSent: true/)
+  assert.equal((filter.match(/筛选发送状态/g) || []).length, 1)
+})
+
+test('任务通知发件行仅展示状态、脱敏诊断和重试时间，不读取 ACK 原文', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const expression = source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))
+  const outboxDelivery = runInNewContext(`(${expression})`)
+  const rows = source.slice(source.indexOf('      const outboxRows ='), source.indexOf('      const renderTaskCard ='))
+  const diagnostic = 'CLI_READBACK_FAILED: authorization=[redacted]'
+  const message = { outboundId: 'notice', sourceMessageId: 'task-notification:notice', text: '通知正文', status: 'pending',
+    notificationState: 'unknown', deliveryPendingReason: 'task-notification-unknown', notificationFailurePhase: 'readback',
+    deliveryError: diagnostic, notificationRetryAt: '2026-10-14T00:01:00.000Z',
+    get ack() { throw new Error('ACK must not be read by the UI') },
+  }
+  const render = value => runInNewContext(`${rows}; outboxRows`, {
+    visibleOutbox: [value], outboxDelivery,
+    React: { createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat() }) },
+    colors: { warning: 'warning', danger: 'danger', muted: 'muted', cardSurface: 'surface' }, tableBodyCell: {},
+    clampTableContent: (...children) => children, singleLineTableContent: value => value,
+    tableStatusTag: (label, state) => ({ type: 'tag', props: { state }, children: [label] }),
+    fmt: value => `本地时间 ${value}`, short: value => value || '—',
+  })
+  const withFacts = facts => Object.assign(Object.create(message), facts)
+  const text = tree => flattenElements(tree).flatMap(item => item.children.filter(value => typeof value === 'string')).join('\n')
+  const row = render(message)[0]
+  assert.equal(row.children.filter(child => child?.type === 'td').length, 4)
+  const records = flattenElements(row).find(element => element.type === 'details')
+  assert.equal(records.props.open, undefined, '内部 ID 默认折叠')
+  assert.match(text(records), /消息记录/)
+  const rendered = text(row)
+  assert.match(rendered, /待确认/)
+  assert.match(row.children[0].props.title, /发送后回读/)
+  const checking = text(render(withFacts({ notificationFailurePhase: 'send' }))[0])
+  assert.match(checking, /待确认/)
+  assert.match(checking, /计划核验/)
+  assert.doesNotMatch(checking, /计划重试/)
+  assert.ok(rendered.includes(diagnostic))
+  assert.match(rendered, /计划核验 本地时间 2026-10-14T00:01:00\.000Z/)
+  assert.doesNotMatch(rendered, /待发送|\[object Object\]/)
+  assert.doesNotMatch(text(render(withFacts({ deliveryError: { stdout: 'RAW_ACK_SECRET' } }))[0]), /RAW_ACK_SECRET|\[object Object\]/)
+  const blocked = text(render(withFacts({ notificationState: 'failed', deliveryPendingReason: 'task-notification-pre-send-rejected', notificationKnownNotSent: true }))[0])
+  assert.match(blocked, /异常/)
+  assert.match(blocked, /本次未发送/)
+  assert.match(blocked, /计划重试 本地时间 2026-10-14T00:01:00\.000Z/)
+  for (const [reason, label] of [['task-notification-task-terminal', '已取消'], ['task-notification-superseded', '已取消'], ['task-notification-confirmation-reassessment-required', '异常']]) {
+    const retired = text(render(withFacts({ notificationState: 'failed', deliveryPendingReason: reason, notificationKnownNotSent: true }))[0])
+    assert.ok(retired.includes(label))
+    assert.doesNotMatch(retired, /计划重试|计划核验|已发送|已回读/)
+  }
+  const delivered = text(render(withFacts({ status: 'sent', notificationState: 'delivered', deliveredMessageId: 'observed' }))[0])
+  assert.doesNotMatch(delivered, /计划重试|计划核验/); assert.match(delivered, /历史诊断：CLI_READBACK_FAILED/)
+  const replacedDelivered = text(render(withFacts({ status: 'sent', notificationState: 'delivered', deliveredMessageId: 'observed', supersededByOutboundId: 'replacement', deliveredAt: '2026-10-19T02:27:24Z' }))[0])
+  assert.match(replacedDelivered, /已送达/)
+  assert.match(replacedDelivered, /已替代/)
+  assert.match(replacedDelivered, /本地时间 2026-10-19T02:27:24Z/)
+  assert.doesNotMatch(replacedDelivered, /等待替换通知|送达后撤回/)
+  const timed = text(render(withFacts({ sentAt: '2026-10-19T02:27:14Z', deliveredAt: '2026-10-19T02:27:24Z' }))[0])
+  assert.match(timed, /本地时间 2026-10-19T02:27:24Z/)
+  assert.doesNotMatch(timed, /未记录|回读确认|2026-10-19T02:27:14Z/)
+  const superseded = text(render(withFacts({ supersededByOutboundId: 'replacement' }))[0])
+  assert.match(superseded, /已替代/); assert.match(superseded, /待确认/); assert.doesNotMatch(superseded, /等待替换通知|送达后撤回/)
+  const recalled = render(withFacts({ replyToMessageId: 'private-source-message', recallStatus: 'failed', recallError: 'RAW_RECALL_ERROR' }))[0]
+  const visible = recalled.children.filter(child => child?.type === 'td').map(cell => ({ ...cell, children: cell.children.filter(child => child?.type !== 'details') }))
+  assert.match(text({ children: visible }), /回复群消息/)
+  assert.doesNotMatch(text({ children: visible }), /private-source-message|RAW_RECALL_ERROR|CLI_READBACK_FAILED/)
+  assert.match(text(flattenElements(recalled).find(element => element.type === 'details')), /private-source-message[\s\S]*RAW_RECALL_ERROR/)
+})
+
+test('界面只保留发送状态筛选，关系与撤回不影响主状态筛选', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const classify = runInNewContext(`(${source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))})`)
+  const selectedOutbox = [{ status: 'sent', notificationState: 'delivered', supersededByOutboundId: 'new', recallStatus: 'recalled' }, { status: 'sent' }, { notificationState: 'unknown' },
+    { notificationState: 'superseded', notificationKnownNotSent: true, supersededByOutboundId: 'new' }, { notificationState: 'failed', notificationKnownNotSent: true }]
+  const {observerOutboxState}=await import('../packages/dingtalk-core/observer-outbox-state.js')
+  const filter = state => selectedOutbox.filter(message=>state==='all'||observerOutboxState(message)===state).length
+  for(const message of selectedOutbox)assert.equal(observerOutboxState(message),classify(message).id)
+  assert.match(source,/filter=\$\{encodeURIComponent\(filter\)\}/)
+  assert.equal(filter('confirmed'), 1)
+  assert.equal(filter('confirmation'), 2)
+  assert.equal(filter('all'), 5)
+  assert.equal(filter('cancelled'), 1)
+  assert.equal(filter('failed'), 1)
+  assert.match(source, /const groupTableToolbar = React\.createElement\('div', \{ style: \{ \.\.\.toolbar, flexWrap: 'wrap' \} \}/, '窄屏时群选择与状态筛选可换行，不被表格宽度挤出屏幕')
+  assert.match(source, /activePage === 'groups' \? \{ minWidth: 0 \} : \{\}/, '仅群列表解除外层网格最小宽度，宽表格保留局部滚动')
+})
+
+test('现行通知账优先，历史字段与撤回结果不能覆盖未知或送达事实', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const classify = runInNewContext(`(${source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))})`)
+  for (const recallStatus of ['requested', 'failed', 'recalled']) {
+    for (const [notificationState, id] of [['delivered', 'confirmed'], ['unknown', 'confirmation'], ['prepared', 'queued']]) {
+      const result = classify({ notificationState, status: 'sent', deliveredMessageId: 'old', supersededByOutboundId: 'new', recallStatus, recallRetryAt: '2099-01-01', recallError: 'replacement_delivery_unknown', deliveryBlockedAt: 'old', deliveryPendingReason: 'preflight_failed' })
+      assert.equal(result.id, id)
+      assert.equal(result.recall.id, recallStatus)
+      assert.equal(result.replacementId, 'new')
+      assert.doesNotMatch(JSON.stringify(result), /将有限重试|等待替换通知|送达后撤回/)
+      if (notificationState === 'unknown') assert.doesNotMatch(result.detail, /未发送|发送前/)
+    }
+  }
+  assert.equal(classify({ notificationState: 'future-state', status: 'sent' }).id, 'confirmation')
+  assert.equal(classify({ status: 'sent' }).id, 'confirmation')
+  assert.equal(classify({ status: 'pending' }).id, 'confirmation')
+  assert.match(classify({ status: 'pending', deliveryPendingReason: 'postflight_failed' }).detail, /历史发送后回读失败/)
+  for (const message of [{ notificationState: 'prepared' }, { notificationState: 'starting' }, { notificationState: 'unknown' }, { notificationState: 'unknown', notificationFailurePhase: 'readback' }, { notificationState: 'failed' }, { notificationState: 'delivered' }, { status: 'sent' }, { status: 'superseded' }]) {
+    assert.ok(classify(message).label.length <= 4, '发送状态使用最多四字短名称')
+  }
+  assert.equal(classify({ notificationState: 'failed', deliveryPendingReason: 'task-notification-confirmation-reassessment-required' }).reasonId, 'verification')
+})
+
+test('真实通知投影只有确证未发送的失效通知显示已取消，发送许可和未知结果不被掩盖', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const classify = runInNewContext(`(${source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))})`)
+  const base = { id: 'notice', payload: { text: '通知正文', conversationId: 'g' }, nextAttemptAt: '2099-01-01T00:00:00Z' }
+  const cancelled = [
+    ...['coordination-source-resolved', 'coordination-schedule-changed', 'coordination-facts-changed'].map(reason => ({ state: 'superseded', retirement: { reason } })),
+    ...['coordination_cancelled', 'stale_question'].map(reason => ({ state: 'failed', reason })),
+    ...['task-terminal', 'superseded'].map(reason => ({ state: 'failed', retirement: { reason }, deliveryError: { knownNotSent: true } })),
+  ]
+  for (const facts of cancelled) {
+    const result = classify(taskNotificationOutbound({ ...base, ...facts }))
+    assert.equal(result.id, 'cancelled', JSON.stringify(facts))
+    assert.equal(result.label, '已取消'); assert.equal(result.state, 'neutral')
+    assert.match(result.detail, /本次未发送/); assert.equal(result.retryDisabled, true)
+    assert.doesNotMatch(result.detail, /coordination|stale_question|task-terminal/)
+  }
+  for (const facts of [
+    { state: 'superseded', dispatchToken: 'permit', retirement: { reason: 'coordination-source-resolved' } },
+    { state: 'unknown', supersededBy: 'new', retirement: { reason: 'coordination-source-resolved' } },
+    { state: 'unknown', reason: 'coordination_cancelled', deliveryError: { knownNotSent: true } },
+  ]) {
+    const result = classify(taskNotificationOutbound({ ...base, ...facts }))
+    assert.equal(result.id, 'confirmation'); assert.doesNotMatch(result.detail, /本次未发送|已取消/)
+    if (facts.state === 'superseded') assert.equal(result.retryDisabled, true, '已停止意图仅保留人工核验，不承诺自动核验')
+  }
+  const sending = classify(taskNotificationOutbound({ ...base, state: 'starting', reason: 'coordination_cancelled', supersededBy: 'new' }))
+  assert.equal(sending.id, 'sending'); assert.doesNotMatch(sending.detail, /已取消|未发送/)
+  for (const facts of [{ state: 'failed', reason: 'coordination_cancelled', ack: { id: 'accepted' } },
+    { state: 'failed', retirement: { reason: 'confirmation-reassessment-required' }, deliveryError: { knownNotSent: true } }]) {
+    assert.equal(classify(taskNotificationOutbound({ ...base, ...facts })).id, 'failed')
+  }
+  const delivered = classify(taskNotificationOutbound({ ...base, state: 'delivered', supersededBy: 'new', reason: 'coordination_cancelled', receipt: { messageId: 'observed' } }))
+  assert.equal(delivered.id, 'confirmed'); assert.equal(delivered.detail, '')
+  const legacyUnknown = classify({ status: 'superseded', deliveryPendingReason: 'delivery_unknown', notificationKnownNotSent: true })
+  assert.equal(legacyUnknown.id, 'confirmation'); assert.doesNotMatch(legacyUnknown.detail, /已取消|未发送/)
+  const unlinked = classify({ notificationState: 'superseded', notificationKnownNotSent: true, deliveryPendingReason: 'task-notification-confirmation-reassessment-required' })
+  assert.equal(unlinked.id, 'failed'); assert.match(unlinked.detail, /关联不足.*人工核验/); assert.equal(unlinked.retryDisabled, true)
+})
+
+test('工作流通知沿实际 prepared、sending、acknowledged 状态展示，不被旧状态或诊断覆盖', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const classify = runInNewContext(`(${source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))})`)
+  for (const [notificationStatus, id] of [['prepared', 'queued'], ['sending', 'sending'], ['acknowledged', 'confirmation'], ['unknown', 'confirmation'], ['delivered', 'confirmed'], ['superseded', 'confirmation']]) {
+    const result = classify({ notificationStatus, status: 'superseded', deliveryError: 'old_failure', supersededByOutboundId: 'new', recallStatus: 'recalled' })
+    assert.equal(result.id, id); assert.doesNotMatch(result.detail, /old_failure|本次未发送/)
+    assert.equal(result.recall.id, 'recalled')
+  }
+  assert.equal(classify({ notificationState: 'unknown', notificationStatus: 'delivered' }).id, 'confirmation', '现行通知账优先于历史工作流字段')
+  assert.equal(classify({ notificationStatus: 'superseded', notificationKnownNotSent: true }).id, 'cancelled')
+  assert.equal(classify({ notificationStatus: 'superseded', deliveredMessageId: 'observed', deliveryError: 'old_failure' }).id, 'confirmed')
+  assert.equal(classify({ notificationState: 'unknown', notificationStatus: 'superseded', deliveredMessageId: 'old' }).id, 'confirmation')
+})
+
+test('处理步骤直接展示事项、关联对象和动作结论，未知结构不编造结果', async () => {
+  const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+  const code=source.slice(source.indexOf('    const traceStatus ='),source.indexOf('    const traceElapsed ='))
+  const describe=describeMessageTraceItem; const status=runInNewContext(`${code};traceStatus`)
+  const split=describe({kind:'split',output:{units:[{goalText:'核对租户甲'},{goalText:'等待确认'}]}})
+  assert.equal(split.conclusion,'拆分为 2 个事项');assert.equal(split.rows[1].value,'等待确认')
+  const route=describe({kind:'route',input:{goalText:'核对租户甲',candidates:[{candidateId:'t1',title:'租户权限排查'}]},output:{kind:'binding',disposition:'existing',candidateId:'t1',evidence:['引用原话']}})
+  assert.ok(route.rows.some(row=>row.value==='租户权限排查'))
+  const intent=describe({kind:'intent',output:{decisions:[{intent:{actions:[{intent:'research',arguments:{objective:'核对权限'}}],constraints:['仅排查，不修改']}}]}})
+  assert.equal(intent.rows[0].label,'开展排查');assert.equal(intent.rows[1].value,'仅排查，不修改')
+  assert.equal(describe({kind:'route',output:{kind:'needs_clarification',question:'哪个租户？'}}).conclusion,'需要进一步确认')
+  assert.equal(describe({kind:'intent',status:'failed'}).conclusion,'本步未完成，请查看阻塞原因')
+  assert.equal(describe({kind:'unknown'}).conclusion,'尚未记录判断结论')
+  assert.equal(status('settled'),'处理已结束');assert.equal(status('alien'),'状态未记录')
+  assert.doesNotMatch(source,/技术详情|消息技术记录|const traceUsage/);assert.match(source,/回复送达情况见发信箱/)
+})
+
+test('消息处理历时固定截止已记录状态时间，不使用发送时间回退或当前时钟',async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const code=source.slice(source.indexOf('const messageProcessingElapsed = ')+'const messageProcessingElapsed = '.length,source.indexOf('    function MessageRecovery'))
+ const elapsed=runInNewContext(`(${code})`)
+ const row={processingSentAt:'2026-10-15T00:00:00Z',processingCompletedAt:'2026-10-15T00:01:23Z'}
+ assert.equal(elapsed(row),'历时 1 分 23 秒')
+ for(const value of [undefined,null,'', 'invalid'])assert.equal(elapsed({...row,processingCompletedAt:value}),'历时未记录')
+ assert.equal(elapsed({...row,processingSentAt:undefined,occurredAt:row.processingSentAt}),'历时未记录')
+ assert.equal(elapsed({...row,processingCompletedAt:'2026-10-14T00:00:00Z'}),'历时异常（时钟逆序）')
+ assert.equal(elapsed({processingSentAt:0,processingCompletedAt:2500}),'历时 2.5 秒')
+})
+
+test('收信箱去掉阶段计时详情，保留完整结论、独立历时及恢复动作', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /MessageProcessingFacts|处理状态与计时|processingFacts/)
+  assert.match(source, /messageProcessingElapsed\(message\)/)
+  assert.match(source, /title: conclusion/)
+  assert.match(source, /tabIndex: 0/)
+  assert.match(source, /message\.processingRecovery/)
+  assert.doesNotMatch(source, /coordination-context|CoordinationBrowser/)
+})
+
+test('列表按当前栏目加载且所有读取共享取消信号', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const fragment = source.slice(source.indexOf('    async function load('), source.indexOf('    function SidebarAction('))
+  const calls = [], signal = new AbortController().signal
+  const load = runInNewContext(`${fragment}; load`, { URLSearchParams, taskBuckets: [{state:'queued'},{state:'running'},{state:'waiting'},{state:'completed'}],
+    get: async (path, options) => { calls.push(path); assert.equal(options.signal, signal)
+      if(path === '/state/groups?summary=true') return [{groupId:'g'}]
+      return {items:[],total:0,offset:0,topics:[]}
+    } })
+  await load({activePage:'groups',signal,messagePage:2,messageDeliveryFilter:'failed'})
+  assert.equal(calls.length,4)
+  assert.ok(calls.some(path=>path.includes('/messages?offset=10&limit=10&filter=failed')))
+  assert.ok(calls.every(path=>!path.includes('/tasks')&&!path.includes('coordination')&&!path.includes('supervisor')))
+  calls.length=0
+  await load({activePage:'tasks',signal})
+  assert.equal(calls.filter(path=>path.startsWith('/state/tasks?')).length,4)
+  assert.ok(calls.every(path=>!path.includes('/messages')&&!path.includes('/outbox')))
+})
+
+test('步骤耗时使用本次 startedAt，缺失或倒置时间不冒充零耗时',async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const code=source.slice(source.indexOf('const traceElapsed = ')+ 'const traceElapsed = '.length,source.indexOf('    const messageProcessingElapsed ='))
+ const elapsed=runInNewContext(`(${code})`)
+ const step={startedAt:'2026-09-26T00:00:00Z',completedAt:'2026-09-26T00:00:02.500Z',status:'succeeded'}
+ assert.equal(elapsed(step,0),'耗时 2.5 秒')
+ assert.equal(elapsed({...step,attempt:2},0),'耗时 2.5 秒（第 2 次处理）')
+ assert.equal(elapsed({...step,startedAt:undefined},0),'耗时未记录')
+ assert.equal(elapsed({...step,completedAt:'2026-09-25T00:00:00Z'},0),'耗时未记录')
+ assert.equal(elapsed({...step,status:'running'},Date.parse('2026-09-26T00:01:05Z')),'已用时 1 分 5 秒')
+})
+
+function stepOutputHarness(source, props) {
+  const fragment = source.slice(source.indexOf('    function TaskStepOutputContent('), source.indexOf('    const linkedTaskText ='))
+  const states = [], effects = [], scheduled = [], requests = []
+  let cursor = 0
+  const component = runInNewContext(`${fragment}; TaskStepOutputContent`, {
+    useState(initial) {
+      const index = cursor++
+      if (!(index in states)) states[index] = initial
+      return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value }]
+    },
+    useRef(initial) { const index = cursor++; if (!(index in states)) states[index] = { current: initial }; return states[index] },
+    useEffect(fn, deps) {
+      const index = cursor++, previous = effects[index]
+      if (!previous || deps.some((value, position) => value !== previous.deps[position])) {
+        previous?.cleanup?.(); effects[index] = { deps }
+        scheduled.push(() => { effects[index].cleanup = fn() })
+      }
+    },
+    React: { createElement: (type, properties, ...children) => ({ type, props: properties || {}, children: children.flat() }) },
+    Button: 'button', colors: {}, ENDPOINT: 'http://localhost',
+    get(url) { return new Promise((resolve, reject) => requests.push({ url, resolve, reject })) },
+  })
+  return {
+    requests,
+    render(next = props) { props = next; cursor = 0; const tree = component(props); scheduled.splice(0).forEach(effect => effect()); return tree },
+    unmount() { effects.forEach(effect => effect?.cleanup?.()) },
+  }
+}
+function flattenElements(tree) {
+  if (!tree || typeof tree !== 'object') return []
+  return [tree, ...(tree.children || []).flatMap(flattenElements)]
+}
+
+test('历史人工介入只读且明确新执行使用原生权限流程', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  assert.match(source, /id: 'authorizations', label: '人工介入'/)
+  assert.match(source, /历史介入记录只读。新执行的权限请求请在对应执行会话中处理。/)
+  assert.doesNotMatch(source, /decideAuthorization|批准该事项并继续|\/authorizations\/.*\/decision/)
+})
+const settle = () => new Promise(resolve => setImmediate(resolve))
+
+test('任务正文分页绑定当前详情版本，失败保留正文且旧版本慢响应被隔离', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const node = { runId: 'run', nodeRunId: 'node', outputRef: 'ref' }
+  const first = stepOutputHarness(source, { taskId: 'task', node, detailRevision: 'v1' })
+  first.render()
+  assert.match(first.requests[0].url, /cursor=0&detailRevision=v1$/)
+  first.requests[0].resolve({ text: '首段', nextCursor: 10, documentName: '结果.md' }); await settle()
+  let tree = first.render()
+  assert.match(flattenElements(tree).find(item => item.type === 'a').props.href, /detailRevision=v1$/)
+  flattenElements(tree).find(item => item.children.includes('继续阅读产出')).props.onClick()
+  first.render()
+  assert.match(first.requests[1].url, /cursor=10&detailRevision=v1$/)
+  first.requests[1].reject(new Error('network')); await settle()
+  tree = first.render()
+  assert.ok(flattenElements(tree).some(item => item.children.includes('首段')))
+  assert.ok(flattenElements(tree).some(item => item.props.role === 'alert'))
+  flattenElements(tree).find(item => item.children.includes('重试读取产出')).props.onClick(); first.render()
+  first.unmount()
+  const second = stepOutputHarness(source, { taskId: 'task', node: { ...node, outputRef: 'ref-v2' }, detailRevision: 'v2' })
+  tree = second.render()
+  assert.ok(!flattenElements(tree).some(item => item.children.includes('首段')))
+  assert.match(second.requests[0].url, /cursor=0&detailRevision=v2$/)
+  second.requests[0].resolve({ text: '当前正文', nextCursor: null }); await settle()
+  first.requests[2].resolve({ text: '过期追加', nextCursor: null }); await settle()
+  tree = second.render()
+  assert.ok(flattenElements(tree).some(item => item.children.includes('当前正文')))
+  assert.ok(!flattenElements(tree).some(item => item.children.includes('过期追加')))
+  assert.match(source, /key: `\$\{taskId\}:\$\{node\.runId\}:\$\{node\.nodeRunId\}:\$\{node\.outputRef\}`/)
+})
+
+test('技术方案沿原组件展开正文并下载，修订意见保持可读标签', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const view = stepOutputHarness(source, { taskId: 'task', node: { runId: 'run', nodeRunId: 'plan', outputRef: 'ref' }, detailRevision: 'v1' })
+  view.render()
+  view.requests[0].resolve({ text: '# 技术方案\n\n方案修订意见\n补充边界条件', overview: '修改方案.md', documentName: '修改方案.md', nextCursor: null }); await settle()
+  let tree = view.render()
+  assert.ok(flattenElements(tree).some(item => item.type === 'a' && item.children.includes('下载 修改方案.md')))
+  flattenElements(tree).find(item => item.type === 'details').props.onToggle({ currentTarget: { open: true } })
+  tree = view.render()
+  assert.ok(flattenElements(tree).some(item => item.children.includes('# 技术方案')))
+  assert.ok(flattenElements(tree).some(item => item.type === 'strong' && item.children.includes('方案修订意见')))
+  assert.ok(flattenElements(tree).some(item => item.children.includes('补充边界条件')))
+})
+
+test('未变产物的详情版本推进保留已读正文与分页，新页使用新版本', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const props = { taskId: 'task', node: { runId: 'run', nodeRunId: 'node', outputRef: 'ref' }, detailRevision: 'v1' }
+  const view = stepOutputHarness(source, props); view.render()
+  view.requests[0].resolve({ text: '保留正文', nextCursor: 6 }); await settle()
+  let tree = view.render({ ...props, detailRevision: 'v2' })
+  assert.equal(view.requests.length, 1)
+  assert.ok(flattenElements(tree).some(item => item.children.includes('保留正文')))
+  flattenElements(tree).find(item => item.children.includes('继续阅读产出')).props.onClick(); view.render({ ...props, detailRevision: 'v2' })
+  assert.match(view.requests[1].url, /cursor=6&detailRevision=v2$/)
+  view.render({ ...props, detailRevision: 'v3' })
+  assert.match(view.requests[2].url, /cursor=6&detailRevision=v3$/)
+  view.requests[1].resolve({ text: '过期页', nextCursor: null }); view.requests[2].resolve({ text: '当前页', nextCursor: null }); await settle()
+  tree = view.render()
+  assert.ok(flattenElements(tree).some(item => item.children.includes('保留正文当前页')))
+  assert.ok(!flattenElements(tree).some(item => item.children.includes('保留正文过期页')))
+})
+
+test('简短任务标题保留可读首句，完整目标仍可展开且不写回原任务', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const fragment = source.slice(source.indexOf('    const taskDisplayTitle ='), source.indexOf('    const traceElapsed ='))
+  const title = runInNewContext(`${fragment}; taskDisplayTitle`)
+  assert.equal(title({ title: '核对部署结果' }), '核对部署结果')
+  const task = { title: '核对当前服务部署结果。' + '补充验收条件'.repeat(30), objective: '完整目标' }
+  assert.equal(title(task), '核对当前服务部署结果')
+  assert.ok(Array.from(title({ title: '发布并部署'.repeat(30) })).length <= 32)
+  assert.equal(title({ title: '   ' }), '未命名任务')
+  assert.equal(task.objective, '完整目标')
+  assert.match(source, /task\.objective/)
+})
+
+test('历史工作流消息按收信处理进度展示，不混入任务执行状态',async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const stateCode=source.slice(source.indexOf('const messageWorkflowState = ')+'const messageWorkflowState = '.length,source.indexOf('      const filteredMessages ='))
+ const state=runInNewContext(`(${stateCode})`,{selectedGroup:{topics:[]}})
+ const deliveryCode=source.slice(source.indexOf('const delivery = ')+'const delivery = '.length,source.indexOf('      const messageRows ='))
+ const delivery=runInNewContext(`(${deliveryCode})`)
+ const message={workflowStatus:'execution_blocked',routingStatus:'routed',sourceKind:'workflow-v2'}
+ assert.equal(state(message),'unknown')
+ assert.equal(delivery[state(message)].label,'状态未知')
+ assert.equal(delivery[state({...message,workflowStatus:'waiting_system'})].label,'状态未知')
+ assert.equal([message].filter(item=>state(item)==='processed').length,0)
+ assert.equal(state({...message,processingState:'processed'}),'processed')
+})
+
+test('任务短名称合同拒绝超过30字，读模型回退截断不修改完整目标',async()=>{
+ const {taskTitle,taskTitleSchema}=await import('../packages/dingtalk-core/task-input-contract.js');
+ assert.equal(taskTitleSchema.safeParse('字'.repeat(30)).success,true);
+ assert.equal(taskTitleSchema.safeParse('字'.repeat(31)).success,false);
+ const objective='针对孙鹏要求在生产环境Editor数据库process_id_temp表新增name列，调查结构并准备DDL';
+ assert.equal(Array.from(taskTitle(objective)).length,30);
+ assert.equal(taskTitle('  核对Editor临时表结构  '),'核对Editor临时表结构');
+ assert.ok(objective.includes('准备DDL'));
+ const source=await readFile(new URL('../packages/dingtalk-dsh-assistant/workflow-service.js',import.meta.url),'utf8');
+ assert.match(source,/title: taskTitle\(requirement\?\.title/);
+});
+
+test('自动与手动刷新共用一个请求，失败后可重新读取',async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8');
+ const fragment=source.slice(source.indexOf('      const pendingRefresh = '),source.indexOf('      const manualRefresh = '));
+ let calls=0,resolve,reject;const updates=[],errors=[];const operation=()=>{calls++;return new Promise((yes,no)=>{resolve=yes;reject=no})};
+ const refresh=runInNewContext(`(()=>{${fragment};return refresh})()`,{useRef:value=>({current:value}),useCallback:fn=>fn,load:operation,setData:v=>updates.push(v),setUpdatedAt:()=>{},setError:e=>errors.push(e),activePage:'groups',AbortController,taskPages:{},historyPage:1,taskBuckets:[],selectedGroupId:'',messagePage:1,outboxPage:1,messageDeliveryFilter:'all',outboxStatusFilter:'all',authorizationPage:1,authorizationFilter:'all',alertType:'all',alertView:'active',resolvedAlertPage:1,setAuthorizationPage(){},setResolvedAlertPage(){},setMessagePage(){},setOutboxPage(){},archivedTasksRef:{current:new Map()},setTaskPages(){},setHistoryPage(){},Date,Error,Map,JSON});
+ const first=refresh();assert.equal(refresh(),first);assert.equal(calls,1);resolve({groups:[],tasks:[],taskCollections:{},archiveCollection:{total:0}});await first;assert.equal(updates.length,1);
+ const failed=refresh();reject(new Error('读取失败'));await failed;assert.equal(errors.at(-1),'读取失败');
+ const recovered=refresh();resolve({groups:[1],tasks:[],taskCollections:{},archiveCollection:{total:0}});await recovered;assert.equal(calls,3);assert.equal(updates.length,2);
+});
+
+test('详情慢查询跨刷新复用，切换任务不接受旧响应', async () => {
+  const source = (await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+  const start = source.indexOf('      const pendingDetail = '), end = source.indexOf('      useEffect(() => {\n        refresh()', start)
+  const effects = [], requests = [], details = [], pending = { current: null }
+  const environment = { useRef: () => pending, useEffect: fn => effects.push(fn), selectedTaskId: 'one', detailRetry: 0, updatedAt: 0,
+    get: path => new Promise(resolve => requests.push({ path, resolve })), setTaskDetail: value => details.push(value), setDetailError() {}, encodeURIComponent }
+  const effect = () => { runInNewContext(`(()=>{${source.slice(start,end)}})()`, environment); return effects.pop()() }
+  const first = effect(); first(); const refresh = effect(); assert.equal(requests.length, 1); refresh()
+  environment.selectedTaskId = 'two'; effect(); assert.equal(requests.length, 2)
+  requests[0].resolve({ taskId: 'one' }); requests[1].resolve({ taskId: 'two' }); await settle()
+  assert.deepEqual(details.map(value => value.taskId), ['two'])
+})
+
+test('unlinked retired confirmation explicitly requires manual verification instead of promising an owner wake', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const expression = source.slice(source.indexOf('const outboxDelivery = ') + 'const outboxDelivery = '.length, source.indexOf('    const ui ='))
+  const classify = runInNewContext(`(${expression})`)
+  const result = classify({ notificationState: 'failed', deliveryPendingReason: 'task-notification-confirmation-reassessment-required', notificationKnownNotSent: true })
+  assert.equal(result.label, '异常')
+  assert.match(result.detail, /关联不足.*人工核验/)
+  assert.match(result.detail, /不会自动恢复或发送/)
+  assert.doesNotMatch(result.detail, /等待负责人|自动重评估|计划重试|计划核验/)
+  assert.equal(result.retryDisabled, true)
+})
+
+
+test('执行完成结论与同文阶段成果分开标识，跨执行跨轮次按时间混排且稳定去重', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const code = source.slice(source.indexOf('    const taskOutcomeRecords ='), source.indexOf('    function TaskOutcomeRecords('))
+  const merge = runInNewContext(`${code}; taskOutcomeRecords`)
+  const conclusion = { id: 'e:1', inputVersion: 1, at: '2026-10-22T01:20:00Z', summary: '同一成果', artifacts: ['report.md'], limitations: ['未整体验收'] }
+  const timeline = { executions: [
+    { id: 'e', title: '核查', milestones: [{ id: 's', at: '2026-10-22T01:00:00Z', summary: '同一成果' }], conclusions: [conclusion, conclusion] },
+    { id: 'e2', title: '验证', conclusions: [{ ...conclusion, id: 'e2:1', at: null }] },
+  ] }
+  const records = merge(timeline, [{ id: 'r', recordedAt: '2026-10-22T01:10:00Z', triggers: [{ kind: 'execution.progress.review' }], decision: { summary: '继续核对' } }])
+  assert.deepEqual(Array.from(records, item => item.type), ['执行完成结论', '统筹巡查', '阶段成果', '执行完成结论'])
+  assert.equal(records[0].source, '核查 · 第 1 轮')
+  assert.equal(records[0].artifacts[0], 'report.md')
+  assert.equal(records[3].at, null)
+})
+
+
+test('trace coordinator continuation requests its independent cursor and preserves page revision',async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const start=source.indexOf('    function TraceDetail('),end=source.indexOf('    function TopicBrowser(',start)
+ const page={runId:'r',offset:0,pageRevision:'rev',items:[],coordinatorUnits:{cursor:0,total:101,returned:100,nextCursor:123}}
+ const state=['r',page,'',[],'',[],0,'',false,0],effects=[],requests=[]
+ let index=0
+ const React={createElement:(type,props,...children)=>({type,props:props??{},children})}
+ const env={React,URLSearchParams,encodeURIComponent,Date,Button:'button',card:{},colors:{},ui:{},traceStatus:value=>value,traceReason:value=>value,emptyState:()=>null,
+  useState:initial=>{const key=index++;return [state[key],value=>{state[key]=typeof value==='function'?value(state[key]):value}]},useEffect:fn=>effects.push(fn),get:path=>{requests.push(path);return new Promise(()=>{})}}
+ const render=()=>{index=0;effects.length=0;return runInNewContext(`(()=>{${source.slice(start,end)};return TraceDetail({runId:'r',onBack(){}})})()`,env)}
+ const find=(node,label)=>node&&typeof node==='object'&&(node.children?.includes(label)?node:node.children?.flat(Infinity).map(child=>find(child,label)).find(Boolean))
+ const tree=render(),next=find(tree,'下一批协调单元')
+ assert(next);next.props.onClick();assert.equal(state[4],'123');assert.equal(state[5].length,1)
+ render();effects.at(-1)()
+ assert.match(requests[0],/unitCursor=123/);assert.match(requests[0],/pageRevision=rev/)
+ assert.equal(new URL('http://local'+requests[0]).searchParams.has('cursor'),false)
+})
+
+
+test('execution card slow refresh finishes once, keeps visible data on refresh errors, retries and clears on task change', async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js',import.meta.url),'utf8')
+ const fragment=source.slice(source.indexOf('    function CardExecutionPage('),source.indexOf('    function ObserverContent('))
+ const states=[],refs=[],effects=[],requests=[];let stateIndex=0,refIndex=0,effectIndex=0,pendingEffects=[]
+ const Card=runInNewContext(`${fragment};CardExecutionPage`,{
+  useState:initial=>{const i=stateIndex++;if(!(i in states))states[i]=initial;return [states[i],v=>states[i]=typeof v==='function'?v(states[i]):v]},
+  useRef:initial=>{const i=refIndex++;return refs[i]??(refs[i]={current:initial})},
+  useEffect:(fn,deps)=>{const i=effectIndex++,old=effects[i];if(!old||deps.some((v,n)=>v!==old.deps[n]))pendingEffects.push(()=>{old?.cleanup?.();effects[i]={deps,cleanup:fn()}})},
+  get:(path,{signal})=>new Promise((resolve,reject)=>requests.push({path,signal,resolve,reject})),AbortController,
+  React:{createElement:(type,props,...children)=>({type,props,children}),Fragment:'fragment'},Button:'button',StateDot:'dot',ExecutionSessionDuration:'duration',
+  taskSession:()=>({sessionId:'owner'}),taskStateLabel:value=>value,colors:{accent:'blue',muted:'gray',danger:'red'},encodeURIComponent,
+ })
+ const render=(updatedAt,taskId='selected')=>{stateIndex=refIndex=effectIndex=0;const tree=Card({task:{taskId},updatedAt,navigate(){}});const batch=pendingEffects;pendingEffects=[];batch.forEach(fn=>fn());return tree}
+ const flush=async()=>{await Promise.resolve();await Promise.resolve()}
+ render(1);render(2);render(3);assert.equal(requests.length,1);assert.equal(requests[0].signal.aborted,false)
+ requests[0].resolve({total:1,nextOffset:null,executions:[{executionId:'e',sessionId:'s',title:'真实执行',status:'running',drained:false}]});await flush()
+ let tree=render(3);assert(JSON.stringify(tree).includes('真实执行'));assert(!JSON.stringify(tree).includes('正在读取执行记录'))
+ render(4);requests[1].reject(new Error('temporary'));await flush();tree=render(4)
+ assert(JSON.stringify(tree).includes('真实执行'));assert(JSON.stringify(tree).includes('temporary'))
+ const nodes=value=>value&&typeof value==='object'?[value,...(value.children??[]).flatMap(nodes)]:[]
+ const retry=nodes(tree).find(node=>node.type==='button'&&node.children.includes('重试'));assert(retry);retry.props.onClick();render(4);assert.equal(requests.length,3)
+ requests[2].resolve({total:0,nextOffset:null,executions:[]});await flush();tree=render(4);assert(JSON.stringify(tree).includes('暂无执行记录'))
+ render(5);tree=render(5,'other');assert.equal(requests[3].signal.aborted,true);assert(!JSON.stringify(tree).includes('真实执行'));assert(requests.at(-1).path.includes('/other/executions?summary=true'))
+ for(const effect of effects)effect?.cleanup?.()
+})
+
+test('群内分页在健康检查完成前启动，且保留选群、分页、取消与失败合同', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-dsh-observer/web-client.js', import.meta.url), 'utf8')
+  const fragment = source.slice(source.indexOf('    async function load('), source.indexOf('    function SidebarAction('))
+  for (const selectedGroupId of ['selected', 'missing']) {
+    const pending = new Map(), signal = new AbortController().signal
+    const load = runInNewContext(`${fragment}; load`, {
+      taskBuckets: [], get: (path, options) => {
+        assert.equal(options.signal, signal)
+        return new Promise((resolve, reject) => pending.set(path, { resolve, reject }))
+      }
+    })
+    let settled = false
+    const result = load({ activePage: 'groups', selectedGroupId, signal, messagePage: 2,
+      outboxPage: 3, messageDeliveryFilter: 'failed', outboxStatusFilter: 'delivered',
+      revisions: { messages: 'messages revision', outbox: 'outbox revision' } }).then(value => { settled = true; return value })
+    pending.get('/state/groups?summary=true').resolve([{ groupId: 'first' }, { groupId: 'selected' }])
+    await new Promise(resolve => setImmediate(resolve))
+    const groupId = selectedGroupId === 'selected' ? 'selected' : 'first'
+    const messages = `/state/groups/${groupId}/messages?offset=10&limit=10&filter=failed&pageRevision=messages%20revision`
+    const outbox = `/state/groups/${groupId}/outbox?offset=20&limit=10&filter=delivered&pageRevision=outbox%20revision`
+    assert.ok(pending.has(messages), '健康检查未完成时已发起收信箱')
+    assert.ok(pending.has(outbox), '健康检查未完成时已发起发信箱')
+    assert.equal(settled, false)
+    pending.get(messages).resolve({ items: [{ messageId: 'm' }], total: 1 })
+    pending.get(outbox).resolve({ items: [], total: 0 })
+    pending.get('/health').resolve({ status: 'ok' })
+    const value = await result
+    assert.equal(value.groupCollections.messages.groupId, groupId)
+    assert.equal(value.groupCollections.messages.items[0].messageId, 'm')
+    assert.equal(value.groupCollections.outbox.filter, 'delivered')
+  }
+  for (const activePage of ['groups', 'tasks']) {
+    const calls = []
+    const load = runInNewContext(`${fragment}; load`, { taskBuckets: [], get: async path => {
+      calls.push(path)
+      return path === '/state/groups?summary=true' ? [] : { items: [] }
+    } })
+    const value = await load({ activePage })
+    assert.equal(Object.keys(value.groupCollections).length, 0)
+    assert.equal(calls.some(path => /\/(messages|outbox)\?/.test(path)), false)
+  }
+  for (const failing of ['/state/groups?summary=true', '/health', '/messages?', '/outbox?']) {
+    const failure = new Error(failing)
+    const load = runInNewContext(`${fragment}; load`, { taskBuckets: [], get: async path => {
+      if (path.includes(failing)) throw failure
+      return path === '/state/groups?summary=true' ? [{ groupId: 'g' }] : { items: [] }
+    } })
+    await assert.rejects(load(), error => error === failure)
+  }
+})

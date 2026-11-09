@@ -1,0 +1,49 @@
+说明：本文件保留原四项 TAP；取消项当时手动释放了模型 hold，只证明进程/Job 部分，最终完整取消证据见 windows-cancel-abort.txt。
+仅将隔离 unknown 档案的本机绝对路径替换为占位符；原始输出 SHA256=ceae3cc7ce1c766e315f759e3595dbbe20900c7a6f747b74159deb9ba091ed34。
+
+FULL_LIFECYCLE_START 2026-11-09T04:20:19.652633+00:00 HEAD ca7bd0276ba4664a8614ce69fde47956f8c99f7e UNCOMMITTED_WORKTREE True TRACKED_INPUT_COUNT 492 AGGREGATE c459e8e40460281f85555a50400b061b598f514565d8aca00937b3722a6903a2
+KEY_PINS {"src/native-tools.js": "0d8829c3713998b95b0f68fb224106d5cc1db1a9091c3e670dd19e8d013370c8", "src/tool-permissions.js": "a6fde5d9324fef25bc377f1c21f2fa9941efd25723aa5b3e2e295e63e54fc02b", "src/native-working-directory.js": "7d055ae7cc8aef5f0db39f7a853713948cf95d53a438b716b2386442f74d63cd", "src/memory/private-fs.js": "8b9bf149541e04204cc17e58dcce0b904d52b1045fe3ede9bd4ae550a7b6f621", "src/memory/privacy.js": "355243dd61e829d3c3e3ce1c2eda6f5abcf2282e16141d2232c9f9805ce48151", "src/runtime/portable.js": "53ed51fe3b2066bb7b71ef37495df86f7b164b60f753caff165e053f6087e96d", "src/runtime/pi-business-path-bindings.js": "51cfd71b714a0452a1ce7613dc1f26ed5b5528acf40a361f5616d3a2ed0ef276", "test/pi-approval-wire.test.js": "fa851b41b4103769a35b964fd835c4dab2a7d1daf3d6d0f03cde9b98ffc11399", "test/fixtures/routing-official-host.js": "1a4988dc2e860096d2fbbe07fbb9f9a95f14daf37a77b2700b1c335120fe0cf4"} EXACT_ARGV ["node", "--test", "--test-concurrency=1", "--test-reporter=tap", "--test-name-pattern=^(operator full default task cancellation drains real running descendants and cold recovery never restarts them|operator full native task committed write with render failure remains unknown through same archive cold recovery|operator full staged native file commit aborts after (cancel|mode-epoch) without publishing or retaining temp files)$", "test/pi-approval-wire.test.js"]
+ACTUAL_TAP_BEGIN
+TAP version 13
+# Subtest: operator full default task cancellation drains real running descendants and cold recovery never restarts them
+ok 1 - operator full default task cancellation drains real running descendants and cold recovery never restarts them
+  ---
+  duration_ms: 14968.3631
+  type: 'test'
+  ...
+# {"case":"full-real-running-task-cancel","descendants":3,"allPidsAbsent":true,"control":"cancelled","drained":true,"producerReported":true,"registeredJobs":1,"settledJobs":1}
+# Subtest: operator full native task committed write with render failure remains unknown through same archive cold recovery
+ok 2 - operator full native task committed write with render failure remains unknown through same archive cold recovery
+  ---
+  duration_ms: 10142.2606
+  type: 'test'
+  ...
+# {"case":"full-committed-effect-unknown-cold","renderFailures":1,"committedFileUnchanged":true,"unknownIntents":1,"successResults":0,"coldModelCalls":0,"unknownPreserved":true,"isolatedArchive":"<retained-isolated-fixture>"}
+# Subtest: operator full staged native file commit aborts after cancel without publishing or retaining temp files
+ok 3 - operator full staged native file commit aborts after cancel without publishing or retaining temp files
+  ---
+  duration_ms: 6212.9927
+  type: 'test'
+  ...
+# Subtest: operator full staged native file commit aborts after mode-epoch without publishing or retaining temp files
+ok 4 - operator full staged native file commit aborts after mode-epoch without publishing or retaining temp files
+  ---
+  duration_ms: 4484.4755
+  type: 'test'
+  ...
+# {"permissionTool":"write","results":[{"role":"toolResult","toolCallId":"call-1","toolName":"write","content":[{"type":"text","text":"Error: Filesystem operation aborted"}],"details":{"nativeResult":{"isError":true,"content":[{"type":"text","text":"Error: Filesystem operation aborted"}],"error":{"message":"Filesystem operation aborted","info":{"name":"FsError","code":"FS_ABORTED"}}}},"isError":true,"durationMs":716,"timestamp":1794198059767}],"reviewCalls":0}
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41119.6054
+ACTUAL_TAP_END
+ACTUAL_STDERR_BEGIN
+ACTUAL_STDERR_END
+FULL_LIFECYCLE_FINISH 2026-11-09T04:21:01.461727+00:00 EXIT 0 SOURCE_CHANGED [] AFTER_AGGREGATE c459e8e40460281f85555a50400b061b598f514565d8aca00937b3722a6903a2
+
+[exited with code 0]

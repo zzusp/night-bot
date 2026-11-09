@@ -1,0 +1,11 @@
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1689.57714ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (3181.027203ms)
+✔ headless Host refuses startup when the required native provider failed to mount (46.317247ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5049.048771

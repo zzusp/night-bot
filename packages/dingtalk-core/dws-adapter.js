@@ -1,0 +1,696 @@
+import { safeNotificationDetail } from './notification-delivery.js'
+import { assertGroupReply, quotedSendRejectionProof } from './group-message.js'
+import { EventEmitter } from 'node:events'
+import { readFile, unlink, realpath, stat, mkdtemp, rm } from 'node:fs/promises'
+import { setTimeout as delay } from 'node:timers/promises'
+import path from 'node:path'
+import { createHash } from 'node:crypto'
+
+function assertStableId(value, label) {
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${label}_required`)
+  return value
+}
+
+const DWS_UUID_MAX_LENGTH = 128
+
+/** 仅压缩超过 DWS uuid 上限的外部键；完整摘要保留差异，内部通知 ID 不变。 */
+export function dwsIdempotencyKey(value) {
+  assertStableId(value, 'idempotency_key')
+  return value.length <= DWS_UUID_MAX_LENGTH ? value : `dsh:sha256:${createHash('sha256').update(value).digest('hex')}`
+}
+
+/** 只编码来源已核实的 openDingTalkId；拒绝改变列表或原生提及占位符含义的字符。 */
+function nativeMentionIds(values) {
+  if (!Array.isArray(values)) throw new Error('dws_at_open_dingtalk_ids_invalid')
+  for (const value of values) {
+    if (typeof value !== 'string' || !value || /[\s,"<>@\u0000-\u001f\u007f]/u.test(value)) throw new Error('dws_at_open_dingtalk_ids_invalid')
+  }
+  return [...new Set(values)].join(',')
+}
+
+function assertFileName(value) {
+  assertStableId(value, 'file_name')
+  if (value !== value.trim() || /[<>:"/\\|?*\u0000-\u001f\u007f]/u.test(value) || /[. ]$/u.test(value)
+    || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(value)) throw new Error('dws_file_name_invalid')
+  return value
+}
+
+function parseJson(stdout, operation) {
+  try {
+    return JSON.parse(stdout)
+  } catch (error) {
+    throw new Error(`dws_invalid_json:${operation}`, { cause: error })
+  }
+}
+
+function mentionPageItems(value) {
+  const page = value?.result ?? value
+  const object = item => item && typeof item === 'object' && !Array.isArray(item)
+  const incomplete = () => { throw new Error('dws_mentions_read_incomplete') }
+  if (!object(value) || !object(page) || typeof page.hasMore !== 'boolean') incomplete()
+  for (const layer of [value, page]) {
+    if (layer.success === false || layer.error || layer.partial === true || layer.truncated === true
+      || (layer.failedCount ?? 0) !== 0 || layer.failures?.length
+      || (layer.decryptFailedCount ?? 0) !== 0 || layer.decryptFailures?.length) incomplete()
+  }
+  const identity = (item, groupId) => {
+    if (!object(item)) incomplete()
+    const id = item.messageId ?? item.openMessageId ?? item.msgId
+    const conversation = item.openConversationId ?? item.conversationId ?? groupId
+    if (typeof id !== 'string' || !id || typeof conversation !== 'string' || !conversation
+      || groupId !== undefined && conversation !== groupId) incomplete()
+    return { messageId: id, groupId: conversation }
+  }
+  if (Object.hasOwn(page, 'conversationMessagesList')) {
+    if (!Array.isArray(page.conversationMessagesList)) incomplete()
+    return page.conversationMessagesList.flatMap(group => {
+      if (!object(group) || typeof group.openConversationId !== 'string' || !group.openConversationId || !Array.isArray(group.messages)) incomplete()
+      return group.messages.map(item => identity(item, group.openConversationId))
+    })
+  }
+  if (Object.hasOwn(page, 'items')) {
+    if (!Array.isArray(page.items)) incomplete()
+    return page.items.map(item => identity(item))
+  }
+  // DWS 4cd5d053, helpers/paged_command.go: parsePagedCommandPage explicitly
+  // accepts an omitted conversation list only on a terminal page (hasMore=false).
+  if (value.success === true && page.hasMore === false) return []
+  incomplete()
+}
+
+function commandError(prefix, result) {
+  let detail, serverErrorCode
+  try { detail = JSON.parse(result.stderr)?.error; serverErrorCode = detail?.server_error_code } catch {}
+  const error = new Error(`${prefix}:${result.exitCode}${serverErrorCode ? `:${serverErrorCode}` : ''}`)
+  Object.assign(error, safeNotificationDetail({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }))
+  if (serverErrorCode) error.serverErrorCode = serverErrorCode
+  if (detail) Object.assign(error, safeNotificationDetail({ reason: detail.reason, origin: detail.origin, operation: detail.operation, retryable: detail.retryable }))
+  return error
+}
+
+function sendCommandReceipt(result, operation) {
+  const diagnostic = safeNotificationDetail({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr })
+  try {
+    const receipt = parseJson(result.stdout, operation)
+    if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) throw new Error(`dws_send_contract_invalid:${operation}`)
+    return { ...receipt, sendDiagnostic: diagnostic }
+  } catch (error) { Object.assign(error, diagnostic); throw error }
+}
+
+function documentReadError(value = {}, exitCode) {
+  const detail = value.error ?? value
+  const label = [detail.category, detail.reason, detail.server_error_code, detail.code, detail.message].filter(Boolean).join(' ')
+  let code = 'DWS_DOC_READ_FAILED'
+  if (exitCode === 2 || /auth|unauthenticated|access.token|refresh.token|未登录|认证失效/iu.test(label)) code = 'DWS_DOC_AUTH_REQUIRED'
+  else if (exitCode === 4 || /permission|forbidden|access.denied|无权限|权限不足/iu.test(label)) code = 'DWS_DOC_PERMISSION_DENIED'
+  else if (/not.found|not.exist|不存在|已删除/iu.test(label)) code = 'DWS_DOC_NOT_FOUND'
+  else if (exitCode === 7 || /incomplete|partial|truncat/iu.test(label)) code = 'DWS_DOC_INCOMPLETE'
+  else if (detail.retryable === true || /timeout|timed.out|rate.limit|too.many|temporar|unavailable|ECONNRESET|ETIMEDOUT/iu.test(label)) code = 'DWS_DOC_TEMPORARY'
+  const error = new Error(code)
+  error.code = code
+  if (typeof detail.server_error_code === 'string') error.serverErrorCode = detail.server_error_code
+  return error
+}
+
+function completeDocumentReceipt(receipt, nodeId) {
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) throw documentReadError({ reason: 'incomplete' })
+  if (receipt.error || receipt.status === 'failed' || receipt.success === false) throw documentReadError(receipt)
+  const layers = []
+  const visit = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return
+    layers.push(value)
+    for (const key of ['result', 'data', 'content']) visit(value[key])
+  }
+  visit(receipt.content)
+  if (receipt.contractVersion !== 'doc.content.v1' || receipt.status !== 'success' || receipt.complete !== true
+    || receipt.target?.canonicalId !== nodeId || receipt.target?.product !== 'doc'
+    || receipt.hasMore === true || receipt.failures?.length
+    || layers.some(value => value.complete === false || value.hasMore === true || value.truncated === true || value.failures?.length))
+    throw documentReadError({ reason: 'incomplete' })
+  const failed = layers.find(value => value.error || value.success === false)
+  if (failed) throw documentReadError(failed)
+  const raw = layers.find(value => typeof value.jsonml === 'string' && value.jsonml.trim())?.jsonml
+  let tree
+  try { tree = JSON.parse(raw) } catch { throw documentReadError({ reason: 'incomplete' }) }
+  if (!Array.isArray(tree) || tree.length < 2 || tree[0] !== 'root' || !tree[1] || typeof tree[1] !== 'object' || Array.isArray(tree[1]))
+    throw documentReadError({ reason: 'incomplete' })
+  const target = Object.fromEntries(['canonicalId', 'name', 'product', 'resourceType', 'canonicalUrl', 'containerId']
+    .filter(key => receipt.target[key] !== undefined).map(key => [key, receipt.target[key]]))
+  const text = JSON.stringify({ contractVersion: receipt.contractVersion, target, content: receipt.content })
+  if (Buffer.byteLength(text, 'utf8') > 8 * 1024 * 1024) throw documentReadError({ reason: 'incomplete' })
+  return { text, mediaType: 'application/json', complete: true,
+    metadata: Object.fromEntries(Object.entries(receipt).filter(([key]) => !['contractVersion', 'target', 'content'].includes(key))) }
+}
+
+function comparableMessageText(value) {
+  return String(value ?? '').replace(/[\p{P}\p{S}\s]/gu, '')
+}
+
+// DWS把段落边界回读为Markdown硬换行、软换行显示为单空格；保留其他空格和SQL字符。
+export function normalizeApprovalNoticeText(value) {
+  return typeof value === 'string' ? value.replace(/ {2}\r?\n/gu, '\n\n').replace(/\r?\n/gu, ' ') : value
+}
+
+export function matchesOutbound(message, outbound) {
+  const actual = comparableMessageText(message.text), expected = comparableMessageText(outbound.text)
+  const quotedId = message.quotedMessage?.messageId ?? message.quotedMessage?.message_id
+  if ((quotedId ?? undefined) !== (outbound.replyToMessageId ?? undefined)) return false
+  if (actual === expected) return true
+  if (outbound.replyToMessageId) return expected.length > 0 && actual.includes(expected)
+  if (expected.length < 24 || !actual.includes(expected)) return false
+  return true
+}
+
+export function createDwsAdapter({ enabled = false, writesAuthorized = false, profile, runner }) {
+  if (runner === undefined) throw new Error('dws_runner_required')
+
+  const requireEnabled = () => {
+    if (!enabled) throw new Error('dws_adapter_disabled')
+  }
+  const withProfile = (args) => typeof profile === 'string' && profile.trim() !== '' ? [...args, '--profile', profile] : args
+
+  return {
+    compileGroupListen(groupId) {
+      return withProfile(['event', '+listen-im', '--kind', 'group', '--events', 'message', '--chat-id', assertStableId(groupId, 'group_id'), '--format', 'ndjson'])
+    },
+    compileHumanReplyListen(peerId) {
+      return withProfile(['event','consume','user_im_message_receive_o2o','--open-dingtalk-id',assertStableId(peerId,'private_peer_id'),'--flatten','--format','ndjson'])
+    },
+    compileGroupRead(groupId) {
+      return withProfile(['chat', '+chat-messages', '--group', assertStableId(groupId, 'group_id'), '--format', 'json'])
+    },
+    compileGroupReadRange(groupId, { start, end }) {
+      return withProfile(['chat', '+chat-messages', '--group', assertStableId(groupId, 'group_id'), '--start', assertStableId(start, 'start'), '--end', assertStableId(end, 'end'), '--order', 'asc', '--page-all', '--page-limit', '50', '--format', 'json'])
+    },
+    compileGroupSend({ groupId, text, idempotencyKey, atOpenDingTalkIds = [], atAll = false }) {
+      if (typeof atAll !== 'boolean' || atAll && atOpenDingTalkIds.length) throw new Error('group_reply_audience_conflict')
+      const mentions = nativeMentionIds(atOpenDingTalkIds)
+      // DWS v1.0.63 --text sends msgType=text; --markdown preserves the same
+      // formatted body as native replies, without adding a quote recipient.
+      // https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/blob/v1.0.63/internal/shortcut/chat/unified_send.go
+      // 提及独立成段，保留正文首行标题/列表/围栏的 Markdown 块边界。
+      // 原生占位符只编码传输正文，不改持久业务正文。
+      const content = mentions ? `${mentions.split(',').map(id => `<@${id}>`).join(' ')}\n\n${assertStableId(text, 'text')}` : assertStableId(text, 'text')
+      const args = ['chat', '+messages-send', '--as', 'user', '--group', assertStableId(groupId, 'group_id'), '--msg-type', 'markdown', '--markdown', content, '--idempotency-key', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
+      if (mentions) args.push('--at-open-dingtalk-ids', mentions)
+      if (atAll) args.push('--at-all')
+      if (writesAuthorized) args.push('--yes')
+      return withProfile(args)
+    },
+    compileGroupFileSend({ groupId, fileName, idempotencyKey }) {
+      const args = ['chat', '+messages-send', '--as', 'user', '--group', assertStableId(groupId, 'group_id'), '--msg-type', 'file', '--file', `./${assertFileName(fileName)}`, '--idempotency-key', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
+      if (writesAuthorized) args.push('--yes')
+      return withProfile(args)
+    },
+    compileGroupReply({ groupId, text, idempotencyKey, replyToMessageId, replyToSenderOpenDingTalkId, atOpenDingTalkIds = [], atAll = false }) {
+      const args = ['chat', 'message', 'reply', '--group', assertStableId(groupId, 'group_id'), '--ref-msg-id', assertStableId(replyToMessageId, 'reply_message_id'), '--ref-sender', assertStableId(replyToSenderOpenDingTalkId, 'reply_sender_id'), '--content', assertStableId(text, 'text'), '--uuid', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
+      // DWS v1.0.63's reply contract separates ref-sender from atOpenDingTalkIds.
+      // Topic selection includes the quote author in the audience. When implicit + explicit
+      // mention rendering is uncertain, Topic can use unquoted send instead of quoting an unrelated author.
+      // https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/issues/845
+      if (typeof atAll !== 'boolean' || atAll && atOpenDingTalkIds.length) throw new Error('group_reply_audience_conflict')
+      const mentions = nativeMentionIds(atOpenDingTalkIds)
+      if (mentions) args.push('--at-open-dingtalk-ids', mentions)
+      if (atAll) args.push('--at-all')
+      if (writesAuthorized) args.push('--yes')
+      return withProfile(args)
+    },
+    compileDirectSend({openDingTalkId,text,idempotencyKey,conversationId,replyToMessageId,replyToSenderId}) {
+      const args=replyToMessageId
+        ? ['chat','+messages-reply','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),
+          '--conversation-id',assertStableId(conversationId,'conversation_id'),'--message-id',assertStableId(replyToMessageId,'reply_message_id'),
+          '--ref-sender',assertStableId(replyToSenderId,'reply_sender_id'),'--content',assertStableId(text,'text'),
+          '--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+        : ['chat','+messages-send','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),
+          '--text',assertStableId(text,'text'),'--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+      if(writesAuthorized)args.push('--yes')
+      return withProfile(args)
+    },
+    async sendDirectIntent(request) {
+      requireEnabled()
+      if(!writesAuthorized)throw new Error('dws_write_not_authorized')
+      assertGroupReply(request.text,[request.openDingTalkId,request.idempotencyKey])
+      const result=await runner.run(this.compileDirectSend(request))
+      if(result.exitCode!==0)throw commandError('dws_direct_send_failed',result)
+      return sendCommandReceipt(result,'direct')
+    },
+    compileSelfSend({ userId, text, idempotencyKey }) {
+      const args = ['chat', '+messages-send', '--as', 'user', '--user', assertStableId(userId, 'human_user_id'), '--text', assertStableId(text, 'text'), '--idempotency-key', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
+      if (writesAuthorized) args.push('--yes')
+      return withProfile(args)
+    },
+    compileSendStatus(openTaskId) {
+      return withProfile(['chat', '+messages-query-send-status', '--open-task-id', assertStableId(openTaskId, 'open_task_id'), '--format', 'json'])
+    },
+    compileMessageResourceDownload({ groupId, messageId, resourceId, type = 'mediaId' }) {
+      if (!['mediaId', 'fileId'].includes(type)) throw new Error('dws_resource_type_invalid')
+      return withProfile(['chat', '+messages-resource-download', '--type', type, '--resource-id', assertStableId(resourceId, 'resource_id'), '--message-id', assertStableId(messageId, 'message_id'), '--open-conversation-id', assertStableId(groupId, 'group_id'), '--format', 'json'])
+    },
+    compileConversationRead(conversationId, { start, end }) {
+      return withProfile(['chat', '+chat-messages', '--group', assertStableId(conversationId, 'conversation_id'), '--start', assertStableId(start, 'start'), '--end', assertStableId(end, 'end'), '--order', 'asc', '--page-all', '--format', 'json'])
+    },
+    compileMessageSearch(query) {
+      return withProfile(['chat', '+search-msg', '--query', assertStableId(query, 'query'), '--days', '7', '--page-all', '--no-reactions', '--format', 'json'])
+    },
+    compileMessageRecall(messageId) {
+      const args = ['chat', '+messages-recall', '--msg-id', assertStableId(messageId, 'message_id'), '--format', 'json']
+      if (writesAuthorized) args.push('--yes')
+      return withProfile(args)
+    },
+    async isMessageMentioned(groupId, messageId, occurredAt) {
+      requireEnabled()
+      const instant = typeof occurredAt === 'number' ? occurredAt : Date.parse(occurredAt)
+      if (!Number.isFinite(instant)) throw new Error('dws_mention_time_required')
+      const start = new Date(instant - 1000).toISOString(), end = new Date(instant + 1000).toISOString()
+      let cursor = '0'
+      const seen = new Set()
+      while (!seen.has(cursor)) {
+        seen.add(cursor)
+        const response = await runner.run(withProfile(['chat', 'message', 'list-mentions', '--group', assertStableId(groupId, 'group_id'), '--start', start, '--end', end, '--limit', '50', '--cursor', cursor, '--format', 'json']))
+        if (response.exitCode !== 0) throw commandError('dws_mentions_read_failed', response)
+        const value = parseJson(response.stdout, 'list-mentions'), items = mentionPageItems(value), page = value.result ?? value
+        if (items.some(item => item.messageId === messageId && item.groupId === groupId)) return true
+        if (!page.hasMore) return false
+        if (page.nextCursor === undefined || page.nextCursor === null || String(page.nextCursor) === '') throw new Error('dws_mentions_cursor_missing')
+        cursor = String(page.nextCursor)
+      }
+      throw new Error('dws_mentions_cursor_stalled')
+    },
+    async readMessage(groupId, messageId) {
+      requireEnabled()
+      const result = await runner.run(withProfile(['chat', '+messages-mget', '--msg-ids', assertStableId(messageId, 'message_id'), '--format', 'json']))
+      if (result.exitCode !== 0) throw commandError('dws_read_failed', result)
+      const value = parseJson(result.stdout, 'messages-mget')
+      if (value.complete !== true || value.hasMore === true || value.failedCount !== 0 || !Array.isArray(value.failures) || value.failures.length
+        || value.foundCount !== 1 || !Array.isArray(value.notFoundMessageIds) || value.notFoundMessageIds.length
+        || !Array.isArray(value.messages) || value.messages.length !== 1) throw new Error('dws_message_read_incomplete')
+      const message = value.messages[0]
+      if (message.messageId !== messageId || message.conversationId !== groupId) throw new Error('dws_message_identity_mismatch')
+      return message
+    },
+    async readGroup(groupId) {
+      requireEnabled()
+      const result = await runner.run(this.compileGroupRead(groupId))
+      if (result.exitCode !== 0) throw commandError('dws_read_failed', result)
+      const value = parseJson(result.stdout, 'read')
+      if (!Array.isArray(value.messages) || typeof value.complete !== 'boolean') throw new Error('dws_read_contract_invalid')
+      return value
+    },
+    async readGroupRange(groupId, range) {
+      requireEnabled()
+      const result = await runner.run(this.compileGroupReadRange(groupId, range))
+      if (result.exitCode !== 0) throw new Error(`dws_read_failed:${result.exitCode}`)
+      const value = parseJson(result.stdout, 'read-range')
+      if (!Array.isArray(value.messages) || value.complete !== true || value.hasMore === true || (value.failedCount ?? 0) !== 0) throw new Error('dws_backfill_partial')
+      return value
+    },
+    async sendGroup(request) {
+      requireEnabled()
+      if (!writesAuthorized) throw new Error('dws_write_not_authorized')
+      assertGroupReply(request.text, [request.groupId, request.idempotencyKey, ...(Array.isArray(request.atOpenDingTalkIds) ? request.atOpenDingTalkIds : [])])
+      const result = await runner.run(this.compileGroupSend(request))
+      if (result.exitCode !== 0) throw commandError('dws_send_failed', result)
+      return sendCommandReceipt(result, 'send')
+    },
+    async sendGroupFile(request) {
+      requireEnabled()
+      if (!writesAuthorized) throw new Error('dws_write_not_authorized')
+      const result = await runner.run(this.compileGroupFileSend(request))
+      if (result.exitCode !== 0) throw commandError('dws_file_send_failed', result)
+      return parseJson(result.stdout, 'file-send')
+    },
+    async querySendStatus(openTaskId) {
+      requireEnabled()
+      const result = await runner.run(this.compileSendStatus(openTaskId))
+      if (result.exitCode !== 0) throw commandError('dws_send_status_failed', result)
+      try { return parseJson(result.stdout, 'send-status') }
+      catch (error) { Object.assign(error, safeNotificationDetail({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr })); throw error }
+    },
+    async readMessageFile({ groupId, messageId, expected }) {
+      requireEnabled()
+      if (!expected || !Number.isSafeInteger(expected.size) || expected.size < 1 || !/^[a-f0-9]{64}$/u.test(expected.sha256 ?? '')) throw new Error('dws_file_expectation_required')
+      const message = await this.readMessage(groupId, messageId)
+      const refs = message.resourceRefs
+      if (!Array.isArray(refs) || refs.length !== 1 || !['mediaId', 'fileId'].includes(refs[0]?.type) || typeof refs[0].resourceId !== 'string' || !refs[0].resourceId) throw new Error('dws_file_resource_identity_invalid')
+      if (['messageType', 'msgType'].some(key => message[key] !== undefined && message[key] !== 'file')
+        || message.messageType === undefined && message.msgType === undefined && refs[0].type !== 'fileId') throw new Error('dws_file_message_type_mismatch')
+      const resourceRef = refs[0]
+      if (expected.resourceRef && (expected.resourceRef.type !== resourceRef.type || expected.resourceRef.resourceId !== resourceRef.resourceId)) throw new Error('dws_file_resource_identity_mismatch')
+      const downloadRoot = await mkdtemp(path.join(runner.cwd, 'file-readback-'))
+      try {
+        const args = this.compileMessageResourceDownload({ groupId, messageId, resourceId: resourceRef.resourceId, type: resourceRef.type })
+        const result = await runner.run([...args, '--output', `${path.relative(runner.cwd, downloadRoot)}/`])
+        if (result.exitCode !== 0) throw commandError('dws_file_download_failed', result)
+        const receipt = parseJson(result.stdout, 'file-download')
+        if (receipt.resourceId !== resourceRef.resourceId || receipt.resourceType !== resourceRef.type || receipt.messageId !== messageId
+          || !Number.isSafeInteger(receipt.sizeBytes) || receipt.sizeBytes !== expected.size || typeof receipt.localPath !== 'string' || !receipt.localPath
+          || receipt.complete === false || receipt.hasMore === true || receipt.failures?.length) throw new Error('dws_file_download_incomplete')
+        const root = await realpath(downloadRoot)
+        const localPath = await realpath(path.resolve(runner.cwd, receipt.localPath))
+        const relative = path.relative(root, localPath)
+        if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('dws_file_download_path_invalid')
+        const info = await stat(localPath)
+        if (!info.isFile() || info.size !== expected.size) throw new Error('dws_file_download_size_mismatch')
+        const data = await readFile(localPath)
+        const sha256 = createHash('sha256').update(data).digest('hex')
+        if (data.length !== expected.size || sha256 !== expected.sha256) throw new Error('dws_file_download_content_mismatch')
+        return { message, resourceRef, sha256, size: data.length, data: new Uint8Array(data), downloadReceipt: receipt }
+      } finally { await rm(downloadRoot, { recursive: true, force: true }) }
+    },
+    async sendGroupReply(request) {
+      requireEnabled()
+      if (!writesAuthorized) throw new Error('dws_write_not_authorized')
+      assertGroupReply(request.text, [request.groupId, request.idempotencyKey, request.replyToMessageId,
+        request.replyToSenderOpenDingTalkId, ...(Array.isArray(request.atOpenDingTalkIds) ? request.atOpenDingTalkIds : [])])
+      const result = await runner.run(this.compileGroupReply(request))
+      if (result.exitCode !== 0) {
+        const error = commandError('dws_reply_failed', result)
+        const proof = quotedSendRejectionProof(result, request)
+        if (proof) { error.knownNotSent = true; error.proof = proof }
+        throw error
+      }
+      return sendCommandReceipt(result, 'reply')
+    },
+    async sendSelf(request) {
+      const { openTaskId } = await this.sendSelfIntent(request)
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        if (attempt > 0) await delay(500)
+        const statusResult = await runner.run(this.compileSendStatus(openTaskId))
+        if (statusResult.exitCode !== 0) throw new Error(`dws_self_send_status_failed:${statusResult.exitCode}`)
+        const status = parseJson(statusResult.stdout, 'self-send-status')
+        const conversationId = status.messageRef?.openConversationId ?? status.result?.openConversationId
+        const messageId = status.messageRef?.openMessageId ?? status.result?.openMessageId
+        if (status.result?.sendStatus === 'SUCCESS' && typeof conversationId === 'string' && typeof messageId === 'string') return { openTaskId, conversationId, messageId }
+      }
+      throw new Error('dws_self_send_not_confirmed')
+    },
+    async sendSelfIntent(request) {
+      requireEnabled()
+      if (!writesAuthorized) throw new Error('dws_write_not_authorized')
+      assertGroupReply(request.text, [request.userId, request.idempotencyKey, request.taskId, request.requestId, request.humanRequestId])
+      const args = this.compileSelfSend(request)
+      const sentKey = args[args.indexOf('--idempotency-key') + 1]
+      const sent = await runner.run(args)
+      if (sent.exitCode !== 0) {
+        const error = commandError('dws_self_send_failed', sent)
+        let payload, details
+        try { payload = JSON.parse(sent.stderr); details = payload?.error } catch {}
+        const errorMessage = details?.errorMsg ?? details?.error_message ?? details?.message
+        const match = /^sendPersonalMessageByServerPush error: Length of filed: 'uuid' cannot greater than 128 but actual is (\d+)\.$/u.exec(errorMessage ?? '')
+        const traceId = details?.trace_id ?? details?.traceId ?? payload?.trace_id ?? payload?.traceId
+        // 仅平台明确的uuid前置拒绝可证明未发送；网络错误及未知回执仍保持unknown。
+        if (String(error.serverErrorCode) === '1001' && match && sentKey === request.idempotencyKey
+          && Number(match[1]) === sentKey.length && sentKey.length > DWS_UUID_MAX_LENGTH && typeof traceId === 'string' && traceId.trim()) {
+          error.knownNotSent = true
+          error.proof = { kind: 'dws-uuid-rejected', idempotencyKey: request.idempotencyKey, serverErrorCode: '1001', errorMessage,
+            traceId }
+        }
+        throw error
+      }
+      const receipt = parseJson(sent.stdout, 'self-send')
+      const openTaskId = receipt.sendReceipt?.openTaskId ?? receipt.result?.result?.openTaskId
+      if (typeof openTaskId !== 'string' || openTaskId === '') throw new Error('dws_self_send_task_id_missing')
+      return { openTaskId }
+    },
+    async confirmSelfDelivery({ openTaskId, recipientUserId, text }) {
+      const status = await this.querySendStatus(openTaskId)
+      if (status.result?.sendStatus !== 'SUCCESS') return undefined
+      const conversationId = status.messageRef?.openConversationId ?? status.result?.openConversationId
+      const messageId = status.messageRef?.openMessageId ?? status.result?.openMessageId
+      if (!conversationId || !messageId) throw new Error('dws_self_delivery_identity_missing')
+      const message = await this.readMessage(conversationId, messageId)
+      if (normalizeApprovalNoticeText(message.text) !== normalizeApprovalNoticeText(text)
+        || message.recipientUserId !== undefined && message.recipientUserId !== recipientUserId) throw new Error('dws_self_delivery_content_mismatch')
+      return { openTaskId, conversationId, messageId, ...(message.senderOpenDingTalkId ?? message.senderId ? { senderActorId: message.senderOpenDingTalkId ?? message.senderId } : {}), ...(message.createTime ? { sentAt: message.createTime } : {}) }
+    },
+    async findWorkflowApprovalNotice({ requestId, recipientUserId, text, conversationId }) {
+      requireEnabled()
+      const result = await runner.run(this.compileMessageSearch(requestId.slice(-12)))
+      if (result.exitCode !== 0) throw commandError('dws_workflow_approval_search_failed', result)
+      const value = parseJson(result.stdout, 'workflow-approval-search')
+      if (!Array.isArray(value.messages) || value.complete !== true || value.hasMore === true || (value.failedCount ?? 0) !== 0) throw new Error('dws_workflow_approval_search_partial')
+      const matches = value.messages.filter(message => normalizeApprovalNoticeText(message.text) === normalizeApprovalNoticeText(text) && message.messageId && message.conversationId
+        && (conversationId ? message.conversationId === conversationId : message.recipientUserId === recipientUserId))
+      if (matches.length > 1) throw new Error('dws_workflow_approval_search_ambiguous')
+      if (!matches.length) return undefined
+      const message = await this.readMessage(matches[0].conversationId, matches[0].messageId)
+      if (normalizeApprovalNoticeText(message.text) !== normalizeApprovalNoticeText(text) || (!conversationId && message.recipientUserId !== recipientUserId)) throw new Error('dws_self_delivery_content_mismatch')
+      return { conversationId: message.conversationId, messageId: message.messageId, ...(message.senderOpenDingTalkId ?? message.senderId ? { senderActorId: message.senderOpenDingTalkId ?? message.senderId } : {}), ...(message.createTime ? { sentAt: message.createTime } : {}) }
+    },
+    async readConversation(conversationId, range) {
+      requireEnabled()
+      const result = await runner.run(this.compileConversationRead(conversationId, range))
+      if (result.exitCode !== 0) throw new Error(`dws_conversation_read_failed:${result.exitCode}`)
+      const value = parseJson(result.stdout, 'conversation-read')
+      if (!Array.isArray(value.messages) || value.complete !== true || value.hasMore === true || (value.failedCount ?? 0) !== 0) throw new Error('dws_conversation_read_partial')
+      return value.messages
+    },
+    async findHumanBlockerExchange(requestId) {
+      requireEnabled()
+      const result = await runner.run(this.compileMessageSearch(requestId))
+      if (result.exitCode !== 0) throw new Error(`dws_blocker_search_failed:${result.exitCode}`)
+      const value = parseJson(result.stdout, 'blocker-search')
+      if (!Array.isArray(value.messages) || value.complete !== true || value.hasMore === true || (value.failedCount ?? 0) !== 0) throw new Error('dws_blocker_search_partial')
+      const request = value.messages.find((message) => typeof message.text === 'string' && message.text.includes(`阻塞请求 ID：${requestId}`))
+      if (request === undefined || typeof request.conversationId !== 'string' || typeof request.messageId !== 'string') return undefined
+      const reply = value.messages.find((message) => message.quotedMessage?.messageId === request.messageId && typeof message.text === 'string' && message.text.trim() !== '')
+      return { conversationId: request.conversationId, messageId: request.messageId, sentAt: request.createTime ?? request.time, ...(reply ? { replyMessageId: reply.messageId, reply: reply.text.trim() } : {}) }
+    },
+    async findOutboundMessage(groupId, outbound) {
+      requireEnabled()
+      const query = String(outbound.text ?? '').split(/\r?\n/u, 1)[0].replace(/[`*_~>#]/gu, '').trim().slice(0, 32)
+      if (query.length < 12) return undefined
+      const result = await runner.run(this.compileMessageSearch(query))
+      if (result.exitCode !== 0) throw commandError('dws_outbound_search_failed', result)
+      const value = parseJson(result.stdout, 'outbound-search')
+      if (!Array.isArray(value.messages) || value.complete !== true || value.hasMore === true || (value.failedCount ?? 0) !== 0) throw new Error('dws_outbound_search_partial')
+      return value.messages.find((message) => message.conversationId === groupId && matchesOutbound(message, outbound))
+    },
+    async recallMessage(messageId) {
+      requireEnabled()
+      if (!writesAuthorized) throw new Error('dws_write_not_authorized')
+      const result = await runner.run(this.compileMessageRecall(messageId))
+      if (result.exitCode !== 0) throw commandError('dws_recall_failed', result)
+      return parseJson(result.stdout, 'recall')
+    },
+    async readMessageResource(groupId, messageId, resource) {
+      requireEnabled()
+      if (resource.type === 'dingtalkDoc') {
+        const nodeId = assertStableId(resource.resourceId, 'document_node_id')
+        if (!/^[a-zA-Z0-9_-]+$/u.test(nodeId)) throw new Error('dws_document_node_id_invalid')
+        const runRead = async args => {
+          let result
+          try { result = await runner.run(withProfile([...args, '--format', 'json'])) }
+          catch (error) { throw documentReadError({ code: error.code, message: error.message }) }
+          if (result.exitCode !== 0) {
+            let failure = {}
+            try { failure = JSON.parse(result.stderr || result.stdout) } catch {}
+            throw documentReadError(failure, result.exitCode)
+          }
+          let envelope
+          try { envelope = JSON.parse(result.stdout) } catch { throw documentReadError({ reason: 'incomplete' }) }
+          if (envelope?.ok !== true || envelope.outcome !== 'success' || !envelope.data) throw documentReadError(envelope?.error ? envelope : { reason: 'incomplete' })
+          return envelope.data
+        }
+        const inspection = await runRead(['drive', '+inspect', '--node', nodeId])
+        const file = inspection.data?.file
+        if (inspection.status !== 'success' || inspection.complete !== true || inspection.failures?.length
+          || inspection.hasMore === true || file?.fileId !== nodeId) throw documentReadError({ reason: 'incomplete' })
+        if (file.extension === 'adoc') return completeDocumentReceipt(await runRead(['doc', '+fetch', '--node', nodeId, '--scope', 'full', '--detail', 'full']), nodeId)
+        if (file.type !== 'FILE' || !['txt', 'md', 'sql', 'json', 'csv', 'tsv', 'xml', 'html', 'log'].includes(file.extension)) throw new Error('coordination_resource_format_unsupported')
+        if (!Number.isSafeInteger(file.fileSize) || file.fileSize <= 0 || file.fileSize > 8 * 1024 * 1024) throw documentReadError({ reason: 'incomplete' })
+        const downloadRoot = await mkdtemp(path.join(runner.cwd, 'coordination-resource-'))
+        try {
+          const output = path.relative(runner.cwd, path.join(downloadRoot, `content.${file.extension}`))
+          const receipt = await runRead(['drive', '+download', '--node', nodeId, '--output', output])
+          if (receipt.success !== true || receipt.nodeId !== nodeId || receipt.sizeBytes !== file.fileSize
+            || typeof receipt.savedPath !== 'string' || !receipt.savedPath || path.isAbsolute(receipt.savedPath)) throw documentReadError({ reason: 'incomplete' })
+          const root = await realpath(downloadRoot)
+          const localPath = await realpath(path.resolve(runner.cwd, receipt.savedPath))
+          const relative = path.relative(root, localPath)
+          if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('dws_resource_path_outside_workspace')
+          const info = await stat(localPath)
+          if (!info.isFile() || info.size !== file.fileSize) throw documentReadError({ reason: 'incomplete' })
+          const data = await readFile(localPath)
+          if (data.length !== file.fileSize) throw documentReadError({ reason: 'incomplete' })
+          let text
+          try { text = new TextDecoder('utf-8', { fatal: true }).decode(data) }
+          catch (error) {
+            if (error.code === 'ERR_ENCODING_INVALID_ENCODED_DATA') throw documentReadError({ reason: 'incomplete' })
+            throw error
+          }
+          return { text, mediaType: file.extension === 'html' ? 'text/html' : 'text/plain', complete: true,
+            metadata: { nodeId, name: file.name, extension: file.extension, sizeBytes: file.fileSize, modifyTime: file.modifyTime,
+              sourceSha256: createHash('sha256').update(data).digest('hex') } }
+        } finally { await rm(downloadRoot, { recursive: true, force: true }) }
+      }
+      const downloadRoot = await mkdtemp(path.join(runner.cwd, 'coordination-resource-'))
+      try {
+      const args = this.compileMessageResourceDownload({ groupId, messageId, resourceId: resource.resourceId, type: resource.type })
+      const result = await runner.run([...args, '--output', path.relative(runner.cwd, downloadRoot)])
+      if (result.exitCode !== 0) throw commandError('dws_resource_read_failed', result)
+      const receipt = parseJson(result.stdout, 'resource-download')
+      if (receipt.complete === false || receipt.hasMore === true || receipt.failures?.length || typeof receipt.localPath !== 'string' || !receipt.localPath) throw new Error('dws_resource_read_incomplete')
+      const root = await realpath(downloadRoot)
+      const localPath = await realpath(path.resolve(runner.cwd, receipt.localPath))
+      const relative = path.relative(root, localPath)
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('dws_resource_path_outside_workspace')
+      try {
+        const info = await stat(localPath)
+        if (!info.isFile() || info.size === 0 || info.size > 8 * 1024 * 1024 || receipt.sizeBytes !== undefined && receipt.sizeBytes !== info.size) throw new Error('dws_resource_size_invalid')
+        const data = new Uint8Array(await readFile(localPath))
+        const extension = path.extname(localPath).toLowerCase()
+        const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' }
+        if (imageTypes[extension]) return { image: { data, mediaType: imageTypes[extension], name: path.basename(localPath) } }
+        if (extension === '.xlsx') {
+          const { default: ExcelJS } = await import('exceljs')
+          const workbook = new ExcelJS.Workbook()
+          await workbook.xlsx.load(data)
+          if (workbook.model.media?.length) throw new Error('coordination_workbook_embedded_media_unsupported')
+          const sheets = workbook.worksheets.map(sheet => {
+            const rows = []
+            sheet.eachRow(row => {
+              const cells = []
+              row.eachCell(cell => cells.push({ address: cell.address, value: cell.value,
+                ...(cell.isMerged ? { mergedInto: cell.master.address } : {}) }))
+              rows.push({ row: row.number, cells })
+            })
+            return { name: sheet.name, state: sheet.state, rowCount: sheet.rowCount, columnCount: sheet.columnCount, rows }
+          })
+          return { text: JSON.stringify({ format: 'xlsx', name: path.basename(localPath),
+            sourceSha256: createHash('sha256').update(data).digest('hex'),
+            formulasRecalculated: false, formulaResults: '文件保存的缓存值，未执行公式或外链', sheets }),
+            mediaType: 'application/json', complete: true }
+        }
+        if (!['.txt', '.md', '.sql', '.json', '.csv', '.tsv', '.xml', '.html', '.log'].includes(extension)) throw new Error('coordination_resource_format_unsupported')
+        return { text: new TextDecoder('utf-8', { fatal: true }).decode(data), mediaType: 'text/plain' }
+      } finally { await unlink(localPath) }
+      } finally { await rm(downloadRoot, { recursive: true, force: true }) }
+    },
+    async loadMessageImages({ groupId, messageId, resourceRefs = [] }) {
+      requireEnabled()
+      const images = []
+      const mediaUnavailable = []
+      for (const resource of resourceRefs.filter((item) => item?.type === 'mediaId')) {
+        let localPath
+        try {
+          const result = await runner.run(this.compileMessageResourceDownload({ groupId, messageId, resourceId: resource.resourceId }))
+          if (result.exitCode !== 0) throw new Error(`exit_${result.exitCode}:${result.stderr}`)
+          const receipt = parseJson(result.stdout, 'resource-download')
+          if (typeof receipt.localPath !== 'string' || receipt.localPath === '') throw new Error('local_path_missing')
+          localPath = path.resolve(runner.cwd, receipt.localPath)
+          const cwdRoot = path.resolve(runner.cwd) + path.sep
+          if (!localPath.startsWith(cwdRoot)) throw new Error('local_path_outside_runner_cwd')
+          const extension = path.extname(localPath).toLowerCase()
+          const mediaType = extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/png'
+          images.push({ data: new Uint8Array(await readFile(localPath)), mediaType, name: path.basename(localPath) })
+        } catch (error) {
+          mediaUnavailable.push(`${resource.resourceId}: ${error instanceof Error ? error.message : String(error)}`)
+        } finally {
+          if (localPath) await unlink(localPath).catch(() => undefined)
+        }
+      }
+      return { images, mediaUnavailable }
+    },
+    startGroupSubscription(groupId, onEvent) {
+      requireEnabled()
+      const lifecycle = new EventEmitter()
+      let ready = false
+      let resolveReady
+      const readyPromise = new Promise((resolve) => { resolveReady = resolve })
+      const child = runner.spawn(this.compileGroupListen(groupId), {
+        onStdoutLine(line) {
+          try {
+            const event = JSON.parse(line)
+            if (!ready) throw new Error('dws_event_before_ready')
+            onEvent(event)
+          } catch (error) {
+            lifecycle.emit('line-error', error, line)
+          }
+        },
+        onStderrLine(line) {
+          if (/^\[event\] ready\b/.test(line)) {
+            ready = true
+            resolveReady()
+            lifecycle.emit('ready', line)
+          }
+        },
+      })
+      return { lifecycle, ready: readyPromise, done: child.done, stop: () => child.terminate('SIGTERM') }
+    },
+    startHumanReplySubscription(onEvent,peerIds=[]) {
+      requireEnabled()
+      if(!Array.isArray(peerIds)||!peerIds.length||peerIds.some(id=>typeof id!=='string'||!id))throw new Error('dws_private_peers_required')
+      const streams=[],lifecycle=new EventEmitter()
+      let stopped=false
+      const stop=()=>{if(stopped)return;stopped=true;for(const stream of streams)stream.stop()}
+      try{for(const peerId of new Set(peerIds)){
+        const stream=this.startPrivateSubscription(peerId,onEvent)
+        stream.lifecycle.on('line-error',error=>lifecycle.emit('line-error',error))
+        streams.push(stream)
+      }}catch(error){stop();throw error}
+      return {lifecycle,ready:Promise.all(streams.map(stream=>stream.ready)),done:Promise.race(streams.map(stream=>stream.done)).finally(stop),stop}
+    },
+    startPrivateSubscription(peerId,onEvent) {
+      requireEnabled()
+      const lifecycle = new EventEmitter()
+      let ready = false
+      let resolveReady
+      const readyPromise = new Promise((resolve) => { resolveReady = resolve })
+      const child = runner.spawn(this.compileHumanReplyListen(peerId), {
+        onStdoutLine(line) {
+          try {
+            const event = JSON.parse(line)
+            if (!ready) throw new Error('dws_event_before_ready')
+            onEvent(event)
+          } catch (error) {
+            lifecycle.emit('line-error', error, line)
+          }
+        },
+        onStderrLine(line) {
+          if (/^\[event\] ready\b/.test(line)) {
+            ready = true
+            resolveReady()
+            lifecycle.emit('ready', line)
+          }
+        },
+      })
+      return { lifecycle, ready: readyPromise, done: child.done, stop: () => child.terminate('SIGTERM') }
+    },
+  }
+}
+
+export async function dispatchOutbox({ adapter, groupId, outbound, beforeSend, beforeReadback }) {
+  let phase = 'preflight'
+  try {
+    await beforeReadback?.()
+    const before = await adapter.readGroup(groupId)
+    const usableHistory = (history) => history.complete === true || (history.partial === false && (history.failedCount ?? 0) === 0 && Array.isArray(history.failures) && history.failures.length === 0)
+    if (!usableHistory(before)) return { status: 'pending', reason: 'preflight_history_partial' }
+    const existing = before.messages.find((message) => matchesOutbound(message, outbound))
+    if (existing !== undefined) return { status: 'sent', messageId: assertStableId(existing.messageId, 'outbox_message_id'), deduplicated: true }
+    const historical = typeof adapter.findOutboundMessage === 'function' ? await adapter.findOutboundMessage(groupId, outbound) : undefined
+    if (historical !== undefined) return { status: 'sent', messageId: assertStableId(historical.messageId, 'outbox_message_id'), deduplicated: true }
+
+    assertGroupReply(outbound.text, outbound.taskIds ?? [])
+    // 在完整预检后、实际外发前持久领取；替换提交可能已使旧快照失效。
+    if (beforeSend && !(await beforeSend())) return { status: 'superseded' }
+    phase = 'send'
+    const sent = outbound.replyToMessageId && outbound.replyToSenderOpenDingTalkId
+      ? await adapter.sendGroupReply({ groupId, text: outbound.text, idempotencyKey: outbound.outboundId, replyToMessageId: outbound.replyToMessageId, replyToSenderOpenDingTalkId: outbound.replyToSenderOpenDingTalkId, atOpenDingTalkIds: outbound.atOpenDingTalkIds ?? [], ...(outbound.atAll ? { atAll: true } : {}) })
+      : await adapter.sendGroup({ groupId, text: outbound.text, idempotencyKey: outbound.outboundId, atOpenDingTalkIds: outbound.atOpenDingTalkIds ?? [], ...(outbound.atAll ? { atAll: true } : {}) })
+    if (sent?.deliveryStatus === 'unknown') return { status: 'pending', reason: 'delivery_unknown', sendResult: sent }
+
+    phase = 'postflight'
+    await beforeReadback?.()
+    const after = await adapter.readGroup(groupId)
+    if (!usableHistory(after)) return { status: 'pending', reason: 'postflight_history_partial', sendResult: sent }
+    const delivered = after.messages.find((message) => matchesOutbound(message, outbound))
+    if (delivered === undefined) return { status: 'pending', reason: 'message_not_observed', sendResult: sent }
+    return { status: 'sent', messageId: assertStableId(delivered.messageId, 'outbox_message_id'), deduplicated: false }
+  } catch (cause) {
+    const error = cause instanceof Error ? cause : new Error(String(cause))
+    error.deliveryPendingReason = `${phase}_failed`
+    throw error
+  }
+}

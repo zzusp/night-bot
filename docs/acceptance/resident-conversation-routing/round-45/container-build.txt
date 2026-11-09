@@ -1,0 +1,133 @@
+FULL_SOURCE_IMAGE_START 2026-11-09T04:16:57.456918+00:00 DECLARED_TRACKED_BUILD_INPUTS 501 AGGREGATE ec9547769b215b576d3b1456010b5f2df6348f333523215cc0f8d5df897406bb KEY_PINS {"src/native-tools.js": "0d8829c3713998b95b0f68fb224106d5cc1db1a9091c3e670dd19e8d013370c8", "src/tool-permissions.js": "a6fde5d9324fef25bc377f1c21f2fa9941efd25723aa5b3e2e295e63e54fc02b", "src/native-working-directory.js": "7d055ae7cc8aef5f0db39f7a853713948cf95d53a438b716b2386442f74d63cd", "src/memory/private-fs.js": "8b9bf149541e04204cc17e58dcce0b904d52b1045fe3ede9bd4ae550a7b6f621", "src/memory/privacy.js": "355243dd61e829d3c3e3ce1c2eda6f5abcf2282e16141d2232c9f9805ce48151", "src/runtime/portable.js": "53ed51fe3b2066bb7b71ef37495df86f7b164b60f753caff165e053f6087e96d", "src/runtime/pi-business-path-bindings.js": "51cfd71b714a0452a1ce7613dc1f26ed5b5528acf40a361f5616d3a2ed0ef276"} EXACT_ARGV ["docker", "build", "--progress", "plain", "--build-arg", "DEBIAN_ARCHIVE_URL=https://mirrors.tuna.tsinghua.edu.cn/debian", "--build-arg", "DEBIAN_SECURITY_URL=https://mirrors.tuna.tsinghua.edu.cn/debian-security", "--tag", "night-bot:sg11-full-tools-03fd3aeb", "."]
+2026/11/09 12:16:58 http2: server: error reading preface from client //./pipe/docker_engine: file has already been closed
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 7.85kB 0.0s done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 6.1s
+
+#3 docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+#3 CACHED
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 7.85kB 0.0s done
+#1 DONE 0.0s
+
+#4 [internal] load build definition from Dockerfile
+#4 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 1.07kB done
+#6 DONE 0.0s
+
+#7 [build  1/11] FROM docker.io/library/node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 102.51kB 0.1s done
+#8 DONE 0.1s
+
+#9 [build 10/11] COPY packages/web-console/src ./packages/web-console/src
+#9 CACHED
+
+#10 [build  3/11] WORKDIR /opt/night-bot
+#10 CACHED
+
+#11 [build  7/11] COPY packages/web-console/package.json packages/web-console/pnpm-lock.yaml packages/web-console/pnpm-workspace.yaml ./packages/web-console/
+#11 CACHED
+
+#12 [build  6/11] RUN set -eu;     case "amd64" in       amd64) checksum=25959351407e51d4aba7638790ff1cd04fdd7eaa56b313a26b689c03628e0ee2 ;;       arm64) checksum=1170453962f1bd049f27097385cab8b68dbf25cd69f45eb020e5d3bca0cad605 ;;       *) echo 'DWS supports only linux/amd64 and linux/arm64 in this image' >&2; exit 1 ;;     esac;     mkdir -p /tmp/night-dws-download /tmp/night-dws-extract;     curl --fail --show-error --silent --location --proto '=https' --tlsv1.2       "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/download/v1.0.67/dws-linux-amd64.tar.gz"       --output /tmp/night-dws-download/dws.tar.gz;     printf '%s  %s\n' "$checksum" /tmp/night-dws-download/dws.tar.gz | sha256sum --check --strict;     tar --extract --gzip --file /tmp/night-dws-download/dws.tar.gz --directory /tmp/night-dws-extract --no-same-owner;     binary="$(find /tmp/night-dws-extract -type f -name dws)";     test -n "$binary" && test "$(printf '%s\n' "$binary" | wc -l)" -eq 1;     install -m 0755 "$binary" /usr/local/bin/dws;     mkdir -p /usr/local/share/licenses/dws;     for name in LICENSE NOTICE; do       curl --fail --show-error --silent --location --proto '=https' --tlsv1.2         "https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/v1.0.67/${name}"         --output "/tmp/night-dws-download/${name}";     done;     printf '%s  %s\n'       1d951e8ca1019e1ad6fc14b8450df1b7ba788b9f242002873ca79df70ee376fd /tmp/night-dws-download/LICENSE       b7d8a7d7c3c61cb0d4d78fa422fb81028c76d0e7ff1a23b1be68f058a9920d80 /tmp/night-dws-download/NOTICE       | sha256sum --check --strict;     install -m 0644 /tmp/night-dws-download/LICENSE /tmp/night-dws-download/NOTICE /usr/local/share/licenses/dws/;     rm -rf /tmp/night-dws-download /tmp/night-dws-extract
+#12 CACHED
+
+#13 [build  2/11] RUN node --input-type=module -e "import {rootCertificates} from 'node:tls'; import {writeFileSync} from 'node:fs'; writeFileSync('/tmp/night-debian-roots.pem',rootCertificates.join('\n')+'\n',{mode:0o644})"     && node --input-type=module -e "import {readFileSync,writeFileSync} from 'node:fs'; const p='/etc/apt/sources.list.d/debian.sources'; let s=readFileSync(p,'utf8'); for(const [key,path] of [['DEBIAN_ARCHIVE_URL','debian'],['DEBIAN_SECURITY_URL','debian-security']]){const u=new URL(process.env[key]); if(u.protocol!=='https:'||u.username||u.password||/[?#]/.test(process.env[key]))throw Error('Invalid Debian HTTPS mirror'); const from='URIs: http://deb.debian.org/'+path; if(!s.split('\n').includes(from))throw Error('Unexpected Debian source'); s=s.replace(from+'\n','URIs: '+u.href.replace(/\/$/,'')+'\n');} writeFileSync(p,s);"     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true update     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends ca-certificates curl g++ make python3     && rm -f /tmp/night-debian-roots.pem     && rm -rf /var/lib/apt/lists/*     && npm install --global pnpm@11.25.0
+#13 CACHED
+
+#14 [build  4/11] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+#14 CACHED
+
+#15 [build  9/11] COPY packages/web-console/index.html packages/web-console/tsconfig.json packages/web-console/vite.config.ts ./packages/web-console/
+#15 CACHED
+
+#16 [build  5/11] RUN node --input-type=module -e "import p from './package.json' with {type:'json'}; if(p.packageManager !== 'pnpm@11.25.0') process.exit(1)"     && pnpm install --frozen-lockfile --prod
+#16 CACHED
+
+#17 [build  8/11] RUN pnpm --dir packages/web-console install --frozen-lockfile
+#17 CACHED
+
+#18 [build 11/11] RUN pnpm --dir packages/web-console build
+#18 CACHED
+
+#19 [runtime  4/20] COPY --from=build /usr/local/share/licenses/dws /usr/local/share/licenses/dws
+#19 CACHED
+
+#20 [runtime  6/20] RUN ln -s ../lib/node_modules/pnpm/bin/pnpm.mjs /usr/local/bin/pnpm     && ln -s ../lib/node_modules/pnpm/bin/pnpx.mjs /usr/local/bin/pnpx
+#20 CACHED
+
+#21 [runtime  5/20] COPY --from=build /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
+#21 CACHED
+
+#22 [runtime  3/20] COPY --from=build /usr/local/bin/dws /usr/local/bin/dws
+#22 CACHED
+
+#23 [runtime 11/20] COPY licenses ./licenses
+#23 CACHED
+
+#24 [runtime  9/20] RUN node node_modules/playwright/cli.js install --with-deps chromium     && chmod -R a+rX "/opt/playwright"     && ln -s /opt/night-bot/node_modules/playwright/cli.js /usr/local/bin/playwright     && rm -rf /var/lib/apt/lists/*
+#24 CACHED
+
+#25 [runtime  8/20] COPY --from=build /opt/night-bot/node_modules ./node_modules
+#25 CACHED
+
+#26 [runtime  7/20] WORKDIR /opt/night-bot
+#26 CACHED
+
+#27 [runtime 10/20] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml config.example.json LICENSE THIRD_PARTY.md ./
+#27 CACHED
+
+#28 [runtime  2/20] RUN node --input-type=module -e "import {rootCertificates} from 'node:tls'; import {writeFileSync} from 'node:fs'; writeFileSync('/tmp/night-debian-roots.pem',rootCertificates.join('\n')+'\n',{mode:0o644})"     && node --input-type=module -e "import {readFileSync,writeFileSync} from 'node:fs'; const p='/etc/apt/sources.list.d/debian.sources'; let s=readFileSync(p,'utf8'); for(const [key,path] of [['DEBIAN_ARCHIVE_URL','debian'],['DEBIAN_SECURITY_URL','debian-security']]){const u=new URL(process.env[key]); if(u.protocol!=='https:'||u.username||u.password||/[?#]/.test(process.env[key]))throw Error('Invalid Debian HTTPS mirror'); const from='URIs: http://deb.debian.org/'+path; if(!s.split('\n').includes(from))throw Error('Unexpected Debian source'); s=s.replace(from+'\n','URIs: '+u.href.replace(/\/$/,'')+'\n');} writeFileSync(p,s);"     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true update     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils gh git grep procps tini util-linux     && rm -f /tmp/night-debian-roots.pem     && rm -rf /var/lib/apt/lists/*     && chmod u-s /usr/bin/bwrap
+#28 CACHED
+
+#29 [runtime 12/20] COPY bin ./bin
+#29 CACHED
+
+#30 [runtime 13/20] COPY src ./src
+#30 DONE 0.1s
+
+#31 [runtime 14/20] COPY packages/dingtalk-core ./packages/dingtalk-core
+#31 DONE 0.1s
+
+#32 [runtime 15/20] COPY packages/web-console/night-channel.json packages/web-console/package.json ./packages/web-console/
+#32 DONE 0.0s
+
+#33 [runtime 16/20] COPY packages/web-console/server ./packages/web-console/server
+#33 DONE 0.0s
+
+#34 [runtime 17/20] COPY packages/web-console/licenses ./packages/web-console/licenses
+#34 DONE 0.0s
+
+#35 [runtime 18/20] COPY --from=build /opt/night-bot/packages/web-console/dist ./packages/web-console/dist
+#35 DONE 0.1s
+
+#36 [runtime 19/20] COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+#36 DONE 0.0s
+
+#37 [runtime 20/20] RUN mkdir -p data/temp && chown node:node data data/temp && chmod 0700 data data/temp
+#37 DONE 0.4s
+
+#38 exporting to image
+#38 exporting layers 0.1s done
+#38 writing image sha256:e1a5708cb8934ae40eac0763b68617fce7d1b2fe43edd43e64bbd755c7a649fa done
+#38 naming to docker.io/library/night-bot:sg11-full-tools-03fd3aeb done
+#38 DONE 0.1s
+
+View build details: docker-desktop://dashboard/build/default/default/j4af3j5cgmx0bsoeb83cevhjg
+FULL_SOURCE_IMAGE_FINISH 2026-11-09T04:17:06.830996+00:00 EXIT 0 SOURCE_CHANGED [] AFTER_AGGREGATE ec9547769b215b576d3b1456010b5f2df6348f333523215cc0f8d5df897406bb
+sha256:e1a5708cb8934ae40eac0763b68617fce7d1b2fe43edd43e64bbd755c7a649fa user=node
+
+[exited with code 0]

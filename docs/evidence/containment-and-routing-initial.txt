@@ -1,0 +1,283 @@
+﹣ 受信原生完整模式允许原临时Git工作树及MSYS，默认模式保留产物边界 (0.900949ms) # SKIP
+✔ 原生Host已授权完整模式在恢复绑定时保留，原生逐次模式与只读模式均不改历史身份 (822.847728ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":694,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":100,"aborted":false}
+ℹ Permission recovery phases: [{"phase":"begin","elapsedMs":0},{"phase":"host-ready","elapsedMs":694},{"phase":"created","elapsedMs":752},{"phase":"disposed","elapsedMs":765},{"phase":"resumed","elapsedMs":785},{"phase":"readback","elapsedMs":793}]
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":28,"aborted":false}
+✖ official execution artifact binding makes native FS and shell share one root and reject outside writes (268.295953ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":243,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (1725.546621ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1701,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (1513.981734ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1491,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✖ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (540.615104ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":513,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":27,"aborted":false}
+✔ real native completed task retires its definitively unsent start confirmation without re-dispatch (890.847868ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":865,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":22,"aborted":false}
+✔ 脚本化普通回复目标只选固定输入真人来源 (1.798631ms)
+✔ 来源语义戳在首次Topic完成后落账，不等待同群其他判断 (688.618411ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":5,"aborted":false}
+ℹ {"metric":"settled-topic-to-source-projection","delayMs":3,"slowTopicStillBlocked":true}
+ℹ {"lifecyclePhase":"business","elapsedMs":669,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ completed task catalogue stays within the tool budget and advances by returned entries without losing tasks (2.120447ms)
+✔ task catalogue continuation carries the exact normalized query and current snapshot identity (1.038315ms)
+✔ native request-bound review and Topic reads accept empty args while routing never guesses a Topic (156.683917ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":40,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":106,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ native revised Topic supplies current linked Task reads without rescanning the catalogue (432.143963ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":65,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":357,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ native task context reports invalid arguments and reads explicit archived identity (473.948414ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":70,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":387,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":17,"aborted":false}
+✔ native batch followup reopens each original completed task and session once from one coordination topic (814.304717ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":75,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":703,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":36,"aborted":false}
+✔ 普通回复显式多收件人贯穿原生通知格式化 quoted=true (222.978583ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":165,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":14,"aborted":false}
+✔ 普通回复显式多收件人贯穿原生通知格式化 quoted=false (233.769768ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":56,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":165,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 旧回复冻结恢复 prepared (140.273655ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":126,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ 旧回复冻结恢复 projected (115.416146ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":102,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ 旧回复冻结恢复 revision-conflict (118.19948ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":110,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ 旧回复冻结恢复 taskIds-conflict (97.48719ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":89,"aborted":false}
+ℹ 恢复测试结束阶段：assert recovery
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":7,"aborted":false}
+✔ native task service preserves Topic routing, task association, ignored input and recovery idempotency (801.093157ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":787,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ Topic外发标识在接纳前被拒绝，原轮修改后只创建一项任务且保留业务编号链接 (236.484141ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":182,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ native Topic handoff keeps the explicit requester as task and completion notification owner (335.733602ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":283,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ replan fences an execution claim before commit (145.658992ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":132,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ replan fences an execution claim after commit (187.245826ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":177,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ concurrent same-topic revision is busy while a different task makes progress (201.209318ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":188,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ failed old-drain ends its timing and releases admission for later work (209.563231ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":197,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ Web material failure recovers once and retries the same request without repeating work (244.040991ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":234,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ Web replan blocks a new Owner while old-generation cancellation is in flight (160.372397ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":136,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":23,"aborted":false}
+✔ Web replan drains the old Owner without waiting for the new Owner (241.447997ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":179,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✔ native Web Topic edits reject stale requirement and control revisions without changing task or topics (232.080878ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":178,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":13,"aborted":false}
+✖ business notices 423–424 and named owners remain in the original Topic without assistant tasks or replies (15061.563235ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":40,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":15001,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":20,"aborted":false}
+✔ scripted native aggregation keeps list requirements, screenshot delivery and later acceptance in one Topic and Task (638.271626ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":578,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ scripted native routing checks scope before reusing an old Topic and reconsiders a new technical matter (244.839527ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":194,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ scripted native routing permits distinct delivery goals on the same page (151.777217ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":101,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ native Topic context accepts a requirement that only mentions notification recipients (262.195178ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":213,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ native proposal prompt preserves original authorization and asks without claiming task execution (143.826011ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":88,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":12,"aborted":false}
+✔ native Web reopen preserves task identity and rejects stale input; HTTP retry is idempotent (271.910182ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":0,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":256,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":16,"aborted":false}
+✔ 协调暂停时混合消息拒绝协调来源，普通话题Host重试仍按原版本完成 (231.782825ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":221,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ 明确交办的澄清沿真实通知账送达；待判来源不结清，冷恢复不重问且自身回声不解锁 (586.464823ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":401,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":176,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ 普通讨论不追问 (112.29437ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":57,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ 未声明需要澄清的交办不自动发问 (95.483821ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":43,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ 其他助手通知不追问 (94.813947ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":38,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ 正文仅提到助手不算向助手交办 (97.490546ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":41,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":47,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ 发送许可前 epoch 已恢复时拒绝旧澄清，不产生网络发送 (97.397755ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":42,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":46,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":10,"aborted":false}
+✔ 只有冻结出箱尚未prepare的冷启动沿原正文恢复一次，不重调模型 (150.851826ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":49,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":94,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ 未知澄清发送冷恢复仅只读核验，hold继续等待且不重发 (155.151083ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":50,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":97,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":7,"aborted":false}
+✔ 明确交办cc前缀不被无@元数据误否决 (93.663567ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":39,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ 明确交办带前置空白的点名不被无@元数据误否决 (121.331849ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":68,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":9,"aborted":false}
+✔ 范围声明只更新屏障CAS，不改变澄清通知身份：发送前=false (138.779524ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":45,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":82,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":11,"aborted":false}
+✔ 范围声明只更新屏障CAS，不改变澄清通知身份：发送前=true (134.777792ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":46,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":80,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":8,"aborted":false}
+✔ 本地 API 恢复待判后真实调度并收束原始来源 (645.913446ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":624,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":18,"aborted":false}
+ℹ tests 53
+ℹ suites 0
+ℹ pass 47
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 33363.762239
+
+✖ failing tests:
+
+test at test/task-artifact-scope-native.test.js:144:1
+✖ official execution artifact binding makes native FS and shell share one root and reject outside writes (268.295953ms)
+  AssertionError [ERR_ASSERTION]: [{"name":"bash","sessionId":"execution-session-task-a","result":{"isError":true,"error":{"message":"sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.","info":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"content":[{"type":"text","text":"Error: sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access."}]}},{"name":"bash","sessionId":"execution-session-task-a","result":{"isError":true,"error":{"message":"sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access.","info":{"name":"SandboxUnavailableError","code":"SANDBOX_UNAVAILABLE"}},"content":[{"type":"text","text":"Error: sandbox mode \"workspace-write\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap or run a Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure the ACL restricted-token runner can start (Windows) — otherwise switch the consumer to danger-full-access."}]}}]
+      at file:///workspace/night-bot/test/task-artifact-scope-native.test.js:185:14 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-artifact-scope-native.test.js:245:42
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=false (1725.546621ms)
+  Error: ENOENT: no such file or directory, open '/workspace/night-bot/.artifact-stages-3HYAd5/tasks/retained-artifacts/outputs/stage-1-shell.txt'
+      at async open (node:internal/fs/promises:697:25)
+      at async readFile (node:internal/fs/promises:1348:14) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/workspace/night-bot/.artifact-stages-3HYAd5/tasks/retained-artifacts/outputs/stage-1-shell.txt',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-artifact-scope-native.test.js:245:42
+✖ one Task Owner preserves retained scope across three ordered executions: denyOutside=true (1513.981734ms)
+  Error: ENOENT: no such file or directory, open '/workspace/night-bot/.artifact-stages-hzW72c/tasks/retained-artifacts/outputs/stage-1-shell.txt'
+      at async open (node:internal/fs/promises:697:25)
+      at async readFile (node:internal/fs/promises:1348:14) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/workspace/night-bot/.artifact-stages-hzW72c/tasks/retained-artifacts/outputs/stage-1-shell.txt',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-artifact-scope-native.test.js:343:1
+✖ explicit Task reopen preserves original Owner, retained artifact scope and prior files while old daily dispatch stays retired (540.615104ms)
+  AssertionError [ERR_ASSERTION]: [{"alertId":"operation:operation-afd2e0fa95125b049d1f857cde46b627a5b23e63","taskId":"A","fingerprint":"unknown-operation:operation-afd2e0fa95125b049d1f857cde46b627a5b23e63","detail":"执行效果未知，已阻止后续操作；须核实原始效果。","status":"active","lastSeenAt":"2026-11-04T16:02:40.805Z"}]
+  + actual - expected
+
+  + 'active'
+  - 'completed'
+
+      at file:///workspace/night-bot/test/task-artifact-scope-native.test.js:382:12 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'active',
+    expected: 'completed',
+    operator: 'strictEqual',
+    diff: 'simple',
+    lifecyclePhase: 'business'
+  }
+
+test at test/task-topic-routing-native.test.js:1073:1
+✖ business notices 423–424 and named owners remain in the original Topic without assistant tasks or replies (15061.563235ms)
+  Error: lifecycle business exceeded 15000ms
+      at expired (file:///workspace/night-bot/test/fixtures/lifecycle-stages.js:24:41)
+      at Timeout.<anonymous> (file:///workspace/night-bot/test/fixtures/lifecycle-stages.js:28:50)
+      at listOnTimeout (node:internal/timers:635:17)
+      at process.processTimers (node:internal/timers:571:7) {
+    code: 'TEST_STAGE_TIMEOUT',
+    phase: 'business',
+    lifecyclePhase: 'business'
+  }

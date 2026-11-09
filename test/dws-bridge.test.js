@@ -1,0 +1,1387 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { EventEmitter } from 'node:events'
+
+for (const mode of ['event', 'history']) test(`任务会话技术申请通过私聊${mode}引用恢复，拒绝群/作者/引用错配`, async () => {
+  const delivery = { messageId: 'operator-notice', conversationId: 'self-private', senderActorId: 'operator' }
+  const request = { taskSessionRequest: true, audience: 'operator', status: 'waiting-reply', createdAt: '2026-10-14T10:00:00Z',
+    notification: { state: 'delivered', delivery } }
+  const replies = [], errors = [], answered = Promise.withResolvers(), done = Promise.withResolvers()
+  let onReply
+  const runtime = { listGroups: () => [], listAuthorizationRequests: async () => [request],
+    onGroupSubscribed: () => () => {}, onOutboxAppended: () => () => {},
+    async respondTaskPrivateHumanReply(message) { replies.push(message); request.status = 'answered'; answered.resolve() } }
+  const message = { groupId: 'self-private', conversationId: 'self-private', messageId: 'private-reply', senderOpenDingTalkId: 'operator',
+    text: 'Host能力已经恢复，请继续原任务', quotedMessage: { messageId: 'operator-notice' }, createTime: '2026-10-14 18:01:00' }
+  const adapter = {
+    startHumanReplySubscription(callback) { onReply = callback; return { lifecycle: new EventEmitter(), done: done.promise, stop() { done.resolve() } } },
+    async readConversation() { return mode === 'history' ? [{ ...message, senderOpenDingTalkId: 'requester' }, message] : [] },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { errors.push(error.message) } },
+    humanPollIntervalMs: mode === 'history' ? 10 : 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  try {
+    if (mode === 'event') {
+      const event = value => ({ conversation_id: value.groupId, message_id: value.messageId, content: value.text,
+        sender_open_dingtalk_id: value.senderOpenDingTalkId, quotedMessage: value.quotedMessage, create_time: value.createTime })
+      for (const change of [{ groupId: 'business-group', conversationId: 'business-group' }, { senderOpenDingTalkId: 'requester' }, { quotedMessage: { messageId: 'other' } }])
+        await onReply(event({ ...message, ...change }))
+      assert.equal(replies.length, 0)
+      await onReply(event(message)); await onReply(event(message))
+    }
+    let timer
+    try { await Promise.race([answered.promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('private_reply_timeout')), 1000) })]) }
+    finally { clearTimeout(timer) }
+    assert.equal(replies.length, 1)
+    assert.equal(replies[0].senderOpenDingTalkId, 'operator')
+    assert.equal(replies[0].groupId, 'self-private')
+    assert.deepEqual(errors, [])
+  } finally { await stop() }
+})
+import { readFile } from 'node:fs/promises'
+import { normalizeHistoryMessage, parseRedlineDecision, parseWorkflowApprovalDecision, startDwsBridge } from '../packages/dingtalk-core/dws-bridge.js'
+
+test('新消息工作流接收不等待图片连接器，保留资源交材料节点', async () => {
+  let onEvent, received, downloads = 0
+  const runtime = {
+    listGroups: () => [{ groupId: 'workflow-group', messages: [] }],
+    isWorkflowGroup: id => id === 'workflow-group',
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { received = message; return { accepted: true } },
+  }
+  const adapter = {
+    startGroupSubscription(_id, callback) { onEvent = callback; return { lifecycle: new EventEmitter(), done: Promise.resolve(), stop() {} } },
+    async loadMessageImages() { downloads++; throw new Error('连接器不可用不能阻止接收') },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, groupBackfillIntervalMs: 0, humanPollIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  try {
+    onEvent({ conversation_id: 'workflow-group', message_id: 'workflow-image', content: '根据附件整理材料', event_time: '2026-09-23T12:00:00Z' })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(received.messageId, 'workflow-image')
+    assert.equal(downloads, 0)
+  } finally { await stop() }
+})
+
+test('本人消息增量补拉默认每10秒执行并使用30秒重叠窗口', async () => {
+  const source = await readFile(new URL('../packages/dingtalk-core/dws-bridge.js', import.meta.url), 'utf8')
+  assert.match(source, /groupBackfillIntervalMs = 10_000/)
+  assert.match(source, /groupBackfillOverlapMs = 30_000/)
+})
+
+test('DWS历史消息senderId映射为持久化发送人ID', () => {
+  assert.equal(normalizeHistoryMessage({ conversationId: 'cid-a', messageId: 'm1', text: 'hello', createTime: '2026-08-24 10:00:00', sender: '张三', senderId: 'sender-1' }, 'cid-a').senderOpenDingTalkId, 'sender-1')
+})
+
+test('DWS历史消息保留引用消息上下文', () => {
+  const normalized = normalizeHistoryMessage({ messageId: 'm-quote', text: 'reply', createTime: '2026-08-24 10:22:32', sender: '孙鹏', senderOpenDingTalkId: 'sender-1', quotedMessage: { messageId: 'm-source', sender: '向春梅', createTime: '2026-08-24 09:32:53', content: 'quoted text' } }, 'cid-a')
+  assert.deepEqual(normalized.quotedMessage, { messageId: 'm-source', senderName: '向春梅', occurredAt: '2026-08-24 09:32:53', content: 'quoted text' })
+})
+
+test('DWS bridge 不额外查询引用详情并只保留事件已有的引用 ID', async () => {
+  let onEvent
+  let received
+  const runtime = {
+    listGroups: () => [{ groupId: 'cid-a', messages: [] }],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { received = message; return { duplicate: false } },
+  }
+  const adapter = {
+    startGroupSubscription(_groupId, callback) { onEvent = callback; return { lifecycle: new EventEmitter(), done: Promise.resolve(undefined), stop() {} } },
+    async readGroup() { throw new Error('引用消息不得触发额外查询') },
+    async loadMessageImages() { return { images: [], mediaUnavailable: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} } })
+  onEvent({ conversation_id: 'cid-a', message_id: 'm-reply', content: 'reply', event_time: '2026-08-25T05:32:10Z', quotedMessage: { messageId: 'm-source', content: '提示用户需要保存 @485388732 前面缓存草稿' } })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(received.quotedMessage.messageId, 'm-source')
+  await stop()
+})
+
+test('DWS历史图片消息保留可下载资源引用', () => {
+  const normalized = normalizeHistoryMessage({ messageId: 'm-image', text: '[图片消息](mediaId=media-1)', resourceRefs: [{ type: 'mediaId', resourceId: 'media-1' }] }, 'cid-a')
+  assert.deepEqual(normalized.resourceRefs, [{ type: 'mediaId', resourceId: 'media-1' }])
+})
+
+test('文件卡片事件恢复 fileId，历史投影保留同名资源及下载元数据', async () => {
+  const base = '[文件] 验收 报告.xlsx fileId: file-1'
+  let callback, received
+  const runtime = { listGroups: () => [{ groupId: 'g', messages: [] }], isWorkflowGroup: () => true,
+    onGroupSubscribed: () => () => {}, onOutboxAppended: () => () => {},
+    async ingest(message) { received = message; return { accepted: true } } }
+  const stop = startDwsBridge({ runtime, adapter: { startGroupSubscription(_id, handler) { callback = handler; return { done: Promise.resolve(), stop() {} } } },
+    logger: { warn(error) { throw error } }, groupBackfillIntervalMs: 0, humanPollIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  try {
+    await callback({ conversation_id: 'g', message_id: 'm', content: `${base} 注意：如需下载使用dws drive download命令下载` })
+    assert.deepEqual(received.resourceRefs, [{ type: 'fileId', resourceId: 'file-1', name: '验收 报告.xlsx' }])
+    const resource = { ...received.resourceRefs[0], download: { ready: true } }
+    assert.deepEqual(normalizeHistoryMessage({ messageId: 'm', text: base, resourceRefs: [resource] }, 'g').resourceRefs, [resource])
+    assert.equal(normalizeHistoryMessage({ messageId: 'plain', text: `${base} 追加业务要求` }, 'g').resourceRefs, undefined)
+  } finally { await stop() }
+})
+
+test('补拉完成只证明可靠接收，未完成的 Topic 不阻塞同批后续消息', async () => {
+  const group = { groupId: 'g', messages: [], topics: [{ topicId: 't', revision: 2, processedRevision: 0 }] }
+  const received = [], snapshots = []
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { received.push(message.messageId); group.messages.push({ ...message, routingStatus: 'pending' }); return { duplicate: false, accepted: true } },
+  }
+  const adapter = {
+    startGroupSubscription() { return { done: Promise.resolve(), stop() {} } },
+    async readGroupRange() { return { complete: true, messages: [{ messageId: 'a', text: '慢话题' }, { messageId: 'b', text: '独立话题' }] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, onHealthChange: (value) => snapshots.push(value) })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(received, ['a', 'b'])
+  assert.equal(group.topics[0].processedRevision, 0)
+  assert.equal(snapshots.at(-1).groups[0].backfill.state, 'ok')
+  assert.equal(snapshots.at(-1).groups[0].backfill.completionScope, 'durable-receipt')
+  await stop()
+})
+
+test('已接收消息补齐发送人和引用时仍交给 Runtime 生成事实版本', async () => {
+  let callback
+  const received = []
+  const group = { groupId: 'g', messages: [{ messageId: 'm', text: '原文', agentDeliveryStatus: 'delivered' }], outbox: [] }
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { received.push(message); return { duplicate: true, enriched: true } },
+  }
+  const adapter = { startGroupSubscription(_id, handler) { callback = handler; return { done: Promise.resolve(), stop() {} } } }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await callback({ conversation_id: 'g', message_id: 'm', content: '原文', sender: '张三', sender_open_dingtalk_id: 'sender', quotedMessage: { messageId: 'source', content: '问题' } })
+  assert.equal(received.length, 1)
+  assert.equal(received[0].senderOpenDingTalkId, 'sender')
+  assert.equal(received[0].quotedMessage.messageId, 'source')
+  await stop()
+})
+
+test('已归类图片恢复可读取后清除不可读原因并重新交给 Runtime', async () => {
+  let callback, accepted
+  const group = { groupId: 'g', messages: [{ messageId: 'm', text: '[图片消息](mediaId=r)', imageRefs: [], mediaUnavailable: ['下载失败'], agentDeliveryStatus: 'delivered' }], outbox: [] }
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { accepted = message; return { duplicate: true, enriched: true } },
+  }
+  const adapter = {
+    startGroupSubscription(_id, handler) { callback = handler; return { done: Promise.resolve(), stop() {} } },
+    async loadMessageImages() { return { images: [{ type: 'image', image: 'fixture-image' }], mediaUnavailable: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await callback({ conversation_id: 'g', message_id: 'm', content: '[图片消息](mediaId=r)' })
+  assert.deepEqual(accepted.mediaUnavailable, [])
+  assert.equal(accepted.images.length, 1)
+  await stop()
+})
+
+test('普通Outbox替换通过DWS精确撤回并确认消息已不存在', async () => {
+  let recaller
+  const recalled = []
+  let present = false
+  const runtime = {
+    listGroups: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    registerGroupMessageRecaller(handler) { recaller = handler; return () => { recaller = undefined } },
+  }
+  const adapter = {
+    async recallMessage(messageId) { recalled.push(messageId) },
+    async findOutboundMessage(_groupId, outbound) { return present ? { messageId: outbound.deliveredMessageId } : undefined },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  const outbound = { outboundId: 'out-old', deliveredMessageId: 'sent-old', text: '旧确认' }
+  await recaller({ groupId: 'cid-a', messageId: 'sent-old', outbound })
+  present = true
+  await assert.rejects(recaller({ groupId: 'cid-a', messageId: 'sent-old', outbound }), /dws_recall_readback_message_present:sent-old/)
+  assert.deepEqual(recalled, ['sent-old', 'sent-old'])
+  await stop()
+})
+
+test('已落盘Outbox准备失败不发送，完成准备后先送达再推进独立撤回', async () => {
+  let listener, ready = false, sent = false
+  const sequence = [], warnings = []
+  const outbound = { outboundId: 'out-replacement', sourceMessageId: 'topic-decision:d1', text: '合并后的确认', status: 'pending', readbackRequired: true, replacesOutboundIds: ['out-old'] }
+  const group = { groupId: 'g', messages: [], outbox: [outbound] }
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended(handler) { listener = handler; return () => undefined },
+    async prepareOutbound({ outbound: value }) { assert.equal(value.outboundId, 'out-replacement'); sequence.push('prepare'); if (!ready) throw new Error('replacement_storage_failed') },
+    async acknowledge() { sequence.push('ack'); outbound.status = 'sent' },
+    async completeOutboundReplacement() { sequence.push('recall'); assert.equal(outbound.status, 'sent') },
+  }
+  const adapter = {
+    startGroupSubscription() { return { done: Promise.resolve(), stop() {} } },
+    async readGroup() { sequence.push('read'); return { complete: true, messages: sent ? [{ messageId: 'delivered', text: outbound.text }] : [] } },
+    async sendGroup() { sequence.push('send'); sent = true; return { deliveryStatus: 'success' } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { warnings.push(error.message) } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(sequence, ['prepare'])
+  assert.equal(outbound.status, 'pending')
+  ready = true
+  await listener({ groupId: 'g', outbound })
+  assert.deepEqual(sequence, ['prepare', 'prepare', 'read', 'send', 'read', 'ack', 'recall'])
+  assert.equal(outbound.status, 'sent')
+  assert.deepEqual(warnings, ['replacement_storage_failed'])
+  await stop()
+})
+
+test('DWS bridge 区分发送前、发送中和回读失败，保留 pending 与错误观测', async (t) => {
+  for (const failedPhase of ['preflight', 'send', 'postflight']) await t.test(failedPhase, async () => {
+    let listener, reads = 0, sends = 0, acknowledgements = 0
+    const attempts = [], warnings = []
+    const outbound = { outboundId: 'out-test', text: '测试消息', status: 'pending', readbackRequired: true }
+    const runtime = {
+      listGroups: () => [],
+      onGroupSubscribed() { return () => undefined },
+      onOutboxAppended(handler) { listener = handler; return () => undefined },
+      async recordOutboundDeliveryAttempt(value) { attempts.push(value) },
+      async acknowledge() { acknowledgements += 1; outbound.status = 'sent' },
+    }
+    const denied = () => { const error = new Error('CLI_ORG_NOT_AUTHORIZED'); error.serverErrorCode = 'CLI_ORG_NOT_AUTHORIZED'; throw error }
+    const adapter = {
+      async readGroup() { reads += 1; if (failedPhase === 'preflight' || (failedPhase === 'postflight' && reads > 1)) denied(); return { complete: true, messages: [] } },
+      async sendGroup() { sends += 1; if (failedPhase === 'send') denied(); return {} },
+    }
+    const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { warnings.push(error.message) } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+    try {
+      await listener({ groupId: 'g', outbound })
+      assert.equal(outbound.status, 'pending')
+      assert.equal(acknowledgements, 0)
+      assert.equal(sends, failedPhase === 'preflight' ? 0 : 1)
+      assert.deepEqual(attempts, [{ groupId: 'g', outboundId: 'out-test', reason: `${failedPhase}_failed`, ...(failedPhase === 'send' ? { blocked: true } : {}), error: 'CLI_ORG_NOT_AUTHORIZED' }])
+      assert.deepEqual(warnings, ['CLI_ORG_NOT_AUTHORIZED'])
+    } finally { await stop() }
+  })
+})
+
+test('明确服务端拒绝停止同意图发送，不让周期或追加监听重复外发', async () => {
+  const outbound = { outboundId: 'denied', sourceMessageId: 'denied', text: 'denied', status: 'pending', readbackRequired: true }
+  const group = { groupId: 'g', outbox: [outbound] }
+  let listener, sends = 0
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed: () => () => {}, onOutboxAppended(fn) { listener = fn; return () => {} },
+    async recordOutboundDeliveryAttempt(value) { if (value.blocked) outbound.deliveryBlockedAt = new Date().toISOString() },
+  }
+  const adapter = {
+    startGroupSubscription: () => ({ done: Promise.resolve(), stop() {} }),
+    readGroup: async () => ({ complete: true, messages: [] }),
+    async sendGroup() { sends++; const error = new Error('rejected'); error.serverErrorCode = '1001'; throw error },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 5 })
+  await new Promise(resolve => setTimeout(resolve, 25))
+  await listener({ groupId: 'g', outbound: { ...outbound, deliveryBlockedAt: undefined } })
+  await stop()
+  assert.equal(sends, 1)
+  assert.equal(outbound.status, 'pending')
+  assert.ok(outbound.deliveryBlockedAt)
+})
+
+test('DWS bridge 将稳定事件交给 resident 并在真实回读后确认 outbox', async () => {
+  let onEvent
+  let stopped = false
+  let subscribedListener
+  let outboxListener
+  const acknowledged = []
+  const runtime = {
+    listGroups: () => [{ groupId: 'cid-a' }],
+    onGroupSubscribed(listener) { subscribedListener = listener; return () => { subscribedListener = undefined } },
+    onOutboxAppended(listener) { outboxListener = listener; return () => { outboxListener = undefined } },
+    async ingest(message) {
+      assert.deepEqual(message, { groupId: 'cid-a', messageId: 'm1', text: 'hello', occurredAt: '2026-08-24T05:00:00.000Z', rawOccurredAt: '2026-08-24T13:00:00+08:00', senderName: '张三', senderOpenDingTalkId: 'od-user-1' })
+      await outboxListener({ groupId: 'cid-a', outbound: { outboundId: 'out-1', sourceMessageId: 'm1', text: 'reply' } })
+      return { duplicate: false, group: { messages: [{ messageId: 'm1' }], outbox: [{ outboundId: 'out-1', sourceMessageId: 'm1', text: 'reply' }] } }
+    },
+    async acknowledge(value) { acknowledged.push(value) },
+  }
+  let reads = 0
+  const adapter = {
+    startGroupSubscription(groupId, callback) {
+      assert.equal(groupId, 'cid-a')
+      onEvent = callback
+      return { lifecycle: new EventEmitter(), done: Promise.resolve(), stop() { stopped = true } }
+    },
+    async readGroup() { reads += 1; return { complete: true, messages: reads === 1 ? [] : [{ messageId: 'sent-id', text: 'reply' }] } },
+    async sendGroup() { return { deliveryStatus: 'success' } },
+  }
+  const warnings = []
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn: (error) => warnings.push(error) } })
+  onEvent({ conversation_id: 'cid-a', message_id: 'm1', content: 'hello', event_time: '2026-08-24T13:00:00+08:00', sender: '张三', sender_open_dingtalk_id: 'od-user-1' })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(acknowledged, [{ groupId: 'cid-a', outboundId: 'out-1', deliveredMessageId: 'sent-id' }])
+  assert.equal(warnings.length, 0)
+  assert.equal(typeof subscribedListener, 'function')
+  await stop()
+  assert.equal(stopped, true)
+})
+
+test('主会话回复首次无法确认时会绑定同一outbox持续回读并避免重复发送', async () => {
+  const outbound = { outboundId: 'out-reply', sourceMessageId: 'msg-source', text: '主会话回复', status: 'pending', readbackRequired: true }
+  const group = { groupId: 'cid-a', messages: [], outbox: [outbound] }
+  const acknowledged = []
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async acknowledge(value) { acknowledged.push(value); outbound.status = 'sent' },
+  }
+  let reads = 0
+  let sends = 0
+  const adapter = {
+    startGroupSubscription() { return { lifecycle: new EventEmitter(), done: Promise.resolve(undefined), stop() {} } },
+    async readGroup() {
+      reads += 1
+      return { complete: true, messages: reads >= 2 ? [{ messageId: 'sent-id', text: outbound.text }] : [] }
+    },
+    async sendGroup() { sends += 1; return { deliveryStatus: 'unknown' } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 5 })
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  await stop()
+  assert.deepEqual(acknowledged, [{ groupId: 'cid-a', outboundId: 'out-reply', deliveredMessageId: 'sent-id' }])
+  assert.equal(sends, 1, '重试前的历史回读命中后不得重复发送')
+})
+
+test('启动时先建立 live consumer 再补拉，重叠消息由持久 ingress 去重', async () => {
+  const order = []
+  const ingested = []
+  let lifecycle
+  const runtime = {
+    listGroups: () => [{ groupId: 'cid-a', messages: [{ messageId: 'old' }] }],
+    onGroupSubscribed() { return () => undefined },
+    onOutboxAppended() { return () => undefined },
+    async ingest(message) { ingested.push(message.messageId); return { duplicate: message.messageId === 'overlap' } },
+    async acknowledge() {},
+  }
+  const adapter = {
+    startGroupSubscription() { lifecycle = new EventEmitter(); order.push('live'); return { lifecycle, ready: new Promise(() => undefined), done: Promise.resolve(), stop() {} } },
+    async readGroupRange() { order.push('backfill'); return { complete: true, hasMore: false, failedCount: 0, messages: [{ messageId: 'overlap', conversationId: 'cid-a', text: 'same', createTime: '2026-08-24T13:00:00+08:00', sender: '李四', senderOpenDingTalkId: 'od-user-2' }] } },
+  }
+  const warnings = []
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn: (error) => warnings.push(error) } })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(order, ['live'])
+  lifecycle.emit('ready')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(order, ['live', 'backfill'])
+  assert.deepEqual(ingested, ['overlap'])
+  assert.equal(warnings.length, 0)
+  await stop()
+})
+
+test('定时增量补拉可接收本人消息并在附件处理前按持久 messageId 去重', async () => {
+  const group = { groupId: 'cid-a', messages: [{ messageId: 'old', occurredAt: '2026-08-25T05:00:00Z' }] }
+  const ingested = []
+  let mediaLoads = 0
+  let rangeReads = 0
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { ingested.push(message.messageId); group.messages.push(message); return { duplicate: false } },
+  }
+  const adapter = {
+    startGroupSubscription() { return { lifecycle: new EventEmitter(), done: Promise.resolve(undefined), stop() {} } },
+    async readGroup() { return { complete: true, messages: [] } },
+    async readGroupRange(_groupId, range) {
+      rangeReads += 1
+      const latest = Math.max(...group.messages.map((message) => new Date(message.occurredAt).valueOf()))
+      assert.equal(new Date(range.start).valueOf(), latest - 30_000)
+      return { complete: true, messages: [{ conversationId: 'cid-a', messageId: 'm-self', text: '本人消息', createTime: '2026-08-25T05:01:00Z', sender: '当前登录人', senderId: 'self-id' }] }
+    },
+    async loadMessageImages() { mediaLoads += 1; return { images: [], mediaUnavailable: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 5 })
+  await new Promise((resolve) => setTimeout(resolve, 60))
+  await stop()
+  assert.ok(rangeReads >= 2)
+  assert.deepEqual(ingested, ['m-self'])
+  assert.equal(mediaLoads, 1)
+})
+
+test('定时增量补拉按已持久化发送消息ID过滤Agent本人账号消息', async () => {
+  const group = { groupId: 'cid-a', messages: [], outbox: [{ outboundId: 'out-1', sourceMessageId: 'source-1', text: 'Agent回复', status: 'sent', deliveredMessageId: 'm-agent' }] }
+  const ingested = []
+  let imageLoads = 0
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    async ingest(message) { ingested.push(message.messageId); return { duplicate: false } },
+  }
+  let backfill
+  let rangeReads = 0
+  const adapter = {
+    startGroupSubscription() { const lifecycle = new EventEmitter(); return { lifecycle, ready: Promise.resolve(), done: Promise.resolve(), stop() {} } },
+    async readGroup() { return { complete: true, messages: [] } },
+    async readGroupRange() {
+      rangeReads += 1
+      if (rangeReads === 1) return { complete: true, hasMore: false, failedCount: 0, messages: [] }
+      return { complete: true, messages: [
+        { conversationId: 'cid-a', messageId: 'm-agent', text: 'Agent回复', createTime: '2026-08-25T05:01:00Z', sender: '当前登录人' },
+        { conversationId: 'cid-a', messageId: 'm-human', text: '本人手工消息', createTime: '2026-08-25T05:01:01Z', sender: '当前登录人' },
+      ] }
+    },
+    async loadMessageImages() { imageLoads += 1; return { images: [], mediaUnavailable: [] } },
+  }
+  const originalSetInterval = globalThis.setInterval
+  globalThis.setInterval = (callback) => { backfill = callback; return { unref() {} } }
+  try {
+    const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 1, outboxRetryIntervalMs: 0 })
+    await backfill()
+    assert.deepEqual(ingested, ['m-human'])
+    assert.equal(imageLoads, 1, 'Agent发送消息应在附件下载前过滤')
+    await stop()
+  } finally {
+    globalThis.setInterval = originalSetInterval
+  }
+})
+
+test('增量补拉过滤已投递及判断失败消息，只重试插话前失败项和投递新项', async () => {
+  const group = { groupId: 'cid-a', messages: [
+    { messageId: 'm-delivered', occurredAt: '2026-08-27T04:00:00Z', senderName: '甲', agentDeliveryStatus: 'delivered' },
+    { messageId: 'm-decision-failed', occurredAt: '2026-08-27T04:00:00Z', senderName: '甲', agentDeliveryStatus: 'decision-failed' },
+    { messageId: 'm-failed', occurredAt: '2026-08-27T04:00:01Z', agentDeliveryStatus: 'failed' },
+  ], outbox: [] }
+  const ingested = []
+  let rangeReads = 0
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group,
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { ingested.push(message.messageId); return { duplicate: message.messageId === 'm-failed' } },
+  }
+  const adapter = {
+    startGroupSubscription() { return { lifecycle: new EventEmitter(), done: Promise.resolve(undefined), stop() {} } },
+    async readGroup() { return { complete: true, messages: [] } },
+    async readGroupRange() {
+      rangeReads += 1
+      return { complete: true, messages: [
+        { conversationId: 'cid-a', messageId: 'm-delivered', text: '已投递', createTime: '2026-08-27T04:00:00Z', sender: '甲' },
+        { conversationId: 'cid-a', messageId: 'm-decision-failed', text: '判断失败', createTime: '2026-08-27T04:00:00Z', sender: '甲' },
+        { conversationId: 'cid-a', messageId: 'm-failed', text: '失败重试', createTime: '2026-08-27T04:00:01Z', sender: '乙' },
+        { conversationId: 'cid-a', messageId: 'm-new', text: '新消息', createTime: '2026-08-27T04:00:02Z', sender: '丙' },
+      ] }
+    },
+    async loadMessageImages() { return { images: [], mediaUnavailable: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 5 })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  await stop()
+  assert.ok(rangeReads > 0)
+  assert.ok(!ingested.includes('m-delivered'))
+  assert.ok(!ingested.includes('m-decision-failed'))
+  assert.ok(ingested.includes('m-failed'))
+  assert.ok(ingested.includes('m-new'))
+})
+
+test('补拉命中当前账号的短引用pending outbox时确认发送并修正历史判断失败', async () => {
+  const outbound = { outboundId: 'out-pending', sourceMessageId: 'source-1', text: '这个事项是否需要我处理？\n\n- 小小鹏代回', status: 'pending', replyToMessageId: 'quoted-source' }
+  const message = { messageId: 'm-agent', text: '@当前用户  这个事项是否需要我处理？\n- 小小鹏代回', senderName: '当前登录人', quotedMessage: { messageId: 'quoted-source' }, agentDeliveryStatus: 'decision-failed' }
+  const group = { groupId: 'cid-a', messages: [message], outbox: [outbound] }
+  const acknowledged = [], marked = [], ingested = []
+  let backfill
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    async acknowledge(value) { acknowledged.push(value); Object.assign(outbound, { status: 'sent', deliveredMessageId: value.deliveredMessageId }) },
+    async markMessageAgentDelivery(value) { marked.push(value); message.agentDeliveryStatus = value.status },
+    async ingest(value) { ingested.push(value.messageId); return { duplicate: false } },
+  }
+  const adapter = {
+    startGroupSubscription() { return { lifecycle: new EventEmitter(), ready: Promise.resolve(), done: Promise.resolve(), stop() {} } },
+    async readGroup() { return { complete: true, messages: [] } },
+    async readGroupRange() { return { complete: true, messages: [{ conversationId: 'cid-a', messageId: 'm-agent', text: '@当前用户  这个事项是否需要我处理？\n- 小小鹏代回', quotedMessage: { messageId: 'quoted-source' }, createTime: '2026-08-26T03:28:22Z', sender: '当前登录人' }] } },
+  }
+  const originalSetInterval = globalThis.setInterval
+  globalThis.setInterval = (callback) => { backfill = callback; return { unref() {} } }
+  try {
+    const stop = startDwsBridge({ runtime, adapter, logger: { warn(error) { throw error } }, currentDwsUserName: '当前登录人', humanPollIntervalMs: 0, groupBackfillIntervalMs: 1, outboxRetryIntervalMs: 0 })
+    await backfill()
+    assert.deepEqual(acknowledged, [{ groupId: 'cid-a', outboundId: 'out-pending', deliveredMessageId: 'm-agent' }])
+    assert.deepEqual(marked, [{ groupId: 'cid-a', messageId: 'm-agent', status: 'skipped' }])
+    assert.deepEqual(ingested, [])
+    await stop()
+  } finally {
+    globalThis.setInterval = originalSetInterval
+  }
+})
+
+test('DWS consumer 异常退出只记录活动 Task 告警', async () => {
+  let resolveDone
+  const done = new Promise((resolve) => { resolveDone = resolve })
+  const alerts = []
+  const runtime = {
+    listGroups: () => [{ groupId: 'cid-a', messages: [] }],
+    onGroupSubscribed() { return () => undefined },
+    onOutboxAppended() { return () => undefined },
+    listTasks: () => [{ taskId: 'task-running', groupId: 'cid-a', state: 'running' }, { taskId: 'task-done', groupId: 'cid-a', state: 'completed' }],
+    async reportCarrierIssue(value) { alerts.push(value) },
+  }
+  const adapter = { startGroupSubscription() { return { lifecycle: new EventEmitter(), done, stop() {} } } }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} } })
+  resolveDone({ exitCode: 7, signal: null })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(alerts, [{ taskId: 'task-running', fingerprint: 'dws-consumer-exit:7:none', detail: 'DWS consumer exited for group cid-a' }])
+  await stop()
+})
+
+test('没有订阅群时 bridge 也会发布初始健康状态', async () => {
+  let health
+  const runtime = {
+    listGroups: () => [], listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+  }
+  const stop = startDwsBridge({ runtime, adapter: {}, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, onHealthChange: (value) => { health = value } })
+  assert.deepEqual(health, { ingress: { paused: false, recovering: false }, healthy: true, groups: [], humanReplies: { state: 'disabled', generation: 0, reconnect: { attempt: 0 } } })
+  await stop()
+})
+
+test('无活动Task时 DWS listener 退出也会重连并恢复入站健康', async () => {
+  const group = { groupId: 'cid-a', messages: [], outbox: [] }
+  const listeners = []
+  const received = []
+  const warnings = []
+  let health
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { received.push(message.messageId); group.messages.push(message); return { duplicate: false } },
+  }
+  const adapter = {
+    startGroupSubscription(_groupId, callback) {
+      const lifecycle = new EventEmitter()
+      let resolveDone
+      const done = new Promise((resolve) => { resolveDone = resolve })
+      const listener = { callback, lifecycle, resolveDone, stopped: false }
+      listener.subscription = { lifecycle, ready: new Promise(() => undefined), done, stop() { listener.stopped = true; resolveDone(undefined) } }
+      listeners.push(listener)
+      return listener.subscription
+    },
+    async readGroupRange() { return { complete: true, hasMore: false, failedCount: 0, messages: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn: (error) => warnings.push(error) }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0, onHealthChange: (value) => { health = value } })
+  await new Promise((resolve) => setImmediate(resolve))
+  listeners[0].lifecycle.emit('ready')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(health.healthy, true)
+
+  listeners[0].resolveDone({ exitCode: 7, signal: null })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(listeners.length, 2)
+  assert.equal(health.healthy, false)
+  assert.equal(health.groups[0].listener.state, 'starting')
+
+  listeners[1].lifecycle.emit('ready')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(health.healthy, true)
+  await listeners[1].callback({ conversation_id: 'cid-a', message_id: 'm-after-reconnect', content: '恢复后消息', event_time: '2026-09-02T10:00:00Z', sender: '李四', sender_open_dingtalk_id: 'od-user-2' })
+  assert.deepEqual(received, ['m-after-reconnect'])
+
+  await stop()
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(listeners.length, 2, 'stop 后不得复活新的 listener')
+  assert.equal(warnings.length, 0)
+})
+
+test('DWS listener 的 done 拒绝会重连，并在告警落盘后关闭 carrier 告警', async () => {
+  const group = { groupId: 'cid-a', messages: [] }
+  const listeners = []
+  const reports = []
+  const resolutions = []
+  let releaseReport
+  let health
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [{ taskId: 'task-running', groupId: 'cid-a', state: 'running' }],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async reportCarrierIssue(value) { reports.push(value); await new Promise((resolve) => { releaseReport = resolve }) },
+    async resolveGroupCarrierIssues(value) { resolutions.push(value) },
+  }
+  const adapter = {
+    startGroupSubscription() {
+      const lifecycle = new EventEmitter()
+      let resolveDone
+      let rejectDone
+      const done = new Promise((resolve, reject) => { resolveDone = resolve; rejectDone = reject })
+      const listener = { lifecycle, rejectDone, stopped: false }
+      listener.subscription = { lifecycle, ready: new Promise(() => undefined), done, stop() { listener.stopped = true; resolveDone(undefined) } }
+      listeners.push(listener)
+      return listener.subscription
+    },
+    async readGroupRange() { return { complete: true, hasMore: false, failedCount: 0, messages: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0, onHealthChange: (value) => { health = value } })
+  await new Promise((resolve) => setImmediate(resolve))
+  listeners[0].lifecycle.emit('ready')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(health.healthy, true)
+  resolutions.length = 0
+
+  listeners[0].rejectDone(new Error('dws_spawn_pipe_closed'))
+  for (let attempts = 0; attempts < 20 && listeners.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.equal(listeners.length, 2)
+  for (let attempts = 0; attempts < 20 && reports.length === 0; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.equal(reports.length, 1)
+  listeners[1].lifecycle.emit('ready')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(resolutions.length, 0, '恢复必须等待失败告警落盘，避免先恢复后记录告警')
+  releaseReport()
+  for (let attempts = 0; attempts < 20 && resolutions.length === 0; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.deepEqual(resolutions, [{ groupId: 'cid-a' }])
+  assert.equal(health.healthy, true)
+  await stop()
+})
+
+test('listener 在旧恢复执行中再次失败时，新 carrier 告警保持活动', async () => {
+  const group = { groupId: 'cid-a', messages: [] }
+  const listeners = []
+  const events = []
+  let alertStatus = 'active'
+  let releaseResolution
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [{ taskId: 'task-running', groupId: 'cid-a', state: 'running' }],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async resolveGroupCarrierIssues() { events.push('resolve'); await new Promise((resolve) => { releaseResolution = resolve }); alertStatus = 'resolved' },
+    async reportCarrierIssue() { events.push('report'); alertStatus = 'active' },
+  }
+  const adapter = {
+    startGroupSubscription() {
+      const lifecycle = new EventEmitter()
+      let resolveDone
+      const done = new Promise((resolve) => { resolveDone = resolve })
+      const listener = { lifecycle, resolveDone, stopped: false }
+      listener.subscription = { lifecycle, ready: new Promise(() => undefined), done, stop() { listener.stopped = true; resolveDone(undefined) } }
+      listeners.push(listener)
+      return listener.subscription
+    },
+    async readGroupRange() { return { complete: true, hasMore: false, failedCount: 0, messages: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0 })
+  listeners[0].lifecycle.emit('ready')
+  for (let attempts = 0; attempts < 20 && events.length === 0; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.deepEqual(events, ['resolve'])
+
+  listeners[0].resolveDone({ exitCode: 7, signal: null })
+  for (let attempts = 0; attempts < 20 && listeners.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.equal(events.includes('report'), false)
+  releaseResolution()
+  for (let attempts = 0; attempts < 20 && events.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.deepEqual(events, ['resolve', 'report'])
+  assert.equal(alertStatus, 'active')
+  await stop()
+})
+
+test('listener 未收到 ready 时超时重连，旧 generation 不得阻塞新订阅', async () => {
+  const group = { groupId: 'cid-a', messages: [] }
+  const listeners = []
+  const received = []
+  let health
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { received.push(message.messageId); return { duplicate: false } },
+  }
+  const adapter = {
+    startGroupSubscription(_groupId, callback) {
+      const lifecycle = new EventEmitter()
+      let resolveDone
+      const done = new Promise((resolve) => { resolveDone = resolve })
+      const listener = { callback, lifecycle, resolveDone, stopped: false }
+      listener.subscription = { lifecycle, ready: new Promise(() => undefined), done, stop() { listener.stopped = true; resolveDone(undefined) } }
+      listeners.push(listener)
+      return listener.subscription
+    },
+    async readGroupRange() { return { complete: true, hasMore: false, failedCount: 0, messages: [] } },
+  }
+  const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 30, onHealthChange: (value) => { health = value } })
+  for (let attempts = 0; attempts < 40 && listeners.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+  assert.equal(listeners.length, 2)
+  assert.equal(listeners[0].stopped, true)
+  listeners[0].lifecycle.emit('ready')
+  await listeners[0].callback({ conversation_id: 'cid-a', message_id: 'm-old-generation', content: '旧订阅事件', event_time: '2026-09-02T10:00:00Z', sender: '甲' })
+  assert.equal(health.healthy, false)
+  assert.deepEqual(received, [])
+  listeners[1].lifecycle.emit('ready')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(health.healthy, true)
+  await stop()
+})
+
+test('单群补拉失败不会饿死其他群，下一轮成功后恢复健康', async () => {
+  const groups = [{ groupId: 'cid-a', messages: [] }, { groupId: 'cid-b', messages: [] }]
+  let aFails = true
+  let backfill
+  let health
+  const ingested = []
+  const runtime = {
+    listGroups: () => groups,
+    getGroup: (groupId) => groups.find((group) => group.groupId === groupId),
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { ingested.push(message.messageId); this.getGroup(message.groupId).messages.push(message); return { duplicate: false } },
+  }
+  const adapter = {
+    startGroupSubscription() { return { lifecycle: new EventEmitter(), done: Promise.resolve(undefined), stop() {} } },
+    async readGroupRange(groupId) {
+      if (groupId === 'cid-a' && aFails) throw new Error('dws_backfill_partial:cid-a')
+      if (groupId === 'cid-a') return { complete: true, hasMore: false, failedCount: 0, messages: [{ conversationId: 'cid-a', messageId: 'm-a', text: 'A恢复', createTime: '2026-09-02T10:01:00Z', sender: '甲' }] }
+      return { complete: true, hasMore: false, failedCount: 0, messages: groups[1].messages.length === 0 ? [{ conversationId: 'cid-b', messageId: 'm-b', text: 'B正常', createTime: '2026-09-02T10:01:01Z', sender: '乙' }] : [] }
+    },
+  }
+  const originalSetInterval = globalThis.setInterval
+  globalThis.setInterval = (callback) => { backfill = callback; return { unref() {} } }
+  try {
+    const stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 1, outboxRetryIntervalMs: 0, onHealthChange: (value) => { health = value } })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.ok(ingested.includes('m-b'))
+    assert.equal(health.healthy, false)
+    assert.equal(health.groups.find((item) => item.groupId === 'cid-a').backfill.state, 'failed')
+
+    aFails = false
+    await backfill()
+    assert.ok(ingested.includes('m-a'))
+    assert.equal(health.healthy, true)
+    await stop()
+  } finally {
+    globalThis.setInterval = originalSetInterval
+  }
+})
+
+test('慢回补不被周期 tick 连环排队，重连补偿保留断线范围且完成前降级', async () => {
+  const group = { groupId: 'cid-a', messages: [{ messageId: 'before-gap', occurredAt: '2026-09-02T08:00:00Z', agentDeliveryStatus: 'delivered' }], outbox: [] }
+  const listeners = []
+  let backfill
+  let health
+  let rangeReads = 0
+  let resolveInitial
+  let resolveRecovery
+  const ranges = []
+  const carrierResolutions = []
+  const runtime = {
+    listGroups: () => [group], getGroup: () => group, listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async ingest(message) { group.messages.push(message); return { duplicate: false } },
+    async resolveGroupCarrierIssues({ groupId }) { carrierResolutions.push(groupId) },
+  }
+  const adapter = {
+    startGroupSubscription(_groupId, callback) {
+      const lifecycle = new EventEmitter()
+      let resolveDone
+      const done = new Promise((resolve) => { resolveDone = resolve })
+      const listener = { lifecycle, resolveDone, callback }
+      listener.subscription = { lifecycle, ready: new Promise(() => undefined), done, stop() { resolveDone(undefined) } }
+      listeners.push(listener)
+      return listener.subscription
+    },
+    async readGroupRange(_groupId, range) {
+      rangeReads += 1
+      ranges.push(range)
+      if (rangeReads === 1) return new Promise((resolve) => { resolveInitial = resolve })
+      if (rangeReads === 2) return new Promise((resolve) => { resolveRecovery = resolve })
+      return { complete: true, hasMore: false, failedCount: 0, messages: [] }
+    },
+  }
+  const originalSetInterval = globalThis.setInterval
+  globalThis.setInterval = (callback) => { backfill = callback; return { unref() {} } }
+  let stop
+  try {
+    stop = startDwsBridge({ runtime, adapter, logger: { warn() {} }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 1, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0, onHealthChange: (value) => { health = value } })
+    listeners[0].lifecycle.emit('ready')
+    for (let attempts = 0; attempts < 20 && rangeReads < 1; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+    assert.equal(rangeReads, 1)
+
+    const overlappingTicks = [backfill(), backfill()]
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(rangeReads, 1, '周期 tick 复用慢回补，不得持续追加整轮读取')
+
+    listeners[0].resolveDone({ exitCode: 7, signal: null })
+    for (let attempts = 0; attempts < 20 && listeners.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+    assert.equal(listeners.length, 2)
+    listeners[1].lifecycle.emit('ready')
+    await listeners[1].callback({ conversation_id: 'cid-a', message_id: 'after-gap', content: '重连后的实时消息', event_time: '2026-09-02T10:10:00Z', sender: '甲' })
+    resolveInitial({ complete: true, hasMore: false, failedCount: 0, messages: [] })
+    await Promise.all(overlappingTicks)
+    for (let attempts = 0; attempts < 20 && rangeReads < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+    assert.equal(rangeReads, 2, '重连 ready 只追加一次补偿读取')
+    assert.ok(new Date(ranges[1].start).valueOf() <= new Date(ranges[0].start).valueOf(), '恢复读取不得被重连后的实时水位推进而跨过断线窗口')
+    assert.equal(health.healthy, false)
+    assert.equal(health.groups[0].backfill.state, 'running')
+    assert.equal(health.groups[0].backfill.inProgress, true)
+    assert.equal(health.groups[0].backfill.recoveryRequired, true)
+    assert.deepEqual(carrierResolutions, [], '恢复补偿未完成时不得提前关闭 DWS carrier 告警')
+
+    const recoveryTicks = [backfill(), backfill(), backfill()]
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(rangeReads, 2, '恢复补偿缓慢时周期 tick 仍不得续排新的完整读取')
+    resolveRecovery({ complete: true, hasMore: false, failedCount: 0, messages: [] })
+    await Promise.all(recoveryTicks)
+    for (let attempts = 0; attempts < 20 && health.groups[0].backfill.inProgress !== undefined; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+    assert.equal(health.healthy, true)
+    assert.equal(health.groups[0].backfill.inProgress, undefined)
+    assert.equal(health.groups[0].backfill.recoveryRequired, undefined)
+    for (let attempts = 0; attempts < 20 && carrierResolutions.length === 0; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+    assert.deepEqual(carrierResolutions, ['cid-a'], '恢复补偿成功后才关闭 DWS carrier 告警')
+
+    await backfill()
+    assert.equal(rangeReads, 3, '空闲后下一次周期回补仍会正常执行')
+  } finally {
+    resolveInitial?.({ complete: true, hasMore: false, failedCount: 0, messages: [] })
+    resolveRecovery?.({ complete: true, hasMore: false, failedCount: 0, messages: [] })
+    if (stop !== undefined) await stop()
+    globalThis.setInterval = originalSetInterval
+  }
+})
+
+test('本人私聊阻塞不设超时并只用引用消息恢复原Task', async () => {
+  const task = { taskId: 'task-human', state: 'waiting', waitingKind: 'human-intervention', objective: 'fix issue', waitingReason: 'disk full', result: { risk: '写入可能失败并遗留不完整产物', evidence: ['0 bytes free'], attemptedActions: ['removed task temp'] }, humanBlocker: { requestId: 'blocker-1', category: 'disk', requestedAction: 'confirm cleanup plan', status: 'pending-send' } }
+  let blockerListener
+  const resolutions = []
+  const runtime = {
+    listGroups: () => [], listTasks: () => [task],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    onHumanBlockerRequested(listener) { blockerListener = listener; return () => { blockerListener = undefined } },
+    async recordHumanBlockerDelivery(value) { Object.assign(task.humanBlocker, { status: 'waiting-reply', conversationId: value.conversationId, messageId: value.messageId, openTaskId: value.openTaskId, formatVersion: value.formatVersion, sentAt: new Date().toISOString() }) },
+    async resolveHumanBlocker(value) { resolutions.push(value); task.state = 'running' },
+  }
+  let reads = 0
+  const adapter = {
+    async sendSelf(request) { assert.match(request.text, /【风险】\n写入可能失败并遗留不完整产物/); return { openTaskId: 'open-task-1', conversationId: 'self-conversation', messageId: 'blocker-message' } },
+    async readConversation() { reads += 1; return reads === 1 ? [] : [{ messageId: 'reply-message', text: '按方案清理', quotedMessage: { messageId: 'blocker-message' } }] },
+  }
+  const warnings = []
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn: (error) => warnings.push(error) }, humanUserId: 'self-user', humanPollIntervalMs: 0 })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(task.humanBlocker.status, 'waiting-reply')
+  assert.equal(task.state, 'waiting', '没有引用回复时必须无限期保持等待')
+  blockerListener()
+  await new Promise((resolve) => setImmediate(resolve))
+  blockerListener()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(resolutions.length, 1)
+  assert.equal(resolutions[0].quotedMessageId, 'blocker-message')
+  assert.equal(resolutions[0].decision, 'approved')
+  assert.equal(warnings.length, 0)
+  await stop()
+})
+
+test('个人IM实时引用回复精确恢复redline审批且重复事件幂等', async () => {
+  const task = { taskId: 'task-live-redline', state: 'waiting', waitingKind: 'human-intervention', humanBlocker: { requestId: 'blocker-live', category: 'redline', status: 'waiting-reply', conversationId: 'self-cid', messageId: 'request-msg', sentAt: '2026-09-02T07:00:00Z', formatVersion: 3 } }
+  const resolutions = []
+  let onHumanReply, resolveDone, stopped = false, health
+  const done = new Promise((resolve) => { resolveDone = resolve })
+  const runtime = {
+    listGroups: () => [], listTasks: () => [task],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    async resolveHumanBlocker(value) { resolutions.push(value); task.state = 'running' },
+  }
+  const adapter = {
+    startHumanReplySubscription(callback) { onHumanReply = callback; return { lifecycle: new EventEmitter(), done, stop() { stopped = true; resolveDone(undefined) } } },
+    async findHumanBlockerExchange() { return undefined }, async readConversation() { return [] },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, onHealthChange: (value) => { health = value } })
+  assert.equal(health.humanReplies.state, 'ready')
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-wrong', content: '批准', quotedMessage: { messageId: 'another-request' } })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-approved', content: '按限定范围执行', quotedMessage: { messageId: 'request-msg' } })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-approved', content: '按限定范围执行', quotedMessage: { messageId: 'request-msg' } })
+
+  assert.deepEqual(resolutions, [{ taskId: 'task-live-redline', requestId: 'blocker-live', quotedMessageId: 'request-msg', replyMessageId: 'reply-approved', reply: '按限定范围执行', decision: 'approved' }])
+  await stop()
+  assert.equal(stopped, true)
+})
+
+test('非redline个人引用回复按处置意见恢复并补齐approved decision', async () => {
+  const task = { taskId: 'task-live-help', state: 'waiting', waitingKind: 'human-intervention', humanBlocker: { requestId: 'blocker-help', category: 'network', status: 'waiting-reply', conversationId: 'self-cid', messageId: 'request-help', sentAt: '2026-09-02T07:00:00Z', formatVersion: 3 } }
+  const resolutions = []
+  let onHumanReply, resolveDone
+  const done = new Promise((resolve) => { resolveDone = resolve })
+  const runtime = {
+    listGroups: () => [], listTasks: () => [task],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    async resolveHumanBlocker(value) { resolutions.push(value); task.state = 'running' },
+  }
+  const adapter = {
+    startHumanReplySubscription(callback) { onHumanReply = callback; return { lifecycle: new EventEmitter(), done, stop() { resolveDone(undefined) } } },
+    async findHumanBlockerExchange() { return undefined }, async readConversation() { return [] },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await onHumanReply({ sender_open_dingtalk_id:'human',conversation_id: 'self-cid', message_id: 'reply-help', content: '网络已经恢复，请继续', quotedMessage: { messageId: 'request-help' } })
+
+  assert.equal(resolutions[0].decision, 'approved')
+  assert.equal(resolutions[0].reply, '网络已经恢复，请继续')
+  await stop()
+})
+
+test('个人IM审批监听异常退出后重连并恢复健康', async () => {
+  const listeners = []
+  let health
+  const runtime = {
+    listGroups: () => [], listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+  }
+  const adapter = {
+    startHumanReplySubscription(callback) {
+      let resolveDone
+      const done = new Promise((resolve) => { resolveDone = resolve })
+      const listener = { callback, resolveDone, stopped: false }
+      listener.subscription = { lifecycle: new EventEmitter(), done, stop() { listener.stopped = true; resolveDone(undefined) } }
+      listeners.push(listener)
+      return listener.subscription
+    },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0, listenerReconnectBaseMs: 0, listenerReconnectMaxMs: 0, listenerReadyTimeoutMs: 0, onHealthChange: (value) => { health = value } })
+  assert.equal(health.healthy, true)
+  listeners[0].resolveDone({ exitCode: 9, signal: null })
+  for (let attempts = 0; attempts < 20 && listeners.length < 2; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 2))
+
+  assert.equal(listeners.length, 2)
+  assert.equal(health.healthy, true)
+  assert.equal(health.humanReplies.state, 'ready')
+  assert.equal(health.humanReplies.generation, 2)
+  assert.equal(health.humanReplies.reconnect.attempt, 0)
+  await stop()
+  assert.equal(listeners[1].stopped, true)
+})
+
+test('阻塞单已真实发送并获引用批准时自动补记投递并恢复原Task', async () => {
+  const task = { taskId: 'task-human', state: 'waiting', waitingKind: 'human-intervention', objective: 'release', waitingReason: 'redline', result: {}, humanBlocker: { requestId: 'blocker-1', category: 'redline', requestedAction: 'approve release', status: 'pending-send' } }
+  const deliveries = [], resolutions = []
+  const runtime = {
+    listGroups: () => [], listTasks: () => [task],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    async recordHumanBlockerDelivery(value) { deliveries.push(value); Object.assign(task.humanBlocker, { status: 'waiting-reply', conversationId: value.conversationId, messageId: value.messageId, formatVersion: value.formatVersion }) },
+    async resolveHumanBlocker(value) { resolutions.push(value); task.state = 'running' },
+  }
+  const adapter = {
+    async findHumanBlockerExchange() { return { conversationId: 'self-cid', messageId: 'request-msg', sentAt: '2026-08-25 15:25:22', replyMessageId: 'reply-msg', reply: '批准' } },
+    async sendSelf() { throw new Error('已有申请时不得重复发送') },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await new Promise((resolve) => setImmediate(resolve))
+  await stop()
+  assert.equal(deliveries.length, 1)
+  assert.equal(deliveries[0].sentAt, '2026-08-25 15:25:22')
+  assert.deepEqual(resolutions, [{ taskId: 'task-human', requestId: 'blocker-1', quotedMessageId: 'request-msg', replyMessageId: 'reply-msg', reply: '批准', decision: 'approved' }])
+  assert.equal(task.state, 'running')
+})
+
+test('已补记错误恢复时间的阻塞单会改用原申请时间回读批准', async () => {
+  const task = { taskId: 'task-human', state: 'waiting', waitingKind: 'human-intervention', objective: 'release', waitingReason: 'redline', result: {}, humanBlocker: { requestId: 'blocker-1', category: 'redline', requestedAction: 'approve release', status: 'waiting-reply', conversationId: 'self-cid', messageId: 'request-msg', sentAt: '2026-08-25T07:36:02Z', formatVersion: 3 } }
+  const deliveries = [], resolutions = []
+  const runtime = {
+    listGroups: () => [], listTasks: () => [task],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    async recordHumanBlockerDelivery(value) { deliveries.push(value); task.humanBlocker.sentAt = value.sentAt },
+    async resolveHumanBlocker(value) { resolutions.push(value); task.state = 'running' },
+  }
+  const adapter = {
+    async findHumanBlockerExchange() { return { conversationId: 'self-cid', messageId: 'request-msg', sentAt: '2026-08-25 15:25:22' } },
+    async readConversation(_conversationId, range) {
+      assert.equal(range.start, '2026-08-25 15:25:22')
+      return [{ messageId: 'reply-msg', text: '批准', quotedMessage: { messageId: 'request-msg' } }]
+    },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await new Promise((resolve) => setImmediate(resolve))
+  await stop()
+  assert.equal(deliveries[0].sentAt, '2026-08-25 15:25:22')
+  assert.equal(resolutions[0].decision, 'approved')
+  assert.equal(task.state, 'running')
+})
+
+test('原生插件审批只接受明确批准或拒绝，普通文字保持未决', () => {
+  for (const text of ['批准', '同意', '批准。', '同意！']) assert.equal(parseWorkflowApprovalDecision(text), 'approved')
+  for (const text of ['拒绝：风险过高', '不同意', '不批准']) assert.equal(parseWorkflowApprovalDecision(text), 'rejected')
+  for (const text of ['好的', '按限定范围执行', '已看', '', '同意不同意再讨论', '同意：限定范围', '同意，但是不要执行', '批准，先别动生产', '批准？']) assert.equal(parseWorkflowApprovalDecision(text), undefined)
+})
+
+function nativeApprovalFixture() {
+  const state = { notice: undefined, sends: 0, calls: [], warnings: [], replies: [], answered: false, confirm: true }
+  const runtime = {
+    listGroups: () => [], listTasks: () => [],
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined },
+    async listAuthorizationRequests() { return [{ kind: 'workflow-approval', requestId: 'approval-native', taskId: 'task-native', status: state.answered ? 'answered' : 'pending-send', text: '冻结审批内容', notification: state.notice }] },
+    async getWorkflowApprovalNotice() { return structuredClone(state.notice) },
+    async prepareWorkflowApprovalNotice({ requestId, recipientUserId, text }) {
+      state.notice = { requestId, recipientUserId, text, approverActorId: 'human-actor', digest: 'digest-native', createdAt: '2026-10-02T01:00:00Z', status: 'prepared', delivery: {} }
+      state.calls.push('prepare'); return { notice: structuredClone(state.notice) }
+    },
+    async beginWorkflowApprovalNotice() { state.calls.push('begin'); state.notice.status = 'unknown'; return { dispatchEligible: true, notice: structuredClone(state.notice) } },
+    async recordWorkflowApprovalNoticeReceipt({ openTaskId }) { state.calls.push('receipt'); state.notice.delivery.openTaskId = openTaskId },
+    async recordWorkflowApprovalNoticeDelivery(delivery) { state.calls.push('delivery'); state.notice.delivery = delivery; state.notice.status = state.answered ? 'recall-required' : 'waiting-reply' },
+    async recordWorkflowApprovalNoticeRecall() { state.calls.push('recalled'); state.notice.status = 'recalled' },
+    async decideWorkflowApprovalReply(reply) { state.calls.push('decision'); state.replies.push(reply); state.answered = true },
+  }
+  const adapter = {
+    async sendSelfIntent(request) { assert.equal(state.notice.status, 'unknown'); assert.equal(request.userId, 'human-user'); assert.equal(request.idempotencyKey, 'workflow-approval:digest-native'); state.calls.push('send'); state.sends++; return { openTaskId: 'open-native' } },
+    async confirmSelfDelivery({ openTaskId, text }) { assert.equal(state.notice.delivery.openTaskId, openTaskId); assert.equal(text, state.notice.text); state.calls.push('confirm'); return state.confirm ? { openTaskId, conversationId: 'private-native', messageId: 'notice-native', sentAt: '2026-10-02T01:00:01Z' } : undefined },
+    async findWorkflowApprovalNotice() { state.calls.push('search'); return undefined },
+    async readConversation() { return state.history ?? [] },
+  }
+  const run = async () => {
+    const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { state.warnings.push(error) } }, humanUserId: 'human-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+    await new Promise(resolve => setImmediate(resolve)); await stop()
+  }
+  return { state, runtime, adapter, run }
+}
+
+test('异步原生审批列表无需旧humanBlocker，先登记intent和receipt再确认发送', async () => {
+  const { state, run } = nativeApprovalFixture()
+  await run()
+  assert.deepEqual(state.calls, ['prepare', 'begin', 'send', 'receipt', 'confirm', 'delivery'])
+  assert.equal(state.notice.status, 'waiting-reply')
+  assert.equal(state.sends, 1)
+  assert.deepEqual(state.warnings, [])
+})
+
+test('重启恢复unknown只查持久receipt，不重发且使用冻结正文', async () => {
+  const { state, runtime, run } = nativeApprovalFixture()
+  state.confirm = false; await run()
+  assert.equal(state.notice.status, 'unknown')
+  runtime.listAuthorizationRequests = async () => [{ kind: 'workflow-approval', requestId: 'approval-native', status: 'sending-unknown', text: '变化后的正文' }]
+  state.confirm = true; await run()
+  assert.equal(state.sends, 1)
+  assert.equal(state.notice.text, '冻结审批内容')
+  assert.equal(state.notice.status, 'waiting-reply')
+  assert.deepEqual(state.warnings, [])
+})
+
+test('发送回执丢失保持unknown，不能权威找到原消息时不盲重发', async () => {
+  const { state, adapter, run } = nativeApprovalFixture()
+  adapter.sendSelfIntent = async () => { state.sends++; throw new Error('network receipt lost') }
+  await run(); await run()
+  assert.equal(state.sends, 1)
+  assert.equal(state.notice.status, 'unknown')
+  assert.equal(state.notice.delivery.openTaskId, undefined)
+  assert.equal(state.calls.at(-1), 'search')
+})
+
+test('本地发送预检失败不领取发送，不进入unknown', async () => {
+  const { state, adapter, run } = nativeApprovalFixture()
+  adapter.compileSelfSend = () => { throw new Error('dws_self_send_uuid_too_long') }
+  await run()
+  assert.deepEqual(state.calls, ['prepare'])
+  assert.equal(state.notice.status, 'prepared')
+  assert.equal(state.sends, 0)
+})
+
+test('权威确定未发送的负回执落原生unsent，普通错误仍unknown', async () => {
+  const { state, runtime, adapter, run } = nativeApprovalFixture()
+  const proof = { kind: 'dws-uuid-rejected', idempotencyKey: 'legacy-key' }
+  runtime.recordWorkflowApprovalNoticeUnsent = async value => { assert.deepEqual(value.proof, proof); state.calls.push('unsent'); state.notice.status = 'prepared' }
+  adapter.sendSelfIntent = async () => { throw Object.assign(new Error('exact server rejection'), { knownNotSent: true, proof }) }
+  await run()
+  assert.equal(state.notice.status, 'prepared')
+  assert.equal(state.calls.at(-1), 'unsent')
+})
+
+test('私聊历史只采纳真实审批人对原通知的明确引用批复', async () => {
+  const { state, run } = nativeApprovalFixture()
+  const reply = (messageId, text, actor, quote = 'notice-native') => ({ messageId, conversationId: 'private-native', text, senderOpenDingTalkId: actor, quotedMessage: { messageId: quote } })
+  state.history = [reply('ordinary', '好的', 'human-actor'), reply('wrong-actor', '批准', 'stranger'), reply('wrong-quote', '批准', 'human-actor', 'another-notice'), reply('explicit', '拒绝：范围不清', 'human-actor')]
+  await run()
+  assert.deepEqual(state.replies, [{ requestId: 'approval-native', decision: 'rejected', comment: '拒绝：范围不清', eventId: 'explicit', conversationId: 'private-native', quoteMessageId: 'notice-native', actorId: 'human-actor' }])
+  assert.deepEqual(state.warnings, [])
+})
+
+test('原生发送时Web已批复，确认真实消息后撤回并回读才登记撤回', async () => {
+  const { state, adapter, run } = nativeApprovalFixture()
+  const send = adapter.sendSelfIntent
+  adapter.sendSelfIntent = async request => { const receipt = await send(request); state.answered = true; return receipt }
+  state.history = [{ messageId: 'notice-native', conversationId: 'private-native', text: '冻结审批内容' }]
+  adapter.recallMessage = async messageId => { assert.equal(messageId, 'notice-native'); state.calls.push('recall'); state.history = []; return { recallStatus: 'SUCCESS' } }
+  await run()
+  assert.equal(state.notice.status, 'recalled')
+  assert.deepEqual(state.calls.slice(-3), ['delivery', 'recall', 'recalled'])
+  assert.equal(state.sends, 1)
+  assert.deepEqual(state.warnings, [])
+})
+
+test('redline 阻塞将非空引用回复视为批复并保留明确拒绝语义', () => {
+  assert.equal(parseRedlineDecision('批准'), 'approved')
+  assert.equal(parseRedlineDecision('批准：做好回滚机制'), 'approved')
+  assert.equal(parseRedlineDecision('拒绝，风险过高'), 'rejected')
+  assert.equal(parseRedlineDecision('不批准：风险过高'), 'rejected')
+  assert.equal(parseRedlineDecision('按限定范围执行'), 'approved')
+  assert.equal(parseRedlineDecision(''), undefined)
+})
+
+test('Web在DWS发送过程中批复时撤回已落地申请并停止等待', async () => {
+  const task = { taskId: 'task-race', state: 'waiting', waitingKind: 'human-intervention', objective: '发布受控版本', waitingReason: '等待授权', result: { risk: '生产风险', evidence: ['范围已核验'], attemptedActions: [] }, humanBlocker: { requestId: 'blocker-race', category: 'redline', requestedAction: '仅发布版本v1', status: 'pending-send' } }
+  let decisionListener
+  const recalled = []
+  const runtime = {
+    listGroups: () => [], listTasks: () => [task], getTask: () => task,
+    listAuthorizationRequests: () => [{ ...task.humanBlocker, taskId: task.taskId }],
+    getAuthorizationRequest: () => ({ ...task.humanBlocker, taskId: task.taskId }),
+    onGroupSubscribed() { return () => undefined }, onOutboxAppended() { return () => undefined }, onHumanBlockerRequested() { return () => undefined },
+    onAuthorizationDecided(listener) { decisionListener = listener; return () => { decisionListener = undefined } },
+    async recordHumanBlockerDelivery(value) { Object.assign(task.humanBlocker, { messageId: value.messageId, conversationId: value.conversationId, status: task.humanBlocker.status === 'answered' ? 'answered' : 'waiting-reply', recallStatus: task.humanBlocker.status === 'answered' ? 'pending' : undefined }) },
+    async recordAuthorizationRecall({ status }) { task.humanBlocker.recallStatus = status },
+  }
+  const adapter = {
+    async findHumanBlockerExchange() { return undefined },
+    async sendSelf() {
+      Object.assign(task, { state: 'running', waitingKind: undefined })
+      Object.assign(task.humanBlocker, { status: 'answered', decision: 'approved', decisionSource: 'web', reply: '页面批准' })
+      decisionListener({ authorization: { ...task.humanBlocker, taskId: task.taskId }, task })
+      return { openTaskId: 'open-race', conversationId: 'self-race', messageId: 'message-race' }
+    },
+    async recallMessage(messageId) { recalled.push(messageId); return { recalled: true } },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['operator','requester','human','approver','human-actor','od-user-1','od-user-2','sender','self-user','human-user'],runtime, adapter, logger: { warn(error) { throw error } }, humanUserId: 'self-user', humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  await new Promise((resolve) => setImmediate(resolve))
+  await stop()
+  assert.deepEqual(recalled, ['message-race'])
+  assert.equal(task.humanBlocker.recallStatus, 'recalled')
+})
+
+test('钉钉文档严格URL归一化，去query按nodeId去重并拒绝伪造域路径', async () => {
+  const { normalizeResourceRefs, parseDingtalkDocUrl } = await import('../packages/dingtalk-core/dws-bridge.js')
+  const url = 'https://alidocs.dingtalk.com/i/nodes/Node_123-ab'
+  assert.deepEqual(normalizeResourceRefs([{ type: 'url', resourceId: url + '?from=card' }], `${url}?from=text ${url}#heading`), [{ type: 'dingtalkDoc', resourceId: 'Node_123-ab' }])
+  for (const invalid of ['http://alidocs.dingtalk.com/i/nodes/id', 'https://alidocs.dingtalk.com.evil.test/i/nodes/id', 'https://user@alidocs.dingtalk.com/i/nodes/id', 'https://alidocs.dingtalk.com:444/i/nodes/id', 'https://alidocs.dingtalk.com/i/nodes/id/extra', 'https://alidocs.dingtalk.com/i/nodes/%2Fetc']) assert.equal(parseDingtalkDocUrl(invalid), null)
+  assert.deepEqual(normalizeResourceRefs([{ type: 'dingtalkDoc', resourceId: 'https://evil.test' }], 'https://example.com/manual'), [])
+})
+
+
+test('task-session补拉保留本人手动消息和DWS发送标记，由统一入口识别通知', async () => {
+  let callback
+  const received = []
+  const runtime = { isTaskSessionMode: () => true, taskSessionNotifications: true,
+    listGroups: () => [{ groupId: 'g', messages: [] }],
+    onGroupSubscribed: () => () => {}, onOutboxAppended: () => () => {},
+    async ingest(message) { received.push(message); return { accepted: true } },
+  }
+  const stop = startDwsBridge({ privatePeerIds:['human-actor'],runtime, humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0,
+    adapter: { startGroupSubscription(_group, handler) { callback = handler; return { stop() {} } },
+      async readGroupRange() { return { complete: true, messages: [
+        { messageId: 'manual', senderId: 'self', text: '本人要求', createTime: '2026-10-14T00:00:00Z' },
+        { messageId: 'notification', senderId: 'self', text: '通知', messageAiSendFlag: 'DWS', createTime: '2026-10-14T00:00:01Z' },
+      ] } },
+    },
+  })
+  try {
+    for (let i = 0; i < 20 && received.length < 2; i++) await new Promise(resolve => setImmediate(resolve))
+    assert.equal(received.find(message => message.messageId === 'manual').senderOpenDingTalkId, 'self')
+    assert.equal(received.find(message => message.messageId === 'manual').messageAiSendFlag, undefined)
+    assert.equal(received.find(message => message.messageId === 'notification').messageAiSendFlag, 'DWS')
+    await callback({ conversation_id: 'g', message_id: 'event', content: '通知事件', sender_id: 'self', message_ai_send_flag: 'DWS' })
+    assert.equal(received.find(message => message.messageId === 'event').messageAiSendFlag, 'DWS')
+  } finally { await stop() }
+})
+
+// 真实桥生命周期 + 可控 DWS 传输；不连接线上群。
+function ingressFixture({ initial = { paused: false }, readRange, saveError = false, receive, save, groupBackfillIntervalMs = 5 } = {}) {
+  const groups = [{ groupId: 'pause-group', messages: [] }], subscriptions = [], reads = [], accepted = [], warnings = []
+  let persisted = structuredClone(initial), health, subscribed
+  const runtime = {
+    listGroups: () => groups, getGroup: id => groups.find(group => group.groupId === id),
+    isTaskSessionMode: () => true,
+    async ingest(message) {
+      if (receive) await receive(message)
+      if (!accepted.some(item => item.messageId === message.messageId)) {
+        accepted.push(message); groups.find(group => group.groupId === message.groupId).messages.push(message)
+      }
+      return { accepted: true }
+    },
+    onGroupSubscribed(fn) { subscribed = fn; return () => {} }, onOutboxAppended: () => () => {},
+  }
+  const adapter = {
+    startGroupSubscription(groupId, callback) {
+      const done = Promise.withResolvers(), ready = Promise.withResolvers()
+      const subscription = { groupId, callback, ready: ready.promise, done: done.promise, stop() { done.resolve({ exitCode: 0 }) } }
+      subscription.markReady = () => ready.resolve()
+      subscriptions.push(subscription)
+      return subscription
+    },
+    async readGroupRange(groupId, range) {
+      reads.push({ groupId, ...range })
+      return readRange ? readRange(groupId, range, reads.length) : { complete: true, messages: [] }
+    },
+  }
+  const stop = startDwsBridge({ runtime, adapter, ingressState: initial,
+    async saveIngressState(state) { if (saveError) throw new Error('disk_write_failed'); if (save) await save(state); persisted = structuredClone(state) },
+    onHealthChange(value) { health = value }, logger: { warn(error) { warnings.push(error.message) } },
+    humanPollIntervalMs: 0, groupBackfillIntervalMs, outboxRetryIntervalMs: 0,
+  })
+  return { stop, subscriptions, reads, accepted, warnings, get health() { return health }, get persisted() { return persisted },
+    subscribe(groupId) { const group = { groupId, messages: [] }; groups.push(group); subscribed(group) } }
+}
+const settleIngress = () => new Promise(resolve => setImmediate(resolve))
+async function untilIngress(predicate) {
+  const deadline = Date.now() + 2000
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error('ingress_state_timeout')
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+}
+const ingressEvent = (id, time = new Date().toISOString()) => ({ conversation_id: 'pause-group', message_id: id, content: id, event_time: time })
+
+test('群消息暂停停止事件与定时补拉，恢复先监听再补全旧区间并去重', async t => {
+  const history = [], f = ingressFixture({ readRange: async () => ({ complete: true, messages: history }) })
+  t.after(f.stop)
+  f.subscriptions[0].markReady()
+  await untilIngress(() => f.health.healthy)
+  await f.subscriptions[0].callback(ingressEvent('before-pause'))
+  const paused = await f.stop.setIngressPaused(true)
+  assert.equal(paused.ingress.paused, true)
+  assert.equal(f.health.healthy, false)
+  const checkpoint = f.persisted.recoveryFromAt, reads = f.reads.length
+  await f.subscriptions[0].callback(ingressEvent('late-event'))
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(f.reads.length, reads)
+  assert.deepEqual(f.accepted.map(item => item.messageId), ['before-pause'])
+  history.push({ messageId: 'during-pause', createTime: new Date().toISOString(), text: '补拉消息' })
+  const resumed = await f.stop.setIngressPaused(false)
+  assert.equal(resumed.ingress.recovering, true)
+  assert.equal(f.reads.length, reads, '监听未 ready 前不能把恢复当作补拉完成')
+  const resumedSubscription = f.subscriptions.at(-1)
+  await resumedSubscription.callback(ingressEvent('new-live-event'))
+  resumedSubscription.markReady()
+  await untilIngress(() => !f.health.ingress.recovering)
+  assert.ok(f.reads.slice(reads).some(range => range.start <= checkpoint))
+  assert.deepEqual(f.accepted.map(item => item.messageId).sort(), ['before-pause', 'during-pause', 'new-live-event'])
+  assert.deepEqual(f.persisted, { paused: false })
+  await resumedSubscription.callback(ingressEvent('during-pause'))
+  assert.equal(f.accepted.filter(item => item.messageId === 'during-pause').length, 1)
+})
+
+test('持久暂停重启不建群监听，新订阅群同样暂停；恢复失败保留下界重试', async t => {
+  const initial = { paused: true, pausedAt: '2026-10-01T00:00:00.000Z', recoveryFromAt: '2026-09-30T23:59:30.000Z' }
+  let failing = true
+  const f = ingressFixture({ initial, readRange: async () => {
+    if (failing) throw new Error('history_unavailable')
+    return { complete: true, messages: [] }
+  } })
+  t.after(f.stop)
+  assert.equal(f.subscriptions.length, 0)
+  f.subscribe('new-paused-group')
+  assert.equal(f.subscriptions.length, 0)
+  await f.stop.setIngressPaused(false)
+  f.subscriptions.forEach(item => item.markReady())
+  await untilIngress(() => f.health.groups.every(group => group.backfill.state === 'failed'))
+  assert.equal(f.persisted.recoveryFromAt, initial.recoveryFromAt)
+  assert.equal(f.health.ingress.recovering, true)
+  assert.ok(f.reads.every(range => range.start <= initial.recoveryFromAt))
+  failing = false
+  await untilIngress(() => !f.health.ingress.recovering)
+  assert.deepEqual(f.persisted, { paused: false })
+})
+
+test('暂停与进行中的历史请求交错，旧结果不越过暂停/恢复边界', async t => {
+  const blocked = Promise.withResolvers()
+  const f = ingressFixture({ readRange: async (_group, _range, count) => count === 1 ? blocked.promise : { complete: true, messages: [{ messageId: 'recovered', text: '恢复', createTime: new Date().toISOString() }] } })
+  t.after(f.stop)
+  f.subscriptions[0].markReady()
+  await untilIngress(() => f.reads.length === 1)
+  await f.stop.setIngressPaused(true)
+  await f.stop.setIngressPaused(false)
+  f.subscriptions.at(-1).markReady()
+  blocked.resolve({ complete: true, messages: [{ messageId: 'stale-history', createTime: new Date().toISOString() }] })
+  await untilIngress(() => !f.health.ingress.recovering)
+  assert.deepEqual(f.accepted.map(item => item.messageId), ['recovered'])
+})
+
+test('接入开关持久化失败不改变运行状态，重复请求幂等', async t => {
+  const f = ingressFixture({ saveError: true })
+  t.after(f.stop)
+  f.subscriptions[0].markReady()
+  await untilIngress(() => f.health.healthy)
+  await assert.rejects(f.stop.setIngressPaused(true), /disk_write_failed/)
+  assert.equal(f.health.ingress.paused, false)
+  assert.equal(f.subscriptions.length, 1)
+  assert.equal((await f.stop.setIngressPaused(false)).ingress.paused, false)
+})
+
+test('恢复进程重启仍沿持久下界补拉；无订阅群也能结束恢复', async t => {
+  const checkpoint = '2026-10-01T00:00:00.000Z'
+  const f = ingressFixture({ initial: { paused: false, recoveryFromAt: checkpoint } })
+  t.after(f.stop)
+  f.subscriptions[0].markReady()
+  await untilIngress(() => !f.health.ingress.recovering)
+  assert.ok(f.reads[0].start <= checkpoint)
+  const writes = [], snapshots = []
+  const stop = startDwsBridge({ runtime: { listGroups: () => [], onGroupSubscribed: () => () => {}, onOutboxAppended: () => () => {} },
+    adapter: {}, logger: { warn() {} }, ingressState: { paused: true, recoveryFromAt: checkpoint },
+    saveIngressState: async value => writes.push(value), onHealthChange: value => snapshots.push(value),
+    humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  t.after(stop)
+  await stop.setIngressPaused(false)
+  await untilIngress(() => snapshots.at(-1).ingress.recovering === false)
+  assert.deepEqual(writes.at(-1), { paused: false })
+})
+
+test('暂停成功回执等待已开始的可靠接收排空，不把已调度当作结束', async t => {
+  const receiving = Promise.withResolvers(), received = [], snapshots = []
+  let onEvent
+  const stop = startDwsBridge({ runtime: {
+    listGroups: () => [{ groupId: 'pause-group', messages: [] }], isTaskSessionMode: () => true,
+    async ingest(message) { await receiving.promise; received.push(message) },
+    onGroupSubscribed: () => () => {}, onOutboxAppended: () => () => {},
+  }, adapter: { startGroupSubscription(_group, callback) {
+    onEvent = callback
+    const done = Promise.withResolvers()
+    return { done: done.promise, stop() { done.resolve() } }
+  } }, logger: { warn() {} }, onHealthChange: health => snapshots.push(health),
+    humanPollIntervalMs: 0, groupBackfillIntervalMs: 0, outboxRetryIntervalMs: 0 })
+  t.after(stop)
+  const event = onEvent(ingressEvent('inflight'))
+  let completed = false
+  const pause = stop.setIngressPaused(true).then(() => { completed = true })
+  await settleIngress()
+  assert.equal(snapshots.at(-1).ingress.paused, true)
+  assert.equal(completed, false)
+  await onEvent(ingressEvent('not-accepted'))
+  receiving.resolve()
+  await Promise.all([event, pause])
+  assert.equal(completed, true)
+  assert.deepEqual(received.map(item => item.messageId), ['inflight'])
+})
+
+test('default group bridge never starts or polls private channels, including authorization-change callbacks',async()=>{
+  let privateReads=0,privateSubscriptions=0,authorizationQueries=0,onDecision,health
+  const runtime={listGroups:()=>[],listAuthorizationRequests(){authorizationQueries++;return []},onGroupSubscribed:()=>()=>{},onOutboxAppended:()=>()=>{},onAuthorizationDecided(callback){onDecision=callback;return()=>{}}}
+  const adapter={startHumanReplySubscription(){privateSubscriptions++;throw Error('must not subscribe')},readConversation(){privateReads++;throw Error('must not read private history')}}
+  const stop=startDwsBridge({runtime,adapter,logger:{warn(error){throw error}},humanPollIntervalMs:1,groupBackfillIntervalMs:0,outboxRetryIntervalMs:0,onHealthChange(value){health=value}})
+  onDecision({authorization:{kind:'workflow-approval',approverActorId:'outsider',requestId:'foreign'}})
+  await new Promise(resolve=>setTimeout(resolve,15));await stop()
+  assert.equal(privateReads,0);assert.equal(privateSubscriptions,0);assert.equal(authorizationQueries,0)
+})
+
+test('identity deferral pins its old message during pause drain and cold recovery reads the persisted bound',async t=>{
+  const {mkdtemp,rm}=await import('node:fs/promises'),{join}=await import('node:path'),{tmpdir}=await import('node:os'),{atomicWrite}=await import('../src/runtime/files.js')
+  const root=await mkdtemp(join(tmpdir(),'night-bridge-deferral-')),file=join(root,'ingress.json'),fixtures=[],entered=Promise.withResolvers(),release=Promise.withResolvers()
+  t.after(async()=>{release.resolve();for(const fixture of fixtures.toReversed())await fixture.stop();await rm(root,{recursive:true,force:true})})
+  const save=state=>atomicWrite(file,JSON.stringify(state)+'\n'),read=async()=>JSON.parse(await readFile(file,'utf8'))
+  await save({paused:false})
+  const f=ingressFixture({initial:await read(),groupBackfillIntervalMs:0,save,receive:async()=>{entered.resolve();await release.promise;throw Object.assign(Error('CHANNEL_NOTIFICATION_IDENTITY_PENDING'),{code:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})}});fixtures.push(f)
+  f.subscriptions[0].markReady();await untilIngress(()=>f.health.healthy)
+  const oldAt=new Date(Date.now()-120000).toISOString(),event=f.subscriptions[0].callback(ingressEvent('old-during-pause',oldAt))
+  await entered.promise
+  let paused=false
+  const pause=f.stop.setIngressPaused(true).then(value=>{paused=true;return value})
+  await untilIngress(()=>f.health.ingress.paused)
+  assert.equal(paused,false,'pause must still wait for the actual in-flight message')
+  release.resolve();await Promise.all([event,pause])
+  const pinned=await read();assert.equal(pinned.paused,true);assert.ok(Date.parse(pinned.recoveryFromAt)<=Date.parse(oldAt));assert.equal(f.accepted.length,0)
+  await f.stop()
+  const recovered=ingressFixture({initial:await read(),groupBackfillIntervalMs:0,save,readRange:async(_group,range)=>({complete:true,messages:Date.parse(range.start)<=Date.parse(oldAt)?[{groupId:'pause-group',messageId:'old-during-pause',text:'old-during-pause',occurredAt:oldAt}]:[]})});fixtures.push(recovered)
+  await recovered.stop.setIngressPaused(false);recovered.subscriptions[0].markReady()
+  await untilIngress(()=>recovered.health.healthy&&!recovered.health.ingress.recovering)
+  assert.deepEqual(recovered.accepted.map(message=>message.messageId),['old-during-pause'])
+  assert.ok(recovered.reads.every(range=>Date.parse(range.start)<=Date.parse(oldAt)))
+  assert.deepEqual(await read(),{paused:false})
+})
+
+test('identity deferral persistence failure is explicit and preserves the previous on-disk bound',async t=>{
+  const {mkdtemp,mkdir,rm}=await import('node:fs/promises'),{join}=await import('node:path'),{tmpdir}=await import('node:os'),{atomicWrite}=await import('../src/runtime/files.js')
+  const root=await mkdtemp(join(tmpdir(),'night-bridge-pin-failure-')),file=join(root,'ingress.json'),blocked=join(root,'blocked'),old={paused:false,recoveryFromAt:'2026-09-30T23:00:00.000Z'}
+  await atomicWrite(file,JSON.stringify(old)+'\n');await mkdir(blocked)
+  const f=ingressFixture({initial:old,groupBackfillIntervalMs:0,save:state=>atomicWrite(blocked,JSON.stringify(state)+'\n'),receive:async()=>{throw Object.assign(Error('CHANNEL_NOTIFICATION_IDENTITY_PENDING'),{code:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})}})
+  t.after(async()=>{await f.stop();await rm(root,{recursive:true,force:true})})
+  await f.subscriptions[0].callback(ingressEvent('unwritten-message','2026-09-30T22:00:00.000Z'))
+  assert.equal(f.health.groups[0].backfill.lastError,'CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED')
+  assert.equal(f.health.groups[0].backfill.recoveryRequired,true);assert.equal(f.health.healthy,false);assert.equal(f.accepted.length,0)
+  assert.ok(f.warnings.includes('CHANNEL_INGRESS_RECOVERY_PERSIST_FAILED'))
+  assert.deepEqual(JSON.parse(await readFile(file,'utf8')),old)
+})

@@ -1,0 +1,13 @@
+Source checkpoint: 9a925a6
+Full stable default run after invocation identity, new-action authorization and seven further dependency retirements.
+ℹ tests 1197
+ℹ suites 0
+ℹ pass 1197
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 215028.002262
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":47,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":421,"literalBareImports":212,"status":"declared-production-imports"}
+{"runtimeJsFiles":421,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":5,"historicalFormatFilesRemoved":9}

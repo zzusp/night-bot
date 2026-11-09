@@ -1,0 +1,42 @@
+{
+  "base": "cd1d2e4",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 636
+  },
+  "focused": {
+    "pass": 36,
+    "overlap": "six preset cases also default"
+  },
+  "integration": {
+    "pass": 23,
+    "overlap": "approval/authority default cases plus human task integration"
+  },
+  "remainingDirectDshDevDependencies": 55,
+  "removedDirectDevDependency": "@deepseek-ai/dsh-permission-presets",
+  "method": "Use native preset service in retained group-session fixture; replace differential preset assertion with explicit initial facts/tie/default/catalog/wire assertions. Default suite passes with root package symlink absent, restored in finally.",
+  "sourceAndLicense": "Unchanged native implementation and preset/approval notices; command definition identifier remains opaque metadata, not module import",
+  "scan": {
+    "parsedFiles": 926,
+    "permissionPresetImports": 0
+  },
+  "freshInstall": "Still blocked by known npm HTTP503; no attempts",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-owned-permission-focused.txt",
+      "sha256": "e771df42b22b78229f079a6a50a9eadbb2d82416dff1d14878b4feefbdadcf7b"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-permission-default.txt",
+      "sha256": "2351264b15b871861beb1b992e35483b67741b0c36cea68907d92dc8736e9497"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-permission-integration.txt",
+      "sha256": "17a52ec47a3f350ed1cd21a3f5e76c082259372c2351f0a0892b43e029404659"
+    },
+    {
+      "path": "docs/evidence/pi-native-owned-permission-checks.txt",
+      "sha256": "e02ec7abc25d0e927ac2c6478ca1f5962bb490363373e53160fcfc916fe70f30"
+    }
+  ]
+}

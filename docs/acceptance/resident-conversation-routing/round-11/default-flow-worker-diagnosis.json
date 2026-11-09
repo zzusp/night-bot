@@ -1,0 +1,149 @@
+{
+  "taskId": "b9d0qrkbm",
+  "group": "default",
+  "observedAt": "2026-11-08T00:19:22.066705+00:00",
+  "sourceSha256": "a368d2ebc473bb6280440bcf5b14fdaf0ef57eb074b3ce38fad9ee4ba0a1e7c1",
+  "worker": {
+    "pid": 104860,
+    "parentPid": 50508,
+    "createdAtUtc": "2026-11-08T00:02:35.6055722Z",
+    "testFile": "test/pi-resident-router-flow.test.js",
+    "childCount": 0,
+    "tcpConnections": 0
+  },
+  "ownedAncestry": [
+    104860,
+    50508,
+    52160,
+    36092,
+    104272,
+    67540,
+    24268,
+    30616,
+    65480
+  ],
+  "caseTerminals": [
+    {
+      "line": 973,
+      "text": "✔ all four default dispositions keep original handling independent of an unknown short reply and survive cold deduplication (12917.2064ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 974,
+      "text": "✖ durable receipt echoes tolerate later DWS flags without replacing existing message facts (6887.3495ms)",
+      "outcome": "FAIL"
+    },
+    {
+      "line": 975,
+      "text": "✔ in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued (31085.6351ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 976,
+      "text": "✔ a message arriving during tool-free handoff is delivered exactly once to the next generation (17611.0403ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 977,
+      "text": "✔ cold recovery completes the uniquely committed next generation after router.candidate.commit fails (12143.9632ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 978,
+      "text": "✔ cold recovery completes the uniquely committed next generation after router.publish fails (12637.9553ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 979,
+      "text": "✔ successive idle cycles retain the short handoff without reloading old payloads or self-triggering empty rotations (30382.5354ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 980,
+      "text": "✔ invalid tool-free handoff retains the current native generation without publishing a candidate: blank-intent (9465.0258ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 981,
+      "text": "✔ invalid tool-free handoff retains the current native generation without publishing a candidate: missing-source (8753.1135ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 982,
+      "text": "✔ invalid tool-free handoff retains the current native generation without publishing a candidate: utf8-budget (8791.5486ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 983,
+      "text": "✔ invalid tool-free handoff retains the current native generation without publishing a candidate: referents-object (9327.4455ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 984,
+      "text": "✔ legacy prepared replyRequest and cold unknown retain original payload bytes while neutral retries stay idempotent (21569.0712ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 986,
+      "text": "✔ cold Router resumes an exact legacy pending packet before a later event without changing its body or replaying either batch (15144.2872ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 988,
+      "text": "✔ an admitted failed Router batch resumes only through an explicit Host checkpoint after strict cold recovery (13978.5406ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 990,
+      "text": "✔ an admitted failed Router checkpoint refuses a newer pending business input before inference (11046.3973ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 992,
+      "text": "✔ a second failed Router continuation retains its checkpoint history and cannot replay the consumed proof (11962.8895ms)",
+      "outcome": "PASS"
+    },
+    {
+      "line": 994,
+      "text": "✔ an unsettled Router cannot mask an unrelated conversation recovery failure (8460.9061ms)",
+      "outcome": "PASS"
+    }
+  ],
+  "logPrefix": {
+    "file": "docs/acceptance/resident-conversation-routing/round-11/post-topic-retirement-final-default.log",
+    "bytes": 109372,
+    "sha256": "3709314185e40cb79a3093e3cc85d18e1b45214e7ad930994416e60a905910d2",
+    "lastWriteUtc": "2026-11-08T00:06:40.019062+00:00"
+  },
+  "cpuObservations": [
+    {
+      "at": "2026-11-08T00:13:53.0143315Z",
+      "cpuSeconds": 962.0
+    },
+    {
+      "at": "2026-11-08T00:15:37.4636662Z",
+      "cpuSeconds": 1116.671875,
+      "mainThread": 52552,
+      "mainThreadState": "Running"
+    }
+  ],
+  "existingBoundaries": {
+    "caseTimeoutWindowsMs": [
+      80000,
+      90000,
+      120000
+    ],
+    "source": "test/fixtures/native-lifecycle.js:11",
+    "fileOrProcessTimeout": null,
+    "currentBusinessCase": "NONE_ALL_17_HAVE_REPORTED_TERMINALS"
+  },
+  "assessment": "Flow worker remains alive and CPU-busy after every registered case has a terminal report. Exact retaining resource/JS loop is unverified; do not infer it from CPU or mtime.",
+  "controlledStop": {
+    "target": "single owned flow worker only",
+    "parentDriverAndOriginalTaskPreserved": true,
+    "sourceEdits": false,
+    "arbitraryTimeoutAdded": false,
+    "fixtureDeletionAuthorized": false,
+    "performed": false
+  }
+}

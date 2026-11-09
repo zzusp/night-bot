@@ -1,0 +1,28 @@
+{
+  "startedAt": "2026-11-07T13:08:40.242947+00:00",
+  "finishedAt": "2026-11-07T13:08:48.499385+00:00",
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=tap",
+    "--test-name-pattern=^service close drains the real task, observers and owned SQLite after an early subscription cleanup fails$",
+    "test/task-session-service-native.test.js"
+  ],
+  "exitCode": 1,
+  "sourceFiles": {
+    "test/task-session-service-native.test.js": "ac4f939e81b4102fda6e93f051e1b07199ba9dd6b178bc8bb69f26b66b032255",
+    "test/fixtures/routing-official-host.js": "f2f288d248b7233ed9c4c81cc162fb35c98a7a84dd32cff145a628010b89a218",
+    "test/fixtures/routing-official-model.js": "4cf204c3ef9993e31a288619dc97e3b7dc722430a5870abae03efa0ef42f1fc8",
+    "test/fixtures/runtime-official-host.js": "559b9166b975fdfe3a637bfd69bc4aef251b541d325a2e3c7c6a088565634237",
+    "test/fixtures/native-lifecycle.js": "ad2a65d34afa7ecdb824662c65ed5be1b7e53c12297c6cd389d972c255dc9829",
+    "test/fixtures/lifecycle-stages.js": "f79af636382fab62f2f6af6f871a061acc9b49403e571d64160a41664e7bbbcf",
+    "packages/dingtalk-core/task-session-service.js": "b9057bcff6f102f05ca507809fb69d890723635e3a8f0c2575df977f737ce87d",
+    "src/channels/router-lifecycle.js": "423a2e97d0fff083fc84927d4338c0ef0242cbc09d626235fcf53b1c95a1882f",
+    "src/pi-official-agent-factory.js": "f402d9e6084f013a97b239d4198e5c084b2a92f193159e7df47203d57ccfb976",
+    "src/runtime/pi-official-session.js": "1cef70fa0e9020100953f29fa24b4db8e12485f5e29d537ca78c9dd7596d6780",
+    "src/host.js": "35f1c5e9664f831bf6384e98b2b9bf38f3e67b6aae33bdd9bda826618dd309b3"
+  },
+  "changed": [],
+  "logSha256": "79539893cd9c1bb6b4a794851475495267ca1dd65b47fa7cba22012fcfd981f1"
+}

@@ -1,0 +1,14 @@
+✔ application control failures detach and freeze diagnostic facts while retaining the original cause (1.802231ms)
+✔ control diagnostics reject unsupported live values and invalid machine codes (0.457445ms)
+✔ ordinary application management methods retain coded failures without a gateway binding (8.729803ms)
+✔ agent ownership no longer registers legacy gateway type or context lookups (3.788298ms)
+✔ native strict prompt and context renderers match retained source including diagnostics (22.92689ms)
+✔ native rendering does not recursively interpolate values and preserves literal or empty contributions (1.253629ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133.858405

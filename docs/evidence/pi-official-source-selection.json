@@ -1,0 +1,16 @@
+{
+  "version": "1.5.0",
+  "registryLatest": "1.5.0",
+  "published": "2026-11-02T11:05:09.564Z",
+  "sourceCommit": "f9a26365568127461c47a07a37dcb42c140a3ac5",
+  "registrySnapshotSha256": "836010ba12fd3be5a603c0cd55909fd51407af6d81b37a2aacde14662c249cdd",
+  "dependencyImportAudit": {
+    "parsedFiles": 956,
+    "parseFailures": 0,
+    "rawReportSha256": "9eadb88f0d086deaae6c84a33cb592ead28c6ff2504526b7ee7add59004502bf",
+    "retiredImports": {
+      "@deepseek-ai/dsh-api-session-controller": 0,
+      "@deepseek-ai/dsh-session-query": 0
+    }
+  }
+}

@@ -1,0 +1,12 @@
+✔ local capability namespaces retain complete original public export vocabulary (11.785865ms)
+✔ native skill rendering preserves every resource kind, invocation flag and escaped framing (0.590029ms)
+✔ filesystem abstract watch fails closed without operations and opaque ids remain unchanged (7.565591ms)
+✔ development SDK backend peers resolve canonical local filesystem and sandbox constructors (1.852724ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 95.761945

@@ -1,0 +1,149 @@
+{
+  "startedAt": "2026-11-08T06:16:45.144530+00:00",
+  "finishedAt": "2026-11-08T06:16:55.161507+00:00",
+  "argv": [
+    "node",
+    "--test",
+    "--test-reporter=spec",
+    "--test-concurrency=1",
+    "--test-name-pattern=^SG12\\ \u9ed8\u8ba4\u771f\u5b9e\u767b\u5f55\u6587\u4ef6\u89c2\u5bdf\u4ece\u5f85\u8ba4\u8bc1\u63a5\u7ed1\u5b9a\uff0c\u6062\u590dcontext\u5b89\u5168\u4e14\u666e\u901a\u4f7f\u7528\u4e0d\u89e6\u53d1\u91cd\u8bd5$|^SG12\\ \u8d26\u53f7\u6b67\u4e49\u3001\u76ee\u6807\u6f02\u79fb\u4e0e\u975e\u8ba4\u8bc1\u9519\u8bef\u5931\u8d25\u5173\u95ed\uff0c\u4e0d\u4ece\u9996\u9879\u6216\u6587\u4ef6\u53d8\u5316\u731c\u6d4b\u91cd\u8bd5$|^Router\\ read\\ rejects\\ stale\\ ended\\ after\\ awaited\\ router\\.dependencies$|^Router\\ read\\ rejects\\ stale\\ generation\\ after\\ awaited\\ router\\.dependencies$|^Router\\ read\\ rejects\\ stale\\ session\\ after\\ awaited\\ router\\.dependencies$|^Router\\ read\\ rejects\\ stale\\ ended\\ after\\ awaited\\ task\\.list$|^Router\\ read\\ rejects\\ stale\\ generation\\ after\\ awaited\\ task\\.list$|^Router\\ read\\ rejects\\ stale\\ session\\ after\\ awaited\\ task\\.list$|^removed\\ runtime\\ containers\\ retain\\ their\\ fixed\\ baseline\\ and\\ cannot\\ silently\\ return|^\u6e20\u9053\u8fde\u63a5\u9636\u6bb5\u53ea\u7528\u771f\u5b9e\\ health\\ \u767d\u540d\u5355\uff0c\u542f\u7528\u72b6\u6001\u548c\u79c1\u6709\u9519\u8bef\u4e0d\u80fd\u5192\u5145\u8fde\u63a5$",
+    "test/pi-channel-plugin.test.js",
+    "test/decision-payload.test.js",
+    "test/test-suite-contracts.test.js",
+    "packages/web-console/test/server.test.js"
+  ],
+  "exitCode": 0,
+  "naturalExit": true,
+  "selectedRegistrations": [
+    {
+      "file": "test/pi-channel-plugin.test.js",
+      "name": "SG12 \u9ed8\u8ba4\u771f\u5b9e\u767b\u5f55\u6587\u4ef6\u89c2\u5bdf\u4ece\u5f85\u8ba4\u8bc1\u63a5\u7ed1\u5b9a\uff0c\u6062\u590dcontext\u5b89\u5168\u4e14\u666e\u901a\u4f7f\u7528\u4e0d\u89e6\u53d1\u91cd\u8bd5",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/pi-channel-plugin.test.js",
+      "name": "SG12 \u8d26\u53f7\u6b67\u4e49\u3001\u76ee\u6807\u6f02\u79fb\u4e0e\u975e\u8ba4\u8bc1\u9519\u8bef\u5931\u8d25\u5173\u95ed\uff0c\u4e0d\u4ece\u9996\u9879\u6216\u6587\u4ef6\u53d8\u5316\u731c\u6d4b\u91cd\u8bd5",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/decision-payload.test.js",
+      "name": "Router read rejects stale ended after awaited router.dependencies",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/decision-payload.test.js",
+      "name": "Router read rejects stale generation after awaited router.dependencies",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/decision-payload.test.js",
+      "name": "Router read rejects stale session after awaited router.dependencies",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/decision-payload.test.js",
+      "name": "Router read rejects stale ended after awaited task.list",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/decision-payload.test.js",
+      "name": "Router read rejects stale generation after awaited task.list",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/decision-payload.test.js",
+      "name": "Router read rejects stale session after awaited task.list",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/test-suite-contracts.test.js",
+      "name": "removed runtime containers retain their fixed baseline and cannot silently return",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/test-suite-contracts.test.js",
+      "name": "removed runtime containers retain their fixed baseline and cannot silently return > baseline",
+      "occurrence": "1"
+    },
+    {
+      "file": "test/test-suite-contracts.test.js",
+      "name": "removed runtime containers retain their fixed baseline and cannot silently return > revived-destination",
+      "occurrence": "1"
+    },
+    {
+      "file": "packages/web-console/test/server.test.js",
+      "name": "\u6e20\u9053\u8fde\u63a5\u9636\u6bb5\u53ea\u7528\u771f\u5b9e health \u767d\u540d\u5355\uff0c\u542f\u7528\u72b6\u6001\u548c\u79c1\u6709\u9519\u8bef\u4e0d\u80fd\u5192\u5145\u8fde\u63a5",
+      "occurrence": "1"
+    }
+  ],
+  "sourceBefore": {
+    "test/pi-channel-plugin.test.js": "037b61b49ca74ae1c2f90fb77a4e144f1384caf11df44df635e536d7c2b6d359",
+    "test/decision-payload.test.js": "82c4af8525e28e476d2bedaa96379d415986c790189f1deaab5e054878c94c1a",
+    "test/test-suite-contracts.test.js": "c69d9692eecd9626f44f8fce13fc01fc89b783482cf2091edab0db6f84b03f63",
+    "packages/web-console/test/server.test.js": "4e3a1c9d1c42c06e2df319f0555259b43ea9fa31931ca6bd78bfed177b64486c",
+    "src/channels/resident-router-business.js": "33d6abab1c07a1812fba10c1b74f3e54c1d304a185a00d20407715c6c89ed5f8",
+    "packages/dingtalk-core/decision.js": "d3cd288d90b6b562ff09c9f8dfe48311e37d6b8f648602c88cc90a5b9c283229",
+    "src/native-scope.js": "6befee09e6aaab83718334912ffc26007f49e645931a12b109137116b245bf83",
+    "src/native-tools.js": "471ba0637f4a1ae8dd6461dc4063d2b6fa10b1ed8a76b994c58d20b84277e295",
+    "src/runtime/pi-official-tools.js": "b1b024896ddefff3ab98c80a9f1537994ced0e5633b2b6d4a1c875575a608554",
+    "test/fixtures/pi-official-tools.js": "1b3e431c7cdf6c8e491bea98f67f8a7512963057425f5ece87fe6034604e1fa6",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "src/host.js": "300cd9d8a87f04621cb604b23e31c970c92e282fe3bf2e9a8a26131020beb1ec",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/runtime/pi-official-session.js": "5877722630415971c06f7993af2f4bbb70f853da630893e5704691c506fc7343",
+    "src/runtime/pi-business-admission.js": "5e48f095770a3930bfdd8bcb385b5e40338b468018346ce6d0e2755d3a36c24b",
+    "src/channels/plugins/dingtalk-dws.js": "45fc900064077be7d2b740106d6a953cff09f0ea0aa9d3f87ab7743e304a5406",
+    "src/channels/plugins/dingtalk-auth.js": "7e01f2b86c21a6d9d26d1a5999664740116e6ca58e6ec95034046ab5d3e829d7",
+    "src/channels/plugins/dingtalk-binding.js": "e1df02040e9a56a1b0b2479cf2815e35fabb6292e644f4becd6de6e04646279f",
+    "src/channels/plugins/dingtalk-config.js": "d868b9ac2ad35f7552599c856035d1ff5e5b4d364b3bb8cbf04fceb8bb434b3f",
+    "src/channels/plugins/dingtalk-storage.js": "d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d",
+    "src/channels/plugins/dingtalk-ingress.js": "a10ecc730f390f0b2a66b4b9f596f7c10bebbacf85fce5d2b54b541089fd552f",
+    "src/channels/plugins/dws-environment.js": "70bc95982a242c172671f51bf579bf1598c4eecf7b5746a57d9706201b786a61",
+    "packages/web-console/server/plugin.js": "00b2d7f722512f8a15b7dbf17088da1ff9d9ca345853e884dcb9feaa0940b00f",
+    "packages/web-console/server/views.js": "844b62ef73dfe25d8e975ad58de5d6842de9a1d0bd383b29a731f38f8f9c8651",
+    "packages/web-console/server/security.js": "8c23cc13bc510aacb92b51fb8952d0a7236466d704f3b647d0ae5379128828ef",
+    "packages/web-console/server/ledger.js": "318f47faa846d3e9854b273daff31c73dd521bf29899ca90a45c10ede7aef169",
+    "scripts/test-catalog.mjs": "182bca968208209f94c2f02a47494884b72d080c888f48193e76241af68d8ea9",
+    "scripts/test-contracts.mjs": "4f3cd3e7656f53c54793728acecab4b2586c61d3f3836cfc1b701971762c9b40",
+    "test/mixed-test-contracts.json": "5b98cce4d983e100385e003d22843f19a96ff38324f496ada972e3b69a4ee9cb"
+  },
+  "sourceAfter": {
+    "test/pi-channel-plugin.test.js": "037b61b49ca74ae1c2f90fb77a4e144f1384caf11df44df635e536d7c2b6d359",
+    "test/decision-payload.test.js": "82c4af8525e28e476d2bedaa96379d415986c790189f1deaab5e054878c94c1a",
+    "test/test-suite-contracts.test.js": "c69d9692eecd9626f44f8fce13fc01fc89b783482cf2091edab0db6f84b03f63",
+    "packages/web-console/test/server.test.js": "4e3a1c9d1c42c06e2df319f0555259b43ea9fa31931ca6bd78bfed177b64486c",
+    "src/channels/resident-router-business.js": "33d6abab1c07a1812fba10c1b74f3e54c1d304a185a00d20407715c6c89ed5f8",
+    "packages/dingtalk-core/decision.js": "d3cd288d90b6b562ff09c9f8dfe48311e37d6b8f648602c88cc90a5b9c283229",
+    "src/native-scope.js": "6befee09e6aaab83718334912ffc26007f49e645931a12b109137116b245bf83",
+    "src/native-tools.js": "471ba0637f4a1ae8dd6461dc4063d2b6fa10b1ed8a76b994c58d20b84277e295",
+    "src/runtime/pi-official-tools.js": "b1b024896ddefff3ab98c80a9f1537994ced0e5633b2b6d4a1c875575a608554",
+    "test/fixtures/pi-official-tools.js": "1b3e431c7cdf6c8e491bea98f67f8a7512963057425f5ece87fe6034604e1fa6",
+    "test/fixtures/memory-host.js": "b6400ae365c31ca8d84b8b874e822334317ab31f4469cd7390845563fe05f020",
+    "src/host.js": "300cd9d8a87f04621cb604b23e31c970c92e282fe3bf2e9a8a26131020beb1ec",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/runtime/pi-official-session.js": "5877722630415971c06f7993af2f4bbb70f853da630893e5704691c506fc7343",
+    "src/runtime/pi-business-admission.js": "5e48f095770a3930bfdd8bcb385b5e40338b468018346ce6d0e2755d3a36c24b",
+    "src/channels/plugins/dingtalk-dws.js": "45fc900064077be7d2b740106d6a953cff09f0ea0aa9d3f87ab7743e304a5406",
+    "src/channels/plugins/dingtalk-auth.js": "7e01f2b86c21a6d9d26d1a5999664740116e6ca58e6ec95034046ab5d3e829d7",
+    "src/channels/plugins/dingtalk-binding.js": "e1df02040e9a56a1b0b2479cf2815e35fabb6292e644f4becd6de6e04646279f",
+    "src/channels/plugins/dingtalk-config.js": "d868b9ac2ad35f7552599c856035d1ff5e5b4d364b3bb8cbf04fceb8bb434b3f",
+    "src/channels/plugins/dingtalk-storage.js": "d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d",
+    "src/channels/plugins/dingtalk-ingress.js": "a10ecc730f390f0b2a66b4b9f596f7c10bebbacf85fce5d2b54b541089fd552f",
+    "src/channels/plugins/dws-environment.js": "70bc95982a242c172671f51bf579bf1598c4eecf7b5746a57d9706201b786a61",
+    "packages/web-console/server/plugin.js": "00b2d7f722512f8a15b7dbf17088da1ff9d9ca345853e884dcb9feaa0940b00f",
+    "packages/web-console/server/views.js": "844b62ef73dfe25d8e975ad58de5d6842de9a1d0bd383b29a731f38f8f9c8651",
+    "packages/web-console/server/security.js": "8c23cc13bc510aacb92b51fb8952d0a7236466d704f3b647d0ae5379128828ef",
+    "packages/web-console/server/ledger.js": "318f47faa846d3e9854b273daff31c73dd521bf29899ca90a45c10ede7aef169",
+    "scripts/test-catalog.mjs": "182bca968208209f94c2f02a47494884b72d080c888f48193e76241af68d8ea9",
+    "scripts/test-contracts.mjs": "4f3cd3e7656f53c54793728acecab4b2586c61d3f3836cfc1b701971762c9b40",
+    "test/mixed-test-contracts.json": "5b98cce4d983e100385e003d22843f19a96ff38324f496ada972e3b69a4ee9cb"
+  },
+  "sourceChanged": [],
+  "stdoutSha256": "fe8681bf9f535b09f90e5e05f3f2992146502bc799b6e8dc3724ad13b756b9b9",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "nativeExecuted": false,
+  "realVendorExecuted": false,
+  "realModelApiExecuted": false
+}

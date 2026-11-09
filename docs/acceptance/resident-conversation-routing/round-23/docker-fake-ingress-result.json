@@ -1,0 +1,417 @@
+{
+  "startedAt": "2026-11-08T09:14:03.529Z",
+  "image": "sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b",
+  "sourceMapSha256": "46b3e4c2cc32840b72a50a82ca54a480680c007ecad5c44078e76aee33b43a70",
+  "source": {
+    "packages/dingtalk-core/dws-adapter.js": "4c5e9fc34d042e47b34e087c183992c52d71693c12ebe2d526d9d8984ae78f19",
+    "packages/dingtalk-core/dws-bridge.js": "082218473340959f3ffe9d8e6b0b364e87d6bd3c2819535135e54734408fea8c",
+    "packages/dingtalk-core/dws-runner.js": "b4671c153cee3c77b349b092ce582d2c5e81c524332a77711d69ce1258344b69",
+    "src/channels/plugins/dingtalk-ingress.js": "a10ecc730f390f0b2a66b4b9f596f7c10bebbacf85fce5d2b54b541089fd552f",
+    "src/channels/plugins/dingtalk-storage.js": "d7b0c082097090c677893675f2d7e9d105c9c4c3d9a1a0f8d85f6c295a411a5d",
+    "src/channels/router-ledger.js": "425b730e772d84b8dd06253695badc44584652137765c1737fd1988ea069198c",
+    "src/channels/service.js": "184c4daf01a20f81c0d1cd71efa6606473545e43292c620aee694fb7f6f7093b",
+    "src/channels/message-safety.js": "2e80fb622a426291d49298bf8686b3a08ebe2b758fd941c94ed0a34a154fe9c3",
+    "src/channels/resident-router-business.js": "33d6abab1c07a1812fba10c1b74f3e54c1d304a185a00d20407715c6c89ed5f8",
+    "src/channels/triage.js": "1b41c85eeffbf837124606d7b567d2c577de1da07bbf328389341272966c3917",
+    "packages/web-console/server/views.js": "844b62ef73dfe25d8e975ad58de5d6842de9a1d0bd383b29a731f38f8f9c8651",
+    "src/host.js": "2f7b8047eb35e5b49bec789df98f3a849c7e1fb39e675c9204dca08d90164289",
+    "src/application.js": "72e476414e10db57445d357b20d3cdfedf27c43537298cad6bcdba83e20189fd",
+    "src/native-jobs.js": "deee4fd455a7caa5129800cfa745bd3929130fa80d6d08c1f803a6bad2fd7bf5",
+    "src/channels/router-lifecycle.js": "9a97650dceaa69ca5974b23f074c80bb3561ad55bbd5264982a5592350c2745b",
+    "src/pi-official-agent-factory.js": "dbde124a32e88e2e058993f7c6fdf67426035d46705ae64e32eff3bc8780c64e",
+    "src/runtime/pi-business-admission.js": "5e48f095770a3930bfdd8bcb385b5e40338b468018346ce6d0e2755d3a36c24b",
+    "src/runtime/pi-official-session.js": "5877722630415971c06f7993af2f4bbb70f853da630893e5704691c506fc7343",
+    "scripts/docker-entrypoint.sh": "def816be0b4bbf669a8a9178000355fd98527bd1e7ac2213e404089d79b8f8ad",
+    "bin/night-bot-run.js": "222bbafa0b1e9f9ac71758668a53b8eff458bbdd5bb3d3634624c15dcea27f08",
+    "src/channels/plugins/dingtalk-dws.js": "45fc900064077be7d2b740106d6a953cff09f0ea0aa9d3f87ab7743e304a5406",
+    "src/channels/plugins/dingtalk-auth.js": "7e01f2b86c21a6d9d26d1a5999664740116e6ca58e6ec95034046ab5d3e829d7",
+    "src/channels/plugins/dws-environment.js": "70bc95982a242c172671f51bf579bf1598c4eecf7b5746a57d9706201b786a61",
+    "src/channels/plugins/dingtalk-binding.js": "e1df02040e9a56a1b0b2479cf2815e35fabb6292e644f4becd6de6e04646279f",
+    "src/channels/plugins/dingtalk-config.js": "d868b9ac2ad35f7552599c856035d1ff5e5b4d364b3bb8cbf04fceb8bb434b3f",
+    "packages/web-console/server/plugin.js": "00b2d7f722512f8a15b7dbf17088da1ff9d9ca345853e884dcb9feaa0940b00f"
+  },
+  "driverSha256": "393817e6435d48cfbbca8e0fbbcddf40c4c152ca423bb7112de325491f5c4cc3",
+  "realVendorExecuted": false,
+  "events": [
+    {
+      "phase": "exercise-terminal",
+      "pass": true,
+      "checks": [
+        "formal optional plugin actual fake CLI listener reached ready and complete history backfill committed in original application triage ledger",
+        "real NDJSON live message and historical message each reached committed silent triage; duplicate history stayed one source and foreign conversation stayed absent; no task or outbound notification"
+      ],
+      "realVendorExecuted": false,
+      "browserExecuted": false,
+      "requests": [
+        {
+          "messageIds": [
+            "history-r23"
+          ],
+          "sourceIds": [
+            "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4"
+          ],
+          "tool": "channel_triage_submit"
+        },
+        {
+          "messageIds": [
+            "live-r23"
+          ],
+          "sourceIds": [
+            "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0"
+          ],
+          "tool": "channel_triage_submit"
+        }
+      ],
+      "channel": {
+        "channelId": "container-fake",
+        "type": "dingtalk-dws",
+        "enabled": true,
+        "connectionState": "listening",
+        "errorCode": null,
+        "connected": true
+      },
+      "ledger": {
+        "sources": [
+          {
+            "actorId": "channel-actor-e89b36dc9f4306fb3e674ca7436299eeb7d97c1876051aeec46eef3abc2eab65",
+            "channel": "im",
+            "groupId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+            "id": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "initialRouteDecision": null,
+            "messageId": "history-r23",
+            "quote": null,
+            "receivedAt": "2026-11-08T09:14:21.827Z",
+            "resources": [],
+            "routeReceipt": {
+              "decisionId": "triage:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+              "kind": "triage"
+            },
+            "routed": true,
+            "routedAt": "2026-11-08T09:14:22.354Z",
+            "senderName": "fixture-peer",
+            "sourceId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "stages": [
+              {
+                "attempt": 0,
+                "completedAt": "2026-11-08T09:14:21.877Z",
+                "quality": "observed",
+                "requestId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+                "shared": false,
+                "spanId": "ingress:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+                "stage": "ingress",
+                "startedAt": "2026-11-08T09:14:21.827Z"
+              },
+              {
+                "attempt": 0,
+                "completedAt": "2026-11-08T09:14:21.828Z",
+                "phase": "source-read",
+                "quality": "observed",
+                "requestId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+                "shared": false,
+                "spanId": "ingress:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4:0",
+                "stage": "ingress",
+                "startedAt": "2026-11-08T09:14:21.827Z"
+              },
+              {
+                "attempt": 0,
+                "completedAt": "2026-11-08T09:14:21.848Z",
+                "phase": "resident-store",
+                "quality": "observed",
+                "requestId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+                "shared": false,
+                "spanId": "ingress:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4:1",
+                "stage": "ingress",
+                "startedAt": "2026-11-08T09:14:21.828Z"
+              }
+            ],
+            "text": "Synthetic historical acknowledgement, no action requested.",
+            "timestamp": "2026-11-08T09:14:06.602Z",
+            "version": 1
+          },
+          {
+            "actorId": "channel-actor-e89b36dc9f4306fb3e674ca7436299eeb7d97c1876051aeec46eef3abc2eab65",
+            "channel": "im",
+            "groupId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+            "id": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "initialRouteDecision": null,
+            "messageId": "live-r23",
+            "quote": null,
+            "receivedAt": "2026-11-08T09:14:22.517Z",
+            "resources": [],
+            "routeReceipt": {
+              "decisionId": "triage:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+              "kind": "triage"
+            },
+            "routed": true,
+            "routedAt": "2026-11-08T09:14:22.754Z",
+            "senderName": "fixture-peer",
+            "sourceId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "stages": [
+              {
+                "attempt": 0,
+                "completedAt": "2026-11-08T09:14:22.534Z",
+                "quality": "observed",
+                "requestId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+                "shared": false,
+                "spanId": "ingress:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+                "stage": "ingress",
+                "startedAt": "2026-11-08T09:14:22.517Z"
+              },
+              {
+                "attempt": 0,
+                "completedAt": "2026-11-08T09:14:22.518Z",
+                "phase": "source-read",
+                "quality": "observed",
+                "requestId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+                "shared": false,
+                "spanId": "ingress:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0:0",
+                "stage": "ingress",
+                "startedAt": "2026-11-08T09:14:22.518Z"
+              },
+              {
+                "attempt": 0,
+                "completedAt": "2026-11-08T09:14:22.525Z",
+                "phase": "resident-store",
+                "quality": "observed",
+                "requestId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+                "shared": false,
+                "spanId": "ingress:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0:1",
+                "stage": "ingress",
+                "startedAt": "2026-11-08T09:14:22.518Z"
+              }
+            ],
+            "text": "Synthetic live acknowledgement, no action requested.",
+            "timestamp": "2026-11-08T09:14:22.419Z",
+            "version": 1
+          }
+        ],
+        "triage": [
+          {
+            "commandId": "triage:67d6ba36a6530140b2dafcf09883c8217293bee5db939a1d74cf80bcf6bdb2f5",
+            "conversationId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+            "decision": {
+              "messageVersion": 1,
+              "needsHandling": false,
+              "reason": "Synthetic acknowledgement only; no task or reply requested.",
+              "reply": null,
+              "sourceId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4"
+            },
+            "id": "triage:im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "messageVersion": 1,
+            "notificationId": null,
+            "sourceId": "im:43cb6926151462b27187264c3825ae2c96a7eeeae6b95e8ec63b11a57eef35a4",
+            "state": "committed"
+          },
+          {
+            "commandId": "triage:b2dd90f504096bb4e3a9bf41bd08b6b73e88d4082dec166dbdca632b35030e19",
+            "conversationId": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+            "decision": {
+              "messageVersion": 1,
+              "needsHandling": false,
+              "reason": "Synthetic acknowledgement only; no task or reply requested.",
+              "reply": null,
+              "sourceId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0"
+            },
+            "id": "triage:im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "messageVersion": 1,
+            "notificationId": null,
+            "sourceId": "im:f7b5aea7568a53eeac3d33e90dc5f87741cd5970f69edaae370571f7e15d14f0",
+            "state": "committed"
+          }
+        ],
+        "notifications": [],
+        "tasks": []
+      },
+      "messages": {
+        "items": [
+          {
+            "id": "history-r23",
+            "role": "user",
+            "text": "Synthetic historical acknowledgement, no action requested.",
+            "createdAt": "2026-11-08T09:14:06.602Z",
+            "status": "processed",
+            "senderName": "fixture-peer",
+            "taskIds": []
+          },
+          {
+            "id": "live-r23",
+            "role": "user",
+            "text": "Synthetic live acknowledgement, no action requested.",
+            "createdAt": "2026-11-08T09:14:22.419Z",
+            "status": "processed",
+            "senderName": "fixture-peer",
+            "taskIds": []
+          }
+        ],
+        "pages": {
+          "messages": {
+            "total": 2,
+            "nextOffset": null,
+            "revision": "1c8511b6-bbc9-450c-8b84-b60ca2e1a893"
+          },
+          "outbox": {
+            "total": 0,
+            "nextOffset": null,
+            "revision": "1b92ac1b-81b3-4cc0-b5c6-1f3bb452c4b7:1"
+          }
+        }
+      },
+      "conversation": {
+        "id": "conversation-4570f4364431f598725cc1094d88654ffa7f8a5aff377a90c6b875ce8924ecb2",
+        "name": "fixture-room",
+        "channelId": "container-fake",
+        "type": "chat-room"
+      },
+      "calls": [
+        [
+          "profile",
+          "list",
+          "--format",
+          "json"
+        ],
+        [
+          "profile",
+          "list",
+          "--format",
+          "json"
+        ],
+        [
+          "contact",
+          "user",
+          "get-self",
+          "--format",
+          "json",
+          "--profile",
+          "fixture-corp:fixture-user"
+        ],
+        [
+          "contact",
+          "+search-user",
+          "--query",
+          "Fixture Self",
+          "--format",
+          "json",
+          "--profile",
+          "fixture-corp:fixture-user"
+        ],
+        [
+          "chat",
+          "conversation-info",
+          "--group",
+          "fixture-room",
+          "--format",
+          "json",
+          "--profile",
+          "fixture-corp:fixture-user"
+        ],
+        [
+          "event",
+          "+listen-im",
+          "--kind",
+          "group",
+          "--events",
+          "message",
+          "--chat-id",
+          "fixture-room",
+          "--format",
+          "ndjson",
+          "--profile",
+          "fixture-corp:fixture-user"
+        ],
+        [
+          "chat",
+          "+chat-messages",
+          "--group",
+          "fixture-room",
+          "--start",
+          "2026-11-08T09:14:09.862Z",
+          "--end",
+          "2026-11-08T09:14:11.764Z",
+          "--order",
+          "asc",
+          "--page-all",
+          "--page-limit",
+          "50",
+          "--format",
+          "json",
+          "--profile",
+          "fixture-corp:fixture-user"
+        ],
+        [
+          "chat",
+          "+chat-messages",
+          "--group",
+          "fixture-room",
+          "--start",
+          "2026-11-08T09:13:41.764Z",
+          "--end",
+          "2026-11-08T09:14:21.739Z",
+          "--order",
+          "asc",
+          "--page-all",
+          "--page-limit",
+          "50",
+          "--format",
+          "json",
+          "--profile",
+          "fixture-corp:fixture-user"
+        ]
+      ],
+      "ingress": {
+        "paused": false,
+        "firstStartedAt": "2026-11-08T09:14:09.862Z",
+        "backfillThroughAt": "2026-11-08T09:14:21.739Z",
+        "consumedAt": "2026-11-08T09:14:22.419Z",
+        "consumedMessageId": "live-r23"
+      },
+      "modelClosed": true
+    }
+  ],
+  "pass": false,
+  "seed": {
+    "initialized": true,
+    "privateAccount": true,
+    "fakeOnly": true
+  },
+  "containerId": "9d9ebd387c01bac1ff3f5cca52f56857213b88d7240e0df00cd9cb5c8c620f71",
+  "exerciseExit": 0,
+  "stop": {
+    "exit": 0,
+    "stdout": "night-bot-sg12-fake-ingress-r23",
+    "stderr": ""
+  },
+  "terminal": {
+    "exitCode": 0,
+    "running": false,
+    "pid": 0,
+    "oomKilled": false,
+    "entrypoint": [
+      "/usr/bin/tini",
+      "--",
+      "/bin/sh",
+      "/opt/night-bot/scripts/docker-entrypoint.sh"
+    ],
+    "cmd": [
+      "run"
+    ],
+    "user": "node",
+    "capDrop": [
+      "ALL"
+    ],
+    "readOnlyRoot": true,
+    "network": "none",
+    "securityOpt": [
+      "no-new-privileges",
+      "seccomp={\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_X86_64\",\"subArchitectures\":[\"SCMP_ARCH_X86\",\"SCMP_ARCH_X32\"]},{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[\"SCMP_ARCH_ARM\"]},{\"architecture\":\"SCMP_ARCH_MIPS64\",\"subArchitectures\":[\"SCMP_ARCH_MIPS\",\"SCMP_ARCH_MIPS64N32\"]},{\"architecture\":\"SCMP_ARCH_MIPS64N32\",\"subArchitectures\":[\"SCMP_ARCH_MIPS\",\"SCMP_ARCH_MIPS64\"]},{\"architecture\":\"SCMP_ARCH_MIPSEL64\",\"subArchitectures\":[\"SCMP_ARCH_MIPSEL\",\"SCMP_ARCH_MIPSEL64N32\"]},{\"architecture\":\"SCMP_ARCH_MIPSEL64N32\",\"subArchitectures\":[\"SCMP_ARCH_MIPSEL\",\"SCMP_ARCH_MIPSEL64\"]},{\"architecture\":\"SCMP_ARCH_S390X\",\"subArchitectures\":[\"SCMP_ARCH_S390\"]},{\"architecture\":\"SCMP_ARCH_RISCV64\",\"subArchitectures\":null}],\"syscalls\":[{\"names\":[\"accept\",\"accept4\",\"access\",\"adjtimex\",\"alarm\",\"bind\",\"brk\",\"cachestat\",\"capget\",\"capset\",\"chdir\",\"chmod\",\"chown\",\"chown32\",\"clock_adjtime\",\"clock_adjtime64\",\"clock_getres\",\"clock_getres_time64\",\"clock_gettime\",\"clock_gettime64\",\"clock_nanosleep\",\"clock_nanosleep_time64\",\"close\",\"close_range\",\"connect\",\"copy_file_range\",\"creat\",\"dup\",\"dup2\",\"dup3\",\"epoll_create\",\"epoll_create1\",\"epoll_ctl\",\"epoll_ctl_old\",\"epoll_pwait\",\"epoll_pwait2\",\"epoll_wait\",\"epoll_wait_old\",\"eventfd\",\"eventfd2\",\"execve\",\"execveat\",\"exit\",\"exit_group\",\"faccessat\",\"faccessat2\",\"fadvise64\",\"fadvise64_64\",\"fallocate\",\"fanotify_mark\",\"fchdir\",\"fchmod\",\"fchmodat\",\"fchmodat2\",\"fchown\",\"fchown32\",\"fchownat\",\"fcntl\",\"fcntl64\",\"fdatasync\",\"fgetxattr\",\"flistxattr\",\"flock\",\"fork\",\"fremovexattr\",\"fsetxattr\",\"fstat\",\"fstat64\",\"fstatat64\",\"fstatfs\",\"fstatfs64\",\"fsync\",\"ftruncate\",\"ftruncate64\",\"futex\",\"futex_requeue\",\"futex_time64\",\"futex_wait\",\"futex_waitv\",\"futex_wake\",\"futimesat\",\"getcpu\",\"getcwd\",\"getdents\",\"getdents64\",\"getegid\",\"getegid32\",\"geteuid\",\"geteuid32\",\"getgid\",\"getgid32\",\"getgroups\",\"getgroups32\",\"getitimer\",\"getpeername\",\"getpgid\",\"getpgrp\",\"getpid\",\"getppid\",\"getpriority\",\"getrandom\",\"getresgid\",\"getresgid32\",\"getresuid\",\"getresuid32\",\"getrlimit\",\"get_robust_list\",\"getrusage\",\"getsid\",\"getsockname\",\"getsockopt\",\"get_thread_area\",\"gettid\",\"gettimeofday\",\"getuid\",\"getuid32\",\"getxattr\",\"inotify_add_watch\",\"inotify_init\",\"inotify_init1\",\"inotify_rm_watch\",\"io_cancel\",\"ioctl\",\"io_destroy\",\"io_getevents\",\"io_pgetevents\",\"io_pgetevents_time64\",\"ioprio_get\",\"ioprio_set\",\"io_setup\",\"io_submit\",\"ipc\",\"kill\",\"landlock_add_rule\",\"landlock_create_ruleset\",\"landlock_restrict_self\",\"lchown\",\"lchown32\",\"lgetxattr\",\"link\",\"linkat\",\"listen\",\"listxattr\",\"llistxattr\",\"_llseek\",\"lremovexattr\",\"lseek\",\"lsetxattr\",\"lstat\",\"lstat64\",\"madvise\",\"map_shadow_stack\",\"membarrier\",\"memfd_create\",\"memfd_secret\",\"mincore\",\"mkdir\",\"mkdirat\",\"mknod\",\"mknodat\",\"mlock\",\"mlock2\",\"mlockall\",\"mmap\",\"mmap2\",\"mprotect\",\"mq_getsetattr\",\"mq_notify\",\"mq_open\",\"mq_timedreceive\",\"mq_timedreceive_time64\",\"mq_timedsend\",\"mq_timedsend_time64\",\"mq_unlink\",\"mremap\",\"msgctl\",\"msgget\",\"msgrcv\",\"msgsnd\",\"msync\",\"munlock\",\"munlockall\",\"munmap\",\"name_to_handle_at\",\"nanosleep\",\"newfstatat\",\"_newselect\",\"open\",\"openat\",\"openat2\",\"pause\",\"pidfd_open\",\"pidfd_send_signal\",\"pipe\",\"pipe2\",\"pkey_alloc\",\"pkey_free\",\"pkey_mprotect\",\"poll\",\"ppoll\",\"ppoll_time64\",\"prctl\",\"pread64\",\"preadv\",\"preadv2\",\"prlimit64\",\"process_mrelease\",\"pselect6\",\"pselect6_time64\",\"pwrite64\",\"pwritev\",\"pwritev2\",\"read\",\"readahead\",\"readlink\",\"readlinkat\",\"readv\",\"recv\",\"recvfrom\",\"recvmmsg\",\"recvmmsg_time64\",\"recvmsg\",\"remap_file_pages\",\"removexattr\",\"rename\",\"renameat\",\"renameat2\",\"restart_syscall\",\"rmdir\",\"rseq\",\"rt_sigaction\",\"rt_sigpending\",\"rt_sigprocmask\",\"rt_sigqueueinfo\",\"rt_sigreturn\",\"rt_sigsuspend\",\"rt_sigtimedwait\",\"rt_sigtimedwait_time64\",\"rt_tgsigqueueinfo\",\"sched_getaffinity\",\"sched_getattr\",\"sched_getparam\",\"sched_get_priority_max\",\"sched_get_priority_min\",\"sched_getscheduler\",\"sched_rr_get_interval\",\"sched_rr_get_interval_time64\",\"sched_setaffinity\",\"sched_setattr\",\"sched_setparam\",\"sched_setscheduler\",\"sched_yield\",\"seccomp\",\"select\",\"semctl\",\"semget\",\"semop\",\"semtimedop\",\"semtimedop_time64\",\"send\",\"sendfile\",\"sendfile64\",\"sendmmsg\",\"sendmsg\",\"sendto\",\"setfsgid\",\"setfsgid32\",\"setfsuid\",\"setfsuid32\",\"setgid\",\"setgid32\",\"setgroups\",\"setgroups32\",\"setitimer\",\"setpgid\",\"setpriority\",\"setregid\",\"setregid32\",\"setresgid\",\"setresgid32\",\"setresuid\",\"setresuid32\",\"setreuid\",\"setreuid32\",\"setrlimit\",\"set_robust_list\",\"setsid\",\"setsockopt\",\"set_thread_area\",\"set_tid_address\",\"setuid\",\"setuid32\",\"setxattr\",\"shmat\",\"shmctl\",\"shmdt\",\"shmget\",\"shutdown\",\"sigaltstack\",\"signalfd\",\"signalfd4\",\"sigprocmask\",\"sigreturn\",\"socketcall\",\"socketpair\",\"splice\",\"stat\",\"stat64\",\"statfs\",\"statfs64\",\"statx\",\"symlink\",\"symlinkat\",\"sync\",\"sync_file_range\",\"syncfs\",\"sysinfo\",\"tee\",\"tgkill\",\"time\",\"timer_create\",\"timer_delete\",\"timer_getoverrun\",\"timer_gettime\",\"timer_gettime64\",\"timer_settime\",\"timer_settime64\",\"timerfd_create\",\"timerfd_gettime\",\"timerfd_gettime64\",\"timerfd_settime\",\"timerfd_settime64\",\"times\",\"tkill\",\"truncate\",\"truncate64\",\"ugetrlimit\",\"umask\",\"uname\",\"unlink\",\"unlinkat\",\"utime\",\"utimensat\",\"utimensat_time64\",\"utimes\",\"vfork\",\"vmsplice\",\"wait4\",\"waitid\",\"waitpid\",\"write\",\"writev\"],\"action\":\"SCMP_ACT_ALLOW\"},{\"names\":[\"process_vm_readv\",\"process_vm_writev\",\"ptrace\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"minKernel\":\"4.8\"}},{\"names\":[\"socket\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":40,\"op\":\"SCMP_CMP_NE\"}]},{\"names\":[\"personality\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"personality\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":8,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"personality\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":131072,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"personality\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":131080,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"personality\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":4294967295,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"sync_file_range2\",\"swapcontext\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"ppc64le\"]}},{\"names\":[\"arm_fadvise64_64\",\"arm_sync_file_range\",\"sync_file_range2\",\"breakpoint\",\"cacheflush\",\"set_tls\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"arm\",\"arm64\"]}},{\"names\":[\"arch_prctl\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\",\"x32\"]}},{\"names\":[\"modify_ldt\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\",\"x32\",\"x86\"]}},{\"names\":[\"s390_pci_mmio_read\",\"s390_pci_mmio_write\",\"s390_runtime_instr\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"s390\",\"s390x\"]}},{\"names\":[\"riscv_flush_icache\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"riscv64\"]}},{\"names\":[\"open_by_handle_at\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_DAC_READ_SEARCH\"]}},{\"names\":[\"bpf\",\"clone\",\"clone3\",\"fanotify_init\",\"fsconfig\",\"fsmount\",\"fsopen\",\"fspick\",\"lookup_dcookie\",\"mount\",\"mount_setattr\",\"move_mount\",\"open_tree\",\"perf_event_open\",\"quotactl\",\"quotactl_fd\",\"setdomainname\",\"sethostname\",\"setns\",\"syslog\",\"umount\",\"umount2\",\"unshare\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_ADMIN\"]}},{\"names\":[\"clone\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":0,\"value\":2114060288,\"op\":\"SCMP_CMP_MASKED_EQ\"}],\"excludes\":{\"caps\":[\"CAP_SYS_ADMIN\"],\"arches\":[\"s390\",\"s390x\"]}},{\"names\":[\"clone\"],\"action\":\"SCMP_ACT_ALLOW\",\"args\":[{\"index\":1,\"value\":2114060288,\"op\":\"SCMP_CMP_MASKED_EQ\"}],\"comment\":\"s390 parameter ordering for clone is different\",\"includes\":{\"arches\":[\"s390\",\"s390x\"]},\"excludes\":{\"caps\":[\"CAP_SYS_ADMIN\"]}},{\"names\":[\"clone3\"],\"action\":\"SCMP_ACT_ERRNO\",\"errnoRet\":38,\"excludes\":{\"caps\":[\"CAP_SYS_ADMIN\"]}},{\"names\":[\"reboot\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_BOOT\"]}},{\"names\":[\"chroot\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_CHROOT\"]}},{\"names\":[\"delete_module\",\"init_module\",\"finit_module\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_MODULE\"]}},{\"names\":[\"acct\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_PACCT\"]}},{\"names\":[\"kcmp\",\"pidfd_getfd\",\"process_madvise\",\"process_vm_readv\",\"process_vm_writev\",\"ptrace\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_PTRACE\"]}},{\"names\":[\"iopl\",\"ioperm\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_RAWIO\"]}},{\"names\":[\"settimeofday\",\"stime\",\"clock_settime\",\"clock_settime64\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_TIME\"]}},{\"names\":[\"vhangup\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_TTY_CONFIG\"]}},{\"names\":[\"get_mempolicy\",\"mbind\",\"set_mempolicy\",\"set_mempolicy_home_node\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYS_NICE\"]}},{\"names\":[\"syslog\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_SYSLOG\"]}},{\"names\":[\"bpf\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_BPF\"]}},{\"names\":[\"perf_event_open\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"caps\":[\"CAP_PERFMON\"]}},{\"comment\":\"Night Bot modification: Moby v26.0.0 default profile (Apache-2.0); only 13 amd64 bubblewrap rules appended. See docker-seccomp-license.txt and docker-seccomp-notice.txt.\",\"names\":[\"clone\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":805437457,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_EQ\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_EQ\"},{\"index\":3,\"value\":573440,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":3,\"value\":6,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":3,\"value\":6,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_NE\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_EQ\"},{\"index\":3,\"value\":3236810752,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_EQ\"},{\"index\":3,\"value\":53248,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_EQ\"},{\"index\":3,\"value\":18446744073707451378,\"op\":\"SCMP_CMP_MASKED_EQ\",\"valueTwo\":36898},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":3,\"value\":14,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":3,\"value\":10,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_NE\"}]},{\"names\":[\"mount\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":2,\"value\":0,\"op\":\"SCMP_CMP_EQ\"},{\"index\":3,\"value\":311296,\"op\":\"SCMP_CMP_EQ\"},{\"index\":4,\"value\":0,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"pivot_root\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":0,\"op\":\"SCMP_CMP_NE\"}]},{\"names\":[\"umount2\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":0,\"op\":\"SCMP_CMP_NE\"},{\"index\":1,\"value\":2,\"op\":\"SCMP_CMP_EQ\"}]},{\"names\":[\"unshare\"],\"action\":\"SCMP_ACT_ALLOW\",\"includes\":{\"arches\":[\"amd64\"]},\"args\":[{\"index\":0,\"value\":268435456,\"op\":\"SCMP_CMP_EQ\"}]}]}"
+    ],
+    "appArmor": ""
+  },
+  "error": {
+    "name": "Error",
+    "message": "Command failed: docker run --rm -i --network none --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=docs/ops/docker-bwrap-seccomp.json --read-only --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 --mount type=volume,source=night-bot-sg12-fake-ingress-r23-data,target=/opt/night-bot/data,readonly --entrypoint node sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b --input-type=module -\n(node:1) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nfile:///opt/night-bot/[eval1]:6\n try{db.exec('PRAGMA query_only=ON');const rows=table=>db.prepare('SELECT body FROM '+table).all().map(r=>JSON.parse(r.body));sources=rows('dynamic_sources');triage=rows('dynamic_triage')}finally{db.close()}\n                                                          ^\n\nError: unable to open database file\n    at rows (file:///opt/night-bot/[eval1]:6:59)\n    at readback (file:///opt/night-bot/[eval1]:6:135) {\n  code: 'ERR_SQLITE_ERROR',\n  errcode: 14,\n  errstr: 'unable to open database file'\n}\n\nNode.js v24.13.0\n",
+    "stack": "Error: Command failed: docker run --rm -i --network none --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=docs/ops/docker-bwrap-seccomp.json --read-only --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 --mount type=volume,source=night-bot-sg12-fake-ingress-r23-data,target=/opt/night-bot/data,readonly --entrypoint node sha256:82b96bd4406654154e29b4717feedc02c67542ac6d7deed146a81d5ddd230a2b --input-type=module -\n(node:1) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nfile:///opt/night-bot/[eval1]:6\n try{db.exec('PRAGMA query_only=ON');const rows=table=>db.prepare('SELECT body FROM '+table).all().map(r=>JSON.parse(r.body));sources=rows('dynamic_sources');triage=rows('dynamic_triage')}finally{db.close()}\n                                                          ^\n\nError: unable to open database file\n    at rows (file:///opt/night-bot/[eval1]:6:59)\n    at readback (file:///opt/night-bot/[eval1]:6:135) {\n  code: 'ERR_SQLITE_ERROR',\n  errcode: 14,\n  errstr: 'unable to open database file'\n}\n\nNode.js v24.13.0\n\n    at genericNodeError (node:internal/errors:985:15)\n    at wrappedFn (node:internal/errors:539:14)\n    at checkExecSyncError (node:child_process:942:11)\n    at execFileSync (node:child_process:978:15)\n    at node (file:///D:/codex/worktrees/resident-conversation-plan/night-bot/docs/tmp/sg12-fake-ingress-r23.mjs:18:33)\n    at file:///D:/codex/worktrees/resident-conversation-plan/night-bot/docs/tmp/sg12-fake-ingress-r23.mjs:112:29\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "finishedAt": "2026-11-08T09:14:24.187Z",
+  "stdoutSha256": "760ff58a7d6e6a76fb3f6337bf85407415daee71e8e26a71dd45a2dfab301b2f",
+  "stderrSha256": "f4f2c79269f00a1151e9c93527d965b8edca19054968270c320940d0e4e90dcc"
+}

@@ -1,0 +1,114 @@
+{
+  "checkpoint": "9a925a6",
+  "complete": false,
+  "resultsOverlap": true,
+  "evidence": [
+    {
+      "name": "default",
+      "target": "docs/evidence/pi-current-default-summary.txt",
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "164b025a7a7c82b490fcf1f3b1183ebdf12a4b56b8e497c01809f7dc58db9bb1",
+      "note": "Full stable default run after invocation identity, new-action authorization and seven further dependency retirements."
+    },
+    {
+      "name": "domain",
+      "target": "docs/evidence/pi-current-domain-summary.txt",
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "7dd6bd437345cb45b3d4fdd9f54dabbf5071c2ef540257df18c389eb56719451",
+      "note": "Full existing domain group after SQL/operator authorization changes."
+    },
+    {
+      "name": "routing",
+      "target": "docs/evidence/pi-current-routing-summary.txt",
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "44b4521dbdf43d33fa8578dc21701491cdf37011fc7813b74974314d18ba8e0a",
+      "note": "Full existing routing group after invocation changes."
+    },
+    {
+      "name": "runtime-diagnostic",
+      "target": "docs/evidence/pi-current-runtime-diagnostic-summary.txt",
+      "logSha256": "1696eb5dd5769fe488691630573180603a55cda67cb327062c20e69e83f337e9",
+      "sourceCheckpoint": "d31d117"
+    },
+    {
+      "name": "effect-reconciliation",
+      "target": "docs/evidence/pi-current-effect-reconciliation-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "0c926652fa222337fec0f9c48b35dbae571b5dc06a178d4170f6a9b85e8ec205",
+      "note": "44 core and actual Host tests."
+    },
+    {
+      "name": "operator",
+      "target": "docs/evidence/pi-current-operator-summary.txt",
+      "logSha256": "5e7b51c3df03ca583c0f3da10689d246abc97afaab9e4585c64e6ee080c8825e",
+      "sourceCheckpoint": "d31d117"
+    },
+    {
+      "name": "operator-kernel",
+      "target": "docs/evidence/pi-current-operator-kernel-summary.txt",
+      "logSha256": "6dbe875feb2b3194b1ce782078f0818f57d201b407edf4243de67e13a5aa5ad3",
+      "sourceCheckpoint": "d31d117"
+    },
+    {
+      "name": "skills",
+      "target": "docs/evidence/pi-current-skills-summary.txt",
+      "logSha256": "ce8aa7ddccc24ba1697ba2c8bd37cf946dae224166c13f0b234b4d32bb7a2bf6",
+      "sourceCheckpoint": "d31d117"
+    },
+    {
+      "name": "names",
+      "target": "docs/evidence/pi-current-names-summary.txt",
+      "logSha256": "a7c65a91c7e79709706244cbe4393b81cefb11d3aeaf45842f6c824d1fa11e9e",
+      "sourceCheckpoint": "d31d117"
+    },
+    {
+      "name": "priority-contracts",
+      "target": "docs/evidence/pi-current-priority-contracts-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "63db09532ac6493d4ba0ee1ae5c2712ac23c6eb3c7855bc7829468863c471aea",
+      "note": "60 file/task/permission/state tests."
+    },
+    {
+      "name": "live-supplement",
+      "target": "docs/evidence/pi-current-live-supplement-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "51e48231fb1f37b0c804d8a126fcfb3585598ff1e4cdc4fc4e981471e9efca36",
+      "note": "3 actual producer tests; approved outer execution; application bwrap retained."
+    },
+    {
+      "name": "effect-call-identity",
+      "target": "docs/evidence/pi-current-effect-call-identity-summary.txt",
+      "sourceCheckpoint": "4568d3f",
+      "logSha256": "d1ef150606ffeaf21252bc20383810c6948ce00e3f99884a27fed3821988bbb6",
+      "note": "2 real SDK intentional-repeat/duplicate/cold/unknown-effect counterexamples."
+    },
+    {
+      "name": "runtime",
+      "target": "docs/evidence/pi-current-runtime-summary.txt",
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "271b0b88bf6101e72d690240dda47112c981d89b56ecd661aac7695757c2775b",
+      "note": "Full runtime group, concurrency 2; actual application bubblewrap retained."
+    },
+    {
+      "name": "cold-install-smoke",
+      "target": "docs/evidence/pi-current-cold-install-smoke-summary.txt",
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "3156f774f7985eb85c1f0700421d27ed075c84585a5ebfb9e991464b4c2126d1",
+      "note": "Fresh node_modules: actual official Host and cancelled architecture refusal."
+    },
+    {
+      "name": "independent-control-tools",
+      "target": "docs/evidence/pi-current-independent-control-tools-summary.txt",
+      "sourceCheckpoint": "ae2b5bd",
+      "logSha256": "c818b875ef738445981cd10622f81d65567127144017c8e6aa52d5e8cf2e4a96",
+      "note": "Independent contracts and actual official SDK after retiring table-driven package comparisons."
+    },
+    {
+      "name": "frozen-install",
+      "target": "docs/evidence/pi-current-frozen-install-summary.txt",
+      "sourceCheckpoint": "9a925a6",
+      "logSha256": "08a08c2d877c3cddd48283011aa2f27d792943889adb932d432a9970887f8d22",
+      "note": "Standard frozen install after root dependency retirement to 25; no registry or build-policy bypass."
+    }
+  ]
+}

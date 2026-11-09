@@ -1,0 +1,87 @@
+{
+  "base": "911c849",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 634,
+    "fail": 0,
+    "skip": 0
+  },
+  "runtime": {
+    "pass": 142,
+    "fail": 0,
+    "skip": 0
+  },
+  "routing": {
+    "pass": 47,
+    "fail": 0,
+    "skip": 0
+  },
+  "domain": {
+    "pass": 390,
+    "fail": 0,
+    "skip": 0
+  },
+  "linuxContainment": {
+    "pass": 20,
+    "fail": 0,
+    "skip": 1,
+    "skipReason": "Windows-only platform case"
+  },
+  "focused": {
+    "pass": 31,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "errorsAndPrompt": {
+    "pass": 6,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "remainingDirectDshDevDependencies": 58,
+  "removedContract": "Unused Typert/Gateway descriptors, global structural error/owned-value markers, invocation accessor and optional DSH agent type/context lookup hook. Controllers now inherit ordinary Cordis Service.",
+  "controlErrors": "Ordinary management codes/methods retained; diagnostic details detached/frozen and original cause preserved. No RPC transport or error marker used as authority.",
+  "removedSource": "src/native-typert-protocol.js; no production or retained fixture source references/marker implementations remain",
+  "removedNotice": "licenses/dsh-typert-protocol-MIT.txt after removing corresponding local source and differential tests",
+  "verification": "Retired RPC root symlink absent during regression and verified absent afterward; restored after completion. Nested peers/source contents unchanged.",
+  "freshInstall": "Still blocked by known registry metadata/attestation HTTP 503. No install retry, route change or policy bypass.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-control-services-default.txt",
+      "sha256": "a7c91a8d2bd78be54f29bdd0f621270eba10123733c762fc7fde840c30b49261"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-runtime.txt",
+      "sha256": "f5e9da4765f86099fde7dce97c31eecbc8149174ead347e495ab05b8215e3814"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-routing.txt",
+      "sha256": "b38499e9f4442bbcf6aead340d7692e2e034fef51539f39244efc7729b405aaa"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-domain.txt",
+      "sha256": "6d6243bdee6df8a1abb2bffe8a4401c32f5a223e451b62d27481de60146ff5cc"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-kernel.txt",
+      "sha256": "be02681442a3863fdf8b22d7a7a14b171ded609b8c09dcb358d4b81a4ac71b96"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-focused.txt",
+      "sha256": "c00feb2de800c519294653a66dc463a1b59ba6add696d3990a603005a4cce300"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-errors.txt",
+      "sha256": "2049740063b1aeef756dd00ea1d58b0ffb11199fcb42ffeebaf6dd0b46c697d6"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-checks.txt",
+      "sha256": "c2eaebbefb3f59c97d1a5b1d5a44881ee5d9e1f7e7bf7c027208d70456eb9610"
+    },
+    {
+      "path": "docs/evidence/pi-native-control-services-isolation.txt",
+      "sha256": "b46cee4d35bb9314982af43fffabe48ac1d6b0f9d4326eebba6eff63cf755db0"
+    }
+  ]
+}

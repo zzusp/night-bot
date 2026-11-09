@@ -1,0 +1,11 @@
+[
+  {
+    "package": "@deepseek-ai/dsh-sandbox",
+    "originalSha256": "b56373befbfcfe281c17c8892e9a4b2cdcb96851290b3ed0ff56b08915e2f743",
+    "fixture": "test/fixtures/legacy-sandbox-interface.mjs",
+    "fixtureSha256": "5d44e608bcdf2aa71891c4c0ae36236fcf462b677d1f5a704a6b8cc64d849eea",
+    "supportAdaptation": "verified local values and scope; original algorithms/classes remain independent",
+    "laterSupportAdaptation": "canonical native model protocol namespace after LLM migration; original constructor/registry bodies unchanged",
+    "finalSupportAdaptation": "native session/persistence/model namespace links; original constructor/registry bodies remain independent"
+  }
+]

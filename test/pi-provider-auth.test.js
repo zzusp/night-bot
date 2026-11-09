@@ -1,0 +1,18 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {piAuthentication} from '../src/pi-provider-auth.js'
+function fixture(){const records=new Map(),refs=new Map();let tail=Promise.resolve();const store={readRecord:async key=>structuredClone(records.get(key)),listRecords:async()=>[...records].map(([key,value])=>({key,kind:value.kind})),modifyRecord(key,mutate){const result=tail.then(async()=>{const next=await mutate(structuredClone(records.get(key)));if(next===undefined)records.delete(key);else records.set(key,next);return structuredClone(next)});tail=result.catch(()=>{});return result},deleteRecord:async key=>records.delete(key),resolve:async name=>refs.has(name)?{value:refs.get(name)}:undefined};return{records,refs,store,auth:piAuthentication({getCredentials:()=>store,getEnvironment:name=>name==='ENV_KEY'?'environment-fixture':undefined})}}
+test('Pi auth preserves API key and OAuth grants under the existing namespace and lists only owned records',async()=>{
+ const f=fixture();await f.auth.credentials.modify('openai',()=>({type:'api_key',key:'fixture',env:{EXTRA:'value'}}));assert.equal(f.records.get('llm-pi-ai/openai').kind,'api-key');assert.equal((await f.auth.credentials.read('openai')).key,'fixture')
+ await f.auth.credentials.modify('openai-codex',()=>({type:'oauth',refresh:'fixture-refresh',access:'fixture-access',expires:123,optional:undefined,nested:[undefined]}));assert.deepEqual(f.records.get('llm-pi-ai/openai-codex').payload.nested,[null]);assert.equal('optional'in f.records.get('llm-pi-ai/openai-codex').payload,false)
+ f.records.set('other/provider',{kind:'api-key',key:'other'});assert.deepEqual(await f.auth.credentials.list(),[{providerId:'openai',type:'api_key'},{providerId:'openai-codex',type:'oauth'}]);await f.auth.credentials.delete('openai');assert.equal(await f.auth.credentials.read('openai'),undefined)
+})
+test('concurrent OAuth refresh remains inside durable store modify exclusion',async()=>{
+ const f=fixture();await f.auth.credentials.modify('openai-codex',()=>({type:'oauth',version:0}));await Promise.all(Array.from({length:5},()=>f.auth.credentials.modify('openai-codex',async current=>({...current,version:current.version+1}))));assert.equal((await f.auth.credentials.read('openai-codex')).version,5)
+})
+test('credential service and ambient auth share precedence without leaking missing or invalid keys',async()=>{
+ const f=fixture();f.refs.set('ENV_KEY','stored-fixture');assert.equal(await f.auth.authContext.env('ENV_KEY'),'stored-fixture');assert.equal(await f.auth.resolveApiKey({provider:'p',apiKeyEnv:'ENV_KEY'}),'stored-fixture');f.refs.delete('ENV_KEY');assert.equal(await f.auth.authContext.env('ENV_KEY'),'environment-fixture');await assert.rejects(f.auth.resolveApiKey({provider:'p',apiKeyEnv:'ENV_KEY'}),e=>e.code==='MISSING_CREDENTIAL');f.refs.set('ENV_KEY','  trimmed-fixture  ');assert.equal(await f.auth.resolveApiKey({provider:'p',apiKeyEnv:'ENV_KEY'}),'trimmed-fixture');f.refs.set('ENV_KEY','invalid\nkey');await assert.rejects(f.auth.resolveApiKey({provider:'p',apiKeyEnv:'ENV_KEY'}),e=>e.code==='INVALID_CREDENTIAL');assert.equal(await f.auth.resolveApiKey({provider:'p'}),undefined)
+})
+test('absent durable store and unaddressable routes never report a successful sign-in',async()=>{
+ const auth=piAuthentication({getEnvironment:()=>undefined});assert.equal(await auth.credentials.read('UPPER.route'),undefined);await auth.credentials.delete('UPPER.route');await assert.rejects(auth.credentials.modify('UPPER.route',()=>({type:'api_key',key:'fixture'})),e=>e.code==='UNSTORABLE_PROVIDER_ID');await assert.rejects(auth.credentials.modify('openai',()=>({type:'api_key',key:'fixture'})),e=>e.code==='NO_CREDENTIAL_STORE')
+})

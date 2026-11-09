@@ -1,0 +1,35 @@
+{
+  "base": "70c2e03",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 632,
+    "fail": 0,
+    "skip": 0
+  },
+  "focused": {
+    "pass": 9,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default"
+  },
+  "remainingDirectDshDevDependencies": 72,
+  "removedContract": "Implicit DSH_HOME/default ~/.dsh user dotenv discovery. A user environment directory must now be explicitly supplied.",
+  "preserved": "Inherited/project/explicit-user precedence and provenance, immutable source capture, intentional empty values, project bootstrap/proxy/CA guards, no embedding-mode secret materialization",
+  "lockfile": "Only retired direct importer removed; parsed successfully with no new versions/integrity entries. Dependency snapshots retained.",
+  "frozenInstall": "Not rerun while known registry metadata/attestation ERR_PNPM_FETCH_503 blocker remains; tests use existing installed dependencies, source checks do not replace fresh package verification",
+  "remaining": "Storage services still have separate legacy home defaults; scheduled for explicit-path cleanup",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-environment-roots-focused.txt",
+      "sha256": "5274e8323719540b4f60af73c1f5bf79af9f5f62fa56ea2241b1992c23a75049"
+    },
+    {
+      "path": "docs/evidence/pi-native-environment-roots-default.txt",
+      "sha256": "505497794ab52f1236c3aaf5aabfab2733f3010f39bd7a40934e0732bb988dcd"
+    },
+    {
+      "path": "docs/evidence/pi-native-environment-roots-checks.txt",
+      "sha256": "78c9d49f386ab4fa10c1cde881d12e8cd5dbcd4a9de6cbf60b4842e5b1836d1b"
+    }
+  ]
+}

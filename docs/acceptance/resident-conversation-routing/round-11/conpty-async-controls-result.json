@@ -1,0 +1,39 @@
+{
+  "exit": 139,
+  "finishedAt": "2026-11-07T21:54:25.748Z",
+  "sourceCount": 15,
+  "sourceChanged": [],
+  "logs": {
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-async-controls-check.log": "0b3f8c4e2f47ffc5f9a73ff485a3e1a0af48d4cd5689c88d24f92f3ffa59407f",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-async-controls-check-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-async-controls-stdout.log": "a3c327395aa64ed5c4ff7627b6fe35c1ad6e018577df43137257339a70a132b4",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-async-controls-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/acceptance/resident-conversation-routing/round-11/conpty-async-controls-executor.log": "fab29dd369ed303660691dcb6a842cadf72d43fcdc4029198dcfde8597b0452a"
+  },
+  "runStart": {
+    "event": "native-stage",
+    "sequence": 1,
+    "stage": "run-start",
+    "pid": 26328,
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "sourceSha256": "4ee4bc2a5d60592d8c07c2860a18a1ede31dc85d4d5f03fb21991e72f734178a"
+  },
+  "lastStage": {
+    "event": "native-stage",
+    "sequence": 6,
+    "stage": "sleep.worker-dispatch.returned"
+  },
+  "terminal": null,
+  "runJsonObserved": false,
+  "pass": false,
+  "scope": "GetCurrentProcessId scalar and Sleep(0) void async only; no pipes, HPCON, Profile, ACL or Job",
+  "productionAdmissible": false,
+  "exactPidReadback": {
+    "pid": 26328,
+    "observed": false,
+    "method": "independent PowerShell Get-Process -Id 26328",
+    "priorResourceCleanupProved": false
+  }
+}

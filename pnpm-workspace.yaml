@@ -1,0 +1,7 @@
+allowBuilds:
+  # Published JS is used; the no-op/version-warning install hooks are unnecessary.
+  '@google/genai': false
+  # Pinned native packages use their reviewed prebuild/install paths.
+  koffi: true
+  node-pty: true
+  protobufjs: false

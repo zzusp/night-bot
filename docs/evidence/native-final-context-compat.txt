@@ -1,0 +1,62 @@
+✔ V4 tool-role receipts preserve complete immutable-read coverage and reject error or foreign results (3.564555ms)
+✔ V4 read compaction keeps tool-role identity and replaces direct content without wrapping results (0.886156ms)
+✔ migrated plugin identity and V4 runtime-context/tool errors retain safe execution recovery (1.70406ms)
+✔ migration compatibility still rejects duplicate identities, wrong call provenance, and unrelated input (0.957343ms)
+✔ real V3 JSONL migration preserves plugin identity payloads and originals through V4 write/reopen (270.879705ms)
+✔ issue172 actual SDK requests: seven operations, lazy historical goals, direct reads and three continued snapshots (146.174568ms)
+ℹ {"scope":"real SDK with scripted adapter; Host text UTF-8 bytes, tool history separately measured","metrics":[{"round":1,"currentHostTextBytes":2533,"hostCount":1,"toolHistoryBytes":1949},{"round":2,"currentHostTextBytes":2533,"hostCount":1,"toolHistoryBytes":2185},{"round":3,"currentHostTextBytes":2533,"hostCount":1,"toolHistoryBytes":2421}]}
+✔ oversized SDK Host stays within budget across retries while exact source evidence is readable (100.452949ms)
+ℹ {"oversizedSDKHostBytes":[2505,2505,2505]}
+✔ user source files: exact original, native targeted reads, stable paths after restart and unchanged source identity (1679.434932ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":435,"aborted":false}
+ℹ {"scope":"synthetic authored multiline message; real SDK targeted native file reads, not full-body model_content_read","originalUTF8Bytes":4682,"metrics":[{"hostTextBytes":2115,"sourceVersion":1,"toolTextBytes":901,"decisionHostAndToolTextBytes":7882,"sourceFile":"/tmp/source-file-native-ydWd3t/tasks/task-3e3428035a60bf2489cff19cc477324a/materials/source-3245b4d1151524b48b180ff40d1a2b09.txt"},{"hostTextBytes":2068,"sourceVersion":1,"toolTextBytes":10289,"decisionHostAndToolTextBytes":12357,"sourceFile":"/tmp/source-file-native-ydWd3t/tasks/task-3e3428035a60bf2489cff19cc477324a/materials/source-3245b4d1151524b48b180ff40d1a2b09.txt"}]}
+ℹ {"lifecyclePhase":"business","elapsedMs":1224,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":19,"aborted":false}
+✔ integrated projection keeps stage evidence and provider decisions bound to the original versions (23.558103ms)
+✔ source content is unique while identities, Web request, human correction and material references remain exact (6.654656ms)
+✔ short authority bodies stay literal with exact authors instead of larger hash dictionaries (2.675886ms)
+✔ current team keeps short responsibilities and reported outcomes visible while evidence and ten-member overflow remain bounded (8.416485ms)
+✔ completed stage reports and routing internals stay readable without inflating the current task snapshot (29.406875ms)
+✔ result size, execution/failed counts and continuation self-result stay in lazy bounded catalogues (491.593612ms)
+ℹ {"scope":"projected current Host JSON UTF-8 bytes, catalogues are not eagerly expanded","metrics":[{"count":1,"beforeOwnerBytes":2357,"ownerBytes":754,"executionBytes":1759},{"count":20,"beforeOwnerBytes":646031,"ownerBytes":756,"executionBytes":10585},{"count":120,"beforeOwnerBytes":23073991,"ownerBytes":758,"executionBytes":11051}]}
+✔ current source windows retain operator authorization and later restrictions beyond the first twenty sources (6.900108ms)
+✔ first read is available, repeated readback uses references, reopen resolves and other sessions/tampering fail closed (16.292645ms)
+✔ nested quote graphs and identical bodies across distinct authors grow by identities and edges, not copied text (808.086409ms)
+ℹ {"scope":"nested source current Host UTF-8 JSON bytes","metrics":[{"depth":2,"beforeBytes":173630,"afterBytes":3079},{"depth":5,"beforeBytes":1470478,"afterBytes":5374},{"depth":9,"beforeBytes":23702160,"afterBytes":8436}]}
+✔ issue 172: seven operation memberships, stage wakes and historical objectives have one detail/readable catalog (13.006443ms)
+ℹ {"scope":"synthetic issue172 projected Host UTF-8 JSON bytes","bytes":2507,"operationsBytes":274,"blockersBytes":266,"contentIndexBytes":2}
+✔ issue 172: complete catalogs beyond the display window and explicit tool reads render bodies directly (9.832576ms)
+✔ decision view preserves request-only targets, all unknown identities and unreviewed current results (4.25103ms)
+✔ all long content surfaces expose existing readable files without contentIndex reinjection (6.555776ms)
+✔ many short requirements remain one lossless file after source-reference mapping (2.116081ms)
+✔ long configured task/execution instructions reuse the content file instead of a long prompt (2.163883ms)
+{"kind":"task","sources":5,"before":7440,"after":1356}
+{"kind":"execution","sources":5,"before":11189,"after":2427}
+{"kind":"group","sources":5,"before":8416,"after":2371}
+{"kind":"task","sources":100,"before":19965,"after":2062}
+{"kind":"execution","sources":100,"before":52256,"after":2427}
+{"kind":"group","sources":100,"before":122112,"after":2371}
+✔ whole Host UTF-8 budget retains every overflow field through admitted pointers (68.8353ms)
+✔ execution round documents are the routine owner entry while the complete ledger stays readable (36.535043ms)
+✔ budget also covers tool render bypasses, long keys and reserved context names (173.348621ms)
+✔ Topic scoped execution remains discoverable for the original-session resume: waiting-reply (0.659063ms)
+✔ Topic scoped execution remains discoverable for the original-session resume: answered (0.085379ms)
+✔ session inspection opens a read-only handle and closes it after reading (2.109672ms)
+✔ session inspection closes its handle when the read fails (2.662324ms)
+✔ session inspection preserves an open failure and a close failure (0.39118ms)
+✔ pending inbox detection uses both public queue snapshots (1.991543ms)
+✔ inspection forwards cancellation to both open and read without leaking the handle (0.541657ms)
+✔ 普通步骤不重复加载技能正文，原生变更通知触发一次核对 (5.692975ms)
+✔ 切换技能根后不继续催读旧引用，旧审计仍可恢复 (4.474347ms)
+✔ 成功读取后的元数据故障不推翻 read 结果，缺口对下一模型步骤可见 (1.094932ms)
+✔ 旧会话成功技能调用只生成待核对提示，不冒充新版已读或自动加载正文 (0.57726ms)
+✔ 同名替换及失败结果不形成可信技能读取版本 (0.544942ms)
+✔ 版本摘要之后但原生成功结果落盘前崩溃，恢复时只提示重读 (3.227206ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5854.997484

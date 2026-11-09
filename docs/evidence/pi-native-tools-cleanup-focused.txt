@@ -1,0 +1,14 @@
+✔ internal execution entrypoints resolve owned services and the application scheduler capability (3.919299ms)
+✔ canonical model errors retain strict trusted identity and validated detached failure facts (0.905388ms)
+✔ historical Session and model namespaces expose canonical native implementations (3.440831ms)
+✔ tool schemas reject invalid nested values and SDK declarations expose constrained arguments (3.743034ms)
+✔ native product attribution and invalid credential guidance preserve secrecy without visual setup references (0.49992ms)
+✔ scoped tools deny before body entry, validate outputs, and preserve pre-dispatch cancellation (27.028876ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 179.069001

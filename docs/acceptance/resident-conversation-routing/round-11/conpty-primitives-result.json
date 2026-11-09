@@ -1,0 +1,19 @@
+{
+  "exit": 139,
+  "exitEvidence": "Monitor bjvbzryih terminal event: failed exit139",
+  "runJsonObserved": false,
+  "sourceCount": 15,
+  "sourceChanged": [],
+  "checkLogSha256": "0b3f8c4e2f47ffc5f9a73ff485a3e1a0af48d4cd5689c88d24f92f3ffa59407f",
+  "runLogSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "scope": "ConPTY resource primitives only",
+  "productionAdmissible": false,
+  "pass": false,
+  "handlesClosed": "not-observed",
+  "pseudoConsoleState": "not-observed",
+  "outputEof": "not-observed",
+  "closeReturned": "not-observed",
+  "nativeFailureStage": "unknown; no JSON before abnormal process exit",
+  "realVendorExecuted": false,
+  "executorLogSha256": "8fc4f1ace3185b2cc390c92464b5dff873d1b2f62e019a98ac1d88d160f0f0e1"
+}

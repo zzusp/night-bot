@@ -1,0 +1,79 @@
+{
+  "base": "aa530df",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 634,
+    "fail": 0,
+    "skip": 0
+  },
+  "runtime": {
+    "pass": 142,
+    "fail": 0,
+    "skip": 0
+  },
+  "routing": {
+    "pass": 47,
+    "fail": 0,
+    "skip": 0
+  },
+  "domain": {
+    "pass": 390,
+    "fail": 0,
+    "skip": 0
+  },
+  "linuxContainment": {
+    "pass": 20,
+    "fail": 0,
+    "skip": 1,
+    "skipReason": "Windows-only platform case"
+  },
+  "remainingDirectDshDevDependencies": 59,
+  "removedDirectDeclarations": [
+    "@deepseek-ai/dsh-timeout",
+    "@deepseek-ai/dsh-tool-call-timeout-policy",
+    "@deepseek-ai/dsh-tool-subagent-control",
+    "@deepseek-ai/dsh-fs-sandbox",
+    "@deepseek-ai/dsh-fs-observation-policy",
+    "@deepseek-ai/dsh-bash-sandbox",
+    "@deepseek-ai/dsh-pwsh-sandbox",
+    "@deepseek-ai/dsh-brand",
+    "@deepseek-ai/dsh-authorization",
+    "@deepseek-ai/dsh-workspace",
+    "@deepseek-ai/dsh-skill",
+    "@deepseek-ai/dsh-sandbox-windows-acl"
+  ],
+  "verification": "Acorn parsed JavaScript/MJS/CJS in src/test/scripts/packages with no parser failures; no complete package-name string references for the selected declarations outside comments. Retired root symlinks were absent during regression and verified absent afterward, then restored. Existing nested peers and package source contents untouched.",
+  "freshInstall": "Still blocked by known registry metadata/attestation ERR_PNPM_FETCH_503; negative visibility test does not replace package-policy verification.",
+  "lockfile": "Only 12 importer blocks removed; alias overrides, dependency snapshots and integrity entries retained.",
+  "notices": "Retained timeout, sandbox, scope/capability, brand and tool source derivations still require their notices; no notice removed due to development declaration removal.",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-retired-deps-default.txt",
+      "sha256": "8f01ae3b1f426707c1f811271f8db18a6a293c93f6ab786f7bb529951eaedec9"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-deps-runtime.txt",
+      "sha256": "cca5acdb05fb6818fbc3d63ae3f41cca22a7ce3ac70fff9b500547569344f47a"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-deps-routing.txt",
+      "sha256": "661da71ac7b24df8761136b9018aa3b695d8126559625d7dd33b63156e9079fc"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-deps-domain.txt",
+      "sha256": "2ea05e2bee8c85ee702ece7243eef83a1ae4e8ea2d66a3ca5793da906dd0fc33"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-deps-kernel.txt",
+      "sha256": "aa5f080a7efbd1721356a915e522096e3960158502dfc76f42c067a9835b64b9"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-deps-checks.txt",
+      "sha256": "78c9d49f386ab4fa10c1cde881d12e8cd5dbcd4a9de6cbf60b4842e5b1836d1b"
+    },
+    {
+      "path": "docs/evidence/pi-native-retired-deps-isolation.txt",
+      "sha256": "cd27c71c17f43b2372b566b7cd2b63f67812e1b87467f13c8aaf8db265262377"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":40,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":386,"literalBareImports":177,"status":"declared-production-imports"}
+{"runtimeJsFiles":386,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":5,"historicalFormatFilesRemoved":9}

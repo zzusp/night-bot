@@ -1,0 +1,30 @@
+$ node --test test/pi-*.test.js && node scripts/check-coverage.mjs
+✔ configuration rejects relative state (14.265212ms)
+✔ configuration rejects same workspace (10.539557ms)
+✔ configuration rejects nested state (4.525566ms)
+✔ configuration rejects missing model (2.43299ms)
+✔ configuration rejects missing provider (2.673683ms)
+✔ configuration rejects public API (1.794927ms)
+✔ configuration rejects inconsistent DWS flags (2.402855ms)
+✔ configuration rejects inline key (1.691581ms)
+✔ configuration rejects fake production model (3.748123ms)
+✔ configuration keeps disabled transport and provider env reference (3.062684ms)
+✔ native state reads legacy JSON, serializes concurrent updates and persists workspace global (39.766253ms)
+✔ pre-commit failure preserves disk and memory, later valid writes and observer failures remain usable (4.218633ms)
+✔ post-rename uncertainty poisons the handle and reopens from durable evidence (2.968518ms)
+✔ native state rejects duplicate writers, unknown layout, corrupt records and version mismatch without overwriting (4.678177ms)
+✔ native close drains accepted writes, rejects new writes, and stable table snapshots do not change (3.825119ms)
+✔ native model changes survive restart and invalid selections preserve the original (5.453367ms)
+✔ the complete resident store retains group configuration and ingress on the native backend (13.672553ms)
+✔ native state refuses symlink targets (2.193989ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1117.927492ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (2052.941071ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3298.294824
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":200,"excludedUiModules":3,"explicitlyAdaptedModules":3,"relativeImports":"closed","httpRoutes":"retained"}

@@ -1,0 +1,2 @@
+Verified all 12 root links remained absent at the regression checkpoint; nested peer links were unchanged.
+Restored all 12 temporary root links after completed tests; no package download/install or policy bypass occurred.

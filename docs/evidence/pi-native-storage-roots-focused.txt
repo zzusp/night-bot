@@ -1,0 +1,24 @@
+✔ owned version-one credential documents retain references and detached grants while flat layouts are refused (32.924509ms)
+✔ credential validation rejects malformed and secret-bearing input without reflecting values (10.468834ms)
+✔ inherited credentials are read-only; managed values supersede writable dotenv fallback (91.154773ms)
+✔ comment-preserving edits reread disk and replace deleted snapshots without leaking mutable records (17.980352ms)
+✔ live invalid reload keeps last good snapshot, mutations refuse corruption and owner-readable violations (10.040842ms)
+✔ two application processes serialize grant refresh without dropping a committed update (382.913548ms)
+✔ closing drains an admitted refresh, refuses queued mutators, and never replays a callback (26.337888ms)
+✔ version-one stores retain comments and watcher follows atomic external changes and deletion (139.950639ms)
+✔ writer ownership fencing prevents commit and removal of a replaced lock (53.384319ms)
+✔ dead holder recovery admits once while malformed lock records remain conservatively fenced (126.666252ms)
+✔ an explicit identical credential commit still publishes confirmation without exposing mutable input (67.182998ms)
+✔ Pi cancellation rejects queued credential refresh before calling its mutator and drains started rotation (18.23942ms)
+✔ reference edits cancelled while waiting for the durable lock never mutate the store (9.628604ms)
+✔ storage services require explicit locations and cannot select the DSH process home (91.554507ms)
+✔ flat foreign credential files are refused without migration, lock creation or byte changes (7.078889ms)
+✔ 工程v26正式服务通过原生节点工具消费冻结配置，移动来源并重建Host后仍可查询 (5300.430389ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5834.583881

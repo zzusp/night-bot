@@ -1,0 +1,20 @@
+{
+  "name": "@night-bot/core",
+  "version": "2.3.0",
+  "description": "Private channel-neutral Night core runtime and application services",
+  "license": "UNLICENSED",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HiQ-AI/dingtalk-dsh-assistant.git",
+    "directory": "packages/dingtalk-dsh-assistant"
+  },
+  "dependencies": {
+    "exceljs": "4.4.0",
+    "js-yaml": "4.1.1",
+    "pg": "^8.23.0",
+    "undici": "7.16.0",
+    "zod": "^4.0.0"
+  },
+  "private": true
+}

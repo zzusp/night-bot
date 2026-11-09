@@ -1,0 +1,18 @@
+✔ native state reads legacy JSON, serializes concurrent updates and persists workspace global (57.801734ms)
+✔ pre-commit failure preserves disk and memory, later valid writes and observer failures remain usable (5.624859ms)
+✔ post-rename uncertainty poisons the handle and reopens from durable evidence (4.160687ms)
+✔ native state rejects duplicate writers, unknown layout, corrupt records and version mismatch without overwriting (12.028248ms)
+✔ native close drains accepted writes, rejects new writes, and stable table snapshots do not change (12.418713ms)
+✔ native model changes survive restart and invalid selections preserve the original (9.008259ms)
+✔ the complete resident store retains group configuration and ingress on the native backend (15.562284ms)
+✔ native state refuses symlink targets (2.255973ms)
+✔ Pi loop executes a real local OpenAI-compatible wire request, tool, and follow-up (1034.254773ms)
+✔ headless CLI starts, serves health, and drains on SIGTERM with DingTalk disabled (1950.913337ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3114.490458

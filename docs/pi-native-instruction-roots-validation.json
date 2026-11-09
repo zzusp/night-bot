@@ -1,0 +1,49 @@
+{
+  "base": "806240d",
+  "completeDshIndependence": false,
+  "defaultWithProjectRoot": {
+    "pass": 631,
+    "fail": 0,
+    "skip": 0,
+    "composition": "630 pi-* cases plus 1 project-root test"
+  },
+  "focused": {
+    "pass": 9,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of defaultWithProjectRoot"
+  },
+  "archiveChannelAndTaskSkills": {
+    "pass": 27,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Archive/channel overlap default; native task skill tests add integration coverage"
+  },
+  "remainingDirectDshDevDependencies": 77,
+  "removedLiveContract": "Implicit DSH home/agents environment-selected instruction roots and dshHome config coupling",
+  "ownBackupUpgrade": "Historical display labels remain read-only scope decoding for earlier Night Bot messages. Root identities now force baseline replacement, and disabled global roots are absent rather than project-relative lookalikes. No DSH data importer.",
+  "notices": "Remaining instruction discovery/rendering/reconciliation and historical labels stay attributed; no instruction/home-path notice removed",
+  "remaining": "General environment and shell facts still have separate DSH home/namespace contracts",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-instruction-roots-default.txt",
+      "sha256": "7f2efd448bfdd3fd60520ccda68d283afeee158b27aa390eecb0ff5785c11f92"
+    },
+    {
+      "path": "docs/evidence/pi-native-instruction-roots-focused.txt",
+      "sha256": "f328dbfe17423369827aea16e4dee475772f9ce589480313f6e4355d5fa14582"
+    },
+    {
+      "path": "docs/evidence/pi-native-instruction-roots-integration.txt",
+      "sha256": "340b3e875cafa3725c4f887083c9d62b266eabe9d163ec5be1db826fa1212ff5"
+    },
+    {
+      "path": "docs/evidence/pi-native-instruction-roots-checks.txt",
+      "sha256": "23a6e4677d1b2bfb237b8036fd7bd40bef0e9ba261011996576ace341e24355c"
+    },
+    {
+      "path": "docs/evidence/pi-native-instruction-roots-frozen.txt",
+      "sha256": "027c52ad63a5e83344d1f71aea854be704d3912f075bab340fba5b3756ade058"
+    }
+  ]
+}

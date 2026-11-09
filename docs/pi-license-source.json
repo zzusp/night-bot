@@ -1,0 +1,42 @@
+{
+  "repository": "https://github.com/earendil-works/pi",
+  "tag": "v1.5.0",
+  "commit": "f9a26365568127461c47a07a37dcb42c140a3ac5",
+  "license": "MIT",
+  "upstreamLicense": "https://raw.githubusercontent.com/earendil-works/pi/f9a26365568127461c47a07a37dcb42c140a3ac5/LICENSE",
+  "localLicense": "licenses/pi-1.5.0-MIT.txt",
+  "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
+  "packages": [
+    {
+      "name": "@earendil-works/pi-agent-core",
+      "version": "1.5.0",
+      "sourcePackage": "packages/agent/package.json",
+      "sourcePackageSha256": "f602103f403398a90628258f4359099aa76ebc75b530fd5867c29c1d8ec791d0"
+    },
+    {
+      "name": "@earendil-works/pi-ai",
+      "version": "1.5.0",
+      "sourcePackage": "packages/ai/package.json",
+      "sourcePackageSha256": "9bac9281776095c8cb1597b706e6cc43c1e082d77189c666b02d068d3c6b9aca"
+    },
+    {
+      "name": "@earendil-works/pi-coding-agent",
+      "version": "1.5.0",
+      "sourcePackage": "packages/coding-agent/package.json",
+      "sourcePackageSha256": "990aac3caff17b717294fa792b4e3f60b991d274d9f4ab6977d6aa42aa43c95e"
+    },
+    {
+      "name": "@earendil-works/pi-schema",
+      "version": "1.5.0",
+      "sourcePackage": "packages/schema/package.json",
+      "sourcePackageSha256": "88f3e22dc6830ed0a7dc287ce82dfc63a0958483143031e6f0c462183ad6177c"
+    },
+    {
+      "name": "@earendil-works/pi-codemode",
+      "version": "1.5.0",
+      "sourcePackage": "packages/codemode/package.json",
+      "sourcePackageSha256": "afcb00a94e443af214e383989af8cdebd72bfbcb3c777846d6b0afe40bd22eab"
+    }
+  ],
+  "verification": "Tag resolved by git ls-remote; tag/commit license bytes match; pinned source package names/version/license match installed package metadata. npm artifact integrity remains pinned by pnpm-lock.yaml."
+}

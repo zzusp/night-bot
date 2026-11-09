@@ -1,0 +1,345 @@
+{
+  "round": 34,
+  "head": "6d79b0a0279d3f94f2d72d21f51ab1d654b0f509",
+  "dirtyWorkingTree": true,
+  "sourceCount": 1125,
+  "aggregateSha256": "f302cf519b33b09f8709d8ad49ef7887b3e929685d6f66ed0b3f88b52b988fb7",
+  "fourSourceMapsIdentical": true,
+  "tasks": {
+    "check": "b180fo2xi",
+    "profile-smoke": "b77rpld9m"
+  },
+  "commands": {
+    "check": [
+      "pwsh",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "pnpm check; exit $LASTEXITCODE"
+    ],
+    "profile-smoke": [
+      "node",
+      "--test",
+      "--test-name-pattern",
+      "^Windows LPAC runner requires durable Job protocol before current-token executable resolution$",
+      "test/pi-native-process.test.js"
+    ]
+  },
+  "guardOriginalOutputs": [
+    {
+      "source": "93e431a2a76938d32aefc070b093fcfb65691c70",
+      "retainedModules": 190,
+      "retiredModules": 10,
+      "excludedUiModules": 3,
+      "explicitlyAdaptedModules": 57,
+      "relativeImports": "closed",
+      "httpRoutes": "retained"
+    },
+    {
+      "productionImportFiles": 395,
+      "literalBareImports": 193,
+      "status": "declared-production-imports"
+    },
+    {
+      "runtimeJsFiles": 395,
+      "externalSdkImports": 0,
+      "legacyOrchestratorDefinitions": 0,
+      "legacySourceFilesVerified": 2,
+      "historicalFormatFilesRemoved": 9
+    }
+  ],
+  "smoke": {
+    "file": "test/pi-native-process.test.js",
+    "line": 27,
+    "caseName": "Windows LPAC runner requires durable Job protocol before current-token executable resolution",
+    "sourceSha256": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+    "log": "profile-smoke.log",
+    "logLine": 1,
+    "pass": 1,
+    "fail": 0,
+    "cancelled": 0,
+    "skip": 0,
+    "todo": 0,
+    "realRunnerImported": true,
+    "nativeProfileTempCreated": false
+  },
+  "files": {
+    "check-source.json": {
+      "bytes": 123741,
+      "sha256": "4ffcfba5ad45ae119e725c5ac2b09a72e51f60ad85ff65ed7d861a411997e47f",
+      "temporarySource": "docs/tmp/sg11-profile-current-check-source.json"
+    },
+    "check.log": {
+      "bytes": 436,
+      "sha256": "bbf6b329dc30a257f34c3d50f5fdc07a55725f12cd541481de7fca9bf737113c",
+      "temporarySource": "docs/tmp/sg11-profile-current-check.log"
+    },
+    "check-stderr.log": {
+      "bytes": 120,
+      "sha256": "f57910bedab606b4c6b676e0b8c10b5ae0762f8e5a8bbd038640d496de99d52b",
+      "temporarySource": "docs/tmp/sg11-profile-current-check-stderr.log"
+    },
+    "check-result.json": {
+      "bytes": 126941,
+      "sha256": "5d71bf5af9b68b3505b55ff7d0fe25276492bd1993e31d6f39904337b8554d41",
+      "temporarySource": "docs/tmp/sg11-profile-current-check-result.json"
+    },
+    "profile-smoke-source.json": {
+      "bytes": 123749,
+      "sha256": "8dd47e97428160748ae3df8874b0309c98b7a322a3c2a3fcd4562314aa2a7c09",
+      "temporarySource": "docs/tmp/sg11-profile-current-profile-smoke-source.json"
+    },
+    "profile-smoke.log": {
+      "bytes": 223,
+      "sha256": "b84b732135c8759ede0f8bf0b7d7ad1f8c395b281bafe854042166ae27d027f8",
+      "temporarySource": "docs/tmp/sg11-profile-current-profile-smoke.log"
+    },
+    "profile-smoke-stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "temporarySource": "docs/tmp/sg11-profile-current-profile-smoke-stderr.log"
+    },
+    "profile-smoke-result.json": {
+      "bytes": 127065,
+      "sha256": "cc39243c69da7b900b1b51944c52c95e8ebefb28e8a92984d312907d13366ff5",
+      "temporarySource": "docs/tmp/sg11-profile-current-profile-smoke-result.json"
+    },
+    "collector.py": {
+      "bytes": 4781,
+      "sha256": "353dfbd5968a36ee58ee368cabcab22d1c4ef14edf69c348035488ab9358366e",
+      "temporarySource": "docs/tmp/sg11-profile-current-collector.py"
+    },
+    "archive-update.py": {
+      "bytes": 9191,
+      "sha256": "caba07a69a8c379a14a8f910b43ef19c375290ccbc0d8638717f01fd5e4e4af9",
+      "temporarySource": "docs/tmp/sg11-profile-current-archive.py"
+    }
+  },
+  "inventory": {
+    "path": "docs/acceptance/resident-conversation-routing/test-case-inventory.csv",
+    "beforeBytes": 3321346,
+    "beforeSha256": "b1bdb346d123d45f2ab44c652fd2eab83adb06c2576284e7286b1d245168a018",
+    "afterBytes": 3320505,
+    "afterSha256": "aeb6cc97bcedbcce7b7d63aa984159a18b699b7b67f347deb2e4e057f5464fdb",
+    "identityRows": 5472,
+    "newOrDeletedIdentities": 0,
+    "changedRowIndex": 5467,
+    "identity": {
+      "file": "test/pi-native-process.test.js",
+      "case_name": "Windows LPAC runner requires durable Job protocol before current-token executable resolution",
+      "occurrence": "1"
+    },
+    "before": {
+      "file": "test/pi-native-process.test.js",
+      "line": "27",
+      "occurrence": "1",
+      "case_name": "Windows LPAC runner requires durable Job protocol before current-token executable resolution",
+      "kind": "case",
+      "groups": "default",
+      "current_source_sha256": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+      "registration_sha256": "04461e4d5469f1ccae4e0a65867d2e0019137f5bb6ee2c5bf8476c8b3efef38c",
+      "resolution": "STATIC",
+      "latest_evidence_status": "PASS",
+      "evidence_id": "docs/acceptance/resident-conversation-routing/round-24/windows-temp-contract.log",
+      "evidence_line": "2",
+      "evidence_sha256": "bbc49d9c820cba7e40d95b8da8b8189a98fbb0af417819e2466c80f5437a1797",
+      "evidence_round": "24",
+      "version_boundary": "Uncommitted HEAD 6d79b0a plus round 24 source pins {\"src/memory/privacy.js\": \"51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6\", \"src/process/contracts.js\": \"a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329\", \"src/process/index.js\": \"44989dd69959ecf25d17aab6e09726ab929fe6eab2e8d561e05a76fdb919ec31\", \"src/process/runner-launch-B2zsQ1Dz.js\": \"83bda81536ab4401e57b0fa43369e31f09e34a660f844437c98e5dc85d70aaa9\", \"src/process/runner.js\": \"e2c399718c9a9517e16779b1da095f7ccbf561e8388ab4d521eb0bd158524814\", \"src/process/win32.js\": \"f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe\", \"src/process/windows-acl.js\": \"8d3f7d5a23dddb3f187269b0977a8e515e30c30d5e0027e690ca88070e5c3003\", \"src/process/windows-profile.js\": \"0f6a04f3738b3b6db48401baa2384a7af4ca7a952e2be70fc3951a6ce51a80a0\", \"test/pi-native-process.test.js\": \"a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4\", \"test/pi-native-sandbox.test.js\": \"556798d3c8e6252a8b82ae1969e7cbc3caefc83bd5444a19acaedc8b7056cf21\"}. Pure projection and formal IPC refusal only; no Native Profile, temp creation, Job ACK or Host admission.",
+      "skip_or_block_reason": "",
+      "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_24_EVIDENCE",
+      "evidence_test_sha256": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+      "evidence_selection_basis": "Exact complete PASS name in six-case current temp-contract selection; no inference for other registrations.",
+      "ambiguous_historical_evidence": "",
+      "contract_classification": "CURRENT_RUNNER",
+      "contract_evidence": "Round 22 current durable-Job protocol refusal replaces historical unavailable registration without deleting that identity."
+    },
+    "after": {
+      "file": "test/pi-native-process.test.js",
+      "line": "27",
+      "occurrence": "1",
+      "case_name": "Windows LPAC runner requires durable Job protocol before current-token executable resolution",
+      "kind": "case",
+      "groups": "default",
+      "current_source_sha256": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+      "registration_sha256": "04461e4d5469f1ccae4e0a65867d2e0019137f5bb6ee2c5bf8476c8b3efef38c",
+      "resolution": "STATIC",
+      "latest_evidence_status": "PASS",
+      "evidence_id": "docs/acceptance/resident-conversation-routing/round-34/profile-smoke.log",
+      "evidence_line": "1",
+      "evidence_sha256": "b84b732135c8759ede0f8bf0b7d7ad1f8c395b281bafe854042166ae27d027f8",
+      "evidence_round": "34",
+      "version_boundary": "Uncommitted HEAD 6d79b0a plus 1125-path round 34 source aggregate f302cf519b33b09f8709d8ad49ef7887b3e929685d6f66ed0b3f88b52b988fb7; Profile 2d89946f / manifest a819b051. Exact original registration, real runner import and durable Job protocol refusal before Native; no Profile/temp creation, Job ACK or launch.",
+      "skip_or_block_reason": "",
+      "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_34_EVIDENCE",
+      "evidence_test_sha256": "a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4",
+      "evidence_selection_basis": "Exact anchored original registration; one complete PASS name at log line 1; zero fail/cancel/skip/todo. No inference for other registrations.",
+      "ambiguous_historical_evidence": "",
+      "contract_classification": "CURRENT_RUNNER",
+      "contract_evidence": "Round 22 current durable-Job protocol refusal replaces historical unavailable registration without deleting that identity."
+    },
+    "rawCellsBefore": {
+      "evidence_id": "docs/acceptance/resident-conversation-routing/round-24/windows-temp-contract.log",
+      "evidence_line": "2",
+      "evidence_sha256": "bbc49d9c820cba7e40d95b8da8b8189a98fbb0af417819e2466c80f5437a1797",
+      "evidence_round": "24",
+      "version_boundary": "\"Uncommitted HEAD 6d79b0a plus round 24 source pins {\"\"src/memory/privacy.js\"\": \"\"51b398b57368753d6ff20c80cafa3a76126371adbd9cac1eb5c6f04b01592ac6\"\", \"\"src/process/contracts.js\"\": \"\"a9eb7a93a4a4190a690c37cfb4ecc12bece676056eeb19613a04f72cd47e3329\"\", \"\"src/process/index.js\"\": \"\"44989dd69959ecf25d17aab6e09726ab929fe6eab2e8d561e05a76fdb919ec31\"\", \"\"src/process/runner-launch-B2zsQ1Dz.js\"\": \"\"83bda81536ab4401e57b0fa43369e31f09e34a660f844437c98e5dc85d70aaa9\"\", \"\"src/process/runner.js\"\": \"\"e2c399718c9a9517e16779b1da095f7ccbf561e8388ab4d521eb0bd158524814\"\", \"\"src/process/win32.js\"\": \"\"f5b76f43012a1e0662d4b304f0024da790e4abeadefa288edb7061d205a6a2fe\"\", \"\"src/process/windows-acl.js\"\": \"\"8d3f7d5a23dddb3f187269b0977a8e515e30c30d5e0027e690ca88070e5c3003\"\", \"\"src/process/windows-profile.js\"\": \"\"0f6a04f3738b3b6db48401baa2384a7af4ca7a952e2be70fc3951a6ce51a80a0\"\", \"\"test/pi-native-process.test.js\"\": \"\"a330814b26ade35ddb99546418c2a3c0e1fce96f3531e2bc783fdee65f49b8f4\"\", \"\"test/pi-native-sandbox.test.js\"\": \"\"556798d3c8e6252a8b82ae1969e7cbc3caefc83bd5444a19acaedc8b7056cf21\"\"}. Pure projection and formal IPC refusal only; no Native Profile, temp creation, Job ACK or Host admission.\"",
+      "disposition": "RETAINED_CASE_WITH_BOUND_ROUND_24_EVIDENCE",
+      "evidence_selection_basis": "Exact complete PASS name in six-case current temp-contract selection; no inference for other registrations."
+    },
+    "changedFields": [
+      "evidence_id",
+      "evidence_line",
+      "evidence_sha256",
+      "evidence_round",
+      "version_boundary",
+      "disposition",
+      "evidence_selection_basis"
+    ],
+    "reverseVerifiedSha256": "b1bdb346d123d45f2ab44c652fd2eab83adb06c2576284e7286b1d245168a018",
+    "testSourceUnchanged": true,
+    "registrationShaPreserved": true
+  },
+  "matrix": {
+    "path": "docs/acceptance/resident-conversation-routing/matrix.csv",
+    "beforeBytes": 184258,
+    "beforeSha256": "28b87048d05b7920a1b96fc403971baa72af22947e5dcf46de1fe064b4378215",
+    "afterBytes": 190361,
+    "afterSha256": "b2c40bd2e747486a92029bdcc31a84ffb748093774c245a0e50ff60ea1f2217f",
+    "businessRowsBefore": 294,
+    "businessRowsAfter": 295,
+    "columnAdded": "round_34",
+    "existingRowAnnotations": {
+      "source-import-native-guard": "PASS_THREE_ORIGINAL_GUARDS_EXIT0_PROFILE_2D89946F_MANIFEST_A819_1125_F302_STABLE",
+      "all-required-regressions": "PARTIAL_CURRENT_THREE_GUARDS_AND_EXACT_RUNNER_REFUSAL1_PASS_OTHER_GROUPS_NOT_RERUN_ROUND34",
+      "sg11-final-remaining-checks": "PARTIAL_CURRENT_THREE_GUARDS_AND_RUNNER_REFUSAL_PASS_FULL_PROFILE_NATIVE_AND_OTHER_GROUPS_NOT_VALIDATED"
+    },
+    "existingNotRerunRows": 291,
+    "newRow": {
+      "case_id": "sg11-current-profile-import-job-refusal",
+      "scenario": "当前真实runner导入出生Low最小Profile增量；缺durable Job协议时Native前拒绝，不代表Profile创建通过",
+      "round_1": "",
+      "round_2": "",
+      "round_3": "",
+      "round_4": "",
+      "round_5": "",
+      "round_6": "",
+      "round_7": "",
+      "round_8": "",
+      "round_9": "",
+      "round_10": "",
+      "round_11": "",
+      "round_12": "",
+      "round_13": "",
+      "round_14": "",
+      "round_15": "",
+      "round_16": "",
+      "round_17": "",
+      "round_18": "",
+      "round_19": "",
+      "round_20": "",
+      "round_21": "",
+      "round_22": "",
+      "round_23": "",
+      "round_24": "",
+      "round_25": "",
+      "round_26": "",
+      "round_27": "",
+      "round_28": "",
+      "round_29": "",
+      "round_30": "",
+      "round_31": "",
+      "round_32": "",
+      "round_33": "",
+      "round_34": "PASS_EXACT_ORIGINAL_REGISTRATION1_NATIVE_NOT_ENTERED_PROFILE_2D89946F_F302_ZERO_SKIP_EXIT0"
+    },
+    "appendedRawSuffix": "sg11-current-profile-import-job-refusal,当前真实runner导入出生Low最小Profile增量；缺durable Job协议时Native前拒绝，不代表Profile创建通过,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,PASS_EXACT_ORIGINAL_REGISTRATION1_NATIVE_NOT_ENTERED_PROFILE_2D89946F_F302_ZERO_SKIP_EXIT0\n",
+    "reverseVerifiedSha256": "28b87048d05b7920a1b96fc403971baa72af22947e5dcf46de1fe064b4378215"
+  },
+  "cleanup": {
+    "state": "COMPLETED_EXACT_PATHS_INDEPENDENTLY_ABSENT",
+    "exactTemporaryFiles": {
+      "docs/tmp/sg11-profile-current-check-source.json": {
+        "bytes": 123741,
+        "sha256": "4ffcfba5ad45ae119e725c5ac2b09a72e51f60ad85ff65ed7d861a411997e47f"
+      },
+      "docs/tmp/sg11-profile-current-check.log": {
+        "bytes": 436,
+        "sha256": "bbf6b329dc30a257f34c3d50f5fdc07a55725f12cd541481de7fca9bf737113c"
+      },
+      "docs/tmp/sg11-profile-current-check-stderr.log": {
+        "bytes": 120,
+        "sha256": "f57910bedab606b4c6b676e0b8c10b5ae0762f8e5a8bbd038640d496de99d52b"
+      },
+      "docs/tmp/sg11-profile-current-check-result.json": {
+        "bytes": 126941,
+        "sha256": "5d71bf5af9b68b3505b55ff7d0fe25276492bd1993e31d6f39904337b8554d41"
+      },
+      "docs/tmp/sg11-profile-current-profile-smoke-source.json": {
+        "bytes": 123749,
+        "sha256": "8dd47e97428160748ae3df8874b0309c98b7a322a3c2a3fcd4562314aa2a7c09"
+      },
+      "docs/tmp/sg11-profile-current-profile-smoke.log": {
+        "bytes": 223,
+        "sha256": "b84b732135c8759ede0f8bf0b7d7ad1f8c395b281bafe854042166ae27d027f8"
+      },
+      "docs/tmp/sg11-profile-current-profile-smoke-stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "docs/tmp/sg11-profile-current-profile-smoke-result.json": {
+        "bytes": 127065,
+        "sha256": "cc39243c69da7b900b1b51944c52c95e8ebefb28e8a92984d312907d13366ff5"
+      },
+      "docs/tmp/sg11-profile-current-collector.py": {
+        "bytes": 4781,
+        "sha256": "353dfbd5968a36ee58ee368cabcab22d1c4ef14edf69c348035488ab9358366e"
+      },
+      "docs/tmp/sg11-profile-current-archive.py": {
+        "bytes": 9191,
+        "sha256": "caba07a69a8c379a14a8f910b43ef19c375290ccbc0d8638717f01fd5e4e4af9"
+      }
+    },
+    "cleanupScript": "docs/tmp/sg11-profile-current-cleanup.py",
+    "cleanupScriptFacts": {
+      "bytes": 2165,
+      "sha256": "685d4a5023760bd44464520493cf4a49ce1f2e9f7f62a63c3cb59a5f9be56319"
+    },
+    "check": {
+      "mode": "--check",
+      "effects": 0,
+      "allExactHashesMatched": true
+    },
+    "run": {
+      "mode": "--run",
+      "effects": 11
+    },
+    "independentLstatAbsentPaths": [
+      "docs/tmp/sg11-profile-current-check-source.json",
+      "docs/tmp/sg11-profile-current-check.log",
+      "docs/tmp/sg11-profile-current-check-stderr.log",
+      "docs/tmp/sg11-profile-current-check-result.json",
+      "docs/tmp/sg11-profile-current-profile-smoke-source.json",
+      "docs/tmp/sg11-profile-current-profile-smoke.log",
+      "docs/tmp/sg11-profile-current-profile-smoke-stderr.log",
+      "docs/tmp/sg11-profile-current-profile-smoke-result.json",
+      "docs/tmp/sg11-profile-current-collector.py",
+      "docs/tmp/sg11-profile-current-archive.py",
+      "docs/tmp/sg11-profile-current-cleanup.py"
+    ]
+  },
+  "boundaries": {
+    "sg11": "ACTIVE",
+    "sg12": "ACTIVE",
+    "oldRound33Unchanged": true,
+    "productionScopeReady": false,
+    "nativeProfileMandatoryConptyValidated": false,
+    "routingDomainOrLowComponentRerun": false,
+    "gitWritesChannelCiDeploy": false
+  },
+  "report": {
+    "path": "docs/acceptance/resident-conversation-routing/round-34.md",
+    "bytes": 6570,
+    "sha256": "06dbf33a15681b7a87f2342b00c9358f517db34039bb356a917981d09e5ce8d4"
+  },
+  "sourcePathProjection": "Temporary source paths are repository-relative public spellings, including Python absolute __file__; exact archived execution source and original command/results remain unchanged."
+}

@@ -1,0 +1,50 @@
+{
+  "base": "d0eac52dbe296bb6ba71b6ea7cd1b819c1e31f59",
+  "completeDshIndependence": false,
+  "default": {
+    "pass": 602,
+    "fail": 0,
+    "skip": 0
+  },
+  "ledgerColdAndSingleTaskRepeat": {
+    "pass": 15,
+    "fail": 0,
+    "skip": 0,
+    "overlap": "Subset of default tests"
+  },
+  "recoverySupplement": {
+    "pass": 79,
+    "fail": 0,
+    "skip": 2
+  },
+  "linuxActualShellKernel": {
+    "pass": 3,
+    "fail": 0,
+    "skip": 0
+  },
+  "remainingDirectDshDevDependencies": 83,
+  "frozenInstall": "passed --ignore-scripts",
+  "windows": "New journal code implemented; actual Windows kernel acceptance remains unverified",
+  "evidence": [
+    {
+      "path": "docs/evidence/pi-native-stage3-default.txt",
+      "sha256": "c0fbe04b99df1df7a1332971526ceb97dad74ad75a778021b3b4af4da7002c7a"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage3-ledger.txt",
+      "sha256": "df570630b8dd62c8288ccc9b89443b50b6071599d6619ce13ec70aaf4167e326"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage3-recovery.txt",
+      "sha256": "cdf76819aeae444fe5d5585ae0f1b71f1e7ab8f4f2d96ad65e4e55b50f778df9"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage3-kernel.txt",
+      "sha256": "73bbb7924ca85e13e8ee8f41c18c5caa00c6df8c95dc007831f1b8ec872128af"
+    },
+    {
+      "path": "docs/evidence/pi-native-stage3-checks.txt",
+      "sha256": "79ec46af1b7a70d38e4daa5f902dd0460b41ac19e9876633eaf2b29c20a37472"
+    }
+  ]
+}

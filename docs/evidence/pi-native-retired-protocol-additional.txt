@@ -1,0 +1,49 @@
+✔ explicit source reads return literal final SDK text and survive reopen: same-path-repeat (178.751117ms)
+✔ explicit source reads return literal final SDK text and survive reopen: root-and-five-distinct-paths (85.995857ms)
+✔ group single-input nested quotes, policy and read-tool copies share resolvable content (30.005075ms)
+✔ ordinary group reads deduplicate while explicit content reads return literal evidence, including after reopen (102.095032ms)
+ℹ {"scope":"actual SDK scripted adapter UTF-8 JSON bytes; not provider tokens","metrics":[{"currentHostBytes":847,"oldHostBytes":2,"toolHistoryBytes":2,"systemBytes":7112,"schemaBytes":1262,"adapterRequestBytes":10635},{"currentHostBytes":847,"oldHostBytes":2,"toolHistoryBytes":2729,"systemBytes":7112,"schemaBytes":1262,"adapterRequestBytes":14323},{"currentHostBytes":847,"oldHostBytes":2,"toolHistoryBytes":8560,"systemBytes":7112,"schemaBytes":1262,"adapterRequestBytes":21517},{"currentHostBytes":847,"oldHostBytes":2,"toolHistoryBytes":12523,"systemBytes":7112,"schemaBytes":1262,"adapterRequestBytes":26184}]}
+✔ native json-index pages reach exact previously unseen text, quoted author/version, and remain readable after reopen (156.207517ms)
+ℹ {"scope":"real SDK json-index directory and UTF-16 text pages; measured UTF-8 JSON bytes, no provider tokens","textLength":20490,"metrics":[{"currentHostBytes":333,"oldHostBytes":2,"toolHistoryBytes":2,"systemBytes":7112,"schemaBytes":902,"adapterRequestBytes":9397},{"currentHostBytes":333,"oldHostBytes":2,"toolHistoryBytes":3578,"systemBytes":7112,"schemaBytes":902,"adapterRequestBytes":14024},{"currentHostBytes":333,"oldHostBytes":2,"toolHistoryBytes":74875,"systemBytes":7112,"schemaBytes":902,"adapterRequestBytes":94850},{"currentHostBytes":332,"oldHostBytes":2,"toolHistoryBytes":76083,"systemBytes":7112,"schemaBytes":902,"adapterRequestBytes":96768}]}
+✔ invalid migrated assistant provenance is rejected by SDK replay before any model wake or rewrite (36.1529ms)
+✔ repeated and empty source wakes keep one copy across SDK requests, including dynamic mode (1250.286676ms)
+ℹ {"scope":"group scripted adapter UTF-8 JSON bytes","dynamic":false,"metrics":[{"wake":1,"hostMessagesBytes":1285,"messagesBytes":8859,"adapterRequestBytes":10732},{"wake":6,"hostMessagesBytes":1284,"messagesBytes":11948,"adapterRequestBytes":13821},{"wake":7,"hostMessagesBytes":1621,"messagesBytes":12903,"adapterRequestBytes":14776},{"wake":32,"hostMessagesBytes":1623,"messagesBytes":28424,"adapterRequestBytes":30297}]}
+ℹ {"scope":"group scripted adapter UTF-8 JSON bytes","dynamic":true,"metrics":[{"wake":1,"hostMessagesBytes":1285,"messagesBytes":8859,"adapterRequestBytes":10732},{"wake":6,"hostMessagesBytes":1284,"messagesBytes":11948,"adapterRequestBytes":13821},{"wake":7,"hostMessagesBytes":1621,"messagesBytes":12903,"adapterRequestBytes":14776},{"wake":32,"hostMessagesBytes":1623,"messagesBytes":28424,"adapterRequestBytes":30297}]}
+✔ upgrade deduplicates stored histories but preserves independent versions, actors and authorization evidence (110.858395ms)
+ℹ {"scope":"group Host source history, UTF-8 JSON bytes","beforeBytes":70328,"afterBytes":4951,"originalHistoryCount":177,"visibleHistoryCount":10}
+✔ 原生群会话同轮读取材料后提交，跨轮恢复同一session并保留历史 (48.363173ms)
+✔ 原生群会话候选任务版本过期可反馈并重新提交，不新建会话 (37.472985ms)
+✔ 群逻辑会话跨原生宿主重启恢复，禁止注入写工具 (62.594986ms)
+✔ 同群会话互斥，cancel等待原生工具排空后释放会话 (21.984717ms)
+✔ 同群会话互斥，close等待原生工具排空后释放会话 (21.376384ms)
+✔ 来源版本过期结束旧claim，不在旧来源上反复提交 (61.793019ms)
+✔ 原生会话超过32次合法反馈仍可继续提交，不设自造步数上限 (150.270027ms)
+✔ 旧职责目录派生到Agent根，完整继承日志，恢复群名和完全权限且不调用模型 (158.167261ms)
+✔ 每轮完整输入保留，下一轮原生surface只保留历史来源而不重复Host快照 (60.137486ms)
+ℹ 模型可见输入字符：完整旧快照=3886，下一轮保留原文与当前快照=5024
+✔ 常驻空闲挂接保留原生投影、拒绝任意模型步进，关闭释放全部句柄 (35.109831ms)
+✔ 原生正常结束但不提交仍保持no_submission，接纳后晚到错误不否定决定 (57.401824ms)
+✔ 上一轮原生错误不污染本轮正常无提交 (43.650189ms)
+✔ 阶段授权原文不匹配在同会话反馈修正，不改写来源或转澄清 (38.02596ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：idle (102.833734ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：active (52.162101ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：running (41.218211ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：foreign-input (45.362883ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：identity (31.767373ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：lease (31.749085ms)
+✔ 外部观察会话受管派生保留原实例并核验边界：changed-during-fork (49.414795ms)
+✔ Task权限拒绝反馈保持原话题并区分公共fact与合法revise (30.397428ms)
+✔ oversized source directories retire old full Hosts without losing source identities (113.969816ms)
+ℹ {"oversizedGroupHostBytes":[621,621,621,398]}
+✔ native private spill storage and safe encodings preserve source protocol (24.805963ms)
+✔ native spill session paths are traversal-safe and reject a symlinked session directory (7.648085ms)
+✔ native spill cleanup covers only active app root and leaves unrelated prior roots intact (14.005981ms)
+✔ native spill close drains admitted real file writes and rejects future admission (6.439718ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3507.148815

@@ -1,0 +1,7 @@
+CONTAINER_COLD_PROOF_START 2026-11-09T04:43:43.935483+00:00 IMAGE_ID sha256:e1a5708cb8934ae40eac0763b68617fce7d1b2fe43edd43e64bbd755c7a649fa SCRIPT_SHA256 74e919aa9e8e55e0a31064ac5ca77777cb2579a52d17de4549d902b97d8aadbb
+(node:1) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"case":"container-cold-read-native-task-job-source-proof","sourcePins":{"src/native-tools.js":"0d8829c3713998b95b0f68fb224106d5cc1db1a9091c3e670dd19e8d013370c8","src/tool-permissions.js":"a6fde5d9324fef25bc377f1c21f2fa9941efd25723aa5b3e2e295e63e54fc02b","src/native-working-directory.js":"7d055ae7cc8aef5f0db39f7a853713948cf95d53a438b716b2386442f74d63cd","src/memory/private-fs.js":"8b9bf149541e04204cc17e58dcce0b904d52b1045fe3ede9bd4ae550a7b6f621","src/memory/privacy.js":"355243dd61e829d3c3e3ce1c2eda6f5abcf2282e16141d2232c9f9805ce48151","src/runtime/portable.js":"53ed51fe3b2066bb7b71ef37495df86f7b164b60f753caff165e053f6087e96d","src/runtime/pi-business-path-bindings.js":"51cfd71b714a0452a1ce7613dc1f26ed5b5528acf40a361f5616d3a2ed0ef276"},"status":"completed","drained":true,"shellIsError":false,"shellExitCode":0,"registeredJobs":1,"settledJobs":1,"jobStatus":"completed","producerReported":true,"credentialBooleans":{"githubTokenMatches":true,"otherSecretAbsent":true,"ghFixtureMatches":true},"coldReadOnly":true,"noRecoverOrModelCalled":true}
+CONTAINER_COLD_PROOF_FINISH 2026-11-09T04:43:46.826104+00:00 EXIT 0
+
+[exited with code 0]

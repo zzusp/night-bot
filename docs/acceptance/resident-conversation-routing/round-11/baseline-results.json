@@ -1,0 +1,22 @@
+{
+  "startedAt": "2026-11-07T10:06:44.837790+00:00",
+  "head": "bbb7508d93f350b29fe341b921692e63cddc20e1",
+  "branch": "worktree-resident-conversation-routing",
+  "worktree": "M docs/acceptance/resident-conversation-routing/goal.md",
+  "scope": "all tracked non-doc files; unchanged sources/tests/scripts/config/locks required",
+  "sourceSetDigest": "4b685fa052b861da86c6f7e6e12d50a213e95dfa6f7caab0e37a69618f21b1a8",
+  "commands": [
+    {
+      "group": "default",
+      "command": "pnpm test",
+      "startedAt": "2026-11-07T10:06:46.534477+00:00",
+      "beforeDigest": "4b685fa052b861da86c6f7e6e12d50a213e95dfa6f7caab0e37a69618f21b1a8",
+      "pid": 72856,
+      "code": 1,
+      "finishedAt": "2026-11-07T10:47:59.444128+00:00",
+      "logSha256": "4b09139a75dae3550d5c3c9ce09d1d20dbb87e2652eb003a715af9b8cd9575f4",
+      "afterDigest": "4b685fa052b861da86c6f7e6e12d50a213e95dfa6f7caab0e37a69618f21b1a8",
+      "changed": []
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "exit": 0,
+  "sourceCount": 5,
+  "sourceChanged": [],
+  "logSha256": "7100556973311304705e446c4a2fc460cd793fd81fe569919cb9e537248c28db",
+  "scope": "dimension validation before native API access only",
+  "nativeResourcesCreated": false,
+  "productionAdmissible": false
+}
