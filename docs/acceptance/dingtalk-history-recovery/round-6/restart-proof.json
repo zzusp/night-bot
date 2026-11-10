@@ -1,0 +1,123 @@
+{
+  "release": "568fd2813e2d553741a76b0c76bbfffb869891f8",
+  "oldRelease": "585e1c767ee7d45b6422ff43e5d288489c06f697",
+  "startedAt": "2026-11-10T08:28:59.025Z",
+  "stopCompletedAt": "2026-11-10T08:29:14.667Z",
+  "completedAt": "2026-11-10T08:29:40.613Z",
+  "verifiedAt": "2026-11-10T08:31:28.812Z",
+  "pollIntervalMs": 250,
+  "stopMs": 15640.828,
+  "deploymentMs": 1142.954,
+  "webReadyMs": 36727.714,
+  "residentReadyMs": 36747.82,
+  "startupRecoveryMs": 24802.989,
+  "totalMs": 41586.771,
+  "normalIpcOnly": true,
+  "forced": false,
+  "diagnosticPreload": false,
+  "oldProcessesExited": true,
+  "oldOwnershipReleased": true,
+  "configurationUnchanged": true,
+  "webHttp": 200,
+  "residentHttp": 200,
+  "channels": [
+    {
+      "ordinal": 1,
+      "connected": true,
+      "state": "listening",
+      "error": null,
+      "restartRequired": false
+    },
+    {
+      "ordinal": 2,
+      "connected": true,
+      "state": "listening",
+      "error": null,
+      "restartRequired": false
+    }
+  ],
+  "ingress": [
+    {
+      "ordinal": 1,
+      "paused": false,
+      "deferred": 0,
+      "recoveryFromAt": null,
+      "backfillThroughAt": "2026-11-10T08:31:18.152Z",
+      "backfillWatermarkAdvanced": true,
+      "consumedWatermarkUnchanged": true
+    },
+    {
+      "ordinal": 2,
+      "paused": false,
+      "deferred": 0,
+      "recoveryFromAt": null,
+      "backfillThroughAt": "2026-11-10T08:31:18.757Z",
+      "backfillWatermarkAdvanced": true,
+      "consumedWatermarkUnchanged": true
+    }
+  ],
+  "health": {
+    "status": "degraded",
+    "recoveryIssueCount": 1
+  },
+  "persistence": {
+    "counts": {
+      "dynamic_sources": 18,
+      "dynamic_notifications": 14,
+      "dynamic_tasks": 5,
+      "dynamic_executions": 0
+    },
+    "notificationStates": {
+      "delivered": 14
+    },
+    "messageFacts": 18,
+    "originalRowsUnchanged": true,
+    "alertsUnchanged": true,
+    "sqliteQuickCheck": "ok"
+  },
+  "webBuild": {
+    "source": "568fd2813e2d553741a76b0c76bbfffb869891f8",
+    "files": {
+      "assets/index-DgBCKxDQ.js": "37755d5c1c43cb842e68b31e7b1973b2c2e0558806aaea8039ca03f614a7d0a9",
+      "assets/index-do9q2SJ2.css": "f81af6433c50a146cdeb54777ee8a7dbf573d6f2552dc5643858841426442c35",
+      "index.html": "0084fa60bbde1ec1d2be6900ac18a9c01d4847906a5321f60d0952bd2e0ba4af"
+    },
+    "httpHashesMatch": true
+  },
+  "releaseTreeClean": true,
+  "verificationCorrection": "completedRange retains and advances backfillThroughAt; no new messages means consumedAt unchanged; corrected read-only verification without another restart",
+  "sourceVerification": {
+    "testedCommit": "516babbe21c548dda3ab273c717dd7df02391fc6",
+    "files": {
+      "src/pi-session-persistence.js": "a3cb7f37db3518f2a7c6384ab3da49ed0885cb6663dce74407fdc27ca484dc2b",
+      "src/native-workspace.js": "35f12a270b762c8ddda714503f89bc71026155fada78ac24775d3b7c85f61f74"
+    },
+    "releaseFilesMatch": true
+  },
+  "relatedRegression": {
+    "pass": 42,
+    "fail": 0,
+    "skipped": 0,
+    "durationMs": 38230.5123
+  },
+  "sameDataList": {
+    "baseline": {
+      "elapsedMs": 39574.846,
+      "centralReadCalls": 8112,
+      "sessions": 4061
+    },
+    "candidate": {
+      "elapsedMs": 15340.255,
+      "centralReadCalls": 4056,
+      "sessions": 4061
+    },
+    "allSnapshotsEqual": true
+  },
+  "guards": {
+    "workingMerge": "PASS",
+    "releaseCheckout": "PASS",
+    "productionImportFiles": 404,
+    "runtimeJsFiles": 404,
+    "externalSdkImports": 0
+  }
+}
