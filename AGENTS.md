@@ -65,12 +65,11 @@ typed controlled paths before relocation. This is a new project: do not add DSH
 plugin historical-data import or legacy path conversion. Night Bot's own future
 backup/copy restore is a separate required capability. Business work and retained
 artifacts default to `data/workspaces/`. Permissions use the application-owned
-`ask` (请求批准), `auto` (帮我批准), and `full` (完全访问) modes, defaulting to `ask`.
+`ask` (请求批准), `auto` (帮我批准), and `full` (完全访问) modes, defaulting to `full`. Explicit `ask`/`auto` configuration remains authoritative.
 Outside-workspace business writes must reach approval rather than an unconditional
 path denial; an approved call must receive its actual, precisely scoped file or
 process access. Auto uses a tool-free Pi model review of approval-required actions;
-uncertainty or review failure returns to human approval. Full requires an explicit
-authenticated operator choice and provides the documented execution environment's
+uncertainty or review failure returns to human approval. Full is the product default; only an authenticated operator can change modes. It provides the documented execution environment's
 OS-account access, not administrator elevation. Never describe a mode as full
 while silently retaining the old workspace-only fence, or claim full preserves
 an OS sandbox that it bypasses. Mode selection is not a task-model or ordinary

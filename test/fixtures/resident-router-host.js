@@ -33,7 +33,7 @@ export async function eventually(read, description, signal) {
 export async function residentRouterHost(t, decide, options = {}) {
   let opened, closed = false
   t.after(close)
-  const f = await memoryHost(t, decide), sent = [], readbacks = [], results = []
+  const f = await memoryHost(t, decide, options.hostOptions), sent = [], readbacks = [], results = []
   const config = {...f.config.model, workspaceDir:f.host.ctx.runtimePaths.workspaces,
     dbPath:join(f.host.ctx.runtimePaths.state, 'tasks.sqlite'),instanceId:'resident-router-fixture',
     initialize:true,ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit',

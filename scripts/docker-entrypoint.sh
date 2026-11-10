@@ -45,13 +45,13 @@ fi
 permission_mode=${NIGHT_BOT_PERMISSION_MODE:-}
 if [ -z "$permission_mode" ]; then
   if [ -f "$config" ]; then
-    permission_mode=$(node --input-type=module -e 'import {loadConfig} from "./src/config.js";console.log((await loadConfig(process.argv[1])).permissionMode??"ask")' "$config")
+    permission_mode=$(node --input-type=module -e 'import {loadConfig} from "./src/config.js";console.log((await loadConfig(process.argv[1])).permissionMode??"full")' "$config")
   else
-    permission_mode=ask
+    permission_mode=full
   fi
 fi
 case "$permission_mode" in ask|auto|full) ;; *) fail NIGHT_BOT_PERMISSION_MODE_INVALID ;; esac
-# full 是操作者显式选择的无隔离档；受限档探针失败绝不自动退 full。
+# full 是产品默认无隔离档；显式受限档探针失败绝不自动退 full。
 if [ "$permission_mode" != full ]; then
   if ! bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true; then
     fail NIGHT_DOCKER_BWRAP_UNAVAILABLE

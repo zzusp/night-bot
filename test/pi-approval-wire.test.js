@@ -132,7 +132,7 @@ const permissionStage=(stage,running,label)=>Promise.race([stage,running.then(()
 const permissionAbsent=async path=>assert.rejects(access(path),{code:'ENOENT'})
 const permissionResults=agent=>agent.piSession.sessionManager.getEntries().filter(entry=>entry.type==='message'&&entry.message.role==='toolResult').map(entry=>entry.message)
 
-test('default Host ask creates one exact external file per actual Pi approval and preserves observed edit',async t=>{
+test('explicit Host ask creates one exact external file per actual Pi approval and preserves observed edit',async t=>{
  const f=await permissionWireFixture(t),path=join(f.external,'exact.txt'),other=join(f.external,'neighbor.txt')
  assert.equal(f.permissions.mode,'ask')
  let running=f.run('write',{path,content:'original'}),row=await pendingPermission(f,running)

@@ -50,15 +50,15 @@ node bin/night-bot-dingtalk.js data/config/config.json list
 
 文件工具的可修正错误保留原始反馈：精确注册的 Pi `write` / `edit` 在实际执行排空且未进入文件写入时，将失败结清为“未开始写入”，模型可读取后发起独立修正调用，重启不会重放旧调用。已经开始写入、取消或结果未知的操作继续阻断并要求核验；不凭错误文案判断无效果，也不自动解除旧版遗留的未知状态。
 
-配置使用单一 `permissionMode`，取值为 `ask | auto | full`，默认 `ask`。只有可信安装操作者通过初始化/配置 CLI 或认证 Web 的「权限与审批」入口选择模式，任务模型和普通渠道成员不能通过消息升级权限。
+配置使用单一 `permissionMode`，取值为 `ask | auto | full`，默认 `full`；已有配置显式保存的 `ask` / `auto` 保持不变。只有可信安装操作者通过初始化/配置 CLI 或认证 Web 的「权限与审批」入口选择模式，任务模型和普通渠道成员不能通过消息升级权限。
 
-本次实施与验收范围为 `full`；`ask` / `auto` 合同保留，但受限执行尚未完成，本次不交付。此范围调整不改变默认 `ask`，也不自动修改实际实例配置。
+本次实施与验收范围为 `full`；`ask` / `auto` 合同保留，但受限执行尚未完成，本次不交付。产品缺省值为 `full`，不会重写已有实例显式保存的模式，也不代表已部署。
 
 | 模式 | 行为与边界 |
 |---|---|
 | `ask` 请求批准 | 工作目录外的业务写入与需要更宽范围的命令进入人工单次审批；批准绑定当前调用、参数、目录及目标，不能扩大为整个父目录授权。凭据、会话及任务归档私有区继续受限。 |
 | `auto` 帮我批准 | 对需要批准的动作使用当前配置的通用 Pi 模型作无工具审查；不确定或模型/路由/凭据/解析等技术失败转人工，不改变动作的实际权限范围。 |
-| `full` 完全访问 | 操作者显式选择后按当前运行环境的 OS 账号权限执行，不是管理员提权；直接进程不再保留工作区隔离，也不保证隔离同账号可访问的 Host 私有文件。Host API 授权、审计、取消与防重放仍保留。 |
+| `full` 完全访问 | 缺省或操作者选择后按当前运行环境的 OS 账号权限执行，不是管理员提权；直接进程不再保留工作区隔离，也不保证隔离同账号可访问的 Host 私有文件。Host API 授权、审计、取消与防重放仍保留。 |
 
 以下示例仅用于可信安装操作者明确选择 `full`；先执行零副作用检查：
 
@@ -74,7 +74,9 @@ Pi 的 Project Trust 仅控制项目配置、扩展、技能等项目资源的�
 
 命令工具的 `run_in_background` 在完成执行准备并提交启动后返回作业 ID，不等待进程结束，也不设置命令超时；准备期间的取消仍绑定原调用，启动后通过 `job_output` 查看输出、`job_kill` 停止原作业。返回 ID 不代表业务完成，应核对作业终态和实际产物。
 
-`/config/agent` 保存的默认模型选择持久化于 `stateDir/storage/night_model_selection.json`，重启后优先于初始 JSON 配置中的默认选择；provider 声明仍由启动配置提供。
+标准 `data/config/config.json` 安装以配置文件中的 `model` 为全局默认来源，Web、CLI 和 `/config/agent` 共用保存入口；旧 `night_model_selection.json` 保留但不再覆盖该配置。升级前核对全局默认。历史非受控启动配置仍只读，并保留旧选型存储，不放宽配置文件路径限制。
+
+一级分诊、Router、任务执行的独立模型与推理深度，支持 Web、CLI 和环境变量，见[分角色模型配置](docs/ROLE-MODELS.md)。其他设置也可通过[同一配置服务与 headless CLI](docs/ops/shared-settings.md)管理，无需开启 Web。
 
 `providers` 由本地 NativePiProvider 处理，兼容原 `llm-pi-ai` profile 格式，可选择 pi-ai 支持的 provider，或声明兼容端点与模型。示例模型是占位配置，应按自己的服务修订。`skillDirs` 为安装目录内的额外技能目录；默认加载 `data/config/skills` 和受控指令目录。技能与指令发现不通过 `DSH_*` 环境变量选择目录，技能也不隐式读取外部 `.dsh/skills`；显式绝对 state/workspace 模式使用 state 内受控的 `runtime/configured-agents`、`runtime/configured-harness`，不扫描操作系统用户 home。技能文件默认开启监听，外部编辑后会在下次模型步骤提醒重读；`skillWatch: false` 可显式关闭后台监听，原生写入/编辑仍会使技能目录失效刷新。个人业务技能正文及同目录 `scripts`、`references`、`assets` 只存于本机 `data/config/skills` 或经 `git check-ignore` 确认的插件私有技能目录，不进入代码或 npm 包；迁移应从本次已授权复用范围内的既有安装指针取源；若需清理或移动，只处理本轮引入材料，不覆盖或移动他人既有技能；不盲拷 `node_modules` 或旧 worktree。`plugins` 是可信部署配置的 Cordis 插件行，可挂载业务所需的额外浏览器、数据库或搜索等能力；不会从群消息自动加载代码。凭据与附件不会回退到外部 DSH 目录；旧扁平凭据会拒绝并保留原文件。终端默认只提供 `NIGHT_BOT_SHELL` 和 `NIGHT_BOT_SESSION_ID` 执行事实，不提供 DSH home/profile；安装目录模式继续过滤非标准扩展环境值。默认提供文件/检索、终端及作业、技能、工作目录、待办、HTTP 获取和单会话任务执行；Web 搜索提供者和外部业务系统需要单独配置，缺失会明确报错。
 

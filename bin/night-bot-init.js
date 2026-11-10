@@ -12,7 +12,7 @@ try{
   if(!options['--actor']||options['--actor'].length>256)throw new Error('NIGHT_INIT_ACTOR_REQUIRED')
   const root=resolve(options['--root']??packageRoot),config=JSON.parse(await readFile(new URL('../config.example.json',import.meta.url),'utf8'))
   const provider=options['--provider']??config.model.provider,model=options['--model']??config.model.model
-  config.permissionMode=options['--permission-mode']??'ask'
+  config.permissionMode=options['--permission-mode']??'full'
   if(!['ask','auto','full'].includes(config.permissionMode))throw new Error('NIGHT_BOT_PERMISSION_MODE_INVALID')
   config.installRoot='../..';config.model={provider,model};config.providers={[provider]:{apiKeyEnv:options['--key-env']??'OPENAI_API_KEY'}}
   const profile=config.providers[provider]

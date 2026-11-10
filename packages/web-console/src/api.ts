@@ -148,6 +148,8 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，未覆盖新版本。草稿已保留，请重新读取设置后再编辑。';
+    if (error.code === 'INVALID_CONFIG') return '模型或推理深度不受当前路由支持，请重新读取可用模型并检查选择。';
     if (error.code === 'EVOLUTION_CONTENT_TOO_LARGE') return '此条目内容过大，暂不能在此查看。';
     if (error.code === 'EVOLUTION_READ_FAILED' || error.code === 'EVOLUTION_UNAVAILABLE') return '内容暂不可读，请检查连接或稍后重试。';
     if (error.code === 'DINGTALK_AUTH_REQUIRED') return 'Bot 运行环境尚未登录钉钉，请先完成登录再保存渠道。';
@@ -185,7 +187,16 @@ export function errorText(error: unknown) {
   return '暂时无法连接 Bot，已保留当前内容。请检查服务后刷新。';
 }
 
+export type ModelRole = 'triage'|'router'|'task';
+export interface RoleModelSelection {provider:string;model:string;reasoningEffort?:string}
+export interface RoleModelState {
+ role:ModelRole;saved:RoleModelSelection;savedExplicit:boolean;running:RoleModelSelection;nextStart:RoleModelSelection|null;environmentError?:boolean;
+ environmentOverrides:{name:string;source:string}[];restartRequired:boolean;
+}
+export interface RoleModelCatalog {provider:string;name:string;models:{id:string;name:string;reasoningEfforts:string[]}[]}
+export interface RoleModelSaved {ok:true;changed:boolean;version:string;role:RoleModelState;restartRequired:boolean}
 export interface OperatorSettings {
+ roleModels: {catalog:RoleModelCatalog[];roles:RoleModelState[]};
  version: string; appearance: import('./components/AssistantBrand').AssistantBrand;
  model: {provider:string;model:string;api:string;baseURL:string};
  secrets: Record<'model'|'github',{configured:boolean;writable:boolean;source:string}>;

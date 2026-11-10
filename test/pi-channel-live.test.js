@@ -244,3 +244,24 @@ test('an unmanaged active channel cannot be deleted by a file-only fallback',asy
  next.channelPlugins=[];manager.instances.delete('live-room');let commits=0
  try{await assert.rejects(manager.apply({current,next,commit:async()=>{commits++}},'live-room',{removing:true}),{code:'CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED'});assert.equal(commits,0)}finally{manager.instances.set('live-room',entry)}
 })
+
+test('headless operator transport preserves unknown-delivery channel guards without Web',async t=>{
+ const {createServer}=await import('node:http'),{createSettingsOperatorAuth}=await import('../src/settings/auth.js'),{createSettingsHttp}=await import('../src/settings/http.js'),{requestLiveSettings}=await import('../src/settings/cli.js')
+ const f=await fixture(t);await f.add();const channels=f.host.ctx.channels
+ const identity=await channels.registerConversation({type:'chat-room',channelId:'live-room',conversationId:'room',senderId:'peer',messageId:'headless-scope',text:'History only'}),groupId=identity.sessionId
+ await f.app.store.subscribe({groupId,name:'History',responsibility:'fixture'})
+ const command=(id,kind,args)=>f.app.tasks.store.command({id,kind,args})
+ await command('headless-create','task.create',{taskId:'headless-history',groupId,ownerActorId:'owner',request:'Retained task'})
+ await command('headless-cancel','task.control',{taskId:'headless-history',control:'cancelled',expectedControlRevision:1});await f.app.tasks.recover();await f.app.tasks.whenIdle()
+ await command('headless-notice','notification.prepare',{notificationId:'headless-unknown',taskId:'headless-history',requirementRevision:1,kind:'status',payload:{conversationId:groupId,text:'Do not resend'}})
+ const started=await command('headless-start','notification.start',{notificationId:'headless-unknown'})
+ await command('headless-uncertain','notification.receipt',{notificationId:'headless-unknown',dispatchToken:started.result.notification.dispatchToken,state:'unknown'})
+ const auth=await createSettingsOperatorAuth(f.host.ctx.runtimePaths),handler=createSettingsHttp({auth,getSettings:()=>f.host.ctx.operatorSettings,getChannels:()=>f.port,getPermissions:()=>f.host.ctx.toolPermissions})
+ const server=createServer((req,res)=>handler(req,res));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
+ const config={...f.running,resident:{...f.running.resident,port:server.address().port}},call=input=>requestLiveSettings(config,f.file,input),detail=await call({action:'dingtalk-get',body:{channelId:'live-room'}}),before=await readFile(f.file,'utf8'),plugin=channels.plugins.get('live-room')
+ await assert.rejects(call({action:'channel-remove',body:{channelId:'live-room',expectedVersion:detail.version,confirm:true}}),{code:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})
+ await assert.rejects(call({action:'dingtalk-edit',body:{channelId:'live-room',...draft(detail),target:'new-room'}}),{code:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})
+ assert.equal(await readFile(f.file,'utf8'),before);assert.equal(channels.plugins.get('live-room'),plugin)
+ const after=await f.app.tasks.store.query({kind:'notification.get',notificationId:'headless-unknown'});assert.equal(after.state,'unknown');assert.equal(after.sendAttemptCount,1)
+ assert.equal(f.calls.some(args=>args.some(value=>/messages-send|messages-reply/.test(value))),false)
+})

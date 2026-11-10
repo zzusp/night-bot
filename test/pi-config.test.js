@@ -124,7 +124,7 @@ test('配置CLI拒绝秘密URL、非受控配置及目录别名，公开监听�
   const f=await configurationFixture(t),before=await configurationSnapshot(f.root)
   for(const url of ['http://fixture:fixture-password@127.0.0.1:9/v1','http://127.0.0.1:9/v1?api_key=fixture-secret']){
     await assert.rejects(cli('night-bot-config.js',f.file,'model','--base-url',url,'--check'),
-      error=>/NIGHT_BOT_USE_CREDENTIAL_REFERENCE/.test(error.stderr))
+      error=>/SETTINGS_INPUT_INVALID/.test(error.stderr))
     assert.deepEqual(await configurationSnapshot(f.root),before)
   }
   for(const extra of [[],['--public-origin','http://untrusted.invalid:3080'],['--public-origin','http://127.0.0.1:3080/path']]){
