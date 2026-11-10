@@ -24,6 +24,7 @@ test('任务记录无顶部及底部卡片，四类侧栏保留标题、操作�
   await expect(page.locator('.task-title-dock, .task-records-heading')).toHaveCount(0)
   await expect(page.locator('.task-dialogue .execution-scope')).toHaveCount(0)
   await expect(page.locator('.task-dialogue .message-avatar')).toHaveCount(0)
+  await expect(page.locator('.task-dialogue .message-source')).toHaveCount(0)
   await expect(page.locator('.task-info-rail svg:visible')).toHaveCount(0)
   await expect(page.locator('.task-info-rail').getByRole('link', {name: '全部任务', exact: true})).toHaveAttribute('href', '#/tasks')
   const records = (await page.locator('.task-dialogue').boundingBox())!

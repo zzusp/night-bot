@@ -60,7 +60,7 @@ function MessageProvenance({ source }: { source?: MessageSource }) {
     {source.callId && <><dt>工具调用</dt><dd><code>{source.callId}</code></dd></>}
   </dl></details> : null;
 }
-function MessageBody({ message, history, plain = false, disclosure }: { message: Message; history?: HistoryReader; plain?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
+function MessageBody({ message, history, plain = false, showSource = true, disclosure }: { message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
   const [bodyOpen, setBodyOpen] = useState(false);
   const [bodyOpened, setBodyOpened] = useState(false);
   const [cursor, setCursor] = useState<{ offsets: number[]; revision?: string }>({ offsets: [0] });
@@ -98,7 +98,7 @@ function MessageBody({ message, history, plain = false, disclosure }: { message:
       </div></nav>}
     {message.role !== 'tool' && (page?.redacted || message.redacted) && <p className="message-scope">路径及敏感凭据已隐藏。</p>}
     {message.truncated && (!history || message.textNextOffset == null) && <p className="message-scope">此条长记录的当前接口仅返回部分正文。</p>}
-    {message.role !== 'tool' && <MessageProvenance source={page?.source || message.source} />}
+    {showSource && message.role !== 'tool' && <MessageProvenance source={page?.source || message.source} />}
   </>;
   if (!disclosure) return body;
   const lines = (text || '').split(/\r?\n/);
@@ -209,7 +209,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
             {onInspect && <button type="button" className="message-process-trigger" aria-haspopup="dialog" aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}
           </div>}
-          <div className="message-body"><MessageBody message={message} history={history} /></div>
+          <div className="message-body"><MessageBody message={message} history={history} showSource={!compact} /></div>
           {message.taskIds?.length ? <div className="message-links">{message.taskIds.map(id => <a key={id} href={`#/tasks/${encodeURIComponent(id)}`}>查看关联任务</a>)}</div> : null}
         </article>;
       })}
