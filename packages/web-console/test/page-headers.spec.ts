@@ -21,7 +21,7 @@ test('页面直接进入内容，导航标题和必要操作保留', async ({pag
   await login(page)
   for (const [path, title, content] of [
     ['/tasks', '任务', '.tasks-page > .list-toolbar'],
-    ['/evolution', '自进化', '.evolution-page > .evolution-summary'],
+    ['/evolution', '自进化', '.evolution-page > .evolution-overview > .evolution-summary'],
     ['/settings', '设置', '.settings-page > .settings-card'],
   ]) {
     await page.goto('/#' + path)

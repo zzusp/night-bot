@@ -1,3 +1,5 @@
+import {readEvolutionInventory} from './evolution-inventory.js'
+import {queryEvolutionUsage} from './evolution-usage.js'
 import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming} from './response-times.js'
 import {createServer} from 'node:http'
@@ -229,12 +231,24 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const kind = url.searchParams.get('kind') ?? 'all'
       if (!['all', 'memory', 'skill'].includes(kind)) fail('PAGE_INVALID')
       const options = {kind, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 20, 50)}
-      application()
+      const app = application()
       const memory = getMemory()
-      if (!memory?.inspectEvolution) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
+      if (!memory?.store?.root) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
       const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'})
       let value
-      try {value = await memory.inspectEvolution(identity.binding, options)} catch {fail('EVOLUTION_UNAVAILABLE', 503)}
+      try {
+        const inventory = await readEvolutionInventory({memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding: identity.binding})
+        const usage = await queryEvolutionUsage({application: app, sessionPersistence: getSessionPersistence(), channelSessions: [...(channels.contexts ?? [])].map(([sessionId, row]) => ({sessionId, type: row.type, channelId: row.channelId, conversationId: row.conversationId, senderId: row.type === 'chat' ? Object.values(row.participants ?? {})[0] : undefined})),
+          allowedScopeTokens: inventory.allowedScopeTokens, memoryResources: inventory.memoryResources, skillResources: inventory.skillResources})
+        const items = inventory.items.map(item => ({...item, ...usage.items[item.id]}))
+          .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id))
+        const filtered = items.filter(item => options.kind === 'all' || item.kind === options.kind), total = filtered.length
+        const memoryStats = {...inventory.memory, ...usage.memory, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
+        const skills = {...inventory.skills, ...usage.skills, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
+        value = {status: 'ready', coverage: 'bot-shared-current-state', usageCoverage: usage.coverage, memory: memoryStats, skills,
+          items: filtered.slice(options.offset, options.offset + options.limit), total, ...options, hasMore: options.offset + options.limit < total,
+          nextOffset: options.offset + options.limit < total ? options.offset + options.limit : null, revision: digest(JSON.stringify([items, memoryStats, skills, usage.coverage]))}
+      } catch {fail('EVOLUTION_UNAVAILABLE', 503)}
       const origin = value => value && typeof value==='object' ? Object.fromEntries(['channelId','conversationId','conversationName','conversationType','conversationKey','taskId','taskTitle','messageId','resolvedFrom'].filter(key=>typeof value[key]==='string').map(key=>[key,visibleText(value[key],[credential.token],{maxLength:256}).text])) : null
       return send(response, 200, {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))})
     }
