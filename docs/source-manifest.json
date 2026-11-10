@@ -204,7 +204,7 @@
       "source": "dynamic-task-store.js",
       "sourceSha256": "53106723fb5cc19c8ce3074c9bc33bd0ef3128e0da7a43b1907114b012c7c79c",
       "status": "adapted",
-      "sha256": "0a0d4130316fbd27d7480b6b67ada20687e9e7d0827a7627af693dc75e2b29be",
+      "sha256": "a8effb6593739ea3c6e366820b9091a9c7e4bc9acf20b84c70c59958f68a7659",
       "adaptation": "Retained task ledger with explicit effect reconciliation prepare/commit holds, operator-source provenance, pause and no replay. 账本v4接入直接来源、分诊与Router依赖/事件/轮换；调度及claim双守卫，共用任务mutation更新依赖版本并保留控制来源。 人工事实追问通知在task.wait事务创建，直接sourceRef与历史quoted身份分别严格核验。 任务附件交付在prepare/start核验当前完成版本、原来源、冻结descriptor/caption、父子顺序及冻结受众一致；归档后只续已有通知。 父依赖等待的start负许可仅在旧现均prepared、零发送且从未授许可、冻结payload一致时按原ID重评估全部当前守卫，热冷收据原位更新保留序号；首次授许可后继续去重，unknown仅回读。 SG10：父子附件受众幂等和humanReview来源校验采用单一历史受众只读投影，保留source/version/actor/atAll与unknown守卫，不改旧payload/hash。 Windows 新任务在原事务内登记 Host 专用工作区初始化状态，begin/finish 精确绑定 task/session/creationCommandId 并单调推进；未就绪拒绝 claim，不在事务内创建目录，不重放已提交初始化。 本地拒发显式恢复要求完整证明和已消费的恢复token；重新核对未归档任务/来源/版本/产物及正文后才授prepared，不改冻结payload。"
     },
     {
@@ -658,7 +658,7 @@
       "source": "observer-group-pages.js",
       "sourceSha256": "17b98077f6808b0e8477c2a9c97f5fae9735e34eb72b13266f99afcc031f42ef",
       "status": "adapted",
-      "sha256": "716599f7bcfb2c0c5c9d095583bc3ac3478d1449f38134c427a440e88acc9ed5"
+      "sha256": "9efee8380de60346954bd99b8824da82b6f1e6de123e7d094a8a0d3974f5f82a"
     },
     {
       "source": "observer-legacy-execution-pages.js",
@@ -689,7 +689,7 @@
       "source": "observer-pagination.js",
       "sourceSha256": "65b696a47abb79c156a0be102c1ed67ef40378b426bfe36bd60ba6af7a7d439f",
       "status": "adapted",
-      "sha256": "100e9ef1ae682073377a0efcca7fee5507928850f88d1aff5fac05932d29b2a2",
+      "sha256": "1de950bb9d5b73408b1536ac8241f4344163900e486a2d340da04afc4ee76f2e",
       "adaptation": "Bound message-context notification lookup to the exact source reference, including explicit recipient replies. 首答上下文按精确来源版本读取同会话任务通知，并用准备前提交的事件及命令快照核实共同回复覆盖，保留归档且不回写历史。"
     },
     {

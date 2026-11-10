@@ -47,7 +47,6 @@ svg { flex-shrink: 0; }
 .learning-metadata dd { overflow-wrap: anywhere; }
 .learning-body-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .learning-body { max-height: 480px; overflow: auto; margin-top: 14px; padding: 14px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); }
-.chat-history-tabs { margin: 10px 20px 0; flex-shrink: 0; align-self: flex-start; }
 .chat-execution { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: var(--board-gap); }
 .chat-execution-group { min-width: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); background: var(--board-surface); overflow: hidden; }
 .chat-execution-group > summary { display: flex; align-items: center; gap: 10px; min-height: var(--board-control-height); padding: 12px; cursor: pointer; font-size: 12px; }
@@ -347,11 +346,6 @@ html, body, #root { width: 100%; min-width: 0; }
 .response-times > header { padding: 16px 18px; }
 .response-times > .notice { margin: 0 18px 12px; }
 .response-time-row { border-top: 1px solid var(--board-border); min-width: 0; }
-.response-time-row > summary { display: flex; align-items: center; gap: 12px; padding: 16px 18px; cursor: pointer; }
-.response-time-row > summary::-webkit-details-marker { display: none; }
-.response-time-row > summary:hover { background: var(--board-panel); }
-.response-time-chevron { flex-shrink: 0; color: var(--board-muted); transform: rotate(-90deg); }
-.response-time-row[open] > summary .response-time-chevron { transform: none; }
 .response-time-message { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
 .response-time-preview { font-size: 13px; overflow-wrap: anywhere; }
 .response-time-meta,.response-time-outcome > span:not(.board-badge),.response-time-caption { color: var(--board-muted); font-size: 11px; }
@@ -389,8 +383,6 @@ html, body, #root { width: 100%; min-width: 0; }
 .execution-tool-records > .execution-history { height: clamp(260px, 55dvh, 600px); border-top: 1px solid var(--board-border); }
 @media(max-width:520px) {
   .chat-execution { padding: 10px; }
-  .response-times > header,.response-time-row > summary { padding: 12px; }
-  .response-time-row > summary { flex-wrap: wrap; gap: 8px; }
   .response-time-message { flex-basis: calc(100% - 28px); }
   .response-time-outcome { margin-left: 26px; flex-direction: row; align-items: baseline; gap: 8px; max-width: none; flex-wrap: wrap; }
   .response-time-outcome > strong { font-size: 18px; }
@@ -428,3 +420,36 @@ html, body, #root { width: 100%; min-width: 0; }
 .channel-card-health--abnormal { color: var(--board-danger); }
 
 .response-time-row > summary:focus-visible,.execution-tool-records > summary:focus-visible,.execution-reading-note > summary:focus-visible,.chat-execution-group > summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
+
+/* Per-message receipts stay in the conversation, in a native modal. */
+.message-process-trigger { min-height: 24px; border: 0; border-radius: 4px; padding: 3px 5px; background: transparent; color: var(--board-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.message-process-trigger:hover,.message-process-trigger:active { color: var(--board-text); background: var(--board-hover); }
+.message-process-trigger:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
+.message-inspectable > .message-body { cursor: pointer; }
+.message-inspectable > .message-body:hover { filter: brightness(.98); }
+.message-inspectable .message-body :is(a,button,summary) { position: relative; }
+.message-process-dialog { width: min(620px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); color: var(--board-text); background: var(--board-surface); overflow: hidden; }
+.message-process-dialog[open] { display: flex; flex-direction: column; }
+.message-process-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.message-process-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--board-border); }
+.message-process-heading h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.message-process-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.message-process-dialog .response-times { border: 0; border-radius: 0; }
+.message-process-dialog .execution-section-heading { align-items: center; padding: 12px 20px; }
+.message-process-dialog .execution-section-heading > p { margin: 0; font-size: 12px; color: var(--board-muted); }
+.message-process-dialog .response-time-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; }
+.message-process-dialog .response-time-detail { margin: 0 20px 20px; }
+.message-process-dialog .response-time-timeline-heading { margin-top: 20px; }
+.message-conversation-records { border-top: 1px solid var(--board-border); }
+.message-conversation-records > summary { padding: 16px 20px; cursor: pointer; font-size: 12px; color: var(--board-muted); }
+.message-conversation-records > summary:hover { background: var(--board-panel); color: var(--board-text); }
+.message-conversation-records > summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
+.message-process-scope { margin: 0; padding: 0 20px 12px; color: var(--board-muted); font-size: 12px; }
+.message-process-dialog .chat-execution { overflow: visible; padding: 0 20px 20px; }
+@media(max-width:520px) {
+  .message-process-heading { padding: 12px 16px; }
+  .message-process-dialog .response-time-summary { padding: 16px; flex-direction: column; gap: 12px; }
+  .message-process-dialog .response-time-outcome { margin: 0; }
+  .message-process-dialog .response-time-detail { margin: 0 16px 20px; }
+  .message-process-dialog .response-time-elapsed { max-width: 45%; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+}

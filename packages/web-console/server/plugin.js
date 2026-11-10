@@ -1,5 +1,5 @@
 import {latestComparison} from '../../../src/memory/evolution-content.js'
-import {responseTiming} from './response-times.js'
+import {responseTiming,selectedResponseTiming} from './response-times.js'
 import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
@@ -332,9 +332,18 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     const responseTimes = /^\/api\/(chat|conversations)\/([^/]+)\/response-times$/.exec(path)
     if (request.method === 'GET' && responseTimes) {
-      if ([...url.searchParams.keys()].some(key=>!['offset','limit'].includes(key))) fail('PAGE_INVALID')
+      if ([...url.searchParams.keys()].some(key=>!['offset','limit','selectedMessageId','selectedMessageVersion'].includes(key))) fail('PAGE_INVALID')
       const id=decodeURIComponent(responseTimes[2]),conversationId=executionContext(responseTimes[1],id),app=application(),store=app.tasks.store
       if(!store?.query) return send(response,200,{status:'unavailable',items:[],total:0,nextOffset:null})
+      if(url.searchParams.has('selectedMessageId')){
+        const selectedMessageId=url.searchParams.get('selectedMessageId')
+        if(!selectedMessageId||selectedMessageId.length>1024||url.searchParams.has('offset')||url.searchParams.has('limit'))fail('PAGE_INVALID')
+        const selectedMessageVersion=url.searchParams.has('selectedMessageVersion')?pageNumber(url.searchParams,'selectedMessageVersion',1,Number.MAX_SAFE_INTEGER):undefined
+        if(selectedMessageVersion===0)fail('PAGE_INVALID')
+        const selected=responseTimes[1]==='chat'?ledger.selected(id,selectedMessageId):await app.tasks.observerGroupPage?.selected?.(conversationId,selectedMessageId)
+        return send(response,200,await selectedResponseTiming({selected,selectedMessageId,selectedMessageVersion,conversationId,store,secrets:[credential.token]}))
+      }
+      if(url.searchParams.has('selectedMessageVersion'))fail('PAGE_INVALID')
       const offset=pageNumber(url.searchParams,'offset',0),limit=pageNumber(url.searchParams,'limit',20,50)
       let messages
       if(responseTimes[1]==='chat') {const rows=ledger.chat(id).messages.filter(row=>row.role==='user').toReversed();messages={items:rows.slice(offset,offset+limit).map(row=>({messageId:row.id,messageVersion:1,text:row.text})),total:rows.length,nextOffset:offset+limit<rows.length?offset+limit:null}}

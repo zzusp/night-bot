@@ -3,7 +3,6 @@ import { RiArrowDownSLine } from '@remixicon/react';
 import { ApiError, type Chat, type Task } from '../api';
 import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, Notice, Status, Markdown } from './Shared';
-import {ResponseTimes} from './ResponseTimes';
 import { ExecutionHistory } from './ExecutionHistory';
 import { useResource, textOf, dateTime } from '../hooks';
 
@@ -50,7 +49,7 @@ function ChatExecutionGroup({ endpoint, taskId, metadata }: { endpoint: string; 
   </details>;
 }
 
-export function ConversationExecution({ endpoint, query }: { endpoint: string; query: { data?: TaskHistory | null; error: Error | null; loading: boolean; refresh: () => void } }) {
+export function ConversationRecords({ endpoint, query }: { endpoint: string; query: { data?: TaskHistory | null; error: Error | null; loading: boolean; refresh: () => void } }) {
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
@@ -58,10 +57,9 @@ export function ConversationExecution({ endpoint, query }: { endpoint: string; q
   const taskHistoryBlocked = forbidden || denied;
   if (taskHistoryBlocked) return <div className="chat-execution">
     {query.error && <Notice error={query.error} onRetry={query.refresh} />}
-    {query.loading ? <Loading>正在重新核验会话访问权限…</Loading> : <p className="execution-empty">会话暂不可读，已隐藏消息处理过程、任务和安排记录。</p>}
+    {query.loading ? <Loading>正在重新核验会话访问权限…</Loading> : <p className="execution-empty">会话暂不可读，已隐藏任务和安排记录。</p>}
   </div>;
   return <div className="chat-execution" key={endpoint}>
-      <ResponseTimes endpoint={endpoint} />
       <section className="chat-task-history" aria-label="本会话关联任务">
         <header className="execution-section-heading"><div><h2>后续任务</h2><p>查看处理结果、待补充信息和阻塞原因。含已归档任务。</p></div>{query.data?.taskHistoryStatus === 'ready' && !taskHistoryBlocked && <span className="execution-task-count">{query.data.taskIds?.length ?? 0} 项</span>}</header>
         {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data && !taskHistoryBlocked} />}

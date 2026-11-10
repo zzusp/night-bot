@@ -44,6 +44,7 @@ export interface MessageSource { sessionId: string; entryId: string; callId?: st
 export interface MessageBodyPage { messageId: string; text: string; offset: number; nextOffset: number | null; total: number; revision: string; source: MessageSource; redacted: boolean }
 export interface HistoryReader { endpoint: string; revision: string }
 export interface Message {
+  messageVersion?: number;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
   kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean;

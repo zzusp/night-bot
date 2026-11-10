@@ -424,3 +424,32 @@ test('首答共同任务关联使用回复前提交的精确版本快照，附�
  context=observerGroupQuery(db,query)
  assert.equal(timing(context).durationMs,4000);assert.equal(context.taskReplySources.length,1)
 })
+
+
+test('selected notification resolves direct and historical shared sources exactly, with a bounded candidate set',t=>{
+ const {db,put}=fixture(t,{archives:true})
+ for(const name of ['source_links','task_events','receipts'])db.exec(`CREATE TABLE dynamic_${name}(id TEXT PRIMARY KEY,body TEXT)`)
+ const a={sourceId:'a',groupId:'g',messageId:'message-a',version:1,receivedAt:'2026-11-09T00:00:00Z'}
+ const b={...a,sourceId:'b',messageId:'message-b',version:2}
+ for(const source of [a,b]){put('sources',source.sourceId,source);put('source_links',source.sourceId,{taskId:'task',conversationId:'g',sourceId:source.sourceId,messageVersion:source.version})}
+ const notice={taskId:'task',requirementRevision:1,state:'delivered',createdAt:'2026-11-09T00:00:02Z',deliveredAt:'2026-11-09T00:00:03Z',payload:{conversationId:'g',sourceId:'a',sourceRef:{messageId:'message-a',messageVersion:1}}}
+ put('notifications','selected',notice)
+ put('task_events','event',{taskId:'task',commandId:'receipt',requirementRevision:1,recordedAt:'2026-11-09T00:00:01Z'})
+ put('receipts','receipt',{result:{task:{taskId:'task',groupId:'g',requirementRevision:1,sourceRefs:['a','b'],updatedAt:'2026-11-09T00:00:01Z'}}})
+ const q={kind:'observer.notification-sources',groupId:'g',notificationId:'selected'}
+ assert.deepEqual(observerGroupQuery(db,q).sources.map(s=>s.sourceId),['a','b'])
+ assert.deepEqual(observerGroupQuery(db,{...q,groupId:'foreign'}).sources,[])
+ assert.deepEqual(observerGroupQuery(db,{...q,notificationId:'missing'}).sources,[])
+ // No task-snapshot evidence means only the direct, versioned source remains.
+ put('receipts','receipt',{result:{task:{taskId:'task',groupId:'g',requirementRevision:1,sourceRefs:['a'],updatedAt:'2026-11-09T00:00:01Z'}}})
+ assert.deepEqual(observerGroupQuery(db,q).sources.map(s=>s.sourceId),['a'])
+ // Distinct source identities for the same message/version are ambiguous.
+ put('sources','duplicate',{...a,sourceId:'duplicate'})
+ assert.deepEqual(observerGroupQuery(db,q).sources,[])
+ db.prepare('DELETE FROM dynamic_sources WHERE id=?').run('duplicate')
+ // Historical notification identity remains exact after archival.
+ db.exec('INSERT INTO dynamic_archived_notifications SELECT id,rowid,body FROM dynamic_notifications; DELETE FROM dynamic_notifications')
+ assert.deepEqual(observerGroupQuery(db,q).sources.map(s=>s.sourceId),['a'])
+ for(let i=0;i<101;i++)put('source_links','extra-'+i,{taskId:'task',conversationId:'g',sourceId:'extra-'+i,messageVersion:1})
+ assert.deepEqual(observerGroupQuery(db,q).sources,[])
+})

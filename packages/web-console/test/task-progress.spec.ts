@@ -1,8 +1,10 @@
 import {test,expect} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
+import {openConversationRecords,openMessageProcess} from './message-process-helpers'
 test('任务进展优先显示真实合同字段，缺失不猜测，撤权不显示旧摘要',async({page})=>{
  await page.goto('/#/channels/room-product?view=execution');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ await openConversationRecords(page)
  const group=page.locator('[data-task-id="task-research"]');await group.locator(':scope > summary').click()
  await expect(group.locator(':scope > summary')).toContainText('整理本周产品调研')
  await expect(group.locator('.execution-task-summary')).toContainText('任务正在执行，尚未提交处理结果。')
@@ -30,10 +32,11 @@ test('单条消息首答时间、共同任务结果与无需回复、等待和�
  ]
  await page.route('**/api/conversations/room-product/response-times?*',route=>route.fulfill({json:{status:'ready',total:items.length,nextOffset:null,items}}))
  await page.goto('/#/channels/room-product?view=execution');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ await openMessageProcess(page)
  const section=page.getByRole('region',{name:'消息首答与处理过程'})
- for(const text of ['1.25 秒','2.5 秒','回复尚未确认可见','无需处理及回复','等待处理','等待回复','回复发送失败','等待发送','共同任务结果'])await expect(section).toContainText(text)
+ for(const text of ['1.25 秒','2.5 秒','回复尚未确认可见','无需处理及回复','等待处理','等待回复','回复发送失败','等待发送'])await expect(section).toContainText(text)
  await expect(section).not.toContainText('尚无可核实的首答');await expect(section).not.toContainText('未记录本条消息的回复')
- await section.locator('details').first().locator('summary').click();await expect(section).toContainText('首条回复已确认可见')
- const shared=section.locator('details').filter({hasText:'已绑定的附件'});await shared.locator('summary').click();await expect(shared).toContainText('共同任务回复');await expect(shared).toContainText('四个附件均已核对。')
+ await expect(section).toContainText('首条回复已确认可见')
+ const shared=section.locator('.response-time-row').filter({hasText:'已绑定的附件'});await expect(shared).toContainText('共同任务回复');await expect(shared).toContainText('四个附件均已核对。')
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath(`first-reply-${width}.png`)})}
 })
