@@ -18,8 +18,10 @@ test('正文显式读取、纯文本、最新差异、键盘返回与浅深色�
   await page.route('**/api/evolution/items/**', route => { reads++; expect(new URL(route.request().url()).searchParams.get('revision')).toBe('2'); return route.fulfill({json: body}); });
   await open(page);
   expect(reads).toBe(0);
+  const summary = page.locator('.evolution-summary'), summaryNode = await summary.elementHandle();
   const action = page.getByRole('button', {name: '查看内容：示例记忆', exact: true});
   await action.focus(); await action.press('Enter');
+  await expect(summary).toBeHidden();
   await expect(page.locator('.evolution-plain-text')).toContainText('<script>safe plain text</script>');
   await expect(page.locator('#evolution-content-title')).toBeFocused();
   await expect(page.locator('.evolution-content script')).toHaveCount(0);
@@ -41,6 +43,8 @@ test('正文显式读取、纯文本、最新差异、键盘返回与浅深色�
   }
   await page.getByRole('button', {name: '返回列表', exact: true}).click();
   await expect(action).toBeFocused();
+  await expect(summary).toBeVisible();
+  expect(await summaryNode!.evaluate(el => el.isConnected)).toBe(true);
   await expect(page.locator('.evolution-content')).toHaveCount(0);
 });
 
