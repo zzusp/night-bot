@@ -15,7 +15,7 @@ async function login(page: Page) {
 
 async function openReadActivity(page: Page) {
   const response = page.waitForResponse(result => new URL(result.url()).pathname === '/api/tasks/task-research/session')
-  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
   const session = await (await response).json()
   const tools = session.items.filter((row: {role: string}) => row.role === 'tool')
   expect(tools.map((row: {kind: string}) => row.kind)).toEqual(['tool-call', 'tool-result'])
@@ -151,6 +151,7 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await screenshot(page, 'tasks')
   await page.locator('.task-table').getByRole('link', {name: '整理本周产品调研', exact: true}).click()
   await expect(page.getByRole('heading', {name: '整理本周产品调研', exact: true})).toBeVisible()
+  await page.getByRole('navigation', {name: '任务信息分类'}).getByRole('link', {name: '执行', exact: true}).click()
   await expect(page.getByRole('heading', {name: '执行动态', exact: true})).toBeVisible()
   await screenshot(page, 'task-detail')
   await openReadActivity(page)
@@ -168,7 +169,7 @@ test('执行上下文区分提交中和不可用，不展示空白成功状态',
   for (const [id, state] of [['task-schedule', 'pending'], ['task-inventory', 'unavailable']]) {
     await page.goto('/#/tasks/' + id)
     const response = page.waitForResponse(result => new URL(result.url()).pathname === `/api/tasks/${id}/session`)
-    await page.getByRole('button', {name: '执行记录', exact: true}).click()
+    await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
     expect((await (await response).json()).status).toBe(state)
     const context = page.locator('.task-dialogue')
     await expect(context).toContainText(state === 'pending' ? /提交|写入/ : /不可用|无法|暂时不能/)
@@ -489,7 +490,7 @@ test('初次读取失败与真实空数据分开显示，恢复路径只有一�
 
   await page.route('**/api/tasks/task-research/session?**', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
   await page.goto('/#/tasks/task-research')
-  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
   await expect(page.getByRole('heading', {name: '执行记录暂不可读', exact: true})).toBeVisible()
   await expect(page.getByRole('heading', {name: '暂无可展示的执行记录', exact: true})).toHaveCount(0)
   await expect(page.locator('.task-dialogue').getByRole('button', {name: '重新获取', exact: true})).toHaveCount(1)
@@ -523,7 +524,7 @@ test('窄屏长发送者与工具名不撑宽消息区，未知来源不冒称�
     {id: 'long-tool', role: 'tool', toolName: 'tool_' + 'x'.repeat(120), kind: 'tool-result', text: longMarkdown, status: 'completed'},
   ], total: 2, nextOffset: null}}))
   await page.goto('/#/tasks/task-research')
-  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
   await expect(page.locator('.message-user .message-meta strong')).toHaveText('用户')
   const summary = page.locator('.tool-message summary')
   await summary.focus()
@@ -545,7 +546,7 @@ test('任务阻断状态中文可读，未开始的执行与提交中的记录�
   await page.goto('/#/tasks/task-schedule')
   for (const [, label] of states) await expect(page.locator('.blockers').getByText(label, {exact: true})).toBeVisible()
   await page.route('**/api/tasks/task-schedule/session?**', route => route.fulfill({json: {status: 'pending', reason: 'SESSION_NOT_STARTED', scope: 'current-session-context', items: [], total: 0, nextOffset: null}}))
-  await page.getByRole('button', {name: '执行记录', exact: true}).click()
+  await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
   await expect(page.getByRole('heading', {name: '执行尚未开始', exact: true})).toBeVisible()
   await expect(page.locator('.task-dialogue')).not.toContainText('正在保存记录')
 })

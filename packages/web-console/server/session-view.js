@@ -135,8 +135,9 @@ function toolOutput(call, message, identity) {
   if (Array.isArray(content) && content.some(block => block.type !== 'text' || Object.keys(block).some(key => key !== 'type' && key !== 'text'))) state.hidden = true
   const text = texts(content)
   // 调用方已认证安装操作者的任务读取权；这些工具声明的是该任务业务文字。
+  // job_output 仅公开已配对任务调用的官方文本输出；不读取 job/details/日志或原始参数。
   // JSON 文件仍是文字，不按外观改当工具 DTO；memory/skill 的独立 scope 不由此授予。
-  if (identity.taskId && ['read', 'read_window', 'grep', 'web_search', 'web_fetch'].includes(name)) {
+  if (identity.taskId && ['read', 'read_window', 'grep', 'web_search', 'web_fetch', 'job_output'].includes(name)) {
     if (!text) return summary
     const publicText = ['web_search', 'web_fetch'].includes(name)
       ? text.replace(/https?:\/\/[^\s<>"')]+/gi, '[网页地址已隐藏]') : text

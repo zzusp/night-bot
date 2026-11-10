@@ -6,6 +6,8 @@ import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remi
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
+import { executionItems, toolState, type ToolItem } from '../execution-items';
+import '../styles/execution-groups.css';
 
 const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'danger' | 'info']> = {
   running: ['执行中', 'info'], active: ['进行中', 'info'], queued: ['排队中', 'neutral'], pending: ['处理中', 'info'],
@@ -86,52 +88,47 @@ function MessageBody({ message, history, plain = false }: { message: Message; hi
   </>;
 }
 
-type TranscriptItem = { kind: 'message'; message: Message } | { kind: 'tool'; id: string; call?: Message; results: Message[] };
-function transcriptItems(messages: Message[]): TranscriptItem[] {
-  const items: TranscriptItem[] = [];
-  const calls = new Map<string, Extract<TranscriptItem, { kind: 'tool' }>>();
-  for (const message of messages) {
-    if (message.role !== 'tool') { items.push({ kind: 'message', message }); continue; }
-    const key = message.callId ? JSON.stringify([message.source?.sessionId || '', message.callId]) : undefined;
-    if (message.kind === 'tool-call') {
-      const item: Extract<TranscriptItem, { kind: 'tool' }> = { kind: 'tool', id: message.id, call: message, results: [] };
-      items.push(item);
-      if (key) calls.set(key, item);
-    } else {
-      const call = key ? calls.get(key) : undefined;
-      if (call && call.call?.toolName === message.toolName) call.results.push(message);
-      else items.push({ kind: 'tool', id: message.id, results: [message] });
-    }
-  }
-  return items;
-}
-function ToolActivity({ item, history }: { item: Extract<TranscriptItem, { kind: 'tool' }>; history?: HistoryReader }) {
+function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryReader }) {
   const [open, setOpen] = useState(false);
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
-  const state = result ? result.isError ? 'error' : result.status || 'completed' : item.call?.status || 'pending';
+  const state = toolState(item);
+  const publicJobOutput = message.toolName === 'job_output';
   return <article className="message message-tool">
     <div className="message-meta"><span className="message-avatar" aria-hidden="true" /><strong>{message.toolName || '工具'}</strong>
       {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
       {state === 'pending' ? <Badge tone="neutral">等待结果</Badge> : <Status value={state} />}
     </div>
     <div className="message-body"><details className="tool-message" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-      <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
+      <summary>{publicJobOutput ? item.call ? '查看工具输入' : '查看工具记录说明' : item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
       {open && <>
         {item.call ? <section className="tool-part"><h4>输入</h4><MessageBody message={item.call} history={history} plain /></section>
           : <p className="message-scope">本页不含对应调用输入，仅展示已记录的工具结果。</p>}
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
+        {!publicJobOutput && item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
         {!result && <p className="message-scope">调用已记录，尚无已提交的工具结果；这不表示工具正在执行。</p>}
       </>}
-    </details></div>
+    </details>{publicJobOutput && item.results.map(output => <section className="execution-job-output" key={output.id} aria-label="job_output 输出">
+      <h4>作业输出{output.isError || output.status === 'error' ? ' · 失败' : ''}</h4>
+      <MessageBody message={output} history={history} plain />
+    </section>)}</div>
   </article>;
+}
+function ToolActivityGroup({ tools, history }: { tools: ToolItem[]; history?: HistoryReader }) {
+  const [open, setOpen] = useState(false);
+  const failures = tools.filter(item => ['error', 'failed'].includes(toolState(item))).length;
+  return <details className="execution-tool-group" open={open} onToggle={event => {
+    if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
+  }}>
+    <summary><span>{tools.length} 项工具调用与脚本执行</span>{failures > 0 && <Badge tone="danger">{failures} 项失败</Badge>}<span className="execution-tool-group-action">{open ? '收起' : '展开'}</span></summary>
+    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} />)}</div>
+  </details>;
 }
 export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
   const brand = useAssistantBrand();
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
-  const items = useMemo(() => transcriptItems(messages), [messages]);
+  const items = useMemo(() => executionItems(messages), [messages]);
   const signature = messages.map(message => `${message.id}:${message.text.length}:${message.status || ''}`).join(',');
   useEffect(() => {
     const element = ref.current;
@@ -143,6 +140,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
   }} role="region" aria-label="消息记录" tabIndex={0}>
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
       {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : items.map(item => {
+        if (item.kind === 'tool-group') return <ToolActivityGroup key={`group:${item.id}`} tools={item.tools} history={history} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} />;
         const message = item.message;
         return <article className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
