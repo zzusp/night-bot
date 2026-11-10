@@ -6,6 +6,10 @@ import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventuall
 
 const triage=body=>requestEnvelope(body,'一级分诊请求：')
 const router=body=>requestEnvelope(body,'Router 请求：')
+function memoryToolResult(body){
+  const content=body.messages.at(-1).content
+  try{return JSON.parse(content)}catch{throw Error('Expected structured memory result, received: '+content)}
+}
 function handoff(body) {
   const input=requestEnvelope(body,'Router 交接请求：')
   if(!input||requestTools(body).length)return
@@ -20,6 +24,117 @@ function settle(body,input) {
   if(body.messages.at(-1)?.role==='tool')return {text:'The necessary business disposition is committed.'}
   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.eventId).join(',')}}
 }
+
+test('explicit channel preference is accepted memory before acknowledgement and survives cold cross-conversation recall',{timeout:nativeTestTimeout(60000)},async t=>{
+  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{decodeTopic}=await import('../src/memory/format.js')
+  const preference='以后没说要提供文档，就不用附报告文档',steps=new Map();let writes=0
+  const h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body),source=input.events.find(event=>event.source)?.source
+      if(!source)return settle(body,input)
+      const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
+      if(step===0&&source.text===preference){writes++;return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'report-documents',text:preference,sourceQuote:preference}}}
+      if(step===0){assert.ok(requestTools(body).includes('memory_search'),'Router exposes its scoped memory reader');return {tool:'memory_search',args:{query:'报告文档'}}}
+      if(step===1){
+        const result=memoryToolResult(body)
+        if(source.text===preference){assert.equal(result.ok,true);assert.equal(result.persisted,true);assert.equal(result.entry.text,preference)}
+        else assert.ok(result.entries.some(entry=>entry.text===preference),'new Router recalls accepted memory without preference in its own input')
+        return {tool:'resident_router_reply',args:{operationId:'memory-ack:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:source.text===preference?'已保存这个长期偏好。':'已读回长期偏好：未要求文档时不附报告文档。'}}
+      }
+      if(step===2)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'memory-settle:'+source.messageId}}
+      return {text:'Preference handling is committed.'}
+    }
+    return {text:'No other work'}
+  })
+  const message=channelMessage('durable-report-preference',{text:preference})
+  await h.receive(message);await h.service.whenIdle()
+  const original=(await h.query('source.list')).find(source=>source.messageId===message.messageId)
+  const file=join(h.host.ctx.runtimePaths.memory,'v2','bot','topics',hash('preferences')+'.md')
+  const saved=decodeTopic(await readFile(file,'utf8')),entry=saved.entries.find(row=>row.key==='report-documents')
+  assert.equal(entry.text,preference);assert.equal(entry.source.messageId,original.sourceId)
+  assert.equal(entry.source.actor,hash(original.actorId));assert.equal(entry.source.quoteSha256,hash(preference))
+  assert.equal(entry.provenance.messageId,message.messageId);assert.equal(entry.provenance.conversationId,message.conversationId)
+  assert.equal((await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{candidates:true})).entries.length,0)
+  assert.equal((await h.query('task.list')).length,0)
+  assert.equal((await h.query('router.inbox',{conversationId:h.host.ctx.channels.identity(message).sessionId})).length,0)
+  const active=await h.query('router.get',{conversationId:h.host.ctx.channels.identity(message).sessionId})
+  await assert.rejects(h.host.ctx.memory.scope(h.host.ctx.agents.get(active.activeSessionId),{},true),{code:'MEMORY_SCOPE_FORBIDDEN'},'ordinary group Router write grant remains closed')
+  const priorRequests=h.requests.length,priorSends=h.sent.length
+  await h.restart();await h.receive(message);await h.service.whenIdle()
+  assert.equal(h.requests.length,priorRequests,'cold replay never re-infers or rewrites a consumed source')
+  assert.equal(h.sent.length,priorSends,'acknowledgement is not resent')
+  assert.equal(decodeTopic(await readFile(file,'utf8')).entries[0].revision,1)
+  await h.receive(channelMessage('recall-after-cold-reopen',{conversationId:'different-room',senderId:'bob',text:'查一下我应遵守的报告交付偏好。'}));await h.service.whenIdle()
+  assert.equal(writes,1);assert.equal(h.sent.length,2)
+  assert.ok(h.results.some(result=>result.name==='memory_search'&&result.result.value?.entries?.some(row=>row.text===preference)))
+  assert.equal((await h.query('task.list')).length,0)
+  t.diagnostic(JSON.stringify({case:'channel-preference-memory',accepted:true,candidate:false,memoryRevision:saved.revision,entryRevision:entry.revision,quoteSha256:entry.source.quoteSha256,diskHashVerified:true,originalActorAndMessageBound:true,groupRouterWriteGrantUnchanged:true,writeBeforeAcknowledgement:true,coldRestart:true,crossConversationRecall:true,replayWrites:0,realVendorMessages:0}))
+})
+
+test('channel memory rejects borrowed, stale, quoted, ordinary and shortened authorization while temporary preferences stay ephemeral',{timeout:nativeTestTimeout(90000)},async t=>{
+  const cases=[
+    {id:'valid-source',text:'以后请优先用简短回答。',ok:true},
+    {id:'historical-source',text:'查一下当前状态。',borrow:true,code:'MEMORY_CURRENT_SOURCE_REQUIRED'},
+    {id:'foreign-source',text:'请看另一会话的进度。',borrow:true,room:'foreign-room',code:'ROUTER_SOURCE_FORBIDDEN'},
+    {id:'stale-version',text:'以后请直接说明结论。',version:2,code:'ROUTER_SOURCE_FORBIDDEN'},
+    {id:'quoted-source',text:'这是他人说过的话。',quote:'以后请不要附报告。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
+    {id:'ordinary-future',text:'以后有空再聊。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
+    {id:'hypothetical-future',text:'以后可能不用写报告了。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
+    {id:'third-person-future',text:'以后他不用写报告了。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
+    {id:'future-question',text:'以后是不是不用附报告？',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
+    {id:'shortened-condition',text:'以后没要求文档时，不用附报告。',short:'不用附报告。',code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
+    {id:'temporary-preference',text:'以后请在本次任务中简短回答。',temporary:true},
+    {id:'secret-preference',text:'以后请使用密码：never-store-this-value',code:'MEMORY_SECRET_REFUSED'},
+  ],steps=new Map(),outcomes=new Map();let borrowed,h
+  h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body),source=input.events.find(event=>event.source)?.source
+      if(!source)return settle(body,input)
+      const item=cases.find(row=>row.id===source.messageId),step=steps.get(item.id)??0;steps.set(item.id,step+1)
+      if(step===0){if(item.ok)borrowed=source;const text=item.short??item.quote??item.text
+        return {tool:'resident_memory_remember',args:{sourceId:item.borrow?borrowed.sourceId:source.sourceId,messageVersion:item.version??(item.borrow?borrowed.version:source.version),topic:'preferences',key:item.id,text,sourceQuote:text}}}
+      if(step===1){outcomes.set(item.id,memoryToolResult(body));return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'reject-settle:'+item.id}}}
+      return {text:'The memory outcome was inspected.'}
+    }
+    return {text:'No other work'}
+  })
+  for(const item of cases){await h.receive(channelMessage(item.id,{text:item.text,...item.room?{conversationId:item.room}:{},...item.quote?{quotedMessage:{messageId:'quoted-prior',senderId:'bob',text:item.quote}}:{}}));await h.service.whenIdle()}
+  for(const item of cases){const result=outcomes.get(item.id);assert.ok(result,item.id)
+    if(item.ok){assert.equal(result.persisted,true,item.id);continue}
+    if(item.temporary){assert.equal(result.ok,true);assert.equal(result.persisted,false);assert.equal(result.code,'MEMORY_TEMPORARY_NOT_PERSISTED')}
+    else{assert.equal(result.ok,false,item.id);assert.equal(result.code,item.code,item.id)}
+  }
+  const saved=await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{topic:'preferences'})
+  assert.deepEqual(saved.entries.map(row=>row.key),['valid-source']);assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+  t.diagnostic(JSON.stringify({case:'channel-memory-authority',checks:cases.length,onlyExplicitDirectSourceSaved:true,temporaryNotSaved:true,secretRefused:true}))
+})
+
+test('read-only Router reports the actual memory refusal without persisting a preference',{timeout:nativeTestTimeout(40000)},async t=>{
+  let h,step=0,outcome
+  h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body),source=input.events[0]?.source
+      if(!source)return settle(body,input)
+      if(step++===0){const row=await h.query('router.get',{conversationId:input.conversationId});const actor=h.host.ctx.agents.get(row.activeSessionId);await actor.ctx.get('permissionPresets').set(actor,'read-only')
+        return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'read-only-preference',text:source.text,sourceQuote:source.text}}}
+      if(step===2){outcome=memoryToolResult(body);assert.equal(outcome.ok,false);assert.equal(outcome.code,'MEMORY_READ_ONLY')
+        return {tool:'resident_router_reply',args:{operationId:'readonly-memory-failure',sourceId:source.sourceId,messageVersion:source.version,text:'当前只读权限下没有保存这个长期偏好。'}}}
+      if(step===3)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'readonly-settle'}}
+      return {text:'No memory was saved.'}
+    }
+    return {text:'No other work'}
+  })
+  await h.receive(channelMessage('readonly-memory',{text:'以后请不要附报告文档。'}));await h.service.whenIdle()
+  assert.equal(outcome.code,'MEMORY_READ_ONLY')
+  assert.equal((await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{topic:'preferences'})).entries.length,0)
+  assert.equal(h.sent.length,1);assert.match(h.sent[0].text,/没有保存/)
+})
 
 test('all four default dispositions keep original handling independent of an unknown short reply and survive cold deduplication',{timeout:nativeTestTimeout(40000)},async t=>{
   const observed=[],handoffs=[];let h

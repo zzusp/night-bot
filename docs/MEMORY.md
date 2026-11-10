@@ -109,6 +109,14 @@ discards an extraction racing a correction/forget; forget fingerprints also supp
 stale candidates. `memory_status` and the next prompt expose maintenance error codes.
 No automatic external notification is sent on a background error.
 
+## 渠道长期偏好
+
+已认证渠道的直接原消息明确要求记住，或以“以后／今后／from now on”等表达长期行为要求时，一级分诊转交 Router，不只发送简短确认。Router 调用 `resident_memory_remember`，提供当前来源及版本、记忆 topic/key 和完整准确原话；长期行为条件不能截短或改写。普通将来陈述、疑问、引用、任务结果和交接摘要不授权写入。临时限定继续不持久化，普通对话提取的候选仍须另行接受。
+
+Host 只允许当前已接纳且未结清批次中的原来源，回查当前版本、已认证参与者和渠道消息事实；写入归因于原发送者，不能自选 actor/scope/path，不整体放开群 Router 的 `groupWrite`。只读执行权限仍拒绝写入。事务提交后回读核对内容、作者及原消息，只有 `ok:true,persisted:true` 才能答复已经保存；失败不伪装成功。保存的 accepted 条目进入 Bot 共享记忆，其他已认证会话可按需读取，冷启动不依赖原 Router 摘要。
+
+这是明确请求驱动的记忆写入，不触发空任务，不强制生成 Skill，也不把整个 Router JSON 包转换为真人输入。此修复不自动回填已经消费的历史消息，不自动重放旧回复；既有漏存需按当前授权经受控入口另行保存。更新代码后须按安装运维流程正常排空与重启才作用于运行中的进程，不直接编辑 Markdown、SQLite 或 Pi journal。
+
 ## Persistence, forgetting and failures
 
 Writers acquire the Bot memory cross-process lease, reload current Markdown, and use
