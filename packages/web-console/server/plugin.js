@@ -1,3 +1,4 @@
+import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming} from './response-times.js'
 import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
@@ -236,6 +237,27 @@ export async function createWebConsole({channels, paths, config, getApplication,
       try {value = await memory.inspectEvolution(identity.binding, options)} catch {fail('EVOLUTION_UNAVAILABLE', 503)}
       const origin = value => value && typeof value==='object' ? Object.fromEntries(['channelId','conversationId','conversationName','conversationType','conversationKey','taskId','taskTitle','messageId','resolvedFrom'].filter(key=>typeof value[key]==='string').map(key=>[key,visibleText(value[key],[credential.token],{maxLength:256}).text])) : null
       return send(response, 200, {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))})
+    }
+    const evolutionItem = /^\/api\/evolution\/items\/([a-f0-9]{64})$/.exec(path)
+    if (request.method === 'GET' && evolutionItem) {
+      if ([...url.searchParams.keys()].some(key => key !== 'revision') || !/^(?:[a-f0-9]{64}|\d{1,16})$/.test(url.searchParams.get('revision') ?? '')) fail('PAGE_INVALID')
+      application()
+      const memory = getMemory()
+      if (!memory?.inspectEvolutionItem) fail('EVOLUTION_UNAVAILABLE', 503)
+      const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'})
+      let value
+      try {value = await memory.inspectEvolutionItem(identity.binding, {id: evolutionItem[1], revision: url.searchParams.get('revision')})}
+      catch (error) {
+        const status = {EVOLUTION_ITEM_NOT_FOUND: 404, EVOLUTION_BODY_FORBIDDEN: 403, EVOLUTION_VERSION_STALE: 409, EVOLUTION_CONTENT_TOO_LARGE: 413}[error.code]
+        fail(status ? error.code : 'EVOLUTION_UNAVAILABLE', status ?? 503)
+      }
+      const current = visibleText(value.current.text, [credential.token], {maxLength: Infinity})
+      const previous = value.previous ? visibleText(value.previous.text, [credential.token], {maxLength: Infinity}) : null
+      // Recompute from the displayed bodies: redaction must not leak via a diff.
+      const comparison = latestComparison(current, previous, value.comparison.basis, value.comparison.reason)
+      return send(response, 200, {...value, name: visibleText(value.name, [credential.token]).text,
+        current: {...value.current, text: current.text}, previous: previous ? {...value.previous, text: previous.text} : null,
+        comparison, redacted: current.redacted || !!previous?.redacted})
     }
     const learning = /^\/api\/tasks\/([^/]+)\/learning(?:\/changes\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && learning) {

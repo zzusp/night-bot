@@ -1,3 +1,5 @@
+import {InstalledSkillPrevious} from './installed-previous.js'
+import {inspectEvolutionItem} from './evolution-content.js'
 import {openSkillUsage,botSkillRoots,installedSkills,contentVersion,skillIdentity,commonSkillPath} from './skill-usage.js'
 import {inside} from '../runtime/paths.js'
 import {parseSkillBlock} from '@earendil-works/pi-coding-agent'
@@ -28,7 +30,7 @@ export default class NativeMemory extends Service {
     ctx.systemPrompt.context({name:'memory:index',order:135,required:true,officialText:({actor})=>this.contexts.get(actor)?.prompt??POLICY})
     // Raw Pi history remains intact. Only stale/revoked memory result bodies are
     // replaced for new model requests, including inherited child context.
-    ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await Promise.allSettled([...this.background]);await this.whenIdle();this.skillUsage?.close();await this.store.close()})
+    ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.installedPrevious?.close();await Promise.allSettled([...this.background]);await this.whenIdle();this.skillUsage?.close();await this.store.close()})
   }
   actorId(agent){if(!this.officialActors.has(agent))throw failure('MEMORY_OFFICIAL_ACTOR_REQUIRED');return agent.id}
   /** Explicit official actor port. Admission supplies authenticated business
@@ -97,7 +99,13 @@ export default class NativeMemory extends Service {
       }
       return messages.some((m,i)=>m!==options.messages[i])?{...options,messages}:options
   }
-  async [Service.init](){await this.bindingReady}
+  async [Service.init](){
+    await this.bindingReady
+    this.installedPrevious=new InstalledSkillPrevious(this.store.directory(memoryScope({actorId:'host'})),this.host.runtimePaths,this.config.skillDirs??[])
+    try{await this.installedPrevious.start()}catch{this.installedPrevious.error='EVOLUTION_SNAPSHOT_UNAVAILABLE'}
+    // Capture before each authorized Host edit; watcher also covers external edits.
+    for(const event of ['fs/write-intent','fs/edit-intent'])this.host.on(event,async(target,exec,next)=>{const guard=await next();if(this.installedPrevious.relevant(target.displayPath))try{await this.installedPrevious.scan()}catch{this.installedPrevious.error='EVOLUTION_SNAPSHOT_UNAVAILABLE'}return guard},{prepend:true})
+  }
   async loadBindings(){
     await privateDirectory(this.root)
     const saved=JSON.parse(await readRegular(join(this.root,'bindings.json'))??'{}')
@@ -123,6 +131,7 @@ export default class NativeMemory extends Service {
   async search(agent,args){const scope=await this.scope(agent,args),result=await this.store.search(scope,args);await this.recordUsage(scope,'searchCount',this.provenance({agent}),result.entries);return {kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id,...result}}
   async recordUsage(scope,counter,provenance,entries){try{await recordUsage(this.store,scope,counter,{provenance,entries})}catch{this.memoryTrackingError='EVOLUTION_USAGE_RECORD_FAILED';this.host.logger.warn('EVOLUTION_USAGE_RECORD_FAILED')}}
   async inspectEvolution(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');await this.bindingReady;const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolution(this,reflection,binding,options)}
+  async inspectEvolutionItem(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');await this.bindingReady;const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolutionItem(this,reflection,binding,options)}
   prepareSkillUse(exec,skill){if(exec?.agent&&typeof skill?.content==='string')this.skillInputs.set(exec,{name:skill.name,provider:skill.provider,path:skill.path,version:contentVersion(skill.content,skill.provider)})}
   async saveSkillUse(actor,value,eventId,mode){
    const official=this.officialActors.get(actor);if(!official||!official.isLive(actor))return

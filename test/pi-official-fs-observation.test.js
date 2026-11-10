@@ -44,3 +44,19 @@ test('foreign same-id and unbound official observation actors fail closed instea
  await assert.rejects(h.host.ctx.waterfall('fs/write-intent',target,{agent:h.owner},()=>undefined),error=>error.code==='FS_ACTOR_AUTHORITY_REQUIRED')
  assert.equal(await readFile(path,'utf8'),'content')
 })
+
+test('actual Host file writes capture the immediate prior skill even before the watcher settles',async t=>{
+ const h=await fixture(t),paths=h.host.ctx.runtimePaths,file=join(paths.skills,'latest-check.md')
+ await writeFile(join(paths.config,'config.json'),JSON.stringify(h.config))
+ await h.host.ctx.get('toolPermissions').setMode('full')
+ await h.host.ctx.memory.installedPrevious.watcher.close()
+ const content=value=>'---\nname: latest-check\ndescription: Local test resource\n---\n'+value+'\n'
+ for(const value of ['FIRST','SECOND','THIRD']){
+  const result=await h.run(h.owner,'write',{path:file,content:content(value)})
+  assert.equal(result.isError,false,JSON.stringify(result))
+ }
+ const view=await h.host.ctx.memory.inspectEvolution({actorId:'reader'},{kind:'skill'}),item=view.items.find(row=>row.name==='latest-check')
+ const result=await h.host.ctx.memory.inspectEvolutionItem({actorId:'reader'},{id:item.id,revision:item.revision})
+ assert.match(result.current.text,/THIRD/);assert.match(result.previous.text,/SECOND/)
+ assert.doesNotMatch(await readFile(h.host.ctx.memory.installedPrevious.file,'utf8'),/FIRST/)
+})

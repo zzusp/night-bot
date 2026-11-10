@@ -1,3 +1,4 @@
+import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
 import {officialReflectionText} from './reflection-inference.js'
 import {Service} from '@deepseek-ai/cordis'
@@ -78,6 +79,7 @@ export default class Reflection extends Service {
             const active=lesson.skill.evidenceBacked&&lesson.skill.applicability!=='Not established'&&(prior?.active||Object.values(state.skills).filter(s=>s.active).length<20)
             const supports=[...(prior?.supports??[]).filter(row=>row.memoryKey!==memoryKey),{taskId:task.taskId,memoryKey}].slice(-40)
             const skill={signature,supports,taskIds:observations.slice(-20),memoryKeys:[...new Set([...(prior?.memoryKeys??[]),memoryKey])],active,steps:lesson.skill.steps,reason:lesson.skill.reason,applicability:lesson.skill.applicability,revision:(prior?.revision??0)+1,updatedAt:new Date().toISOString()}
+            if(prior)skill.previous=contentSnapshot(this.renderSkill(scope,lesson.key,prior,scopeRevision).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
             state.skills[lesson.key]=skill
             if(active)await atomicWrite(join(directory,'skills',lesson.key,'SKILL.md'),this.renderSkill(scope,lesson.key,skill,(await this.host.memory.store.index(scope)).revision))
           }

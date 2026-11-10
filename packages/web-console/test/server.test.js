@@ -738,3 +738,15 @@ test('会话任务摘要只用列表白名单，隔离会话并脱敏，不读�
   }
   assert.equal(calls.length, 2)
 })
+
+test('evolution bodies require authentication and exact version, redact both sides and preserve failure status',async t=>{
+ const id='a'.repeat(64),seen=[]
+ const memory={inspectEvolutionItem:async(binding,options)=>{seen.push({binding,options});if(options.revision==='1')throw Object.assign(Error(),{code:'EVOLUTION_VERSION_STALE'});if(options.revision==='3')throw Object.assign(Error(),{code:'EVOLUTION_BODY_FORBIDDEN'});return {id,name:'facts/entry',kind:'memory',revision:2,current:{text:'keep\nsecret=PRIVATE_VALUE',revision:2},previous:{text:'keep\nsecret=OLDER_VALUE',revision:1},comparison:{basis:'saved'},redacted:false}}}
+ const f=await fixture(t,{memory}),path=`/api/evolution/items/${id}`
+ assert.equal((await f.fetchApi(path+'?revision=2')).status,401);await f.login()
+ assert.equal((await f.fetchApi(path+'?revision=2&path=/private')).status,400)
+ assert.equal((await f.fetchApi(path+'?revision=1')).status,409)
+ assert.equal((await f.fetchApi(path+'?revision=3')).status,403)
+ const result=await f.fetchApi(path+'?revision=2');assert.equal(result.status,200);assert.equal(result.body.redacted,true);assert.doesNotMatch(JSON.stringify(result.body),/PRIVATE_VALUE|OLDER_VALUE/);assert.equal(result.body.comparison.added,0)
+ assert.equal(seen.at(-1).binding.actorId,'verified-web-operator');assert.deepEqual(seen.at(-1).options,{id,revision:'2'})
+})

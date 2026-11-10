@@ -17,7 +17,7 @@ test('Markdown topic corrections retain identity/source/time, enforce revisions 
   await assert.rejects(store.remember(scope,{...item('3','style','stale'),expectedRevision:1}),/REVISION_CONFLICT/)
   const [entry]=(await new MarkdownMemoryStore(root).read(scope,{topic:'preferences'})).entries
   assert.equal(entry.text,'Detailed answers');assert.equal(entry.id,a.entry.id);assert.equal(entry.source.messageId,'2');assert.equal(entry.revision,2)
-  const text=await readFile(join(store.directory(scope),'topics',hash('preferences')+'.md'),'utf8');assert.match(text,/# preferences/);assert.doesNotMatch(text,/Concise answers/)
+  const text=await readFile(join(store.directory(scope),'topics',hash('preferences')+'.md'),'utf8');assert.match(text,/# preferences/);assert.match(text,/Concise answers/);assert.equal(entry.previous,undefined,'ordinary recall never includes the previous body');assert.equal((await store.transaction(scope,state=>state.topics.get('preferences').entries[0])).previous.text,'Concise answers')
 })
 test('forget removes fact, candidates and short index, invalidates stale extraction, and cannot replay over a newer fact',async t=>{
   const {store}=await fixture(t)
