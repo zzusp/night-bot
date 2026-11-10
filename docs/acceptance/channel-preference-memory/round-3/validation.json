@@ -1,0 +1,170 @@
+{
+  "date": "2026-11-10",
+  "base": "e13b057723faf7fe984a46242d7f7e15fbe74abf",
+  "branch": "worktree-channel-preference-context",
+  "worktree": "latest main plus uncommitted task delta; integration merge pending at test time",
+  "sourceSnapshots": {
+    "final": {
+      "sourceSha256": {
+        "src/memory/format.js": "b1a980095f3f980c0a353b554ea54a7b62937c20d1af3299ae0007a1965c2be8",
+        "src/memory/store.js": "b5a4122663ff608a96f59a81628f95e708c06198ea36eb2483b604d2fc9049af",
+        "src/memory/service.js": "59b452ed0fe09412b77a05f32fd02a931a4a4736f6e00906be2e4cced6b669fd",
+        "src/memory/tools.js": "cdffe4b3916a48255bc219d53a30a51e0afad315e62d7f1c62c4d5cad2a3545d",
+        "src/channels/resident-router-business.js": "9d83e1c9a9ef555913d2729084d52fa6c93909e60a8b6bad2015b4a3c955f2aa",
+        "test/pi-memory-store.test.js": "67e4caacc3504f5dcd5e0fc2c9e6bc5f05bb26dcb607ee95263e77eb9f7a16f9",
+        "test/pi-memory-wire.test.js": "cab09d3ddcea98ec193481384d8742a0dd144583c6d6260205f5f85daa663007",
+        "test/pi-resident-router-flow.test.js": "8d72f3b264ec441ed6589adcf935b997484934c2b0af06acac90c78585842120"
+      },
+      "diffSha256": "4ebb99a1ce914fe936c5105dec40cf04b2ce74134813a5f60d4ac3c1fe635fea"
+    },
+    "regressionBeforeFinalBoundaryFix": {
+      "sourceSha256": {
+        "src/memory/format.js": "3097faa2405dc2dbd54e8c0a0d343bb84a0883dbfa9fc0f9d389f53dc74ca00e",
+        "src/memory/store.js": "b5a4122663ff608a96f59a81628f95e708c06198ea36eb2483b604d2fc9049af",
+        "src/memory/service.js": "3aa036fcd4352029e3950c6da920bf113359baf6394e9f7757aa7113482c28d5",
+        "src/memory/tools.js": "cdffe4b3916a48255bc219d53a30a51e0afad315e62d7f1c62c4d5cad2a3545d",
+        "src/channels/resident-router-business.js": "9d83e1c9a9ef555913d2729084d52fa6c93909e60a8b6bad2015b4a3c955f2aa",
+        "test/pi-memory-store.test.js": "0331f10893775d906423480c176924314070b6d8c7af3e5eca9df21666e79407",
+        "test/pi-memory-wire.test.js": "1076a54697585659f0bd05516a8f6cec3b4f4eff91668cfc5242ba04583f543b",
+        "test/pi-resident-router-flow.test.js": "8d72f3b264ec441ed6589adcf935b997484934c2b0af06acac90c78585842120"
+      },
+      "diffSha256": "b871bcca81426812d0e60280754b71387104a1d9321e2f8e5c7797ff32f74ce4"
+    }
+  },
+  "expandedRegression": {
+    "tests": 55,
+    "pass": 54,
+    "fail": 1,
+    "skipped": 0,
+    "durationMs": 547313.3583,
+    "memory": {
+      "tests": 30,
+      "pass": 30,
+      "fail": 0
+    },
+    "router": {
+      "tests": 25,
+      "pass": 24,
+      "fail": 1
+    },
+    "sourceSnapshot": "regressionBeforeFinalBoundaryFix",
+    "failure": {
+      "name": "durable receipt echoes tolerate later DWS flags without replacing existing message facts",
+      "file": "test/pi-resident-router-flow.test.js",
+      "line": 264,
+      "error": "Missing expected rejection."
+    }
+  },
+  "finalAffectedPaths": {
+    "sourceSnapshot": "final",
+    "storage": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 6009.9936
+    },
+    "hostPi": {
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "skipped": 0,
+      "durationMs": 179746.162
+    },
+    "diagnostics": [
+      {
+        "case": "channel-preference-memory",
+        "accepted": true,
+        "candidate": false,
+        "memoryRevision": 1,
+        "entryRevision": 1,
+        "quoteSha256": "d92fcd2495ac8a641ded0d05dedfbcd9ade5c799b317ce4de38da1ca3e10139f",
+        "diskHashVerified": true,
+        "originalActorAndMessageBound": true,
+        "groupRouterWriteGrantUnchanged": true,
+        "writeBeforeAcknowledgement": true,
+        "coldRestart": true,
+        "crossConversationRecall": true,
+        "contextVerified": true,
+        "scenarioSearch": true,
+        "subjectApplicability": [
+          "matching-subject",
+          "reference-only",
+          "matching-subject"
+        ],
+        "historicalResultRebound": true,
+        "currentDocumentRequestPreserved": true,
+        "replayWrites": 0,
+        "realVendorMessages": 0
+      },
+      {
+        "case": "channel-memory-authority",
+        "checks": 15,
+        "onlyExplicitDirectSourceSaved": true,
+        "temporaryNotSaved": true,
+        "secretRefused": true
+      }
+    ]
+  },
+  "baseline": {
+    "implementationRef": "e13b057723faf7fe984a46242d7f7e15fbe74abf",
+    "filesReplacedInTestProcess": [
+      "src/memory/format.js",
+      "src/memory/store.js",
+      "src/memory/service.js",
+      "src/memory/tools.js",
+      "src/channels/resident-router-business.js"
+    ],
+    "tests": 1,
+    "pass": 0,
+    "fail": 1,
+    "durationMs": 19041.1388,
+    "error": "Missing expected rejection.",
+    "sameNamedCaseAndAssertion": true,
+    "productionFilesModified": false
+  },
+  "guards": {
+    "status": "PASS",
+    "runtimeJsFiles": 414,
+    "productionImportFiles": 414,
+    "externalSdkImports": 0
+  },
+  "currentInstallation": {
+    "zeroWriteCheck": true,
+    "zeroWriteCheckBytesCompared": true,
+    "beforeRevision": 6,
+    "afterRevision": 7,
+    "beforeEntryRevision": 1,
+    "afterEntryRevision": 2,
+    "otherEntriesUnchanged": 5,
+    "originalTextAndIdentityAndCreationTimePreserved": true,
+    "originSourcePreserved": true,
+    "backgroundCheckedAgainstSourceAndStrictCompletePortableJournal": true,
+    "inferenceExplicitlyLabeled": true,
+    "originalSubjectBound": true,
+    "independentReadOnlyVerification": true,
+    "privateReceiptRetained": true,
+    "privateRuntimeDataCommitted": false,
+    "processRestarted": false,
+    "codeDeployed": false,
+    "realMessagesSent": 0
+  },
+  "broadRouting": {
+    "state": "NOT_RUN_THIS_ROUND",
+    "previousRound": "round-2.md: 61 PASS / 15 FAIL; not a final-version full scan"
+  },
+  "notRun": [
+    "pnpm test",
+    "pnpm test:runtime",
+    "pnpm test:routing full scan",
+    "pnpm test:containment",
+    "real model semantic selection",
+    "real vendor integration",
+    "deployment or restart"
+  ],
+  "pr": {
+    "previousNumber": 39,
+    "previousState": "MERGED",
+    "delivery": "new follow-up PR; do not push the merged head"
+  }
+}

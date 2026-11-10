@@ -118,7 +118,7 @@ Router 的业务工具按实际职责区分：
 - `resident_task_query`、`resident_source_get`：按当前 conversation 查询任务/依赖与完整原始来源；不能跨群读取。
 - `resident_task_plan`：依据当前来源原子保存新任务和依赖；`resident_task_action`：按要求/控制版本补充、修订、重开、暂停/恢复、取消原任务，或经安排版本 CAS 重安排。
 - `resident_dependency_evaluate`：绑定完成事件、前后置版本、安排版本和证据，提交 `satisfied`、`continue` 或 `wait`，不能以通知送达替代业务评估。
-- `resident_memory_remember`：仅依据当前已接纳批次的原消息保存明确长期偏好或记忆请求；Host 回查作者、版本、会话及渠道认证事实，保留完整原话和条件，复用记忆权限与事务存储并回读。普通群 Router 仍只读，不从引用、任务结果或交接摘要取写入同意；只有 `ok:true,persisted:true` 才可确认长期保存。失败和临时未保存分别如实说明。
+- `resident_memory_remember`：仅依据当前已接纳批次的原消息保存明确长期偏好或记忆请求；Host 回查作者、版本、会话及渠道认证事实，保留完整原话和条件，复用记忆权限与事务存储并回读。长期行为要求同时提交 context 的场景/边界推断，背景仅取 Host 逐字核验的最小原文/引用，不把引用业务陈述当已验证事实。主体由 Host 绑定；共享召回按当前来源区分 matching-subject/reference-only，后续换作者时历史结果也重算。普通群 Router 仍只读，不从引用、任务结果或交接摘要取写入同意；只有 `ok:true,persisted:true` 才可确认长期保存。失败和临时未保存分别如实说明。
 - `resident_router_reply`：冻结和可靠发送有来源的回复，可用 `taskDelivery` 显式选择当前已完成单任务的冻结文件；`resident_router_settle`：必要动作已有收据后结清本批事件，不表示任务或发送已完成。
 - `platform_task_query`：不创建空任务的状态/日期查询；`platform_schedule_submit`：依据原消息安排一次未来平台事项，时间须带明确偏移，过期不自动改排次日，收到 `scheduled` 后才可确认安排。
 - `platform_config_query({})`：只读当前会话白名单配置，包含职责、时区、provider/model/effort、`agentPreset`、`maxConcurrentTasks`，不返回路径、凭据或其它会话配置；修改仍走已认证 HTTP 管理入口。已安装的 `skill`、`memory_read`、`memory_search`、`memory_status` 按当前认证 scope 提供读取，换代不扩展权限。

@@ -77,3 +77,34 @@ test('symlinked scope content and modified Markdown checksums are rejected expli
   await rm(path);await symlink(join(root,'outside'),path,process.platform==='win32'?'junction':'file')
   await assert.rejects(store.read(scope,{topic:'preferences'}),/PATH_UNSAFE/)
 })
+
+test('preference context survives reopen, is searchable, revisions independently of the quote and is fully forgotten',async t=>{
+  const {buildMemoryContext}=await import('../src/memory/format.js'),{root,store}=await fixture(t)
+  const context=buildMemoryContext({background:{source:'quote',quote:'An extra deployment report was attached.'},scenario:'Deployment result reporting',boundaries:['Requested deliverables remain required.']},{actor:scope.actor,quote:{messageId:'quoted-report',text:'An extra deployment report was attached. Extra irrelevant text.'}})
+  const original=await store.remember(scope,item('1','report','Do not attach unsolicited reports'))
+  const updated=await store.remember(scope,{...item('2','report',original.entry.text),context,expectedRevision:1})
+  assert.equal(updated.entry.id,original.entry.id);assert.equal(updated.entry.createdAt,original.entry.createdAt);assert.equal(updated.entry.revision,2)
+  const reopened=new MarkdownMemoryStore(root),read=await reopened.search(scope,{query:'Deployment result'})
+  assert.deepEqual(read.entries[0].context,context);assert.equal(read.entries[0].text,original.entry.text)
+  assert.equal((await reopened.search(scope,{query:'Requested deliverables'})).entries.length,1)
+  assert.equal((await reopened.search(scope,{query:'irrelevant'})).entries.length,0)
+  await store.forget(scope,{topic:'preferences',key:'report',source:source('forget-context')})
+  assert.deepEqual((await reopened.search(scope,{query:'Deployment'})).entries,[])
+  assert.deepEqual((await readdir(join(store.directory(scope),'topics'))),[])
+  assert.doesNotMatch(await readFile(join(store.directory(scope),'index.md'),'utf8'),/report|Deployment/)
+})
+test('context content is checksummed, source excerpts are exact and every explanatory field rejects secrets',async t=>{
+  const {buildMemoryContext}=await import('../src/memory/format.js'),{store}=await fixture(t)
+  const inputs={scenario:'Result reporting',boundaries:['Requested deliverables remain required.']}
+  const context=buildMemoryContext(inputs,{actor:scope.actor})
+  assert.equal(context.background.status,'unavailable')
+  assert.throws(()=>buildMemoryContext({...inputs,background:{source:'quote',quote:'real background'}},{actor:scope.actor,quote:{messageId:'API_KEY=unsafe-id',text:'real background'}}),/SECRET_REFUSED/)
+  assert.throws(()=>buildMemoryContext({...inputs,background:{source:'quote',quote:'invented'}},{actor:scope.actor,quote:{messageId:'quote',text:'real background'}}),/CONTEXT_SOURCE_REQUIRED/)
+  for(const unsafe of [{...inputs,scenario:'password: unsafe'},{...inputs,boundaries:['API_KEY=unsafe']},{...inputs,background:{source:'message',quote:'Bearer unsafe'}}]){
+    assert.throws(()=>buildMemoryContext(unsafe,{actor:scope.actor,message:{id:'real',content:'Bearer unsafe'}}),/SECRET_REFUSED/)
+  }
+  await store.remember(scope,{...item('1','report','No unsolicited reports'),context})
+  const path=join(store.directory(scope),'topics',hash('preferences')+'.md'),text=await readFile(path,'utf8')
+  await writeFile(path,text.replace('Result reporting','Different scenario'))
+  await assert.rejects(store.read(scope,{topic:'preferences'}),/CONTEXT_CONTENT_CHANGED/)
+})

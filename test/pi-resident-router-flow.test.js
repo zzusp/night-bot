@@ -25,22 +25,46 @@ function settle(body,input) {
   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.eventId).join(',')}}
 }
 
-test('explicit channel preference is accepted memory before acknowledgement and survives cold cross-conversation recall',{timeout:nativeTestTimeout(60000)},async t=>{
+test('explicit channel preference is accepted memory before acknowledgement and survives cold cross-conversation recall',{timeout:nativeTestTimeout(180000)},async t=>{
   const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{decodeTopic}=await import('../src/memory/format.js')
-  const preference='以后没说要提供文档，就不用附报告文档',steps=new Map();let writes=0
-  const h=await residentRouterHost(t,body=>{
+  const preference='以后没说要提供文档，就不用附报告文档',background='随附部署报告，包含验证证据、部署前版本、回滚路径和验证边界。'
+  const context={background:{source:'quote',quote:background},scenario:'面向原提出者的工作结果汇报，原例为部署验证后的额外报告。',boundaries:['未明确要求时不额外附报告；明确要求的文档及成果文件照常交付。','不禁止其他附件，也不限制内部验收证据或必要代码文档；当前明确要求优先。']}
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+  const steps=new Map(),recalls=[];let writes=0,historyRebound=false,recallSession
+  const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
     if(requestTools(body).includes('resident_router_settle')){
       const input=router(body),source=input.events.find(event=>event.source)?.source
       if(!source)return settle(body,input)
       const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
-      if(step===0&&source.text===preference){writes++;return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'report-documents',text:preference,sourceQuote:preference}}}
-      if(step===0){assert.ok(requestTools(body).includes('memory_search'),'Router exposes its scoped memory reader');return {tool:'memory_search',args:{query:'报告文档'}}}
+      if(step===0&&source.text===preference){writes++;return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'report-documents',text:preference,sourceQuote:preference,context}}}
+      if(step===0){
+        assert.ok(requestTools(body).includes('memory_search'),'Router exposes its scoped memory reader')
+        if(source.messageId==='bob-same-router'){
+          assert.equal((await h.query('router.get',{conversationId:input.conversationId})).activeSessionId,recallSession,'queued second author runs before generation handoff')
+          const prior=body.messages.filter(row=>row.role==='tool').flatMap(row=>{try{return JSON.parse(row.content).entries??[]}catch{return []}}).filter(row=>row.key==='report-documents')
+          assert.ok(prior.length,'previous recall remains in this Router history')
+          assert.ok(prior.every(row=>row.applicability.status==='reference-only'),'old tool results are rebound without a memory revision change');historyRebound=true
+        }
+        if(source.messageId==='explicit-document-request'){
+          assert.match(JSON.stringify(body),/这次明确要求提供报告文档/)
+          assert.match(JSON.stringify(body),/Current explicit deliverable requirements override prior preferences/)
+        }
+        return {tool:'memory_search',args:{query:'工作结果汇报'}}
+      }
       if(step===1){
         const result=memoryToolResult(body)
         if(source.text===preference){assert.equal(result.ok,true);assert.equal(result.persisted,true);assert.equal(result.entry.text,preference)}
-        else assert.ok(result.entries.some(entry=>entry.text===preference),'new Router recalls accepted memory without preference in its own input')
+        else {
+          const recalled=result.entries.find(entry=>entry.text===preference)
+          assert.ok(recalled,'scenario search returns the original preference with context')
+          assert.deepEqual(recalled.context,entry.context)
+          assert.equal(recalled.applicability.status,source.messageId==='bob-same-router'?'reference-only':'matching-subject')
+          assert.deepEqual(recalled.applicability.sourceMessageIds,source.messageId==='bob-same-router'?[]:[source.sourceId])
+          recalls.push({messageId:source.messageId,status:recalled.applicability.status})
+          if(source.messageId==='recall-after-cold-reopen'){entered.resolve();await release.promise}
+        }
         return {tool:'resident_router_reply',args:{operationId:'memory-ack:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:source.text===preference?'已保存这个长期偏好。':'已读回长期偏好：未要求文档时不附报告文档。'}}
       }
       if(step===2)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'memory-settle:'+source.messageId}}
@@ -48,12 +72,16 @@ test('explicit channel preference is accepted memory before acknowledgement and 
     }
     return {text:'No other work'}
   })
-  const message=channelMessage('durable-report-preference',{text:preference})
+  const message=channelMessage('durable-report-preference',{text:preference,quotedMessage:{messageId:'deployment-summary',senderId:'assistant',text:'验证完成。'+background+'不相关的额外背景。'}})
   await h.receive(message);await h.service.whenIdle()
   const original=(await h.query('source.list')).find(source=>source.messageId===message.messageId)
   const file=join(h.host.ctx.runtimePaths.memory,'v2','bot','topics',hash('preferences')+'.md')
   const saved=decodeTopic(await readFile(file,'utf8')),entry=saved.entries.find(row=>row.key==='report-documents')
   assert.equal(entry.text,preference);assert.equal(entry.source.messageId,original.sourceId)
+  assert.equal(entry.context.subject.actor,hash(original.actorId));assert.equal(entry.context.background.quote,background)
+  assert.equal(entry.context.background.messageId,'deployment-summary');assert.equal(entry.context.background.quoteSha256,hash(background))
+  assert.equal(entry.context.interpretation.status,'inference');assert.deepEqual(entry.context.interpretation.boundaries,context.boundaries)
+  assert.doesNotMatch(JSON.stringify(entry.context),/不相关的额外背景/)
   assert.equal(entry.source.actor,hash(original.actorId));assert.equal(entry.source.quoteSha256,hash(preference))
   assert.equal(entry.provenance.messageId,message.messageId);assert.equal(entry.provenance.conversationId,message.conversationId)
   assert.equal((await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{candidates:true})).entries.length,0)
@@ -66,14 +94,21 @@ test('explicit channel preference is accepted memory before acknowledgement and 
   assert.equal(h.requests.length,priorRequests,'cold replay never re-infers or rewrites a consumed source')
   assert.equal(h.sent.length,priorSends,'acknowledgement is not resent')
   assert.equal(decodeTopic(await readFile(file,'utf8')).entries[0].revision,1)
-  await h.receive(channelMessage('recall-after-cold-reopen',{conversationId:'different-room',senderId:'bob',text:'查一下我应遵守的报告交付偏好。'}));await h.service.whenIdle()
-  assert.equal(writes,1);assert.equal(h.sent.length,2)
+  await h.receive(channelMessage('recall-after-cold-reopen',{conversationId:'different-room',text:'查一下之前的交付偏好。'}));await entered.promise
+  const recallConversation=h.host.ctx.channels.identity(channelMessage('id',{conversationId:'different-room'})).sessionId
+  recallSession=(await h.query('router.get',{conversationId:recallConversation})).activeSessionId
+  await h.receive(channelMessage('bob-same-router',{conversationId:'different-room',senderId:'bob',text:'也查一下我适用的交付偏好。'}))
+  await eventually(async()=> (await h.query('router.inbox',{conversationId:recallConversation})).length===2,'second author durably queued during first recall')
+  release.resolve();await h.service.whenIdle()
+  await h.receive(channelMessage('explicit-document-request',{conversationId:'different-room',text:'这次明确要求提供报告文档，请先说明交付安排。'}));await h.service.whenIdle()
+  assert.equal(writes,1);assert.equal(h.sent.length,4);assert.equal(historyRebound,true)
+  assert.deepEqual(recalls.map(row=>row.status),['matching-subject','reference-only','matching-subject'])
   assert.ok(h.results.some(result=>result.name==='memory_search'&&result.result.value?.entries?.some(row=>row.text===preference)))
   assert.equal((await h.query('task.list')).length,0)
-  t.diagnostic(JSON.stringify({case:'channel-preference-memory',accepted:true,candidate:false,memoryRevision:saved.revision,entryRevision:entry.revision,quoteSha256:entry.source.quoteSha256,diskHashVerified:true,originalActorAndMessageBound:true,groupRouterWriteGrantUnchanged:true,writeBeforeAcknowledgement:true,coldRestart:true,crossConversationRecall:true,replayWrites:0,realVendorMessages:0}))
+  t.diagnostic(JSON.stringify({case:'channel-preference-memory',accepted:true,candidate:false,memoryRevision:saved.revision,entryRevision:entry.revision,quoteSha256:entry.source.quoteSha256,diskHashVerified:true,originalActorAndMessageBound:true,groupRouterWriteGrantUnchanged:true,writeBeforeAcknowledgement:true,coldRestart:true,crossConversationRecall:true,contextVerified:true,scenarioSearch:true,subjectApplicability:recalls.map(row=>row.status),historicalResultRebound:historyRebound,currentDocumentRequestPreserved:true,replayWrites:0,realVendorMessages:0}))
 })
 
-test('channel memory rejects borrowed, stale, quoted, ordinary and shortened authorization while temporary preferences stay ephemeral',{timeout:nativeTestTimeout(90000)},async t=>{
+test('channel memory rejects borrowed, stale, quoted, ordinary and shortened authorization while temporary preferences stay ephemeral',{timeout:nativeTestTimeout(150000)},async t=>{
   const cases=[
     {id:'valid-source',text:'以后请优先用简短回答。',ok:true},
     {id:'historical-source',text:'查一下当前状态。',borrow:true,code:'MEMORY_CURRENT_SOURCE_REQUIRED'},
@@ -86,6 +121,9 @@ test('channel memory rejects borrowed, stale, quoted, ordinary and shortened aut
     {id:'future-question',text:'以后是不是不用附报告？',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
     {id:'shortened-condition',text:'以后没要求文档时，不用附报告。',short:'不用附报告。',code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
     {id:'temporary-preference',text:'以后请在本次任务中简短回答。',temporary:true},
+    {id:'context-required',text:'以后请默认先说结论。',noContext:true,code:'MEMORY_CONTEXT_REQUIRED'},
+    {id:'context-forged-quote',text:'以后请直接用文字汇报。',context:{background:{source:'quote',quote:'伪造的背景片段'},scenario:'工作汇报',boundaries:['当前明确要求优先']},code:'MEMORY_CONTEXT_SOURCE_REQUIRED'},
+    {id:'context-secret',text:'以后请优先用中文汇报。',context:{scenario:'password: never-store-in-context',boundaries:['当前要求优先']},code:'MEMORY_SECRET_REFUSED'},
     {id:'secret-preference',text:'以后请使用密码：never-store-this-value',code:'MEMORY_SECRET_REFUSED'},
   ],steps=new Map(),outcomes=new Map();let borrowed,h
   h=await residentRouterHost(t,body=>{
@@ -96,7 +134,7 @@ test('channel memory rejects borrowed, stale, quoted, ordinary and shortened aut
       if(!source)return settle(body,input)
       const item=cases.find(row=>row.id===source.messageId),step=steps.get(item.id)??0;steps.set(item.id,step+1)
       if(step===0){if(item.ok)borrowed=source;const text=item.short??item.quote??item.text
-        return {tool:'resident_memory_remember',args:{sourceId:item.borrow?borrowed.sourceId:source.sourceId,messageVersion:item.version??(item.borrow?borrowed.version:source.version),topic:'preferences',key:item.id,text,sourceQuote:text}}}
+        return {tool:'resident_memory_remember',args:{sourceId:item.borrow?borrowed.sourceId:source.sourceId,messageVersion:item.version??(item.borrow?borrowed.version:source.version),topic:'preferences',key:item.id,text,sourceQuote:text,...item.noContext?{}:{context:item.context??{scenario:'面向原提出者的后续答复。',boundaries:['当前明确要求优先，不推广给其他人。']}}}}}
       if(step===1){outcomes.set(item.id,memoryToolResult(body));return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'reject-settle:'+item.id}}}
       return {text:'The memory outcome was inspected.'}
     }
