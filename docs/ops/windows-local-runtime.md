@@ -122,6 +122,16 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 
 复用上述独立安装、空闲 loopback 端口和私有 `data/config/config.json`，不启动第二个进程争用同一实例。具体群、profile、账号和凭据只进私有运行配置，不写进 Git 或公开证据。以下是可操作流程，不是本轮真实渠道验收通过声明；当前结果见 [唯一验收入口](../acceptance/resident-conversation-routing/goal.md)。
 
+### 历史恢复失败
+
+`recovering` 包含历史补拉、Host 接纳和持久消费水位，不只表示网络重连。卡片「历史恢复失败」按固定错误码说明：
+
+- `CHANNEL_MESSAGE_ID_CONFLICT`：旧消息与同 ID、同版本的冻结输入不一致。核对来源及插件去重证据，不直接改 DB、清游标或反复重启。
+- `CHANNEL_HISTORY_INCOMPLETE`：历史页不完整或已知暂缓消息仍缺失。核对原绑定账号的读取权限与查询完整性，不因供应商返回 `complete` 就丢弃暂缓来源。
+- `CHANNEL_HISTORY_RECOVERY_FAILED`：其他补拉/接纳错误。服务日志可能只有安全错误分类；当前 Web 不暴露任意原始异常、账号或消息 ID，不能用空错误码证明恢复成功。
+
+已处理重复项只在原作者/会话/版本及资源稳定身份一致、冻结 payloadHash 能完整重建时消费，兼容已观察到的 DWS 标记富化、文件提示/字段顺序和引用作者省略；未处理来源仍走原接纳，真实正文/作者/提及/资源变化仍失败关闭。恢复后核对实际插件健康、补拉成功、无遗留 deferred 和耐久水位，不仅检查子进程存在或端口可用。若更新修复代码，仍按正常停机、已合并版本发布及启动流程操作，不以手工注入旧消息代替验收。
+
 ### 隔离准备
 
 1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。

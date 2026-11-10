@@ -83,12 +83,20 @@ export function taskDialogueView(value, secrets = []) {
 const connectionStates = new Set(['starting', 'waiting-auth', 'ready', 'paused', 'recovering', 'listening', 'error', 'stopped'])
 export function configuredChannels(application, channels, savedRows = application.config.channelPlugins ?? []) {
   const running=new Map((application.config.channelPlugins??[]).map(row=>[row.channelId??row.config?.channelId??row.type,row]))
-  const errorFor=(health,type)=>health?.state==='waiting-auth'?'CHANNEL_AUTH_REQUIRED':health?.state==='error'?type==='dingtalk-dws'&&health.lastError==='DINGTALK_CHANNEL_SWITCH_BLOCKED'?'DINGTALK_CHANNEL_SWITCH_BLOCKED':'CHANNEL_ADAPTER_ERROR':null
+  const errorFor=(health,type)=>{
+    if(health?.state==='waiting-auth')return 'CHANNEL_AUTH_REQUIRED'
+    if(health?.state==='error')return type==='dingtalk-dws'&&health.lastError==='DINGTALK_CHANNEL_SWITCH_BLOCKED'?'DINGTALK_CHANNEL_SWITCH_BLOCKED':'CHANNEL_ADAPTER_ERROR'
+    if(type!=='dingtalk-dws'||health?.state!=='recovering')return null
+    const failed=health.conversations?.filter(entry=>entry.backfill?.state==='failed')??[]
+    if(failed.some(entry=>entry.backfill.lastError==='CHANNEL_MESSAGE_ID_CONFLICT'))return 'CHANNEL_MESSAGE_ID_CONFLICT'
+    if(failed.some(entry=>['DINGTALK_HISTORY_INCOMPLETE','DINGTALK_DEFERRED_HISTORY_INCOMPLETE'].includes(entry.backfill.lastError)))return 'CHANNEL_HISTORY_INCOMPLETE'
+    return failed.length?'CHANNEL_HISTORY_RECOVERY_FAILED':null
+  }
   return {items:savedRows.map(row=>{
     const channelId=row.channelId??row.config?.channelId??row.type,loaded=running.get(channelId),plugin=channels.plugins.get(channelId)
     const savedVersion=digest(JSON.stringify(row)),runningVersion=loaded?digest(JSON.stringify(loaded)):null,pending=savedVersion!==runningVersion
     const health=plugin?.health,runningConnectionState=connectionStates.has(health?.state)?health.state:'unknown'
-    const healthy = typeof health?.healthy === 'boolean' ? health.healthy && !['waiting-auth', 'error', 'stopped'].includes(runningConnectionState) : undefined
+    const healthy = typeof health?.healthy === 'boolean' ? health.healthy && !['waiting-auth', 'error', 'stopped'].includes(runningConnectionState) && !errorFor(health,row.type) : undefined
     const lifecycleError=channels.configurationErrors?.get(channelId)
     const connectionState=lifecycleError?'error':pending?'pending-restart':runningConnectionState,errorCode=lifecycleError??(pending?null:errorFor(health,row.type))
     return {channelId,type:row.type,enabled:row.enabled===true,savedVersion,runningVersion,connectionState,errorCode,

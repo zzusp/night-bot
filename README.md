@@ -27,6 +27,8 @@ Night Bot 自有运行数据位于安装目录的 `data/`，任务工作区与�
 
 钉钉每个 `channelPlugins` 实例只绑定一个群聊或私聊，多个 `dingtalk-dws` 实例以不同 `channelId` 共存。公开插件配置使用 `dingtalk_` 前缀：`dingtalk_name` 是渠道名称，`dingtalk_prompt` 传入职责、助手设定和规范，目标由 `dingtalk_conversation_type` 及群名/群 ID 或姓名/userId 指定。认证账号、组织与目标须实际解析并耐久绑定，多候选拒绝任选；配置贯通一级分诊、常驻 Router、事项执行与无工具复盘，不改变原消息授权或跨会话隔离。未获真实连接/发送授权时保持实例禁用，或明确设 `dingtalk_listen:false`、`dingtalk_writes_authorized:false`。停用/恢复沿该渠道耐久水位补拉并去重，不以重新初始化起点丢弃停用期间消息。具体字段和 CLI 用法见 [渠道职责](docs/CHANNELS.md#渠道职责配置)，Windows 账号与实际终态核对见 [接入流程](docs/ops/windows-local-runtime.md#指定钉钉群接入)。
 
+历史补拉只将已处理、身份/版本/资源一致且能重建冻结输入指纹的厂商展示差异识别为重复；不会重跑模型、任务或发送，也不改写旧来源。正文、作者、提及或资源身份冲突继续停止恢复。Web 渠道卡片区分正在恢复与历史恢复失败，只显示安全原因；排查见 [Windows 接入流程](docs/ops/windows-local-runtime.md#历史恢复失败)。
+
 通用配置与钉钉配置分开处理，密钥只保存环境变量名称引用，不在 CLI 参数中传密钥正文：
 
 ```sh

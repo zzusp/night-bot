@@ -1,8 +1,48 @@
 import {failure} from '../../runtime/files.js'
 import {dwsReadJson} from './dingtalk-binding.js'
-import {messageTimestamp} from '../../../packages/dingtalk-core/dws-bridge.js'
+import {hash} from '../../memory/format.js'
+import {messageTimestamp,normalizeResourceRefs} from '../../../packages/dingtalk-core/dws-bridge.js'
 
 const present=value=>typeof value==='string'&&value.trim()!==''
+// 与 Host 冻结指纹一致；兼容识别不能改写该事实。
+export function dingtalkInputFingerprint({principal,envelope:e}){
+  return hash(JSON.stringify([principal,e.text,e.resourceRefs??[],e.quotedMessage??null,e.mentionedAgent??null,e.mentions??[],e.platformFlags??{}]))
+}
+function resourceIdentity(refs){
+  if(!Array.isArray(refs)||refs.some(ref=>!['fileId','mediaId','dingtalkDoc'].includes(ref?.type)||!present(ref.resourceId)))return
+  return JSON.stringify(refs.map(ref=>JSON.stringify([ref.type,ref.resourceId])).sort())
+}
+function fileDisplayText(text,refs){
+  const file=/^(\[文件\] .+ fileId: ([^\s]+))(?: 注意：如需下载使用dws drive download命令下载)?$/u.exec(text)
+  return file&&refs.some(ref=>ref.type==='fileId'&&ref.resourceId===file[2])?file[1]:text
+}
+/** 只消费已处理来源的可证明重复项，不重新接纳业务或放宽核心指纹。 */
+export function retainedDingtalkDuplicate(identity,prior,source,{quoteSenderIds=[]}={}){
+  const e=identity.envelope,version=e.messageVersion??1
+  if(!prior||dingtalkInputFingerprint(identity)===prior.payloadHash||!source||source.routed!==true
+    ||source.groupId!==identity.sessionId||source.messageId!==e.messageId||source.version!==version
+    ||(prior.version??1)!==version||source.actorId!==identity.principal)return false
+  const resources=source.resources??[],incoming=e.resourceRefs??[],anchors=resourceIdentity(resources)
+  if(anchors===undefined||anchors!==resourceIdentity(incoming)
+    ||fileDisplayText(source.text,resources)!==fileDisplayText(e.text,incoming))return false
+  const quotes=[e.quotedMessage],quote=source.quote
+  if(Boolean(quote)!==Boolean(e.quotedMessage))return false
+  if(quote){
+    if(quote.messageId!==e.quotedMessage.messageId||(quote.text??'')!==(e.quotedMessage.text??''))return false
+    const actor=sender=>'channel-actor-'+hash(JSON.stringify([e.channelId,sender]))
+    if(e.quotedMessage.senderId!==undefined&&actor(e.quotedMessage.senderId)!==quote.actorId)return false
+    const senderId=quoteSenderIds.find(sender=>actor(sender)===quote.actorId)
+    if(senderId!==undefined)quotes.push({messageId:quote.messageId,senderId,text:quote.text??''})
+  }
+  const flags=[e.platformFlags??{}]
+  if(e.platformFlags?.messageAiSendFlag==='DWS'&&e.platformFlags.automated===true
+    &&Object.keys(e.platformFlags).every(key=>['messageAiSendFlag','automated'].includes(key)))flags.push({})
+  // SQLite 来源对象会按键排序；复用原生展示解析重建已观察到的附件字段顺序。
+  const parsed=normalizeResourceRefs([],source.text),resourceVariants=[resources]
+  if(resourceIdentity(parsed)===anchors)resourceVariants.push(parsed)
+  return flags.some(platformFlags=>resourceVariants.some(resourceRefs=>quotes.some(quotedMessage=>
+    dingtalkInputFingerprint({...identity,envelope:{...e,text:source.text,resourceRefs,quotedMessage,platformFlags}})===prior.payloadHash)))
+}
 function historyMessages(value,config){
   if(!Array.isArray(value.messages)||value.complete!==true||value.hasMore!==false||value.partial===true||value.failedCount!==0||!Array.isArray(value.failures)||value.failures.length)throw failure('DINGTALK_HISTORY_INCOMPLETE')
   const binding=config.binding
