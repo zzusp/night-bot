@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
-import { errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
+import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { executionItems, toolState, type ToolItem } from '../execution-items';
 import '../styles/execution-groups.css';
@@ -71,6 +71,18 @@ function MessageBody({ message, history, plain = false }: { message: Message; hi
   const total = offset ? page?.total : message.textTotal;
   const revision = offset ? cursor.revision : history?.revision;
   const reset = () => setCursor({ offsets: [0] });
+  const forbidden = query.error instanceof ApiError && ([401, 403, 404].includes(query.error.status) || query.error.code === 'SESSION_RESOURCE_UNAVAILABLE');
+  const [denied, setDenied] = useState(false);
+  useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
+  // Only a fresh successful read of this same page clears revocation. Resetting
+  // to the cached first fragment would reveal text without rechecking access.
+  useEffect(() => { if (query.updatedAt && !query.error) setDenied(false); }, [query.updatedAt]);
+  const needsLatest = denied && query.error instanceof ApiError && query.error.status === 409;
+  if (forbidden || denied) return <>
+    {query.error ? <Notice error={query.error} onRetry={needsLatest ? undefined : query.refresh} /> : <p className="message-scope">正文暂不可读。</p>}
+    {needsLatest && (history?.onRecover ? <Button variant="secondary" onClick={history.onRecover}>获取最新记录</Button> : <p className="message-scope">请重新获取执行记录后查看正文。</p>)}
+    {query.loading ? <Loading>正在重新核验正文访问权限…</Loading> : !query.error && <Button variant="ghost" onClick={query.refresh}>重新获取</Button>}
+  </>;
   return <>
     {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
@@ -82,14 +94,15 @@ function MessageBody({ message, history, plain = false }: { message: Message; hi
           if (nextOffset != null && revision) setCursor(previous => ({ offsets: [...previous.offsets, nextOffset], revision }));
         }}>下一段</Button>
       </div></nav>}
-    {(page?.redacted || message.redacted) && <p className="message-scope">{message.role === 'tool' ? '仅展示获准公开的工具字段；其余输入、输出及敏感信息已隐藏。' : '路径及敏感凭据已隐藏。'}</p>}
+    {message.role !== 'tool' && (page?.redacted || message.redacted) && <p className="message-scope">路径及敏感凭据已隐藏。</p>}
     {message.truncated && (!history || message.textNextOffset == null) && <p className="message-scope">此条长记录的当前接口仅返回部分正文。</p>}
-    <MessageProvenance source={page?.source || message.source} />
+    {message.role !== 'tool' && <MessageProvenance source={page?.source || message.source} />}
   </>;
 }
 
 function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryReader }) {
   const [open, setOpen] = useState(false);
+  const [opened, setOpened] = useState(false);
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
   const state = toolState(item);
@@ -98,14 +111,17 @@ function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryRead
       {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
       {state === 'pending' ? <Badge tone="neutral">等待结果</Badge> : <Status value={state} />}
     </div>
-    <div className="message-body"><details className="tool-message" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <div className="message-body"><details className="tool-message" open={open} onToggle={event => {
+      if (event.target !== event.currentTarget) return;
+      setOpen(event.currentTarget.open);
+      if (event.currentTarget.open) setOpened(true);
+    }}>
       <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
-      {open && <>
-        {item.call ? <section className="tool-part"><h4>输入</h4><MessageBody message={item.call} history={history} plain /></section>
-          : <p className="message-scope">{item.inputElsewhere ? '对应调用输入见上方记录。' : '本页不含对应调用输入，仅展示已记录的工具结果。'}</p>}
+      {opened && <>
+        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
+          : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>
         {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
-        {item.resultStatus && <p className="message-scope">工具已返回，输出按发生顺序展示在下方。</p>}
-        {!result && !item.resultStatus && <p className="message-scope">调用已记录，尚无已提交的工具结果；这不表示工具正在执行。</p>}
+        {!result && <section className="tool-part"><h4>输出</h4><p className="message-scope">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</p></section>}
       </>}
     </details></div>
   </article>;

@@ -42,7 +42,7 @@ export interface RecentConversation { id: string; title: string; updatedAt: stri
 export interface ChatSummary { id: string; title: string; updatedAt: string; status: string }
 export interface MessageSource { sessionId: string; entryId: string; callId?: string }
 export interface MessageBodyPage { messageId: string; text: string; offset: number; nextOffset: number | null; total: number; revision: string; source: MessageSource; redacted: boolean }
-export interface HistoryReader { endpoint: string; revision: string }
+export interface HistoryReader { endpoint: string; revision: string; onRecover?: () => void }
 export interface Message {
   messageVersion?: number;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;

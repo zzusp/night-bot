@@ -39,9 +39,12 @@ async function openReadActivity(page: Page) {
   for (const [index, row] of tools.entries()) {
     expect(row.source.callId).toBe(call.callId)
     expect(row.source.sessionId).toBe(session.sessionId)
-    await parts.nth(index).getByText('查看记录来源', {exact: true}).click()
-    await expect(parts.nth(index).locator('.message-source dd')).toHaveText([session.sessionId, row.source.entryId, call.callId])
+    await expect(parts.nth(index).locator('.message-source')).toHaveCount(0)
+    await expect(parts.nth(index)).not.toContainText(row.source.entryId)
+    await expect(parts.nth(index)).not.toContainText(call.callId)
   }
+  await expect(activity).not.toContainText('仅展示获准公开的工具字段')
+  await expect(activity).not.toContainText('Pi 会话')
   await expect(activity).not.toContainText('/not/browser-safe')
   await expect(activity).not.toContainText('SECRET_ARGUMENT_FIXTURE')
 }
