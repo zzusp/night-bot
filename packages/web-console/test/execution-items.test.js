@@ -54,78 +54,64 @@ test('session identity and tool names cannot pair mismatched results; failures r
   assert.equal(group[0].tools[1].results[0].isError, true);
 });
 
-test('job_output is an explicit grouping boundary and each committed output is kept once', () => {
+
+test('job_output participates in the normal consecutive group without duplicating results', () => {
   const job = [call('job'), result('job')].map(row => ({ ...row, toolName: 'job_output' }));
-  const messages = [...done('a'), ...done('b'), ...job, ...done('c'), ...done('d')];
+  const messages = [...done('a'), ...job, ...done('b')];
   const items = executionItems(messages);
-  assert.deepEqual(items.map(item => item.kind), ['tool-group', 'tool', 'tool-group']);
-  assert.equal(items[1].call.toolName, 'job_output');
-  assert.equal(items[1].results.length, 1);
-  assert.deepEqual(executionItems(messages), items, 'snapshot polling does not append duplicate outputs');
-});
-
-
-test('interleaved job output preserves raw result position and splits adjacent completed tools', () => {
-  const input = { ...call('job'), toolName: 'job_output' };
-  const output = { ...result('job'), toolName: 'job_output' };
-  const messages = [input, ...done('a'), output, ...done('b'), call('latest', 'running')];
-  const items = executionItems(messages);
-  assert.deepEqual(items.map(item => item.id), ['job', 'a', 'job-result', 'b', 'latest']);
-  assert.ok(items.every(item => item.kind === 'tool'));
-  assert.equal(items[0].call, input);
-  assert.equal(items[0].results.length, 0);
-  assert.equal(toolState(items[0]), 'completed');
-  assert.equal(items[2].results[0], output);
-  assert.equal(items[2].inputElsewhere, true);
-  assert.equal(items.flatMap(item => item.results).filter(row => row.id === output.id).length, 1);
-  assert.equal(toolState(items[4]), 'running');
+  assert.equal(items.length, 1);
+  assert.deepEqual(items[0].tools.map(row => row.id), ['a', 'job', 'b']);
+  assert.equal(items[0].tools[1].results.length, 1);
   assert.deepEqual(executionItems(messages), items);
 });
 
-test('job output after conversation boundaries stays in place and resolves the earlier input status', () => {
-  const items = executionItems([{ ...call('job'), toolName: 'job_output' },
-    { id: 'update', role: 'assistant', text: 'update' },
-    { ...result('job', 'error'), toolName: 'job_output' }]);
-  assert.deepEqual(items.map(item => item.kind), ['tool', 'message', 'tool']);
-  assert.equal(toolState(items[0]), 'error');
-  assert.equal(items[2].results.length, 1);
+test('unfinished job_output remains separate and joins the stable group only once settled', () => {
+  const job = { ...call('job'), toolName: 'job_output' };
+  const initial = [...done('a'), ...done('b'), job];
+  assert.deepEqual(executionItems(initial).map(row => row.kind), ['tool-group', 'tool']);
+  const streaming = { ...result('job', 'running'), toolName: 'job_output' };
+  assert.deepEqual(executionItems([...initial, streaming]).map(row => row.kind), ['tool-group', 'tool']);
+  const final = { ...streaming, status: 'completed', text: 'finished output' };
+  const updated = executionItems([...initial, final]);
+  assert.equal(updated[0].id, executionItems(initial)[0].id);
+  assert.deepEqual(updated[0].tools.map(row => row.id), ['a', 'b', 'job']);
+  assert.deepEqual(updated[0].tools[2].results, [final]);
 });
 
-test('job output with no matching input remains its own ordered boundary', () => {
-  const output = { ...result('missing'), toolName: 'job_output' };
-  const items = executionItems([...done('a'), output, ...done('b')]);
-  assert.deepEqual(items.map(item => item.id), ['a', 'missing-result', 'b']);
-  assert.equal(items[1].call, undefined);
-  assert.equal(items[1].inputElsewhere, undefined);
-  assert.equal(items[1].results[0], output);
-});
-
-
-test('ordinary results never pair backwards across any job_output record', () => {
-  const jobInput = { ...call('job'), toolName: 'job_output' };
-  const jobOutput = { ...result('job'), toolName: 'job_output' };
-  for (const boundary of [[jobInput], [jobOutput], [jobInput, jobOutput]]) {
-    const rows = transcriptItems([call('a'), call('b'), ...boundary, result('a'), result('b')]);
-    const last = rows.slice(-2);
-    assert.deepEqual(last.map(row => row.id), ['a-result', 'b-result']);
-    assert.deepEqual(rows.slice(0, 2).map(row => row.results), [[], []]);
-    assert.deepEqual(rows.slice(0, 2).map(toolState), ['completed', 'completed']);
-    assert.ok(last.every(row => row.inputElsewhere));
-    assert.deepEqual(rows.flatMap(row => row.results).map(row => row.id), boundary.includes(jobOutput)
-      ? ['job-result', 'a-result', 'b-result'] : ['a-result', 'b-result']);
-    const items = executionItems([call('a'), call('b'), ...boundary, result('a'), result('b')]);
-    assert.equal(items[0].id, 'a');
-    assert.equal(items[1].id, 'b');
-    assert.equal(items.at(-1).kind, 'tool-group');
-    assert.deepEqual(items.at(-1).tools.map(row => row.id), ['a-result', 'b-result']);
+test('job_output keeps conversation boundaries, exact call/name/session identity and result order', () => {
+  const input = { ...call('job'), toolName: 'job_output' };
+  const output = { ...result('job', 'error'), toolName: 'job_output' };
+  const rows = transcriptItems([input, { id: 'update', role: 'assistant', text: 'update' }, output]);
+  assert.deepEqual(rows.map(row => row.kind), ['tool', 'message', 'tool']);
+  assert.equal(toolState(rows[0]), 'error');
+  assert.equal(rows[2].results[0], output);
+  for (const mismatch of [{ ...output, toolName: 'read' }, { ...output, source: { sessionId: 'other', entryId: 'result' } }, { ...output, callId: 'other' }]) {
+    const unpaired = transcriptItems([input, mismatch]);
+    assert.equal(unpaired[0].results.length, 0);
+    assert.equal(unpaired[0].resultStatus, undefined);
+    assert.equal(unpaired[1].results[0], mismatch);
   }
 });
 
-
-test('a later boundary-separated receipt supplies the current status without duplicating its output', () => {
+test('interleaved job_output follows the same pairing rules as ordinary tools', () => {
   const job = [call('job'), result('job')].map(row => ({ ...row, toolName: 'job_output' }));
+  const rows = executionItems([call('a'), ...job, result('a'), ...done('b')]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].tools.map(row => row.id), ['a', 'job', 'b']);
+  assert.deepEqual(rows[0].tools.map(row => row.results.map(result => result.id)), [['a-result'], ['job-result'], ['b-result']]);
+});
+
+test('an orphan job_output result retains its position and joins ordinary settled records', () => {
+  const output = { ...result('missing'), toolName: 'job_output' };
+  const rows = executionItems([...done('a'), output, ...done('b')])[0].tools;
+  assert.deepEqual(rows.map(row => row.id), ['a', 'missing-result', 'b']);
+  assert.equal(rows[1].call, undefined);
+  assert.equal(rows[1].results[0], output);
+});
+
+test('later conversation-separated receipt supplies current status without duplicating output', () => {
   const later = { ...result('a', 'failed'), id: 'a-later', text: 'later failure' };
-  const items = transcriptItems([call('a'), result('a', 'pending'), ...job, later]);
+  const items = transcriptItems([call('a'), result('a', 'pending'), { id: 'update', role: 'assistant', text: 'update' }, later]);
   assert.equal(toolState(items[0]), 'failed');
   assert.equal(items[0].results.length, 1);
   assert.equal(items.at(-1).results[0], later);

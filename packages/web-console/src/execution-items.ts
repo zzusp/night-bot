@@ -10,20 +10,19 @@ export function toolState(item: ToolItem): string {
 }
 
 // Pair only within an uninterrupted segment and the same session/call/name.
-// Conversation messages and every job_output record are hard boundaries.
+// Conversation messages are hard boundaries for every tool.
 // Earlier inputs may learn a later result status, but never consume its body.
 export function transcriptItems(messages: Message[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const calls = new Map<string, ToolItem>();
   const callSegments = new WeakMap<ToolItem, number>();
   let segment = 0;
-  for (const [index, message] of messages.entries()) {
+  for (const message of messages) {
     if (message.role !== 'tool') {
       segment++;
       items.push({ kind: 'message', message });
       continue;
     }
-    if (message.toolName === 'job_output') segment++;
     const key = message.callId ? JSON.stringify([message.source?.sessionId || '', message.callId]) : undefined;
     if (message.kind === 'tool-call') {
       const item: ToolItem = { kind: 'tool', id: message.id, call: message, results: [] };
@@ -32,8 +31,7 @@ export function transcriptItems(messages: Message[]): TranscriptItem[] {
       if (key) calls.set(key, item);
     } else {
       const call = key ? calls.get(key) : undefined;
-      if (call && call.call?.toolName === message.toolName && (message.toolName === 'job_output'
-        ? messages[index - 1] !== call.call : callSegments.get(call) !== segment)) {
+      if (call && call.call?.toolName === message.toolName && callSegments.get(call) !== segment) {
         // Visible output stays at its raw position. Keep only its status on the
         // earlier input row, so polling neither duplicates text nor says waiting.
         call.resultStatus = toolState({ kind: 'tool', id: message.id, results: [message] });
@@ -57,7 +55,7 @@ export function executionItems(messages: Message[]): ExecutionItem[] {
   for (const item of transcriptItems(messages)) {
     // Missing output is not evidence of completion or of currently executing.
     // Every pending/running/unknown activity stays individually visible.
-    if (item.kind !== 'tool' || (item.call || item.results[0]).toolName === 'job_output' || !item.results.length || !settled.has(toolState(item))) {
+    if (item.kind !== 'tool' || !item.results.length || !settled.has(toolState(item))) {
       flush();
       items.push(item);
       continue;

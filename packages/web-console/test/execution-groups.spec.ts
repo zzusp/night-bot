@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { FIXTURE_TOKEN } from './preview.mjs';
 import { openConversationRecords } from './message-process-helpers';
 
-const call = (id: string, status = 'pending') => ({ id, role: 'tool', kind: 'tool-call', callId: id, toolName: 'shell', text: `输入 ${id}`, status, source: { sessionId: 'fixture-execution', entryId: id } });
+const call = (id: string, status = 'pending') => ({ id, role: 'tool', kind: 'tool-call', callId: id, toolName: 'bash', text: `输入 ${id}`, status, source: { sessionId: 'fixture-execution', entryId: id } });
 const result = (id: string, status = 'completed') => ({ ...call(id, status), id: `${id}-result`, kind: 'tool-result', text: `输出 ${id}`, redacted: true });
 const done = (id: string) => [call(id), result(id)];
 
@@ -11,7 +11,7 @@ test('连续工具默认折叠，进行中单列；实时完成合并保留展�
   let mode = 'initial';
   await page.route('**/api/conversations/room-product/tasks/task-research/session?*', route => {
     if (mode === 'denied') return route.fulfill({ status: 403, json: { error: 'RESOURCE_FORBIDDEN' } });
-    const items = [...done('a'), ...done('b'), call('current', 'running'),
+    const items = [...done('a').map(row => ({ ...row, toolName: 'read' })), ...done('b'), call('current', 'running'),
       ...(mode === 'updated' ? [result('current'), call('next', 'running')] : [])];
     return route.fulfill({ json: { status: 'ready', scope: 'current-context', items, total: items.length, nextOffset: null, revision: mode } });
   });
@@ -27,6 +27,7 @@ test('连续工具默认折叠，进行中单列；实时完成合并保留展�
   await expect(group).toHaveCount(1);
   await expect(group).not.toHaveAttribute('open');
   await expect(group.locator(':scope > summary')).toContainText('2 项工具调用与脚本执行');
+  await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 1 次');
   await expect(history.locator('.message-column > .message-tool')).toHaveCount(1);
   await expect(history.locator('.message-column > .message-tool')).toContainText('执行中');
   await expect(group.locator('.tool-content')).toHaveCount(0);
@@ -40,6 +41,7 @@ test('连续工具默认折叠，进行中单列；实时完成合并保留展�
   mode = 'updated';
   await history.getByRole('button', { name: '获取最新记录', exact: true }).click();
   await expect(group.locator(':scope > summary')).toContainText('3 项工具调用与脚本执行');
+  await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 2 次');
   await expect(group).toHaveAttribute('open');
   await expect(group.locator('.tool-message').first()).toHaveAttribute('open');
   await expect(history.locator('.message-column > .message-tool')).toHaveCount(1);
@@ -61,9 +63,9 @@ test('连续工具默认折叠，进行中单列；实时完成合并保留展�
   await expect(history).toContainText('执行记录暂不可读');
 });
 
-test('job_output 正文始终可见，不入组，不被输入折叠隐藏；刷新不重复输出', async ({ page }) => {
+test('job_output 按普通工具合组并按需展开，保留安全正文与刷新去重', async ({ page }) => {
   const job = [call('job'), { ...result('job'), text: '用户可见的作业结果 <script>window.jobOutputExecuted=true</script>' }].map(row => ({ ...row, toolName: 'job_output' }));
-  const items = [job[0], ...done('a'), ...done('b'), job[1], ...done('c'), ...done('d')];
+  const items = [job[0], ...done('a').map(row => ({ ...row, toolName: 'custom_check' })), ...[call('b'), result('b', 'error')], job[1], ...done('c'), ...done('d')];
   await page.route('**/api/conversations/room-product/tasks/task-research/session?*', route => route.fulfill({ json: { status: 'ready', scope: 'current-context', items, total: items.length, nextOffset: null, revision: 'job-output-revision' } }));
   await page.goto('/#/channels/room-product');
   await page.getByLabel('访问令牌', { exact: true }).fill(FIXTURE_TOKEN);
@@ -73,20 +75,27 @@ test('job_output 正文始终可见，不入组，不被输入折叠隐藏；刷
   await task.locator(':scope > summary').click();
   await task.getByText('工具与执行记录', { exact: true }).click();
   const history = task.locator('.execution-history');
-  await expect(history.locator('.execution-tool-group')).toHaveCount(2);
-  const output = history.getByRole('region', { name: 'job_output 输出' });
-  await expect(output).toBeVisible();
-  await expect(output).toContainText('用户可见的作业结果');
-  await expect(history.locator('.message-column > .message-tool').first()).toContainText('已完成');
-  await expect(history.locator('.message-column > .message-tool').first()).not.toContainText('等待结果');
-  expect(await history.locator('.message-column').evaluate(el => [...el.children].map(child => child.classList.contains('execution-tool-group') ? 'group' : child.querySelector('.execution-job-output') ? 'output' : 'input'))).toEqual(['input', 'group', 'output', 'group']);
-  await expect(history.locator('.execution-tool-group .execution-job-output')).toHaveCount(0);
-  await expect(history.locator('.message-column > .message-tool .tool-message').first()).not.toHaveAttribute('open');
-  await history.getByText('查看工具输入', { exact: true }).click();
-  await expect(output).toBeVisible();
-  await history.getByText('查看工具输入', { exact: true }).click();
+  const group = history.locator('.execution-tool-group');
+  await expect(group).toHaveCount(1);
+  await expect(group).not.toHaveAttribute('open');
+  await expect(group.locator('.execution-tool-group-summary')).toHaveText('job_output 1 次 · custom_check 1 次 · 脚本 3 次');
+  await expect(group.locator(':scope > summary')).toContainText('1 项失败');
+  await expect(history.locator('.execution-job-output')).toHaveCount(0);
+  await expect(history.getByText('用户可见的作业结果', { exact: false })).toHaveCount(0);
+  await group.locator(':scope > summary').click();
+  const jobActivity = group.locator('.message-tool').filter({ has: page.locator('.message-meta strong', { hasText: /^job_output$/ }) });
+  await expect(jobActivity).toHaveCount(1);
+  await expect(jobActivity.locator('.tool-message')).not.toHaveAttribute('open');
+  await expect(jobActivity.locator('.tool-content')).toHaveCount(0);
+  await jobActivity.getByText('查看工具输入与结果', { exact: true }).click();
+  await expect(jobActivity.locator('.tool-content')).toHaveCount(2);
+  await expect(jobActivity).toContainText('输入 job');
+  await expect(jobActivity).toContainText('用户可见的作业结果 <script>window.jobOutputExecuted=true</script>');
+  await expect(jobActivity).toContainText('仅展示获准公开的工具字段');
+  await expect(history.locator('.message-assistant')).toHaveCount(0);
   await history.getByRole('button', { name: '获取最新记录', exact: true }).click();
-  await expect(output).toHaveCount(1);
-  await expect(output).toBeVisible();
+  await expect(jobActivity).toHaveCount(1);
+  await expect(jobActivity.locator('.tool-message')).toHaveAttribute('open');
+  await expect(jobActivity.locator('.tool-content')).toHaveCount(2);
   expect(await page.evaluate(() => 'jobOutputExecuted' in window)).toBe(false);
 });

@@ -1,13 +1,16 @@
 /* Shared execution disclosures use the existing BoardUI surface and controls. */
-.execution-tool-group { width: 100%; min-width: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); background: var(--board-surface); }
-.execution-tool-group > summary { cursor: pointer; min-height: 44px; padding: 12px; font-size: 12px; color: var(--board-muted); overflow-wrap: anywhere; }
+.execution-tool-group { width: 100%; min-width: 0; }
+.execution-tool-group > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; cursor: pointer; min-height: 44px; padding: 6px 2px; border-radius: var(--board-radius-control); font-size: 12px; color: var(--board-muted); list-style: none; overflow-wrap: anywhere; }
+.execution-tool-group > summary::-webkit-details-marker { display: none; }
 .execution-tool-group > summary:hover { color: var(--board-text); background: var(--board-panel); }
-.execution-tool-group > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; border-radius: var(--board-radius-control); }
-.execution-tool-group > summary > span + span { margin-left: 10px; }
-.execution-tool-group-action { white-space: nowrap; }
-.execution-tool-group-items { display: flex; flex-direction: column; gap: 20px; min-width: 0; padding: 4px 12px 16px; }
+.execution-tool-group > summary:active { background: var(--board-hover); }
+.execution-tool-group > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; }
+.execution-tool-group-chevron { flex: 0 0 12px; font-size: 18px; line-height: 18px; text-align: center; }
+.execution-tool-group[open] > summary > .execution-tool-group-chevron { transform: rotate(90deg); }
+.execution-tool-group-summary { min-width: 0; overflow-wrap: anywhere; }
+.execution-tool-group-action { margin-left: auto; white-space: nowrap; font-size: 11px; }
+.execution-tool-group-items { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 2px 0 8px 7px; padding: 2px 0 4px 14px; border-left: 1px solid var(--board-border); }
 .execution-tool-group-items > .message { width: 100%; min-width: 0; }
-
-.execution-job-output { min-width: 0; margin-top: 14px; }
-.execution-job-output > h4 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--board-text); }
-.execution-job-output .tool-content { max-height: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+.execution-tool-group-items .tool-message { padding: 6px 0; border: 0; background: transparent; }
+.execution-tool-group-items .message-meta { margin-bottom: 2px; }
+.execution-tool-group-items .tool-message > summary { min-height: 32px; align-content: center; }

@@ -26,3 +26,11 @@ test('navigation and detail identity remain; first content sections follow the p
   assert.match(source('SettingsPage.tsx'), /<h2>助手外观<\/h2>/)
   assert.match(source('SettingsPage.tsx'), /新的\{label\}/)
 })
+
+
+test('task transcript omits duplicate top and bottom blocks while controls remain in the rail', () => {
+  assert.doesNotMatch(source('TasksPage.tsx'), /task-title-dock|task-records-heading/)
+  assert.match(source('TasksPage.tsx'), /className="task-info-title"/)
+  assert.match(source('TasksPage.tsx'), /controlsTarget=\{recordControls\}/)
+  assert.match(source('TasksPage.tsx'), /className="task-record-controls"[^\n]+hidden=\{tab !== 'execution'\}/)
+})

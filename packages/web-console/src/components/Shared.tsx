@@ -93,34 +93,39 @@ function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryRead
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
   const state = toolState(item);
-  const publicJobOutput = message.toolName === 'job_output';
   return <article className="message message-tool">
     <div className="message-meta"><span className="message-avatar" aria-hidden="true" /><strong>{message.toolName || '工具'}</strong>
       {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
       {state === 'pending' ? <Badge tone="neutral">等待结果</Badge> : <Status value={state} />}
     </div>
     <div className="message-body"><details className="tool-message" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-      <summary>{publicJobOutput ? item.call ? '查看工具输入' : '查看工具记录说明' : item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
+      <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
       {open && <>
         {item.call ? <section className="tool-part"><h4>输入</h4><MessageBody message={item.call} history={history} plain /></section>
           : <p className="message-scope">{item.inputElsewhere ? '对应调用输入见上方记录。' : '本页不含对应调用输入，仅展示已记录的工具结果。'}</p>}
-        {!publicJobOutput && item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
         {item.resultStatus && <p className="message-scope">工具已返回，输出按发生顺序展示在下方。</p>}
         {!result && !item.resultStatus && <p className="message-scope">调用已记录，尚无已提交的工具结果；这不表示工具正在执行。</p>}
       </>}
-    </details>{publicJobOutput && item.results.map(output => <section className="execution-job-output" key={output.id} aria-label="job_output 输出">
-      <h4>作业输出{output.isError || output.status === 'error' ? ' · 失败' : ''}</h4>
-      <MessageBody message={output} history={history} plain />
-    </section>)}</div>
+    </details></div>
   </article>;
 }
 function ToolActivityGroup({ tools, history }: { tools: ToolItem[]; history?: HistoryReader }) {
   const [open, setOpen] = useState(false);
   const failures = tools.filter(item => ['error', 'failed'].includes(toolState(item))).length;
+  const categories: Record<string, string> = { read: '读取', read_window: '读取', read_image: '读取',
+    bash: '脚本', pwsh: '脚本', grep: '检索', find: '检索', web_search: '搜索', web_fetch: '网页', write: '写入', edit: '编辑' };
+  const counts = new Map<string, number>();
+  for (const item of tools) {
+    const name = (item.call || item.results[0]).toolName || '工具';
+    const label = Object.hasOwn(categories, name) ? categories[name] : name;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  const summary = [...counts].map(([label, count]) => `${label} ${count} 次`).join(' · ');
   return <details className="execution-tool-group" open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary><span>{tools.length} 项工具调用与脚本执行</span>{failures > 0 && <Badge tone="danger">{failures} 项失败</Badge>}<span className="execution-tool-group-action">{open ? '收起' : '展开'}</span></summary>
+    <summary><span className="execution-tool-group-chevron" aria-hidden="true">›</span><span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && <Badge tone="danger">{failures} 项失败</Badge>}<span className="execution-tool-group-action">{open ? '收起' : '展开'}</span></summary>
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} />)}</div>
   </details>;
 }

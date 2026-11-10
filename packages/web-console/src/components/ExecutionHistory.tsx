@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ApiError, type ExecutionPage } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, MessageList, Notice, Status } from './Shared';
 
 // 聊天与任务共用正式历史分页、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, status }: { endpoint: string; router?: boolean; status?: string }) {
+export function ExecutionHistory({ endpoint, router = false, status, controlsTarget }: { endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null }) {
   const [page, setPage] = useState<{ offset: number; revision?: string }>({ offset: 0 });
   const query = useResource<ExecutionPage>(`${endpoint}?limit=50&offset=${page.offset}${page.revision ? `&revision=${encodeURIComponent(page.revision)}` : ''}`, page.offset ? 0 : 2500);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
@@ -15,10 +16,13 @@ export function ExecutionHistory({ endpoint, router = false, status }: { endpoin
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const blocked = forbidden || denied;
   const latest = () => { setPage({ offset: 0 }); query.refresh(); };
-  return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
-    <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录 · 任务执行详情见关联任务' : '当前执行上下文 · 会话压缩或分支后，可能不包含更早记录'}</span>
+  // The task workspace hosts these controls in its rail; other readers keep them inline.
+  // The history component owns one query and pager regardless of where its controls render.
+  const controls = <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录 · 任务执行详情见关联任务' : '当前执行上下文 · 会话压缩或分支后，可能不包含更早记录'}</span>
       <div>{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
-    </div>
+    </div>;
+  return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
+    {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" description="使用上方按钮重新获取。" />
