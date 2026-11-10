@@ -174,7 +174,7 @@ function ToolActivityGroup({ tools, history, compact = false }: { tools: ToolIte
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, presentation = 'chat' }: { presentation?: 'chat' | 'execution'; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
+export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat' }: { presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
   const ref = useRef<HTMLDivElement>(null);
@@ -197,7 +197,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
         const message = item.message;
         return <article className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
-          // The persistent native button provides the same action for keyboard and touch.
+          // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
           if (!target.closest('.message-body') || target.closest('a,button,summary,details,input,textarea,select') || window.getSelection()?.toString()) return;
           const trigger = event.currentTarget.querySelector<HTMLButtonElement>('.message-process-trigger');
@@ -207,9 +207,8 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             <strong>{message.role === 'assistant' ? brand.name : (message.senderName || userLabel)}</strong>
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
-            {onInspect && <button type="button" className="message-process-trigger" aria-haspopup="dialog" aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}
           </div>}
-          <div className="message-body"><MessageBody message={message} history={history} showSource={!compact} /></div>
+          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}<MessageBody message={message} history={history} showSource={!compact} /></div>
           {message.taskIds?.length ? <div className="message-links">{message.taskIds.map(id => <a key={id} href={`#/tasks/${encodeURIComponent(id)}`}>查看关联任务</a>)}</div> : null}
         </article>;
       })}

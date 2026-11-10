@@ -1,22 +1,17 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { FIXTURE_TOKEN } from './preview.mjs';
-import { openConversationRecords } from './message-process-helpers';
 
 const call = (id: string, status = 'pending') => ({ id, role: 'tool', kind: 'tool-call', callId: id, toolName: 'bash', text: `输入 ${id}`, status, source: { sessionId: 'fixture-execution', entryId: id } });
 const result = (id: string, status = 'completed') => ({ ...call(id, status), id: `${id}-result`, kind: 'tool-result', text: `输出 ${id}`, redacted: true });
 const done = (id: string) => [call(id), result(id)];
-const endpoint = '**/api/conversations/room-product/tasks/task-research/session';
+const endpoint = '**/api/tasks/task-research/session';
 async function openHistory(page: Page) {
-  await page.goto('/#/channels/room-product');
+  await page.goto('/#/tasks/task-research?view=execution');
   await page.getByLabel('访问令牌', { exact: true }).fill(FIXTURE_TOKEN);
   await page.getByRole('button', { name: '连接工作空间', exact: true }).click();
-  await expect(page.locator('.conversation-page .message-avatar').first()).toBeVisible();
-  await openConversationRecords(page);
-  const task = page.locator('[data-task-id="task-research"]');
-  await task.locator(':scope > summary').click();
-  await task.getByText('工具与执行记录', { exact: true }).click();
-  return task.locator('.execution-history');
+  await expect(page.locator('.task-dialogue .execution-history')).toBeVisible();
+  return page.locator('.task-dialogue .execution-history');
 }
 
 test('执行正文流无图标信息条，组默认折叠，输入输出独立展开，刷新保留状态', async ({ page }) => {
@@ -49,7 +44,7 @@ test('执行正文流无图标信息条，组默认折叠，输入输出独立�
   await expect(group.locator('.message-source')).toHaveCount(0);
   await expect(group).not.toContainText('fixture-execution');
   mode = 'updated';
-  await history.getByRole('button', { name: '获取最新记录', exact: true }).click();
+  await page.locator('.task-record-controls').getByRole('button', { name: '获取最新记录', exact: true }).click();
   await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 2 次');
   await expect(input).toHaveAttribute('open');
   await expect(output).toHaveAttribute('open');
@@ -60,7 +55,7 @@ test('执行正文流无图标信息条，组默认折叠，输入输出独立�
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
   }
   mode = 'denied';
-  await history.getByRole('button', { name: '获取最新记录', exact: true }).click();
+  await page.locator('.task-record-controls').getByRole('button', { name: '获取最新记录', exact: true }).click();
   await expect(history.locator('.message-tool')).toHaveCount(0);
 });
 
@@ -85,7 +80,7 @@ test('job_output 普通合组，安全首行摘要与独立正文，无内部来
   await expect(output.locator('.tool-content')).toHaveText(text);
   await expect(activity.locator('.message-source')).toHaveCount(0);
   await expect(activity).not.toContainText('信息已隐藏');
-  await history.getByRole('button', { name: '获取最新记录', exact: true }).click();
+  await page.locator('.task-record-controls').getByRole('button', { name: '获取最新记录', exact: true }).click();
   await expect(output).toHaveAttribute('open');
   expect(await page.evaluate(() => 'jobOutputExecuted' in window)).toBe(false);
 });

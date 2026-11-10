@@ -19,15 +19,12 @@ function contrast(first, second) {
 }
 
 for (const [theme, palette] of Object.entries({light, dark})) {
-  test(`${theme}: dedicated role fills and AA message text contrast`, () => {
-    assert.notEqual(palette['message-user-bg'], palette['message-assistant-bg'])
-    const expected = theme === 'light' ? ['#ccdfff', '#f4f4f5'] : ['#263b5c', '#303033']
+  test(`${theme}: shared neutral fills and AA message text contrast`, () => {
+    const expected = theme === 'light' ? ['#ffffff', '#ffffff'] : ['#262626', '#262626']
     assert.deepEqual([palette['message-user-bg'], palette['message-assistant-bg']], expected)
     for (const role of ['user', 'assistant']) {
       const background = palette[`message-${role}-bg`]
-      for (const surface of ['canvas', 'panel', 'surface']) {
-        assert.notEqual(background, palette[surface])
-      }
+      assert.notEqual(background, palette.panel, `${theme} bubble remains distinct from the conversation panel`)
       for (const text of ['text', 'message-muted', 'info']) {
         assert.ok(contrast(background, palette[text]) >= 4.5, `${theme} ${role} / ${text}`)
       }
