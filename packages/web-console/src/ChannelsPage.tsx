@@ -48,6 +48,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus, add
   const [saved, setSaved] = useState(false);
   const [unknownSave, setUnknownSave] = useState<PendingSave | null>(null);
   const dialog = useRef<HTMLDialogElement>(null), form = useRef<HTMLFormElement>(null);
+  const typeSelect = useRef<HTMLSelectElement>(null);
   const returnFocus = useRef<HTMLButtonElement | null>(null), returnFocusPending = useRef(false);
   const live = useRef(true), writing = useRef(false), composing = useRef(false);
   const prefix = useId();
@@ -71,7 +72,10 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus, add
   };
   useLayoutEffect(() => {
     const element = dialog.current;
-    if (open && !element?.open) element?.showModal();
+    if (open && !element?.open) {
+      element?.showModal();
+      if (!editing) typeSelect.current?.focus();
+    }
     else if (!open && element?.open) { element.close(); restoreTriggerFocus(); }
   }, [open]);
   const field = (key: keyof DingtalkChannelInput) => ({
@@ -198,7 +202,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus, add
       <div className="channel-create-body">
         {!editing && <div className="channel-create-field">
           <label htmlFor={`${prefix}-type`}>渠道类型</label>
-          <select id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} autoFocus onChange={event => setType(event.target.value)}>
+          <select ref={typeSelect} id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} onChange={event => setType(event.target.value)}>
             <option value="">选择渠道类型</option><option value="dingtalk-dws">钉钉</option>
             {plugins.data?.items.map(item => <option key={item.type} value={item.type}>{item.name}{item.configurable ? '' : '（未提供网页表单）'}</option>)}
           </select>
