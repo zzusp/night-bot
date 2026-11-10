@@ -323,8 +323,12 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-user { align-self: flex-end; }
 .message-assistant { align-self: flex-start; }
 .message-user .message-meta { justify-content: flex-end; }
-.message-user .message-body,.message-assistant .message-body { margin-left: 0; padding: 12px 16px; border: 1px solid var(--board-border); border-radius: 14px; background: var(--board-surface); }
-.message-user .message-body { background: var(--board-panel); }
+.message-user .message-body,.message-assistant .message-body { margin-left: 0; padding: 12px 16px; border: 1px solid var(--board-border); border-radius: 14px; --board-muted: var(--board-message-muted); }
+.message-user .message-body { background: var(--board-message-user-bg); border-color: var(--board-message-user-border); }
+.message-assistant .message-body { background: var(--board-message-assistant-bg); border-color: var(--board-message-assistant-border); }
+@media (forced-colors: active) {
+  .message-user .message-body,.message-assistant .message-body { border-color: CanvasText; }
+}
 .task-description { margin: 8px 0 12px; min-width: 0; }
 .task-description summary { cursor: pointer; color: var(--board-muted); font-size: 12px; padding: 4px 0; }
 .task-description .task-objective { margin: 6px 0; }
