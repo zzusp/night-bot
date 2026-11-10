@@ -22,7 +22,7 @@ async function login(page: Page, path: string) {
 
 for (const theme of ['light', 'dark']) {
   for (const path of ['/chat/sample-plan', '/channels/room-product', '/channels/custom-direct']) {
-    test(`${theme} ${path}: independent bubble colors at desktop and mobile widths`, async ({page}) => {
+    test(`${theme} ${path}: reference palette and borderless bubbles at desktop and mobile widths`, async ({page}) => {
       await login(page, path)
       await page.evaluate(theme => {document.documentElement.dataset.theme = theme}, theme)
       for (const width of [1440, 390]) {
@@ -41,16 +41,21 @@ for (const theme of ['light', 'dark']) {
             return {
               background: s.backgroundColor, text: getComputedStyle(element.querySelector('.markdown')!).color,
               expected: normalize(root.getPropertyValue(`--board-message-${role}-bg`)),
-              border: s.borderColor, expectedBorder: normalize(root.getPropertyValue(`--board-message-${role}-border`)),
-              surfaces: ['canvas', 'panel', 'surface'].map(name => normalize(root.getPropertyValue('--board-' + name))),
+              borders: [s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderLeftWidth],
+              shadow: s.boxShadow, outline: s.outlineStyle,
+              padding: [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft],
               corners: [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
             }
           }, role)
           expect(style.background).toBe(style.expected)
-          expect(style.border).toBe(style.expectedBorder)
+          const referencePalette = theme === 'light' ? ['rgb(204, 223, 255)', 'rgb(244, 244, 245)'] : ['rgb(38, 59, 92)', 'rgb(48, 48, 51)']
+          expect(style.background).toBe(referencePalette[role === 'user' ? 0 : 1])
+          expect(style.borders).toEqual(['0px', '0px', '0px', '0px'])
+          expect(style.shadow).toBe('none')
+          expect(style.outline).toBe('none')
+          expect(style.padding).toEqual(['13px', '17px', '13px', '17px'])
           expect(style.corners).toEqual(['14px', '14px', '14px', '14px'])
           expect(contrast(style.text, style.background)).toBeGreaterThanOrEqual(4.5)
-          for (const surface of style.surfaces) expect(contrast(style.background, surface)).toBeGreaterThanOrEqual(1.15)
           await expect(row).toHaveCSS('align-self', role === 'user' ? 'flex-end' : 'flex-start')
           backgrounds.push(style.background)
         }
@@ -84,6 +89,9 @@ for (const theme of ['light', 'dark']) {
     }
     expect((await new AxeBuilder({page}).include('.message-column').analyze()).violations).toEqual([])
     await page.emulateMedia({forcedColors: 'active'})
-    for (const role of ['user', 'assistant']) await expect(page.locator(`.message-${role} .message-body`).first()).toHaveCSS('border-top-style', 'solid')
+    for (const role of ['user', 'assistant']) {
+      await expect(page.locator(`.message-${role} .message-body`).first()).toHaveCSS('border-top-width', '0px')
+      await expect(page.locator(`.message-${role} .message-meta strong`).first()).toBeVisible()
+    }
   })
 }

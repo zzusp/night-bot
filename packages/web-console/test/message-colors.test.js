@@ -21,20 +21,17 @@ function contrast(first, second) {
 for (const [theme, palette] of Object.entries({light, dark})) {
   test(`${theme}: dedicated role fills and AA message text contrast`, () => {
     assert.notEqual(palette['message-user-bg'], palette['message-assistant-bg'])
+    const expected = theme === 'light' ? ['#ccdfff', '#f4f4f5'] : ['#263b5c', '#303033']
+    assert.deepEqual([palette['message-user-bg'], palette['message-assistant-bg']], expected)
     for (const role of ['user', 'assistant']) {
       const background = palette[`message-${role}-bg`]
-      const [red, green, blue] = background.slice(1).match(/../g).map(value => parseInt(value, 16))
-      // The selected palette is sage/forest green and warm sand/brown, never blue or purple.
-      assert.ok(role === 'user' ? green > red && green > blue : red > green && green > blue, `${theme} ${role} hue`)
       for (const surface of ['canvas', 'panel', 'surface']) {
         assert.notEqual(background, palette[surface])
-        // Guard against slipping back to an almost-identical neutral surface.
-        assert.ok(contrast(background, palette[surface]) >= 1.15, `${theme} ${role} / ${surface}`)
       }
       for (const text of ['text', 'message-muted', 'info']) {
         assert.ok(contrast(background, palette[text]) >= 4.5, `${theme} ${role} / ${text}`)
       }
-      assert.notEqual(palette[`message-${role}-border`], background)
+      assert.equal(palette[`message-${role}-border`], undefined)
     }
   })
 }
@@ -44,8 +41,9 @@ test('shared bubbles consume the documented tokens without changing other surfac
     assert.ok(design.includes(`${name}: "${value}"`), `DESIGN.md mirror: ${name}`)
   }
   for (const role of ['user', 'assistant']) {
-    assert.ok(app.includes(`.message-${role} .message-body { background: var(--board-message-${role}-bg); border-color: var(--board-message-${role}-border); }`))
+    assert.ok(app.includes(`.message-${role} .message-body { background: var(--board-message-${role}-bg); }`))
   }
   assert.ok(app.includes('--board-muted: var(--board-message-muted)'))
-  assert.match(app, /@media \(forced-colors: active\) \{\s*\.message-user \.message-body,\.message-assistant \.message-body \{ border-color: CanvasText; \}/)
+  assert.match(app, /\.message-user \.message-body,\.message-assistant \.message-body \{[^}]*padding: 13px 17px; border: 0; border-radius: 14px;/)
+  assert.doesNotMatch(css + app, /--board-message-(?:user|assistant)-border/)
 })
