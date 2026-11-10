@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent } f
 import { RiChat3Line, RiGroupLine, RiArrowRightLine, RiGlobalLine, RiAddLine, RiCloseLine, RiCheckboxCircleFill, RiErrorWarningLine, RiQuestionLine } from '@remixicon/react';
 import { api, ApiError, type Channel, type ChannelSettings, type Conversation, type DingtalkChannelCreated, type DingtalkChannelDetail, type DingtalkChannelEdit, type DingtalkChannelInput, type DingtalkChannelUpdated, type Message } from './api';
 import { useResource, useRoute } from './hooks';
-import { channelHealthPresentation } from './channel-health';
+import { channelHealthPresentation, channelRecoveryError } from './channel-health';
 import { channelPath } from './channel-url';
 import { validDingtalkCreated, channelApplicationText } from './channel-response';
 import { ChannelRemovalDialog, type ChannelRemovalRequest } from './components/ChannelRemovalDialog';
@@ -262,11 +262,11 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus }: {
 }
 
 const pendingRestart = (item: Channel) => item.restartRequired === true || item.connectionState === 'pending-restart';
-const channelError = (code: Channel['errorCode']) => code === 'DINGTALK_CHANNEL_SWITCH_BLOCKED'
+const channelError = (code: Channel['errorCode']) => channelRecoveryError(code) || (code === 'DINGTALK_CHANNEL_SWITCH_BLOCKED'
   ? '旧目标有未决依赖，身份切换被阻止；请先处理旧依赖，重复重启不能解除。'
   : code === 'CHANNEL_DRAIN_FAILED' ? '接入未能安全停止，请先核对运行状态'
   : code === 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN' ? '配置结果尚未确认，请先核对，不要重复提交'
-  : code === 'CHANNEL_AUTH_REQUIRED' ? '需要完成渠道认证' : code ? '适配器异常，请查看运维说明' : '';
+  : code === 'CHANNEL_AUTH_REQUIRED' ? '需要完成渠道认证' : code ? '适配器异常，请查看运维说明' : '');
 
 function channelCardState(item: Channel) {
   const hasRuntime = item.runningConnectionState !== undefined;
@@ -275,7 +275,7 @@ function channelCardState(item: Channel) {
   const error = item.errorCode || item.runningErrorCode || null;
   const mismatch = item.runningVersion != null && item.savedVersion !== item.runningVersion;
   const restart = pendingRestart(item);
-  const label = error ? (error === 'CHANNEL_AUTH_REQUIRED' ? '需要认证' : ['CHANNEL_DRAIN_FAILED', 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN'].includes(error) ? '需要核对' : '连接异常')
+  const label = error ? (channelRecoveryError(error) ? '历史恢复失败' : error === 'CHANNEL_AUTH_REQUIRED' ? '需要认证' : ['CHANNEL_DRAIN_FAILED', 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN'].includes(error) ? '需要核对' : '连接异常')
     : restart ? '待重启应用' : !item.enabled ? '未启用'
     : item.liveApplied === false ? '配置未应用'
     : connected === true && ['ready', 'listening'].includes(state || '') ? '已连接'
@@ -341,6 +341,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
           <ChannelCardTag item={item} />
         </span>
         <span className="channel-card-bottom"><ChannelCardHealth item={item} /></span>
+        {channelRecoveryError(item.runningErrorCode ?? item.errorCode) && <span className="channel-card-error">{channelRecoveryError(item.runningErrorCode ?? item.errorCode)}</span>}
       </button>{(item.type === 'dingtalk-dws' || (item.type !== 'web-console' && item.savedVersion)) && <div className="channel-card-actions">{item.type === 'dingtalk-dws'
         ? <ChannelConfiguration channelId={item.channelId} channelStatus={item} onSaved={channels.refresh} onDelete={trigger => setRemovalRequest({ item, trigger })} />
         : <ActionMenu label={`渠道操作：${item.channelId}`} actions={[{ label: '删除渠道', danger: true, onSelect: trigger => setRemovalRequest({ item, trigger }) }]} />}</div>}
