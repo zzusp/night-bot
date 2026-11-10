@@ -6,7 +6,9 @@ import {join} from 'node:path'
 import {createHost} from '../src/host.js'
 import {loadConfig,updateConfig} from '../src/config.js'
 import {apply as application,inject} from '../src/application.js'
+import {configuredChannels} from '../packages/web-console/server/views.js'
 import {dingtalkConfigVersion} from '../src/channels/plugins/dingtalk-config.js'
+import {createWebConsole} from '../packages/web-console/server/plugin.js'
 
 const draft=detail=>({expectedVersion:detail.version,name:detail.name,prompt:detail.prompt,conversationType:detail.conversationType,targetKind:detail.targetKind,target:detail.target,writesAuthorized:detail.writesAuthorized})
 async function fixture(t){
@@ -32,6 +34,17 @@ async function fixture(t){
  return {root,file,host,app:host.ctx.get('application'),running,calls,streams,controls,port:host.ctx.get('channelConfiguration'),add:(channelId='live-room',target='room')=>host.ctx.get('channelConfiguration').addDingtalk({channelId,conversationType:'chat-room',targetKind:'id',target,name:'Fixture',prompt:'Original',writesAuthorized:false})}
 }
 
+async function withWeb(f,work){
+ const web=await createWebConsole({channels:f.host.ctx.channels,paths:f.host.ctx.runtimePaths,config:{channelId:'delete-console',senderId:'owner',port:0},getApplication:()=>f.app,getChannelConfiguration:()=>f.port})
+ try{
+  const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})}),session=await login.json()
+  assert.equal(login.status,200)
+  const headers={origin:web.origin,'content-type':'application/json',cookie:login.headers.get('set-cookie').split(';')[0],'x-csrf-token':session.csrfToken}
+  const request=async(path,options={})=>{const response=await fetch(web.origin+path,{...options,headers});return {status:response.status,body:await response.json()}}
+  return await work(request)
+ }finally{await web.close()}
+}
+
 test('running Host adds a channel immediately; metadata and authorization do not reconnect; CAS serializes edits',async t=>{
  const f=await fixture(t),core=f.host.ctx.get('application'),added=await f.add()
  assert.equal(added.restartRequired,false);assert.equal(added.liveApplied,true)
@@ -44,6 +57,7 @@ test('running Host adds a channel immediately; metadata and authorization do not
  assert.equal(plugin.prompt,results[0].status==='fulfilled'?'New responsibility':'Concurrent responsibility');assert.equal(f.host.ctx.channels.transports.get('live-room').canSend(),true)
  detail=await f.port.getDingtalk('live-room');await f.port.editDingtalk('live-room',{...draft(detail),writesAuthorized:false})
  assert.equal(f.host.ctx.channels.transports.get('live-room').canSend(),false)
+ assert.equal(configuredChannels(f.app,f.host.ctx.channels).items[0].restartRequired,false)
  assert.equal(f.calls.some(args=>args.some(value=>/messages-send|messages-reply/.test(value))),false)
  assert.deepEqual(JSON.parse(await readFile(f.file,'utf8')).channelPlugins,f.running.channelPlugins)
 })
@@ -78,7 +92,10 @@ test('unknown delivery survives permission edits; target switch and deletion are
  await f.port.editDingtalk('live-room',{...draft(detail),prompt:'Still the same original scope'})
  const next=await f.port.getDingtalk('live-room'),bytes=await readFile(f.file,'utf8'),plugin=channels.plugins.get('live-room')
  await assert.rejects(f.port.editDingtalk('live-room',{...draft(next),target:'new-room'}),{code:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})
- await assert.rejects(f.port.remove('live-room',{expectedVersion:next.version}),{code:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})
+ await withWeb(f,async request=>{
+  const result=await request('/api/channels/live-room',{method:'DELETE',body:JSON.stringify({expectedVersion:next.version,confirm:true})})
+  assert.equal(result.status,409);assert.deepEqual(result.body,{error:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})
+ })
  assert.equal(await readFile(f.file,'utf8'),bytes);assert.equal(channels.plugins.get('live-room'),plugin)
  const after=await f.app.tasks.store.query({kind:'notification.get',notificationId:'unknown-notice'})
  assert.equal(after.state,'unknown');assert.equal(after.sendAttemptCount,before.sendAttemptCount);assert.deepEqual(after.payload,before.payload)
@@ -91,7 +108,7 @@ test('failed activation rolls back file and instance, waiting-auth is loaded wit
  assert.equal(await readFile(f.file,'utf8'),bytes);assert.equal(f.host.ctx.channels.plugins.has('broken-channel'),false);assert.equal(f.host.ctx.channels.lifecycleHolds.has('broken-channel'),false)
  f.controls.auth=false
  const result=await f.add('auth-channel','room');assert.equal(result.restartRequired,false);assert.equal(result.liveApplied,false)
- const plugin=f.host.ctx.channels.plugins.get('auth-channel');assert.equal(plugin.health.state,'waiting-auth');assert.equal(plugin.bindingActive,false)
+ const view=configuredChannels(f.app,f.host.ctx.channels).items[0];assert.equal(view.connectionState,'waiting-auth');assert.equal(view.connected,false);assert.equal(view.restartRequired,false)
 })
 
 test('live disable preserves readback transport and enable resumes the same instance without replay',async t=>{
@@ -136,6 +153,7 @@ test('uncertain atomic commit never rolls back to a conflicting runtime or autom
   await assert.rejects(manager.apply({current,next,commit:async()=>{commits++;throw Object.assign(Error('NIGHT_WRITE_COMMIT_UNCERTAIN'),{committed:true})}},'live-room'),/COMMIT_UNCERTAIN/)
   assert.equal(commits,1);assert.equal(channels.plugins.get('live-room').prompt,'Possibly committed');assert.equal(channels.lifecycleHolds.has('live-room'),true)
   assert.equal(channels.configurationErrors.get('live-room'),'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN')
+  const view=configuredChannels(f.app,channels).items[0];assert.equal(view.liveApplied,false);assert.equal(view.connected,false);assert.equal(view.errorCode,'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN')
  }finally{channels.lifecycleHolds.delete('live-room')}
 })
 
@@ -177,6 +195,41 @@ test('an installed opt-in adapter is hot-created, replaced and disabled through 
  assert.equal(result.restartRequired,false);const second=f.host.ctx.channels.plugins.get('custom-live');assert.notEqual(second,first);assert.equal(second.room,'two')
  view=await settings.plugins();await settings.saveChannel({type:'example',channelId:'custom-live',enabled:false,config:{room:'two'},expectedVersion:view.version})
  assert.equal(f.host.ctx.channels.plugins.has('custom-live'),false);assert.equal(f.host.ctx.channels.transports.has('custom-live'),false)
+})
+
+test('confirmed HTTP deletion uses row CAS, drains old calls and preserves history without stopping other channels',async t=>{
+ const f=await fixture(t);await f.add();await f.add('other-room','other')
+ const channels=f.host.ctx.channels,other=channels.plugins.get('other-room'),identity=await channels.registerConversation({type:'chat-room',channelId:'live-room',conversationId:'room',senderId:'peer',messageId:'history',text:'Retained history'}),before=await readFile(join(f.root,'data/state/channels/contexts.json'),'utf8')
+ await withWeb(f,async request=>{
+  const row=(await request('/api/channels')).body.items.find(row=>row.channelId==='live-room')
+  const stale=await request('/api/channels/live-room',{method:'DELETE',body:JSON.stringify({expectedVersion:'0'.repeat(64),confirm:true})})
+  assert.equal(stale.status,409);assert.equal(stale.body.error,'DINGTALK_CHANNEL_VERSION_CONFLICT');assert.equal(channels.plugins.has('live-room'),true)
+  const release=Promise.withResolvers(),call=channels.trackChannelCall('live-room',()=>release.promise)
+  let completed=false
+  const deleting=request('/api/channels/live-room',{method:'DELETE',body:JSON.stringify({expectedVersion:row.savedVersion,confirm:true})}).then(result=>{completed=true;return result})
+  try{
+   for(let count=0;count<100&&!channels.lifecycleHolds?.has('live-room');count++)await new Promise(resolve=>setTimeout(resolve,5))
+   assert.equal(channels.lifecycleHolds.has('live-room'),true);assert.equal(completed,false);assert.equal(channels.plugins.has('live-room'),true)
+  }finally{release.resolve();await call}
+  const result=await deleting
+  assert.equal(result.status,200);assert.deepEqual(result.body,{ok:true,channelId:'live-room',changed:true,restartRequired:false,liveApplied:false})
+  assert.equal((await request('/api/channels')).body.items.some(row=>row.channelId==='live-room'),false)
+ })
+ assert.equal(channels.plugins.has('live-room'),false);assert.equal(channels.plugins.get('other-room'),other);assert.ok(channels.groupContext(identity.sessionId))
+ assert.equal(await readFile(join(f.root,'data/state/channels/contexts.json'),'utf8'),before)
+ assert.equal(f.calls.some(args=>args.some(value=>/messages-send|messages-reply/.test(value))),false)
+})
+
+test('HTTP deletion retains the owner and reports failed drain without claiming removal',async t=>{
+ const f=await fixture(t);await f.add();const channels=f.host.ctx.channels,plugin=channels.plugins.get('live-room'),stop=plugin.stopAndDrain,detail=await f.port.getDingtalk('live-room'),before=await readFile(f.file,'utf8')
+ plugin.stopAndDrain=async()=>{throw Error('fixture stop failure')}
+ try{
+  await withWeb(f,async request=>{
+   const result=await request('/api/channels/live-room',{method:'DELETE',body:JSON.stringify({expectedVersion:detail.version,confirm:true})})
+   assert.equal(result.status,503);assert.deepEqual(result.body,{error:'CHANNEL_DRAIN_FAILED'})
+  })
+  assert.equal(await readFile(f.file,'utf8'),before);assert.equal(channels.plugins.get('live-room'),plugin);assert.equal(channels.lifecycleHolds.has('live-room'),true)
+ }finally{plugin.stopAndDrain=stop;channels.lifecycleHolds.delete('live-room')}
 })
 
 test('failed deletion commit restores the original channel without erasing history or changing version',async t=>{

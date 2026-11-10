@@ -5,7 +5,7 @@ import type {DingtalkChannelDetail} from '../src/api'
 
 const endpoint = '/api/channels/dingtalk', savedChannels = '/api/channels'
 const dialogFor = (page: Page) => page.getByRole('dialog', {name: '添加渠道', exact: true})
-const cardFor = (page: Page, id: string) => page.locator('.channel-card').filter({hasText: id})
+const cardFor = (page: Page, id: string) => page.locator('.channel-card').filter({has: page.getByRole('button', {name: '渠道操作：' + id, exact: true})})
 function deferred() {let resolve!: () => void; const promise = new Promise<void>(done => {resolve = done}); return {promise, resolve}}
 const rendered = (page: Page) => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
 async function login(page: Page, initial = true) {
@@ -27,7 +27,7 @@ async function fillRoom(dialog: Locator, id: string) {
 const waitSave = (page: Page) => page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === endpoint)
 const editEndpoint = (id: string) => endpoint + '/' + encodeURIComponent(id)
 const editDialogFor = (page: Page) => page.getByRole('dialog', {name: '编辑钉钉渠道', exact: true})
-const editButton = (page: Page, id: string) => page.getByRole('button', {name: '编辑配置：' + id, exact: true})
+const editButton = (page: Page, id: string) => page.getByRole('button', {name: '渠道操作：' + id, exact: true})
 const waitPatch = (page: Page, id: string) => page.waitForResponse(response => response.request().method() === 'PATCH' && new URL(response.url()).pathname === editEndpoint(id))
 async function readDetail(page: Page, id: string): Promise<DingtalkChannelDetail> {
   const response = await page.request.get(editEndpoint(id)); expect(response.status()).toBe(200)
@@ -38,6 +38,7 @@ async function readDetail(page: Page, id: string): Promise<DingtalkChannelDetail
 }
 async function openEdit(page: Page, id: string) {
   await editButton(page, id).click()
+  await page.getByRole('menuitem', {name: '编辑配置', exact: true}).click()
   const dialog = editDialogFor(page); await expect(dialog).toBeVisible()
   await expect(dialog.getByLabel('渠道职责（可选）', {exact: true})).toBeEnabled()
   return dialog
@@ -297,7 +298,7 @@ test('编辑回填固定标识与完整字段，同 ID 待重启及无变化或�
   await expect(dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true})).toHaveValue(id)
   await expect(dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true})).not.toBeEditable()
   await expect(dialog.getByLabel('钉钉 profile', {exact: true})).toHaveCount(0)
-  await expect(dialog).toContainText('沿用已保存账号，修改后须重启应用')
+  await expect(dialog).toContainText('沿用已保存账号，支持的修改会在线应用。')
   await expect(dialog.getByLabel('群 ID', {exact: true})).toHaveValue(original.target)
   await expect(dialog.getByLabel('渠道职责（可选）', {exact: true})).toHaveValue(original.prompt)
   await expect(page.locator('.conversation-list .conversation-row')).toHaveCount(conversationCount)

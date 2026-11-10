@@ -21,7 +21,7 @@ test('generic add HTTP saves declared plugin fields with create-only, auth, CSRF
   const body = {type: plugin.type, channelId: 'api-created-custom', enabled: false, config: {room: 'api-target', credential: 'FIXTURE_CUSTOM_KEY', listen: false}, createOnly: true, expectedVersion: catalog.body.version}
   const save = input => read('/api/settings/channels', {method: 'POST', headers, body: JSON.stringify(input)})
   assert.equal((await read('/api/settings/channels', {method: 'POST', headers: {...headers, 'x-csrf-token': ''}, body: JSON.stringify(body)})).status, 403)
-  assert.deepEqual((await save(body)).body, {ok: true, restartRequired: true})
+  assert.deepEqual((await save(body)).body, {ok: true, restartRequired: true, liveApplied: false})
   catalog = await read('/api/settings/channels', {headers})
   const saved = catalog.body.channels.find(row => row.channelId === body.channelId)
   assert.deepEqual(saved.config, body.config)

@@ -2,6 +2,7 @@ import {useEffect, useId, useRef, useState, type FormEvent} from 'react';
 import {api, ApiError, errorText, type ChannelSettings} from '../api';
 import {Button} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
+import {channelApplicationText} from '../channel-response';
 
 type Plugin = ChannelSettings['items'][number];
 type Instance = ChannelSettings['channels'][number];
@@ -47,12 +48,12 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
     pending.current = {channelId, enabled, config: {...values}};
     setWorking(true); setError(''); setFeedback('');
     try {
-      const result = await api<{ok: boolean; restartRequired: boolean}>('/settings/channels', {method: 'POST', body: {
+      const result = await api<{ok: boolean; restartRequired: boolean; liveApplied: boolean}>('/settings/channels', {method: 'POST', body: {
         type: plugin.type, ...pending.current, expectedVersion: version, createOnly: !initial,
       }});
       if (!live.current) return;
-      if (result.ok !== true || result.restartRequired !== true) throw new ApiError(502, 'INVALID_RESPONSE');
-      setSaved(true); setFeedback('渠道配置已保存，正常重启后生效。'); onSaved();
+      if (result.ok !== true || typeof result.restartRequired !== 'boolean' || typeof result.liveApplied !== 'boolean' || (result.restartRequired && result.liveApplied)) throw new ApiError(502, 'INVALID_RESPONSE');
+      setSaved(true); setFeedback(result.restartRequired ? '渠道配置已保存，正常重启后生效。' : `渠道配置已保存。${channelApplicationText(result)}`); onSaved();
       window.dispatchEvent(new Event('night-settings-updated'));
     } catch (cause) {
       if (!live.current) return;
@@ -73,7 +74,7 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
         const config = Object.fromEntries(Object.entries(expected.config).filter(([,value]) => value !== ''));
         if (latest.version !== version && row?.enabled === expected.enabled && row.config &&
             Object.keys(row.config).length === Object.keys(config).length && Object.entries(config).every(([key, value]) => row.config?.[key] === value)) {
-          setUnknown(false); setSaved(true); setFeedback('只读核对确认当前保存配置与本次字段一致。正常重启后生效，连接状态请查看渠道列表。'); onSaved();
+          setUnknown(false); setSaved(true); setFeedback('只读核对确认当前保存配置与本次字段一致。实际应用与连接状态请查看渠道列表。'); onSaved();
         } else setFeedback('仍无法确认本次保存结果，原字段保持锁定。请稍后只读核对，不要重复提交。');
       } else {
         setVersion(latest.version); setStale(false); onSaved();
@@ -83,7 +84,7 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
     } catch (cause) { if (live.current) setError(errorText(cause)); } finally { setWorking(false); }
   };
   return <div className="custom-channel-form">
-    <p className="field-help">{plugin.name} · {plugin.type}。{initial ? '仅可编辑已停用且不在运行的实例。' : '新增默认停用。'}启用需确认，正常重启后由此插件接入；不继承钉钉目标或外发授权。</p>
+    <p className="field-help">{plugin.name} · {plugin.type}。{initial ? '仅可编辑服务端允许安全变更的实例。' : '新增默认停用。'}启用需确认，支持的插件会在线接入，是否需重启以保存结果为准；不继承钉钉目标或外发授权。</p>
     <form ref={form} noValidate onSubmit={validate} onKeyDown={event => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault(); }}>
       <fieldset className="channel-create-fields" disabled={locked}><legend className="sr-only">{plugin.name}配置</legend>
         <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-channelId`}>渠道标识</label><input {...field('channelId')} value={channelId} readOnly={!!initial} maxLength={64} autoComplete="off" onChange={event => setChannelId(event.target.value)}/><p className="field-help" id={`${prefix}-channelId-help`}>本安装唯一，新增不会覆盖已有渠道。</p>{fieldError('channelId')}</div>
@@ -102,6 +103,6 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
       </div>
     </form>
     <p className="field-error" role={error ? 'alert' : undefined}>{error}</p><p className="channel-create-feedback" role="status" hidden={!feedback}>{feedback}</p>
-    {confirm && <Confirm title="保存自定义渠道" onClose={() => setConfirm(false)} onConfirm={() => void save()}><p>渠道 {channelId}，插件 {plugin.name}（{plugin.type}）。{enabled ? '重启后插件将接入并按自身权限处理消息。' : '保持停用。'}运行中渠道需先按运维流程停用并重启，再编辑；不会继承钉钉的目标或授权规则。</p></Confirm>}
+    {confirm && <Confirm title="保存自定义渠道" onClose={() => setConfirm(false)} onConfirm={() => void save()}><p>渠道 {channelId}，插件 {plugin.name}（{plugin.type}）。{enabled ? '保存后插件可能立即接入并按自身权限处理消息。' : '保持停用。'}运行中渠道的修改受插件安全生命周期保护；不会继承钉钉的目标或授权规则。</p></Confirm>}
   </div>;
 }

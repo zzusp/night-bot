@@ -42,7 +42,7 @@ function CustomChannels() {
  useEffect(()=>{const refresh=()=>query.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[query.refresh]);
  const plugin=query.data?.items.find(item=>item.type===type);
  const select=(value:string,channel?:ChannelSettings['channels'][number])=>{setType(value);setEditing(channel);setFormKey(key=>key+1)};
- return <section className="settings-card"><h3>自定义渠道</h3><p className="field-help">仅配置管理员已安装且声明网页表单的可信插件。未声明表单时按插件说明配置；网页不安装代码。新渠道默认停用，启用会在正常重启后接入。</p>
+ return <section className="settings-card"><h3>自定义渠道</h3><p className="field-help">仅配置管理员已安装且声明网页表单的可信插件。未声明表单时按插件说明配置；网页不安装代码。新渠道默认停用，启用后是否在线接入或待重启以保存结果为准。</p>
   {query.error&&<Notice error={query.error} onRetry={query.refresh}/>}<Button disabled={query.loading||busy} onClick={query.refresh}>重新发现插件</Button>
   {query.loading&&!query.data&&<Loading>正在发现插件…</Loading>}{query.data&&!query.data.items.length&&<p>尚无自定义插件，请由管理员安装并声明网页表单。</p>}
   <ul>{query.data?.items.map(item=><li key={item.type}>{item.name} · {item.type} · {item.configurable?'支持网页配置':'未提供网页表单'}</li>)}</ul>
