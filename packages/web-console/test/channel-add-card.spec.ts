@@ -92,7 +92,7 @@ test('列表加载和失败不伪装为空，也不阻止添加卡片打开既�
   const dialog = page.getByRole('dialog', {name: '添加渠道', exact: true})
   await expect(dialog).toBeVisible()
   release()
-  await expect(page.getByRole('heading', {name: '渠道配置暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '渠道配置暂不可读', exact: true, includeHidden: true})).toBeVisible()
   await expect(dialog).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(add).toBeFocused()
