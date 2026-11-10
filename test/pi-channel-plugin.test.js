@@ -368,8 +368,13 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
           if(step===9)return {tool:'resident_router_reply',args:{...delivery,recipientActorIds:[sourceIdentity.principal]}}
           if(step===10)return settle()
         }else{
-          if(step===1)return {tool:'resident_router_reply',args:delivery}
-          if(step===2)return settle()
+          if(step===1)return {tool:'resident_router_reply',args:{...delivery,text:'Verified task '+taskId+' is complete.'}}
+          if(step===2){
+            assert.equal((await app.tasks.store.query({kind:'notification.list'})).length,0,'internal task ID must fail before freezing the delivery')
+            assert.equal(sent.length,0)
+            return {tool:'resident_router_reply',args:delivery}
+          }
+          if(step===3)return settle()
         }
       }
       return {text:'Frozen delivery has a durable disposition'}
@@ -419,11 +424,12 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
   assert.ok(taskPackets.length>=3)
   for(const input of taskPackets){for(const source of input.sources){assert.equal(Object.hasOwn(source,'groupId'),false);if(source.quote){assert.equal(source.quote.actorId,bob);assert.equal(source.quote.text,message.quotedMessage.text);assert.equal(Object.hasOwn(source.quote,'senderOpenDingTalkId'),false)}}for(const material of input.materials){assert.equal(Object.hasOwn(material,'groupId'),false);if(material.quote)assert.equal(material.quote.actorId,bob)}}
   const rejected=results.filter(row=>row.name==='resident_router_reply'&&row.result.isError)
-  assert.equal(rejected.length,replyToSource?8:3,'source/recipient ACL, quote author and operation semantic conflicts fail inside the registered tool')
+  assert.equal(rejected.length,replyToSource?8:4,'source/recipient ACL, quote author and operation semantic conflicts fail inside the registered tool')
+  if(!replyToSource)assert.equal(rejected.filter(row=>JSON.stringify(row.result).includes('GROUP_REPLY_INTERNAL_DETAILS')).length,1)
   if(replyToSource){assert.equal(rejected.filter(row=>JSON.stringify(row.result).includes('group_reply_quote_author_not_in_recipients')).length,3);assert.equal(rejected.filter(row=>JSON.stringify(row.result).includes('DYNAMIC_COMMAND_ID_CONFLICT')).length,2)}
   const schemaRejected=new Map(f.requests.flatMap(body=>body.messages).filter(message=>message.role==='tool'&&/atOpenDingTalkIds|replyToSource/.test(String(message.content))&&/unexpected|unrecognized|additional|schema|invalid|validation/i.test(String(message.content))).map(message=>[message.tool_call_id,message]))
   assert.equal(schemaRejected.size,replyToSource?3:1,'legacy field and non-true quote options are rejected by official schema before tools/result')
-  assert.equal(rejected.length+schemaRejected.size,replyToSource?11:4,'all unauthorized variants fail without additional deliveries')
+  assert.equal(rejected.length+schemaRejected.size,replyToSource?11:5,'all unauthorized variants fail without additional deliveries')
   assert.ok(results.some(row=>row.name==='resident_source_get'&&!row.result.isError));assert.ok(results.some(row=>row.name==='resident_task_plan'&&!row.result.isError));assert.equal(f.errors.length,0)
   const taskNative=await f.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
   await f.close();f.config.reflection={enabled:false};await f.boot()

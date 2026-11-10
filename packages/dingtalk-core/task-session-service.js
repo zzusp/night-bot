@@ -881,7 +881,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       })
       await deliveryFiles.validateManifest(artifactFiles.map(file=>file.artifact),task)
     }
-    const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId]
+    const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId,selection?.taskId]
     const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:args.text,replyToMessageId,replyToActorId,
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)

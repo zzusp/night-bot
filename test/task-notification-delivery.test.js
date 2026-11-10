@@ -10,7 +10,7 @@ import * as notificationDelivery from '../packages/dingtalk-core/notification-de
 import { readTaskNotificationDelivery } from '../packages/dingtalk-core/task-notification-readback.js'
 import { createDwsAdapter } from '../packages/dingtalk-core/dws-adapter.js'
 import { formatTaskGroupReply } from '../packages/dingtalk-core/group-reply-format.js'
-import { persistedMentionSendRejectionProof } from '../packages/dingtalk-core/group-message.js'
+import { persistedMentionSendRejectionProof, persistedReplySendRejectionProof, sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
 
 test('发送时间随送达回执持久保存，历史记录不以创建时间或回读时间冒充', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-19T02:25:00Z') })
@@ -77,6 +77,63 @@ test('原单成员占位符校验拒绝跨重启只结清failed，不回读不�
   assert.equal(failed.deliveryError.proof.kind, 'dws-mention-validation-rejected')
   assert.match(failed.evidenceRef, /^notification-readback:/u)
   await deliverTaskNotification({ notification: failed, command: f.command, notifications })
+  assert.equal(sends, 0); assert.equal(reads, 0)
+})
+
+test('本地正文拒发持久化为已知未发送，不回读、不重试且不放宽安全校验', async t => {
+  const f = await fixture(t, '报告对应 notice。')
+  let sends = 0, reads = 0
+  const notifications = {
+    send: notice => sendWorkflowNotification({ sendGroupReply() { sends++ } }, notice),
+    async readback() { reads++ },
+  }
+  await assert.rejects(deliverTaskNotification({ notification: f.notification, command: f.command, notifications }), { code: 'GROUP_REPLY_INTERNAL_DETAILS' })
+  await f.reopen()
+  const failed = await f.read()
+  assert.equal(failed.state, 'failed'); assert.equal(failed.deliveryError.knownNotSent, true)
+  assert.equal(failed.deliveryError.retryable, false)
+  assert.equal(failed.deliveryError.proof.kind, 'local-reply-validation-rejected')
+  assert.equal(taskNotificationOutbound(failed).notificationKnownNotSent, true)
+  assert.equal(notificationDelivery.taskNotificationRecovery(failed).action, null)
+  await deliverTaskNotification({ notification: failed, command: f.command, notifications })
+  assert.equal(sends, 0); assert.equal(reads, 0)
+})
+
+test('历史本地正文拒发凭原错误和发送许可结清，已有接纳或未知网络结果不被推断为未发送', async t => {
+  const f = await fixture(t, '报告对应 notice。')
+  const started = (await f.command('notification.start', { notificationId: f.notification.id })).result.notification
+  let failure
+  try { sendWorkflowNotification({ sendGroupReply() { assert.fail('正文拒发前不应到达渠道') } }, started) }
+  catch (error) { failure = notificationDelivery.notificationErrorDetail(error, 'send') }
+  assert.equal(failure.code, 'GROUP_REPLY_INTERNAL_DETAILS')
+  // 重现旧版把本地拒发记为 unknown、且已经空回读过的现场。
+  await f.command('notification.receipt', { notificationId: started.id, dispatchToken: started.dispatchToken,
+    state: 'unknown', error: { ...failure, knownNotSent: false }, nextAttemptAt: '2099-01-01T00:00:00Z' })
+  await f.command('notification.diagnostic', { notificationId: started.id, error: { phase: 'readback', message: 'TASK_NOTIFICATION_INCOMPLETE_READBACK' }, nextAttemptAt: '2099-01-01T00:00:00Z' })
+  await f.reopen()
+  const original = await f.read()
+  assert.equal(persistedReplySendRejectionProof(original).kind, 'local-reply-validation-rejected')
+  for (const change of [
+    row => { row.ack = { openTaskId: 'accepted' } }, row => { row.receipt = { messageId: 'sent' } },
+    row => { row.sendAttemptCount = 2 }, row => { row.sendPermit.fence = 'different' },
+    row => { row.sendPermit.payloadDigest = 'a'.repeat(64) }, row => { row.sendPermit.notificationId = 'other' },
+    row => { row.deliveryError.phase = 'readback' }, row => { row.deliveryError.message = 'network timeout' },
+    row => { row.deliveryError.stdout = '{}' }, row => { row.deliveryError.stderr = 'transport error' },
+    row => { row.payload.text = '报告已完成。' }, row => { row.payload.artifact = {} },
+  ]) {
+    const changed = structuredClone(original); change(changed)
+    assert.equal(persistedReplySendRejectionProof(changed), undefined)
+  }
+  let sends = 0, reads = 0
+  await deliverTaskNotification({ notification: original, command: f.command, notifications: {
+    async send() { sends++ }, async readback() { reads++ },
+  } })
+  await f.reopen()
+  const failed = await f.read()
+  assert.equal(failed.state, 'failed'); assert.equal(failed.sendAttemptCount, 1)
+  assert.equal(failed.deliveryError.knownNotSent, true); assert.equal(failed.deliveryError.retryable, false)
+  assert.equal(failed.deliveryError.proof.kind, 'local-reply-validation-rejected')
+  assert.equal(failed.deliveryError.message, failure.message)
   assert.equal(sends, 0); assert.equal(reads, 0)
 })
 

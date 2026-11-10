@@ -134,6 +134,8 @@ Router 的业务工具按实际职责区分：
 
 最终说明与平台到期回复复用现有通知格式，保留原文件名和 caption。`replyToSource:true` 可与 `taskDelivery` 组合，但仅引用父说明；文件子通知不继承引用，不宣称文件消息自身具备原生 quote/@ 能力。任务交付写入属于该 task 的 `status` 父通知及文件子通知，先确认最终说明送达，再依原顺序发送文件；冻结、`accepted` 或 Router settle 均不表示送达，unknown 先回读，不自动重发。归档包含该任务自己的父子通知，不带整群上下文；已归档任务只能继续已有合法未送达通知，不能重新创建交付，档案恢复仍保持 hold。未指定 `taskDelivery` 且未显式选择受众时，普通文本回复规则不变。
 
+选择 `taskDelivery` 时，Host 在冻结正文和父子通知之前校验所选 taskId，内部编号不得出现在公开正文；失败直接返回 Router 工具，由模型订正正文后继续，不产生半条交付。发送通道仍保留安全兜底。本地正文校验若明确在外部发送前拒绝，记录为 `failed`、`knownNotSent:true`、`retryable:false`，不回读、不重试。旧版误记的 `unknown` 仅在单次发送、无 ACK/receipt、发送许可与 payloadDigest/fence 全匹配且原正文可重现同一精确本地错误时结清失败；网络异常、参数不匹配或已有接纳证据仍保持未知。此结清不改写冻结正文、不重跑已完成任务，也不放行依赖它的文件子件。
+
 若前序通知尚未确认送达，文件子件的 `notification.start` 可先记录“未获发送许可”。前序说明/文件经回读确认为 delivered 后，Host 可按原固定 start 命令 ID 重新判定；仅限冻结 payload 不变、仍为 `prepared`、sendAttempt 为 0 且从未有 permit/token/开始时间/发送收据的子件。第一次获许可后同 ID 永不再授新发送；`starting` / `unknown` 仍只能回读，旧 false 收据既不能永久卡住首次发送，也不能成为重复发送的授权。档案恢复 hold 等原有门禁不因此解除。
 
 ## 平台到期回复与既有冻结发送
