@@ -55,7 +55,7 @@ export interface Chat {
   taskSummaries?: Pick<Task, 'taskId' | 'title' | 'state' | 'updatedAt'>[] | null;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
-export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number }
+export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {
@@ -148,6 +148,8 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'SESSION_PAGE_STALE') return '执行上下文已改变，已暂停续读。重新获取后查看当前记录。';
+    if (error.code === 'SESSION_COMMIT_PENDING') return '新记录正在提交，完成后会自动更新。';
     if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，未覆盖新版本。草稿已保留，请重新读取设置后再编辑。';
     if (error.code === 'INVALID_CONFIG') return '模型或推理深度不受当前路由支持，请重新读取可用模型并检查选择。';
     if (error.code === 'EVOLUTION_CONTENT_TOO_LARGE') return '此条目内容过大，暂不能在此查看。';

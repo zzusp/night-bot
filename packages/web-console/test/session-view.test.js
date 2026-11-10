@@ -199,3 +199,50 @@ test('job_output exposes paired task text with redaction and pagination, never h
   assert.doesNotMatch(JSON.stringify([page, tail]), /REGISTERED_JOB_SECRET|PRIVATE_JOB_ID|PRIVATE_JOB_LOG|PRIVATE_UNPAIRED_OUTPUT|\/private\/work/);
   assert.equal(page.items.at(-1).toolName, '未公开工具');
 });
+
+test('stream initial window, older prepends and burst catch-up are bounded, ordered and append-safe', async () => {
+  const value = snapshot()
+  value.context.projection.entries = Array.from({length: 450}, (_, i) => project(`entry-${i}`, {role: 'assistant', content: [{type: 'text', text: `记录 ${i}`}]}))
+  const persistence = {readNative: async () => value}, options = {task, persistence, stream: true, limit: 200}
+  const first = await taskSessionView(options)
+  assert.equal(first.items.length, 200); assert.equal(first.items[0].text, '记录 250'); assert.equal(first.items.at(-1).text, '记录 449')
+  assert.equal(first.before, first.items[0].id); assert.equal(first.hasNewer, false)
+  // Append well over one transport window while the reader is in history.
+  value.context.projection.entries.push(...Array.from({length: 530}, (_, i) => project(`entry-${450 + i}`, {role: 'assistant', content: [{type: 'text', text: `记录 ${450 + i}`}]})))
+  value.entries.push({id: 'append-commit'})
+  const older = await taskSessionView({...options, checkpoint: first.checkpoint, before: first.before})
+  assert.equal(older.items[0].text, '记录 50'); assert.equal(older.items.at(-1).text, '记录 249')
+  assert.equal(older.checkpoint, first.checkpoint)
+  const oldest = await taskSessionView({...options, checkpoint: older.checkpoint, before: older.before})
+  assert.equal(oldest.items.length, 50); assert.equal(oldest.before, null)
+  const rows = [...oldest.items, ...older.items, ...first.items]
+  let current = first
+  do {
+    current = await taskSessionView({...options, checkpoint: current.checkpoint})
+    rows.push(...current.items)
+  } while (current.hasNewer)
+  assert.equal(rows.length, 980); assert.equal(new Set(rows.map(row => row.id)).size, 980)
+  assert.deepEqual(rows.map(row => row.text), Array.from({length: 980}, (_, i) => `记录 ${i}`))
+  assert.equal((await taskSessionView({...options, checkpoint: current.checkpoint})).items.length, 0)
+})
+
+test('stream checkpoint rejects rewritten, compacted, revoked and foreign history instead of retaining mixed snapshots', async () => {
+  for (const mutate of [
+    value => {value.context.projection.entries[2].messages[0].content[1].text = '替换后的正文'},
+    value => {value.context.projection.entries.splice(1, 1)},
+    value => {value.context.projection.entries.reverse()},
+  ]) {
+    const value = snapshot(), options = {task, persistence: {readNative: async () => value}, stream: true}
+    const first = await taskSessionView(options)
+    mutate(value)
+    await assert.rejects(taskSessionView({...options, checkpoint: first.checkpoint}), {code: 'SESSION_PAGE_STALE'})
+  }
+  const value = snapshot(), options = {task, persistence: {readNative: async () => value}, stream: true}
+  const first = await taskSessionView(options)
+  for (const extra of [{checkpoint: 'invalid'}, {before: first.items[0].id}, {checkpoint: first.checkpoint, before: 'invalid'}, {offset: 1}, {revision: first.revision}, {limit: 501}]) {
+    await assert.rejects(taskSessionView({...options, ...extra}), {code: 'PAGE_INVALID'})
+  }
+  await assert.rejects(taskSessionView({...options, checkpoint: first.checkpoint, before: '0'.repeat(64)}), {code: 'SESSION_PAGE_STALE'})
+  value.audit[0].payload.taskId = 'foreign'
+  await assert.rejects(taskSessionView({...options, checkpoint: first.checkpoint}), {code: 'SESSION_IDENTITY_INVALID'})
+})

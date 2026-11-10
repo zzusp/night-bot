@@ -18,7 +18,11 @@ async function openReadActivity(page: Page) {
   const response = page.waitForResponse(result => new URL(result.url()).pathname === '/api/tasks/task-research/session')
   await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
   const session = await (await response).json()
-  const tools = session.items.filter((row: {role: string}) => row.role === 'tool')
+  // Refresh now reads only additions. The already-rendered calls remain in the
+  // continuous reader; inspect a fresh bounded snapshot for source assertions.
+  expect(session.items).toEqual([])
+  const snapshot = await (await page.request.get('/api/tasks/task-research/session?stream=1&limit=200')).json()
+  const tools = snapshot.items.filter((row: {role: string}) => row.role === 'tool')
   expect(tools.map((row: {kind: string}) => row.kind)).toEqual(['tool-call', 'tool-result'])
   const [call, result] = tools
   expect(call.callId).toMatch(/^[a-f0-9]{64}$/)
@@ -40,7 +44,7 @@ async function openReadActivity(page: Page) {
   await expect(parts.nth(1).locator('.tool-content')).toHaveText('已读取 3 份资料，发现 2 处待确认差异。')
   for (const [index, row] of tools.entries()) {
     expect(row.source.callId).toBe(call.callId)
-    expect(row.source.sessionId).toBe(session.sessionId)
+    expect(row.source.sessionId).toBe(snapshot.sessionId)
     await expect(parts.nth(index).locator('.message-source')).toHaveCount(0)
     await expect(parts.nth(index)).not.toContainText(row.source.entryId)
     await expect(parts.nth(index)).not.toContainText(call.callId)
