@@ -54,6 +54,10 @@ export function MessageProcessPopover({ endpoint, message, trigger, onDismiss, o
     };
     const observer = new ResizeObserver(schedule);
     observer.observe(element); observer.observe(anchor);
+    // Observe natural content height too: a max-height-constrained panel does
+    // not resize when a delayed response starts overflowing its body.
+    const content = element.querySelector('.response-times');
+    if (content) observer.observe(content);
     const column = anchor.closest('.message-column');
     if (column) observer.observe(column);
     document.addEventListener('pointerdown', outside, true);

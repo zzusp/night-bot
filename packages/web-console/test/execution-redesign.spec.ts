@@ -238,8 +238,10 @@ test('自动读取新阶段，后台暂停，恢复立即更新，关闭后不�
   await login(page)
   const dialog=await openMessageProcess(page)
   await expect(dialog).toContainText('等待回复')
+  const waitingHeight=(await dialog.boundingBox())!.height
   mode='confirmed'
   await expect(dialog).toContainText('700 毫秒',{timeout:8000})
+  await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(waitingHeight+50)
   expect(reads).toBeGreaterThanOrEqual(2)
   await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))})
   const hiddenReads=reads
@@ -252,4 +254,18 @@ test('自动读取新阶段，后台暂停，恢复立即更新，关闭后不�
   const closedReads=reads
   await page.waitForTimeout(3200)
   expect(reads).toBe(closedReads)
+})
+
+
+test('异步首读增高时浮层自行重新测量，不需要滚动或调整窗口', async ({page}) => {
+  let release:()=>void=()=>{}
+  const ready=new Promise<void>(resolve=>{release=resolve})
+  await page.route(endpoint,async route=>{await ready;await route.fulfill({json:pageData()})})
+  await login(page)
+  const dialog=await openMessageProcess(page)
+  await expect(dialog).toContainText('正在读取消息处理记录')
+  const loadingHeight=(await dialog.boundingBox())!.height
+  release()
+  await expect(dialog).toContainText('700 毫秒')
+  await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(loadingHeight+80)
 })
