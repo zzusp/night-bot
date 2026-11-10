@@ -36,7 +36,7 @@ export default function EvolutionContent({ item, onClose, onRefreshList }: {
           : body.comparison.status === 'no_previous' ? <EmptyState title="暂无可比较的上次内容" description={body.comparison.reason === 'new_entry' ? '这是新条目，尚无上次内容。' : body.comparison.reason === 'unsafe_previous' ? '上次内容无法安全展示；仍可查看当前内容。' : '此前未保留上次内容；后续更新后才能比较。'} />
           : <><div className="evolution-diff-summary"><Badge tone="success">新增 {body.comparison.added} 行</Badge><Badge tone="danger">删除 {body.comparison.removed} 行</Badge></div><p className="evolution-content-meta">上次版本 {String(body.previous?.revision ?? '未记录')} → 最新版本 {String(body.current.revision)}</p>
             {!body.comparison.added && !body.comparison.removed && <p role="status">可展示的内容没有变化。</p>}
-            <div className="evolution-diff" aria-label="最新与上次的逐行差异">{body.comparison.lines.map((line, index) => <div key={index} className={`evolution-diff-line evolution-diff-line--${line.type}`}><span className="evolution-diff-sign" aria-label={line.type === 'added' ? '新增' : line.type === 'removed' ? '删除' : '未变'}>{line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '}</span><span>{line.text || '\u00a0'}</span></div>)}</div>
+            <div className="evolution-diff" role="group" aria-label="最新与上次的逐行差异">{body.comparison.lines.map((line, index) => <div key={index} className={`evolution-diff-line evolution-diff-line--${line.type}`}><span className="evolution-diff-sign" aria-hidden="true">{line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '}</span><span><span className="board-sr-only">{line.type === 'added' ? '新增' : line.type === 'removed' ? '删除' : '未变'}：</span>{line.text || '\u00a0'}</span></div>)}</div>
           </>}
       </>}
     </div>

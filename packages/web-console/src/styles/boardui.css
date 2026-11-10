@@ -108,7 +108,8 @@ a:hover { color: var(--board-info); }
 ::selection { background: var(--board-info-soft); color: var(--board-text); }
 
 .board-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.board-button { position: relative; display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: var(--board-control-height); padding: 7px 12px; border: 1px solid transparent; border-radius: var(--board-radius-control); font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; transition: background var(--board-transition), border-color var(--board-transition), box-shadow var(--board-transition); }
+/* Foreground/background swap together, including hovered gradient/solid and toggle variant changes. */
+.board-button { position: relative; display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: var(--board-control-height); padding: 7px 12px; border: 1px solid transparent; border-radius: var(--board-radius-control); font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; transition: border-color var(--board-transition), box-shadow var(--board-transition); }
 .board-button--primary { color: var(--board-on-primary); background: var(--board-primary-gradient); border-color: var(--board-primary); box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%); }
 .board-button--primary:not(:disabled):hover { background: var(--board-primary-hover); }
 .board-button--primary:not(:disabled):active { box-shadow: inset 0 2px 3px rgb(0 0 0 / 15%); }
