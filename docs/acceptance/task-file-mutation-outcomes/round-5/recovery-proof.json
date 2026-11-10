@@ -1,0 +1,73 @@
+{
+  "observedAt": "2026-11-10T10:07:37.841Z",
+  "runtimeSource": "1d976a2cd9d7b7f66ae83cf7ae44e2e12bfde115",
+  "scope": "original-task-recovery-after-explicit-user-continuation",
+  "sameTask": true,
+  "sameExecutionSession": true,
+  "newExecutionSessionCreated": false,
+  "strictJournal": {
+    "allPhysicalBytesCommitted": true,
+    "portablePathsDecoded": true
+  },
+  "task": {
+    "status": "completed",
+    "control": "active",
+    "drained": true,
+    "requirementRevision": 2,
+    "controlRevision": 3,
+    "completionRequirementRevision": 2
+  },
+  "legacyClosure": {
+    "verified": true,
+    "count": 1,
+    "possiblePartialEffects": true,
+    "noReplay": true,
+    "evidenceHashVerified": true,
+    "originalInvocationCount": 1
+  },
+  "effects": {
+    "intents": 107,
+    "results": 106,
+    "successfulResults": 105,
+    "notStartedFailures": 1,
+    "unresolved": 0,
+    "newIntents": 62,
+    "newResults": 62
+  },
+  "frozenReport": {
+    "producerSessionVerified": true,
+    "requirementRevisionVerified": true,
+    "hashVerified": true
+  },
+  "delivery": {
+    "text": "delivered",
+    "report": "delivered",
+    "notificationCount": 2
+  },
+  "businessEvidence": {
+    "runtimeVerified": true,
+    "targetServices": 2,
+    "targetsHealthy": true,
+    "bothPipelinesSuccess": true,
+    "candidateHttpStatus": 200,
+    "resultHttpStatus": 200,
+    "downloadHashesVerified": true,
+    "resultIdentitySetMatches": true,
+    "resultFrozenRowsMatch": true,
+    "candidateBrowserPassed": true,
+    "candidateBrowserCellsMatchHttp": true,
+    "ownedSessionsLogoutVerified": true,
+    "fullGenerationTested": false,
+    "resultBrowserDownloadTested": false
+  },
+  "applicationHealth": {
+    "http": 200,
+    "status": "ok",
+    "recoveryIssueCount": 0
+  },
+  "privacy": {
+    "businessFilesCopied": false,
+    "businessIdentifiersIncluded": false,
+    "credentialsIncluded": false
+  }
+}
