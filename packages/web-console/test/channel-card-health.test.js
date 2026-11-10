@@ -48,3 +48,14 @@ test('saved lifecycle failure does not falsify the old adapter health',async()=>
   assert.equal(present({...row,runningConnectionState:'unknown',connected:true}).kind,'unknown')
   assert.equal(present({...row,connectionState:'listening',connected:true}).kind,'normal')
 })
+
+test('补拉错误按白名单投影，不泄露消息、账号、正文或任意原始异常',async()=>{
+ const {channelHealthPresentation:present,channelRecoveryError}=await import('../src/channel-health.ts')
+ for(const [lastError,expected] of [['CHANNEL_MESSAGE_ID_CONFLICT','CHANNEL_MESSAGE_ID_CONFLICT'],['DINGTALK_DEFERRED_HISTORY_INCOMPLETE','CHANNEL_HISTORY_INCOMPLETE'],['DINGTALK_HISTORY_INCOMPLETE','CHANNEL_HISTORY_INCOMPLETE'],['PRIVATE_ACCOUNT native-message secret-body','CHANNEL_HISTORY_RECOVERY_FAILED']]){
+  const item=view({healthy:false,state:'recovering',conversations:[{conversationId:'PRIVATE_TARGET',backfill:{state:'failed',lastError,lastErrorMessageId:'PRIVATE_MESSAGE'}}]})
+  assert.equal(item.runningErrorCode,expected);assert.equal(item.errorCode,expected);assert.equal(present(item).kind,'abnormal');assert.ok(channelRecoveryError(item.runningErrorCode));assert.equal(item.runningConnected,false)
+  assert.doesNotMatch(JSON.stringify(item),/PRIVATE_|native-message|secret-body/)
+ }
+ assert.equal(view({healthy:true,state:'recovering',conversations:[{backfill:{state:'failed',lastError:'CHANNEL_MESSAGE_ID_CONFLICT'}}]}).runningConnected,false,'补拉失败不能被矛盾的 healthy=true 掩盖')
+ for(const state of ['running','ok'])assert.equal(view({healthy:false,state:'recovering',conversations:[{backfill:{state,lastError:'CHANNEL_MESSAGE_ID_CONFLICT'}}]}).runningErrorCode,null,'旧失败文本不能覆盖当前补拉状态')
+})

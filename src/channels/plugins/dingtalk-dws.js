@@ -11,7 +11,8 @@ import {privateDirectory,atomicWrite,withLock,failure} from '../../runtime/files
 import {prepareSecrets} from '../../runtime/paths.js'
 import {resolveDingtalkBinding,verifyDingtalkBinding} from './dingtalk-binding.js'
 import {dingtalkChannelPaths,openDingtalkIngress,assertDingtalkStoragePath,assertDingtalkTargetSwitch,readDingtalkBinding} from './dingtalk-storage.js'
-import {dingtalkIngressAdapter} from './dingtalk-ingress.js'
+import {hash} from '../../memory/format.js'
+import {dingtalkIngressAdapter,dingtalkInputFingerprint,retainedDingtalkDuplicate} from './dingtalk-ingress.js'
 import {observeDwsLogin} from './dingtalk-auth.js'
 export {validateConfig} from './dingtalk-config.js'
 export const name='night-channel-dingtalk-dws',inject=['channels','runtimePaths']
@@ -104,9 +105,20 @@ export async function apply(ctx,config={},dependencies={}){
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
     const channelInput={type,channelId,...config.conversationName?{conversationName:config.conversationName}:{},...message.senderName&&message.senderName.trim()!==message.senderOpenDingTalkId?{senderName:message.senderName}:{},conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text||'[attachment]',...message.occurredAt?{sentAt:message.occurredAt}:{},...typeof message.mentionedAgent==='boolean'?{mentionedAgent:message.mentionedAgent}:{},...message.mentions?{mentions:message.mentions}:{},...message.messageAiSendFlag?{platformFlags:{messageAiSendFlag:message.messageAiSendFlag,automated:message.messageAiSendFlag==='DWS'}}:{},...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}}
     const identity=ctx.channels.identity(channelInput)
+    return ctx.channels.withInputTarget(identity.envelope,async()=>{
     if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId})){
       await ingressStore.consumed(message)
       return {accepted:false,processing:'ignored',reason:'own-notification',channelType:type,conversationId:message.groupId}
+    }
+    const context=ctx.channels.groupContext(identity.sessionId),prior=context?.messageFacts?.[message.messageId]
+    if(prior&&prior.payloadHash!==dingtalkInputFingerprint(identity)){
+      const sourceId='im:'+hash(JSON.stringify([identity.sessionId,message.messageId,identity.envelope.messageVersion??1]))
+      const source=await app.tasks.store.query({kind:'source.get',sourceId})
+      ctx.channels.assertInputTarget(identity.envelope)
+      if(retainedDingtalkDuplicate(identity,prior,source,{quoteSenderIds:[config.binding.actorId,...Object.values(context.participants??{})]})){
+        await ingressStore.consumed(message)
+        return {accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId}
+      }
     }
     try{
       const accepted=await ctx.channels.receive(channelInput)
@@ -116,6 +128,7 @@ export async function apply(ctx,config={},dependencies={}){
       if(error.code==='CHANNEL_NOTIFICATION_IDENTITY_PENDING')await ingressStore.deferred(message)
       throw error
     }
+    })
   }
   const serialize=work=>{const operation=settingsTail.then(work);settingsTail=operation.catch(()=>{});return operation}
   const plugin={channelId,get bindingIdentity(){return config.binding?{...config.binding}:undefined},get bindingActive(){return readyBound&&!closed},get name(){return config.name??channelId},get prompt(){return config.prompt},get enabled(){return config.enabled},

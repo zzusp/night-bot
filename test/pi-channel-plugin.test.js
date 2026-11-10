@@ -20,7 +20,7 @@ import {modelToolValues} from './fixtures/routing-official-model.js'
 import {validateConfig as validateDingtalkConfig} from '../src/channels/plugins/dingtalk-config.js'
 import {runDingtalkCli} from '../src/channels/plugins/dingtalk-cli.js'
 import {dingtalkChannelPaths,openDingtalkIngress} from '../src/channels/plugins/dingtalk-storage.js'
-import {dingtalkIngressAdapter} from '../src/channels/plugins/dingtalk-ingress.js'
+import {dingtalkIngressAdapter,dingtalkInputFingerprint,retainedDingtalkDuplicate} from '../src/channels/plugins/dingtalk-ingress.js'
 import {sendWorkflowNotification} from '../packages/dingtalk-core/group-message.js'
 import {taskNotificationRecovery} from '../packages/dingtalk-core/notification-delivery.js'
 import {selectDwsProfile,resolveDingtalkBinding} from '../src/channels/plugins/dingtalk-binding.js'
@@ -1070,4 +1070,59 @@ test('profile查询真实超时后等待进程退出，Host关闭期间保留安
  assert.equal(completed.exitCode,0);assert.equal(completed.stdout,'final-line-without-newline')
  await assert.rejects(createNodeDwsRunner({executable:join(f.root,'missing-dws-executable'),cwd:f.root}).run(['profile','list']),{code:'ENOENT'})
  t.diagnostic('真实PID存活时查询与Host关闭均未结算；实际退出后PID消失、锁释放、配置/水位未写；原超时保留，正常输出与spawn失败均排空。')
+})
+
+
+test('历史重复只认可冻结指纹，附件字段顺序和引用作者省略不重放业务',()=>{
+ const channelId='history-channel',principal='channel-actor-'+hash(JSON.stringify([channelId,'sender']))
+ const envelope={channelId,messageId:'file',text:'[文件] report.txt fileId: file-one 注意：如需下载使用dws drive download命令下载',resourceRefs:[{type:'fileId',resourceId:'file-one',name:'report.txt'}]}
+ const identity={principal,sessionId:'conversation',envelope},prior={version:1,payloadHash:dingtalkInputFingerprint(identity)}
+ const source={routed:true,groupId:'conversation',messageId:'file',version:1,actorId:principal,text:envelope.text,resources:[{name:'report.txt',resourceId:'file-one',type:'fileId'}]}
+ const incoming={...identity,envelope:{...envelope,text:'[文件] report.txt fileId: file-one',resourceRefs:[{type:'fileId',resourceId:'file-one',name:'report.txt',contentType:'text/plain'}],platformFlags:{messageAiSendFlag:'DWS',automated:true}}}
+ assert.equal(retainedDingtalkDuplicate(incoming,prior,source),true)
+ assert.equal(retainedDingtalkDuplicate(identity,prior,source),false,'完全相同输入不绕过原接纳')
+ for(const changed of [{routed:false},{groupId:'foreign'},{messageId:'other'},{version:2},{actorId:'other'},{text:'changed'},{resources:[{type:'fileId',resourceId:'other'}]}])assert.equal(retainedDingtalkDuplicate(incoming,prior,{...source,...changed}),false)
+ for(const changed of [{messageVersion:2},{text:'[文件] changed.txt fileId: file-one'},{mentionedAgent:true},{mentions:['new-recipient']},{quotedMessage:{messageId:'new',text:''}},{resourceRefs:[{type:'fileId',resourceId:'other'}]},{platformFlags:{messageAiSendFlag:'DWS',automated:true,extra:true}}])assert.equal(retainedDingtalkDuplicate({...incoming,envelope:{...incoming.envelope,...changed}},prior,source),false)
+ assert.equal(retainedDingtalkDuplicate(incoming,{...prior,payloadHash:'not-proven'},source),false)
+ const quote={messageId:'quoted',senderId:'bot',text:'retained reply'},quoted={...identity,envelope:{...envelope,text:'question',resourceRefs:[],quotedMessage:quote}}
+ const quotedPrior={version:1,payloadHash:dingtalkInputFingerprint(quoted)},quotedSource={...source,text:'question',resources:[],quote:{messageId:'quoted',actorId:'channel-actor-'+hash(JSON.stringify([channelId,'bot'])),text:'retained reply'}}
+ const missingSender={...quoted,envelope:{...quoted.envelope,quotedMessage:{messageId:'quoted',text:'retained reply'}}},options={quoteSenderIds:['unrelated','bot']}
+ assert.equal(retainedDingtalkDuplicate(missingSender,quotedPrior,quotedSource,options),true)
+ assert.equal(retainedDingtalkDuplicate(missingSender,quotedPrior,quotedSource),false,'没有可证明作者时拒绝猜测')
+ for(const quotedMessage of [{messageId:'other',text:'retained reply'},{messageId:'quoted',text:'changed'},{...quote,senderId:'other'},undefined])assert.equal(retainedDingtalkDuplicate({...missingSender,envelope:{...missingSender.envelope,quotedMessage}},quotedPrior,quotedSource,options),false)
+})
+
+test('真实 Host 冷恢复完成已处理文字附件和引用补拉，冲突仍保留恢复界',{timeout:nativeTestTimeout(90000)},async t=>{
+ const h=await defaultDwsEcho(t)
+ try{
+  h.release()
+  await h.receive(h.raw);await h.app.tasks.whenIdle()
+  const file={...h.raw,messageId:'retained-file',text:'[文件] report.txt fileId: file-one 注意：如需下载使用dws drive download命令下载',resourceRefs:[{type:'fileId',resourceId:'file-one',name:'report.txt'}]}
+  const quoted={...h.raw,messageId:'retained-quote',text:'Retained question',quotedMessage:{messageId:'race-visible',senderOpenDingTalkId:'same-account',text:'Exactly one visible reply'}}
+  for(const raw of [file,quoted]){await h.receive(raw);await h.app.tasks.whenIdle()}
+  const sources=await h.app.tasks.store.query({kind:'source.list'}),notifications=await h.app.tasks.store.query({kind:'notification.list'})
+  const facts=structuredClone(h.channels.groupContext(h.identity.sessionId).messageFacts),requests=h.f.requests.length,sends=h.sent.length
+  const pins=await openDingtalkIngress(h.f.host.ctx.runtimePaths,'dingtalk-dws')
+  for(const raw of [h.raw,file,quoted])await pins.deferred(raw)
+  await pins.drain()
+  const history=[{...h.raw,messageAiSendFlag:'DWS'},{...file,text:'[文件] report.txt fileId: file-one',resourceRefs:[{type:'fileId',resourceId:'file-one',name:'report.txt',contentType:'text/plain'}],messageAiSendFlag:'DWS'},{...quoted,quotedMessage:{messageId:'race-visible',text:'Exactly one visible reply'}}]
+  await h.restart(history)
+  await eventually(()=>h.plugin.health.healthy===true&&h.plugin.health.ingress.recovering===false,'已处理历史补拉确认完成',t.signal)
+  await h.app.tasks.whenIdle()
+  const checkpoint=JSON.parse(await readFile(h.ingressFile,'utf8'))
+  assert.equal(checkpoint.deferredMessages,undefined);assert.equal(checkpoint.recoveryFromAt,undefined);assert.ok(checkpoint.backfillThroughAt)
+  assert.deepEqual(h.channels.groupContext(h.identity.sessionId).messageFacts,facts)
+  assert.deepEqual(await h.app.tasks.store.query({kind:'source.list'}),sources)
+  assert.deepEqual(await h.app.tasks.store.query({kind:'notification.list'}),notifications)
+  assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,sends)
+  const hold=h.channels.holdChannelTarget('dingtalk-dws',{type:'chat-room',conversationId:'race-room'},{includeAllScopes:true})
+  try{await assert.rejects(h.receive(history[0]),{code:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})}finally{hold.release()}
+  await assert.rejects(h.receive({...history[0],text:'Actually changed'}),{code:'CHANNEL_MESSAGE_ID_CONFLICT'})
+  await h.restart([{...history[0],text:'Actually changed'},...history.slice(1)])
+  await eventually(()=>h.plugin.health.conversations?.[0]?.backfill.state==='failed','真实冲突使补拉失败',t.signal)
+  assert.equal(h.plugin.health.conversations[0].backfill.lastError,'CHANNEL_MESSAGE_ID_CONFLICT')
+  assert.equal(h.plugin.health.ingress.recovering,true);assert.equal(h.plugin.health.healthy,false)
+  assert.ok(JSON.parse(await readFile(h.ingressFile,'utf8')).recoveryFromAt)
+  assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,sends)
+ }finally{h.release();await h.f.close()}
 })

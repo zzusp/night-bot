@@ -4,7 +4,7 @@
 
 使用 Windows 11、PowerShell 7、Node.js 24+ 和 pnpm。这里的隔离实例用于本机验收，不替换已有安装，不注册开机服务；默认不监听或发送渠道消息。指定群接入按本页分阶段操作，真实连接和发送须分别得到明确授权。运行时使用源码 ESM 入口，项目没有独立的 `build` 脚本。
 
-已有 `scripts/deploy-local.ps1` 属于历史 DSH 安装流程，不适用于当前 Night Bot。代码升级只更新代码与依赖，保留各安装自己的 `data/`；不搬运账号文件、业务数据或旧 DSH 历史。
+已有 `scripts/deploy-local.ps1` 属于历史 DSH 安装流程，不适用于当前 Night Bot。代码升级只更新代码与依赖，保留各安装自己的 `data/`；不搬运账号文件、业务数据或旧 DSH 历史。正常 IPC 停机仍须等待业务、复盘、投影和真实进程排空，但不为每个任务遍历文件并生成离线 seal。需要备份时，在进程退出后显式执行 [单任务离线备份](../TASK-ARCHIVE.md#offline-commands)；普通停机后的 live-projection 不能直接当作封存备份。
 
 ## 只读检查
 
@@ -90,6 +90,8 @@ Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport
 
 前台停止使用 Ctrl+C，等待 launcher 正常退出。Node 父进程托管时，必须保留 IPC 通道并发送 `{type:'night-bot-shutdown'}`；launcher 会转发给服务，等现有关闭路径排空后退出。Windows 的 `Stop-Process` 或 `child.kill('SIGTERM')` 是强制终止，不能当成优雅排空证据。本机验收的临时监督器仅管理它自己启动的实例，不是正式 Windows 服务管理器。
 
+启动工作区只枚举一次受信会话目录；每份 Pi 日志仍完整校验提交链、身份和上下文，路径及链接检查保留，小批并行读取失败会先排空本批再报错。共享 cwd 只在同次索引内复用解析，后续索引重新核验，不使用跨次启动缓存或只读 header 绕过日志校验。完整重启计时应从正常停机请求直到 Web、resident 和全部启用渠道实际就绪，分别记录停机与启动恢复，不能仅记录停机耗时。
+
 不要清理仍被进程使用的数据、SQLite WAL、会话或临时文件。
 
 若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。继续处理须由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的显式续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
@@ -121,6 +123,16 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 ## 指定钉钉群接入
 
 复用上述独立安装、空闲 loopback 端口和私有 `data/config/config.json`，不启动第二个进程争用同一实例。具体群、profile、账号和凭据只进私有运行配置，不写进 Git 或公开证据。以下是可操作流程，不是本轮真实渠道验收通过声明；当前结果见 [唯一验收入口](../acceptance/resident-conversation-routing/goal.md)。
+
+### 历史恢复失败
+
+`recovering` 包含历史补拉、Host 接纳和持久消费水位，不只表示网络重连。卡片「历史恢复失败」按固定错误码说明：
+
+- `CHANNEL_MESSAGE_ID_CONFLICT`：旧消息与同 ID、同版本的冻结输入不一致。核对来源及插件去重证据，不直接改 DB、清游标或反复重启。
+- `CHANNEL_HISTORY_INCOMPLETE`：历史页不完整或已知暂缓消息仍缺失。核对原绑定账号的读取权限与查询完整性，不因供应商返回 `complete` 就丢弃暂缓来源。
+- `CHANNEL_HISTORY_RECOVERY_FAILED`：其他补拉/接纳错误。服务日志可能只有安全错误分类；当前 Web 不暴露任意原始异常、账号或消息 ID，不能用空错误码证明恢复成功。
+
+已处理重复项只在原作者/会话/版本及资源稳定身份一致、冻结 payloadHash 能完整重建时消费，兼容已观察到的 DWS 标记富化、文件提示/字段顺序和引用作者省略；未处理来源仍走原接纳，真实正文/作者/提及/资源变化仍失败关闭。恢复后核对实际插件健康、补拉成功、无遗留 deferred 和耐久水位，不仅检查子进程存在或端口可用。若更新修复代码，仍按正常停机、已合并版本发布及启动流程操作，不以手工注入旧消息代替验收。
 
 ### 隔离准备
 

@@ -353,7 +353,7 @@ test('学习记录区分已应用与候选，正文仅按已授权版本读取',
 test('渠道会话按聊天展示、隐藏输入框、保留不确定发送状态及空态', async ({page}) => {
   await login(page)
   await page.goto('/#/channels')
-  await expect(page.locator('.channel-card')).toHaveCount(4)
+  await expect(page.locator('.channel-card:not(.channel-card--add)')).toHaveCount(4)
   await screenshot(page, 'channels')
   await page.getByRole('searchbox', {name: '搜索会话', exact: true}).fill('不存在')
   await expect(page.getByRole('heading', {name: '没有匹配的会话', exact: true})).toBeVisible()
@@ -416,7 +416,7 @@ test('窄屏导航、键盘关闭与深色页面没有横向溢出', async ({pag
   await expect(open).toBeFocused()
   await open.click()
   await page.getByRole('dialog', {name: '导航', exact: true}).locator('a[href="#/tasks"]').click()
-  await expect(page.getByRole('heading', {name: '任务', exact: true, level: 2})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '任务', exact: true, level: 1})).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await screenshot(page, 'mobile-tasks')
   await page.setViewportSize({width: 1440, height: 960})
