@@ -22,7 +22,7 @@ async function login(page: Page, path: string) {
 
 for (const theme of ['light', 'dark']) {
   for (const path of ['/chat/sample-plan', '/channels/room-product', '/channels/custom-direct']) {
-    test(`${theme} ${path}: reference palette and borderless bubbles at desktop and mobile widths`, async ({page}) => {
+    test(`${theme} ${path}: neutral palette and borderless bubbles at desktop and mobile widths`, async ({page}) => {
       await login(page, path)
       await page.evaluate(theme => {document.documentElement.dataset.theme = theme}, theme)
       for (const width of [1440, 390]) {
@@ -35,7 +35,9 @@ for (const theme of ['light', 'dark']) {
             const s = getComputedStyle(element)
             const root = getComputedStyle(document.documentElement)
             const normalize = (value: string) => {
-              const [r, g, b] = value.trim().slice(1).match(/../g)!.map(value => parseInt(value, 16))
+              const hex = value.trim().slice(1)
+              const expanded = hex.length === 3 ? [...hex].map(char => char + char).join('') : hex
+              const [r, g, b] = expanded.match(/../g)!.map(value => parseInt(value, 16))
               return `rgb(${r}, ${g}, ${b})`
             }
             return {
@@ -48,8 +50,8 @@ for (const theme of ['light', 'dark']) {
             }
           }, role)
           expect(style.background).toBe(style.expected)
-          const referencePalette = theme === 'light' ? ['rgb(204, 223, 255)', 'rgb(244, 244, 245)'] : ['rgb(38, 59, 92)', 'rgb(48, 48, 51)']
-          expect(style.background).toBe(referencePalette[role === 'user' ? 0 : 1])
+          const expectedFill = theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(38, 38, 38)'
+          expect(style.background).toBe(expectedFill)
           expect(style.borders).toEqual(['0px', '0px', '0px', '0px'])
           expect(style.shadow).toBe('none')
           expect(style.outline).toBe('none')
@@ -59,7 +61,7 @@ for (const theme of ['light', 'dark']) {
           await expect(row).toHaveCSS('align-self', role === 'user' ? 'flex-end' : 'flex-start')
           backgrounds.push(style.background)
         }
-        expect(backgrounds[0]).not.toBe(backgrounds[1])
+        expect(backgrounds[0]).toBe(backgrounds[1])
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
         await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(path.startsWith('/chat') ? 1 : 0)
         await page.screenshot({path: test.info().outputPath(`${theme}-${width}.png`)})
