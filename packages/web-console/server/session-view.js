@@ -226,7 +226,14 @@ function projectEntries(snapshot, identity, secrets) {
   return items
 }
 
-function pageOptions({offset = 0, limit = 50}) {
+function pageOptions({offset = 0, limit = 50, stream = false, checkpoint, before, revision}) {
+  if (stream) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500 || offset !== 0 || revision
+      || checkpoint != null && !/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(checkpoint)
+      || before != null && (!checkpoint || !/^[a-f0-9]{64}$/.test(before))) fail('PAGE_INVALID')
+    return {limit}
+  }
+  if (checkpoint != null || before != null) fail('PAGE_INVALID')
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) fail('PAGE_INVALID')
   return {offset, limit}
 }
@@ -247,10 +254,43 @@ async function projection({base, identity, persistence, validIdentity, notStarte
 function sessionPage(value, options) {
   const {offset, limit} = pageOptions(options)
   if (value.status !== 'ready') return value
+  if (options.stream) return sessionStream(value, options)
   const rows = value.items, end = Math.max(0, rows.length - offset)
   const items = rows.slice(Math.max(0, end - limit), end).map(row => ({...row, text: row.text.slice(0, 16000), textTotal: row.text.length,
     textNextOffset: row.text.length > 16000 ? 16000 : null, ...(row.text.length > 16000 ? {truncated: true} : {})}))
   return {...value, items, total: rows.length, offset, limit, nextOffset: offset + items.length < rows.length ? offset + items.length : null}
+}
+
+// A checkpoint commits the entire authorized prefix, not just its last ID.
+// Appends remain readable without offset drift; branch/compaction/redaction or
+// a different session invalidates the prefix instead of mixing snapshots.
+function sessionStream(value, {limit = 200, checkpoint, before}) {
+  const rows = value.items
+  const proof = index => digest(JSON.stringify(rows.slice(0, index + 1)))
+  let anchor = -1
+  if (checkpoint) {
+    const [id, hash] = checkpoint.split('.')
+    anchor = rows.findIndex(row => row.id === id)
+    if (anchor < 0 || proof(anchor) !== hash) fail('SESSION_PAGE_STALE', 409)
+  }
+  let start, end
+  if (before) {
+    end = rows.findIndex(row => row.id === before)
+    if (end < 0 || end > anchor) fail('SESSION_PAGE_STALE', 409)
+    start = Math.max(0, end - limit)
+  } else if (checkpoint) {
+    start = anchor + 1
+    end = Math.min(rows.length, start + limit)
+  } else {
+    end = rows.length
+    start = Math.max(0, end - limit)
+  }
+  const last = before ? anchor : end - 1
+  const items = rows.slice(start, end).map(row => ({...row, text: row.text.slice(0, 16000), textTotal: row.text.length,
+    textNextOffset: row.text.length > 16000 ? 16000 : null, ...(row.text.length > 16000 ? {truncated: true} : {})}))
+  return {...value, items, total: rows.length, limit, nextOffset: null,
+    checkpoint: last >= 0 ? `${rows[last].id}.${proof(last)}` : null,
+    before: start > 0 && start < rows.length ? rows[start].id : null, hasNewer: !before && end < rows.length}
 }
 function messagePage(value, {messageId, offset = 0, limit = 16000, revision}) {
   if (typeof revision !== 'string' || !revision || typeof messageId !== 'string' || !/^[a-f0-9]{64}$/.test(messageId)

@@ -8,8 +8,14 @@ import {renderWorkLog} from './evidence.js'
 async function directory(path){
  const target=resolve(path),parent=dirname(target)
  if(parent!==target)await directory(parent)
- await mkdir(target,{mode:0o700}).catch(error=>{if(error.code!=='EEXIST')throw error})
- const stat=await lstat(target);if(!stat.isDirectory()||stat.isSymbolicLink())throw failure('WORK_LOG_PATH_UNSAFE')
+ // Windows rejects mkdir on an existing drive root with EPERM. Inspect every
+ // ancestor first, but still reject links and recheck a newly created directory.
+ let stat=await lstat(target).catch(error=>{if(error.code!=='ENOENT')throw error})
+ if(!stat){
+  await mkdir(target,{mode:0o700}).catch(error=>{if(error.code!=='EEXIST')throw error})
+  stat=await lstat(target)
+ }
+ if(!stat.isDirectory()||stat.isSymbolicLink())throw failure('WORK_LOG_PATH_UNSAFE')
 }
 async function regular(path){
  let stat=await lstat(path).catch(error=>{if(error.code!=='ENOENT')throw error})

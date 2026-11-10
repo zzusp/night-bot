@@ -26,6 +26,15 @@ test('local dates respect midnight, DST gaps and repeated hours',()=>{
  for(const at of ['2026-11-01T05:31:00Z','2026-11-01T06:31:00Z'])assert.equal(lastDueDay(Date.parse(at),{timezone:'America/New_York',time:'01:30'}),'2026-11-01')
  assert.equal(inDay('2026-11-10T16:00:00Z','2026-11-10','Asia/Shanghai',Date.parse('2026-11-11T00:00Z')),false)
 })
+test('existing directory ancestry including the volume root remains usable',async t=>{
+ const f=await fixture(t)
+ await mkdir(f.paths.state,{recursive:true})
+ await mkdir(join(f.paths.workLogs,'2026/11'),{recursive:true})
+ const rows=await f.runner.tick()
+ assert.equal(f.runner.lastError,null)
+ assert.deepEqual(rows.map(row=>[row.day,row.status]),[['2026-11-10','written']])
+ assert.ok((await readFile(f.file('2026-11-10'),'utf8')).length>0)
+})
 test('first activation waits until configured time and skips empty Markdown, restart catches missed dates',async t=>{
  const calls=[],f=await fixture(t,{now:'2026-11-10T10:00:00Z',collect:async({day})=>{calls.push(day);return day==='2026-11-10'?empty():active()}})
  await f.runner.tick();assert.deepEqual(calls,[])
@@ -51,7 +60,7 @@ test('collection failures remain retryable and shutdown joins in-flight work wit
 test('pre-existing files are preserved and unsafe output links fail closed',async t=>{
  const f=await fixture(t);await mkdir(join(f.paths.workLogs,'2026/11'),{recursive:true});await writeFile(f.file('2026-11-10'),'user-authored diary')
  await f.runner.tick();assert.equal(await readFile(f.file('2026-11-10'),'utf8'),'user-authored diary')
- const g=await fixture(t),outside=join(g.root,'outside');await mkdir(outside);await mkdir(g.paths.workLogs,{recursive:true});await symlink(outside,join(g.paths.workLogs,'2026'),'dir')
+ const g=await fixture(t),outside=join(g.root,'outside');await mkdir(outside);await mkdir(g.paths.workLogs,{recursive:true});await symlink(outside,join(g.paths.workLogs,'2026'),process.platform==='win32'?'junction':'dir')
  await g.runner.tick();assert.equal(g.runner.lastError,'WORK_LOG_PATH_UNSAFE');assert.deepEqual(await readdir(outside),[])
  const h=await fixture(t);await mkdir(join(h.paths.workLogs,'2026/11'),{recursive:true});await writeFile(join(h.root,'original'),'do not overwrite');await link(join(h.root,'original'),h.file('2026-11-10'));await h.runner.tick();assert.equal(h.runner.lastError,'WORK_LOG_PATH_UNSAFE')
 })

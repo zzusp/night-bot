@@ -31,18 +31,17 @@ test('自进化菜单、真实语义、筛选分页和返回保留 URL', async (
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '自进化', exact: true }).click();
   await expect(page).toHaveTitle('自进化 — Night Bot');
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(20);
-  await expect(page.locator('.evolution-card').first()).toContainText('读取次数7');
-  await page.getByText('查询范围与口径', { exact: true }).click();
-  await expect(page.locator('.evolution-coverage')).toContainText('盘点本 Bot 安装目录的技能文件');
-  await expect(page.locator('.evolution-coverage')).toContainText('不是完整历史');
+  await expect(page.locator('.evolution-card, .evolution-summary, .evolution-coverage')).toHaveCount(0);
+  await expect(page.getByRole('navigation', {name: '自进化记录类型'}).getByRole('link')).toHaveText(['记忆', 'Skills']);
+  await expect(page.locator('.evolution-table th')).toHaveText(['名称', '使用次数', '最近使用', '最近更新']);
   await page.getByRole('button', { name: '下一页', exact: true }).click();
-  await expect(page.locator('.evolution-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.evolution-table tbody tr')).toHaveCount(2);
   await expect(page.locator('.evolution-table')).not.toContainText('候选，未应用');
   await page.getByRole('navigation', { name: '自进化记录类型' }).getByRole('link', { name: 'Skills', exact: true }).click();
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(1);
   await page.goBack();
-  await expect(page).toHaveURL(/kind=all&offset=20/);
-  await expect(page.locator('.evolution-table tbody tr')).toHaveCount(3);
+  await expect(page).toHaveURL(/kind=memory&offset=20/);
+  await expect(page.locator('.evolution-table tbody tr')).toHaveCount(2);
 });
 
 test('自进化首次加载、失败重试、过期快照、权限撤销与空状态', async ({ page }) => {
@@ -70,7 +69,7 @@ test('自进化首次加载、失败重试、过期快照、权限撤销与空�
     await expect(page.locator('.evolution-card')).toHaveCount(0);
     state = 'empty'; await page.getByRole('button', { name: '重新获取', exact: true }).click();
     await expect(page.getByRole('heading', { name: '暂无自进化记录' })).toBeVisible();
-    await expect(page.locator('.evolution-card').first()).toContainText('读取次数未记录');
+    await expect(page.getByRole('navigation', {name: '自进化记录类型'})).toBeVisible();
   } finally { release(); }
 });
 

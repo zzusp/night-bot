@@ -2,7 +2,7 @@ import {savedWorkLogConfig,resolveWorkLogConfig,WORK_LOG_ENV_NAMES} from '../wor
 import {saveWorkLogConfiguration} from './work-log-configuration.js'
 import {updateConfig} from '../config.js'
 import {MODEL_ROLES, ROLE_MODEL_ENV_NAMES, resolveRoleModels, legacyRoleModelSelection, roleModelCatalog, materializeRoleModelSelection} from '../role-models.js'
-import {configVersion, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
+import {configVersion, modelCatalogView, saveModelCatalogEntry, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
 import {saveWebConfiguration} from './web-configuration.js'
 import {savePermissionConfiguration} from './configuration.js'
 import {piAuthentication} from '../pi-provider-auth.js'
@@ -67,6 +67,11 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   return {configured:value.configured===true,writable:slot.kind==='record'||!value.configured||value.source==='file',source:value.source==='file'?'saved':value.source?'environment':value.configured?'saved':'none'}
  }
  return {
+  modelCatalog:()=>run(async()=>{const config=await read();return modelCatalogView(config,getEnvironment(),getFallbackRoleModels(config))}),
+  saveModelEntry:(body,{checkOnly=false}={})=>run(async()=>{
+   const result=await saveModelCatalogEntry(file,{...body,checkOnly},getEnvironment(),getFallbackRoleModels)
+   return {ok:true,changed:result.changed,checkOnly,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
+  }),
   appearance:()=>run(async()=>appearance((await read()).assistant)),
   view:()=>run(async()=>{
    const config=await read(),workLog=workLogView(config),profile=config.providers[config.model.provider],slot=await modelSecret(config),roleModels=roleView(config)

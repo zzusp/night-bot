@@ -21,6 +21,14 @@ const pageNumber = (query, key, fallback, max = 1_000_000) => {
   if (!/^\d+$/.test(raw) || Number(raw) > max || key === 'limit' && Number(raw) < 1) fail('PAGE_INVALID')
   return Number(raw)
 }
+const sessionOptions = query => {
+  if (query.get('stream') === '1') {
+    if ([...query.keys()].some(key => !['stream', 'limit', 'checkpoint', 'before'].includes(key))) fail('PAGE_INVALID')
+    return {stream: true, limit: pageNumber(query, 'limit', 200, 500), checkpoint: query.get('checkpoint'), before: query.get('before')}
+  }
+  if ([...query.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
+  return {offset: pageNumber(query, 'offset', 0), limit: pageNumber(query, 'limit', 50, 50), revision: query.get('revision')}
+}
 const send = (response, status, body) => {
   if (response.destroyed) return
   response.writeHead(status, {'content-type': 'application/json; charset=utf-8'})
@@ -123,6 +131,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if(!settings) fail('SETTINGS_UNAVAILABLE',503)
       try {
         if(request.method==='GET'&&path==='/api/settings') return send(response,200,await settings.view())
+        if(request.method==='GET'&&path==='/api/settings/model-catalog') return send(response,200,await settings.modelCatalog())
+        if(request.method==='PUT'&&path==='/api/settings/model-catalog') return send(response,200,await settings.saveModelEntry(await jsonBody(request,['action','provider','id','model','name','expectedVersion','confirm'],4096)))
         if(request.method==='GET'&&path==='/api/settings/channels') return send(response,200,await settings.plugins())
         if(request.method==='PUT'&&path==='/api/settings/appearance') return send(response,200,await settings.saveAppearance(await jsonBody(request,['name','icon','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/model') return send(response,200,await settings.saveModel(await jsonBody(request,['model','api','baseURL','expectedVersion'],4096)))
@@ -134,6 +144,9 @@ export async function createWebConsole({channels, paths, config, getApplication,
         fail('NOT_FOUND',404)
       } catch(error) {
         const codes={INVALID_CONFIG:400,CHANNEL_ACTIVATION_FAILED:503,CHANNEL_RECONFIGURING:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409,CHANNEL_INSTANCE_EXISTS:409}
+        if(['SETTINGS_MODEL_IN_USE','SETTINGS_MODEL_EXISTS'].includes(error.code))fail(error.code,409)
+        if(error.code==='SETTINGS_TASK_ROLE_REQUIRED')fail(error.code,409)
+        if(['SETTINGS_MODEL_CATALOG_INVALID','SETTINGS_MODEL_LAST_REQUIRED','SETTINGS_MODEL_DELETE_CONFIRMATION_REQUIRED'].includes(error.code))fail(error.code,400)
         if(error.code?.startsWith('NIGHT_BOT_WORK_LOG_'))fail('SETTINGS_INPUT_INVALID',400)
         if(['UNSUPPORTED_REASONING_EFFORT','NIGHT_BOT_MODEL_ROLE_INVALID','NIGHT_BOT_ROLE_MODELS_INVALID','NIGHT_BOT_PROVIDER_PROFILE_REQUIRED','NIGHT_BOT_MODEL_NOT_CONFIGURED'].includes(error.code)||error.code?.startsWith('NIGHT_BOT_ROLE_MODEL_INVALID:'))fail('SETTINGS_INPUT_INVALID',400)
         if(codes[error.code]) fail(error.code,codes[error.code])
@@ -321,10 +334,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const value = await app.tasks.taskDetail(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
       if (task[2] === 'session') {
-        if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
         return send(response, 200, await taskSessionView({task: value, persistence: getSessionPersistence(),
-          offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50),
-          revision: url.searchParams.get('revision'), secrets: [credential.token]}))
+          ...sessionOptions(url.searchParams), secrets: [credential.token]}))
       }
       return send(response, 200, taskView(value, [credential.token]))
     }
@@ -395,8 +406,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const task = {taskId, session: {sessionId: value.sessionId, sessionBound: value.sessionBound}}
       const options = {task, persistence: getSessionPersistence(), secrets: [credential.token]}
       if (chatTask[4]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])}))
-      if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
-      return send(response, 200, await taskSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
+      return send(response, 200, await taskSessionView({...options, ...sessionOptions(url.searchParams)}))
     }
     const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {
@@ -405,8 +415,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
       const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), secrets: [credential.token]}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
-      if ([...url.searchParams.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
-      return send(response, 200, await routerSessionView({...options, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 50, 50), revision: url.searchParams.get('revision')}))
+      return send(response, 200, await routerSessionView({...options, ...sessionOptions(url.searchParams)}))
     }
     const chat = /^\/api\/chat\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && chat) {

@@ -50,7 +50,7 @@ function sampleTasks() {
 }
 
 // 明确的 official projection 形状样例；真实 Host/Pi 集成另由 host.test.js 验证。
-function sampleSession(task) {
+function sampleSession(task, historyRounds = 0) {
   const sessionId = task.session.sessionId
   const projected = [
     {sourceEntry: {id: 'fixture-source', type: 'message', timestamp: at(45)}, messages: [
@@ -70,6 +70,19 @@ function sampleSession(task) {
       {role: 'assistant', content: [{type: 'text', text: '资料读取完成。接下来核对差异，保留来源与证据；未确认的问题仍会明确标注。'}], stopReason: 'stop'},
     ]},
   ]
+  // Isolated scroll QA only. No real task data, model calls or production writes.
+  for (let round = 0; round < historyRounds; round++) {
+    const entry = (suffix, messages) => ({sourceEntry: {id: `scroll-${round}-${suffix}`, type: 'message', timestamp: at(historyRounds - round)}, messages})
+    projected.push(
+      entry('input', [{role: 'user', content: [{type: 'text', text: `第 ${round + 1} 轮：继续核对这一组资料，保留来源和待确认项。`}]}]),
+      entry('start', [{role: 'assistant', content: [{type: 'text', text: '先读取相关材料，再交叉核对结果。已完成的步骤与本轮新增内容分别保留。'},
+        {type: 'toolCall', id: `scroll-read-${round}`, name: 'read', arguments: {offset: round * 20, limit: 20}}], stopReason: 'toolUse'}]),
+      entry('read-result', [{role: 'toolResult', toolName: 'read', toolCallId: `scroll-read-${round}`, content: [{type: 'text', text: '已读取本组资料。\n来源完整，待确认差异保留在核对清单。'}]}]),
+      entry('search', [{role: 'assistant', content: [{type: 'toolCall', id: `scroll-grep-${round}`, name: 'grep', arguments: {pattern: '来源与结论', include: '*.md'}}]}]),
+      entry('search-result', [{role: 'toolResult', toolName: 'grep', toolCallId: `scroll-grep-${round}`, content: [{type: 'text', text: '找到 2 条相关记录。\n已逐项比较本组资料，未发现额外缺失。'}]}]),
+      entry('end', [{role: 'assistant', content: [{type: 'text', text: `第 ${round + 1} 轮核对完成。已保留读取与检索结果，未确认事项不会当作已完成结论。`}], stopReason: 'stop'}]),
+    )
+  }
   return {
     header: {id: sessionId},
     audit: [{domain: 'task', kind: 'identity', version: 1, payload: {taskId: task.taskId, sessionId}}],
@@ -78,7 +91,7 @@ function sampleSession(task) {
   }
 }
 
-export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist} = {}) {
+export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist, historyRounds = 0} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-browser-fixture-'))
   const paths = runtimePaths({installRoot:root,dataDir:'data'})
   await prepareRuntimePaths(paths)
@@ -113,7 +126,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   plugins.set('dingtalk-work', {health: structuredClone(dingtalkHealth), bindingActive: dingtalkBindingActive})
   const tasks = empty ? [] : sampleTasks()
   if (!empty) {tasks.find(task => task.taskId === 'task-history-16').groupId = 'custom-room'; tasks.find(task => task.taskId === 'task-history-17').groupId = 'custom-direct'}
-  const snapshots = new Map(tasks.map(task => [task.session.sessionId, sampleSession(task)]))
+  const snapshots = new Map(tasks.map(task => [task.session.sessionId, sampleSession(task, historyRounds)]))
   const persistence = {async readNative(sessionId, options) {
     if (options?.requireComplete !== true) throw Error('fixture requires complete Pi context')
     if (sessionId === 'fixture-pi-task-schedule') throw Object.assign(Error('fixture commit pending'), {code: 'PI_SESSION_UNCOMMITTED_TAIL'})
