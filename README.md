@@ -10,6 +10,8 @@ Night Bot 是基于 Pi 的个人助理 Agent 初始化套件，任何人都可�
 
 需要 Node.js 24+、pnpm。只有启用钉钉渠道才需要 DWS CLI；默认关闭渠道外发。Linux 上需要受限 shell 或模型进程工具时，宿主必须提供可用的 bubblewrap；Native sandbox 再按平台能力选择 bwrap/Landlock 等实现，隐私能力不可用时拒绝执行，不自动切换权限模式。
 
+macOS 的安装、Web 构建、启动命令和当前实测限制见 [Mac 本机运行](docs/ops/mac-local-runtime.md)。本机已验证服务与无命令任务可运行，但默认命令执行及 32 轮续办尚未通过，不能据此宣称 Mac 完整可用。分组测试入口在 macOS 自动使用物理临时路径，生产安装的目录安全检查不变。
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm init:assistant --actor YOUR_OWN_ID --provider openai --model YOUR_MODEL --key-env OPENAI_API_KEY

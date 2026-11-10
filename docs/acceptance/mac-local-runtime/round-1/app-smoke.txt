@@ -1,0 +1,22 @@
+{
+  "installRoot": "/Users/sunpeng/workspace/night-bot/data/workspaces/mac-runtime-3tUhkf",
+  "core": "http://127.0.0.1:50334",
+  "web": "http://127.0.0.1:50335",
+  "health": "ok",
+  "staticAssets": "PASS",
+  "unauthenticatedStatus": 401,
+  "loginStatus": 200,
+  "mode": "ask",
+  "protection": {
+    "status": "not-attested",
+    "backend": null,
+    "description": "每次命令执行仍需后端强制隔离；当前Host未提供成功执行证明，缺后端时拒绝，不自动退完全访问。"
+  },
+  "taskStatus": "completed",
+  "drained": true,
+  "modelRequests": 3,
+  "shellResults": [
+    "invalid arguments: \"description\": missing"
+  ]
+}
+PASS: managed shutdown exited 0 and both listeners closed; isolated installation retained, no real vendor calls.

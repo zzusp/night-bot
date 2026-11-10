@@ -578,6 +578,7 @@ for(const mode of ['timeout','error'])test('default optional DWS defers unresolv
     h.emit(deferred)
     const checkpoint=await eventually(async()=>{try{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.recoveryFromAt&&state}catch(error){if(error.code!=='ENOENT')throw error}},'typed deferral persists its original lower bound',t.signal).catch(async error=>{t.diagnostic(JSON.stringify({mode,health:h.plugin.health,notifications:(await h.app.tasks.store.query({kind:'notification.list'})).map(n=>({id:n.id,state:n.state,hasAck:!!n.ack,receipt:n.receipt})),triaged:h.triaged,errors:h.f.errors.map(value=>({code:value.code,message:value.message}))}));throw error})
     assert.ok(Date.parse(checkpoint.recoveryFromAt)<=Date.parse(deferred.occurredAt));assert.ok(Date.parse(deferred.occurredAt)<Date.parse(h.raw.occurredAt)-30000)
+    await eventually(()=>h.plugin.health.conversations.some(group=>group.listener?.lastEventError==='CHANNEL_NOTIFICATION_IDENTITY_PENDING'),'typed deferral reaches bridge health after persistence',t.signal)
     await h.absent(deferred);assert.equal(h.plugin.health.healthy,false)
     const other={...deferred,groupId:'other-room',messageId:'other-scope-real-message'}
     assert.notEqual((await h.channels.plugins.get('other-room-dws').acceptHistoryMessage(other)).reason,'own-notification')

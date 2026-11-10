@@ -1,0 +1,70 @@
+$ node --test test/*.test.js
+✔ channel display names, missing names and mixed recent pagination never use native IDs as names (65.227015ms)
+✔ 真实 Host 接收到无任务首答、Router直接答复、未知投递与静默，经HTTP逐消息核验 (25470.471823ms)
+ℹ [{"messageId":"reply-silent","status":"no-reply","durationMs":null},{"messageId":"reply-unknown","status":"unconfirmed","durationMs":null},{"messageId":"reply-direct","status":"confirmed","durationMs":3846},{"messageId":"reply-two","status":"confirmed","durationMs":2118},{"messageId":"batch-two","status":"confirmed","durationMs":2383},{"messageId":"batch-one","status":"confirmed","durationMs":2359},{"messageId":"reply-one","status":"confirmed","durationMs":3687}]
+✔ discovered Web plugin reaches real channel triage and durable reply readback; restart preserves one delivery (13502.467835ms)
+✔ 首答按来源版本关联，仅确认送达后计算，排除其他消息与后续任务交付 (3.946257ms)
+✔ 历史 Router 回复用途不猜测，多条回复选最早确认，批次共享不按消息均分 (1.959154ms)
+✔ real idle Router rotation retains previous committed business history (20807.848113ms)
+ℹ {"activeGeneration":2,"currentRows":5,"oldGeneration":1,"oldProjectionEntries":33,"oldMessageRoles":["system","custom","assistant","toolResult","assistant","system","custom","assistant"]}
+✔ optional plugin disabled does not register lifecycle or open storage (2.648323ms)
+✔ real HTTP requires token login, same-origin mutation and CSRF; logout revokes the session (506.092175ms)
+✔ DNS rebinding, cross-site fetch and request identity injection are rejected (146.173705ms)
+✔ chat admission preserves configured identity and exact text; retries read the original receipt (169.6846ms)
+✔ uncertain admission is durable and never automatically replayed, including after restart (101.450534ms)
+✔ resolved Host refusal is rejected and never presented as admitted or replayed (51.549249ms)
+✔ transport delivery uses durable exact receipts, supports readback after restart and refuses conflict (309.467668ms)
+✔ task/channel views only project existing facts and never return configuration secrets or private paths (118.167638ms)
+✔ 渠道连接阶段只用真实 health 白名单，启用状态和私有错误不能冒充连接 (82.99667ms)
+✔ partial overview failure preserves other sections without reflecting internal errors (102.521886ms)
+✔ overview isolates throwing channel health and conversation reads from healthy task sections (69.248055ms)
+✔ task details and dialogue whitelist nested facts and redact displayed credentials and paths (123.758758ms)
+✔ task blocker HTTP projection flattens all three real collections and excludes their private payloads (34.092995ms)
+✔ assets use security headers; missing assets do not stop APIs (41.215865ms)
+✔ closing a browser request does not abort already admitted channel work (126.457808ms)
+✔ pending ledger admission becomes unknown after reopening (65.656314ms)
+✔ conversation title and admission state follow durable insertion order across equal timestamps and clock rollback (43.801137ms)
+✔ credential reads reject hard links and malformed oversized files without replacing them (9.607738ms)
+✔ expired sessions fail closed and login attempts are bounded (1.663482ms)
+✔ evolution endpoint authenticates, binds operator scope, validates pagination and redacts names (204.985482ms)
+✔ evolution unavailable service and failed reads never become zero counts (176.55184ms)
+✔ recent history exposes channel routes alongside Web chats and preserves verified operator name (38.035092ms)
+✔ singleton Web HTTP blocks arbitrary extra chats, concurrent creation and survives restart (84.830333ms)
+✔ singleton ledger pins earliest scope history, keeps histories and unknown receipts without replay (152.721233ms)
+✔ historical Web routes stay normal entry points but new requests continue only canonical history (55.468414ms)
+✔ concurrent first explicit Web IDs admit one conversation, not two (47.643495ms)
+▶ Web operator names normalize before real channel schema validation and receipt reservation
+  ✔ "" (110.742433ms)
+  ✔ "   " (92.546377ms)
+  ✔ "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (40.175448ms)
+  ✔ "  显示名  " (113.839852ms)
+  ✔ 42 (118.657889ms)
+✔ Web operator names normalize before real channel schema validation and receipt reservation (477.276728ms)
+✔ 渠道执行接口按可见会话与真实任务归属读取，归档任务不依赖当前消息页 (98.27124ms)
+✔ 服务重启撤销浏览器会话但不轮换访问令牌，原令牌仍可显式重连 (43.004953ms)
+✔ 设置API沿用浏览器鉴权、同源和CSRF，拒绝注入且异常不反射凭据 (139.099557ms)
+✔ Web transport binds retained delivery and message reads to stored channel and sender ownership (39.144457ms)
+✔ task session API reads actual committed Pi source and tool records without changing history (11430.206461ms)
+✔ learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 scope/version 授权且读取不触发推理 (4496.842118ms)
+✔ execution view uses task-bound strict Pi projection and excludes private system/thinking/parameters/materials (70.478597ms)
+✔ session pages keep revision identity and latest-first pages without claiming raw complete history (2.628652ms)
+✔ foreign task/session identities fail closed before exposing messages (0.906885ms)
+✔ uncommitted tails, absent not-yet-started sessions and unreadable journals remain explicit without replay (14.5653ms)
+✔ 长正文按固定 revision 续读完整，跨 session、失效版本及越界不能读取 (40.631242ms)
+✔ 厂商复用 callId 的不同轮次保持精确配对，未配对重复 ID 不猜归属 (2.23678ms)
+✔ Router 执行记录绑定真实会话与 generation，异步读取中换代或跨会话来源失败关闭 (2.791655ms)
+✔ 工具公开字段逐项准入，未知工具、嵌套扩展与孤立结果不能通过任何分页泄漏 (10.809638ms)
+✔ task_result长业务输入保真分页，正式回执只选Host标量且孤立结果不猜策略 (3.241597ms)
+✔ 安装操作者已获准任务read的JSON样式业务原文不改写，所有正文页无损回拼 (16.188532ms)
+✔ 真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真实调用/用户引用/文件读取与更新分别核实 (18173.693105ms)
+ℹ {"sharedScope":"bot","files":4,"available":2,"model":2,"user":1,"fileReads":1,"bodyUpdated":true}
+✔ real task HTTP exposes running, actual tool receipt, completion and blocked question (10631.618967ms)
+ℹ {"running":"running","liveSession":"ready","afterTool":"ready","completed":"completed","blocked":"waiting","publicRecords":5}
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57683.217921

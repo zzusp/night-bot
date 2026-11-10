@@ -1,0 +1,123 @@
+$ node scripts/test-pi.mjs routing
+✔ all four default dispositions keep original handling independent of an unknown short reply and survive cold deduplication (4569.718233ms)
+✔ durable receipt echoes tolerate later DWS flags without replacing existing message facts (3233.114896ms)
+ℹ {"case":"existing-fact-dws-echo","coldFactsUnchanged":true,"preciseEchoIgnored":true,"changedContentActorFlagsRejected":true,"crossChannelAndConversationKept":true,"receiptlessSameAccountKept":true,"realDwsExecuted":false}
+✔ in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued (6669.997494ms)
+✔ a message arriving during tool-free handoff is delivered exactly once to the next generation (3667.420138ms)
+✔ cold recovery completes the uniquely committed next generation after router.candidate.commit fails (2917.762294ms)
+✔ cold recovery completes the uniquely committed next generation after router.publish fails (2936.561411ms)
+✔ successive idle cycles retain the short handoff without reloading old payloads or self-triggering empty rotations (7007.293674ms)
+✔ invalid tool-free handoff retains the current native generation without publishing a candidate: blank-intent (2084.98986ms)
+✔ invalid tool-free handoff retains the current native generation without publishing a candidate: missing-source (2072.364414ms)
+✔ invalid tool-free handoff retains the current native generation without publishing a candidate: utf8-budget (2155.217408ms)
+✔ invalid tool-free handoff retains the current native generation without publishing a candidate: referents-object (2071.849862ms)
+✔ legacy prepared replyRequest and cold unknown retain original payload bytes while neutral retries stay idempotent (5060.154613ms)
+ℹ {"case":"legacy-reply-request-neutral-retry","preparedReused":true,"coldState":"unknown","originalPayloadAndDigestPreserved":true,"semanticParameterConflicts":4,"additionalSends":0,"realVendorExecuted":false}
+✔ cold Router resumes an exact legacy pending packet before a later event without changing its body or replaying either batch (3799.487538ms)
+ℹ {"case":"legacy-router-pending-before-later-event","originalGeneration":1,"originalPacketPreserved":true,"originalAdmissions":1,"laterEventHandledSeparately":true,"restartModelReplay":false,"realVendorExecuted":false}
+✔ an admitted failed Router batch resumes only through an explicit Host checkpoint after strict cold recovery (3315.327133ms)
+ℹ {"case":"explicit-failed-router-batch-continuation","originalMemoryAdmissionBound":true,"liveHandoffRecoverySerialized":true,"strictCold":true,"originalPacketUnique":true,"originalAdmissionUnique":true,"originalPrefixUnchanged":true,"concurrentAndStaleRejectedBeforeInference":true,"settled":true,"legalHandoff":true,"coldReplay":false,"realVendorExecuted":false}
+✔ an admitted failed Router checkpoint refuses a newer pending business input before inference (2605.222139ms)
+ℹ {"case":"failed-router-newer-pending-refusal","originalBatch":30,"pendingTotal":31,"pagedOverflowInvisible":true,"originalPrefixUnchanged":true,"newerEventRetained":true,"modelRequestsUnchanged":true,"realVendorExecuted":false}
+✔ a second failed Router continuation retains its checkpoint history and cannot replay the consumed proof (3011.977147ms)
+ℹ {"case":"router-continuation-fails-again","originalMemoryAdmissionBound":true,"currentRestoredAfterFailure":true,"newNativeFailureRetained":true,"originalInputUnique":true,"consumedCheckpointRefusedAfterCold":true,"modelRequestsUnchangedAfterCold":true,"realVendorExecuted":false}
+✔ an unsettled Router cannot mask an unrelated conversation recovery failure (2238.66521ms)
+ℹ {"case":"unsettled-router-does-not-mask-other-recovery-error","originalUnsettledRetained":true,"unrelatedStoreFailurePropagated":true,"modelRequestsUnchanged":true,"realVendorExecuted":false}
+✔ Router close interrupts an active official Pi request before joining its tail without replaying the settled tool (3031.236133ms)
+✔ Router close joins the exact native Pi cancellation during request preparation without replaying its committed tool (3011.965008ms)
+✔ Router close preserves an actually committed undelivered packet and cold recovery admits it only once (3352.964366ms)
+✔ Router close joins and disposes an actual late-created official handle without admitting a batch or rotating generation (1727.97038ms)
+✔ Router close cannot swallow an admission PAUSED failure produced before its own interruption (1303.593848ms)
+ℹ {"pausedCloseTrace":[{"at":"interrupt","priorCode":"PI_BUSINESS_ADMISSION_PAUSED","sameReason":false},{"at":"abort","code":"PI_OFFICIAL_ACTOR_NOT_LIVE"},{"at":"release","code":"PI_BUSINESS_ADMISSION_PAUSED"}]}
+ℹ {"routerHostClose":{"message":"Task service shutdown failed","stack":"AggregateError: Task service shutdown failed\n    at file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1939:30\n    at async Object.close (file:///Users/sunpeng/workspace/night-bot/test/fixtures/resident-router-host.js:66:11)\n    at async waitForActual (node:assert:646:5)\n    at async strict.rejects (node:assert:769:25)\n    at async TestContext.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/pi-resident-router-flow.test.js:670:171)\n    at async Test.run (node:internal/test_runner/test:1208:7)\n    at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)","errors":[{"message":"Conversation shutdown failed","stack":"AggregateError: Conversation shutdown failed\n    at file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1927:34\n    at async attempt (file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1915:40)\n    at async file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1924:7\n    at async Object.close (file:///Users/sunpeng/workspace/night-bot/test/fixtures/resident-router-host.js:66:11)\n    at async waitForActual (node:assert:646:5)\n    at async strict.rejects (node:assert:769:25)\n    at async TestContext.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/pi-resident-router-flow.test.js:670:171)\n    at async Test.run (node:internal/test_runner/test:1208:7)\n    at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)","errors":[{"message":"Router shutdown failed","stack":"AggregateError: Router shutdown failed\n    at file:///Users/sunpeng/workspace/night-bot/src/channels/router-lifecycle.js:287:34\n    at async Promise.allSettled (index 1)\n    at async file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1925:23\n    at async attempt (file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1915:40)\n    at async file:///Users/sunpeng/workspace/night-bot/packages/dingtalk-core/task-session-service.js:1924:7\n    at async Object.close (file:///Users/sunpeng/workspace/night-bot/test/fixtures/resident-router-host.js:66:11)\n    at async waitForActual (node:assert:646:5)\n    at async strict.rejects (node:assert:769:25)\n    at async TestContext.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/pi-resident-router-flow.test.js:670:171)\n    at async Test.run (node:internal/test_runner/test:1208:7)","errors":[{"message":"PI_BUSINESS_ADMISSION_PAUSED","code":"PI_BUSINESS_ADMISSION_PAUSED","stack":"Error: PI_BUSINESS_ADMISSION_PAUSED\n    at fail (file:///Users/sunpeng/workspace/night-bot/src/runtime/pi-business-admission.js:18:32)\n    at Object.deliver (file:///Users/sunpeng/workspace/night-bot/src/runtime/pi-business-admission.js:114:43)\n    at Object.deliver (file:///Users/sunpeng/workspace/night-bot/src/runtime/pi-official-session.js:71:34)"}]}]}]}}
+✔ offline upgrade check is zero-write; authenticated pending sources convert while uncertain and unlinked history is held (445.985673ms)
+✔ offline upgrade rejects source drift after check and unknown effects before any schema write (293.07461ms)
+✔ offline check refuses an external contexts parent junction without touching installation or target (103.805825ms)
+✔ default first tier keeps silent and reply-only messages out of Router and task execution (2468.064565ms)
+✔ incomplete first-tier result remains pending instead of becoming a silent completed disposition (1046.594435ms)
+✔ default ingress shares room arrangements without merging private senders or channel namespaces (2660.919031ms)
+✔ conversation task questions default to operator Web intake and explicit requester preserves the original scope/session (10000.962019ms)
+ℹ {"case":"operator-requester-routing","defaultOperatorWebOnly":true,"explicitOperatorWebOnly":true,"requesterSourcePreserved":true,"requesterWebCasResumeSameSession":true,"realVendorExecuted":false}
+✔ first-tier contract preserves all four independent handling/reply dispositions without splitting tasks (8.334867ms)
+✔ first-tier rejects incomplete, duplicate, stale and foreign source decisions rather than treating them as silence (1.521845ms)
+✔ first-tier accepts exactly 15 original messages but cannot authorize an overflow item in the current batch (0.815275ms)
+✔ A completion is not dependency acceptance; evidence and the current Router decision release B once even when notification is unknown (140.625862ms)
+✔ insufficient evidence and explicit wait or continue never release B (93.930312ms)
+✔ a prior completion and assessment cannot authorize B after A is reopened (106.713727ms)
+✔ B cancellation defeats a previously prepared successful dependency evaluation (97.696331ms)
+✔ self-dependencies and cycles reject the complete plan atomically (79.241879ms)
+✔ Router plan uses current source versions and cannot borrow another conversation authorization (64.459618ms)
+✔ single-task B archive excludes A content and Router history; isolated restore holds its prerequisite and all delivery (179.006633ms)
+✔ old v1 task ledger validates but Topic facts restore only as held historical audit (146.26857ms)
+✔ archive validation rejects foreign rows, uncovered sources and added shared Router tables even after digest recomputation (64.91095ms)
+✔ triage commits handling and reply independently with durable per-source-version deduplication (94.72979ms)
+✔ same-goal rework follows the drained original task version and releases B only after accepting the new completion (105.276795ms)
+✔ a shared conversation does not allow another sender to cancel the original author task (74.133497ms)
+✔ a newer authorization source invalidates both a prepared assessment and a previously satisfied dependency (84.625993ms)
+✔ all prerequisite assessments are required; accepting A cannot bypass an independent prerequisite C (105.178558ms)
+✔ a fabricated evidence reference cannot release a dependency even when it is nonempty (84.788611ms)
+✔ stable plan operation IDs survive physical-session changes without duplicating tasks or effects (87.608502ms)
+✔ a consumed Router event cannot advance its business cursor twice under a new operation ID (69.40606ms)
+✔ archiving A retains its original completion event and evidence for B acceptance without copying A into B (104.953617ms)
+✔ new authenticated control sources remain complete in a portable task archive and restore held (293.761155ms)
+✔ ordinary Web task revisions and control changes rebind B dependencies before current evidence evaluation (100.649772ms)
+✔ stable task action retries ignore physical generation and live binding without duplicating source context (87.23047ms)
+✔ dependency arrangement replaces the complete set atomically with version, quiescence and cycle guards (86.936175ms)
+✔ default Router creates A then B, rejects preliminary completion, reworks original A session and releases B only on current accepted evidence (9505.792378ms)
+ℹ {"taskTurns":[{"taskId":"a-e2e","revision":1},{"taskId":"a-e2e","revision":2},{"taskId":"b-e2e","revision":1}],"evaluations":[{"revision":1,"decision":"continue"},{"revision":2,"decision":"satisfied"}],"errors":[],"toolErrors":[],"a":{"status":"completed","revision":2,"drained":true},"b":{"status":"completed","drained":true}}
+✔ first-tier reply is visible before Router handling ends and remains an exact per-source receipt (3475.567006ms)
+✔ cold recovery reclassifies only uncommitted original sources and reads back an unknown private send without resending (2205.135545ms)
+✔ startup first-tier admits the latest full original batch when arrivals precede official delivery (1109.756891ms)
+✔ a historical frozen start confirmation retires after its real native task completes without re-dispatch (5032.0123ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":4,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4758,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":268,"aborted":false}
+✔ replan fences a Single task claim before commit (5895.329949ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":13,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5632,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":249,"aborted":false}
+✔ replan fences a Single task claim after commit (4159.94793ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3767,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":389,"aborted":false}
+✔ Web revisions serialize per task while a different task makes progress (5273.857366ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4791,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":481,"aborted":false}
+✔ failed Web old-drain releases admission and replays the committed request without duplicating revision (3233.193474ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2955,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":277,"aborted":false}
+✔ Web material failure recovers once and retries the same request without repeating work (4754.09337ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4559,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":192,"aborted":false}
+✔ Web replan blocks a new execution session while old-generation cancellation is in flight (3406.32975ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3205,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":200,"aborted":false}
+✔ Web replan drains the old execution session without waiting for the new execution session (3969.098175ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":345,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3419,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":205,"aborted":false}
+✔ Web edits reject stale requirement and control revisions without changing the task or creating Topics (5206.985628ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":341,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4570,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":294,"aborted":false}
+✔ native Web reopen preserves task identity and rejects stale input; HTTP retry is idempotent (6055.420543ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5821,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":233,"aborted":false}
+✔ Router clarification retains exact source identity through cold recovery without self-echo or duplicate sends: unknown=false (5934.597201ms)
+✔ Router clarification retains exact source identity through cold recovery without self-echo or duplicate sends: unknown=true (5143.878979ms)
+✔ a newer authenticated message version fences an old prepared Router reply without granting another send (4792.354514ms)
+✔ a newer authenticated message version fences an old unknown Router reply without granting another send (4595.490328ms)
+✔ retired Topic hold and scope writes return 410 before calling any runtime mutation (85.040868ms)
+ℹ tests 73
+ℹ suites 0
+ℹ pass 73
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 191728.704249
