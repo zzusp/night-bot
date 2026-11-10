@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { RiChat3Line, RiGroupLine, RiArrowRightLine, RiGlobalLine, RiCheckboxCircleFill, RiAddLine, RiCloseLine, RiEditLine } from '@remixicon/react';
-import { api, ApiError, type Channel, type Conversation, type DingtalkChannelCreated, type DingtalkChannelDetail, type DingtalkChannelEdit, type DingtalkChannelInput, type DingtalkChannelUpdated, type Message } from './api';
+import { api, ApiError, type Channel, type ChannelSettings, type Conversation, type DingtalkChannelCreated, type DingtalkChannelDetail, type DingtalkChannelEdit, type DingtalkChannelInput, type DingtalkChannelUpdated, type Message } from './api';
 import { useResource, useRoute } from './hooks';
+import { CustomChannelForm } from './components/CustomChannelForm';
 import { ConversationFrame } from './components/ConversationFrame';
 import { ConversationExecution, type TaskHistory } from './components/ConversationExecution';
 import { Badge, Button, EmptyState, IconButton } from './components/BoardPrimitives';
@@ -22,9 +23,13 @@ const detailDraft = (value: DingtalkChannelDetail): DingtalkChannelInput => ({ c
 const sameFields = (value: DingtalkChannelDetail, fields: DingtalkChannelEdit) => value.name === fields.name && value.prompt === fields.prompt &&
   value.conversationType === fields.conversationType && value.targetKind === fields.targetKind && value.target === fields.target && value.writesAuthorized === fields.writesAuthorized;
 
-function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; channelId?: string }) {
+function ChannelConfiguration({ onSaved, channelId }: { onSaved: () => void; channelId?: string }) {
   const editing = channelId !== undefined;
   const [open, setOpen] = useState(false);
+  const plugins = useResource<ChannelSettings>(editing ? null : '/settings/channels');
+  const [type, setType] = useState(''), [customBusy, setCustomBusy] = useState(false);
+  const selectedPlugin = plugins.data?.items.find(item => item.type === type);
+  const showingDingtalk = editing || type === 'dingtalk-dws';
   const [draft, setDraft] = useState(() => ({ ...emptyChannel(), channelId: channelId ?? '' }));
   const [loadedDetail, setLoadedDetail] = useState<DingtalkChannelDetail | null>(null);
   const version = loadedDetail?.version ?? null;
@@ -40,7 +45,7 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
   const live = useRef(true), writing = useRef(false), composing = useRef(false);
   const prefix = useId();
   const locked = !!busy || saved || !!unknownSave || stale || (editing && !version);
-  const title = editing ? '编辑钉钉渠道' : '添加钉钉渠道';
+  const title = editing ? '编辑钉钉渠道' : '添加渠道';
   const targetLabel = `${draft.conversationType === 'chat-room' ? '群' : '用户'}${draft.targetKind === 'id' ? ' ID' : '名称'}`;
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useLayoutEffect(() => {
@@ -159,12 +164,25 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
   const reset = () => { setDraft(emptyChannel()); setErrors({}); setError(null); setFeedback(''); setSaved(false); setUnknownSave(null); };
   return <>
     <Button variant={editing ? 'secondary' : 'primary'} icon={editing ? <RiEditLine size={15} /> : <RiAddLine size={17} />} aria-haspopup="dialog"
-      aria-label={editing ? `编辑配置：${channelId}` : undefined} onClick={() => { setOpen(true); if (editing && !version) void load(); }}>{editing ? '编辑配置' : '添加钉钉渠道'}</Button>
-    <dialog ref={dialog} className="channel-create-dialog" aria-labelledby={`${prefix}-title`} aria-describedby={`${prefix}-boundary`}
-      onClose={() => setOpen(false)} onCancel={event => { if (writing.current) event.preventDefault(); }}>
+      aria-label={editing ? `编辑配置：${channelId}` : undefined} onClick={() => { setOpen(true); if (editing && !version) void load(); }}>{editing ? '编辑配置' : '添加渠道'}</Button>
+    <dialog ref={dialog} className="channel-create-dialog" aria-labelledby={`${prefix}-title`} aria-describedby={`${prefix}-${editing ? 'boundary' : 'type-help'}`}
+      onClose={() => setOpen(false)} onCancel={event => { if (writing.current || customBusy) event.preventDefault(); }}>
       <header className="channel-create-heading"><div><h2 id={`${prefix}-title`}>{title}</h2></div>
-        <IconButton label={`关闭${title}`} disabled={!!busy} onClick={() => setOpen(false)}><RiCloseLine size={19} /></IconButton></header>
+        <IconButton label={`关闭${title}`} disabled={!!busy || customBusy} onClick={() => setOpen(false)}><RiCloseLine size={19} /></IconButton></header>
       <div className="channel-create-body">
+        {!editing && <div className="channel-create-field">
+          <label htmlFor={`${prefix}-type`}>渠道类型</label>
+          <select id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} autoFocus onChange={event => setType(event.target.value)}>
+            <option value="">选择渠道类型</option><option value="dingtalk-dws">钉钉</option>
+            {plugins.data?.items.map(item => <option key={item.type} value={item.type}>{item.name}{item.configurable ? '' : '（未提供网页表单）'}</option>)}
+          </select>
+          <p className="field-help" id={`${prefix}-type-help`}>选择已支持的渠道类型。自定义类型来自本安装已安装的插件；网页不安装插件代码。</p>
+          {plugins.loading && !plugins.data && <Loading>正在发现渠道插件…</Loading>}
+          {plugins.error && <Notice error={plugins.error} onRetry={plugins.refresh} stale={!!plugins.data}/>}
+          {!plugins.loading && plugins.data?.items.length === 0 && <p className="field-help">尚无自定义插件。安装可信渠道插件后，可在这里选择。</p>}
+          <Button variant="secondary" disabled={plugins.loading || !!busy || customBusy} onClick={plugins.refresh}>重新发现插件</Button>
+        </div>}
+        <div hidden={!showingDingtalk}>
         <p className="channel-create-boundary" id={`${prefix}-boundary`}>{editing
           ? '沿用已保存账号，修改后须重启应用。同一目标保留绑定；切换目标须先处理旧依赖，保存后重新编辑才能授权新目标外发。'
           : '使用 Bot 当前登录账号。保存后须重启接入；默认仅接收消息，外发需在下方明确授权。'}</p>
@@ -205,9 +223,14 @@ function DingtalkConfiguration({ onSaved, channelId }: { onSaved: () => void; ch
                 : '允许 Bot 向此会话发送回复、通知和附件，包括已排队未发送的通知。保存后须正常重启才生效；关闭不会撤回已发送的消息。'}</p></div>
           </fieldset>
           <div className="channel-create-actions"><Button type="submit" variant="primary" busy={busy === 'saving'} disabled={locked}>{editing ? '保存渠道修改' : '保存钉钉渠道'}</Button>
-            {saved && (editing ? <Button disabled={!!busy} onClick={() => void load()}>重新读取并编辑</Button> : <Button onClick={reset}>添加另一个渠道</Button>)}<Button variant="ghost" disabled={!!busy} onClick={() => setOpen(false)}>关闭</Button></div>
+            {saved && (editing ? <Button disabled={!!busy} onClick={() => void load()}>重新读取并编辑</Button> : <Button onClick={reset}>添加另一个渠道</Button>)}<Button variant="ghost" disabled={!!busy || customBusy} onClick={() => setOpen(false)}>关闭</Button></div>
           {busy && <p className="field-help" role="status">{busy === 'saving' ? '正在保存，请勿重复提交。' : busy === 'loading' ? '正在读取已保存配置，不会提交修改。' : '正在只读核对原请求，不会重发保存请求。'}</p>}
         </form>
+        </div>
+        {!editing && plugins.data?.items.filter(item => item.configurable).map(item => <div key={item.type} hidden={type !== item.type}>
+          <CustomChannelForm plugin={item} snapshot={plugins.data!} onSaved={() => { plugins.refresh(); onSaved(); }} onBusyChange={setCustomBusy}/>
+        </div>)}
+        {!editing && selectedPlugin && !selectedPlugin.configurable && <p className="field-help">此插件未提供网页表单，请按插件说明配置；不会套用钉钉字段。</p>}
       </div>
     </dialog>
   </>;
@@ -264,11 +287,11 @@ export default function ChannelsPage({ id }: { id?: string }) {
     {query.loading && !query.data ? <Loading /> : !query.data && query.error ? <EmptyState title="消息记录暂不可读" description="使用上方按钮重新获取，或返回渠道列表。" /> : <MessageList key={id + ':' + offsets.messages + ':' + offsets.outbox} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" description="该会话接收到的消息和 Bot 的实际回复会显示在这里。" />} />}
     {(offsets.messages > 0 || offsets.outbox > 0 || query.data?.pages.messages.nextOffset != null || query.data?.pages.outbox.nextOffset != null) && <div className="conversation-pagination"><div className="inline-actions">{(offsets.messages > 0 || offsets.outbox > 0) && <Button variant="secondary" onClick={() => setOffsets({ messages: 0, outbox: 0 })}>回到最新</Button>}{(query.data?.pages.messages.nextOffset != null || query.data?.pages.outbox.nextOffset != null) && <Button variant="secondary" disabled={query.loading} onClick={() => setOffsets({ messages: query.data?.pages.messages.nextOffset ?? query.data!.pages.messages.total, outbox: query.data?.pages.outbox.nextOffset ?? query.data!.pages.outbox.total, messageRevision: query.data?.pages.messages.revision, outboxRevision: query.data?.pages.outbox.revision })}>查看更早消息</Button>}</div></div>}
   </>} </ConversationFrame>;
-  return <div className="page-content channels-page"><div className="page-heading"><div><h2>渠道</h2></div><div className="inline-actions channel-page-actions"><a className="board-button board-button--secondary" href="#/settings">自定义渠道设置</a><DingtalkConfiguration onSaved={channels.refresh} /></div></div>
+  return <div className="page-content channels-page"><div className="page-heading"><div><h2>渠道</h2></div><div className="inline-actions channel-page-actions"><ChannelConfiguration onSaved={channels.refresh} /></div></div>
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}
     {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" description="使用上方按钮重新获取。" /> : channels.data?.items.length ? <div className="channel-cards">{channels.data.items.map(item => <div className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId}><button type="button" className="channel-card-select" aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
       <div className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={24} /></div><div><strong>{item.name || item.channelId}</strong><span>{item.name ? `${item.channelId} · ` : ''}{item.type === 'dingtalk-dws' ? `钉钉${item.conversationType ? ` · ${conversationType(item.conversationType)}` : ''}` : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={pendingRestart(item) ? 'warning' : item.enabled ? 'success' : 'neutral'}>{pendingRestart(item) ? '待重启' : item.enabled ? '已启用' : '未启用'}</Badge><div className="channel-card-bottom"><ChannelCardStatus item={item} /><RiArrowRightLine size={16} /></div>
-    </button>{item.type === 'dingtalk-dws' && <div className="channel-card-actions"><DingtalkConfiguration channelId={item.channelId} onSaved={channels.refresh} /></div>}</div>)}</div> : <EmptyState title="还没有配置渠道" description="可用上方按钮添加钉钉群聊或私聊；保存后须重启才接入。" />}
+    </button>{item.type === 'dingtalk-dws' && <div className="channel-card-actions"><ChannelConfiguration channelId={item.channelId} onSaved={channels.refresh} /></div>}</div>)}</div> : <EmptyState title="还没有配置渠道" description="可用上方按钮选择渠道类型并添加；保存后须重启才接入。" />}
     <div className="section-heading"><div><h3>渠道会话 <span>{items.length}</span></h3>{channel && <p>正在查看 {channel}</p>}</div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
     {conversations.error && <Notice error={conversations.error} onRetry={conversations.refresh} stale={!!conversations.data} />}
     {!conversations.data && conversations.loading ? <Loading /> : !conversations.data && conversations.error ? <EmptyState title="渠道会话暂不可读" description="使用上方按钮重新获取。" /> : !items.length ? <EmptyState title={search || channel ? '没有匹配的会话' : '等待第一条消息'} description={search || channel ? '清除搜索或渠道筛选后重试。' : '已配置的渠道接收到消息后，会话会显示在这里。'} action={(search || channel) ? <Button variant="secondary" onClick={() => { setSearch(''); setChannel(''); }}>清除筛选</Button> : undefined} /> :

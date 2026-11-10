@@ -86,6 +86,7 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   }),
   saveChannel:body=>run(async()=>{
    if(!body||!id(body.type)||body.type==='dingtalk-dws'||body.type==='web-console'||!id(body.channelId)||typeof body.enabled!=='boolean'||!body.config||Array.isArray(body.config)||typeof body.config!=='object')throw failure('SETTINGS_INPUT_INVALID')
+   if(body.createOnly!==undefined&&typeof body.createOnly!=='boolean')throw failure('SETTINGS_INPUT_INVALID')
    const before=await read(),definition=(await discoverChannelPlugins(before,paths)).get(body.type),fields=definition&&schema(definition)
    if(!fields)throw failure('CHANNEL_WEB_CONFIGURATION_UNSUPPORTED')
    const selected={}
@@ -99,6 +100,7 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
    await updateConfig(file,config=>{
     check(config,body.expectedVersion);config.channelPlugins??=[]
     const row=config.channelPlugins.find(row=>(row.channelId??row.type)===body.channelId)
+    if(row&&body.createOnly===true)throw failure('CHANNEL_INSTANCE_EXISTS')
     if(row&&row.type!==body.type)throw failure('SETTINGS_INPUT_INVALID')
     if(row&&(row.enabled||(running.channelPlugins??[]).some(live=>(live.channelId??live.type)===body.channelId&&live.enabled)))throw failure('CHANNEL_EDIT_REQUIRES_STOP')
     if(row){row.config={...row.config,...selected};for(const field of fields)if(!(field.name in selected))delete row.config[field.name];row.enabled=body.enabled}
