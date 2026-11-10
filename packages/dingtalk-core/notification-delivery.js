@@ -1,4 +1,4 @@
-import { quotedSendRejectionProof, persistedUuidSendRejectionProof, persistedMentionSendRejectionProof, persistedReplySendRejectionProof } from './group-message.js'
+import { quotedSendRejectionProof, persistedUuidSendRejectionProof, persistedMentionSendRejectionProof, persistedReplySendRejectionProof, taskReplySendRetryProof } from './group-message.js'
 import { createHash, randomUUID } from 'node:crypto'
 
 // Diagnostics are bounded and scrubbed before they cross the durable/UI boundary.
@@ -49,6 +49,7 @@ export function taskNotificationRecovery(notification) {
   else if (notification.state === 'failed' && !notification.ack && !notification.receipt
     && notification.deliveryError?.phase === 'send' && notification.deliveryError.retryable === true
     && knownPreSendRejection(notification.deliveryError, notification)) { action = 'send'; reason = 'proven-not-sent' }
+  else if (taskReplySendRetryProof(notification)) { action = 'send'; reason = 'local-validation-reassessment' }
   return { action, expectedToken, reason }
 }
 
@@ -73,8 +74,12 @@ export async function retryTaskNotification(options) {
     if (!ready(taskNotificationRecovery(notification).action)) throw recoveryError('TASK_NOTIFICATION_RECOVERY_UNAVAILABLE')
     const started = await command('notification.recovery.start', { notificationId: notification.id, expectedToken })
     if (started.replayed) throw recoveryError('DYNAMIC_NOTIFICATION_RECOVERY_STALE')
-    const current = started.result.notification, { action } = taskNotificationRecovery(current)
+    let current = started.result.notification
+    const { action } = taskNotificationRecovery(current)
     if (!ready(action)) throw recoveryError('TASK_NOTIFICATION_RECOVERY_UNAVAILABLE')
+    if (action === 'send' && taskReplySendRetryProof(current)) {
+      current = (await command('notification.retry', { notificationId: current.id, recoveryToken: current.recoveryToken })).result.notification
+    }
     const result = await deliverNotification({ ...options, notification: current, readbackOnly: action === 'readback' })
     return { status: 'attempted', action, ...result }
   })

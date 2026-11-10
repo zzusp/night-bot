@@ -28,13 +28,15 @@
 | SG1 | 第一轮现状验证 | 分层核对插件、任务和投递 | 已完成，整体失败 | round-1.md；文档PR #12已由外部合并 |
 | SG2 | 插件/Host通用文件合同 | 原件冻结、正式模型描述符、严格路径与恢复校验通过 | 已完成 | round-2.md；最终定向41+2及三守卫通过 |
 | SG3 | 回归和真实资源复验 | 核实本地回归、真实来源、内容读取与群回复终态 | 受阻 | round-2.md；全量未全绿，新群任务未接纳 |
-| SG4 | 提交修复PR | 创建草稿并回查URL、状态及远端头 | 已完成 | [PR #13](https://github.com/zzusp/night-bot/pull/13)，OPEN/DRAFT，MERGEABLE；代码571d563 |
+| SG4 | 提交修复PR | 创建草稿并回查URL、状态及远端头 | 已完成 | [PR #13](https://github.com/zzusp/night-bot/pull/13)已于2026-11-10合并；原实现代码571d563 |
 
 ## 当前检查点
 
-- 当前子目标：SG3；本次追加的“待核实”拒发修复已完成源码与本机终态核验，原三条消息的完整端到端验收未复验。
-- 唯一下一步：本次拒发问题无剩余操作；原 SG3若继续，沿已保留消息核对来源、任务材料、实际读取和群回复，不重发或造任务。
-- 未闭环项：完整 default/runtime 未复跑；完整 routing 的14项失败在未改动 main/a9db763 同项复现，未扩入本次修复。原 SG3不以本次状态修复替代真实业务验收。
+- 当前交付：第一轮原报告正文和两个冻结附件已实际送达；Web 原三件均显示 delivered，任务未重跑。详细证据集中见 round-3.md。
+- 本次原交付恢复已完成；第二轮新 PDF/Word 任务仍是原 SG3 的独立未闭环项，不在本次用户请求中继续扩展。后续如恢复该项，沿其原消息核验，不重发或造任务。
+- 验证边界：本轮76项定向用例和三守卫通过；完整 default/runtime/routing 未复跑，既有14项 routing 失败仍见原基线对照。
+
+## 第一阶段历史记录（仅失败结清）
 
 分支 feature/channel-file-material-delivery。原件交付实现提交 0f8a541；第二轮整合代码 571d563 及其历史全量结果仍见第二轮，不外推为当前全量通过。正文拒发修复提交 c66227d，整合最新 main/a9db763 的受验和实际运行代码为 730afb2；之后仅更新目标与运维说明，运行时代码未变。
 
@@ -46,6 +48,10 @@
 
 源码验证、完整路由失败的主线对照及本机应用证据集中见草稿 PR #13 的本次补充。没有真实补发、任务重建、清水位或绕过入站/附件发送门禁。
 
+## 原交付恢复（2026-11-10）
+
+第一阶段仅 failed 结清没有完成交付，用户要求已通过第三轮实际恢复兑现。代码 df13fe5；原正文和两个文件全部 delivered，文件各一次且平台回读大小/哈希匹配，原 payload/任务/Pi 执行未改写，真实 Web 原三件状态为 delivered。使用原本机监督器正常更新重启，保留安装数据、账号和配置；Bot保持运行。新修复在 feature/public-marker-delivery-recovery，通过 [PR #19](https://github.com/zzusp/night-bot/pull/19)交付（OPEN、MERGEABLE，main ← feature/public-marker-delivery-recovery）；原PR #13已合并，不再向旧分支推送。详见 [第三轮](round-3.md)。
+
 ## 证据入口
 
-[第二轮](round-2.md)、[矩阵](matrix.csv)、[原件与阻断](round-2/proof.json)、[回归及版本](round-2/regressions.json)。[第一轮](round-1.md)与原proof保留。本次本地正文拒发已按上述检查点结清；后续原 SG3仍须沿本轮原消息独立核实来源、任务材料、内容结果和群回复，不重发或造任务。
+[第二轮](round-2.md)、[矩阵](matrix.csv)、[原件与阻断](round-2/proof.json)、[回归及版本](round-2/regressions.json)。[第一轮](round-1.md)与原proof保留。原通知的完整交付恢复见 [第三轮](round-3.md)；原 SG3 的第二轮新任务仍独立保留，不以旧任务补交替代。

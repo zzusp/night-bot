@@ -48,6 +48,21 @@ test('shared whole-group transport preserves Markdown/signature and uses the rea
   assert.equal(verifyTaskNotificationReadback(notification, observed, { acknowledgedMessageId: 'delivered', sendStatusConfirmed: true }).mentionVerification, 'unavailable')
 })
 
+test('公开来源业务标记可与任务身份同值，真实内部身份和机制格式仍不得外发', () => {
+  const taskId='resource-check-example',calls=[],adapter={sendGroup:args=>{calls.push(args);return {messageId:'visible'}}}
+  const notification={id:'private-notification',taskId,payload:{conversationId:'private-conversation',text:taskId+' 已完成，见 '+taskId+'.md'},replySourceText:'请验收 '+taskId+'，生成 work/'+taskId+'.md'}
+  assert.equal(sendWorkflowNotification(adapter,notification).messageId,'visible')
+  assert.equal(calls[0].text,notification.payload.text)
+  for(const changed of [
+    {...notification,replySourceText:undefined},
+    {...notification,replySourceText:'not-'+taskId+'-suffix'},
+    {...notification,payload:{...notification.payload,text:'private-conversation'}},
+    {...notification,payload:{...notification.payload,text:'taskId: '+taskId}},
+    {...notification,taskId:'task-'+'a'.repeat(32),replySourceText:'task-'+'a'.repeat(32),payload:{...notification.payload,text:'task-'+'a'.repeat(32)}},
+  ])assert.throws(()=>sendWorkflowNotification(adapter,changed),{code:'GROUP_REPLY_INTERNAL_DETAILS'})
+  assert.equal(calls.length,1)
+})
+
 test('platform source admission uses shared files, freezes selected members and resumes the original content', async t => {
   const root = await mkdtemp(join(tmpdir(), 'platform-notification-'))
   t.after(() => rm(root, { recursive: true, force: true }))

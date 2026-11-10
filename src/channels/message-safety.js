@@ -17,6 +17,12 @@ function containsRuntimeDetails(text) {
   return matches.some(match => !urls.some(([start, end]) => match.index >= start && match.index + match[0].length <= end))
 }
 
+/** 仅任务身份与原始用户业务标记同值时不按私有身份拦截；其他身份和机制格式仍独立检查。 */
+export function replyInternalTaskId(taskId, sourceText) {
+  return typeof taskId === 'string' && taskId && typeof sourceText === 'string'
+    && new RegExp(`(?<![a-zA-Z0-9_-])${RegExp.escape(taskId)}(?![a-zA-Z0-9_-])`, 'u').test(sourceText) ? undefined : taskId
+}
+
 export function assertConversationReply(text, internalIds = []) {
   if (typeof text !== 'string') return
   // 已知身份按原值检查；短 ID 还需边界，避免误命中正常单词中的几个字母。
