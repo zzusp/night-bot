@@ -39,7 +39,7 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
   await page.locator('.conversation-page .message-body').first().click()
   const dialog = page.getByRole('dialog', { name: '消息处理过程', exact: true })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('1.25 秒')
+  await expect(dialog).toContainText('1 秒')
   await expect(dialog).not.toContainText(confirmed.replyPreview)
   await expect(dialog).not.toContainText(confirmed.preview)
   await expect(dialog).toContainText('700 毫秒')
@@ -273,4 +273,18 @@ test('异步首读增高时浮层自行重新测量，不需要滚动或调整�
   release()
   await expect(dialog).toContainText('700 毫秒')
   await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(loadingHeight+80)
+})
+
+
+test('首答和节点共用时长格式，小于一秒显示毫秒，达到一秒显示四舍五入整数秒', async ({page}) => {
+  const values = [0, 999, 1000, 1499, 1500, 2500]
+  await page.route(endpoint, route => route.fulfill({json: pageData([{...confirmed, durationMs: 1500,
+    steps: values.map(ms => ({kind: 'stage-turn-completed', label: `节点 ${ms}`, at: confirmed.receivedAt, durationMs: ms}))
+  }])}))
+  await login(page)
+  const dialog = await openMessageProcess(page)
+  await expect(dialog.locator('.response-time-summary strong')).toHaveText('2 秒')
+  const elapsed = dialog.locator('.response-time-elapsed > span:last-child')
+  await expect(elapsed).toHaveText(['0 毫秒', '999 毫秒', '1 秒', '1 秒', '2 秒', '3 秒'])
+  await expect(dialog).not.toContainText(/1\.499|1\.5|2\.5/)
 })

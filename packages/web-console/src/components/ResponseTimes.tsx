@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, type Message } from '../api';
 import { dateTime, useResource } from '../hooks';
+import { messageProcessDuration } from '../message-process-duration';
 import { Badge } from './BoardPrimitives';
 import { Loading, Notice } from './Shared';
 
@@ -26,8 +27,6 @@ const explanations: Record<string, string> = {
   'awaiting-reply': '消息安排已提交，尚未取得关联回复回执。',
 };
 const exactTime = (value: string | null) => dateTime(value ?? undefined, true);
-const duration = (ms: number) => ms < 1000 ? `${ms.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 毫秒`
-  : `${(ms / 1000).toLocaleString('zh-CN', { maximumFractionDigits: 3 })} 秒`;
 const tone = (status: string) => status === 'confirmed' ? 'success' : status === 'failed' || status === 'invalid-time' ? 'danger' : status === 'unconfirmed' || status === 'pending' ? 'warning' : 'neutral';
 
 function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean }) {
@@ -35,7 +34,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
   return <article className="response-time-row">
     {multiple && <p className="response-time-source">{row.preview || '来源消息正文未提供'}</p>}
     <header className="response-time-summary">
-      {confirmed ? <><span>首答耗时</span><strong>{duration(row.durationMs!)}</strong></> : <Badge tone={tone(row.status)}>{labels[row.status] || '记录不足'}</Badge>}
+      {confirmed ? <><span>首答耗时</span><strong>{messageProcessDuration(row.durationMs!)}</strong></> : <Badge tone={tone(row.status)}>{labels[row.status] || '记录不足'}</Badge>}
     </header>
     {row.reason && <p className="response-time-explanation">{row.reason}</p>}
     {!confirmed && !row.reason && <p className="response-time-explanation">{explanations[row.status] || '当前记录不足，无法确认首答。'}</p>}
@@ -45,7 +44,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
         <span className="response-time-event" title={exactTime(step.at)}>{step.label.replace(/（批次共享）$/, '')}
           {step.shared && <small>批次共享</small>}
         </span>
-        <span className="response-time-elapsed"><span className="sr-only">{measured ? '节点耗时 ' : '此节点未单独计时'}</span><span aria-hidden={!measured}>{measured ? duration(step.durationMs!) : '—'}</span></span>
+        <span className="response-time-elapsed"><span className="sr-only">{measured ? '节点耗时 ' : '此节点未单独计时'}</span><span aria-hidden={!measured}>{measured ? messageProcessDuration(step.durationMs!) : '—'}</span></span>
       </li>;
     })}</ol> : <p className="response-time-explanation">未记录可展示的中间过程。</p>}
   </article>;

@@ -18,7 +18,7 @@ test('单条消息首答时间、共同任务结果与无需回复、等待和�
  await page.goto('/#/channels/room-product?view=execution');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
  await openMessageProcess(page)
  const section=page.getByRole('region',{name:'消息首答与处理过程'})
- for(const text of ['1.25 秒','2.5 秒','回复尚未确认可见','无需处理及回复','等待处理','等待回复','回复发送失败','等待发送'])await expect(section).toContainText(text)
+ for(const text of ['1 秒','3 秒','回复尚未确认可见','无需处理及回复','等待处理','等待回复','回复发送失败','等待发送'])await expect(section).toContainText(text)
  await expect(section).not.toContainText('尚无可核实的首答');await expect(section).not.toContainText('未记录本条消息的回复')
  await expect(section).toContainText('首条回复已确认可见')
  const shared=section.locator('.response-time-row').filter({hasText:'已绑定的附件'});await expect(shared).toContainText('共同任务回复');await expect(shared).not.toContainText('四个附件均已核对。')
