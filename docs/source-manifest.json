@@ -576,8 +576,8 @@
       "source": "native-dws-send.js",
       "sourceSha256": "78663e8224fe981907c984f8867a8f8d4f715f98c7f80f6a77c36a21baabf67e",
       "status": "adapted",
-      "sha256": "247191b298c30583569225caa007549d3b1d832cb8f7f1308fbd236eb816d9f4",
-      "adaptation": " 可选插件注入本channel的厂商会话映射及状态查询；精确发送身份单独投影，不冒充内容/附件verified或重发。仅同scope starting/unknown身份未决时有界探针后抛typed暂缓，保留错误cause。"
+      "sha256": "20f7af58cbebd46e815dc8588d42882d5beb687febf2da2ca9322ff72b2df246",
+      "adaptation": " 可选插件注入本channel的厂商会话映射及状态查询；精确发送身份单独投影，不冒充内容/附件verified或重发。仅同scope starting/unknown身份未决时有界探针后抛typed暂缓，保留错误cause。 Observer close joins original in-flight probes and preserves drain failures before adapter replacement."
     },
     {
       "source": "native-maintenance-drain.js",

@@ -61,8 +61,8 @@ export function validateConfig(config,path) {
   return config
 }
 
-// 配置保存与运行态分离；--check 不创建锁或临时文件。
-export async function updateConfig(path,update,{checkOnly=false}={}) {
+// 默认只保存配置；Host 可在同一锁内协调单渠道生命周期。--check 零写。
+export async function updateConfig(path,update,{checkOnly=false,apply}={}) {
   const file=resolve(path),initial=await readRegular(file)
   if(initial===undefined)throw failure('NIGHT_BOT_CONFIG_NOT_FOUND')
   const paths=runtimePaths(JSON.parse(initial),file)
@@ -79,12 +79,16 @@ export async function updateConfig(path,update,{checkOnly=false}={}) {
     const after=runtimePaths(next,file)
     if(after.installRoot!==paths.installRoot||after.data!==paths.data)throw failure('NIGHT_BOT_CONFIG_RELOCATION_REQUIRES_OFFLINE_RESTORE')
     const changed=JSON.stringify(current)!==JSON.stringify(next)
+    let applied
     if(changed&&!checkOnly){
-      await assertPath()
-      if(await readRegular(file)!==previous)throw failure('NIGHT_BOT_CONFIG_CHANGED')
-      await atomicWrite(file,JSON.stringify(next,null,2)+'\n')
+      const commit=async()=>{
+        await assertPath()
+        if(await readRegular(file)!==previous)throw failure('NIGHT_BOT_CONFIG_CHANGED')
+        await atomicWrite(file,JSON.stringify(next,null,2)+'\n')
+      }
+      if(apply)applied=await apply({current,next,commit});else await commit()
     }
-    return {config:next,changed,checkOnly,restartRequired:changed}
+    return {config:next,changed,checkOnly,restartRequired:changed,...applied}
   }
   return checkOnly?save():withLock(resolve(paths.config,'.configuration.lock'),save)
 }

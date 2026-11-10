@@ -83,12 +83,13 @@ test('only the matching original task send can register a status; ingress waits 
   assert.equal(outbox[0].deliveredMessageId, 'message')
 })
 
-test('a stalled send or status cannot freeze ingress, startup or shutdown', { timeout: 2000 }, async () => {
+test('a stalled status releases ingress but shutdown waits for the original query', { timeout: 2000 }, async () => {
   const operations = new Map(), outbox = []
   const residentStore = { getGroup: () => ({ outbox }), projectTaskNotification: async ({ outbound }) => outbox.push(outbound) }
   let queries = 0
+  const response = Promise.withResolvers()
   const observer = createNativeDwsObserver({ operations, residentStore, ingressWaitMs: 10, probeWaitMs: 20,
-    querySendStatus: () => { queries++; return new Promise(() => {}) } })
+    querySendStatus: () => { queries++; return response.promise } })
   observer.start('stalled-send', nativeDwsCommands('pwsh', { command: send() }))
   await observer.beforeIngress('group')
   assert.equal(queries, 0); assert.equal(outbox.length, 0)
@@ -99,7 +100,10 @@ test('a stalled send or status cannot freeze ingress, startup or shutdown', { ti
   await observer.beforeIngress('group'); await observer.beforeIngress('group')
   assert.equal(queries, 1, 'Keep one in-flight status query rather than accumulating retries')
   const waiting = observer.beforeIngress('group')
-  observer.close(); await waiting
+  let drained = false
+  const closing = observer.close().then(() => { drained = true }); await waiting
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(drained, false)
+  response.resolve(status()); await closing; assert.equal(drained, true)
   assert.equal(outbox.length, 0, 'A timeout never manufactures a sent message identity')
 })
 
@@ -155,4 +159,21 @@ for (const kind of ['text', 'file', 'image']) test(`queued ${kind} echo identity
   assert.deepEqual(outbox[0].sendReceipt, { openTaskId: 'send-task', conversationId: 'group', messageId: 'message' })
   await observer.beforeIngress('group'); assert.equal(outbox.length, 1)
   observer.close()
+})
+
+
+test('observer shutdown retains original failed probe and never starts a replacement query', async () => {
+  const response = Promise.withResolvers(), error = new Error('query failed'), outbox = []
+  const original = { id: 'send-op', taskId: 'task', state: 'succeeded', result: observation(send(), ack) }
+  let queries = 0
+  const observer = createNativeDwsObserver({ operations: new Map([[original.id, original]]), ingressWaitMs: 1, probeWaitMs: 1,
+    residentStore: { getGroup: () => ({ outbox }), projectTaskNotification: async ({ outbound }) => outbox.push(outbound) },
+    querySendStatus: () => { queries++; return response.promise } })
+  await observer.beforeIngress('group')
+  const closing = observer.close(); assert.equal(observer.close(), closing)
+  await observer.beforeIngress('group'); await observer.observe(original)
+  response.reject(error)
+  await assert.rejects(closing, reason => reason.errors.includes(error))
+  await assert.rejects(observer.close(), /DWS_OBSERVER_DRAIN_FAILED/)
+  assert.equal(queries, 1); assert.deepEqual(outbox, [])
 })

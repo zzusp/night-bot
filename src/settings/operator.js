@@ -27,7 +27,7 @@ function schema(definition){
  }
  return fields.map(({name,label,type,required})=>({name,label,type,required:required===true}))
 }
-export function createOperatorSettings({file,paths,running,getCredentials,run=fn=>fn()}){
+export function createOperatorSettings({file,paths,running,getCredentials,run=fn=>fn(),applyChannel,canEditChannel=()=>false}){
  const authentication=piAuthentication({getCredentials})
  const read=async()=> (await updateConfig(file,value=>value,{checkOnly:true})).config
  const check=(config,version)=>{if(version!==hash(config))throw failure('SETTINGS_VERSION_CONFLICT')}
@@ -81,7 +81,7 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
    return {version:hash(config),items:[...definitions].filter(([type])=>type!=='dingtalk-dws').map(([type,definition])=>({type,name:text(definition.displayName,64)?definition.displayName:type,fields:schema(definition),configurable:!!schema(definition)})),
     channels:(config.channelPlugins??[]).filter(row=>row.type!=='dingtalk-dws'&&row.type!=='web-console').map(row=>{
      const fields=schema(definitions.get(row.type)??{}),allowed=fields?.map(field=>field.name)??[]
-     return {type:row.type,channelId:row.channelId??row.type,enabled:row.enabled,editable:!row.enabled&&!(running.channelPlugins??[]).some(live=>(live.channelId??live.type)===(row.channelId??row.type)&&live.enabled),config:fields?Object.fromEntries(allowed.filter(key=>Object.hasOwn(row.config??{},key)).map(key=>[key,row.config[key]])):null}
+     return {type:row.type,channelId:row.channelId??row.type,enabled:row.enabled,editable:canEditChannel(row.channelId??row.type)||!row.enabled&&!(running.channelPlugins??[]).some(live=>(live.channelId??live.type)===(row.channelId??row.type)&&live.enabled),config:fields?Object.fromEntries(allowed.filter(key=>Object.hasOwn(row.config??{},key)).map(key=>[key,row.config[key]])):null}
     })}
   }),
   saveChannel:body=>run(async()=>{
@@ -97,17 +97,17 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
     if(field.type==='string'){try{const url=new URL(value);if(url.username||url.password||url.search||url.hash)throw failure('SETTINGS_INPUT_INVALID')}catch(error){if(error.code==='SETTINGS_INPUT_INVALID')throw error}}
     selected[field.name]=value
    }
-   await updateConfig(file,config=>{
+   const result=await updateConfig(file,config=>{
     check(config,body.expectedVersion);config.channelPlugins??=[]
     const row=config.channelPlugins.find(row=>(row.channelId??row.type)===body.channelId)
     if(row&&body.createOnly===true)throw failure('CHANNEL_INSTANCE_EXISTS')
     if(row&&row.type!==body.type)throw failure('SETTINGS_INPUT_INVALID')
-    if(row&&(row.enabled||(running.channelPlugins??[]).some(live=>(live.channelId??live.type)===body.channelId&&live.enabled)))throw failure('CHANNEL_EDIT_REQUIRES_STOP')
+    if(!applyChannel&&row&&(row.enabled||(running.channelPlugins??[]).some(live=>(live.channelId??live.type)===body.channelId&&live.enabled)))throw failure('CHANNEL_EDIT_REQUIRES_STOP')
     if(row){row.config={...row.config,...selected};for(const field of fields)if(!(field.name in selected))delete row.config[field.name];row.enabled=body.enabled}
     else config.channelPlugins.push({type:body.type,channelId:body.channelId,enabled:body.enabled,config:selected})
     return config
-   })
-   return {ok:true,restartRequired:true}
+   },applyChannel?{apply:transaction=>applyChannel(transaction,body.channelId)}:{})
+   return {ok:true,restartRequired:result.restartRequired,liveApplied:result.liveApplied??false}
   }),
  }
 }
