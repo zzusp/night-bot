@@ -21,6 +21,8 @@ import {validateConfig as validateDingtalkConfig} from '../src/channels/plugins/
 import {runDingtalkCli} from '../src/channels/plugins/dingtalk-cli.js'
 import {dingtalkChannelPaths,openDingtalkIngress} from '../src/channels/plugins/dingtalk-storage.js'
 import {dingtalkIngressAdapter} from '../src/channels/plugins/dingtalk-ingress.js'
+import {sendWorkflowNotification} from '../packages/dingtalk-core/group-message.js'
+import {taskNotificationRecovery} from '../packages/dingtalk-core/notification-delivery.js'
 import {selectDwsProfile,resolveDingtalkBinding} from '../src/channels/plugins/dingtalk-binding.js'
 
 
@@ -311,7 +313,7 @@ test('configured channel responsibilities isolate all model roles through the de
 for(const replyToSource of [undefined,true])test('default application neutral Router tools enforce recipient/source ACL and deliver material-backed frozen files'+(replyToSource?' with explicit source quote':''),{timeout:nativeTestTimeout(90000)},async t=>{
   const steps=new Map(),taskPackets=[],calls=[],resourceReads=[],sent=[],results=[],materialText='MATERIAL='+randomUUID(),fileReadback=Promise.withResolvers();let fileReadbackStarted=false
   t.signal.addEventListener('abort',()=>fileReadback.resolve(),{once:true})
-  const taskId='neutral-material-task';let app,channels,sourceIdentity,bob,foreign,originalSource
+  const taskId='neutral-material-task',resultPath=replyToSource?'work/'+taskId+'.txt':'work/result.txt';let app,channels,sourceIdentity,bob,foreign,originalSource,localRejection=false
   const progress={phase:'setup',models:0,tools:{}}
   t.signal.addEventListener('abort',()=>t.diagnostic(JSON.stringify({case:'default-neutral-tools-interrupted',progress})),{once:true})
   const f=await memoryHost(t,async body=>{
@@ -328,8 +330,8 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
       const resource=input.materials.flatMap(material=>material.resources??[]).find(resource=>resource.status==='read')
       assert.ok(resource,'default task composition must read/materialize the original generic resource')
       if(step===0)return {tool:'read',args:{path:resource.path}}
-      if(step===1){assert.ok(requestText(body).some(text=>text.includes(materialText)),'actual model tool response must contain the fetched resource bytes');return {tool:'write',args:{path:'work/result.txt',content:materialText}}}
-      return {tool:'task_result',args:{decision:{action:'complete',summary:'Read the original material and verified the result file',evidence:['work/result.txt'],limitations:[],artifacts:['work/result.txt'],deliveryFiles:[{path:'work/result.txt',caption:'Verified material result'}]}}}
+      if(step===1){assert.ok(requestText(body).some(text=>text.includes(materialText)),'actual model tool response must contain the fetched resource bytes');return {tool:'write',args:{path:resultPath,content:materialText}}}
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Read the original material and verified the result file',evidence:[resultPath],limitations:[],artifacts:[resultPath],deliveryFiles:[{path:resultPath,caption:'Verified material result'}]}}}
     }
     if(!tools.includes('resident_router_reply'))return {text:'No additional work'}
     const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=steps.get(key)??0;steps.set(key,step+1)
@@ -358,7 +360,7 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
       if(step>0){
         const task=modelToolValues(body).toReversed().find(value=>value.task?.taskId===taskId)?.task
         assert.ok(task?.completion?.result?.artifactFiles?.length)
-        const delivery={operationId:'neutral-delivery',sourceId:originalSource.sourceId,messageVersion:originalSource.version,text:'The verified DingTalk material result is attached.',recipientActorIds:replyToSource?[sourceIdentity.principal,bob]:[bob],...(replyToSource?{replyToSource}:{}),taskDelivery:{taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}
+        const delivery={operationId:'neutral-delivery',sourceId:originalSource.sourceId,messageVersion:originalSource.version,text:'The verified DingTalk material result'+(replyToSource?' '+taskId:'')+' is attached.',recipientActorIds:replyToSource?[sourceIdentity.principal,bob]:[bob],...(replyToSource?{replyToSource}:{}),taskDelivery:{taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}
         if(replyToSource){
           if(step<=6){assert.equal((await app.tasks.store.query({kind:'notification.list'})).length,0,'invalid quote requests must not prepare any notification');assert.equal(sent.length,0)}
           if(step<=3)return {tool:'resident_router_reply',args:{...delivery,operationId:'neutral-quote-audience-'+step,recipientActorIds:[undefined,[],[bob]][step-1]}}
@@ -383,10 +385,18 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
     return {text:'Non-business event settled'}
   })
   channels=f.host.ctx.channels
-  const message={type:'chat-room',channelId:'neutral-channel',conversationId:'local-room',senderId:'alice',messageId:'neutral-request',text:'DingTalk request: read the attached local material and deliver the verified file.'+(replyToSource?' Quote this original message and notify me and bob.':''),mentions:['bob'],quotedMessage:{messageId:'bob-original',senderId:'bob',text:'Keep this original quote'},resourceRefs:[{type:'file',resourceId:'local-material',fileName:'request.txt'}]}
+  const message={type:'chat-room',channelId:'neutral-channel',conversationId:'local-room',senderId:'alice',messageId:'neutral-request',text:'DingTalk request: read the attached local material and deliver the verified file.'+(replyToSource?' Validation '+taskId+': create work/'+taskId+'.txt. Quote this original message and notify me and bob.':''),mentions:['bob'],quotedMessage:{messageId:'bob-original',senderId:'bob',text:'Keep this original quote'},resourceRefs:[{type:'file',resourceId:'local-material',fileName:'request.txt'}]}
   sourceIdentity=channels.identity(message);bob=channels.identity({...message,senderId:'bob'}).principal;foreign=channels.identity({...message,senderId:'foreign-person',conversationId:'other-room'}).principal
   channels.registerTransport('neutral-channel',{
-    async send(envelope){calls.push('text-send');sent.push(structuredClone(envelope));return {messageId:'local-text'}} ,
+    async send(envelope,notification){
+      if(replyToSource&&!localRejection){
+        localRejection=true
+        // 重现旧发送器未取得可信来源而误拦同一冻结正文；没有进入平台 adapter。
+        return sendWorkflowNotification({sendGroupReply(){assert.fail('local rejection must precede the platform call')}},{...notification,replySourceText:undefined})
+      }
+      const ack=sendWorkflowNotification({sendGroup(){return {messageId:'local-text'}},sendGroupReply(){return {messageId:'local-text'}}},notification)
+      calls.push('text-send');sent.push(structuredClone(envelope));return ack
+    },
     async readback(envelope){calls.push('text-readback');return {messageId:'local-text',visible:true}},
     async sendFile(envelope,notification,file){calls.push('file-send');sent.push(structuredClone(envelope));assert.equal(await readFile(join(file.directory,file.fileName),'utf8'),materialText);return {messageId:'local-file'}},
     async readbackFile(){calls.push('file-readback');if(replyToSource){fileReadbackStarted=true;await fileReadback.promise}return {messageId:'local-file',visible:true}},
@@ -400,6 +410,23 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
   await channels.receive({...message,messageId:'foreign-original',senderId:'foreign-person',conversationId:'other-room',text:'Different conversation participant',quotedMessage:undefined,resourceRefs:[],mentions:[]})
   await channels.receive(message);progress.phase='business-drain'
   if(replyToSource){
+    await eventually(async()=>{const notices=await app.tasks.store.query({kind:'notification.list'});return notices.some(notice=>notice.state==='failed')},'original public business marker failed before sending',t.signal)
+    await app.tasks.whenIdle()
+    const failed=(await app.tasks.store.query({kind:'notification.list'})).find(notice=>!notice.payload.artifact)
+    assert.equal(failed.deliveryError.knownNotSent,true);assert.equal(failed.sendAttemptCount,1);assert.equal(sent.length,0)
+    assert.equal(taskNotificationRecovery(failed).reason,'local-validation-reassessment')
+    for(const change of [row=>{row.ack={messageId:'accepted'}},row=>{row.receipt={messageId:'sent'}},row=>{row.sendAttemptCount=2},row=>{row.sendPermit.fence='different'},row=>{row.deliveryError.proof.payloadDigest='a'.repeat(64)},row=>{row.deliveryError.stderr='transport error'}]){
+      const changed=structuredClone(failed);change(changed);assert.notEqual(taskNotificationRecovery(changed).action,'send')
+    }
+    await assert.rejects(app.tasks.store.command({id:'no-cas-local-retry',kind:'notification.retry',args:{notificationId:failed.id}}),{code:'DYNAMIC_NOTIFICATION_RECOVERY_STALE'})
+    await app.tasks.recover();await app.tasks.whenIdle();assert.equal(sent.length,0,'background recovery must not resend local refusals')
+    const frozenTask=await app.tasks.store.query({kind:'task.get',taskId})
+    const expectedToken=taskNotificationRecovery(failed).expectedToken
+    await app.tasks.retryNotification({groupId:sourceIdentity.sessionId,notificationId:failed.id,expectedToken})
+    await assert.rejects(app.tasks.retryNotification({groupId:sourceIdentity.sessionId,notificationId:failed.id,expectedToken}),{code:'DYNAMIC_NOTIFICATION_RECOVERY_STALE'})
+    const restored=await app.tasks.store.query({kind:'notification.get',notificationId:failed.id})
+    assert.equal(restored.state,'delivered');assert.deepEqual(restored.payload,failed.payload);assert.equal(restored.payloadDigest,failed.payloadDigest);assert.equal(restored.sendAttemptCount,2)
+    assert.deepEqual(await app.tasks.store.query({kind:'task.get',taskId}),frozenTask,'delivery recovery must not execute or rewrite the completed task')
     try{
       await eventually(()=>fileReadbackStarted,'frozen file readback has actually started',t.signal)
       const pending=await app.tasks.store.query({kind:'notification.list'})

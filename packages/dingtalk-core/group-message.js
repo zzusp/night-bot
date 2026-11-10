@@ -1,4 +1,4 @@
-import {assertConversationReply as assertGroupReply} from '../../src/channels/message-safety.js'
+import {assertConversationReply as assertGroupReply,replyInternalTaskId} from '../../src/channels/message-safety.js'
 export {conversationReplyScopeInstructions as groupReplyScopeInstructions,conversationReplyInstructions as groupReplyInstructions,assertConversationReply as assertGroupReply} from '../../src/channels/message-safety.js'
 
 export function sameDeliveredText(observed, expected, quoted = false) {
@@ -68,11 +68,11 @@ function factInternalIds(fact) {
   })
 }
 
-function assertWorkflowNotificationReply(notification) {
+export function assertWorkflowNotificationReply(notification) {
   const payload = notification.payload
   if (payload.reportChannel === 'web' || payload.externalMessaging === false
     || notification.disclosure?.authorizationRef?.startsWith('web-rerun:')) throw new Error('WORKFLOW_WEB_NOTIFICATION_FORBIDDEN')
-  assertGroupReply(payload.text, [notification.id, notification.taskId, payload.conversationId, payload.sourceMessageId,
+  assertGroupReply(payload.text, [notification.id, replyInternalTaskId(notification.taskId, notification.replySourceText), payload.conversationId, payload.sourceMessageId,
     payload.actorId, payload.recipientUserId, payload.humanRequestId,
     ...(Array.isArray(payload.atOpenDingTalkIds) ? payload.atOpenDingTalkIds : []), ...factInternalIds(payload.fact)])
 }
@@ -106,6 +106,15 @@ export function persistedReplySendRejectionProof(notification) {
     }
   }
   return undefined
+}
+
+/** 显式恢复只接纳与原发送许可逐字段相符的本地未发送证明；不把普通失败变成可重发。 */
+export function taskReplySendRetryProof(notification) {
+  if (notification?.state !== 'failed' || notification.kind !== 'status'
+    || !notification.taskId || notification.payload?.taskDelivery?.taskId !== notification.taskId
+    || notification.deliveryError?.knownNotSent !== true || notification.deliveryError.retryable !== false) return undefined
+  const proof = persistedReplySendRejectionProof({ ...notification, state: 'unknown', replySourceText: undefined })
+  return proof && Object.entries(proof).every(([key, value]) => notification.deliveryError.proof?.[key] === value) ? proof : undefined
 }
 
 // CLI v1.0.63 gateway contract: this exact guard refusal precedes the send call.
