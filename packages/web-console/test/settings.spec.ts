@@ -35,16 +35,30 @@ test('名称和内置图标保存、刷新及会话统一展示，窄屏与深�
   for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([])}}
  }finally{await reset(page)}
 })
-test('自定义插件表单、默认停用、确认启用、版本与运行中限制',async({page})=>{
- await login(page);const card=page.locator('.settings-card').filter({has:page.getByRole('heading',{name:'自定义渠道',exact:true})})
- await expect(card).toContainText('自定义测试渠道')
- await page.getByLabel('渠道插件',{exact:true}).selectOption('fixture-custom');await page.getByLabel('渠道标识',{exact:true}).fill('browser-custom-settings');await page.getByLabel('目标会话（必填）',{exact:true}).fill('fixture-custom-room');await page.getByLabel('凭据引用',{exact:true}).fill('FIXTURE_CUSTOM_KEY')
- await expect(page.getByLabel('重启后启用',{exact:true})).toHaveValue('false');await expect(page.getByLabel('监听（必填）',{exact:true})).toHaveValue('false')
- await card.getByRole('button',{name:'保存自定义渠道',exact:true}).click();await confirm(page);await expect(card).toContainText('渠道配置已保存，正常重启后生效。')
- const saved=await page.request.get('/api/settings/channels').then(r=>r.json());expect(saved.channels.find((r:{channelId:string})=>r.channelId==='browser-custom-settings')).toMatchObject({type:'fixture-custom',enabled:false,config:{room:'fixture-custom-room',credential:'FIXTURE_CUSTOM_KEY',listen:false}})
- await card.getByRole('button',{name:'编辑 browser-custom-settings',exact:true}).click();await page.getByLabel('重启后启用',{exact:true}).selectOption('true');await card.getByRole('button',{name:'保存自定义渠道',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('重启后插件将接入');await confirm(page)
- await expect(card.getByRole('button',{name:'编辑 browser-custom-settings',exact:true})).toHaveCount(0)
- await expect(card).toContainText('运行中或未提供表单')
+test('设置仅显示外观、模型和密钥，不展示或请求自定义渠道',async({page})=>{
+ let channelRequests=0
+ await page.route('**/api/settings/channels',route=>{channelRequests++;return route.fulfill({status:503,json:{error:'SETTINGS_UNAVAILABLE'}})})
+ await login(page)
+ const settings=page.locator('.settings-page')
+ for(const name of ['助手外观','模型 API','模型 API Key','GitHub Token'])await expect(settings.getByRole('heading',{name,exact:true})).toBeVisible()
+ await expect(settings.locator('.settings-card')).toHaveCount(4)
+ await expect(settings.getByRole('heading',{name:'自定义渠道',exact:true})).toHaveCount(0)
+ await expect(settings.getByRole('button',{name:'重新发现插件',exact:true})).toHaveCount(0)
+ await expect(settings.getByLabel('渠道插件',{exact:true})).toHaveCount(0)
+ await expect(settings.locator('.custom-channel-form')).toHaveCount(0)
+ await page.getByRole('button',{name:'重新读取设置',exact:true}).click()
+ await expect(page.getByLabel('显示名称',{exact:true})).toBeVisible()
+ await page.reload();await expect(page.getByLabel('显示名称',{exact:true})).toBeVisible()
+ expect(channelRequests).toBe(0)
+ for(const theme of ['light','dark']){
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
+  for(const width of [1440,390]){
+   await page.setViewportSize({width,height:960})
+   await expect(settings.locator('.settings-card')).toHaveCount(4)
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+   await page.screenshot({path:test.info().outputPath(`${theme}-${width}-settings.png`),fullPage:true})
+  }
+ }
 })
 test('设置失败可恢复，字段错误不退出，未知保存不自动重复',async({page})=>{
  await login(page)

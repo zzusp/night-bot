@@ -18,7 +18,7 @@ export interface Task {
 export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown' | 'pending-restart';
 export interface Channel {
   channelId: string; type: string; enabled: boolean; connected?: boolean;
-  connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | 'DINGTALK_CHANNEL_SWITCH_BLOCKED' | 'CHANNEL_DRAIN_FAILED' | 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN' | null;
+  connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_MESSAGE_ID_CONFLICT' | 'CHANNEL_HISTORY_INCOMPLETE' | 'CHANNEL_HISTORY_RECOVERY_FAILED' | 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | 'DINGTALK_CHANNEL_SWITCH_BLOCKED' | 'CHANNEL_DRAIN_FAILED' | 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN' | null;
   name?: string; conversationType?: 'chat' | 'chat-room'; promptConfigured?: boolean; restartRequired?: boolean; liveApplied?: boolean; writesAuthorized?: boolean; savedVersion?: string; runningVersion?: string | null;
   runningConnectionState?: ChannelConnectionState; runningErrorCode?: Channel['errorCode']; runningConnected?: boolean; runningName?: string; runningConversationType?: 'chat' | 'chat-room';
 }

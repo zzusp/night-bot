@@ -1,0 +1,155 @@
+{
+  "base": "585e1c767ee7d45b6422ff43e5d288489c06f697",
+  "candidateSources": {
+    "src/pi-session-persistence.js": "a3cb7f37db3518f2a7c6384ab3da49ed0885cb6663dce74407fdc27ca484dc2b",
+    "src/native-workspace.js": "35f12a270b762c8ddda714503f89bc71026155fada78ac24775d3b7c85f61f74"
+  },
+  "diagnostic": {
+    "release": "585e1c767ee7d45b6422ff43e5d288489c06f697",
+    "instrumented": true,
+    "stages": [
+      {
+        "phase": "preload",
+        "elapsedMs": 0
+      },
+      {
+        "phase": "host.paths.begin",
+        "elapsedMs": 2466
+      },
+      {
+        "phase": "host.paths.end",
+        "elapsedMs": 2476
+      },
+      {
+        "phase": "host.routes.begin",
+        "elapsedMs": 2492
+      },
+      {
+        "phase": "host.routes.end",
+        "elapsedMs": 2510
+      },
+      {
+        "phase": "host.privacy.begin",
+        "elapsedMs": 2510
+      },
+      {
+        "phase": "host.privacy.end",
+        "elapsedMs": 2514
+      },
+      {
+        "phase": "host.loader.begin",
+        "elapsedMs": 2553
+      },
+      {
+        "phase": "host.loader.update",
+        "elapsedMs": 2854
+      },
+      {
+        "phase": "host.loader.end",
+        "elapsedMs": 23222
+      },
+      {
+        "phase": "host.channels.begin",
+        "elapsedMs": 23223
+      },
+      {
+        "phase": "host.channels.end",
+        "elapsedMs": 23286
+      },
+      {
+        "phase": "host.privacy.installed",
+        "elapsedMs": 23289
+      },
+      {
+        "phase": "host.presets.mounted",
+        "elapsedMs": 23435
+      },
+      {
+        "phase": "host.presets.resolved",
+        "elapsedMs": 23438
+      },
+      {
+        "phase": "application.begin",
+        "elapsedMs": 23439
+      },
+      {
+        "phase": "application.tasks.begin",
+        "elapsedMs": 23468
+      },
+      {
+        "phase": "application.tasks.end",
+        "elapsedMs": 23507
+      },
+      {
+        "phase": "application.http.ready",
+        "elapsedMs": 23518
+      },
+      {
+        "phase": "application.recover.end",
+        "elapsedMs": 23669
+      },
+      {
+        "phase": "startup-ready",
+        "elapsedMs": 26274
+      }
+    ],
+    "restart": {
+      "release": "585e1c767ee7d45b6422ff43e5d288489c06f697",
+      "startedAt": "2026-11-10T07:56:55.445Z",
+      "stopCompletedAt": "2026-11-10T07:56:55.886Z",
+      "completedAt": "2026-11-10T07:57:23.928Z",
+      "pollIntervalMs": 250,
+      "stopMs": 439.007,
+      "webReadyMs": 24759.978,
+      "residentReadyMs": 24768.116,
+      "startupRecoveryMs": 28041.868,
+      "totalMs": 28480.874,
+      "normalIpcOnly": true,
+      "forced": false,
+      "oldProcessesExited": true,
+      "oldOwnershipReleased": true,
+      "configurationUnchanged": true,
+      "webHttp": 200,
+      "residentHttp": 200,
+      "channels": [
+        {
+          "ordinal": 1,
+          "connected": true,
+          "state": "listening",
+          "error": null
+        },
+        {
+          "ordinal": 2,
+          "connected": true,
+          "state": "listening",
+          "error": null
+        }
+      ],
+      "health": {
+        "status": "degraded",
+        "recoveryIssueCount": 1
+      }
+    }
+  },
+  "sameDataList": {
+    "baseline": {
+      "elapsedMs": 39574.846,
+      "centralReadCalls": 8112,
+      "sessions": 4061
+    },
+    "candidate": {
+      "elapsedMs": 15340.255,
+      "centralReadCalls": 4056,
+      "sessions": 4061
+    },
+    "allSnapshotsEqual": true
+  },
+  "tests": {
+    "pass": 42,
+    "fail": 0,
+    "skipped": 0,
+    "durationMs": 38230.5123
+  },
+  "guards": "source/hash, production-import, native-runtime PASS",
+  "candidateDeployed": false
+}

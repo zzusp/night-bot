@@ -19,7 +19,7 @@ for (const width of [1440, 390]) test(`下方健康状态遵循实际运行值�
 });
 
 // State variants originate at the isolated adapter, not response interception.
-for (const scenario of ['normal','abnormal','not-ready','missing','blocked']) test(`健康状态实页渲染：${scenario}`, async ({page}) => {
+for (const scenario of ['normal','abnormal','not-ready','missing','blocked','history-conflict']) test(`健康状态实页渲染：${scenario}`, async ({page}) => {
   const {startPreview} = await import('./preview.mjs');
   const {healthScenarios} = await import('./channel-health-scenarios.mjs');
   const sample = healthScenarios.find(item => item.id === scenario)!;
@@ -32,9 +32,14 @@ for (const scenario of ['normal','abnormal','not-ready','missing','blocked']) te
     await expect(card.locator('.channel-card-health')).toHaveText(sample.label);
     await expect(card.locator('.channel-card-health')).toHaveClass(new RegExp(`channel-card-health--${sample.kind}`));
     expect(await card.locator('.board-badge').count()).toBeLessThanOrEqual(1);
-    await expect(card.locator('.channel-card-error')).toHaveCount(0);
-    await expect(card).not.toContainText('请先处理旧依赖');
-    await expect(card).not.toContainText('适配器异常，请查看运维说明');
+    if (scenario === 'history-conflict') {
+      await expect(card.locator('.channel-card-tag')).toHaveText('历史恢复失败');
+      await expect(card.locator('.channel-card-error')).toContainText('旧消息与已保存的同版本记录冲突');
+      await expect(card).not.toContainText('恢复连接中');
+      await expect(card).not.toContainText('PRIVATE_');
+    } else await expect(card.locator('.channel-card-error')).toHaveCount(0);
+    await expect(card.locator('.channel-card-select')).not.toContainText('请先处理旧依赖');
+    await expect(card.locator('.channel-card-select')).not.toContainText('适配器异常，请查看运维说明');
     await page.setViewportSize({width: 390, height: 844});
     await expect(card.locator('.channel-card-health')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);

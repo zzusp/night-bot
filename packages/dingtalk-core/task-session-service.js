@@ -1942,7 +1942,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await attempt(()=>observeClose(closeTrace, 'service.observation-tail', () => observationQueue.close(), counts))
       await attempt(()=>stopInboxProjection?.())
       await attempt(()=>observeClose(closeTrace, 'service.observer-page.close', () => observerGroupPage.close(), counts))
-      if(archives)await attempt(async()=>{await archives.idle();if(store.healthy){for(const task of await query('task.list',{archived:'all'}))try{await archives.seal(task.taskId)}catch(error){archives.errors.set(task.taskId,error.code??error.message);archives.onFailure(task.taskId,error)}}})
+      // 完整文件封存由离线 backup 显式执行；普通停机只等待已提交投影。
+      if(archives)await attempt(()=>archives.idle())
       if (!suppliedStore) await attempt(()=>observeClose(closeTrace, 'service.store.close', () => store.close(), counts))
       if(errors.length)throw new AggregateError(errors,'Task service shutdown failed')
     })()},

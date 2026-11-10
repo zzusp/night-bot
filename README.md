@@ -21,11 +21,15 @@ pnpm start data/config/config.json
 curl http://127.0.0.1:18998/health
 ```
 
-Night Bot 自有运行数据位于安装目录的 `data/`，任务工作区与业务产物默认位于 `data/workspaces/`，备份位于 `backups/`；这些目录被 Git 忽略。显式批准的外部业务目标或完全访问模式不意味着将外部文件迁入安装目录。代码升级须保留数据目录。同一 Host 的共享文件事务按路径排队，再取得磁盘租约；活 owner 不因超时被驱逐，权限拒绝不作普通重试。初始化命令只创建配置和目录，不会替你验证真实模型、渠道身份或外发授权；再次初始化拒绝覆盖配置。本项目不需要导入原 DSH 插件历史数据。目录、权限、备份与异路径恢复详见 [DATA-LAYOUT](docs/DATA-LAYOUT.md)。
+Night Bot 自有运行数据位于安装目录的 `data/`，任务工作区与业务产物默认位于 `data/workspaces/`，备份位于 `backups/`；这些目录被 Git 忽略。显式批准的外部业务目标或完全访问模式不意味着将外部文件迁入安装目录。代码升级须保留数据目录。正常停机等待业务与投影排空，不遍历全部任务工作文件做离线封存；可迁移备份须显式运行 [任务备份命令](docs/TASK-ARCHIVE.md#offline-commands)，不能直接将普通停机目录视为已校验备份。同一 Host 的共享文件事务按路径排队，再取得磁盘租约；活 owner 不因超时被驱逐，权限拒绝不作普通重试。初始化命令只创建配置和目录，不会替你验证真实模型、渠道身份或外发授权；再次初始化拒绝覆盖配置。本项目不需要导入原 DSH 插件历史数据。目录、权限、备份与异路径恢复详见 [DATA-LAYOUT](docs/DATA-LAYOUT.md)。
+
+启动工作区通过应用会话目录取得一次受校验的元数据快照；Pi 日志每份只读一次，以小批并行完成完整提交与上下文校验，同批共享目录只解析一次。不持久缓存未经重新核验的会话清单，不跳过损坏日志，也不将端口开放视为渠道恢复完成。
 
 默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，外部渠道的目录发现、生命周期和能力接口见 [插件接口](docs/CHANNEL-PLUGINS.md)；Linux 隔离前置和实际探针见 [Linux 隔离运行](docs/ops/linux-contained-runtime.md)。钉钉使用 `channelPlugins` 的 `dingtalk-dws` 配置；Windows 默认直接使用当前用户受系统保护的 DWS 登录态，不复制凭据；多个实例可能共享账号存储，不能用 HOME/config 目录宣称独立账号；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。工具权限使用下述应用自有三档；渠道外发与任务业务授权仍分别校验。核心管理 HTTP 仅监听 loopback；可选 Web 的显式容器监听仍要求固定公开 Origin、令牌登录、会话和 CSRF，端口只映射到宿主 loopback，不能据此开放核心管理接口。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
 
 钉钉每个 `channelPlugins` 实例只绑定一个群聊或私聊，多个 `dingtalk-dws` 实例以不同 `channelId` 共存。公开插件配置使用 `dingtalk_` 前缀：`dingtalk_name` 是渠道名称，`dingtalk_prompt` 传入职责、助手设定和规范，目标由 `dingtalk_conversation_type` 及群名/群 ID 或姓名/userId 指定。认证账号、组织与目标须实际解析并耐久绑定，多候选拒绝任选；配置贯通一级分诊、常驻 Router、事项执行与无工具复盘，不改变原消息授权或跨会话隔离。未获真实连接/发送授权时保持实例禁用，或明确设 `dingtalk_listen:false`、`dingtalk_writes_authorized:false`。停用/恢复沿该渠道耐久水位补拉并去重，不以重新初始化起点丢弃停用期间消息。具体字段和 CLI 用法见 [渠道职责](docs/CHANNELS.md#渠道职责配置)，Windows 账号与实际终态核对见 [接入流程](docs/ops/windows-local-runtime.md#指定钉钉群接入)。
+
+历史补拉只将已处理、身份/版本/资源一致且能重建冻结输入指纹的厂商展示差异识别为重复；不会重跑模型、任务或发送，也不改写旧来源。正文、作者、提及或资源身份冲突继续停止恢复。Web 渠道卡片区分正在恢复与历史恢复失败，只显示安全原因；排查见 [Windows 接入流程](docs/ops/windows-local-runtime.md#历史恢复失败)。
 
 通用配置与钉钉配置分开处理，密钥只保存环境变量名称引用，不在 CLI 参数中传密钥正文：
 
