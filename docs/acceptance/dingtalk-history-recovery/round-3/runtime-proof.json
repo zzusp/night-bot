@@ -1,0 +1,95 @@
+{
+  "runtime": {
+    "at": "2026-11-10T07:18:46.995Z",
+    "release": "585e1c767ee7d45b6422ff43e5d288489c06f697",
+    "webHttp": 200,
+    "channels": [
+      {
+        "ordinal": 1,
+        "connected": true,
+        "state": "listening",
+        "error": null
+      },
+      {
+        "ordinal": 2,
+        "connected": true,
+        "state": "listening",
+        "error": null
+      }
+    ],
+    "processes": {
+      "supervisorPid": 68648,
+      "launcherPid": 24792,
+      "workerPid": 80408
+    }
+  },
+  "durable": {
+    "at": "2026-11-10T07:20:36.383Z",
+    "configurationUnchanged": true,
+    "sqlite": "ok",
+    "records": {
+      "dynamic_sources": {
+        "baseline": 16,
+        "unchanged": 16,
+        "total": 16,
+        "added": 0
+      },
+      "dynamic_notifications": {
+        "baseline": 14,
+        "unchanged": 14,
+        "total": 14,
+        "added": 0
+      },
+      "dynamic_tasks": {
+        "baseline": 5,
+        "unchanged": 5,
+        "total": 5,
+        "added": 0
+      }
+    },
+    "delivered": 14,
+    "executions": 0,
+    "facts": {
+      "baseline": 16,
+      "unchanged": 16,
+      "total": 16
+    },
+    "ingress": [
+      {
+        "ordinal": 1,
+        "paused": false,
+        "deferred": 0,
+        "recoveryBoundaryPresent": false,
+        "backfillThroughAt": "2026-11-10T07:20:34.626Z"
+      },
+      {
+        "ordinal": 2,
+        "paused": false,
+        "deferred": 0,
+        "recoveryBoundaryPresent": false,
+        "backfillThroughAt": "2026-11-10T07:20:35.429Z"
+      }
+    ],
+    "health": {
+      "status": "degraded",
+      "recoveryIssueCount": 1
+    }
+  },
+  "normalStop": {
+    "release": "585e1c767ee7d45b6422ff43e5d288489c06f697",
+    "normalIpcOnly": true,
+    "forced": false,
+    "allProcessesExited": true,
+    "ownershipReleased": true,
+    "elapsedMs": 1256
+  },
+  "legacyStop": {
+    "fromRelease": "491adbb2c6ebb58412b64ae73ba25e93b37e2f44",
+    "normalStopRequested": true,
+    "forcedLegacyWorker": true,
+    "workerPid": 61100,
+    "allOldProcessesExited": true,
+    "elapsedMs": 4460,
+    "sqlite": "ok"
+  }
+}
