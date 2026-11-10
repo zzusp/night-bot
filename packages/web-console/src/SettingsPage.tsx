@@ -1,18 +1,13 @@
-import {useEffect, useRef, useState, type ReactNode, type KeyboardEvent} from 'react';
+import {useEffect, useState, type KeyboardEvent} from 'react';
 import {api, errorText, type OperatorSettings, type ChannelSettings} from './api';
 import {useResource} from './hooks';
 import {Button, IconButton} from './components/BoardPrimitives';
 import {Loading, Notice} from './components/Shared';
+import {Confirm} from './components/ConfirmDialog';
+import {CustomChannelForm} from './components/CustomChannelForm';
 
 const preventCompositionSubmit=(event:KeyboardEvent<HTMLFormElement>)=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()};
 
-function Confirm({title, children, onConfirm, onClose, actionLabel='确认保存'}: {title:string;children:ReactNode;onConfirm:()=>void;onClose:()=>void;actionLabel?:string}) {
- const ref=useRef<HTMLDialogElement>(null);
- useEffect(()=>{const element=ref.current,previous=document.activeElement;element?.showModal();return()=>{element?.close();if(previous instanceof HTMLElement&&previous.isConnected)previous.focus()}},[]);
- return <dialog ref={ref} className="settings-confirm" aria-labelledby="settings-confirm-title" onCancel={onClose} onClose={onClose}>
-  <h2 id="settings-confirm-title">{title}</h2><div>{children}</div><div className="inline-actions"><Button autoFocus onClick={onClose}>取消</Button><Button variant="primary" onClick={()=>{onClose();onConfirm()}}>{actionLabel}</Button></div>
- </dialog>;
-}
 function SecretEditor({kind,state,version,onSaved}: {kind:'model'|'github';state:OperatorSettings['secrets']['model'];version:string;onSaved:()=>void}) {
  const [value,setValue]=useState(''),[show,setShow]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[confirm,setConfirm]=useState<'replace'|'clear'|null>(null);
  const label=kind==='model'?'模型 API Key':'GitHub Token';
@@ -42,17 +37,18 @@ function Configuration({data,refresh}: {data:OperatorSettings;refresh:()=>void})
  </>;
 }
 function CustomChannels() {
- const query=useResource<ChannelSettings>('/settings/channels');const [type,setType]=useState(''),[channelId,setChannelId]=useState(''),[enabled,setEnabled]=useState(false),[values,setValues]=useState<Record<string,string|boolean>>({}),[busy,setBusy]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[confirm,setConfirm]=useState(false);
+ const query=useResource<ChannelSettings>('/settings/channels');
+ const [type,setType]=useState(''),[editing,setEditing]=useState<ChannelSettings['channels'][number]|undefined>(),[formKey,setFormKey]=useState(0),[busy,setBusy]=useState(false);
  useEffect(()=>{const refresh=()=>query.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[query.refresh]);
  const plugin=query.data?.items.find(item=>item.type===type);
- const save=async()=>{if(!query.data||busy)return;setBusy(true);setError('');setFeedback('');try{await api('/settings/channels',{method:'POST',body:{type,channelId,enabled,config:values,expectedVersion:query.data.version}});setFeedback('渠道配置已保存，正常重启后生效。');query.refresh();window.dispatchEvent(new Event('night-settings-updated'))}catch(error){setError(errorText(error))}finally{setBusy(false)}};
- return <section className="settings-card"><h3>自定义渠道</h3><p className="field-help">仅配置管理员已安装且声明网页表单的可信插件。未声明表单时按插件说明配置；网页不安装代码。新渠道默认停用，启用会在正常重启后接入。</p>{query.error&&<Notice error={query.error} onRetry={query.refresh}/>}<Button disabled={query.loading} onClick={query.refresh}>重新发现插件</Button>
-  {query.loading&&!query.data&&<Loading>正在发现插件…</Loading>}{query.data&&!query.data.items.length&&<p>尚无自定义插件，请由管理员安装并声明网页表单。</p>}<ul>{query.data?.items.map(item=><li key={item.type}>{item.name} · {item.type} · {item.configurable?'支持网页配置':'未提供网页表单'}</li>)}</ul>
-  <form noValidate onKeyDown={preventCompositionSubmit} onSubmit={event=>{event.preventDefault();const missing=plugin?.fields?.find(field=>field.required&&(values[field.name]===undefined||values[field.name]===''));if(!/^[a-z][a-z0-9-]{0,63}$/.test(channelId)||missing){setError('请填写有效的渠道标识和必填字段。');document.getElementById(missing?`custom-${missing.name}`:'custom-channel-id')?.focus();return}setConfirm(true)}}><label htmlFor="custom-channel-type">渠道插件</label><select id="custom-channel-type" value={type} disabled={busy} onChange={event=>{setType(event.target.value);setValues(Object.fromEntries((query.data?.items.find(item=>item.type===event.target.value)?.fields||[]).filter(field=>field.type==='boolean').map(field=>[field.name,false])));setChannelId('');setEnabled(false)}}><option value="">选择插件</option>{query.data?.items.filter(item=>item.configurable).map(item=><option key={item.type} value={item.type}>{item.name}</option>)}</select><label htmlFor="custom-channel-id">渠道标识</label><input id="custom-channel-id" value={channelId} disabled={busy} onChange={event=>setChannelId(event.target.value)}/>
-  {plugin?.fields?.map(field=><div key={field.name}><label htmlFor={`custom-${field.name}`}>{field.label}{field.required?'（必填）':''}</label>{field.type==='boolean'?<select id={`custom-${field.name}`} value={values[field.name]===true?'true':'false'} disabled={busy} onChange={event=>setValues({...values,[field.name]:event.target.value==='true'})}><option value="false">关闭</option><option value="true">开启</option></select>:<input id={`custom-${field.name}`} value={String(values[field.name]??'')} disabled={busy} onChange={event=>setValues({...values,[field.name]:event.target.value})}/ >}{field.type==='credential-ref'&&<p className="field-help">仅填写由环境或密钥存储提供的引用名称，不填写真实密钥。</p>}</div>)}
-  <label htmlFor="custom-channel-enabled">重启后启用</label><select id="custom-channel-enabled" value={enabled?'true':'false'} disabled={busy} onChange={event=>setEnabled(event.target.value==='true')}><option value="false">否，保持停用</option><option value="true">是，允许插件接入</option></select><Button type="submit" disabled={busy||!plugin} busy={busy}>保存自定义渠道</Button></form>
-  <p role="alert">{error}</p><p role="status">{feedback}</p><ul>{query.data?.channels.map(item=><li key={item.channelId}>{item.channelId} · {item.type} · {item.enabled?'已启用':'已停用'} {item.editable&&item.config?<Button onClick={()=>{setType(item.type);setChannelId(item.channelId);setValues(item.config!);setEnabled(item.enabled)}}>编辑 {item.channelId}</Button>:<span>运行中或未提供表单，请按插件运维说明修改</span>}</li>)}</ul>
-  {confirm&&<Confirm title="保存自定义渠道" onClose={()=>setConfirm(false)} onConfirm={()=>void save()}><p>渠道 {channelId}，插件 {type}。{enabled?'重启后插件将接入并按自身权限处理消息。':'保持停用。'}运行中渠道需先按运维流程停用并重启，再编辑；不会继承钉钉的目标或授权规则。</p></Confirm>}
+ const select=(value:string,channel?:ChannelSettings['channels'][number])=>{setType(value);setEditing(channel);setFormKey(key=>key+1)};
+ return <section className="settings-card"><h3>自定义渠道</h3><p className="field-help">仅配置管理员已安装且声明网页表单的可信插件。未声明表单时按插件说明配置；网页不安装代码。新渠道默认停用，启用会在正常重启后接入。</p>
+  {query.error&&<Notice error={query.error} onRetry={query.refresh}/>}<Button disabled={query.loading||busy} onClick={query.refresh}>重新发现插件</Button>
+  {query.loading&&!query.data&&<Loading>正在发现插件…</Loading>}{query.data&&!query.data.items.length&&<p>尚无自定义插件，请由管理员安装并声明网页表单。</p>}
+  <ul>{query.data?.items.map(item=><li key={item.type}>{item.name} · {item.type} · {item.configurable?'支持网页配置':'未提供网页表单'}</li>)}</ul>
+  <label htmlFor="custom-channel-type">渠道插件</label><select id="custom-channel-type" value={type} disabled={busy} onChange={event=>select(event.target.value)}><option value="">选择插件</option>{query.data?.items.filter(item=>item.configurable).map(item=><option key={item.type} value={item.type}>{item.name}</option>)}</select>
+  {plugin?.configurable&&query.data&&<CustomChannelForm key={formKey} plugin={plugin} snapshot={query.data} initial={editing} onSaved={query.refresh} onBusyChange={setBusy}/>}
+  <ul>{query.data?.channels.map(item=><li key={item.channelId}>{item.channelId} · {item.type} · {item.enabled?'已启用':'已停用'} {item.editable&&item.config?<Button disabled={busy} onClick={()=>select(item.type,item)}>编辑 {item.channelId}</Button>:<span>运行中或未提供表单，请按插件运维说明修改</span>}</li>)}</ul>
  </section>;
 }
 export default function SettingsPage(){

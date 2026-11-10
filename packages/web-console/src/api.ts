@@ -154,6 +154,7 @@ export function errorText(error: unknown) {
     if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，请重新读取后再保存。';
     if (error.code === 'SETTINGS_SECRET_READ_ONLY') return '此凭据由启动环境提供，请在环境中修改。';
     if (error.code === 'SETTINGS_INPUT_INVALID') return '设置未被保存，请检查字段格式。';
+    if (error.code === 'CHANNEL_INSTANCE_EXISTS') return '该渠道标识已存在，请换一个；新增不会覆盖已有配置。';
     if (error.code === 'CHANNEL_EDIT_REQUIRES_STOP') return '此渠道仍在运行，请先按运维流程停用并重启后再修改。';
     if (error.code === 'CHANNEL_WEB_CONFIGURATION_UNSUPPORTED') return '此插件尚未声明网页配置表单，请按插件说明配置。';
     if (error.code === 'SETTINGS_UNAVAILABLE' || error.code === 'SETTINGS_SAVE_UNAVAILABLE') return '设置暂不可用，请恢复服务后重新读取；保存结果可能需要核对。';

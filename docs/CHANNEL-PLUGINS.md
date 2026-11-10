@@ -261,3 +261,11 @@ inferred from DingTalk. The generic editor refuses changes to enabled or still
 running instances, including a saved-disabled instance awaiting restart. Stop it
 through its documented operator process and restart before editing; Web does not
 claim a safe generic live target switch or provide deletion/hot loading.
+
+The channel page's **添加渠道** picker combines the built-in DingTalk adapter
+with this installed-plugin catalog. It does not advertise uninstalled vendors.
+Custom creation and Settings use the same manifest form and settings endpoint.
+A creation request sets `createOnly: true`; the config lock rejects an existing
+channel identity with `CHANNEL_INSTANCE_EXISTS` instead of applying the editor's
+upsert behavior. Existing disabled-instance edits keep the original protocol
+(`createOnly: false` or omitted), version checks and running-instance guard.

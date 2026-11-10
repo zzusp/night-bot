@@ -28,8 +28,9 @@ for (const theme of ['light', 'dark']) {
     const nav = page.locator('.primary-nav a').first()
     await nav.hover()
     await expect(nav).toHaveCSS('text-decoration-line', 'none')
-    await page.getByRole('button', {name: '添加钉钉渠道', exact: true}).click()
-    const dialog = page.getByRole('dialog', {name: '添加钉钉渠道'})
+    await page.getByRole('button', {name: '添加渠道', exact: true}).click()
+    const dialog = page.getByRole('dialog', {name: '添加渠道'})
+    await dialog.getByLabel('渠道类型', {exact: true}).selectOption('dingtalk-dws')
     const type = dialog.getByLabel('会话类型', {exact: true})
     await type.focus()
     await type.press('ArrowDown')
@@ -41,8 +42,8 @@ for (const theme of ['light', 'dark']) {
     // Chromium/headless may deliver Escape to the dialog when the native popup
     // is not held open. Verify its focus restoration before reopening the form.
     if (!await dialog.count()) {
-      await expect(page.getByRole('button', {name: '添加钉钉渠道', exact: true})).toBeFocused()
-      await page.getByRole('button', {name: '添加钉钉渠道', exact: true}).click()
+      await expect(page.getByRole('button', {name: '添加渠道', exact: true})).toBeFocused()
+      await page.getByRole('button', {name: '添加渠道', exact: true}).click()
       await type.focus()
     }
     await expect(type).toBeFocused()
@@ -55,11 +56,11 @@ for (const theme of ['light', 'dark']) {
     expect(bounds!.x).toBeGreaterThanOrEqual(0)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
     await dialog.getByRole('button', {name: '保存钉钉渠道', exact: true}).click()
-    await expect(dialog.getByLabel('渠道标识', {exact: true})).toBeFocused()
-    await expect(dialog.getByLabel('渠道标识', {exact: true})).toHaveAttribute('aria-invalid', 'true')
+    await expect(dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true})).toBeFocused()
+    await expect(dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true})).toHaveAttribute('aria-invalid', 'true')
     expect((await new AxeBuilder({page}).include('.channel-create-dialog[open]').analyze()).violations).toEqual([])
     await page.screenshot({path: test.info().outputPath(`${theme}-mobile-form.png`)})
-    await dialog.getByRole('button', {name: '关闭添加钉钉渠道'}).click()
-    await expect(page.getByRole('button', {name: '添加钉钉渠道', exact: true})).toBeFocused()
+    await dialog.getByRole('button', {name: '关闭添加渠道'}).click()
+    await expect(page.getByRole('button', {name: '添加渠道', exact: true})).toBeFocused()
   })
 }

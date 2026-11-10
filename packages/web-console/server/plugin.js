@@ -125,10 +125,10 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(request.method==='PUT'&&path==='/api/settings/model') return send(response,200,await settings.saveModel(await jsonBody(request,['model','api','baseURL','expectedVersion'],4096)))
         const secret=/^\/api\/settings\/secrets\/(model|github)$/.exec(path)
         if(request.method==='PUT'&&secret) return send(response,200,await settings.saveSecret(secret[1],await jsonBody(request,['action','value','confirm','expectedVersion'],16384)))
-        if(request.method==='POST'&&path==='/api/settings/channels') return send(response,200,await settings.saveChannel(await jsonBody(request,['type','channelId','enabled','config','expectedVersion'],16384)))
+        if(request.method==='POST'&&path==='/api/settings/channels') return send(response,200,await settings.saveChannel(await jsonBody(request,['type','channelId','enabled','config','expectedVersion','createOnly'],16384)))
         fail('NOT_FOUND',404)
       } catch(error) {
-        const codes={SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409}
+        const codes={SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409,CHANNEL_INSTANCE_EXISTS:409}
         if(codes[error.code]) fail(error.code,codes[error.code])
         if(['JSON_REQUIRED','REQUEST_TOO_LARGE','JSON_INVALID','REQUEST_INVALID','NOT_FOUND'].includes(error.code))throw error
         fail('SETTINGS_SAVE_UNAVAILABLE',503)
