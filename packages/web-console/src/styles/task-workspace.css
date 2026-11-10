@@ -1,0 +1,39 @@
+/* Task records share the conversation canvas; the rail is metadata, never a second transcript. */
+.main-panel.task-workspace-panel { background: transparent; overflow: hidden; scrollbar-gutter: auto; border-radius: 0; }
+.task-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--board-gap); height: 100%; min-height: 0; min-width: 0; }
+.task-workspace > .conversation-page { overflow: hidden; border-radius: var(--board-radius-panel); background: var(--board-surface); }
+.task-workspace .task-dialogue { display: flex; flex: 1; min-height: 0; min-width: 0; height: auto; overflow: hidden; border: 0; border-radius: 0; background: transparent; }
+.task-workspace .execution-pagination:empty { display: none; }
+.task-info-rail { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.task-back-link { margin: 8px 0 0; align-self: flex-start; }
+.task-info-title { margin: 0 0 20px; font-size: 17px; line-height: 1.6; overflow-wrap: anywhere; }
+.task-info-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 9px 0 14px; gap: 3px; flex-shrink: 0; }
+.task-info-nav a { display: flex; justify-content: center; align-items: center; min-height: 36px; padding: 8px 4px; }
+.task-info-content { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 0 10px 20px 0; }
+.task-record-controls .execution-scope { padding: 8px 0 20px; margin-bottom: 12px; border-bottom: 1px solid var(--board-border); flex-direction: column; align-items: flex-start; gap: 12px; }
+.task-record-controls .execution-scope > div { flex-wrap: wrap; gap: 8px 12px; }
+.task-info-rail .detail-section { border: 0; border-radius: 0; margin: 0; padding: 20px 0; background: transparent; }
+.task-info-rail .detail-section + .detail-section { border-top: 1px solid var(--board-border); }
+.task-info-rail .detail-section:first-child { padding-top: 8px; }
+.task-info-rail .detail-section h3 { margin-bottom: 14px; }
+.task-info-rail .markdown { font-size: 12px; }
+.task-facts { display: grid; gap: 14px; margin: 0; }
+.task-facts > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: start; gap: 10px; }
+.task-info-rail .task-facts dt, .task-info-rail .task-facts dd { margin: 0; overflow-wrap: anywhere; }
+.task-info-rail .timeline li::before { content: none; }
+.task-info-rail .board-button-icon, .task-info-rail .board-empty-icon, .task-info-rail .board-spinner { display: none; }
+.task-info-rail .timeline strong { font-size: 12px; font-weight: 400; }
+.task-info-rail .learning-heading { margin: 8px 0 14px; }
+.task-info-rail .learning-review, .task-info-rail .learning-change { padding: 16px 0; }
+.task-info-rail .learning-review:first-of-type, .task-info-rail .learning-change:first-of-type { border-top: 0; padding-top: 0; }
+.task-info-rail .notice { flex-wrap: wrap; margin: 8px 0; }
+.task-info-rail .board-empty { padding: 22px 8px; min-height: 0; }
+.task-info-rail .board-empty h2 { font-size: 15px; }
+@media (min-width: 1024px) and (max-width: 1250px) { .task-workspace { grid-template-columns: minmax(0, 1fr) 280px; } }
+@media (max-width: 760px) {
+  .main-panel.task-workspace-panel { overflow-y: auto; }
+  .task-workspace { display: flex; flex-direction: column; height: auto; min-height: 100%; gap: 18px; }
+  .task-workspace > .conversation-page { height: min(720px, 78dvh); min-height: 380px; flex-shrink: 0; }
+  .task-info-rail { flex-shrink: 0; padding: 0 18px 12px; }
+  .task-info-content { overflow: visible; padding-right: 0; }
+}

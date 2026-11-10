@@ -21,8 +21,16 @@ test('refresh actions remain in their relevant list and configuration controls',
 
 test('navigation and detail identity remain; first content sections follow the page h1', () => {
   assert.match(source('App.tsx'), /<h1 ref=\{titleRef\} tabIndex=\{-1\}>\{title\}<\/h1>/)
-  assert.match(source('TasksPage.tsx'), /<h2>\{task.title \|\| '未命名任务'\}<\/h2>/)
+  assert.match(source('TasksPage.tsx'), /<h2(?:\s[^>]*)?>\{task.title \|\| '未命名任务'\}<\/h2>/)
   assert.match(source('EvolutionPage.tsx'), /<h2 id="memory-summary">记忆<\/h2>/)
   assert.match(source('SettingsPage.tsx'), /<h2>助手外观<\/h2>/)
   assert.match(source('SettingsPage.tsx'), /新的\{label\}/)
+})
+
+
+test('task transcript omits duplicate top and bottom blocks while controls remain in the rail', () => {
+  assert.doesNotMatch(source('TasksPage.tsx'), /task-title-dock|task-records-heading/)
+  assert.match(source('TasksPage.tsx'), /className="task-info-title"/)
+  assert.match(source('TasksPage.tsx'), /controlsTarget=\{recordControls\}/)
+  assert.match(source('TasksPage.tsx'), /className="task-record-controls"[^\n]+hidden=\{tab !== 'execution'\}/)
 })

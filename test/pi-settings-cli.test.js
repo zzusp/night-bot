@@ -1,3 +1,4 @@
+import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,mkdir,writeFile,readFile,rm,readdir,stat,chmod} from 'node:fs/promises'
@@ -147,4 +148,12 @@ test('settings errors preserve only fixed Web listen diagnostics without reflect
  for(const code of ['WEB_LISTEN_INVALID','WEB_PUBLIC_ORIGIN_REQUIRED','WEB_PUBLIC_ORIGIN_INVALID'])assert.equal(safeSettingsError({code,message:'private detail'}),code)
  assert.equal(safeSettingsError({code:'WEB_PRIVATE_DETAIL',message:'private detail'}),'SETTINGS_OPERATION_FAILED')
  assert.equal(safeSettingsError({message:'WEB_PUBLIC_ORIGIN_INVALID private detail'}),'SETTINGS_OPERATION_FAILED')
+})
+
+
+test('settings capability preserves typed failures for an unsafe token path',async t=>{
+ const f=await fixture(t),file=join(f.paths.secrets,SETTINGS_OPERATOR_TOKEN_FILE)
+ await symlink(join(f.paths.secrets,'missing'),file,process.platform==='win32'?'junction':'file')
+ await assert.rejects(createSettingsOperatorAuth(f.paths),{code:process.platform==='win32'?'SETTINGS_OPERATOR_SECRET_UNAVAILABLE':'SETTINGS_OPERATOR_SECRET_UNSAFE'})
+ await assert.rejects(readSettingsOperatorToken(f.paths),{code:'SETTINGS_OPERATOR_SECRET_UNSAFE'})
 })
