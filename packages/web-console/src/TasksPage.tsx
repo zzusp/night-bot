@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { RiArrowLeftLine, RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine, RiMoreLine } from '@remixicon/react';
 import { type Page, type Task } from './api';
 import { dateTime, navigate, textOf, useResource, useRoute } from './hooks';
-import { Badge, Button, EmptyState } from './components/BoardPrimitives';
+import { Button, EmptyState } from './components/BoardPrimitives';
 import { Loading, Markdown, Notice, Pagination, Search, Status } from './components/Shared';
 import { ExecutionHistory } from './components/ExecutionHistory';
 import { LearningChanges } from './components/LearningChanges';
@@ -16,7 +16,6 @@ export function TaskList({ route }: { route: URL }) {
   const changePage = (next: number) => navigate(`/tasks?state=${encodeURIComponent(state)}&offset=${next}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
   const items = (query.data?.items || []).filter(task => `${task.title || ''} ${task.objective || ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   return <div className="page-content tasks-page">
-    <div className="page-heading"><div><h2>任务</h2></div><Badge tone="neutral">{query.data ? `${query.data.total} 项任务` : '任务记录'}</Badge></div>
     <div className="list-toolbar"><nav className="filter-tabs" aria-label="任务状态">{[['', '全部'], ['running', '执行中'], ['queued', '排队中'], ['waiting', '等待中'], ['completed', '已结束']].map(([value, label]) =>
       <a key={value} href={`#/tasks${value ? `?state=${value}` : ''}`} aria-current={state === value ? 'page' : undefined}>{label}</a>)}</nav>
       <Search value={search} onChange={value => { setSearch(value); const url = new URL(route); value ? url.searchParams.set('q', value) : url.searchParams.delete('q'); history.replaceState(null, '', '#' + url.pathname + url.search); }} />

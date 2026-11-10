@@ -416,7 +416,7 @@ test('窄屏导航、键盘关闭与深色页面没有横向溢出', async ({pag
   await expect(open).toBeFocused()
   await open.click()
   await page.getByRole('dialog', {name: '导航', exact: true}).locator('a[href="#/tasks"]').click()
-  await expect(page.getByRole('heading', {name: '任务', exact: true, level: 2})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '任务', exact: true, level: 1})).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await screenshot(page, 'mobile-tasks')
   await page.setViewportSize({width: 1440, height: 960})
