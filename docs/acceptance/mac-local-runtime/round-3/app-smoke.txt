@@ -1,0 +1,36 @@
+{
+  "installRoot": "/Users/sunpeng/workspace/night-bot/data/workspaces/mac-runtime-3AjDdA",
+  "core": "http://127.0.0.1:52840",
+  "web": "http://127.0.0.1:52841",
+  "health": "ok",
+  "staticAssets": "PASS",
+  "unauthenticatedStatus": 401,
+  "loginStatus": 200,
+  "mode": "ask",
+  "protection": {
+    "status": "not-attested",
+    "backend": null,
+    "description": "每次命令执行仍需后端强制隔离；当前Host未提供成功执行证明，缺后端时拒绝，不自动退完全访问。"
+  },
+  "taskStatus": "completed",
+  "drained": true,
+  "modelRequests": 9,
+  "shellTaskId": "task-737a7108d7ca564626697d677fb9db6e",
+  "shellStatus": "active",
+  "shellDrained": true,
+  "shellResult": {
+    "action": "blocked",
+    "at": "2026-11-10T03:41:18.406Z",
+    "controlRevision": 1,
+    "decision": null,
+    "evidence": [],
+    "limitations": [
+      "TASK_EFFECT_UNCERTAIN_NO_REPLAY"
+    ],
+    "question": null,
+    "requirementRevision": 1,
+    "summary": "任务有尚未核实的外部效果，自动执行已停止，等待人工核验。"
+  },
+  "shellCheck": "FAIL"
+}
+PASS: managed shutdown exited 0 and both listeners closed; isolated installation retained, no real vendor calls.

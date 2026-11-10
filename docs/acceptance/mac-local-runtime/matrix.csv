@@ -1,0 +1,20 @@
+case,description,round_1,round_2,round_3,round_4,current_status,evidence,notes
+MAC-ENV,macOS Node pnpm versions,PASS,NOT_RUN,NOT_RUN,PASS,PASS,round-4/final-checks.txt,macOS13.7.8 x86_64 Node24.15.0 pnpm11.25.0
+MAC-INSTALL,root frozen dependency installation,PASS,NOT_RUN,NOT_RUN,NOT_RUN,PASS,round-1/install-core.txt,416 supply-chain entries; native lifecycle scripts enabled
+MAC-WEB-BUILD,Web frozen installation typecheck and production build,PASS,NOT_RUN,NOT_RUN,NOT_RUN,PASS,round-1/install-web-build.txt,156 supply-chain entries; index JS CSS built
+MAC-TEMP,portable fixtures accept physical Mac temporary root,FAIL,PASS,NOT_RUN,PASS,PASS,round-4/containment-tests.txt,runner canonicalizes TMPDIR; production alias guard unchanged
+MAC-DEFAULT,complete default regression,INTERRUPTED,FAIL,NOT_RUN,NOT_RUN,FAIL,round-2/core-tests.txt,1309 pass 1 fail 46 skip; affected failure fixed and file rerun in R4; no complete rerun
+MAC-RUNTIME,complete runtime regression,FAIL,NOT_RUN,NOT_RUN,NOT_RUN,FAIL,round-1/runtime-tests-canonical.txt,150 pass 1 fail 12 skip
+MAC-32,32 authorized continuations with original deadline,FAIL,NOT_RUN,FAIL,NOT_RUN,FAIL,round-3/runtime-targeted.txt,120000ms exceeded; targeted rerun also reports cleanup failure
+MAC-ROUTING,complete routing regression,PASS,NOT_RUN,NOT_RUN,NOT_RUN,PASS,round-1/routing-tests-canonical.txt,73 pass 0 fail 0 skip
+MAC-WEB-TEST,Web server regression,PASS,NOT_RUN,NOT_RUN,NOT_RUN,PASS,round-1/web-tests-canonical.txt,56 pass 0 fail 0 skip
+MAC-CONTAINMENT,containment test command,FAIL,NOT_RUN,NOT_RUN,PASS,PASS,round-4/containment-tests.txt,5 pass 0 fail 17 skip; command pass is not Mac kernel attestation
+MAC-KERNEL,platform-specific real kernel containment,SKIP,NOT_RUN,NOT_RUN,SKIP,SKIP,round-4/containment-tests.txt,17 Linux-only checks not executed on Mac
+MAC-DWS-HEALTH,optional fake DWS timeout identity health and cold recovery,NOT_RUN,FAIL,FAIL,PASS,PASS,round-4/channel-plugin-tests.txt,entire affected file 29 pass; await exact bridge health event before unchanged assertions
+MAC-APP,actual managed CLI and HTTP Web interaction,PASS,NOT_RUN,PASS,NOT_RUN,PASS,round-3/app-smoke.txt,health static assets 401 rejection token login and task list
+MAC-TASK,ordinary loopback model task completion,NOT_RUN,NOT_RUN,PASS,NOT_RUN,PASS,round-3/app-smoke.txt,completed drained with task_result; no command execution claim
+MAC-SHELL,actual default ask bash execution,INVALID,FAIL,FAIL,NOT_RUN,FAIL,round-3/app-smoke.txt,valid command and description; active drained blocked TASK_EFFECT_UNCERTAIN_NO_REPLAY
+MAC-SHUTDOWN,actual managed service shutdown,PASS,NOT_RUN,PASS,NOT_RUN,PASS,round-3/app-smoke.txt,launcher natural exit0 and both listeners closed; does not attest failed continuation fixture cleanup
+MAC-GUARDS,source import and native runtime guards,NOT_RUN,NOT_RUN,PASS,PASS,PASS,round-4/final-checks.txt,pnpm check separately run because default regression failed before its trailing guard
+MAC-VENDOR,real model and channel integration,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,round-4.md,no real credentials or external messages
+MAC-BROWSER,browser driven UI interaction,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,round-4.md,production HTML and asset HTTP checked; browser interactions not executed

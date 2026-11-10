@@ -1,0 +1,35 @@
+ProductName:		macOS
+ProductVersion:		13.7.8
+BuildVersion:		22H730
+x86_64
+v24.15.0
+11.25.0
+1514bbdfa26429b12bb2a6646b671206a3407498
+feature/mac-local-runtime
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":190,"retiredModules":10,"excludedUiModules":3,"explicitlyAdaptedModules":59,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":400,"literalBareImports":195,"status":"declared-production-imports"}
+{"runtimeJsFiles":400,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":2,"historicalFormatFilesRemoved":9}
+ README.md                      | 2 ++
+ scripts/test-pi.mjs            | 8 ++++++--
+ test/pi-channel-plugin.test.js | 1 +
+ 3 files changed, 9 insertions(+), 2 deletions(-)
+ M README.md
+ M scripts/test-pi.mjs
+ M test/pi-channel-plugin.test.js
+?? docs/acceptance/mac-local-runtime/
+?? docs/ops/mac-local-runtime.md
+a2ade0a1e8db4e5e0e9b6a71d6f2190344a472f8e4df402f2a61592781fbe8ab  scripts/test-pi.mjs
+ec18983aa760ef0a2de535b467f8a4ccd63a7929891bdb213ffdf4d58dc59557  test/pi-channel-plugin.test.js
+97f4ef2e190498a5dda6d41102f04b8931b9eb9ee6046b1bf833287f7948beee  docs/acceptance/mac-local-runtime/scripts/smoke.mjs
+data/workspaces/mac-runtime-3AjDdA/data/config/config.json
+-rw-r--r--  1 sunpeng  staff   3.2K 11 10 13:17 docs/acceptance/mac-local-runtime/matrix.csv
+-rw-r--r--  1 sunpeng  staff   1.2K 11 10 10:55 docs/acceptance/mac-local-runtime/plan.md
+-rw-r--r--  1 sunpeng  staff   2.8K 11 10 13:13 docs/acceptance/mac-local-runtime/round-1.md
+-rw-r--r--  1 sunpeng  staff   1.9K 11 10 13:13 docs/acceptance/mac-local-runtime/round-2.md
+-rw-r--r--  1 sunpeng  staff   2.8K 11 10 13:14 docs/acceptance/mac-local-runtime/round-3.md
+-rw-r--r--  1 sunpeng  staff   2.9K 11 10 13:16 docs/acceptance/mac-local-runtime/round-4.md
+-rw-r--r--  1 sunpeng  staff   4.2K 11 10 12:39 docs/ops/mac-local-runtime.md
+-rw-r--r--  1 sunpeng  staff   501B 11 10 10:56 packages/web-console/dist/index.html
+No matching Mac probe or continuation Node processes.
+guards_exit=0 whitespace_exit=0

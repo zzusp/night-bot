@@ -1,0 +1,46 @@
+✔ core initializes without a DWS executable or plugin, and disabled plugins never register a transport (1172.579124ms)
+✔ optional DWS plugin registers the typed boundary, preserves authenticated sender/quote and confines account data (1634.260871ms)
+✔ standard application composition exposes channel-neutral health and single task creation with no channel installed (2001.753502ms)
+✔ discovered third-party plugins load only enabled instances and release transports on host close (545.631672ms)
+✔ real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata (1330.236496ms)
+✔ manifest validation rejects duplicate types, escaped entries and duplicate enabled channel identities (330.593105ms)
+✔ generic message readers use neutral identities and enforce conversation scope (370.884942ms)
+✔ multiple DWS instances isolate transports and describe credential sharing; direct peers require authorization (1686.458955ms)
+✔ DWS private credentials use supported roots; Windows defaults to the protected current-user login (0.939749ms)
+✔ system-account plugins use the existing CLI context and describe shared login without creating a private vault (366.475044ms)
+✔ group-only DWS never subscribes to private messages or polls private history (370.931233ms)
+✔ configured channel responsibilities isolate all model roles through the default application (8072.570986ms)
+ℹ {"case":"sg8-configured-channel-roles","tasks":[{"taskId":"role-task-alpha","sessionId":"task-session-987a95c0-e4e7-4d6b-8b23-f77ad5720e24","eventId":"task-completed:complete:role-task-alpha:1","status":"completed","drained":true,"reviewStatus":"skipped","scope":{"kind":"bot","id":"942517211673a4034b8a46049c30ac86303760347c623672763aba7aafdbc0f3","actor":"77f3f8adf7a5d569f8f78269408a57516708e7f5660a078e617891149d3b2bc7"},"destination":"tasks/role-task-alpha/reviews/9923f3f1c22a9cef96d33778d973749c072b8831ad68786a210bee38d336cadd.json"},{"taskId":"role-task-beta","sessionId":"task-session-f1a278ac-9b4b-45f0-8443-2827be6be123","eventId":"task-completed:complete:role-task-beta:1","status":"completed","drained":true,"reviewStatus":"skipped","scope":{"kind":"bot","id":"942517211673a4034b8a46049c30ac86303760347c623672763aba7aafdbc0f3","actor":"f8bf78a63b49488f76827b78dbdbe85210935f2c7b91ba423bc9f1a63a8a0fc0"},"destination":"tasks/role-task-beta/reviews/960882ed42276d84c245c5e550d71e9e90bd7488133252f3d1a76df840cbefee.json"}],"roles":[{"room":"alpha","requests":{"channel":1,"triage":1,"router":6,"task":1,"reflection":1}},{"room":"beta","requests":{"channel":0,"triage":1,"router":6,"task":1,"reflection":1}}],"notifications":[{"id":"router-operation:b4256c9cbc4305261966ad48f8f53a4031f305fdd5a15501e81ecc100a161ae6","state":"delivered","messageId":"role-visible-1"},{"id":"router-operation:5bbab162b0e29548cb97400c422538cc6b580e3af5838284ac0a2206735293be","state":"delivered","messageId":"role-visible-2"}],"fakeSends":2,"fakeReadbacks":2,"modelRequests":23,"listenerStarted":false,"realDwsExecuted":false}
+✔ default application neutral Router tools enforce recipient/source ACL and deliver material-backed frozen files (7517.226421ms)
+ℹ {"case":"default-neutral-tools","replyToSource":"omitted","disabledColdTerminalUnchanged":true,"pendingTransportFailureRetained":true,"taskStatus":"completed","drained":true,"sourceAclRejections":5,"resourceReads":1,"visibleText":1,"visibleFrozenFile":1,"recipientNativeIds":[["bob"],["bob"]],"literalUserVendorTextPreserved":true,"realVendorExecuted":false}
+ℹ {"case":"default-neutral-tools-interrupted","progress":{"phase":"delivery-wait","models":21,"tools":{"channel_triage_submit":2,"resident_source_get":1,"resident_router_reply":5,"resident_task_plan":1,"resident_router_settle":2,"read":1,"write":1,"task_result":1,"resident_task_query":1},"lastTool":{"name":"resident_router_settle","isError":false},"lastModel":{"kind":"router","step":4,"events":[{"kind":"task.completed","taskId":"neutral-material-task"}]}}}
+✔ default application neutral Router tools enforce recipient/source ACL and deliver material-backed frozen files with explicit source quote (7277.113306ms)
+ℹ {"case":"default-neutral-tools","replyToSource":true,"disabledColdTerminalUnchanged":true,"pendingTransportFailureRetained":true,"taskStatus":"completed","drained":true,"sourceAclRejections":11,"resourceReads":1,"visibleText":1,"visibleFrozenFile":1,"recipientNativeIds":[["alice","bob"],["alice","bob"]],"literalUserVendorTextPreserved":true,"realVendorExecuted":false}
+ℹ {"case":"default-neutral-tools-interrupted","progress":{"phase":"delivery-wait","models":28,"tools":{"channel_triage_submit":2,"resident_source_get":1,"resident_router_reply":10,"resident_task_plan":1,"resident_router_settle":2,"read":1,"write":1,"task_result":1,"resident_task_query":1},"lastTool":{"name":"resident_router_settle","isError":false},"lastModel":{"kind":"router","step":11,"events":[{"kind":"task.completed","taskId":"neutral-material-task"}]}}}
+✔ default optional DWS filters exact echo before registration while content readback is pending (3814.141891ms)
+ℹ {"case":"default-optional-dws-echo","internalNativeScopesDiffer":true,"operatorNotifications":false,"echoFactsSourcesTriage":0,"sendCount":1,"contentReadbackRequired":true,"realVendorExecuted":false}
+✔ default optional DWS defers unresolved timeout identity and cold backfills the original older message once (5236.60146ms)
+ℹ {"case":"default-optional-dws-deferred-timeout","sourceCount":1,"triageCount":1,"oldTimestampRecovered":true,"sendCount":1,"realVendorExecuted":false}
+✔ default optional DWS defers unresolved error identity and cold backfills the original older message once (4729.964868ms)
+ℹ {"case":"default-optional-dws-deferred-error","sourceCount":1,"triageCount":1,"oldTimestampRecovered":true,"sendCount":1,"realVendorExecuted":false}
+✔ default optional DWS keeps permanently unknown identity degraded and retains its cold recovery bound (3273.380558ms)
+✔ SG12 钉钉CLI check完整零写，disabled跨日启用保留实际首次下界且查询不被午夜替代 (534.501678ms)
+✔ SG12 默认真实登录文件观察从待认证接绑定，恢复context安全且普通使用不触发重试 (855.529296ms)
+✔ SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首项或文件变化猜测重试 (1337.687165ms)
+✔ DWS通讯录快捷查询按当前CLI成功封装解析账号和私聊，失败与不完整结果拒绝 (2.612607ms)
+✔ DWS会话详情按当前MCP嵌套身份解析，失败与目标漂移拒绝 (1.635165ms)
+✔ DWS durable ingress pins survive stale bridge snapshots and complete pages missing known messages (89.154681ms)
+✔ DWS lifecycle retains one observer across serial and concurrent ready and never recreates after stop (342.756581ms)
+✔ DWS lifecycle stop joins in-flight observer creation and its exact asynchronous close tail (272.803185ms)
+✔ Web新增钉钉复用真实Host配置事务，鉴权拒绝无写、四目标映射与未知结果只读回查 (2055.611378ms)
+✔ Host关闭等待已接纳渠道配置提交且保留安装锁，后续调用拒绝 (357.584464ms)
+✔ profile查询真实超时后等待进程退出，Host关闭期间保留安装锁 (1382.565815ms)
+ℹ 真实PID存活时查询与Host关闭均未结算；实际退出后PID消失、锁释放、配置/水位未写；原超时保留，正常输出与spawn失败均排空。
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 58716.940165

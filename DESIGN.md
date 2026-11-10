@@ -16,10 +16,8 @@ colors:
   warning: "#92400e"
   danger: "#b91c1c"
   info: "#1d4ed8"
-  message-user-bg: "#d3e8cb"
-  message-user-border: "#9fbf92"
-  message-assistant-bg: "#f2dfbf"
-  message-assistant-border: "#c7a567"
+  message-user-bg: "#ccdfff"
+  message-assistant-bg: "#f4f4f5"
   message-muted: "#535c6c"
 typography:
   sans:
@@ -93,7 +91,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 
 成功、等待、失败、提示采用独立语义色与文本；不能只靠颜色表示状态。深色通过根节点 `data-theme="dark"` 或 `.dark` 重映射：画布 `#121212`、工作面 `#171717`、浮层 `#262626`、正文 `#fafafa`，与上游表面顺序一致。高对比模式采用系统控件边界，滚动条恢复系统色。
 
-会话气泡使用独立角色色，不复用画布、工作面或卡片表面：用户为鼠尾草绿（浅色 `#d3e8cb` / 深色 `#2c4b32`），助手为暖沙色（浅色 `#f2dfbf` / 深色 `#53432a`）。边线分别为浅色 `#9fbf92` / `#c7a567`、深色 `#7da277` / `#aa8755`，保留 1px 几何。正文沿用正文色；气泡内的引用、来源与分页等次要文字使用浅色 `#535c6c`、深色 `#b5b5b5`，保证两套气泡上的正文、次要文字和链接均达到 4.5:1。颜色不承担唯一角色信息，左右排列、头像与发送者名称保留；高对比模式使用系统边线。
+会话气泡配色按用户参考图取样：用户为浅蓝色（浅色 `#ccdfff` / 深色 `#263b5c`），助手为浅灰色（浅色 `#f4f4f5` / 深色 `#303033`）。气泡无边框、描边或阴影，保留四角 14px 圆角、左右排列与既有占位；原 1px 边框空间并入内边距（13px 17px），避免文本和外框尺寸变化。正文沿用正文色；气泡内的引用、来源与分页等次要文字使用浅色 `#535c6c`、深色 `#b5b5b5`，保证两套气泡上的正文、次要文字和链接均达到 4.5:1。颜色不承担唯一角色信息，左右排列、头像与发送者名称保留；高对比模式允许系统接管颜色，气泡仍无边框。
 
 ## Typography
 
@@ -170,7 +168,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 | 本文路径 | 运行时 token / owner | 使用方 |
 |---|---|---|
 | colors.* | `--board-primary/primary-top/canvas/surface/panel/text/muted/subtle/border/success/warning/danger/info` | 共享组件与页面 |
-| colors.message-* | `--board-message-user-bg/user-border/assistant-bg/assistant-border/muted` → `app.css` 的共享 `.message-user/.message-assistant .message-body` | Web、渠道与执行上下文的 MessageList 气泡；气泡内部局部映射 `--board-muted`，不改变其他表面 |
+| colors.message-* | `--board-message-user-bg/assistant-bg/muted` → `app.css` 的共享 `.message-user/.message-assistant .message-body` | Web、渠道与执行上下文的 MessageList 气泡；气泡内部局部映射 `--board-muted`，不改变其他表面 |
 | typography.sans / mono | `--board-font` / `--board-mono` | 文本与技术内容 |
 | rounded.DEFAULT / card / panel / pill | `--board-radius-control/card/panel/pill` | 按钮、共享卡片、工作面、徽标 |
 | spacing.frame / gap / sidebar / transcript | `--board-frame/gap/sidebar-width/content-width` | 主布局与聊天 |

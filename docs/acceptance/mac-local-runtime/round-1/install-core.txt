@@ -1,0 +1,105 @@
+? Verifying lockfile against supply-chain policies (416 entries)...
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +357
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 357, reused 0, downloaded 0, added 0
+
+   ╭──────────────────────────────────────────────────────────────────────╮
+   │                                                                      │
+   │                 Update available! 11.25.0 → 12.18.0.                 │
+   │                 Changelog: https://pnpm.io/v/12.18.0                 │
+   │   To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -   │
+   │                                                                      │
+   ╰──────────────────────────────────────────────────────────────────────╯
+
+Progress: resolved 357, reused 0, downloaded 1, added 0
+Packages are cloned from the content-addressable store to the virtual store.
+  Content-addressable store is at: /Users/sunpeng/Library/pnpm/store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 357, reused 0, downloaded 22, added 7
+[WARN] Tarball download average speed 40 KiB/s (size 61 KiB) is below 50 KiB/s: https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-1.5.0.tgz (GET)
+[WARN] Tarball download average speed 25 KiB/s (size 25 KiB) is below 50 KiB/s: https://registry.npmjs.org/@deepseek-ai/node-addon-system-linux-x64/-/node-addon-system-linux-x64-0.1.2.tgz (GET)
+[WARN] Tarball download average speed 40 KiB/s (size 47 KiB) is below 50 KiB/s: https://registry.npmjs.org/@earendil-works/pi-telemetry/-/pi-telemetry-1.5.0.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 40, added 25
+Progress: resolved 357, reused 0, downloaded 51, added 36
+[WARN] Tarball download average speed 42 KiB/s (size 127 KiB) is below 50 KiB/s: https://registry.npmjs.org/acorn/-/acorn-8.15.0.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 73, added 40
+[WARN] Tarball download average speed 13 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/@aws-sdk/types/-/types-3.975.0.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 86, added 42
+[WARN] Tarball download average speed 23 KiB/s (size 28 KiB) is below 50 KiB/s: https://registry.npmjs.org/@smithy/node-http-handler/-/node-http-handler-4.14.1.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 98, added 44
+Progress: resolved 357, reused 0, downloaded 136, added 48
+[WARN] Tarball download average speed 4 KiB/s (size 10 KiB) is below 50 KiB/s: https://registry.npmjs.org/@fast-csv/format/-/format-4.3.5.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 153, added 52
+[WARN] Request took 10724ms: https://registry.npmjs.org/@deepseek-ai%2Fcordis-plugin-group
+[WARN] Tarball download average speed 25 KiB/s (size 53 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.10.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 195, added 54
+[WARN] Tarball download average speed 11 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/bl/-/bl-4.1.0.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 209, added 57
+Progress: resolved 357, reused 0, downloaded 279, added 67
+[WARN] Tarball download average speed 7 KiB/s (size 11 KiB) is below 50 KiB/s: https://registry.npmjs.org/formdata-polyfill/-/formdata-polyfill-4.0.10.tgz (GET)
+Progress: resolved 357, reused 0, downloaded 344, added 92
+Progress: resolved 357, reused 0, downloaded 353, added 127
+Progress: resolved 357, reused 0, downloaded 354, added 171
+Progress: resolved 357, reused 0, downloaded 355, added 249
+Progress: resolved 357, reused 0, downloaded 355, added 307
+Progress: resolved 357, reused 0, downloaded 356, added 349
+Progress: resolved 357, reused 0, downloaded 357, added 354
+Progress: resolved 357, reused 0, downloaded 357, added 356
+Progress: resolved 357, reused 0, downloaded 357, added 357, done
+[WARN] Request took 13399ms: https://registry.npmjs.org/playwright-core
+[WARN] Request took 17408ms: https://registry.npmjs.org/playwright
+✓ Lockfile passes supply-chain policies (416 entries in 28.4s)
+.../node_modules/node-pty install$ node scripts/prebuild.js || node-gyp rebuild
+.../.pnpm/koffi@3.2.0/node_modules/koffi install$ node ./cnoke.cjs -P . -D src/koffi --prebuild --release
+.../node_modules/node-pty install: [32m> Checking prebuilds...[0m
+.../node_modules/node-pty install: Done
+.../node_modules/node-pty postinstall$ node scripts/post-install.js
+.../node_modules/node-pty postinstall: [32m> Cleaning release folder...[0m
+.../node_modules/node-pty postinstall: [32m> Moving conpty.dll...[0m
+.../node_modules/node-pty postinstall:   SKIPPED (not Windows)
+.../node_modules/node-pty postinstall: Done
+.../.pnpm/koffi@3.2.0/node_modules/koffi install: Done
+
+dependencies:
++ @deepseek-ai/cordis 4.0.5-alpha.1
++ @deepseek-ai/cordis-plugin-group 1.0.5-alpha.1
++ @deepseek-ai/cordis-plugin-include 1.0.10-alpha.1
++ @deepseek-ai/cordis-plugin-loader 1.0.6-alpha.1
++ @deepseek-ai/node-addon-system 0.1.2
++ @deepseek-ai/schemastery 3.18.5-alpha.1
++ @earendil-works/pi-agent-core 1.5.0
++ @earendil-works/pi-ai 1.5.0
++ @earendil-works/pi-codemode 1.5.0
++ @earendil-works/pi-coding-agent 1.5.0
++ @earendil-works/pi-schema 1.5.0
++ @joplin/turndown-plugin-gfm 1.0.68
++ @js-temporal/polyfill 0.5.1
++ @vscode/ripgrep 1.18.0
++ chokidar 4.0.3
++ diff 9.0.0
++ exceljs 4.4.0
++ ipaddr.js 2.5.0
++ js-yaml 4.1.1
++ koffi 3.2.0
++ minimatch 11.0.3
++ node-pty 1.2.0-beta.15
++ pg 8.23.1
++ playwright 1.65.0
++ sharp 0.35.5
++ turndown 7.2.4
++ undici 8.12.3
++ yaml 2.9.1
++ zod 4.6.7
+
+devDependencies:
++ @deepseek-ai/cordis-plugin-timer 1.1.7
++ @deepseek-ai/cosmokit 1.8.6-alpha.1
++ @deepseek-ai/node-addon-system-darwin-arm64 0.1.2
++ @deepseek-ai/node-addon-system-darwin-x64 0.1.2
++ @deepseek-ai/node-addon-system-linux-arm64 0.1.2
++ @deepseek-ai/node-addon-system-linux-x64 0.1.2
++ acorn 8.15.0
+
+Done in 31s using pnpm v11.25.0

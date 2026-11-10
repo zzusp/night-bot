@@ -1,4 +1,5 @@
-import {readdir} from 'node:fs/promises'
+import {readdir, realpath} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import { spawn } from 'node:child_process'
 const groups = {
   runtime: ['fixed-topics-native','task-session-follow-conflict-native','task-session-service-native','task-session-provider-native','task-session-model-native','task-session-persistence-native','task-session-skills-native','task-session-progress-native','task-session-human-native','task-session-execution-provider-recovery-native','task-session-job-recovery-native','task-session-live-supplement-native'],
@@ -10,8 +11,11 @@ const files = process.argv[2]==='default' ? (await readdir('test')).filter(name=
 if (!files) throw new Error('Expected default, runtime, routing, containment or domain')
 const concurrency=Number(process.env.NIGHT_BOT_TEST_CONCURRENCY??1)
 if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>8)throw new Error('Test concurrency must be an integer from 1 to 8')
+const env = { ...process.env }
+// macOS /var is an alias; portable fixtures require a physical installation root.
+if (process.platform === 'darwin') env.TMPDIR = await realpath(tmpdir())
 const child = spawn(process.execPath, ['--experimental-test-module-mocks','--test',`--test-concurrency=${concurrency}`,...files.map(name => `test/${name}.test.js`)], {
-  stdio: 'inherit', env: { ...process.env },
+  stdio: 'inherit', env,
 })
 child.on('error', error => { console.error(error.message); process.exitCode = 1 })
 child.on('exit', (code, signal) => { process.exitCode = code ?? 1; if (signal) console.error('Test process terminated:', signal) })

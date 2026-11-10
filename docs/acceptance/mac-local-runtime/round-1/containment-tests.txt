@@ -1,0 +1,57 @@
+$ node scripts/test-pi.mjs containment
+﹣ actual full-access model shell cannot read another principal raw Markdown or original state (1.347747ms) # SKIP
+﹣ portable workspace-write shell confines business writes to its installation workspace (0.166375ms) # SKIP
+﹣ portable danger-full-access shell confines business writes to its installation workspace (0.153057ms) # SKIP
+﹣ portable read-only shell confines business writes to its installation workspace (0.146934ms) # SKIP
+﹣ portable model processes cannot read the vault or inherit provider/environment credential values (0.158582ms) # SKIP
+﹣ portable capped grep exposes only its own durable spill and read recovers the omitted tail (0.14731ms) # SKIP
+﹣ task archive fences absolute writes, symlink escapes and private journals in an actual model shell; task temporary files stay local (0.171065ms) # SKIP
+﹣ a real task-scoped capped grep stores and recovers its complete output within that task archive (0.154003ms) # SKIP
+﹣ native kernel sandbox enforces read-only within and outside workspace (1.641965ms) # SKIP
+﹣ native kernel sandbox enforces workspace-write within and outside workspace (0.197198ms) # SKIP
+﹣ actual Pi bash uses owned execution facts and strips ambient namespaces: portable=false (4.621872ms) # SKIP
+﹣ actual Pi bash uses owned execution facts and strips ambient namespaces: portable=true (0.31979ms) # SKIP
+﹣ actual Pi native confined bash retains one managed effect through explicit background and job collection (1.241438ms) # SKIP
+﹣ actual Pi native confined bash retains one managed effect through timeout promotion and job collection (0.197534ms) # SKIP
+✔ official SDK codemode persists parent signatures and bounded nested evidence without fabricating child assistant calls (431.029272ms)
+✔ official nested journal omits 9000-byte arguments and marks the evidence incomplete (162.957561ms)
+✔ official codemode validates exact union arguments before pure host calls and exposes no Node globals (428.353368ms)
+✔ official extension abort and idle are not host-tool join or complete nested evidence (117.000135ms)
+✖ actual default Host keeps codemode and run_code off and refuses the retired DSH Node plugin before evaluation (12.260535ms)
+﹣ Single cold continuation keeps official FS and an actually started kernel process within work and tmp (1.610638ms) # SKIP
+﹣ Single readonly permission survives cold restore and a real child reads evidence but cannot write work tmp or Host roots (0.202715ms) # SKIP
+﹣ Single explicit reopen retains evidence and kernel boundary; own portable archive restores held without replay (0.174165ms) # SKIP
+ℹ tests 22
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 17
+ℹ todo 0
+ℹ duration_ms 11789.106269
+
+✖ failing tests:
+
+test at test/native-tools-runtime.test.js:60:1
+✖ actual default Host keeps codemode and run_code off and refuses the retired DSH Node plugin before evaluation (12.260535ms)
+  Error: NIGHT_BOT_DATA_DIRECTORY_UNAVAILABLE
+      at failure (file:///Users/sunpeng/workspace/night-bot/src/runtime/files.js:5:42)
+      at prepareRuntimePaths (file:///Users/sunpeng/workspace/night-bot/src/runtime/paths.js:37:36)
+      at async createHost (file:///Users/sunpeng/workspace/night-bot/src/host.js:25:3)
+      ... 4 lines matching cause stack trace ...
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    code: 'NIGHT_BOT_DATA_DIRECTORY_UNAVAILABLE',
+    cause: Error: NIGHT_INSTALL_ROOT_ALIAS_UNSAFE
+        at failure (file:///Users/sunpeng/workspace/night-bot/src/runtime/files.js:5:42)
+        at assertInstallRoot (file:///Users/sunpeng/workspace/night-bot/src/runtime/paths.js:24:281)
+        at async prepareRuntimePaths (file:///Users/sunpeng/workspace/night-bot/src/runtime/paths.js:34:5)
+        at async createHost (file:///Users/sunpeng/workspace/night-bot/src/host.js:25:3)
+        at async boot (file:///Users/sunpeng/workspace/night-bot/test/fixtures/memory-host.js:22:29)
+        at async memoryHost (file:///Users/sunpeng/workspace/night-bot/test/fixtures/memory-host.js:25:3)
+        at async TestContext.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/native-tools-runtime.test.js:61:10)
+        at async Test.run (node:internal/test_runner/test:1208:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+      code: 'NIGHT_INSTALL_ROOT_ALIAS_UNSAFE'
+    }
+  }
+[ELIFECYCLE] Command failed with exit code 1.
