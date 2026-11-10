@@ -60,7 +60,9 @@ function MessageProvenance({ source }: { source?: MessageSource }) {
     {source.callId && <><dt>工具调用</dt><dd><code>{source.callId}</code></dd></>}
   </dl></details> : null;
 }
-function MessageBody({ message, history, plain = false }: { message: Message; history?: HistoryReader; plain?: boolean }) {
+function MessageBody({ message, history, plain = false, disclosure }: { message: Message; history?: HistoryReader; plain?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
+  const [bodyOpen, setBodyOpen] = useState(false);
+  const [bodyOpened, setBodyOpened] = useState(false);
   const [cursor, setCursor] = useState<{ offsets: number[]; revision?: string }>({ offsets: [0] });
   const offset = cursor.offsets.at(-1)!;
   const query = useResource<MessageBodyPage>(offset && history && cursor.revision
@@ -83,7 +85,7 @@ function MessageBody({ message, history, plain = false }: { message: Message; hi
     {needsLatest && (history?.onRecover ? <Button variant="secondary" onClick={history.onRecover}>获取最新记录</Button> : <p className="message-scope">请重新获取执行记录后查看正文。</p>)}
     {query.loading ? <Loading>正在重新核验正文访问权限…</Loading> : !query.error && <Button variant="ghost" onClick={query.refresh}>重新获取</Button>}
   </>;
-  return <>
+  const body = <>
     {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
       : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : <Markdown text={text || ''} />}
@@ -98,14 +100,41 @@ function MessageBody({ message, history, plain = false }: { message: Message; hi
     {message.truncated && (!history || message.textNextOffset == null) && <p className="message-scope">此条长记录的当前接口仅返回部分正文。</p>}
     {message.role !== 'tool' && <MessageProvenance source={page?.source || message.source} />}
   </>;
+  if (!disclosure) return body;
+  const lines = (text || '').split(/\r?\n/);
+  const preview = disclosure.kind === 'input' ? (text || '').replace(/\s+/g, ' ').trim() : (lines.find(line => line.trim()) || '暂无输出。').trim();
+  const limit = disclosure.kind === 'input' ? 90 : 110;
+  const excerpt = preview.length > limit ? `${preview.slice(0, limit)}…` : preview;
+  return <details className={`execution-tool-${disclosure.kind}`} open={bodyOpen} onToggle={event => {
+    if (event.target !== event.currentTarget) return;
+    setBodyOpen(event.currentTarget.open);
+    if (event.currentTarget.open) setBodyOpened(true);
+  }}>
+    <summary><span className="sr-only">{disclosure.kind === 'input' ? '输入' : '输出'}：{disclosure.name} </span>
+      {disclosure.kind === 'input' ? <><strong>{disclosure.name}</strong><span className="execution-tool-preview">（{excerpt || '暂无输入。'}）</span></> : <>{message.isError || message.status === 'error' ? <span className="execution-tool-state is-error">失败 · </span> : null}<span className="execution-tool-preview">{excerpt}</span>{lines.length > 1 && <span className="execution-tool-more">（本段另 {lines.length - 1} 行）</span>}</>}
+      {disclosure.kind === 'output' && nextOffset != null && <span className="execution-tool-more"> · 可继续读取</span>}
+      {disclosure.state && <span className={`execution-tool-state${['error', 'failed'].includes(disclosure.state) ? ' is-error' : ''}`}>{disclosure.state === 'pending' ? '等待结果' : states[disclosure.state]?.[0] || disclosure.state}</span>}
+    </summary>
+    {bodyOpened && body}
+  </details>;
+
 }
 
-function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryReader }) {
+function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
   const state = toolState(item);
+  if (compact) return <article className="message message-tool">
+    <div className="message-body">
+      <section className="execution-tool-input-row"><h4 className="sr-only">输入</h4>{item.call
+        ? <MessageBody message={item.call} history={history} plain disclosure={{ kind: 'input', name: message.toolName || '工具', state }} />
+        : <div className="execution-tool-missing"><strong>{message.toolName || '工具'}</strong> · {item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'} <span className="execution-tool-state">{states[state]?.[0] || state}</span></div>}</section>
+      {item.results.map(output => <section className="execution-tool-output-row" key={output.id}><h4 className="sr-only">输出</h4><MessageBody message={output} history={history} plain disclosure={{ kind: 'output', name: message.toolName || '工具' }} /></section>)}
+      {!result && <section className="execution-tool-output-row"><h4 className="sr-only">输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
+    </div>
+  </article>;
   return <article className="message message-tool">
     <div className="message-meta"><span className="message-avatar" aria-hidden="true" /><strong>{message.toolName || '工具'}</strong>
       {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
@@ -126,7 +155,7 @@ function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryRead
     </details></div>
   </article>;
 }
-function ToolActivityGroup({ tools, history }: { tools: ToolItem[]; history?: HistoryReader }) {
+function ToolActivityGroup({ tools, history, compact = false }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const failures = tools.filter(item => ['error', 'failed'].includes(toolState(item))).length;
   const categories: Record<string, string> = { read: '读取', read_window: '读取', read_image: '读取',
@@ -141,12 +170,13 @@ function ToolActivityGroup({ tools, history }: { tools: ToolItem[]; history?: Hi
   return <details className="execution-tool-group" open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary><span className="execution-tool-group-chevron" aria-hidden="true">›</span><span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && <Badge tone="danger">{failures} 项失败</Badge>}<span className="execution-tool-group-action">{open ? '收起' : '展开'}</span></summary>
-    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} />)}</div>
+    <summary>{!compact && <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
+    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
+export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, presentation = 'chat' }: { presentation?: 'chat' | 'execution'; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
   const brand = useAssistantBrand();
+  const compact = presentation === 'execution';
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
@@ -157,13 +187,13 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     if (element && following.current) element.scrollTo({ top: element.scrollHeight, behavior: 'instant' });
   }, [signature, pending]);
   const latest = () => { following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
-  return <div className="transcript-wrap"><div className="transcript" ref={ref} onScroll={() => {
+  return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onScroll={() => {
     const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90; setShowLatest(!following.current);
   }} role="region" aria-label="消息记录" tabIndex={0}>
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
       {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : items.map(item => {
-        if (item.kind === 'tool-group') return <ToolActivityGroup key={`group:${item.id}`} tools={item.tools} history={history} />;
-        if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} />;
+        if (item.kind === 'tool-group') return <ToolActivityGroup key={`group:${item.id}`} tools={item.tools} history={history} compact={compact} />;
+        if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} />;
         const message = item.message;
         return <article className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
@@ -173,12 +203,12 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
           const trigger = event.currentTarget.querySelector<HTMLButtonElement>('.message-process-trigger');
           if (trigger) onInspect(message, trigger);
         } : undefined}>
-          <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? (brand.icon === 'moon' ? 'N' : brandGlyph(brand.icon)) : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
+          {compact ? <div className="execution-message-role"><span className="sr-only">{message.role === 'assistant' ? '助手' : message.senderName || userLabel}</span>{message.status && ['error', 'failed', 'aborted', 'length'].includes(message.status) && <span className="execution-tool-state is-error">{states[message.status]?.[0] || message.status}</span>}</div> : <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? (brand.icon === 'moon' ? 'N' : brandGlyph(brand.icon)) : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
             <strong>{message.role === 'assistant' ? brand.name : (message.senderName || userLabel)}</strong>
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
             {onInspect && <button type="button" className="message-process-trigger" aria-haspopup="dialog" aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}
-          </div>
+          </div>}
           <div className="message-body"><MessageBody message={message} history={history} /></div>
           {message.taskIds?.length ? <div className="message-links">{message.taskIds.map(id => <a key={id} href={`#/tasks/${encodeURIComponent(id)}`}>查看关联任务</a>)}</div> : null}
         </article>;

@@ -23,6 +23,8 @@ test('任务记录无顶部及底部卡片，四类侧栏保留标题、操作�
   expect(left.x + left.width).toBeLessThanOrEqual(right.x)
   await expect(page.locator('.task-title-dock, .task-records-heading')).toHaveCount(0)
   await expect(page.locator('.task-dialogue .execution-scope')).toHaveCount(0)
+  await expect(page.locator('.task-dialogue .message-avatar')).toHaveCount(0)
+  await expect(page.locator('.task-info-rail svg:visible')).toHaveCount(0)
   await expect(page.locator('.task-info-rail').getByRole('link', {name: '全部任务', exact: true})).toHaveAttribute('href', '#/tasks')
   const records = (await page.locator('.task-dialogue').boundingBox())!
   expect(Math.abs(records.y - left.y)).toBeLessThanOrEqual(1)
@@ -32,6 +34,7 @@ test('任务记录无顶部及底部卡片，四类侧栏保留标题、操作�
   await section(page, '执行').focus(); await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/view=execution/)
   await expect(page.getByRole('heading', {name: '执行动态', exact: true})).toBeVisible()
+  await expect(page.locator('.task-info-rail svg:visible, .task-info-rail .timeline-dot')).toHaveCount(0)
   await expect(page.locator('.task-record-controls')).toContainText('当前执行上下文')
   await page.locator('.task-record-controls').getByRole('button', {name: '获取最新记录', exact: true}).click()
   await expect(transcript).toHaveAttribute('data-retained', 'yes')
