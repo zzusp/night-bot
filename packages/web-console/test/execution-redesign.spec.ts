@@ -10,6 +10,7 @@ const confirmed = {
   reason: null, replyPreview: '已收到，我先核对计划里的时间和依赖。',
   steps: [{ kind: 'received', label: '接收消息', at: '2026-11-09T01:00:00.000Z' },
     { kind: 'stage-turn-started', label: '开始处理（批次共享）', shared: true, at: '2026-11-09T01:00:00.200Z' },
+    { kind: 'stage-turn-completed', label: '消息处理完成', shared: true, durationMs: 700, at: '2026-11-09T01:00:00.900Z' },
     { kind: 'reply-prepared', label: '回复已准备', at: '2026-11-09T01:00:00.900Z' },
     { kind: 'reply-visible', label: '首条回复已确认可见', at: '2026-11-09T01:00:01.250Z' }],
 }
@@ -20,7 +21,7 @@ async function login(page: Page, path = '/channels/room-product') {
   await page.getByRole('button', { name: '连接工作空间', exact: true }).click()
 }
 
-test('移除 tab 和执行页：点击消息读精确来源，弹窗直接显示真实时间线，键盘及浅深窄屏', async ({ page }) => {
+test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层只显示过程和节点耗时，键盘及浅深窄屏', async ({ page }) => {
   let timingReads = 0, journalReads = 0
   page.on('request', request => { if (/\/session\?/.test(request.url())) journalReads++ })
   await page.route(endpoint, route => {
@@ -39,15 +40,25 @@ test('移除 tab 和执行页：点击消息读精确来源，弹窗直接显示
   const dialog = page.getByRole('dialog', { name: '消息处理过程', exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog).toContainText('1.25 秒')
-  await expect(dialog).toContainText(confirmed.replyPreview)
-  await expect(dialog).toContainText('右侧为接收后的累计时间')
-  await expect(dialog).toContainText('+200 毫秒')
-  await expect(dialog).toContainText('批次共享，不代表本条消息单独用时')
-  await expect(dialog).toContainText('09:00:01.250')
+  await expect(dialog).not.toContainText(confirmed.replyPreview)
+  await expect(dialog).not.toContainText(confirmed.preview)
+  await expect(dialog).toContainText('700 毫秒')
+  await expect(dialog).not.toContainText('+200 毫秒')
+  await expect(dialog).toContainText('共享节点不分摊')
+  await expect(dialog.getByText('本会话的任务与安排')).toHaveCount(0)
+  await expect(dialog).toHaveAttribute('aria-modal', 'false')
+  await expect(page.locator('dialog[open]')).toHaveCount(0)
+  await expect(trigger).toHaveCSS('clip-path', 'inset(50%)')
+  const bubble = (await page.locator('.conversation-page .message-body').first().boundingBox())!
+  const floating = (await dialog.boundingBox())!
+  expect(floating.width).toBeLessThanOrEqual(306)
+  expect(floating.x + floating.width <= bubble.x || floating.x >= bubble.x + bubble.width).toBe(true)
   expect(journalReads).toBe(0)
   await expect(dialog.getByRole('button', { name: '关闭消息处理过程' })).toBeFocused()
   await page.keyboard.press('Shift+Tab')
-  expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true)
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await trigger.press('Enter')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme)
@@ -85,8 +96,8 @@ test('未知、失败、多来源与空记录不伪装耗时；失败保留旧�
   await login(page)
   await openMessageProcess(page)
   const section = page.getByRole('region', { name: '消息首答与处理过程' })
-  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '各条分别从自己的接收时间计时']) await expect(section).toContainText(text)
-  await expect(section.locator('.response-time-outcome strong')).toHaveCount(0)
+  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '各条分别计时']) await expect(section).toContainText(text)
+  await expect(section.locator('.response-time-summary strong')).toHaveCount(0)
   mode = 'error'; await section.getByRole('button', { name: '刷新记录' }).click()
   await expect(section).toContainText('独立来源 0')
   await expect(section.locator('.notice')).toBeVisible()
@@ -107,13 +118,14 @@ test('初读等待、关闭取消及更换消息不串记录；长内容可滚�
     const id = new URL(route.request().url()).searchParams.get('selectedMessageId')!
     requested.push(id)
     if (first) { first = false; await ready }
-    await route.fulfill({ json: pageData([{ ...confirmed, preview: `来源 ${id}`, replyPreview: '经过核实的回复。'.repeat(300) }]) })
+    await route.fulfill({ json: pageData([{ ...confirmed, preview: `来源 ${id}`, steps: Array.from({length: 40}, (_, i) => ({label: `来源 ${id} · 节点 ${i}`, at: confirmed.receivedAt, durationMs: 20})) }]) })
   })
   await login(page)
   let dialog = await openMessageProcess(page)
   await expect(dialog).toContainText('正在读取消息处理记录')
   await page.keyboard.press('Escape')
-  await page.locator('.conversation-page .message-process-trigger').nth(1).click()
+  await page.locator('.conversation-page .message-process-trigger').nth(1).focus()
+  await page.keyboard.press('Enter')
   dialog = page.getByRole('dialog', { name: '消息处理过程', exact: true })
   await expect.poll(() => requested.length).toBeGreaterThanOrEqual(2)
   expect(requested[0]).not.toBe(requested[1])
@@ -151,8 +163,13 @@ test('Web 回复来源、Markdown 链接和文字选择保留，后退切页关�
   await expect(page.getByRole('dialog')).toBeVisible()
   expect(selected).toBe('reply-exact')
   await page.keyboard.press('Escape')
+  const popupPromise = page.waitForEvent('popup')
   await page.getByRole('link', { name: '查看任务', exact: true }).click()
-  await expect(page).toHaveURL(/\/tasks\/task-research/)
+  const linkedPage = await popupPromise
+  await expect(linkedPage).toHaveURL(/\/tasks\/task-research/)
+  await linkedPage.close()
+  await openMessageProcess(page)
+  await page.evaluate(() => { location.hash = '/tasks/task-research' })
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.goBack()
   await expect(page.locator('.conversation-page')).toBeVisible()
@@ -172,13 +189,23 @@ test('Web 回复来源、Markdown 链接和文字选择保留，后退切页关�
 })
 
 
-test('会话任务接口撤权立即关闭整个消息弹窗，不等下一次计时轮询', async ({page}) => {
+test('外部点击、重复点击、滚动关闭，窗口调整重新定位且 Tab 不困在浮层', async ({page}) => {
   await page.route(endpoint, route => route.fulfill({json: pageData()}))
-  await page.route('**/api/conversations/room-product/tasks', route => route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}}))
   await login(page)
-  const dialog=await openMessageProcess(page)
-  await expect(dialog).toContainText(confirmed.replyPreview)
-  await dialog.getByText('本会话的任务与安排',{exact:true}).click()
+  const trigger = page.locator('.conversation-page .message-process-trigger').first()
+  let dialog = await openMessageProcess(page)
+  await page.locator('.conversation-page .message-body').first().click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.locator('.conversation-page .message')).toHaveCount(0)
+  dialog = await openMessageProcess(page)
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('button', {name: '刷新记录'})).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog).toHaveCount(0)
+  dialog = await openMessageProcess(page)
+  await page.locator('.transcript').dispatchEvent('scroll')
+  await expect(dialog).toHaveCount(0)
+  dialog = await openMessageProcess(page)
+  await page.getByRole('heading', {name: '产品协作', exact: true}).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
 })

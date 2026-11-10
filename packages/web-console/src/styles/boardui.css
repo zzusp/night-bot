@@ -49,6 +49,7 @@
   --board-control-height: 36px;
   --board-transition: 150ms ease;
   --board-z-menu: 200;
+  --board-z-popover: 300;
   --board-shadow-card: 0 1px 1px 0 rgb(0 0 0 / 5%);
   --board-shadow-sidebar: 0 1px 0 0 rgb(0 0 0 / 1.96%), 0 1px 12px 0 rgb(0 0 0 / 5.88%), 0 0 1px 0 rgb(0 0 0 / 32.16%);
   --board-shadow-selected: 0 0 0 1px var(--board-primary-top), inset 0 1px 0 0 rgb(255 255 255 / 25.1%);

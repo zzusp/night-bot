@@ -30,33 +30,24 @@ const duration = (ms: number) => ms < 1000 ? `${ms.toLocaleString('zh-CN', { max
   : `${(ms / 1000).toLocaleString('zh-CN', { maximumFractionDigits: 3 })} 秒`;
 const tone = (status: string) => status === 'confirmed' ? 'success' : status === 'failed' || status === 'invalid-time' ? 'danger' : status === 'unconfirmed' || status === 'pending' ? 'warning' : 'neutral';
 
-function MessageJourney({ row }: { row: ReplyTiming }) {
+function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean }) {
   const confirmed = row.status === 'confirmed' && row.durationMs !== null && Number.isFinite(row.durationMs) && row.durationMs >= 0;
-  const received = row.receivedAt ? Date.parse(row.receivedAt) : NaN;
   return <article className="response-time-row">
+    {multiple && <p className="response-time-source">{row.preview || '来源消息正文未提供'}</p>}
     <header className="response-time-summary">
-      <span className="response-time-message"><span className="response-time-preview">{row.preview || '消息正文未提供'}</span>
-        <span className="response-time-meta">接收于 {exactTime(row.receivedAt)}</span>
-      </span>
-      <span className="response-time-outcome">{confirmed ? <><strong>{duration(row.durationMs!)}</strong><span>首答耗时</span></> : <Badge tone={tone(row.status)}>{labels[row.status] || '记录不足'}</Badge>}</span>
+      {confirmed ? <><span>首答耗时</span><strong>{duration(row.durationMs!)}</strong></> : <Badge tone={tone(row.status)}>{labels[row.status] || '记录不足'}</Badge>}
     </header>
-    <div className="response-time-detail">
-      {confirmed && row.reason && <p className="response-time-explanation">{row.reason}</p>}
-      {confirmed ? <div className="response-time-reply"><span className="response-time-caption">首条回复</span><p>{row.replyPreview || '已确认可见，未提供回复摘要。'}</p></div>
-        : <p className="response-time-explanation">{row.reason || explanations[row.status] || '当前记录不足，无法确认首答。'}</p>}
-      {row.steps.length ? <>
-        <div className="response-time-timeline-heading"><h3>回复前的过程</h3><span>右侧为接收后的累计时间</span></div>
-        <ol className="response-time-timeline">{row.steps.map((step, index) => {
-          const elapsed = Date.parse(step.at) - received;
-          return <li key={`${step.kind || step.label}:${step.at}:${index}`}>
-            <span className="response-time-event"><span>{step.label}</span><time dateTime={step.at}>{exactTime(step.at)}</time>
-              {step.shared && <small>批次共享，不代表本条消息单独用时</small>}
-            </span>
-            <span className="response-time-elapsed">{Number.isFinite(elapsed) && elapsed >= 0 ? `+${duration(elapsed)}` : '时间无法对应'}</span>
-          </li>;
-        })}</ol>
-      </> : <p className="muted">未记录可展示的中间过程。</p>}
-    </div>
+    {row.reason && <p className="response-time-explanation">{row.reason}</p>}
+    {!confirmed && !row.reason && <p className="response-time-explanation">{explanations[row.status] || '当前记录不足，无法确认首答。'}</p>}
+    {row.steps.length ? <ol className="response-time-timeline">{row.steps.map((step, index) => {
+      const measured = typeof step.durationMs === 'number' && Number.isFinite(step.durationMs) && step.durationMs >= 0;
+      return <li key={`${step.kind || step.label}:${step.at}:${index}`}>
+        <span className="response-time-event" title={exactTime(step.at)}>{step.label.replace(/（批次共享）$/, '')}
+          {step.shared && <small>批次共享</small>}
+        </span>
+        <span className="response-time-elapsed" aria-label={measured ? `节点耗时 ${duration(step.durationMs!)}` : '此节点未单独计时'}>{measured ? duration(step.durationMs!) : '—'}</span>
+      </li>;
+    })}</ol> : <p className="response-time-explanation">未记录可展示的中间过程。</p>}
   </article>;
 }
 
@@ -70,20 +61,17 @@ export function ResponseTimes({ endpoint, message, onAccessRevoked }: { endpoint
   const data = revoked || denied ? null : query.data;
   const latest = query.refresh;
   return <section className="response-times" aria-label="消息首答与处理过程">
-    <header className="execution-section-heading"><p>从 Bot 接收消息，到首条回复确认送达。</p>
+    <header className="execution-section-heading"><span>过程 / 节点耗时</span>
       <Button variant="ghost" busy={query.loading} onClick={latest}>刷新记录</Button>
     </header>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
     {!data ? query.loading ? <Loading>正在读取消息处理记录…</Loading> : <p className="execution-empty">首答记录暂不可读，请重新获取。</p>
       : data.status !== 'ready' ? <p className="execution-empty">{data.reason || '这条消息暂无可核验的来源记录，无法展示处理过程或计算首答耗时。'}</p> : <>
         {!data.items.length && <p className="execution-empty">这条消息暂无可核实的入站来源，不根据相邻消息推测处理过程。</p>}
-        {data.items.length > 1 && <p className="message-process-scope">这条回复关联多条来源消息；各条分别从自己的接收时间计时。</p>}
-        {data.items.map(row => <MessageJourney key={`${row.messageId}:${row.messageVersion ?? 1}`} row={row} />)}
+        {data.items.length > 1 && <p className="message-process-scope">这条回复关联多条来源消息；各条分别计时。</p>}
+        {data.items.map(row => <MessageJourney key={`${row.messageId}:${row.messageVersion ?? 1}`} row={row} multiple={data.items.length > 1} />)}
 
       </>}
-    <details className="execution-reading-note"><summary>计时与记录范围</summary>
-      <p>起点是 Bot 实际接收消息，终点是第一条关联回复确认送达，包含有历史来源覆盖证明的共同任务回复，不代表用户已读。回复用途不影响计时。只有明确无需处理且无需回复时显示无需回复；其他消息显示等待或实际投递状态。时间缺失或较早回复可见性待核实时，不计算耗时。</p>
-      <p>只展示已保存的事实。累计时间不是各阶段独立耗时，批次共享过程不分摊到单条消息。时间按浏览器本地时区显示（{Intl.DateTimeFormat().resolvedOptions().timeZone}）。仅核对所选消息的可验证来源。</p>
-    </details>
+    {data?.items.length ? <p className="response-time-footnote">— 未单独计时 · 共享节点不分摊</p> : null}
   </section>;
 }

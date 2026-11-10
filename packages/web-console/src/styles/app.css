@@ -427,35 +427,29 @@ html, body, #root { width: 100%; min-width: 0; }
 
 .response-time-row > summary:focus-visible,.execution-tool-records > summary:focus-visible,.execution-reading-note > summary:focus-visible,.chat-execution-group > summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
 
-/* Per-message receipts stay in the conversation, in a native modal. */
-.message-process-trigger { min-height: 24px; border: 0; border-radius: 4px; padding: 3px 5px; background: transparent; color: var(--board-muted); font: inherit; font-size: 11px; cursor: pointer; }
-.message-process-trigger:hover,.message-process-trigger:active { color: var(--board-text); background: var(--board-hover); }
-.message-process-trigger:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
-.message-inspectable > .message-body { cursor: pointer; }
+/* Compact non-modal receipts are anchored to their message, outside transcript overflow. */
+.message-inspectable > .message-body { position: relative; cursor: pointer; }
 .message-inspectable > .message-body:hover { filter: brightness(.98); }
-.message-inspectable .message-body :is(a,button,summary) { position: relative; }
-.message-process-dialog { width: min(620px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); color: var(--board-text); background: var(--board-surface); overflow: hidden; }
-.message-process-dialog[open] { display: flex; flex-direction: column; }
-.message-process-dialog::backdrop { background: rgb(0 0 0 / 35%); }
-.message-process-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--board-border); }
-.message-process-heading h2 { margin: 0; font-size: 18px; font-weight: 500; }
-.message-process-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-.message-process-dialog .response-times { border: 0; border-radius: 0; }
-.message-process-dialog .execution-section-heading { align-items: center; padding: 12px 20px; }
-.message-process-dialog .execution-section-heading > p { margin: 0; font-size: 12px; color: var(--board-muted); }
-.message-process-dialog .response-time-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; }
-.message-process-dialog .response-time-detail { margin: 0 20px 20px; }
-.message-process-dialog .response-time-timeline-heading { margin-top: 20px; }
-.message-conversation-records { border-top: 1px solid var(--board-border); }
-.message-conversation-records > summary { padding: 16px 20px; cursor: pointer; font-size: 12px; color: var(--board-muted); }
-.message-conversation-records > summary:hover { background: var(--board-panel); color: var(--board-text); }
-.message-conversation-records > summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
-.message-process-scope { margin: 0; padding: 0 20px 12px; color: var(--board-muted); font-size: 12px; }
-.message-process-dialog .chat-execution { overflow: visible; padding: 0 20px 20px; }
-@media(max-width:520px) {
-  .message-process-heading { padding: 12px 16px; }
-  .message-process-dialog .response-time-summary { padding: 16px; flex-direction: column; gap: 12px; }
-  .message-process-dialog .response-time-outcome { margin: 0; }
-  .message-process-dialog .response-time-detail { margin: 0 16px 20px; }
-  .message-process-dialog .response-time-elapsed { max-width: 45%; white-space: normal; overflow-wrap: anywhere; text-align: right; }
-}
+.message-inspectable > .message-body:has(.message-process-trigger:focus-visible),
+.message-inspectable > .message-body:has(.message-process-trigger[aria-expanded="true"]) { outline: 2px solid var(--board-primary); outline-offset: 3px; }
+.message-process-trigger { cursor: pointer; }
+.message-process-popover { position: fixed; z-index: var(--board-z-popover); display: flex; flex-direction: column; width: min(304px, calc(100vw - 16px)); max-height: min(440px, calc(100dvh - 16px)); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); color: var(--board-text); background: var(--board-surface); box-shadow: var(--board-shadow-sidebar); overflow: hidden; }
+.message-process-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 0 16px; }
+.message-process-heading h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.message-process-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.message-process-popover .response-times { border: 0; border-radius: 0; }
+.message-process-popover .execution-section-heading { align-items: center; gap: 8px; padding: 0 12px 4px 16px; color: var(--board-muted); font-size: 11px; }
+.message-process-popover .execution-section-heading .board-button { min-height: 32px; padding: 4px; font-size: 11px; }
+.message-process-popover .response-time-row { padding: 10px 16px 14px; border-top: 0; }
+.message-process-popover .response-time-row + .response-time-row { border-top: 1px solid var(--board-border); }
+.message-process-popover .response-time-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; font-size: 12px; }
+.message-process-popover .response-time-summary strong { font-family: var(--board-mono); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.message-process-popover .response-time-source { margin: 0 0 8px; font-size: 12px; overflow-wrap: anywhere; }
+.message-process-popover .response-time-explanation { margin: 0 0 12px; overflow-wrap: anywhere; }
+.message-process-popover .response-time-timeline li { gap: 10px; padding-bottom: 12px; }
+.message-process-popover .response-time-timeline li:last-child { padding-bottom: 0; }
+.message-process-popover .response-time-event { font-size: 12px; }
+.message-process-popover .response-time-elapsed { max-width: 42%; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+.message-process-popover .response-time-footnote { margin: 0; padding: 0 16px 14px; color: var(--board-muted); font-size: 11px; }
+.message-process-popover .execution-empty { padding: 12px 16px; font-size: 12px; }
+.message-process-scope { margin: 0; padding: 8px 16px; color: var(--board-muted); font-size: 11px; }
