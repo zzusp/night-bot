@@ -695,7 +695,8 @@ test('SG12 默认真实登录文件观察从待认证接绑定，恢复context�
  await mkdir(auth);wire.state.authenticated=false
  const profileFile=join(auth,'profiles.json'),metadata={profiles:[{corpId:'fixture-corp',userId:'fixture-user',lastLoginAt:'2026-10-01T00:00:00Z',lastUsedAt:'2026-10-01T00:00:00Z'}]}
  await writeFile(profileFile,JSON.stringify(metadata))
- const config={...validateDingtalkConfig(dingtalkPublic({dingtalk_prompt:'隔离职责'})),enabled:true,channelId:'auth-observed'}
+ // Observe this isolated system config explicitly; Linux otherwise defaults to a separate private account directory.
+ const config={...validateDingtalkConfig(dingtalkPublic({dingtalk_prompt:'隔离职责',dingtalk_account_mode:'system'})),enabled:true,channelId:'auth-observed'}
  const input={type:'chat-room',channelId:config.channelId,conversationId:'fixture-room',senderId:'self-open',messageId:'restored',text:'历史上下文'}
  const context=await channels.registerConversation(input)
  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,config,{runner:wire.runner,environment:{USERPROFILE:f.root,HOME:f.root,DWS_CONFIG_DIR:auth}})})
@@ -721,7 +722,7 @@ test('SG12 账号歧义、目标漂移与非认证错误失败关闭，不从首
  const profile={profile:'a:u',corpId:'a',userId:'u',corpName:'Org',isOrgCurrent:false}
  assert.throws(()=>selectDwsProfile({success:true,profiles:[profile,{...profile,profile:'b:v',corpId:'b',userId:'v'}]},'Org'),{code:'DINGTALK_PROFILE_AMBIGUOUS'})
  assert.throws(()=>selectDwsProfile({success:true,profiles:[profile]},'a'),{code:'DINGTALK_PROFILE_NOT_FOUND'})
- const wire=boundDwsFixture(),config=validateDingtalkConfig(dingtalkPublic())
+ const wire=boundDwsFixture(),config=validateDingtalkConfig(dingtalkPublic({dingtalk_account_mode:'system'}))
  const binding=await resolveDingtalkBinding(config,{runner:wire.runner})
  await assert.rejects(resolveDingtalkBinding({...config,binding:{...binding,conversationId:'other-room'}},{runner:wire.runner}),{code:'DINGTALK_BINDING_CHANGED'})
  for(const exitCode of [1,4]){

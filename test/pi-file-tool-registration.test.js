@@ -37,7 +37,7 @@ test('exact definition and native execution admission reject direct calls, forei
  await assert.rejects(definition.execute(exec.arguments,exec),{code:'PI_FILE_NATIVE_EXECUTION_REQUIRED'})
  await assert.rejects(preflightPiFileMutation({...exec,agent:{id:f.actor.id}},definition),{code:'PI_FILE_DEFINITION_REQUIRED'})
  await preflightPiFileMutation(exec,{name:'write'})
- await f.start();await f.handle.whenIdle();assert.equal(started,0);await assert.rejects(stat(file),{code:'ENOENT'});assert.equal((await f.history()).find(e=>e.type==='message'&&e.message.role==='toolResult').message.details.nativeResult.error.info.code,'FS_SANDBOX_DENIED')
+ await f.start();await f.handle.whenIdle();assert.equal(started,0);await assert.rejects(stat(file),{code:'ENOENT'});assert.equal((await f.history()).find(e=>e.type==='message'&&e.message.role==='toolResult').message.details.nativeResult.error.message,'PERMISSION_PRIVATE_PATH_DENIED')
 })
 test('existing NativeTools guard prevents a registered Pi mutation body and effect middleware',{timeout:15000},async t=>{
  let n=0,started=0
@@ -117,5 +117,5 @@ test('registered readonly write uses one exact allowed-once approval without gra
 test('registered private-path escalation is refused before asking an approval answerer',{timeout:15000},async t=>{
  let step=0,prompts=0,intents=0,path
  const f=await fixture(t,()=>step++===0?{tool:'write',args:{path,content:'must never write',sandbox_permissions:'danger-full-access',justification:'Even an escalation cannot authorize private storage'}}:{text:'Private path refused without prompting'},{async configure(ctx,actor){await ctx.get('permissionPresets').set(actor,'read-only');ctx.get('approval').setPolicy(actor,'ask');assert.equal(ctx.get('approval').policyForActor(actor),'ask');ctx.on('approval/request',()=>{prompts++;return'allowed-once'});ctx.on('tools/execute',async(exec,next)=>{if(exec.name==='write')intents++;return next()})}})
- path=join(f.ctx.runtimePaths.memory,'escalation-forbidden.txt');await f.start();await f.handle.whenIdle();assert.equal(prompts,0,'A forbidden path must not solicit a meaningless grant');assert.equal(intents,0);await assert.rejects(stat(path),{code:'ENOENT'});assert.equal((await f.history()).find(e=>e.type==='message'&&e.message.role==='toolResult').message.details.nativeResult.error.info.code,'FS_SANDBOX_DENIED');assert.equal(f.actor.ctx.get('permissionPresets').permissionState(f.actor).sandbox,'read-only')
+ path=join(f.ctx.runtimePaths.memory,'escalation-forbidden.txt');await f.start();await f.handle.whenIdle();assert.equal(prompts,0,'A forbidden path must not solicit a meaningless grant');assert.equal(intents,0);await assert.rejects(stat(path),{code:'ENOENT'});assert.equal((await f.history()).find(e=>e.type==='message'&&e.message.role==='toolResult').message.details.nativeResult.error.message,'PERMISSION_PRIVATE_PATH_DENIED');assert.equal(f.actor.ctx.get('permissionPresets').permissionState(f.actor).sandbox,'read-only')
 })

@@ -262,6 +262,12 @@ for(const invalid of ['blank-intent','missing-source','utf8-budget','referents-o
   const message=channelMessage('invalid-'+invalid),conversationId=h.host.ctx.channels.identity(message).sessionId
   await h.receive(message)
   await eventually(async()=>summaries>0&&(await h.query('router.rotations',{conversationId})).some(row=>row.state==='aborted'),'invalid summary abort is durably committed',t.signal)
+  // Triage commit and triage completion may both enqueue a router drain.
+  // An aborted earlier rotation does not mean the queued retry is already idle.
+  await eventually(async()=>{
+    try{await h.service.whenIdle();return true}
+    catch(error){assert.equal(error.routerSafeToResume,true);return false}
+  },'all queued invalid handoffs have settled',t.signal)
   const current=await h.query('router.get',{conversationId}),rotations=await h.query('router.rotations',{conversationId})
   assert.equal(current.generation,1);assert.equal(current.phase,'active');assert.equal(current.cursor,1);assert.equal(current.lastHandoffCursor,0)
   assert.ok(rotations.length>0);assert.ok(rotations.every(row=>row.state==='aborted'&&!row.candidateSessionId))

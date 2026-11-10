@@ -572,22 +572,14 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       const images = []
       const mediaUnavailable = []
       for (const resource of resourceRefs.filter((item) => item?.type === 'mediaId')) {
-        let localPath
         try {
-          const result = await runner.run(this.compileMessageResourceDownload({ groupId, messageId, resourceId: resource.resourceId }))
-          if (result.exitCode !== 0) throw new Error(`exit_${result.exitCode}:${result.stderr}`)
-          const receipt = parseJson(result.stdout, 'resource-download')
-          if (typeof receipt.localPath !== 'string' || receipt.localPath === '') throw new Error('local_path_missing')
-          localPath = path.resolve(runner.cwd, receipt.localPath)
-          const cwdRoot = path.resolve(runner.cwd) + path.sep
-          if (!localPath.startsWith(cwdRoot)) throw new Error('local_path_outside_runner_cwd')
-          const extension = path.extname(localPath).toLowerCase()
-          const mediaType = extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/png'
-          images.push({ data: new Uint8Array(await readFile(localPath)), mediaType, name: path.basename(localPath) })
+          // Reuse the owned temporary directory, real-path fence and size bound.
+          // A vendor receipt must never grant cleanup rights over arbitrary files.
+          const result = await this.readMessageResource(groupId, messageId, resource)
+          if (!result.image) throw new Error('dws_image_resource_format_invalid')
+          images.push(result.image)
         } catch (error) {
           mediaUnavailable.push(`${resource.resourceId}: ${error instanceof Error ? error.message : String(error)}`)
-        } finally {
-          if (localPath) await unlink(localPath).catch(() => undefined)
         }
       }
       return { images, mediaUnavailable }
