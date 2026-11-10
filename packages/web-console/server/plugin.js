@@ -128,7 +128,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(request.method==='POST'&&path==='/api/settings/channels') return send(response,200,await settings.saveChannel(await jsonBody(request,['type','channelId','enabled','config','expectedVersion','createOnly'],16384)))
         fail('NOT_FOUND',404)
       } catch(error) {
-        const codes={SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409,CHANNEL_INSTANCE_EXISTS:409}
+        const codes={CHANNEL_ACTIVATION_FAILED:503,CHANNEL_RECONFIGURING:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409,CHANNEL_INSTANCE_EXISTS:409}
         if(codes[error.code]) fail(error.code,codes[error.code])
         if(['JSON_REQUIRED','REQUEST_TOO_LARGE','JSON_INVALID','REQUEST_INVALID','NOT_FOUND'].includes(error.code))throw error
         fail('SETTINGS_SAVE_UNAVAILABLE',503)
@@ -147,18 +147,43 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, permissionView(await permissions().respond(permissionRequest[1], body.decision)))
     }
     if (request.method === 'GET' && path === '/api/channels') return send(response, 200, await channelView())
-    const dingtalkDetail=/^\/api\/channels\/dingtalk\/([^/]+)$/.exec(path)
-    if(dingtalkDetail&&['GET','PATCH'].includes(request.method)){
+    const channelRemoval=/^\/api\/channels\/([^/]+)$/.exec(path),removalQuery=path==='/api/channels'&&request.method==='DELETE'
+    if(request.method==='DELETE'&&(channelRemoval||removalQuery)){
+      const configuration=getChannelConfiguration()
+      if(typeof configuration?.remove!=='function')fail('CHANNEL_CONFIGURATION_UNAVAILABLE',503)
+      if(removalQuery&&([...url.searchParams.keys()].some(key=>key!=='channelId')||url.searchParams.getAll('channelId').length!==1))fail('CHANNEL_DELETE_REQUEST_INVALID',400)
+      let targetId;try{targetId=removalQuery?url.searchParams.get('channelId'):decodeURIComponent(channelRemoval[1])}catch{fail('CHANNEL_DELETE_REQUEST_INVALID',400)}
+      if(!targetId||targetId!==targetId.trim()||targetId.length>128||targetId.includes('\0'))fail('CHANNEL_DELETE_REQUEST_INVALID',400)
+      const body=await jsonBody(request,['expectedVersion','confirm'],1024)
+      if(typeof body.expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(body.expectedVersion))fail('CHANNEL_DELETE_REQUEST_INVALID',400)
+      if(body.confirm!==true)fail('CHANNEL_DELETE_CONFIRMATION_REQUIRED',400)
+      try{
+        // The Host owns CAS, unresolved effects, per-channel drain and rollback.
+        // A disconnected response never authorizes retrying this operation.
+        const result=await configuration.remove(targetId,{expectedVersion:body.expectedVersion})
+        return send(response,200,{ok:true,channelId:targetId,changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied})
+      }catch(error){
+        const status={DINGTALK_CHANNEL_NOT_FOUND:404,DINGTALK_CHANNEL_VERSION_CONFLICT:409,DINGTALK_CHANNEL_SWITCH_BLOCKED:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_RECONFIGURING:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,CHANNEL_CONFIGURATION_UNAVAILABLE:503,CHANNEL_CONFIGURATION_OPERATOR_REQUIRED:403}
+        if(status[error.code])fail(error.code,status[error.code])
+        const uncertain=error.committed===true?'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN':channels.configurationErrors?.get(targetId)
+        if(uncertain)fail(uncertain,503)
+        throw error
+      }
+    }
+    const dingtalkDetail=/^\/api\/channels\/dingtalk\/([^/]+)$/.exec(path),detailQuery=path==='/api/channels/dingtalk'&&['GET','PATCH'].includes(request.method)
+    if((dingtalkDetail||detailQuery)&&['GET','PATCH'].includes(request.method)){
       const app=application(),configuration=getChannelConfiguration()
       if(!configuration)fail('CHANNEL_CONFIGURATION_UNAVAILABLE',503)
-      let channelId;try{channelId=decodeURIComponent(dingtalkDetail[1])}catch{fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)}
+      if(detailQuery&&([...url.searchParams.keys()].some(key=>key!=='channelId')||url.searchParams.getAll('channelId').length!==1))fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)
+      let channelId;try{channelId=detailQuery?url.searchParams.get('channelId'):decodeURIComponent(dingtalkDetail[1])}catch{fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)}
+      if(!channelId||channelId!==channelId.trim()||channelId.length>128||channelId.includes('\0'))fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)
       try{
         if(request.method==='GET')return send(response,200,await configuration.getDingtalk(channelId))
         const body=await jsonBody(request,['expectedVersion','name','prompt','conversationType','targetKind','target','writesAuthorized'])
         const result=await configuration.editDingtalk(channelId,body),channel=configuredChannels(app,channels,[result.channel]).items[0]
         return send(response,200,{ok:true,changed:result.changed,restartRequired:channel.restartRequired,liveApplied:channel.liveApplied,channel,detail:result.detail})
       }catch(error){
-        const status={DINGTALK_CHANNEL_NOT_FOUND:404,DINGTALK_CHANNEL_VERSION_CONFLICT:409,DINGTALK_CHANNEL_SWITCH_BLOCKED:409,DINGTALK_CHANNEL_REQUEST_INVALID:400,DINGTALK_CONFIG_INVALID:400,CHANNEL_CONFIGURATION_UNAVAILABLE:503,CHANNEL_CONFIGURATION_OPERATOR_REQUIRED:403}[error.code]
+        const status={CHANNEL_ACTIVATION_FAILED:503,CHANNEL_RECONFIGURING:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,DINGTALK_CHANNEL_NOT_FOUND:404,DINGTALK_CHANNEL_VERSION_CONFLICT:409,DINGTALK_CHANNEL_SWITCH_BLOCKED:409,DINGTALK_CHANNEL_REQUEST_INVALID:400,DINGTALK_CONFIG_INVALID:400,CHANNEL_CONFIGURATION_UNAVAILABLE:503,CHANNEL_CONFIGURATION_OPERATOR_REQUIRED:403}[error.code]
         if(status)fail(error.code,status)
         if(error.code?.startsWith('DINGTALK_'))fail('DINGTALK_CONFIG_INVALID',400)
         throw error
@@ -171,7 +196,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!configuration) fail('CHANNEL_CONFIGURATION_UNAVAILABLE', 503)
       let result
       try {result = await configuration.addDingtalk(body)} catch (error) {
-        const status = {DINGTALK_CHANNEL_EXISTS: 409, DINGTALK_CHANNEL_REQUEST_INVALID: 400, DINGTALK_CONFIG_INVALID: 400,
+        const status = {CHANNEL_ACTIVATION_FAILED:503,CHANNEL_RECONFIGURING:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,DINGTALK_CHANNEL_EXISTS: 409, DINGTALK_CHANNEL_REQUEST_INVALID: 400, DINGTALK_CONFIG_INVALID: 400,
           DINGTALK_AUTH_REQUIRED: 409, DINGTALK_CURRENT_PROFILE_NOT_FOUND: 409, DINGTALK_CURRENT_PROFILE_AMBIGUOUS: 409,
           DINGTALK_CLI_UNAVAILABLE: 503, DINGTALK_PROFILE_LOOKUP_FAILED: 503, DINGTALK_PROFILE_RESPONSE_INVALID: 502,
           DINGTALK_QUERY_INVALID_JSON: 502, DINGTALK_QUERY_INCOMPLETE: 502, DINGTALK_QUERY_FAILED: 502,
@@ -179,8 +204,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if (status) fail(error.code, status)
         throw error
       }
-      return send(response, 200, {ok: true, changed: result.changed, restartRequired: true, liveApplied: false,
-        channel: configuredChannels(app, channels, [result.channel]).items[0]})
+      const channel = configuredChannels(app, channels, [result.channel]).items[0]
+      return send(response, 200, {ok: true, changed: result.changed, restartRequired: channel.restartRequired, liveApplied: channel.liveApplied, channel})
     }
     if (request.method === 'GET' && path === '/api/conversations') return send(response, 200, conversations(application(), channels))
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))

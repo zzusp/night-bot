@@ -78,7 +78,7 @@ function sampleSession(task) {
   }
 }
 
-export async function startPreview({port = 3080, empty = false, replyDelayMs = 500} = {}) {
+export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-browser-fixture-'))
   const paths = runtimePaths({installRoot:root,dataDir:'data'})
   await prepareRuntimePaths(paths)
@@ -109,7 +109,8 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       return {accepted: true}
     },
   }
-  plugins.set('dingtalk-work', {health: {healthy: true}})
+  // Test-only input at the actual adapter boundary; production HTTP/projection is unchanged.
+  plugins.set('dingtalk-work', {health: structuredClone(dingtalkHealth), bindingActive: dingtalkBindingActive})
   const tasks = empty ? [] : sampleTasks()
   if (!empty) {tasks.find(task => task.taskId === 'task-history-16').groupId = 'custom-room'; tasks.find(task => task.taskId === 'task-history-17').groupId = 'custom-direct'}
   const snapshots = new Map(tasks.map(task => [task.session.sessionId, sampleSession(task)]))
