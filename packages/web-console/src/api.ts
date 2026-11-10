@@ -73,10 +73,17 @@ export interface EvolutionItem {
   memoryUse?:{readCount:number;searchCount:number;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null}|null;
   provenance?:MemoryProvenance|null;origins?:MemoryProvenance[];taskIds?:string[];migration?:{conflict?:boolean};
 }
+export interface EvolutionBody {
+  id: string; name: string; kind: 'memory' | 'skill'; revision: string | number;
+  current: {text: string; updatedAt: string | null; revision: string | number};
+  previous: {text: string; updatedAt: string | null; revision: string | number} | null;
+  comparison: {basis?: 'observed' | 'saved'; status: 'available' | 'no_previous'; reason?: 'not_recorded' | 'new_entry' | 'unsafe_previous'; added: number; removed: number; lines: {type: 'unchanged' | 'added' | 'removed'; text: string}[]};
+  redacted: boolean;
+}
 export interface EvolutionReady extends Page<EvolutionItem> {
   status: 'ready'; coverage: 'authorized-scopes-current-state'|'bot-shared-current-state'; offset: number; limit: number;
   memory: {trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
-  skills: { activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
+  skills: { contentTrackingStatus?: 'ready' | 'degraded'; activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
 }
 export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
 
@@ -138,6 +145,8 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'EVOLUTION_CONTENT_TOO_LARGE') return '此条目内容过大，暂不能在此查看。';
+    if (error.code === 'EVOLUTION_READ_FAILED' || error.code === 'EVOLUTION_UNAVAILABLE') return '内容暂不可读，请检查连接或稍后重试。';
     if (error.code === 'DINGTALK_AUTH_REQUIRED') return 'Bot 运行环境尚未登录钉钉，请先完成登录再保存渠道。';
     if (error.code === 'DINGTALK_CURRENT_PROFILE_NOT_FOUND') return 'Bot 运行环境未找到当前登录账号，请先确认当前账号再保存。';
     if (error.code === 'DINGTALK_CURRENT_PROFILE_AMBIGUOUS') return 'Bot 运行环境存在多个当前账号，请先消除账号歧义；不会自动选择账号。';

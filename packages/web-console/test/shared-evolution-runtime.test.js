@@ -54,6 +54,11 @@ test('真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真�
   await eventually(async()=>{const current=await inspect();return current.skills.modelUseCount===2},'public learned skill used from another channel')
   mode='none';await f.host.ctx.channels.receive(source('channel-beta','chat-room','room-two','correct-shared','修改记忆 公共 facts/shared：以已确认的真实来源核对结果'))
   const corrected=await inspect(),currentMemory=corrected.items.find(row=>row.name==='facts/shared');assert.equal(currentMemory.provenance.channelId,'channel-beta');assert.equal(currentMemory.origins.length,2)
+  const content=async item=>{const response=await fetch(web.origin+'/api/evolution/items/'+item.id+'?revision='+item.revision,{headers:{origin:web.origin,cookie}});assert.equal(response.status,200);return response.json()}
+  const memoryContent=await content(currentMemory);assert.equal(memoryContent.current.text,'以已确认的真实来源核对结果');assert.equal(memoryContent.previous.text,'所有渠道共同核对真实结果');assert.equal(memoryContent.comparison.status,'available')
+  const skillContent=await content(changed);assert.match(skillContent.current.text,/LOCAL_COMMON_BODY_V2/);assert.match(skillContent.previous.text,/LOCAL_COMMON_BODY_V1/);assert.equal(skillContent.comparison.basis,'observed')
+  const learnedContent=await content(corrected.items.find(row=>row.name==='learned-shared-evidence'));assert.match(learnedContent.current.text,/核对返回结果/);assert.equal(learnedContent.previous,null)
+  const beforeUsage=JSON.stringify(corrected.memory);await content(currentMemory);assert.equal(JSON.stringify((await inspect()).memory),beforeUsage,'content and comparison reads do not count as model memory use')
   const otherActor=f.host.ctx.agents.get(a.sessionId);assert.equal((await f.host.ctx.memory.read(otherActor,{topic:'facts',key:'shared'})).entries[0].text,'以已确认的真实来源核对结果')
   if(process.env.NIGHT_SHARED_EVOLUTION_BROWSER==='1'){
    const {chromium}=await import('@playwright/test'),{default:AxeBuilder}=await import('@axe-core/playwright')

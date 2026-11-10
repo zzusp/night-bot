@@ -52,3 +52,21 @@
 .evolution-update-hint { display: block; font-size: 11px; color: var(--board-info); margin-top: 5px; }
 .evolution-item .board-badge { margin-top: 8px; }
 @media(max-width:760px){ .evolution-table { min-width: 680px; } }
+
+.evolution-view-action { display: flex; margin-top: 12px; }
+.evolution-content { min-width: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); padding: 20px; margin: 20px 0; background: var(--board-surface); }
+.evolution-content-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.evolution-content-heading > div { min-width: 0; }
+.evolution-content-heading h3 { overflow-wrap: anywhere; }
+.evolution-content-heading p { margin-top: 8px; }
+.evolution-content-actions, .evolution-content-switch, .evolution-diff-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.evolution-content-switch { margin: 20px 0; }
+.evolution-content-body { min-height: 240px; }
+.evolution-content-meta { color: var(--board-muted); font-size: 12px; overflow-wrap: anywhere; margin: 12px 0; }
+.evolution-plain-text, .evolution-diff { font-family: var(--board-mono); font-size: 13px; line-height: 1.8; }
+.evolution-plain-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.evolution-diff-line { display: grid; grid-template-columns: 24px minmax(0, 1fr); padding: 3px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.evolution-diff-sign { user-select: none; }
+.evolution-diff-line--added { color: var(--board-success); background: var(--board-success-soft); }
+.evolution-diff-line--removed { color: var(--board-danger); background: var(--board-danger-soft); }
+@media (max-width: 760px) { .evolution-content { padding: 14px; } }

@@ -98,3 +98,25 @@ test('a real default Host task turn completes through the native submit tool and
   assert.equal((await ctx.sessionPersistence.list()).filter(row=>row.header.agentPreset==='night-bot-task').length,1)
   for(const request of f.requests)assert.ok(!request.tools?.some(t=>/^(subagent|task_delegate)/.test(t.function.name)))
 })
+
+test('automatic reviews replace only the prior learned body and forgetting removes that comparison',async t=>{
+ let step=0,store,detach
+ const f=await memoryHost(t,body=>{
+  if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
+  const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),value=JSON.parse(lesson(input).text)
+  value.lessons[0].skill.steps=['Distinct revision '+(++step)];return {text:JSON.stringify(value)}
+ })
+ store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'latest-review.sqlite'),instanceId:'latest-review',initialize:true})
+ t.after(async()=>{detach?.();await f.close();await store.close()})
+ detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model})
+ for(const id of ['one','two','three']){await completed(store,id);f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()}
+ const list=await f.host.ctx.memory.inspectEvolution({actorId:'reader'},{kind:'skill'}),item=list.items.find(row=>row.name==='learned-inspect-first')
+ const body=await f.host.ctx.memory.inspectEvolutionItem({actorId:'reader'},{id:item.id,revision:String(item.revision)})
+ assert.match(body.current.text,/Distinct revision 3/);assert.match(body.previous.text,/Distinct revision 2/);assert.doesNotMatch(JSON.stringify(body),/Distinct revision 1/)
+ const scope=memoryScope({actorId:'reader'}),state=await f.host.ctx.reflection.state(scope)
+ assert.equal(state.skills['inspect-first'].previous.previous,undefined)
+ const agent=await f.agent('forget-latest',{actorId:'owner'}),key=state.skills['inspect-first'].memoryKeys[0]
+ await f.say(agent.actor,'忘记 experience/'+key)
+ await assert.rejects(f.host.ctx.memory.inspectEvolutionItem({actorId:'reader'},{id:item.id,revision:String(item.revision)}),{code:'EVOLUTION_ITEM_NOT_FOUND'})
+ assert.deepEqual((await f.host.ctx.reflection.state(scope)).skills,{})
+})

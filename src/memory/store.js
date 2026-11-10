@@ -1,3 +1,4 @@
+import {contentSnapshot} from './previous.js'
 import {memoryDirectory} from './scope.js'
 import {join} from 'node:path'
 import {readdir,unlink} from 'node:fs/promises'
@@ -5,6 +6,7 @@ import {randomUUID} from 'node:crypto'
 import {privateDirectory,readRegular,atomicWrite,withLock,failure} from '../runtime/files.js'
 import {hash,label,checkedText,encodeTopic,decodeTopic} from './format.js'
 
+const withoutPrevious=({previous,...entry})=>entry
 const empty=()=>({version:1,revision:0,forgotten:[],seen:[]})
 const keyOf=(topic,key)=>hash(topic+'\0'+key)
 const active=(entry,now)=>!entry.expiresAt||Date.parse(entry.expiresAt)>now
@@ -53,11 +55,11 @@ export class MarkdownMemoryStore {
     })
   }
   async index(scope){return this.transaction(scope,s=>({revision:s.meta.revision,topics:[...s.topics].map(([topic,value])=>({topic,count:value.entries.filter(e=>active(e,this.now())).length})).filter(t=>t.count).slice(0,40),candidateCount:s.candidates.filter(e=>active(e,this.now())).length}))}
-  async read(scope,{topic,key,candidates=false}={}){return this.transaction(scope,s=>({revision:s.meta.revision,entries:(candidates?s.candidates:[...(s.topics.get(topic)?.entries??[])]).filter(e=>(!key||e.key===key)&&active(e,this.now())).slice(0,50)}))}
+  async read(scope,{topic,key,candidates=false}={}){return this.transaction(scope,s=>({revision:s.meta.revision,entries:(candidates?s.candidates:[...(s.topics.get(topic)?.entries??[])]).filter(e=>(!key||e.key===key)&&active(e,this.now())).slice(0,50).map(withoutPrevious)}))}
   async search(scope,{query,limit=10}={}){
     if(typeof query!=='string'||!query.trim()||query.length>200||!Number.isSafeInteger(limit)||limit<1||limit>20)throw failure('MEMORY_QUERY_INVALID')
     const terms=query.toLocaleLowerCase().split(/\s+/).filter(Boolean)
-    return this.transaction(scope,s=>({revision:s.meta.revision,mode:'literal-keyword',entries:[...s.topics].flatMap(([topic,value])=>value.entries.filter(e=>active(e,this.now())&&terms.every(term=>(topic+' '+e.key+' '+e.text).toLocaleLowerCase().includes(term))).map(e=>({topic,...e}))).slice(0,limit)}))
+    return this.transaction(scope,s=>({revision:s.meta.revision,mode:'literal-keyword',entries:[...s.topics].flatMap(([topic,value])=>value.entries.filter(e=>active(e,this.now())&&terms.every(term=>(topic+' '+e.key+' '+e.text).toLocaleLowerCase().includes(term))).map(e=>({topic,...withoutPrevious(e)}))).slice(0,limit)}))
   }
   async remember(scope,{topic,key,text,source,originSource,provenance,expectedRevision,expiresAt,candidate=false,scopeRevision}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
@@ -72,12 +74,13 @@ export class MarkdownMemoryStore {
       if(expectedRevision!==undefined&&(prior?.revision??0)!==expectedRevision)throw failure('MEMORY_REVISION_CONFLICT')
       if(candidate&&(s.meta.forgotten.includes(hash(text))||topicState.entries.some(e=>e.key===key)))return {ok:false,code:'MEMORY_CANDIDATE_SUPPRESSED'}
       const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...(provenance?{provenance:structuredClone(provenance)}:{}),origins:[...new Map([...(prior?.origins??[]),...prior?.provenance?[prior.provenance]:[],...provenance?[provenance]:[]].map(value=>[JSON.stringify(value),value])).values()].slice(-32),...expiresAt?{expiresAt}:{}}
+      if(prior)entry.previous=contentSnapshot(prior.text,prior.revision,prior.updatedAt)
       if(originSource)entry.originSource={sessionId:originSource.sessionId,messageId:originSource.messageId,observedAt:originSource.observedAt,quoteSha256:originSource.quoteSha256,actor:originSource.actor}
       if(prior){entries.splice(entries.indexOf(prior),1);if(prior.text!==text)s.meta.forgotten.push(hash(prior.text))}
       entries.push(entry)
       if(!candidate){s.topics.set(topic,topicState);s.candidates=s.candidates.filter(e=>!(e.key===key&&e.topic===topic));s.meta.forgotten=s.meta.forgotten.filter(h=>h!==hash(text))}
       s.meta.seen.push(seen);s.mark()
-      return ()=>({ok:true,entry,revision:s.meta.revision,candidate})
+      return ()=>({ok:true,entry:withoutPrevious(entry),revision:s.meta.revision,candidate})
     })
   }
   async forget(scope,{topic,key,expectedRevision,source}={}){

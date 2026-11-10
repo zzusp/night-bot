@@ -4,9 +4,13 @@ export const hash=value=>createHash('sha256').update(value).digest('hex')
 export const label=value=>typeof value==='string'&&/^[\p{L}\p{N}][\p{L}\p{N}_. -]{0,79}$/u.test(value)
 export function checkedText(text){
   if(typeof text!=='string'||!text.trim()||text.length>2048||/<!--\s*\/?memory:|\0/.test(text))throw failure('MEMORY_TEXT_INVALID')
-  if(/[a-z][a-z0-9+.-]*:\/\/[^\s/@]+:[^\s/@]+@|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(text))throw failure('MEMORY_SECRET_REFUSED')
-  if(/(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|密码|口令|密钥|验证码)\s*(?:[=:：]|是)|\bBearer\s+\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|AKIA[A-Z0-9]{12,})\b/i.test(text))throw failure('MEMORY_SECRET_REFUSED')
+  if(containsSecret(text))throw failure('MEMORY_SECRET_REFUSED')
   return text.trim()
+}
+export function containsSecret(text){
+  if(/[a-z][a-z0-9+.-]*:\/\/[^\s/@]+:[^\s/@]+@|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(text))return true
+  if(/(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|token|authorization|credentials?|secret|密码|口令|密钥|验证码)[\"']?\s*(?:[=:：]|是)|\bBearer\s+\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,}|AKIA[A-Z0-9]{12,})\b/i.test(text))return true
+  return false
 }
 export const temporary=text=>/(?:这次|本次|今天|暂时|仅限本轮|当前任务|just this time|for now|today only|this task only)/i.test(text)
 export function encodeTopic(topic,revision,entries,scope){
