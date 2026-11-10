@@ -6,7 +6,7 @@ for(const theme of ['light','dark'])test(`${theme}: 卡片整体悬停，3/4列�
  await page.emulateMedia({reducedMotion:'reduce'});await login(page);await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
  const data=await page.request.get('/api/channels').then(r=>r.json()),original=data.items.find((item:{channelId:string})=>item.channelId==='dingtalk-work')
  let rows=[original,...Array.from({length:7},(_,i)=>({...original,channelId:'fixture-card-'+i,type:'fixture-custom',name:'自定义渠道 '+i,writesAuthorized:undefined}))]
- await page.route('**/api/channels',route=>route.fulfill({json:{items:rows}}));await page.reload();await expect(page.locator('.channel-card')).toHaveCount(8)
+ await page.route('**/api/channels',route=>route.fulfill({json:{items:rows}}));await page.reload();await expect(page.locator('.channel-card')).toHaveCount(9)
  for(const [width,columns] of [[1920,4],[1440,3],[1280,3],[1100,2],[768,2],[390,1]]){
   await page.setViewportSize({width,height:1000});const grid=page.locator('.channel-cards')
   expect(await grid.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(columns)
@@ -25,8 +25,8 @@ for(const theme of ['light','dark'])test(`${theme}: 卡片整体悬停，3/4列�
  await select.focus();await page.keyboard.press('Enter');await expect(select).toHaveAttribute('aria-pressed','true')
  await action.getByRole('button').click();await page.getByRole('menuitem',{name:'编辑配置',exact:true}).click();await expect(page.getByRole('dialog',{name:'编辑钉钉渠道',exact:true})).toBeVisible();await expect(page.getByRole('dialog').getByLabel('渠道标识',{exact:true})).toHaveValue('dingtalk-work');await expect(select).toHaveAttribute('aria-pressed','true');await expect(page.getByRole('button',{name:'关闭编辑钉钉渠道',exact:true})).toBeEnabled();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'编辑钉钉渠道',exact:true})).not.toBeVisible()
  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([])
- rows=[original];await page.reload();await expect(page.locator('.channel-card')).toHaveCount(1)
- expect((await page.locator('.channel-card').boundingBox())!.width).toBeLessThan((await page.locator('.channel-cards').boundingBox())!.width/2)
+ rows=[original];await page.reload();await expect(page.locator('.channel-card')).toHaveCount(2)
+ expect((await page.locator('.channel-card').first().boundingBox())!.width).toBeLessThan((await page.locator('.channel-cards').boundingBox())!.width/2)
 })
 test('卡片只保留主状态与健康，限制在编辑交互查看且未知发送不消失',async({page})=>{
  await login(page)

@@ -12,7 +12,7 @@ async function login(page: Page, initial = true) {
   if (initial) await page.goto('/#/channels')
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
-  await expect(page.getByRole('heading', {name: '渠道', exact: true, level: 2})).toBeVisible()
+  await expect(page.locator('.channel-card--add')).toBeVisible()
 }
 async function openForm(page: Page) {
   await page.getByRole('button', {name: '添加渠道', exact: true}).click()
@@ -302,7 +302,7 @@ test('编辑回填固定标识与完整字段，同 ID 待重启及无变化或�
   await expect(dialog.getByLabel('群 ID', {exact: true})).toHaveValue(original.target)
   await expect(dialog.getByLabel('渠道职责（可选）', {exact: true})).toHaveValue(original.prompt)
   await expect(page.locator('.conversation-list .conversation-row')).toHaveCount(conversationCount)
-  await expect(page.getByRole('heading', {name: '渠道', exact: true, level: 2})).toBeVisible()
+  await expect(page.locator('.channel-card--add')).toBeVisible()
   await dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true}).focus(); await page.keyboard.press('Tab')
   await expect(dialog.getByLabel('会话类型', {exact: true})).toBeFocused()
   await dialog.getByLabel('会话类型', {exact: true}).selectOption('chat')

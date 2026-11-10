@@ -30,7 +30,7 @@ test('二次确认默认取消，关闭不请求删除且返回菜单触发器',
   }
   expect(writes).toBe(0);
 });
-test('单次确认仅发一次，发送版本和确认字段，成功后刷新并聚焦页标题', async ({ page }) => {
+test('单次确认仅发一次，发送版本和确认字段，成功后刷新并聚焦添加卡片', async ({ page }) => {
   const data = await setup(page); let rows = data.items, writes = 0;
   let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
   await page.route(/\/api\/channels$/, route => route.fulfill({ json: { items: rows } }));
@@ -46,7 +46,7 @@ test('单次确认仅发一次，发送版本和确认字段，成功后刷新�
   release(); await expect(dialog).not.toBeVisible();
   expect(writes).toBe(1);
   await expect(page.getByRole('button', { name: '渠道操作：dingtalk-work', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: '渠道', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: '添加渠道', exact: true })).toBeFocused();
 });
 test('未知结果锁定，关闭再开仍仅核对，不自动重发', async ({ page }) => {
   const data = await setup(page); let rows = data.items, writes = 0;
