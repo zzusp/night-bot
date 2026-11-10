@@ -4,7 +4,7 @@
 .evolution-card { min-width: 0; padding: 22px; background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); }
 .evolution-card > header { display: flex; align-items: center; gap: 9px; }
 .evolution-card > header > svg { color: var(--board-info); }
-.evolution-card h3 { font-size: 14px; font-weight: 500; }
+.evolution-card h2 { font-size: 14px; font-weight: 500; }
 .evolution-card header .board-badge { margin-left: auto; }
 .evolution-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; margin: 24px 0; }
 .evolution-metrics dt { color: var(--board-muted); font-size: 12px; }
