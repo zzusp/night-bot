@@ -26,6 +26,7 @@ import { openDynamicTaskStore, ingressTimestamp, pendingTaskHumanReview, taskHum
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { readExecutionResourceCatalog, createExecutionResourceCatalog } from './execution-resource-catalog.js'
 import { taskSessionModelSelection, taskModelConfig, taskModelSelection } from './task-model-config.js'
+import {roleModelSelection} from '../../src/role-models.js'
 import { createStartupMetrics, createCloseObservation, observeClose } from './startup-metrics.js'
 import { createTaskSessionObservability, createTaskObservationQueue } from './task-session-observability.js'
 import { activeFixedUnits, fixedTopicIds, fixedUnitRequestId, platformScheduleSessionId, platformScheduleOutboundId } from './fixed-topics.js'
@@ -349,6 +350,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     hasAppliedOperation: async operationId => !!await query('receipt.get', { id: `topic-operation:${operationId}` }),
     isTaskQuiescent: taskId => [...executionCache.values()].filter(item => item.taskId === taskId).every(item => item.drained && !item.recovering) })
   const models = () => { const { provider, model, reasoningEffort } = legacy.getAgentConfig(); return { provider, model, ...(reasoningEffort ? { reasoningEffort } : {}) } }
+  const roleModels = role => roleModelSelection(ctx,role,role==='task'?taskModelSelection(models(),legacy.getAgentConfig().taskSessionModel??config):models())
   const currentTask = async (binding,{allowLiveSupplements=false}={}) => {
     const task = await query('task.get', { taskId: binding.taskId })
     return !!task && !task.archivedAt && !task.recovering && !task.drained && task.status === 'active' && task.control === 'active' && task.sessionId === binding.sessionId
@@ -928,14 +930,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit:async(groupId,decision)=>{
+  const triage=createChannelTriage({ctx,root,models:()=>roleModels('triage'),legacy,responsibilityFor,commit:async(groupId,decision)=>{
     const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))
     for(const notification of receipt.result?.notifications??[])notificationCache.set(notification.id,notification)
     void deliverNotifications()
     void hostScheduler(()=>residentRouter.schedule(groupId)).catch(error=>recordRouterFailure(groupId,error))
     return receipt.result
   }})
-  residentRouter=await openRouterLifecycle({ctx,store,root,models,agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
+  residentRouter=await openRouterLifecycle({ctx,store,root,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
     query,command,responsibilityFor,applyTaskAction:applyDirectTaskAction,prepareReply:args=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args)},
@@ -948,7 +950,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       snapshot.consumed=Math.max(snapshot.consumed,page.nextOffset);snapshot.total=page.total
       return page
     },
-    platformConfig:groupId=>({responsibility:responsibilityFor(groupId),timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,model:models(),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
+    platformConfig:groupId=>({responsibility:responsibilityFor(groupId),timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,model:roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
     platformSchedule:args=>platformSchedules.submit({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},args),
   })}})
   const rerouteGroups=new Set()
@@ -1096,7 +1098,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const runResult = await taskSessions.run({ binding, input: { task:await taskInputWithDependencies(task), artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: body, ...resource }) => ({ ...resource, ...(body?.file ? { file: body.file } : {}) })) })), wakes, executions,
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
-          blockers: await query('task.blockers', { taskId }) }, ...taskModelSelection(models(), legacy.getAgentConfig().taskSessionModel ?? config), agentPreset: legacy.getAgentConfig().agentPreset,
+          blockers: await query('task.blockers', { taskId }) }, ...roleModels('task'), agentPreset: legacy.getAgentConfig().agentPreset,
           groupResponsibility: responsibilityFor(task.groupId),
           authorizeEffectInvocation,
           readDecisions: (args, current) => query('task.decisions', { ...args, taskId: current.taskId }),

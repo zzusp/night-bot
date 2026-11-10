@@ -1,4 +1,7 @@
 import {createOperatorSettings} from './settings/operator.js'
+import {resolveRoleModels,roleModelSelection,legacyRoleModelSelection,materializeRoleModelSelection} from './role-models.js'
+import {taskModelSelection} from '../packages/dingtalk-core/task-model-config.js'
+import {savePermissionConfiguration} from './settings/configuration.js'
 import {openToolPermissions} from './tool-permissions.js'
 import {configFileOf,updateConfig,validateConfig} from './config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
@@ -58,7 +61,13 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
     if(paths.mode==='portable'){
       const file=configFileOf(config)??join(paths.config,'config.json')
-      ctx.provide('operatorSettings',createOperatorSettings({file,paths,running:config,getCredentials:()=>ctx.get('credentials'),run:configurationCall,applyChannel:(transaction,id)=>channelLifecycle.apply(transaction,id),canEditChannel:id=>channelLifecycle?.canEdit(id)===true}))
+      ctx.provide('operatorSettings',createOperatorSettings({file,paths,running:config,getCredentials:()=>ctx.get('credentials'),getRoleModels:()=>ctx.get('roleModels'),getEnvironment:()=>ctx.get('launchEnvironment'),getFallbackRoleModels:saved=>{
+        const task=ctx.get('application')?.store.getTaskSessionModelConfig?.()
+        return {triage:saved.model,router:saved.model,task:task?taskModelSelection(saved.model,task):legacyRoleModelSelection(saved,'task')}
+      },getRuntimeRoleModels:()=>{
+        const defaults=ctx.get('agentDefaultModel')?.currentSelection()??config.model,task=ctx.get('application')?.runtime.getAgentConfig().taskSessionModel
+        return Object.fromEntries(['triage','router','task'].map(role=>[role,roleModelSelection(ctx,role,role==='task'?(task?taskModelSelection(defaults,task):legacyRoleModelSelection(config,role)):defaults)]))
+      },run:configurationCall,applyChannel:(transaction,id)=>channelLifecycle.apply(transaction,id),canEditChannel:id=>channelLifecycle?.canEdit(id)===true}))
       ctx.provide('channelConfiguration',{
         read:()=>configurationCall(async()=>{
           const result=await updateConfig(file,next=>next,{checkOnly:true})
@@ -213,18 +222,25 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     const taskRoutes=await taskSessionRoutes(paths);ctx.provide('taskSessionRoutes',taskRoutes)
     const privacy=await createPrivacy(paths);ctx.provide('memoryPrivacy',privacy)
     ctx.provide('launchEnvironment',environmentSnapshot ?? await loadNativeEnvironment({...environmentPaths(config),...environmentOptions,materialize:false,warn:message=>ctx.logger.warn(message)}))
+    // Configuration is operator-owned and fixed for this Host lifetime. It is
+    // independent of Web and takes precedence over historical model stores.
+    const roleModels=resolveRoleModels(config,ctx.get('launchEnvironment'))
     ctx.baseUrl = pathToFileURL(join(root, 'cordis.yml')).href
     await ctx.plugin(Loader)
     ctx.loader.builtins.group = require('@deepseek-ai/cordis-plugin-group').default
     const shell = config.shell ?? (process.platform === 'win32' ? 'pwsh' : 'bash')
     if (!['pwsh','bash'].includes(shell)) throw new Error('NIGHT_BOT_SHELL_INVALID')
+    const configurationCandidate=paths.mode==='portable'?(configFileOf(config)??(await readRegular(join(paths.config,'config.json'))!==undefined?join(paths.config,'config.json'):undefined)):undefined
+    // Legacy read-only bootstrap files outside data/config remain supported,
+    // but cannot be made writable by bypassing updateConfig's controlled path.
+    const modelConfigurationFile=configurationCandidate&&inside(paths.config,configurationCandidate)?configurationCandidate:undefined
     const rows = [
       { name: new URL('./native-agents.js', import.meta.url).href }, { name: new URL('./application-session-catalog.js', import.meta.url).href }, { name: new URL('./native-system-prompt.js', import.meta.url).href, config: { includeHarnessIdentity: false } },
       { name: new URL('./native-tools.js', import.meta.url).href }, { name: new URL('./native-tool-timeout.js', import.meta.url).href }, { name: new URL('./native-web.js', import.meta.url).href, config: config.web ?? {} }, { name: new URL('./native-http-fetch.js', import.meta.url).href, config: config.webFetch ?? {} }, { name: new URL('./native-authorization.js', import.meta.url).href },
       { name: new URL('./native-credentials.js', import.meta.url).href, config: { path: paths.credentials, watch: config.credentialsWatch ?? true } },
       { name: new URL('./native-attachments.js', import.meta.url).href, config: { storageRoot: paths.attachmentsHome } },
       { name: new URL('./native-pi-provider.js', import.meta.url).href, config: { providers: config.providers ?? {} } },
-      { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model } },
+      { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model,modelConfigurationFile } },
       { name: new URL('./native-spill.js', import.meta.url).href, config: { root: paths.spills } }, { name: new URL('./native-jobs.js', import.meta.url).href }, { name: new URL('./native-tool-jobs.js', import.meta.url).href }, { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
       { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
       { name: new URL('./native-' + shell + '-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'ask' } },
@@ -248,6 +264,14 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     ]
     await ctx.loader.root.update(prepareProfileEntries(ctx,rows,ctx.baseUrl))
     await ctx.loader.await()
+    for(const [role,selection]of Object.entries(roleModels)){
+      await ctx.nativePiProvider.official.resolve(selection)
+      // Pi 1.5 defaults new sessions to medium and clamps via its public API.
+      // Make the explicit role default concrete so a resumed journal cannot
+      // silently restore an earlier role's effort after an operator reset.
+      roleModels[role]=Object.freeze(materializeRoleModelSelection(config,selection))
+    }
+    ctx.provide('roleModels',Object.freeze(roleModels))
     channelLifecycle=createChannelLifecycle({ctx,paths,running:config,dependencies:{...dingtalkPluginDependencies,...dingtalkProfileRunner?{runner:dingtalkProfileRunner}:{}}})
     ctx.provide('channelLifecycle',channelLifecycle)
     await channelLifecycle.initialize(config)
@@ -260,8 +284,8 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!ctx.get('subprocess')) throw new Error('NIGHT_BOT_SUBPROCESS_UNAVAILABLE')
     // Full process output is recovery evidence, not disposable launcher temp.
     if(paths.mode==='portable')ctx.subprocess.internals={...ctx.subprocess.internals,spillDir:paths.processSpills}
-    permissionService=await openToolPermissions({ctx,mode:config.permissionMode??'ask',
-      saveMode:async value=>{const file=configFileOf(config)??(paths.mode==='portable'?join(paths.config,'config.json'):undefined);if(!file)throw failure('NIGHT_BOT_PERMISSION_CONFIG_UNAVAILABLE');await updateConfig(file,next=>({...next,permissionMode:value}));config.permissionMode=value},
+    permissionService=await openToolPermissions({ctx,mode:config.permissionMode??'full',
+      saveMode:async value=>{const file=configFileOf(config)??(paths.mode==='portable'?join(paths.config,'config.json'):undefined);if(!file)throw failure('NIGHT_BOT_PERMISSION_CONFIG_UNAVAILABLE');await savePermissionConfiguration(file,{mode:value});config.permissionMode=value},
       resolveModel:(actor,{signal})=>ctx.nativePiProvider.official.resolve({...ctx.agentDefaultModel.currentSelection(),signal},{credentials:actor.ctx.get('credentials')})})
     ctx.provide('toolPermissions',permissionService)
     ctx.effect(()=>()=>permissionService.close(),'Host tool permission requests drain')

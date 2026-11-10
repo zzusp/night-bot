@@ -74,3 +74,5 @@ node --import ./docs/tmp/channel-preference-memory-baseline.mjs --experimental-t
 - 未运行全仓 `pnpm test`、`test:runtime`、`test:containment`，未做真实模型语义选择、真实钉钉或当前安装部署验收。此次未修改任务执行或 OS sandbox。
 - 夹具通过 `t.after` 关闭 Host、HTTP、SQLite 并清理其隔离目录；保留必要文字/JSON 证据，不保留用户数据、凭据、技能正文或整份运行数据库。临时 baseline loader 在证据核对后清理，不作为生产接线或兼容层保留。
 - 唯一结果矩阵为 `matrix.csv`，机器可核对摘要为 `round-1/validation.json`。本轮没有历史轮次附件需要清理。
+
+归档补注（第三轮收尾）：本轮结论与文字证据保留；旧机器摘要 round-1/validation.json 已按最终证据保留规则清理。当前状态与机器证据见 round-3.md 和 round-3/validation.json，历史正文中的旧附件引用不再指向保留文件。

@@ -96,7 +96,7 @@ PATCH 成功回 `{ok:true,changed,restartRequired,liveApplied,channel,detail}`�
 
 ## 安装权限与单次审批
 
-配置仅使用顶层 `permissionMode`，取值 `ask` / `auto` / `full`，缺省为 `ask`；示例配置显式写 `"permissionMode": "ask"`。初始化可传 `--permission-mode ask|auto|full`，通用配置 CLI 使用同名参数。它不是旧组件预设名，也不读取 Host 环境变量来代替模式或单次授权。
+配置仅使用顶层 `permissionMode`，取值 `ask` / `auto` / `full`，缺省为 `full`；示例配置显式写 `"permissionMode": "full"`。初始化可传 `--permission-mode ask|auto|full`，通用配置 CLI 使用同名参数。它不是旧组件预设名，也不读取 Host 环境变量来代替模式或单次授权。
 
 在安装根先检查，再保存同一组参数：
 

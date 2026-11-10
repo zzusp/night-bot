@@ -12,7 +12,7 @@ export const PERMISSION_MODES=Object.freeze(['ask','auto','full'])
 export const permissionOptions=Object.freeze([
  {value:'ask',label:'请求批准',description:'工作目录外的文件写入及需要更宽权限的命令，逐次请求安装操作者批准。'},
  {value:'auto',label:'帮我批准',description:'当前配置模型无工具审查需要审批的动作；不确定或模型失败时转人工。'},
- {value:'full',label:'完全访问',description:'显式解除工作目录限制，按当前操作系统账号权限执行；不提权，进程不再隔离。'},
+ {value:'full',label:'完全访问',description:'解除工作目录限制，按当前操作系统账号权限执行；不提权，进程不再隔离。'},
 ])
 const fail=code=>Object.assign(new Error(code),{code,status:409})
 const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value
@@ -23,7 +23,7 @@ const treeTools=['ls','find','grep']
 const rowSchema=z.object({id:z.string(),actorId:z.string(),taskId:z.string().nullable(),conversationId:z.string().nullable(),callId:z.string(),toolName:z.string(),status:z.enum(['pending','allowed-once','rejected','cancelled']),createdAt:z.string(),decidedAt:z.string().optional(),display:z.object({summary:z.string(),target:z.string().nullable(),cwd:z.string(),command:z.string().nullable(),parametersDigest:z.string()})}).strict()
 
 // 持久请求只作审计；一次性执行权限只存于当前真实工具调用的私有状态。
-export async function openToolPermissions({ctx,mode='ask',saveMode,resolveModel}){
+export async function openToolPermissions({ctx,mode='full',saveMode,resolveModel}){
  if(!PERMISSION_MODES.includes(mode))throw fail('PERMISSION_MODE_INVALID')
  const domain=await ctx.storageDomain.open(defineDomain({name:'night_tool_permissions',version:1,tables:{requests:domainTable(rowSchema)}}))
  const table=domain.table('requests'),scopes=new AsyncLocalStorage(),records=new WeakMap(),waiting=new Map(),requests=new Map(),jobs=new Set(),lifetime=new AbortController()

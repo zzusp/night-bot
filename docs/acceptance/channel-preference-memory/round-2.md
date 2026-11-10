@@ -34,3 +34,5 @@ PR 源码基于最新 main 的隔离 worktree；学习链路 3 项通过（包�
 ## 证据与清理
 
 唯一矩阵为 `matrix.csv`；机器摘要为 `round-2/validation.json`。第一轮报告及摘要保留原轮次事实，当前结论以本轮为准。夹具的 HTTP/Host/SQLite/隔离目录由 t.after 清理；只保留去隐私文字和 JSON，不保留运行数据库。一次性补记脚本、移植 patch 和 PR 正文草稿在交付收尾时清理，保留最终私有补记审计收据，不收录记忆正文或私有技能。
+
+归档补注（第三轮收尾）：本轮结论与文字证据保留；旧机器摘要 round-2/validation.json 已按最终证据保留规则清理。当前状态与机器证据见 round-3.md 和 round-3/validation.json，历史正文中的旧附件引用不再指向保留文件。

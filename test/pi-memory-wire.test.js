@@ -116,3 +116,23 @@ test('generic model file tools cannot bypass the shared memory service through r
   assert.doesNotMatch(JSON.stringify(f.requests.at(-1)),/PRIVATE_BODY_FROM_FILE/)
   assert.match(JSON.stringify(f.requests.at(-1)),/private|sandbox|denied/i)
 })
+
+test('native memory tool accepts context with Host-bound subject and shares it as reference-only for another actor',async t=>{
+  const text='以后请默认用简短文字汇报。',background='本次汇报已另附一份报告。',context={background:{source:'quote',quote:background},scenario:'工作结果汇报',boundaries:['当前明确要求的文件照常交付。']}
+  let stage=0,outcome
+  const f=await memoryHost(t,body=>{
+    if(stage++===0){
+      assert.ok(body.tools.find(row=>row.function.name==='memory_remember').function.parameters.properties.context)
+      return {tool:'memory_remember',args:{topic:'preferences',key:'reports',text,sourceMessageId:'native-context-source',sourceQuote:text,context}}
+    }
+    if(body.messages.at(-1).role==='tool'){outcome=JSON.parse(body.messages.at(-1).content);assert.equal(outcome.ok,true);assert.equal(outcome.entry.context.subject.actor,hash('alice'));assert.equal(outcome.entry.context.interpretation.status,'inference')}
+    return {text:'Memory transaction has succeeded.'}
+  })
+  const a=await f.agent('context-alice',{actorId:'alice'}),packet={id:'native-context-source',source:{kind:'user',quotedMessage:{messageId:'native-quoted-report',text:background}},content:[{type:'text',text}]}
+  await a.agent.input.enqueue(packet);await a.agent.input.deliver(packet.id);await a.agent.whenIdle()
+  assert.equal(outcome.entry.text,text);assert.equal(outcome.entry.context.background.messageId,'native-quoted-report');assert.equal(outcome.entry.context.background.quote,background)
+  const b=await f.agent('context-bob',{actorId:'bob'}),read=await f.host.ctx.memory.search(b.agent,{query:'工作结果汇报'})
+  assert.equal(read.entries[0].applicability.status,'reference-only');assert.deepEqual(read.entries[0].context,outcome.entry.context)
+  const own=await f.host.ctx.memory.read(a.agent,{topic:'preferences'})
+  assert.equal(own.entries[0].applicability.status,'matching-subject');assert.deepEqual(own.entries[0].applicability.sourceMessageIds,[packet.id])
+})
