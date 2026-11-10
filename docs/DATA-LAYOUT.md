@@ -35,6 +35,7 @@ a home directory.
     attachments/v1/                   # original content-addressed files/images
     workspaces/                       # tasks/<id> complete task archives; conversations
     cache/attachments/                # rebuildable image variants
+    work-logs/                        # durable daily business work logs
     logs/service.log                  # diagnostic output of managed launcher
     temp/                             # managed process/Node temporary files
     runtime/
@@ -64,6 +65,7 @@ Windows paths) and remain historical references, not Night Bot upgrade entrypoin
 | Retained full process/tool output | task `materials/runtime-evidence`; ordinary sessions use `data/state/spills` |
 | Markdown memory, grants, reviews, learned skills | `data/memory` |
 | Owned skills and instructions | `data/config/{skills,agents,harness}` |
+| Durable daily business work logs | `data/work-logs` |
 | Managed log / transient files | `data/logs` / `data/temp` |
 
 `data/config/skills` stores private skill bodies and their same-directory

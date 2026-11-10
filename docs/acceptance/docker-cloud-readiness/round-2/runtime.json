@@ -1,0 +1,91 @@
+{
+  "image": "night-bot:cloud-headless-7e32ff1",
+  "startedAt": "2026-11-10T16:11:18.056Z",
+  "checks": {
+    "preflight": {
+      "passed": true,
+      "defaultMode": "full",
+      "volumeUnchanged": true,
+      "uid": 1000,
+      "tempMode": "0700"
+    },
+    "boundary": {
+      "passed": true,
+      "readOnlyRoot": true,
+      "capDropAll": true,
+      "noNewPrivileges": true,
+      "loopbackPublish": true,
+      "seccomp": true
+    },
+    "browser": {
+      "passed": true,
+      "version": "158.0.8127.18",
+      "installed": [
+        ".links",
+        "chromium_headless_shell-1254",
+        "ffmpeg-1013"
+      ],
+      "apiDom": "42",
+      "apiScreenshot": {
+        "bytes": 9460,
+        "width": 1280,
+        "height": 720
+      },
+      "cliScreenshot": {
+        "bytes": 9460,
+        "width": 1280,
+        "height": 720
+      }
+    },
+    "web": {
+      "passed": true,
+      "authenticatedSettings": true,
+      "defaultPermission": "full",
+      "unauthenticated": 401,
+      "wrongOrigin": 403,
+      "missingCsrf": 403
+    },
+    "conversation": {
+      "passed": true,
+      "requestStatus": 202,
+      "replyVisible": true,
+      "modelRequests": 1,
+      "messages": 2,
+      "realVendorCalls": 0
+    },
+    "drain": {
+      "passed": true,
+      "exitCode": 0,
+      "pid": 0,
+      "oomKilled": false,
+      "hostLockAbsent": true,
+      "existingVolumeCheckUnchanged": true
+    },
+    "persistence": {
+      "passed": true,
+      "instanceAndActorPreserved": true,
+      "tokenPreserved": true,
+      "oldCookieRejected": true,
+      "chatAndReplyPreserved": true,
+      "duplicateRequestModelCalls": 0
+    },
+    "finalStop": {
+      "passed": true,
+      "exitCode": 0,
+      "pid": 0
+    }
+  },
+  "imageId": "sha256:b5ccab6759d1b19e94659398da3dd537c1036134794f11369dd50ba8ede6eac3",
+  "revision": "7e32ff172e06000ef5f7a947fb02162da0553ae8",
+  "seccompSha256": "9264f1689d786e212fcfc1dc63eed5d08a2be4c236a252d5676f43f40691201f",
+  "resources": {
+    "container": "night-cloud-check-1794327078439-app",
+    "volume": "night-cloud-check-1794327078439-data"
+  },
+  "cleanup": {
+    "containerRemoved": true,
+    "volumeRemoved": true
+  },
+  "passed": true,
+  "finishedAt": "2026-11-10T16:11:44.815Z"
+}
