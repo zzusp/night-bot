@@ -1,4 +1,3 @@
-.evolution-page > .page-heading { flex-wrap: wrap; gap: 16px; }
 .evolution-pending { min-height: 360px; display: grid; place-items: center; }
 .evolution-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--board-gap); margin-bottom: 16px; }
 .evolution-card { min-width: 0; padding: 22px; background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); }
