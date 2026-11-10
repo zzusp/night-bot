@@ -190,7 +190,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 | CRUD | `src/api.ts`、`src/ChatPage.tsx`、`src/ChannelsPage.tsx` 及认证操作者权限控件 | 本文发送、权限审批、渠道新增与编辑流程及 Host 回执 | 对话发送 / 模式保存 / 单调用审批 / 钉钉配置新增与编辑；任务与渠道消息不提供删除或代发，渠道输入框暂时隐藏 | `test/server.test.js`、`test/host.test.js`、浏览器测试 |
 | Message | `src/components/Shared.tsx` 的 MessageList、Markdown、Status | 本文消息、来源与安全展示规则 | Web 对话 / 渠道消息 / 执行上下文 | 长文本、工具折叠、滚动与复制用例 |
 | Message process | `src/components/ConversationMessages.tsx`、`MessageProcessPopover.tsx`、`ResponseTimes.tsx` | 本文消息侧边浮层与服务端精确来源关联 | Web / 外部渠道消息；只展示节点与真实耗时 | `test/execution-redesign.spec.ts`、`test/first-reply-runtime.test.js` |
-| Resource | `src/hooks.ts` 的 useResource、`src/api.ts` | 本文异步读取与认证规则 | 轮询最新数据 / 固定历史快照 | `test/browser.spec.ts`、`test/chat-lifecycle.spec.ts` |
+| Resource | `src/hooks.ts` 的 useResource、`src/useExecutionStream.ts`、`src/api.ts` | 本文异步读取与认证规则 | 轮询最新数据 / 固定正文快照 / 执行流串行前后续读 | `test/browser.spec.ts`、`test/chat-lifecycle.spec.ts`、`test/execution-scroll.spec.ts` |
 
 渠道配置的会话类型和目标填写方式沿用带中文标签的原生 select，接受浏览器/操作系统负责弹出选项的几何与交互；触发器复用输入框的高度、边界、字体、焦点与禁用状态，不伪装为自定义 listbox。职责输入自动增高至 240px，之后内部滚动，不允许拖动调整页面布局。
 

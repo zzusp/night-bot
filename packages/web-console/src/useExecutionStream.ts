@@ -19,17 +19,23 @@ export function useExecutionStream(endpoint: string) {
   useEffect(() => {
     active.current = endpoint;
     let current = initial(), disposed = false, busy = false, failures = 0;
-    let queued: Read | null = null, timer: ReturnType<typeof setTimeout> | undefined;
+    let queued: Read | null = null, inFlight: Read | null = null, timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
     const publish = (patch: Partial<State>) => { current = {...current, ...patch}; if (!disposed) setState(current); };
     publish({});
     const read = async (requested: Read) => {
       if (disposed || document.visibilityState === 'hidden') return;
-      if (busy) { if (requested === 'reset' || queued !== 'reset') queued = requested; return; }
+      if (busy) {
+        // Scroll events can arrive before React paints the busy state. Coalesce
+        // repeats rather than queuing another historical window per event.
+        if (requested === 'older' && inFlight === 'older') return;
+        if (requested === 'reset' || queued !== 'reset') queued = requested;
+        return;
+      }
       const kind = requested === 'reset' && current.data && !current.error ? 'newer' : requested;
       const previous = kind === 'reset' ? null : current.data;
       if (kind === 'older' && (!previous?.before || current.error)) return;
-      busy = true; clearTimeout(timer); controller = new AbortController();
+      busy = true; inFlight = kind; clearTimeout(timer); controller = new AbortController();
       publish({loading: kind !== 'older', loadingOlder: kind === 'older'});
       const params = new URLSearchParams({stream: '1', limit: String(batchSize)});
       if (previous?.checkpoint) params.set('checkpoint', previous.checkpoint);
@@ -59,7 +65,7 @@ export function useExecutionStream(endpoint: string) {
         else publish({error: problem});
         failures++;
       } finally {
-        busy = false;
+        busy = false; inFlight = null;
         if (!disposed) {
           publish({loading: false, loadingOlder: false});
           const next = queued; queued = null;

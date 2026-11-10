@@ -227,15 +227,23 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     // viewport with older history rather than leaving a nearly empty reader.
     if (element && element.scrollHeight <= element.clientHeight + 120) loadOlder();
   }, [signature, older?.loading, older?.hasMore, older?.disabled]);
+  useEffect(() => {
+    const element = ref.current;
+    if (!compact || !element) return;
+    const changed = () => {
+      following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
+      setShowLatest(!following.current); captureAnchor();
+      if (element.scrollHeight <= element.clientHeight + 120) loadOlder();
+    };
+    element.addEventListener('toggle', changed, true);
+    return () => element.removeEventListener('toggle', changed, true);
+  }, [compact, older?.loading, older?.hasMore, older?.error, older?.disabled]);
   const latest = () => { following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
   return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onScroll={() => {
     const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < (compact ? 60 : 90); setShowLatest(!following.current);
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
-  }} onToggleCapture={compact ? () => {
-    const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; setShowLatest(!following.current); captureAnchor();
-    if (el.scrollHeight <= el.clientHeight + 120) loadOlder();
-  } : undefined} role="region" aria-label="消息记录" tabIndex={0}>
+  }} role="region" aria-label="消息记录" tabIndex={0}>
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
       {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : keyedItems.map(({item, key}) => {
