@@ -309,6 +309,8 @@ docker run --rm --network none @common night-bot:sg12 --check
 - 离线方式：仅在确需离线分发且已核准时，对同一发布镜像执行 `docker save` / `docker load`，校验传输文件 SHA-256 与加载后 image ID。大 tar 仅作本次传输材料，放受控 `docs/tmp/` 或安装外私有目录，不提交。`save` 不包含卷，不替代业务数据备份。
 - 云厂商托管容器方式：先确认能提供非 root UID、专属可写卷、只读根、tmpfs、cap-drop、no-new-privileges 和固定 seccomp。不能表达这些参数的平台不能直接套用本规程；不通过 privileged、host network、Docker socket 或关闭应用检查绕过。
 
+Kubernetes 项目工作负载使用独立的 [Kubernetes 新安装规程](kubernetes-deployment.md)：当前仅验 RuntimeDefault 下的 full 子集，不等于本文固定 seccomp/bwrap 合同，也不声明 ask/auto 可用。
+
 云端 Linux 自建 Docker 的运行参数与上文本地规程相同：专属卷挂到 `/opt/night-bot/data`，镜像摘要固定，seccomp 文件单独从匹配源码发布并核摘要，先 `--network none ... --check` 再启动。依赖的基础镜像/厂商二进制虽声明 amd64/arm64，不代表两个架构均已实跑；本轮实际架构见 [Docker 准备验收](../acceptance/docker-cloud-readiness/goal.md)。云端必须再次实跑自检和业务验收。
 
 以下为云端 Linux Docker 的启动配方，尚未在云主机执行。先准备私有 `docker.env`（0600）和从匹配源码复制的 seccomp 文件；替换发布镜像 digest，确认卷名/容器名属于本实例。示例从放置这两个文件的部署目录执行；不在云端 checkout 后重新 build 正式镜像。

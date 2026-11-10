@@ -1,0 +1,15 @@
+{
+  "passed": false,
+  "blocked": true,
+  "deviceFlowAttempted": true,
+  "deviceFlowExitCode": 2,
+  "authenticated": false,
+  "profileCount": 0,
+  "preciseFailureReasonKnown": false,
+  "localCredentialsCopied": false,
+  "unrelatedChannelsModified": false,
+  "groupSendNotExecuted": true,
+  "groupReceiveNotExecuted": true,
+  "previousLoginProcessEnded": true,
+  "verifiedAt": "2026-11-10T17:57:02.746Z"
+}

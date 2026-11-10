@@ -1,6 +1,6 @@
 {
-  "image": "night-bot:cloud-headless-7e32ff1",
-  "startedAt": "2026-11-10T16:11:18.056Z",
+  "image": "night-bot:release-0e18f77",
+  "startedAt": "2026-11-10T16:56:24.593Z",
   "checks": {
     "preflight": {
       "passed": true,
@@ -75,17 +75,17 @@
       "pid": 0
     }
   },
-  "imageId": "sha256:b5ccab6759d1b19e94659398da3dd537c1036134794f11369dd50ba8ede6eac3",
-  "revision": "7e32ff172e06000ef5f7a947fb02162da0553ae8",
+  "imageId": "sha256:4ef61c06f27fd666345ca9cf1887b2fc23ec95d8dba729e8d01b59b2bf0f9509",
+  "revision": "0e18f7704652e88b0fe315b0c14030b1bab06c15",
   "seccompSha256": "9264f1689d786e212fcfc1dc63eed5d08a2be4c236a252d5676f43f40691201f",
   "resources": {
-    "container": "night-cloud-check-1794327078439-app",
-    "volume": "night-cloud-check-1794327078439-data"
+    "container": "night-cloud-check-1794329785080-app",
+    "volume": "night-cloud-check-1794329785080-data"
   },
   "cleanup": {
     "containerRemoved": true,
     "volumeRemoved": true
   },
   "passed": true,
-  "finishedAt": "2026-11-10T16:11:44.815Z"
+  "finishedAt": "2026-11-10T16:56:48.082Z"
 }

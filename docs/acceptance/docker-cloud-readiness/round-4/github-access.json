@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "authentication": true,
+  "credentialSource": "GITHUB_TOKEN environment",
+  "repositoryMatchedWorkingProject": true,
+  "readOnlyCalls": 2,
+  "repositoryWrites": 0,
+  "privateRepositoryAccessNotTested": true,
+  "verifiedAt": "2026-11-10T17:29:55.040Z"
+}

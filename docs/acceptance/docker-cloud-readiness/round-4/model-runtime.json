@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "requestAccepted": 202,
+  "visibleReply": true,
+  "expectedReplyMatched": true,
+  "providerMatchesLocal": true,
+  "protocolMatchesLocal": true,
+  "modelMatchesLocal": true,
+  "productionCredentialReference": true,
+  "messagesBefore": 0,
+  "messagesAfter": 2,
+  "realModelUsed": true,
+  "realChannelSends": 0,
+  "verifiedAt": "2026-11-10T17:35:05.968Z"
+}

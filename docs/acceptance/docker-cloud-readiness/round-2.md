@@ -13,7 +13,7 @@
 - Dockerfile SHA-256：`119bd355f542f24143b87cac492c2809550f659c806fb051a589d82020618781`。
 - 镜像：`night-bot:cloud-headless-7e32ff1`。
 - Image ID：`sha256:b5ccab6759d1b19e94659398da3dd537c1036134794f11369dd50ba8ede6eac3`。
-- 版本绑定：OCI revision标签记录基线7e32ff1，额外source-state标签为 `headless-only-worktree`，不能把revision标签单独当作“无未提交差量”的证明。受验产品差量及关键构建输入摘要见 [image.json](round-2/image.json)。最终提交若只有文档/验收回填，不需要重跑已通过的产品验证；正式发布仍应基于合并后版本重建并记录发布digest。
+- 版本绑定：OCI revision标签记录基线7e32ff1，额外source-state标签为 `headless-only-worktree`，不能把revision标签单独当作“无未提交差量”的证明。受验产品差量及关键构建输入摘要见 `image.json`（原附件已按第3轮最终归档规则清理）。最终提交若只有文档/验收回填，不需要重跑已通过的产品验证；正式发布仍应基于合并后版本重建并记录发布digest。
 - 环境：Docker26.0.0 / Linux amd64 / UID1000 / Node24.13.0 / Playwright1.65.0 / headless Chromium158.0.8127.18。
 
 ## 方案与兼容范围
@@ -40,7 +40,7 @@
 | 同卷重启与防重 | PASS；instanceId/actor/权限/token/chat/2条消息保留；旧cookie401；相同requestId再提交202、额外模型调用0、消息不增加 |
 | 最终停机与清理 | PASS；再次exit0/PID0；删除本次容器和卷，独立ps/volume ls确认无本次前缀残留 |
 
-完整分组结果见 [runtime.json](round-2/runtime.json)，最终浏览器证据见 [browser.png](round-2/browser.png)。图片是本轮无敏感数据的本地夹具页面，不是Night Bot产品UI截图。
+完整分组结果见 `runtime.json`（原附件已按第3轮最终归档规则清理），最终浏览器证据见 `browser.png`（原附件已按第3轮最终归档规则清理）。图片是本轮无敏感数据的本地夹具页面，不是Night Bot产品UI截图。
 
 full是应用无隔离档，不保证同账号可读的凭据/记忆/其他任务私密文件隔离。父容器仍有上述约束，但它们不是应用bwrap或Chromium自身sandbox已启用的证明。没有借本轮full通过外推ask/auto。
 
@@ -67,3 +67,7 @@ node docs/acceptance/docker-cloud-readiness/scripts/verify-runtime.mjs --image n
 ## 收尾归档
 
 保留本报告、round-1.md、matrix.csv、当前脚本和第2轮必要的runtime.json/image.json/browser.png。第1轮原始JSON和临时iid文件在最终报告落盘核对后清理，原轮报告保留必要文字结果。仅清理本次创建的旧完整浏览器镜像tag、测试容器和卷；保留最终headless镜像，不清理其他会话镜像或共享构建缓存。
+
+## 第3轮续验后的附件归档
+
+2026-11-11：继续完成正式镜像推送与生产基础运行后，仅保留第3轮最终JSON/截图。第2轮runtime.json/image.json/browser.png已清理，本轮历史结果、镜像身份及必要文字证据不变；最新原始附件见第3轮，不能用其结果追认历史运行。
