@@ -5,6 +5,8 @@ import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHash} from 'node:crypto'
 import {request as httpRequest} from 'node:http'
+import {MarkdownMemoryStore} from '../../../src/memory/store.js'
+import {memoryScope} from '../../../src/memory/scope.js'
 import Channels from '../../../src/channels/service.js'
 import {createWebConsole, apply} from '../server/plugin.js'
 import {openWebLedger} from '../server/ledger.js'
@@ -21,6 +23,7 @@ async function fixture(t, options = {}) {
   const channels = {
     transports, plugins,
     identity: envelope => {
+      options.onIdentity?.(envelope)
       if (options.validateIdentity) Channels.prototype.identity.call({host: {runtimePaths: {workspaces: root}}}, envelope)
       return {sessionId: 'conversation-' + envelope.channelId + '-' + envelope.conversationId, binding: {actorId: 'verified-web-operator'}}
     },
@@ -409,27 +412,36 @@ test('expired sessions fail closed and login attempts are bounded', () => {
 })
 
 
-test('evolution endpoint authenticates, binds operator scope, validates pagination and redacts names', async t => {
-  const calls = []
-  const f = await fixture(t, {memory: {async inspectEvolution(binding, options) {
-    calls.push({binding, options})
-    return {status: 'ready', items: [{id: 'one', kind: 'memory', name: 'record /private/secret.txt'}], total: 1}
-  }}})
+test('evolution endpoint authenticates, validates pagination and reads inventory without core counters', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-evolution-'))
+  t.after(() => rm(root, {recursive: true, force: true}))
+  const store = new MarkdownMemoryStore(join(root, 'memory')), calls = []
+  await store.remember(memoryScope({actorId: 'writer'}), {topic: 'facts', key: 'record', text: 'PRIVATE_BODY', source: {sessionId: 'task', messageId: 'source'}, provenance: {channelId: '/private/secret.txt'}})
+  const f = await fixture(t, {onIdentity: value => calls.push(value), memory: {store, inspectEvolution() {throw Error('must not call dedicated usage projection')}}})
   assert.equal((await f.fetchApi('/api/evolution')).status, 401)
   await f.login()
-  const result = await f.fetchApi('/api/evolution?kind=skill&offset=2&limit=10')
+  const result = await f.fetchApi('/api/evolution?kind=memory&offset=0&limit=10')
   assert.equal(result.status, 200)
-  assert.deepEqual(calls, [{binding: {actorId: 'verified-web-operator'}, options: {kind: 'skill', offset: 2, limit: 10}}])
-  assert.doesNotMatch(JSON.stringify(result.body), /private\/secret/)
+  assert.equal(result.body.items[0].name, 'facts/record')
+  assert.equal(result.body.memory.readCount, null)
+  assert.equal(result.body.items[0].memoryUse, null)
+  assert.equal(result.body.usageCoverage.status, 'partial')
+  assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_BODY|private\/secret/)
+  assert.equal(calls.filter(row => row.conversationId === 'evolution-view').length, 1)
   for (const query of ['kind=other', 'limit=51', 'offset=-1', 'actorId=other']) assert.equal((await f.fetchApi('/api/evolution?' + query)).status, 400)
-  assert.equal(calls.length, 1)
+  const page = await f.fetchApi('/api/evolution?kind=skill&offset=2&limit=10')
+  assert.equal(page.status, 200); assert.equal(page.body.offset, 2); assert.equal(page.body.limit, 10); assert.deepEqual(page.body.items, [])
 })
 
 test('evolution unavailable service and failed reads never become zero counts', async t => {
   const f = await fixture(t)
   await f.login()
   assert.deepEqual((await f.fetchApi('/api/evolution')).body, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
-  const failed = await fixture(t, {memory: {inspectEvolution() {throw Error('/private/body')}}})
+  const root = await mkdtemp(join(tmpdir(), 'night-web-evolution-invalid-'))
+  t.after(() => rm(root, {recursive: true, force: true}))
+  const store = new MarkdownMemoryStore(root), directory = store.directory(memoryScope({actorId: 'reader'}))
+  await mkdir(directory, {recursive: true}); await writeFile(join(directory, 'scope.json'), '/private/body')
+  const failed = await fixture(t, {memory: {store}})
   await failed.login()
   const result = await failed.fetchApi('/api/evolution')
   assert.equal(result.status, 503)

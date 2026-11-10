@@ -71,7 +71,7 @@ export interface MemoryProvenance {channelId?: string;conversationId?: string;co
 export interface EvolutionItem {
   id: string; kind: 'memory' | 'skill'; name: string; scope: 'bot'|'personal'|'group'|'project';
   status: 'applied'|'candidate'|'disabled'|'invalid'|'shadowed'|'undiscovered'|'unsupported'; revision: string | number; updatedAt: string | null; taskId?: string;
-  origin?: 'installed'|'learned';location?:string;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;lastUsedAt?:string|null;updatedSinceUse?:boolean;
+  origin?: 'installed'|'learned';location?:string;modelUseCount?:number|null;userUseCount?:number|null;fileReadCount?:number|null;lastUsedAt?:string|null;updatedSinceUse?:boolean;
   memoryUse?:{readCount:number;searchCount:number;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null}|null;
   provenance?:MemoryProvenance|null;origins?:MemoryProvenance[];taskIds?:string[];migration?:{conflict?:boolean};
 }
@@ -83,9 +83,10 @@ export interface EvolutionBody {
   redacted: boolean;
 }
 export interface EvolutionReady extends Page<EvolutionItem> {
+  usageCoverage?: {status: 'ready'|'partial'|'unrecorded'; sessionsRead?:number};
   status: 'ready'; coverage: 'authorized-scopes-current-state'|'bot-shared-current-state'; offset: number; limit: number;
   memory: {trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
-  skills: { contentTrackingStatus?: 'ready' | 'degraded'; activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number;userUseCount?:number;fileReadCount?:number;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
+  skills: { contentTrackingStatus?: 'ready' | 'degraded'; activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number|null;userUseCount?:number|null;fileReadCount?:number|null;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
 }
 export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
 

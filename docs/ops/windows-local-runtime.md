@@ -90,6 +90,8 @@ Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport
 
 前台停止使用 Ctrl+C，等待 launcher 正常退出。Node 父进程托管时，必须保留 IPC 通道并发送 `{type:'night-bot-shutdown'}`；launcher 会转发给服务，等现有关闭路径排空后退出。Windows 的 `Stop-Process` 或 `child.kill('SIGTERM')` 是强制终止，不能当成优雅排空证据。本机验收的临时监督器仅管理它自己启动的实例，不是正式 Windows 服务管理器。
 
+启动工作区只枚举一次受信会话目录；每份 Pi 日志仍完整校验提交链、身份和上下文，路径及链接检查保留，小批并行读取失败会先排空本批再报错。共享 cwd 只在同次索引内复用解析，后续索引重新核验，不使用跨次启动缓存或只读 header 绕过日志校验。完整重启计时应从正常停机请求直到 Web、resident 和全部启用渠道实际就绪，分别记录停机与启动恢复，不能仅记录停机耗时。
+
 不要清理仍被进程使用的数据、SQLite WAL、会话或临时文件。
 
 若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。继续处理须由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的显式续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。

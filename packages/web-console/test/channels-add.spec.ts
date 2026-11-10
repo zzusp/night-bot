@@ -46,7 +46,11 @@ test('添加渠道发现真实插件并保存非钉钉配置，保留侧栏设�
   await dialog.getByRole('button', {name: '关闭添加渠道', exact: true}).click()
   await expect(page.getByRole('button', {name: '添加渠道', exact: true})).toBeFocused()
   await page.reload(); await page.locator('.desktop-sidebar').getByRole('link', {name: '设置', exact: true}).click()
-  await expect(page.getByRole('button', {name: '编辑 generic-entry-created', exact: true})).toBeVisible()
+  await expect(page.getByLabel('显示名称', {exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '自定义渠道', exact: true})).toHaveCount(0)
+  await expect(page.getByRole('button', {name: '编辑 generic-entry-created', exact: true})).toHaveCount(0)
+  const retained = await page.request.get('/api/settings/channels').then(response => response.json())
+  expect(retained.channels.find((row: {channelId: string}) => row.channelId === 'generic-entry-created')).toMatchObject({enabled: false, config: {room: 'generic-test-room'}})
 })
 
 test('发现慢、失败、空列表和无表单类型不假装支持；重试后新增类型自动可选', async ({page}) => {
@@ -114,7 +118,7 @@ test('自定义启用明确确认，保存中关闭被锁定，未知结果只�
     await route.fetch(); return route.abort()
   })
   await form.getByRole('button', {name: '保存自定义渠道', exact: true}).click()
-  await expect(page.getByRole('dialog', {name: '保存自定义渠道', exact: true})).toContainText('重启后插件将接入')
+  await expect(page.getByRole('dialog', {name: '保存自定义渠道', exact: true})).toContainText('保存后插件可能立即接入并按自身权限处理消息。')
   await confirm(page)
   await expect(dialog.getByLabel('渠道类型', {exact: true})).toBeDisabled()
   await expect(dialog.getByRole('button', {name: '关闭添加渠道', exact: true})).toBeDisabled()
