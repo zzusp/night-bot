@@ -35,7 +35,8 @@ const intentSchema=taskEffectIntentPayloadSchema
 export const validateTaskEffectIntent=value=>intentSchema.safeParse(value).success
 const actionAuthorizationSchema=z.strictObject({taskId:text,requestId:text,closedIntentEntryIds:z.array(text).min(1).max(128).refine(ids=>new Set(ids).size===ids.length).transform(ids=>[...ids].sort()),objective:z.string().trim().min(1).max(16000),expectedRequirementRevision:positive,expectedControlRevision:positive})
 export const taskEffectActionAuthorizationIdentity=value=>actionAuthorizationSchema.parse(value)
-const resultSchema=z.strictObject({key:hex,isError:z.boolean()})
+const resultSchema=z.union([z.strictObject({key:hex,isError:z.boolean()}),z.strictObject({key:hex,isError:z.literal(true),effect:z.literal('not-started')})])
+export const validateTaskEffectResult=value=>resultSchema.safeParse(value).success
 export const effectReconciliationAuditKinds=Object.freeze({
  'task/owner-drained':value=>drainSchema.safeParse(value).success,
  'task/owner-drained-inputs':value=>inputsDrainSchema.safeParse(value).success,
@@ -181,7 +182,7 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
   const {target,intent,call,input,packet,originBinding}=intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId)
   for(const entry of receipts.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-result')){
    assert(resultSchema.safeParse(entry.data.payload).success,'TASK_EFFECT_RESULT_INVALID')
-   assert(!(entry.data.payload.key===intent.payload.key&&entry.data.payload.isError===false),'TASK_EFFECT_ALREADY_SETTLED')
+   assert(!(entry.data.payload.key===intent.payload.key&&(entry.data.payload.isError===false||entry.data.payload.effect==='not-started')),'TASK_EFFECT_ALREADY_SETTLED')
   }
   assert(!receipts.some(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled'&&entry.data.payload.intentEntryId===intentEntryId),'TASK_EFFECT_ALREADY_RECONCILED')
   const drains=receipts.filter(entry=>entry.data.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(entry.data.kind))

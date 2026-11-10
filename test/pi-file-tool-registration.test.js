@@ -5,7 +5,7 @@ import {join} from 'node:path'
 import sharp from 'sharp'
 import PrivateFileSystem from '../src/memory/private-fs.js'
 import {memoryHost} from './fixtures/memory-host.js'
-import {registerPiFileTools,preflightPiFileMutation} from '../src/pi-file-tool-registration.js'
+import {registerPiFileTools,preflightPiFileMutation,isPiFileMutationNotStarted} from '../src/pi-file-tool-registration.js'
 import {createPiFileToolBudgets} from '../src/runtime/pi-file-tool-budgets.js'
 const waitAbort=signal=>signal.aborted?Promise.resolve():new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}))
 // Actual factory accounting ports with trace-only wrappers. This test selects
@@ -29,6 +29,28 @@ test('actor-scoped registration executes real SDK read/multi-edit/write/window t
  const entries=await f.history(),results=entries.filter(e=>e.type==='message'&&e.message.role==='toolResult').map(e=>e.message)
  assert.equal(results.length,4);assert.equal(results.every(result=>result.isError===false),true);assert.ok(results[1].details.nativeResult.value.details.patch);assert.equal(results[3].details.nativeResult.value.structuredContent.hasMore,false)
  assert.equal(f.ctx.get('tools').executionMode({name:'read',agent:f.actor,arguments:{path:'source.txt'}}).kind,'parallel');assert.equal(f.ctx.get('tools').executionMode({name:'write',agent:f.actor,arguments:{path:'new',content:'x'}}).kind,'exclusive')
+})
+test('only a finished exact Pi mutation can attest a failure before the write boundary',{timeout:15000},async t=>{
+ let n=0;const executions=[],states=[],plan=[{tool:'read',args:{path:'ambiguous.txt'}},{tool:'edit',args:{path:'ambiguous.txt',edits:[{oldText:'same',newText:'updated'}]}}]
+ const f=await fixture(t,()=>plan[n++]??{text:'original edit error received'},{configure(ctx,owner){ctx.on('tools/execute',async(exec,next)=>{executions.push(exec);states.push(isPiFileMutationNotStarted(exec,ctx.get('tools').get(exec.name,owner)));return next()})}})
+ await writeFile(join(f.root,'ambiguous.txt'),'same\nsame\n');await f.start();await f.handle.whenIdle()
+ assert.deepEqual(states,[false,false]);assert.equal(await readFile(join(f.root,'ambiguous.txt'),'utf8'),'same\nsame\n');assert.match(JSON.stringify(f.f.requests),/Found 2 occurrences/)
+ const [read,edit]=executions,definition=f.ctx.get('tools').get('edit',f.actor)
+ assert.equal(isPiFileMutationNotStarted(read,f.ctx.get('tools').get('read',f.actor)),false)
+ assert.equal(isPiFileMutationNotStarted(edit,definition),true)
+ assert.equal(isPiFileMutationNotStarted({...edit},definition),false)
+ assert.equal(isPiFileMutationNotStarted(edit,{...definition}),false)
+ assert.equal(isPiFileMutationNotStarted(edit,{...definition,execute:async()=>{throw Error('same-name replacement')}}),false)
+ await f.handle.dispose();assert.equal(isPiFileMutationNotStarted(edit,definition),false)
+})
+test('a real filesystem write followed by a lost response never attests not-started',{timeout:15000},async t=>{
+ let n=0,exec,writes=0
+ class LostResponseFileSystem extends PrivateFileSystem {static inject=['sandboxPolicy','memoryPrivacy'];async writeText(...args){await super.writeText(...args);writes++;throw Error('response lost after real file write')}}
+ const f=await fixture(t,()=>n++===0?{tool:'write',args:{path:'partial.txt',content:'actual retained effect'}}:{text:'failed write observed'},{async serviceFactory(ctx,owner){return {fs:new LostResponseFileSystem(ctx.root.isolate('fs'),{cwd:owner.metadata.cwd,diffBasisMaxBytes:1048576})}},configure(ctx){ctx.on('tools/execute',async(value,next)=>{exec=value;return next()})}})
+ await f.start();await f.handle.whenIdle();assert.equal(writes,1);assert.equal(await readFile(join(f.root,'partial.txt'),'utf8'),'actual retained effect')
+ assert.equal(isPiFileMutationNotStarted(exec,f.ctx.get('tools').get('write',f.actor)),false)
+ const result=(await f.history()).find(row=>row.type==='message'&&row.message.role==='toolResult').message
+ assert.equal(result.isError,true);assert.match(result.content[0].text,/response lost after real file write/)
 })
 test('exact definition and native execution admission reject direct calls, foreign owners and private mutations before effect middleware',{timeout:15000},async t=>{
  let n=0,started=0;let file

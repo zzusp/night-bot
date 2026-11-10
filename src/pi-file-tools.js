@@ -41,7 +41,7 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
  if(!services||typeof services!=='object'||Array.isArray(services)||Object.keys(services).some(name=>!names.has(name)))throw fail('PI_FILE_SERVICE_CAPABILITIES_INVALID')
  const get=name=>names.has(name)?services[name]??ctx.get(name):ctx.get(name),fs=get('fs'),agents=get('agents'),directory=get('workingDirectory'),sandbox=get('sandboxPolicy'),attachments=get('attachments'),approval=get('approval')
  if(!actor||!fs||!agents||!directory||!sandbox||fs.sandboxMode===undefined)throw fail('PI_FILE_CAPABILITIES_REQUIRED')
- const origin=officialWorkingDirectoryOrigin(actor),tokens=new Map(),validators=new WeakMap(),bridges=new WeakMap(),mutationPolicies=new WeakMap(),active=new Set(),lifetime=new AbortController();let closed=false,sessionIdentity
+ const origin=officialWorkingDirectoryOrigin(actor),tokens=new Map(),validators=new WeakMap(),bridges=new WeakMap(),mutationPolicies=new WeakMap(),mutationExecutions=new WeakMap(),active=new Set(),lifetime=new AbortController();let closed=false,sessionIdentity
  const privateBoundary=typeof fs.boundary==='function'
  const capabilities=Object.freeze({privateBoundary,officialRead:true,officialWrite:true,officialEdit:true,boundedWindow:true,explicitApproval:typeof approval?.request==='function',aggregateImageBudget:typeof imageBudget?.accept==='function',requiresBusinessToolAdmission:true,requiresScopedCloseBinding:true,readyForHost:false,transportBudget:typeof transportBudget?.accept==='function',ready:privateBoundary&&typeof approval?.request==='function'&&typeof imageBudget?.accept==='function'&&typeof transportBudget?.accept==='function',registered:false})
  function authority(){
@@ -138,7 +138,12 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
    const text=bytes=>{if(bytes.includes(0))throw fail('FS_NOT_TEXT');try{new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch{throw fail('FS_INVALID_UTF8')}}
    const access=()=>track(async()=>{authority();await fresh(args.path,cwd,target,control);await statFile(target,exec);if(kind==='edit'){expected=await ctx.waterfall('fs/edit-intent',target,exec,()=>undefined);if(typeof expected?.version!=='string')throw fail('PI_FILE_OBSERVATION_POLICY_REQUIRED')}})
    const readFile=()=>track(async()=>{const value=await stableBytes();if(kind==='edit'&&value.version!==expected.version)throw fail('FS_STALE_VERSION');if(imageBytes)return imageBytes;text(value.bytes);return value.bytes})
-   const writeFile=(_opaque,content)=>track(async()=>{const current=policy();control.throwIfAborted();await fresh(args.path,cwd,target,control);if(Buffer.byteLength(content)>config.maxWriteBytes)throw fail('PI_FILE_WRITE_LIMIT');outcome=await fs.writeText(target,content,kind==='edit'?{kind:'replaceIfVersion',version:snapshot.version}:expected,control,current)})
+   const writeFile=(_opaque,content)=>track(async()=>{
+    const current=policy();control.throwIfAborted();await fresh(args.path,cwd,target,control)
+    if(Buffer.byteLength(content)>config.maxWriteBytes)throw fail('PI_FILE_WRITE_LIMIT')
+    const mutation=mutationExecutions.get(exec);if(mutation)mutation.started=true
+    outcome=await fs.writeText(target,content,kind==='edit'?{kind:'replaceIfVersion',version:snapshot.version}:expected,control,current)
+   })
    const detectImageMimeType=()=>track(async()=>{
     const {bytes}=await stableBytes();let metadata
     try{metadata=await inspectImage(bytes)}catch(error){if(error.code==='INVALID_IMAGE'&&kind!=='read_image')return undefined;throw error}
@@ -206,8 +211,14 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
  return Object.freeze({tools,async executeRegistered(tool,input,exec){
   const identity=actor.ctx.get('tools').executionIdentity(exec)
   if(!tools.includes(tool)||exec.agent!==actor||identity?.owner!==actor.id||identity.name!==tool.name||identity.callId!==exec.callId||input!==exec.arguments)throw fail('PI_FILE_NATIVE_EXECUTION_REQUIRED')
+  if(mutationExecutions.has(exec))throw fail('PI_FILE_NATIVE_EXECUTION_REQUIRED')
+  const mutation=['write','edit'].includes(tool.name)?{tool,started:false,finished:false}:undefined
+  if(mutation)mutationExecutions.set(exec,mutation)
   const bridge={};bridges.set(bridge,exec)
-  try{return await tool.execute(exec.callId,input,exec.signal,undefined,undefined,bridge)}finally{bridges.delete(bridge)}
+  try{return await tool.execute(exec.callId,input,exec.signal,undefined,undefined,bridge)}finally{if(mutation)mutation.finished=true;bridges.delete(bridge)}
+ },isMutationNotStarted(tool,exec){
+  const mutation=mutationExecutions.get(exec)
+  return !!mutation&&mutation.tool===tool&&mutation.finished===true&&mutation.started===false
  },async preflightMutation(tool,input,signal,exec){
   if(!tools.includes(tool)||!['write','edit'].includes(tool.name))throw fail('PI_FILE_DEFINITION_REQUIRED')
   return launch(tool.name,tool.parameters,'preflight',input,signal,async(args,control)=>{

@@ -96,6 +96,8 @@ for(const [name,options,code] of [
  ['ambiguous tool call ids',{mutate:f=>{f.writer.manager.getEntry(f.callEntryId).message.content.push(structuredClone(f.assistant.content[0]))}},'TASK_EFFECT_CALL_AMBIGUOUS'],
  ['missing durable admission',{mutate:f=>{const entry=f.writer.manager.getEntries().find(e=>e.data?.domain==='admission'&&e.data.kind==='admitted');entry.data.payload.entryId='foreign'}},'TASK_EFFECT_ADMISSION_REQUIRED'],
  ['already successful effect',{mutate:f=>f.receipt('effect-result',{key:f.intent.key,isError:false})},'TASK_EFFECT_ALREADY_SETTLED'],
+ ['already settled pre-write failure',{mutate:f=>f.receipt('effect-result',{key:f.intent.key,isError:true,effect:'not-started'})},'TASK_EFFECT_ALREADY_SETTLED'],
+ ['contradictory successful not-started result',{mutate:f=>f.receipt('effect-result',{key:f.intent.key,isError:false,effect:'not-started'})},'TASK_EFFECT_RESULT_INVALID'],
 ])test('native reconciliation rejects '+name,async t=>{const f=await fixture(t,options);await assert.rejects(f.inspect(),{code})})
 for(const [name,change] of [
  ['live actor',state=>state.live=true],['unproven SQL drain',state=>state.task.drained=false],['scope owner change',state=>state.scope.ownerActorId='foreign'],['foreign task identity',state=>state.task.taskId='foreign'],
