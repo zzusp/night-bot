@@ -19,8 +19,8 @@ function contrast(first, second) {
 }
 
 for (const [theme, palette] of Object.entries({light, dark})) {
-  test(`${theme}: shared neutral fills and AA message text contrast`, () => {
-    const expected = theme === 'light' ? ['#ffffff', '#ffffff'] : ['#262626', '#262626']
+  test(`${theme}: shared blue user and neutral assistant fills and AA message text contrast`, () => {
+    const expected = theme === 'light' ? ['#ccdfff', '#ffffff'] : ['#263b5c', '#262626']
     assert.deepEqual([palette['message-user-bg'], palette['message-assistant-bg']], expected)
     for (const role of ['user', 'assistant']) {
       const background = palette[`message-${role}-bg`]

@@ -160,5 +160,38 @@ test('real server projects a long execution stream and captures the default and 
     await expect(page.locator('.task-record-controls')).toContainText('已载入 400 / 565 条记录')
     await expect(transcript(page)).toContainText('第 80 轮核对完成')
     await page.screenshot({path: '../../docs/tmp/execution-scroll-older.png', fullPage: true})
+    await page.getByRole('button', {name: '回到最新消息', exact: true}).click()
+    await expect.poll(() => transcript(page).evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(2)
+    await page.setViewportSize({width: 390, height: 844})
+    await page.evaluate(() => {document.documentElement.dataset.theme = 'dark'})
+    await expect.poll(() => transcript(page).evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(2)
+    await page.screenshot({path: '../../docs/tmp/execution-scroll-narrow.png', fullPage: true})
   } finally { await fixture.close() }
+})
+
+for (const theme of ['light', 'dark']) test(`${theme}: execution user bubbles reuse chat color and geometry without changing assistant prose`, async ({page}) => {
+  await page.goto('/#/chat/sample-plan')
+  await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
+  await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
+  await page.evaluate(theme => {document.documentElement.dataset.theme = theme}, theme)
+  const body = page.locator('.message-user > .message-body').first()
+  await expect(body).toBeVisible()
+  const style = () => body.evaluate(el => {
+    const s = getComputedStyle(el)
+    return {background: s.backgroundColor, padding: s.padding, radius: s.borderRadius, border: s.borderWidth, shadow: s.boxShadow}
+  })
+  const chat = await style()
+  expect(chat.background).toBe(theme === 'light' ? 'rgb(204, 223, 255)' : 'rgb(38, 59, 92)')
+  await installStream(page, [{id: 'user-blue', role: 'user', text: '任务执行中的用户输入，与对话页面保持同样的蓝色气泡。'}, row(1)])
+  await page.goto('/#/tasks/task-research')
+  await expect(transcript(page)).toBeVisible()
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({width, height: 844})
+    await expect(body).toBeVisible()
+    expect(await style()).toEqual(chat)
+    await expect(page.locator('.message-assistant > .message-body')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(page.locator('.message-assistant > .message-body')).toHaveCSS('padding', '0px')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+  expect((await new AxeBuilder({page}).include('.task-dialogue').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
 })

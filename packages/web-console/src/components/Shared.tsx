@@ -230,6 +230,24 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
   useEffect(() => {
     const element = ref.current;
     if (!compact || !element) return;
+    let width = element.clientWidth, height = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (width === element.clientWidth && height === element.clientHeight) return;
+      width = element.clientWidth; height = element.clientHeight;
+      if (following.current) element.scrollTop = element.scrollHeight;
+      else if (anchor.current) {
+        const saved = anchor.current;
+        const row = [...element.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.dataset.messageId === saved.id);
+        if (row) element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.top;
+      }
+      captureAnchor();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [compact]);
+  useEffect(() => {
+    const element = ref.current;
+    if (!compact || !element) return;
     const changed = () => {
       following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
       setShowLatest(!following.current); captureAnchor();

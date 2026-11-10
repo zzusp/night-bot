@@ -21,13 +21,13 @@
 .execution-history-start { min-height: 32px; padding-bottom: 10px; color: var(--board-muted); font-size: 11px; text-align: center; }
 .execution-transcript .message-column { max-width: none; padding: 16px max(7%, calc((100% - 760px) / 2)) 22px; gap: 0; }
 .execution-transcript .message { width: 100%; max-width: 100%; align-self: stretch; }
-.execution-transcript .message > .message-body { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; --board-muted: inherit; }
+.execution-transcript .message:not(.message-user) > .message-body { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; --board-muted: inherit; }
 .execution-transcript .message-assistant { padding: 7px 0; }
 .execution-transcript .markdown { font-size: 13px; line-height: 1.7; }
 .execution-transcript .markdown p, .execution-transcript .markdown :is(ul, ol) { margin: .5em 0; }
 .execution-transcript .markdown :is(ul, ol) { padding-left: 1.4em; }
 .execution-transcript .message-user { padding: 12px 0; align-items: flex-end; }
-.execution-transcript .message-user > .message-body { max-width: 82%; margin-left: auto; padding: 10px 16px; border-radius: 18px; background: var(--board-message-assistant-bg); }
+.execution-transcript .message-user > .message-body { max-width: 82%; margin-left: auto; }
 .execution-transcript .execution-message-role { font-size: 11px; color: var(--board-muted); }
 .execution-transcript .execution-message-role:not(:has(.execution-tool-state)) { height: 0; }
 .execution-transcript .message-tool { margin: 1px 0 5px; }
