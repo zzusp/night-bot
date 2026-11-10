@@ -15,6 +15,8 @@ read relevant accepted topics via `memory_read` or literal `memory_search`; only
 short index is injected automatically. This is on-demand retrieval, not semantic
 recall or proof that the model will always choose the right note.
 
+已认证渠道的明确长期偏好通过 Router 的来源绑定记忆动作即时保存并回读，普通对话候选与任务复盘保持独立；会话交接摘要不替代长期记忆，也不自动成为 Skill。来源、授权与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
+
 The real task service attaches reflection to the durable SQLite `task.completed`
 event stream, requests a scan after a committed completion and on normal recovery,
 and scans existing completion events at startup. A review is separate background
