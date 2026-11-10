@@ -4,7 +4,7 @@
 
 用户明确要求再正常重启一次，记录完整耗时。本轮不改代码、配置、依赖或发布版本，不发送测试消息，不重放业务。实际版本仍为 `585e1c767ee7d45b6422ff43e5d288489c06f697`，发布检出 tracked 工作树干净。第三轮的实现/测试结果保留；本轮只验证真实停启与就绪计时。
 
-最终证据：[restart-proof.json](round-4/restart-proof.json)。矩阵见 [matrix.csv](matrix.csv)。
+本轮完整计时和关键结果保留于下文；JSON 附件在第五轮证据核实后清理，最新证据见[第五轮](round-5.md)。矩阵见 [matrix.csv](matrix.csv)。
 
 ## 计时方法
 
