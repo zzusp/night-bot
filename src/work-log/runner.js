@@ -25,11 +25,12 @@ async function regular(path){
  if(stat&&(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1))throw failure('WORK_LOG_PATH_UNSAFE');return stat
 }
 /** Publish atomically without replacing even a concurrently created user file. */
-async function publish(path,text){
+async function publish(path,text,isClosed=()=>false){
  await directory(dirname(path));if(await regular(path))return false
  const temporary=join(dirname(path),'.write-'+basename(path)+'-'+randomUUID());let file
  try{
   file=await open(temporary,'wx',0o600);await file.writeFile(text);await file.sync();await file.close();file=undefined
+  if(isClosed())throw failure('WORK_LOG_CLOSED')
   try{await link(temporary,path)}catch(error){if(error.code!=='EEXIST')throw error;await regular(path);return false}
   await unlink(temporary)
   if(process.platform!=='win32'){const folder=await open(dirname(path),'r');try{await folder.sync()}finally{await folder.close()}}
@@ -83,7 +84,7 @@ export class DailyWorkLog {
     if(!await regular(path)){
      const evidence=await this.collect({day,timezone:this.config.timezone,cutoff:now})
      if(this.closed)break
-     if(evidence.active){const values=await this.secrets();status=await publish(path,renderWorkLog({day,timezone:this.config.timezone,cutoff:now,evidence,secrets:values}))?'written':'existing'}else status='empty'
+     if(evidence.active){const values=await this.secrets();if(this.closed)break;status=await publish(path,renderWorkLog({day,timezone:this.config.timezone,cutoff:now,evidence,secrets:values}),()=>this.closed)?'written':'existing'}else status='empty'
     }
     // Publication precedes the checkpoint. After a crash, an existing date file
     // is preserved and acknowledged, never regenerated or appended twice.

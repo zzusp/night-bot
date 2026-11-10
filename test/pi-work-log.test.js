@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os'
 import {DailyWorkLog} from '../src/work-log/runner.js'
 import {localStamp,lastDueDay,inDay} from '../src/work-log/calendar.js'
 import {collectWorkLogEvidence,renderWorkLog} from '../src/work-log/evidence.js'
+import {summaryInput,fitSummaryInput,parseSummary,summarizeWorkLog} from '../src/work-log/summary.js'
 import {workLogText,workLogSecrets} from '../src/work-log/redaction.js'
 import {backupData,restoreData} from '../src/runtime/backup.js'
 import {createLaunchEnvironmentSnapshot} from '../src/native-environment.js'
@@ -70,14 +71,14 @@ test('redaction removes known credentials, secret fields, private keys and execu
  assert.ok(!text.includes('<script>'));assert.ok(!text.includes('![remote]'))
  assert.deepEqual(await workLogSecrets({providers:{x:{apiKeyEnv:'KEY'}}},{resolve:async()=>({value:'configured-secret'}),listRecords:async()=>[{key:'oauth'}],readRecord:async()=>({accessToken:'record-secret'})},{KEY:'env-secret'}),['configured-secret','env-secret','record-secret'])
 })
-test('default Host service summarizes committed ordinary Pi conversation without another model call',async t=>{
+test('default Host service summarizes committed ordinary Pi conversation with one tool-free summary call and explicit invalid-output fallback',async t=>{
  const f=await memoryHost(t,()=>({text:'已核对测试范围'}),{hostConfig:{workLog:{time:'00:00',timezone:'UTC'}}})
  const handle=await f.agent('daily-work-log-user');await f.say(handle.agent,'请核对测试范围');await handle.dispose()
  const calls=f.requests.length,service=f.host.ctx.get('workLog');assert.ok(service)
  await service.attach({tasks:{store:storeFixture()}})
- assert.equal(service.runner.lastError,null);assert.equal(f.requests.length,calls)
+ assert.equal(service.runner.lastError,null);assert.equal(f.requests.length,calls+1)
  const day=localStamp(Date.now(),'UTC').day,path=join(f.host.ctx.runtimePaths.workLogs,day.slice(0,4),day.slice(5,7),day+'.md')
- const body=await readFile(path,'utf8');assert.match(body,/请核对测试范围/);assert.match(body,/已核对测试范围/);assert.doesNotMatch(body,/local-fixture/)
+ const body=await readFile(path,'utf8');assert.match(body,/请核对测试范围/);assert.match(body,/已核对测试范围/);assert.doesNotMatch(body,/local-fixture/);assert.match(body,/未完成语义总结/)
  await service.close();assert.equal(service.runner.timer,undefined)
 })
 
@@ -130,4 +131,58 @@ test('disabled startup records no diary and re-enabling does not backfill the di
  const enabled=new DailyWorkLog({paths:f.paths,config:{enabled:true,time:'23:59',timezone:'UTC'},collect:async()=>{calls++;return active()},clock:()=>Date.parse('2026-11-13T23:59Z')});t.after(()=>enabled.close())
  assert.deepEqual((await enabled.tick()).map(row=>row.day),['2026-11-13']);assert.equal(calls,2)
  await assert.rejects(readFile(f.file('2026-11-12')),{code:'ENOENT'})
+})
+
+
+test('rendered diary states local cutoff, immutable snapshot and historical blocker boundaries',async()=>{
+ const cutoff=Date.parse('2026-11-10T15:59:00Z'),day='2026-11-10',timezone='Asia/Shanghai'
+ const evidence=await collectWorkLogEvidence({store:storeFixture({sources:[{sourceId:'on-time',receivedAt:'2026-11-10T15:58:00Z',text:'核验部署'},{sourceId:'after-cutoff',receivedAt:'2026-11-10T15:59:30Z',text:'不应入本次快照'}],tasks:[{taskId:'task',title:'部署核验',createdAt:'2026-11-10T12:00Z'}],decisions:[{taskId:'task',id:'decision',recordedAt:'2026-11-10T13:00Z',decision:{action:'wait',summary:'测试已通过，等待批准部署',question:'等待发布批准'}}]}),day,timezone,cutoff})
+ const body=renderWorkLog({day,timezone,cutoff,evidence})
+ assert.match(body,/当地时间 2026-11-10 23:59/);assert.match(body,/UTC：2026-11-10T15:59:00.000Z/)
+ assert.match(body,/测试已通过，等待批准部署/);assert.match(body,/当时记录，不代表当前仍受阻/);assert.match(body,/截止时间后的活动不追加/)
+ assert.doesNotMatch(body,/不应入本次快照/)
+})
+
+
+test('tool-free semantic recap covers explicit chat plans and issues, redacts both directions and does not repeat after restart',async t=>{
+ const f=await memoryHost(t,body=>body.messages.some(row=>JSON.stringify(row.content).includes('NIGHT_BOT_DAILY_WORK_LOG'))?{text:JSON.stringify({progress:[{text:'排查登录问题，测试已通过',evidenceIds:['e0'],basis:'recorded'}],plans:[{text:'用户提出明天复查登录',evidenceIds:['e0'],basis:'recorded'}],blockers:[{text:'仍需用户确认发布窗口 local-fixture',evidenceIds:['e0'],basis:'inferred'}]})}:{text:'已记录排查进展'},{hostConfig:{workLog:{time:'00:00',timezone:'UTC'}}})
+ const handle=await f.agent('work-log-summary');await f.say(handle.agent,'登录测试已通过；明天复查登录。发布窗口待确认。local-fixture');await handle.dispose()
+ const calls=f.requests.length,service=f.host.ctx.get('workLog');await service.attach({tasks:{store:storeFixture()}})
+ assert.equal(f.requests.length,calls+1)
+ const request=f.requests.at(-1);assert.ok(!request.tools?.length);assert.ok(!JSON.stringify(request).includes('local-fixture'))
+ const day=localStamp(Date.now(),'UTC').day,file=join(f.host.ctx.runtimePaths.workLogs,day.slice(0,4),day.slice(5,7),day+'.md'),body=await readFile(file,'utf8')
+ assert.match(body,/用户提出明天复查登录/);assert.match(body,/【推断，待核实】/);assert.match(body,/工作复盘总结/);assert.doesNotMatch(body,/local-fixture/)
+ await service.runner.tick();assert.equal(f.requests.length,calls+1)
+ await service.close();const restart=new DailyWorkLog({paths:f.host.ctx.runtimePaths,config:{enabled:true,time:'00:00',timezone:'UTC'},collect:async()=>{throw Error('must not resummarize')}});await restart.tick();assert.equal(restart.lastError,null);await restart.close()
+})
+test('summary inputs are bounded per category, scrubbed and references validated; unavailability visibly falls back',async()=>{
+ const evidence={...active(),messages:Array.from({length:31},(_,i)=>({id:String(i),text:'opaque-secret'})),plans:[{id:'p',text:'明天复查'}]}
+ const input=summaryInput(evidence,['opaque-secret']);assert.equal(input.omitted,1);assert.equal(input.facts.length,31);assert.equal(input.facts.at(-1).kind,'plans');assert.ok(!JSON.stringify(input).includes('opaque-secret'))
+ assert.throws(()=>parseSummary(JSON.stringify({progress:[{text:'made up',evidenceIds:['unknown'],basis:'recorded'}],plans:[],blockers:[]}),input))
+ assert.throws(()=>parseSummary(JSON.stringify({progress:[{text:'made up',evidenceIds:['e0'],basis:'certain'}],plans:[],blockers:[]}),input))
+ const result=await summarizeWorkLog({evidence,day:'2026-11-10',timezone:'UTC',cutoff:Date.now(),secrets:[],resolve:async()=>{throw Error('secret-provider-error')}})
+ assert.equal(result.status,'fallback');assert.ok(!JSON.stringify(result).includes('secret-provider-error'))
+ const cancelled=await summarizeWorkLog({evidence,secrets:[],signal:AbortSignal.abort(),resolve:()=>{throw Error('should not resolve')}});assert.equal(cancelled.status,'fallback')
+})
+
+
+test('shutdown during secret loading cannot publish a completed summary',async t=>{
+ const f=await fixture(t),entered=Promise.withResolvers(),release=Promise.withResolvers()
+ f.runner.secrets=async()=>{entered.resolve();await release.promise;return []}
+ const run=f.runner.tick();await entered.promise;const closing=f.runner.close();release.resolve();await Promise.all([run,closing])
+ await assert.rejects(readFile(f.file('2026-11-10')),{code:'ENOENT'})
+})
+test('tool-call response from recap is rejected without executing tools',async t=>{
+ const f=await memoryHost(t,()=>({tool:'bash',args:{command:'never execute'}}))
+ const official=f.host.ctx.get('nativePiProvider').official
+ const result=await summarizeWorkLog({evidence:active(),day:'2026-11-10',timezone:'UTC',cutoff:Date.now(),secrets:[],signal:AbortSignal.timeout(5000),resolve:signal=>official.resolve({...f.config.model,signal})})
+ assert.equal(result.status,'fallback');assert.equal(f.requests.length,1);assert.ok(!f.requests[0].tools?.length)
+})
+
+
+test('semantic input uses a serialized byte budget and preserves category opportunities',()=>{
+ const evidence={...empty(),messages:Array.from({length:30},(_,i)=>({id:'m'+i,text:'繁忙日[密集]'.repeat(200)})),plans:[{id:'p',text:'明天复查'}],blockers:[{id:'b',text:'等待确认'}]}
+ const full=summaryInput(evidence),small=fitSummaryInput(full,4000)
+ assert.ok(Buffer.byteLength(JSON.stringify(small))<4000);assert.ok(small.omitted>0);assert.ok(small.facts.some(row=>row.kind==='plans'));assert.ok(small.facts.some(row=>row.kind==='blockers'))
+ assert.equal(fitSummaryInput(full,0).facts.length,0)
 })

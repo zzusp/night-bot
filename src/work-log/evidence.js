@@ -60,13 +60,29 @@ export async function collectWorkLogEvidence({store,persistence,schedule,day,tim
 }
 const names={scheduled:'提醒触发',arranged:'已调整安排',changed:'事项已更新',created:'新建',completed:'完成',complete:'完成',continue:'继续处理',wait:'等待',blocked:'受阻',failed:'失败',reply:'回复',activity:'执行活动',recorded:'进展'}
 export function renderWorkLog({day,timezone,cutoff,evidence,secrets=[]}){
- const clean=value=>workLogText(value,secrets),lines=[`# ${day} 工作日志`,'',`时区：${clean(timezone)}。汇总截至：${new Date(cutoff).toISOString()}。`,'','## 当天工作进展','',`收到 ${evidence.messages.length} 条消息，记录 ${evidence.progress.length} 条工作进展。`,'']
+ const stamp=localStamp(cutoff,timezone),clean=value=>workLogText(value,secrets),lines=[`# ${day} 工作日志`,'',`时区：${clean(timezone)}。汇总截至当地时间 ${stamp.day} ${stamp.time}（UTC：${new Date(cutoff).toISOString()}）。`,'','## 当天工作进展','',`收到 ${evidence.messages.length} 条消息，记录 ${evidence.progress.length} 条工作进展。`,'']
+ if(evidence.summary){
+  const summary=evidence.summary,position=lines.indexOf('## 当天工作进展'),section=['## 工作复盘总结','']
+  if(summary.status==='fallback')section.push(clean(summary.reason),'')
+  else{
+   section.push('以下为模型基于所列证据的归纳，引用有效不等于语义已被程序验证；推断单独标识。','')
+   for(const [key,title]of [['progress','当天进展'],['plans','次日安排'],['blockers','问题与阻塞']]){
+    section.push('### '+title,'')
+    for(const row of summary.sections[key])section.push('- '+(row.basis==='inferred'?'【推断，待核实】':'【记录归纳】')+clean(row.text)+'（证据：'+row.evidenceIds.join('、')+'）')
+    if(!summary.sections[key].length)section.push('未从本次证据中归纳出可核实内容。')
+    section.push('')
+   }
+   section.push('### 总结证据索引','',...summary.facts.map(row=>'- '+row.id+'：'+clean(row.title)+' '+clean(row.text)+'（来源：'+clean(row.source)+'）'), '')
+   if(summary.omitted)section.push('另有 '+summary.omitted+' 条事实未送入模型，本次语义总结范围有限。','')
+  }
+  lines.splice(position,0,...section)
+ }
  const write=(rows,format,empty)=>{if(!rows.length)lines.push(empty);else{for(const row of rows.slice(0,500))lines.push('- '+format(row));if(rows.length>500)lines.push(`- 另有 ${rows.length-500} 条记录，未在本日志逐项展开。`)}lines.push('')}
  write(evidence.messages,row=>`收到消息：${clean(row.text)||'（无文本）'}（来源：${clean(row.id)}）`,'当天没有新增消息。')
  write(evidence.progress,row=>`${clean(row.title)||'事项'}：${names[row.kind]??'已记录'}${row.text?'；'+clean(row.text):''}（记录：${clean(row.id)}）`,'当天没有已记录的工作进展。')
  lines.push('## 次日工作安排','');write(evidence.plans,row=>`${localStamp(row.at,timezone).time}：${clean(row.text)}（排期：${clean(row.id)}）`,'暂无可核实的次日排期；未将未完成事项推断为次日承诺。')
- lines.push('## 遇到的问题或阻塞','');write(evidence.blockers,row=>`${clean(row.title)||'事项'}：${clean(row.text)||'已记录待处理问题'}${row.historical?'（当时记录，不代表当前仍受阻）':''}`,'没有已记录的问题或阻塞。')
+ lines.push('## 遇到的问题或阻塞','');write(evidence.blockers,row=>`${clean(row.title)||'事项'}：${clean(row.text)||'已记录待处理问题'}（当时记录，不代表当前仍受阻）`,'没有已记录的问题或阻塞。')
  if(evidence.notes.length)lines.push('## 记录范围','',...evidence.notes.map(note=>'- '+clean(note)),'')
- lines.push('本日志由已保存的业务记录直接汇总；任务完成与消息送达分别以各自收据为准。','')
+ lines.push('本日志是执行时刻的事实快照；截止时间后的活动不追加到本文件，已有日期文件不重写。','本日志由已保存的业务记录直接汇总；任务完成与消息送达分别以各自收据为准。','')
  return lines.join('\n')
 }
