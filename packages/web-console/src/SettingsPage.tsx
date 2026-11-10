@@ -1,10 +1,9 @@
 import {useEffect, useState, type KeyboardEvent} from 'react';
-import {api, errorText, type OperatorSettings, type ChannelSettings} from './api';
+import {api, errorText, type OperatorSettings} from './api';
 import {useResource} from './hooks';
 import {Button, IconButton} from './components/BoardPrimitives';
 import {Loading, Notice} from './components/Shared';
 import {Confirm} from './components/ConfirmDialog';
-import {CustomChannelForm} from './components/CustomChannelForm';
 
 const preventCompositionSubmit=(event:KeyboardEvent<HTMLFormElement>)=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()};
 
@@ -36,24 +35,12 @@ function Configuration({data,refresh,onReload,reloading}: {data:OperatorSettings
   <p role="alert">{error}</p><p role="status">{feedback}</p>
  </>;
 }
-function CustomChannels() {
- const query=useResource<ChannelSettings>('/settings/channels');
- const [type,setType]=useState(''),[editing,setEditing]=useState<ChannelSettings['channels'][number]|undefined>(),[formKey,setFormKey]=useState(0),[busy,setBusy]=useState(false);
- useEffect(()=>{const refresh=()=>query.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[query.refresh]);
- const plugin=query.data?.items.find(item=>item.type===type);
- const select=(value:string,channel?:ChannelSettings['channels'][number])=>{setType(value);setEditing(channel);setFormKey(key=>key+1)};
- return <section className="settings-card"><h2>自定义渠道</h2><p className="field-help">仅配置管理员已安装且声明网页表单的可信插件。未声明表单时按插件说明配置；网页不安装代码。新渠道默认停用，启用后是否在线接入或待重启以保存结果为准。</p>
-  {query.error&&<Notice error={query.error} onRetry={query.refresh}/>}<Button disabled={query.loading||busy} onClick={query.refresh}>重新发现插件</Button>
-  {query.loading&&!query.data&&<Loading>正在发现插件…</Loading>}{query.data&&!query.data.items.length&&<p>尚无自定义插件，请由管理员安装并声明网页表单。</p>}
-  <ul>{query.data?.items.map(item=><li key={item.type}>{item.name} · {item.type} · {item.configurable?'支持网页配置':'未提供网页表单'}</li>)}</ul>
-  <label htmlFor="custom-channel-type">渠道插件</label><select id="custom-channel-type" value={type} disabled={busy} onChange={event=>select(event.target.value)}><option value="">选择插件</option>{query.data?.items.filter(item=>item.configurable).map(item=><option key={item.type} value={item.type}>{item.name}</option>)}</select>
-  {plugin?.configurable&&query.data&&<CustomChannelForm key={formKey} plugin={plugin} snapshot={query.data} initial={editing} onSaved={query.refresh} onBusyChange={setBusy}/>}
-  <ul>{query.data?.channels.map(item=><li key={item.channelId}>{item.channelId} · {item.type} · {item.enabled?'已启用':'已停用'} {item.editable&&item.config?<Button disabled={busy} onClick={()=>select(item.type,item)}>编辑 {item.channelId}</Button>:<span>运行中或未提供表单，请按插件运维说明修改</span>}</li>)}</ul>
- </section>;
-}
+
 export default function SettingsPage(){
  const query=useResource<OperatorSettings>('/settings');
  useEffect(()=>{const refresh=()=>query.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[query.refresh]);
  const [refreshKey,setRefreshKey]=useState(0);const reload=()=>{setRefreshKey(value=>value+1);query.refresh()};
- return <div className="page-content settings-page">{query.error&&<Notice error={query.error} onRetry={reload}/>}{query.loading&&!query.data?<Loading/>:query.data&&!query.error?<><Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading}/><div className="settings-grid"><SecretEditor key={`model-${refreshKey}-${query.data.version}`} kind="model" state={query.data.secrets.model} version={query.data.version} onSaved={query.refresh}/><SecretEditor key={`github-${refreshKey}-${query.data.version}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh}/></div></>:null}<CustomChannels/></div>;
+
+ return <div className="page-content settings-page">{query.error&&<Notice error={query.error} onRetry={reload}/>}{query.loading&&!query.data?<Loading/>:query.data&&!query.error?<><Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading}/><div className="settings-grid"><SecretEditor key={`model-${refreshKey}-${query.data.version}`} kind="model" state={query.data.secrets.model} version={query.data.version} onSaved={query.refresh}/><SecretEditor key={`github-${refreshKey}-${query.data.version}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh}/></div></>:null}</div>;
+
 }
