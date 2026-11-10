@@ -50,7 +50,7 @@
 
 ## 原交付恢复（2026-11-10）
 
-第一阶段仅 failed 结清没有完成交付，用户要求已通过第三轮实际恢复兑现。代码 df13fe5；原正文和两个文件全部 delivered，文件各一次且平台回读大小/哈希匹配，原 payload/任务/Pi 执行未改写，真实 Web 原三件状态为 delivered。使用原本机监督器正常更新重启，保留安装数据、账号和配置；Bot保持运行。新修复在 feature/public-marker-delivery-recovery，原PR #13已合并，不再向旧分支推送。详见 [第三轮](round-3.md)。
+第一阶段仅 failed 结清没有完成交付，用户要求已通过第三轮实际恢复兑现。代码 df13fe5；原正文和两个文件全部 delivered，文件各一次且平台回读大小/哈希匹配，原 payload/任务/Pi 执行未改写，真实 Web 原三件状态为 delivered。使用原本机监督器正常更新重启，保留安装数据、账号和配置；Bot保持运行。新修复在 feature/public-marker-delivery-recovery，通过 [PR #19](https://github.com/zzusp/night-bot/pull/19)交付（OPEN、MERGEABLE，main ← feature/public-marker-delivery-recovery）；原PR #13已合并，不再向旧分支推送。详见 [第三轮](round-3.md)。
 
 ## 证据入口
 
