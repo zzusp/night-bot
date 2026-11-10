@@ -16,11 +16,16 @@ export interface Task {
   notifications?: Record<string, unknown>[];
 }
 export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown' | 'pending-restart';
+export interface ChannelIngress {
+  supported: boolean; available: boolean; backfill: 'history' | 'none' | null; requestedPaused: boolean;
+  state: 'paused' | 'pausing' | 'receiving' | 'recovering' | 'error' | 'unavailable'; errorCode: string | null;
+}
 export interface Channel {
   channelId: string; type: string; enabled: boolean; connected?: boolean;
   connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_MESSAGE_ID_CONFLICT' | 'CHANNEL_HISTORY_INCOMPLETE' | 'CHANNEL_HISTORY_RECOVERY_FAILED' | 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | 'DINGTALK_CHANNEL_SWITCH_BLOCKED' | 'CHANNEL_DRAIN_FAILED' | 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN' | null;
   name?: string; conversationType?: 'chat' | 'chat-room'; promptConfigured?: boolean; restartRequired?: boolean; liveApplied?: boolean; writesAuthorized?: boolean; savedVersion?: string; runningVersion?: string | null;
   runningConnectionState?: ChannelConnectionState; runningErrorCode?: Channel['errorCode']; runningConnected?: boolean; runningName?: string; runningConversationType?: 'chat' | 'chat-room';
+  ingress?: ChannelIngress;
 }
 export interface DingtalkChannelInput {
   channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; prompt?: string; writesAuthorized?: boolean;
@@ -55,7 +60,7 @@ export interface Chat {
   taskSummaries?: Pick<Task, 'taskId' | 'title' | 'state' | 'updatedAt'>[] | null;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
-export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number }
+export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {
@@ -148,6 +153,8 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'SESSION_PAGE_STALE') return '执行上下文已改变，已暂停续读。重新获取后查看当前记录。';
+    if (error.code === 'SESSION_COMMIT_PENDING') return '新记录正在提交，完成后会自动更新。';
     if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，未覆盖新版本。草稿已保留，请重新读取设置后再编辑。';
     if (error.code === 'INVALID_CONFIG') return '模型或推理深度不受当前路由支持，请重新读取可用模型并检查选择。';
     if (error.code === 'EVOLUTION_CONTENT_TOO_LARGE') return '此条目内容过大，暂不能在此查看。';
@@ -168,6 +175,13 @@ export function errorText(error: unknown) {
     if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，请重新读取后再保存。';
     if (error.code === 'SETTINGS_SECRET_READ_ONLY') return '此凭据由启动环境提供，请在环境中修改。';
     if (error.code === 'SETTINGS_INPUT_INVALID') return '设置未被保存，请检查字段格式。';
+    if (error.code === 'SETTINGS_MODEL_IN_USE') return '此模型仍被默认、角色或环境变量配置使用，请先切换相关配置再改 ID 或删除。';
+    if (error.code === 'SETTINGS_MODEL_EXISTS') return '此路由已存在相同模型 ID，请使用不同 ID。';
+    if (error.code === 'SETTINGS_MODEL_LAST_REQUIRED') return '路由必须至少保留一个模型，不能删除最后一个模型。';
+    if (error.code === 'SETTINGS_MODEL_DELETE_CONFIRMATION_REQUIRED') return '请确认删除模型后再提交。';
+    if (error.code === 'SETTINGS_MODEL_CATALOG_INVALID') return '已有模型或角色引用配置无效，请先修正配置再编辑模型列表。';
+    if (error.code === 'SETTINGS_TASK_ROLE_REQUIRED') return '请先保存任务执行的模型选择，再删除模型或更改 ID。';
+    if (error.code === 'SETTINGS_RESIDENT_REQUIRED') return '此操作需要连接正在运行的 Bot 核对配置，请使用在线设置入口。';
     if (error.code === 'CHANNEL_INSTANCE_EXISTS') return '该渠道标识已存在，请换一个；新增不会覆盖已有配置。';
     if (error.code === 'CHANNEL_EDIT_REQUIRES_STOP') return '此渠道仍在运行，请先按运维流程停用并重启后再修改。';
     if (error.code === 'CHANNEL_WEB_CONFIGURATION_UNSUPPORTED') return '此插件尚未声明网页配置表单，请按插件说明配置。';
@@ -195,7 +209,13 @@ export interface RoleModelState {
 }
 export interface RoleModelCatalog {provider:string;name:string;models:{id:string;name:string;reasoningEfforts:string[]}[]}
 export interface RoleModelSaved {ok:true;changed:boolean;version:string;role:RoleModelState;restartRequired:boolean}
+export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;reasoningEfforts:string[];references:string[]}
+export interface ModelCatalog {version:string;providers:{provider:string;name:string;models:ModelCatalogEntry[]}[]}
+export interface ModelCatalogSaved {ok:true;changed:boolean;checkOnly:boolean;version:string;restartRequired:boolean;liveApplied:false}
+export interface WorkLogSelection {enabled:boolean;time:string;timezone:string}
+export interface WorkLogState {saved:WorkLogSelection;running:WorkLogSelection;nextStart:WorkLogSelection|null;environmentOverrides:{name:string;source:string}[];restartRequired:boolean}
 export interface OperatorSettings {
+ workLog?: WorkLogState;
  roleModels: {catalog:RoleModelCatalog[];roles:RoleModelState[]};
  version: string; appearance: import('./components/AssistantBrand').AssistantBrand;
  model: {provider:string;model:string;api:string;baseURL:string};

@@ -1,9 +1,9 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RiMoreLine } from '@remixicon/react';
 import { Button, IconButton } from './BoardPrimitives';
 
-type Action = { label: string; onSelect: (trigger: HTMLButtonElement | null) => void; disabled?: boolean; danger?: boolean };
+type Action = { label: string; onSelect: (trigger: HTMLButtonElement | null) => void; disabled?: boolean; danger?: boolean; description?: string };
 
 // Canonical overflow action menu. Native buttons remain the keyboard targets;
 // the portal avoids clipping inside the application's scrolling page panels.
@@ -69,8 +69,10 @@ export function ActionMenu({ label, actions }: { label: string; actions: Action[
           : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
         items[next]?.focus();
       }}>
-      {actions.map(action => <Button key={action.label} variant="ghost" className={action.danger ? 'action-menu-danger' : undefined} role="menuitem" tabIndex={-1} disabled={action.disabled}
-        onClick={() => { const source = trigger() ?? null; close(true); action.onSelect(source); }}>{action.label}</Button>)}
+      {actions.map((action, index) => <Fragment key={action.label}><Button variant="ghost" className={action.danger ? 'action-menu-danger' : undefined} role="menuitem" tabIndex={-1} disabled={action.disabled}
+        aria-describedby={action.description ? `${id}-description-${index}` : undefined}
+        onClick={() => { const source = trigger() ?? null; close(true); action.onSelect(source); }}>{action.label}</Button>
+        {action.description && <p role="none" id={`${id}-description-${index}`} className="action-menu-description">{action.description}</p>}</Fragment>)}
     </div>, document.body)}
   </>;
 }

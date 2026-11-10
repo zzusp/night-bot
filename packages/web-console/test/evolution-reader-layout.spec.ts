@@ -28,7 +28,7 @@ for(const theme of ['light','dark']) for(const width of [1440,390]) test(`阅读
   await expect(action).toBeVisible(); await action.click();
   const reader=page.locator('.evolution-content');
   await expect(reader.getByRole('heading',{level:2,name:item.name,exact:true})).toBeFocused();
-  await expect(page.locator('.evolution-summary')).toBeHidden(); await expect(page.locator('.evolution-library')).toBeHidden();
+  await expect(page.locator('.evolution-library')).toBeHidden();
   await expect(reader.locator('.evolution-plain-text')).toHaveText(currentText);
   await expect(reader).not.toContainText('候选');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -44,5 +44,5 @@ for(const theme of ['light','dark']) for(const width of [1440,390]) test(`阅读
   await reader.locator('.evolution-entry-details > summary').click();
   await expect(reader.locator('.evolution-entry-version')).toHaveText('2');
   await reader.getByRole('button',{name:'返回列表',exact:true}).click();
-  await expect(action).toBeFocused(); await expect(page.locator('.evolution-summary')).toBeVisible();
+  await expect(action).toBeFocused(); await expect(page.locator('.evolution-library')).toBeVisible();
 });

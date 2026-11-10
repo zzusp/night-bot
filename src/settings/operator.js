@@ -1,6 +1,8 @@
+import {savedWorkLogConfig,resolveWorkLogConfig,WORK_LOG_ENV_NAMES} from '../work-log/config.js'
+import {saveWorkLogConfiguration} from './work-log-configuration.js'
 import {updateConfig} from '../config.js'
 import {MODEL_ROLES, ROLE_MODEL_ENV_NAMES, resolveRoleModels, legacyRoleModelSelection, roleModelCatalog, materializeRoleModelSelection} from '../role-models.js'
-import {configVersion, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
+import {configVersion, modelCatalogView, saveModelCatalogEntry, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
 import {saveWebConfiguration} from './web-configuration.js'
 import {savePermissionConfiguration} from './configuration.js'
 import {piAuthentication} from '../pi-provider-auth.js'
@@ -17,7 +19,7 @@ function schema(definition){
  if(!Array.isArray(fields)||fields.length>16)return null
  const names=new Set()
  for(const field of fields){
-  if(!field||(typeof field.name!=='string'||!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.name)||['constructor','prototype','enabled','channelId','type'].includes(field.name))||!text(field.label,64)||!['string','boolean','credential-ref'].includes(field.type)||names.has(field.name)||field.required!==undefined&&typeof field.required!=='boolean')return null
+  if(!field||(typeof field.name!=='string'||!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.name)||['constructor','prototype','enabled','receivePaused','channelId','type'].includes(field.name))||!text(field.label,64)||!['string','boolean','credential-ref'].includes(field.type)||names.has(field.name)||field.required!==undefined&&typeof field.required!=='boolean')return null
   if(field.type==='string'&&/token|secret|password|key|credential|authorization/i.test(field.name))return null
   names.add(field.name)
  }
@@ -46,6 +48,15 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   })
   return {catalog,roles}
  }
+ const workLogView=config=>{
+  const environment=getEnvironment()??{},saved=savedWorkLogConfig(config),active=resolveWorkLogConfig(running,{env:environment})
+  const environmentOverrides=Object.values(WORK_LOG_ENV_NAMES).flatMap(name=>{
+   const entry=typeof environment.get==='function'?environment.get(name):environment[name]
+   return entry===undefined?[]:[{name,source:['process','project-env','user-env'].includes(entry?.source)?entry.source:'environment'}]
+  })
+  let nextStart=null;try{nextStart=resolveWorkLogConfig(config,{env:environment})}catch{}
+  return {saved,running:active,nextStart,environmentOverrides,restartRequired:JSON.stringify(active)!==JSON.stringify(nextStart)}
+ }
  const credentials=()=>{const value=getCredentials();if(!value)throw failure('SETTINGS_UNAVAILABLE');return value}
  const modelSecret=async config=>{
   const provider=config.model.provider,profile=config.providers[provider]
@@ -56,12 +67,17 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   return {configured:value.configured===true,writable:slot.kind==='record'||!value.configured||value.source==='file',source:value.source==='file'?'saved':value.source?'environment':value.configured?'saved':'none'}
  }
  return {
+  modelCatalog:()=>run(async()=>{const config=await read();return modelCatalogView(config,getEnvironment(),getFallbackRoleModels(config))}),
+  saveModelEntry:(body,{checkOnly=false}={})=>run(async()=>{
+   const result=await saveModelCatalogEntry(file,{...body,checkOnly},getEnvironment(),getFallbackRoleModels)
+   return {ok:true,changed:result.changed,checkOnly,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
+  }),
   appearance:()=>run(async()=>appearance((await read()).assistant)),
   view:()=>run(async()=>{
-   const config=await read(),profile=config.providers[config.model.provider],slot=await modelSecret(config),roleModels=roleView(config)
+   const config=await read(),workLog=workLogView(config),profile=config.providers[config.model.provider],slot=await modelSecret(config),roleModels=roleView(config)
    let baseURL='';try{baseURL=endpoint(profile.baseURL)}catch{}
-   return {version:hash(config),roleModels,appearance:appearance(config.assistant),model:{provider:config.model.provider,model:config.model.model,api:profile.api??'openai-completions',baseURL},
-    secrets:{model:await secretState(slot),github:await secretState({kind:'ref',id:'GITHUB_TOKEN'})},restartRequired:roleModels.roles.some(role=>role.restartRequired)||JSON.stringify(config.model)!==JSON.stringify(running.model)||JSON.stringify(config.providers)!==JSON.stringify(running.providers),githubScope:'authorized-full-shell'}
+   return {version:hash(config),roleModels,workLog,appearance:appearance(config.assistant),model:{provider:config.model.provider,model:config.model.model,api:profile.api??'openai-completions',baseURL},
+    secrets:{model:await secretState(slot),github:await secretState({kind:'ref',id:'GITHUB_TOKEN'})},restartRequired:workLog.restartRequired||roleModels.roles.some(role=>role.restartRequired)||JSON.stringify(config.model)!==JSON.stringify(running.model)||JSON.stringify(config.providers)!==JSON.stringify(running.providers),githubScope:'authorized-full-shell'}
   }),
   saveAppearance:(body,{checkOnly=false}={})=>run(async()=>{
    if(!body||!text(body.name,64)||!['moon','star','robot','leaf'].includes(body.icon))throw failure('SETTINGS_INPUT_INVALID')
@@ -72,6 +88,11 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
    if(!body||typeof body.expectedVersion!=='string')throw failure('SETTINGS_INPUT_INVALID')
    const result=await saveModelConfiguration(file,{...body,checkOnly})
    return {ok:true,changed:result.changed,checkOnly,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
+  }),
+  saveWorkLog:(body,{checkOnly=false}={})=>run(async()=>{
+   if(!body||typeof body.expectedVersion!=='string')throw failure('SETTINGS_INPUT_INVALID')
+   const result=await saveWorkLogConfiguration(file,{...body,checkOnly})
+   return {ok:true,changed:result.changed,checkOnly,version:result.version,workLog:workLogView(result.config),restartRequired:result.restartRequired,liveApplied:false}
   }),
   saveWeb:(body,{checkOnly=false}={})=>run(async()=>{
    if(!body||typeof body.expectedVersion!=='string')throw failure('SETTINGS_INPUT_INVALID')

@@ -9,6 +9,7 @@ import {apply as application,inject} from '../src/application.js'
 import {configuredChannels} from '../packages/web-console/server/views.js'
 import {dingtalkConfigVersion} from '../src/channels/plugins/dingtalk-config.js'
 import {createWebConsole} from '../packages/web-console/server/plugin.js'
+import {createSettingsCommands} from '../src/settings/commands.js'
 
 const draft=detail=>({expectedVersion:detail.version,name:detail.name,prompt:detail.prompt,conversationType:detail.conversationType,targetKind:detail.targetKind,target:detail.target,writesAuthorized:detail.writesAuthorized})
 async function fixture(t){
@@ -44,6 +45,48 @@ async function withWeb(f,work){
   return await work(request)
  }finally{await web.close()}
 }
+
+test('Host pause/resume is shared by Web and unified settings CLI without disabling send policy',async t=>{
+ const f=await fixture(t);await f.add()
+ const channels=f.host.ctx.channels,plugin=channels.plugins.get('live-room'),dispatch=createSettingsCommands({channels:f.port})
+ const list=await dispatch({action:'channel-list',body:{}}),row=list.channels[0]
+ assert.equal(row.ingress.supported,true);assert.equal(row.ingress.backfill,'history')
+ const paused=await dispatch({action:'channel-ingress',body:{channelId:'live-room',paused:true,expectedVersion:row.version,confirm:true}})
+ assert.equal(paused.liveApplied,true);assert.equal(paused.ingress.state,'paused');assert.equal(paused.receivePaused,true)
+ assert.equal('channel' in paused,false);assert.equal(channels.plugins.get('live-room'),plugin)
+ assert.equal(channels.transports.get('live-room').canSend(),false)
+ let detail=await f.port.getDingtalk('live-room')
+ await f.port.editDingtalk('live-room',{...draft(detail),name:'Paused renamed'})
+ assert.equal((await f.port.getIngress('live-room')).state,'paused')
+ await withWeb(f,async request=>{
+  let view=await request('/api/channels'),item=view.body.items.find(item=>item.channelId==='live-room')
+  assert.equal(item.ingress.state,'paused');assert.equal(item.enabled,true)
+  const stale=await request('/api/channels/live-room/ingress',{method:'POST',body:JSON.stringify({paused:false,expectedVersion:row.version,confirm:true})})
+  assert.equal(stale.status,409)
+  const missing=await request('/api/channels/live-room/ingress',{method:'POST',body:JSON.stringify({paused:false,expectedVersion:item.savedVersion})})
+  assert.equal(missing.status,400)
+  const result=await request('/api/channels/live-room/ingress',{method:'POST',body:JSON.stringify({paused:false,expectedVersion:item.savedVersion,confirm:true})})
+  assert.equal(result.status,200);assert.equal(result.body.liveApplied,true);assert.equal(result.body.channel.ingress.requestedPaused,false)
+  assert.ok(['recovering','receiving'].includes(result.body.channel.ingress.state));assert.equal('config' in result.body.channel,false)
+ })
+ assert.equal(f.calls.some(args=>args.some(value=>/messages-send|messages-reply/.test(value))),false)
+ assert.equal(JSON.parse(await readFile(f.file,'utf8')).channelPlugins[0].receivePaused,false)
+})
+
+test('paused channel remains paused across disable/enable and dot-only Web query uses exact identity',async t=>{
+ const f=await fixture(t);await f.add('..')
+ let detail=await f.port.getDingtalk('..')
+ await withWeb(f,async request=>{
+  const invalid=await request('/api/channels/ingress?channelId=..&unexpected=true',{method:'POST',body:JSON.stringify({paused:true,expectedVersion:detail.version,confirm:true})})
+  assert.equal(invalid.status,400)
+  const result=await request('/api/channels/ingress?channelId=..',{method:'POST',body:JSON.stringify({paused:true,expectedVersion:detail.version,confirm:true})})
+  assert.equal(result.status,200);assert.equal(result.body.channel.channelId,'..');assert.equal(result.body.channel.ingress.state,'paused')
+ })
+ detail=await f.port.getDingtalk('..');await f.port.setEnabled('..',{enabled:false,expectedVersion:detail.version})
+ detail=await f.port.getDingtalk('..');await f.port.setEnabled('..',{enabled:true,expectedVersion:detail.version})
+ assert.equal((await f.port.getIngress('..')).state,'paused')
+ assert.equal(f.calls.some(args=>args.some(value=>/messages-send|messages-reply/.test(value))),false)
+})
 
 test('running Host adds a channel immediately; metadata and authorization do not reconnect; CAS serializes edits',async t=>{
  const f=await fixture(t),core=f.host.ctx.get('application'),added=await f.add()
@@ -195,6 +238,63 @@ test('an installed opt-in adapter is hot-created, replaced and disabled through 
  assert.equal(result.restartRequired,false);const second=f.host.ctx.channels.plugins.get('custom-live');assert.notEqual(second,first);assert.equal(second.room,'two')
  view=await settings.plugins();await settings.saveChannel({type:'example',channelId:'custom-live',enabled:false,config:{room:'two'},expectedVersion:view.version})
  assert.equal(f.host.ctx.channels.plugins.has('custom-live'),false);assert.equal(f.host.ctx.channels.transports.has('custom-live'),false)
+})
+
+async function installIngressCapabilityFixture(f,{declared}){
+ const directory=join(f.root,'plugins/receive-custom')
+ await mkdir(directory,{recursive:true})
+ await writeFile(join(directory,'night-channel.json'),JSON.stringify({apiVersion:1,type:'receive-custom',entry:'index.mjs',webConfig:{fields:[{name:'room',label:'Room',type:'string',required:true}]}}))
+ await writeFile(join(directory,'index.mjs'),`
+ export const inject=['channels'];export const channelLifecycle=1;
+ ${declared?'export const channelIngressControl=1;':''}
+ export const validateConfig=value=>{if(!value.room)throw Error('missing room');return value};
+ export function apply(ctx,config){
+  let paused=config.receivePaused===true,closed=false;
+  const control={version:1,backfill:'none',get available(){return !closed},getStatus(){return {state:closed?'unavailable':paused?'paused':'receiving',errorCode:null}},async setPaused(value){plugin.pauseCalls++;paused=value;return this.getStatus()}};
+  const plugin={room:config.room,pauseCalls:0,ingressControl:control,health:{state:'ready',healthy:true},async start(){},async stopAndDrain(){if(closed)return;closed=true;offTransport();offPlugin()}};
+  const offTransport=ctx.channels.registerTransport(config.channelId,{canSend:()=>!closed,send:async()=>{throw Error('No send is allowed in this fixture')},readback:async()=>undefined});
+  const offPlugin=ctx.channels.registerPlugin(config.channelId,plugin);
+  ctx.effect(()=>()=>plugin.stopAndDrain());ctx.on('night/ready',()=>plugin.start());ctx.on('night/stopping',()=>plugin.stopAndDrain());
+ }`)
+ await updateConfig(f.file,config=>({...config,channelPluginDirs:['plugins']}))
+ const settings=f.host.ctx.operatorSettings,view=await settings.plugins()
+ await settings.saveChannel({type:'receive-custom',channelId:'custom-receive',enabled:true,config:{room:'one'},createOnly:true,expectedVersion:view.version})
+ return settings
+}
+
+test('custom ingress explicit none capability pauses and resumes without claiming history recovery',{timeout:30000},async t=>{
+ const f=await fixture(t),settings=await installIngressCapabilityFixture(f,{declared:true}),channels=f.host.ctx.channels
+ const first=channels.plugins.get('custom-receive'),row=(await f.port.read()).find(row=>row.channelId==='custom-receive')
+ assert.deepEqual(await f.port.getIngress(row.channelId),{supported:true,available:true,backfill:'none',requestedPaused:false,state:'receiving',errorCode:null})
+ const paused=await f.port.setIngressPaused(row.channelId,{paused:true,confirm:true,expectedVersion:dingtalkConfigVersion(row)})
+ assert.equal(paused.liveApplied,true);assert.equal(paused.ingress.backfill,'none');assert.equal(paused.ingress.state,'paused')
+ assert.equal(channels.transports.get(row.channelId).canSend(),true);assert.equal(first.pauseCalls,1)
+ assert.equal(JSON.parse(await readFile(f.file,'utf8')).channelPlugins[0].receivePaused,true)
+ const view=await settings.plugins()
+ await settings.saveChannel({type:'receive-custom',channelId:row.channelId,enabled:true,config:{room:'two'},expectedVersion:view.version})
+ assert.notEqual(channels.plugins.get(row.channelId),first)
+ assert.equal((await f.port.getIngress(row.channelId)).state,'paused','replacement starts with the saved receive preference')
+ const edited=(await f.port.read()).find(item=>item.channelId===row.channelId)
+ const resumed=await f.port.setIngressPaused(row.channelId,{paused:false,confirm:true,expectedVersion:dingtalkConfigVersion(edited)})
+ assert.equal(resumed.liveApplied,true);assert.equal(resumed.ingress.state,'receiving');assert.equal(resumed.ingress.backfill,'none')
+ const projected=configuredChannels(f.app,channels).items.find(item=>item.channelId===row.channelId)
+ assert.equal(projected.ingress.state,'receiving');assert.equal(projected.ingress.backfill,'none')
+ assert.equal(f.calls.length,0)
+})
+
+test('custom ingress undeclared lookalike is unavailable and persisted pause is refused by cold loader',{timeout:30000},async t=>{
+ const f=await fixture(t);await installIngressCapabilityFixture(f,{declared:false})
+ const channels=f.host.ctx.channels,plugin=channels.plugins.get('custom-receive'),row=(await f.port.read()).find(row=>row.channelId==='custom-receive'),before=await readFile(f.file,'utf8')
+ assert.ok(plugin.ingressControl)
+ const expected={supported:false,available:false,backfill:null,requestedPaused:false,state:'unavailable',errorCode:null}
+ assert.deepEqual(await f.port.getIngress(row.channelId),expected)
+ assert.deepEqual(configuredChannels(f.app,channels).items.find(item=>item.channelId===row.channelId).ingress,expected)
+ await assert.rejects(f.port.setIngressPaused(row.channelId,{paused:true,confirm:true,expectedVersion:dingtalkConfigVersion(row)}),{code:'CHANNEL_INGRESS_CONTROL_UNSUPPORTED'})
+ assert.equal(await readFile(f.file,'utf8'),before);assert.equal(plugin.pauseCalls,0)
+ const {channelPluginRows}=await import('../src/channels/loader.js'),cold=JSON.parse(before)
+ cold.channelPlugins[0].receivePaused=true
+ await assert.rejects(channelPluginRows(cold,f.host.ctx.runtimePaths),/NIGHT_CHANNEL_PLUGIN_INGRESS_CONTROL_UNSUPPORTED/)
+ assert.equal(plugin.pauseCalls,0);assert.equal(f.calls.length,0)
 })
 
 test('confirmed HTTP deletion uses row CAS, drains old calls and preserves history without stopping other channels',async t=>{

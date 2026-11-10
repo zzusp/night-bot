@@ -17,13 +17,15 @@ import {observeDwsLogin} from './dingtalk-auth.js'
 export {validateConfig} from './dingtalk-config.js'
 export const name='night-channel-dingtalk-dws',inject=['channels','runtimePaths']
 export const channelLifecycle=1
+export const channelIngressControl=1
 /** Optional channel plugin; retaining the attributed rich CLI adapter/bridge
  * keeps history, subscriptions, media/docs/files and receipt recovery available. */
 export async function apply(ctx,config={},dependencies={}){
   if(config.enabled!==true)return
   const channelId=config.channelId,paths=ctx.runtimePaths
   if(!channelId||!config.profile||!['chat','chat-room'].includes(config.conversationType))throw failure('DINGTALK_PLUGIN_NORMALIZED_CONFIG_REQUIRED')
-  config={...config}
+  if(config.receivePaused!==undefined&&typeof config.receivePaused!=='boolean')throw failure('DINGTALK_SETTINGS_INVALID')
+  config={...config,receivePaused:config.receivePaused===true}
   if(paths.mode!=='portable')throw failure('DINGTALK_PORTABLE_LAYOUT_REQUIRED')
   const {privateHome,workspace,cache,bindingFile,ingressFile}=dingtalkChannelPaths(paths,channelId,config.storageKey)
   const accountPolicy=dwsAccountPolicy(config.accountMode)
@@ -32,6 +34,7 @@ export async function apply(ctx,config={},dependencies={}){
   const runnerFor=cwd=>dependencies.runner?{...dependencies.runner,cwd}:createNodeDwsRunner({executable:config.executable??'dws',cwd,env:environment}),runner=runnerFor(workspace)
   let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,lastRange,targetValidated=false
   let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve(),settingsTail=Promise.resolve()
+  const ingressCalls=new Set()
   const readSavedBinding=async()=>{
     const saved=await readDingtalkBinding(bindingFile)
     if(saved&&config.binding&&(Object.keys(saved).some(key=>saved[key]!==config.binding[key])||Object.keys(config.binding).some(key=>saved[key]!==config.binding[key])))throw failure('DINGTALK_BINDING_CHANGED')
@@ -52,7 +55,7 @@ export async function apply(ctx,config={},dependencies={}){
   const stop=()=>closing??=(async()=>{
     closed=true
     const errors=[]
-    for(const action of [()=>preparing,()=>stopAuthObserver?.(),()=>startTail,()=>settingsTail,()=>stopBridge?.setIngressPaused(true),()=>stopBridge?.(),()=>ingressStore?.drain()])try{await action()}catch(error){errors.push(error)}
+    for(const action of [()=>preparing,()=>stopAuthObserver?.(),()=>startTail,()=>settingsTail,()=>stopBridge?.setIngressPaused(true),()=>stopBridge?.(),()=>Promise.allSettled([...ingressCalls]),()=>ingressStore?.drain()])try{await action()}catch(error){errors.push(error)}
     if(errors.length)throw new AggregateError(errors,'DINGTALK_SHUTDOWN_FAILED')
     await stopObserver();await prepareSecrets(paths)
     unregister();unregisterPlugin();stopOperator?.()
@@ -98,8 +101,7 @@ export async function apply(ctx,config={},dependencies={}){
     readMessage:async({conversationId,messageId})=>{assertTarget(conversationId);return normalize(await adapter.readMessage(conversationId,messageId),conversationId)},
     readResource:({conversationId,messageId,resource})=>{assertTarget(conversationId);return adapter.readMessageResource(conversationId,messageId,resource)},
     readMentioned:({conversationId,messageId,resource})=>{assertTarget(conversationId);return adapter.isMessageMentioned(conversationId,messageId,resource?.occurredAt)}})
-  const acceptHistoryMessage=async(raw,{type=config.conversationType}={})=>{
-    if(closed||!app||!readyBound||!config.enabled)throw failure('CHANNEL_PLUGIN_NOT_READY')
+  const receiveHistoryMessage=async(raw,{type=config.conversationType}={})=>{
     const message=normalize(raw,raw.groupId??raw.conversationId)
     if(type!==config.conversationType||type==='chat'&&message.senderOpenDingTalkId!==config.binding.peerId)throw failure('DWS_CHAT_NOT_AUTHORIZED')
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
@@ -130,21 +132,71 @@ export async function apply(ctx,config={},dependencies={}){
     }
     })
   }
+  const acceptHistoryMessage=async(raw,options)=>{
+    if(closed||!app||!readyBound||!config.enabled)throw failure('CHANNEL_PLUGIN_NOT_READY')
+    if(config.receivePaused||health.ingress?.paused)throw failure('CHANNEL_INGRESS_PAUSED')
+    const operation=receiveHistoryMessage(raw,options)
+    ingressCalls.add(operation)
+    try{return await operation}finally{ingressCalls.delete(operation)}
+  }
   const serialize=work=>{const operation=settingsTail.then(work);settingsTail=operation.catch(()=>{});return operation}
+  const persistPaused=async()=>{
+    const state=ingressStore.snapshot()
+    try{await ingressStore.saveBridgeState({...state,paused:true,pausedAt:state.pausedAt??new Date().toISOString()})}
+    catch(error){cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}
+  }
+  const changeIngress=async(paused,{enabled=config.enabled}={})=>{
+    const previous=config.receivePaused,wasEnabled=config.enabled
+    // A resumed listener may call back immediately. Its persisted bridge gate
+    // remains closed until the resume write has succeeded.
+    if(!paused)config.receivePaused=false
+    if(enabled)config.enabled=true
+    try{
+      if(stopBridge)await stopBridge.setIngressPaused(!enabled||paused)
+      else if(ingressStore&&(paused||!enabled))await persistPaused()
+      config.receivePaused=paused
+      if(paused)await Promise.allSettled([...ingressCalls])
+    }catch(error){config.receivePaused=previous;config.enabled=wasEnabled;throw error}
+  }
+  const ingressControl={version:1,backfill:'history',
+    get available(){return !closed&&config.listen!==false},
+    getStatus(){
+      if(closed||config.listen===false)return {state:'unavailable',errorCode:closed?'CHANNEL_PLUGIN_NOT_READY':'CHANNEL_INGRESS_LISTEN_DISABLED'}
+      if(cursorError||health.state==='error')return {state:'error',errorCode:cursorError?'DINGTALK_CURSOR_PERSIST_FAILED':health.lastError??'DINGTALK_START_FAILED'}
+      if(config.receivePaused&&ingressStore?.snapshot().paused)return {state:'paused',errorCode:null}
+      if(!config.enabled||!readyBound||!stopBridge)return {state:'unavailable',errorCode:!config.enabled?'DINGTALK_CHANNEL_DISABLED':health.lastError??'DINGTALK_CHANNEL_NOT_READY'}
+      if(health.ingress?.paused)return {state:'paused',errorCode:null}
+      const groups=health.groups??[]
+      if(groups.some(group=>group.backfill?.state==='failed'))return {state:'error',errorCode:'DINGTALK_HISTORY_RECOVERY_FAILED'}
+      if(health.ingress?.recovering||!groups.length||groups.some(group=>group.listener?.state!=='ready'||group.backfill?.state!=='ok'||group.backfill?.inProgress||group.backfill?.recoveryRequired))return {state:'recovering',errorCode:null}
+      return {state:'receiving',errorCode:null}
+    },
+    setPaused:paused=>serialize(async()=>{
+      if(typeof paused!=='boolean')throw failure('DINGTALK_SETTINGS_INVALID')
+      if(!ingressControl.available)throw failure('CHANNEL_INGRESS_CONTROL_UNAVAILABLE')
+      await preparing
+      if(closed||!app||!ingressStore)throw failure('CHANNEL_PLUGIN_NOT_READY')
+      if(!paused&&readyBound&&config.enabled)await verifyDingtalkBinding(config,{runner})
+      await changeIngress(paused)
+      return ingressControl.getStatus()
+    }),
+  }
   const plugin={channelId,get bindingIdentity(){return config.binding?{...config.binding}:undefined},get bindingActive(){return readyBound&&!closed},get name(){return config.name??channelId},get prompt(){return config.prompt},get enabled(){return config.enabled},
+    ingressControl,
     setEnabled:enabled=>serialize(async()=>{
       if(typeof enabled!=='boolean')throw failure('DINGTALK_ENABLED_INVALID')
       if(closed||!app)throw failure('CHANNEL_PLUGIN_NOT_READY')
       if(enabled)await verifyDingtalkBinding(config,{runner})
+      await changeIngress(config.receivePaused,{enabled})
       config.enabled=enabled
-      if(stopBridge)await stopBridge.setIngressPaused(!enabled)
       return {enabled:config.enabled,health:plugin.health}
     }),
     updateLive:settings=>serialize(async()=>{
       if(closed||!app)throw failure('CHANNEL_PLUGIN_NOT_READY')
-      if(typeof settings.enabled!=='boolean'||typeof settings.writesAuthorized!=='boolean')throw failure('DINGTALK_SETTINGS_INVALID')
+      if(typeof settings.enabled!=='boolean'||typeof settings.writesAuthorized!=='boolean'||settings.receivePaused!==undefined&&typeof settings.receivePaused!=='boolean')throw failure('DINGTALK_SETTINGS_INVALID')
       if(settings.enabled&&!config.enabled)await verifyDingtalkBinding(config,{runner})
-      if(stopBridge&&settings.enabled!==config.enabled)await stopBridge.setIngressPaused(!settings.enabled)
+      const receivePaused=settings.receivePaused??config.receivePaused
+      if(settings.enabled!==config.enabled||receivePaused!==config.receivePaused)await changeIngress(receivePaused,{enabled:settings.enabled})
       Object.assign(config,{name:settings.name,prompt:settings.prompt,enabled:settings.enabled,writesAuthorized:settings.writesAuthorized})
       if(readyBound)adapter=createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized,profile:config.profile,runner})
       return {enabled:config.enabled,health:plugin.health}
@@ -163,7 +215,9 @@ export async function apply(ctx,config={},dependencies={}){
   stopObserver=ctx.channels.registerOperationObserver(channelId,plugin);stopOperator=config.operatorNotifications===true?ctx.channels.registerOperatorNotifications(channelId,notifications):undefined
   plugin.stopAndDrain=stop
   const startBridge=async()=>{
+    if(closed)return
     if(config.listen===false){health={healthy:false,configured:true,state:'ready',listening:false};return}
+    if(config.receivePaused||!config.enabled)await persistPaused()
     const groups=[config.binding.conversationId],keyOf=groupId=>ctx.channels.identity({type:config.conversationType,channelId,conversationId:groupId,senderId:config.conversationType==='chat'?config.binding.peerId:'namespace-only',messageId:'namespace-only',text:'namespace-only'}).sessionId
     const facade=new Proxy(app.runtime,{get(target,key){
       if(key==='listGroups')return()=>groups.map(group=>facade.getGroup(typeof group==='string'?group:group.groupId))
@@ -182,7 +236,10 @@ export async function apply(ctx,config={},dependencies={}){
       return [state.firstStartedAt,state.recoveryFromAt,health.groups?.[0]?.backfill?.recoveryFromAt].filter(value=>value!==undefined).sort((left,right)=>Date.parse(left)-Date.parse(right))[0]
     }
     stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,getDeferredMessages:()=>ingressStore.snapshot().deferredMessages??[],onRangeRead:range=>{lastRange=range}}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}};if(lastRange&&value.groups?.[0]?.backfill?.state==='ok'&&!value.groups[0].backfill.inProgress){const range=lastRange;ingressStore.completedRange(range).catch(()=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}})}}})
-    if(ingressState.paused)await stopBridge.setIngressPaused(false)
+    // Shutdown also writes a paused checkpoint. Only the Host-selected user
+    // preference keeps a new process paused; ordinary restarts resume recovery.
+    // Explicit operator-approval subscriptions remain a separate control path.
+    if(ingressState.paused&&!config.receivePaused&&config.enabled)await stopBridge.setIngressPaused(false)
   }
   const attemptStart=()=>{
     const operation=startTail.then(async()=>{
@@ -200,7 +257,7 @@ export async function apply(ctx,config={},dependencies={}){
           const includeAllScopes=await readSavedBinding()===undefined
           await app.tasks.withChannelTargetSwitch({channelId,includeAllScopes,nextTarget:{type:binding.conversationType,conversationId:binding.conversationId,peerId:binding.peerId}},prepare,{activate:true,publish:()=>{readyBound=true}})
         }else{await prepare();readyBound=true}
-        await startBridge()
+        await serialize(startBridge)
         ctx.logger.info?.('DINGTALK_CHANNEL_BOUND '+JSON.stringify({channelId,conversationType:config.conversationType}))
       }catch(error){
         readyBound=false
@@ -219,6 +276,7 @@ export async function apply(ctx,config={},dependencies={}){
     preparing??=(async()=>{
       try{
         ingressStore=await openDingtalkIngress(paths,channelId,{storageKey:config.storageKey,fromAt:app.config.resident.taskSessions.ingressEpoch})
+        if(config.receivePaused)await persistPaused()
         if(closed)return
         stopAuthObserver=await (dependencies.observeLogin??observeDwsLogin)(environment,{onLogin:attemptStart,onError:error=>{if(!readyBound){terminal=true;health={healthy:false,configured:true,state:'error',lastError:error.code}}else ctx.logger.warn(error.code)}})
       }catch(error){terminal=true;health={healthy:false,configured:true,state:'error',lastError:typeof error.code==='string'?error.code:'DINGTALK_AUTH_OBSERVATION_FAILED'}}

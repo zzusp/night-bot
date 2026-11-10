@@ -3,11 +3,14 @@ const plain=value=>value&&typeof value==='object'&&!Array.isArray(value)
 const spec={
  show:[],plugins:[],appearance:['name','icon','expectedVersion'],
  model:['provider','model','api','baseURL','apiKeyEnv','reasoningEffort','expectedVersion'],
+ 'model-list':[],'model-entry':['action','provider','id','model','name','expectedVersion','confirm'],
  role:['role','provider','model','reasoningEffort','expectedVersion'],
  secret:['kind','action','value','confirm','expectedVersion'],
+ 'work-log':['enabled','time','timezone','expectedVersion'],
  web:['enabled','host','port','publicOrigin','channelId','senderId','operatorName','expectedVersion'],
  'channel-list':[],'channel-save':['type','channelId','enabled','config','expectedVersion','createOnly'],
  'channel-enable':['channelId','enabled','expectedVersion'],'channel-remove':['channelId','expectedVersion','confirm'],
+ 'channel-ingress':['channelId','paused','expectedVersion','confirm'],
  'dingtalk-get':['channelId'],'dingtalk-add':['channelId','conversationType','targetKind','target','name','prompt','writesAuthorized'],
  'dingtalk-edit':['channelId','expectedVersion','name','prompt','conversationType','targetKind','target','writesAuthorized'],
  'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
@@ -28,17 +31,27 @@ export function createSettingsCommands({settings,channels,permissions,configurat
  return async input=>{
   const {action,body,checkOnly}=validateSettingsCommand(input),options={checkOnly}
   const channel=()=>channels??unavailable(),permission=()=>permissions??unavailable()
-  if(checkOnly&&!['appearance','model','role','secret','web','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
+  if(checkOnly&&!['appearance','model','model-entry','role','secret','web','work-log','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
   if(action==='show')return settings.view()
+  if(action==='model-list')return settings.modelCatalog()
+  if(action==='model-entry'){version(body.expectedVersion);return settings.saveModelEntry(body,options)}
   if(action==='plugins')return settings.plugins()
   if(action==='appearance')return settings.saveAppearance(body,options)
   if(action==='model'){version(body.expectedVersion);return (configuration.model??unavailable)({...body,checkOnly})}
   if(action==='role')return settings.saveRoleModel(body,options)
   if(action==='secret'){const {kind,...value}=body;return settings.saveSecret(kind,value,options)}
+  if(action==='work-log'){version(body.expectedVersion);return settings.saveWorkLog(body,options)}
   if(action==='web'){version(body.expectedVersion);return (configuration.web??unavailable)({...body,checkOnly})}
   if(action==='channel-save')return settings.saveChannel(body,options)
-  if(action==='channel-list'){const {dingtalkConfigVersion}=await import('../channels/plugins/dingtalk-config.js');return {channels:(await channel().read()).map(row=>({type:row.type,channelId:row.channelId??row.config?.channelId??row.type,enabled:row.enabled,version:dingtalkConfigVersion(row)}))}}
+  if(action==='channel-list'){const {dingtalkConfigVersion}=await import('../channels/plugins/dingtalk-config.js');const port=channel();return {channels:await Promise.all((await port.read()).map(async row=>{const id=row.channelId??row.config?.channelId??row.type;return {type:row.type,channelId:id,enabled:row.enabled,version:dingtalkConfigVersion(row),receivePaused:row.receivePaused===true,...port.getIngress?{ingress:await port.getIngress(id)}:{}}}))}}
   if(action==='channel-enable'){const {channelId:id,...value}=body;channelId(id);version(value.expectedVersion);return channel().setEnabled(id,value)}
+  if(action==='channel-ingress'){
+   const {channelId:id,...value}=body;channelId(id);version(value.expectedVersion)
+   if(typeof value.paused!=='boolean')throw failure('CHANNEL_INGRESS_REQUEST_INVALID')
+   if(value.confirm!==true)throw failure('CHANNEL_INGRESS_CONFIRMATION_REQUIRED')
+   const result=await (channel().setIngressPaused??unavailable)(id,value)
+   return {ok:true,changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied,version:result.version,receivePaused:result.receivePaused,ingress:result.ingress}
+  }
   if(action==='channel-remove'){
    const {channelId:id,expectedVersion,confirm}=body;channelId(id);version(expectedVersion)
    if(confirm!==true)throw failure('CHANNEL_DELETE_CONFIRMATION_REQUIRED')

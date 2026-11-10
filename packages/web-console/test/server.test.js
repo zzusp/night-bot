@@ -93,6 +93,21 @@ test('optional plugin disabled does not register lifecycle or open storage', asy
   await apply(new Proxy({}, {get() {assert.fail('disabled adapter must be inert')}}), {enabled: false})
 })
 
+test('model catalog HTTP uses authenticated reads and same-origin strict mutations with safe errors',async t=>{
+ const calls=[],view={version:'1'.repeat(64),providers:[{provider:'fixture',name:'Fixture',models:[{id:'initial',name:'Initial',reasoningEfforts:['off'],references:['default']}]}]}
+ const settings={modelCatalog:async()=>view,saveModelEntry:async body=>{calls.push(body);if(body.id==='used')throw Object.assign(Error('PRIVATE_MODEL_FAILURE'),{code:'SETTINGS_MODEL_IN_USE'});return {ok:true,changed:true,version:'2'.repeat(64),restartRequired:true,liveApplied:false}}}
+ const f=await fixture(t,{settings}),path='/api/settings/model-catalog',body={action:'add',provider:'fixture',model:'second',expectedVersion:view.version}
+ assert.equal((await f.fetchApi(path)).status,401)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,401)
+ await f.login();assert.deepEqual((await f.fetchApi(path)).body,view)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body,headers:{'x-csrf-token':'forged'}})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body,headers:{origin:'https://evil.invalid'}})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body:{...body,headers:{authorization:'PRIVATE'}}})).status,400)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,200);assert.deepEqual(calls,[body])
+ const rejected=await f.fetchApi(path,{method:'PUT',body:{action:'remove',provider:'fixture',id:'used',expectedVersion:view.version,confirm:true}})
+ assert.equal(rejected.status,409);assert.deepEqual(rejected.body,{error:'SETTINGS_MODEL_IN_USE'})
+})
+
 test('real HTTP requires token login, same-origin mutation and CSRF; logout revokes the session', async t => {
   const f = await fixture(t)
   assert.equal((await f.fetchApi('/api/tasks')).status, 401)
@@ -104,6 +119,22 @@ test('real HTTP requires token login, same-origin mutation and CSRF; logout revo
   assert.equal((await f.fetchApi('/api/logout', {method: 'POST', body: {}})).status, 200)
   assert.equal((await f.fetchApi('/api/session')).status, 401)
   assert.equal(f.received.length, 0)
+})
+
+test('channel ingress mutation requires browser auth and CSRF, strict body and bounded response',async t=>{
+ const calls=[],row={type:'fixture-chat',channelId:'team-chat',enabled:true,receivePaused:true,config:{token:'PRIVATE_INGRESS_SECRET'}},body={expectedVersion:'1'.repeat(64),paused:true,confirm:true}
+ const f=await fixture(t,{channelConfiguration:{async setIngressPaused(id,input){calls.push({id,input});return {changed:true,restartRequired:false,liveApplied:true,channel:row}}}})
+ const path='/api/channels/team-chat/ingress'
+ assert.equal((await f.fetchApi(path,{method:'POST',body})).status,401)
+ await f.login()
+ for(const headers of [{'x-csrf-token':'forged'},{origin:'https://evil.example'}])assert.equal((await f.fetchApi(path,{method:'POST',body,headers})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'POST',body:{...body,actor:'forged'}})).status,400)
+ assert.equal((await f.fetchApi(path+'?unexpected=1',{method:'POST',body})).status,400)
+ assert.equal(calls.length,0)
+ const result=await f.fetchApi(path,{method:'POST',body})
+ assert.equal(result.status,200);assert.equal(result.body.channel.ingress.requestedPaused,true)
+ assert.deepEqual(calls,[{id:'team-chat',input:body}]);assert.doesNotMatch(JSON.stringify(result.body),/PRIVATE_|token|config/)
+ assert.equal(f.received.length,0)
 })
 
 test('DNS rebinding, cross-site fetch and request identity injection are rejected', async t => {
@@ -224,7 +255,8 @@ test('渠道连接阶段只用真实 health 白名单，启用状态和私有错
   for(const item of expected){
     const row=f.app.config.channelPlugins.find(row=>row.channelId===item.channelId)
     const version=createHash('sha256').update(JSON.stringify(row)).digest('hex')
-    Object.assign(item,{savedVersion:version,runningVersion:version,runningConnectionState:item.connectionState,runningErrorCode:item.errorCode})
+    Object.assign(item,{savedVersion:version,runningVersion:version,runningConnectionState:item.connectionState,runningErrorCode:item.errorCode,
+      ingress:{supported:false,available:false,backfill:null,requestedPaused:false,state:'unavailable',errorCode:null}})
     if(typeof item.connected==='boolean')item.runningConnected=item.connected
     if(row.type==='dingtalk-dws')Object.assign(item,{runningName:item.name,runningConversationType:item.conversationType})
   }
@@ -775,4 +807,15 @@ test('角色模型设置只允许认证同源带版本的白名单请求，错�
  assert.deepEqual(calls,[body])
  const failed=await f.fetchApi('/api/settings/role-model',{method:'PUT',body:{...body,model:'unsupported'}})
  assert.equal(failed.status,400);assert.deepEqual(failed.body,{error:'SETTINGS_INPUT_INVALID'})
+})
+
+test('daily log settings require authenticated same-origin CSRF and reject extra fields without leaking errors',async t=>{
+ const calls=[],settings={saveWorkLog:async body=>{calls.push(body);if(body.time==='bad')throw Object.assign(Error('PRIVATE_FAILURE'),{code:'NIGHT_BOT_WORK_LOG_TIME_INVALID'});return {ok:true,version:'next',changed:true}}}
+ const f=await fixture(t,{settings}),body={enabled:true,time:'23:59',timezone:'local',expectedVersion:'version'},path='/api/settings/work-log'
+ assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,401);await f.login()
+ assert.equal((await f.fetchApi(path,{method:'PUT',body,headers:{'x-csrf-token':'forged'}})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body,headers:{origin:'https://evil.invalid'}})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body:{...body,outputPath:'/tmp/private'}})).status,400)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,200);assert.deepEqual(calls,[body])
+ const failed=await f.fetchApi(path,{method:'PUT',body:{...body,time:'bad'}});assert.equal(failed.status,400);assert.deepEqual(failed.body,{error:'SETTINGS_INPUT_INVALID'})
 })

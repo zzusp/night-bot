@@ -8,6 +8,7 @@ import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {prepareProfileEntries} from './native-profile-preflight.js'
 import {taskSessionRoutes} from './tasks/session-routes.js'
 import {createChannelLifecycle} from './channels/lifecycle.js'
+import {createChannelIngressConfiguration} from './channels/ingress-control.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import {loadNativeEnvironment} from './native-environment.js'
@@ -69,6 +70,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
         return Object.fromEntries(['triage','router','task'].map(role=>[role,roleModelSelection(ctx,role,role==='task'?(task?taskModelSelection(defaults,task):legacyRoleModelSelection(config,role)):defaults)]))
       },run:configurationCall,applyChannel:(transaction,id)=>channelLifecycle.apply(transaction,id),canEditChannel:id=>channelLifecycle?.canEdit(id)===true}))
       ctx.provide('channelConfiguration',{
+        ...createChannelIngressConfiguration({file,run:configurationCall,getChannels:()=>ctx.get('channels'),getLifecycle:()=>channelLifecycle}),
         read:()=>configurationCall(async()=>{
           const result=await updateConfig(file,next=>next,{checkOnly:true})
           return result.config.channelPlugins??[]
@@ -258,6 +260,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
       { name: new URL('./memory/service.js', import.meta.url).href, config: {...config.memory,skillDirs:config.skillDirs??[]} },
       { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
+      { name: new URL('./work-log/service.js', import.meta.url).href, config },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,
 

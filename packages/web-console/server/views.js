@@ -1,5 +1,6 @@
 import {digest, fail} from './security.js'
 import {visibleText} from './session-view.js'
+import {channelIngressView} from '../../../src/channels/ingress-control.js'
 
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]))
 // 任务业务字段由原合同限制长度；这里仅脱敏，不沿用执行日志的单条截断策略。
@@ -100,6 +101,7 @@ export function configuredChannels(application, channels, savedRows = applicatio
     const lifecycleError=channels.configurationErrors?.get(channelId)
     const connectionState=lifecycleError?'error':pending?'pending-restart':runningConnectionState,errorCode=lifecycleError??(pending?null:errorFor(health,row.type))
     return {channelId,type:row.type,enabled:row.enabled===true,savedVersion,runningVersion,connectionState,errorCode,
+      ingress:channelIngressView(row,plugin,channels.ingressErrors?.get(channelId)),
       restartRequired:pending,liveApplied:!lifecycleError&&!pending&&row.enabled===true&&!!plugin&&(row.type!=='dingtalk-dws'||plugin.bindingActive===true)&&!['waiting-auth','error','stopped'].includes(runningConnectionState),
       runningConnectionState,runningErrorCode:errorFor(health,row.type),
       ...(typeof healthy==='boolean'?{runningConnected:healthy}:{}),

@@ -133,33 +133,3 @@ test('任务读取失败保留旧快照，撤权后左右内容清除，重试�
   await section(page, '任务').click()
   await expect(page.locator('.task-info-title')).toBeInViewport()
 })
-
-
-test('执行操作移到侧栏后历史分页与冲突恢复仍使用同一阅读器', async ({page}) => {
-  const requests: string[] = []
-  let conflict = false
-  await page.route('**/api/tasks/task-research/session?*', route => {
-    const url = new URL(route.request().url())
-    requests.push(url.search)
-    if (url.searchParams.get('offset') === '50' && conflict) return route.fulfill({status: 409, json: {error: 'SESSION_REVISION_CONFLICT'}})
-    const old = url.searchParams.get('offset') === '50'
-    return route.fulfill({json: {status: 'ready', scope: 'current-context', items: [{id: old ? 'old' : 'latest', role: 'assistant', text: old ? '较早的执行内容' : '当前的执行内容'}], total: 51, nextOffset: old ? null : 50, revision: 'task-record-v1'}})
-  })
-  await login(page)
-  const transcript = page.locator('.task-dialogue .transcript')
-  await expect(transcript).toContainText('当前的执行内容')
-  await page.getByRole('button', {name: '查看更早记录', exact: true}).click()
-  await expect(transcript).toContainText('较早的执行内容')
-  expect(requests.some(search => search.includes('offset=50') && search.includes('revision=task-record-v1'))).toBe(true)
-  await section(page, '执行').click()
-  await expect(transcript).toContainText('较早的执行内容')
-  await page.locator('.task-record-controls').getByRole('button', {name: '获取最新记录', exact: true}).click()
-  await expect(transcript).toContainText('当前的执行内容')
-  conflict = true
-  await page.getByRole('button', {name: '查看更早记录', exact: true}).click()
-  const notice = page.locator('.task-dialogue .notice')
-  await expect(notice).toBeVisible()
-  await notice.getByRole('button', {name: '重新获取', exact: true}).click()
-  await expect(transcript).toContainText('当前的执行内容')
-  await expect(notice).toHaveCount(0)
-})

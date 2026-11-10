@@ -51,6 +51,36 @@ do not select a target by assuming a first-instance service alias.
 
 ## Lifecycle and capabilities
 
+### 在线暂停接收与恢复补拉
+
+“暂停接收”与停用渠道、监听配置、发送授权是独立控制。Web 渠道卡片的更多菜单与统一 CLI 使用同一个 operator 配置入口：
+
+```sh
+node bin/night-bot-settings.js CONFIG channel-list --live
+node bin/night-bot-settings.js CONFIG channel-ingress --channel-id ID --paused true --expected-version VERSION --confirm --live
+node bin/night-bot-settings.js CONFIG channel-ingress --channel-id ID --paused false --expected-version NEW_VERSION --confirm --live
+```
+
+`VERSION` 取最新 `channel-list --live` 对应行的 `version`；恢复使用暂停后重新读取的版本。此命令必须连接正在运行的本地 Host，不支持离线写入或 `--check`。返回 `liveApplied:false` 不能当作已暂停/已恢复；先读取实际 `ingress` 状态，核对已保存意图，再用最新版本显式重试。网络结果未知时禁止自动重发。`recovering` 只表示已启动补拉，只有 `receiving` 才表示该轮补拉完成并继续接收。失败保留恢复下界并显示错误，不能删除水位来“修复”。
+
+实例外层可选 `receivePaused:boolean` 是 Host 保留字段，缺省为 false，不属于插件的 `config` 表单。Host 在配置锁和行版本 CAS 内先保存意图，再由适配器关闭新业务入站并等待在途持久处理；暂停成功响应后才保证暂停完成。重启、名称/Prompt 编辑和停用后再启用必须保留该意图。仅支持该合同的已启用实例可操作。暂停不撤销既有发送授权、不取消任务，也不暂停独立 operator 审批控制通道。
+
+自定义插件需同时导出 `channelIngressControl=1` 并在 `registerPlugin` 对象上提供：
+
+```js
+ingressControl: {
+  version: 1,
+  backfill: 'history', // 或 'none'，只恢复新消息，UI 明示不能补拉
+  get available() { return readyForControl },
+  getStatus() { return {state: 'paused', errorCode: null} },
+  async setPaused(paused) { /* 关闭/恢复入站，等待暂停 drain */ },
+}
+```
+
+状态为 `paused | receiving | recovering | error | unavailable`。插件必须在首次订阅之前尊重 Host 传入的 `config.receivePaused`，串行处理暂停/恢复、编辑和关闭；暂停要停止全部业务入口并 drain，恢复不能等待被自身阻塞的历史入站。`history` 是插件承诺维护耐久恢复水位、完整历史范围、身份校验和持久去重的能力，不由 `readMessage`、普通生命周期或“已连接”推断。未知/缺失能力禁用入口，`none` 明示暂停期间消息不能补拉。持久配置要求暂停但模块没有声明时拒绝启动，避免悄悄恢复接收。
+
+内置钉钉群聊与绑定私聊声明 `history`，复用同一 ingress 存储、bridge 恢复下界、历史完整性检查与消息去重。未登录可保存暂停；恢复若仍未登录保留可见认证错误。关闭监听、实例禁用或停止后不可操作。供应商历史保留期/接口完整性仍是补拉上限，不能宣称任意时长暂停绝对可补；部分结果、已知消息缺失或持久化失败均不能标记完成。本轮不实际对外发送，真实账号长时间暂停/恢复需另行现场验收。
+
 An ESM plugin exports `inject=['channels','runtimePaths']` and `apply(ctx,config)`
 (the standard Cordis plugin contract). `config.enabled` and `config.channelId` are
 Host-selected. In `apply`, register its transport and optional observers; attach
