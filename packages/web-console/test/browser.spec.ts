@@ -353,7 +353,7 @@ test('学习记录区分已应用与候选，正文仅按已授权版本读取',
 test('渠道会话按聊天展示、隐藏输入框、保留不确定发送状态及空态', async ({page}) => {
   await login(page)
   await page.goto('/#/channels')
-  await expect(page.locator('.channel-card')).toHaveCount(4)
+  await expect(page.locator('.channel-card:not(.channel-card--add)')).toHaveCount(4)
   await screenshot(page, 'channels')
   await page.getByRole('searchbox', {name: '搜索会话', exact: true}).fill('不存在')
   await expect(page.getByRole('heading', {name: '没有匹配的会话', exact: true})).toBeVisible()

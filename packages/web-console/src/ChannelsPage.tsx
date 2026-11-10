@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent, type Ref } from 'react';
 import { RiChat3Line, RiGroupLine, RiArrowRightLine, RiGlobalLine, RiAddLine, RiCloseLine, RiCheckboxCircleFill, RiErrorWarningLine, RiQuestionLine } from '@remixicon/react';
 import { api, ApiError, type Channel, type ChannelSettings, type Conversation, type DingtalkChannelCreated, type DingtalkChannelDetail, type DingtalkChannelEdit, type DingtalkChannelInput, type DingtalkChannelUpdated, type Message } from './api';
 import { useResource, useRoute } from './hooks';
@@ -28,7 +28,7 @@ const detailDraft = (value: DingtalkChannelDetail): DingtalkChannelInput => ({ c
 const sameFields = (value: DingtalkChannelDetail, fields: DingtalkChannelEdit) => value.name === fields.name && value.prompt === fields.prompt &&
   value.conversationType === fields.conversationType && value.targetKind === fields.targetKind && value.target === fields.target && value.writesAuthorized === fields.writesAuthorized;
 
-function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus }: { onSaved: () => void; channelId?: string; onDelete?: (trigger: HTMLButtonElement | null) => void; channelStatus?: Channel }) {
+function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus, addTriggerRef }: { onSaved: () => void; channelId?: string; onDelete?: (trigger: HTMLButtonElement | null) => void; channelStatus?: Channel; addTriggerRef?: Ref<HTMLButtonElement> }) {
   const editing = channelId !== undefined;
   const statusNote = channelStatus ? channelCardState(channelStatus).note : '';
   const [open, setOpen] = useState(false);
@@ -48,6 +48,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus }: {
   const [saved, setSaved] = useState(false);
   const [unknownSave, setUnknownSave] = useState<PendingSave | null>(null);
   const dialog = useRef<HTMLDialogElement>(null), form = useRef<HTMLFormElement>(null);
+  const typeSelect = useRef<HTMLSelectElement>(null);
   const returnFocus = useRef<HTMLButtonElement | null>(null), returnFocusPending = useRef(false);
   const live = useRef(true), writing = useRef(false), composing = useRef(false);
   const prefix = useId();
@@ -71,7 +72,10 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus }: {
   };
   useLayoutEffect(() => {
     const element = dialog.current;
-    if (open && !element?.open) element?.showModal();
+    if (open && !element?.open) {
+      element?.showModal();
+      if (!editing) typeSelect.current?.focus();
+    }
     else if (!open && element?.open) { element.close(); restoreTriggerFocus(); }
   }, [open]);
   const field = (key: keyof DingtalkChannelInput) => ({
@@ -183,7 +187,9 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus }: {
   const reset = () => { setDraft(emptyChannel()); setErrors({}); setError(null); setFeedback(''); setSaved(false); setUnknownSave(null); };
   return <>
     {editing ? <ActionMenu label={`渠道操作：${channelId}`} actions={[{ label: '编辑配置', onSelect: openDialog }, ...(onDelete ? [{ label: '删除渠道', onSelect: onDelete, danger: true }] : [])]} />
-      : <Button variant="primary" icon={<RiAddLine size={17} />} aria-haspopup="dialog" onClick={event => openDialog(event.currentTarget)}>添加渠道</Button>}
+      : <button ref={addTriggerRef} type="button" className="channel-card channel-card--add" aria-haspopup="dialog" onClick={event => openDialog(event.currentTarget)}>
+          <span className="channel-symbol" aria-hidden="true"><RiAddLine size={21} /></span><span>添加渠道</span>
+        </button>}
     <dialog ref={dialog} className="channel-create-dialog" aria-labelledby={`${prefix}-title`} aria-describedby={`${prefix}-${editing ? 'boundary' : 'type-help'}`}
       onClose={() => {
         // A queued close event from an earlier opening must not close or steal
@@ -196,7 +202,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus }: {
       <div className="channel-create-body">
         {!editing && <div className="channel-create-field">
           <label htmlFor={`${prefix}-type`}>渠道类型</label>
-          <select id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} autoFocus onChange={event => setType(event.target.value)}>
+          <select ref={typeSelect} id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} onChange={event => setType(event.target.value)}>
             <option value="">选择渠道类型</option><option value="dingtalk-dws">钉钉</option>
             {plugins.data?.items.map(item => <option key={item.type} value={item.type}>{item.name}{item.configurable ? '' : '（未提供网页表单）'}</option>)}
           </select>
@@ -317,7 +323,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
   const conversations = useResource<{ items: Conversation[] }>('/conversations', 5000);
   const [search, setSearch] = useState('');
   const [channel, setChannel] = useState('');
-  const channelHeading = useRef<HTMLHeadingElement>(null);
+  const addChannelTrigger = useRef<HTMLButtonElement>(null);
   const [removalRequest, setRemovalRequest] = useState<ChannelRemovalRequest | null>(null), [channelFeedback, setChannelFeedback] = useState('');
   const selected = conversations.data?.items.find(item => item.id === id);
   const [offsets, setOffsets] = useState<{ messages: number; outbox: number; messageRevision?: string; outboxRevision?: string }>({ messages: 0, outbox: 0 });
@@ -330,11 +336,12 @@ export default function ChannelsPage({ id }: { id?: string }) {
     {query.loading && !query.data ? <Loading /> : !query.data && query.error ? <EmptyState title="消息记录暂不可读" description="使用上方按钮重新获取，或返回渠道列表。" /> : <MessageList key={id + ':' + offsets.messages + ':' + offsets.outbox} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" description="该会话接收到的消息和 Bot 的实际回复会显示在这里。" />} />}
     {(offsets.messages > 0 || offsets.outbox > 0 || query.data?.pages.messages.nextOffset != null || query.data?.pages.outbox.nextOffset != null) && <div className="conversation-pagination"><div className="inline-actions">{(offsets.messages > 0 || offsets.outbox > 0) && <Button variant="secondary" onClick={() => setOffsets({ messages: 0, outbox: 0 })}>回到最新</Button>}{(query.data?.pages.messages.nextOffset != null || query.data?.pages.outbox.nextOffset != null) && <Button variant="secondary" disabled={query.loading} onClick={() => setOffsets({ messages: query.data?.pages.messages.nextOffset ?? query.data!.pages.messages.total, outbox: query.data?.pages.outbox.nextOffset ?? query.data!.pages.outbox.total, messageRevision: query.data?.pages.messages.revision, outboxRevision: query.data?.pages.outbox.revision })}>查看更早消息</Button>}</div></div>}
   </>} </ConversationFrame>;
-  return <div className="page-content channels-page"><div className="page-heading"><div><h2 ref={channelHeading} tabIndex={-1}>渠道</h2></div><div className="inline-actions channel-page-actions"><ChannelConfiguration onSaved={channels.refresh} /></div></div>
+  return <div className="page-content channels-page">
     {channelFeedback && <p className="channel-create-feedback" role="status">{channelFeedback}</p>}
-    <ChannelRemovalDialog focusAfterRemoval={() => channelHeading.current?.focus({ preventScroll: true })} request={removalRequest} onDismiss={() => setRemovalRequest(null)} onChanged={message => { setChannelFeedback(message); if (channel === removalRequest?.item.channelId) setChannel(''); channels.refresh(); conversations.refresh(); }} />
+    <ChannelRemovalDialog focusAfterRemoval={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={removalRequest} onDismiss={() => setRemovalRequest(null)} onChanged={message => { setChannelFeedback(message); if (channel === removalRequest?.item.channelId) setChannel(''); channels.refresh(); conversations.refresh(); }} />
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}
-    {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" description="使用上方按钮重新获取。" /> : channels.data?.items.length ? <div className="channel-cards">{channels.data.items.map(item => <div className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId}>
+    {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" description="使用上方按钮重新获取。" /> : null}
+    <div className="channel-cards">{channels.data?.items.map(item => <div className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId}>
       <button type="button" className="channel-card-select" aria-label={`查看渠道会话：${item.name || item.channelId}`} aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
         <span className="channel-card-heading"><span className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={21} /></span>
           <span className="channel-card-identity"><strong>{item.name || item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? `钉钉${item.conversationType ? ` · ${conversationType(item.conversationType)}` : ''}` : item.type === 'web-console' ? 'Web 对话' : item.type}</span></span>
@@ -345,8 +352,8 @@ export default function ChannelsPage({ id }: { id?: string }) {
       </button>{(item.type === 'dingtalk-dws' || (item.type !== 'web-console' && item.savedVersion)) && <div className="channel-card-actions">{item.type === 'dingtalk-dws'
         ? <ChannelConfiguration channelId={item.channelId} channelStatus={item} onSaved={channels.refresh} onDelete={trigger => setRemovalRequest({ item, trigger })} />
         : <ActionMenu label={`渠道操作：${item.channelId}`} actions={[{ label: '删除渠道', danger: true, onSelect: trigger => setRemovalRequest({ item, trigger }) }]} />}</div>}
-    </div>)}</div> : <EmptyState title="还没有配置渠道" description="可用上方按钮选择渠道类型并添加；接入状态以保存结果为准。" />}
-    <div className="section-heading"><div><h3>渠道会话 <span>{items.length}</span></h3>{channel && <p>正在查看 {channel}</p>}</div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
+    </div>)}<ChannelConfiguration addTriggerRef={addChannelTrigger} onSaved={channels.refresh} /></div>
+    <div className="section-heading"><div><h2>渠道会话 <span>{items.length}</span></h2>{channel && <p>正在查看 {channel}</p>}</div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
     {conversations.error && <Notice error={conversations.error} onRetry={conversations.refresh} stale={!!conversations.data} />}
     {!conversations.data && conversations.loading ? <Loading /> : !conversations.data && conversations.error ? <EmptyState title="渠道会话暂不可读" description="使用上方按钮重新获取。" /> : !items.length ? <EmptyState title={search || channel ? '没有匹配的会话' : '等待第一条消息'} description={search || channel ? '清除搜索或渠道筛选后重试。' : '已配置的渠道接收到消息后，会话会显示在这里。'} action={(search || channel) ? <Button variant="secondary" onClick={() => { setSearch(''); setChannel(''); }}>清除筛选</Button> : undefined} /> :
     <div className="conversation-list">{items.map(item => <a href={`#/channels/${encodeURIComponent(item.id)}`} className="conversation-row" key={item.id}><span className="conversation-symbol">{item.type === 'chat-room' ? <RiGroupLine size={21} /> : <RiChat3Line size={21} />}</span><div><strong>{item.name || '未命名会话'}</strong><span>{item.channelId} · {conversationType(item.type)}</span></div><RiArrowRightLine size={18} /></a>)}</div>}

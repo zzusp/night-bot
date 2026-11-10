@@ -8,7 +8,7 @@ for (const [label, restartRequired, liveApplied] of [['在线应用',false,true]
   await page.getByRole('button', {name: '添加渠道', exact: true}).click();
   const dialog = page.getByRole('dialog', {name: '添加渠道', exact: true});
   await dialog.getByLabel('渠道类型', {exact: true}).selectOption('dingtalk-dws');
-  await dialog.getByLabel('渠道标识', {exact: true}).fill('live-feedback');
+  await dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true}).fill('live-feedback');
   await dialog.getByLabel('群 ID', {exact: true}).fill('fixture-only-room');
   let writes = 0;
   await page.route('**/api/channels/dingtalk', async route => {
