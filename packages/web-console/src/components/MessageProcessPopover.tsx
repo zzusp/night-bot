@@ -78,7 +78,6 @@ export function MessageProcessPopover({ endpoint, message, trigger, onDismiss, o
     }
   }, [position.visibility]);
   return createPortal(<div ref={panel} className="message-process-popover" role="dialog" aria-modal="false" aria-labelledby={title} style={position}
-    onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== trigger) dismiss.current(); }}
     onKeyDown={event => {
       if (event.key !== 'Tab') return;
       const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], summary, [tabindex="0"]'));
