@@ -92,5 +92,5 @@ test('actual Host human review and dialogue stay read-only, record real SQL sour
   current=await row();assert.equal(current.status,'completed');assert.equal(current.objective,original);assert.equal(current.requirementRevision,1);assert.equal(current.controlRevision,1)
   assert.equal(await readFile(join(beforeNormal.header.cwd,'work','authorized.txt'),'utf8'),'original authorized local work')
   assert.deepEqual(bodyCalls,{write:1,[shell]:0,memory_remember:0})
-  assert.deepEqual(scopes.map(value=>[value.stage,value.mode,value.approval,value.preset,value.memoryWrite]),[['initial','workspace-write','never','workspace-write',true],['dialogue','read-only','never','read-only',false],['followup','read-only','never','read-only',false],['answer','read-only','never','read-only',false],['normal','workspace-write','never','workspace-write',true]])
+  assert.deepEqual(scopes.map(value=>[value.stage,value.mode,value.approval,value.preset,value.memoryWrite]),[['initial','workspace-write','ask','workspace-write',true],['dialogue','read-only','never','custom',false],['followup','read-only','never','custom',false],['answer','read-only','never','custom',false],['normal','workspace-write','ask','workspace-write',true]])
 }))

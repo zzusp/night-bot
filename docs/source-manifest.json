@@ -158,8 +158,8 @@
       "source": "dws-adapter.js",
       "sourceSha256": "591384cee4b1f9ec2fdeaf79131e107f33b49e1b5a58792e382a075a8801ca54",
       "status": "adapted",
-      "sha256": "daad248115291534a0269c3cd506f741dc10b0f2e433ba686e0517f79e5365ce",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes. 通用未解析附件按原始文件交付；Host 校验并冻结 file 描述符，模型仅获得受控只读路径及名称/MIME/字节/哈希，保留文本图片表格及严格可迁移路径。"
+      "sha256": "0fd039d05b23a4214b1f7c2015e9615c89291dfc08a74a9a954f3a2c35a6aa81",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes. 通用未解析附件按原始文件交付；Host 校验并冻结 file 描述符，模型仅获得受控只读路径及名称/MIME/字节/哈希，保留文本图片表格及严格可迁移路径。 整合主线图片下载的受控临时目录、realpath 和大小边界，不恢复按厂商路径删除任意文件。"
     },
     {
       "source": "dws-bridge.js",

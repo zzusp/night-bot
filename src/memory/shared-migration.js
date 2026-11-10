@@ -13,6 +13,9 @@ export async function migrateSharedMemory(store){
  return withLock(join(store.root,'.shared-migration.lock'),async()=>{
   await privateDirectory(target)
   const marker=await readRegular(join(target,'migration.json'));if(marker){let saved;try{saved=JSON.parse(marker)}catch{throw failure('MEMORY_MIGRATION_STATE_INVALID')}if(saved.version!==1||saved.status!=='completed'||!Number.isSafeInteger(saved.imported)||!Number.isSafeInteger(saved.conflicts))throw failure('MEMORY_MIGRATION_STATE_INVALID');return {imported:saved.imported,conflicts:saved.conflicts}}
+  // Validate the ancestor itself before traversing its per-kind children.
+  const legacyRoot=await lstat(join(store.root,'v1')).catch(error=>{if(error.code==='ENOENT')return;throw error})
+  if(legacyRoot&&(!legacyRoot.isDirectory()||legacyRoot.isSymbolicLink()))throw failure('MEMORY_MIGRATION_PATH_UNSAFE')
   let imported=0,conflicts=0
   for(const kind of ['personal','group','project']){
    const root=join(store.root,'v1',kind)

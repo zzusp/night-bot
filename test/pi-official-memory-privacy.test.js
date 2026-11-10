@@ -19,15 +19,20 @@ async function fixture(t,{mode='workspace-write'}={}){
 test('real generic filesystem with official actor enforces bound read-only policy and private task boundaries',async t=>{
  const f=await fixture(t,{mode:'read-only'}),path=join(f.root,'work','blocked.txt')
  await assert.rejects(f.write(path),error=>error.code==='FS_SANDBOX_DENIED')
+ await assert.rejects(readFile(path),{code:'ENOENT'})
  await assert.rejects(f.run(async()=>f.ctx.fs.readText(await f.ctx.fs.resolve(join(f.ctx.runtimePaths.memory,'bindings.json')),new AbortController().signal)),error=>error.code==='FS_SANDBOX_DENIED')
  await writeFile(join(f.other,'work','private.txt'),'OTHER_PRIVATE_MARKER')
- await assert.rejects(f.run(async()=>f.ctx.fs.readText(await f.ctx.fs.resolve(join(f.other,'work','private.txt')),new AbortController().signal)),error=>error.code==='FS_SANDBOX_DENIED')
+ await assert.rejects(f.run(async()=>f.ctx.fs.readText(await f.ctx.fs.resolve(join(f.other,'work','private.txt')),new AbortController().signal)),{code:'PERMISSION_CALL_UNBOUND'})
+ assert.equal(await readFile(join(f.other,'work','private.txt'),'utf8'),'OTHER_PRIVATE_MARKER')
 })
 test('official workspace-write keeps task metadata immutable and canonical symlink escapes denied',async t=>{
  const f=await fixture(t);await f.write(join(f.root,'work','allowed.txt'));assert.equal(await readFile(join(f.root,'work','allowed.txt'),'utf8'),'proof')
  await assert.rejects(f.write(join(f.root,'outputs','forged.txt')),error=>error.code==='FS_SANDBOX_DENIED')
  await symlink(join(f.other,'work'),join(f.root,'work','escape'),'dir')
- await assert.rejects(f.write(join(f.root,'work','escape','cross-task.txt')),error=>error.code==='FS_SANDBOX_DENIED')
+ // Direct fixture IO has no bound tool call to authorize an outside-origin path.
+ await assert.rejects(f.write(join(f.root,'work','escape','cross-task.txt')),{code:'PERMISSION_CALL_UNBOUND'})
+ await assert.rejects(readFile(join(f.other,'work','cross-task.txt')),{code:'ENOENT'})
+ await assert.rejects(readFile(join(f.root,'outputs','forged.txt')),{code:'ENOENT'})
  await f.ctx.workingDirectory.set(f.actor,join(f.root,'work'))
  await f.write(join(f.root,'tmp','still-authorized.txt'))
  assert.equal(await readFile(join(f.root,'tmp','still-authorized.txt'),'utf8'),'proof','business boundary remains immutable origin after cd')

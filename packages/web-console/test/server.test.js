@@ -596,3 +596,26 @@ test('设置API沿用浏览器鉴权、同源和CSRF，拒绝注入且异常不�
  assert.equal((await f.fetchApi('/api/settings/secrets/github',{method:'PUT',body:{...secret,value:'x'.repeat(17000)}})).status,413)
  assert.equal(f.received.length,0)
 })
+
+
+test('Web transport binds retained delivery and message reads to stored channel and sender ownership', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-transport-scope-'))
+  const ledger = await openWebLedger(root)
+  t.after(async () => {ledger.close(); await rm(root, {recursive: true, force: true})})
+  for (const [conversationId, senderId, channelId] of [
+    ['own-history', 'operator', 'web'],
+    ['foreign-sender', 'other-operator', 'web'],
+    ['foreign-channel', 'operator', 'other-web'],
+  ]) ledger.reserve({requestId: 'message-' + conversationId, conversationId, senderId, channelId, groupId: 'group-' + conversationId, text: conversationId})
+  const transport = ledger.transport('web', 'operator')
+  const envelope = conversationId => ({type: 'chat', channelId: 'web', senderId: 'operator', conversationId,
+    deliveryKey: 'delivery-' + conversationId, messageId: 'message-' + conversationId, text: 'reply'})
+  for (const conversationId of ['foreign-sender', 'foreign-channel']) {
+    await assert.rejects(transport.send(envelope(conversationId)), {code: 'WEB_DELIVERY_SCOPE_INVALID'})
+    assert.throws(() => transport.readback(envelope(conversationId)), {code: 'WEB_DELIVERY_SCOPE_INVALID'})
+    await assert.rejects(transport.readMessage(envelope(conversationId)), {code: 'WEB_MESSAGE_NOT_FOUND'})
+    assert.equal(ledger.chat(conversationId).messages.length, 1)
+  }
+  assert.equal((await transport.send(envelope('own-history'))).visible, true)
+  assert.equal((await transport.readMessage(envelope('own-history'))).senderId, 'operator')
+})

@@ -98,8 +98,15 @@ export async function enumerateSearchFiles(fs,path,cwd,signal,caps){
    const path=join(fs.processPath(fresh.target),entry.name)
    // Never hand a symlink to rg, even a currently safe alias. This prevents
    // symlink substitution after authorization from turning into recursive IO.
-   if(entry.isSymbolicLink()||(await fs.lstat(path,{cwd},signal))?.type==='symlink')continue
-   try{const child=await allowed(fs,path,cwd,signal);pending.push({...child,depth:current.depth+1})}catch(e){if(e.code!=='FS_SANDBOX_DENIED')throw e}
+   if(entry.isSymbolicLink())continue
+   try{
+    if((await fs.lstat(path,{cwd},signal))?.type==='symlink')continue
+    const child=await allowed(fs,path,cwd,signal);pending.push({...child,depth:current.depth+1})
+   }catch(e){
+    // A protected child (for example a task's sessions/) is not a failure of
+    // the authorized search root. Keep it out of the subprocess allowlist.
+    if(!['FS_SANDBOX_DENIED','PERMISSION_PRIVATE_PATH_DENIED'].includes(e.code))throw e
+   }
   }
  }
  return files
