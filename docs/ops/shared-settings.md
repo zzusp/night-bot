@@ -40,6 +40,24 @@ node bin/night-bot-settings.js CONFIG channel-remove --channel-id work-room --ex
 
 新 CLI 也提供 `model`（`--provider --model --api --base-url --key-env`）、`role`（`--role --provider --model --reasoning-effort`）、`web`（`--enabled --host --port --public-origin --channel-id --sender-id --operator-name`）、`permissions-show`、`permission-respond --id REQUEST --decision allow|reject|revoke`。`permission-respond` 只作用于仍有效、绑定原调用的审批；离线不能重放批准。
 
+## 同一路由的多个模型
+
+Web「模型列表」和 `night-bot-settings model-list/model-entry` 共用同一配置服务，不另建 provider、密钥或模型注册表。`model-list` 返回安全目录、引用和配置版本；`model-entry` 修改已有 provider 下一个模型，不改变全局默认选择。真实模型 ID 由操作者提供，命令不会自动访问服务商发现目录或验证调用。
+
+```sh
+node bin/night-bot-settings.js CONFIG model-list --live
+node bin/night-bot-settings.js CONFIG model-entry --action add --provider PROVIDER --model MODEL_ID --name '显示名称' --live --check
+node bin/night-bot-settings.js CONFIG model-entry --action add --provider PROVIDER --model MODEL_ID --name '显示名称' --live
+node bin/night-bot-settings.js CONFIG model-entry --action edit --provider PROVIDER --id MODEL_ID --model NEW_MODEL_ID --name '新显示名称' --live
+node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PROVIDER --id MODEL_ID --confirm --live
+```
+
+`--name ''` 清除显式别名；ID/显示名称以外的能力、上下文、兼容字段保留。官方 provider 没有显式模型列表时，首次编辑保留完整有效内置目录及已有 overrides，再持久化为显式列表，不因添加一项丢掉其余模型。已有显式列表按当前白名单维护，不自动扩为完整官方目录。删除须确认且至少保留一个模型。
+
+默认、显式角色、legacy 任务配置和环境角色引用均受保护；有效持久任务默认选择也由现有 Host 核验。保存目录不会改变当前运行的会话，需按原流程正常重启。角色仍使用既有 `role` 命令及 `NIGHT_BOT_{TRIAGE,ROUTER,TASK}_{PROVIDER,MODEL,REASONING_EFFORT}`，不增加平行的环境配置源。`--check` 不写文件，API/CLI 均沿用 CAS、配置锁及结果未知不重试规则。
+
+配置含 resident 时，删除或更改模型 ID 前须先保存明确的任务执行角色选择（或已有有效 task 环境覆盖）。这是为了避免旧任务默认配置入口在两个独立存储之间继续选回已移除模型；仅实时读取旧默认值不足以消除竞态。新增模型、修改显示名不需要这一步。网页会说明该限制；CLI 可先执行 `role --role task --provider PROVIDER --model KEPT_MODEL --reasoning-effort model-default --live`。
+
 `--check` 支持外观、全局/角色模型、凭据、Web、自定义渠道及权限模式。它校验保存候选值，不承诺运行时一定可激活。钉钉绑定/切换、启停、删除及审批回应不支持 `--check`，会直接拒绝而不执行。
 
 ## 入口审计
@@ -48,6 +66,7 @@ node bin/night-bot-settings.js CONFIG channel-remove --channel-id work-room --ex
 | --- | --- | --- | --- |
 | 外观 | `/api/settings/appearance` | `night-bot-settings appearance` | `operator.saveAppearance`，相同 CAS/校验 |
 | 全局模型 | `/api/settings/model` | `night-bot-config model` / `night-bot-settings model` | `saveModelConfiguration`；Web 便利表单固定 `web-model` provider，新 CLI 可选择 provider |
+| 路由内模型列表 | `/api/settings/model-catalog` GET/PUT | `night-bot-settings model-list/model-entry` | 共用安全目录投影和 `saveModelCatalogEntry`，ID/显示名增改删、引用保护、CAS，保存后正常重启 |
 | 分诊/Router/执行模型 | `/api/settings/role-model` | `night-bot-config role-model` / `night-bot-settings role` | `saveRoleModelConfiguration` 和相同 Pi 能力校验 |
 | 模型/GitHub Key | `/api/settings/secrets/*` | `night-bot-settings secret` | `operator.saveSecret`，确认、路由版本锁、环境只读、NativeCredentials |
 | OAuth/任意引用 | 无对应 Web 表单 | `night-bot-auth` | Pi authentication/NativeCredentials；不是独立秘密存储 |

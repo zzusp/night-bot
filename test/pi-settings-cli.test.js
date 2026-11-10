@@ -34,6 +34,23 @@ async function fixture(t){
  return {root,paths,file,config,settings,ctx,cli}
 }
 async function inventory(root){const result={};async function visit(path){for(const entry of await readdir(path,{withFileTypes:true})){const file=join(path,entry.name),info=await stat(file);result[file]={mode:info.mode,mtime:info.mtimeMs,bytes:entry.isFile()?await readFile(file,'utf8'):null};if(entry.isDirectory())await visit(file)}}await visit(root);return result}
+test('model entries share offline and live validation, listing, confirmation and dry-run',async t=>{
+ const f=await fixture(t),before=await readFile(f.file,'utf8'),initial=await f.cli(['model-list'])
+ assert.equal(initial.providers[0].models.length,1)
+ await f.cli(['model-entry','--action','add','--provider','fixture','--model','second','--name','Second','--check'])
+ assert.equal(await readFile(f.file,'utf8'),before)
+ await f.cli(['model-entry','--action','add','--provider','fixture','--model','second','--name','Second'])
+ await assert.rejects(f.cli(['model-entry','--action','add','--provider','fixture','--model','third','--expected-version',initial.version]),{code:'SETTINGS_VERSION_CONFLICT'})
+ await assert.rejects(f.cli(['model-entry','--action','remove','--provider','fixture','--id','second']),{code:'SETTINGS_MODEL_DELETE_CONFIRMATION_REQUIRED'})
+ const auth=await createSettingsOperatorAuth(f.paths),handle=createSettingsHttp({auth,getSettings:()=>f.settings,getChannels:()=>undefined,getPermissions:()=>undefined})
+ const server=createServer((req,res)=>handle(req,res));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
+ const live={...f.config,resident:{host:'127.0.0.1',port:server.address().port}},view=await requestLiveSettings(live,f.file,{action:'model-list'})
+ assert.equal(view.providers[0].models.length,2)
+ const result=await requestLiveSettings(live,f.file,{action:'model-entry',body:{action:'edit',provider:'fixture',id:'second',model:'second-edited',expectedVersion:view.version}})
+ assert.equal(result.liveApplied,false);assert.equal(result.restartRequired,true)
+ await f.cli(['model-entry','--action','remove','--provider','fixture','--id','second-edited','--confirm'])
+ assert.equal((await f.cli(['model-list'])).providers[0].models.length,1)
+})
 async function post(port,body,headers={}){return new Promise((resolve,reject)=>{const req=request({hostname:'127.0.0.1',port,path:'/operator/settings',method:'POST',headers:{'content-type':'application/json',...headers}},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(Buffer.concat(chunks))}))});req.on('error',reject);req.end(JSON.stringify(body))})}
 
 test('headless appearance and credentials use the Web facade, CAS and redaction',async t=>{
