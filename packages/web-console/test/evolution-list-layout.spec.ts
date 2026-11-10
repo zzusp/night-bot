@@ -31,12 +31,15 @@ for (const theme of ['light', 'dark']) for (const width of [1440, 2048, 390]) {
     await expect(page.locator('.evolution-table .board-badge')).toHaveCount(0);
     const title = await first.locator('.evolution-item-title').boundingBox();
     const action = await first.getByRole('button', {name: '查看内容：review-code'}).boundingBox();
-    expect(title!.x).toBeGreaterThan(action!.x);
+    expect(title!.x - action!.x).toBeGreaterThan(18);
+    expect(title!.x - action!.x).toBeLessThan(38);
+    expect(await first.locator('.evolution-entry-open').evaluate(el => getComputedStyle(el).justifyContent)).toBe('flex-start');
     expect(action!.height).toBeGreaterThanOrEqual(34);
     if (width > 760) expect((await first.boundingBox())!.height).toBeLessThanOrEqual(58);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator('.evolution-table-wrap').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     expect((await new AxeBuilder({page}).include('.evolution-library').analyze()).violations).toEqual([]);
+    await page.mouse.move(0, 0);
     await page.screenshot({path: test.info().outputPath(`evolution-list-${theme}-${width}.png`), fullPage: true, animations: 'disabled'});
     await page.locator('.evolution-library').screenshot({path: test.info().outputPath(`evolution-list-detail-${theme}-${width}.png`), animations: 'disabled'});
   });

@@ -51,7 +51,7 @@ export default function EvolutionEntryList({items, onView}: {items: EvolutionIte
     <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-updated"/></colgroup>
     <thead><tr><th scope="col">名称</th><th scope="col">使用记录</th><th scope="col">最近更新</th></tr></thead>
     <tbody>{items.map(item => <tr key={`${item.kind}:${item.id}`}>
-      <td className="evolution-entry-cell"><Button variant="ghost" className="evolution-entry-open" aria-label={`查看内容：${item.name || '未命名记录'}`} onClick={event => onView(item, event.currentTarget)}>
+      <td className="evolution-entry-cell"><Button variant="ghost" className="evolution-entry-open" aria-label={`查看内容：${item.name || '未命名记录'}${item.status !== 'applied' ? `，${statuses[item.status]}` : ''}${item.updatedSinceUse ? '，载入版本与当前不同' : ''}`} onClick={event => onView(item, event.currentTarget)}>
         <span className="evolution-item-icon" aria-hidden="true">{item.kind === 'memory' ? <RiBrainLine size={18}/> : <RiBookOpenLine size={18}/>}</span>
         <span className="evolution-item-copy"><span className="evolution-item-title">{item.name || '未命名记录'}</span><span className="sr-only">{item.kind === 'memory' ? '记忆' : '技能'} · {scopeLabels[item.scope]}</span>
           {item.status === 'applied' ? <span className="sr-only">已应用</span> : <span className="evolution-item-status">{statuses[item.status]}</span>}
