@@ -16,11 +16,16 @@ export interface Task {
   notifications?: Record<string, unknown>[];
 }
 export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown' | 'pending-restart';
+export interface ChannelIngress {
+  supported: boolean; available: boolean; backfill: 'history' | 'none' | null; requestedPaused: boolean;
+  state: 'paused' | 'pausing' | 'receiving' | 'recovering' | 'error' | 'unavailable'; errorCode: string | null;
+}
 export interface Channel {
   channelId: string; type: string; enabled: boolean; connected?: boolean;
   connectionState?: ChannelConnectionState; errorCode?: 'CHANNEL_MESSAGE_ID_CONFLICT' | 'CHANNEL_HISTORY_INCOMPLETE' | 'CHANNEL_HISTORY_RECOVERY_FAILED' | 'CHANNEL_AUTH_REQUIRED' | 'CHANNEL_ADAPTER_ERROR' | 'DINGTALK_CHANNEL_SWITCH_BLOCKED' | 'CHANNEL_DRAIN_FAILED' | 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN' | null;
   name?: string; conversationType?: 'chat' | 'chat-room'; promptConfigured?: boolean; restartRequired?: boolean; liveApplied?: boolean; writesAuthorized?: boolean; savedVersion?: string; runningVersion?: string | null;
   runningConnectionState?: ChannelConnectionState; runningErrorCode?: Channel['errorCode']; runningConnected?: boolean; runningName?: string; runningConversationType?: 'chat' | 'chat-room';
+  ingress?: ChannelIngress;
 }
 export interface DingtalkChannelInput {
   channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; prompt?: string; writesAuthorized?: boolean;

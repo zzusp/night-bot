@@ -191,6 +191,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 | Message | `src/components/Shared.tsx` 的 MessageList、Markdown、Status | 本文消息、来源与安全展示规则 | Web 对话 / 渠道消息 / 执行上下文 | 长文本、工具折叠、滚动与复制用例 |
 | Message process | `src/components/ConversationMessages.tsx`、`MessageProcessPopover.tsx`、`ResponseTimes.tsx` | 本文消息侧边浮层与服务端精确来源关联 | Web / 外部渠道消息；只展示节点与真实耗时 | `test/execution-redesign.spec.ts`、`test/first-reply-runtime.test.js` |
 | Resource | `src/hooks.ts` 的 useResource、`src/api.ts` | 本文异步读取与认证规则 | 轮询最新数据 / 固定历史快照 | `test/browser.spec.ts`、`test/chat-lifecycle.spec.ts` |
+| Channel ingress | `src/components/ChannelIngressDialog.tsx`、`src/channel-ingress.ts`、共享 `ActionMenu` / Button / Notice | `src/channels/ingress-control.js`、渠道 `ingress` 能力与版本化 API 回执 | 暂停 / 恢复 / 只读核对 / 同意图显式重试 | `test/channel-ingress.test.js`、`test/channel-ingress.spec.ts` |
 
 渠道配置的会话类型和目标填写方式沿用带中文标签的原生 select，接受浏览器/操作系统负责弹出选项的几何与交互；触发器复用输入框的高度、边界、字体、焦点与禁用状态，不伪装为自定义 listbox。职责输入自动增高至 240px，之后内部滚动，不允许拖动调整页面布局。
 
@@ -344,11 +345,19 @@ Composer 是受控组件，消息文本归调用方持有；原始缩进和换�
 
 状态 tag 复用 Badge，按错误、待重启/未应用、运行状态显示一个主要事实。`src/channel-health.ts` 使用已加载适配器的 runningConnected，旧 DTO 才回退 connected：error/适配器或切换阻断显示红色警示与“健康检查异常”；waiting-auth/stopped 或明确 false 显示橙色警示与“健康检查未就绪”；明确 true 显示灰色圆勾与“健康检查正常”；缺少报告显示中性问号与“健康状态未报告”。配置提交/排空错误不能篡改仍在运行的旧适配器健康事实。错误详情、旧配置差异和恢复提示放在编辑弹窗及相关操作反馈中，不在卡片增加描述行。
 
-整卡筛选是原生 button，菜单是兄弟按钮，统一 hover/focus。`components/ActionMenu.tsx` 复用 IconButton/Button，44px 触控目标，常驻右下省略号；钉钉显示「编辑配置」与「删除渠道」，可安全删除的其它插件显示删除，Web 控制台自身无删除。门户菜单使用 `--board-z-menu`，右对齐并优先向上展开，窄屏约束到视口。Enter/Space/方向键展开，方向键/Home/End 遍历，Escape 回到触发器，Tab 继续页面焦点顺序，外部点击、滚动、缩放关闭。
+整卡筛选是原生 button，菜单是兄弟按钮，统一 hover/focus。`components/ActionMenu.tsx` 复用 IconButton/Button，44px 触控目标，常驻右下省略号；钉钉保留「编辑配置」与「删除渠道」，可安全删除的其它插件保留删除，另按能力提供「暂停接收」或「恢复接收」。Web 控制台自身无删除。只有不支持或不可用的接收动作禁用，菜单内就地说明原因，不禁用整个菜单。门户菜单使用 `--board-z-menu`，右对齐并优先向上展开，窄屏约束到视口。Enter/Space/方向键展开，方向键/Home/End 遍历，Escape 回到触发器，Tab 继续页面焦点顺序，外部点击、滚动、缩放关闭。
 
 打开编辑前关闭菜单并保存持久的省略号触发器；弹窗实际关闭后只恢复一次焦点，忽略快速重开前迟到的 close 事件。加载/保存中取消保护不变，验收需确认加载完成且弹窗真的关闭。新增/编辑成功必须校验真实回执，支持在线生效、待重启和尚未激活三种结果，不把连接健康与配置应用混为一谈；不完整或矛盾回执仍锁定并只读核对，不自动重发。
 
 `ChannelRemovalDialog` 复用原生 dialog、Button、Notice，必须再次确认且默认焦点在取消。影响明确为移除配置并安全停止接入；Host 不主动删除会话/任务历史、绑定/游标、审计或凭据，不注销钉钉账号，第三方插件清理仍以生命周期合同为准。DELETE 携带此卡片 savedVersion 与 confirm:true；服务端继续认证、同源/CSRF、CAS、未决依赖与动态排空保护，不允许绕过拒绝。版本冲突或阻断处理后重新确认；未知结果锁定原请求，只能只读核对，当前页面关闭后重开仍保持锁定。确认列表已无该项后刷新筛选并把焦点转到添加渠道卡片，取消/普通关闭回到省略号。界面不能以假成功代替安全删除 Host 支持。
+
+`ChannelIngressDialog` 复用同一原生 dialog 与反馈控件，默认聚焦「取消」，在途防重复提交并阻止误关，实际关闭后恢复省略号焦点。它独立于轮询卡片挂载，列表刷新不能重置确认或未决请求。暂停仅改变消息接收，不改变 enabled 或外发授权，不取消已接纳任务。`backfill: history` 说明恢复会补拉；`backfill: none` 在确认前明确「暂停期间无法补拉，恢复只接收后续消息」，不得承诺补齐。
+
+能否操作以声明的 `supported`、`available`、补拉能力和有效版本为准，不由当前接收 state 单独推断。等待认证的渠道即使 state 为 unavailable，只要 available 为 true，仍可先保存暂停意图；回执必须区分「意图已保存、仍等待认证」与实际已暂停，不以此绕过认证或虚报运行成功。
+
+接收操作携带卡片 `savedVersion`、`paused` 与 `confirm: true`，普通 ID 使用 `/channels/:id/ingress`，`.` / `..` 沿用认证 query fallback。卡片主状态按真实 ingress 区分「正在暂停」「已暂停接收」「正在补拉」「接收异常」，健康行仍独立表达适配器事实。恢复回执仅表示开始恢复，recovering 不表示历史已补齐；应用失败即使配置已保存也留在确认内说明失败，提供用户明确点击的同意图重试。
+
+403、版本冲突及明确拒绝先说明原因，用户只读「重新读取状态」后才能重新确认；不自动重试。断线、500、不完整或矛盾回执、提交结果不确定均锁定原版本与意图。关闭重开保留核对入口，即使后续接收能力暂不可用，也只允许「核对接收状态」。GET 列表必须读到有效 savedVersion、同一 requestedPaused 与对应实际状态才报告当前状态；初次改变意图时保存版本还须已变化，不以只保存意图当作运行成功。回读不归因于特定写入；未变化、状态不符或读取失败继续锁定，不重放请求。退出、认证换代或离开本页遵循既有清理边界。
 
 ### 消息侧边的处理浮层
 

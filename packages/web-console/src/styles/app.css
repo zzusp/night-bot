@@ -409,6 +409,9 @@ html, body, #root { width: 100%; min-width: 0; }
 .execution-history-empty .message-column { padding: 0; }
 
 .board-action-menu > .board-button.action-menu-danger { color: var(--board-danger); }
+.board-action-menu > .action-menu-description { margin: 0; padding: 0 12px 8px; max-width: 240px; color: var(--board-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.channel-ingress-warning { color: var(--board-warning); }
+.channel-ingress-dialog .channel-delete-actions { flex-wrap: wrap; }
 .channel-delete-dialog { width: min(460px, calc(100vw - 32px)); }
 .channel-delete-body { padding: 20px 24px 24px; display: grid; gap: 12px; }
 .channel-delete-body > p { margin: 0; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }

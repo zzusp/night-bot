@@ -17,7 +17,7 @@ function schema(definition){
  if(!Array.isArray(fields)||fields.length>16)return null
  const names=new Set()
  for(const field of fields){
-  if(!field||(typeof field.name!=='string'||!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.name)||['constructor','prototype','enabled','channelId','type'].includes(field.name))||!text(field.label,64)||!['string','boolean','credential-ref'].includes(field.type)||names.has(field.name)||field.required!==undefined&&typeof field.required!=='boolean')return null
+  if(!field||(typeof field.name!=='string'||!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.name)||['constructor','prototype','enabled','receivePaused','channelId','type'].includes(field.name))||!text(field.label,64)||!['string','boolean','credential-ref'].includes(field.type)||names.has(field.name)||field.required!==undefined&&typeof field.required!=='boolean')return null
   if(field.type==='string'&&/token|secret|password|key|credential|authorization/i.test(field.name))return null
   names.add(field.name)
  }

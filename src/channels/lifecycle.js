@@ -2,6 +2,7 @@ import {isDeepStrictEqual} from 'node:util'
 import {channelPluginRows} from './loader.js'
 import {prepareProfileEntries} from '../native-profile-preflight.js'
 import {failure} from '../runtime/files.js'
+import {applyChannelIngress,declareChannelIngress} from './ingress-control.js'
 
 const channelId=row=>row.channelId??row.config?.channelId??row.type
 const same=isDeepStrictEqual
@@ -39,6 +40,7 @@ export function createChannelLifecycle({ctx,paths,running,dependencies={}}){
       const plugin=prepared.module
       fiber=row.type==='dingtalk-dws'?ctx.plugin({...plugin,apply:child=>plugin.apply(child,prepared.entry.config,{...dependencies,registerStopAndDrain:stop=>{cleanup=stop}})}):ctx.plugin(plugin.default??plugin,prepared.entry.config)
       await fiber
+      declareChannelIngress(ctx.channels.plugins.get(channelId(row)),plugin)
       return {row:structuredClone(row),fiber,module:plugin}
     }catch(error){
       if(fiber){
@@ -75,6 +77,7 @@ export function createChannelLifecycle({ctx,paths,running,dependencies={}}){
   return {
     instances,
     canEdit:id=>instances.get(id)?.module.channelLifecycle===1,
+    applyIngress:(transaction,id)=>applyChannelIngress(transaction,id,{ctx,instances,publish}),
     async initialize(config){const normalized=await channelPluginRows(config,paths);for(const row of config.channelPlugins??[]){if(!row.enabled)continue;const prepared=await prepare(row,config,normalized.find(entry=>entry.config.channelId===channelId(row))),entry=await mount(row,prepared);instances.set(channelId(row),entry)}},
     async apply({current,next,commit},id,{removing=false}={}){
       const before=current.channelPlugins?.find(row=>channelId(row)===id),after=next.channelPlugins?.find(row=>channelId(row)===id),old=instances.get(id),application=ctx.get('application')
@@ -103,11 +106,11 @@ export function createChannelLifecycle({ctx,paths,running,dependencies={}}){
         if(old&&after&&(settingsOnly(before,after)||sameBinding)){
           const plugin=ctx.channels.plugins.get(id),normalized=old.module.validateConfig(after.config)
           try{
-            await plugin.updateLive({...normalized,enabled:after.enabled})
+            await plugin.updateLive({...normalized,enabled:after.enabled,receivePaused:after.receivePaused===true})
             await commit()
           }catch(error){
             if(error.committed===true){old.row=structuredClone(after);publish(id,after);release=false;throw error}
-            try{await plugin.updateLive({...old.module.validateConfig(before.config),enabled:before.enabled})}catch(cause){release=false;throw new AggregateError([error,cause],'CHANNEL_ROLLBACK_FAILED')}
+            try{await plugin.updateLive({...old.module.validateConfig(before.config),enabled:before.enabled,receivePaused:before.receivePaused===true})}catch(cause){release=false;throw new AggregateError([error,cause],'CHANNEL_ROLLBACK_FAILED')}
             throw error
           }
           old.row=structuredClone(after);publish(id,after)
