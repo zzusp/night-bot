@@ -35,7 +35,9 @@ for (const theme of ['light', 'dark']) {
             const s = getComputedStyle(element)
             const root = getComputedStyle(document.documentElement)
             const normalize = (value: string) => {
-              const [r, g, b] = value.trim().slice(1).match(/../g)!.map(value => parseInt(value, 16))
+              const hex = value.trim().slice(1)
+              const expanded = hex.length === 3 ? [...hex].map(char => char + char).join('') : hex
+              const [r, g, b] = expanded.match(/../g)!.map(value => parseInt(value, 16))
               return `rgb(${r}, ${g}, ${b})`
             }
             return {

@@ -104,8 +104,8 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
         {isConversation && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
-      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
+      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
       {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}

@@ -1,0 +1,49 @@
+/* Shared execution disclosures use the existing BoardUI surface and controls. */
+.execution-tool-group { width: 100%; min-width: 0; }
+.execution-tool-group > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; cursor: pointer; min-height: 44px; padding: 6px 2px; border-radius: var(--board-radius-control); font-size: 12px; color: var(--board-muted); list-style: none; overflow-wrap: anywhere; }
+.execution-tool-group > summary::-webkit-details-marker { display: none; }
+.execution-tool-group > summary:hover { color: var(--board-text); background: var(--board-panel); }
+.execution-tool-group > summary:active { background: var(--board-hover); }
+.execution-tool-group > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; }
+.execution-tool-group-chevron { flex: 0 0 12px; font-size: 18px; line-height: 18px; text-align: center; }
+.execution-tool-group[open] > summary > .execution-tool-group-chevron { transform: rotate(90deg); }
+.execution-tool-group-summary { min-width: 0; overflow-wrap: anywhere; }
+.execution-tool-group-action { margin-left: auto; white-space: nowrap; font-size: 11px; }
+.execution-tool-group-items { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 2px 0 8px 7px; padding: 2px 0 4px 14px; border-left: 1px solid var(--board-border); }
+.execution-tool-group-items > .message { width: 100%; min-width: 0; }
+.execution-tool-group-items .tool-message { padding: 6px 0; border: 0; background: transparent; }
+.execution-tool-group-items .message-meta { margin-bottom: 2px; }
+.execution-tool-group-items .tool-message > summary { min-height: 32px; align-content: center; }
+
+/* Execution-only reading flow, independently implemented from the reference layout. */
+.execution-transcript { background: var(--board-surface); --execution-mono: "Geist Mono", ui-monospace, Consolas, monospace; }
+.execution-transcript .message-column { max-width: none; padding: 16px max(7%, calc((100% - 760px) / 2)) 22px; gap: 0; }
+.execution-transcript .message { width: 100%; max-width: 100%; align-self: stretch; }
+.execution-transcript .message > .message-body { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; --board-muted: inherit; }
+.execution-transcript .message-assistant { padding: 7px 0; }
+.execution-transcript .markdown { font-size: 13px; line-height: 1.7; }
+.execution-transcript .markdown p, .execution-transcript .markdown :is(ul, ol) { margin: .5em 0; }
+.execution-transcript .markdown :is(ul, ol) { padding-left: 1.4em; }
+.execution-transcript .message-user { padding: 12px 0; align-items: flex-end; }
+.execution-transcript .message-user > .message-body { max-width: 82%; margin-left: auto; padding: 10px 16px; border-radius: 18px; background: var(--board-message-assistant-bg); }
+.execution-transcript .execution-message-role { font-size: 11px; color: var(--board-muted); }
+.execution-transcript .execution-message-role:not(:has(.execution-tool-state)) { height: 0; }
+.execution-transcript .message-tool { margin: 1px 0 5px; }
+.execution-transcript .execution-tool-input-row { padding: 4px 0; min-width: 0; }
+.execution-transcript .execution-tool-output-row { margin: 0 0 2px 21px; min-width: 0; font: 11.5px/1.9 var(--execution-mono); color: var(--board-muted); }
+.execution-transcript .execution-tool-input > summary { font: 12px/2 var(--execution-mono); }
+.execution-transcript .execution-tool-input > summary > strong { font-weight: 600; }
+.execution-transcript :is(.execution-tool-input, .execution-tool-output) > summary { list-style: none; cursor: pointer; overflow-wrap: anywhere; }
+.execution-transcript :is(.execution-tool-input, .execution-tool-output) > summary::-webkit-details-marker { display: none; }
+.execution-transcript :is(.execution-tool-input, .execution-tool-output) > summary:hover { color: var(--board-text); }
+.execution-transcript :is(.execution-tool-input, .execution-tool-output) > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; }
+.execution-transcript .execution-tool-preview, .execution-transcript .execution-tool-more { color: var(--board-muted); }
+.execution-transcript summary:hover .execution-tool-preview { color: var(--board-text); }
+.execution-transcript .execution-tool-state { margin-left: 6px; color: var(--board-muted); font: 10.5px/1.9 var(--execution-mono); }
+.execution-transcript .execution-tool-state.is-error { color: var(--board-danger); }
+.execution-transcript .execution-tool-missing { font: 11.5px/1.9 var(--execution-mono); color: var(--board-muted); min-width: 0; overflow-wrap: anywhere; }
+.execution-transcript .tool-content { font: 11px/1.9 var(--execution-mono); padding: 8px 10px; max-height: 420px; margin: 6px 0 4px; border: 0; box-shadow: inset 0 0 0 1px var(--board-border); border-radius: 6px; background: var(--board-panel); white-space: pre-wrap; overflow-wrap: anywhere; }
+.execution-transcript .execution-tool-group { margin: 2px 0; }
+.execution-transcript .execution-tool-group > summary { min-height: 0; padding: 5px 0; gap: 9px; align-items: baseline; font-size: 12.5px; line-height: 1.8; }
+.execution-transcript .execution-tool-group > summary:hover, .execution-transcript .execution-tool-group > summary:active { background: transparent; }
+.execution-transcript .execution-tool-group-items { margin: 2px 0 8px 21px; padding: 0 0 0 12px; gap: 0; border-left: 1px solid var(--board-border); }

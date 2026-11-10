@@ -181,3 +181,21 @@ test('安装操作者已获准任务read的JSON样式业务原文不改写，所
  assert.equal(rebuilt,text)
  assert.equal(page.items.find(row=>row.kind==='tool-call').text.includes('/fixture/body.json'),false)
 })
+
+test('job_output exposes paired task text with redaction and pagination, never hidden job metadata or unpaired output', async () => {
+  const value = snapshot();
+  const text = '作业业务输出\n'.repeat(3000) + 'REGISTERED_JOB_SECRET /private/work/file.txt\n结果终点';
+  const call = id => project(`call-${id}`, { role: 'assistant', content: [{ type: 'toolCall', id, name: 'job_output', arguments: { job_id: 'PRIVATE_JOB_ID', wait: true } }] });
+  const result = (id, content = text) => project(`result-${id}`, { role: 'toolResult', toolName: 'job_output', toolCallId: id, details: { producerLog: 'PRIVATE_JOB_LOG' }, content: [{ type: 'text', text: content }] });
+  value.context.projection.entries = [call('job'), result('job'), result('unpaired', 'PRIVATE_UNPAIRED_OUTPUT')];
+  const options = { task, persistence: { readNative: async () => value }, secrets: ['REGISTERED_JOB_SECRET'] };
+  const page = await taskSessionView(options);
+  const output = page.items.find(row => row.kind === 'tool-result' && row.toolName === 'job_output');
+  assert.ok(output);
+  assert.match(output.text, /作业业务输出/);
+  assert.equal(output.textNextOffset, 16000);
+  const tail = await taskSessionMessageView({ ...options, messageId: output.id, revision: page.revision, offset: output.textNextOffset });
+  assert.match(tail.text, /结果终点/);
+  assert.doesNotMatch(JSON.stringify([page, tail]), /REGISTERED_JOB_SECRET|PRIVATE_JOB_ID|PRIVATE_JOB_LOG|PRIVATE_UNPAIRED_OUTPUT|\/private\/work/);
+  assert.equal(page.items.at(-1).toolName, '未公开工具');
+});
