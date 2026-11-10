@@ -5,6 +5,7 @@ const spec={
  model:['provider','model','api','baseURL','apiKeyEnv','reasoningEffort','expectedVersion'],
  role:['role','provider','model','reasoningEffort','expectedVersion'],
  secret:['kind','action','value','confirm','expectedVersion'],
+ 'work-log':['enabled','time','timezone','expectedVersion'],
  web:['enabled','host','port','publicOrigin','channelId','senderId','operatorName','expectedVersion'],
  'channel-list':[],'channel-save':['type','channelId','enabled','config','expectedVersion','createOnly'],
  'channel-enable':['channelId','enabled','expectedVersion'],'channel-remove':['channelId','expectedVersion','confirm'],
@@ -28,13 +29,14 @@ export function createSettingsCommands({settings,channels,permissions,configurat
  return async input=>{
   const {action,body,checkOnly}=validateSettingsCommand(input),options={checkOnly}
   const channel=()=>channels??unavailable(),permission=()=>permissions??unavailable()
-  if(checkOnly&&!['appearance','model','role','secret','web','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
+  if(checkOnly&&!['appearance','model','role','secret','web','work-log','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
   if(action==='show')return settings.view()
   if(action==='plugins')return settings.plugins()
   if(action==='appearance')return settings.saveAppearance(body,options)
   if(action==='model'){version(body.expectedVersion);return (configuration.model??unavailable)({...body,checkOnly})}
   if(action==='role')return settings.saveRoleModel(body,options)
   if(action==='secret'){const {kind,...value}=body;return settings.saveSecret(kind,value,options)}
+  if(action==='work-log'){version(body.expectedVersion);return settings.saveWorkLog(body,options)}
   if(action==='web'){version(body.expectedVersion);return (configuration.web??unavailable)({...body,checkOnly})}
   if(action==='channel-save')return settings.saveChannel(body,options)
   if(action==='channel-list'){const {dingtalkConfigVersion}=await import('../channels/plugins/dingtalk-config.js');return {channels:(await channel().read()).map(row=>({type:row.type,channelId:row.channelId??row.config?.channelId??row.type,enabled:row.enabled,version:dingtalkConfigVersion(row)}))}}

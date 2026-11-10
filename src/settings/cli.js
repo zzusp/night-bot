@@ -18,10 +18,11 @@ import {readSettingsOperatorToken} from './auth.js'
 import {SETTINGS_OPERATOR_ROUTE,safeSettingsError} from './http.js'
 
 export const settingsCliUsage=`Usage: night-bot-settings CONFIG ACTION [options] [--live] [--check]
-Actions: show, plugins, appearance, model, role, secret, web, channel-list,
+Actions: show, plugins, appearance, model, role, secret, web, work-log, channel-list,
   channel-save, channel-enable, channel-remove, dingtalk-get, dingtalk-add,
   dingtalk-edit, permissions-show, permissions-set, permission-respond.
 Use --json-file FILE for non-secret payloads. Appearance: --name NAME --icon moon|star|robot|leaf.
+Work log: --enabled true|false --time HH:mm --timezone local|IANA (normal restart required).
 Secret: --kind model|github --action replace|clear --confirm (hidden prompt or one stdin line).
 Lifecycle commands require --live: the existing resident service, with or without Web.
 --check validates supported saved settings without writing; never applies a live lifecycle action.
@@ -29,6 +30,7 @@ No credential value, token, or password is accepted in arguments or printed. OAu
 const optionsByAction={
  show:[],plugins:[],appearance:['name','icon','expected-version'],model:['provider','model','api','base-url','key-env','reasoning-effort','expected-version'],
  role:['role','provider','model','reasoning-effort','expected-version'],secret:['kind','action','expected-version'],
+ 'work-log':['enabled','time','timezone','expected-version'],
  web:['enabled','host','port','public-origin','channel-id','sender-id','operator-name','expected-version'],
  'channel-list':[],'channel-save':[],'channel-enable':['channel-id','enabled','expected-version'],'channel-remove':['channel-id','expected-version'],
  'dingtalk-get':['channel-id'],'dingtalk-add':[],'dingtalk-edit':[],'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
@@ -116,7 +118,7 @@ export async function runSettingsCli(argv,{environment=process.env,write=value=>
   if(!live&&['channel-enable','channel-remove','dingtalk-add','dingtalk-edit','permission-respond'].includes(action))throw failure('SETTINGS_RESIDENT_REQUIRED')
   if(!live)local=await localCommands(config,file,{checkOnly:input.checkOnly,writing:!readOnly.has(action),environment})
   const dispatch=value=>live?requestLiveSettings(config,file,value,{signal}):local.dispatch(value)
-  if(['appearance','model','role','secret','web','channel-save'].includes(action)&&body.expectedVersion===undefined)body.expectedVersion=(await dispatch({action:action==='channel-save'?'plugins':'show'})).version
+  if(['appearance','model','role','secret','web','work-log','channel-save'].includes(action)&&body.expectedVersion===undefined)body.expectedVersion=(await dispatch({action:action==='channel-save'?'plugins':'show'})).version
   if(action==='secret'){
    if(!['model','github'].includes(body.kind)||!['replace','clear'].includes(body.action)||body.confirm!==true)throw failure('SETTINGS_COMMAND_INVALID')
    if(body.action==='replace'){

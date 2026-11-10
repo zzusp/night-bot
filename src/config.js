@@ -1,3 +1,4 @@
+import {validateWorkLogConfig} from './work-log/config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {validatePiFileSourceConfig} from './runtime/pi-file-tool-config.js'
 import {validateRoleModels} from './role-models.js'
@@ -59,6 +60,7 @@ export function validateConfig(config,path) {
   if(config.channelPlugins!==undefined&&(!Array.isArray(config.channelPlugins)||config.channelPlugins.some(plugin=>!plugin||typeof plugin.type!=='string'||typeof plugin.enabled!=='boolean')))throw new Error('NIGHT_CHANNEL_PLUGINS_INVALID')
   if(config.channelPluginDirs!==undefined&&(!Array.isArray(config.channelPluginDirs)||config.channelPluginDirs.some(path=>typeof path!=='string'||!path)))throw new Error('NIGHT_CHANNEL_PLUGIN_DIRECTORIES_INVALID')
   validateSecrets(config)
+  validateWorkLogConfig(config.workLog)
   validateRoleModels(config)
   return config
 }

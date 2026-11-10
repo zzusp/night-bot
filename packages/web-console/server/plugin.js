@@ -127,12 +127,14 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(request.method==='PUT'&&path==='/api/settings/appearance') return send(response,200,await settings.saveAppearance(await jsonBody(request,['name','icon','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/model') return send(response,200,await settings.saveModel(await jsonBody(request,['model','api','baseURL','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/role-model') return send(response,200,await settings.saveRoleModel(await jsonBody(request,['role','provider','model','reasoningEffort','expectedVersion'],4096)))
+        if(request.method==='PUT'&&path==='/api/settings/work-log') return send(response,200,await settings.saveWorkLog(await jsonBody(request,['enabled','time','timezone','expectedVersion'],4096)))
         const secret=/^\/api\/settings\/secrets\/(model|github)$/.exec(path)
         if(request.method==='PUT'&&secret) return send(response,200,await settings.saveSecret(secret[1],await jsonBody(request,['action','value','confirm','expectedVersion'],16384)))
         if(request.method==='POST'&&path==='/api/settings/channels') return send(response,200,await settings.saveChannel(await jsonBody(request,['type','channelId','enabled','config','expectedVersion','createOnly'],16384)))
         fail('NOT_FOUND',404)
       } catch(error) {
         const codes={INVALID_CONFIG:400,CHANNEL_ACTIVATION_FAILED:503,CHANNEL_RECONFIGURING:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409,CHANNEL_INSTANCE_EXISTS:409}
+        if(error.code?.startsWith('NIGHT_BOT_WORK_LOG_'))fail('SETTINGS_INPUT_INVALID',400)
         if(['UNSUPPORTED_REASONING_EFFORT','NIGHT_BOT_MODEL_ROLE_INVALID','NIGHT_BOT_ROLE_MODELS_INVALID','NIGHT_BOT_PROVIDER_PROFILE_REQUIRED','NIGHT_BOT_MODEL_NOT_CONFIGURED'].includes(error.code)||error.code?.startsWith('NIGHT_BOT_ROLE_MODEL_INVALID:'))fail('SETTINGS_INPUT_INVALID',400)
         if(codes[error.code]) fail(error.code,codes[error.code])
         if(['JSON_REQUIRED','REQUEST_TOO_LARGE','JSON_INVALID','REQUEST_INVALID','NOT_FOUND'].includes(error.code))throw error

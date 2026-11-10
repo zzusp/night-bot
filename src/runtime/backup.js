@@ -45,7 +45,7 @@ export async function backupData(config,destination,{includeSecrets=false}={}){
     if(await lstat(destination).catch(e=>{if(e.code!=='ENOENT')throw e}))throw failure('NIGHT_BACKUP_DESTINATION_EXISTS')
     await privateDirectory(stage)
     const records=[],excluded=[],directories=[]
-    for(const name of ['state','memory','workspaces','attachments',...includeSecrets?['secrets']:[]]){
+    for(const name of ['state','memory','workspaces','attachments','work-logs',...includeSecrets?['secrets']:[]]){
       const base=join(paths.data,name)
       const skipped=[],dirs=[],files=includeSecrets&&name==='secrets'?await secretTree(base,dirs):await tree(base,base,skipped,dirs)
       for(const dir of dirs){const path=name+(dir?'/'+dir.split('\\').join('/'):'');await privateDirectory(join(stage,path));directories.push(path)}
@@ -81,7 +81,7 @@ export async function restoreData(config,backup){
   const seen=new Set(),directoryPaths=manifest.directories===undefined?[]:manifest.directories
   if(!Array.isArray(directoryPaths))throw failure('NIGHT_BACKUP_MANIFEST_INVALID')
   const canonical=path=>typeof path==='string'&&path.split('/').every(part=>part.length>0&&portableName(part))
-  const allowedDirectory=path=>canonical(path)&&/^(?:state|memory|workspaces|attachments)(?:\/|$)|^config\/(?:skills|agents|harness)(?:\/|$)|^secrets(?:\/|$)/.test(path)&&(!path.startsWith('secrets')||manifest.includesSecrets===true)&&((manifest.includesSecrets===true&&path.startsWith('secrets/'))||!path.split('/').some(part=>secretName(part)||part.startsWith('.write-')))
+  const allowedDirectory=path=>canonical(path)&&/^(?:state|memory|workspaces|attachments|work-logs)(?:\/|$)|^config\/(?:skills|agents|harness)(?:\/|$)|^secrets(?:\/|$)/.test(path)&&(!path.startsWith('secrets')||manifest.includesSecrets===true)&&((manifest.includesSecrets===true&&path.startsWith('secrets/'))||!path.split('/').some(part=>secretName(part)||part.startsWith('.write-')))
   const directories=new Set()
   for(const path of directoryPaths){if(!allowedDirectory(path)||directories.has(path))throw failure('NIGHT_BACKUP_MANIFEST_INVALID');directories.add(path)}
   for(const file of manifest.files){if(!canonical(file?.path)||seen.has(file.path)||directories.has(file.path))throw failure('NIGHT_BACKUP_MANIFEST_INVALID');seen.add(file.path)}
@@ -89,7 +89,7 @@ export async function restoreData(config,backup){
   const checkedDirectory=async path=>{let at=backup;for(const part of path.split('/')){at=join(at,part);const info=await lstat(at);if(info.isSymbolicLink()||!info.isDirectory())throw failure('NIGHT_BACKUP_UNSAFE_ENTRY')}}
   for(const path of directories)await checkedDirectory(path)
   const checked=async file=>{
-    if(typeof file.path!=='string'||! /^(?:state|memory|workspaces|attachments|config|secrets)\//.test(file.path)||file.path.includes('\\')||file.path.split('/').some(p=>!p||p==='.'||p==='..')||file.path.startsWith('config/')&&!/^config\/(?:config\.json$|(?:skills|agents|harness)\/)/.test(file.path)||file.path.startsWith('secrets/')&&!manifest.includesSecrets)throw failure('NIGHT_BACKUP_MANIFEST_INVALID')
+    if(typeof file.path!=='string'||! /^(?:state|memory|workspaces|attachments|work-logs|config|secrets)\//.test(file.path)||file.path.includes('\\')||file.path.split('/').some(p=>!p||p==='.'||p==='..')||file.path.startsWith('config/')&&!/^config\/(?:config\.json$|(?:skills|agents|harness)\/)/.test(file.path)||file.path.startsWith('secrets/')&&!manifest.includesSecrets)throw failure('NIGHT_BACKUP_MANIFEST_INVALID')
     const parts=file.path.split('/');let at=backup;for(const [index,part]of parts.entries()){at=join(at,part);const info=await lstat(at);if(info.isSymbolicLink()||(index===parts.length-1?!info.isFile():!info.isDirectory()))throw failure('NIGHT_BACKUP_UNSAFE_ENTRY')}
     const bytes=await readFile(at);if(digest(bytes)!==file.sha256||bytes.length!==file.bytes)throw failure('NIGHT_BACKUP_HASH_MISMATCH');return bytes
   }
@@ -98,7 +98,7 @@ export async function restoreData(config,backup){
   let markerWritten=false,configAttempted=false,preserveStage=false
   try{
     if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')
-    const roots=['state','memory','workspaces','attachments','config/skills','config/agents','config/harness',...manifest.includesSecrets?['secrets']:[]]
+    const roots=['state','memory','workspaces','attachments','work-logs','config/skills','config/agents','config/harness',...manifest.includesSecrets?['secrets']:[]]
     for(const name of roots){await physicalDirectories(join(paths.data,name));if(await hasData(join(paths.data,name)))throw failure('NIGHT_RESTORE_REQUIRES_EMPTY_DATA')}
     await privateDirectory(stage)
     for(const path of directories){await checkedDirectory(path);await privateDirectory(join(stage,path))}
