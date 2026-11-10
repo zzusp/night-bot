@@ -1,20 +1,18 @@
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
 import {conversationReplyScopeInstructions,conversationSource} from '../channels/message-safety.js'
-import {preflightPiFileMutation,isPiFileObservationalTool} from '../pi-file-tool-registration.js'
+import {preflightPiFileMutation,isPiFileObservationalTool,isPiFileMutationNotStarted} from '../pi-file-tool-registration.js'
 import {isNativeSearchObservationalTool} from '../native-tool-fs-search.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {taskAuditKinds,validateTaskIdentity} from './session-audit.js'
-import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectScopeDigest,validateTaskEffectIntent} from './effect-reconciliation.js'
+import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectScopeDigest,validateTaskEffectIntent,validateTaskEffectResult} from './effect-reconciliation.js'
 const fail=code=>Object.assign(new Error(code),{code})
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
 const taskInputSnapshot=value=>{if(value===undefined)return;const {liveSupplements,...task}=value;return task}
-const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))
-const key=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 export const singleTaskAuditKinds=Object.freeze({...taskAuditKinds,...jobReceiptKinds,...effectReconciliationAuditKinds,
   'task/effect-intent':validateTaskEffectIntent,
-  'task/effect-result':value=>exact(value,['key','isError'])&&key(value.key)&&typeof value.isError==='boolean',
+  'task/effect-result':validateTaskEffectResult,
 })
 const observational=new Set(['read','read_image','read_window','skill','web_search','web_fetch','memory_read','memory_search','memory_status','memory_candidates','job_output','job_list','task_result'])
 const instructions='You are the sole execution session for this task. Directly use the available tools to complete the current authorized objective. There is no task coordinator, delegation or child execution session. Do not create another agent. Write process files and artifacts in work/ under this task workspace; tmp/ is temporary. materials/, outputs/, sessions/, reviews/ and task metadata are Host-owned, not writable. Report work/ artifact paths; the Host freezes selected delivery files into outputs/. Current user requirements and permissions prevail over memory and learned skills. Read current evidence and avoid unnecessary detours. Never replay a recorded invocation. Independent calls may intentionally use identical arguments when the current authorized objective requires repeated actions. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations; use wait with a specific question when required information or authority is missing. Technical failures, runtime configuration, accounts and environment questions go to audience=operator (the default); only a business question for the original requester uses audience=requester. Do not infer a technical answer from a business reply or forward technical details to the conversation. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.'
@@ -36,8 +34,9 @@ function effectState(receipts){
     }else{
       const intent=intents.get(data.key)
       if(!intent||intent.settled)throw fail('TASK_EFFECT_AUDIT_INVALID')
-      // An error does not establish absence of external effects.
-      if(data.isError===false)intent.settled=true
+      // 仅认可受信文件适配器在实际排空后提交的未开始写入证明。
+      if(data.effect==='not-started'&&!['write','edit'].includes(intent.name))throw fail('TASK_EFFECT_AUDIT_INVALID')
+      if(data.isError===false||data.effect==='not-started')intent.settled=true
     }
   }
   return intents
@@ -132,10 +131,11 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           seenInvocations.add(effectKey)
           actor.receipts.append({version:1,domain:'task',kind:'effect-intent',payload:intent});intents.set(effectKey,{...intent,settled:false});await actor.receipts.commit()
           const result=await next()
-          // Even an ordinary body error can follow an external write. Hold it
-          // for reconciliation; neither Pi retry nor a new claim may repeat it.
-          if(exec.signal.aborted||result.isError||isJobOutcomeUncertain(result)||['ABORTED','TOOL_OUTCOME_UNKNOWN'].includes(result.error?.info?.code))throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
-          actor.receipts.append({version:1,domain:'task',kind:'effect-result',payload:{key:effectKey,isError:false}});await actor.receipts.commit();intents.get(effectKey).settled=true
+          if(exec.signal.aborted||isJobOutcomeUncertain(result)||['ABORTED','TOOL_OUTCOME_UNKNOWN'].includes(result.error?.info?.code))throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          const notStarted=result.isError&&isPiFileMutationNotStarted(exec,tools.get(exec.name,actor))
+          // 普通失败仍可能发生在外部写入之后，不能凭文案、返回字段或同名工具放行。
+          if(result.isError&&!notStarted)throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          actor.receipts.append({version:1,domain:'task',kind:'effect-result',payload:{key:effectKey,isError:!!result.isError,...notStarted?{effect:'not-started'}:{}}});await actor.receipts.commit();intents.get(effectKey).settled=true
           return result
         })
         if(input.humanReview)tools.register({name:'task_human_resolve',description:'Record that this review’s real candidate source has answered the pending business question. Read the original question, complete reply, author role and all conditions first. This changes only the reviewed business record; the current run remains read-only and must end with task_result(wait).',parameters:{type:'object',properties:{requestId:{type:'string',minLength:1},sourceId:{type:'string',minLength:1},reason:{type:'string',minLength:1},evidence:{type:'array',minItems:1,items:{type:'string',minLength:1}}},required:['requestId','sourceId','reason','evidence'],additionalProperties:false},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(args){

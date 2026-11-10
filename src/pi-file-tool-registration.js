@@ -27,6 +27,12 @@ export async function preflightPiFileMutation(exec,definition){
  await port.bundle.preflightMutation(port.native,exec.arguments,exec.signal,exec)
 }
 
+/** 仅精确注册且已排空的调用可以证明未开始文件写入。 */
+export function isPiFileMutationNotStarted(exec,definition){
+ const port=definition&&registrations.get(definition)
+ return !!port&&exec.agent===port.actor&&exec.name===definition.name&&port.registry.get(exec.name,exec.agent)===definition&&port.bundle.isMutationNotStarted(port.native,exec)
+}
+
 /** Register Pi implementations inside the existing business tool pipeline.
  * Factory-owned budgets and awaited scope close are mandatory integration
  * capabilities. Registration alone does not claim a complete Host migration.

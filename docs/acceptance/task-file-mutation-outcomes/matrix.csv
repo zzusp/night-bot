@@ -1,0 +1,16 @@
+case_id,scenario,round_1,round_2,round_3,notes
+source-reproduction,只读复现官方多匹配拒绝且写入次数为零,PASS,NOT_RERUN,NOT_RERUN,原任务数据未修改
+exact-file-capability,未开始写入证明绑定精确注册与已排空执行,PASS,PASS,PASS,克隆执行/同名定义/卸载注册均拒绝
+correctable-edit,原始编辑错误回传且唯一上下文修正成功,PASS,PASS,PASS,真实Host与Pi文件能力
+cold-continuation,失败终态跨重启保留且原调用不重放,PASS,PASS,PASS,同一task/session最终completed
+partial-effect,实际写入后丢失响应不得声明未开始,PASS,PASS,PASS,真实PrivateFileSystem写入反例与未知效果回归
+receipt-validation,已结清失败不可重复对账且矛盾结果拒绝,PASS,PASS,PASS,运行时与对账共用校验
+related-regressions,112项直接相关回归,PASS_AFTER_RECHECK,PASS,PASS,111首次通过；1项补用既定Windows期限helper后定点通过
+source-import-guards,pnpm check与diff空白检查,PASS,PASS,PASS,源码哈希/生产导入/原生运行时检查
+runtime-original-run,163项完整runtime原轮结果,FAIL,NOT_RERUN,NOT_RERUN,148通过；3失败；12明确跳过
+runtime-due-report,冷恢复报告原超时,PASS_AFTER_RECHECK,PASS,NOT_RERUN,原失败保留；同实现单项通过；根因未收敛
+runtime-human-baseline,人工待答记录缺失,FAIL_BASELINE,FAIL_BASELINE,FAIL_KNOWN,当前与移除本次四实现增量的对照均同断言失败
+runtime-process-resume,resume子进程原超时,PASS_AFTER_RECHECK,PASS,NOT_RERUN,原失败保留；相同期限单项通过；根因未收敛
+linux-process-privacy,12项需要Linux的进程隔离场景,SKIP,NOT_RUN,NOT_RUN,Windows失败关闭；未以full模式替代
+live-rollout,现有安装升级及原任务继续,NOT_RUN,NOT_RUN,NOT_RUN,未授权部署/重启/外部业务发布；原状态保留
+regression-before-after,相同编辑纠错用例对照原版blocked与新版正常纠错续办,NOT_RUN,PASS,NOT_RERUN,原版在blocked!=wait断言失败；新版完整冷续办路径通过

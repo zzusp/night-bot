@@ -175,6 +175,34 @@ test('single task native searches stay observational while a real write retains 
  assert.equal(await readFile(join(stored.header.cwd,'work/search-proof.txt'),'utf8'),'search-proof')
  if(process.platform==='win32'){assert.match(JSON.stringify(f.requests),/MEMORY_PROCESS_PRIVACY_UNAVAILABLE/);assert.doesNotMatch(JSON.stringify(f.requests),/TASK_EFFECT_UNCERTAIN_NO_REPLAY/)}
 })
+test('a pre-write Pi edit error preserves its original result, accepts a corrected call and stays settled across cold continuation',{timeout:nativeTestTimeout(20000)},async t=>{
+ t=cleanupContext(t);let h,task,step=0;t.after(()=>h?.close())
+ const original='first = str(row[0])\nsecond = str(row[0])\n',corrected='first = str(row[1])\nsecond = str(row[0])\n'
+ const calls=[{tool:'write',args:{path:'work/check.txt',content:original}},{tool:'read',args:{path:'work/check.txt'}},{tool:'edit',args:{path:'work/check.txt',edits:[{oldText:'str(row[0])',newText:'str(row[1])'}]}},{tool:'read',args:{path:'work/check.txt'}},{tool:'edit',args:{path:'work/check.txt',edits:[{oldText:'first = str(row[0])',newText:'first = str(row[1])'}]}},{tool:'task_result',args:{decision:{action:'wait',summary:'Corrected the ambiguous edit; wait for an explicit continuation',evidence:['read back original text and applied a unique edit'],limitations:[]}}},{tool:'read',args:{path:'work/check.txt'}},result]
+ const f=await memoryHost(t,async body=>{
+  if(!requestTools(body).includes('task_result'))return {text:'{"lessons":[]}'}
+  if(step===3){assert.match(JSON.stringify(body),/Found 2 occurrences/);assert.doesNotMatch(JSON.stringify(body),/Error: TASK_EFFECT_UNCERTAIN_NO_REPLAY/);assert.equal(await readFile(join(task.session.workspaceDir,'work/check.txt'),'utf8'),original)}
+  assert.ok(step<calls.length,'the task must finish without replaying an invocation');return calls[step++]
+ })
+ h=await serviceFor(f);task=await h.service.createTask({requestId:'ambiguous-edit',objective:'Correct one specific line, then wait for an explicit continuation'})
+ await h.service.whenIdle();const paused=await h.store.query({kind:'task.get',taskId:task.taskId})
+ assert.equal(paused.lastDecision.action,'wait');assert.deepEqual(paused.lastDecision.limitations,[]);assert.equal(paused.drained,true);assert.equal(step,6)
+ assert.equal(await readFile(join(task.session.workspaceDir,'work/check.txt'),'utf8'),corrected)
+ const before=await f.host.ctx.sessionPersistence.readNative(paused.sessionId,{requireComplete:true}),intent=before.auditEntries.find(row=>row.data.domain==='task'&&row.data.kind==='effect-intent'&&row.data.payload.name==='edit')
+ const failed=before.entries.find(row=>row.type==='message'&&row.message.role==='toolResult'&&row.message.toolCallId===intent.data.payload.callId).message
+ assert.equal(failed.isError,true);assert.match(failed.content[0].text,/Found 2 occurrences/)
+ assert.deepEqual(before.audit.find(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.key===intent.data.payload.key).payload,{key:intent.data.payload.key,isError:true,effect:'not-started'})
+ await assert.rejects(h.service.inspectTaskEffect({taskId:task.taskId,intentEntryId:intent.entryId}),{code:'TASK_EFFECT_ALREADY_SETTLED'})
+ await h.close();await f.close();await f.boot();h=await serviceFor(f,false)
+ await h.service.recover();await h.service.whenIdle();assert.equal(step,6,'cold recovery must not replay a failed edit')
+ await h.store.command({id:'explicit-edit-continuation',kind:'task.wake',args:{taskId:task.taskId,kind:'operator.continue',payload:{requestId:'read-corrected-file'}}});await h.service.recover();await h.service.whenIdle()
+ const done=await h.store.query({kind:'task.get',taskId:task.taskId}),stored=await f.host.ctx.sessionPersistence.readNative(paused.sessionId,{requireComplete:true})
+ assert.equal(done.status,'completed',JSON.stringify(done.lastDecision));assert.equal(done.sessionId,paused.sessionId);assert.equal(done.drained,true);assert.equal(step,8)
+ assert.equal(await readFile(join(task.session.workspaceDir,'work/check.txt'),'utf8'),corrected)
+ assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,3)
+ assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.isError===false).length,2)
+ assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.effect==='not-started').length,1)
+})
 test('Router room unknown effect drains and inspects with distinct conversation and memory groups',async t=>{
  let f,effects=0
  f=await residentRouterHost(t,async body=>{
