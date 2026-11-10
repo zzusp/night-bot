@@ -63,7 +63,7 @@ test('连续工具默认折叠，进行中单列；实时完成合并保留展�
 
 test('job_output 正文始终可见，不入组，不被输入折叠隐藏；刷新不重复输出', async ({ page }) => {
   const job = [call('job'), { ...result('job'), text: '用户可见的作业结果 <script>window.jobOutputExecuted=true</script>' }].map(row => ({ ...row, toolName: 'job_output' }));
-  const items = [...done('a'), ...done('b'), ...job, ...done('c'), ...done('d')];
+  const items = [job[0], ...done('a'), ...done('b'), job[1], ...done('c'), ...done('d')];
   await page.route('**/api/conversations/room-product/tasks/task-research/session?*', route => route.fulfill({ json: { status: 'ready', scope: 'current-context', items, total: items.length, nextOffset: null, revision: 'job-output-revision' } }));
   await page.goto('/#/channels/room-product');
   await page.getByLabel('访问令牌', { exact: true }).fill(FIXTURE_TOKEN);
@@ -77,8 +77,11 @@ test('job_output 正文始终可见，不入组，不被输入折叠隐藏；刷
   const output = history.getByRole('region', { name: 'job_output 输出' });
   await expect(output).toBeVisible();
   await expect(output).toContainText('用户可见的作业结果');
+  await expect(history.locator('.message-column > .message-tool').first()).toContainText('已完成');
+  await expect(history.locator('.message-column > .message-tool').first()).not.toContainText('等待结果');
+  expect(await history.locator('.message-column').evaluate(el => [...el.children].map(child => child.classList.contains('execution-tool-group') ? 'group' : child.querySelector('.execution-job-output') ? 'output' : 'input'))).toEqual(['input', 'group', 'output', 'group']);
   await expect(history.locator('.execution-tool-group .execution-job-output')).toHaveCount(0);
-  await expect(history.locator('.message-column > .message-tool .tool-message')).not.toHaveAttribute('open');
+  await expect(history.locator('.message-column > .message-tool .tool-message').first()).not.toHaveAttribute('open');
   await history.getByText('查看工具输入', { exact: true }).click();
   await expect(output).toBeVisible();
   await history.getByText('查看工具输入', { exact: true }).click();

@@ -1,34 +1,44 @@
 import type { Message } from './api';
 
-export type ToolItem = { kind: 'tool'; id: string; call?: Message; results: Message[] };
+export type ToolItem = { kind: 'tool'; id: string; call?: Message; results: Message[]; resultStatus?: string; inputElsewhere?: boolean };
 export type TranscriptItem = { kind: 'message'; message: Message } | ToolItem;
 export type ExecutionItem = TranscriptItem | { kind: 'tool-group'; id: string; tools: ToolItem[] };
 
 export function toolState(item: ToolItem): string {
   const result = item.results.at(-1);
-  return result ? result.isError ? 'error' : result.status || 'completed' : item.call?.status || 'pending';
+  return item.resultStatus || (result ? result.isError ? 'error' : result.status || 'completed' : item.call?.status || 'pending');
 }
 
-// Pair only within contiguous tool records and the same session/call/name.
-// An intervening conversation message is an ordering boundary, not a place to
-// move a later result backwards across the transcript.
+// Pair only within an uninterrupted segment and the same session/call/name.
+// Conversation messages and every job_output record are hard boundaries.
+// Earlier inputs may learn a later result status, but never consume its body.
 export function transcriptItems(messages: Message[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const calls = new Map<string, ToolItem>();
-  for (const message of messages) {
+  const callSegments = new WeakMap<ToolItem, number>();
+  let segment = 0;
+  for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool') {
-      calls.clear();
+      segment++;
       items.push({ kind: 'message', message });
       continue;
     }
+    if (message.toolName === 'job_output') segment++;
     const key = message.callId ? JSON.stringify([message.source?.sessionId || '', message.callId]) : undefined;
     if (message.kind === 'tool-call') {
       const item: ToolItem = { kind: 'tool', id: message.id, call: message, results: [] };
       items.push(item);
+      callSegments.set(item, segment);
       if (key) calls.set(key, item);
     } else {
       const call = key ? calls.get(key) : undefined;
-      if (call && call.call?.toolName === message.toolName) call.results.push(message);
+      if (call && call.call?.toolName === message.toolName && (message.toolName === 'job_output'
+        ? messages[index - 1] !== call.call : callSegments.get(call) !== segment)) {
+        // Visible output stays at its raw position. Keep only its status on the
+        // earlier input row, so polling neither duplicates text nor says waiting.
+        call.resultStatus = toolState({ kind: 'tool', id: message.id, results: [message] });
+        items.push({ kind: 'tool', id: message.id, results: [message], inputElsewhere: true });
+      } else if (call && call.call?.toolName === message.toolName) call.results.push(message);
       else items.push({ kind: 'tool', id: message.id, results: [message] });
     }
   }

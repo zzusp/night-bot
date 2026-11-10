@@ -50,7 +50,7 @@ export function TaskDetail({ id }: { id: string }) {
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" description="请重新获取，或返回任务列表选择其他任务。" /> : <>
         <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} /></div>
-        <footer className="task-title-dock"><div className="detail-heading"><div><span className="task-title-label">当前任务</span><h2>{task.title || '未命名任务'}</h2></div><Status value={task.state} /></div></footer>
+        <footer className="task-title-dock"><div className="detail-heading"><div><span className="task-title-label">当前任务</span><h2 tabIndex={0}>{task.title || '未命名任务'}</h2></div><Status value={task.state} /></div></footer>
       </>}
     </ConversationFrame>
     <aside className="task-info-rail" aria-label="任务详情">

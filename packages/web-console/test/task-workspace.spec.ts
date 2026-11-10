@@ -113,4 +113,7 @@ test('任务读取失败保留旧快照，撤权后左右内容清除，重试�
   await page.setViewportSize({width: 390, height: 844})
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(await page.locator('.task-title-dock h2').innerText()).toBe('很长的任务标题'.repeat(50))
+  await page.locator('.task-title-dock h2').focus()
+  await page.keyboard.press('End')
+  await expect(page.locator('.task-title-dock h2')).toBeFocused()
 })

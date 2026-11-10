@@ -103,9 +103,10 @@ function ToolActivity({ item, history }: { item: ToolItem; history?: HistoryRead
       <summary>{publicJobOutput ? item.call ? '查看工具输入' : '查看工具记录说明' : item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
       {open && <>
         {item.call ? <section className="tool-part"><h4>输入</h4><MessageBody message={item.call} history={history} plain /></section>
-          : <p className="message-scope">本页不含对应调用输入，仅展示已记录的工具结果。</p>}
+          : <p className="message-scope">{item.inputElsewhere ? '对应调用输入见上方记录。' : '本页不含对应调用输入，仅展示已记录的工具结果。'}</p>}
         {!publicJobOutput && item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
-        {!result && <p className="message-scope">调用已记录，尚无已提交的工具结果；这不表示工具正在执行。</p>}
+        {item.resultStatus && <p className="message-scope">工具已返回，输出按发生顺序展示在下方。</p>}
+        {!result && !item.resultStatus && <p className="message-scope">调用已记录，尚无已提交的工具结果；这不表示工具正在执行。</p>}
       </>}
     </details>{publicJobOutput && item.results.map(output => <section className="execution-job-output" key={output.id} aria-label="job_output 输出">
       <h4>作业输出{output.isError || output.status === 'error' ? ' · 失败' : ''}</h4>
