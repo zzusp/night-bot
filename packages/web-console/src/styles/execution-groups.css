@@ -16,7 +16,7 @@
 .execution-tool-group-items .tool-message > summary { min-height: 32px; align-content: center; }
 
 /* Execution-only reading flow, independently implemented from the reference layout. */
-.execution-transcript { background: var(--board-surface); --execution-mono: "Geist Mono", ui-monospace, Consolas, monospace; }
+.execution-transcript { background: var(--board-panel); --execution-mono: "Geist Mono", ui-monospace, Consolas, monospace; }
 .execution-transcript .message-column { max-width: none; padding: 16px max(7%, calc((100% - 760px) / 2)) 22px; gap: 0; }
 .execution-transcript .message { width: 100%; max-width: 100%; align-self: stretch; }
 .execution-transcript .message > .message-body { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; --board-muted: inherit; }
