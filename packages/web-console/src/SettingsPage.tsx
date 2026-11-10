@@ -4,7 +4,9 @@ import {useResource} from './hooks';
 import {Button, IconButton} from './components/BoardPrimitives';
 import {Loading, Notice} from './components/Shared';
 import {Confirm} from './components/ConfirmDialog';
+import {WorkLogEditor} from './components/WorkLogEditor';
 import {RoleModelEditor} from './components/RoleModelEditor';
+import {ModelCatalogEditor} from './components/ModelCatalogEditor';
 
 const preventCompositionSubmit=(event:KeyboardEvent<HTMLFormElement>)=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()};
 
@@ -49,7 +51,7 @@ export default function SettingsPage(){
    if(event.defaultPrevented||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey||!(event.target instanceof Element))return;
    const anchor=event.target.closest('a[href]');if(!(anchor instanceof HTMLAnchorElement)||anchor.target==='_blank')return;
    const url=new URL(anchor.href);if(url.origin!==location.origin||url.pathname!==location.pathname||url.hash===location.hash)return;
-   event.preventDefault();event.stopPropagation();if(busyRoles)setNavigationNotice('模型配置正在保存，请等待结果后再离开。');else setLeave(url.hash);
+   event.preventDefault();event.stopPropagation();if(busyRoles)setNavigationNotice('设置正在保存，请等待结果后再离开。');else setLeave(url.hash);
   };
   window.addEventListener('beforeunload',unload);document.addEventListener('click',navigation,true);
   return()=>{window.removeEventListener('beforeunload',unload);document.removeEventListener('click',navigation,true)};
@@ -57,6 +59,6 @@ export default function SettingsPage(){
  useEffect(()=>{const refresh=()=>query.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[query.refresh]);
  const [refreshKey,setRefreshKey]=useState(0);const reload=()=>{setRefreshKey(value=>value+1);query.refresh()};
 
- return <div className="page-content settings-page">{query.error&&<Notice error={query.error} onRetry={busyRoles?undefined:reload}/>}{query.loading&&!query.data?<Loading/>:query.data?<><Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/><div className="settings-grid">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading}/>)}</div><div className="settings-grid"><SecretEditor key={`model-${refreshKey}-${query.data.version}`} kind="model" state={query.data.secrets.model} version={query.data.version} onSaved={query.refresh}/><SecretEditor key={`github-${refreshKey}-${query.data.version}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh}/></div></>:null}<p role="status">{navigationNotice}</p>{leave&&<Confirm title="离开设置" actionLabel="放弃草稿并离开" onClose={()=>setLeave(null)} onConfirm={()=>{location.hash=leave}}><p>角色模型还有未保存的修改，离开会丢弃这些草稿。</p></Confirm>}</div>;
+ return <div className="page-content settings-page">{query.error&&<Notice error={query.error} onRetry={busyRoles?undefined:reload}/>}{query.loading&&!query.data?<Loading/>:query.data?<><Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>{query.data.workLog&&<WorkLogEditor key={`work-log-${refreshKey}`} state={query.data.workLog} version={query.data.version} onSaved={query.refresh} onReload={reload} reloading={query.loading} onStateChange={onRoleState}/>}<ModelCatalogEditor key={`catalog-${refreshKey}`} settingsVersion={query.data.version} onSaved={query.refresh} onStateChange={onRoleState}/><div className="settings-grid">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading}/>)}</div><div className="settings-grid"><SecretEditor key={`model-${refreshKey}-${query.data.version}`} kind="model" state={query.data.secrets.model} version={query.data.version} onSaved={query.refresh}/><SecretEditor key={`github-${refreshKey}-${query.data.version}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh}/></div></>:null}<p role="status">{navigationNotice}</p>{leave&&<Confirm title="离开设置" actionLabel="放弃草稿并离开" onClose={()=>setLeave(null)} onConfirm={()=>{location.hash=leave}}><p>设置还有未保存的修改，离开会丢弃这些草稿。</p></Confirm>}</div>;
 
 }

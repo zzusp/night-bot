@@ -42,6 +42,16 @@ function Usage({item}: {item: EvolutionItem}) {
   return <dl className="evolution-use-counts">{counts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value == null ? <abbr title="未记录">—</abbr> : formatEvolutionCount(value)}</dd></div>)}</dl>;
 }
 
+/** Sum only the entry's observed events. Missing values never become zero. */
+function UsageTotal({item, partial}: {item: EvolutionItem; partial: boolean}) {
+  const counts = usageCounts(item);
+  const known = counts?.map(([, value]) => value).filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) ?? [];
+  const total = known.reduce((sum, value) => sum + value, 0);
+  const recorded = known.length > 0 && Number.isSafeInteger(total);
+  const incomplete = partial || known.length > 0 && known.length !== counts?.length;
+  return <><span>{recorded ? `${incomplete ? '至少 ' : ''}${formatEvolutionCount(total)}` : '未记录'}</span>{incomplete && <span className="evolution-count-status">记录不完整</span>}</>;
+}
+
 /** Source and audit metadata stay available without crowding the browsing list. */
 export function EvolutionEntryMetadata({item}: {item: EvolutionItem}) {
   const usedAt = lastUsedAt(item);
@@ -56,11 +66,11 @@ export function EvolutionEntryMetadata({item}: {item: EvolutionItem}) {
 }
 
 /** Metadata only. The name is the explicit, version-bound content read action. */
-export default function EvolutionEntryList({items, onView}: {items: EvolutionItem[]; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
+export default function EvolutionEntryList({items, partialUsage = false, onView}: {items: EvolutionItem[]; partialUsage?: boolean; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
   return <div className="evolution-table-wrap"><table className="evolution-table">
-    <caption className="sr-only">Bot 公共记忆与技能。点击名称查看内容、来源与使用记录。</caption>
-    <colgroup><col className="evolution-col-entry"/><col className="evolution-col-last-used"/><col className="evolution-col-updated"/></colgroup>
-    <thead><tr><th scope="col">名称</th><th scope="col">最近使用</th><th scope="col">最近更新</th></tr></thead>
+    <caption className="sr-only">Bot 公共记忆与技能。使用次数为保留记录中读取返回与搜索命中，或模型调用、用户引用与文件读取的合计，不代表全生命周期累计。点击名称查看内容、来源与使用明细。</caption>
+    <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-last-used"/><col className="evolution-col-updated"/></colgroup>
+    <thead><tr><th scope="col">名称</th><th scope="col">使用次数</th><th scope="col">最近使用</th><th scope="col">最近更新</th></tr></thead>
     <tbody>{items.map(item => <tr key={`${item.kind}:${item.id}`}>
       <td className="evolution-entry-cell"><Button variant="ghost" className="evolution-entry-open" aria-label={`查看内容：${item.name || '未命名记录'}${item.status !== 'applied' && statuses[item.status] ? `，${statuses[item.status]}` : ''}${item.updatedSinceUse ? '，载入版本与当前不同' : ''}`} onClick={event => onView(item, event.currentTarget)}>
         <span className="evolution-item-icon" aria-hidden="true">{item.kind === 'memory' ? <RiBrainLine size={18}/> : <RiBookOpenLine size={18}/>}</span>
@@ -69,6 +79,7 @@ export default function EvolutionEntryList({items, onView}: {items: EvolutionIte
           {item.updatedSinceUse && <span className="evolution-update-hint">载入版本与当前不同</span>}
         </span><RiArrowRightSLine className="evolution-item-arrow" size={17} aria-hidden="true"/>
       </Button></td>
+      <td className="evolution-usage-cell"><span className="evolution-time-label">使用次数</span><UsageTotal item={item} partial={partialUsage}/></td>
       <td className="evolution-last-used-cell"><span className="evolution-time-label">最近使用</span><LastUsedTime item={item}/></td>
       <td className="evolution-updated-cell"><span className="evolution-time-label">最近更新</span><time dateTime={item.updatedAt || undefined}>{dateTime(item.updatedAt || undefined)}</time></td>
     </tr>)}</tbody>

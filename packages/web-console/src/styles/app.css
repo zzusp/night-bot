@@ -158,8 +158,6 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-body { margin-left: 35px; min-width: 0; }
 .markdown { font-size: 13px; line-height: 1.9; overflow-wrap: anywhere; }.markdown p { margin: 0 0 10px; }.markdown p:last-child { margin-bottom: 0; }.markdown h1,.markdown h2,.markdown h3 { font-size: 17px; font-weight: 600; margin: 16px 0 8px; }.markdown ul,.markdown ol { padding-left: 22px; }.markdown pre { background: var(--board-surface); border: 1px solid var(--board-border-strong); border-radius: 10px; overflow: auto; padding: 14px; margin: 14px 0; }.markdown code { font-family: var(--board-mono); font-size: .9em; background: var(--board-hover); border-radius: 4px; padding: 2px 4px; }.markdown pre code { background: none; padding: 0; }.markdown blockquote { border-left: 3px solid var(--board-border-strong); color: var(--board-muted); margin-left: 0; padding-left: 16px; }.markdown table { display: block; max-width: 100%; overflow: auto; border-collapse: collapse; }.markdown th,.markdown td { border: 1px solid var(--board-border-strong); padding: 7px 10px; }.markdown a { text-decoration: underline; text-underline-offset: 3px; }.markdown input { pointer-events: none; }
 .copy-action { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(--board-muted); font-size: 10px; }.copy-action .board-icon-button { width: 26px; height: 26px; min-height: 26px; }
-.message-links { margin: var(--board-gap) 0 0 35px; display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
-.message-links a { text-decoration: underline; overflow-wrap: anywhere; display: inline-flex; align-items: center; min-width: 24px; min-height: var(--board-control-height); padding: 4px 0; }
 .jump-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); box-shadow: var(--board-shadow-sidebar); z-index: 2; }
 .thinking { display: flex; align-items: center; gap: 9px; color: var(--board-muted); font-size: 12px; padding: 0 4px; }.thinking-dots { display: flex; gap: 3px; }.thinking-dots i { width: 4px; height: 4px; background: var(--board-subtle); border-radius: 50%; animation: thinking 1.4s infinite; }.thinking-dots i:nth-child(2){animation-delay:.2s}.thinking-dots i:nth-child(3){animation-delay:.4s}@keyframes thinking { 0%,80%,100%{opacity:.35}40%{opacity:1} }
 .notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; border: 1px solid var(--board-border-strong); background: var(--board-warning-soft); color: var(--board-warning); font-size: 12px; border-radius: 10px; margin: 12px; }.notice>span { overflow-wrap: anywhere; }.notice .board-button { flex-shrink: 0; }
@@ -304,6 +302,18 @@ html, body, #root { width: 100%; min-width: 0; }
 .settings-card input:focus-visible,.settings-card select:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
 .settings-card label { margin-top: 6px; font-weight: 500; }
 .settings-card li { margin: 10px 0; overflow-wrap: anywhere; }
+.model-catalog-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-top: 16px; }
+.model-catalog-toolbar > div { flex: 1; min-width: 0; }
+.model-catalog-toolbar label,.model-catalog > label { display: block; margin-bottom: 8px; }
+.model-catalog-list { list-style: none; margin: 16px 0 0; padding: 0; }
+.model-catalog-list > li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--board-border); }
+.model-catalog-list > li > div:first-child { min-width: 0; flex: 1; }
+.model-catalog-id { display: block; margin-top: 4px; color: var(--board-muted); font-family: var(--board-mono); font-size: 12px; overflow-wrap: anywhere; }
+.model-catalog-form { margin-top: 18px; padding: 16px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); background: var(--board-panel); }
+.model-catalog-form h3 { font-size: 14px; font-weight: 600; }
+.model-catalog-form input[readonly] { color: var(--board-muted); }
+.model-catalog .inline-actions { flex-wrap: wrap; }
+@media (max-width: 520px) { .model-catalog-toolbar,.model-catalog-list > li { align-items: stretch; flex-direction: column; }.model-catalog-form { padding: 12px; }.model-catalog .pagination { gap: 10px; } }
 .settings-secret { display: flex; align-items: center; gap: 8px; }
 .settings-secret input { flex: 1; }
 .settings-secret .board-icon-button { width: auto; padding: 0 8px; }
