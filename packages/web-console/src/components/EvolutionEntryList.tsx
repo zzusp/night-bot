@@ -1,7 +1,7 @@
 import {RiArrowRightSLine, RiBookOpenLine, RiBrainLine} from '@remixicon/react';
 import type {EvolutionItem, MemoryProvenance} from '../api';
 import {dateTime} from '../hooks';
-import {Badge, Button} from './BoardPrimitives';
+import {Button} from './BoardPrimitives';
 
 export const formatEvolutionCount = (value: number | null | undefined) => value == null ? '未记录' : new Intl.NumberFormat('zh-CN').format(value);
 const scopeLabels = {bot: 'Bot 公共', personal: '个人', group: '群组', project: '项目'};
@@ -19,36 +19,47 @@ function EntrySource({item}: {item: EvolutionItem}) {
   return <>{item.taskIds?.length ? item.taskIds.map(id => <a className="text-link" key={id} href={`#/tasks/${encodeURIComponent(id)}`}>任务 {id}</a>) : '复盘来源未知'}</>;
 }
 
-function Usage({item}: {item: EvolutionItem}) {
-  const counts = item.kind === 'skill'
+function usageCounts(item: EvolutionItem) {
+  return item.kind === 'skill'
     ? [['模型调用', item.modelUseCount], ['用户引用', item.userUseCount], ['文件读取', item.fileReadCount]] as const
     : item.memoryUse ? [['读取返回', item.memoryUse.readCount], ['搜索命中', item.memoryUse.searchCount]] as const : null;
-  if (!counts) return <span className="evolution-usage-empty">使用历史未记录</span>;
-  const lastUsedAt = item.kind === 'skill' ? item.lastUsedAt : item.memoryUse?.lastAccess?.at;
-  return <div className="evolution-usage">
-    <dl className="evolution-use-counts">{counts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{formatEvolutionCount(value)}</dd></div>)}</dl>
-    <span className="evolution-used-at">{lastUsedAt ? <>最近{item.kind === 'skill' ? '使用' : '返回'} <time dateTime={lastUsedAt}>{dateTime(lastUsedAt)}</time></> : '最近使用未记录'}</span>
-    {item.kind === 'memory' && item.memoryUse?.lastAccess && <EvolutionSource value={item.memoryUse.lastAccess.provenance}/>}
-  </div>;
 }
 
-/** Metadata only. Content reads remain an explicit, version-bound action. */
+function Usage({item}: {item: EvolutionItem}) {
+  const counts = usageCounts(item);
+  if (!counts || counts.every(([, value]) => value == null)) return <span className="evolution-usage-empty">未记录</span>;
+  return <dl className="evolution-use-counts">{counts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value == null ? <abbr title="未记录">—</abbr> : formatEvolutionCount(value)}</dd></div>)}</dl>;
+}
+
+/** Source and audit metadata stay available without crowding the browsing list. */
+export function EvolutionEntryMetadata({item}: {item: EvolutionItem}) {
+  const lastUsedAt = item.kind === 'skill' ? item.lastUsedAt : item.memoryUse?.lastAccess?.at;
+  return <details className="evolution-entry-details"><summary>来源与使用记录</summary><div className="evolution-entry-details-body">
+    <dl className="evolution-entry-properties"><div><dt>类型</dt><dd>{item.kind === 'memory' ? '记忆' : item.origin === 'installed' ? '目录技能' : '学习技能'}</dd></div><div><dt>状态</dt><dd>{statuses[item.status]}</dd></div><div><dt>作用域</dt><dd>{scopeLabels[item.scope]}</dd></div><div><dt>版本</dt><dd className="evolution-entry-version">{String(item.revision)}</dd></div></dl>
+    <div className="evolution-entry-source"><EntrySource item={item}/></div>
+    <Usage item={item}/>
+    <p className="evolution-used-at">{lastUsedAt ? <>最近{item.kind === 'skill' ? '使用' : '返回'} <time dateTime={lastUsedAt}>{dateTime(lastUsedAt)}</time></> : '最近使用未记录'}</p>
+    {item.kind === 'memory' && item.memoryUse?.lastAccess && <EvolutionSource value={item.memoryUse.lastAccess.provenance}/>}
+    {item.updatedSinceUse && <p className="evolution-update-hint">载入版本与当前不同</p>}
+  </div></details>;
+}
+
+/** Metadata only. The name is the explicit, version-bound content read action. */
 export default function EvolutionEntryList({items, onView}: {items: EvolutionItem[]; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
   return <div className="evolution-table-wrap"><table className="evolution-table">
-    <caption className="sr-only">Bot 公共记忆、技能使用、来源与当前更新</caption>
-    <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-updated"/><col className="evolution-col-action"/></colgroup>
-    <thead><tr><th scope="col">条目</th><th scope="col">使用情况</th><th scope="col">最近更新</th><th scope="col"><span className="sr-only">操作</span></th></tr></thead>
+    <caption className="sr-only">Bot 公共记忆与技能。点击名称查看内容、来源与使用记录。</caption>
+    <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-updated"/></colgroup>
+    <thead><tr><th scope="col">名称</th><th scope="col">使用记录</th><th scope="col">最近更新</th></tr></thead>
     <tbody>{items.map(item => <tr key={`${item.kind}:${item.id}`}>
-      <td className="evolution-entry-cell"><div className="evolution-item">
-        <span className="evolution-item-icon" aria-hidden="true">{item.kind === 'memory' ? <RiBrainLine size={19}/> : <RiBookOpenLine size={19}/>}</span>
-        <div className="evolution-item-copy"><div className="evolution-item-title"><strong>{item.name || '未命名记录'}</strong><Badge tone={item.status === 'applied' ? 'success' : 'warning'}>{statuses[item.status]}</Badge></div>
-          <div className="evolution-item-meta"><span>{item.kind === 'memory' ? '记忆' : item.origin === 'installed' ? '目录技能' : '学习技能'}</span><span>{scopeLabels[item.scope]}</span><details className="evolution-entry-details"><summary>来源与版本</summary><div className="evolution-entry-details-body"><div className="evolution-entry-version">版本 <span>{String(item.revision)}</span></div><EntrySource item={item}/></div></details></div>
+      <td className="evolution-entry-cell"><Button variant="ghost" className="evolution-entry-open" aria-label={`查看内容：${item.name || '未命名记录'}`} onClick={event => onView(item, event.currentTarget)}>
+        <span className="evolution-item-icon" aria-hidden="true">{item.kind === 'memory' ? <RiBrainLine size={18}/> : <RiBookOpenLine size={18}/>}</span>
+        <span className="evolution-item-copy"><span className="evolution-item-title">{item.name || '未命名记录'}</span><span className="sr-only">{item.kind === 'memory' ? '记忆' : '技能'} · {scopeLabels[item.scope]}</span>
+          {item.status === 'applied' ? <span className="sr-only">已应用</span> : <span className="evolution-item-status">{statuses[item.status]}</span>}
           {item.updatedSinceUse && <span className="evolution-update-hint">载入版本与当前不同</span>}
-        </div>
-      </div></td>
+        </span><RiArrowRightSLine className="evolution-item-arrow" size={17} aria-hidden="true"/>
+      </Button></td>
       <td className="evolution-usage-cell"><Usage item={item}/></td>
-      <td className="evolution-updated-cell"><span className="evolution-mobile-label">更新于 </span><time dateTime={item.updatedAt || undefined}>{dateTime(item.updatedAt || undefined)}</time></td>
-      <td className="evolution-action-cell"><Button variant="ghost" className="evolution-view-action" aria-label={`查看内容：${item.name || '未命名记录'}`} onClick={event => onView(item, event.currentTarget)}>查看内容<RiArrowRightSLine size={17} aria-hidden="true"/></Button></td>
+      <td className="evolution-updated-cell"><time dateTime={item.updatedAt || undefined}>{dateTime(item.updatedAt || undefined)}</time></td>
     </tr>)}</tbody>
   </table></div>;
 }

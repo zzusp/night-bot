@@ -27,11 +27,13 @@ for (const theme of ['light', 'dark']) for (const width of [1440, 2048, 390]) {
     if (theme === 'dark') await page.getByRole('button', {name: '切换深色外观', exact: true}).click();
     await page.emulateMedia({reducedMotion: 'reduce'});
     const first = page.locator('.evolution-table tbody tr').first();
-    await expect(first.locator('.evolution-entry-details')).not.toHaveAttribute('open', '');
+    await expect(page.locator('.evolution-table details')).toHaveCount(0);
+    await expect(page.locator('.evolution-table .board-badge')).toHaveCount(0);
     const title = await first.locator('.evolution-item-title').boundingBox();
     const action = await first.getByRole('button', {name: '查看内容：review-code'}).boundingBox();
-    expect(action!.x).toBeGreaterThan(title!.x);
-    if (width > 760) expect((await first.boundingBox())!.height).toBeLessThanOrEqual(104);
+    expect(title!.x).toBeGreaterThan(action!.x);
+    expect(action!.height).toBeGreaterThanOrEqual(34);
+    if (width > 760) expect((await first.boundingBox())!.height).toBeLessThanOrEqual(58);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator('.evolution-table-wrap').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     expect((await new AxeBuilder({page}).include('.evolution-library').analyze()).violations).toEqual([]);
@@ -40,7 +42,7 @@ for (const theme of ['light', 'dark']) for (const width of [1440, 2048, 390]) {
   });
 }
 
-test('来源版本可键盘展开，内容不预读，返回保留焦点', async ({page}) => {
+test('名称显式读取，详情保留来源与版本，返回恢复焦点', async ({page}) => {
   let reads = 0;
   await page.route('**/api/evolution/items/**', route => {
     reads++;
@@ -48,25 +50,25 @@ test('来源版本可键盘展开，内容不预读，返回保留焦点', async
   });
   await open(page);
   expect(reads).toBe(0);
-  const row = page.locator('.evolution-table tbody tr').first();
-  await row.locator('.evolution-entry-details > summary').focus();
-  await page.keyboard.press('Enter');
-  await expect(row.locator('.evolution-location')).toBeVisible();
-  await expect(row).toContainText(items[0].revision);
-  await page.keyboard.press('Enter');
-  await expect(row.locator('.evolution-location')).not.toBeVisible();
-  expect(reads).toBe(0);
-  const action = row.getByRole('button', {name: '查看内容：review-code', exact: true});
+  const action = page.getByRole('button', {name: '查看内容：review-code', exact: true});
   await action.focus(); await page.keyboard.press('Enter');
-  await expect(page.locator('.evolution-plain-text')).toContainText('合成内容');
+  const content = page.locator('.evolution-content');
+  await expect(content.locator('.evolution-plain-text')).toContainText('合成内容');
   expect(reads).toBe(1);
+  const details = content.locator('.evolution-entry-details');
+  await expect(details).not.toHaveAttribute('open', '');
+  await details.locator(':scope > summary').focus(); await page.keyboard.press('Enter');
+  await expect(details.locator('.evolution-location')).toBeVisible();
+  await expect(details).toContainText(items[0].revision);
+  await expect(details).toContainText('Bot 公共');
   await page.getByRole('button', {name: '返回列表', exact: true}).click();
   await expect(action).toBeFocused();
   await page.setViewportSize({width: 390, height: 844});
-  const memory = page.locator('.evolution-table tbody tr').nth(3);
-  await memory.locator('.evolution-entry-details > summary').click();
-  await memory.locator('.evolution-entry-details .evolution-source > summary').click();
-  await expect(memory).toContainText('fixture-channel');
-  await expect(memory).toContainText('fixture-room');
+  await page.getByRole('button', {name: `查看内容：${items[3].name}`, exact: true}).click();
+  await content.locator('.evolution-entry-details > summary').click();
+  await content.locator('.evolution-entry-details .evolution-source > summary').click();
+  await expect(content).toContainText('fixture-channel');
+  await expect(content).toContainText('fixture-room');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({page}).include('.evolution-content').analyze()).violations).toEqual([]);
 });

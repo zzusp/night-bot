@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, type EvolutionBody, type EvolutionItem } from './api';
 import { dateTime, useResource } from './hooks';
 import { Badge, Button, EmptyState } from './components/BoardPrimitives';
+import {EvolutionEntryMetadata} from './components/EvolutionEntryList';
 import { Loading, Notice } from './components/Shared';
 
 /** Explicit, version-bound read. Never persist content or render it as markup. */
@@ -21,6 +22,7 @@ export default function EvolutionContent({ item, onClose, onRefreshList }: {
       <div><h3 id="evolution-content-title" ref={heading} tabIndex={-1}>{item.name || '未命名记录'}</h3><p className="muted">只读内容 · 仅比较最新内容与上次保留的内容</p></div>
       <div className="evolution-content-actions"><Button busy={query.loading} onClick={query.refresh}>刷新内容</Button><Button onClick={onClose}>返回列表</Button></div>
     </header>
+    <EvolutionEntryMetadata item={item}/>
     <div className="evolution-content-switch" role="group" aria-label="内容视图">
       <Button variant={view === 'current' ? 'primary' : 'secondary'} aria-pressed={view === 'current'} onClick={() => setView('current')}>当前内容</Button>
       <Button variant={view === 'changes' ? 'primary' : 'secondary'} aria-pressed={view === 'changes'} onClick={() => setView('changes')}>最近差异</Button>
