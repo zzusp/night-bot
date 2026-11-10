@@ -1,0 +1,57 @@
+? Verifying lockfile against supply-chain policies (156 entries)...
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +132
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Packages are cloned from the content-addressable store to the virtual store.
+  Content-addressable store is at: /Users/sunpeng/Library/pnpm/store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 132, reused 6, downloaded 0, added 6
+Progress: resolved 132, reused 6, downloaded 4, added 10
+Progress: resolved 132, reused 6, downloaded 34, added 40
+[WARN] Tarball download average speed 21 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/unified/-/unified-11.0.5.tgz (GET)
+Progress: resolved 132, reused 6, downloaded 67, added 73
+[WARN] Tarball download average speed 13 KiB/s (size 31 KiB) is below 50 KiB/s: https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz (GET)
+Progress: resolved 132, reused 6, downloaded 110, added 115
+Progress: resolved 132, reused 6, downloaded 122, added 128
+Progress: resolved 132, reused 6, downloaded 124, added 130
+Progress: resolved 132, reused 6, downloaded 125, added 130
+Progress: resolved 132, reused 6, downloaded 125, added 131
+[WARN] Request took 12500ms: https://registry.npmjs.org/scheduler
+Progress: resolved 132, reused 6, downloaded 126, added 131
+Progress: resolved 132, reused 6, downloaded 126, added 132, done
+[WARN] Request took 13717ms: https://registry.npmjs.org/react
+[WARN] Request took 15522ms: https://registry.npmjs.org/react-dom
+✓ Lockfile passes supply-chain policies (156 entries in 23.6s)
+
+dependencies:
++ @remixicon/react 4.9.0
++ react 19.2.4
++ react-dom 19.2.4
++ react-markdown 10.1.0
++ remark-gfm 4.0.1
+
+devDependencies:
++ @axe-core/playwright 4.14.0
++ @playwright/test 1.65.0
++ @types/node 24.19.2
++ @types/react 19.3.0
++ @types/react-dom 19.3.0
++ @vitejs/plugin-react 6.2.1
++ typescript 5.9.3
++ vite 8.3.6
+
+Done in 24.8s using pnpm v11.25.0
+$ tsc --noEmit && vite build
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 285 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.50 kB │ gzip:   0.30 kB
+dist/assets/index-CvOrE-W7.css   58.97 kB │ gzip:  10.93 kB
+dist/assets/index-DBFAw8Ym.js   496.65 kB │ gzip: 151.10 kB
+
+✓ built in 1.89s
+
+[exited with code 0]

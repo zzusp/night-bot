@@ -1,0 +1,32 @@
+$ node scripts/test-pi.mjs containment
+﹣ actual full-access model shell cannot read another principal raw Markdown or original state (1.371875ms) # SKIP
+﹣ portable workspace-write shell confines business writes to its installation workspace (0.177247ms) # SKIP
+﹣ portable danger-full-access shell confines business writes to its installation workspace (0.155487ms) # SKIP
+﹣ portable read-only shell confines business writes to its installation workspace (0.165672ms) # SKIP
+﹣ portable model processes cannot read the vault or inherit provider/environment credential values (0.149705ms) # SKIP
+﹣ portable capped grep exposes only its own durable spill and read recovers the omitted tail (0.164715ms) # SKIP
+﹣ task archive fences absolute writes, symlink escapes and private journals in an actual model shell; task temporary files stay local (0.178014ms) # SKIP
+﹣ a real task-scoped capped grep stores and recovers its complete output within that task archive (0.178879ms) # SKIP
+﹣ native kernel sandbox enforces read-only within and outside workspace (1.113465ms) # SKIP
+﹣ native kernel sandbox enforces workspace-write within and outside workspace (0.193522ms) # SKIP
+﹣ actual Pi bash uses owned execution facts and strips ambient namespaces: portable=false (1.468967ms) # SKIP
+﹣ actual Pi bash uses owned execution facts and strips ambient namespaces: portable=true (0.19826ms) # SKIP
+﹣ actual Pi native confined bash retains one managed effect through explicit background and job collection (1.43864ms) # SKIP
+﹣ actual Pi native confined bash retains one managed effect through timeout promotion and job collection (0.213483ms) # SKIP
+✔ official SDK codemode persists parent signatures and bounded nested evidence without fabricating child assistant calls (328.26715ms)
+✔ official nested journal omits 9000-byte arguments and marks the evidence incomplete (161.359493ms)
+✔ official codemode validates exact union arguments before pure host calls and exposes no Node globals (159.657434ms)
+✔ official extension abort and idle are not host-tool join or complete nested evidence (100.390292ms)
+night-bot: disabling profile plugin file:///private/var/folders/_w/3ntnsmgd2wl7nqlp569rw50c0000gn/T/night-memory-wire-YvwDem/retired-plugin/index.js: Plugin @deepseek-ai/dsh-ptc-runtime-node declares unsupported DSH peers {"@deepseek-ai/dsh-ptc-runtime-node":"unsupported package"}. Night Bot uses Pi and does not implement the DSH plugin ABI.
+✔ actual default Host keeps codemode and run_code off and refuses the retired DSH Node plugin before evaluation (1740.601318ms)
+﹣ Single cold continuation keeps official FS and an actually started kernel process within work and tmp (1.107051ms) # SKIP
+﹣ Single readonly permission survives cold restore and a real child reads evidence but cannot write work tmp or Host roots (0.149797ms) # SKIP
+﹣ Single explicit reopen retains evidence and kernel boundary; own portable archive restores held without replay (0.162177ms) # SKIP
+ℹ tests 22
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 17
+ℹ todo 0
+ℹ duration_ms 13977.715427

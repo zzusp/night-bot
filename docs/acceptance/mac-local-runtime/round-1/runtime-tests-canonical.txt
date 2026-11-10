@@ -1,0 +1,414 @@
+$ node scripts/test-pi.mjs runtime
+✔ resident Router agent-platform query replies through the real outbound ledger without an active Topic (3420.700463ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":8,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3323,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":87,"aborted":false}
+✔ resident Router out-of-scope query replies through the real outbound ledger without an active Topic (2528.52419ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2470,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":57,"aborted":false}
+✔ restart resumes a frozen fixed reply before notification prepare without regenerating it: legacy=false (1100.9791ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":52,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1008,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":40,"aborted":false}
+✔ restart resumes a frozen fixed reply before notification prepare without regenerating it: legacy=true (1107.084173ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":44,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1013,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":50,"aborted":false}
+✔ native platform tools coexist with preset tools and full access stays session-local (1695.449273ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1653,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":41,"aborted":false}
+✔ rc2 native schedule tool remains visible and reports its delegated-session boundary truthfully (866.417176ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":811,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":55,"aborted":false}
+✔ Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: before-due (2445.894855ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2392,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":51,"aborted":false}
+✔ Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: late-bridge (2469.429763ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2415,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":53,"aborted":false}
+✔ Host native one-shot survives restart, retains child identity, queries fresh facts and delivers once: superseded (2325.060135ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2273,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":51,"aborted":false}
+✔ native due all report shares final delivery and recovers attachments after cold restart (14343.460757ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":14206,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":135,"aborted":false}
+✔ native due members report shares final delivery and recovers attachments after cold restart (14252.830504ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":3,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":14113,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":137,"aborted":false}
+✔ Host refuses an expired instant without scheduling tomorrow, while native source binding stays trusted (2336.096653ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2111,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":224,"aborted":false}
+✔ official retry retains the completed effect and original task journal: restart=false (14022.223701ms)
+✔ official retry retains the completed effect and original task journal: restart=true (11541.060756ms)
+✔ one nonretryable provider failure does not block an unrelated task; removed split backends reject explicitly (14198.689689ms)
+✔ SDK budget exhaustion stays technical across cold restart; only real new input reopens the Single run: restored=false (8734.197439ms)
+✔ SDK budget exhaustion stays technical across cold restart; only real new input reopens the Single run: restored=true (6533.579077ms)
+✔ authenticated human answer survives official retry and is read before the original task resumes (5106.545572ms)
+✔ anonymous field error is retained byte-for-byte by Pi and retries without asking a business question or replaying effects (3193.606439ms)
+✔ requirement supplement during SDK retry replaces the stale binding before another provider dispatch (4707.132735ms)
+✔ three explicit bounded reviews survive restart without autonomous retries or effect replay (13743.616669ms)
+✔ lifecycle timeout drains an acquired native host before removing its workspace (525.419852ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":410,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":21,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":94,"aborted":false}
+✔ unified lifecycle construction cancellation closes the late real service before deleting its root (386.686898ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":340,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":46,"aborted":false}
+✔ cancelling an actual SDK retry joins the delay and never dispatches another provider attempt (3496.514076ms)
+✔ actual Single service rejects removed backend before task storage or model admission: claude-code (278.633167ms)
+✔ actual Single service rejects removed backend before task storage or model admission: dsh (298.470588ms)
+✔ explicit Pi backend accepts derived legacy read-only labels without selecting a split executor (382.866728ms)
+✔ failed task dialogue preserves its real source and never becomes a model retry or fabricated reply: provider-error (5362.56609ms)
+✔ failed task dialogue preserves its real source and never becomes a model retry or fabricated reply: successful-text-without-task-result (5385.541413ms)
+✔ provider failure during actual group human review retains the source batch, holds across time and cold restore, then admits a new real answer (14041.11474ms)
+✔ strict read-only native observation cannot acquire a cold task writer and the Host resumes its next lease (2443.620007ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":886,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1495,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":61,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：none (14451.669216ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1039,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":13157,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":254,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：empty (17186.980537ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":366,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":16546,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":275,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：invalid-source (11077.851021ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":352,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":10431,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":295,"aborted":false}
+✔ 群业务成员完整答复经只读复核解除，发起人无关消息不解除且不空转：topic (14424.945678ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":408,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":13592,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":425,"aborted":false}
+✔ 待实施批准期间事实追问保留来源并明确通知，内部证据不外发且不绕过原问题 (12572.819289ms)
+✔ 积压的两条事实追问均送达且无关来源不空转：同一唤醒=true (11056.551561ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":388,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":10359,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":309,"aborted":false}
+✔ 积压的两条事实追问均送达且无关来源不空转：同一唤醒=false (10871.488129ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":393,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":10243,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":236,"aborted":false}
+✔ operator technical reply retains original business scope in one official session; retired correction=false (6162.610253ms)
+✔ operator technical reply retains original business scope in one official session; retired correction=true (6654.724743ms)
+✔ 技术申请进入Web和登录人私聊，精确引用及真实作者恢复原任务，零技术群询问 (6875.766014ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6433,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":440,"aborted":false}
+✔ 人工外发问题入账前拒绝真实任务运行标识，内部证据与业务链接保留 (3377.16321ms)
+✔ native human request waits without repeat wakes; authenticated HTTP reply resumes the original session from actual source text (4835.981348ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":362,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4169,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":304,"aborted":false}
+✔ an original official task tool result cannot bypass human waiting and survives same-session reply (5792.306696ms)
+✔ a native blocked decision without a human question is corrected into an explicit durable request (2877.632592ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":355,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2183,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":339,"aborted":false}
+✔ original-group human input preserves clarification and fences explicit authorization changes: changed=false (10051.868186ms)
+✔ original-group human input preserves clarification and fences explicit authorization changes: changed=true (7657.94406ms)
+✔ Web answer recalls its delivered operator notification once without recalling group replies (6233.359964ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":361,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5482,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":389,"aborted":false}
+✔ anonymous missing-original-file wait preserves completed authorized progress, inspection and same-session recovery (11175.574527ms)
+✔ Web human wait without a real group source preserves the question without group or operator delivery: direct=false (4472.333863ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":325,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3939,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":208,"aborted":false}
+✔ Web human wait without a real group source preserves the question without group or operator delivery: direct=true (4791.653478ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":434,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4155,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":203,"aborted":false}
+✔ historical job text is read as data and never launches or settles a native job (3986.293723ms)
+﹣ serial native results stay in one task journal; explicit stage and final result do not create member executions (0.230289ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ original promoted foreground process is retained through terminal output (0.079848ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ original background process is retained through terminal output (0.07675ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ original producer terminal receipt is durable before a job read or task result: killed=false (0.065818ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ original producer terminal receipt is durable before a job read or task result: killed=true (0.068975ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+✔ missing-job read remains a real error, leaves no effect intent and permits a later observational tool (3132.62775ms)
+﹣ background HTTP service serves a later real tool and its original process drains: explicitStop=false (0.241549ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ background HTTP service serves a later real tool and its original process drains: explicitStop=true (0.113548ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ task cancellation joins the original foreground process and retains unknown effects (0.104212ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+﹣ task cancellation joins the original background process and retains unknown effects (0.068768ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+✔ unknown effect holds all future execution while Host readback remains available and cannot authorize replay (4998.286488ms)
+﹣ cold restart reads the original durable terminal receipt and the same task file without replaying its producer (0.150097ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+✔ operator inspection is zero-write and exact native reconciliation retains partial effects, stays paused and never replays (3036.420694ms)
+﹣ live preserve retains the exact SDK and original background producer, consumes exact source once (1.086413ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+✔ unknown old tool effect remains strictly reconcilable after live preserve and disposal without replay (4288.0767ms)
+✔ a TaskResult generated before preserve cannot consume the newly arrived source (3508.2359ms)
+✔ single task model selection resolves exact configured IDs and rejects guessed aliases (1278.67511ms)
+✔ single native task create and resume use the current exact model on one original session; invalid routes cannot mutate its journal (3823.043504ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":261,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3392,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":168,"aborted":false}
+✔ service uses one configured execution model without an Owner or child session: default (3187.773736ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":367,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2566,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":254,"aborted":false}
+✔ service uses one configured execution model without an Owner or child session: explicit-task (3227.121352ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":323,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2571,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":333,"aborted":false}
+✔ task folders include shared materials/outputs and isolated execution cwd without moving legacy folders (39.224163ms)
+✔ official AgentSession and native commit write each task log only to its task while same-task real parallel subprocesses share cwd and other tasks stay isolated (3301.208101ms)
+✔ an active task writer rejects duplicate public activation without releasing its original registry identity (732.939816ms)
+✔ task routing rejects forged parent identities, cross-task cwd and unrelated resume identities (974.773005ms)
+✔ durable registration precedes session creation, survives router close/reinstall and rejects cwd or task rebinding (410.83444ms)
+✔ unregistered native records remain readable but cannot be silently rebound into task persistence (295.178341ms)
+✔ concurrent installation and conflicting registrations keep one native routing owner and immutable durable task binding (326.12266ms)
+✔ cancelled native persistence calls retain their abort reason and never create a session (340.119101ms)
+✔ task and log directory links fail before creating anything outside the configured root (269.293963ms)
+✔ cached native backend rejects a replaced root link at every persistence public entry point (333.563143ms)
+✔ cached native backend rejects a replaced project link at every persistence public entry point (413.901681ms)
+✔ cached native backend rejects a replaced session link at every persistence public entry point (383.940534ms)
+✔ cached native backend rejects a replaced log link at every persistence public entry point (465.766861ms)
+✔ cached task routes reject a replaced routing-index directory before registration or native access (272.73687ms)
+✔ unclean native process exit resumes original task session with compaction preserved and no global duplicate log (5488.142737ms)
+✔ registered task writers require exact active Host scope while readonly native access and unrelated unbound native sessions remain available (368.972507ms)
+✔ Single running progress stays on the same live actor and cancellation joins it without replacement (2328.187927ms)
+✔ Single preserves round evidence and native decision entries without rewriting prior work (3031.269323ms)
+✔ waiting progress with no new evidence neither repeats effects nor fabricates a new execution after cold recovery (2200.152137ms)
+✔ human-wait progress answers only from actual evidence and cannot authorize a business write (2541.039523ms)
+✔ final progress verifies a real file, freezes the reported artifact and retains the official read evidence (2017.263805ms)
+✔ official Pi retry classifier distinguishes transient assistant failures from quota, auth, stop and abort (3.259852ms)
+✔ official retry preserves the original signed failure and never executes its partial tools: partial=false (4167.555856ms)
+✔ official retry preserves the original signed failure and never executes its partial tools: partial=true (3305.933118ms)
+✔ stale input drains and resumes the same Single journal without retrying its completed read (4735.519938ms)
+✔ configured provider retries through SDK events within the same task lease instead of a Night owner cooldown (3057.058326ms)
+✔ normal empty SDK completion stays technical and cannot manufacture a task result: restart=false (2792.037195ms)
+✔ normal empty SDK completion stays technical and cannot manufacture a task result: restart=true (3267.443942ms)
+✔ native error stays raw evidence without legacy terminal inference: retryable=true (2707.999088ms)
+✔ native error stays raw evidence without legacy terminal inference: retryable=false (2949.207503ms)
+✔ SDK retry budget and durable admission hold bound failed runs across restart: empty=false (6370.431842ms)
+✔ SDK retry budget and durable admission hold bound failed runs across restart: empty=true (6149.736144ms)
+✔ unconfigured task provider/model cannot hot-loop or borrow another route: newInput=false (1075.341748ms)
+✔ unconfigured task provider/model cannot hot-loop or borrow another route: newInput=true (4720.283713ms)
+✔ Single provider-error never creates a Host retry window, including after a one-hour clock advance and cold restore (3197.649716ms)
+✔ Single successful-text-without-task-result never creates a Host retry window, including after a one-hour clock advance and cold restore (3084.784453ms)
+✔ cold Single holds Night own persisted Host providerRecovery without deleting original Pi effects or sources (6366.376194ms)
+✔ official service read-only web errors do not become unknown effects and later reads still complete (2512.30901ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":936,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1390,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":185,"aborted":false}
+✔ official service completion freezes files and resumes remaining delivery after the explanation is archived (6747.665525ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":343,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6065,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":339,"aborted":false}
+✔ official Router context actions preserve explicit classification and cancellation: missing (4977.633061ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":326,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4331,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":320,"aborted":false}
+✔ official Router context actions preserve explicit classification and cancellation: preserve (5291.213538ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":335,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4703,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":252,"aborted":false}
+✔ official Router context actions preserve explicit classification and cancellation: replan (6718.824254ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":331,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6203,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":185,"aborted":false}
+✔ official Router context actions preserve explicit classification and cancellation: cancel (4934.847673ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":331,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4392,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":212,"aborted":false}
+✔ official service preserves one authenticated source identity across the SQL request, native admission and Host material (3029.843966ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":320,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2493,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":217,"aborted":false}
+✔ Router rejects another sender reopening completed work; the original author can reopen the same execution session (9906.984846ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":360,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":9354,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":193,"aborted":false}
+✔ Router supplements only the admitted source; historical context is not authority: echo=true, actor=native-user (7582.024916ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":414,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6842,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":326,"aborted":false}
+✔ Router supplements only the admitted source; historical context is not authority: echo=true, actor=colleague (7563.882478ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":335,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6924,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":304,"aborted":false}
+✔ Router supplements only the admitted source; historical context is not authority: echo=false, actor=native-user (7742.140506ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":356,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":7170,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":216,"aborted":false}
+✔ official service preserves task identity and exact source revisions through three generations in the original Pi session (7562.431683ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":333,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":7006,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":223,"aborted":false}
+✖ official service retains 32 source-authorized continuations in Pi history without replaying the completed effect (122446.588287ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":346,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":120342,"aborted":true}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":1758,"aborted":false}
+✔ official service group responsibility reaches the actual Pi system prompt and reply signatures survive formatting (4462.231503ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":338,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3916,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":207,"aborted":false}
+✔ official service reads and copies an existing authorized file byte-for-byte in one execution session (4838.008373ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":341,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4303,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":194,"aborted":false}
+✔ official service routes authenticated sources into one effect-fenced task and delivers exact completion readback once (5250.944488ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":350,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4597,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":303,"aborted":false}
+✔ official service same-session readback freezes immutable Host output without claiming an independent agent review (3736.974196ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":339,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3086,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":312,"aborted":false}
+✔ official service fulfils eleven independent outputs in one task session without a cancelled member team (6218.540456ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":315,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5654,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":249,"aborted":false}
+✔ official service cold continuation resumes the same titled workspace and reads its retained completed effect without replay (7010.085726ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":366,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":6463,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":181,"aborted":false}
+✔ official service reopens an unknown notification for readback without resending completed business work (4929.814956ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":354,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4417,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":159,"aborted":false}
+﹣ official service cancellation stops the actual owned process, drains its original session and fences late success (0.142641ms) # Requires Linux portable model-process privacy namespace; Windows remains fail-closed
+✔ official service requirement changes fence old provider results and resume the original session with exact new sources (4007.60929ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":309,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3482,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":216,"aborted":false}
+✔ official service capacity promotes sole task sessions without child slots: tasks=1, legacyExecutions=1 (4688.148405ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":386,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3712,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":590,"aborted":false}
+✔ official service capacity promotes sole task sessions without child slots: tasks=1, legacyExecutions=2 (4569.657816ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":333,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3650,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":587,"aborted":false}
+✔ official service capacity promotes sole task sessions without child slots: tasks=2, legacyExecutions=1 (4018.57837ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":337,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3080,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":601,"aborted":false}
+✔ official service capacity promotes sole task sessions without child slots: tasks=2, legacyExecutions=3 (4136.362459ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":392,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3183,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":561,"aborted":false}
+✔ official service task request identities reject changed replay bodies and keep one session for exact duplicate admission (2974.935075ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":364,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2441,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":169,"aborted":false}
+✔ official service idle sessions release task capacity and recovery does not create a model wake (2587.775543ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":342,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1920,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":326,"aborted":false}
+✔ official service session creation failure has bounded recovery retries: persistent=false (5021.118929ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":351,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4480,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":190,"aborted":false}
+✔ official service session creation failure has bounded recovery retries: persistent=true (2835.678161ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":334,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2325,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":177,"aborted":false}
+✔ official service model failure is held without a spin until explicit new context: persistent=false (5290.558279ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":351,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4740,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":200,"aborted":false}
+✔ official service model failure is held without a spin until explicit new context: persistent=true (5168.008786ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":344,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4609,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":215,"aborted":false}
+✔ official service no-submission holds the exact completed effect until explicit Host wake and never adds a retry timer (6136.092386ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":349,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":5508,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":279,"aborted":false}
+✔ official service invalid summaries cannot complete and provider correction remains native: correctOnce=false (1522.182679ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":325,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":992,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":205,"aborted":false}
+✔ official service invalid summaries cannot complete and provider correction remains native: correctOnce=true (1555.748923ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":313,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1024,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":219,"aborted":false}
+✔ official first tier rejects incomplete source coverage and accepts correction in the same real Pi session (4324.405361ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":315,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":3802,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":207,"aborted":false}
+✔ official service application boots and disposes with declared channel-neutral dependencies only (438.938185ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":228,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":172,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":39,"aborted":false}
+✔ official service listener startup failure releases resources so the same task database can reopen (620.541785ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":576,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":43,"aborted":false}
+✔ official service board reports the one live execution session as running until its actual body drains (2597.01037ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":342,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":2053,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":202,"aborted":false}
+✔ official service unknown post-write effects remain held and release only the physically drained writer (1655.281685ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":444,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1015,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":196,"aborted":false}
+✔ official service recovery no-op preserves an undrained task writer conflict alert (751.725099ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":335,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":309,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":107,"aborted":false}
+✔ official service Host material publication failure after a committed claim drains it and exposes an alert before model dispatch (1120.246183ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":357,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":555,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":208,"aborted":false}
+✔ resource read retries preserve image facts and duplicate ingress reuses the source (1620.123713ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1554,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":65,"aborted":false}
+✔ 周期恢复与调度跨过百条已排空历史，不展开执行正文也不启动模型 (452.4772ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":403,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":48,"aborted":false}
+✔ 群身份与入站校验不展开展示消息，展示层仍实时过滤通知 (462.543123ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":409,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":52,"aborted":false}
+✔ service close drains the real task, observers and owned SQLite after an early subscription cleanup fails (1499.723406ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":369,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":1088,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":42,"aborted":false}
+✔ official Host freezes raw PDF files for real Pi tools and rejects malformed, partial and oversized file delivery (4649.851195ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":326,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":4127,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":196,"aborted":false}
+✔ Single discovers cheap skill summaries, loads one body and reads its reference in the same official session (3639.456947ms)
+✔ a missing skill is a correctable read without an unknown external effect (2544.099227ms)
+✔ task dialogue keeps business effects denied while allowing the original evidence reader (3972.780413ms)
+✔ unconfigured personal skill roots expose no bundled personal catalogue (1463.618172ms)
+✔ a same-name skill replacement is accounted as an effect and cannot inherit read-only permission (4317.457082ms)
+✔ skill and reference changes require explicit rereads and preserve prior version receipts (3840.618188ms)
+✔ cold Single continuation restores read versions and notices a changed reference before rereading (4853.437043ms)
+ℹ tests 163
+ℹ suites 0
+ℹ pass 150
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 12
+ℹ todo 0
+ℹ duration_ms 816124.234984
+
+✖ failing tests:
+
+test at test/task-session-service-native.test.js:34:38
+✖ official service retains 32 source-authorized continuations in Pi history without replaying the completed effect (122446.588287ms)
+  Error: lifecycle business exceeded 120000ms
+      at expired (file:///Users/sunpeng/workspace/night-bot/test/fixtures/lifecycle-stages.js:24:41)
+      at Timeout.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/fixtures/lifecycle-stages.js:28:50)
+      at listOnTimeout (node:internal/timers:605:17)
+      at process.processTimers (node:internal/timers:541:7) {
+    code: 'TEST_STAGE_TIMEOUT',
+    phase: 'business',
+    lifecyclePhase: 'business'
+  }
+[ELIFECYCLE] Command failed with exit code 1.

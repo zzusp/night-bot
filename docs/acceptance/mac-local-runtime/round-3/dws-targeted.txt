@@ -1,0 +1,29 @@
+✖ default optional DWS defers unresolved timeout identity and cold backfills the original older message once (4411.523391ms)
+ℹ {"case":"default-optional-dws-deferred-diagnostic","mode":"timeout","phase":"typed-deferral","error":{"name":"AssertionError","code":"ERR_ASSERTION","message":"Expected values to be strictly equal:\n\ntrue !== false\n","stack":"AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\ntrue !== false\n\n    at TestContext.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/pi-channel-plugin.test.js:554:37)\n    at async Test.run (node:internal/test_runner/test:1208:7)\n    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)"},"health":{"ingress":{"paused":false,"recoveryFromAt":"2026-11-10T03:37:39.079Z","recovering":true},"healthy":false,"humanReplies":{"state":"disabled","generation":0,"reconnect":{"attempt":0}},"configured":true,"state":"recovering","conversations":[{"conversationId":"race-room","listener":{"state":"ready","generation":1,"startedAt":"2026-11-10T03:40:09.067Z","readyAt":"2026-11-10T03:40:09.071Z","lastEventAt":"2026-11-10T03:40:10.727Z","lastEventError":"CHANNEL_NOTIFICATION_IDENTITY_PENDING"},"backfill":{"state":"failed","completionScope":"durable-receipt","recoveryRequired":true,"recoveryFromAt":"2026-11-10T03:37:39.079Z","startedAt":"2026-11-10T03:40:09.072Z","succeededAt":"2026-11-10T03:40:09.076Z","failedAt":"2026-11-10T03:40:12.247Z","lastError":"CHANNEL_NOTIFICATION_IDENTITY_PENDING","lastErrorMessageId":"older-real-message"},"reconnect":{"attempt":0}}]},"ingress":{"paused":false,"firstStartedAt":"2026-01-01T00:00:00Z","backfillThroughAt":"2026-11-10T03:40:09.073Z","consumedAt":"2026-11-10T03:40:09.079Z","consumedMessageId":"race-request","deferredMessages":[{"messageId":"older-real-message","occurredAt":"2026-11-10T03:38:09.079Z"}],"recoveryFromAt":"2026-11-10T03:37:39.079Z"},"historyReads":[{"conversationId":"race-room","start":"2026-01-01T00:00:00.000Z","end":"2026-11-10T03:40:09.073Z","coversDeferred":true}],"deferred":{"groupId":"race-room","messageId":"older-real-message","senderOpenDingTalkId":"alice","text":"A separate genuine request","occurredAt":"2026-11-10T03:38:09.079Z"},"sources":[],"triageCount":0,"triaged":["race-request"],"errors":[],"rawBridgeErrorUnavailable":true,"realVendorExecuted":false}
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6083.646161
+
+✖ failing tests:
+
+test at test/pi-channel-plugin.test.js:544:39
+✖ default optional DWS defers unresolved timeout identity and cold backfills the original older message once (4411.523391ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///Users/sunpeng/workspace/night-bot/test/pi-channel-plugin.test.js:554:37)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
