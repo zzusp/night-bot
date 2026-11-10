@@ -52,7 +52,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
 }
 
 export function ResponseTimes({ endpoint, message, onAccessRevoked }: { endpoint: string; message: Message; onAccessRevoked: (error: Error) => void }) {
-  const query = useResource<TimingPage>(`${endpoint}/response-times?selectedMessageId=${encodeURIComponent(message.id)}${message.messageVersion ? `&selectedMessageVersion=${message.messageVersion}` : ''}`, 2500);
+  const query = useResource<TimingPage>(`${endpoint}/response-times?selectedMessageId=${encodeURIComponent(message.id)}${message.messageVersion ? `&selectedMessageVersion=${message.messageVersion}` : ''}`, 2500, { pauseWhenHidden: true });
   const revoked = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   useEffect(() => { if (revoked && query.error) onAccessRevoked(query.error); }, [revoked, query.error, onAccessRevoked]);
@@ -61,8 +61,8 @@ export function ResponseTimes({ endpoint, message, onAccessRevoked }: { endpoint
   const data = revoked || denied ? null : query.data;
   const latest = query.refresh;
   return <section className="response-times" aria-label="消息首答与处理过程">
-    <header className="execution-section-heading"><span>过程 / 节点耗时</span>
-      <Button variant="ghost" busy={query.loading} onClick={latest}>刷新记录</Button>
+    <header className="execution-section-heading"><span title="打开时每 2.5 秒自动获取真实记录；后台页面暂停">{query.error ? '更新失败' : '自动更新'}</span>
+      <Button variant="ghost" busy={query.loading} onClick={latest}>立即刷新</Button>
     </header>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
     {!data ? query.loading ? <Loading>正在读取消息处理记录…</Loading> : <p className="execution-empty">首答记录暂不可读，请重新获取。</p>

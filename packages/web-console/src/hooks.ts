@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 
 /** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待刷新或网络恢复。 */
-export function useResource<T>(path: string | null, interval = 0) {
+export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false }: { pauseWhenHidden?: boolean } = {}) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
@@ -13,7 +13,7 @@ export function useResource<T>(path: string | null, interval = 0) {
   useEffect(() => {
     if (activePath.current !== path) { setData(null); setUpdatedAt(null); activePath.current = path; }
     setError(null);
-    if (!path) { setLoading(false); return; }
+    if (!path || pauseWhenHidden && document.visibilityState === 'hidden') { setLoading(false); return; }
     let disposed = false, failures = 0, timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     const read = async () => {
@@ -34,14 +34,14 @@ export function useResource<T>(path: string | null, interval = 0) {
     };
     void read();
     return () => { disposed = true; controller.abort(); clearTimeout(timer); };
-  }, [path, interval, revision]);
+  }, [path, interval, revision, pauseWhenHidden]);
   useEffect(() => {
-    const visible = () => { if (document.visibilityState === 'visible' && interval) refresh(); };
+    const visible = () => { if (interval && (document.visibilityState === 'visible' || pauseWhenHidden)) refresh(); };
     const online = () => { if (path) refresh(); };
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('online', online);
     return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', online); };
-  }, [path, interval, refresh]);
+  }, [path, interval, refresh, pauseWhenHidden]);
   // 路由切换的清理间隙不展示上一资源的数据、错误或读取状态。
   const current = activePath.current === path;
   return { data: current ? data : null, error: current ? error : null, loading: !!path && (!current || loading), updatedAt: current ? updatedAt : null, refresh };

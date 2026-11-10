@@ -432,7 +432,7 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-inspectable > .message-body:hover { filter: brightness(.98); }
 .message-inspectable > .message-body:has(.message-process-trigger:focus-visible) { outline: 2px solid var(--board-primary); outline-offset: 3px; }
 .message-process-trigger { cursor: pointer; }
-.message-process-popover { position: fixed; z-index: var(--board-z-popover); display: flex; flex-direction: column; width: min(304px, calc(100vw - 16px)); max-height: min(440px, calc(100dvh - 16px)); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); color: var(--board-text); background: var(--board-surface); box-shadow: var(--board-shadow-sidebar); overflow: hidden; }
+.message-process-popover { position: fixed; z-index: var(--board-z-popover); display: flex; flex-direction: column; width: min(304px, calc(100vw - 16px)); max-height: min(440px, calc(100dvh - 16px)); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); color: var(--board-text); background: var(--board-surface); box-shadow: var(--board-shadow-sidebar); isolation: isolate; }
 .message-process-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 0 16px; }
 .message-process-heading h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .message-process-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
@@ -452,3 +452,10 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-process-popover .response-time-footnote { margin: 0; padding: 0 16px 14px; color: var(--board-muted); font-size: 11px; }
 .message-process-popover .execution-empty { padding: 12px 16px; font-size: 12px; }
 .message-process-scope { margin: 0; padding: 8px 16px; color: var(--board-muted); font-size: 11px; }
+
+.message-process-popover::before { content: ''; position: absolute; z-index: -1; width: 10px; height: 10px; background: var(--board-surface); border: 1px solid var(--board-border); transform: rotate(45deg); }
+.message-process-popover[data-side="left"]::before { right: -6px; top: calc(var(--process-arrow-offset) - 5px); }
+.message-process-popover[data-side="right"]::before { left: -6px; top: calc(var(--process-arrow-offset) - 5px); }
+.message-process-popover[data-side="top"]::before { bottom: -6px; left: calc(var(--process-arrow-offset) - 5px); }
+.message-process-popover[data-side="bottom"]::before { top: -6px; left: calc(var(--process-arrow-offset) - 5px); }
+.message-process-popover .message-process-body { border-radius: 0 0 var(--board-radius-card) var(--board-radius-card); }
