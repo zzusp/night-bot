@@ -1,7 +1,7 @@
 /* Task records share the conversation canvas; the rail is metadata, never a second transcript. */
 .main-panel.task-workspace-panel { background: transparent; overflow: hidden; scrollbar-gutter: auto; border-radius: 0; }
 .task-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--board-gap); height: 100%; min-height: 0; min-width: 0; }
-.task-workspace > .conversation-page { overflow: hidden; border-radius: var(--board-radius-panel); background: var(--board-surface); }
+.task-workspace > .conversation-page { overflow: hidden; border-radius: var(--board-radius-panel); background: var(--board-panel); }
 .task-workspace .task-dialogue { display: flex; flex: 1; min-height: 0; min-width: 0; height: auto; overflow: hidden; border: 0; border-radius: 0; background: transparent; }
 .task-workspace .execution-pagination:empty { display: none; }
 .task-info-rail { min-width: 0; min-height: 0; display: flex; flex-direction: column; }

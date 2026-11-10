@@ -373,16 +373,9 @@ test('渠道会话按聊天展示、隐藏输入框、保留不确定发送状�
   expect(await page.getByLabel('消息内容', {exact: true}).count()).toBe(0)
   for (const width of [1440, 390]) {
     await page.setViewportSize({width, height: 960})
-    await expect(page.locator('.message-assistant .message-links a')).toHaveCount(2)
-    const targets = await page.locator('.message-assistant .message-links a').evaluateAll(links => links.map(link => {
-      const target = link.getBoundingClientRect()
-      return {width: target.width, height: target.height}
-    }))
-    for (const target of targets) {
-      expect(target.width).toBeGreaterThanOrEqual(24)
-      expect(target.height).toBeGreaterThanOrEqual(24)
-      await expect(page.getByRole('button', {name: '复制消息'})).toHaveCount(0)
-    }
+    await expect(page.locator('.message-links')).toHaveCount(0)
+    await expect(page.getByRole('link', {name: '查看关联任务', exact: true})).toHaveCount(0)
+    await expect(page.getByRole('button', {name: '复制消息'})).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
   await screenshot(page, 'channel-chat')
@@ -521,7 +514,8 @@ test('窄屏长发送者与工具名不撑宽消息区，未知来源不冒称�
   const transcript = page.getByRole('region', {name: '消息记录', exact: true})
   expect(await transcript.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
   expect(await page.locator('.markdown pre').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
-  expect(await page.locator('.message-links a').count()).toBe(8)
+  await expect(page.locator('.message-links')).toHaveCount(0)
+  await expect(page.getByRole('link', {name: '查看关联任务', exact: true})).toHaveCount(0)
   await screenshot(page, 'mobile-long-channel')
 
   await page.route('**/api/tasks/task-research/session?**', route => route.fulfill({json: {status: 'ready', scope: 'current-session-context', items: [
