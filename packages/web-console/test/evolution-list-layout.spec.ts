@@ -32,6 +32,7 @@ for (const theme of ['light', 'dark']) for (const width of [1440, 2048, 390]) {
     await expect(page.locator('.evolution-table').getByRole('columnheader', {name:'使用记录',exact:true})).toHaveCount(0);
     await expect(page.locator('.evolution-table')).not.toContainText('候选，未应用');
     await expect(page.locator('.evolution-usage-cell')).toHaveCount(0);
+    await expect(page.locator('.evolution-table th')).toHaveText(['名称', '最近使用', '最近更新']);
     const title = await first.locator('.evolution-item-title').boundingBox();
     const action = await first.getByRole('button', {name: '查看内容：review-code'}).boundingBox();
     expect(title!.x - action!.x).toBeGreaterThan(18);
@@ -77,4 +78,37 @@ test('名称显式读取，详情保留来源与版本，返回恢复焦点', as
   await expect(content).toContainText('fixture-room');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await new AxeBuilder({page}).include('.evolution-content').analyze()).violations).toEqual([]);
+});
+
+
+test('最近使用来自每条记忆或技能的真实观测，缺失/非法不回退到更新时间或全局值', async ({page}) => {
+  const skillAt = '2026-11-08T01:23:00Z', memoryAt = '2026-11-09T02:34:00Z';
+  const cases = [
+    {id:'installed-used', kind:'skill', origin:'installed', lastUsedAt:skillAt, memoryUse:{lastAccess:{at:memoryAt}}, expected:skillAt},
+    {id:'learned-used', kind:'skill', origin:'learned', lastUsedAt:skillAt, expected:skillAt},
+    {id:'skill-missing', kind:'skill', lastUsedAt:null, expected:null},
+    {id:'skill-invalid', kind:'skill', lastUsedAt:'not-a-timestamp', expected:null},
+    {id:'memory-read', kind:'memory', lastUsedAt:skillAt, memoryUse:{readCount:1,searchCount:0,lastAccess:{counter:'readCount',at:memoryAt,provenance:null}}, expected:memoryAt},
+    {id:'memory-search', kind:'memory', lastUsedAt:skillAt, memoryUse:{readCount:0,searchCount:1,lastAccess:{counter:'searchCount',at:memoryAt,provenance:null}}, expected:memoryAt},
+    {id:'memory-untracked', kind:'memory', lastUsedAt:skillAt, memoryUse:null, expected:null},
+    {id:'memory-missing', kind:'memory', memoryUse:{readCount:0,searchCount:0,lastAccess:null}, expected:null},
+    {id:'memory-invalid', kind:'memory', memoryUse:{readCount:1,searchCount:0,lastAccess:{at:'invalid',provenance:null}}, expected:null},
+  ];
+  const rows = cases.map(({expected: _expected, ...row}) => ({...row,name:row.id,scope:'bot',status:'applied',revision:1,updatedAt}));
+  await page.route('**/api/evolution?*', route => route.fulfill({json:{...snapshot,items:rows,total:rows.length,nextOffset:null}}));
+  await page.goto('/#/evolution');
+  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+  await expect(page.locator('.evolution-table tbody tr')).toHaveCount(rows.length);
+  for (const [index, item] of cases.entries()) {
+    const row = page.locator('.evolution-table tbody tr').nth(index), cell = row.locator('.evolution-last-used-cell');
+    if (item.expected) await expect(cell.locator('time')).toHaveAttribute('datetime',item.expected);
+    else { await expect(cell).toContainText('未记录'); await expect(cell.locator('time')).toHaveCount(0); }
+    await expect(row.locator('.evolution-updated-cell time')).toHaveAttribute('datetime',updatedAt);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.locator('.evolution-last-used-cell .evolution-time-label').first()).toBeVisible();
+  await expect(page.locator('.evolution-updated-cell .evolution-time-label').first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({page}).include('.evolution-library').analyze()).violations).toEqual([]);
 });

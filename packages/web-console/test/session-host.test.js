@@ -134,11 +134,14 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     const learned = (await reflection.catalog(agent.agent))[0]
     assert.ok(learned); await reflection.skill(learned, agent.agent)
     const measured = (await api('/api/evolution')).body
-    assert.equal(measured.memory.readCount, (baseline.memory.readCount ?? 0) + 1)
-    assert.equal(measured.memory.searchCount, (baseline.memory.searchCount ?? 0) + 1)
-    assert.equal(measured.skills.loadCount, (baseline.skills.loadCount ?? 0) + 1)
+    // Direct Host calls and resource preparation have no committed tool result.
+    // Web must not substitute the core's dedicated counters for journal evidence.
+    assert.equal(measured.memory.readCount, baseline.memory.readCount)
+    assert.equal(measured.memory.searchCount, baseline.memory.searchCount)
+    assert.equal(measured.skills.loadCount, null)
+    assert.equal(measured.usageCoverage.status, 'partial')
     const durableUsage = JSON.parse(await readFile(join(f.host.ctx.memory.store.directory(scope), 'usage.json'), 'utf8'))
-    assert.equal(durableUsage.readCount, measured.memory.readCount); assert.equal(durableUsage.loadCount, measured.skills.loadCount)
+    assert.equal(durableUsage.readCount, 1); assert.equal(durableUsage.searchCount, 1); assert.ok(durableUsage.loadCount > 0)
     const measuredAgain = (await api('/api/evolution')).body
     assert.deepEqual(measuredAgain.memory, measured.memory); assert.deepEqual(measuredAgain.skills, measured.skills)
     const index = await api(endpoint)

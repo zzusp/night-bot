@@ -32,7 +32,7 @@ test('自进化菜单、真实语义、筛选分页和返回保留 URL', async (
   await expect(page).toHaveTitle('自进化 — Night Bot');
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(20);
   await expect(page.locator('.evolution-card').first()).toContainText('读取次数7');
-  await page.getByText('采集范围与口径', { exact: true }).click();
+  await page.getByText('查询范围与口径', { exact: true }).click();
   await expect(page.locator('.evolution-coverage')).toContainText('盘点本 Bot 安装目录的技能文件');
   await expect(page.locator('.evolution-coverage')).toContainText('不是完整历史');
   await page.getByRole('button', { name: '下一页', exact: true }).click();
