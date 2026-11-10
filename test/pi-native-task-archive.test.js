@@ -11,6 +11,16 @@ import {portablePaths} from '../src/runtime/portable.js'
 import {TaskArchives,backupTask,restoreTask,validateTaskArchive,archiveHash} from '../src/tasks/archive.js'
 import {taskAuditKinds} from '../src/tasks/session-audit.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
+import {initializeTaskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
+// 低层归档夹具也须兑现真实 Host 的工作区创建事务，不能直接 claim pending 任务。
+async function initializeWorkspace(store,workspaceRoot,taskId){
+ const task=await store.query({kind:'task.get',taskId});if(!task.workspaceInitialization)return
+ const {creationCommandId,sessionId}=task.workspaceInitialization,binding={taskId,creationCommandId,sessionId}
+ const begin=await store.command({id:creationCommandId+':workspace-begin',kind:'task.workspace.begin',args:binding})
+ const observation=await initializeTaskDirectories(workspaceRoot,begin.result.task)
+ await store.command({id:creationCommandId+':workspace-finish',kind:'task.workspace.finish',args:{...binding,state:'ready',observation:observation.native}})
+}
+
 import {readNativeHistory} from '../packages/dingtalk-core/native-maintenance-drain.js'
 import {inspectSession} from '../packages/dingtalk-core/session-persistence.js'
 
@@ -19,6 +29,7 @@ async function fixture(t,{identity=true}={}){
  const config={installRoot:root,resident:{taskSessions:{instanceId:'native-archive',webActorId:'owner',initialize:true}}}
  const store=await openDynamicTaskStore({...config.resident.taskSessions,dbPath:join(paths.state,'tasks.sqlite')}),routes=new Map(),manager=new TaskArchives({paths,store,routes}),taskId='task'
  await store.command({id:'create',kind:'task.create',args:{taskId,request:'retain real native archive',ownerActorId:'owner'}})
+ await initializeWorkspace(store,paths.workspaces,taskId)
  const binding=(await store.command({id:'claim',kind:'task.claim',args:{taskId}})).result.binding
  const task=await store.query({kind:'task.get',taskId}),{root:taskRoot}=await manager.register(task)
  const ctx=new Context();ctx.provide('taskSessionRoutes',routes);ctx.provide('portablePaths',portablePaths(paths));authority(ctx)
