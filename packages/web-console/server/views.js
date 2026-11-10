@@ -53,6 +53,16 @@ function blockerViews(value) {
   ]
 }
 
+// List rows do not include execution-derived board state. Preserve their recorded
+// status rather than infer that an active task is currently running.
+export function taskSummaryView(task, secrets = []) {
+  const state = task.state ?? (task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' ? 'waiting' : task.status)
+  return Object.fromEntries(['taskId', 'title', 'state', 'updatedAt'].flatMap(key => {
+    const value = key === 'state' ? state : task[key]
+    return typeof value === 'string' ? [[key, displayText(value, secrets)]] : []
+  }))
+}
+
 export function taskView(task, secrets = []) {
   return {
     ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'waitingReason'], secrets),

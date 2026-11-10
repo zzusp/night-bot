@@ -24,10 +24,11 @@ for (const source of [
       expect(rect.x + rect.width).toBeLessThanOrEqual(width)
       if (width > 1250) await expect(page.getByRole('complementary', {name: '任务与渠道概览'})).toBeVisible()
       await frame.getByRole('link', {name: '执行过程', exact: true}).click()
-      await expect(frame.getByText('Router · 会话安排', {exact: true})).toBeVisible()
+      await expect(frame.getByText('会话安排记录', {exact: true})).toBeVisible()
       if (source.task) {
-        const group = frame.locator('.chat-execution-group').filter({has: page.locator('summary code', {hasText: source.task})})
-        await group.locator('summary').click()
+        const group = frame.locator(`[data-task-id="${source.task}"]`)
+        await group.locator(':scope > summary').click()
+        await group.getByText('工具与执行记录', {exact: true}).click()
         await expect(group.locator('.message-tool')).toHaveCount(1)
         await expect(group).not.toContainText('SECRET_')
       }
