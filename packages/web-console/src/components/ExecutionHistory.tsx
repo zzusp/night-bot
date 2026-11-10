@@ -22,7 +22,7 @@ export function ExecutionHistory({ endpoint, router = false, status }: { endpoin
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" description="使用上方按钮重新获取。" />
-      : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '暂无已提交的会话安排' : '执行尚未开始' : '执行记录正在提交'} description={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '首答与接收过程见上方；业务任务见下方关联任务。' : '会话开始处理后，记录会自动显示。' : 'Bot 正在保存记录，提交完成后会自动更新。'} />
+      : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '暂无已提交的会话安排' : '执行尚未开始' : '执行记录正在提交'} description={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '首答与接收过程、后续任务见上方。' : '会话开始处理后，记录会自动显示。' : 'Bot 正在保存记录，提交完成后会自动更新。'} />
       : query.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" description="当前无法安全读取此会话，请稍后重新获取。" action={<Button variant="secondary" onClick={latest}>重新获取</Button>} />
       : <MessageList key={`${endpoint}:${page.offset}`} messages={query.data?.items || []} userLabel="用户" history={query.data?.revision ? { endpoint, revision: query.data.revision } : undefined}
         empty={<EmptyState title="暂无可展示的执行记录" description={router ? "当前上下文没有可展示的安排记录；工具执行和处理结果请查看关联任务。" : "当前上下文没有可展示的执行记录。"} />} />}

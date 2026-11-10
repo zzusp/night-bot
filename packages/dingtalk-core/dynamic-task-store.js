@@ -8,7 +8,7 @@ import { installObserverPagination, installObserverArchivePagination, observerPa
 import { executionSessionTitle, assertTaskWorkspaceReady } from './session-workspaces.js'
 import { createStartupMetrics } from './startup-metrics.js'
 import { operationBlocksRecovery, hasRestartIsolation, isolationBinding, validIsolationReceipt } from './native-restart-isolation.js'
-import { quotedSendRejectionProof } from './group-message.js'
+import { quotedSendRejectionProof, taskReplySendRetryProof, assertWorkflowNotificationReply } from './group-message.js'
 import { taskNotificationRecovery } from './notification-delivery.js'
 import { isNativeFilePrecondition } from './dynamic-filesystem-scope.js'
 import { taskExecutionContext } from './execution-context.js'
@@ -1757,9 +1757,16 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'notification.retry') {
       const notification = get('dynamic_notifications', a.notificationId)
-      const proof = notification.deliveryError?.phase === 'send' && quotedSendRejectionProof(notification.deliveryError, { groupId: notification.payload.conversationId, replyToMessageId: notification.payload.sourceMessageId, replyToSenderOpenDingTalkId: notification.payload.actorId, idempotencyKey: notification.id })
-      if (notification.retirement || notification.recall || notification.ack || notification.receipt || !proof || notification.state !== 'failed' || notification.deliveryError?.knownNotSent !== true || notification.deliveryError?.retryable !== true
+      const localProof = taskReplySendRetryProof(notification)
+      const proof = localProof ?? (notification.deliveryError?.phase === 'send' && quotedSendRejectionProof(notification.deliveryError, { groupId: notification.payload.conversationId, replyToMessageId: notification.payload.sourceMessageId, replyToSenderOpenDingTalkId: notification.payload.actorId, idempotencyKey: notification.id }))
+      if (notification.retirement || notification.recall || notification.ack || notification.receipt || !proof || notification.state !== 'failed' || notification.deliveryError?.knownNotSent !== true || notification.deliveryError?.retryable !== true && !localProof
         || Date.parse(notification.nextAttemptAt ?? '') > Date.now()) return changed({ notification })
+      if (localProof) {
+        if (!notification.recoveryToken || a.recoveryToken !== notification.recoveryToken) fail('DYNAMIC_NOTIFICATION_RECOVERY_STALE')
+        assertTaskDelivery(notification,{allowArchived:false})
+        const source=get('dynamic_sources',notification.payload.sourceId)
+        assertWorkflowNotificationReply({...notification,replySourceText:source.text})
+      }
       notification.state = 'prepared'; notification.updatedAt = stamp
       put('dynamic_notifications', notification); return changed({ notification })
     }

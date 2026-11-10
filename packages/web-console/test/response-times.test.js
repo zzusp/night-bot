@@ -20,3 +20,27 @@ test('历史 Router 回复用途不猜测，多条回复选最早确认，批次
  const value=responseTiming(message,[{...source,stages:[{stage:'turn',shared:true,completedAt:'2026-11-09T00:00:02Z'}]}],[notice({deliveredAt:'2026-11-09T00:00:08Z'}),router]);assert.equal(value.durationMs,3000);assert.ok(value.steps.some(row=>row.label.includes('批次共享')))
  assert.equal(responseTiming(message,[source,{...source,sourceId:'ambiguous'}],[router]).status,'unavailable')
 })
+
+test('更早回复用途或可见时间缺失时，不把后续回复当成可靠首答',()=>{
+ const later=notice({id:'later',createdAt:'2026-11-09T00:00:04Z',sendStartedAt:'2026-11-09T00:00:05Z',deliveredAt:'2026-11-09T00:00:06Z'})
+ for(const earlier of [notice({kind:'router-reply'}),notice({deliveredAt:null}),notice({deliveredAt:'invalid'}),notice({state:'unknown',sendStartedAt:null}),notice({state:'starting',sendStartedAt:null,createdAt:null})]){
+  const value=responseTiming(message,[source],[earlier,later]);assert.equal(value.status,'unconfirmed');assert.equal(value.durationMs,null);assert.equal(value.firstReplyAt,null);assert.equal(value.replyPreview,null)
+ }
+ assert.equal(responseTiming(message,[source],[notice({deliveredAt:null})]).status,'unconfirmed')
+ assert.equal(responseTiming(message,[source],[notice(),{...later,kind:'router-reply'}]).durationMs,3000)
+ assert.equal(responseTiming(message,[source],[notice(),{...later,state:'unknown'}]).durationMs,3000)
+})
+
+test('阶段只投影已记录端点，共享阶段不均分，不从相邻事件推算耗时',()=>{
+ const stages=[{stage:'turn',startedAt:'2026-11-09T00:00:01Z',completedAt:'2026-11-09T00:00:02Z',shared:true,sessionId:'private',requestId:'private'},
+  {stage:'queue',completedAt:'2026-11-09T00:00:01Z'},
+  {stage:'host',startedAt:'2026-11-09T00:00:02Z',completedAt:'2026-11-09T00:00:01Z'},
+  {stage:'ingress',phase:'source-record',startedAt:source.receivedAt,completedAt:'2026-11-09T00:00:01Z'}]
+ const value=responseTiming(message,[{...source,stages}],[notice()])
+ assert.equal(value.steps.find(row=>row.kind==='stage-turn-completed').durationMs,1000)
+ assert.equal(value.steps.find(row=>row.kind==='stage-turn-completed').shared,true)
+ assert.ok(value.steps.every(row=>typeof row.kind==='string'))
+ for(const kind of ['stage-queue-completed','stage-host-completed'])assert.equal(Object.hasOwn(value.steps.find(row=>row.kind===kind),'durationMs'),false)
+ assert.doesNotMatch(JSON.stringify(value),/private|source-record/)
+ assert.equal(value.steps.filter(row=>Object.hasOwn(row,'durationMs')).length,1)
+})

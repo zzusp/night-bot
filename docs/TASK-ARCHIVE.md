@@ -192,7 +192,9 @@ upgrade. There is no automatic temp/log cleanup while tasks are active.
 
 New Host material snapshots include `pathBindings.version: 1` with kind
 `task-material-relative`. The closed field list covers the source JSON filename,
-retained resource filenames and their matching image descriptor paths. Reading a
+retained resource filenames and their matching image/file descriptor paths. Raw
+file descriptors retain their original name, MIME, byte length and SHA-256; the
+model receives a controlled read-only material path, never a vendor download ID. Reading a
 snapshot validates its original absolute paths and exact field list, then resolves
 only those leaves under the current task's materials directory. The source ID,
 version, actor, message, text, quote, resource identity, byte length and SHA-256

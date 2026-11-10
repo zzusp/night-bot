@@ -12,6 +12,15 @@ function assertStableId(value, label) {
 }
 
 const DWS_UUID_MAX_LENGTH = 128
+const resourceTextExtensions = new Set(['.txt', '.md', '.sql', '.json', '.csv', '.tsv', '.xml', '.html', '.log'])
+
+function downloadedFile(data, name) {
+  const mediaTypes = { '.pdf': 'application/pdf', '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.zip': 'application/zip' }
+  return { file: { data: new Uint8Array(data), name,
+    mediaType: mediaTypes[path.extname(name).toLowerCase()] ?? 'application/octet-stream' }, complete: true }
+}
 
 /** 仅压缩超过 DWS uuid 上限的外部键；完整摘要保留差异，内部通知 ID 不变。 */
 export function dwsIdempotencyKey(value) {
@@ -497,11 +506,12 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
         if (inspection.status !== 'success' || inspection.complete !== true || inspection.failures?.length
           || inspection.hasMore === true || file?.fileId !== nodeId) throw documentReadError({ reason: 'incomplete' })
         if (file.extension === 'adoc') return completeDocumentReceipt(await runRead(['doc', '+fetch', '--node', nodeId, '--scope', 'full', '--detail', 'full']), nodeId)
-        if (file.type !== 'FILE' || !['txt', 'md', 'sql', 'json', 'csv', 'tsv', 'xml', 'html', 'log'].includes(file.extension)) throw new Error('coordination_resource_format_unsupported')
+        if (file.type !== 'FILE') throw new Error('coordination_resource_format_unsupported')
         if (!Number.isSafeInteger(file.fileSize) || file.fileSize <= 0 || file.fileSize > 8 * 1024 * 1024) throw documentReadError({ reason: 'incomplete' })
         const downloadRoot = await mkdtemp(path.join(runner.cwd, 'coordination-resource-'))
         try {
-          const output = path.relative(runner.cwd, path.join(downloadRoot, `content.${file.extension}`))
+          const extension = /^[a-z0-9]{1,16}$/iu.test(file.extension ?? '') ? file.extension.toLowerCase() : 'bin'
+          const output = path.relative(runner.cwd, path.join(downloadRoot, `content.${extension}`))
           const receipt = await runRead(['drive', '+download', '--node', nodeId, '--output', output])
           if (receipt.success !== true || receipt.nodeId !== nodeId || receipt.sizeBytes !== file.fileSize
             || typeof receipt.savedPath !== 'string' || !receipt.savedPath || path.isAbsolute(receipt.savedPath)) throw documentReadError({ reason: 'incomplete' })
@@ -513,6 +523,7 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
           if (!info.isFile() || info.size !== file.fileSize) throw documentReadError({ reason: 'incomplete' })
           const data = await readFile(localPath)
           if (data.length !== file.fileSize) throw documentReadError({ reason: 'incomplete' })
+          if (!resourceTextExtensions.has(`.${extension}`)) return downloadedFile(data, file.name ?? path.basename(localPath))
           let text
           try { text = new TextDecoder('utf-8', { fatal: true }).decode(data) }
           catch (error) {
@@ -562,7 +573,7 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
             formulasRecalculated: false, formulaResults: '文件保存的缓存值，未执行公式或外链', sheets }),
             mediaType: 'application/json', complete: true }
         }
-        if (!['.txt', '.md', '.sql', '.json', '.csv', '.tsv', '.xml', '.html', '.log'].includes(extension)) throw new Error('coordination_resource_format_unsupported')
+        if (!resourceTextExtensions.has(extension)) return downloadedFile(data, path.basename(localPath))
         return { text: new TextDecoder('utf-8', { fatal: true }).decode(data), mediaType: 'text/plain' }
       } finally { await unlink(localPath) }
       } finally { await rm(downloadRoot, { recursive: true, force: true }) }

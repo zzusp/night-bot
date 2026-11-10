@@ -1,0 +1,300 @@
+{
+  "observedAt": "2026-11-09T16:53:55.431Z",
+  "fullRuns": {
+    "codeEquivalentCommit": "0f8a541a7fde200dc5a034691bee91d8ff23e95c",
+    "baseSha": "fcb39ced89b12724b94b6a1be861b47964d5c02b",
+    "executedWithUncommittedChanges": true,
+    "default": {
+      "tests": 1343,
+      "pass": 1275,
+      "fail": 41,
+      "cancelled": 1,
+      "skipped": 26,
+      "duration_ms": 2372383.5824,
+      "outputSha256": "d1ffed69accce5201e960dffea596b78e618ffcd2e7d5d859e4e1f74b2796d69",
+      "failures": [
+        {
+          "location": "test/pi-file-tool-registration.test.js:33:1",
+          "name": "exact definition and native execution admission reject direct calls, foreign owners and private mutations before effect middleware",
+          "kind": "TYPE_ERROR"
+        },
+        {
+          "location": "test/pi-file-tool-registration.test.js:117:1",
+          "name": "registered private-path escalation is refused before asking an approval answerer",
+          "kind": "TYPE_ERROR"
+        },
+        {
+          "location": "test/pi-job-ledger-wire.test.js:37:1",
+          "name": "cold Pi activation refuses an unresolved job journal instead of polling or restarting its producer",
+          "kind": "HOST_CLOSE_ASSERTION"
+        },
+        {
+          "location": "test/pi-native-business-portability.test.js:21:1",
+          "name": "own backup restores actual actor cwd, artifact binding and permissions without changing signed Pi entries or user paths",
+          "kind": "TEST_TIMEOUT"
+        },
+        {
+          "location": "test/pi-native-sandbox-protocol.test.js:48:1",
+          "name": "Windows LPAC runner IPC rejects unowned fields, undefined policy and boundary widening",
+          "kind": "WINDOWS_LPAC_POLICY_INVALID"
+        },
+        {
+          "location": "test/pi-native-task-archive.test.js:36:1",
+          "name": "native task archive seals, backs up and restores exact Pi bytes with held effects",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-native-task-archive.test.js:55:1",
+          "name": "native task archives require typed task identity and strict complete commit",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-official-memory-privacy.test.js:19:1",
+          "name": "real generic filesystem with official actor enforces bound read-only policy and private task boundaries",
+          "kind": "ASSERTION_FAILED"
+        },
+        {
+          "location": "test/pi-official-memory-privacy.test.js:26:1",
+          "name": "official workspace-write keeps task metadata immutable and canonical symlink escapes denied",
+          "kind": "ASSERTION_FAILED"
+        },
+        {
+          "location": "test/pi-reflection-official.test.js:34:1",
+          "name": "background review uses explicit configured resolution, refuses secrets and fences changed memory scopes",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-reflection.test.js:15:1",
+          "name": "real default Host learns completed SQLite task evidence, deduplicates, creates evidence-justified scoped skills without a fixed repetition threshold and cold reopens",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-reflection.test.js:59:1",
+          "name": "invalid reflection evidence cannot invent memory or block committed task delivery; retry state is durable",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-reflection.test.js:69:1",
+          "name": "actual task service attaches the default Host reflection consumer and recovers preexisting durable completion events",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:46:1",
+          "name": "A completion is not dependency acceptance; evidence and the current Router decision release B once even when notification is unknown",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:66:1",
+          "name": "insufficient evidence and explicit wait or continue never release B",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:75:1",
+          "name": "a prior completion and assessment cannot authorize B after A is reopened",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:84:1",
+          "name": "B cancellation defeats a previously prepared successful dependency evaluation",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:118:1",
+          "name": "single-task B archive excludes A content and Router history; isolated restore holds its prerequisite and all delivery",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:195:1",
+          "name": "same-goal rework follows the drained original task version and releases B only after accepting the new completion",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:222:1",
+          "name": "a newer authorization source invalidates both a prepared assessment and a previously satisfied dependency",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:231:1",
+          "name": "all prerequisite assessments are required; accepting A cannot bypass an independent prerequisite C",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:242:1",
+          "name": "a fabricated evidence reference cannot release a dependency even when it is nonempty",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:269:1",
+          "name": "archiving A retains its original completion event and evidence for B acceptance without copying A into B",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:301:1",
+          "name": "ordinary Web task revisions and control changes rebind B dependencies before current evidence evaluation",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:313:1",
+          "name": "stable task action retries ignore physical generation and live binding without duplicating source context",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-router-ledger.test.js:326:1",
+          "name": "dependency arrangement replaces the complete set atomically with version, quiescence and cycle guards",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-search-safety.test.js:51:1",
+          "name": "native find matches authorized hidden and nested files without a process or a transferable marker",
+          "kind": "PRIVATE_PATH_DENIAL_ASSERTION"
+        },
+        {
+          "location": "test/pi-single-task-review.test.js:18:1",
+          "name": "actual Host human review and dialogue stay read-only, record real SQL source evidence, then resume standing authorization",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-single-task.test.js:148:1",
+          "name": "a task rejects forged archive output and can still submit a legitimate work artifact",
+          "kind": "ASSERTION_FAILED"
+        },
+        {
+          "location": "test/pi-task-archive.test.js:58:1",
+          "name": "task-required attachment bytes are local and independently restored without the original attachment store",
+          "kind": "MISSING_TASK_WORKSPACE_PATH"
+        },
+        {
+          "location": "test/pi-task-archive.test.js:76:1",
+          "name": "default task file tools cannot forge frozen outputs; a denied write does not prevent a legitimate work artifact",
+          "kind": "ASSERTION_FAILED"
+        },
+        {
+          "location": "test/pi-task-archive.test.js:108:1",
+          "name": "task index restoration preserves decision chronology independently of command-id lexical order",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:11:1",
+          "name": "technical failure is durable business wait with ACK, not provider backoff or invented human response",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:17:1",
+          "name": "dialogue failure retains its exact text without reply, ACKs atomically, admits only a new message and survives completion/archive",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:28:1",
+          "name": "human review failure retains candidate sources and wake receipts but cannot re-review the same batch",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:36:1",
+          "name": "Night persisted Host retry is held without changing drain and only a new drained input clears the hold",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:43:1",
+          "name": "upgrading old dialogue retry closes the prior failed payload while only a new message is admitted",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:50:1",
+          "name": "upgrading old human-review retry records its failed batch without consuming the candidate",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-business-failure.test.js:57:1",
+          "name": "new business input never clears an existing unknown-effect recovery fence",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-live-supplement-state.test.js:9:1",
+          "name": "live supplement claims and ACKs only its exact wake after ordered official admission proof handoff",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-live-supplement-state.test.js:22:1",
+          "name": "a replan invalidates the original live supplemental admission and cannot inherit the old producer authority",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        },
+        {
+          "location": "test/pi-task-live-supplement-state.test.js:27:1",
+          "name": "foreign lease and skipped context transitions cannot authorize live supplemental delivery",
+          "kind": "TASK_WORKSPACE_NOT_READY"
+        }
+      ]
+    },
+    "runtime": {
+      "tests": 163,
+      "pass": 149,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 12,
+      "duration_ms": 2803531.0342,
+      "outputSha256": "63811f8cd01f9df1e8db567116bcf2f1f79b493a020d900e3ce3e6241f8be04c",
+      "failures": [
+        {
+          "location": "test/task-session-human-native.test.js:320:1",
+          "name": "an original official task tool result cannot bypass human waiting and survives same-session reply",
+          "kind": "ASSERTION_FAILED"
+        },
+        {
+          "location": "test/task-session-service-native.test.js:34:38",
+          "name": "official service routes authenticated sources into one effect-fenced task and delivers exact completion readback once",
+          "kind": "ASSERTION_FAILED"
+        }
+      ]
+    }
+  },
+  "counterEvidence": {
+    "method": "In-memory loader substitutes only three changed runtime modules with pinned base sources; assertions unchanged.",
+    "defaultBaseSha": "fcb39ced89b12724b94b6a1be861b47964d5c02b",
+    "defaultFailureCountReproduced": 41,
+    "isolatedCurrentAndBasePass": [
+      "own backup restores actual actor cwd, artifact binding and permissions without changing signed Pi entries or user paths"
+    ],
+    "runtimeMainBaseSha": "0dc43ed4402d912b963ac8a800e58124a6abc6a4",
+    "runtimeMainBaselineFailureCount": 2,
+    "runtimeMainBaselineCases": [
+      "an original official task tool result cannot bypass human waiting and survives same-session reply",
+      "official service routes authenticated sources into one effect-fenced task and delivers exact completion readback once"
+    ]
+  },
+  "finalTargetedRun": {
+    "commit": "571d56362db5f2f5c3afdae73170137b88ceec54",
+    "mainBaseSha": "0dc43ed4402d912b963ac8a800e58124a6abc6a4",
+    "runtimeSha256": {
+      "packages/dingtalk-core/dws-adapter.js": "daad248115291534a0269c3cd506f741dc10b0f2e433ba686e0517f79e5365ce",
+      "packages/dingtalk-core/task-session-service.js": "ad5da31fdd16f850ec71693e8a64b8ffcaa7672813ae9c43ddf7d817e394c0d0",
+      "src/tasks/material-paths.js": "67e7bbf488d9c32852e0fd316733fefe9367fee5b50471cc81e8b2e0e366d24d"
+    },
+    "resourceAndPathTests": {
+      "tests": 41,
+      "pass": 41,
+      "fail": 0,
+      "skipped": 0
+    },
+    "officialHostPiTests": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0
+    },
+    "sourceImportRuntimeGuards": "PASS",
+    "outputSha256": "f58c045c75715d9b1be211b3886ca3d40cc4599b74b4d30c45a9e89ee0415527",
+    "fullDefaultRuntimeRerun": false
+  },
+  "notRun": [
+    "separate routing cohort",
+    "separate containment cohort",
+    "live group task content and delivered reply after main integration"
+  ],
+  "serviceFinalState": {
+    "candidateExitedWithCode": 0,
+    "launcherMetadataReleased": true,
+    "coreAndWebPortsClosed": true,
+    "restartedAfterExit": false
+  },
+  "overall": "BLOCKED: live group ingress identity pending; full regressions remain non-green"
+}

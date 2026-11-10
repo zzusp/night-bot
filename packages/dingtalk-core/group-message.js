@@ -1,4 +1,4 @@
-import {assertConversationReply as assertGroupReply} from '../../src/channels/message-safety.js'
+import {assertConversationReply as assertGroupReply,replyInternalTaskId} from '../../src/channels/message-safety.js'
 export {conversationReplyScopeInstructions as groupReplyScopeInstructions,conversationReplyInstructions as groupReplyInstructions,assertConversationReply as assertGroupReply} from '../../src/channels/message-safety.js'
 
 export function sameDeliveredText(observed, expected, quoted = false) {
@@ -68,19 +68,53 @@ function factInternalIds(fact) {
   })
 }
 
-export function sendWorkflowNotification(adapter, notification) {
+export function assertWorkflowNotificationReply(notification) {
   const payload = notification.payload
   if (payload.reportChannel === 'web' || payload.externalMessaging === false
     || notification.disclosure?.authorizationRef?.startsWith('web-rerun:')) throw new Error('WORKFLOW_WEB_NOTIFICATION_FORBIDDEN')
-  assertGroupReply(payload.text, [notification.id, notification.taskId, payload.conversationId, payload.sourceMessageId,
+  assertGroupReply(payload.text, [notification.id, replyInternalTaskId(notification.taskId, notification.replySourceText), payload.conversationId, payload.sourceMessageId,
     payload.actorId, payload.recipientUserId, payload.humanRequestId,
     ...(Array.isArray(payload.atOpenDingTalkIds) ? payload.atOpenDingTalkIds : []), ...factInternalIds(payload.fact)])
+}
+
+export function sendWorkflowNotification(adapter, notification) {
+  assertWorkflowNotificationReply(notification)
+  const payload = notification.payload
   // 普通提醒与引用回复都使用原生提及参数，不把人员 ID 或 @ 姓名拼进正文。
   const base = { groupId: payload.conversationId, text: payload.text, idempotencyKey: notification.id,
     atOpenDingTalkIds: payload.atOpenDingTalkIds ?? [], ...(payload.atAll ? { atAll: true } : {}) }
   return payload.sourceMessageId && payload.actorId
     ? adapter.sendGroupReply({ ...base, replyToMessageId: payload.sourceMessageId, replyToSenderOpenDingTalkId: payload.actorId })
     : adapter.sendGroup(base)
+}
+
+/** 重现原正文的本地拒发，且绑定唯一发送许可；不能从普通异常或缺少 ACK 推断未发送。 */
+export function persistedReplySendRejectionProof(notification) {
+  const id = notification?.id, permit = notification?.sendPermit, failure = notification?.deliveryError
+  if (notification?.state !== 'unknown' || notification.sendAttemptCount !== 1
+    || notification.ack != null || notification.receipt != null || !id || notification.payload?.artifact
+    || !/^[a-f0-9]{64}$/u.test(notification.payloadDigest ?? '') || permit?.notificationId !== id
+    || permit.payloadDigest !== notification.payloadDigest || permit.attempt !== 1
+    || typeof notification.dispatchToken !== 'string' || !notification.dispatchToken.trim() || permit.fence !== notification.dispatchToken
+    || failure?.phase !== 'send' || failure.name !== 'Error' || failure.code !== 'GROUP_REPLY_INTERNAL_DETAILS'
+    || ['exitCode', 'stdout', 'stderr', 'serverErrorCode', 'origin', 'operation'].some(key => failure[key] != null)) return undefined
+  try { assertWorkflowNotificationReply(notification) }
+  catch (error) {
+    if (error.code === failure.code && error.message === failure.message) return {
+      kind: 'local-reply-validation-rejected', notificationId: id, payloadDigest: notification.payloadDigest,
+      attempt: 1, fence: permit.fence, code: error.code, errorMessage: error.message,
+    }
+  }
+  return undefined
+}
+
+/** 显式恢复只接纳与原发送许可逐字段相符的本地未发送证明；不把普通失败变成可重发。 */
+export function taskReplySendRetryProof(notification) {
+  if (notification?.state !== 'failed' || notification.kind !== 'status'
+    || !notification.taskId || notification.payload?.taskDelivery?.taskId !== notification.taskId
+    || notification.deliveryError?.knownNotSent !== true || notification.deliveryError.retryable !== false) return undefined
+  const proof = persistedReplySendRejectionProof({ ...notification, state: 'unknown', replySourceText: undefined })
+  return proof && Object.entries(proof).every(([key, value]) => notification.deliveryError.proof?.[key] === value) ? proof : undefined
 }
 
 // CLI v1.0.63 gateway contract: this exact guard refusal precedes the send call.

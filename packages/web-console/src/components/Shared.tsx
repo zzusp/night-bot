@@ -25,8 +25,8 @@ export function Status({ value }: { value?: string }) {
   const [label, tone] = states[value ?? ''] ?? [value || '未记录', 'neutral'];
   return <Badge tone={tone}>{label}</Badge>;
 }
-export function Notice({ error, onRetry, stale = false }: { error: unknown; onRetry?: () => void; stale?: boolean }) {
-  return <div className="notice" role="alert"><span>{stale ? '当前显示上次获取的数据。' : ''}{errorText(error)}</span>
+export function Notice({ error, onRetry, stale = false, message }: { error: unknown; onRetry?: () => void; stale?: boolean; message?: string }) {
+  return <div className="notice" role="alert"><span>{stale ? '当前显示上次获取的数据。' : ''}{message ?? errorText(error)}</span>
     {onRetry && <Button variant="ghost" onClick={onRetry} icon={<RiRefreshLine size={16} />}>重新获取</Button>}</div>;
 }
 export function Loading({ children = '正在获取…' }: { children?: ReactNode }) {

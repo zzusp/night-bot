@@ -27,6 +27,7 @@ export default class Channels extends Service {
   responsibility(id){return this.groupContext(id)?.responsibility}
   targetMatches(context,target){return context.type===target.type&&context.conversationId===target.conversationId&&(target.type!=='chat'||Object.values(context.participants??{}).includes(target.peerId)||context.senderId===target.peerId)}
   assertInputTarget(input){
+    this.assertLifecycle(input.channelId)
     const hold=this.targetHolds.get(input.channelId),active=this.activeTargets.get(input.channelId)
     if(hold&&(hold.includeAllScopes||!this.targetMatches(input,hold.target))||active&&!this.targetMatches(input,active))throw failure('DINGTALK_CHANNEL_SWITCH_BLOCKED')
   }
@@ -46,10 +47,122 @@ export default class Channels extends Service {
   }
   registerConversation(input){const identity=this.identity(input);return this.withInputTarget(identity.envelope,async()=>{await this.ready;this.assertInputTarget(input);const e=identity.envelope,path=join(this.host.runtimePaths.state,'channels','contexts.json');await withLock(path+'.lock',async()=>{this.assertInputTarget(input);const saved=JSON.parse(await readRegular(path)??'{}'),prior=saved[identity.sessionId],payloadHash=hash(JSON.stringify([identity.principal,e.text,e.resourceRefs??[],e.quotedMessage??null,e.mentionedAgent??null,e.mentions??[],e.platformFlags??{}])),priorMessage=prior?.messageFacts?.[e.messageId];const version=e.messageVersion??1;if(priorMessage&&(priorMessage.version??1)>version)throw failure('CHANNEL_MESSAGE_VERSION_STALE');if(priorMessage&&(priorMessage.version??1)===version&&priorMessage.payloadHash!==payloadHash)throw failure('CHANNEL_MESSAGE_ID_CONFLICT');const fact=priorMessage&&(priorMessage.version??1)===version?priorMessage:{payloadHash,version,occurredAt:e.sentAt??new Date().toISOString(),...e.senderName?{senderName:e.senderName}:{}};saved[identity.sessionId]={type:e.type,channelId:e.channelId,conversationId:e.conversationId,...(e.conversationName??prior?.conversationName)?{conversationName:e.conversationName??prior.conversationName}:{},participantNames:{...prior?.participantNames,...e.senderName?{[identity.principal]:e.senderName}:{}},updatedAt:fact.occurredAt>=(prior?.updatedAt??'')?fact.occurredAt:prior.updatedAt,memoryBinding:identity.binding,...identity.binding.groupId?{memoryGroupId:identity.binding.groupId}:{},messageFacts:{...prior?.messageFacts,[e.messageId]:fact},participants:{...prior?.participants,[identity.principal]:e.senderId}};await atomicWrite(path,JSON.stringify(saved,null,2)+'\n');this.contexts.set(identity.sessionId,saved[identity.sessionId])});return identity})}
   attachIngress(handler){this.ingress=handler;return ()=>{if(this.ingress===handler)this.ingress=undefined}}
-  registerOperationObserver(id,factory){if(this.observers.has(id))throw failure('CHANNEL_OBSERVER_EXISTS');this.observers.set(id,factory);return ()=>this.observers.delete(id)}
+  assertLifecycle(channelId,{read=false}={}){const hold=this.lifecycleHolds?.get(channelId);if(hold&&(!read||hold.sealReads))throw Object.assign(failure('CHANNEL_RECONFIGURING'),{knownNotSent:true})}
+  trackChannelCall(channelId,work){
+    this.channelCalls??=new Map()
+    let calls=this.channelCalls.get(channelId)
+    if(!calls)this.channelCalls.set(channelId,calls=new Set())
+    const call=Promise.resolve().then(work);calls.add(call)
+    call.finally(()=>{calls.delete(call);if(!calls.size&&this.channelCalls.get(channelId)===calls)this.channelCalls.delete(channelId)}).catch(()=>{})
+    return call
+  }
+  holdLifecycle(channelId){
+    this.lifecycleHolds??=new Map()
+    if(this.lifecycleHolds.has(channelId))throw failure('CHANNEL_RECONFIGURING')
+    const token={};this.lifecycleHolds.set(channelId,token)
+    return {
+      sealReads:()=>{if(this.lifecycleHolds.get(channelId)===token)token.sealReads=true},
+      drain:async()=>{
+        const errors=[]
+        while(this.channelCalls?.get(channelId)?.size){
+          const results=await Promise.allSettled([...this.channelCalls.get(channelId)])
+          errors.push(...results.filter(result=>result.status==='rejected').map(result=>result.reason))
+        }
+        if(errors.length)throw new AggregateError(errors,'Channel transport drain failed')
+      },
+      release:()=>{if(this.lifecycleHolds.get(channelId)===token)this.lifecycleHolds.delete(channelId)},
+    }
+  }
+  observerDrain(channelId){return Promise.all([...(this.observerHubs??[])].map(hub=>hub.drain(channelId)))}
+  registerOperationObserver(id,factory){
+    if(this.observers.has(id))throw failure('CHANNEL_OBSERVER_EXISTS')
+    this.observers.set(id,factory)
+    for(const hub of this.observerHubs??[])hub.add(id,factory)
+    let removal
+    return ()=>{
+      if(removal)return removal
+      if(this.observers.get(id)===factory)this.observers.delete(id)
+      removal=Promise.all([...(this.observerHubs??[])].map(hub=>hub.remove(id,factory)))
+      removal.catch(()=>{})
+      return removal
+    }
+  }
   operationCommands(name,args){return [...this.observers.values()].flatMap(factory=>factory.commands?.(name,args)??[])}
   operationObservation(event,commands){return Object.assign({},...[...this.observers.values()].map(factory=>factory.observation?.(event,commands)??{}))}
-  createOperationObserver(options){const observers=[...this.observers.values()].map(factory=>factory.createObserver(options));const invoke=(method,...args)=>Promise.all(observers.map(observer=>observer[method]?.(...args)));return {recover:()=>invoke('recover'),beforeIngress:id=>invoke('beforeIngress',id),notificationChanged:n=>{for(const observer of observers)observer.notificationChanged?.(n)},start:(...args)=>{for(const observer of observers)observer.start?.(...args)},observe:(...args)=>invoke('observe',...args),finish:(...args)=>{for(const observer of observers)observer.finish?.(...args)},close:()=>{for(const observer of observers)observer.close?.()}}}
+  createOperationObserver(options){
+    // Keep operation ownership pinned to its original observer generation. A
+    // replacement must never interpret the old generation's uncertain effects.
+    const active=new Map(),entries=new Set(),operations=new Map()
+    let closed=false,closing
+    const handled=promise=>{promise.catch(()=>{});return promise}
+    const invoke=(entry,method,args)=>{
+      if(entry.disposed||entry.stopping)return Promise.resolve()
+      const call=handled(entry.ready.then(()=>entry.observer[method]?.(...args)))
+      entry.calls.add(call)
+      call.finally(()=>entry.calls.delete(call)).catch(()=>{})
+      return call
+    }
+    const finishEntry=entry=>entry.closing??=handled((async()=>{
+      entry.stopping=true
+      const results=await Promise.allSettled([entry.ready,...entry.calls])
+      try{await entry.observer?.close?.()}catch(error){results.push({status:'rejected',reason:error})}
+      entry.disposed=true
+      const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason)
+      if(errors.length)throw new AggregateError([...new Set(errors)],'Channel observer drain failed')
+      entries.delete(entry)
+    })())
+    const hub={
+      add(id,factory){
+        if(closed)return
+        const entry={id,factory,calls:new Set(),leases:new Set(),disposed:false}
+        entries.add(entry);active.set(id,entry)
+        entry.ready=handled(Promise.resolve().then(()=>{entry.observer=factory.createObserver(options);return entry.observer.recover?.()}))
+      },
+      drain(id){return Promise.all([...entries].filter(entry=>entry.id===id).map(entry=>entry.removing??entry.closing??Promise.all([entry.ready,...entry.calls])))},
+      remove(id,factory){
+        const entry=active.get(id)
+        if(!entry||entry.factory!==factory)return Promise.resolve()
+        active.delete(id)
+        // Existing operation finish calls still reach the retired entry.
+        return entry.removing=handled((async()=>{await Promise.all([...entry.leases].map(lease=>lease.promise));return finishEntry(entry)})())
+      },
+    }
+    this.observerHubs??=new Set();this.observerHubs.add(hub)
+    for(const [id,factory]of this.observers)hub.add(id,factory)
+    const invokeAll=(method,args,selected=[...active.values()])=>handled(Promise.all(selected.map(entry=>invoke(entry,method,args))))
+    return {
+      recover:()=>handled(Promise.all([...active.values()].map(entry=>entry.ready))),
+      beforeIngress:id=>invokeAll('beforeIngress',[id]),
+      notificationChanged:notification=>invokeAll('notificationChanged',[notification]),
+      start:(id,...args)=>{
+        if(closed)return Promise.resolve()
+        if(operations.has(id))return Promise.resolve()
+        const owners=[...active.values()],lease=Promise.withResolvers()
+        for(const entry of owners)entry.leases.add(lease)
+        operations.set(id,{owners,lease})
+        return invokeAll('start',[id,...args],owners)
+      },
+      // No owner means finished, recovered, or never admitted here. Never
+      // reinterpret such a result using a replacement observer generation.
+      // Durable startup evidence is handled by each observer's recover method.
+      observe:(operation,...args)=>invokeAll('observe',[operation,...args],operations.get(operation?.id??operation?.operationId)?.owners??[]),
+      finish:(id,...args)=>{
+        const owned=operations.get(id)
+        if(!owned)return Promise.resolve()
+        if(owned.finishing)return owned.finishing
+        const call=owned.finishing=invokeAll('finish',[id,...args],owned.owners)
+        call.finally(()=>{for(const entry of owned.owners)entry.leases.delete(owned.lease);owned.lease.resolve();if(operations.get(id)===owned)operations.delete(id)}).catch(()=>{})
+        return call
+      },
+      close:()=>closing??=handled((async()=>{
+        closed=true;active.clear();this.observerHubs.delete(hub)
+        const results=await Promise.allSettled([...entries].map(finishEntry))
+        for(const owned of operations.values())owned.lease.resolve()
+        const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason)
+        if(errors.length)throw new AggregateError(errors,'Channel observers close failed')
+      })()),
+    }
+  }
   registerOperatorNotifications(id,notifications){if(this.operatorNotifications)throw failure('CHANNEL_OPERATOR_TRANSPORT_EXISTS');this.operatorNotifications=notifications;return ()=>{if(this.operatorNotifications===notifications)this.operatorNotifications=undefined}}
   registerPlugin(channelId,plugin){if(this.plugins.has(channelId))throw failure('CHANNEL_PLUGIN_EXISTS');this.plugins.set(channelId,plugin);return ()=>this.plugins.delete(channelId)}
   registerTransport(channelId,transport){if(!transport||typeof transport.send!=='function'||typeof transport.readback!=='function'||this.transports.has(channelId))throw failure('CHANNEL_TRANSPORT_INVALID');this.transports.set(channelId,transport);return ()=>this.transports.delete(channelId)}
@@ -69,7 +182,8 @@ export default class Channels extends Service {
     const context=this.groupContext(groupId),transport=context&&this.transports.get(context.channelId)
     if(!transport||typeof transport[method]!=='function')throw failure('CHANNEL_RESOURCE_READER_UNAVAILABLE')
     if(method==='readMentioned'&&typeof messageId==='object'){resource={occurredAt:messageId.occurredAt};messageId=messageId.messageId}
-    const value=await transport[method]({type:context.type,channelId:context.channelId,conversationId:context.conversationId,messageId,resource})
+    this.assertLifecycle(context.channelId,{read:true})
+    const value=await this.trackChannelCall(context.channelId,()=>{this.assertLifecycle(context.channelId,{read:true});return transport[method]({type:context.type,channelId:context.channelId,conversationId:context.conversationId,messageId,resource})})
     if(method!=='readMessage')return value
     const remoteConversation=value?.conversationId??value?.groupId
     if(value?.messageId!==messageId||remoteConversation&&remoteConversation!==context.conversationId)throw failure('CHANNEL_RESOURCE_SCOPE_MISMATCH')
@@ -81,8 +195,8 @@ export default class Channels extends Service {
     return {...rest,conversationId:groupId,...senderActor!==undefined?{actorId:senderActor}:{},...quoteView?{quotedMessage:quoteView}: {}}
   }
 
-  canDeliver(notification){const context=this.groupContext(notification.payload?.conversationId);if(!context)return true;const transport=this.transports.get(context.channelId);return !!transport&&(!transport.capabilities?.conversationTypes||transport.capabilities.conversationTypes.includes(context.type))&&(!notification.payload?.artifact||typeof transport.sendFile==='function'&&(!transport.capabilities?.files||transport.capabilities.files.includes(context.type)))&&(['unknown','starting'].includes(notification.state)||!transport.canSend||transport.canSend(notification))}
-  async transportCall(method,notification,...args){const envelope=this.deliveryEnvelope(notification),transport=envelope&&this.transports.get(envelope.channelId);if(!transport)throw failure('CHANNEL_TRANSPORT_UNAVAILABLE');if(typeof transport[method]!=='function')throw failure('CHANNEL_CAPABILITY_UNAVAILABLE');return transport[method](envelope,notification,...args)}
+  canDeliver(notification){const context=this.groupContext(notification.payload?.conversationId);if(!context)return true;if(this.lifecycleHolds?.has(context.channelId))return false;const transport=this.transports.get(context.channelId);return !!transport&&(!transport.capabilities?.conversationTypes||transport.capabilities.conversationTypes.includes(context.type))&&(!notification.payload?.artifact||typeof transport.sendFile==='function'&&(!transport.capabilities?.files||transport.capabilities.files.includes(context.type)))&&(['unknown','starting'].includes(notification.state)||!transport.canSend||transport.canSend(notification))}
+  async transportCall(method,notification,...args){const envelope=this.deliveryEnvelope(notification),transport=envelope&&this.transports.get(envelope.channelId);if(!transport)throw failure('CHANNEL_TRANSPORT_UNAVAILABLE');if(typeof transport[method]!=='function')throw failure('CHANNEL_CAPABILITY_UNAVAILABLE');this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return this.trackChannelCall(envelope.channelId,()=>{this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return transport[method](envelope,notification,...args)})}
   identity(input){const e=envelopeSchema.parse(input),principal='channel-actor-'+hash(JSON.stringify([e.channelId,e.senderId])),conversation=hash(JSON.stringify([e.type,e.channelId,e.conversationId,...e.type==='chat'?[e.senderId]:[]]));return {envelope:e,sessionId:'conversation-'+conversation,workspace:join(this.host.runtimePaths.workspaces,'conversations',conversation),binding:{actorId:e.type==='chat'?principal:'channel-room-actor-'+hash(JSON.stringify([e.channelId,e.conversationId])),...e.type==='chat-room'?{groupId:'channel-room-'+hash(JSON.stringify([e.channelId,e.conversationId])),groupWrite:true}:{}},principal}}
   receive(input){
     if(this.closed)throw failure('CHANNELS_CLOSED')

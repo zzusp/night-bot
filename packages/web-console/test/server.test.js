@@ -63,7 +63,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getOperatorSettings: () => options.settings, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -82,7 +82,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -201,7 +201,7 @@ test('渠道连接阶段只用真实 health 白名单，启用状态和私有错
     Object.defineProperty(health, 'lastError', {get() {assert.fail('raw adapter error must not be read')}})
     f.channels.plugins.set(channelId, {health})
     expected.push({channelId, type: 'fixture-chat', enabled: false, connectionState: index === 8 ? 'unknown' : state, restartRequired: false, liveApplied: false,
-      errorCode: state === 'waiting-auth' ? 'CHANNEL_AUTH_REQUIRED' : state === 'error' ? 'CHANNEL_ADAPTER_ERROR' : null, connected: healthy})
+      errorCode: state === 'waiting-auth' ? 'CHANNEL_AUTH_REQUIRED' : state === 'error' ? 'CHANNEL_ADAPTER_ERROR' : null, connected: healthy && !['waiting-auth', 'error', 'stopped'].includes(state)})
     return {type: 'fixture-chat', channelId, enabled: false, config: {token: 'PRIVATE_CONFIG_CREDENTIAL'}}
   })
   for (const [channelId, health] of [['absent', undefined], ['invalid', {state: 'ready', healthy: 'PRIVATE_NOT_BOOLEAN'}]]) {
@@ -552,7 +552,7 @@ test('渠道执行接口按可见会话与真实任务归属读取，归档任�
     if (query.kind === 'task.get') return {taskId: query.taskId, groupId: query.taskId === 'foreign-task' ? 'other-room' : 'room-one', sessionId: null, sessionBound: false}
     if (query.kind === 'router.get') return null
   }}
-  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskHistoryStatus: 'ready'})
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskSummaries: [{taskId: 'archived-task'}], taskHistoryStatus: 'ready'})
   assert.deepEqual(calls[0], {kind: 'task.list', groupId: 'room-one', archived: 'all'})
   assert.equal((await f.fetchApi('/api/conversations/room-one/session')).body.status, 'pending')
   assert.equal((await f.fetchApi('/api/conversations/room-one/tasks/archived-task/session')).body.status, 'unavailable')
@@ -562,7 +562,7 @@ test('渠道执行接口按可见会话与真实任务归属读取，归档任�
   for (const path of ['/tasks', '/session', '/tasks/archived-task/session']) assert.equal((await f.fetchApi('/api/conversations/hidden-room' + path)).status, 404)
   assert.equal(calls.length, before, '不可见会话不能探测持久历史')
   delete f.app.tasks.store
-  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: null, taskHistoryStatus: 'unavailable'})
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: null, taskSummaries: null, taskHistoryStatus: 'unavailable'})
   assert.equal((await f.fetchApi('/api/conversations/room-one/session')).status, 503)
   assert.equal(f.received.length, 0)
 })
@@ -618,6 +618,125 @@ test('Web transport binds retained delivery and message reads to stored channel 
   }
   assert.equal((await transport.send(envelope('own-history'))).visible, true)
   assert.equal((await transport.readMessage(envelope('own-history'))).senderId, 'operator')
+})
+
+test('DingTalk create HTTP reports actual loaded health, not fixed restart flags', async t => {
+  for (const state of ['listening', 'waiting-auth']) {
+    let f
+    const channelConfiguration = {async addDingtalk(input) {
+      const row = {type: 'dingtalk-dws', channelId: input.channelId, enabled: true, config: {}}
+      f.app.config.channelPlugins.push(row)
+      f.channels.plugins.set(input.channelId, {bindingActive: state === 'listening', health: {state, healthy: true}})
+      return {changed: true, channel: row}
+    }}
+    f = await fixture(t, {channelConfiguration}); await f.login()
+    const result = await f.fetchApi('/api/channels/dingtalk', {method: 'POST', body: {channelId: 'live-'+state, conversationType: 'chat-room', targetKind: 'id', target: 'room'}})
+    assert.equal(result.status, 200)
+    assert.equal(result.body.restartRequired, false)
+    assert.equal(result.body.liveApplied, state === 'listening')
+    assert.equal(result.body.channel.connected, state === 'listening')
+    assert.equal(result.body.channel.connectionState, state)
+  }
+})
+
+test('channel lifecycle errors preserve safe HTTP codes', async t => {
+  let code
+  const reject = async () => {throw Object.assign(Error(code), {code})}
+  const f = await fixture(t, {channelConfiguration: {addDingtalk: reject, editDingtalk: reject}, settings: {saveChannel: reject}})
+  await f.login()
+  for (const [error, status] of [['CHANNEL_ACTIVATION_FAILED', 503], ['CHANNEL_RECONFIGURING', 409], ['CHANNEL_RUNTIME_VERSION_CONFLICT', 409], ['CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED', 409]]) {
+    code = error
+    for (const [path, method] of [['/api/channels/dingtalk', 'POST'], ['/api/channels/dingtalk/test', 'PATCH'], ['/api/settings/channels', 'POST']]) {
+      const result = await f.fetchApi(path, {method, body: {}})
+      assert.equal(result.status, status)
+      assert.equal(result.body.error, error)
+    }
+  }
+})
+
+test('channel DELETE requires authenticated same-origin CSRF, exact version and explicit second confirmation',async t=>{
+  const calls=[],version='a'.repeat(64),f=await fixture(t,{channelConfiguration:{async remove(id,body){calls.push({id,body});return {changed:true,restartRequired:false,liveApplied:false}}}})
+  const body={expectedVersion:version,confirm:true},remove=(value=body,headers={})=>f.fetchApi('/api/channels/team-chat',{method:'DELETE',body:value,headers})
+  assert.equal((await remove()).status,401);await f.login()
+  assert.equal((await remove(body,{'x-csrf-token':'wrong'})).status,403)
+  assert.equal((await remove(body,{origin:'https://evil.example'})).status,403)
+  for(const confirm of [undefined,false,'true',1]){
+    const result=await remove({expectedVersion:version,confirm});assert.equal(result.status,400);assert.equal(result.body.error,'CHANNEL_DELETE_CONFIRMATION_REQUIRED')
+  }
+  for(const expectedVersion of [undefined,'old',0])assert.equal((await remove({expectedVersion,confirm:true})).body.error,'CHANNEL_DELETE_REQUEST_INVALID')
+  assert.equal((await remove({...body,force:true})).status,400)
+  assert.equal((await f.fetchApi('/api/channels/bad%00id',{method:'DELETE',body})).status,400)
+  assert.equal(calls.length,0)
+  assert.deepEqual((await remove()).body,{ok:true,channelId:'team-chat',changed:true,restartRequired:false,liveApplied:false})
+  assert.deepEqual(calls,[{id:'team-chat',body:{expectedVersion:version}}])
+})
+
+test('channel DELETE uses the existing channel ID contract rather than the Web chat ID regex',async t=>{
+  const calls=[],version='a'.repeat(64),f=await fixture(t,{channelConfiguration:{async remove(id){calls.push(id);return {changed:true,restartRequired:false,liveApplied:false}}}})
+  await f.login()
+  for(const id of ['团队渠道','team.chat','team/chat','team chat']){
+    const result=await f.fetchApi('/api/channels/'+encodeURIComponent(id),{method:'DELETE',body:{expectedVersion:version,confirm:true}})
+    assert.equal(result.status,200);assert.equal(result.body.channelId,id)
+  }
+  assert.deepEqual(calls,['团队渠道','team.chat','team/chat','team chat'])
+  for(const id of ['  ',' leading','trailing ','x'.repeat(129)])assert.equal((await f.fetchApi('/api/channels/'+encodeURIComponent(id),{method:'DELETE',body:{expectedVersion:version,confirm:true}})).status,400)
+  assert.equal(calls.length,4)
+})
+
+test('dot-only channel IDs use a protected query fallback without URL path normalization',async t=>{
+  const calls=[],version='a'.repeat(64),f=await fixture(t,{channelConfiguration:{async remove(id){calls.push(['remove',id]);return {changed:true,restartRequired:false,liveApplied:false}},async getDingtalk(id){calls.push(['read',id]);return {channelId:id}}}})
+  await f.login()
+  for(const id of ['.','..']){
+    const removed=await f.fetchApi('/api/channels?channelId='+encodeURIComponent(id),{method:'DELETE',body:{expectedVersion:version,confirm:true}})
+    assert.equal(removed.status,200);assert.equal(removed.body.channelId,id)
+    assert.equal((await f.fetchApi('/api/channels/dingtalk?channelId='+encodeURIComponent(id))).body.channelId,id)
+  }
+  assert.deepEqual(calls,[['remove','.'],['read','.'],['remove','..'],['read','..']])
+  assert.equal((await f.fetchApi('/api/channels?channelId=.&channelId=..',{method:'DELETE',body:{expectedVersion:version,confirm:true}})).status,400)
+  assert.equal((await f.fetchApi('/api/channels?channelId=.&force=true',{method:'DELETE',body:{expectedVersion:version,confirm:true}})).status,400)
+  assert.equal((await f.fetchApi('/api/channels?channelId=.',{method:'DELETE',body:{expectedVersion:version,confirm:true},headers:{'x-csrf-token':'bad'}})).status,403)
+  assert.equal(calls.length,4)
+})
+
+test('channel DELETE preserves typed lifecycle conflicts and never retries rejected or uncertain outcomes',async t=>{
+  let errorCode='DINGTALK_CHANNEL_VERSION_CONFLICT',committed=false,calls=0
+  const f=await fixture(t,{channelConfiguration:{async remove(){calls++;throw Object.assign(Error('private fixture details'),{code:errorCode,...committed?{committed:true}:{}})}}})
+  await f.login()
+  for(const [code,status]of [['DINGTALK_CHANNEL_VERSION_CONFLICT',409],['DINGTALK_CHANNEL_SWITCH_BLOCKED',409],['DINGTALK_CHANNEL_NOT_FOUND',404],['CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED',409],['CHANNEL_RECONFIGURING',409],['CHANNEL_CONFIGURATION_OPERATOR_REQUIRED',403]]){
+    errorCode=code
+    const result=await f.fetchApi('/api/channels/team-chat',{method:'DELETE',body:{expectedVersion:'a'.repeat(64),confirm:true}})
+    assert.equal(result.status,status);assert.deepEqual(result.body,{error:code})
+  }
+  committed=true;errorCode='NIGHT_WRITE_COMMIT_UNCERTAIN'
+  const uncertain=await f.fetchApi('/api/channels/team-chat',{method:'DELETE',body:{expectedVersion:'a'.repeat(64),confirm:true}})
+  assert.equal(uncertain.status,503);assert.deepEqual(uncertain.body,{error:'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN'});assert.equal(calls,7)
+})
+
+test('channel DELETE fails closed if this Host does not expose safe removal',async t=>{
+  const f=await fixture(t,{channelConfiguration:{}});await f.login()
+  const result=await f.fetchApi('/api/channels/team-chat',{method:'DELETE',body:{expectedVersion:'a'.repeat(64),confirm:true}})
+  assert.equal(result.status,503);assert.deepEqual(result.body,{error:'CHANNEL_CONFIGURATION_UNAVAILABLE'})
+})
+
+test('会话任务摘要只用列表白名单，隔离会话并脱敏，不读取每项详情', async t => {
+  const f = await fixture(t); await f.login()
+  const token = (await readFile(f.web.credentialPath, 'utf8')).trim(), calls = []
+  f.app.tasks.taskDetail = () => {throw new Error('N_PLUS_ONE_FORBIDDEN')}
+  f.app.tasks.store = {async query(query) {
+    calls.push(query); assert.equal(query.kind, 'task.list')
+    return [{taskId: 'safe-task', groupId: query.groupId, title: '任务 ' + token, status: 'active', updatedAt: '2026-11-10T00:00:00Z', objective: 'private', sessionId: 'private'},
+      {taskId: 'foreign-task', groupId: 'foreign', title: 'foreign title'}]
+  }}
+  const current = (await f.fetchApi('/api/chat-current')).body.conversationId
+  for (const path of ['/api/conversations/room-one/tasks', '/api/chat/' + current]) {
+    const value = (await f.fetchApi(path)).body
+    assert.deepEqual(value.taskIds, ['safe-task'])
+    assert.equal(value.taskSummaries.length, 1)
+    assert.deepEqual(Object.keys(value.taskSummaries[0]).sort(), ['state', 'taskId', 'title', 'updatedAt'])
+    assert.equal(value.taskSummaries[0].state, 'active')
+    assert.doesNotMatch(JSON.stringify(value.taskSummaries), new RegExp(token + '|private|foreign'))
+  }
+  assert.equal(calls.length, 2)
 })
 
 test('evolution bodies require authentication and exact version, redact both sides and preserve failure status',async t=>{

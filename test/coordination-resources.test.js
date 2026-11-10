@@ -277,3 +277,46 @@ test('round revision refreshes message/material scope without retaining removed 
   await assert.rejects(h.call('group_message_get', { messageId: 'a' }), /outside_request/)
   await assert.rejects(h.call('group_message_get', { messageId: 'unrelated' }), /outside_request/)
 })
+
+test('PDF、Word及未知附件按原始字节交付且下载清理不使返回文件失效', async t => {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'raw-resource-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 0, 0xff, 0x41])
+  for (const [name, mediaType] of [['report.pdf', 'application/pdf'], ['资料.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], ['payload.opaque', 'application/octet-stream']]) {
+    const adapter = createDwsAdapter({ enabled: true, profile: 'corp:actor', runner: { cwd, async run(args) {
+      assert.equal(args[args.indexOf('--profile') + 1], 'corp:actor')
+      assert.equal(args[args.indexOf('--message-id') + 1], 'message')
+      assert.equal(args[args.indexOf('--open-conversation-id') + 1], 'group')
+      const localPath = path.join(args[args.indexOf('--output') + 1], name)
+      await writeFile(path.join(cwd, localPath), bytes)
+      return { exitCode: 0, stdout: JSON.stringify({ localPath, sizeBytes: bytes.length }) }
+    } } })
+    const result = await adapter.readMessageResource('group', 'message', { type: 'fileId', resourceId: 'file' })
+    assert.equal(result.complete, true)
+    assert.equal(result.file.name, name)
+    assert.equal(result.file.mediaType, mediaType)
+    assert.deepEqual(Buffer.from(result.file.data), bytes)
+    assert.deepEqual(await readdir(cwd), [])
+  }
+})
+
+test('钉钉文档空间中的PDF沿绑定账号下载为原件，不回退公网或文本解码', async t => {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'document-file-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 0xff]), calls = []
+  const adapter = createDwsAdapter({ enabled: true, profile: 'corp:actor', runner: { cwd, async run(args) {
+    calls.push(args)
+    assert.equal(args[args.indexOf('--profile') + 1], 'corp:actor')
+    if (args[1] === '+inspect') return { exitCode: 0, stdout: JSON.stringify(documentEnvelope({ status: 'success', complete: true, data: { file: { fileId: 'document-node', type: 'FILE', extension: 'pdf', name: 'report.pdf', fileSize: bytes.length } } })) }
+    assert.equal(args[1], '+download')
+    const output = args[args.indexOf('--output') + 1]
+    await writeFile(path.join(cwd, output), bytes)
+    return { exitCode: 0, stdout: JSON.stringify(documentEnvelope({ success: true, nodeId: 'document-node', savedPath: output, sizeBytes: bytes.length })) }
+  } } })
+  const result = await adapter.readMessageResource('g', 'm', { type: 'dingtalkDoc', resourceId: 'document-node' })
+  assert.equal(result.file.name, 'report.pdf')
+  assert.equal(result.file.mediaType, 'application/pdf')
+  assert.deepEqual(Buffer.from(result.file.data), bytes)
+  assert.equal(calls.length, 2)
+  assert.deepEqual(await readdir(cwd), [])
+})
