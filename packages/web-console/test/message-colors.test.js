@@ -23,6 +23,9 @@ for (const [theme, palette] of Object.entries({light, dark})) {
     assert.notEqual(palette['message-user-bg'], palette['message-assistant-bg'])
     for (const role of ['user', 'assistant']) {
       const background = palette[`message-${role}-bg`]
+      const [red, green, blue] = background.slice(1).match(/../g).map(value => parseInt(value, 16))
+      // The selected palette is sage/forest green and warm sand/brown, never blue or purple.
+      assert.ok(role === 'user' ? green > red && green > blue : red > green && green > blue, `${theme} ${role} hue`)
       for (const surface of ['canvas', 'panel', 'surface']) {
         assert.notEqual(background, palette[surface])
         // Guard against slipping back to an almost-identical neutral surface.
