@@ -1924,6 +1924,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'source.stage') {
       const source = get('dynamic_sources', a.sourceId), value = record(a.stage)
+      if (a.messageVersion !== undefined && (source.version !== a.messageVersion || source.messageId !== a.messageId || source.groupId !== a.groupId)) fail('DYNAMIC_SOURCE_REVISION_CONFLICT')
       const stage = { spanId: text(value.spanId, 'spanId'), stage: text(value.stage, 'stage'),
         requestId: text(value.requestId, 'requestId'), attempt: integer(value.attempt + 1, 'attempt') - 1,
         startedAt: text(value.startedAt, 'startedAt'), completedAt: value.completedAt ?? null,
@@ -1934,7 +1935,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (stage.phase !== undefined && !(stage.stage === 'ingress' && ['source-read', 'resource-read', 'image-save', 'resident-store', 'source-record'].includes(stage.phase)
         || stage.stage === 'host' && ['task-commit', 'old-drain', 'materialize'].includes(stage.phase))
         || stage.loopDelayMs !== undefined && (stage.stage !== 'ingress' || stage.phase !== undefined || typeof stage.loopDelayMs !== 'number' || !Number.isFinite(stage.loopDelayMs) || stage.loopDelayMs < 0)) fail('DYNAMIC_SOURCE_STAGE_INVALID')
-      if (!['ingress', 'queue', 'turn', 'host', 'send', 'readback'].includes(stage.stage)
+      if (!['ingress', 'queue', 'turn', 'host', 'send', 'readback', 'triage', 'router'].includes(stage.stage)
         || !ingressTimestamp(stage.startedAt) || stage.completedAt !== null && !ingressTimestamp(stage.completedAt)) fail('DYNAMIC_SOURCE_STAGE_INVALID')
       if (stage.completedAt !== null && Date.parse(stage.completedAt) < Date.parse(stage.startedAt)) stage.quality = 'negative'
       source.stages ??= []

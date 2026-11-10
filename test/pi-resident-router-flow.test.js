@@ -296,6 +296,12 @@ test('in-flight first tier steers at most 15 original messages and leaves the si
   await h.service.whenIdle()
   const committed=(await h.query('source.list')).filter(source=>source.routed)
   assert.equal(committed.length,16)
+  for(const source of committed){
+    const spans=source.stages.filter(stage=>stage.stage==='triage')
+    assert.ok(spans.length&&spans.every(stage=>stage.completedAt),'each accepted source has joined observed triage spans')
+    assert.ok(spans.every(stage=>Date.parse(stage.startedAt)>=Date.parse(source.receivedAt)),'late sources are never backdated before Host receipt')
+  }
+  assert.ok(committed.find(source=>source.messageId==='1').stages.some(stage=>stage.stage==='triage'&&stage.shared),'original source becomes explicitly shared after a steer append')
   assert.ok(batches.every(batch=>batch.length<=15))
   assert.ok(batches.some(batch=>batch.length===15),'arrivals must use the active batch rather than 16 unrelated one-item sessions')
   for(const input of business)assert.ok(input.events.filter(event=>event.sourceId).length<=15)

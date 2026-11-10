@@ -747,6 +747,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
     }
   }
+  async function recordResidentStage(ref, stage) {
+    try {
+      const source = await query('source.get', { sourceId: ref.sourceId })
+      if (!source || source.messageId !== ref.messageId || source.version !== ref.version || source.groupId !== ref.groupId) fail('DYNAMIC_SOURCE_REVISION_CONFLICT')
+      await command('source.stage', { sourceId: ref.sourceId, messageId: ref.messageId, messageVersion: ref.version, groupId: ref.groupId, stage })
+    } catch (error) {
+      failures.set(`timing:${stage.requestId}`, { id: `timing:${stage.requestId}`, code: error.code ?? error.message })
+      ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
+    }
+  }
   async function projectSource(_source) { /* Historical projection is read-only after Topic retirement. */ }
   const sameRefs = (left, right) => hash((left ?? []).map(({ topicId, revision }) => [topicId, revision]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))) === hash((right ?? []).map(({ topicId, revision }) => [topicId, revision]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
   const sameIds = (left, right) => hash([...(left ?? [])].sort()) === hash([...(right ?? [])].sort())
@@ -930,14 +940,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,models:()=>roleModels('triage'),legacy,responsibilityFor,commit:async(groupId,decision)=>{
+  const triage=createChannelTriage({ctx,root,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,commit:async(groupId,decision)=>{
     const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))
     for(const notification of receipt.result?.notifications??[])notificationCache.set(notification.id,notification)
     void deliverNotifications()
     void hostScheduler(()=>residentRouter.schedule(groupId)).catch(error=>recordRouterFailure(groupId,error))
     return receipt.result
   }})
-  residentRouter=await openRouterLifecycle({ctx,store,root,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
+  residentRouter=await openRouterLifecycle({ctx,store,root,recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
     query,command,responsibilityFor,applyTaskAction:applyDirectTaskAction,prepareReply:args=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args)},

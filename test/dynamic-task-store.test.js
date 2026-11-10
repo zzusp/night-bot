@@ -2462,3 +2462,22 @@ test('完整任务和执行列表的嵌套对象不与账本或其他返回值�
   assert.equal((await f.query({ kind: 'execution.get', executionId: binding.executionId })).input.objective, 'Inspect target')
   assert.deepEqual((await f.query({ kind: 'execution.list' }))[0].resources.keys, [])
 })
+
+
+test('resident stage writes atomically bind exact conversation, message and source version', async t => {
+  const f = await fixture(t)
+  await f.command('source.record', { sourceId: 'timed-source', groupId: 'room', messageId: 'message', version: 2, actorId: 'actor', text: 'fixture' })
+  const identity = { sourceId: 'timed-source', groupId: 'room', messageId: 'message', messageVersion: 2 }
+  const stage = { spanId: 'triage-attempt', stage: 'triage', requestId: 'fixture-request', attempt: 0, startedAt: '2026-01-01T00:00:00.000Z' }
+  for (const mismatch of [{ groupId: 'foreign' }, { messageId: 'other' }, { messageVersion: 1 }]) {
+    await assert.rejects(f.command('source.stage', { ...identity, ...mismatch, stage }), { code: 'DYNAMIC_SOURCE_REVISION_CONFLICT' })
+  }
+  for (const kind of ['triage', 'router']) {
+    await f.command('source.stage', { ...identity, stage: { ...stage, stage: kind, spanId: kind } })
+    await f.command('source.stage', { ...identity, stage: { ...stage, stage: kind, spanId: kind, completedAt: '2026-01-01T00:00:01.000Z' } })
+  }
+  await f.reopen()
+  const saved = await f.query({ kind: 'source.get', sourceId: identity.sourceId })
+  assert.deepEqual(saved.stages.map(row => row.stage), ['triage', 'router'])
+  assert.ok(saved.stages.every(row => row.quality === 'observed'))
+})

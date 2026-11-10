@@ -1,3 +1,4 @@
+import {sourceStageTiming} from './source-stage-timing.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {z} from 'zod'
@@ -7,6 +8,19 @@ import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
+const withoutTiming=source=>{if(!source)return source;const {stages,...value}=source;return value}
+// Timing is mutable Host telemetry, never business input identity. Old journals
+// keep their exact packet for authorization; compare only this neutral field.
+function comparableRouterPacket(packet){
+  if(packet?.source?.kind!=='conversation-router')return packet
+  const copy=structuredClone(packet)
+  for(const block of copy.content??[]){
+    if(block.type!=='text'||!block.text.startsWith('Router 请求：'))continue
+    try{const body=JSON.parse(block.text.slice('Router 请求：'.length));if(!Array.isArray(body.events))continue;body.events=body.events.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}));block.text='Router 请求：'+JSON.stringify(body)}catch{}
+  }
+  return copy
+}
+export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
 export const routerHandoffLimits=Object.freeze({maxBytes:32768,maxIntentCharacters:4000,maxSectionItems:16,maxItemCharacters:2000,maxReferences:128,maxReferenceCharacters:512})
 const nonemptyText=max=>z.string().max(max).refine(value=>value.trim().length>0,{message:'交接内容不能为空'})
 const section=z.array(nonemptyText(routerHandoffLimits.maxItemCharacters)).max(routerHandoffLimits.maxSectionItems)
@@ -14,7 +28,7 @@ const reference=nonemptyText(routerHandoffLimits.maxReferenceCharacters)
 export const routerHandoffSchema=z.object({currentIntent:nonemptyText(routerHandoffLimits.maxIntentCharacters),unresolvedQuestions:section,referents:section,assumptions:section,evidenceRefs:z.array(z.object({sourceId:reference.optional(),taskId:reference.optional()}).strict().refine(row=>!!row.sourceId||!!row.taskId)).max(routerHandoffLimits.maxReferences),cutoff:z.number().int().nonnegative()}).strict().refine(value=>Buffer.byteLength(JSON.stringify(value),'utf8')<=routerHandoffLimits.maxBytes,{message:'ROUTER_HANDOFF_BUDGET_EXCEEDED'})
 
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
-export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPreset='night-bot'}){
+export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPreset='night-bot',recordStage}){
   const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set()
   const closeError=Object.assign(new Error('ROUTER_CLOSED'),{code:'ROUTER_CLOSED'})
   let closed=false,closing
@@ -31,6 +45,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     }
     return interruptions.get(handle)
   }
+  const timing=(row,requestId,attempt=0)=>sourceStageTiming({recordStage,stage:'router',sessionId:row.activeSessionId,requestId,groupId:row.id,attempt,onError:error=>ctx.logger?.warn?.(`message timing: ${error.code??error.message}`)})
   const query=(kind,args={})=>store.query({kind,...args})
   const command=(kind,args,id)=>store.command({kind,args,id:id??`${kind}:${hash(args)}`})
   const agents=ctx.get('agents'),persistence=ctx.get('sessionPersistence')
@@ -163,8 +178,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
   }
   function packetViews(row,batch){
     const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
-    const body={conversationId:row.id,generation:row.generation,events:batch}
-    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:batch.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
+    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}))}
+    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
     return [packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
   }
   async function drain(conversationId){
@@ -181,6 +196,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     for(;;){
       const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
       if(!inbox.length)break
+      const startedAt=new Date().toISOString()
       handle??=await open(row);assertOpen()
       const admittedInput=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
       const admittedPacket=admittedInput&&handle.agent.admission.lookupPacket(admittedInput.details?.packetId)
@@ -197,13 +213,21 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       }else{
         // 每批用户来源不超过15；内部事件另受总量和编码预算约束。
         let users=0,bytes=0
-        for(const event of inbox){if(event.kind==='source.message'&&users>=15)break;const size=Buffer.byteLength(JSON.stringify(event));if(batch.length&&bytes+size>131072)break;batch.push(event);bytes+=size;if(event.kind==='source.message')users++}
+        for(const event of inbox){if(event.kind==='source.message'&&users>=15)break;const size=Buffer.byteLength(JSON.stringify({...event,...event.source?{source:withoutTiming(event.source)}:{}}));if(batch.length&&bytes+size>131072)break;batch.push(event);bytes+=size;if(event.kind==='source.message')users++}
       }
       const [currentPacket,legacyPacket]=packetViews(row,batch),id=currentPacket.id
-      if(persistedPacket&&!isDeepStrictEqual(persistedPacket,currentPacket)&&!isDeepStrictEqual(persistedPacket,legacyPacket))fail('ROUTER_PACKET_ID_CONFLICT')
+      if(persistedPacket&&!sameRouterPacket(persistedPacket,currentPacket)&&!sameRouterPacket(persistedPacket,legacyPacket))fail('ROUTER_PACKET_ID_CONFLICT')
       const packet=persistedPacket??currentPacket
       packets.set(id,packet)
-      try{await handle.enqueue(packet);assertOpen();await handle.deliver(id);await handle.whenIdle();assertOpen()}finally{packets.delete(id)}
+      const observed=timing(row,id)
+      const stopObserving=observed.observe(handle.session)
+      observed.start(batch.filter(event=>event.sourceId).map(event=>({sourceId:event.sourceId,messageId:event.source?.messageId,version:event.messageVersion})),startedAt)
+      try{await handle.enqueue(packet);assertOpen();await handle.deliver(id);await handle.whenIdle();assertOpen()}finally{
+        packets.delete(id)
+        // A failed delivery may still be draining SDK retries or cancellation.
+        // Keep an open span if the official join itself cannot be established.
+        try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}
+      }
       const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
       if(batch.some(event=>pending.some(item=>item.id===event.id)))fail('ROUTER_BATCH_UNSETTLED')
       row=await query('router.get',{conversationId})
@@ -233,6 +257,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     const work=Promise.resolve().then(async()=>{
       assertOpen()
       const row=await query('router.get',{conversationId});assertOpen();assertRow(row)
+      const startedAt=new Date().toISOString()
       const existing=await persistence.stat(activeSessionId);assertOpen()
       if(!existing)fail('ROUTER_NATIVE_IDENTITY_INVALID')
       const handle=await open(row),packet=handle.agent.admission.lookupPacket(packetId)
@@ -240,16 +265,20 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       if(agents.get(activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
       const ids=packet?.source.eventIds
       if(packet?.id!==packetId||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
+      let validatedSources=[]
       const validate=async()=>{
         assertOpen()
         const current=await query('router.get',{conversationId});assertOpen();assertRow(current)
         const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
         const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
         if(pendingCount!==ids.length||!isDeepStrictEqual(ids,inbox.map(event=>event.id)))fail('ROUTER_RESUME_BATCH_STALE')
-        if(!packetViews(current,inbox).some(value=>isDeepStrictEqual(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
+        if(!packetViews(current,inbox).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
+        validatedSources=inbox
       }
       await validate();assertOpen();packets.set(packetId,packet)
-      try{const resumed=handle.resumeRouterBatch({packet,failedEntryId},validate);attempted=true;await resumed;await handle.whenIdle();assertOpen()}finally{packets.delete(packetId)}
+      const observed=timing(row,`${packetId}:resume:${failedEntryId}`,1),stopObserving=observed.observe(handle.session)
+      observed.start(validatedSources.filter(event=>ids.includes(event.id)&&event.sourceId).map(event=>({sourceId:event.sourceId,messageId:event.source?.messageId,version:event.messageVersion})),startedAt)
+      try{const resumed=handle.resumeRouterBatch({packet,failedEntryId},validate);attempted=true;await resumed;await handle.whenIdle();assertOpen()}finally{packets.delete(packetId);try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}}
       const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
       if(pending.some(event=>ids.includes(event.id)))fail('ROUTER_BATCH_UNSETTLED')
       await drain(conversationId)
