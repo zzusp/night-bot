@@ -123,6 +123,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if(!settings) fail('SETTINGS_UNAVAILABLE',503)
       try {
         if(request.method==='GET'&&path==='/api/settings') return send(response,200,await settings.view())
+        if(request.method==='GET'&&path==='/api/settings/model-catalog') return send(response,200,await settings.modelCatalog())
+        if(request.method==='PUT'&&path==='/api/settings/model-catalog') return send(response,200,await settings.saveModelEntry(await jsonBody(request,['action','provider','id','model','name','expectedVersion','confirm'],4096)))
         if(request.method==='GET'&&path==='/api/settings/channels') return send(response,200,await settings.plugins())
         if(request.method==='PUT'&&path==='/api/settings/appearance') return send(response,200,await settings.saveAppearance(await jsonBody(request,['name','icon','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/model') return send(response,200,await settings.saveModel(await jsonBody(request,['model','api','baseURL','expectedVersion'],4096)))
@@ -133,6 +135,9 @@ export async function createWebConsole({channels, paths, config, getApplication,
         fail('NOT_FOUND',404)
       } catch(error) {
         const codes={INVALID_CONFIG:400,CHANNEL_ACTIVATION_FAILED:503,CHANNEL_RECONFIGURING:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED:409,SETTINGS_INPUT_INVALID:400,SETTINGS_VERSION_CONFLICT:409,SETTINGS_SECRET_READ_ONLY:409,CHANNEL_WEB_CONFIGURATION_UNSUPPORTED:409,CHANNEL_EDIT_REQUIRES_STOP:409,CHANNEL_INSTANCE_EXISTS:409}
+        if(['SETTINGS_MODEL_IN_USE','SETTINGS_MODEL_EXISTS'].includes(error.code))fail(error.code,409)
+        if(error.code==='SETTINGS_TASK_ROLE_REQUIRED')fail(error.code,409)
+        if(['SETTINGS_MODEL_CATALOG_INVALID','SETTINGS_MODEL_LAST_REQUIRED','SETTINGS_MODEL_DELETE_CONFIRMATION_REQUIRED'].includes(error.code))fail(error.code,400)
         if(['UNSUPPORTED_REASONING_EFFORT','NIGHT_BOT_MODEL_ROLE_INVALID','NIGHT_BOT_ROLE_MODELS_INVALID','NIGHT_BOT_PROVIDER_PROFILE_REQUIRED','NIGHT_BOT_MODEL_NOT_CONFIGURED'].includes(error.code)||error.code?.startsWith('NIGHT_BOT_ROLE_MODEL_INVALID:'))fail('SETTINGS_INPUT_INVALID',400)
         if(codes[error.code]) fail(error.code,codes[error.code])
         if(['JSON_REQUIRED','REQUEST_TOO_LARGE','JSON_INVALID','REQUEST_INVALID','NOT_FOUND'].includes(error.code))throw error

@@ -2,6 +2,8 @@
 
 Night Bot 是基于 Pi 的个人助理 Agent 初始化套件，任何人都可以初始化自己的助手。记忆、任务与技能为渠道无关的核心，钉钉只是可选接入渠道之一。Pi agent-core 负责模型/工具迭代，Pi SessionManager 负责当前会话历史与模型上下文；消息、常驻 Router、单任务执行、恢复、权限、通知和交付继续由应用维护。核心支持无界面运行，保留 HTTP 接口；DWS CLI 与 Web 控制台均通过独立可选渠道插件接入。
 
+同一 API 路由可配置多个模型：Web「设置 → 模型列表」与无 Web 的 `night-bot-settings model-list/model-entry` 共用模型目录、版本校验和引用保护，新增/编辑/删除后可分别为分诊、Router、任务执行选择。配置保存后正常重启生效，不修改凭据或自动调用模型。见 [设置说明](docs/manual/web-console.md#设置助手模型与凭据) 和 [统一配置命令](docs/ops/shared-settings.md#同一路由的多个模型)。
+
 生产依赖图已没有外部 `@deepseek-ai/dsh-*` 包。文件读写、编辑、find 以及 Bash/PowerShell 工具复用官方 Pi 实现，通过 Night Bot 的受控文件与命令能力执行；权限、进程隔离、凭据、附件、技能和 workspace 等应用边界由仓库内实现接入。仍保留需署源的本地权限、平台进程、Windows ACL、技能 watcher 等实现。旧可变 Session、消息投影/查询服务、子代理产品和历史 v0–v4 数据导入均已退休；当前会话、消息和模型上下文由官方 Pi 维护。历史包名、namespace 和本地兼容 facade 按实际消费者逐项退休，不再作为永久公共 ABI；当前清理与未验项见[唯一验收入口](docs/acceptance/resident-conversation-routing/goal.md)。部署仍须完整代码、锁文件和 workspace 构建策略，不能只复制 `src`。
 
 早期移植源为 `HiQ-AI/dingtalk-dsh-assistant@93e431a`；该阶段记录 194 个保留模块、6 个退休旧驱动和 3 个排除 UI 模块。当前保留、适配及退休状态以实际来源 manifest/guard 为准，不把历史计数当成本轮清理结果。历史数据库的 `executionBackend: dsh` 标签继续兼容，实际默认执行为 Pi。
