@@ -27,6 +27,11 @@
   --board-danger-soft: #fee2e2;
   --board-info: #1d4ed8;
   --board-info-soft: #dbeafe;
+  --board-message-user-bg: #d6e6ff;
+  --board-message-user-border: #97b6e4;
+  --board-message-assistant-bg: #e9dff6;
+  --board-message-assistant-border: #bda4d6;
+  --board-message-muted: #535c6c;
   --board-focus: #2563eb;
   --board-scrollbar: #c4c4c4;
   --board-scrollbar-hover: #969696;
@@ -81,6 +86,11 @@
   --board-danger-soft: #451a1a;
   --board-info: #93c5fd;
   --board-info-soft: #172554;
+  --board-message-user-bg: #233f65;
+  --board-message-user-border: #627fa8;
+  --board-message-assistant-bg: #443452;
+  --board-message-assistant-border: #9276a7;
+  --board-message-muted: #b5b5b5;
   --board-focus: #93c5fd;
   --board-scrollbar: #525252;
   --board-scrollbar-hover: #737373;
