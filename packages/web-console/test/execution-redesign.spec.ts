@@ -43,6 +43,7 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
   await expect(dialog).not.toContainText(confirmed.replyPreview)
   await expect(dialog).not.toContainText(confirmed.preview)
   await expect(dialog).toContainText('700 毫秒')
+  await expect(dialog).toContainText('未记录')
   await expect(dialog).not.toContainText('+200 毫秒')
   await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
   await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
@@ -68,9 +69,10 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 960 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      const box = (await dialog.boundingBox())!
-      expect(box.x).toBeGreaterThanOrEqual(0)
-      expect(box.x + box.width).toBeLessThanOrEqual(width)
+      await expect.poll(async () => {
+        const box = await dialog.boundingBox()
+        return !!box && box.x >= 0 && box.x + box.width <= width
+      }).toBe(true)
       expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
       await page.screenshot({ path: test.info().outputPath(`message-process-${theme}-${width}.png`) })
     }
@@ -218,6 +220,7 @@ test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读�
   await page.setViewportSize({width:1440,height:560})
   const dialog = await openMessageProcess(page)
   await expect(dialog).toContainText('700 毫秒')
+  await expect(dialog).toContainText('未记录')
   const before=(await dialog.boundingBox())!
   const bubble=page.locator('.conversation-page .message-body').first()
   const sourceBefore=(await bubble.boundingBox())!
@@ -272,6 +275,7 @@ test('异步首读增高时浮层自行重新测量，不需要滚动或调整�
   const loadingHeight=(await dialog.boundingBox())!.height
   release()
   await expect(dialog).toContainText('700 毫秒')
+  await expect(dialog).toContainText('未记录')
   await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(loadingHeight+80)
 })
 

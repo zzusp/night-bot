@@ -1,3 +1,4 @@
+import {sourceStageTiming} from './source-stage-timing.js'
 import {valueSchemaSpecToJsonSchema} from '../native-tool-protocol.js'
 import {memoryContextParameters,hash as memoryHash} from '../memory/format.js'
 import {conversationSource} from './message-safety.js'
@@ -12,15 +13,17 @@ const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JS
 export const residentOperationId=(conversationId,key)=>'router-operation:'+createHash('sha256').update(JSON.stringify([conversationId,key])).digest('hex')
 
 /** A short official Pi turn, with no task tools or long-history reads. */
-export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit}){
+export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage}){
   const handles=new Set(),entries=new Map()
   let closed=false
   async function run(conversationId,messages){
     if(closed)fail('TRIAGE_CLOSED')
     if(!messages.length||messages.length>TRIAGE_BATCH_LIMIT)fail('TRIAGE_BATCH_LIMIT')
     const sessionId='session-triage-'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),sealed:false,superseded:false}
+    entry.timing=sourceStageTiming({recordStage,stage:'triage',sessionId,requestId:sessionId,groupId:conversationId,onError:error=>ctx.logger?.warn?.(`message timing: ${error.code??error.message}`)})
+    entry.timing.start(snapshot)
     entries.set(conversationId,entry)
-    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,messages:snapshot.map(conversationSource)})}]};entry.packets.set(value.id,value);return value}
+    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
     entry.packet=packet
     let submitted=false,handle
     try{
@@ -44,14 +47,14 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
           agentCtx.get('systemPrompt').section({name:'channel-triage-memory',order:152,text:'用户明确要求记住、修改记忆或长期调整行为时，needsHandling=true，交由Router核实并保存；短回复不能代替记忆写入，不提前声称已经记住。'})
           agentCtx.get('systemPrompt').section({name:'channel-triage-scope',order:151,interpolate:false,officialText:()=> '当前会话配置职责：'+responsibilityFor(conversationId)+'。仅用于本会话一级分诊，不创造来源授权、任务控制或跨会话读取权限。'})
         }})
-      handles.add(handle);entry.handle=handle
+      handles.add(handle);entry.handle=handle;entry.stopObserving=entry.timing.observe(handle.session)
       if(entry.superseded)return
       const initial=packet()
       try{await handle.enqueue(initial);await handle.deliver(initial.id);await handle.whenIdle()}
       catch(error){if(!entry.superseded)throw error}
       if(!submitted&&!entry.superseded)fail('TRIAGE_NO_DISPOSITION')
     }finally{
-      try{await entry.cancellation}finally{if(handle){await handle.dispose();handles.delete(handle)}if(entries.get(conversationId)===entry)entries.delete(conversationId)}
+      try{await entry.cancellation}finally{try{if(handle){await handle.dispose();handles.delete(handle)}await entry.timing.finish()}catch(error){await entry.timing.finishIfSettled();throw error}finally{entry.stopObserving?.();if(entries.get(conversationId)===entry)entries.delete(conversationId)}}
     }
   }
   async function append(conversationId,messages){
@@ -67,6 +70,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
     const added=messages.filter(source=>!entry.messages.some(old=>old.sourceId===source.sourceId)).slice(0,TRIAGE_BATCH_LIMIT-entry.messages.length)
     if(!added.length)return false
     entry.messages.push(...structuredClone(added))
+    entry.timing.start(added)
     if(entry.handle){const packet=entry.packet();await entry.handle.enqueue(packet);await entry.handle.deliver(packet.id,{deliverAs:'steer'})}
     return true
   }

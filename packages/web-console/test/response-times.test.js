@@ -92,3 +92,32 @@ test('selected timing fails closed for missing/ambiguous versions and scopes; so
  const multiple=await run({role:'assistant',notificationId:'n1'},[source,{...source,sourceId:'version-one',version:1}])
  assert.deepEqual(multiple.items.map(row=>row.messageVersion),[2,1]);assert.equal(multiple.total,2);assert.equal(multiple.nextOffset,null)
 })
+
+
+test('分诊与Router只用真实Host跨度，首答先于轮结束时展示已观测交集',()=>{
+ const end='2026-11-09T00:00:04Z'
+ const stages=[{stage:'triage',startedAt:source.receivedAt,completedAt:'2026-11-09T00:00:01Z'},
+  {stage:'router',startedAt:'2026-11-09T00:00:01Z',completedAt:end,shared:true}]
+ const value=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:00.950Z',stages}],[notice()])
+ assert.equal(value.durationMs,3000)
+ assert.equal(value.steps.find(row=>row.kind==='stage-triage-completed').durationMs,1000)
+ const router=value.steps.find(row=>row.kind==='stage-router-completed')
+ assert.equal(router.durationMs,2000);assert.equal(router.at,notice().deliveredAt)
+ assert.match(router.label,/截至回复可见/);assert.equal(router.shared,true)
+ assert.equal(value.steps.some(row=>row.kind==='triage-completed'),false)
+ assert.equal(stages[1].completedAt,end,'投影不修改存储的真实结束时间')
+})
+
+test('历史缺失、未关闭、负跨度与首答后开始的分诊/Router不生成估计耗时',()=>{
+ for(const span of [{stage:'triage',startedAt:source.receivedAt},
+  {stage:'router',startedAt:'2026-11-09T00:00:02Z',completedAt:'2026-11-09T00:00:01Z'},
+  {stage:'router',completedAt:'2026-11-09T00:00:02Z'}]){
+  const value=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z',stages:[span]}],[notice()])
+  assert.ok(value.steps.every(row=>!Object.hasOwn(row,'durationMs')))
+  assert.equal(value.durationMs,3000)
+ }
+ const after=responseTiming(message,[{...source,stages:[{stage:'router',startedAt:'2026-11-09T00:00:04Z',completedAt:'2026-11-09T00:00:05Z'}]}],[notice()])
+ assert.equal(after.steps.some(row=>row.kind==='stage-router-completed'),false)
+ const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z'}],[notice()])
+ assert.equal(historical.steps.find(row=>row.kind==='triage-completed').durationMs,undefined)
+})

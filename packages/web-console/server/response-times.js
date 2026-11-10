@@ -2,7 +2,7 @@ import {visibleText} from './session-view.js'
 // 计时只认 Host 接收和可靠送达；共同回复的来源覆盖由 Host 历史快照证明。
 const instant=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):null
 const stamp=value=>instant(value)===null?null:value
-const phaseNames={ingress:'消息已接纳',queue:'排队结束',turn:'消息处理完成',host:'安排已提交',send:'发送阶段完成',readback:'可见性核对完成'}
+const phaseNames={ingress:'消息已接纳',queue:'排队结束',turn:'消息处理完成',host:'安排已提交',send:'发送阶段完成',readback:'可见性核对完成',triage:'消息分流完成',router:'消息处理完成'}
 export function responseTiming(message,sources,notifications,routing,{secrets=[],taskReplySources=[]}={}){
  const matches=sources.filter(row=>row.messageId===message.messageId&&row.version===(message.messageVersion??1))
  if(matches.length!==1)return {messageId:message.messageId,status:'unavailable',reason:'历史接收时间或唯一来源关联缺失',receivedAt:null,firstReplyAt:null,durationMs:null,steps:[]}
@@ -25,15 +25,30 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
  }))
  const duration=receivedAt&&firstReplyAt?Date.parse(firstReplyAt)-Date.parse(receivedAt):null
  const steps=[]
+ let measuredTriage=false
  if(receivedAt)steps.push({kind:'received',label:'接收消息',at:receivedAt})
  for(const stage of source.stages??[]){
   if(!phaseNames[stage.stage]||stage.phase)continue
   const start=stamp(stage.startedAt),end=stamp(stage.completedAt),shared=stage.shared===true
+  if(['triage','router'].includes(stage.stage)){
+   // A completed Host span is measured, not the gap between adjacent milestones.
+   // A reply can become visible while the Router continues; retain only the
+   // observed overlap, without claiming the entire run ended at that receipt.
+   if(!start||firstReplyAt&&Date.parse(start)>Date.parse(firstReplyAt))continue
+   const measured=end&&Date.parse(end)>=Date.parse(start)
+   const clipped=measured&&firstReplyAt&&Date.parse(end)>Date.parse(firstReplyAt)
+   const at=clipped?firstReplyAt:end??start
+   const label=stage.stage==='triage'?'消息分流':'消息处理'
+   steps.push({kind:`stage-${stage.stage}-completed`,label:label+(clipped?'（截至回复可见）':'')+(shared?'（批次共享）':''),at,shared,
+    ...(measured?{durationMs:Date.parse(at)-Date.parse(start)}:{})})
+   if(stage.stage==='triage'&&measured)measuredTriage=true
+   continue
+  }
   if(stage.stage==='turn'&&start)steps.push({kind:'stage-turn-started',label:'开始处理'+(shared?'（批次共享）':''),at:start,shared})
   if(end)steps.push({kind:`stage-${stage.stage}-completed`,label:phaseNames[stage.stage]+(shared?'（批次共享）':''),at:end,shared,
    ...(start&&Date.parse(end)>=Date.parse(start)?{durationMs:Date.parse(end)-Date.parse(start)}:{})})
  }
- if(stamp(source.routedAt))steps.push({kind:'triage-completed',label:'消息分流完成',at:source.routedAt})
+ if(!measuredTriage&&stamp(source.routedAt))steps.push({kind:'triage-completed',label:'消息分流完成',at:source.routedAt})
  if(stamp(routing?.event?.consumedAt))steps.push({kind:'routing-completed',label:'本条消息安排已提交',at:routing.event.consumedAt})
  const attempt=[...associated].filter(row=>stamp(row.createdAt)).sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0]
  if(attempt){steps.push({kind:'reply-prepared',label:'回复已准备',at:attempt.createdAt});if(stamp(attempt.sendStartedAt))steps.push({kind:'send-started',label:'开始发送',at:attempt.sendStartedAt})}
