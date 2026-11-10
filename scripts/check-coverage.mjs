@@ -9,6 +9,7 @@ const retiredDrivers = new Map([["resident.js", "docs/retired-resident-entry.md"
 for(const name of ['task-owner-controller.js','task-owner-session.js'])retiredDrivers.set(name,'docs/spec/resident-conversation-task-routing.md')
 for(const name of ['task-topic-coordinator.js','topic-runtime.js'])retiredDrivers.set(name,'docs/acceptance/resident-conversation-routing/round-11/topic-execution-retirement.json')
 adapted.add('observer-pagination.js')
+adapted.add('notification-delivery.js')
 const retiredCount = retiredDrivers.size
 const adaptedCount = adapted.size - [...retiredDrivers.keys()].filter(source=>adapted.has(source)).length
 let retained = 0

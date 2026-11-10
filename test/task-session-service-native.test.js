@@ -700,3 +700,53 @@ test('service close drains the real task, observers and owned SQLite after an ea
  assert.equal(final.counts.tasks,0);assert.equal(final.counts.notifications,0);assert.equal(final.counts.observationPending,0)
  await assert.rejects(h.service.store.query({kind:'task.list'}),/closed|not open|DYNAMIC_STORE_CLOSED/i)
 }))
+
+test('official Host freezes raw PDF files for real Pi tools and rejects malformed, partial and oversized file delivery', { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
+  const f = await officialCase(t, 'raw-file-material-')
+  const bytes = Buffer.from('%PDF-1.7\nHOST_FILE_BYTES_4B71\n%%EOF\n'), digest = createHash('sha256').update(bytes).digest('hex')
+  let step = 0, path, reads = 0
+  const h = await f.host(request => {
+    if (step++ === 0) {
+      const resources = singleInput(request).materials.flatMap(value => value.resources ?? [])
+      const file = resources.find(value => value.resource.resourceId === 'pdf')
+      assert.equal(file.status, 'read'); path = file.path
+      assert.match(path, /resource-[a-f0-9]{16}-[a-f0-9]{16}\.pdf$/)
+      assert.deepEqual(file.file, { name: 'report.pdf', mediaType: 'application/pdf', path, bytes: bytes.length, sha256: digest })
+      const failures = Object.fromEntries(resources.filter(value => value.status === 'unavailable').map(value => [value.resource.resourceId, value.reason]))
+      assert.deepEqual(failures, { slash: 'RESOURCE_FILE_DESCRIPTOR_INVALID', backslash: 'RESOURCE_FILE_DESCRIPTOR_INVALID', partial: 'RESOURCE_READ_INCOMPLETE', oversized: 'RESOURCE_READ_TOO_LARGE', mixed: 'RESOURCE_FILE_DESCRIPTOR_INVALID' })
+      return [call('read', { path }), call('write', { path, content: 'must not alter Host material' })]
+    }
+    const results = request.messages.filter(message => message.role === 'toolResult')
+    assert.ok(JSON.stringify(results).includes('HOST_FILE_BYTES_4B71'))
+    assert.ok(results.some(result => result.toolName === 'write' && result.isError))
+    return [singleResult('wait', 'The delivered original file was read; retain it for the authorized follow-up')]
+  }, { serviceFactory: options => openTaskSessionService({ ...options, readResource: async (_group, _message, resource) => {
+    reads++
+    const file = { name: 'report.pdf', mediaType: 'application/pdf', data: bytes }
+    if (resource.resourceId === 'slash') file.name = '../report.pdf'
+    if (resource.resourceId === 'backslash') file.name = '..' + String.fromCharCode(92) + 'report.pdf'
+    if (resource.resourceId === 'oversized') file.data = new Uint8Array(8 * 1024 * 1024 + 1)
+    return { file, complete: resource.resourceId !== 'partial', ...(resource.resourceId === 'mixed' ? { text: 'ambiguous body' } : {}) }
+  } }) })
+  await t.beginBusiness()
+  await h.service.ingest({ ...message, messageId: 'raw-file-delivery', text: '测试助手，读取附件原件，保持材料只读。', resourceRefs: ['pdf', 'slash', 'backslash', 'partial', 'oversized', 'mixed'].map(resourceId => ({ type: 'fileId', resourceId })) })
+  await h.service.whenIdle()
+  const [task] = await h.query('task.list')
+  assert.equal(task.status, 'active', JSON.stringify({ step, calls: h.requests.length, toolErrors: h.toolResults.filter(result => result.result.isError), error: (await h.service.taskDialogue(task.taskId)).error, alerts: h.service.listAlerts() }))
+  assert.deepEqual(await readFile(path), bytes)
+  const saved = await h.ctx.sessionPersistence.readNative(task.sessionId, { requireComplete: true })
+  const materialRoot = join(saved.header.cwd, 'materials'), source = (await readdir(materialRoot)).find(name => /^source-.*\.json$/.test(name))
+  const packet = JSON.parse(await readFile(join(materialRoot, source), 'utf8'))
+  assert.ok(packet.pathBindings.fields['resources.0.value.file.path'])
+  assert.equal('data' in packet.resources[0].value.file, false)
+  const count = h.requests.length, readsBeforeRecovery = reads
+  await h.service.recover(); await h.service.whenIdle()
+  assert.equal(reads, readsBeforeRecovery); assert.equal(h.requests.length, count)
+  packet.resources[0].value.file.sha256 = '0'.repeat(64)
+  await writeFile(join(materialRoot, source), JSON.stringify(packet))
+  const taskRounds = step
+  await h.service.sendTaskDialogue({ taskId: task.taskId, requestId: 'corrupt-file-descriptor', text: 'Inspect the same retained source without another download' })
+  await h.service.whenIdle()
+  assert.equal((await h.service.taskDialogue(task.taskId)).error, 'TASK_MATERIAL_CONTENT_CHANGED')
+  assert.equal(step, taskRounds); assert.equal(reads, readsBeforeRecovery)
+}))

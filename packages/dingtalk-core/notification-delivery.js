@@ -1,4 +1,4 @@
-import { quotedSendRejectionProof, persistedUuidSendRejectionProof, persistedMentionSendRejectionProof } from './group-message.js'
+import { quotedSendRejectionProof, persistedUuidSendRejectionProof, persistedMentionSendRejectionProof, persistedReplySendRejectionProof } from './group-message.js'
 import { createHash, randomUUID } from 'node:crypto'
 
 // Diagnostics are bounded and scrubbed before they cross the durable/UI boundary.
@@ -94,7 +94,7 @@ async function deliverNotification({ notification, notifications, command, onSta
     finally { await onStage(current, { ...stage, completedAt: new Date().toISOString() }) }
   }
   if (!notifications || notification.state === 'delivered') return
-  const persistedRejection = persistedUuidSendRejectionProof(notification) ?? persistedMentionSendRejectionProof(notification)
+  const persistedRejection = persistedUuidSendRejectionProof(notification) ?? persistedMentionSendRejectionProof(notification) ?? persistedReplySendRejectionProof(notification)
   if (!readbackOnly && persistedRejection) {
     // 原尝试的完整参数拒绝证据只能结清为未发送失败，不能借升级重放历史提醒。
     await command('notification.reconcile', { notificationId: notification.id, state: 'failed', receipt: null,
@@ -149,10 +149,13 @@ async function deliverNotification({ notification, notifications, command, onSta
       phase: 'readback', state: deliveredProof(proof) ? 'delivered' : 'unknown', receipt: safeNotificationDetail(deliveredProof(proof) ? proof : ack),
       ...(deliveredProof(proof) ? {} : { nextAttemptAt: notificationRetryAt(claimed, null, 'readback') }) }, `notification-receipt:${claimed.id}:${claimed.dispatchToken}`)
   } catch (error) {
-    const rejected = phase === 'send' && knownPreSendRejection(error, claimed)
-    if (!rejected) error.knownNotSent = false
+    const localRejection = phase === 'send' && persistedReplySendRejectionProof({ ...claimed, state: 'unknown',
+      ack, receipt: null, deliveryError: notificationErrorDetail(error, phase) })
+    const rejected = !!localRejection || phase === 'send' && knownPreSendRejection(error, claimed)
+    error.knownNotSent = rejected
+    if (localRejection) { error.retryable = false; error.proof = localRejection }
     error.notificationPhase = phase
-    error.notificationRetryAt = notificationRetryAt(claimed, error, phase)
+    error.notificationRetryAt = localRejection ? null : notificationRetryAt(claimed, error, phase)
     await command('notification.receipt', { notificationId: claimed.id, dispatchToken: claimed.dispatchToken,
       phase, state: rejected ? 'failed' : 'unknown', receipt: safeNotificationDetail(ack), error: notificationErrorDetail(error, phase),
       nextAttemptAt: error.notificationRetryAt }, `notification-receipt:${claimed.id}:${claimed.dispatchToken}`)
