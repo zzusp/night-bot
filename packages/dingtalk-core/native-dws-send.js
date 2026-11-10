@@ -126,7 +126,7 @@ export function nativeDwsObservation(event, commands) {
 /** Original native operations are the authority; the existing outbox stores exact self IDs. */
 export function createNativeDwsObserver({ operations, residentStore, notificationCache = new Map(), querySendStatus, resolveNotificationScope = notification => ({ conversationId: notification.payload?.conversationId, querySendStatus }), warn = () => {}, ingressWaitMs = 1500, probeWaitMs = 3000 }) {
   const pending = new Map(), probes = new Map()
-  let closed = false
+  let closed = false, closing
   const stopped = Promise.withResolvers()
   const bounded = async (promise, ms) => {
     let timer
@@ -228,6 +228,20 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
       // Startup reprojects persisted proofs; network availability is never a boot gate.
       for (const operation of operations.values()) await observeStatuses(operation)
     },
-    close() { closed = true; stopped.resolve(); for (const item of pending.values()) item.resolve(); pending.clear() },
+    close() {
+      if (closing) return closing
+      closed = true; stopped.resolve()
+      for (const item of pending.values()) item.resolve()
+      pending.clear()
+      // Releasing bounded ingress waiters does not prove the underlying query
+      // stopped. Retain this generation until every original probe has settled.
+      closing = (async () => {
+        const results = await Promise.allSettled([...probes.values()])
+        const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : result.value?.error ? [result.value.error] : [])
+        if (errors.length) throw new AggregateError(errors, 'DWS_OBSERVER_DRAIN_FAILED')
+      })()
+      closing.catch(() => {})
+      return closing
+    },
   }
 }

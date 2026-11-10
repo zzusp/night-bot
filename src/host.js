@@ -4,7 +4,7 @@ import {configFileOf,updateConfig,validateConfig} from './config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
 import {prepareProfileEntries} from './native-profile-preflight.js'
 import {taskSessionRoutes} from './tasks/session-routes.js'
-import {channelPluginRows} from './channels/loader.js'
+import {createChannelLifecycle} from './channels/lifecycle.js'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import {loadNativeEnvironment} from './native-environment.js'
@@ -19,7 +19,7 @@ import {createPrivacy,installProcessPrivacy} from './memory/privacy.js'
 
 const require = createRequire(import.meta.url)
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
-export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false, dingtalkProfileRunner } = {}) {
+export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false, dingtalkProfileRunner, dingtalkPluginDependencies = {} } = {}) {
   assertPiTaskBackendConfiguration(config)
   const paths=runtimePaths(config)
   await prepareRuntimePaths(paths)
@@ -29,7 +29,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
   }
   const root = paths.state, workspace = paths.workspaces
   const ctx = new Context()
-  let releaseData,closing,permissionService
+  let releaseData,closing,permissionService,channelLifecycle
   const configurationCalls=new Set()
   const configurationCall=operation=>{
     if(!releaseData||closing)throw failure('CHANNEL_CONFIGURATION_UNAVAILABLE')
@@ -58,7 +58,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
     if(paths.mode==='portable'){
       const file=configFileOf(config)??join(paths.config,'config.json')
-      ctx.provide('operatorSettings',createOperatorSettings({file,paths,running:config,getCredentials:()=>ctx.get('credentials'),run:configurationCall}))
+      ctx.provide('operatorSettings',createOperatorSettings({file,paths,running:config,getCredentials:()=>ctx.get('credentials'),run:configurationCall,applyChannel:(transaction,id)=>channelLifecycle.apply(transaction,id),canEditChannel:id=>channelLifecycle?.canEdit(id)===true}))
       ctx.provide('channelConfiguration',{
         read:()=>configurationCall(async()=>{
           const result=await updateConfig(file,next=>next,{checkOnly:true})
@@ -135,14 +135,39 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
             }
             next.channelPlugins[index]=row
             return next
-          })
+          },{apply:transaction=>channelLifecycle.apply(transaction,channelId)})
           let result
-          if(switched){
+          if(switched&&!channelLifecycle.instances.has(channelId)&&current.enabled){
             const tasks=ctx.get('application')?.tasks
             if(!tasks)throw failure('CHANNEL_CONFIGURATION_UNAVAILABLE')
             result=await tasks.withChannelTargetSwitch({channelId,nextTarget:{type:binding.conversationType,conversationId:binding.conversationId,peerId:binding.peerId},includeAllScopes},save)
           }else result=await save()
-          return {changed:result.changed,channel:row,detail:dingtalkEditable(row)}
+          return {changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied??false,channel:row,detail:dingtalkEditable(row)}
+        }),
+        setEnabled:(channelId,input)=>configurationCall(async()=>{
+          if(typeof channelId!=='string'||!channelId||!input||Object.keys(input).some(key=>!['expectedVersion','enabled'].includes(key))||typeof input.expectedVersion!=='string'||typeof input.enabled!=='boolean')throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
+          const {dingtalkConfigVersion}=await import('./channels/plugins/dingtalk-config.js')
+          const result=await updateConfig(file,next=>{
+            const row=next.channelPlugins?.find(row=>(row.channelId??row.config?.channelId??row.type)===channelId)
+            if(!row)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
+            if(row.type==='web-console')throw failure('CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED')
+            if(dingtalkConfigVersion(row)!==input.expectedVersion)throw failure('DINGTALK_CHANNEL_VERSION_CONFLICT')
+            row.enabled=input.enabled;return next
+          },{apply:transaction=>channelLifecycle.apply(transaction,channelId)})
+          return {changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied??false}
+        }),
+        remove:(channelId,input)=>configurationCall(async()=>{
+          if(typeof channelId!=='string'||!channelId||!input||Object.keys(input).some(key=>key!=='expectedVersion')||typeof input.expectedVersion!=='string')throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
+          const {dingtalkConfigVersion}=await import('./channels/plugins/dingtalk-config.js')
+          const result=await updateConfig(file,next=>{
+            const index=next.channelPlugins?.findIndex(row=>(row.channelId??row.config?.channelId??row.type)===channelId)??-1
+            if(index<0)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
+            const row=next.channelPlugins[index]
+            if(row.type==='web-console')throw failure('CHANNEL_LIVE_LIFECYCLE_UNSUPPORTED')
+            if(dingtalkConfigVersion(row)!==input.expectedVersion)throw failure('DINGTALK_CHANNEL_VERSION_CONFLICT')
+            next.channelPlugins.splice(index,1);return next
+          },{apply:transaction=>channelLifecycle.apply(transaction,channelId,{removing:true})})
+          return {changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied??false}
         }),
         addDingtalk:input=>configurationCall(async()=>{
           const fields=['channelId','conversationType','targetKind','target','name','prompt','writesAuthorized']
@@ -173,13 +198,13 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
             try{validateDingtalkInstance(row)}catch{throw failure('DINGTALK_CONFIG_INVALID')}
             next.channelPlugins??=[];next.channelPlugins.push(row)
             validateConfig(structuredClone(next),file)
-            // 只初始化补拉下界；不改运行快照、不加载适配器或启动订阅。
+            // 初始化新渠道补拉下界；事务协调器负责加载和发布。
             const ingress=await openDingtalkIngress(paths,row.channelId,{fromAt:configuredAt}),state=ingress.snapshot()
             await ingress.saveBridgeState({...state,paused:true,pausedAt:state.pausedAt??configuredAt})
             await ingress.drain()
             return next
-          })
-          return {changed:result.changed,restartRequired:true,liveApplied:false,channel:row}
+          },{apply:transaction=>channelLifecycle.apply(transaction,row.channelId)})
+          return {changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied??false,channel:row}
         }),
       })
     }
@@ -219,10 +244,13 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,
-      ...await channelPluginRows(config,paths),
+
     ]
     await ctx.loader.root.update(prepareProfileEntries(ctx,rows,ctx.baseUrl))
     await ctx.loader.await()
+    channelLifecycle=createChannelLifecycle({ctx,paths,running:config,dependencies:{...dingtalkPluginDependencies,...dingtalkProfileRunner?{runner:dingtalkProfileRunner}:{}}})
+    ctx.provide('channelLifecycle',channelLifecycle)
+    await channelLifecycle.initialize(config)
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
     for (const service of ['agents','credentials','officialAgentFactory','nativeModelRoutes','sessionCatalog','piAuthority','sessionPersistence','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','sessionController','schedule','memory','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)

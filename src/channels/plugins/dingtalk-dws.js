@@ -15,6 +15,7 @@ import {dingtalkIngressAdapter} from './dingtalk-ingress.js'
 import {observeDwsLogin} from './dingtalk-auth.js'
 export {validateConfig} from './dingtalk-config.js'
 export const name='night-channel-dingtalk-dws',inject=['channels','runtimePaths']
+export const channelLifecycle=1
 /** Optional channel plugin; retaining the attributed rich CLI adapter/bridge
  * keeps history, subscriptions, media/docs/files and receipt recovery available. */
 export async function apply(ctx,config={},dependencies={}){
@@ -28,8 +29,8 @@ export async function apply(ctx,config={},dependencies={}){
   const environment=dwsEnvironment(paths,privateHome,cache,{accountMode:accountPolicy.mode,...dependencies.environment?{inherited:dependencies.environment}:{}})
   for(const directory of [...accountPolicy.mode==='private'?[privateHome,join(privateHome,'config'),join(privateHome,'keychain')]:[],workspace,cache])await privateDirectory(directory)
   const runnerFor=cwd=>dependencies.runner?{...dependencies.runner,cwd}:createNodeDwsRunner({executable:config.executable??'dws',cwd,env:environment}),runner=runnerFor(workspace)
-  let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,lastRange
-  let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve()
+  let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,lastRange,targetValidated=false
+  let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve(),settingsTail=Promise.resolve()
   const readSavedBinding=async()=>{
     const saved=await readDingtalkBinding(bindingFile)
     if(saved&&config.binding&&(Object.keys(saved).some(key=>saved[key]!==config.binding[key])||Object.keys(config.binding).some(key=>saved[key]!==config.binding[key])))throw failure('DINGTALK_BINDING_CHANGED')
@@ -46,17 +47,37 @@ export async function apply(ctx,config={},dependencies={}){
     })
     adapter=createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner})
   }
+  let closing,preparing,unregister=()=>{},unregisterPlugin=()=>{},stopObserver=()=>{},stopOperator
+  const stop=()=>closing??=(async()=>{
+    closed=true
+    const errors=[]
+    for(const action of [()=>preparing,()=>stopAuthObserver?.(),()=>startTail,()=>settingsTail,()=>stopBridge?.setIngressPaused(true),()=>stopBridge?.(),()=>ingressStore?.drain()])try{await action()}catch(error){errors.push(error)}
+    if(errors.length)throw new AggregateError(errors,'DINGTALK_SHUTDOWN_FAILED')
+    await stopObserver();await prepareSecrets(paths)
+    unregister();unregisterPlugin();stopOperator?.()
+  })()
+  dependencies.registerStopAndDrain?.(stop)
+  ctx.effect(()=>stop,'DWS channel shutdown');ctx.on('night/stopping',stop)
   const privatePeers=config.operatorNotifications===true?config.operatorPeers:[]
   const normalize=(raw,fallback)=>{const value=normalizeHistoryMessage({...raw,conversationId:raw.conversationId??raw.groupId,createTime:raw.createTime??raw.occurredAt},fallback);if(value.quotedMessage){value.quotedMessage.text=value.quotedMessage.content??'';const sender=raw.quotedMessage?.senderOpenDingTalkId??raw.quotedMessage?.senderId;if(sender)value.quotedMessage.senderOpenDingTalkId=sender}return value}
-  const assertTarget=(conversationId,type=config.conversationType)=>{if(!readyBound)throw failure('DINGTALK_CHANNEL_NOT_READY');if(conversationId!==config.binding.conversationId||type!==config.conversationType)throw failure('DINGTALK_TARGET_NOT_BOUND')}
+  const assertTarget=(conversationId,type=config.conversationType)=>{if(closed)throw failure('DINGTALK_CHANNEL_DISABLED');if(!readyBound)throw failure('DINGTALK_CHANNEL_NOT_READY');if(conversationId!==config.binding.conversationId||type!==config.conversationType)throw failure('DINGTALK_TARGET_NOT_BOUND')}
   const requireSend=()=>{if(!readyBound||!config.enabled||closed)throw failure('DINGTALK_CHANNEL_DISABLED')}
   const typed=(notification,envelope)=>({...notification,payload:{...notification.payload,conversationId:envelope.conversationId,sourceMessageId:envelope.replyToMessageId,replyToMessageId:envelope.replyToMessageId,actorId:envelope.senderId,replyToSenderOpenDingTalkId:envelope.replyToParticipantId,atOpenDingTalkIds:envelope.recipientIds,text:envelope.text}})
-  const notifications={canDisclose:()=>readyBound&&config.enabled&&config.writesAuthorized===true,
+  const notifications={canDisclose:()=>readyBound&&!closed&&config.enabled&&config.writesAuthorized===true,
     send:notification=>{requireSend();if(notification.payload.audience!=='operator')assertTarget(notification.payload.conversationId);return notification.payload.audience==='operator'?adapter.sendSelfIntent({userId:notification.payload.recipientUserId,text:notification.payload.text,idempotencyKey:notification.id,taskId:notification.taskId,humanRequestId:notification.payload.humanRequestId}):sendWorkflowNotification(adapter,notification)},
     readback:notification=>notification.payload.audience==='operator'?readOperatorNotificationDelivery(adapter,notification):readTaskNotificationDelivery(adapter,notification,{senderActorId:config.assistantActorId}),
     sendFile:(_notification,file)=>{requireSend();assertTarget(_notification.payload.conversationId);return createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner:runnerFor(file.directory)}).sendGroupFile({groupId:_notification.payload.conversationId,fileName:file.fileName,idempotencyKey:_notification.id})},
     readbackFile:notification=>readTaskFileDelivery(adapter,notification),querySendStatus:id=>adapter.querySendStatus(id),recall:notification=>recallOperatorNotification(adapter,notification)}
-  const unregister=ctx.channels.registerTransport(channelId,{canSend:()=>readyBound&&config.enabled&&config.writesAuthorized===true,
+  // Operator notifications also participate in this channel's authority gate
+  // and join barrier, even though they do not carry a conversation envelope.
+  for(const method of ['send','sendFile','readback','readbackFile','querySendStatus','recall']){
+    const invoke=notifications[method]
+    notifications[method]=(...args)=>{
+      ctx.channels.assertLifecycle(channelId,{read:['readback','readbackFile','querySendStatus'].includes(method)})
+      return ctx.channels.trackChannelCall(channelId,()=>invoke(...args))
+    }
+  }
+  unregister=ctx.channels.registerTransport(channelId,{canSend:()=>readyBound&&!closed&&config.enabled&&config.writesAuthorized===true,
     capabilities:{account:accountPolicy,privateSubscription:{scope:'explicit-peers',peerCount:privatePeers.length+(config.conversationType==='chat'?1:0)},conversationTypes:[config.conversationType],files:config.conversationType==='chat-room'?['chat-room']:[],quotedReplies:[config.conversationType]},
     send:(envelope,notification)=>{requireSend();assertTarget(envelope.conversationId,envelope.type);return envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:config.binding.peerId,text:envelope.text,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:config.binding.peerId}):notifications.send(typed(notification,envelope))},
     readback:async(envelope,notification)=>{
@@ -96,7 +117,6 @@ export async function apply(ctx,config={},dependencies={}){
       throw error
     }
   }
-  let settingsTail=Promise.resolve()
   const serialize=work=>{const operation=settingsTail.then(work);settingsTail=operation.catch(()=>{});return operation}
   const plugin={channelId,get bindingIdentity(){return config.binding?{...config.binding}:undefined},get bindingActive(){return readyBound&&!closed},get name(){return config.name??channelId},get prompt(){return config.prompt},get enabled(){return config.enabled},
     setEnabled:enabled=>serialize(async()=>{
@@ -107,27 +127,28 @@ export async function apply(ctx,config={},dependencies={}){
       if(stopBridge)await stopBridge.setIngressPaused(!enabled)
       return {enabled:config.enabled,health:plugin.health}
     }),
+    updateLive:settings=>serialize(async()=>{
+      if(closed||!app)throw failure('CHANNEL_PLUGIN_NOT_READY')
+      if(typeof settings.enabled!=='boolean'||typeof settings.writesAuthorized!=='boolean')throw failure('DINGTALK_SETTINGS_INVALID')
+      if(settings.enabled&&!config.enabled)await verifyDingtalkBinding(config,{runner})
+      if(stopBridge&&settings.enabled!==config.enabled)await stopBridge.setIngressPaused(!settings.enabled)
+      Object.assign(config,{name:settings.name,prompt:settings.prompt,enabled:settings.enabled,writesAuthorized:settings.writesAuthorized})
+      if(readyBound)adapter=createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized,profile:config.profile,runner})
+      return {enabled:config.enabled,health:plugin.health}
+    }),
     updateSettings:settings=>serialize(async()=>{
       if(!settings||Object.keys(settings).some(key=>!['name','prompt'].includes(key))||settings.name!==undefined&&(typeof settings.name!=='string'||!settings.name.trim())||settings.prompt!==undefined&&typeof settings.prompt!=='string')throw failure('DINGTALK_SETTINGS_INVALID')
       if(settings.name!==undefined)config.name=settings.name
       if(settings.prompt!==undefined)config.prompt=settings.prompt
       return {enabled:config.enabled,name:config.name??channelId,promptConfigured:!!config.prompt}
-    }),accountPolicy,adapter,notifications,acceptHistoryMessage,conversationDisplayName:context=>readyBound&&!closed&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.conversationName:undefined,responsibility:context=>readyBound&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
+    }),accountPolicy,get adapter(){return adapter},notifications,acceptHistoryMessage,conversationDisplayName:context=>readyBound&&!closed&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.conversationName:undefined,responsibility:context=>readyBound&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
     const context=ctx.channels.groupContext(notification.payload?.conversationId)
     if(context?.channelId!==channelId||context.type!=='chat-room')return
     return {conversationId:context.conversationId,querySendStatus:id=>adapter.querySendStatus(id)}
   }}),get health(){const {groups,...value}=health;return {...value,...groups?{conversations:groups.map(({groupId,...entry})=>({conversationId:groupId,...entry}))}:{}}},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
-  const unregisterPlugin=ctx.channels.registerPlugin(channelId,plugin)
-  const stopObserver=ctx.channels.registerOperationObserver(channelId,plugin),stopOperator=config.operatorNotifications===true?ctx.channels.registerOperatorNotifications(channelId,notifications):undefined
-  let closing,preparing
-  const stop=()=>closing??=(async()=>{
-    closed=true
-    const errors=[]
-    for(const action of [()=>preparing,()=>stopAuthObserver?.(),()=>startTail,()=>settingsTail,()=>stopBridge?.setIngressPaused(true),()=>stopBridge?.(),()=>ingressStore?.drain()])try{await action()}catch(error){errors.push(error)}
-    unregister();unregisterPlugin();stopObserver();stopOperator?.();await prepareSecrets(paths)
-    if(errors.length)throw new AggregateError(errors,'DINGTALK_SHUTDOWN_FAILED')
-  })()
-  ctx.effect(()=>stop,'DWS channel shutdown');ctx.on('night/stopping',stop)
+  unregisterPlugin=ctx.channels.registerPlugin(channelId,plugin)
+  stopObserver=ctx.channels.registerOperationObserver(channelId,plugin);stopOperator=config.operatorNotifications===true?ctx.channels.registerOperatorNotifications(channelId,notifications):undefined
+  plugin.stopAndDrain=stop
   const startBridge=async()=>{
     if(config.listen===false){health={healthy:false,configured:true,state:'ready',listening:false};return}
     const groups=[config.binding.conversationId],keyOf=groupId=>ctx.channels.identity({type:config.conversationType,channelId,conversationId:groupId,senderId:config.conversationType==='chat'?config.binding.peerId:'namespace-only',messageId:'namespace-only',text:'namespace-only'}).sessionId
@@ -160,7 +181,7 @@ export async function apply(ctx,config={},dependencies={}){
           if(closed)throw failure('DINGTALK_CHANNEL_DISABLED')
           ingressStore??=await openDingtalkIngress(paths,channelId,{storageKey:config.storageKey,fromAt:app.config.resident.taskSessions.ingressEpoch})
         }
-        if(config.storageKey!==undefined){
+        if(config.storageKey!==undefined&&!targetValidated){
           const binding=config.binding
           await assertDingtalkStoragePath(paths,bindingFile)
           const includeAllScopes=await readSavedBinding()===undefined
@@ -177,7 +198,8 @@ export async function apply(ctx,config={},dependencies={}){
     startTail=operation.catch(()=>{})
     return operation
   }
-  ctx.on('night/ready',async application=>{
+  plugin.start=async(application,options={})=>{
+    targetValidated=options.targetValidated===true
     if(closed)return
     app=application
     // Repeated ready events must retain the same observer and its shutdown handle.
@@ -190,5 +212,6 @@ export async function apply(ctx,config={},dependencies={}){
     })()
     await preparing
     await attemptStart()
-  })
+  }
+  ctx.on('night/ready',application=>plugin.start(application))
 }
