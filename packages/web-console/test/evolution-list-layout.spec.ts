@@ -29,6 +29,9 @@ for (const theme of ['light', 'dark']) for (const width of [1440, 2048, 390]) {
     const first = page.locator('.evolution-table tbody tr').first();
     await expect(page.locator('.evolution-table details')).toHaveCount(0);
     await expect(page.locator('.evolution-table .board-badge')).toHaveCount(0);
+    await expect(page.locator('.evolution-table').getByRole('columnheader', {name:'使用记录',exact:true})).toHaveCount(0);
+    await expect(page.locator('.evolution-table')).not.toContainText('候选，未应用');
+    await expect(page.locator('.evolution-usage-cell')).toHaveCount(0);
     const title = await first.locator('.evolution-item-title').boundingBox();
     const action = await first.getByRole('button', {name: '查看内容：review-code'}).boundingBox();
     expect(title!.x - action!.x).toBeGreaterThan(18);
