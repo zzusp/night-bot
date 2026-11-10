@@ -57,7 +57,7 @@ export function validateConfig(config,path) {
       validateSecrets(item)
     }
   }
-  if(config.channelPlugins!==undefined&&(!Array.isArray(config.channelPlugins)||config.channelPlugins.some(plugin=>!plugin||typeof plugin.type!=='string'||typeof plugin.enabled!=='boolean')))throw new Error('NIGHT_CHANNEL_PLUGINS_INVALID')
+  if(config.channelPlugins!==undefined&&(!Array.isArray(config.channelPlugins)||config.channelPlugins.some(plugin=>!plugin||typeof plugin.type!=='string'||typeof plugin.enabled!=='boolean'||plugin.receivePaused!==undefined&&typeof plugin.receivePaused!=='boolean')))throw new Error('NIGHT_CHANNEL_PLUGINS_INVALID')
   if(config.channelPluginDirs!==undefined&&(!Array.isArray(config.channelPluginDirs)||config.channelPluginDirs.some(path=>typeof path!=='string'||!path)))throw new Error('NIGHT_CHANNEL_PLUGIN_DIRECTORIES_INVALID')
   validateSecrets(config)
   validateWorkLogConfig(config.workLog)
@@ -66,7 +66,7 @@ export function validateConfig(config,path) {
 }
 
 // 默认只保存配置；Host 可在同一锁内协调单渠道生命周期。--check 零写。
-export async function updateConfig(path,update,{checkOnly=false,apply}={}) {
+export async function updateConfig(path,update,{checkOnly=false,apply,applyUnchanged=false}={}) {
   const file=resolve(path),initial=await readRegular(file)
   if(initial===undefined)throw failure('NIGHT_BOT_CONFIG_NOT_FOUND')
   const paths=runtimePaths(JSON.parse(initial),file)
@@ -84,11 +84,11 @@ export async function updateConfig(path,update,{checkOnly=false,apply}={}) {
     if(after.installRoot!==paths.installRoot||after.data!==paths.data)throw failure('NIGHT_BOT_CONFIG_RELOCATION_REQUIRES_OFFLINE_RESTORE')
     const changed=JSON.stringify(current)!==JSON.stringify(next)
     let applied
-    if(changed&&!checkOnly){
+    if((changed||applyUnchanged)&&!checkOnly){
       const commit=async()=>{
         await assertPath()
         if(await readRegular(file)!==previous)throw failure('NIGHT_BOT_CONFIG_CHANGED')
-        await atomicWrite(file,JSON.stringify(next,null,2)+'\n')
+        if(changed)await atomicWrite(file,JSON.stringify(next,null,2)+'\n')
       }
       if(apply)applied=await apply({current,next,commit});else await commit()
     }

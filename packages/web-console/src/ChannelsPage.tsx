@@ -4,8 +4,10 @@ import { api, ApiError, type Channel, type ChannelSettings, type Conversation, t
 import { useResource } from './hooks';
 import { channelHealthPresentation, channelRecoveryError } from './channel-health';
 import { channelPath } from './channel-url';
+import { ingressAction, ingressUnavailable, validChannelIngress } from './channel-ingress';
 import { validDingtalkCreated, channelApplicationText } from './channel-response';
 import { ChannelRemovalDialog, type ChannelRemovalRequest } from './components/ChannelRemovalDialog';
+import { ChannelIngressDialog, type ChannelIngressRequest } from './components/ChannelIngressDialog';
 import { ActionMenu } from './components/ActionMenu';
 import { CustomChannelForm } from './components/CustomChannelForm';
 import { ConversationFrame } from './components/ConversationFrame';
@@ -14,6 +16,7 @@ import { Badge, Button, EmptyState, IconButton } from './components/BoardPrimiti
 import { Loading, Notice, Search, Status } from './components/Shared';
 
 const conversationType = (type?: string | null) => type === 'chat-room' ? '群聊' : type === 'chat' ? '单聊' : '会话类型未记录';
+const channelTypeLabel = (item: Channel) => item.type === 'dingtalk-dws' ? `钉钉${item.conversationType ? ` · ${conversationType(item.conversationType)}` : ''}` : item.type === 'web-console' ? 'Web 对话' : item.type;
 
 const emptyChannel = (): DingtalkChannelInput => ({ channelId: '', conversationType: 'chat-room', targetKind: 'id', target: '', name: '', prompt: '', writesAuthorized: false });
 type FieldErrors = Partial<Record<keyof DingtalkChannelInput, string>>;
@@ -28,7 +31,7 @@ const detailDraft = (value: DingtalkChannelDetail): DingtalkChannelInput => ({ c
 const sameFields = (value: DingtalkChannelDetail, fields: DingtalkChannelEdit) => value.name === fields.name && value.prompt === fields.prompt &&
   value.conversationType === fields.conversationType && value.targetKind === fields.targetKind && value.target === fields.target && value.writesAuthorized === fields.writesAuthorized;
 
-function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus, addTriggerRef }: { onSaved: () => void; channelId?: string; onDelete?: (trigger: HTMLButtonElement | null) => void; channelStatus?: Channel; addTriggerRef?: Ref<HTMLButtonElement> }) {
+function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingressPending, channelStatus, addTriggerRef }: { onSaved: () => void; channelId?: string; onDelete?: (trigger: HTMLButtonElement | null) => void; onIngress?: (trigger: HTMLButtonElement | null) => void; ingressPending?: boolean; channelStatus?: Channel; addTriggerRef?: Ref<HTMLButtonElement> }) {
   const editing = channelId !== undefined;
   const statusNote = channelStatus ? channelCardState(channelStatus).note : '';
   const [open, setOpen] = useState(false);
@@ -186,7 +189,9 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, channelStatus, add
   }, [draft.prompt, open]);
   const reset = () => { setDraft(emptyChannel()); setErrors({}); setError(null); setFeedback(''); setSaved(false); setUnknownSave(null); };
   return <>
-    {editing ? <ActionMenu label={`渠道操作：${channelId}`} actions={[{ label: '编辑配置', onSelect: openDialog }, ...(onDelete ? [{ label: '删除渠道', onSelect: onDelete, danger: true }] : [])]} />
+    {editing ? <ActionMenu label={`渠道操作：${channelId}`} actions={[{ label: '编辑配置', onSelect: openDialog },
+      ...(onIngress && channelStatus ? [{ label: ingressPending ? '核对接收状态' : ingressAction(channelStatus), onSelect: onIngress, disabled: !ingressPending && !!ingressUnavailable(channelStatus), description: ingressPending ? '上次操作结果未确认，只读核对后才能继续。' : ingressUnavailable(channelStatus) }] : []),
+      ...(onDelete ? [{ label: '删除渠道', onSelect: onDelete, danger: true }] : [])]} />
       : <button ref={addTriggerRef} type="button" className="channel-card channel-card--add" aria-haspopup="dialog" onClick={event => openDialog(event.currentTarget)}>
           <span className="channel-symbol" aria-hidden="true"><RiAddLine size={21} /></span><span>添加渠道</span>
         </button>}
@@ -275,6 +280,12 @@ const channelError = (code: Channel['errorCode']) => channelRecoveryError(code) 
   : code === 'CHANNEL_AUTH_REQUIRED' ? '需要完成渠道认证' : code ? '适配器异常，请查看运维说明' : '');
 
 function channelCardState(item: Channel) {
+  if (validChannelIngress(item.ingress) && item.ingress.supported) {
+    if (item.ingress.state === 'paused') return { label: '已暂停接收', tone: 'warning', note: '已暂停新消息接收，已接纳的任务继续处理。' } as const;
+    if (item.ingress.state === 'pausing') return { label: '正在暂停', tone: 'warning', note: '暂停请求已保存，实际接收尚在停止过程中。' } as const;
+    if (item.ingress.state === 'recovering') return { label: item.ingress.backfill === 'history' ? '正在补拉' : '正在恢复接收', tone: 'info', note: item.ingress.backfill === 'history' ? '正在补拉暂停期间的消息，尚未完成。' : '正在恢复消息接收，仅接收后续消息。' } as const;
+    if (item.ingress.state === 'error') return { label: '接收异常', tone: 'danger', note: '接收变更尚未完成，请核对运行状态后重试。' } as const;
+  }
   const hasRuntime = item.runningConnectionState !== undefined;
   const state = hasRuntime ? item.runningConnectionState : item.connectionState;
   const connected = hasRuntime ? item.runningConnected : item.connected;
@@ -322,6 +333,8 @@ export default function ChannelsPage({ id }: { id?: string }) {
   const [channel, setChannel] = useState('');
   const addChannelTrigger = useRef<HTMLButtonElement>(null);
   const [removalRequest, setRemovalRequest] = useState<ChannelRemovalRequest | null>(null), [channelFeedback, setChannelFeedback] = useState('');
+  const [ingressRequest, setIngressRequest] = useState<ChannelIngressRequest | null>(null);
+  const [pendingIngress, setPendingIngress] = useState(() => new Set<string>());
   const selected = conversations.data?.items.find(item => item.id === id);
   const [offsets, setOffsets] = useState<{ messages: number; outbox: number; messageRevision?: string; outboxRevision?: string }>({ messages: 0, outbox: 0 });
   useEffect(() => { setOffsets({ messages: 0, outbox: 0 }); }, [id]);
@@ -335,19 +348,23 @@ export default function ChannelsPage({ id }: { id?: string }) {
   return <div className="page-content channels-page">
     {channelFeedback && <p className="channel-create-feedback" role="status">{channelFeedback}</p>}
     <ChannelRemovalDialog focusAfterRemoval={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={removalRequest} onDismiss={() => setRemovalRequest(null)} onChanged={message => { setChannelFeedback(message); if (channel === removalRequest?.item.channelId) setChannel(''); channels.refresh(); conversations.refresh(); }} />
+    <ChannelIngressDialog focusFallback={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={ingressRequest} onDismiss={() => setIngressRequest(null)} onChanged={message => { setChannelFeedback(message); channels.refresh(); }}
+      onPending={(channelId, pending) => setPendingIngress(previous => { const next = new Set(previous); if (pending) next.add(channelId); else next.delete(channelId); return next; })} />
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}
     {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" description="使用上方按钮重新获取。" /> : null}
     <div className="channel-cards">{channels.data?.items.map(item => <div className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId}>
-      <button type="button" className="channel-card-select" aria-label={`查看渠道会话：${item.name || item.channelId}`} aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
+      <button type="button" className="channel-card-select" aria-label={[`查看渠道会话：${item.name || item.channelId}`, channelTypeLabel(item), channelCardState(item).label, channelHealthPresentation(item).label, channelRecoveryError(item.runningErrorCode ?? item.errorCode)].filter(Boolean).join(' ')} aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
         <span className="channel-card-heading"><span className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={21} /></span>
-          <span className="channel-card-identity"><strong>{item.name || item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? `钉钉${item.conversationType ? ` · ${conversationType(item.conversationType)}` : ''}` : item.type === 'web-console' ? 'Web 对话' : item.type}</span></span>
+          <span className="channel-card-identity"><strong>{item.name || item.channelId}</strong><span>{channelTypeLabel(item)}</span></span>
           <ChannelCardTag item={item} />
         </span>
         <span className="channel-card-bottom"><ChannelCardHealth item={item} /></span>
         {channelRecoveryError(item.runningErrorCode ?? item.errorCode) && <span className="channel-card-error">{channelRecoveryError(item.runningErrorCode ?? item.errorCode)}</span>}
       </button>{(item.type === 'dingtalk-dws' || (item.type !== 'web-console' && item.savedVersion)) && <div className="channel-card-actions">{item.type === 'dingtalk-dws'
-        ? <ChannelConfiguration channelId={item.channelId} channelStatus={item} onSaved={channels.refresh} onDelete={trigger => setRemovalRequest({ item, trigger })} />
-        : <ActionMenu label={`渠道操作：${item.channelId}`} actions={[{ label: '删除渠道', danger: true, onSelect: trigger => setRemovalRequest({ item, trigger }) }]} />}</div>}
+        ? <ChannelConfiguration channelId={item.channelId} channelStatus={item} onSaved={channels.refresh} onDelete={trigger => setRemovalRequest({ item, trigger })} onIngress={trigger => setIngressRequest({ item, trigger })} ingressPending={pendingIngress.has(item.channelId)} />
+        : <ActionMenu label={`渠道操作：${item.channelId}`} actions={[
+          { label: pendingIngress.has(item.channelId) ? '核对接收状态' : ingressAction(item), disabled: !pendingIngress.has(item.channelId) && !!ingressUnavailable(item), description: pendingIngress.has(item.channelId) ? '上次操作结果未确认，只读核对后才能继续。' : ingressUnavailable(item), onSelect: trigger => setIngressRequest({ item, trigger }) },
+          { label: '删除渠道', danger: true, onSelect: trigger => setRemovalRequest({ item, trigger }) }]} />}</div>}
     </div>)}<ChannelConfiguration addTriggerRef={addChannelTrigger} onSaved={channels.refresh} /></div>
     <div className="section-heading"><div><h2>渠道会话 <span>{items.length}</span></h2>{channel && <p>正在查看 {channel}</p>}</div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
     {conversations.error && <Notice error={conversations.error} onRetry={conversations.refresh} stale={!!conversations.data} />}

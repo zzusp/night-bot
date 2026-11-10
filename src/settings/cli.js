@@ -19,7 +19,7 @@ import {SETTINGS_OPERATOR_ROUTE,safeSettingsError} from './http.js'
 
 export const settingsCliUsage=`Usage: night-bot-settings CONFIG ACTION [options] [--live] [--check]
 Actions: show, plugins, appearance, model, model-list, model-entry, role, secret, web, work-log, channel-list,
-  channel-save, channel-enable, channel-remove, dingtalk-get, dingtalk-add,
+  channel-save, channel-enable, channel-remove, channel-ingress, dingtalk-get, dingtalk-add,
   dingtalk-edit, permissions-show, permissions-set, permission-respond.
 Use --json-file FILE for non-secret payloads. Appearance: --name NAME --icon moon|star|robot|leaf.
 Work log: --enabled true|false --time HH:mm --timezone local|IANA (normal restart required).
@@ -28,6 +28,8 @@ Model entries: --action add|edit|remove --provider ID --id OLD_ID --model NEW_ID
 Removal requires --confirm. Use model-list to inspect IDs and references; saved changes need restart.
 Resident model removal/ID changes require an explicit task role (role --role task) or task ENV override.
 Lifecycle commands require --live: the existing resident service, with or without Web.
+channel-ingress: --channel-id ID --paused true|false --expected-version VERSION --confirm --live.
+Resume starts recovery; use channel-list --live to inspect its actual completion or failure.
 --check validates supported saved settings without writing; never applies a live lifecycle action.
 No credential value, token, or password is accepted in arguments or printed. OAuth/ref management: night-bot-auth.`
 const optionsByAction={
@@ -37,6 +39,7 @@ const optionsByAction={
  'work-log':['enabled','time','timezone','expected-version'],
  web:['enabled','host','port','public-origin','channel-id','sender-id','operator-name','expected-version'],
  'channel-list':[],'channel-save':[],'channel-enable':['channel-id','enabled','expected-version'],'channel-remove':['channel-id','expected-version'],
+ 'channel-ingress':['channel-id','paused','expected-version'],
  'dingtalk-get':['channel-id'],'dingtalk-add':[],'dingtalk-edit':[],'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
 }
 const mapping={'base-url':'baseURL','key-env':'apiKeyEnv','reasoning-effort':'reasoningEffort','expected-version':'expectedVersion','public-origin':'publicOrigin','channel-id':'channelId','sender-id':'senderId','operator-name':'operatorName'}
@@ -108,18 +111,18 @@ export async function runSettingsCli(argv,{environment=process.env,write=value=>
  const [file,action='show',...args]=argv
  if(file==='--help'||action==='--help'){write(settingsCliUsage);return}
  if(!file||!settingsActions.includes(action))throw failure('SETTINGS_COMMAND_INVALID')
- const {values}=parseArgs({args,options:{...Object.fromEntries(optionsByAction[action].map(key=>[key,{type:'string'}])),...noFile.has(action)?{}:{'json-file':{type:'string'}},live:{type:'boolean'},check:{type:'boolean'},...['secret','channel-remove','model-entry'].includes(action)?{confirm:{type:'boolean'}}:{}},strict:true,allowPositionals:false})
+ const {values}=parseArgs({args,options:{...Object.fromEntries(optionsByAction[action].map(key=>[key,{type:'string'}])),...noFile.has(action)?{}:{'json-file':{type:'string'}},live:{type:'boolean'},check:{type:'boolean'},...['secret','channel-remove','model-entry','channel-ingress'].includes(action)?{confirm:{type:'boolean'}}:{}},strict:true,allowPositionals:false})
  const body=values['json-file']?await jsonFile(values['json-file']):{}
  for(const key of optionsByAction[action])if(values[key]!==undefined){const name=mapping[key]??key;if(Object.hasOwn(body,name))throw failure('SETTINGS_COMMAND_INVALID');body[name]=values[key]}
  if(values.confirm!==undefined)body.confirm=values.confirm
- for(const key of ['enabled'])if(typeof body[key]==='string'){if(!['true','false'].includes(body[key]))throw failure('SETTINGS_COMMAND_INVALID');body[key]=body[key]==='true'}
+ for(const key of ['enabled','paused'])if(typeof body[key]==='string'){if(!['true','false'].includes(body[key]))throw failure('SETTINGS_COMMAND_INVALID');body[key]=body[key]==='true'}
  if(typeof body.port==='string'){if(!/^\d+$/.test(body.port))throw failure('SETTINGS_COMMAND_INVALID');body.port=Number(body.port)}
  const input={action,body,checkOnly:values.check===true};validateSettingsCommand(input)
  const config=await loadConfig(file)
  let local,ownedInteraction
  try{
   const live=values.live===true
-  if(!live&&['channel-enable','channel-remove','dingtalk-add','dingtalk-edit','permission-respond'].includes(action))throw failure('SETTINGS_RESIDENT_REQUIRED')
+  if(!live&&['channel-enable','channel-remove','channel-ingress','dingtalk-add','dingtalk-edit','permission-respond'].includes(action))throw failure('SETTINGS_RESIDENT_REQUIRED')
   if(!live)local=await localCommands(config,file,{checkOnly:input.checkOnly,writing:!readOnly.has(action),environment})
   const dispatch=value=>live?requestLiveSettings(config,file,value,{signal}):local.dispatch(value)
   if(['appearance','model','model-entry','role','secret','web','work-log','channel-save'].includes(action)&&body.expectedVersion===undefined)body.expectedVersion=(await dispatch({action:action==='channel-save'?'plugins':action==='model-entry'?'model-list':'show'})).version

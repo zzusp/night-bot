@@ -167,6 +167,24 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, permissionView(await permissions().respond(permissionRequest[1], body.decision)))
     }
     if (request.method === 'GET' && path === '/api/channels') return send(response, 200, await channelView())
+    const channelIngress=/^\/api\/channels\/([^/]+)\/ingress$/.exec(path),ingressQuery=path==='/api/channels/ingress'&&request.method==='POST'
+    if(request.method==='POST'&&(channelIngress||ingressQuery)){
+      const app=application(),configuration=getChannelConfiguration()
+      if(typeof configuration?.setIngressPaused!=='function')fail('CHANNEL_CONFIGURATION_UNAVAILABLE',503)
+      if([...url.searchParams.keys()].some(key=>!ingressQuery||key!=='channelId')||ingressQuery&&url.searchParams.getAll('channelId').length!==1)fail('CHANNEL_INGRESS_REQUEST_INVALID',400)
+      let targetId;try{targetId=ingressQuery?url.searchParams.get('channelId'):decodeURIComponent(channelIngress[1])}catch{fail('CHANNEL_INGRESS_REQUEST_INVALID',400)}
+      const body=await jsonBody(request,['expectedVersion','paused','confirm'],1024)
+      try{
+        const result=await configuration.setIngressPaused(targetId,body)
+        const channel=configuredChannels(app,channels,[result.channel]).items[0]
+        return send(response,200,{ok:true,changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied,channel})
+      }catch(error){
+        const status={DINGTALK_CHANNEL_NOT_FOUND:404,DINGTALK_CHANNEL_VERSION_CONFLICT:409,CHANNEL_RUNTIME_VERSION_CONFLICT:409,CHANNEL_INGRESS_REQUEST_INVALID:400,CHANNEL_INGRESS_CONFIRMATION_REQUIRED:400,CHANNEL_INGRESS_CONTROL_UNSUPPORTED:409,CHANNEL_INGRESS_UNAVAILABLE:409,CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN:503,CHANNEL_CONFIGURATION_UNAVAILABLE:503,CHANNEL_CONFIGURATION_OPERATOR_REQUIRED:403}
+        if(error.committed===true)fail('CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN',503)
+        if(status[error.code])fail(error.code,status[error.code])
+        throw error
+      }
+    }
     const channelRemoval=/^\/api\/channels\/([^/]+)$/.exec(path),removalQuery=path==='/api/channels'&&request.method==='DELETE'
     if(request.method==='DELETE'&&(channelRemoval||removalQuery)){
       const configuration=getChannelConfiguration()

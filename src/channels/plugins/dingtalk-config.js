@@ -46,7 +46,7 @@ export function validateConfig(config={}){
 }
 
 export function validateDingtalkInstance(instance){
-  if(!object(instance)||Object.keys(instance).some(key=>!['type','channelId','enabled','config'].includes(key))||instance.type!=='dingtalk-dws'||typeof instance.enabled!=='boolean'||typeof instance.channelId!=='string'||!instance.channelId.trim()||instance.channelId!==instance.channelId.trim()||instance.channelId.length>128)throw failure('DINGTALK_INSTANCE_INVALID')
+  if(!object(instance)||Object.keys(instance).some(key=>!['type','channelId','enabled','receivePaused','config'].includes(key))||instance.type!=='dingtalk-dws'||typeof instance.enabled!=='boolean'||instance.receivePaused!==undefined&&typeof instance.receivePaused!=='boolean'||typeof instance.channelId!=='string'||!instance.channelId.trim()||instance.channelId!==instance.channelId.trim()||instance.channelId.length>128)throw failure('DINGTALK_INSTANCE_INVALID')
   validateConfig(instance.config)
   return structuredClone(instance)
 }

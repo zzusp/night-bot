@@ -9,7 +9,7 @@ import {loadConfig} from '../src/config.js'
 import {withLock,acquireLock} from '../src/runtime/files.js'
 import {createWebConsole} from '../packages/web-console/server/plugin.js'
 import {createNodeDwsRunner} from '../packages/dingtalk-core/dws-runner.js'
-import {apply as applyDws} from '../src/channels/plugins/dingtalk-dws.js'
+import {apply as applyDws,channelIngressControl} from '../src/channels/plugins/dingtalk-dws.js'
 import {apply as applyApplication,inject} from '../src/application.js'
 import {randomUUID} from 'node:crypto'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
@@ -17,7 +17,7 @@ import {requestEnvelope,requestTools,requestText,eventually} from './fixtures/re
 import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
 import {modelToolValues} from './fixtures/routing-official-model.js'
-import {validateConfig as validateDingtalkConfig} from '../src/channels/plugins/dingtalk-config.js'
+import {validateConfig as validateDingtalkConfig,validateDingtalkInstance} from '../src/channels/plugins/dingtalk-config.js'
 import {runDingtalkCli} from '../src/channels/plugins/dingtalk-cli.js'
 import {dingtalkChannelPaths,openDingtalkIngress} from '../src/channels/plugins/dingtalk-storage.js'
 import {dingtalkIngressAdapter,dingtalkInputFingerprint,retainedDingtalkDuplicate} from '../src/channels/plugins/dingtalk-ingress.js'
@@ -1125,4 +1125,127 @@ test('真实 Host 冷恢复完成已处理文字附件和引用补拉，冲突�
   assert.ok(JSON.parse(await readFile(h.ingressFile,'utf8')).recoveryFromAt)
   assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,sends)
  }finally{h.release();await h.f.close()}
+})
+
+// The real plugin/adapter/bridge and persisted channel facts are exercised with
+// a fake CLI only. No external service, send, or task execution is involved.
+async function ingressControlFixture(t,{type='chat-room',paused=false,listen=true,authenticated=true}={}){
+ const f=await memoryHost(t),streams=[],reads=[],received=[],channelId='receive-control'
+ const state={paused,authenticated,messages:[],partial:false,manualReady:false,receiveGate:undefined,receiveEntered:undefined,historyGate:undefined}
+ let plugin,onLogin,config
+ const conversationId=type==='chat'?'private':'fixture-room'
+ const runner={async run(args){
+  assert.ok(args.includes('+chat-messages'),'Only fake history reads are allowed')
+  const range={start:args[args.indexOf('--start')+1],end:args[args.indexOf('--end')+1]};reads.push(range)
+  await state.historyGate?.promise
+  return {exitCode:0,stdout:JSON.stringify({...completeHistory(state.messages.filter(message=>Date.parse(message.createTime)>=Date.parse(range.start)&&Date.parse(message.createTime)<=Date.parse(range.end))),...state.partial?{complete:false,partial:true}:{}}),stderr:''}
+ },spawn(args,hooks){
+  const done=Promise.withResolvers(),stream={args,hooks,closed:false,ready(){hooks.onStderrLine('[event] ready')}}
+  streams.push(stream);if(!state.manualReady)queueMicrotask(()=>stream.ready())
+  return {done:done.promise,terminate(){stream.closed=true;done.resolve()}}
+ }}
+ const mount=async()=>{
+  const channels=f.host.ctx.channels
+  channels.attachIngress(async input=>{
+   const identity=channels.identity(input),prior=channels.groupContext(identity.sessionId)?.messageFacts?.[input.messageId]
+   state.receiveEntered?.resolve();await state.receiveGate?.promise
+   await channels.registerConversation(input)
+   if(!prior)received.push(input.messageId)
+   return {accepted:!prior,duplicate:!!prior,processing:'processed'}
+  })
+  config={...pluginConfig(channelId,{dingtalk_listen:listen,dingtalk_writes_authorized:true,...type==='chat'?{dingtalk_conversation_type:'chat',dingtalk_group_id:undefined,dingtalk_user_id:'peer-user'}:{}}),receivePaused:state.paused}
+  const dependencies=pluginDependencies(f,runner),bindingRun=dependencies.runner.run
+  dependencies.runner.run=args=>args[0]==='profile'&&!state.authenticated?Promise.resolve({exitCode:0,stdout:JSON.stringify({success:true,profiles:[]}),stderr:''}):bindingRun(args)
+  dependencies.observeLogin=async(_environment,callbacks)=>{onLogin=callbacks.onLogin;return async()=>{}}
+  await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,config,dependencies)})
+  plugin=channels.plugins.get(channelId)
+  await plugin.start({config:{resident:{taskSessions:{ingressEpoch:'2026-01-01T00:00:00.000Z'}}},runtime:{getGroup:sessionId=>({messages:Object.entries(channels.groupContext(sessionId)?.messageFacts??{}).map(([messageId,fact])=>({messageId,occurredAt:fact.occurredAt})),outbox:[]})},tasks:{isOwnNotification:()=>false}})
+ }
+ await mount()
+ return {f,state,streams,reads,received,conversationId,get plugin(){return plugin},get config(){return config},
+  get transport(){return f.host.ctx.channels.transports.get(channelId)},
+  get file(){return dingtalkChannelPaths(f.host.ctx.runtimePaths,channelId).ingressFile},
+  message:(messageId,createTime=new Date().toISOString())=>({messageId,conversationId,senderOpenDingTalkId:'peer',text:messageId,createTime}),
+  emit(message,stream=streams.at(-1)){stream.hooks.onStdoutLine(JSON.stringify({conversation_id:message.conversationId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,content:message.text,event_time:Date.parse(message.createTime)}))},
+  async pause(value){const result=await plugin.ingressControl.setPaused(value);state.paused=value;return result},
+  async restart(){await f.close();await f.boot();await mount()},
+  async login(){state.authenticated=true;await onLogin()},
+ }
+}
+
+test('receive pause is an instance boolean, not a vendor config field',()=>{
+ assert.equal(channelIngressControl,1)
+ const row={type:'dingtalk-dws',channelId:'test',enabled:true,config:dingtalkPublic()}
+ for(const receivePaused of [true,false])assert.equal(validateDingtalkInstance({...row,receivePaused}).receivePaused,receivePaused)
+ for(const receivePaused of ['true',null,1])assert.throws(()=>validateDingtalkInstance({...row,receivePaused}),{code:'DINGTALK_INSTANCE_INVALID'})
+ assert.throws(()=>validateDingtalkConfig({...row.config,receivePaused:true}),/DINGTALK_CONFIG_UNKNOWN/)
+})
+
+for(const type of ['chat-room','chat'])test('DWS receive pause retains sends, survives restart and recovers durable duplicates: '+type,{timeout:20000},async t=>{
+ const h=await ingressControlFixture(t,{type,paused:true}),control=h.plugin.ingressControl
+ assert.equal(control.version,1);assert.equal(control.backfill,'history');assert.equal(control.available,true)
+ assert.deepEqual(control.getStatus(),{state:'paused',errorCode:null});assert.equal(h.streams.length,0);assert.equal(h.reads.length,0)
+ assert.equal(h.plugin.enabled,true);assert.equal(h.transport.canSend(),true);assert.equal(h.plugin.notifications.canDisclose(),true)
+ await assert.rejects(h.plugin.acceptHistoryMessage(h.message('blocked')),{code:'CHANNEL_INGRESS_PAUSED'})
+ const original=JSON.parse(await readFile(h.file,'utf8'));assert.equal(original.paused,true)
+ await h.plugin.updateLive({...h.config,name:'Edited while paused',enabled:false})
+ await h.plugin.updateLive({...h.config,name:'Edited while paused',enabled:true})
+ assert.equal(h.streams.length,0);assert.equal(h.transport.canSend(),true)
+ await h.restart();assert.equal(h.streams.length,0);assert.equal(h.plugin.ingressControl.getStatus().state,'paused')
+ const historical=h.message('during-pause','2026-10-01T12:00:00.000Z');h.state.messages=[historical];h.state.manualReady=true
+ const result=await h.pause(false)
+ assert.equal(result.state,'recovering');assert.equal(h.reads.length,0,'resume is not a completed history read')
+ h.streams.at(-1).ready()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','complete history is durably received',t.signal)
+ assert.deepEqual(h.received,['during-pause']);assert.ok(h.reads.some(range=>Date.parse(range.start)<=Date.parse(historical.createTime)))
+ h.emit(historical);await new Promise(resolve=>setTimeout(resolve,30));assert.deepEqual(h.received,['during-pause'])
+ assert.equal(h.transport.canSend(),true);assert.equal(h.plugin.notifications.canDisclose(),true)
+ h.state.manualReady=false;await h.restart()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','ordinary shutdown checkpoint automatically resumes',t.signal)
+ assert.deepEqual(h.received,['during-pause']);assert.equal(JSON.parse(await readFile(h.file,'utf8')).paused,false)
+})
+
+test('DWS pause drains direct and subscribed ingress before serial resume and rejects stale listeners',{timeout:20000},async t=>{
+ const h=await ingressControlFixture(t)
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','initial history complete',t.signal)
+ h.state.receiveGate=Promise.withResolvers();h.state.receiveEntered=Promise.withResolvers()
+ const inFlight=h.plugin.acceptHistoryMessage(h.message('in-flight'))
+ await h.state.receiveEntered.promise
+ let paused=false,resumed=false
+ const pause=h.pause(true).then(value=>{paused=true;return value})
+ await eventually(()=>h.plugin.health.ingress?.paused,'bridge is paused while direct admission drains',t.signal)
+ const resume=h.pause(false).then(value=>{resumed=true;return value})
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(paused,false);assert.equal(resumed,false)
+ await assert.rejects(h.plugin.acceptHistoryMessage(h.message('new-direct')),{code:'CHANNEL_INGRESS_PAUSED'})
+ h.emit(h.message('stale-listener'),h.streams[0])
+ h.state.receiveGate.resolve();await Promise.all([inFlight,pause,resume]);h.state.receiveGate=undefined
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','serial resume recovers',t.signal)
+ assert.deepEqual(h.received,['in-flight']);assert.equal(h.streams[0].closed,true)
+ const count=h.streams.length;await h.pause(false);assert.equal(h.streams.length,count,'duplicate resume does not create a second listener')
+})
+
+test('DWS recovery failure retains its bound over restart and never reports receiving',{timeout:20000},async t=>{
+ const h=await ingressControlFixture(t,{paused:true}),message=h.message('missed','2026-10-01T00:00:00.000Z')
+ h.state.messages=[message];h.state.partial=true
+ await h.pause(false)
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='error','partial history is a failed recovery',t.signal)
+ assert.equal(h.plugin.ingressControl.getStatus().errorCode,'DINGTALK_HISTORY_RECOVERY_FAILED');assert.deepEqual(h.received,[])
+ const checkpoint=JSON.parse(await readFile(h.file,'utf8'));assert.ok(checkpoint.recoveryFromAt);assert.equal(h.plugin.health.ingress.recovering,true)
+ h.state.partial=false;await h.restart()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','cold recovery finishes after complete history',t.signal)
+ assert.deepEqual(h.received,['missed']);assert.ok(h.reads.every(range=>Date.parse(range.start)<=Date.parse(message.createTime)))
+})
+
+test('DWS waiting-auth stores pause intent; disabled listening and closed plugins cannot claim reception',{timeout:20000},async t=>{
+ const h=await ingressControlFixture(t,{authenticated:false})
+ assert.equal(h.plugin.ingressControl.available,true)
+ assert.deepEqual(await h.pause(true),{state:'paused',errorCode:null});assert.equal(h.streams.length,0)
+ assert.deepEqual(await h.pause(false),{state:'unavailable',errorCode:'DINGTALK_AUTH_REQUIRED'})
+ await h.pause(true);await h.login();assert.equal(h.streams.length,0)
+ assert.deepEqual(h.plugin.ingressControl.getStatus(),{state:'paused',errorCode:null})
+ const control=h.plugin.ingressControl;await h.f.close();assert.equal(control.available,false)
+ await assert.rejects(control.setPaused(false),{code:'CHANNEL_INGRESS_CONTROL_UNAVAILABLE'})
+ const off=await ingressControlFixture(t,{listen:false})
+ assert.equal(off.plugin.ingressControl.available,false);assert.deepEqual(off.plugin.ingressControl.getStatus(),{state:'unavailable',errorCode:'CHANNEL_INGRESS_LISTEN_DISABLED'})
+ await assert.rejects(off.plugin.ingressControl.setPaused(true),{code:'CHANNEL_INGRESS_CONTROL_UNAVAILABLE'});assert.equal(off.streams.length,0)
 })

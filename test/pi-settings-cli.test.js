@@ -88,7 +88,28 @@ test('offline writes respect Host lock, custom creation never imports adapters, 
  // Do not send display-only editable property through the strict transport.
  await writeFile(payload,JSON.stringify({type:current.type,channelId:current.channelId,enabled:current.enabled,config:{room:'different'}}))
  await assert.rejects(f.cli(['channel-save','--json-file',payload]),{code:'SETTINGS_RESIDENT_REQUIRED'})
- for(const action of ['channel-remove','channel-enable','dingtalk-add','dingtalk-edit','permission-respond'])await assert.rejects(f.cli([action]),{code:'SETTINGS_RESIDENT_REQUIRED'})
+ for(const action of ['channel-remove','channel-enable','channel-ingress','dingtalk-add','dingtalk-edit','permission-respond'])await assert.rejects(f.cli([action]),{code:'SETTINGS_RESIDENT_REQUIRED'})
+})
+
+test('channel-ingress CLI requires live operator auth, typed pause, CAS and confirmation without leaking config',async t=>{
+ const f=await fixture(t),auth=await createSettingsOperatorAuth(f.paths),calls=[]
+ const channel={type:'fixture-custom',channelId:'room',enabled:true,config:{credential:'DO_NOT_PRINT'}}
+ const channels={read:async()=>[channel],getIngress:async()=>({supported:true,available:true,backfill:'none',requestedPaused:false,state:'receiving',errorCode:null}),setIngressPaused:async(id,body)=>{
+  calls.push({id,body});return {changed:true,restartRequired:false,liveApplied:true,version:'2'.repeat(64),receivePaused:body.paused,ingress:{supported:true,backfill:'none',requestedPaused:body.paused,state:body.paused?'paused':'receiving'},channel}
+ }}
+ const handler=createSettingsHttp({auth,getSettings:()=>f.settings,getChannels:()=>channels,getPermissions:()=>({})}),server=createServer((req,res)=>handler(req,res))
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
+ const config=JSON.parse(await readFile(f.file,'utf8'));config.resident={host:'127.0.0.1',port:server.address().port};await writeFile(f.file,JSON.stringify(config))
+ const args=['channel-ingress','--channel-id','room','--paused','true','--expected-version','1'.repeat(64),'--live'];let output=''
+ await assert.rejects(f.cli(args),{code:'CHANNEL_INGRESS_CONFIRMATION_REQUIRED'})
+ await assert.rejects(f.cli([...args,'--confirm','--check']),{code:'SETTINGS_CHECK_UNSUPPORTED'})
+ await assert.rejects(f.cli(args.map(value=>value==='true'?'yes':value)),{code:'SETTINGS_COMMAND_INVALID'})
+ const result=await f.cli([...args,'--confirm'],{write:value=>{output+=value}})
+ assert.equal(result.liveApplied,true);assert.equal(result.ingress.backfill,'none');assert.equal(result.ingress.state,'paused')
+ assert.deepEqual(calls,[{id:'room',body:{paused:true,expectedVersion:'1'.repeat(64),confirm:true}}])
+ assert.equal(output.includes('DO_NOT_PRINT'),false);assert.equal('channel' in result,false)
+ const unauth=await post(server.address().port,{action:'channel-ingress',body:{channelId:'room',paused:false,expectedVersion:'1'.repeat(64),confirm:true}})
+ assert.equal(unauth.status,403);assert.equal(calls.length,1)
 })
 
 test('settings capability is private and cannot be replaced by effect capability',async t=>{
