@@ -3,8 +3,8 @@ import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
 test('任务进展优先显示真实合同字段，缺失不猜测，撤权不显示旧摘要',async({page})=>{
  await page.goto('/#/channels/room-product?view=execution');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
- const group=page.locator('.chat-execution-group').filter({has:page.locator('summary code',{hasText:/^task-research$/})});await group.locator('summary').click()
- await expect(group.locator('.execution-task-summary')).toContainText('整理本周产品调研')
+ const group=page.locator('[data-task-id="task-research"]');await group.locator(':scope > summary').click()
+ await expect(group.locator(':scope > summary')).toContainText('整理本周产品调研')
  await expect(group.locator('.execution-task-summary')).toContainText('任务正在执行，尚未提交处理结果。')
  let mode='waiting'
  await page.route('**/api/conversations/room-product/tasks/task-research',async route=>{

@@ -135,7 +135,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     ]},
     tasks: {
       store: {async query(query) {
-        if (query.kind === 'task.list') return tasks.filter(task => task.groupId === query.groupId).map(task => ({taskId: task.taskId, groupId: task.groupId}))
+        if (query.kind === 'task.list') return tasks.filter(task => task.groupId === query.groupId).map(task => ({taskId: task.taskId, groupId: task.groupId, title: task.title, state: task.state, updatedAt: task.updatedAt}))
         if (query.kind === 'task.get') {const task = tasks.find(task => task.taskId === query.taskId); return task && {taskId: task.taskId, groupId: task.groupId, sessionId: task.session.sessionId, sessionBound: true}}
         if (query.kind === 'observer.message-contexts') return {sources:[],notifications:[]}
         if (query.kind === 'router.get') return null

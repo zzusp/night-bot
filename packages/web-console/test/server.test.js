@@ -552,7 +552,7 @@ test('渠道执行接口按可见会话与真实任务归属读取，归档任�
     if (query.kind === 'task.get') return {taskId: query.taskId, groupId: query.taskId === 'foreign-task' ? 'other-room' : 'room-one', sessionId: null, sessionBound: false}
     if (query.kind === 'router.get') return null
   }}
-  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskHistoryStatus: 'ready'})
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskSummaries: [{taskId: 'archived-task'}], taskHistoryStatus: 'ready'})
   assert.deepEqual(calls[0], {kind: 'task.list', groupId: 'room-one', archived: 'all'})
   assert.equal((await f.fetchApi('/api/conversations/room-one/session')).body.status, 'pending')
   assert.equal((await f.fetchApi('/api/conversations/room-one/tasks/archived-task/session')).body.status, 'unavailable')
@@ -562,7 +562,7 @@ test('渠道执行接口按可见会话与真实任务归属读取，归档任�
   for (const path of ['/tasks', '/session', '/tasks/archived-task/session']) assert.equal((await f.fetchApi('/api/conversations/hidden-room' + path)).status, 404)
   assert.equal(calls.length, before, '不可见会话不能探测持久历史')
   delete f.app.tasks.store
-  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: null, taskHistoryStatus: 'unavailable'})
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: null, taskSummaries: null, taskHistoryStatus: 'unavailable'})
   assert.equal((await f.fetchApi('/api/conversations/room-one/session')).status, 503)
   assert.equal(f.received.length, 0)
 })
@@ -716,4 +716,25 @@ test('channel DELETE fails closed if this Host does not expose safe removal',asy
   const f=await fixture(t,{channelConfiguration:{}});await f.login()
   const result=await f.fetchApi('/api/channels/team-chat',{method:'DELETE',body:{expectedVersion:'a'.repeat(64),confirm:true}})
   assert.equal(result.status,503);assert.deepEqual(result.body,{error:'CHANNEL_CONFIGURATION_UNAVAILABLE'})
+})
+
+test('会话任务摘要只用列表白名单，隔离会话并脱敏，不读取每项详情', async t => {
+  const f = await fixture(t); await f.login()
+  const token = (await readFile(f.web.credentialPath, 'utf8')).trim(), calls = []
+  f.app.tasks.taskDetail = () => {throw new Error('N_PLUS_ONE_FORBIDDEN')}
+  f.app.tasks.store = {async query(query) {
+    calls.push(query); assert.equal(query.kind, 'task.list')
+    return [{taskId: 'safe-task', groupId: query.groupId, title: '任务 ' + token, status: 'active', updatedAt: '2026-11-10T00:00:00Z', objective: 'private', sessionId: 'private'},
+      {taskId: 'foreign-task', groupId: 'foreign', title: 'foreign title'}]
+  }}
+  const current = (await f.fetchApi('/api/chat-current')).body.conversationId
+  for (const path of ['/api/conversations/room-one/tasks', '/api/chat/' + current]) {
+    const value = (await f.fetchApi(path)).body
+    assert.deepEqual(value.taskIds, ['safe-task'])
+    assert.equal(value.taskSummaries.length, 1)
+    assert.deepEqual(Object.keys(value.taskSummaries[0]).sort(), ['state', 'taskId', 'title', 'updatedAt'])
+    assert.equal(value.taskSummaries[0].state, 'active')
+    assert.doesNotMatch(JSON.stringify(value.taskSummaries), new RegExp(token + '|private|foreign'))
+  }
+  assert.equal(calls.length, 2)
 })

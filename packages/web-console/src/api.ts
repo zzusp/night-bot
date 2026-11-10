@@ -51,6 +51,7 @@ export interface Message {
 }
 export interface Chat {
   conversationId: string; messages: Message[]; status: string; truncated?: boolean; canonicalConversationId?: string;
+  taskSummaries?: Pick<Task, 'taskId' | 'title' | 'state' | 'updatedAt'>[] | null;
   taskIds: string[] | null; taskHistoryStatus: 'ready' | 'unavailable'; taskHistoryReason?: string;
 }
 export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number }

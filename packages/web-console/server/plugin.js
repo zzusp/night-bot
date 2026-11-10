@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url'
 import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
-import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView} from './views.js'
+import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView, taskSummaryView} from './views.js'
 import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
@@ -303,9 +303,10 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if (request.method === 'GET' && conversationTasks) {
       const conversationId = executionContext('conversations', decodeURIComponent(conversationTasks[1]))
       const store = application().tasks.store
-      if (!store?.query) return send(response, 200, {taskIds: null, taskHistoryStatus: 'unavailable'})
+      if (!store?.query) return send(response, 200, {taskIds: null, taskSummaries: null, taskHistoryStatus: 'unavailable'})
       const tasks = await store.query({kind: 'task.list', groupId: conversationId, archived: 'all'})
-      return send(response, 200, {taskIds: [...new Set(tasks.filter(task => task.groupId === conversationId).map(task => task.taskId))], taskHistoryStatus: 'ready'})
+      const linked = [...new Map(tasks.filter(task => task.groupId === conversationId).map(task => [task.taskId, task])).values()]
+      return send(response, 200, {taskIds: linked.map(task => task.taskId), taskSummaries: linked.map(task => taskSummaryView(task, [credential.token])), taskHistoryStatus: 'ready'})
     }
     const responseTimes = /^\/api\/(chat|conversations)\/([^/]+)\/response-times$/.exec(path)
     if (request.method === 'GET' && responseTimes) {
@@ -362,9 +363,10 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if (request.method === 'GET' && chat) {
       const {chat: value, conversationId} = chatContext(decodeURIComponent(chat[1]))
       const store = application().tasks.store
-      if (!store?.query) return send(response, 200, {...value, taskIds: null, taskHistoryStatus: 'unavailable', taskHistoryReason: 'TASK_HISTORY_UNAVAILABLE'})
+      if (!store?.query) return send(response, 200, {...value, taskIds: null, taskSummaries: null, taskHistoryStatus: 'unavailable', taskHistoryReason: 'TASK_HISTORY_UNAVAILABLE'})
       const tasks = await store.query({kind: 'task.list', groupId: conversationId, archived: 'all'})
-      return send(response, 200, {...value, taskIds: [...new Set(tasks.map(task => task.taskId))], taskHistoryStatus: 'ready'})
+      const linked = [...new Map(tasks.filter(task => task.groupId === conversationId).map(task => [task.taskId, task])).values()]
+      return send(response, 200, {...value, taskIds: linked.map(task => task.taskId), taskSummaries: linked.map(task => taskSummaryView(task, [credential.token])), taskHistoryStatus: 'ready'})
     }
     const requestMatch = /^\/api\/requests\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && requestMatch) {
