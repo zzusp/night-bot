@@ -19,7 +19,7 @@ function contrast(first, second) {
 }
 
 for (const [theme, palette] of Object.entries({light, dark})) {
-  test(`${theme}: shared blue user and neutral assistant fills and AA message text contrast`, () => {
+  test(`${theme}: restored user fill, preserved assistant fill and AA message text contrast`, () => {
     const expected = theme === 'light' ? ['#ccdfff', '#ffffff'] : ['#263b5c', '#262626']
     assert.deepEqual([palette['message-user-bg'], palette['message-assistant-bg']], expected)
     for (const role of ['user', 'assistant']) {
@@ -43,4 +43,15 @@ test('shared bubbles consume the documented tokens without changing other surfac
   assert.ok(app.includes('--board-muted: var(--board-message-muted)'))
   assert.match(app, /\.message-user \.message-body,\.message-assistant \.message-body \{[^}]*padding: 13px 17px; border: 0; border-radius: 14px;/)
   assert.doesNotMatch(css + app, /--board-message-(?:user|assistant)-border/)
+})
+
+
+test('task reading canvas shares the conversation panel token in both themes', () => {
+  const workspace = readFileSync(new URL('../src/styles/task-workspace.css', import.meta.url), 'utf8')
+  const execution = readFileSync(new URL('../src/styles/execution-groups.css', import.meta.url), 'utf8')
+  assert.match(app, /\.main-panel \{[^}]*background: var\(--board-panel\)/)
+  assert.match(workspace, /\.task-workspace > \.conversation-page \{[^}]*background: var\(--board-panel\)/)
+  assert.match(execution, /\.execution-transcript \{[^}]*background: var\(--board-panel\)/)
+  assert.equal(light.panel, '#f7f7f7')
+  assert.equal(dark.panel, '#171717')
 })

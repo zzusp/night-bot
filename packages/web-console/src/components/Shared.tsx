@@ -282,7 +282,6 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
           <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}<MessageBody message={message} history={history} showSource={!compact} /></div>
-          {message.taskIds?.length ? <div className="message-links">{message.taskIds.map(id => <a key={id} href={`#/tasks/${encodeURIComponent(id)}`}>查看关联任务</a>)}</div> : null}
         </article>;
       })}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}
