@@ -45,7 +45,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
         <span className="response-time-event" title={exactTime(step.at)}>{step.label.replace(/（批次共享）$/, '')}
           {step.shared && <small>批次共享</small>}
         </span>
-        <span className="response-time-elapsed" aria-label={measured ? `节点耗时 ${duration(step.durationMs!)}` : '此节点未单独计时'}>{measured ? duration(step.durationMs!) : '—'}</span>
+        <span className="response-time-elapsed"><span className="sr-only">{measured ? '节点耗时 ' : '此节点未单独计时'}</span><span aria-hidden={!measured}>{measured ? duration(step.durationMs!) : '—'}</span></span>
       </li>;
     })}</ol> : <p className="response-time-explanation">未记录可展示的中间过程。</p>}
   </article>;
