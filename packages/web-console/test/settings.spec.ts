@@ -35,13 +35,13 @@ test('名称和内置图标保存、刷新及会话统一展示，窄屏与深�
   for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([])}}
  }finally{await reset(page)}
 })
-test('设置仅显示外观、模型和密钥，不展示或请求自定义渠道',async({page})=>{
+test('设置仅显示外观、角色模型和密钥，不展示或请求自定义渠道',async({page})=>{
  let channelRequests=0
  await page.route('**/api/settings/channels',route=>{channelRequests++;return route.fulfill({status:503,json:{error:'SETTINGS_UNAVAILABLE'}})})
  await login(page)
  const settings=page.locator('.settings-page')
  for(const name of ['助手外观','模型 API','模型 API Key','GitHub Token'])await expect(settings.getByRole('heading',{name,exact:true})).toBeVisible()
- await expect(settings.locator('.settings-card')).toHaveCount(4)
+ await expect(settings.locator('.settings-card')).toHaveCount(7)
  await expect(settings.getByRole('heading',{name:'自定义渠道',exact:true})).toHaveCount(0)
  await expect(settings.getByRole('button',{name:'重新发现插件',exact:true})).toHaveCount(0)
  await expect(settings.getByLabel('渠道插件',{exact:true})).toHaveCount(0)
@@ -54,7 +54,7 @@ test('设置仅显示外观、模型和密钥，不展示或请求自定义渠�
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:960})
-   await expect(settings.locator('.settings-card')).toHaveCount(4)
+   await expect(settings.locator('.settings-card')).toHaveCount(7)
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
    await page.screenshot({path:test.info().outputPath(`${theme}-${width}-settings.png`),fullPage:true})
   }
@@ -71,4 +71,61 @@ test('设置失败可恢复，字段错误不退出，未知保存不自动重�
  await expect(page.getByLabel('显示名称',{exact:true})).toHaveValue('Night Bot')
  let secretWrites=0;await page.route('**/api/settings/secrets/github',route=>{secretWrites++;return route.abort()})
  const secret=page.getByLabel('新的GitHub Token',{exact:true});await secret.fill('TEST_UNKNOWN_SECRET');await page.getByRole('button',{name:'替换GitHub Token',exact:true}).click();await confirm(page);await expect(secret).toHaveValue('');await expect(page.getByText(/密钥输入已清空，请先重新读取状态/)).toBeVisible();expect(secretWrites).toBe(1)
+})
+
+test('角色模型独立保存、原生选项、取消焦点、确认重启与刷新持久化',async({page})=>{
+ await login(page)
+ for(const label of ['一级分诊','Router','任务执行']){
+  await expect(page.getByRole('heading',{name:label,exact:true})).toBeVisible()
+  await page.getByLabel(label+'模型路由',{exact:true}).selectOption('fixture-model')
+  await page.getByLabel(label+'模型',{exact:true}).selectOption('reasoning-fixture')
+  const effort=page.getByLabel(label+'推理深度',{exact:true})
+  await expect(effort.locator('option')).toHaveText(['模型默认','关闭 (off)','低 (low)','高 (high)'])
+  await effort.selectOption(label==='Router'?'high':'low')
+  const button=page.getByRole('button',{name:'保存'+label+'配置',exact:true})
+  await button.click();await expect(page.getByRole('dialog').getByRole('button',{name:'取消',exact:true})).toBeFocused()
+  await page.keyboard.press('Escape');await expect(button).toBeFocused()
+  await button.click();await expect(page.getByRole('dialog')).toContainText('正常重启后生效');await confirm(page)
+  await expect(page.getByText(label+'配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
+  await expect(button).toBeEnabled()
+ }
+ await page.reload()
+ for(const label of ['一级分诊','Router','任务执行']){await expect(page.getByLabel(label+'模型',{exact:true})).toHaveValue('reasoning-fixture');await expect(page.getByLabel(label+'推理深度',{exact:true})).toHaveValue(label==='Router'?'high':'low')}
+ await page.getByLabel('任务执行模型',{exact:true}).selectOption('fixture');await expect(page.getByLabel('任务执行推理深度',{exact:true})).toHaveValue('model-default')
+ await expect(page.getByLabel('任务执行推理深度',{exact:true}).locator('option')).toHaveText(['模型默认','关闭 (off)'])
+ await page.getByRole('button',{name:'保存任务执行配置',exact:true}).click();await confirm(page);await expect(page.getByText('任务执行配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
+ const settings=await page.request.get('/api/settings').then(r=>r.json())
+ expect(settings.roleModels.roles.find((row:{role:string})=>row.role==='task').saved.reasoningEffort).toBeUndefined()
+ await page.getByLabel('一级分诊模型路由',{exact:true}).focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('Escape')
+ for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);await page.screenshot({path:test.info().outputPath(`roles-${width}.png`),fullPage:true})}
+})
+
+test('角色保存失败、未知回执和版本冲突保留草稿且禁止重复提交',async({page})=>{
+ await login(page)
+ for(const mode of ['network','receipt','conflict']){
+  let writes=0
+  await page.route('**/api/settings/role-model',route=>{writes++;return mode==='network'?route.abort():route.fulfill({status:mode==='conflict'?409:200,json:mode==='conflict'?{error:'SETTINGS_VERSION_CONFLICT'}:{ok:true}})})
+  await page.getByLabel('Router模型路由',{exact:true}).selectOption('fixture-model');await page.getByLabel('Router模型',{exact:true}).selectOption('reasoning-fixture');await page.getByLabel('Router推理深度',{exact:true}).selectOption('high')
+  await page.getByRole('button',{name:'保存Router配置',exact:true}).click();await confirm(page)
+  await expect(page.getByRole('button',{name:'保存Router配置',exact:true})).toBeDisabled();await expect(page.getByLabel('Router推理深度',{exact:true})).toHaveValue('high');await expect(page.getByText(/草稿已保留/).last()).toBeVisible();expect(writes).toBe(1)
+  await expect(page.getByText('Router配置已保存，正常重启后生效。',{exact:true})).toHaveCount(0)
+  await page.unroute('**/api/settings/role-model');await page.getByRole('button',{name:'重新读取设置并替换草稿',exact:true}).click();await expect(page.getByRole('button',{name:'保存Router配置',exact:true})).toBeEnabled()
+ }
+})
+
+test('角色模型环境覆盖来源明确，忙碌禁用，确认保存不声称已运行',async({page})=>{
+ await page.route('**/api/settings',async route=>{
+  const response=await route.fetch(),data=await response.json()
+  const row=data.roleModels.roles.find((row:{role:string})=>row.role==='triage')
+  row.environmentOverrides=[{name:'NIGHT_BOT_TRIAGE_MODEL',source:'process'}];row.nextStart=row.running
+  await route.fulfill({response,json:data})
+ })
+ await login(page)
+ const section=page.locator('.settings-card').filter({has:page.getByRole('heading',{name:'一级分诊',exact:true})})
+ await expect(section).toContainText('环境变量优先于保存配置');await expect(section).toContainText('NIGHT_BOT_TRIAGE_MODEL · 进程环境');await expect(section).toContainText('按当前环境重启')
+ let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve})
+ await page.route('**/api/settings/role-model',async route=>{await pending;await route.fulfill({status:503,json:{error:'SETTINGS_SAVE_UNAVAILABLE'}})})
+ await page.getByRole('button',{name:'保存一级分诊配置',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('只保存网页配置不会移除覆盖');await confirm(page)
+ await expect(page.getByLabel('一级分诊模型',{exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'保存一级分诊配置',exact:true})).toBeDisabled();release()
+ await expect(section).toContainText('无法确认最新保存结果')
 })

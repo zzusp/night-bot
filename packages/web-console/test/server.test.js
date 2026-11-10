@@ -762,3 +762,17 @@ test('evolution bodies require authentication and exact version, redact both sid
  const result=await f.fetchApi(path+'?revision=2');assert.equal(result.status,200);assert.equal(result.body.redacted,true);assert.doesNotMatch(JSON.stringify(result.body),/PRIVATE_VALUE|OLDER_VALUE/);assert.equal(result.body.comparison.added,0)
  assert.equal(seen.at(-1).binding.actorId,'verified-web-operator');assert.deepEqual(seen.at(-1).options,{id,revision:'2'})
 })
+
+test('角色模型设置只允许认证同源带版本的白名单请求，错误不泄露配置',async t=>{
+ const calls=[],settings={saveRoleModel:async body=>{calls.push(body);if(body.model==='unsupported')throw Object.assign(Error('PRIVATE_MODEL_FAILURE'),{code:'UNSUPPORTED_REASONING_EFFORT'});return {ok:true,version:'next',changed:true}}}
+ const f=await fixture(t,{settings}),body={role:'router',provider:'fixture',model:'thinking',reasoningEffort:'high',expectedVersion:'version'}
+ assert.equal((await f.fetchApi('/api/settings/role-model',{method:'PUT',body})).status,401)
+ await f.login()
+ assert.equal((await f.fetchApi('/api/settings/role-model',{method:'PUT',body,headers:{'x-csrf-token':'forged'}})).status,403)
+ assert.equal((await f.fetchApi('/api/settings/role-model',{method:'PUT',body,headers:{origin:'https://evil.invalid'}})).status,403)
+ assert.equal((await f.fetchApi('/api/settings/role-model',{method:'PUT',body:{...body,headers:{authorization:'PRIVATE'}}})).status,400)
+ assert.equal((await f.fetchApi('/api/settings/role-model',{method:'PUT',body})).status,200)
+ assert.deepEqual(calls,[body])
+ const failed=await f.fetchApi('/api/settings/role-model',{method:'PUT',body:{...body,model:'unsupported'}})
+ assert.equal(failed.status,400);assert.deepEqual(failed.body,{error:'SETTINGS_INPUT_INVALID'})
+})

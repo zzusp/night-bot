@@ -39,9 +39,9 @@ Codex 使用 `openai-codex` provider 与固定 Pi SDK 实际支持的模型；�
 
 ## 工具权限模式
 
-配置使用顶层 `permissionMode`，默认 `ask`；初始化支持 `--permission-mode ask|auto|full`。
+配置使用顶层 `permissionMode`，默认 `full`（显式 `ask` / `auto` 保持不变）；初始化支持 `--permission-mode ask|auto|full`。
 
-本次实施与验收范围为 `full`；`ask` / `auto` 合同保留，但受限执行尚未完成，本次不交付。此范围调整不改变默认 `ask`，也不自动修改实际实例配置。
+本次实施与验收范围为 `full`；`ask` / `auto` 合同保留，但受限执行尚未完成，本次不交付。此范围调整不改变默认 `full`（显式 `ask` / `auto` 保持不变），也不自动修改实际实例配置。
 
 以下示例仅用于可信安装操作者明确选择 `full`；离线更改先检查，再保存并正常重启：
 

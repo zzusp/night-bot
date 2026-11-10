@@ -126,3 +126,62 @@ test('通用新增渠道拒绝已有标识而不改写，停用编辑仍使用�
  await f.port.saveChannel({...input,createOnly:false,config:{room:'edited-room'},expectedVersion:view.version});
  assert.equal((await f.port.plugins()).channels.find(row=>row.channelId===input.channelId).config.room,'edited-room');
 });
+
+test('三个角色模型独立持久化、真实 Pi 能力目录、版本冲突与默认深度恢复',async t=>{
+ const f=await fixture(t),config=JSON.parse(await readFile(f.file,'utf8'))
+ config.providers.reasoning={api:'openai-completions',baseURL:'https://never-contact.invalid/v1',headers:{'x-private':'PRIVATE_HEADER'},apiKeyEnv:'PRIVATE_CREDENTIAL_REF',models:[{id:'thinking',reasoningEfforts:{off:null,low:'low',high:'high'}},{id:'plain'}]}
+ await writeFile(f.file,JSON.stringify(config))
+ let view=await f.port.view()
+ assert.equal(view.roleModels.roles.length,3)
+ assert.deepEqual(view.roleModels.catalog.find(row=>row.provider==='reasoning').models.find(row=>row.id==='thinking').reasoningEfforts,['off','low','high'])
+ assert.doesNotMatch(JSON.stringify(view.roleModels),/PRIVATE_HEADER|PRIVATE_CREDENTIAL_REF|never-contact/)
+ const original=view.version
+ for(const [role,reasoningEffort]of [['triage','low'],['router','high'],['task','model-default']]){
+  const result=await f.port.saveRoleModel({role,provider:'reasoning',model:'thinking',reasoningEffort,expectedVersion:view.version})
+  assert.equal(result.ok,true);assert.equal(result.role.role,role);assert.equal(result.changed,true)
+  view=await f.port.view();assert.equal(view.version,result.version);assert.equal(view.roleModels.roles.find(row=>row.role===role).running.provider,'fixture')
+ }
+ const saved=JSON.parse(await readFile(f.file,'utf8'));assert.deepEqual(saved.roleModels,{triage:{provider:'reasoning',model:'thinking',reasoningEffort:'low'},router:{provider:'reasoning',model:'thinking',reasoningEffort:'high'},task:{provider:'reasoning',model:'thinking'}})
+ await assert.rejects(f.port.saveRoleModel({role:'triage',provider:'reasoning',model:'thinking',reasoningEffort:'high',expectedVersion:original}),{code:'SETTINGS_VERSION_CONFLICT'})
+ await assert.rejects(f.port.saveRoleModel({role:'task',provider:'reasoning',model:'plain',reasoningEffort:'high',expectedVersion:view.version}),{code:'UNSUPPORTED_REASONING_EFFORT'})
+ await assert.rejects(f.port.saveRoleModel({role:'task',provider:'reasoning',model:'plain',reasoningEffort:'model-default'}),{code:'SETTINGS_INPUT_INVALID'})
+ await f.port.saveRoleModel({role:'triage',provider:'reasoning',model:'thinking',reasoningEffort:'model-default',expectedVersion:view.version})
+ assert.equal(JSON.parse(await readFile(f.file,'utf8')).roleModels.triage.reasoningEffort,undefined)
+ assert.deepEqual(JSON.parse(await readFile(f.file,'utf8')).model,saved.model)
+})
+
+test('角色模型展示真实运行选择与环境来源，冲突环境在保存后明确报告而非丢失回执',async t=>{
+ const f=await fixture(t),config=JSON.parse(await readFile(f.file,'utf8'))
+ config.providers.fixture.models.push({id:'thinking',reasoningEfforts:{low:'low',high:'high'}})
+ config.roleModels={triage:{provider:'fixture',model:'thinking',reasoningEffort:'low'}}
+ await writeFile(f.file,JSON.stringify(config))
+ const environment=createLaunchEnvironmentSnapshot([{source:'project-env',path:'/PRIVATE_ENV_PATH',values:{NIGHT_BOT_TRIAGE_REASONING_EFFORT:'high'}}])
+ const port=createOperatorSettings({file:f.file,paths:f.paths,running:config,getCredentials:()=>f.ctx.credentials,getEnvironment:()=>environment,getRuntimeRoleModels:()=>({triage:{provider:'fixture',model:'thinking',reasoningEffort:'high'},router:{provider:'fixture',model:'initial'},task:{provider:'fixture',model:'initial'}})})
+ let view=await port.view(),row=view.roleModels.roles.find(row=>row.role==='triage')
+ assert.equal(row.saved.reasoningEffort,'low');assert.equal(row.running.reasoningEffort,'high');assert.equal(row.nextStart.reasoningEffort,'high');assert.equal(row.restartRequired,false)
+ assert.deepEqual(row.environmentOverrides,[{name:'NIGHT_BOT_TRIAGE_REASONING_EFFORT',source:'project-env'}]);assert.doesNotMatch(JSON.stringify(view),/PRIVATE_ENV_PATH/)
+ const receipt=await port.saveRoleModel({role:'triage',provider:'fixture',model:'initial',reasoningEffort:'model-default',expectedVersion:view.version})
+ assert.equal(receipt.ok,true);assert.equal(receipt.role.environmentError,true);assert.equal(receipt.role.nextStart,null)
+ view=await port.view();assert.equal(view.roleModels.roles.find(row=>row.role==='triage').environmentError,true)
+})
+
+test('网页全局模型保存保留角色所引用的旧 web-model 模型',async t=>{
+ const f=await fixture(t);let view=await f.port.view()
+ await f.port.saveModel({expectedVersion:view.version,model:'old',api:'openai-completions',baseURL:'https://never-contact.invalid/v1'});view=await f.port.view()
+ await f.port.saveRoleModel({expectedVersion:view.version,role:'router',provider:'web-model',model:'old',reasoningEffort:'model-default'});view=await f.port.view()
+ await f.port.saveModel({expectedVersion:view.version,model:'new',api:'openai-completions',baseURL:'https://never-contact.invalid/v1'})
+ const saved=JSON.parse(await readFile(f.file,'utf8'));assert.deepEqual(saved.providers['web-model'].models.map(row=>row.id),['old','new']);assert.equal(saved.roleModels.router.model,'old')
+})
+
+test('模型默认深度在冷启后不虚报待重启，省略角色沿用实际持久默认',async t=>{
+ const f=await fixture(t),config=JSON.parse(await readFile(f.file,'utf8'))
+ config.providers.fixture.models.push({id:'thinking',reasoningEfforts:{low:'low',medium:'medium',high:'high'}})
+ config.roleModels={triage:{provider:'fixture',model:'thinking'}}
+ await writeFile(f.file,JSON.stringify(config))
+ const live={triage:{provider:'fixture',model:'thinking',reasoningEffort:'medium'},router:{provider:'fixture',model:'thinking',reasoningEffort:'high'},task:{provider:'fixture',model:'thinking',reasoningEffort:'low'}}
+ const port=createOperatorSettings({file:f.file,paths:f.paths,running:config,getCredentials:()=>f.ctx.credentials,getRoleModels:()=>({triage:live.triage}),getRuntimeRoleModels:()=>live,getFallbackRoleModels:()=>({...live,triage:live.router})})
+ const view=await port.view()
+ assert.equal(view.roleModels.roles.find(row=>row.role==='triage').saved.reasoningEffort,undefined)
+ for(const row of view.roleModels.roles){assert.equal(row.restartRequired,false);assert.deepEqual(row.running,row.nextStart)}
+ assert.equal(view.restartRequired,false)
+})

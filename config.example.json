@@ -1,7 +1,7 @@
 {
   "dataDir": "data",
   "shell": "bash",
-  "permissionMode": "ask",
+  "permissionMode": "full",
   "model": { "provider": "openai", "model": "gpt-4.1" },
   "providers": { "openai": { "apiKeyEnv": "OPENAI_API_KEY" } },
   "skillDirs": [],

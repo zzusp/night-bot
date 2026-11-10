@@ -8,7 +8,7 @@
 
 **Docker daemon ready、源码核查、镜像定义和基础探针均不能代替 build、实际任务、隔离与业务验收。** 当前结果以[唯一目标](../acceptance/resident-conversation-routing/goal.md)最新轮次为准；未完成的真实模型、登录、厂商交付和 Web 浏览器验证独立报告。
 
-本次实施与验收范围为操作者明确选择的 `full`；`ask`/`auto` 合同及历史结果保留，但受限执行尚未完成、本次不交付。下方示例显式选择 `full`，不改变产品默认 `ask`，也不隐式修改未提供模式参数的已有实例。
+本次实施与验收范围为操作者明确选择的 `full`；`ask`/`auto` 合同及历史结果保留，但受限执行尚未完成、本次不交付。下方示例显式选择 `full`，不改变产品默认 `full`（显式 `ask` / `auto` 保持不变），也不隐式修改未提供模式参数的已有实例。
 
 ## 沙箱与运行前置
 
@@ -85,7 +85,7 @@ docker run --rm --network none --name night-bot-check @common -e NIGHT_BOT_PERMI
 
 只用本实例专属命名卷，不复用其他实例的 SQLite、Pi journal、技能或账号。镜像内 `data` 及空的 `data/temp` 为 UID/GID `1000:1000`、权限 `0700`，确保工具版本自检时 `TMPDIR` 已存在；Docker 初始化新卷，入口只接受同 UID 的真实目录，不替外部共享目录 chown/chmod。不要用 `--user root` 或 `volume-nocopy` 绕过所有权约束。
 
-`--check` 不初始化或保存配置、不创建 data 子目录、不向卷写入编译或工具缓存、不登录、不连接模型/渠道或发送消息。它只读核查卷与 `data/temp` 均为同 UID、规范路径下的真实目录，且 `data/temp` 权限精确为 `0700` 并可读写进入；缺失或不安全即失败，不自动 mkdir/chmod/chown。仅该自检分支在首个 Node 进程前设置 `NODE_DISABLE_COMPILE_CACHE=1`，检查 Node/pnpm 版本；`ask`/`auto` 另检查 bwrap 版本并跑一次临时 namespace 探针，显式 `full` 不跑该探针。默认自检不调用可选 DWS CLI；镜像内 DWS 的固定发行资产及摘要在构建时核验，不将其 CLI 版本探测作为核心启动前置。正常 `run` 的缓存、HOME 与插件环境导入不受该自检设置影响。有效档位先取显式非空 `NIGHT_BOT_PERMISSION_MODE`，否则读取已有配置，缺省为 `ask`。Docker 的卷初始化不属于入口检查。`NIGHT_DOCKER_PREFLIGHT_OK` 只证明对应档位的这些前置，`full` 自检成功不证明受限档可用；失败不继续登录或启动业务，也不删除 unknown/WAL/历史来重试。
+`--check` 不初始化或保存配置、不创建 data 子目录、不向卷写入编译或工具缓存、不登录、不连接模型/渠道或发送消息。它只读核查卷与 `data/temp` 均为同 UID、规范路径下的真实目录，且 `data/temp` 权限精确为 `0700` 并可读写进入；缺失或不安全即失败，不自动 mkdir/chmod/chown。仅该自检分支在首个 Node 进程前设置 `NODE_DISABLE_COMPILE_CACHE=1`，检查 Node/pnpm 版本；`ask`/`auto` 另检查 bwrap 版本并跑一次临时 namespace 探针，显式 `full` 不跑该探针。默认自检不调用可选 DWS CLI；镜像内 DWS 的固定发行资产及摘要在构建时核验，不将其 CLI 版本探测作为核心启动前置。正常 `run` 的缓存、HOME 与插件环境导入不受该自检设置影响。有效档位先取显式非空 `NIGHT_BOT_PERMISSION_MODE`，否则读取已有配置，缺省为 `full`。Docker 的卷初始化不属于入口检查。`NIGHT_DOCKER_PREFLIGHT_OK` 只证明对应档位的这些前置，`full` 自检成功不证明受限档可用；失败不继续登录或启动业务，也不删除 unknown/WAL/历史来重试。
 
 ### 内置工具与基础无头访问
 
@@ -119,7 +119,7 @@ OPENAI_API_KEY=REPLACE_LOCALLY
 
 ### 权限环境映射与容器层级
 
-`NIGHT_BOT_PERMISSION_MODE` 是容器配置入口，唯一取值为 `ask`（请求批准）、`auto`（帮我批准）、`full`（完全访问）。新实例缺省为 `ask`。首次运行时入口将选定值作为显式 `--permission-mode` 交给 init；已有实例仅在提供非空该环境参数时，执行 `night-bot-config CONFIG permissions --permission-mode VALUE --check` 再保存同一命令，持久化到顶层 `permissionMode`。未提供时保留已有配置，旧配置缺该键时按 `ask`。Host 和通用 CLI 不静默读取此环境变量代替函数参数；`--check` 只校验，不保存选择。
+`NIGHT_BOT_PERMISSION_MODE` 是容器配置入口，唯一取值为 `ask`（请求批准）、`auto`（帮我批准）、`full`（完全访问）。新实例缺省为 `full`。首次运行时入口将选定值作为显式 `--permission-mode` 交给 init；已有实例仅在提供非空该环境参数时，执行 `night-bot-config CONFIG permissions --permission-mode VALUE --check` 再保存同一命令，持久化到顶层 `permissionMode`。未提供时保留已有配置，旧配置缺该键时按 `full`。Host 和通用 CLI 不静默读取此环境变量代替函数参数；`--check` 只校验，不保存选择。
 
 - `ask`/`auto` 均按现有 seccomp/bwrap 受限路线运行。范围外业务写应进入审批，获批调用须获得与 actor、call、参数及范围绑定的实际精确访问；不能一概路径拒绝，也不能自动扩大范围。`ask` 将待审批动作交给人；`auto` 由无工具 Pi 模型评审，判断不确定或评审失败转人工批准。受限档失败不自动切 `full`。
 - `full` 只能由有权操作者显式选择，任务模型和普通渠道发送者不能切档。它使用容器内当前 OS 账号（本镜像 UID/GID `1000:1000`）的访问能力，不提升为 root 或管理员；仍受父容器只读根、专属卷/tmpfs、cap-drop、no-new-privileges 与固定 seccomp 约束。

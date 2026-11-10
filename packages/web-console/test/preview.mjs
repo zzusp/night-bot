@@ -214,7 +214,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   const secretContext=new Context();secretContext.provide('launchEnvironment',createLaunchEnvironmentSnapshot([]))
   await secretContext.plugin(NativeCredentials,{path:paths.credentials,watch:false})
   const settingsFile=join(paths.config,'config.json')
-  const settingsConfig={installRoot:root,dataDir:'data',model:{provider:'fixture-model',model:'fixture'},providers:{'fixture-model':{api:'openai-completions',baseURL:'http://127.0.0.1:9/v1',apiKeyEnv:'FIXTURE_MODEL_KEY',models:[{id:'fixture'}]}},channelPlugins:structuredClone(app.config.channelPlugins),channelPluginDirs:['plugins']}
+  const settingsConfig={installRoot:root,dataDir:'data',model:{provider:'fixture-model',model:'fixture'},providers:{'fixture-model':{api:'openai-completions',baseURL:'http://127.0.0.1:9/v1',apiKeyEnv:'FIXTURE_MODEL_KEY',models:[{id:'fixture'},{id:'reasoning-fixture',reasoningEfforts:{off:null,low:'low',high:'high'}}]}},channelPlugins:structuredClone(app.config.channelPlugins),channelPluginDirs:['plugins']}
   await mkdir(join(root,'plugins','custom'),{recursive:true})
   await writeFile(join(root,'plugins/custom/night-channel.json'),JSON.stringify({apiVersion:1,type:'fixture-custom',entry:'index.mjs',displayName:'自定义测试渠道',webConfig:{fields:[{name:'room',label:'目标会话',type:'string',required:true},{name:'credential',label:'凭据引用',type:'credential-ref'},{name:'listen',label:'监听',type:'boolean',required:true}]}}))
   await writeFile(join(root,'plugins/custom/index.mjs'),'export function apply(){}')
