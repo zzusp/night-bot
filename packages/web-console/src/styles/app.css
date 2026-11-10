@@ -430,8 +430,7 @@ html, body, #root { width: 100%; min-width: 0; }
 /* Compact non-modal receipts are anchored to their message, outside transcript overflow. */
 .message-inspectable > .message-body { position: relative; cursor: pointer; }
 .message-inspectable > .message-body:hover { filter: brightness(.98); }
-.message-inspectable > .message-body:has(.message-process-trigger:focus-visible),
-.message-inspectable > .message-body:has(.message-process-trigger[aria-expanded="true"]) { outline: 2px solid var(--board-primary); outline-offset: 3px; }
+.message-inspectable > .message-body:has(.message-process-trigger:focus-visible) { outline: 2px solid var(--board-primary); outline-offset: 3px; }
 .message-process-trigger { cursor: pointer; }
 .message-process-popover { position: fixed; z-index: var(--board-z-popover); display: flex; flex-direction: column; width: min(304px, calc(100vw - 16px)); max-height: min(440px, calc(100dvh - 16px)); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); color: var(--board-text); background: var(--board-surface); box-shadow: var(--board-shadow-sidebar); overflow: hidden; }
 .message-process-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 0 16px; }
