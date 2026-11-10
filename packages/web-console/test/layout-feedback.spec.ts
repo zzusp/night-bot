@@ -18,7 +18,8 @@ test('截图回归：侧栏标签不竖排，消息无复制图标，渠道卡�
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     for (const card of await page.locator('.channel-card:not(.channel-card--add)').all()) {
       const cardBox = (await card.boundingBox())!
-      const badge = await card.locator('.channel-card-tag').boundingBox()
+      const tag = card.locator('.channel-card-tag')
+      const badge = await tag.count() ? await tag.boundingBox() : null
       if (badge) {
         expect(badge.height).toBeLessThanOrEqual(28)
         expect(badge.x + badge.width).toBeLessThanOrEqual(cardBox.x + cardBox.width)
