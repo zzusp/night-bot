@@ -24,6 +24,7 @@
       "dingtalk_writes_authorized": false
     }
   }],
+  "workLog": { "enabled": true, "time": "23:59", "timezone": "local" },
   "memory": { "background": true, "bindings": {} },
   "resident": {
     "host": "127.0.0.1",

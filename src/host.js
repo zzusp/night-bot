@@ -258,6 +258,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
       { name: new URL('./memory/service.js', import.meta.url).href, config: {...config.memory,skillDirs:config.skillDirs??[]} },
       { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
+      { name: new URL('./work-log/service.js', import.meta.url).href, config },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,
 

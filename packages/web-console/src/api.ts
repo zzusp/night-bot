@@ -207,7 +207,10 @@ export interface RoleModelSaved {ok:true;changed:boolean;version:string;role:Rol
 export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;reasoningEfforts:string[];references:string[]}
 export interface ModelCatalog {version:string;providers:{provider:string;name:string;models:ModelCatalogEntry[]}[]}
 export interface ModelCatalogSaved {ok:true;changed:boolean;checkOnly:boolean;version:string;restartRequired:boolean;liveApplied:false}
+export interface WorkLogSelection {enabled:boolean;time:string;timezone:string}
+export interface WorkLogState {saved:WorkLogSelection;running:WorkLogSelection;nextStart:WorkLogSelection|null;environmentOverrides:{name:string;source:string}[];restartRequired:boolean}
 export interface OperatorSettings {
+ workLog?: WorkLogState;
  roleModels: {catalog:RoleModelCatalog[];roles:RoleModelState[]};
  version: string; appearance: import('./components/AssistantBrand').AssistantBrand;
  model: {provider:string;model:string;api:string;baseURL:string};

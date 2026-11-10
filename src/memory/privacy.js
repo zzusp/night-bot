@@ -15,7 +15,7 @@ export async function createPrivacy(paths){
   if(paths.mode==='portable'&&(typeof paths.temp!=='string'||!paths.temp))throw failure('NIGHT_PROCESS_TEMP_ROOT_UNAVAILABLE')
   const tempRoot=paths.mode==='portable'?canonical(paths.temp):undefined
   const spills=await spillAccess(paths)
-  const roots=[paths.state,paths.memory,dirname(paths.credentials),join(paths.attachmentsHome,'attachments'),paths.cache,paths.logs,...tempRoot?[tempRoot]:[]]
+  const roots=[paths.state,paths.memory,dirname(paths.credentials),join(paths.attachmentsHome,'attachments'),paths.cache,paths.logs,...paths.workLogs?[paths.workLogs]:[],...tempRoot?[tempRoot]:[]]
   const protectedRoots=[...new Set(roots.map(canonical))].filter((path,index,all)=>!all.some((other,n)=>n!==index&&inside(other,path)))
   const taskRoot=path=>{const parts=relative(paths.workspaces,path).split(sep);return (process.platform==='win32'?parts[0].toLowerCase():parts[0])==='tasks'&&parts[1]?join(paths.workspaces,parts[0],parts[1]):undefined}
   const privateTaskPath=path=>{const root=taskRoot(path);return root&&inside(join(root,'sessions'),path)}

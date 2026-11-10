@@ -35,13 +35,13 @@ test('名称和内置图标保存、刷新及会话统一展示，窄屏与深�
   for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([])}}
  }finally{await reset(page)}
 })
-test('设置仅显示外观、角色模型和密钥，不展示或请求自定义渠道',async({page})=>{
+test('设置显示外观、角色模型、工作日志和密钥，不展示或请求自定义渠道',async({page})=>{
  let channelRequests=0
  await page.route('**/api/settings/channels',route=>{channelRequests++;return route.fulfill({status:503,json:{error:'SETTINGS_UNAVAILABLE'}})})
  await login(page)
  const settings=page.locator('.settings-page')
- for(const name of ['助手外观','模型 API','模型 API Key','GitHub Token'])await expect(settings.getByRole('heading',{name,exact:true})).toBeVisible()
- await expect(settings.locator('.settings-card')).toHaveCount(8)
+ for(const name of ['助手外观','模型 API','模型列表','每日工作日志','模型 API Key','GitHub Token'])await expect(settings.getByRole('heading',{name,exact:true})).toBeVisible()
+ await expect(settings.locator('.settings-card')).toHaveCount(9)
  await expect(settings.getByRole('heading',{name:'自定义渠道',exact:true})).toHaveCount(0)
  await expect(settings.getByRole('button',{name:'重新发现插件',exact:true})).toHaveCount(0)
  await expect(settings.getByLabel('渠道插件',{exact:true})).toHaveCount(0)
@@ -54,7 +54,7 @@ test('设置仅显示外观、角色模型和密钥，不展示或请求自定�
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:960})
-   await expect(settings.locator('.settings-card')).toHaveCount(8)
+   await expect(settings.locator('.settings-card')).toHaveCount(9)
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
    await page.screenshot({path:test.info().outputPath(`${theme}-${width}-settings.png`),fullPage:true})
   }

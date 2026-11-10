@@ -58,7 +58,7 @@ test('移位后的刷新按钮可键盘操作，读取失败仍可重试', async
   await expect(page.getByLabel('显示名称', {exact: true})).not.toHaveValue('未保存的名称')
   await page.route('**/api/settings', route => route.fulfill({status: 503, json: {error: 'SETTINGS_UNAVAILABLE'}}))
   await page.getByRole('button', {name: '重新读取设置', exact: true}).click()
-  await expect(page.locator('.settings-page').getByRole('alert')).toBeVisible()
+  await expect(page.locator('.settings-page > .notice[role="alert"]')).toBeVisible()
   await page.unroute('**/api/settings')
   await page.locator('.settings-page').getByRole('button', {name: '重新获取', exact: true}).click()
   await expect(page.getByRole('button', {name: '重新读取设置', exact: true})).toBeVisible()

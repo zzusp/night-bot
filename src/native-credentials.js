@@ -53,6 +53,8 @@ export default class NativeCredentials extends Service {
  async unset(ref,options){this.assertWritable(ref);return this.edit('refs',ref,()=>undefined,false,options)}
  async readRecord(key){credentialKey(key);return structuredClone(this.snapshot.records.get(key))}
  async describeRecord(key){const r=await this.readRecord(key);return r?{configured:true,kind:r.kind,writable:true}:{configured:false,writable:true}}
+ // Host-only output scrubbing, never a model tool or a persisted secret export.
+ redactionValues(){if(this.host.get('agents')?.currentInitiator?.()!==undefined)throw new Error('CREDENTIAL_REDACTION_HOST_ONLY');const values=[...this.snapshot.refs.values()];const visit=value=>{if(typeof value==='string'){if(value)values.push(value)}else if(value&&typeof value==='object')for(const [key,child]of Object.entries(value))if(key!=='kind'&&key!=='type')visit(child)};for(const value of this.snapshot.records.values())visit(value);return [...new Set(values)]}
  async listRecords(){return[...this.snapshot.records].map(([key,r])=>({key,kind:r.kind}))}
  async modifyRecord(key,mutate,options){credentialKey(key);if(typeof mutate!=='function')throw new TypeError('Credential mutator required');return this.edit('records',key,mutate,true,options)}
  async deleteRecord(key,options){credentialKey(key);return this.edit('records',key,()=>undefined,false,options)}
