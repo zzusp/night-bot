@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test'
 import {FIXTURE_TOKEN} from './preview.mjs'
-import {openConversationRecords} from './message-process-helpers'
+import {openMessageProcess} from './message-process-helpers'
 
 for (const source of [
   {path: '/chat/sample-plan', writable: true},
@@ -24,15 +24,11 @@ for (const source of [
       const rect = (await frame.boundingBox())!
       expect(rect.x + rect.width).toBeLessThanOrEqual(width)
       if (width > 1250) await expect(page.getByRole('complementary', {name: '任务与渠道概览'})).toBeVisible()
-      await openConversationRecords(page)
-      await expect(frame.getByText('会话安排记录', {exact: true})).toBeVisible()
-      if (source.task) {
-        const group = frame.locator(`[data-task-id="${source.task}"]`)
-        await group.locator(':scope > summary').click()
-        await group.getByText('工具与执行记录', {exact: true}).click()
-        await expect(group.locator('.message-tool')).toHaveCount(1)
-        await expect(group).not.toContainText('SECRET_')
-      }
+      await openMessageProcess(page)
+      const popover = page.getByRole('dialog', {name: '消息处理过程', exact: true})
+      await expect(popover.getByText('本会话的任务与安排', {exact: true})).toHaveCount(0)
+      await expect(popover.locator('.message-tool')).toHaveCount(0)
+      await expect(popover).toHaveAttribute('aria-modal', 'false')
       await page.getByRole('button', {name: '关闭消息处理过程', exact: true}).click()
       await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(source.writable ? 1 : 0)
       await page.screenshot({path: test.info().outputPath(`${source.path.replaceAll('/', '-')}-${width}.png`)})

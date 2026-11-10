@@ -10,6 +10,7 @@ const confirmed = {
   reason: null, replyPreview: '已收到，我先核对计划里的时间和依赖。',
   steps: [{ kind: 'received', label: '接收消息', at: '2026-11-09T01:00:00.000Z' },
     { kind: 'stage-turn-started', label: '开始处理（批次共享）', shared: true, at: '2026-11-09T01:00:00.200Z' },
+    { kind: 'stage-turn-completed', label: '消息处理完成', shared: true, durationMs: 700, at: '2026-11-09T01:00:00.900Z' },
     { kind: 'reply-prepared', label: '回复已准备', at: '2026-11-09T01:00:00.900Z' },
     { kind: 'reply-visible', label: '首条回复已确认可见', at: '2026-11-09T01:00:01.250Z' }],
 }
@@ -20,7 +21,7 @@ async function login(page: Page, path = '/channels/room-product') {
   await page.getByRole('button', { name: '连接工作空间', exact: true }).click()
 }
 
-test('移除 tab 和执行页：点击消息读精确来源，弹窗直接显示真实时间线，键盘及浅深窄屏', async ({ page }) => {
+test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层只显示过程和节点耗时，键盘及浅深窄屏', async ({ page }) => {
   let timingReads = 0, journalReads = 0
   page.on('request', request => { if (/\/session\?/.test(request.url())) journalReads++ })
   await page.route(endpoint, route => {
@@ -38,16 +39,29 @@ test('移除 tab 和执行页：点击消息读精确来源，弹窗直接显示
   await page.locator('.conversation-page .message-body').first().click()
   const dialog = page.getByRole('dialog', { name: '消息处理过程', exact: true })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('1.25 秒')
-  await expect(dialog).toContainText(confirmed.replyPreview)
-  await expect(dialog).toContainText('右侧为接收后的累计时间')
-  await expect(dialog).toContainText('+200 毫秒')
-  await expect(dialog).toContainText('批次共享，不代表本条消息单独用时')
-  await expect(dialog).toContainText('09:00:01.250')
+  await expect(dialog).toContainText('1 秒')
+  await expect(dialog).not.toContainText(confirmed.replyPreview)
+  await expect(dialog).not.toContainText(confirmed.preview)
+  await expect(dialog).toContainText('700 毫秒')
+  await expect(dialog).not.toContainText('+200 毫秒')
+  await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
+  await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
+  await expect(dialog.getByRole('button')).toHaveCount(1)
+  await expect(dialog.getByText('本会话的任务与安排')).toHaveCount(0)
+  await expect(dialog).toHaveAttribute('aria-modal', 'false')
+  await expect(page.locator('dialog[open]')).toHaveCount(0)
+  await expect(trigger).toHaveCSS('clip-path', 'inset(50%)')
+  const bubble = (await page.locator('.conversation-page .message-body').first().boundingBox())!
+  const floating = (await dialog.boundingBox())!
+  expect(floating.width).toBeLessThanOrEqual(306)
+  expect(floating.x + floating.width <= bubble.x || floating.x >= bubble.x + bubble.width || floating.y + floating.height <= bubble.y || floating.y >= bubble.y + bubble.height).toBe(true)
+  await expect(dialog).toHaveAttribute('data-side', /left|right|top|bottom/)
   expect(journalReads).toBe(0)
   await expect(dialog.getByRole('button', { name: '关闭消息处理过程' })).toBeFocused()
   await page.keyboard.press('Shift+Tab')
-  expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true)
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await trigger.press('Enter')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme)
@@ -85,16 +99,16 @@ test('未知、失败、多来源与空记录不伪装耗时；失败保留旧�
   await login(page)
   await openMessageProcess(page)
   const section = page.getByRole('region', { name: '消息首答与处理过程' })
-  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '各条分别从自己的接收时间计时']) await expect(section).toContainText(text)
-  await expect(section.locator('.response-time-outcome strong')).toHaveCount(0)
-  mode = 'error'; await section.getByRole('button', { name: '刷新记录' }).click()
+  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '各条分别计时']) await expect(section).toContainText(text)
+  await expect(section.locator('.response-time-summary strong')).toHaveCount(0)
+  mode = 'error'
   await expect(section).toContainText('独立来源 0')
-  await expect(section.locator('.notice')).toBeVisible()
-  mode = 'empty'; await section.getByRole('button', { name: '刷新记录' }).click()
+  await expect(section.locator('.notice')).toBeVisible({ timeout: 8000 })
+  mode = 'empty'; await section.getByRole('button', { name: '重新获取', exact: true }).click()
   await expect(section).toContainText('这条消息暂无可核实的入站来源')
-  mode = 'unavailable'; await section.getByRole('button', { name: '刷新记录' }).click()
+  mode = 'unavailable'
   await expect(section).toContainText('这条消息暂无可核验的来源记录')
-  mode = 'denied'; await section.getByRole('button', { name: '刷新记录' }).click()
+  mode = 'denied'
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.conversation-page .message')).toHaveCount(0)
 })
@@ -107,13 +121,14 @@ test('初读等待、关闭取消及更换消息不串记录；长内容可滚�
     const id = new URL(route.request().url()).searchParams.get('selectedMessageId')!
     requested.push(id)
     if (first) { first = false; await ready }
-    await route.fulfill({ json: pageData([{ ...confirmed, preview: `来源 ${id}`, replyPreview: '经过核实的回复。'.repeat(300) }]) })
+    await route.fulfill({ json: pageData([{ ...confirmed, preview: `来源 ${id}`, steps: Array.from({length: 40}, (_, i) => ({label: `来源 ${id} · 节点 ${i}`, at: confirmed.receivedAt, durationMs: 20})) }]) })
   })
   await login(page)
   let dialog = await openMessageProcess(page)
   await expect(dialog).toContainText('正在读取消息处理记录')
   await page.keyboard.press('Escape')
-  await page.locator('.conversation-page .message-process-trigger').nth(1).click()
+  await page.locator('.conversation-page .message-process-trigger').nth(1).focus()
+  await page.keyboard.press('Enter')
   dialog = page.getByRole('dialog', { name: '消息处理过程', exact: true })
   await expect.poll(() => requested.length).toBeGreaterThanOrEqual(2)
   expect(requested[0]).not.toBe(requested[1])
@@ -151,8 +166,13 @@ test('Web 回复来源、Markdown 链接和文字选择保留，后退切页关�
   await expect(page.getByRole('dialog')).toBeVisible()
   expect(selected).toBe('reply-exact')
   await page.keyboard.press('Escape')
+  const popupPromise = page.waitForEvent('popup')
   await page.getByRole('link', { name: '查看任务', exact: true }).click()
-  await expect(page).toHaveURL(/\/tasks\/task-research/)
+  const linkedPage = await popupPromise
+  await expect(linkedPage).toHaveURL(/\/tasks\/task-research/)
+  await linkedPage.close()
+  await openMessageProcess(page)
+  await page.evaluate(() => { location.hash = '/tasks/task-research' })
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.goBack()
   await expect(page.locator('.conversation-page')).toBeVisible()
@@ -172,13 +192,99 @@ test('Web 回复来源、Markdown 链接和文字选择保留，后退切页关�
 })
 
 
-test('会话任务接口撤权立即关闭整个消息弹窗，不等下一次计时轮询', async ({page}) => {
+test('外部点击与重复点击关闭，滚动跟随，窗口调整重新定位且 Tab 不困在浮层', async ({page}) => {
   await page.route(endpoint, route => route.fulfill({json: pageData()}))
-  await page.route('**/api/conversations/room-product/tasks', route => route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}}))
+  await login(page)
+  const trigger = page.locator('.conversation-page .message-process-trigger').first()
+  let dialog = await openMessageProcess(page)
+  await page.locator('.conversation-page .message-body').first().click()
+  await expect(dialog).toHaveCount(0)
+  dialog = await openMessageProcess(page)
+  await expect(dialog.getByRole('button', {name: '关闭消息处理过程'})).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog).toHaveCount(0)
+  dialog = await openMessageProcess(page)
+  await page.locator('.transcript').dispatchEvent('scroll')
+  await expect(dialog).toBeVisible()
+  await page.getByRole('heading', {name: '产品协作', exact: true}).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+})
+
+
+test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读取', async ({page}) => {
+  await page.route(endpoint, route => route.fulfill({json: pageData()}))
+  await login(page)
+  await page.setViewportSize({width:1440,height:560})
+  const dialog = await openMessageProcess(page)
+  await expect(dialog).toContainText('700 毫秒')
+  const before=(await dialog.boundingBox())!
+  const bubble=page.locator('.conversation-page .message-body').first()
+  const sourceBefore=(await bubble.boundingBox())!
+  await page.locator('.transcript').evaluate(el=>{el.scrollTop+=12})
+  await expect(dialog).toBeVisible()
+  await expect.poll(async()=>Math.round((await dialog.boundingBox())!.y)).not.toBe(Math.round(before.y))
+  const after=(await dialog.boundingBox())!,sourceAfter=(await bubble.boundingBox())!
+  expect(Math.abs((after.y-before.y)-(sourceAfter.y-sourceBefore.y))).toBeLessThanOrEqual(2)
+  await page.locator('.transcript').evaluate(el=>{el.scrollTop=el.scrollHeight})
+  await expect(dialog).toHaveCount(0)
+})
+
+test('不显示刷新工具栏或底部说明，仍自动读取新阶段，后台暂停恢复，关闭后不再轮询', async ({page}) => {
+  let reads=0, mode='waiting'
+  await page.route(endpoint, route => {
+    reads++
+    return route.fulfill({json:pageData([{...confirmed,status:mode==='waiting'?'awaiting-reply':'confirmed',durationMs:mode==='waiting'?null:1250,steps:mode==='waiting'?confirmed.steps.slice(0,2):confirmed.steps}])})
+  })
   await login(page)
   const dialog=await openMessageProcess(page)
-  await expect(dialog).toContainText(confirmed.replyPreview)
-  await dialog.getByText('本会话的任务与安排',{exact:true}).click()
+  await expect(dialog).toContainText('等待回复')
+  await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
+  await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
+  const waitingHeight=(await dialog.boundingBox())!.height
+  mode='confirmed'
+  await expect(dialog).toContainText('700 毫秒',{timeout:8000})
+  await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(waitingHeight+50)
+  expect(reads).toBeGreaterThanOrEqual(2)
+  await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
+  await expect(dialog.getByRole('button')).toHaveCount(1)
+  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))})
+  const hiddenReads=reads
+  await page.waitForTimeout(3200)
+  expect(reads).toBe(hiddenReads)
+  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'))})
+  await expect.poll(()=>reads).toBeGreaterThan(hiddenReads)
+  await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
-  await expect(page.locator('.conversation-page .message')).toHaveCount(0)
+  const closedReads=reads
+  await page.waitForTimeout(3200)
+  expect(reads).toBe(closedReads)
+})
+
+
+test('异步首读增高时浮层自行重新测量，不需要滚动或调整窗口', async ({page}) => {
+  let release:()=>void=()=>{}
+  const ready=new Promise<void>(resolve=>{release=resolve})
+  await page.route(endpoint,async route=>{await ready;await route.fulfill({json:pageData()})})
+  await login(page)
+  const dialog=await openMessageProcess(page)
+  await expect(dialog).toContainText('正在读取消息处理记录')
+  const loadingHeight=(await dialog.boundingBox())!.height
+  release()
+  await expect(dialog).toContainText('700 毫秒')
+  await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(loadingHeight+80)
+})
+
+
+test('首答和节点共用时长格式，小于一秒显示毫秒，达到一秒显示四舍五入整数秒', async ({page}) => {
+  const values = [0, 999, 1000, 1499, 1500, 2500]
+  await page.route(endpoint, route => route.fulfill({json: pageData([{...confirmed, durationMs: 1500,
+    steps: values.map(ms => ({kind: 'stage-turn-completed', label: `节点 ${ms}`, at: confirmed.receivedAt, durationMs: ms}))
+  }])}))
+  await login(page)
+  const dialog = await openMessageProcess(page)
+  await expect(dialog.locator('.response-time-summary strong')).toHaveText('2 秒')
+  const elapsed = dialog.locator('.response-time-elapsed > span:last-child')
+  await expect(elapsed).toHaveText(['0 毫秒', '999 毫秒', '1 秒', '1 秒', '2 秒', '3 秒'])
+  await expect(dialog).not.toContainText(/1\.499|1\.5|2\.5/)
 })
