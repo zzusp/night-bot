@@ -4,9 +4,9 @@ import { RiArrowRightUpLine, RiChatSmile2Line, RiFileList3Line, RiLightbulbLine 
 import { api, ApiError, errorText, type Chat, type Message } from './api';
 import { navigate, useResource, useRoute } from './hooks';
 import { Button, Composer, EmptyState, Logo } from './components/BoardPrimitives';
-import { Loading, MessageList, Notice } from './components/Shared';
+import { Loading, Notice } from './components/Shared';
 import { ConversationFrame } from './components/ConversationFrame';
-import { ConversationExecution } from './components/ConversationExecution';
+import { ConversationMessages } from './components/ConversationMessages';
 
 export interface Attempt { conversationId: string; requestId: string; text: string; createdAt: string; state: 'sending' | 'pending' | 'unknown' | 'missing' }
 interface Draft { text: string; attempt?: Attempt; error?: string; checking?: boolean }
@@ -38,7 +38,6 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const brand = useAssistantBrand();
   const key = id || 'new';
   const route = useRoute();
-  const execution = !!id && route.searchParams.get('view') === 'execution';
   const { text, attempt, error, checking } = useSyncExternalStore(drafts.subscribe, () => drafts.get(key));
   const mounted = useRef(false);
   const liveKey = useRef(key);
@@ -93,10 +92,10 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const extra: Message[] = attempt && !messages.some(message => message.requestId === attempt.requestId)
     ? [{ id: attempt.requestId, role: 'user', text: attempt.text, createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
   const busy = attempt?.state === 'sending';
-  return <ConversationFrame path={`/chat/${encodeURIComponent(id || '')}`} execution={execution}>
-    {!execution && query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
-    {!execution && query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
-    {execution && id ? <ConversationExecution endpoint={`/chat/${encodeURIComponent(id)}`} query={query} /> : query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <MessageList messages={[...messages, ...extra]}
+  return <ConversationFrame>
+    {query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
+    {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
+    {query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <ConversationMessages key={key} endpoint={id ? `/chat/${encodeURIComponent(id)}` : null} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} messages={[...messages, ...extra]}
       pending={['accepted', 'pending', 'running'].includes(query.data?.status || '')}
       footer={query.data?.status === 'ready' && messages.at(-1)?.role === 'user' ? <p className="muted chat-receipt" role="status">消息已接纳，后续回复会在这里显示。</p> : undefined}
       empty={query.error && !query.data ? <EmptyState title="对话暂不可读" description="使用上方按钮重新获取，或从侧栏选择其他对话。" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>

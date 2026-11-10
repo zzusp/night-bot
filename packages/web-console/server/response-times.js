@@ -61,3 +61,28 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
   replyAssociation:status==='confirmed'?shared?'task':'direct':null,reason,
   steps:steps.filter(row=>!firstReplyAt||Date.parse(row.at)<=Date.parse(firstReplyAt))}
 }
+
+// Selection starts from a real visible ledger/inbox/outbox row, not adjacent text.
+export async function selectedResponseTiming({selected,selectedMessageId,selectedMessageVersion,conversationId,store,secrets=[]}) {
+ const base={selectedMessageId,items:[],total:0,nextOffset:null,coverage:'selected-message',scope:'host-received-to-first-confirmed-source-reply'}
+ const unavailable=reason=>({...base,status:'unavailable',reason})
+ if(!selected)return unavailable('未找到该消息的唯一历史关联')
+ let context,rows
+ if(selected.role==='user'){
+  const version=selected.messageVersion
+  if(!Number.isSafeInteger(version)||version<1||selectedMessageVersion!==undefined&&version!==selectedMessageVersion)return unavailable('消息版本已变化或历史版本缺失')
+  rows=[selected]
+  context=await store.query({kind:'observer.message-contexts',groupId:conversationId,messageIds:[selected.messageId],messages:[{messageId:selected.messageId,version}]})
+ }else{
+  context=await store.query({kind:'observer.notification-sources',groupId:conversationId,notificationId:selected.notificationId})
+  rows=context.sources.map(source=>({messageId:source.messageId,messageVersion:source.version,text:source.text}))
+ }
+ // Fail closed on duplicate source/version identities. Never choose an arbitrary one.
+ if(!rows.length||rows.length>100||rows.some(row=>context.sources.filter(source=>source.groupId===conversationId&&source.messageId===row.messageId&&source.version===row.messageVersion).length!==1))return unavailable('历史来源或唯一版本关联不足')
+ const items=await Promise.all(rows.map(async row=>{
+  const source=context.sources.find(source=>source.groupId===conversationId&&source.messageId===row.messageId&&source.version===row.messageVersion)
+  const routing=await store.query({kind:'router.source-status',sourceId:source.sourceId})
+  return {...responseTiming(row,context.sources,context.notifications,routing,{secrets,taskReplySources:context.taskReplySources}),preview:visibleText(row.text??'',secrets,{maxLength:120}).text}
+ }))
+ return {...base,status:'ready',items,total:items.length}
+}

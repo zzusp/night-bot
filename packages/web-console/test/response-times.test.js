@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {responseTiming} from '../server/response-times.js'
+import {responseTiming,selectedResponseTiming} from '../server/response-times.js'
 const source={sourceId:'s1',groupId:'room',messageId:'m1',version:2,receivedAt:'2026-11-09T00:00:00Z'}
 const notice=(extra={})=>({id:'n1',kind:'triage-reply',taskId:null,state:'delivered',createdAt:'2026-11-09T00:00:01Z',sendStartedAt:'2026-11-09T00:00:02Z',deliveredAt:'2026-11-09T00:00:03Z',payload:{conversationId:'room',sourceId:'s1',sourceRef:{messageId:'m1',messageVersion:2}},...extra})
 const message={messageId:'m1',messageVersion:2}
@@ -79,4 +79,16 @@ test('阶段只投影已记录端点，共享阶段不均分，不从相邻事�
  for(const kind of ['stage-queue-completed','stage-host-completed'])assert.equal(Object.hasOwn(value.steps.find(row=>row.kind===kind),'durationMs'),false)
  assert.doesNotMatch(JSON.stringify(value),/private|source-record/)
  assert.equal(value.steps.filter(row=>Object.hasOwn(row,'durationMs')).length,1)
+})
+
+
+test('selected timing fails closed for missing/ambiguous versions and scopes; sources stay distinct',async()=>{
+ const run=(selected,sources=[source],extra={})=>selectedResponseTiming({selected,selectedMessageId:'clicked',conversationId:'room',store:{query:async q=>q.kind==='router.source-status'?null:{sources,notifications:[notice()],taskReplySources:[]}},...extra})
+ assert.equal((await run(null)).status,'unavailable')
+ assert.equal((await run({role:'user',...message},[source,{...source,sourceId:'duplicate'}])).status,'unavailable')
+ assert.equal((await run({role:'user',messageId:'m1'})).status,'unavailable')
+ assert.equal((await run({role:'user',...message},[{...source,groupId:'foreign'}])).status,'unavailable')
+ assert.equal((await run({role:'user',...message},[source],{selectedMessageVersion:1})).status,'unavailable')
+ const multiple=await run({role:'assistant',notificationId:'n1'},[source,{...source,sourceId:'version-one',version:1}])
+ assert.deepEqual(multiple.items.map(row=>row.messageVersion),[2,1]);assert.equal(multiple.total,2);assert.equal(multiple.nextOffset,null)
 })

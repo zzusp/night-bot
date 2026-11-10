@@ -1,6 +1,7 @@
 import {test, expect} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
+import {openConversationRecords} from './message-process-helpers'
 
 test('渠道沿用 Web 对话与执行过程、正式任务记录、深链和只读边界', async ({page}) => {
   await page.goto('/#/channels/room-product')
@@ -9,8 +10,8 @@ test('渠道沿用 Web 对话与执行过程、正式任务记录、深链和只
   await expect(page.getByRole('heading', {name: '产品协作', exact: true, level: 1})).toBeVisible()
   await expect(page.getByText('讨论参与者', {exact: true})).toBeVisible()
   await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(0)
-  await page.getByRole('link', {name: '执行过程', exact: true}).click()
-  await expect(page).toHaveURL(/view=execution/)
+  await openConversationRecords(page)
+  await expect(page).not.toHaveURL(/view=execution/)
   await expect(page.getByText('会话安排记录', {exact: true})).toBeVisible()
   await page.getByText('会话安排记录', {exact: true}).click()
   await expect(page.getByText('暂无已提交的会话安排', {exact: true})).toBeVisible()
@@ -36,14 +37,16 @@ test('渠道沿用 Web 对话与执行过程、正式任务记录、深链和只
 
   await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(0)
   await page.reload()
-  await expect(page.getByRole('link', {name: '执行过程', exact: true})).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('link', {name: '执行过程', exact: true})).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await openConversationRecords(page)
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme)
     await page.setViewportSize({width: 390, height: 844})
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     expect((await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
   }
-  await page.getByRole('link', {name: '对话', exact: true}).click()
+  await page.getByRole('button', {name: '关闭消息处理过程', exact: true}).click()
   await expect(page.getByText('讨论参与者', {exact: true})).toBeVisible()
   await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(0)
 })

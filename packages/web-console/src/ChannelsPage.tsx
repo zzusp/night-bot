@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent, type Ref } from 'react';
 import { RiChat3Line, RiGroupLine, RiArrowRightLine, RiGlobalLine, RiAddLine, RiCloseLine, RiCheckboxCircleFill, RiErrorWarningLine, RiQuestionLine } from '@remixicon/react';
 import { api, ApiError, type Channel, type ChannelSettings, type Conversation, type DingtalkChannelCreated, type DingtalkChannelDetail, type DingtalkChannelEdit, type DingtalkChannelInput, type DingtalkChannelUpdated, type Message } from './api';
-import { useResource, useRoute } from './hooks';
+import { useResource } from './hooks';
 import { channelHealthPresentation, channelRecoveryError } from './channel-health';
 import { channelPath } from './channel-url';
 import { validDingtalkCreated, channelApplicationText } from './channel-response';
@@ -9,9 +9,9 @@ import { ChannelRemovalDialog, type ChannelRemovalRequest } from './components/C
 import { ActionMenu } from './components/ActionMenu';
 import { CustomChannelForm } from './components/CustomChannelForm';
 import { ConversationFrame } from './components/ConversationFrame';
-import { ConversationExecution, type TaskHistory } from './components/ConversationExecution';
+import { ConversationMessages } from './components/ConversationMessages';
 import { Badge, Button, EmptyState, IconButton } from './components/BoardPrimitives';
-import { Loading, MessageList, Notice, Search, Status } from './components/Shared';
+import { Loading, Notice, Search, Status } from './components/Shared';
 
 const conversationType = (type?: string | null) => type === 'chat-room' ? '群聊' : type === 'chat' ? '单聊' : '会话类型未记录';
 
@@ -315,10 +315,7 @@ function ChannelCardHealth({ item }: { item: Channel }) {
 }
 
 export default function ChannelsPage({ id }: { id?: string }) {
-  const route = useRoute();
-  const execution = !!id && route.searchParams.get('view') === 'execution';
   const endpoint = id ? `/conversations/${encodeURIComponent(id)}` : '';
-  const history = useResource<TaskHistory>(execution ? `${endpoint}/tasks` : null, 2500);
   const channels = useResource<{ items: Channel[] }>('/channels', 10000);
   const conversations = useResource<{ items: Conversation[] }>('/conversations', 5000);
   const [search, setSearch] = useState('');
@@ -330,12 +327,11 @@ export default function ChannelsPage({ id }: { id?: string }) {
   useEffect(() => { setOffsets({ messages: 0, outbox: 0 }); }, [id]);
   const query = useResource<{ items: Message[]; pages: { messages: { nextOffset: number | null; total: number; revision?: string }; outbox: { nextOffset: number | null; total: number; revision?: string } } }>(id ? `/conversations/${encodeURIComponent(id)}/messages?messageOffset=${offsets.messages}&outboxOffset=${offsets.outbox}&limit=50${offsets.messageRevision ? `&messageRevision=${encodeURIComponent(offsets.messageRevision)}` : ''}${offsets.outboxRevision ? `&outboxRevision=${encodeURIComponent(offsets.outboxRevision)}` : ''}` : null, offsets.messages || offsets.outbox ? 0 : 5000);
   const items = (conversations.data?.items || []).filter(item => (!channel || channel === item.channelId) && `${item.name} ${item.channelId}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  if (id) return <ConversationFrame path={`/channels/${encodeURIComponent(id)}`} execution={execution} channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
-    {execution ? <ConversationExecution key={id} endpoint={endpoint} query={history} /> : <>
+  if (id) return <ConversationFrame channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
     {query.error && <Notice error={query.error} onRetry={() => { setOffsets({ messages: 0, outbox: 0 }); query.refresh(); }} stale={!!query.data} />}
-    {query.loading && !query.data ? <Loading /> : !query.data && query.error ? <EmptyState title="消息记录暂不可读" description="使用上方按钮重新获取，或返回渠道列表。" /> : <MessageList key={id + ':' + offsets.messages + ':' + offsets.outbox} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" description="该会话接收到的消息和 Bot 的实际回复会显示在这里。" />} />}
+    {query.loading && !query.data ? <Loading /> : !query.data && query.error ? <EmptyState title="消息记录暂不可读" description="使用上方按钮重新获取，或返回渠道列表。" /> : <ConversationMessages endpoint={endpoint} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} key={id + ':' + offsets.messages + ':' + offsets.outbox} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" description="该会话接收到的消息和 Bot 的实际回复会显示在这里。" />} />}
     {(offsets.messages > 0 || offsets.outbox > 0 || query.data?.pages.messages.nextOffset != null || query.data?.pages.outbox.nextOffset != null) && <div className="conversation-pagination"><div className="inline-actions">{(offsets.messages > 0 || offsets.outbox > 0) && <Button variant="secondary" onClick={() => setOffsets({ messages: 0, outbox: 0 })}>回到最新</Button>}{(query.data?.pages.messages.nextOffset != null || query.data?.pages.outbox.nextOffset != null) && <Button variant="secondary" disabled={query.loading} onClick={() => setOffsets({ messages: query.data?.pages.messages.nextOffset ?? query.data!.pages.messages.total, outbox: query.data?.pages.outbox.nextOffset ?? query.data!.pages.outbox.total, messageRevision: query.data?.pages.messages.revision, outboxRevision: query.data?.pages.outbox.revision })}>查看更早消息</Button>}</div></div>}
-  </>} </ConversationFrame>;
+  </ConversationFrame>;
   return <div className="page-content channels-page">
     {channelFeedback && <p className="channel-create-feedback" role="status">{channelFeedback}</p>}
     <ChannelRemovalDialog focusAfterRemoval={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={removalRequest} onDismiss={() => setRemovalRequest(null)} onChanged={message => { setChannelFeedback(message); if (channel === removalRequest?.item.channelId) setChannel(''); channels.refresh(); conversations.refresh(); }} />

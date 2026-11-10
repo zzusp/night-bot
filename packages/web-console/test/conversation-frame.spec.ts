@@ -1,5 +1,6 @@
 import {test, expect} from '@playwright/test'
 import {FIXTURE_TOKEN} from './preview.mjs'
+import {openConversationRecords} from './message-process-helpers'
 
 for (const source of [
   {path: '/chat/sample-plan', writable: true},
@@ -13,7 +14,7 @@ for (const source of [
     await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
     const frame = page.locator('.conversation-page')
     await expect(frame).toBeVisible()
-    await expect(frame.locator('.chat-history-tabs')).toBeVisible()
+    await expect(frame.locator('.chat-history-tabs')).toHaveCount(0)
     await expect(page.locator('.channel-chat-header')).toHaveCount(0)
     await expect(page.locator('.channel-chat-footer')).toHaveCount(0)
     for (const width of [1440, 1100, 768, 390]) {
@@ -23,7 +24,7 @@ for (const source of [
       const rect = (await frame.boundingBox())!
       expect(rect.x + rect.width).toBeLessThanOrEqual(width)
       if (width > 1250) await expect(page.getByRole('complementary', {name: '任务与渠道概览'})).toBeVisible()
-      await frame.getByRole('link', {name: '执行过程', exact: true}).click()
+      await openConversationRecords(page)
       await expect(frame.getByText('会话安排记录', {exact: true})).toBeVisible()
       if (source.task) {
         const group = frame.locator(`[data-task-id="${source.task}"]`)
@@ -32,7 +33,7 @@ for (const source of [
         await expect(group.locator('.message-tool')).toHaveCount(1)
         await expect(group).not.toContainText('SECRET_')
       }
-      await frame.getByRole('link', {name: '对话', exact: true}).click()
+      await page.getByRole('button', {name: '关闭消息处理过程', exact: true}).click()
       await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(source.writable ? 1 : 0)
       await page.screenshot({path: test.info().outputPath(`${source.path.replaceAll('/', '-')}-${width}.png`)})
     }

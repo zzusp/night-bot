@@ -16,7 +16,7 @@ export async function openWebLedger(directory, scope) {
     CREATE INDEX IF NOT EXISTS request_conversation ON requests(conversation,created_at);
     CREATE TABLE IF NOT EXISTS replies (id TEXT PRIMARY KEY, conversation TEXT NOT NULL, payload TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL, message_id TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS web_conversation (scope TEXT PRIMARY KEY, conversation TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS reply_conversation ON replies(conversation,created_at);`)
+    CREATE INDEX IF NOT EXISTS reply_conversation ON replies(conversation,created_at); CREATE INDEX IF NOT EXISTS reply_message ON replies(conversation,message_id);`)
     // 接纳期间退出既不能证明拒绝，也不能授权重新提交。
     db.prepare("UPDATE requests SET status='unknown' WHERE status='pending'").run()
   } catch (error) {db.close(); throw error}
@@ -49,6 +49,12 @@ export async function openWebLedger(directory, scope) {
     .map(({sequence, ...message}) => message)
   return {
     canonical,
+    selected(conversationId, messageId) {
+      const user=db.prepare('SELECT id,text FROM requests WHERE conversation=? AND id=?').get(conversationId,messageId)
+      const replies=db.prepare('SELECT id FROM replies WHERE conversation=? AND message_id=? LIMIT 2').all(conversationId,messageId)
+      if((user?1:0)+replies.length!==1)return null
+      return user?{role:'user',messageId:user.id,messageVersion:1,text:user.text}:{role:'assistant',notificationId:replies[0].id}
+    },
     hasChat: conversationId => !!db.prepare('SELECT 1 FROM requests WHERE conversation=? LIMIT 1').get(conversationId),
     reserve({requestId, conversationId, groupId, text, senderId, channelId}) {
       const payload = JSON.stringify([conversationId, groupId, text, senderId, channelId])

@@ -143,7 +143,7 @@ export async function conversationMessages(application, id, options, channels) {
   const context = channels?.groupContext(id)
   const knownIds = [id, context?.conversationId, context?.channelId, ...Object.keys(context?.participants ?? {}), ...Object.values(context?.participants ?? {})]
   const items = [
-    ...messages.items.map(message => ({id: message.messageId, role: 'user', text: message.text ?? '',
+    ...messages.items.map(message => ({id: message.messageId, messageVersion: message.messageVersion, role: 'user', text: message.text ?? '',
       createdAt: message.occurredAt ?? null, status: message.processingState ?? 'unknown', senderName: displayName([context?.participantNames?.[message.actorId ?? message.senderOpenDingTalkId], message.senderName], [...knownIds, message.actorId, message.senderOpenDingTalkId], '渠道成员'), taskIds: message.taskSessionRefs ?? []})),
     ...outbox.items.map(message => ({id: message.outboundId, role: 'assistant', text: message.text ?? '',
       createdAt: message.sentAt ?? message.deliveredAt ?? message.sendStartedAt ?? null,

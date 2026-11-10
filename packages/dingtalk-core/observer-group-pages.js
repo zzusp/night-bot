@@ -140,6 +140,17 @@ export function createObserverGroupPages({readGroup,readSources,readRequests,isO
   })
   return {items,total,offset,limit,revision:current,routingRevision:readGroup(groupId)?.routingRevision,nextOffset:offset+items.length<total?offset+items.length:null}
  }
+ // Exact visible-row lookup, never a scan of paginated history or a journal.
+ page.selected=async(groupId,id)=>{
+  const group=readGroup(groupId)
+  if(!group)return null
+  await flush()
+  if(failures.has(groupId))throw failures.get(groupId)
+  const row=index.prepare('SELECT body FROM inbox WHERE group_id=? AND id=?').get(groupId,id)
+  const outbound=group.outbox.filter(message=>message.outboundId===id)
+  if((row?1:0)+outbound.length!==1)return null
+  return row?{role:'user',...JSON.parse(row.body)}:{role:'assistant',notificationId:outbound[0].outboundId}
+ }
  page.update=update
  page.sourceChanged=source=>{
   if(!source?.groupId||!source.messageId)return

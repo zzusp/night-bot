@@ -19,6 +19,7 @@ test('group paging uses SQL rows without reading source or resident history; com
  const prior=group
  group={...group,get messages(){throw new Error('page scanned messages')},get topics(){throw new Error('page scanned decisions')}}
  const first=await page('g',{filter:'failed',limit:10})
+ assert.equal((await page.selected('g','m1')).messageId,'m1');assert.equal((await page.selected('g','m1')).messageVersion,1);assert.equal(await page.selected('g','missing'),null)
  assert.equal(first.total,500);assert.equal(first.items.length,10);assert.equal(reads.length,0);assert.equal(first.items[0].messageId,'m998')
  const second=await page('g',{filter:'failed',offset:10,limit:10,revision:first.revision})
  assert.equal(reads.length,0);assert(!second.items.some(item=>first.items.some(prior=>prior.messageId===item.messageId)))

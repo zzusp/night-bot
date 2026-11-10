@@ -126,7 +126,7 @@ function ToolActivity({ item, history }: { item: Extract<TranscriptItem, { kind:
     </details></div>
   </article>;
 }
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader }) {
+export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect }: { messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
   const brand = useAssistantBrand();
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -145,11 +145,19 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
       {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : items.map(item => {
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} />;
         const message = item.message;
-        return <article className={`message message-${message.role}`} key={message.id}>
+        return <article className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+          // Markdown contains links and disclosures: preserve their actions and text selection.
+          // The persistent native button provides the same action for keyboard and touch.
+          const target = event.target as HTMLElement;
+          if (!target.closest('.message-body') || target.closest('a,button,summary,details,input,textarea,select') || window.getSelection()?.toString()) return;
+          const trigger = event.currentTarget.querySelector<HTMLButtonElement>('.message-process-trigger');
+          if (trigger) onInspect(message, trigger);
+        } : undefined}>
           <div className="message-meta"><span className={`message-avatar ${message.role === 'assistant' ? 'bot-avatar' : ''}`}>{message.role === 'assistant' ? (brand.icon === 'moon' ? 'N' : brandGlyph(brand.icon)) : (message.senderName?.slice(0, 1) || userLabel.slice(0, 1))}</span>
             <strong>{message.role === 'assistant' ? brand.name : (message.senderName || userLabel)}</strong>
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
+            {onInspect && <button type="button" className="message-process-trigger" aria-haspopup="dialog" aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}
           </div>
           <div className="message-body"><MessageBody message={message} history={history} /></div>
           {message.taskIds?.length ? <div className="message-links">{message.taskIds.map(id => <a key={id} href={`#/tasks/${encodeURIComponent(id)}`}>查看关联任务</a>)}</div> : null}

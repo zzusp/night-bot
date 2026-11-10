@@ -3,6 +3,8 @@ import {createHash} from 'node:crypto'
 export const routerSchemaVersion = '1'
 export const routerTables = ['conversations','router_inbox','triage','source_links','dependencies','completion_evaluations','router_rotations','router_actions','router_upgrade_audit']
 export const routerSchema = routerTables.map(name => `CREATE TABLE IF NOT EXISTS dynamic_${name}(id TEXT PRIMARY KEY,body TEXT NOT NULL CHECK(json_valid(body)));`).join('\n') + `
+CREATE INDEX IF NOT EXISTS dynamic_source_link_task ON dynamic_source_links(json_extract(body,'$.taskId'),json_extract(body,'$.conversationId'));
+CREATE INDEX IF NOT EXISTS dynamic_source_link_source ON dynamic_source_links(json_extract(body,'$.conversationId'),json_extract(body,'$.sourceId'));
 CREATE UNIQUE INDEX IF NOT EXISTS dynamic_router_event ON dynamic_router_inbox(json_extract(body,'$.conversationId'),json_extract(body,'$.eventId'));
 CREATE UNIQUE INDEX IF NOT EXISTS dynamic_dependency_pair ON dynamic_dependencies(json_extract(body,'$.taskId'),json_extract(body,'$.prerequisiteTaskId'));
 `

@@ -28,10 +28,21 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   const direct=(await h.query('notification.list')).find(notice=>notice.payload?.sourceRef?.messageId==='reply-direct');assert.equal(direct.payload.replyPurpose,undefined,'真实 Router 未标用途的送达回执也必须进入 HTTP 首答结果');
   assert.equal(row('reply-unknown').durationMs,null);assert.equal(row('reply-unknown').status,'unconfirmed');assert.equal(row('reply-silent').status,'no-reply');assert.equal(row('reply-wait').status,'awaiting-reply');assert.equal((await h.query('task.list',{groupId:id})).length,0)
   assert.equal((await api('/api/conversations/foreign/response-times')).status,404)
+  const selectedUser=await api(endpoint+'?selectedMessageId=reply-direct&selectedMessageVersion=1');assert.equal(selectedUser.body.items.length,1);assert.equal(selectedUser.body.items[0].messageId,'reply-direct')
+  const channelMessages=await api('/api/conversations/'+id+'/messages');const assistant=channelMessages.body.items.find(message=>message.role==='assistant'&&message.id===direct.id);assert.ok(assistant)
+  assert.equal(channelMessages.body.items.find(message=>message.id==='reply-direct').messageVersion,1)
+  const selectedAssistant=await api(endpoint+'?selectedMessageId='+encodeURIComponent(assistant.id));assert.equal(selectedAssistant.body.items[0].messageId,'reply-direct')
+  assert.equal((await api(endpoint+'?selectedMessageId=missing')).body.status,'unavailable')
+  assert.equal((await api(endpoint+'?selectedMessageId=reply-direct&selectedMessageVersion=2')).body.status,'unavailable')
+  assert.equal((await api(endpoint+'?selectedMessageId=reply-direct&offset=0')).status,400)
   const count=h.requests.length;await api(endpoint);assert.equal(h.requests.length,count)
   const csrf=(await api('/api/session')).body.csrfToken,current=(await api('/api/chat-current')).body.conversationId
   const posted=await fetch(web.origin+'/api/chat',{method:'POST',headers:{origin:web.origin,cookie,'content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({conversationId:current,requestId:'web-first-answer',text:'WEB_FIRST'})});assert.equal(posted.status,202,await posted.text());await h.service.whenIdle()
   const webTiming=await api('/api/chat/'+current+'/response-times');assert.equal(webTiming.status,200);assert.equal(webTiming.body.items[0].status,'confirmed',JSON.stringify(webTiming.body));assert.ok(webTiming.body.items[0].durationMs>=0)
+  const webSelected=await api('/api/chat/'+current+'/response-times?selectedMessageId=web-first-answer');assert.equal(webSelected.body.items[0].messageId,'web-first-answer')
+  const webChat=await api('/api/chat/'+current),webReply=webChat.body.messages.find(message=>message.role==='assistant');assert.ok(webReply)
+  const webAssistant=await api('/api/chat/'+current+'/response-times?selectedMessageId='+encodeURIComponent(webReply.id));assert.equal(webAssistant.body.items[0].messageId,'web-first-answer')
+  assert.equal((await api(endpoint+'?selectedMessageId='+encodeURIComponent(webReply.id))).body.status,'unavailable')
   t.diagnostic(JSON.stringify(result.body.items.map(({messageId,status,durationMs})=>({messageId,status,durationMs}))))
  }finally{await web?.close()}
 })

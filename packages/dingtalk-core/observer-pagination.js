@@ -205,6 +205,28 @@ export function observerGroupQuery(db,q) {
   if(['dynamic_notifications','dynamic_task_events','dynamic_receipts'].includes(table)&&tableExists(db,archived))return db.prepare(`SELECT body FROM (SELECT rowid AS sequence,${select} FROM ${table} WHERE ${where} UNION ALL SELECT sequence,${select} FROM ${archived} WHERE ${where}) ORDER BY sequence`).all(...args,...args).map(row=>JSON.parse(row.body))
   return db.prepare(`SELECT ${select} FROM ${table} WHERE ${where}`).all(...args).map(row=>JSON.parse(row.body))
  }
+ if(q.kind==='observer.notification-sources'){
+  if(typeof q.notificationId!=='string'||!q.notificationId)throw error('OBSERVER_PAGE_INVALID')
+  const notices=read('dynamic_notifications','body',"id=? AND json_extract(body,'$.payload.conversationId')=?",[q.notificationId,q.groupId])
+  if(notices.length!==1)return {sources:[],notifications:[],taskReplySources:[]}
+  const notice=notices[0],candidateIds=new Set()
+  if(typeof notice.payload?.sourceId==='string')candidateIds.add(notice.payload.sourceId)
+  if(notice.taskId&&tableExists(db,'dynamic_source_links')){
+   const links=db.prepare("SELECT body FROM dynamic_source_links WHERE json_extract(body,'$.taskId')=? AND json_extract(body,'$.conversationId')=? LIMIT 101").all(notice.taskId,q.groupId)
+   if(links.length>100)return {sources:[],notifications:[],taskReplySources:[]}
+   for(const row of links)candidateIds.add(JSON.parse(row.body).sourceId)
+  }
+  if(candidateIds.size>100)return {sources:[],notifications:[],taskReplySources:[]}
+  const candidates=read('dynamic_sources','body',"id IN (SELECT value FROM json_each(?)) AND json_extract(body,'$.groupId')=?",[JSON.stringify([...candidateIds]),q.groupId])
+  const context=observerGroupQuery(db,{kind:'observer.message-contexts',groupId:q.groupId,messageIds:[...new Set(candidates.map(row=>row.messageId))],messages:candidates.map(row=>({messageId:row.messageId,version:row.version}))})
+  const sources=context.sources.filter(source=>
+   notice.payload?.sourceId===source.sourceId
+    &&(notice.payload.sourceVersion??notice.payload.sourceRef?.messageVersion)===source.version
+    &&(notice.payload.sourceRef?.messageId??notice.payload.sourceMessageId)===source.messageId
+   ||context.taskReplySources.some(ref=>ref.notificationId===notice.id&&ref.taskId===notice.taskId&&ref.sourceId===source.sourceId&&ref.messageVersion===source.version))
+  if(sources.some(source=>context.sources.filter(other=>other.messageId===source.messageId&&other.version===source.version).length!==1))return {sources:[],notifications:[],taskReplySources:[]}
+  return {...context,sources}
+ }
  if(q.kind==='observer.group-metadata')return {
   sources:read('dynamic_sources',fields(['sourceId','groupId','messageId','version','routed','processingCompleted','coordinationRetirement']),"json_extract(body,'$.groupId')=?",[q.groupId]).map(source=>({...source,routed:source.routed===1||source.routed===true})),
  }
