@@ -21,7 +21,7 @@ import { hasRestartIsolation } from './native-restart-isolation.js'
 
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, lstat, link, unlink } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, extname, join, resolve } from 'node:path'
 import { openDynamicTaskStore, ingressTimestamp, pendingTaskHumanReview, taskHumanWait } from './dynamic-task-store.js'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { readExecutionResourceCatalog, createExecutionResourceCatalog } from './execution-resource-catalog.js'
@@ -40,7 +40,7 @@ import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceI
 import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, taskWorkspaceReady, assertTaskWorkspaceReady, initializeTaskDirectories } from './session-workspaces.js'
 import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
 import {formatTaskConversationReply} from './group-reply-format.js'
-import {assertConversationReply,conversationQuote,conversationSource} from '../../src/channels/message-safety.js'
+import {assertConversationReply,replyInternalTaskId,conversationQuote,conversationSource} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
 import { projectTaskTimeline, readTaskLifecycle } from './task-execution-timeline.js'
@@ -51,6 +51,9 @@ export { taskExecutionContext } from './execution-context.js'
 const hash = value => createHash('sha256').update(JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)).digest('hex')
 const fail = code => { throw Object.assign(new Error(code), { code }) }
 const clean = value => JSON.parse(JSON.stringify(value))
+const validMaterialFile = file => file && typeof file.name === 'string' && file.name.length > 0 && file.name.length <= 255
+  && !file.name.includes(String.fromCharCode(92)) && !/[/\x00-\x1f\x7f]/u.test(file.name) && file.name !== '.' && file.name !== '..'
+  && typeof file.mediaType === 'string' && file.mediaType.length <= 128 && /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/iu.test(file.mediaType)
 const string = { type: 'string' }
 const texts = { type: 'array', items: string }
 // 后端属于执行身份；缺省的历史执行始终是 DSH，不跟随当前配置迁移。
@@ -102,7 +105,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),getTaskDirectories:async taskId=>taskDirectories(root,taskId,{task:await requireTask(taskId)}) })
   const originalNotifications=notifications
-  notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('send',notification):originalNotifications.send(notification),readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
+  notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:async notification=>{
+    // 来源只从 Host 账本取得；不改冻结 payload，也不接受模型提供的公开标记声明。
+    const p=notification.payload,source=p.sourceId?await store.query({kind:'source.get',sourceId:p.sourceId}):null,ref=p.sourceRef
+    const replySourceText=source&&source.groupId===p.conversationId&&source.version===p.sourceVersion
+      &&ref?.messageId===source.messageId&&ref.messageVersion===source.version&&ref.actorId===source.actorId
+      &&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold?source.text:undefined
+    const outgoing={...notification,replySourceText}
+    return ctx.get('channels').deliveryEnvelope(outgoing)?ctx.get('channels').transportCall('send',outgoing):originalNotifications.send(outgoing)
+  },readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws, residentRouter
@@ -638,7 +649,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         } catch (error) { if (error.code === 'ENOENT') fail('TASK_MATERIAL_CONTENT_MISSING'); throw error }
         if (bytes.length !== resource.bytes || createHash('sha256').update(bytes).digest('hex') !== resource.sha256
           || typeof resource.value?.text === 'string' && !bytes.equals(Buffer.from(resource.value.text, 'utf8'))
-          || resource.value?.image && resource.value.image.path !== resource.path) fail('TASK_MATERIAL_CONTENT_CHANGED')
+          || resource.value?.image && resource.value.image.path !== resource.path
+          || resource.value?.file && (!validMaterialFile(resource.value.file) || resource.value.file.path !== resource.path
+            || resource.value.file.bytes !== resource.bytes || resource.value.file.sha256 !== resource.sha256)) fail('TASK_MATERIAL_CONTENT_CHANGED')
       }
       await checkedTaskDirectory(directories.materials)
       if (typeof source.text === 'string' && Buffer.byteLength(source.text) >= 512) {
@@ -671,15 +684,19 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const value = await readResource(source.groupId, source.messageId, resource)
         const text = typeof value?.text === 'string'
         const image = value?.image?.data instanceof Uint8Array && value.image.data.byteLength > 0
-        if (!value || value.complete === false || value.hasMore === true || value.failures?.length || value.mediaUnavailable?.length || !text && !image) fail('RESOURCE_READ_INCOMPLETE')
-        const bytes = text ? Buffer.from(value.text, 'utf8') : Buffer.from(value.image.data)
+        const file = value?.file !== undefined
+        if (file && (!validMaterialFile(value.file) || !(value.file.data instanceof Uint8Array) || !value.file.data.byteLength || text || image)) fail('RESOURCE_FILE_DESCRIPTOR_INVALID')
+        if (!value || value.complete === false || value.hasMore === true || value.failures?.length || value.mediaUnavailable?.length || !text && !image && !file) fail('RESOURCE_READ_INCOMPLETE')
+        const bytes = file ? Buffer.from(value.file.data) : text ? Buffer.from(value.text, 'utf8') : Buffer.from(value.image.data)
         if (bytes.length > 8 * 1024 * 1024) fail('RESOURCE_READ_TOO_LARGE')
         const sha256 = createHash('sha256').update(bytes).digest('hex')
-        const extension = text ? '.txt' : ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }[value.image.mediaType] ?? '.bin')
+        const originalExtension = file ? extname(value.file.name).toLowerCase() : ''
+        const extension = file ? (/^\.[a-z0-9]{1,16}$/u.test(originalExtension) ? originalExtension : '.bin') : text ? '.txt' : ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }[value.image.mediaType] ?? '.bin')
         const path = join(directories.materials, `resource-${hash([source.sourceId, resource]).slice(0, 16)}-${sha256.slice(0, 16)}${extension}`)
         await publish(path, bytes)
         resources.push({ resource, status: 'read', complete: true, path, bytes: bytes.length, sha256,
-          value: text ? clean(value) : { image: { mediaType: value.image.mediaType, name: value.image.name, path, bytes: bytes.length, sha256 } } })
+          value: file ? { file: { name: value.file.name, mediaType: value.file.mediaType, path, bytes: bytes.length, sha256 } }
+            : text ? clean(value) : { image: { mediaType: value.image.mediaType, name: value.image.name, path, bytes: bytes.length, sha256 } } })
       }
       catch (error) { resources.push({ resource, status: 'unavailable', reason: error.code ?? 'RESOURCE_READ_FAILED' }) }
     }
@@ -872,7 +889,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       })
       await deliveryFiles.validateManifest(artifactFiles.map(file=>file.artifact),task)
     }
-    const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId]
+    const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId,replyInternalTaskId(selection?.taskId,source.text)]
     const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:args.text,replyToMessageId,replyToActorId,
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)
@@ -1076,7 +1093,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const executions = await query('execution.list',{taskId})
         if(executions.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
         await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:task.ownerActorId??config.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}})
-        const runResult = await taskSessions.run({ binding, input: { task:await taskInputWithDependencies(task), artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: _body, ...resource }) => resource) })), wakes, executions,
+        const runResult = await taskSessions.run({ binding, input: { task:await taskInputWithDependencies(task), artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: body, ...resource }) => ({ ...resource, ...(body?.file ? { file: body.file } : {}) })) })), wakes, executions,
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
           blockers: await query('task.blockers', { taskId }) }, ...taskModelSelection(models(), legacy.getAgentConfig().taskSessionModel ?? config), agentPreset: legacy.getAgentConfig().agentPreset,
@@ -1375,7 +1392,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           else sourceHeldNotifications.delete(notification.id)
         }
         catch (error) {
-          if (error.notificationPhase === 'send' && (error.serverErrorCode === 'RATE_LIMIT_ERROR' || error.code === 'RATE_LIMIT_ERROR' || error.knownNotSent === true)) notificationTransportRetryAt = Math.max(notificationTransportRetryAt, Date.parse(error.notificationRetryAt) || Date.now() + 60000)
+          if (error.notificationPhase === 'send' && (error.serverErrorCode === 'RATE_LIMIT_ERROR' || error.code === 'RATE_LIMIT_ERROR' || error.knownNotSent === true && error.retryable !== false)) notificationTransportRetryAt = Math.max(notificationTransportRetryAt, Date.parse(error.notificationRetryAt) || Date.now() + 60000)
           throw error
         } finally { notificationSends.delete(notification.id); notificationReadbacks.delete(notification.id) }
       }), attempted)

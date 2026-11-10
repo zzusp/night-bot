@@ -60,7 +60,7 @@ test('发现不执行插件，只对声明表单配置自定义渠道，引用�
  const f=await fixture(t);await mkdir(join(f.root,'plugins/readonly'));await writeFile(join(f.root,'plugins/readonly/night-channel.json'),JSON.stringify({apiVersion:1,type:'fixture-readonly',entry:'index.js'}));await writeFile(join(f.root,'plugins/readonly/index.js'),'export function apply(){}');const plugins=await f.port.plugins();assert.equal(plugins.items[0].type,'fixture-custom');assert.equal(plugins.items[0].configurable,true);assert.equal(plugins.items.find(row=>row.type==='fixture-readonly').configurable,false);await assert.rejects(access(join(f.root,'plugins/custom/executed')));await assert.rejects(f.port.saveChannel({type:'fixture-readonly',channelId:'unsupported',enabled:false,config:{},expectedVersion:plugins.version}),{code:'CHANNEL_WEB_CONFIGURATION_UNSUPPORTED'})
  await f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',enabled:false,config:{room:'room-one',credential:'FIXTURE_CUSTOM_KEY'},expectedVersion:plugins.version})
  let next=await f.port.plugins();assert.equal(next.channels[0].editable,true)
- await assert.rejects(f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',enabled:true,config:{room:'x',credential:'raw-secret-with-dash',forged:true},expectedVersion:next.version}),{code:'SETTINGS_INPUT_INVALID'})
+ await assert.rejects(f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',createOnly:true,enabled:true,config:{room:'x',credential:'raw-secret-with-dash',forged:true},expectedVersion:next.version}),{code:'SETTINGS_INPUT_INVALID'})
  await f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',enabled:true,config:{room:'room-one',credential:'FIXTURE_CUSTOM_KEY'},expectedVersion:next.version})
  await assert.rejects(access(join(f.root,'plugins/custom/executed')));const config=await loadConfig(f.file),rows=await channelPluginRows(config,f.paths);await access(join(f.root,'plugins/custom/executed'));assert.equal(rows.length,1);assert.equal(rows[0].config.channelId,'custom-room');assert.equal(rows[0].config.credential,'FIXTURE_CUSTOM_KEY');assert.equal(rows[0].config.room,'room-one');assert.equal(rows[0].config.dingtalk_group_id,undefined)
  next=await f.port.plugins();await assert.rejects(f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',enabled:false,config:{room:'other'},expectedVersion:next.version}),{code:'CHANNEL_EDIT_REQUIRES_STOP'})
@@ -82,7 +82,7 @@ test('已保存GitHub凭据仅在获准full shell启动边界使用，不进入�
 test('网页保存自定义配置后真实Host发现并启动插件，渠道身份、名称和fake外发沿统一协议',async t=>{
  const f=await fixture(t)
  await writeFile(join(f.root,'plugins/custom/index.js'),`export const inject=['channels'];export const validateConfig=value=>{if(!value.room)throw Error('invalid');return value};export function apply(ctx,config){const sent=[];const stop=ctx.channels.registerTransport(config.channelId,{capabilities:{conversationTypes:['chat-room']},send:async envelope=>{sent.push(envelope);return {messageId:'fake-custom-reply'}},readback:async()=>({messageId:'fake-custom-reply'})});ctx.provide('customSettingsProbe',{sent,ingest:input=>ctx.channels.receive({...input,type:'chat-room',channelId:config.channelId,conversationId:config.room,conversationName:'自定义测试群'})});ctx.effect(()=>stop)}`)
- let view=await f.port.plugins();await f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',enabled:true,config:{room:'configured-room',credential:'FIXTURE_CUSTOM_KEY'},expectedVersion:view.version})
+ let view=await f.port.plugins();await f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',createOnly:true,enabled:true,config:{room:'configured-room',credential:'FIXTURE_CUSTOM_KEY'},expectedVersion:view.version})
  await f.ctx.fiber.dispose()
  const {createHost}=await import('../src/host.js'),host=await createHost(await loadConfig(f.file),{environmentOptions:{inherited:{}}});
  try{
@@ -114,3 +114,15 @@ test('保存模型及Key后冷启动真实Host使用新Pi路由，不发模型�
  try{const model=await host.ctx.nativePiProvider.official.resolve({provider:'web-model',model:'cold-model'});assert.equal(model.model.id,'cold-model');assert.equal(model.model.api,'openai-responses');assert.equal(model.model.baseUrl,'https://never-contact.example.invalid/v1');assert.equal(host.ctx.credentials.resolveCurrent('NIGHT_WEB_MODEL_API_KEY').value,'TEST_COLD_MODEL_KEY')}
  finally{await host.close()}
 })
+
+
+test('通用新增渠道拒绝已有标识而不改写，停用编辑仍使用原协议', async t=>{
+ const f=await fixture(t);let view=await f.port.plugins();
+ const input={type:'fixture-custom',channelId:'create-only-room',enabled:false,config:{room:'original-room'},createOnly:true,expectedVersion:view.version};
+ await f.port.saveChannel(input);view=await f.port.plugins();const before=await readFile(f.file,'utf8');
+ await assert.rejects(f.port.saveChannel({...input,config:{room:'must-not-replace'},expectedVersion:view.version}),{code:'CHANNEL_INSTANCE_EXISTS'});
+ assert.equal(await readFile(f.file,'utf8'),before);
+ await assert.rejects(f.port.saveChannel({...input,createOnly:'true',expectedVersion:view.version}),{code:'SETTINGS_INPUT_INVALID'});
+ await f.port.saveChannel({...input,createOnly:false,config:{room:'edited-room'},expectedVersion:view.version});
+ assert.equal((await f.port.plugins()).channels.find(row=>row.channelId===input.channelId).config.room,'edited-room');
+});

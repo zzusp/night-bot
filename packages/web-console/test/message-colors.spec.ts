@@ -1,0 +1,89 @@
+import {test, expect, type Page} from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import {FIXTURE_TOKEN} from './preview.mjs'
+
+function contrast(first: string, second: string) {
+  const luminance = (rgb: string) => {
+    const [r, g, b] = rgb.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => value / 255)
+      .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
+    return .2126 * r + .7152 * g + .0722 * b
+  }
+  const values = [luminance(first), luminance(second)].sort((a, b) => b - a)
+  return (values[0] + .05) / (values[1] + .05)
+}
+
+async function login(page: Page, path: string) {
+  await page.goto('/#' + path)
+  await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
+  await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
+  await expect(page.locator('.message-user').first()).toBeVisible()
+  await expect(page.locator('.message-assistant').first()).toBeVisible()
+}
+
+for (const theme of ['light', 'dark']) {
+  for (const path of ['/chat/sample-plan', '/channels/room-product', '/channels/custom-direct']) {
+    test(`${theme} ${path}: independent bubble colors at desktop and mobile widths`, async ({page}) => {
+      await login(page, path)
+      await page.evaluate(theme => {document.documentElement.dataset.theme = theme}, theme)
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({width, height: 960})
+        const backgrounds: string[] = []
+        for (const role of ['user', 'assistant']) {
+          const row = page.locator('.message-' + role).first()
+          const body = row.locator('.message-body')
+          const style = await body.evaluate((element, role) => {
+            const s = getComputedStyle(element)
+            const root = getComputedStyle(document.documentElement)
+            const normalize = (value: string) => {
+              const [r, g, b] = value.trim().slice(1).match(/../g)!.map(value => parseInt(value, 16))
+              return `rgb(${r}, ${g}, ${b})`
+            }
+            return {
+              background: s.backgroundColor, text: getComputedStyle(element.querySelector('.markdown')!).color,
+              expected: normalize(root.getPropertyValue(`--board-message-${role}-bg`)),
+              border: s.borderColor, expectedBorder: normalize(root.getPropertyValue(`--board-message-${role}-border`)),
+              surfaces: ['canvas', 'panel', 'surface'].map(name => normalize(root.getPropertyValue('--board-' + name))),
+              corners: [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
+            }
+          }, role)
+          expect(style.background).toBe(style.expected)
+          expect(style.border).toBe(style.expectedBorder)
+          expect(style.corners).toEqual(['14px', '14px', '14px', '14px'])
+          expect(contrast(style.text, style.background)).toBeGreaterThanOrEqual(4.5)
+          for (const surface of style.surfaces) expect(contrast(style.background, surface)).toBeGreaterThanOrEqual(1.15)
+          await expect(row).toHaveCSS('align-self', role === 'user' ? 'flex-end' : 'flex-start')
+          backgrounds.push(style.background)
+        }
+        expect(backgrounds[0]).not.toBe(backgrounds[1])
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(path.startsWith('/chat') ? 1 : 0)
+        await page.screenshot({path: test.info().outputPath(`${theme}-${width}.png`)})
+      }
+    })
+  }
+
+  test(`${theme}: Markdown quotes and links retain AA contrast in both bubbles`, async ({page}) => {
+    await page.route('**/api/chat/sample-plan', async route => {
+      const response = await route.fetch()
+      const data = await response.json()
+      for (const message of data.messages) message.text += '\n\n> 引用内容仍需清晰可读。\n\n[参考链接](https://example.com) 与 `inline code`。\n\n```text\n代码块示例\n```'
+      await route.fulfill({response, json: data})
+    })
+    await login(page, '/chat/sample-plan')
+    await page.evaluate(theme => {document.documentElement.dataset.theme = theme}, theme)
+    for (const role of ['user', 'assistant']) {
+      const body = page.locator(`.message-${role} .message-body`).first()
+      const background = await body.evaluate(el => getComputedStyle(el).backgroundColor)
+      for (const selector of ['blockquote', 'a']) {
+        const node = body.locator(selector).first()
+        await expect(node).toBeVisible()
+        expect(contrast(await node.evaluate(el => getComputedStyle(el).color), background)).toBeGreaterThanOrEqual(4.5)
+      }
+      await body.locator('a').first().focus()
+      await expect(body.locator('a').first()).toBeFocused()
+    }
+    expect((await new AxeBuilder({page}).include('.message-column').analyze()).violations).toEqual([])
+    await page.emulateMedia({forcedColors: 'active'})
+    for (const role of ['user', 'assistant']) await expect(page.locator(`.message-${role} .message-body`).first()).toHaveCSS('border-top-style', 'solid')
+  })
+}

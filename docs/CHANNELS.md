@@ -134,6 +134,10 @@ Router 的业务工具按实际职责区分：
 
 最终说明与平台到期回复复用现有通知格式，保留原文件名和 caption。`replyToSource:true` 可与 `taskDelivery` 组合，但仅引用父说明；文件子通知不继承引用，不宣称文件消息自身具备原生 quote/@ 能力。任务交付写入属于该 task 的 `status` 父通知及文件子通知，先确认最终说明送达，再依原顺序发送文件；冻结、`accepted` 或 Router settle 均不表示送达，unknown 先回读，不自动重发。归档包含该任务自己的父子通知，不带整群上下文；已归档任务只能继续已有合法未送达通知，不能重新创建交付，档案恢复仍保持 hold。未指定 `taskDelivery` 且未显式选择受众时，普通文本回复规则不变。
 
+选择 `taskDelivery` 时，Host 在冻结正文和父子通知之前校验所选 taskId，内部编号不得出现在公开正文；失败直接返回 Router 工具，由模型订正正文后继续，不产生半条交付。发送通道仍保留安全兜底。本地正文校验若明确在外部发送前拒绝，记录为 `failed`、`knownNotSent:true`、`retryable:false`，不回读、不重试。旧版误记的 `unknown` 仅在单次发送、无 ACK/receipt、发送许可与 payloadDigest/fence 全匹配且原正文可重现同一精确本地错误时结清失败；网络异常、参数不匹配或已有接纳证据仍保持未知。此结清不改写冻结正文、不重跑已完成任务，也不放行依赖它的文件子件。
+
+原始用户来源已公开指定的业务标记可能被选作同值 taskId；仅这种同值任务身份不按私有编号拦截，保留用户指定的文件名，其他身份及机制格式照常拒绝。准备与发送使用同一判定，发送时由 Host 按精确来源/版本/作者/会话临时提供原文，不接受模型声明豁免，不改冻结 payload/hash。安装操作者可通过既有本机通知恢复入口显式重评估 taskDelivery 的本地拒发：必须重现完整原错误并逐字段核对已持久化证明、唯一尝试及 permit/fence，消费 CAS 后重新核对当前来源授权、任务完成版本、未归档和冻结产物，正文仍不合法则拒绝。只有通过全部校验才续原通知；自动扫描不重试此失败。父说明真实 delivered 后才释放原文件子件；已有接纳证据或网络未知结果仅回读，不适用重发。
+
 若前序通知尚未确认送达，文件子件的 `notification.start` 可先记录“未获发送许可”。前序说明/文件经回读确认为 delivered 后，Host 可按原固定 start 命令 ID 重新判定；仅限冻结 payload 不变、仍为 `prepared`、sendAttempt 为 0 且从未有 permit/token/开始时间/发送收据的子件。第一次获许可后同 ID 永不再授新发送；`starting` / `unknown` 仍只能回读，旧 false 收据既不能永久卡住首次发送，也不能成为重复发送的授权。档案恢复 hold 等原有门禁不因此解除。
 
 ## 平台到期回复与既有冻结发送
@@ -211,6 +215,8 @@ Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAP
 私聊实例使用 `dingtalk_conversation_type:"chat"` 与一个 `dingtalk_user_id` 或 `dingtalk_user_name`，真实解析后绑定对端、原生 conversation 和当前账号 actor；`directChats`、`directPeers`、`assistantActorId` 为内部派生值，不是公开配置。群聊与私聊均复用 bridge 的订阅、暂停/恢复和有界历史补读，恢复沿该渠道持久水位、身份校验和去重推进，不重新初始化起点丢弃停用消息。私聊支持文字和原生引用回复，不支持私聊文件交付；实现不代表真实订阅、补拉或交付已验收。
 
 插件保留带署源的历史、资源、mention、文件与 receipt/readback 适配能力，typed 入站保留真实发送人及原引用。额外 operator 私聊须显式开启 `dingtalk_operator_notifications` 并提供非空 `dingtalk_operator_peers`，且单独核对账号、对端及授权；不要因业务私聊实例已配置就启用 operator 范围。
+
+资源读取保留图片、UTF-8 文本、XLSX、在线 adoc 的既有返回形态；其它可下载附件（如 PDF、Word、未知二进制）返回完整 `file: {data: Uint8Array, name, mediaType}`，不把平台 ID 当路径或公开链接。Host 校验名称、MIME、大小与完整性，在本任务 materials 发布安全哈希名原件，计算字节数/SHA-256，并将 `{name,mediaType,path,bytes,sha256}` 传给任务。文件描述符不携带账号、签名链接、下载目录或内联二进制；临时文件在返回字节后清理。单资源上限 8 MiB，文件不可读时明确 unavailable，不以静默文本降级掩盖错误。该形态不增加格式解析器，不自动执行文件，不覆盖历史 unavailable 快照。
 
 群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。对于 Router/任务队列的通知，关闭 `dingtalk_operator_notifications` 仍使用该 DWS 插件自身 adapter 查询发送身份，经持久渠道 context 将内部 conversation 映射为原生会话并精确核对，再在消息事实和来源持久登记之前过滤自己的消息；身份回读不改变附件交付状态，也不替代文件字节验证。
 

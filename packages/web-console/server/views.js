@@ -88,14 +88,16 @@ export function configuredChannels(application, channels, savedRows = applicatio
     const channelId=row.channelId??row.config?.channelId??row.type,loaded=running.get(channelId),plugin=channels.plugins.get(channelId)
     const savedVersion=digest(JSON.stringify(row)),runningVersion=loaded?digest(JSON.stringify(loaded)):null,pending=savedVersion!==runningVersion
     const health=plugin?.health,runningConnectionState=connectionStates.has(health?.state)?health.state:'unknown'
-    const connectionState=pending?'pending-restart':runningConnectionState,errorCode=pending?null:errorFor(health,row.type)
+    const healthy = typeof health?.healthy === 'boolean' ? health.healthy && !['waiting-auth', 'error', 'stopped'].includes(runningConnectionState) : undefined
+    const lifecycleError=channels.configurationErrors?.get(channelId)
+    const connectionState=lifecycleError?'error':pending?'pending-restart':runningConnectionState,errorCode=lifecycleError??(pending?null:errorFor(health,row.type))
     return {channelId,type:row.type,enabled:row.enabled===true,savedVersion,runningVersion,connectionState,errorCode,
-      restartRequired:pending,liveApplied:!pending&&row.enabled===true&&!!plugin&&(row.type!=='dingtalk-dws'||plugin.bindingActive===true)&&errorCode!=='DINGTALK_CHANNEL_SWITCH_BLOCKED',
+      restartRequired:pending,liveApplied:!lifecycleError&&!pending&&row.enabled===true&&!!plugin&&(row.type!=='dingtalk-dws'||plugin.bindingActive===true)&&!['waiting-auth','error','stopped'].includes(runningConnectionState),
       runningConnectionState,runningErrorCode:errorFor(health,row.type),
-      ...(typeof health?.healthy==='boolean'?{runningConnected:health.healthy}:{}),
+      ...(typeof healthy==='boolean'?{runningConnected:healthy}:{}),
       ...(row.type==='dingtalk-dws'?{name:row.config?.dingtalk_name??channelId,conversationType:row.config?.dingtalk_conversation_type,promptConfigured:!!row.config?.dingtalk_prompt,writesAuthorized:row.config?.dingtalk_writes_authorized===true,
         ...(loaded?{runningName:loaded.config?.dingtalk_name??channelId,runningConversationType:loaded.config?.dingtalk_conversation_type}:{} )}:{}),
-      ...(pending?{connected:false}:typeof health?.healthy==='boolean'?{connected:health.healthy}:{})}
+      ...(pending||lifecycleError?{connected:false}:typeof healthy==='boolean'?{connected:healthy}:{})}
   })}
 }
 
