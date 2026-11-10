@@ -16,10 +16,24 @@ test('任务进展优先显示真实合同字段，缺失不猜测，撤权不�
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([])}
  mode='denied';await expect(group.locator('.execution-task-summary')).not.toContainText('缺少核对输入',{timeout:12000});await group.locator('.execution-task-summary').getByRole('button',{name:'重新获取',exact:true}).click();await expect(group.locator('.execution-task-summary')).not.toContainText('请指定待核对文件')
 })
-test('单条消息首答时间、确认过程与未知状态分开展示',async({page})=>{
- await page.route('**/api/conversations/room-product/response-times?*',route=>route.fulfill({json:{status:'ready',total:2,nextOffset:null,items:[{messageId:'one',preview:'核对今天的安排',status:'confirmed',receivedAt:'2026-11-09T01:00:00Z',firstReplyAt:'2026-11-09T01:00:01.250Z',durationMs:1250,reason:null,steps:[{label:'Host 接收消息',at:'2026-11-09T01:00:00Z'},{label:'分诊已提交',at:'2026-11-09T01:00:00.500Z'},{label:'首条回复已确认可见',at:'2026-11-09T01:00:01.250Z'}]},{messageId:'two',preview:'另一条独立的问题',status:'unconfirmed',receivedAt:'2026-11-09T01:00:02Z',firstReplyAt:null,durationMs:null,reason:null,steps:[]}]}}))
+test('单条消息首答时间、共同任务结果与无需回复、等待和未知状态分开展示',async({page})=>{
+ const unanswered={receivedAt:'2026-11-09T01:00:02Z',firstReplyAt:null,durationMs:null,reason:null,steps:[]}
+ const items=[
+  {messageId:'one',preview:'核对今天的安排',status:'confirmed',receivedAt:'2026-11-09T01:00:00Z',firstReplyAt:'2026-11-09T01:00:01.250Z',durationMs:1250,reason:null,steps:[{label:'Host 接收消息',at:'2026-11-09T01:00:00Z'},{label:'首条回复已确认可见',at:'2026-11-09T01:00:01.250Z'}]},
+  {...unanswered,messageId:'two',preview:'另一条独立的问题',status:'unconfirmed'},
+  {...unanswered,messageId:'three',preview:'无需操作的旁白',status:'no-reply',reason:'一级分诊明确无需处理且无需回复。'},
+  {...unanswered,messageId:'four',preview:'等待分诊的请求',status:'awaiting-handling'},
+  {...unanswered,messageId:'five',preview:'已安排但还没回复的请求',status:'awaiting-reply'},
+  {...unanswered,messageId:'six',preview:'已绑定的附件',status:'confirmed',firstReplyAt:'2026-11-09T01:00:04.500Z',durationMs:2500,reason:'此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。',replyPreview:'四个附件均已核对。'},
+  {...unanswered,messageId:'seven',preview:'发送失败的请求',status:'failed'},
+  {...unanswered,messageId:'eight',preview:'等待发送的请求',status:'pending'},
+ ]
+ await page.route('**/api/conversations/room-product/response-times?*',route=>route.fulfill({json:{status:'ready',total:items.length,nextOffset:null,items}}))
  await page.goto('/#/channels/room-product?view=execution');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
- const section=page.getByRole('region',{name:'消息首答与处理过程'});await expect(section).toContainText('1.25 秒');await expect(section).toContainText('回复尚未确认可见')
+ const section=page.getByRole('region',{name:'消息首答与处理过程'})
+ for(const text of ['1.25 秒','2.5 秒','回复尚未确认可见','无需处理及回复','等待处理','等待回复','回复发送失败','等待发送','共同任务结果'])await expect(section).toContainText(text)
+ await expect(section).not.toContainText('尚无可核实的首答');await expect(section).not.toContainText('未记录本条消息的回复')
  await section.locator('details').first().locator('summary').click();await expect(section).toContainText('首条回复已确认可见')
+ const shared=section.locator('details').filter({hasText:'已绑定的附件'});await shared.locator('summary').click();await expect(shared).toContainText('共同任务回复');await expect(shared).toContainText('四个附件均已核对。')
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath(`first-reply-${width}.png`)})}
 })

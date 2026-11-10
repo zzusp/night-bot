@@ -78,7 +78,7 @@ function sampleSession(task) {
   }
 }
 
-export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false} = {}) {
+export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-browser-fixture-'))
   const paths = runtimePaths({installRoot:root,dataDir:'data'})
   await prepareRuntimePaths(paths)
@@ -233,7 +233,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       }
       legacy.close()
     }
-    web = await createWebConsole({channels, paths, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence, getChannelConfiguration: () => channelConfiguration, getOperatorSettings:()=>operatorSettings})
+    web = await createWebConsole({channels, paths, dist, config: {channelId: CHANNEL_ID, senderId: SENDER_ID, operatorName: '本地验收（隔离样例）', port}, getApplication: () => app, getSessionPersistence: () => persistence, getChannelConfiguration: () => channelConfiguration, getOperatorSettings:()=>operatorSettings})
     if (!empty) {
       const login = await fetch(web.origin + '/api/login', {method: 'POST', headers: {origin: web.origin, 'content-type': 'application/json'}, body: JSON.stringify({token: FIXTURE_TOKEN})})
       if (!login.ok) throw Error('fixture login failed')

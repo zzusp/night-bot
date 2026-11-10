@@ -72,7 +72,7 @@ test('未知、失败、空记录和无能力不伪装耗时；重试撤权期�
   })
   await login(page)
   const section = page.getByRole('region', { name: '消息首答与处理过程' })
-  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '尚无可核实的首答', '历史记录不足', '时间记录异常']) await expect(section).toContainText(text)
+  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常']) await expect(section).toContainText(text)
   await expect(section.locator('.response-time-outcome strong')).toHaveCount(0)
   mode = 'error'; await section.getByRole('button', { name: '刷新记录' }).click()
   await expect(section).toContainText('独立消息 0')

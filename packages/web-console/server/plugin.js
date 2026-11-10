@@ -342,7 +342,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if(!messages) fail('CONVERSATION_NOT_FOUND',404)
       const refs=messages.items.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
       const context=await store.query({kind:'observer.message-contexts',groupId:conversationId,messages:refs,messageIds:refs.map(row=>row.messageId)})
-      const items=await Promise.all(messages.items.map(async row=>{const source=context.sources.find(source=>source.messageId===row.messageId&&source.version===(row.messageVersion??1));const routing=source?await store.query({kind:'router.source-status',sourceId:source.sourceId}):null;return {...responseTiming(row,context.sources,context.notifications,routing,{secrets:[credential.token]}),preview:visibleText(row.text??'',[credential.token],{maxLength:120}).text}}))
+      const items=await Promise.all(messages.items.map(async row=>{const source=context.sources.find(source=>source.messageId===row.messageId&&source.version===(row.messageVersion??1));const routing=source?await store.query({kind:'router.source-status',sourceId:source.sourceId}):null;return {...responseTiming(row,context.sources,context.notifications,routing,{secrets:[credential.token],taskReplySources:context.taskReplySources}),preview:visibleText(row.text??'',[credential.token],{maxLength:120}).text}}))
       return send(response,200,{status:'ready',items,total:messages.total,nextOffset:messages.nextOffset,scope:'host-received-to-first-confirmed-source-reply',coverage:responseTimes[1]==='chat'?'retained-web-message-window':'paged-channel-messages'})
     }
     // Task summary retains the same conversation ownership gate as its journal.
