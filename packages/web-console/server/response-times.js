@@ -1,24 +1,22 @@
 import {visibleText} from './session-view.js'
-// Source/version and delivered notification receipts are the only timing authority.
-// The Host ingress timestamp is not the external message's sent timestamp.
+// 计时只认 Host 接收和可靠送达；共同回复的来源覆盖由 Host 历史快照证明。
 const instant=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):null
 const stamp=value=>instant(value)===null?null:value
 const phaseNames={ingress:'消息已接纳',queue:'排队结束',turn:'消息处理完成',host:'安排已提交',send:'发送阶段完成',readback:'可见性核对完成'}
-export function responseTiming(message,sources,notifications,routing,{secrets=[]}={}){
+export function responseTiming(message,sources,notifications,routing,{secrets=[],taskReplySources=[]}={}){
  const matches=sources.filter(row=>row.messageId===message.messageId&&row.version===(message.messageVersion??1))
  if(matches.length!==1)return {messageId:message.messageId,status:'unavailable',reason:'历史接收时间或唯一来源关联缺失',receivedAt:null,firstReplyAt:null,durationMs:null,steps:[]}
  const source=matches[0],receivedAt=stamp(source.receivedAt)
- const associated=notifications.filter(row=>row.payload?.conversationId===source.groupId&&row.payload?.sourceId===source.sourceId
-  && (row.payload.sourceVersion??row.payload.sourceRef?.messageVersion)===source.version
-  && (row.payload.sourceRef?.messageId??row.payload.sourceMessageId)===source.messageId)
- const replies=associated.filter(row=>!row.taskId&&!row.payload.taskDelivery&&['triage-reply','platform-reply','router-reply'].includes(row.kind))
- const unclassified=replies.filter(row=>row.kind==='router-reply'&&!row.payload.replyPurpose)
- const eligible=replies.filter(row=>row.kind!=='router-reply'||['acknowledgement','direct-answer'].includes(row.payload.replyPurpose))
- const confirmed=eligible.filter(row=>row.state==='delivered'&&stamp(row.deliveredAt)).sort((a,b)=>Date.parse(a.deliveredAt)-Date.parse(b.deliveredAt))
+ const direct=row=>row.payload?.sourceId===source.sourceId
+  &&(row.payload.sourceVersion??row.payload.sourceRef?.messageVersion)===source.version
+  &&(row.payload.sourceRef?.messageId??row.payload.sourceMessageId)===source.messageId
+ const associated=notifications.filter(row=>row.payload?.conversationId===source.groupId&&(direct(row)
+  ||taskReplySources.some(ref=>ref.notificationId===row.id&&ref.taskId===row.taskId&&ref.sourceId===source.sourceId&&ref.messageVersion===source.version)))
+ const confirmed=associated.filter(row=>row.state==='delivered'&&stamp(row.deliveredAt)).sort((a,b)=>Date.parse(a.deliveredAt)-Date.parse(b.deliveredAt))
  const first=confirmed[0],firstReplyAt=first?.deliveredAt??null
  // Missing timestamps cannot prove a competing reply happened later. A known
  // later delivery, however, does not invalidate the already confirmed first one.
- const uncertain=[...unclassified.filter(row=>!['prepared','failed'].includes(row.state)),...eligible.filter(row=>['unknown','starting'].includes(row.state)||row.state==='delivered'&&!stamp(row.deliveredAt))]
+ const uncertain=associated.filter(row=>['unknown','starting'].includes(row.state)||row.state==='delivered'&&!stamp(row.deliveredAt))
  const earlierUnknown=Boolean(first&&uncertain.some(row=>{
   if(row===first||['prepared','failed'].includes(row.state))return false
   const at=row.state==='delivered'?stamp(row.deliveredAt):null
@@ -37,14 +35,29 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
  }
  if(stamp(source.routedAt))steps.push({kind:'triage-completed',label:'消息分流完成',at:source.routedAt})
  if(stamp(routing?.event?.consumedAt))steps.push({kind:'routing-completed',label:'本条消息安排已提交',at:routing.event.consumedAt})
- const attempt=[...eligible].filter(row=>stamp(row.createdAt)).sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0]
+ const attempt=[...associated].filter(row=>stamp(row.createdAt)).sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0]
  if(attempt){steps.push({kind:'reply-prepared',label:'回复已准备',at:attempt.createdAt});if(stamp(attempt.sendStartedAt))steps.push({kind:'send-started',label:'开始发送',at:attempt.sendStartedAt})}
  if(first)steps.push({kind:'reply-visible',label:earlierUnknown?'一条后续回复已确认可见':'首条回复已确认可见',at:firstReplyAt})
  steps.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at))
- const status=earlierUnknown?'unconfirmed':duration!==null&&duration>=0?'confirmed':!receivedAt?'unavailable':first?'invalid-time':uncertain.length?'unconfirmed':eligible.some(row=>row.state==='failed')?'failed':eligible.some(row=>row.state==='prepared')?'pending':'no-reply'
+ const decision=routing?.triage?.state==='committed'?routing.triage.decision:null
+ const missingDeliveryTime=associated.some(row=>row.state==='delivered'&&!stamp(row.deliveredAt))
+ let status
+ if(earlierUnknown)status='unconfirmed'
+ else if(duration!==null&&duration>=0)status='confirmed'
+ else if(!receivedAt)status='unavailable'
+ else if(first)status='invalid-time'
+ else if(associated.some(row=>['unknown','starting'].includes(row.state)))status='unconfirmed'
+ else if(associated.some(row=>row.state==='failed'))status='failed'
+ else if(associated.some(row=>row.state==='prepared'))status='pending'
+ else if(missingDeliveryTime)status='unconfirmed'
+ else if(!associated.length&&decision?.needsHandling===false&&!decision.reply)status='no-reply'
+ else if(decision)status=decision.needsHandling&&routing?.event?.state!=='consumed'?'awaiting-handling':'awaiting-reply'
+ else status=routing?.triage?.state==='pending'?'awaiting-handling':'unavailable'
+ const shared=first&&!direct(first)
+ const reason=earlierUnknown?'较早回复可见性未知，无法确认首答':status==='confirmed'&&shared?'此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。':status==='no-reply'?'一级分诊明确无需处理且无需回复。':status==='awaiting-handling'?'消息仍待分诊或 Router 处理，尚未取得首答回执。':status==='awaiting-reply'?'消息安排已提交，尚未找到本条消息或明确关联任务的回复回执。':status==='unavailable'?!receivedAt?'历史接收时间缺失':missingDeliveryTime?'回复已送达，但历史确认时间缺失':'缺少明确处置记录，无法判定首答状态':null
  return {messageId:message.messageId,messageVersion:source.version,status,receivedAt,firstReplyAt:status==='confirmed'?firstReplyAt:null,durationMs:status==='confirmed'?duration:null,
   replyPreview:status==='confirmed'?visibleText(first.payload.text??'',secrets,{maxLength:160}).text:null,
   replyMessageId:typeof first?.receipt?.messageId==='string'?first.receipt.messageId:null,
-  reason:earlierUnknown?'较早回复用途或可见性未确认，无法确认首答':status==='unavailable'?'历史接收时间缺失':unclassified.length&&!first?'历史 Router 回复用途未记录，不能判定首答':null,
+  replyAssociation:status==='confirmed'?shared?'task':'direct':null,reason,
   steps:steps.filter(row=>!firstReplyAt||Date.parse(row.at)<=Date.parse(firstReplyAt))}
 }

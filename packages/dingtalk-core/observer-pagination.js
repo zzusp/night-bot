@@ -201,7 +201,8 @@ export function observerGroupQuery(db,q) {
  if(q.kind==='observer.group-version')return String(db.prepare('SELECT revision FROM observer_group_versions WHERE group_id=?').get(q.groupId)?.revision??0)
  const fields=(names)=>`json_object(${names.map(name=>`'${name}',json_extract(body,'$.${name}')`).join(',')}) AS body`
  const read=(table,select,where,args)=>{
-  if(table==='dynamic_notifications'&&tableExists(db,'dynamic_archived_notifications'))return db.prepare(`SELECT body FROM (SELECT rowid AS sequence,${select} FROM dynamic_notifications WHERE ${where} UNION ALL SELECT sequence,${select} FROM dynamic_archived_notifications WHERE ${where}) ORDER BY sequence`).all(...args,...args).map(row=>JSON.parse(row.body))
+  const archived=table.replace('dynamic_','dynamic_archived_')
+  if(['dynamic_notifications','dynamic_task_events','dynamic_receipts'].includes(table)&&tableExists(db,archived))return db.prepare(`SELECT body FROM (SELECT rowid AS sequence,${select} FROM ${table} WHERE ${where} UNION ALL SELECT sequence,${select} FROM ${archived} WHERE ${where}) ORDER BY sequence`).all(...args,...args).map(row=>JSON.parse(row.body))
   return db.prepare(`SELECT ${select} FROM ${table} WHERE ${where}`).all(...args).map(row=>JSON.parse(row.body))
  }
  if(q.kind==='observer.group-metadata')return {
@@ -213,8 +214,30 @@ export function observerGroupQuery(db,q) {
   sources:read('dynamic_sources',fields(['sourceId','groupId','messageId','version','routed','processingCompleted','coordinationRetirement']),"json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId') IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM json_each(?) requested WHERE json_extract(requested.value,'$.messageId')=json_extract(dynamic_sources.body,'$.messageId') AND json_extract(requested.value,'$.version')=json_extract(dynamic_sources.body,'$.version'))",[...args,JSON.stringify(q.messages??[])]).map(source=>({...source,routed:source.routed===1||source.routed===true})),
  }
  const sources=read('dynamic_sources','body',"json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId') IN (SELECT value FROM json_each(?))"+(q.messages?" AND EXISTS(SELECT 1 FROM json_each(?) requested WHERE json_extract(requested.value,'$.messageId')=json_extract(dynamic_sources.body,'$.messageId') AND json_extract(requested.value,'$.version')=json_extract(dynamic_sources.body,'$.version'))":''),q.messages?[...args,JSON.stringify(q.messages)]:args)
- const notifications=read('dynamic_notifications','body',"json_extract(body,'$.payload.conversationId')=? AND coalesce(json_extract(body,'$.payload.sourceRef.messageId'),json_extract(body,'$.payload.sourceMessageId')) IN (SELECT value FROM json_each(?))",args)
+ const sourceIds=JSON.stringify(sources.map(source=>source.sourceId))
+ const links=tableExists(db,'dynamic_source_links')?read('dynamic_source_links',fields(['taskId','conversationId','sourceId','messageVersion']),"json_extract(body,'$.conversationId')=? AND json_extract(body,'$.sourceId') IN (SELECT value FROM json_each(?))",[q.groupId,sourceIds]).filter(link=>sources.some(source=>source.sourceId===link.sourceId&&source.version===link.messageVersion)):[]
+ const taskIds=JSON.stringify([...new Set(links.map(link=>link.taskId))])
+ const notifications=read('dynamic_notifications','body',"json_extract(body,'$.payload.conversationId')=? AND (coalesce(json_extract(body,'$.payload.sourceRef.messageId'),json_extract(body,'$.payload.sourceMessageId')) IN (SELECT value FROM json_each(?)) OR json_extract(body,'$.taskId') IN (SELECT value FROM json_each(?)))",[...args,taskIds])
+ const taskReplySources=[]
+ if(links.length&&tableExists(db,'dynamic_task_events')&&tableExists(db,'dynamic_receipts')){
+  // 当前任务来源会继续增长；只用回复准备前已提交的任务快照证明共同回复覆盖范围。
+  const events=read('dynamic_task_events',fields(['taskId','commandId','recordedAt','requirementRevision']),"json_extract(body,'$.taskId') IN (SELECT value FROM json_each(?)) AND json_type(body,'$.commandId')='text'",[taskIds])
+  const receiptIds=JSON.stringify([...new Set(events.map(event=>event.commandId))])
+  const snapshots=read('dynamic_receipts',"json_object('receiptId',id,'taskId',json_extract(body,'$.result.task.taskId'),'groupId',json_extract(body,'$.result.task.groupId'),'requirementRevision',json_extract(body,'$.result.task.requirementRevision'),'sourceRefs',json_extract(body,'$.result.task.sourceRefs'),'updatedAt',json_extract(body,'$.result.task.updatedAt')) AS body",'id IN (SELECT value FROM json_each(?))',[receiptIds])
+  for(const notification of notifications){
+   const preparedAt=Date.parse(notification.createdAt)
+   if(!notification.taskId||!Number.isFinite(preparedAt))continue
+   const scopes=snapshots.filter(snapshot=>snapshot.taskId===notification.taskId&&snapshot.groupId===q.groupId&&snapshot.requirementRevision===notification.requirementRevision
+    &&Array.isArray(snapshot.sourceRefs)&&Date.parse(snapshot.updatedAt)<=preparedAt
+    &&(!notification.payload.sourceId||snapshot.sourceRefs.includes(notification.payload.sourceId))
+    &&events.some(event=>event.commandId===snapshot.receiptId&&event.taskId===snapshot.taskId&&event.requirementRevision===snapshot.requirementRevision&&Date.parse(event.recordedAt)<=preparedAt))
+   for(const source of sources){
+    if(!links.some(link=>link.taskId===notification.taskId&&link.sourceId===source.sourceId&&link.messageVersion===source.version)||!scopes.some(snapshot=>snapshot.sourceRefs.includes(source.sourceId)))continue
+    taskReplySources.push({notificationId:notification.id,sourceId:source.sourceId,messageVersion:source.version,taskId:notification.taskId})
+   }
+  }
+ }
  const coordinationSources=read('dynamic_coordination_sources','body',"json_extract(body,'$.groupId')=? AND json_extract(body,'$.sourceMessageId') IN (SELECT value FROM json_each(?))",args)
  const arrangements=read('dynamic_coordination','body','id IN (SELECT value FROM json_each(?))',[JSON.stringify([...new Set(coordinationSources.map(source=>source.coordinationId).filter(Boolean))])])
- return {sources,notifications,coordinationSources,arrangements}
+ return {sources,notifications,taskReplySources,coordinationSources,arrangements}
 }

@@ -1,3 +1,4 @@
+import {responseTiming} from '../packages/web-console/server/response-times.js'
 import {readFile} from 'node:fs/promises'
 import {runInNewContext} from 'node:vm'
 import {executionSessionTitle} from '../packages/dingtalk-core/session-workspaces.js'
@@ -385,4 +386,41 @@ test('execution card service returns timing and identity without constructing de
  assert.equal(calls.length,1);assert.equal(calls[0].kind,'observer.page');assert.equal(calls[0].args.taskId,'only-this-task');assert.equal(calls[0].args.limit,10)
  const row=page.executions[0];assert.equal(row.title,'中文标题');assert.equal(row.executionBackend,'claude-code');assert.equal(row.latestRoundTiming.startedAt,'2026-01-02T00:00:00Z');assert.equal(row.latestRoundTiming.active,true)
  for(const key of ['timeline','definition','result','document','logPath','workspaceDir','workingDirectory'])assert.equal(row[key],undefined)
+})
+
+test('首答共同任务关联使用回复前提交的精确版本快照，附件单页及归档均可只读核验',t=>{
+ const {db,put}=fixture(t,{archives:true})
+ for(const table of ['source_links','task_events','receipts'])db.exec(`CREATE TABLE dynamic_${table}(id TEXT PRIMARY KEY,body TEXT)`)
+ db.exec('CREATE TABLE dynamic_archived_task_events(id TEXT PRIMARY KEY,sequence INTEGER,body TEXT)')
+ const at=seconds=>`2026-11-09T00:00:${String(seconds).padStart(2,'0')}Z`
+ const file={sourceId:'file-source',messageId:'file-message',version:1,groupId:'g',receivedAt:at(0)}
+ const link={taskId:'task',conversationId:'g',sourceId:file.sourceId,messageVersion:1}
+ const snapshot={taskId:'task',groupId:'g',requirementRevision:1,sourceRefs:['main-source',file.sourceId],updatedAt:at(1),request:'PRIVATE_SNAPSHOT_BODY'}
+ const event={taskId:'task',commandId:'completion',requirementRevision:1,recordedAt:at(1)}
+ const notification={id:'result',taskId:'task',kind:'status',requirementRevision:1,state:'delivered',createdAt:at(2),deliveredAt:at(4),payload:{conversationId:'g',sourceId:'main-source',sourceRef:{messageId:'main-message',messageVersion:1},taskDelivery:{taskId:'task',requirementRevision:1},text:'共同任务结果'}}
+ put('sources',file.sourceId,file);put('source_links','file-link',link);put('task_events','completed',event);put('receipts','completion',{result:{task:snapshot}});put('notifications','result',notification)
+ const query={kind:'observer.message-contexts',groupId:'g',messageIds:[file.messageId],messages:[{messageId:file.messageId,version:1}]}
+ const timing=context=>responseTiming({messageId:file.messageId,messageVersion:1},context.sources,context.notifications,{triage:{state:'committed',decision:{needsHandling:true}},event:{state:'consumed'}},{taskReplySources:context.taskReplySources})
+ let context=observerGroupQuery(db,query)
+ assert.equal(context.sources.length,1);assert.equal(context.notifications.length,1);assert.equal(context.taskReplySources.length,1);assert.equal(timing(context).durationMs,4000)
+ assert.equal(timing(context).replyAssociation,'task');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_SNAPSHOT_BODY/)
+ // 仅有当前绑定不足以把此前结果归给后来补入的来源。
+ put('receipts','completion',{result:{task:{...snapshot,sourceRefs:['main-source']}}})
+ assert.equal(timing(observerGroupQuery(db,query)).status,'awaiting-reply')
+ put('receipts','completion',{result:{task:{...snapshot,updatedAt:at(5)}}})
+ assert.equal(observerGroupQuery(db,query).taskReplySources.length,0)
+ put('receipts','completion',{result:{task:snapshot}});put('task_events','completed',{...event,recordedAt:at(5)})
+ assert.equal(observerGroupQuery(db,query).taskReplySources.length,0)
+ put('task_events','completed',event);put('source_links','file-link',{...link,messageVersion:2})
+ assert.equal(observerGroupQuery(db,query).taskReplySources.length,0)
+ put('source_links','file-link',link);put('notifications','result',{...notification,requirementRevision:2})
+ assert.equal(observerGroupQuery(db,query).taskReplySources.length,0)
+ put('notifications','result',{...notification,payload:{...notification.payload,conversationId:'foreign'}})
+ assert.equal(observerGroupQuery(db,query).notifications.length,0)
+ put('notifications','result',notification)
+ db.exec('INSERT INTO dynamic_archived_receipts SELECT id,rowid,body FROM dynamic_receipts; DELETE FROM dynamic_receipts; INSERT INTO dynamic_archived_notifications SELECT id,rowid,body FROM dynamic_notifications; DELETE FROM dynamic_notifications; INSERT INTO dynamic_archived_task_events SELECT id,rowid,body FROM dynamic_task_events; DELETE FROM dynamic_task_events;')
+ put('receipts','completion',{archivedTaskId:'task'})
+ db.exec('PRAGMA query_only=ON')
+ context=observerGroupQuery(db,query)
+ assert.equal(timing(context).durationMs,4000);assert.equal(context.taskReplySources.length,1)
 })

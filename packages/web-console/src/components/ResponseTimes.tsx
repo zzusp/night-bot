@@ -14,7 +14,7 @@ interface ReplyTiming {
 interface TimingPage { status: string; items: ReplyTiming[]; nextOffset: number | null; total: number; coverage?: string }
 const labels: Record<string, string> = {
   confirmed: '首答已确认', unavailable: '历史记录不足', 'invalid-time': '时间记录异常',
-  unconfirmed: '回复尚未确认可见', failed: '回复发送失败', pending: '等待发送', 'no-reply': '尚无可核实的首答',
+  unconfirmed: '回复尚未确认可见', failed: '回复发送失败', pending: '等待发送', 'no-reply': '无需处理及回复', 'awaiting-handling': '等待处理', 'awaiting-reply': '等待回复',
 };
 const explanations: Record<string, string> = {
   unavailable: '缺少可靠的接收时间或消息关联，无法计算首答耗时。',
@@ -22,7 +22,9 @@ const explanations: Record<string, string> = {
   unconfirmed: '已有回复记录，但还不能确认哪一条最先可见，暂不计算耗时。',
   failed: '回复发送失败。这里仅展示已有记录，不会重新发送。',
   pending: '回复已准备，尚未确认发送完成。',
-  'no-reply': '当前没有可核实的承接或直接答复记录，不代表消息正在处理。',
+  'no-reply': '一级分诊明确无需处理且无需回复。',
+  'awaiting-handling': '消息仍待分诊或安排处理，尚未取得首答回执。',
+  'awaiting-reply': '消息安排已提交，尚未取得关联回复回执。',
 };
 const exactTime = (value: string | null) => dateTime(value ?? undefined, true);
 const duration = (ms: number) => ms < 1000 ? `${ms.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 毫秒`
@@ -41,6 +43,7 @@ function MessageJourney({ row }: { row: ReplyTiming }) {
       <span className="response-time-outcome">{confirmed ? <><strong>{duration(row.durationMs!)}</strong><span>收到消息 → 首答确认</span></> : <Badge tone={tone(row.status)}>{labels[row.status] || '记录不足'}</Badge>}</span>
     </summary>
     <div className="response-time-detail">
+      {confirmed && row.reason && <p className="response-time-explanation">{row.reason}</p>}
       {confirmed ? <div className="response-time-reply"><span className="response-time-caption">首条回复</span><p>{row.replyPreview || '已确认可见，未提供回复摘要。'}</p></div>
         : <p className="response-time-explanation">{row.reason || explanations[row.status] || '当前记录不足，无法确认首答。'}</p>}
       {row.steps.length ? <>
@@ -69,7 +72,7 @@ export function ResponseTimes({ endpoint }: { endpoint: string }) {
   const data = revoked || denied ? null : query.data;
   const latest = () => { setOffset(0); query.refresh(); };
   return <section className="response-times" aria-label="消息首答与处理过程">
-    <header className="execution-section-heading"><div><h2>消息与首答</h2><p>收到消息后，多久给出第一条承接或直接答复。</p></div>
+    <header className="execution-section-heading"><div><h2>消息与首答</h2><p>收到消息后，多久给出第一条回复，包含明确覆盖本条来源的共同任务结果。</p></div>
       <Button variant="ghost" busy={query.loading} onClick={latest}>刷新记录</Button>
     </header>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
@@ -83,7 +86,7 @@ export function ResponseTimes({ endpoint }: { endpoint: string }) {
         </div>}
       </>}
     <details className="execution-reading-note"><summary>计时与记录范围</summary>
-      <p>起点是 Bot 实际接收消息，终点是首条承接或直接答复确认可见，不包含后续任务结果，也不代表用户已读。时间缺失、回复用途不明或可见性待核实时，不计算耗时。</p>
+      <p>起点是 Bot 实际接收消息，终点是第一条关联回复确认送达，包含有历史来源覆盖证明的共同任务回复，不代表用户已读。回复用途不影响计时。只有明确无需处理且无需回复时显示无需回复；其他消息显示等待或实际投递状态。时间缺失或较早回复可见性待核实时，不计算耗时。</p>
       <p>只展示已保存的事实。累计时间不是各阶段独立耗时，批次共享过程不分摊到单条消息。时间按浏览器本地时区显示（{Intl.DateTimeFormat().resolvedOptions().timeZone}）。{endpoint.startsWith('/chat/') && ' Web 仅覆盖当前保留的消息窗口。'}</p>
     </details>
   </section>;

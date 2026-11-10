@@ -70,6 +70,8 @@ node bin/night-bot-config.js data/config/config.json web --enabled true --channe
 
 令牌位于 `data/secrets/web-console-<channelId哈希>/access-token`，仅在本机读取后输入登录页。不要把令牌写入源码、环境变量、URL、截图、PR 或聊天。会话 cookie 为 HttpOnly/SameSite Strict，12 小时过期；所有写 API 校验 CSRF。重启会使浏览器会话失效，但令牌及业务回执保留。
 
+消息首答按 Host 接收时间到本条消息及版本的最早可靠送达回执计时，包含任务结果，不依赖 `replyPurpose`。升级后历史回执直接按新口径只读计算，无需改账本、补标用途或重新发送；附件可通过精确来源版本绑定和回复前已提交的任务快照，读取共同任务回复及历史归档；不把当前任务新补入的来源套到旧回复。只有明确无需处理且无需回复时显示无需回复，缺回执按真实处置显示等待处理、等待回复或历史不足，已有发送则沿真实投递状态显示。后续正常部署时需同时更新服务端源码并重新构建 Web，按既有规程正常重启；仅刷新浏览器不会更新旧服务端计算。
+
 独立接纳和回复账本在 `data/state/web-console-<channelId哈希>/delivery.sqlite`。它只记录 Web 渠道事务，不替代任务 SQLite 或 Pi 会话。升级保留整个 data；备份和恢复遵守已有离线一致性及默认排除 secrets 的规则。
 
 ## Web 钉钉渠道新增与编辑
