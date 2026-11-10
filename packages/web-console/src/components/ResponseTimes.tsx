@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, type Message } from '../api';
 import { dateTime, useResource } from '../hooks';
-import { Badge, Button } from './BoardPrimitives';
+import { Badge } from './BoardPrimitives';
 import { Loading, Notice } from './Shared';
 
 interface TimingStep { kind?: string; label: string; at: string; shared?: boolean; durationMs?: number }
@@ -59,19 +59,13 @@ export function ResponseTimes({ endpoint, message, onAccessRevoked }: { endpoint
   useEffect(() => { if (revoked) setDenied(true); }, [revoked]);
   useEffect(() => { if (!query.error && query.updatedAt) setDenied(false); }, [query.updatedAt]);
   const data = revoked || denied ? null : query.data;
-  const latest = query.refresh;
   return <section className="response-times" aria-label="消息首答与处理过程">
-    <header className="execution-section-heading"><span title="打开时每 2.5 秒自动获取真实记录；后台页面暂停">{query.error ? '更新失败' : '自动更新'}</span>
-      <Button variant="ghost" busy={query.loading} onClick={latest}>立即刷新</Button>
-    </header>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
     {!data ? query.loading ? <Loading>正在读取消息处理记录…</Loading> : <p className="execution-empty">首答记录暂不可读，请重新获取。</p>
       : data.status !== 'ready' ? <p className="execution-empty">{data.reason || '这条消息暂无可核验的来源记录，无法展示处理过程或计算首答耗时。'}</p> : <>
         {!data.items.length && <p className="execution-empty">这条消息暂无可核实的入站来源，不根据相邻消息推测处理过程。</p>}
         {data.items.length > 1 && <p className="message-process-scope">这条回复关联多条来源消息；各条分别计时。</p>}
         {data.items.map(row => <MessageJourney key={`${row.messageId}:${row.messageVersion ?? 1}`} row={row} multiple={data.items.length > 1} />)}
-
       </>}
-    {data?.items.length ? <p className="response-time-footnote">— 未单独计时 · 共享节点不分摊</p> : null}
   </section>;
 }

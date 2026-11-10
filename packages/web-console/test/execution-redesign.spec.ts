@@ -44,7 +44,9 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
   await expect(dialog).not.toContainText(confirmed.preview)
   await expect(dialog).toContainText('700 毫秒')
   await expect(dialog).not.toContainText('+200 毫秒')
-  await expect(dialog).toContainText('共享节点不分摊')
+  await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
+  await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
+  await expect(dialog.getByRole('button')).toHaveCount(1)
   await expect(dialog.getByText('本会话的任务与安排')).toHaveCount(0)
   await expect(dialog).toHaveAttribute('aria-modal', 'false')
   await expect(page.locator('dialog[open]')).toHaveCount(0)
@@ -99,14 +101,14 @@ test('未知、失败、多来源与空记录不伪装耗时；失败保留旧�
   const section = page.getByRole('region', { name: '消息首答与处理过程' })
   for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '各条分别计时']) await expect(section).toContainText(text)
   await expect(section.locator('.response-time-summary strong')).toHaveCount(0)
-  mode = 'error'; await section.getByRole('button', { name: '立即刷新' }).click()
+  mode = 'error'
   await expect(section).toContainText('独立来源 0')
-  await expect(section.locator('.notice')).toBeVisible()
-  mode = 'empty'; await section.getByRole('button', { name: '立即刷新' }).click()
+  await expect(section.locator('.notice')).toBeVisible({ timeout: 8000 })
+  mode = 'empty'; await section.getByRole('button', { name: '重新获取', exact: true }).click()
   await expect(section).toContainText('这条消息暂无可核实的入站来源')
-  mode = 'unavailable'; await section.getByRole('button', { name: '立即刷新' }).click()
+  mode = 'unavailable'
   await expect(section).toContainText('这条消息暂无可核验的来源记录')
-  mode = 'denied'; await section.getByRole('button', { name: '立即刷新' }).click()
+  mode = 'denied'
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.conversation-page .message')).toHaveCount(0)
 })
@@ -198,8 +200,7 @@ test('外部点击与重复点击关闭，滚动跟随，窗口调整重新定�
   await page.locator('.conversation-page .message-body').first().click()
   await expect(dialog).toHaveCount(0)
   dialog = await openMessageProcess(page)
-  await page.keyboard.press('Tab')
-  await expect(dialog.getByRole('button', {name: '立即刷新'})).toBeFocused()
+  await expect(dialog.getByRole('button', {name: '关闭消息处理过程'})).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(dialog).toHaveCount(0)
   dialog = await openMessageProcess(page)
@@ -216,7 +217,7 @@ test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读�
   await login(page)
   await page.setViewportSize({width:1440,height:560})
   const dialog = await openMessageProcess(page)
-  await expect(dialog).toContainText('自动更新')
+  await expect(dialog).toContainText('700 毫秒')
   const before=(await dialog.boundingBox())!
   const bubble=page.locator('.conversation-page .message-body').first()
   const sourceBefore=(await bubble.boundingBox())!
@@ -229,7 +230,7 @@ test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读�
   await expect(dialog).toHaveCount(0)
 })
 
-test('自动读取新阶段，后台暂停，恢复立即更新，关闭后不再轮询', async ({page}) => {
+test('不显示刷新工具栏或底部说明，仍自动读取新阶段，后台暂停恢复，关闭后不再轮询', async ({page}) => {
   let reads=0, mode='waiting'
   await page.route(endpoint, route => {
     reads++
@@ -238,11 +239,15 @@ test('自动读取新阶段，后台暂停，恢复立即更新，关闭后不�
   await login(page)
   const dialog=await openMessageProcess(page)
   await expect(dialog).toContainText('等待回复')
+  await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
+  await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
   const waitingHeight=(await dialog.boundingBox())!.height
   mode='confirmed'
   await expect(dialog).toContainText('700 毫秒',{timeout:8000})
   await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(waitingHeight+50)
   expect(reads).toBeGreaterThanOrEqual(2)
+  await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
+  await expect(dialog.getByRole('button')).toHaveCount(1)
   await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))})
   const hiddenReads=reads
   await page.waitForTimeout(3200)
