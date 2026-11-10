@@ -2,7 +2,7 @@
 
 ## 版本与范围
 
-原基线及仍运行的发布为 `585e1c767ee7d45b6422ff43e5d288489c06f697`。本轮在 `worktree-runtime-startup` 修改 2 个运行文件及相关测试/文档，候选尚未合并部署；受验文件 SHA-256 见 [startup-proof.json](round-5/startup-proof.json)。不改配置、schema、权限、默认渠道或 Pi SDK，不删除历史日志或业务文件。
+原基线及仍运行的发布为 `585e1c767ee7d45b6422ff43e5d288489c06f697`。本轮在 `worktree-runtime-startup` 修改 2 个运行文件及相关测试/文档，候选尚未合并部署；受验文件 SHA-256 见[第六轮最终证据](round-6/restart-proof.json)的 `sourceVerification`，第五轮原 JSON 已在第六轮归档时清理。不改配置、schema、权限、默认渠道或 Pi SDK，不删除历史日志或业务文件。
 
 ## 取证与反证
 
