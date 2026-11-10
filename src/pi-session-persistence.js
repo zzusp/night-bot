@@ -68,9 +68,15 @@ async function acquire(path,id) {
  */
 async function load(path,id,codec,requireComplete=false) {
   const bytes=await readFile(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
+  return decode(bytes,id,codec,requireComplete)
+}
+function decode(bytes,id,codec,requireComplete=false){
   const result=decodePiJournal(bytes,id,{codec,requireComplete})
   convertToLlm(buildSessionProjection(result.entries,result.entries.at(-1)?.id??null).messages)
   return result
+}
+function sessionStat(data){
+  return {header:clean(data.header),format:data.format,nativeEntryCount:data.entries.length,auditCount:data.audit.length,revision:digest(JSON.stringify(data.entries.at(-1))),sizeBytes:data.committedBytes,formatStatus:'current'}
 }
 export async function validatePiArchiveSession(path,id){return load(path,id,undefined,true)}
 /** A read-only Pi projection of one already-validated committed snapshot.
@@ -144,7 +150,30 @@ export default class PiSessionPersistence extends Service {
       return nativeStore({backend:this,path,header:data.header,manager,lease,data,options})
     }catch(error){await lease.close();throw error}
   }
-  async stat(id,options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedFile(id,true);if(this.writers.has(id))return this.writers.get(id).snapshot();try{const data=await load(this.path(id),id,this.ctx.get('portablePaths'));return{header:clean(data.header),format:data.format,nativeEntryCount:data.entries.length,auditCount:data.audit.length,revision:digest(JSON.stringify(data.entries.at(-1))),sizeBytes:data.committedBytes,formatStatus:'current'}}catch(error){if(error.name==='SessionPersistenceNotFoundError')return undefined;throw error}}
-  async list(options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedRoot(true);const result=[];for(const name of await readdir(this.config.root)){if(!name.endsWith('.pi.jsonl'))continue;const path=join(this.config.root,name);const info=await lstat(path);if(!info.isFile()||info.isSymbolicLink())throw fail('PI_SESSION_PATH_UNSAFE');const bytes=await readFile(path,'utf8');const header=JSON.parse(bytes.split('\n')[0]);if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH');const item=await this.stat(header.id,options);if(item)result.push(item)}for(const id of this.taskRoutes?.keys()??[]){const item=await this.stat(id,options);if(item)result.push(item)}const ids=new Set(result.map(item=>item.header.id));for(const writer of this.writers.values())if(!ids.has(writer.id)){result.push(writer.snapshot());ids.add(writer.id)}return result}
+  async stat(id,options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedFile(id,true);if(this.writers.has(id))return this.writers.get(id).snapshot();try{const data=await load(this.path(id),id,this.ctx.get('portablePaths'));return sessionStat(data)}catch(error){if(error.name==='SessionPersistenceNotFoundError')return undefined;throw error}}
+  async list(options={}){
+    options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
+    await this.checkedRoot(true)
+    const names=(await readdir(this.config.root)).filter(name=>name.endsWith('.pi.jsonl')),result=[]
+    const inspect=async name=>{
+      options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
+      await this.checkedRoot(false)
+      const path=join(this.config.root,name),info=await lstat(path)
+      if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1)throw fail('PI_SESSION_PATH_UNSAFE')
+      const bytes=await readFile(path),newline=bytes.indexOf(10),header=JSON.parse(bytes.toString('utf8',0,newline<0?bytes.length:newline))
+      if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH')
+      options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
+      return this.writers.get(header.id)?.snapshot()??sessionStat(decode(bytes,header.id,this.ctx.get('portablePaths')))
+    }
+    // 每份日志只读一次；小批并行隐藏磁盘延迟，失败也先排空本批 I/O。
+    for(let offset=0;offset<names.length;offset+=8){
+      const batch=await Promise.allSettled(names.slice(offset,offset+8).map(inspect))
+      for(const row of batch){if(row.status==='rejected')throw row.reason;result.push(row.value)}
+    }
+    for(const id of this.taskRoutes?.keys()??[]){const item=await this.stat(id,options);if(item)result.push(item)}
+    const ids=new Set(result.map(item=>item.header.id))
+    for(const writer of this.writers.values())if(!ids.has(writer.id)){result.push(writer.snapshot());ids.add(writer.id)}
+    options.signal?.throwIfAborted();return result
+  }
   async flush(){if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');const results=await Promise.allSettled([...this.writers.values()].map(handle=>handle.flush()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence flush failed')}
 }

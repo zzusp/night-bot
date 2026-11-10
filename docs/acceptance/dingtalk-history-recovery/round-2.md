@@ -17,7 +17,7 @@
 - 真实 Web HTTP 200，Edge 登录渠道页后三张卡片均「健康检查正常」，没有「恢复连接中」；1440px 实页截图已检查，390px 无横向溢出。未保留含实际会话名称的临时截图。
 - 总体 /health 仍 degraded / recoveryIssueCount=1，来自原有外部效果待核实告警；不属于渠道恢复失败，本轮没有清告警或重试该外部效果。
 
-脱敏最终证据：[运行终态](round-2/runtime-proof.json)、[浏览器结果](round-2/browser-proof.json)。第一轮的源码/测试证据保留，本轮不重复全套 runtime/routing/containment。
+本轮文字保留全部关键结果；旧运行/浏览器 JSON 附件已在第三轮最终证据核实后清理，当前证据见[第三轮](round-3.md)。第一轮的源码/测试证据保留，本轮不重复全套 runtime/routing/containment。
 
 ## 停机阻断及边界
 

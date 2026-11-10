@@ -125,3 +125,35 @@ test('native context edits retain original evidence and use official projection 
  assert.equal(data.entries.find(e=>e.id===target).message.content[0].text,'original')
  assert.equal((await f.backend.readNative('edit')).context.piMessages[0].content[0].text,'replacement')
 })
+
+test('multi-batch listing preserves strict central, routed and live snapshots without rewriting journals',async t=>{
+ const f=await fixture(t),routes=new Map();f.backend.taskRoutes=routes
+ const ids=Array.from({length:18},(_,i)=>'list-'+i)
+ for(const id of ids){const h=await f.backend.createNative(f.header(id));h.manager.appendMessage(message('retained-'+id));await h.close()}
+ const directory=join(f.root,'task-session');await mkdir(directory)
+ routes.set('routed',join(directory,'routed.pi.jsonl'))
+ const routed=await f.backend.createNative(f.header('routed'));routed.manager.appendMessage(message('routed'));await routed.close()
+ const live=await f.backend.createNative(f.header('live'));live.manager.appendMessage(message('committed'));await live.commit();live.manager.appendMessage(message('pending'))
+ const before=await readFile(f.backend.path('list-0'));await appendFile(f.backend.path('list-0'),'{"uncommitted":')
+ const preserved=await readFile(f.backend.path('list-0'))
+ const listed=await f.backend.list(),expected=await Promise.all([...ids,'routed','live'].map(id=>f.backend.stat(id)))
+ assert.deepEqual(listed.sort((a,b)=>a.header.id.localeCompare(b.header.id)),expected.sort((a,b)=>a.header.id.localeCompare(b.header.id)))
+ assert.equal(listed.length,20);assert.equal(listed.find(row=>row.header.id==='list-0').sizeBytes,before.length)
+ assert.deepEqual(await readFile(f.backend.path('list-0')),preserved)
+ await assert.rejects(f.backend.openNative('list-0'),{code:'PI_SESSION_UNCOMMITTED_TAIL'})
+ await live.close()
+})
+
+test('listing cannot replace commit validation with a header or accept a renamed journal or hard link',async t=>{
+ const f=await fixture(t),h=await f.backend.createNative(f.header('guarded'));h.manager.appendMessage(message('ORIGINAL'));await h.close()
+ const path=f.backend.path('guarded'),before=await readFile(path)
+ const corrupted=Buffer.from(before.toString().replace('ORIGINAL','MODIFIED'));await writeFile(path,corrupted)
+ await assert.rejects(f.backend.list(),{code:'PI_SESSION_CHECKSUM_MISMATCH'});assert.deepEqual(await readFile(path),corrupted)
+ await writeFile(path,before)
+ const other=join(f.root,'sessions','wrong.pi.jsonl');await cp(path,other)
+ await assert.rejects(f.backend.list(),{code:'PI_SESSION_FILENAME_MISMATCH'});await rm(other)
+ const {link}=await import('node:fs/promises');await link(path,other)
+ await assert.rejects(f.backend.list(),{code:'PI_SESSION_PATH_UNSAFE'});await rm(other)
+ assert.equal((await f.backend.list()).length,1)
+ await assert.rejects(f.backend.list({signal:AbortSignal.abort(new Error('cancelled-list'))}),/cancelled-list/)
+})
