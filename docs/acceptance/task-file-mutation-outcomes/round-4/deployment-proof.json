@@ -1,0 +1,118 @@
+{
+  "release": "1d976a2cd9d7b7f66ae83cf7ae44e2e12bfde115",
+  "oldRelease": "568fd2813e2d553741a76b0c76bbfffb869891f8",
+  "sourceHashes": {
+    "src/pi-file-tools.js": "0cc8af5ee399380350419b0f034121d3a7ac51ebc4fd36975e4141ee5339414d",
+    "src/pi-file-tool-registration.js": "31622780ade2418c967b166e5aefa9b642972fdea4a72eec52e44a09abffb410",
+    "src/tasks/single-session.js": "3a19b91e671559e4f431fb5ca490bea65dc320908c01a26292473abb273a3d28",
+    "src/tasks/effect-reconciliation.js": "d3010f74466832f43f4e2aec3e749ce0dc9bbb0aab509ae15affdd1ac630fdc4",
+    "test/pi-single-task.test.js": "477d42c4e34ac6e6e621ff062b194ad184eb0810d0c9f98cb601aab82509cd12",
+    "test/pi-file-tool-registration.test.js": "b4f146eb5365a0a09f388327fbfe9fe764db16e35a39b8be13498025b22c4c68",
+    "test/pi-task-effect-reconciliation.test.js": "a3ce3030c093b036a6d837c6c15f3df1ee0fdb419cc6db458362db2ad3aaf4a4",
+    "test/pi-task-effect-call-identity.test.js": "21c9e77aea93e2e8c16947454bb6d70d5d170a6df1661ad44a23207fb30e15b5"
+  },
+  "startedAt": "2026-11-10T08:54:41.499Z",
+  "stopCompletedAt": "2026-11-10T08:54:41.681Z",
+  "completedAt": "2026-11-10T08:55:01.117Z",
+  "pollIntervalMs": 250,
+  "stopMs": 180.775,
+  "deploymentMs": 1257.084,
+  "webReadyMs": 14697.929,
+  "residentReadyMs": 14714.118,
+  "startupRecoveryMs": 18178.899,
+  "totalMs": 19616.758,
+  "normalIpcOnly": true,
+  "forced": false,
+  "diagnosticPreload": false,
+  "oldProcessesExited": true,
+  "oldOwnershipReleased": true,
+  "configurationUnchanged": true,
+  "webHttp": 200,
+  "residentHttp": 200,
+  "channels": [
+    {
+      "ordinal": 1,
+      "connected": true,
+      "state": "listening",
+      "error": null,
+      "restartRequired": false
+    },
+    {
+      "ordinal": 2,
+      "connected": true,
+      "state": "listening",
+      "error": null,
+      "restartRequired": false
+    }
+  ],
+  "ingress": [
+    {
+      "ordinal": 1,
+      "paused": false,
+      "deferred": 0,
+      "recoveryFromAt": null,
+      "watermarkAdvanced": false,
+      "backfillAdvanced": true
+    },
+    {
+      "ordinal": 2,
+      "paused": false,
+      "deferred": 0,
+      "recoveryFromAt": null,
+      "watermarkAdvanced": false,
+      "backfillAdvanced": true
+    }
+  ],
+  "health": {
+    "status": "degraded",
+    "recoveryIssueCount": 1
+  },
+  "persistence": {
+    "counts": {
+      "dynamic_sources": 18,
+      "dynamic_notifications": 14,
+      "dynamic_tasks": 5,
+      "dynamic_executions": 0
+    },
+    "notificationStates": {
+      "delivered": 14
+    },
+    "messageFacts": 18,
+    "originalRowsUnchanged": true,
+    "alertsUnchanged": true,
+    "sqliteQuickCheck": "ok"
+  },
+  "webBuild": {
+    "source": "1d976a2cd9d7b7f66ae83cf7ae44e2e12bfde115",
+    "files": {
+      "assets/index-BD_kh7i8.css": "ac2cc78d12fbe6af17f621bdb360575809c21def41cc17146fab4e539f8782e4",
+      "assets/index-DF9fwKk5.js": "ac4d59433e10a7abdf094efa0f594b2af57ffbf37d59bab64cd6d0641170b3a3",
+      "index.html": "8888a819eca5c1d5e0de644e49e833ea4aecea9179efc1c59315bbacf9f99940"
+    },
+    "httpHashesMatch": true
+  },
+  "releaseTreeClean": true,
+  "installedRegressions": {
+    "pass": 3,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "durationMs": 50118.4403,
+    "scriptedModel": true,
+    "isolatedDirectories": true,
+    "liveBusinessTaskResumed": false
+  },
+  "installedGuards": {
+    "exitCode": 0,
+    "productionImportFiles": 404,
+    "runtimeJsFiles": 404,
+    "externalSdkImports": 0
+  },
+  "independentReadback": {
+    "releaseGitHeadMatches": true,
+    "releaseTrackedTreeClean": true,
+    "webRootHasNewEntrypoint": true,
+    "launcherAndWorkerSourcePathsMatch": true,
+    "webAndResidentListenersOwnedByWorker": true
+  }
+}
