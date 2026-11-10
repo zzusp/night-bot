@@ -74,7 +74,7 @@ WORKDIR /opt/night-bot
 COPY --from=build /opt/night-bot/node_modules ./node_modules
 # 浏览器与系统库在镜像构建期安装，不写入持久 data 卷。
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN node node_modules/playwright/cli.js install --with-deps chromium \
+RUN node node_modules/playwright/cli.js install --with-deps --only-shell chromium \
     && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" \
     && ln -s /opt/night-bot/node_modules/playwright/cli.js /usr/local/bin/playwright \
     && rm -rf /var/lib/apt/lists/*
