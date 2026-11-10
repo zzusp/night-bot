@@ -4,7 +4,7 @@
 
 使用 Windows 11、PowerShell 7、Node.js 24+ 和 pnpm。这里的隔离实例用于本机验收，不替换已有安装，不注册开机服务；默认不监听或发送渠道消息。指定群接入按本页分阶段操作，真实连接和发送须分别得到明确授权。运行时使用源码 ESM 入口，项目没有独立的 `build` 脚本。
 
-已有 `scripts/deploy-local.ps1` 属于历史 DSH 安装流程，不适用于当前 Night Bot。代码升级只更新代码与依赖，保留各安装自己的 `data/`；不搬运账号文件、业务数据或旧 DSH 历史。
+已有 `scripts/deploy-local.ps1` 属于历史 DSH 安装流程，不适用于当前 Night Bot。代码升级只更新代码与依赖，保留各安装自己的 `data/`；不搬运账号文件、业务数据或旧 DSH 历史。正常 IPC 停机仍须等待业务、复盘、投影和真实进程排空，但不为每个任务遍历文件并生成离线 seal。需要备份时，在进程退出后显式执行 [单任务离线备份](../TASK-ARCHIVE.md#offline-commands)；普通停机后的 live-projection 不能直接当作封存备份。
 
 ## 只读检查
 

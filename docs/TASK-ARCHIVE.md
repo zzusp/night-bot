@@ -48,9 +48,11 @@ latest projection through a private file lease and atomic replacement. A project
 is labeled `live-projection`; the ledger and session can continue changing and an
 old manifest is then invalid. Failures do not reverse a committed task result:
 `taskArchiveStatus(taskId)`, maintenance alerts/logs and retryable projections
-report them. Recovery and normal shutdown refresh the archive; normal shutdown
-also attempts a seal after task and review drain. Host shutdown owns and waits for
-the task service's close promise, preventing late writes after data cleanup.
+report them. Recovery refreshes the live projection; normal shutdown waits for
+task/review drain and pending projections, without walking or hashing work files.
+Host shutdown owns and waits for the task service's close promise, preventing late
+writes after data cleanup. Ordinary shutdown does not create an offline seal.
+Use the explicit offline backup command before treating a directory as portable.
 
 Only offline, drained tasks with no live session writer may be backed up. An offline
 seal compares the current ledger digest, validates Pi commits/identity, verifies
@@ -111,7 +113,8 @@ node bin/night-bot-task.js data/config/config.json recover-restore
 
 - `backup` produces a new directory beneath this installation's `backups/`, with
   no overwrite. It refreshes the SQLite projection and copies a validated sealed
-  task. A normally stopped/sealed task directory can also be copied in full.
+  task. Only a directory explicitly sealed and validated by this offline operation
+  can also be copied in full; normal shutdown alone does not make it a backup.
 - `validate` checks the installed archive and compares its ledger digest to SQLite.
   Stale snapshots cannot replace the live database.
 - `restore` validates everything before publication, requires an absent target task

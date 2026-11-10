@@ -21,7 +21,7 @@ pnpm start data/config/config.json
 curl http://127.0.0.1:18998/health
 ```
 
-Night Bot 自有运行数据位于安装目录的 `data/`，任务工作区与业务产物默认位于 `data/workspaces/`，备份位于 `backups/`；这些目录被 Git 忽略。显式批准的外部业务目标或完全访问模式不意味着将外部文件迁入安装目录。代码升级须保留数据目录。同一 Host 的共享文件事务按路径排队，再取得磁盘租约；活 owner 不因超时被驱逐，权限拒绝不作普通重试。初始化命令只创建配置和目录，不会替你验证真实模型、渠道身份或外发授权；再次初始化拒绝覆盖配置。本项目不需要导入原 DSH 插件历史数据。目录、权限、备份与异路径恢复详见 [DATA-LAYOUT](docs/DATA-LAYOUT.md)。
+Night Bot 自有运行数据位于安装目录的 `data/`，任务工作区与业务产物默认位于 `data/workspaces/`，备份位于 `backups/`；这些目录被 Git 忽略。显式批准的外部业务目标或完全访问模式不意味着将外部文件迁入安装目录。代码升级须保留数据目录。正常停机等待业务与投影排空，不遍历全部任务工作文件做离线封存；可迁移备份须显式运行 [任务备份命令](docs/TASK-ARCHIVE.md#offline-commands)，不能直接将普通停机目录视为已校验备份。同一 Host 的共享文件事务按路径排队，再取得磁盘租约；活 owner 不因超时被驱逐，权限拒绝不作普通重试。初始化命令只创建配置和目录，不会替你验证真实模型、渠道身份或外发授权；再次初始化拒绝覆盖配置。本项目不需要导入原 DSH 插件历史数据。目录、权限、备份与异路径恢复详见 [DATA-LAYOUT](docs/DATA-LAYOUT.md)。
 
 默认不加载 DWS 插件，也不探测 DWS 可执行文件。启用方式见 [渠道协议与插件](docs/CHANNELS.md)，外部渠道的目录发现、生命周期和能力接口见 [插件接口](docs/CHANNEL-PLUGINS.md)；Linux 隔离前置和实际探针见 [Linux 隔离运行](docs/ops/linux-contained-runtime.md)。钉钉使用 `channelPlugins` 的 `dingtalk-dws` 配置；Windows 默认直接使用当前用户受系统保护的 DWS 登录态，不复制凭据；多个实例可能共享账号存储，不能用 HOME/config 目录宣称独立账号；旧的 `resident.dws.enabled` 会明确报错。插件的外发开关不会替代任务自身的业务授权。工具权限使用下述应用自有三档；渠道外发与任务业务授权仍分别校验。核心管理 HTTP 仅监听 loopback；可选 Web 的显式容器监听仍要求固定公开 Origin、令牌登录、会话和 CSRF，端口只映射到宿主 loopback，不能据此开放核心管理接口。原 `/state/*`、任务、配置与人工答复 API 沿用，入口详见 [API 清单](docs/HTTP-ROUTES.md)。
 
