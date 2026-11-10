@@ -1,5 +1,5 @@
 import {useAssistantBrand, brandGlyph} from './AssistantBrand';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
@@ -126,7 +126,7 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
   const state = toolState(item);
-  if (compact) return <article className="message message-tool">
+  if (compact) return <article className="message message-tool" data-message-id={item.id}>
     <div className="message-body">
       <section className="execution-tool-input-row"><h4 className="sr-only">输入</h4>{item.call
         ? <MessageBody message={item.call} history={history} plain disclosure={{ kind: 'input', name: message.toolName || '工具', state }} />
@@ -155,7 +155,7 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
     </details></div>
   </article>;
 }
-function ToolActivityGroup({ tools, history, compact = false }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean }) {
+function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean; anchorId?: string }) {
   const [open, setOpen] = useState(false);
   const failures = tools.filter(item => ['error', 'failed'].includes(toolState(item))).length;
   const categories: Record<string, string> = { read: '读取', read_window: '读取', read_image: '读取',
@@ -167,35 +167,82 @@ function ToolActivityGroup({ tools, history, compact = false }: { tools: ToolIte
     counts.set(label, (counts.get(label) || 0) + 1);
   }
   const summary = [...counts].map(([label, count]) => `${label} ${count} 次`).join(' · ');
-  return <details className="execution-tool-group" open={open} onToggle={event => {
+  return <details className="execution-tool-group" data-message-id={anchorId} open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
     <summary>{!compact && <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat' }: { presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void }) {
+type OlderHistory = {hasMore: boolean; loading: boolean; error: Error | null; disabled: boolean; onLoad: () => void};
+export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older }: { presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
   const items = useMemo(() => executionItems(messages), [messages]);
+  // A prepend can extend the first tool group. Reuse its existing key so an
+  // expanded group and its nested input/output disclosures stay open.
+  const groupKeys = useRef(new Map<string, string>());
+  const keyedItems = useMemo(() => {
+    const next = new Map<string, string>();
+    const keyed = items.map(item => {
+      if (item.kind !== 'tool-group') return {item, key: item.kind === 'message' ? item.message.id : item.id};
+      const key = item.tools.map(tool => groupKeys.current.get(tool.id)).find(Boolean) || `group:${item.id}`;
+      for (const tool of item.tools) next.set(tool.id, key);
+      return {item, key};
+    });
+    groupKeys.current = next;
+    return keyed;
+  }, [items]);
+  const anchor = useRef<{id?: string; top: number; height: number; scroll: number} | null>(null);
+  const captureAnchor = () => {
+    const el = ref.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const row = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => {
+      const bounds = node.matches('details[open]') ? node.querySelector('summary')?.getBoundingClientRect() : node.getBoundingClientRect();
+      return bounds && bounds.height > 0 && bounds.bottom > top;
+    });
+    anchor.current = {id: row?.dataset.messageId, top: row ? row.getBoundingClientRect().top - top : 0, height: el.scrollHeight, scroll: el.scrollTop};
+  };
+  const loadOlder = () => { if (older?.hasMore && !older.loading && !older.error && !older.disabled) older.onLoad(); };
   const signature = messages.map(message => `${message.id}:${message.text.length}:${message.status || ''}`).join(',');
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    if (following.current) element.scrollTo({ top: element.scrollHeight, behavior: 'instant' });
+    else if (older && anchor.current) {
+      const saved = anchor.current;
+      const row = [...element.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.dataset.messageId === saved.id && node.getBoundingClientRect().height > 0);
+      if (row) element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.top;
+      else element.scrollTop = saved.scroll + element.scrollHeight - saved.height;
+    }
+    captureAnchor();
+  }, [signature, pending]);
   useEffect(() => {
     const element = ref.current;
-    if (element && following.current) element.scrollTo({ top: element.scrollHeight, behavior: 'instant' });
-  }, [signature, pending]);
+    // Collapsed tool runs can turn 200 records into only a few lines. Fill the
+    // viewport with older history rather than leaving a nearly empty reader.
+    if (element && element.scrollHeight <= element.clientHeight + 120) loadOlder();
+  }, [signature, older?.loading, older?.hasMore, older?.disabled]);
   const latest = () => { following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
   return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onScroll={() => {
-    const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90; setShowLatest(!following.current);
-  }} role="region" aria-label="消息记录" tabIndex={0}>
+    const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < (compact ? 60 : 90); setShowLatest(!following.current);
+    captureAnchor();
+    if (el.scrollTop < 160) loadOlder();
+  }} onToggleCapture={compact ? () => {
+    const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; setShowLatest(!following.current); captureAnchor();
+    if (el.scrollHeight <= el.clientHeight + 120) loadOlder();
+  } : undefined} role="region" aria-label="消息记录" tabIndex={0}>
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
-      {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : items.map(item => {
-        if (item.kind === 'tool-group') return <ToolActivityGroup key={`group:${item.id}`} tools={item.tools} history={history} compact={compact} />;
+      {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
+      {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : keyedItems.map(({item, key}) => {
+        if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} />;
         const message = item.message;
-        return <article className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
@@ -215,5 +262,5 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}
       {footer}
     </div>
-  </div>{showLatest && <Button className="jump-latest" variant="secondary" icon={<RiArrowDownLine size={16} />} onClick={latest}>回到最新消息</Button>}</div>;
+  </div>{showLatest && <Button className="jump-latest" variant="secondary" icon={compact ? undefined : <RiArrowDownLine size={16} />} onClick={latest}>回到最新消息</Button>}</div>;
 }
