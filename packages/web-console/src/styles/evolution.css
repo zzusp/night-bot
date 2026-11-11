@@ -9,7 +9,10 @@
 .evolution-metrics dd { margin: 6px 0 0; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .evolution-library { border: 1px solid var(--board-border); border-radius: 14px; background: var(--board-surface); min-width: 0; overflow: clip; }
 .evolution-list-toolbar { min-height: 56px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--board-border); }
-.evolution-list-actions { display: flex; align-items: center; gap: 12px; }
+.evolution-list-actions { display: flex; align-items: center; gap: 12px; min-width: 0; max-width: 100%; margin-left: auto; }
+.evolution-list-actions > .board-button { flex-shrink: 0; }
+.evolution-list-updated { min-width: 0; margin: 0; color: var(--board-muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.evolution-list-updated[data-stale] { color: var(--board-warning); }
 .evolution-list-label { color: var(--board-muted); font-size: 11px; }
 .evolution-table-wrap { min-width: 0; }
 .evolution-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }

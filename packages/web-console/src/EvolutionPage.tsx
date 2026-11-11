@@ -8,7 +8,14 @@ import { Button, EmptyState } from './components/BoardPrimitives';
 import { Loading, Notice, Pagination } from './components/Shared';
 import './styles/evolution.css';
 
-type Summary = Pick<EvolutionReady, 'memory' | 'skills'>;
+type Summary = Pick<EvolutionReady, 'memory' | 'skills' | 'cache'>;
+
+export function EvolutionListActions({ cache, loading, onRefresh }: { cache: EvolutionReady['cache']; loading: boolean; onRefresh: () => void }) {
+  return <div className="evolution-list-actions">
+    {cache && <p className="evolution-list-updated" data-stale={cache.stale || undefined} role="status">{cache.stale ? `旧快照 · ${dateTime(cache.updatedAt ?? undefined)} · ${cache.refreshing ? '更新中' : '更新未完成'}` : `最近更新 ${dateTime(cache.updatedAt ?? undefined)}`}</p>}
+    <Button variant="ghost" icon={<RiRefreshLine size={16} />} busy={loading} disabled={loading} onClick={onRefresh}>刷新记录</Button>
+  </div>;
+}
 
 export function UsageSummary({ data }: { data: Summary }) {
   return <div className="evolution-summary">
@@ -49,7 +56,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
   const [lastSummary, setLastSummary] = useState<Summary | null>(null);
   useEffect(() => {
     if (forbidden || revoked || query.data?.status === 'unavailable') setLastSummary(null);
-    else if (ready) setLastSummary({ memory: ready.memory, skills: ready.skills });
+    else if (ready) setLastSummary({ memory: ready.memory, skills: ready.skills, cache: ready.cache });
   }, [forbidden, revoked, query.data?.status, ready]);
   // Summaries are Bot-wide, so category/page reads must not remove their cards.
   // Permission loss and explicit unavailability still hide the cached values.
@@ -69,11 +76,10 @@ export default function EvolutionPage({ route }: { route: URL }) {
     <section className="evolution-library" aria-label="记忆与技能条目" hidden={!!selected}>
       <div className="evolution-list-toolbar">
         <nav className="filter-tabs" aria-label="自进化记录类型">{[['memory', '记忆'], ['skill', 'Skills']].map(([value, label]) => <a key={value} href={`#/evolution?kind=${value}`} aria-current={kind === value ? 'page' : undefined} aria-controls="evolution-list-body">{label}</a>)}</nav>
-        <div className="evolution-list-actions"><Button variant="ghost" icon={<RiRefreshLine size={16} />} busy={query.loading} disabled={query.loading} onClick={refreshList}>刷新记录</Button></div>
+        <EvolutionListActions cache={summary?.cache} loading={query.loading} onRefresh={refreshList} />
       </div>
       <div ref={body} id="evolution-list-body" className="evolution-list-body" aria-busy={query.loading} style={!ready && query.loading ? {minHeight: bodyHeight.current} : undefined}>
         {query.error && <Notice error={query.error} stale={!!ready || !!summary} onRetry={query.refresh} />}
-        {ready?.cache && <p className="evolution-list-notice" role="status">{ready.cache.stale ? `旧快照 · ${dateTime(ready.cache.updatedAt ?? undefined)} · ${ready.cache.refreshing ? '更新中' : '更新未完成'}` : `最近更新 ${dateTime(ready.cache.updatedAt ?? undefined)}`}</p>}
         {!data && query.loading ? <div className="evolution-pending"><Loading>正在读取自进化记录…</Loading></div>
           : !ready ? <EmptyState title={forbidden || revoked ? '无权查看自进化记录' : busy ? '自进化记录正在更新' : '自进化记录暂不可读'} action={!query.error ? <Button variant="secondary" onClick={query.refresh}>重新获取</Button> : undefined} />
           : <>

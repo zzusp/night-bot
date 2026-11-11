@@ -29,8 +29,8 @@ const hooks = registerHooks({
     return next(url, context)
   },
 })
-let UsageSummary
-try { ({UsageSummary} = await import('../src/EvolutionPage.tsx')) } finally { hooks.deregister() }
+let UsageSummary, EvolutionListActions
+try { ({UsageSummary, EvolutionListActions} = await import('../src/EvolutionPage.tsx')) } finally { hooks.deregister() }
 
 const data = {
   memory: {acceptedCount: 6, candidateCount: 0, readCount: null, searchCount: null, trackingStatus: 'degraded', lastUsedAt: '2026-11-10T01:00:00Z'},
@@ -52,4 +52,42 @@ test('summary keeps missing values distinct from recorded zeros', () => {
   assert.equal((empty.match(/<dd>未记录<\/dd>/g) || []).length, 8)
   const zero = render({memory: {acceptedCount: 0, candidateCount: 0, readCount: 0, searchCount: 0}, skills: {installedCount: 0, modelUseCount: 0, userUseCount: 0, fileReadCount: 0}})
   assert.equal((zero.match(/<dd>0<\/dd>/g) || []).length, 8)
+})
+
+const renderActions = (cache, loading = false) => renderToStaticMarkup(createElement(EvolutionListActions, {cache, loading, onRefresh() {}}))
+const cache = {updatedAt: '2026-11-11T15:05:00Z', stale: false, refreshing: false}
+
+test('snapshot time is rendered immediately before the canonical refresh button, without warning semantics', () => {
+  const html = renderActions(cache)
+  assert.match(html, /^<div class="evolution-list-actions"><p class="evolution-list-updated" role="status">最近更新 /)
+  assert.match(html, /<\/p><button [^>]*class="board-button board-button--ghost"/)
+  assert.match(html, /刷新记录/)
+  assert.doesNotMatch(html, /data-stale|disabled|旧快照|evolution-list-notice/)
+})
+
+test('stale snapshot retains real time, refresh status and warning semantics', () => {
+  const pending = renderActions({...cache, stale: true, refreshing: true})
+  assert.match(pending, /data-stale="true" role="status">旧快照 · .* · 更新中<\/p>/)
+  assert.doesNotMatch(pending, /最近更新 /)
+  const failed = renderActions({...cache, stale: true})
+  assert.match(failed, /data-stale="true"/)
+  assert.match(failed, /更新未完成/)
+})
+
+test('missing or invalid snapshot times are never replaced with the current time and refresh stays a native busy control', () => {
+  const missing = renderActions(undefined)
+  assert.doesNotMatch(missing, /evolution-list-updated|最近更新|role="status"/)
+  assert.match(missing, /刷新记录/)
+  for (const updatedAt of [null, 'invalid']) assert.match(renderActions({...cache, updatedAt}), /最近更新 未记录/)
+  const loading = renderActions(cache, true)
+  assert.match(loading, /最近更新 /)
+  assert.match(loading, /<button [^>]*disabled="" aria-busy="true"/)
+})
+
+test('timestamp styles reuse theme tokens while keeping the refresh button and warnings distinct', () => {
+  const css = readFileSync(new URL('../src/styles/evolution.css', import.meta.url), 'utf8')
+  assert.match(css, /\.evolution-list-updated \{[^}]*color: var\(--board-muted\)/)
+  assert.match(css, /\.evolution-list-updated\[data-stale\] \{ color: var\(--board-warning\)/)
+  assert.match(css, /\.evolution-list-actions > \.board-button \{ flex-shrink: 0; \}/)
+  assert.match(css, /\.evolution-list-notice \{[^}]*color: var\(--board-warning\)/)
 })
