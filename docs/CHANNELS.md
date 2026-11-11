@@ -101,6 +101,8 @@ channel conversation and authenticated sender for that conversion.
 
 Router 负责理解转入原话、拆分/关联事项、查询和调整任务、澄清歧义以及评估执行结果。它使用受控的任务查询、任务动作、记忆/Skill 读取、来源绑定的长期记忆写入和回复能力，不代替执行会话运行业务脚本或外部写入。每个任务只有一个执行会话，补充和返工沿用原任务；没有每任务 Owner 或执行团队。Topic 不再是活动业务实体。
 
+任务带问题等待后，由 Router 查询当前 `humanRequests` 和真实来源，判断补充是否已经回答问题、是否足以继续。信息仍不足时使用 `resident_task_action(kind: "supplement")` 保存原文并保留等待；可以继续时使用 `kind: "resume"`，提供当前 `humanRequestId`、`expectedContextRevision`、`reason`、原消息版本和任务要求/控制版本。Host 校验来源、作者权限及状态后，在同一事务保存补充、待答请求的 answered 状态和 Router 决策依据，再由持久唤醒沿原 Pi session 执行。conversation 任务不再因普通补充启动执行侧只读答复复核。续接只接受问题创建后同会话的认证人类来源，技术等待的作者须为原任务提出人或配置的操作者；业务答复由 Router 核对真实作者的业务角色和原有授权，仍不能替别人扩大任务权限；内部事件、引用、旧来源/旧问题及跨会话不能借权。重复动作沿原业务回执去重，重启不会丢补充或重放已完成工作。技术信息续接不改变权限模式、单调用审批、任务依赖或未知效果对账。
+
 Router 每批最多接纳 15 条转入用户消息，内部任务事件另有受限预算；同一 conversation 只允许一个活动业务轮次。任务完成、等待或变化事件直接进入 Router inbox，不再交一级分诊过滤。分诊处置游标与 Router 业务游标分别记录，单纯转交不会宣称后续动作完成。Router 查询分诊已准备/发送的回复，避免重复确认。
 
 直连消息的观察状态也分阶段：分诊尚未提交为 `routing`；需要处理且 Router 事件尚未 settle 为 `processing`；Router 已消费事件才为 `processed`。无需 Router 的短回复/静默在分诊提交后完成其处置。通知状态独立展示，任务 `completed` 或一条已发送回复都不能代替消息处理终态。

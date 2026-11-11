@@ -94,7 +94,7 @@ Web 服务的默认 provider 选择以显式 `searchProvider` / `fetchProvider` 
 
 这些核心能力可以通过本机 HTTP、隔离文件和本地模型协议测试验收，不依赖安装 DWS CLI。钉钉、其他消息渠道及业务系统分别做集成验收。
 
-`chat` 与 `chat-room` 采用“轻量一级分诊 → 每 conversation 一个常驻 Router → 每事项一个执行会话”。一级分诊逐消息决定是否转交和是否简短回复：对职责范围内明确交办且需要继续处理的请求，在分诊完成时先简短承接，不静默等待执行结果；无需介入的消息保持静默。分诊不拆分或创建事项；Router 理解原消息、关联和安排事项、评估结果，并避免重复承接。来源、权限、版本与任务依赖由 Host/SQLite 校验，任务自报完成不等于后续事项已获准执行。Router 的逻辑身份持久，空闲时以无工具交接安全更换 Pi generation，保留旧 journal。原请求明确要求引用当前来源时，Router 可用 `replyToSource:true`，由 Host 绑定原消息/作者且显式受众须含原作者；默认回复与文件子件能力不变。15 条批次、可靠转交和回复回读规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
+`chat` 与 `chat-room` 采用“轻量一级分诊 → 每 conversation 一个常驻 Router → 每事项一个执行会话”。一级分诊逐消息决定是否转交和是否简短回复：对职责范围内明确交办且需要继续处理的请求，在分诊完成时先简短承接，不静默等待执行结果；无需介入的消息保持静默。分诊不拆分或创建事项；Router 理解原消息、关联和安排事项、评估结果，并避免重复承接。来源、权限、版本与任务依赖由 Host/SQLite 校验，任务自报完成不等于后续事项已获准执行。任务等待后，由 Router 核对补充与原问题并明确续接，Host 落账后唤醒原执行会话；普通补充不自动解除等待，也不新增执行侧答复复核。Router 的逻辑身份持久，空闲时以无工具交接安全更换 Pi generation，保留旧 journal。原请求明确要求引用当前来源时，Router 可用 `replyToSource:true`，由 Host 绑定原消息/作者且显式受众须含原作者；默认回复与文件子件能力不变。15 条批次、可靠转交和回复回读规则见 [CHANNELS](docs/CHANNELS.md)；每任务一个执行会话的生命周期见 [SINGLE-TASK](docs/SINGLE-TASK.md)。
 
 钉钉渠道的未解析附件（包括 PDF、Word）由可选插件按绑定账号下载，Host 校验并冻结为任务 `materials/` 中的原始文件，模型获得受控路径、文件名、MIME、大小和 SHA-256；不需要自行调用 DWS 下载。现有图片、UTF-8 文本和 XLSX 的解析路径保持不变。原件交付不等于所有格式都有解析器；文件只读，不自动执行，仍受权限与 8 MiB 材料上限约束。详见 [渠道资源合同](docs/CHANNELS.md) 和 [本地验收操作](docs/ops/web-console-local.md)。
 

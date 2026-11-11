@@ -1,0 +1,12 @@
+case,round-1,evidence
+old-operator-reproduction,FAIL,round-1.md:修复前 active 而非 completed
+router-operator-original-session,PASS,round-1.md:正式 Host 续接并实际 read 后完成
+router-requester-original-session,PASS,round-1.md:业务成员信息由 Router 判断后续接
+resume-transaction-negative-cases,PASS,round-1.md:19 项拒绝且 task 和 wake 不变
+restart-and-business-dedup,PASS,round-1.md:冷启动及跨代重试不重放
+human-native-suite,PASS,round-1.md:19 通过零失败零跳过
+source-import-native-guards,PASS,round-1.md:pnpm check 通过
+single-session-and-live-supplement,PASS,round-1.md:11 通过
+linux-live-preserve,SKIP,round-1.md:Windows 无 Linux privacy namespace
+full-routing-suite,FAIL,round-1.md:71 通过15既有失败且干净base逐项一致
+dynamic-task-store-suite,FAIL,round-1.md:12通过151既有失败且干净base逐项一致

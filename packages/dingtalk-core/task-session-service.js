@@ -836,10 +836,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return admitTask(args.taskId,async(oldTask,oldExecutions)=>{
       const task=await requireTask(args.taskId),source=args.source
       if(task.groupId!==source.groupId||task.groupId!==args.conversationId)fail('TASK_SESSION_SOURCE_FORBIDDEN')
-      if(args.kind!=='supplement'&&![task.ownerActorId,config.ownerActorId,config.webActorId].filter(Boolean).includes(source.actorId))fail('TASK_SESSION_CONTROL_FORBIDDEN')
-      if(args.kind==='supplement'&&[args.objective,args.title,args.requirements,args.control].some(value=>value!==undefined))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
+      if(!['supplement','resume'].includes(args.kind)&&![task.ownerActorId,config.ownerActorId,config.webActorId].filter(Boolean).includes(source.actorId))fail('TASK_SESSION_CONTROL_FORBIDDEN')
+      if(['supplement','resume'].includes(args.kind)&&[args.objective,args.title,args.requirements,args.control].some(value=>value!==undefined))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
       const action={taskId:task.taskId,expectedRequirementRevision:args.expectedRequirementRevision,expectedControlRevision:args.expectedControlRevision,operationId:args.operationId,
-        ...(args.kind==='supplement'?{messageId:args.operationId,text:args.text??source.text}:{}),
+        ...(['supplement','resume'].includes(args.kind)?{messageId:args.operationId,text:args.text??source.text}:{}),
+        ...(args.kind==='resume'?{humanRequestId:args.humanRequestId,expectedContextRevision:args.expectedContextRevision,reason:args.reason}:{}),
         ...(['revise','reopen'].includes(args.kind)?{text:args.text??source.text,...(args.objective!==undefined?{objective:args.objective}:{}),...(args.title!==undefined?{title:args.title}:{}),...(args.requirements!==undefined?{requirements:args.requirements}:{})}:{}),
         ...(args.kind==='control'?{control:args.control,reason:args.reason??source.text}:{}),
         ...(args.kind==='arrange'?{expectedArrangementRevision:args.expectedArrangementRevision,dependencies:args.dependencies}:{})}
@@ -847,7 +848,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const receipt=await command('router.task-action',{conversationId:args.conversationId,generation:args.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:args.operationId,kind:'task.'+args.kind,action,...(hostLiveBinding?{hostLiveBinding}:{}),...(args.sameGoal!==undefined?{sameGoal:args.sameGoal}:{})},'router-action:'+args.operationId)
       // 重放只补排空尚未退出的原租约，不能取消后续已经合法启动的新轮次。
       const originalLease=!task.drained&&task.leaseEpoch===receipt.result.task.leaseEpoch&&task.requirementRevision===receipt.result.task.requirementRevision&&task.controlRevision===receipt.result.task.controlRevision
-      if(!['supplement','arrange'].includes(args.kind)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
+      if(!['supplement','resume','arrange'].includes(args.kind)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
       await materializeSource(task.taskId,source)
       const current=await requireTask(task.taskId)
       if(args.kind==='supplement'&&taskSessions.liveBinding?.(task.taskId)){
