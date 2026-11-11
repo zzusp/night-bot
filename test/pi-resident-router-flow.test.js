@@ -111,6 +111,8 @@ test('explicit channel preference is accepted memory before acknowledgement and 
 test('channel memory rejects borrowed, stale, quoted, ordinary and shortened authorization while temporary preferences stay ephemeral',{timeout:nativeTestTimeout(150000)},async t=>{
   const cases=[
     {id:'valid-source',text:'以后请优先用简短回答。',ok:true},
+    {id:'addressed-repository-request',text:'小小鹏，你要记住最好每个代码仓库维护一个固定的目录，每次分析排查某个代码仓库时，拉取最新的代码就行，这样不用每次都重新拉取整个代码仓库',ok:true},
+    {id:'authorized-repository-request',text:'我授权你将以下习惯保存为长期记忆：每个代码仓库维护一个固定目录；每次分析排查时复用该目录并更新代码，避免重复克隆，保留已有本地改动。',ok:true},
     {id:'historical-source',text:'查一下当前状态。',borrow:true,code:'MEMORY_CURRENT_SOURCE_REQUIRED'},
     {id:'foreign-source',text:'请看另一会话的进度。',borrow:true,room:'foreign-room',code:'ROUTER_SOURCE_FORBIDDEN'},
     {id:'stale-version',text:'以后请直接说明结论。',version:2,code:'ROUTER_SOURCE_FORBIDDEN'},
@@ -147,7 +149,14 @@ test('channel memory rejects borrowed, stale, quoted, ordinary and shortened aut
     else{assert.equal(result.ok,false,item.id);assert.equal(result.code,item.code,item.id)}
   }
   const saved=await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{topic:'preferences'})
-  assert.deepEqual(saved.entries.map(row=>row.key),['valid-source']);assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+  const originals=await h.query('source.list')
+  assert.deepEqual(saved.entries.map(row=>row.key).sort(),cases.filter(item=>item.ok).map(item=>item.id).sort())
+  for(const item of cases.filter(item=>item.ok)){
+    const entry=saved.entries.find(row=>row.key===item.id),original=originals.find(source=>source.messageId===item.id)
+    assert.equal(entry.text,item.text);assert.equal(entry.source.messageId,original.sourceId)
+    assert.equal(entry.source.actor,hash(original.actorId));assert.equal(entry.source.quoteSha256,hash(item.text))
+  }
+  assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
   t.diagnostic(JSON.stringify({case:'channel-memory-authority',checks:cases.length,onlyExplicitDirectSourceSaved:true,temporaryNotSaved:true,secretRefused:true}))
 })
 
