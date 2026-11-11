@@ -828,3 +828,106 @@ test('Router close cannot swallow an admission PAUSED failure produced before it
   const closing=h.close(),rejected=assert.rejects(closing,error=>{const contains=value=>value===prior||value?.errors?.some(contains);return contains(error)})
   await aborted.promise;trace.push({at:'release',code:prior.code,safe:prior.routerSafeToResume});t.diagnostic(JSON.stringify({pausedCloseTrace:trace}));release.resolve();await rejected;assert.equal(h.requests.length,1)
 })
+
+for(const audience of ['operator','requester'])test(`Router resumes a waiting task in its original Pi session after ${audience} information arrives`,{timeout:nativeTestTimeout(60000)},async t=>{
+  const steps=new Map(),runs=[],seenInputs=[];let taskStep=0,writes=0,reads=0
+  const h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body),source=input.events.find(event=>event.source)?.source
+      if(!source)return settle(body,input)
+      const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
+      if(step===0){
+        if(source.messageId==='request')return {tool:'resident_task_plan',args:{operationId:'plan:'+audience,sourceId:source.sourceId,messageVersion:source.version,
+          tasks:[{taskId:'wait-resume-'+audience,title:'Verify the original proof',objective:'Read the original proof after the missing environment information arrives',requirements:['Keep the original session and verify the file']}],dependencies:[]}}
+        const task=await h.query('task.get',{taskId:'wait-resume-'+audience})
+        return {tool:'resident_task_action',args:{operationId:'action:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,
+          taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,
+          ...(source.messageId==='answer'?{kind:'resume',humanRequestId:task.humanRequests.at(-1).requestId,expectedContextRevision:task.contextRevision??0,reason:'The original answer supplies the missing variable; continue verification'}:{kind:'supplement'}),text:source.text}}
+      }
+      if(step===1)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+source.messageId}}
+      return {text:'Task action and original source are committed.'}
+    }
+    if(requestTools(body).includes('task_result')){
+      let input
+      for(const message of body.messages.toReversed().filter(row=>row.role==='user')){
+        const texts=typeof message.content==='string'?[message.content]:(message.content??[]).filter(part=>part.type==='text').map(part=>part.text)
+        for(const text of texts){try{const value=JSON.parse(text);if(value.task){input=value;break}}catch{}}
+        if(input)break
+      }
+      assert.ok(input,'execution receives a real task-input packet');seenInputs.push(input)
+      assert.equal(input.humanReview,undefined,'Router alone judges whether the supplemental information answers the question')
+      runs.push(input.task.sessionId)
+      if(taskStep++===0){writes++;return {tool:'write',args:{path:'work/proof.txt',content:'original-session-proof'}}}
+      if(!input.task.humanRequests?.some(row=>row.status==='answered'))return {tool:'task_result',args:{decision:{action:'wait',audience,question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
+      if(reads++===0)return {tool:'read',args:{path:'work/proof.txt'}}
+      assert.match(JSON.stringify(body),/original-session-proof/,'continuation reads the actual original file')
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Original proof read after the Router continuation',evidence:['Original proof read: original-session-proof'],limitations:[]}}}
+    }
+    return {text:'No other work'}
+  })
+  await h.receive(channelMessage('request',{text:'Verify the proof after obtaining the read-only target variable name.'}));await h.service.whenIdle()
+  const taskId='wait-resume-'+audience,waiting=await h.query('task.get',{taskId})
+  assert.equal(waiting.humanRequests.at(-1).status,'waiting-reply');assert.equal(waiting.drained,true)
+  const originalSession=waiting.sessionId,executionCalls=runs.length
+  await h.receive(channelMessage('partial',{senderId:'bob',text:'The configuration is in the environment; the exact variable name is not yet supplied.'}));await h.service.whenIdle()
+  const partial=await h.query('task.get',{taskId})
+  assert.equal(partial.humanRequests.at(-1).status,'waiting-reply')
+  assert.equal(runs.length,executionCalls,'ordinary supplements do not start an execution-side semantic review')
+  assert.equal(partial.contextRevision,(waiting.contextRevision??0)+1)
+  const conversationId=partial.conversationId,generation=(await h.query('router.get',{conversationId})).generation
+  const sources=await h.query('source.list'),owner=sources.find(row=>row.messageId==='request'),other=sources.find(row=>row.messageId==='partial')
+  const record=async(suffix,extra)=>{await h.store.command({id:'negative-source:'+suffix,kind:'source.record',args:{sourceId:'negative:'+suffix,groupId:conversationId,messageId:'negative:'+suffix,
+    actorId:partial.ownerActorId,version:1,channel:'chat-room',text:'A boundary test source',timestamp:new Date().toISOString(),...extra}});await h.store.command({id:'negative-routed:'+suffix,kind:'source.routed',args:{sourceId:'negative:'+suffix,receipt:{kind:'boundary-test'}}})}
+  await record('current',{});await record('internal',{channel:'internal'});await record('foreign',{groupId:'foreign-conversation'})
+  await record('edited',{});await record('edited-v2',{messageId:'negative:edited',version:2})
+  const base={conversationId,generation,sourceId:'negative:current',messageVersion:1,kind:'task.resume',action:{taskId,
+    expectedRequirementRevision:partial.requirementRevision,expectedControlRevision:partial.controlRevision,expectedContextRevision:partial.contextRevision,
+    humanRequestId:partial.humanRequests.at(-1).requestId,messageId:'never-admit',text:'Do not admit invalid continuation',reason:'Structural boundary probe'}}
+  const negatives=[['request',{action:{...base.action,humanRequestId:'another-task-request'}},/HUMAN_REQUEST_STALE/],
+    ['requirement',{action:{...base.action,expectedRequirementRevision:99}},/REVISION_STALE/],
+    ['control',{action:{...base.action,expectedControlRevision:99}},/REVISION_STALE/],
+    ['context',{action:{...base.action,expectedContextRevision:partial.contextRevision-1}},/CONTEXT_STALE/],
+    ['old-source',{sourceId:owner.sourceId},/HUMAN_RESPONSE_SOURCE_INVALID/],
+    ['internal',{sourceId:'negative:internal'},/HUMAN_RESPONSE_SOURCE_INVALID/],
+    ['foreign',{sourceId:'negative:foreign'},/CONVERSATION_SCOPE/],
+    ['edited',{sourceId:'negative:edited'},/SOURCE_STALE/],
+    ['reason',{action:{...base.action,reason:' '}},/ARGUMENT_INVALID/]]
+  if(audience==='operator')negatives.push(['actor',{sourceId:other.sourceId},/PERMISSION_DENIED/])
+  const beforeWakes=await h.query('wake.list',{taskId})
+  for(const [name,change,error] of negatives){
+    await assert.rejects(h.store.command({id:'negative:'+name,kind:'router.task-action',args:{...base,...change,operationId:'negative:'+name}}),error)
+    assert.deepEqual(await h.query('task.get',{taskId}),partial,'rejected actions leave no partial answer or supplement')
+  }
+  assert.deepEqual(await h.query('wake.list',{taskId}),beforeWakes)
+  await h.restart();await h.service.whenIdle()
+  assert.equal(runs.length,executionCalls,'cold recovery preserves the unresolved wait and pending supplement')
+  await h.receive(channelMessage('answer',{senderId:audience==='operator'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
+  const action=h.results.findLast(row=>row.name==='resident_task_action')
+  assert.ok(action&&!action.result.isError,JSON.stringify(action?.result??h.service.listAlerts()))
+  const completed=await h.query('task.get',{taskId})
+  assert.equal(completed.status,'completed');assert.equal(completed.drained,true)
+  assert.equal(completed.sessionId,originalSession);assert.equal(completed.humanRequests.at(-1).status,'answered')
+  assert.equal(completed.humanRequests.at(-1).resolution.reason,'The original answer supplies the missing variable; continue verification')
+  assert.equal(completed.claimContextRevision,completed.contextRevision)
+  assert.ok(seenInputs.at(-1).sources.some(source=>source.text.includes('VERIFY_TARGET')))
+  assert.ok(seenInputs.at(-1).sources.some(source=>source.text.includes('not yet supplied')))
+  assert.equal((await h.query('task.list')).length,1);assert.equal((await h.query('execution.list')).length,0)
+  assert.ok((await h.query('wake.list',{taskId})).every(row=>row.state==='acked'))
+  assert.equal(writes,1);assert.equal(reads,2)
+  const answered=completed.humanRequests.at(-1),answerSource=await h.query('source.get',{sourceId:answered.sourceId}),operationId=answered.resolution.operationId
+  const retry={conversationId,generation:999,sourceId:answered.sourceId,messageVersion:answerSource.version,kind:'task.resume',operationId,
+    action:{taskId,expectedRequirementRevision:completed.requirementRevision,expectedControlRevision:completed.controlRevision,operationId,
+      messageId:operationId,text:answerSource.text,humanRequestId:answered.requestId,expectedContextRevision:completed.contextRevision-1,reason:answered.resolution.reason}}
+  await h.store.command({id:'resume-retry-after-completion',kind:'router.task-action',args:retry})
+  assert.deepEqual(await h.query('task.get',{taskId}),completed,'stable Router action retry never appends or resumes again')
+  await assert.rejects(h.store.command({id:'resume-conflict',kind:'router.task-action',args:{...retry,action:{...retry.action,reason:'Different semantic decision'}}}),/OPERATION_CONFLICT/)
+  const persisted=await h.host.ctx.sessionPersistence.readNative(originalSession,{requireComplete:true})
+  const results=persisted.entries.filter(row=>row.type==='message'&&row.message.role==='toolResult').map(row=>row.message)
+  assert.equal(results.filter(row=>row.toolName==='write'&&!row.isError).length,1)
+  assert.ok(results.some(row=>row.toolName==='read'&&!row.isError&&JSON.stringify(row.content).includes('original-session-proof')))
+  const calls=runs.length;await h.restart();await h.receive(channelMessage('answer',{senderId:audience==='operator'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
+  assert.equal(runs.length,calls,'committed original source and task completion are not replayed after restart')
+  assert.equal(writes,1)
+})

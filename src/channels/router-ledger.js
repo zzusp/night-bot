@@ -118,6 +118,26 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     write('router_actions',{id,conversationId:a.conversationId,operationId:a.operationId,requestDigest,result:value.result})
     return value
   }
+  function resume(task, action, source, a, commandId) {
+    if(action.expectedContextRevision!==(task.contextRevision??0))fail('DYNAMIC_TASK_CONTEXT_STALE')
+    const request=task.humanRequests?.find(item=>item.requestId===required(action.humanRequestId))
+    if(!request||request.status!=='waiting-reply'||request.requirementRevision!==task.requirementRevision||request.controlRevision!==task.controlRevision)fail('DYNAMIC_HUMAN_REQUEST_STALE')
+    if(task.archivedAt||task.status!=='active'||task.control!=='active'||!task.drained||task.recovering||task.archiveRestore?.reviewRequired)fail('ROUTER_TASK_RESUME_NOT_QUIESCENT')
+    if(request.executionBindings?.length)fail('ROUTER_HUMAN_REQUEST_SCOPE')
+    if(!['requester','topic'].includes(request.audience)&&![task.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_TASK_PERMISSION_DENIED')
+    const stamp=new Date().toISOString(),timestamp=Date.parse(source.timestamp)
+    if(!['im','chat','chat-room','web'].includes(source.channel)||!Number.isFinite(timestamp)||timestamp<Date.parse(request.createdAt)||timestamp>Date.parse(stamp))fail('ROUTER_HUMAN_RESPONSE_SOURCE_INVALID')
+    const reason=required(action.reason).trim()
+    if(!reason)fail('ROUTER_ARGUMENT_INVALID')
+    // 补充、原等待的结清和可靠 wake 共用当前 SQLite 事务；不另开执行角色。
+    const result=reduce('task.supplement',action,commandId),current=result.result.task
+    const answered=current.humanRequests.find(item=>item.requestId===request.requestId)
+    Object.assign(answered,{status:'answered',reply:source.text,sourceId:source.sourceId,actorId:source.actorId,answeredAt:stamp,replyChannel:source.channel,
+      resolution:{kind:'router',reason,evidence:[source.sourceId],conversationId:a.conversationId,generation:a.generation,operationId:a.operationId,recordedAt:stamp}})
+    current.lastDecision=null
+    saveTask(current)
+    return result
+  }
   function command(kind, a, commandId) {
     if (kind === 'source.record-direct') {
       const input={...(a.source ?? a)},prior=read('sources',input.sourceId,true)
@@ -178,19 +198,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     })
     if (kind === 'router.task-action') return operation(a,()=>{
       conversationOf(a);const source=sourceOf(a),task=read('tasks',a.action?.taskId)
-      if(task.conversationId!==source.groupId || a.kind!=='task.supplement'&&![task.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_TASK_PERMISSION_DENIED')
-      if(!['task.supplement','task.revise','task.reopen','task.control','task.arrange'].includes(a.kind))fail('ROUTER_TASK_ACTION_INVALID')
+      if(task.conversationId!==source.groupId || !['task.supplement','task.resume'].includes(a.kind)&&![task.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_TASK_PERMISSION_DENIED')
+      if(!['task.supplement','task.resume','task.revise','task.reopen','task.control','task.arrange'].includes(a.kind))fail('ROUTER_TASK_ACTION_INVALID')
       if(a.action.expectedRequirementRevision!==task.requirementRevision || a.action.expectedControlRevision!==task.controlRevision)fail('DYNAMIC_TASK_REVISION_STALE')
       if(a.sameGoal===true&&(a.kind!=='task.reopen'||['objective','title','requirements'].some(key=>a.action[key]!==undefined&&digest(a.action[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
       if(a.kind==='task.arrange')return arrange(task,a.action,source,a.operationId,commandId)
       // Host 派生值只在未命中业务回执后计算，避免跨代重试受当前任务或 actor 变化影响。
       const action={...a.action,sourceRefs:[...new Set([...(task.sourceRefs??[]),source.sourceId])],operationId:a.operationId,sameGoal:a.sameGoal}
-      if(['task.supplement','task.revise','task.reopen'].includes(a.kind)) {
+      if(['task.supplement','task.resume','task.revise','task.reopen'].includes(a.kind)) {
         const message=required(a.action.text??source.text)
-        action.request=[task.request,a.kind==='task.supplement'?'[原消息补充]':'[原消息调整]',message].join(String.fromCharCode(10,10))
-        if(a.kind==='task.supplement') {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
+        action.request=[task.request,['task.supplement','task.resume'].includes(a.kind)?'[原消息补充]':'[原消息调整]',message].join(String.fromCharCode(10,10))
+        if(['task.supplement','task.resume'].includes(a.kind)) {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
       }
-      const result=reduce(a.kind,action,commandId)
+      const result=a.kind==='task.resume'?resume(task,action,source,a,commandId):reduce(a.kind,action,commandId)
       link(result.result.task,source,a.kind,a.quote)
       taskEvent({id:`task-changed:${commandId}`,kind:'task.changed',taskId:task.taskId})
       return result

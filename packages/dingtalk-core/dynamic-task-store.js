@@ -45,6 +45,8 @@ const executionCoordinationWait = (task, executionId) => !!task?.humanRequests?.
   && scopedCoordination(request) && request.executionBindings.some(item => item.executionId === executionId))
 /** 只让问题创建后接纳的新群来源进入一次只读复核；执行结果和普通定时唤醒不能解除等待。 */
 export function pendingTaskHumanReview(task, wakes) {
+  // conversation 的答复语义归 Router；执行侧复核仅保留给未关联 Router 的旧任务。
+  if (task?.conversationId) return null
   const request = task?.humanRequests?.findLast(item => item.status === 'waiting-reply')
   if (!['requester', 'topic'].includes(request?.audience) || request.requirementRevision !== task.requirementRevision
     || request.controlRevision !== task.controlRevision) return null
