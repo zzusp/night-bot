@@ -1,9 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp, mkdir, readFile, writeFile, rm, link} from 'node:fs/promises'
+import {mkdtemp, mkdir, readFile, writeFile, rm, link, readdir} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHash} from 'node:crypto'
+import {acquireLock} from '../../../src/runtime/files.js'
 import {request as httpRequest} from 'node:http'
 import {MarkdownMemoryStore} from '../../../src/memory/store.js'
 import {memoryScope} from '../../../src/memory/scope.js'
@@ -14,7 +15,7 @@ import {accessCredential, browserSessions} from '../server/security.js'
 
 async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-console-'))
-  const paths = {secrets: join(root, 'secrets'), state: join(root, 'state')}
+  const paths = {secrets: join(root, 'secrets'), state: join(root, 'state'), cache: join(root, 'cache')}
   const dist = join(root, 'dist')
   for (const path of [...Object.values(paths), dist]) await mkdir(path)
   await writeFile(join(dist, 'index.html'), '<!doctype html><html lang="zh"><title>Night Bot</title></html>')
@@ -25,7 +26,7 @@ async function fixture(t, options = {}) {
     identity: envelope => {
       options.onIdentity?.(envelope)
       if (options.validateIdentity) Channels.prototype.identity.call({host: {runtimePaths: {workspaces: root}}}, envelope)
-      return {sessionId: 'conversation-' + envelope.channelId + '-' + envelope.conversationId, binding: {actorId: 'verified-web-operator'}}
+      return {sessionId: 'conversation-' + envelope.channelId + '-' + envelope.conversationId, binding: options.identityBinding?.() ?? {actorId: 'verified-web-operator'}}
     },
     groupContext: id => id === 'room-one' ? {channelId: 'team-chat', type: 'chat-room', conversationId: 'team'} : undefined,
     registerTransport(id, value) {assert.equal(transports.has(id), false); transports.set(id, value); return () => transports.delete(id)},
@@ -452,6 +453,7 @@ test('evolution endpoint authenticates, validates pagination and reads inventory
   const f = await fixture(t, {onIdentity: value => calls.push(value), memory: {store, inspectEvolution() {throw Error('must not call dedicated usage projection')}}})
   assert.equal((await f.fetchApi('/api/evolution')).status, 401)
   await f.login()
+  const previousIdentities = calls.filter(row => row.conversationId === 'evolution-view').length
   const result = await f.fetchApi('/api/evolution?kind=memory&offset=0&limit=10')
   assert.equal(result.status, 200)
   assert.equal(result.body.items[0].name, 'facts/record')
@@ -459,8 +461,8 @@ test('evolution endpoint authenticates, validates pagination and reads inventory
   assert.equal(result.body.items[0].memoryUse, null)
   assert.equal(result.body.usageCoverage.status, 'partial')
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_BODY|private\/secret/)
-  assert.equal(calls.filter(row => row.conversationId === 'evolution-view').length, 1)
-  for (const query of ['kind=other', 'limit=51', 'offset=-1', 'actorId=other']) assert.equal((await f.fetchApi('/api/evolution?' + query)).status, 400)
+  assert.ok(calls.filter(row => row.conversationId === 'evolution-view').length > previousIdentities)
+  for (const query of ['kind=other', 'limit=51', 'offset=-1', 'actorId=other', 'refresh=2']) assert.equal((await f.fetchApi('/api/evolution?' + query)).status, 400)
   const page = await f.fetchApi('/api/evolution?kind=skill&offset=2&limit=10')
   assert.equal(page.status, 200); assert.equal(page.body.offset, 2); assert.equal(page.body.limit, 10); assert.deepEqual(page.body.items, [])
 })
@@ -478,6 +480,73 @@ test('evolution unavailable service and failed reads never become zero counts', 
   const result = await failed.fetchApi('/api/evolution')
   assert.equal(result.status, 503)
   assert.deepEqual(result.body, {error: 'EVOLUTION_UNAVAILABLE'})
+})
+
+test('evolution HTTP distinguishes temporary contention from unreadable data and recovers on explicit refresh', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-evolution-busy-'))
+  t.after(() => rm(root, {recursive: true, force: true}))
+  const store = new MarkdownMemoryStore(root), scope = memoryScope({actorId: 'writer'})
+  await store.remember(scope, {topic: 'facts', key: 'record', text: 'PRIVATE_BODY', source: {sessionId: 'task', messageId: 'source'}})
+  const release = await acquireLock(join(store.directory(scope), 'evolution', '.lock'))
+  const f = await fixture(t, {memory: {store}})
+  await f.login()
+  try {
+    const result = await f.fetchApi('/api/evolution?kind=memory')
+    assert.equal(result.status, 503)
+    assert.deepEqual(result.body, {error: 'EVOLUTION_BUSY'})
+  } finally {await release()}
+  const result = await f.fetchApi('/api/evolution?kind=memory&refresh=1')
+  assert.equal(result.status, 200)
+  assert.equal(result.body.items[0].name, 'facts/record')
+  assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_BODY/)
+})
+
+test('evolution caches sanitized full inventory in a Web JSON file, supports refresh/restart and retains stale data on failure', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-evolution-cache-'))
+  t.after(() => rm(root, {recursive: true, force: true}))
+  const store = new MarkdownMemoryStore(root), scope = memoryScope({actorId: 'writer'})
+  const remember = key => store.remember(scope, {topic: 'facts', key, text: 'PRIVATE_MEMORY_BODY', source: {sessionId: 'task', messageId: key}})
+  await remember('one')
+  const f = await fixture(t, {memory: {store}})
+  await f.login()
+  const first = await f.fetchApi('/api/evolution?kind=memory&limit=1')
+  assert.equal(first.status, 200)
+  assert.equal(first.body.total, 1)
+  assert.equal(first.body.cache.stale, false)
+  const directory = join(f.paths.cache, (await readdir(f.paths.cache))[0])
+  const files = await readdir(directory)
+  assert.equal(files.length, 1); assert.match(files[0], /^evolution-[a-f0-9]{64}\.json$/)
+  const cacheFile = join(directory, files[0])
+  assert.doesNotMatch(await readFile(cacheFile, 'utf8'), /PRIVATE_MEMORY_BODY|memoryResources|skillResources|storageId|scopeToken|\.sqlite/)
+  await remember('two')
+  assert.equal((await f.fetchApi('/api/evolution?kind=memory')).body.total, 1, 'ordinary reads serve the saved snapshot')
+  const refreshed = await f.fetchApi('/api/evolution?kind=memory&limit=1&refresh=1')
+  assert.equal(refreshed.body.total, 2); assert.equal(refreshed.body.items.length, 1)
+  const secondPage = await f.fetchApi('/api/evolution?kind=memory&offset=1&limit=1')
+  assert.equal(secondPage.body.items.length, 1); assert.equal(secondPage.body.revision, refreshed.body.revision)
+  const saved = await readFile(cacheFile, 'utf8')
+  await writeFile(join(store.directory(scope), 'scope.json'), 'corrupt source must not replace cache')
+  const stale = await f.fetchApi('/api/evolution?kind=memory&refresh=1')
+  assert.equal(stale.status, 200); assert.equal(stale.body.total, 2)
+  assert.equal(stale.body.cache.stale, true); assert.equal(stale.body.cache.updatedAt, refreshed.body.cache.updatedAt)
+  assert.equal(await readFile(cacheFile, 'utf8'), saved)
+  await f.restart(); await f.login()
+  const restored = await f.fetchApi('/api/evolution?kind=memory')
+  assert.equal(restored.status, 200); assert.equal(restored.body.total, 2)
+  assert.equal(restored.body.cache.updatedAt, refreshed.body.cache.updatedAt)
+})
+
+test('evolution validates current reader identity even when a fresh file cache exists', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'night-web-evolution-identity-'))
+  t.after(() => rm(root, {recursive: true, force: true}))
+  const store = new MarkdownMemoryStore(root)
+  let actorId = 'verified-web-operator'
+  const f = await fixture(t, {memory: {store}, identityBinding: () => ({actorId})})
+  await f.login()
+  assert.equal((await f.fetchApi('/api/evolution')).status, 200)
+  actorId = 'different-reader'
+  const rejected = await f.fetchApi('/api/evolution')
+  assert.equal(rejected.status, 403); assert.deepEqual(rejected.body, {error: 'EVOLUTION_FORBIDDEN'})
 })
 
 test('recent history exposes channel routes alongside Web chats and preserves verified operator name', async t => {

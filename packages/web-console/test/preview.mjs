@@ -108,7 +108,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   ]
   const channels = {
     plugins, transports,
-    identity: envelope => ({sessionId: `fixture-${envelope.channelId}-${envelope.conversationId}`}),
+    identity: envelope => ({sessionId: `fixture-${envelope.channelId}-${envelope.conversationId}`, binding: {actorId: SENDER_ID}}),
     groupContext: id => rooms.some(room => room.groupId === id) ? {channelId: id.startsWith('custom-') ? 'custom-adapter' : 'dingtalk-work', type: id === 'custom-direct' ? 'chat' : 'chat-room', conversationId: id} : undefined,
     registerTransport(id, value) {if (transports.has(id)) throw Error('duplicate fixture transport'); transports.set(id, value); return () => transports.delete(id)},
     registerPlugin(id, value) {if (plugins.has(id)) throw Error('duplicate fixture plugin'); plugins.set(id, value); return () => plugins.delete(id)},

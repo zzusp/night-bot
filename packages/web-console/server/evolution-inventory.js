@@ -1,5 +1,6 @@
 import {readdir, lstat} from 'node:fs/promises'
 import {join, dirname} from 'node:path'
+import {setTimeout as delay} from 'node:timers/promises'
 import {bindingSchema, readableScopes, memoryDirectory} from '../../../src/memory/scope.js'
 import {decodeTopic, hash, label} from '../../../src/memory/format.js'
 import {boundedRead} from '../../../src/memory/previous.js'
@@ -9,13 +10,29 @@ import {fail} from './security.js'
 const stamp = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null
 const exists = path => lstat(path).then(() => true, error => {if (error.code === 'ENOENT') return false; throw error})
 const read = async (path, root) => (await boundedRead(path, 4 * 1024 * 1024, {root}))?.text ?? null
+const snapshotRetryDelays = [25, 50, 100, 200]
+const busy = () => fail('EVOLUTION_BUSY', 503)
 // A dashboard read must not enter store.transaction (which recovers and writes),
 // inspectEvolution (dedicated counters), or installedPrevious.scan (snapshots).
-// Use revision fences and refuse an in-progress write instead of acquiring a lock.
+// Retry a fresh fenced snapshot on contention, without acquiring or recovering a lock.
 async function scopeSnapshot(memory, scope) {
+  for (let attempt = 0;; attempt++) {
+    try {return await readScopeSnapshot(memory, scope)}
+    catch (error) {
+      if (!['EVOLUTION_BUSY', 'EVOLUTION_VERSION_STALE'].includes(error.code)) throw error
+      if (attempt === snapshotRetryDelays.length) busy()
+      await delay(snapshotRetryDelays[attempt])
+    }
+  }
+}
+async function readScopeSnapshot(memory, scope) {
   const root = memory.store.root, directory = memoryDirectory(root, scope)
   const checkIdle = async () => {
-    if (await exists(join(directory, 'pending.json')) || await exists(join(directory, '.lock')) || await exists(join(directory, 'evolution', '.lock'))) fail('EVOLUTION_UNAVAILABLE', 503)
+    // The scope lease also covers ordinary read/index/search transactions.
+    // It is not a write marker: store.runTransaction publishes pending.json
+    // before changing any topic, writes scope.json last, then removes pending.
+    // The journal + revision fences protect this read without blocking on readers.
+    if (await exists(join(directory, 'pending.json')) || await exists(join(directory, 'evolution', '.lock'))) busy()
   }
   await pathSafe(directory, root, root)
   await checkIdle()
@@ -25,6 +42,10 @@ async function scopeSnapshot(memory, scope) {
   if (meta.version !== 1 || !Number.isSafeInteger(meta.revision) || !Array.isArray(meta.forgotten) || !Array.isArray(meta.seen)) fail('EVOLUTION_UNAVAILABLE', 503)
   const state = JSON.parse(stateText ?? '{"version":1,"skills":{}}')
   if (state.version !== 1 || !state.skills || typeof state.skills !== 'object' || Array.isArray(state.skills)) fail('EVOLUTION_UNAVAILABLE', 503)
+  const checkCurrent = async () => {
+    await checkIdle()
+    if (metaText !== await read(join(directory, 'scope.json'), root) || stateText !== await read(join(directory, 'evolution', 'state.json'), root)) busy()
+  }
   const topicsPath = join(directory, 'topics')
   await pathSafe(topicsPath, root, root)
   const names = await readdir(topicsPath).catch(error => {if (error.code === 'ENOENT') return []; throw error})
@@ -33,12 +54,13 @@ async function scopeSnapshot(memory, scope) {
   const active = entry => !entry.expiresAt || Date.parse(entry.expiresAt) > (memory.store.now?.() ?? Date.now())
   const load = async (path, candidate = false) => {
     const text = await read(path, root)
-    if (text === null) {if (!candidate) fail('EVOLUTION_UNAVAILABLE', 503); return}
+    if (text === null) {if (!candidate) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)} return}
     bytes += Buffer.byteLength(text)
     if (bytes > 32 * 1024 * 1024) fail('EVOLUTION_UNAVAILABLE', 503)
     const value = decodeTopic(text)
-    if (value.scope?.kind !== scope.kind || value.scope?.id !== scope.id || value.revision > meta.revision) fail('EVOLUTION_UNAVAILABLE', 503)
+    if (value.scope?.kind !== scope.kind || value.scope?.id !== scope.id) fail('EVOLUTION_UNAVAILABLE', 503)
     if (!candidate && path !== join(topicsPath, hash(value.topic) + '.md')) fail('EVOLUTION_UNAVAILABLE', 503)
+    if (value.revision > meta.revision) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
     for (const entry of value.entries.filter(active)) {
       if (candidate && !label(entry.topic)) fail('EVOLUTION_UNAVAILABLE', 503)
       const records = candidate ? candidates : entries
@@ -50,8 +72,7 @@ async function scopeSnapshot(memory, scope) {
     await load(join(topicsPath, name))
   }
   await load(join(directory, 'candidates.md'), true)
-  await checkIdle()
-  if (metaText !== await read(join(directory, 'scope.json'), root) || stateText !== await read(join(directory, 'evolution', 'state.json'), root)) fail('EVOLUTION_UNAVAILABLE', 503)
+  await checkCurrent()
   return {revision: meta.revision, entries, candidates, state}
 }
 

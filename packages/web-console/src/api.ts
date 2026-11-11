@@ -88,6 +88,7 @@ export interface EvolutionBody {
   redacted: boolean;
 }
 export interface EvolutionReady extends Page<EvolutionItem> {
+  cache?: {updatedAt: string | null; stale: boolean; refreshing: boolean; error?: string};
   usageCoverage?: {status: 'ready'|'partial'|'unrecorded'; sessionsRead?:number};
   status: 'ready'; coverage: 'authorized-scopes-current-state'|'bot-shared-current-state'; offset: number; limit: number;
   memory: {trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
@@ -158,6 +159,7 @@ export function errorText(error: unknown) {
     if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，未覆盖新版本。草稿已保留，请重新读取设置后再编辑。';
     if (error.code === 'INVALID_CONFIG') return '模型或推理深度不受当前路由支持，请重新读取可用模型并检查选择。';
     if (error.code === 'EVOLUTION_CONTENT_TOO_LARGE') return '此条目内容过大，暂不能在此查看。';
+    if (error.code === 'EVOLUTION_BUSY') return '自进化记录正在更新，请稍后重新获取。';
     if (error.code === 'EVOLUTION_READ_FAILED' || error.code === 'EVOLUTION_UNAVAILABLE') return '内容暂不可读，请检查连接或稍后重试。';
     if (error.code === 'DINGTALK_AUTH_REQUIRED') return 'Bot 运行环境尚未登录钉钉，请先完成登录再保存渠道。';
     if (error.code === 'DINGTALK_CURRENT_PROFILE_NOT_FOUND') return 'Bot 运行环境未找到当前登录账号，请先确认当前账号再保存。';
