@@ -115,7 +115,6 @@
 .evolution-diff-line--removed { color: var(--board-danger); background: var(--board-danger-soft); }
 .evolution-reader-footer { border-top: 1px solid var(--board-border); padding: 16px 32px 20px; }
 .evolution-reader-footer .evolution-entry-details { margin: 0; }
-.evolution-reader-footer > p { color: var(--board-muted); font-size: 11px; margin-top: 12px; }
 @media (max-width: 760px) {
   .evolution-reader-toolbar { padding: 12px 8px 0; gap: 4px; }
   .evolution-content-heading { padding: 20px 18px 14px; }

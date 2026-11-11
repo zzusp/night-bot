@@ -157,3 +157,87 @@ test('absolute-root Host uses owned instruction and skill roots instead of the o
   assert.equal(host.ctx.runtimePaths.agentsHome,paths.agentsHome)
  }finally{await handle?.dispose();await host?.close()}
 })
+
+// Mutations happen at exact provider-read boundaries, without timers or model runs.
+test('skill refresh retries a real learned body revision change and publishes only current content',async t=>{
+ const {default:Reflection}=await import('../src/memory/reflection.js'),{MarkdownMemoryStore}=await import('../src/memory/store.js'),{memoryScope}=await import('../src/memory/scope.js'),{atomicWrite}=await import('../src/runtime/files.js')
+ const f=await fixture(t),store=new MarkdownMemoryStore(f.paths.memory);t.after(()=>store.close())
+ const binding={actorId:'human-a',projects:[]},scope=memoryScope(binding)
+ f.ctx.memory.store=store;f.ctx.memory.binding=async()=>binding;f.ctx.memory.recordUsage=(scope,counter)=>recordUsage(store,scope,counter)
+ const reflection=new Reflection(f.ctx,{enabled:false})
+ await store.remember(scope,{topic:'experience',key:'evidence',text:'verified task evidence',source:{sessionId:'session',messageId:'message'}})
+ const skill={active:true,supports:[{taskId:'task',memoryKey:'evidence'}],taskIds:['task'],memoryKeys:['evidence'],steps:['Read current evidence'],applicability:'Local tasks',revision:1}
+ await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{verify:skill}}));f.ctx.skills.invalidateCache()
+ const original=reflection.skill.bind(reflection);let reads=0
+ reflection.skill=async(...args)=>{
+  const value=await original(...args)
+  if(++reads===1)await store.remember(scope,{topic:'experience',key:'parallel-retrospective',text:'another completed task',source:{sessionId:'other-session',messageId:'other-message'}})
+  return value
+ }
+ const resources=await f.resolve(f.a),published=await resources.context.skills(f.a.actor)
+ assert.equal(published.length,1);assert.equal(reads,5)
+ const body=await readFile(published[0].filePath,'utf8'),revision=(await store.index(scope)).revision
+ assert.match(body,new RegExp('NIGHT_LEARNED_SCOPE=bot/[^;]+;revision='+revision+'\\n'))
+ assert.match(body,/Read current evidence/)
+})
+
+test('skill refresh takes a fresh catalog after metadata and invocation policy change',async t=>{
+ const f=await fixture(t);let reads=0,lists=0,current={...runtimeSkill,provider:'changing'}
+ f.ctx.skills.registerProvider(()=>({name:'changing',list:async()=>{lists++;return [{...current,rank:100}]},get:async()=>{
+  if(++reads===1)current={...current,description:'Current procedure',content:'CURRENT REVISED BODY',invocation:{modelInvocable:false,userInvocable:true}}
+  return {...current}
+ }}))
+ const resources=await f.resolve(f.a),published=await resources.context.skills(f.a.actor)
+ assert.equal(lists,2);assert.equal(reads,4);assert.equal(published.length,1)
+ assert.equal(published[0].description,'Current procedure');assert.equal(published[0].disableModelInvocation,true)
+ assert.equal(await readFile(published[0].filePath,'utf8'),'CURRENT REVISED BODY')
+})
+
+test('skill refresh removes a skill revoked during materialization instead of publishing its old body',async t=>{
+ const f=await fixture(t);let reads=0,lists=0,revoked=false
+ f.ctx.skills.registerProvider(()=>({name:'revoking',list:async()=>{lists++;return revoked?[]:[{...runtimeSkill,provider:'revoking',rank:100}]},get:async()=>{
+  reads++;revoked=true;return undefined
+ }}))
+ const resources=await f.resolve(f.a)
+ assert.deepEqual(await resources.context.skills(f.a.actor),[]);assert.equal(lists,2);assert.equal(reads,1)
+})
+
+test('skill refresh bounds continuous content churn to three materialization attempts',async t=>{
+ const f=await fixture(t);let reads=0,lists=0
+ f.ctx.skills.registerProvider(()=>({name:'churning',list:async()=>{lists++;return [{...runtimeSkill,provider:'churning',rank:100}]},get:async()=>({...runtimeSkill,provider:'churning',content:'REVISION '+ ++reads})}))
+ const resources=await f.resolve(f.a)
+ await assert.rejects(resources.context.skills(f.a.actor),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})
+ assert.equal(lists,3);assert.equal(reads,6)
+})
+
+test('skill refresh does not retry non-authorization provider failures or unsafe cache paths',async t=>{
+ for(const kind of ['provider','path'])await t.test(kind,async t=>{
+  const f=await fixture(t);let reads=0,lists=0
+  f.ctx.skills.registerProvider(()=>({name:'failing',list:async()=>{lists++;return [{...runtimeSkill,provider:'failing',rank:100}]},get:async()=>{
+   reads++;if(kind==='provider')throw Object.assign(new Error('Provider failed'),{code:'PROVIDER_FAILED'})
+   return {...runtimeSkill,provider:'failing'}
+  }}))
+  const resources=await f.resolve(f.a)
+  if(kind==='path'){const outside=join(f.root,'other');await mkdir(outside);await symlink(outside,join(resources.agentDir,'skills'),'dir')}
+  await assert.rejects(resources.context.skills(f.a.actor),{code:kind==='provider'?'PROVIDER_FAILED':'PI_OFFICIAL_RESOURCE_PATH_UNSAFE'})
+  assert.equal(lists,1);assert.equal(reads,1)
+ })
+})
+
+test('skill refresh cancellation during a changing provider read is never retried',async t=>{
+ const f=await fixture(t);let reads=0,lists=0
+ f.ctx.skills.registerProvider(()=>({name:'closing',list:async()=>{lists++;return [{...runtimeSkill,provider:'closing',rank:100}]},get:async()=>{
+  reads++;f.closeOwner();return {...runtimeSkill,provider:'closing',content:'CHANGED BODY'}
+ }}))
+ const resources=await f.resolve(f.a)
+ await assert.rejects(resources.context.skills(f.a.actor),{code:'PI_OFFICIAL_RESOURCE_OWNER_CLOSED'})
+ assert.equal(lists,1);assert.equal(reads,1)
+})
+
+test('skill refresh does not treat an incomplete catalog as a transient authorization change',async t=>{
+ const f=await fixture(t);let reads=0,lists=0
+ f.ctx.skills.registerProvider(()=>({name:'incomplete',list:async()=>{lists++;return {candidates:[{...runtimeSkill,provider:'incomplete',rank:100}],complete:false}},get:async()=>{reads++;return {...runtimeSkill,provider:'incomplete'}}}))
+ const resources=await f.resolve(f.a)
+ await assert.rejects(resources.context.skills(f.a.actor),{code:'PI_OFFICIAL_SKILL_SNAPSHOT_REQUIRED'})
+ assert.equal(lists,1);assert.equal(reads,0)
+})

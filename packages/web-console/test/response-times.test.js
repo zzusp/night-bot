@@ -132,7 +132,7 @@ test('Router starts at its observed Host preparation boundary before the clipped
  const end=value.steps.find(row=>row.kind==='stage-router-completed')
  assert.equal(start.label,'Router 开始准备（批次共享）')
  assert.equal(start.at,time(26000));assert.equal(start.timingType,'milestone');assert.equal(start.durationMs,undefined)
- assert.equal(end.at,time(29000));assert.equal(end.durationMs,3000);assert.equal(end.timingType,'span')
+ assert.equal(end.at,time(29000));assert.equal(end.durationMs,3000);assert.equal(end.timingType,'span');assert.equal(end.clipped,true)
  assert.equal(value.steps.find(row=>row.kind==='stage-triage-completed').durationMs,28900)
  assert.equal(value.durationMs,29000,'overlapping spans are not added or repartitioned')
  assert.ok(value.steps.indexOf(start)<value.steps.indexOf(end))

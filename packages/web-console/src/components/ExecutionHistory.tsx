@@ -29,17 +29,17 @@ export function ExecutionHistory({ endpoint, router = false, status, controlsTar
   }, [query.updatedAt]);
   // The task workspace hosts these controls in its rail; other readers keep them inline.
   // The history component owns one stream regardless of where its controls render.
-  const controls = <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录 · 任务执行详情见关联任务' : '当前执行上下文 · 会话压缩或分支后，可能不包含更早记录'}</span>
+  const controls = <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录' : '当前执行上下文'}</span>
       <div>{query.data?.status === 'ready' && <span>已载入 {query.data.items.length} / {query.data.total} 条记录</span>}{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
     </div>;
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
-      : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" description="使用上方按钮重新获取。" />
-      : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '暂无已提交的会话安排' : '执行尚未开始' : '执行记录正在提交'} description={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '首答与接收过程、后续任务见上方。' : '会话开始处理后，记录会自动显示。' : 'Bot 正在保存记录，提交完成后会自动更新。'} />
-      : query.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" description="当前无法安全读取此会话，请稍后重新获取。" action={<Button variant="secondary" onClick={latest}>重新获取</Button>} />
+      : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" />
+      : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '暂无已提交的会话安排' : '执行尚未开始' : '执行记录正在提交'} />
+      : query.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" action={<Button variant="secondary" onClick={latest}>重新获取</Button>} />
       : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={query.data?.items || []} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
-        empty={<EmptyState title="暂无可展示的执行记录" description={router ? "当前上下文没有可展示的安排记录；工具执行和处理结果请查看关联任务。" : "当前上下文没有可展示的执行记录。"} />} />}
+        empty={<EmptyState title="暂无可展示的执行记录" />} />}
   </div>;
 }

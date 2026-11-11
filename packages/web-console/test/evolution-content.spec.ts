@@ -153,5 +153,5 @@ test('关闭未完成读取不重新展示正文，目录技能标明采集边�
   release();
   await expect(page.locator('.evolution-content')).toHaveCount(0);
   await page.getByRole('button', {name: '查看内容：示例记忆'}).click();
-  await expect(page.getByText('目录文件比较上次采集与当前内容；未采集的中间修改无法还原。')).toBeVisible();
+  await expect(page.getByText('比较范围：上次采集 → 当前')).toBeVisible();
 });

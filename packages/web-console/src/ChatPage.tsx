@@ -97,15 +97,15 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
     {query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <ConversationMessages key={key} endpoint={id ? `/chat/${encodeURIComponent(id)}` : null} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} messages={[...messages, ...extra]}
       pending={['accepted', 'pending', 'running'].includes(query.data?.status || '')}
-      footer={query.data?.status === 'ready' && messages.at(-1)?.role === 'user' ? <p className="muted chat-receipt" role="status">消息已接纳，后续回复会在这里显示。</p> : undefined}
-      empty={query.error && !query.data ? <EmptyState title="对话暂不可读" description="使用上方按钮重新获取，或从侧栏选择其他对话。" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
+      footer={query.data?.status === 'ready' && messages.at(-1)?.role === 'user' ? <p className="muted chat-receipt" role="status">消息已接纳</p> : undefined}
+      empty={query.error && !query.data ? <EmptyState title="对话暂不可读" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
         <h2>今天，有什么可以帮你？</h2>
         <div className="suggestions">{[
-          { icon: RiFileList3Line, title: '梳理一项任务', description: '把目标拆成清晰的行动', prompt: '我想和你一起梳理一项任务：' },
-          { icon: RiLightbulbLine, title: '一起想想办法', description: '分析问题，找到下一步', prompt: '帮我分析一下这个问题：' },
-          { icon: RiChatSmile2Line, title: '开始一段对话', description: '从一个问题或想法开始', prompt: '你好，介绍一下你能如何帮助我。' },
+          { icon: RiFileList3Line, title: '梳理一项任务', prompt: '我想和你一起梳理一项任务：' },
+          { icon: RiLightbulbLine, title: '一起想想办法', prompt: '帮我分析一下这个问题：' },
+          { icon: RiChatSmile2Line, title: '开始一段对话', prompt: '你好，介绍一下你能如何帮助我。' },
         ].map(item => <button type="button" key={item.title} onClick={() => { edit(item.prompt); document.querySelector<HTMLTextAreaElement>('.board-composer textarea')?.focus(); }}>
-          <item.icon size={20} /><strong>{item.title}</strong><span>{item.description}</span><RiArrowRightUpLine size={15} /></button>)}</div>
+          <item.icon size={20} /><strong>{item.title}</strong><RiArrowRightUpLine size={15} /></button>)}</div>
       </div>} />}
     <div className="composer-dock"><div>
       {error && <div className="send-notice" role="alert"><p>{error}</p>{attempt && attempt.state !== 'sending' && <div className="inline-actions">

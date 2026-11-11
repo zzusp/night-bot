@@ -25,7 +25,7 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
   const pending = useRef<{channelId: string; enabled: boolean; config: typeof values} | null>(null);
   const setWorking = (value: boolean) => { writing.current = value; if (live.current) { setBusy(value); onBusyChange?.(value); } };
   const field = (name: string) => ({id: `${prefix}-${name}`, name, 'aria-invalid': !!errors[name] || undefined,
-    'aria-describedby': `${prefix}-${name}-help${errors[name] ? ` ${prefix}-${name}-error` : ''}`});
+    'aria-describedby': [plugin.fields?.some(field => field.name === name && field.type === 'credential-ref') ? `${prefix}-${name}-help` : '', errors[name] ? `${prefix}-${name}-error` : ''].filter(Boolean).join(' ') || undefined});
   const fieldError = (name: string) => errors[name] && <p id={`${prefix}-${name}-error`} className="field-error" role="alert">{errors[name]}</p>;
   const validate = (event: FormEvent) => {
     event.preventDefault(); if (writing.current || locked) return;
@@ -84,17 +84,17 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
     } catch (cause) { if (live.current) setError(errorText(cause)); } finally { setWorking(false); }
   };
   return <div className="custom-channel-form">
-    <p className="field-help">{plugin.name} · {plugin.type}。{initial ? '仅可编辑服务端允许安全变更的实例。' : '新增默认停用。'}启用需确认，支持的插件会在线接入，是否需重启以保存结果为准；不继承钉钉目标或外发授权。</p>
+
     <form ref={form} noValidate onSubmit={validate} onKeyDown={event => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault(); }}>
       <fieldset className="channel-create-fields" disabled={locked}><legend className="sr-only">{plugin.name}配置</legend>
-        <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-channelId`}>渠道标识</label><input {...field('channelId')} value={channelId} readOnly={!!initial} maxLength={64} autoComplete="off" onChange={event => setChannelId(event.target.value)}/><p className="field-help" id={`${prefix}-channelId-help`}>本安装唯一，新增不会覆盖已有渠道。</p>{fieldError('channelId')}</div>
+        <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-channelId`}>渠道标识</label><input {...field('channelId')} value={channelId} readOnly={!!initial} maxLength={64} autoComplete="off" onChange={event => setChannelId(event.target.value)}/>{fieldError('channelId')}</div>
         {plugin.fields?.map(declaration => <div className="channel-create-field channel-create-wide" key={declaration.name}>
           <label htmlFor={`${prefix}-${declaration.name}`}>{declaration.label}{declaration.required ? '（必填）' : ''}</label>
           {declaration.type === 'boolean' ? <select {...field(declaration.name)} value={values[declaration.name] === true ? 'true' : 'false'} onChange={event => setValues({...values, [declaration.name]: event.target.value === 'true'})}><option value="false">关闭</option><option value="true">开启</option></select>
             : <input {...field(declaration.name)} value={String(values[declaration.name] ?? '')} maxLength={2048} autoComplete="off" onChange={event => setValues({...values, [declaration.name]: event.target.value})}/>}
-          <p className="field-help" id={`${prefix}-${declaration.name}-help`}>{declaration.type === 'credential-ref' ? '仅填写由环境或密钥存储提供的引用名称，不填写真实密钥。' : '由已安装插件声明的配置字段。'}</p>{fieldError(declaration.name)}
+          {declaration.type === 'credential-ref' && <p className="field-help" id={`${prefix}-${declaration.name}-help`}>填写凭据引用名，勿填真实密钥。</p>}{fieldError(declaration.name)}
         </div>)}
-        <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-enabled`}>重启后启用</label><select id={`${prefix}-enabled`} value={enabled ? 'true' : 'false'} onChange={event => setEnabled(event.target.value === 'true')}><option value="false">否，保持停用</option><option value="true">是，允许插件接入</option></select></div>
+        <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-enabled`}>启用渠道</label><select id={`${prefix}-enabled`} value={enabled ? 'true' : 'false'} onChange={event => setEnabled(event.target.value === 'true')}><option value="false">保持停用</option><option value="true">允许插件接入</option></select></div>
       </fieldset>
       <div className="channel-create-actions"><Button type="submit" variant="primary" disabled={locked} busy={busy}>保存自定义渠道</Button>
         {unknown && <Button disabled={busy} onClick={() => void read()}>核对保存状态</Button>}
@@ -102,7 +102,7 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
         {saved && !initial && <Button disabled={busy} onClick={() => void read(true)}>添加另一个渠道</Button>}
       </div>
     </form>
-    <p className="field-error" role={error ? 'alert' : undefined}>{error}</p><p className="channel-create-feedback" role="status" hidden={!feedback}>{feedback}</p>
+    <p className="field-error" hidden={!error} role={error ? 'alert' : undefined}>{error}</p><p className="channel-create-feedback" role="status" hidden={!feedback}>{feedback}</p>
     {confirm && <Confirm title="保存自定义渠道" onClose={() => setConfirm(false)} onConfirm={() => void save()}><p>渠道 {channelId}，插件 {plugin.name}（{plugin.type}）。{enabled ? '保存后插件可能立即接入并按自身权限处理消息。' : '保持停用。'}运行中渠道的修改受插件安全生命周期保护；不会继承钉钉的目标或授权规则。</p></Confirm>}
   </div>;
 }
