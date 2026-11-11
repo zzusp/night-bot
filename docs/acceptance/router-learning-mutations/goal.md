@@ -1,21 +1,21 @@
 # Router 记忆与 Skill 维护目标
 
-> 状态：本轮完成（代码与 PR，未再次部署）
+> 状态：上下文提炼式记忆已交付独立 PR #59，本地相关验证通过；未合并、未部署
 > Goal ID：router-learning-mutations
-> 最近维护：2026-11-11T07:37:10+00:00
+> 最近维护：2026-11-11T10:29:02.059Z
 > 权威目标：goal.md
 
 ## 总目标
 
-由 Router 决策并直接完成记忆、学习 Skill 的增改删，移除 Router 路径的话术授权门槛，保留 Host 的认证、来源/版本、权限、秘密、范围、事务与 no-replay。用户强调 Router 是整个 Bot 的大脑。上一轮已按授权合并、部署并验证记忆与 Skill 增改删；本轮只修复发现的两项 Web 缺口，不包含再次部署或历史失败消息重放。
+由 Router 决策并直接完成记忆、学习 Skill 的增改删，移除 Router 路径的话术授权门槛，保留 Host 的认证、来源/版本、权限、秘密、范围、事务与 no-replay。用户强调 Router 是整个 Bot 的大脑。此前已按授权合并、部署并验证记忆与 Skill 增改删，两项 Web 续修已进入主线。本轮按用户要求将 Router 记忆改为上下文提炼内容与独立证据，不包含再次部署、旧业务记忆回填或历史失败消息重放。
 
 ## 完成条件
 
-Router维护合同、对应本地回归与独立PR完成；已授权的上一轮合并部署与真实CRUD据实记录。本次Web修复需通过真实本地Web/Pi业务终态与拒绝反例；代码完成不等于上线，旧unknown不改写或重发。
+Router维护合同、对应本地回归与独立PR完成；已授权的上一轮合并部署与真实CRUD据实记录。本次上下文记忆需通过真实本地Host/Pi持久化、冷恢复、来源拒绝反例、详情与差异回读；完整套件既有失败单列。代码完成不等于上线，旧unknown不改写或重发。
 
 ## 范围与约束
 
-当前追加授权只修复两项Web缺口并补回归、交付PR。保留认证会话、冻结收据、群聊受众、权限与只读盘点；不再次合并/部署、不操作生产旧unknown、不做无关重构。
+当前追加授权修改 Router 上下文提炼式四维记忆写入，补相关回归并交付独立PR。保留认证会话、冻结收据、群聊受众、权限与只读盘点；不再次合并/部署、不操作生产旧unknown、不做无关重构。
 
 ## sub goal matrix
 
@@ -27,9 +27,17 @@ Router维护合同、对应本地回归与独立PR完成；已授权的上一轮
 | SG4 | 同步合同、审阅差异、独立 PR | 合同同步且 PR 可审阅 | 完成，PR #57 已合并 | [PR #57](https://github.com/zzusp/night-bot/pull/57)，合同与运维说明已同步 |
 | SG5 | 正式镜像发布与生产部署 | 已合并产物按 digest 部署并回读 | 完成 | [round-2.md](round-2.md) |
 | SG6 | 真实 Router 记忆与 Skill 增改删及测试数据清理 | 六项真实持久化、测试数据清理且缺口单列 | 6项持久化通过；Web送达/展示另有失败 | [round-2.md](round-2.md)、[matrix.csv](matrix.csv) |
-| SG7 | Web来源身份映射与Skill支持判定续修 | 两项 Web 修复、本地终态验证及独立 PR | 完成，PR #58 OPEN | [round-3.md](round-3.md)、[PR #58](https://github.com/zzusp/night-bot/pull/58) |
+| SG7 | Web来源身份映射与Skill支持判定续修 | 两项 Web 修复、本地终态验证及独立 PR | 完成，PR #58 已进入本轮主线基线 | [round-3.md](round-3.md)、基线 46a64f5 |
+| SG8 | Router 上下文提炼式四维记忆 | 提炼内容、逐项证据、适用范围及隔离回归通过，独立 PR 交付 | 完成，PR #59 OPEN/MERGEABLE；完整路由基线失败保留 | [round-4.md](round-4.md)、[matrix.csv](matrix.csv)、[PR #59](https://github.com/zzusp/night-bot/pull/59) |
 
 ## 当前检查点
+
+- 2026-11-11 新授权：按四维方案修改 Router 记忆写入；基于 origin/main 46a64f5，新工作树 worktree-router-context-memory，起点干净。PR #58 已在当前主线合并。
+- SG8 实现与相关验证完成：记忆/复盘/迁移 61 PASS；完整路由 73 PASS/15 FAIL，15 项在同基线复现。提炼内容、证据、适用范围、冷启动与详情/差异回读通过。受验工作树与源码指纹集中于 round-4.md。
+- 交付：实现提交 c0714a8；PR #59 已独立回查为 OPEN/MERGEABLE，base main，head worktree-router-context-memory。验收后的文档收口不改变受验代码。
+- 本次范围已完成，无待执行的已授权步骤；合并、部署、真实模型语义验收和旧业务记忆回填均未执行，需另行授权。
+
+## 上一轮检查点（保留当时状态）
 
 - 当前子目标：SG7
 - 唯一下一步：本轮授权范围已完成；等待用户是否另行授权合并和部署，本会话不自动执行生产步骤。

@@ -3,8 +3,9 @@ import {createHash} from 'node:crypto'
 import {failure} from '../runtime/files.js'
 export const hash=value=>createHash('sha256').update(value).digest('hex')
 export const label=value=>typeof value==='string'&&/^[\p{L}\p{N}][\p{L}\p{N}_. -]{0,79}$/u.test(value)
-export function checkedText(text){
-  if(typeof text!=='string'||!text.trim()||text.length>2048||/<!--\s*\/?memory:|\0/.test(text))throw failure('MEMORY_TEXT_INVALID')
+export function checkedText(text){return checkedTextWithLimit(text,2048)}
+export function checkedTextWithLimit(text,limit){
+  if(typeof text!=='string'||!text.trim()||text.length>limit||/<!--\s*\/?memory:|\0/.test(text))throw failure('MEMORY_TEXT_INVALID')
   if(containsSecret(text))throw failure('MEMORY_SECRET_REFUSED')
   return text.trim()
 }
@@ -32,7 +33,7 @@ export function decodeTopic(text){
     const until=text.indexOf(end,at+start.length);if(until<0)throw failure('MEMORY_MARKDOWN_INVALID')
     const body=text.slice(at+start.length,until);if(hash(body)!==entry.textSha256)throw failure('MEMORY_CONTENT_CHANGED')
     const {textSha256,contextSha256,...fields}=entry
-    if(entry.context!==undefined){const context=checkedMemoryContext(entry.context);if(hash(JSON.stringify(context))!==contextSha256)throw failure('MEMORY_CONTEXT_CONTENT_CHANGED');fields.context=context}
+    if(entry.context!==undefined){const context=checkedMemoryContext(entry.context);if(hash(JSON.stringify(context))!==contextSha256)throw failure('MEMORY_CONTEXT_CONTENT_CHANGED');if(context.version===2&&body!==renderRouterMemory(context))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED');fields.context=context}
     else if(contextSha256!==undefined)throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
     return {...fields,text:body}
   })
@@ -63,6 +64,7 @@ const storedContext=z.object({
   ]),
 }).strict()
 export function checkedMemoryContext(value){
+  if(value?.version===2)return checkedRouterContext(value)
   const parsed=storedContext.safeParse(value)
   if(!parsed.success)throw failure('MEMORY_CONTEXT_INVALID')
   const context=parsed.data
@@ -91,5 +93,73 @@ export function buildMemoryContext(value,{actor,message,quote}={}){
 }
 export function memoryContextText(context){
   if(!context)return ''
+  if(context.version===2)return renderRouterMemory(context)
   return [context.background.quote,context.interpretation.scenario,...context.interpretation.boundaries??[]].filter(Boolean).join(' ')
+}
+
+const evidenceId=z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$/)
+const observation=z.object({
+  kind:z.enum(['user-request','user-statement','quoted-statement']),
+  text:contextText,evidenceIds:z.array(evidenceId).min(1).max(16),
+}).strict()
+const evidenceRef=z.object({
+  id:evidenceId,source:z.enum(['message','quote']),sourceId:contextText,
+  messageVersion:z.number().int().positive(),quote:contextText,
+}).strict()
+const routerMemoryInput=z.object({
+  observations:z.array(observation).min(1).max(16),
+  hypothesis:contextText.optional(),directPath:contextText.optional(),
+  appliesTo:z.object({kind:z.enum(['actor','context']),description:contextText}).strict(),
+  evidence:z.array(evidenceRef).min(1).max(16),
+}).strict()
+const {$schema,...routerParameters}=z.toJSONSchema(routerMemoryInput)
+export const routerMemoryParameters=routerParameters
+const routerContext=z.object({
+  version:z.literal(2),
+  subject:z.union([z.object({kind:z.literal('actor'),actor:digest,description:contextText}).strict(),z.object({kind:z.literal('context'),description:contextText}).strict()]),
+  observations:z.array(observation).min(1).max(16),hypothesis:contextText.optional(),directPath:contextText.optional(),
+  evidence:z.array(evidenceRef.extend({messageId:contextText,actorId:contextText.optional(),quoteSha256:digest})).min(1).max(16),
+}).strict()
+function checkedRouterContext(value){
+  const parsed=routerContext.safeParse(value)
+  if(!parsed.success)throw failure('MEMORY_CONTEXT_INVALID')
+  const context=parsed.data,ids=new Map()
+  checkedText(context.subject.description)
+  for(const item of context.evidence){
+    if(ids.has(item.id))throw failure('MEMORY_EVIDENCE_INVALID')
+    for(const text of [item.sourceId,item.messageId,item.actorId,item.quote].filter(value=>value!==undefined))checkedText(text)
+    if(hash(item.quote)!==item.quoteSha256)throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
+    ids.set(item.id,item)
+  }
+  for(const item of context.observations){
+    checkedText(item.text)
+    if(new Set(item.evidenceIds).size!==item.evidenceIds.length||item.evidenceIds.some(id=>!ids.has(id)))throw failure('MEMORY_EVIDENCE_INVALID')
+    if(!item.evidenceIds.some(id=>ids.get(id).source===(item.kind==='quoted-statement'?'quote':'message')))throw failure('MEMORY_EVIDENCE_KIND_INVALID')
+  }
+  for(const text of [context.hypothesis,context.directPath].filter(value=>value!==undefined))checkedText(text)
+  return context
+}
+export function buildRouterMemory(value,{actor,message,sources}={}){
+  const parsed=routerMemoryInput.safeParse(value)
+  if(!parsed.success)throw failure('MEMORY_CONTEXT_INVALID')
+  const input=parsed.data,evidence=input.evidence.map(ref=>{
+    const original=sources.find(item=>item.sourceId===ref.sourceId&&item.version===ref.messageVersion)
+    const selected=ref.source==='quote'?original?.quote:original
+    if(typeof selected?.text!=='string'||!selected.messageId||!selected.text.includes(ref.quote))throw failure('MEMORY_CONTEXT_SOURCE_REQUIRED')
+    return {...ref,messageId:selected.messageId,...selected.actorId?{actorId:selected.actorId}:{},quoteSha256:hash(ref.quote)}
+  })
+  // 背景仅证明语义来源；本批维护来源始终单独绑定当前认证原消息。
+  if(!evidence.some(item=>item.source==='message'&&item.sourceId===message.id&&item.quote===message.content.trim()))throw failure('MEMORY_SOURCE_QUOTE_REQUIRED')
+  const context=checkedRouterContext({version:2,subject:{kind:input.appliesTo.kind,...input.appliesTo.kind==='actor'?{actor}:{},description:input.appliesTo.description},observations:input.observations,...input.hypothesis?{hypothesis:input.hypothesis}:{},...input.directPath?{directPath:input.directPath}:{},evidence})
+  return {context,text:renderRouterMemory(context)}
+}
+export function renderRouterMemory(context){
+  const kinds={'user-request':'用户要求','user-statement':'用户陈述','quoted-statement':'引用说明'}
+  return [
+    'Model observation:',...context.observations.map(item=>`- [${kinds[item.kind]}; ${item.evidenceIds.join(', ')}] ${item.text}`),
+    `适用范围（模型整理，非授权）: ${context.subject.description}`,
+    'Hypothesis (not fact):',context.hypothesis??'无额外假设。',
+    'Possible direct path (not permission):',context.directPath??'无额外行动建议。',
+    'Evidence:',...context.evidence.map(item=>`- ${item.id} [${item.source}; ${item.sourceId}@${item.messageVersion}; message=${item.messageId}${item.actorId?`; actor=${item.actorId}`:''}]: ${item.quote}`),
+  ].join('\n')
 }

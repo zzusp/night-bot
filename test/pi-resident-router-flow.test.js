@@ -10,6 +10,12 @@ function memoryToolResult(body){
   const content=body.messages.at(-1).content
   try{return JSON.parse(content)}catch{throw Error('Expected structured memory result, received: '+content)}
 }
+function memoryDraft(source,context={scenario:'面向原提出者的后续答复。',boundaries:['当前明确要求优先，不推广给其他人。']}){
+  return {observations:[{kind:'user-request',text:source.text,evidenceIds:['E1']}],
+    appliesTo:{kind:'actor',description:context.scenario},hypothesis:context.boundaries.join(' '),
+    evidence:[{id:'E1',source:'message',sourceId:source.sourceId,messageVersion:source.version,quote:source.text},
+      ...context.background?[{id:'E2',source:context.background.source,sourceId:source.sourceId,messageVersion:source.version,quote:context.background.quote}]:[]]}
+}
 function handoff(body) {
   const input=requestEnvelope(body,'Router 交接请求：')
   if(!input||requestTools(body).length)return
@@ -38,7 +44,7 @@ test('explicit channel preference is accepted memory before acknowledgement and 
       const input=router(body),source=input.events.find(event=>event.source)?.source
       if(!source)return settle(body,input)
       const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
-      if(step===0&&source.text===preference){writes++;return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'report-documents',text:preference,sourceQuote:preference,context}}}
+      if(step===0&&source.text===preference){writes++;return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'report-documents',sourceQuote:preference,memory:memoryDraft(source,context)}}}
       if(step===0){
         assert.ok(requestTools(body).includes('memory_search'),'Router exposes its scoped memory reader')
         if(source.messageId==='bob-same-router'){
@@ -55,9 +61,9 @@ test('explicit channel preference is accepted memory before acknowledgement and 
       }
       if(step===1){
         const result=memoryToolResult(body)
-        if(source.text===preference){assert.equal(result.ok,true);assert.equal(result.persisted,true);assert.equal(result.entry.text,preference)}
+        if(source.text===preference){assert.equal(result.ok,true);assert.equal(result.persisted,true);assert.match(result.entry.text,/Model observation:/);assert.equal(result.entry.context.observations[0].text,preference)}
         else {
-          const recalled=result.entries.find(entry=>entry.text===preference)
+          const recalled=result.entries.find(entry=>entry.key==='report-documents')
           assert.ok(recalled,'scenario search returns the original preference with context')
           assert.deepEqual(recalled.context,entry.context)
           assert.equal(recalled.applicability.status,source.messageId==='bob-same-router'?'reference-only':'matching-subject')
@@ -77,10 +83,10 @@ test('explicit channel preference is accepted memory before acknowledgement and 
   const original=(await h.query('source.list')).find(source=>source.messageId===message.messageId)
   const file=join(h.host.ctx.runtimePaths.memory,'v2','bot','topics',hash('preferences')+'.md')
   const saved=decodeTopic(await readFile(file,'utf8')),entry=saved.entries.find(row=>row.key==='report-documents')
-  assert.equal(entry.text,preference);assert.equal(entry.source.messageId,original.sourceId)
-  assert.equal(entry.context.subject.actor,hash(original.actorId));assert.equal(entry.context.background.quote,background)
-  assert.equal(entry.context.background.messageId,'deployment-summary');assert.equal(entry.context.background.quoteSha256,hash(background))
-  assert.equal(entry.context.interpretation.status,'inference');assert.deepEqual(entry.context.interpretation.boundaries,context.boundaries)
+  assert.notEqual(entry.text,preference);assert.equal(entry.context.observations[0].text,preference);assert.equal(entry.source.messageId,original.sourceId)
+  assert.equal(entry.context.subject.actor,hash(original.actorId));assert.equal(entry.context.evidence[1].quote,background)
+  assert.equal(entry.context.evidence[1].messageId,'deployment-summary');assert.equal(entry.context.evidence[1].quoteSha256,hash(background))
+  assert.equal(entry.context.version,2);assert.equal(entry.context.hypothesis,context.boundaries.join(' '))
   assert.doesNotMatch(JSON.stringify(entry.context),/不相关的额外背景/)
   assert.equal(entry.source.actor,hash(original.actorId));assert.equal(entry.source.quoteSha256,hash(preference))
   assert.equal(entry.provenance.messageId,message.messageId);assert.equal(entry.provenance.conversationId,message.conversationId)
@@ -103,7 +109,7 @@ test('explicit channel preference is accepted memory before acknowledgement and 
   await h.receive(channelMessage('explicit-document-request',{conversationId:'different-room',text:'这次明确要求提供报告文档，请先说明交付安排。'}));await h.service.whenIdle()
   assert.equal(writes,1);assert.equal(h.sent.length,4);assert.equal(historyRebound,true)
   assert.deepEqual(recalls.map(row=>row.status),['matching-subject','reference-only','matching-subject'])
-  assert.ok(h.results.some(result=>result.name==='memory_search'&&result.result.value?.entries?.some(row=>row.text===preference)))
+  assert.ok(h.results.some(result=>result.name==='memory_search'&&result.result.value?.entries?.some(row=>row.key==='report-documents')))
   assert.equal((await h.query('task.list')).length,0)
   t.diagnostic(JSON.stringify({case:'channel-preference-memory',accepted:true,candidate:false,memoryRevision:saved.revision,entryRevision:entry.revision,quoteSha256:entry.source.quoteSha256,diskHashVerified:true,originalActorAndMessageBound:true,groupRouterWriteGrantUnchanged:true,writeBeforeAcknowledgement:true,coldRestart:true,crossConversationRecall:true,contextVerified:true,scenarioSearch:true,subjectApplicability:recalls.map(row=>row.status),historicalResultRebound:historyRebound,currentDocumentRequestPreserved:true,replayWrites:0,realVendorMessages:0}))
 })
@@ -121,7 +127,13 @@ test('channel memory follows Router decisions while preserving current source an
     {id:'stale-version',text:'以后请直接说明结论。',version:2,code:'ROUTER_SOURCE_FORBIDDEN'},
     {id:'quoted-source',text:'这是他人说过的话。',quote:'以后请不要附报告。',code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
     {id:'shortened-condition',text:'以后没要求文档时，不用附报告。',short:'不用附报告。',code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
-    {id:'context-required',text:'以后请默认先说结论。',noContext:true,code:'MEMORY_CONTEXT_REQUIRED'},
+    {id:'context-required',text:'以后请默认先说结论。',shortEvidence:true,code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
+    {id:'foreign-evidence',text:'请记住这个项目背景。',room:'evidence-foreign-room',evidenceBorrow:true,code:'ROUTER_SOURCE_FORBIDDEN'},
+    {id:'old-evidence-version',text:'保存当前消息的背景。',evidenceVersion:2,code:'ROUTER_SOURCE_FORBIDDEN'},
+    {id:'missing-evidence-source',text:'请保留这个背景。',evidenceMissing:true,code:'ROUTER_SOURCE_FORBIDDEN'},
+    {id:'uncited-observation',text:'后续使用该编辑器看板。',unknownCitation:true,code:'MEMORY_EVIDENCE_INVALID'},
+    {id:'duplicate-evidence-id',text:'这个信息需要保留。',duplicateEvidence:true,code:'MEMORY_EVIDENCE_INVALID'},
+    {id:'message-not-quotation',text:'这是一条直接原消息。',wrongEvidenceKind:true,code:'MEMORY_EVIDENCE_KIND_INVALID'},
     {id:'context-forged-quote',text:'以后请直接用文字汇报。',context:{background:{source:'quote',quote:'伪造的背景片段'},scenario:'工作汇报',boundaries:['当前明确要求优先']},code:'MEMORY_CONTEXT_SOURCE_REQUIRED'},
     {id:'context-secret',text:'以后请优先用中文汇报。',context:{scenario:'password: never-store-in-context',boundaries:['当前要求优先']},code:'MEMORY_SECRET_REFUSED'},
     {id:'secret-preference',text:'以后请使用密码：never-store-this-value',code:'MEMORY_SECRET_REFUSED'},
@@ -134,7 +146,14 @@ test('channel memory follows Router decisions while preserving current source an
       if(!source)return settle(body,input)
       const item=cases.find(row=>row.id===source.messageId),step=steps.get(item.id)??0;steps.set(item.id,step+1)
       if(step===0){if(item.ok)borrowed=source;const text=item.short??item.quote??item.text
-        return {tool:'resident_memory_remember',args:{sourceId:item.borrow?borrowed.sourceId:source.sourceId,messageVersion:item.version??(item.borrow?borrowed.version:source.version),topic:'preferences',key:item.id,text,sourceQuote:text,...item.noContext?{}:{context:item.context??{scenario:'面向原提出者的后续答复。',boundaries:['当前明确要求优先，不推广给其他人。']}}}}}
+        const memory=memoryDraft(source,item.context);if(item.shortEvidence)memory.evidence[0].quote=source.text.slice(1)
+        if(item.evidenceBorrow)memory.evidence.push({id:'E2',source:'message',sourceId:borrowed.sourceId,messageVersion:borrowed.version,quote:borrowed.text})
+        if(item.evidenceVersion)memory.evidence[0].messageVersion=item.evidenceVersion
+        if(item.evidenceMissing)memory.evidence[0].sourceId='missing-source'
+        if(item.unknownCitation)memory.observations[0].evidenceIds=['NOT_FOUND']
+        if(item.duplicateEvidence)memory.evidence.push({...memory.evidence[0]})
+        if(item.wrongEvidenceKind)memory.observations[0].kind='quoted-statement'
+        return {tool:'resident_memory_remember',args:{sourceId:item.borrow?borrowed.sourceId:source.sourceId,messageVersion:item.version??(item.borrow?borrowed.version:source.version),topic:'preferences',key:item.id,sourceQuote:text,memory}}}
       if(step===1){outcomes.set(item.id,memoryToolResult(body));return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'reject-settle:'+item.id}}}
       return {text:'The memory outcome was inspected.'}
     }
@@ -150,7 +169,7 @@ test('channel memory follows Router decisions while preserving current source an
   assert.deepEqual(saved.entries.map(row=>row.key).sort(),cases.filter(item=>item.ok).map(item=>item.id).sort())
   for(const item of cases.filter(item=>item.ok)){
     const entry=saved.entries.find(row=>row.key===item.id),original=originals.find(source=>source.messageId===item.id)
-    assert.equal(entry.text,item.text);assert.equal(entry.source.messageId,original.sourceId)
+    assert.equal(entry.context.observations[0].text,item.text);assert.equal(entry.source.messageId,original.sourceId)
     assert.equal(entry.source.actor,hash(original.actorId));assert.equal(entry.source.quoteSha256,hash(item.text))
   }
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
@@ -166,7 +185,7 @@ test('read-only Router reports actual memory and Skill refusals without persisti
       const input=router(body),source=input.events[0]?.source
       if(!source)return settle(body,input)
       if(step++===0){const row=await h.query('router.get',{conversationId:input.conversationId});const actor=h.host.ctx.agents.get(row.activeSessionId);await actor.ctx.get('permissionPresets').set(actor,'read-only')
-        return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'read-only-preference',text:source.text,sourceQuote:source.text}}}
+        return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'read-only-preference',memory:memoryDraft(source),sourceQuote:source.text}}}
       if(step===2){outcome=memoryToolResult(body);assert.equal(outcome.ok,false);assert.equal(outcome.code,'MEMORY_READ_ONLY')
         return {tool:'resident_skill_mutate',args:{operationId:'readonly-skill',sourceId:source.sourceId,messageVersion:source.version,sourceQuote:source.text,action:'upsert',key:'readonly-skill',steps:['先读证据'],reason:'复用方法',applicability:'日常检索'}}}
       if(step===3){skillOutcome=memoryToolResult(body);assert.equal(skillOutcome.code,'MEMORY_READ_ONLY')
@@ -972,7 +991,7 @@ test('Router directly maintains memory and learned skills with cold persistence,
       if(!source)return settle(body,input)
       const item=cases.find(row=>row.id===source.messageId),step=steps.get(item.id)??0;steps.set(item.id,step+1)
       if(step===0){const args=item.query?item.args:{operationId:item.id,sourceId:source.sourceId,messageVersion:source.version,sourceQuote:item.quote??source.text,...item.args}
-        if(item.tool==='resident_memory_remember'){delete args.operationId;Object.assign(args,{text:source.text,context})}
+        if(item.tool==='resident_memory_remember'){delete args.operationId;Object.assign(args,{memory:memoryDraft(source,context)})}
         if(item.tool==='resident_memory_forget')delete args.operationId
         return {tool:item.tool,args}}
       if(step===1){outcomes.set(item.id,memoryToolResult(body));return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'learning-settle:'+item.id}}}
@@ -1018,4 +1037,82 @@ test('Router directly maintains memory and learned skills with cold persistence,
   assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'preferences',key})).entries,[])
   assert.equal((await h.query('task.list')).length,0);assert.equal(h.sent.length,0)
   t.diagnostic(JSON.stringify({case:'router-learning-crud',checks:cases.length,memoryCrud:true,skillCrud:true,coldRestart:true,sharedProvider:true,oldLoadedSkillRevoked:true,deletedDirectoryAbsent:true,versionsMonotonic:true,emptyTasks:0,realVendorMessages:0}))
+})
+
+test('Router synthesizes project memory with linked evidence, cold recall and revision history',{timeout:nativeTestTimeout(180000)},async t=>{
+  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{decodeTopic}=await import('../src/memory/format.js')
+  const url='https://github.com/orgs/example/projects/6',nextUrl='https://github.com/orgs/example/projects/7'
+  const announcement='编辑器看板汇总截至公告时已提测未上线的需求和bug，用于开发进度与发版计划；进展同步issue和PR。后续迭代可以另建Project。 '+url
+  const request='这个信息记录一下，后续开发任务要看这个Project的。',key='editor-project-reference',steps=new Map(),outcomes=new Map()
+  let background,draft,entry,h
+  h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),source=>({needsHandling:source.messageId!=='project-announcement'}))
+    if(!requestTools(body).includes('resident_router_settle'))return {text:'No other work'}
+    const input=router(body),source=input.events.find(event=>event.source)?.source
+    if(!source)return settle(body,input)
+    const id=source.messageId,step=steps.get(id)??0;steps.set(id,step+1)
+    const write=memory=>({tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'projects',key,sourceQuote:source.text,memory,expectedRevision:id==='project-record'?0:1}})
+    if(step===0){
+      if(id==='project-recall')return {tool:'memory_search',args:{query:url}}
+      if(id==='project-delete')return {tool:'resident_memory_forget',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'projects',key,sourceQuote:source.text,expectedRevision:2}}
+      if(id==='project-record'){
+        draft={observations:[
+          {kind:'user-request',text:'后续编辑器开发任务参考 GitHub Project：'+url,evidenceIds:['E1','E2']},
+          {kind:'quoted-statement',text:'公告将看板用于进度与发版协调，要求同步issue和PR；后续迭代可另建Project。',evidenceIds:['E2']},
+          {kind:'user-statement',text:'看板范围是公告时编辑器已提测未上线的需求和bug。',evidenceIds:['E3']}],
+          appliesTo:{kind:'context',description:'编辑器相关迭代的开发协作，不自动覆盖其他项目或所有未来迭代。'},
+          hypothesis:'看板当前是否仍为该迭代的主要入口，需要结合当前任务判断。',
+          directPath:'承接相关任务时先查看当前看板与issue，仅在当前授权内同步进展；记忆不授权修改或部署。',
+          evidence:[{id:'E1',source:'message',sourceId:source.sourceId,messageVersion:source.version,quote:source.text},
+            {id:'E2',source:'quote',sourceId:source.sourceId,messageVersion:source.version,quote:announcement},
+            {id:'E3',source:'message',sourceId:background.sourceId,messageVersion:background.version,quote:'编辑器看板汇总截至公告时已提测未上线的需求和bug'}]}
+        return write(draft)
+      }
+      return write({observations:[{kind:'user-request',text:'后续编辑器该迭代改用 GitHub Project：'+nextUrl,evidenceIds:['E1']}],appliesTo:{kind:'context',description:'当前编辑器迭代；旧看板仅保留历史。'},evidence:[{id:'E1',source:'message',sourceId:source.sourceId,messageVersion:source.version,quote:source.text}]})
+    }
+    if(step===1){
+      const result=memoryToolResult(body);outcomes.set(id,result)
+      if(id==='project-record'){assert.equal(result.persisted,true);entry=result.entry;return write(draft)}
+      if(id==='project-recall'){
+        const recalled=result.entries.find(item=>item.key===key);assert.ok(recalled)
+        assert.deepEqual(recalled.context,entry.context);assert.equal(recalled.text,entry.text)
+        assert.equal(recalled.applicability.status,'context-dependent');assert.deepEqual(recalled.applicability.sourceMessageIds,[])
+      }else assert.equal(result.persisted,true)
+    }
+    if(id==='project-record'&&step===2){
+      const result=memoryToolResult(body);assert.equal(result.duplicate,true);assert.equal(result.persisted,true);assert.equal(result.entry.revision,1)
+      return write({...draft,appliesTo:{...draft.appliesTo,kind:'actor'}})
+    }
+    if(id==='project-record'&&step===3){
+      const result=memoryToolResult(body);assert.equal(result.ok,false);assert.equal(result.code,'MEMORY_WRITE_UNCONFIRMED');assert.equal(result.committed,true)
+      return {tool:'resident_router_reply',args:{operationId:'project-memory-ack',sourceId:source.sourceId,messageVersion:source.version,text:'已保存编辑器看板、协作背景和适用范围。'}}
+    }
+    if(step===(id==='project-record'?4:1))return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'project-settle:'+id}}
+    return {text:'The memory result and event settlement are committed.'}
+  })
+  await h.receive(channelMessage('project-announcement',{text:announcement}));await h.service.whenIdle()
+  background=(await h.query('source.list')).find(item=>item.messageId==='project-announcement')
+  const original=channelMessage('project-record',{text:request,quotedMessage:{messageId:'project-announcement',senderId:'alice',text:announcement}})
+  await h.receive(original);await h.service.whenIdle()
+  assert.ok(entry);assert.notEqual(entry.text,request);assert.equal(entry.context.version,2);assert.equal(entry.context.subject.kind,'context');assert.equal(entry.context.subject.actor,undefined)
+  const observationText=entry.text.split('Hypothesis (not fact):')[0]
+  assert.match(observationText,/后续编辑器开发任务参考 GitHub Project/);assert.ok(observationText.includes(url));assert.doesNotMatch(observationText,/这个信息|这个Project/)
+  for(const title of ['Model observation:','Hypothesis (not fact):','Possible direct path (not permission):','Evidence:'])assert.ok(entry.text.includes(title))
+  const scope={kind:'bot',id:hash('bot:shared')},file=join(h.host.ctx.runtimePaths.memory,'v2','bot','topics',hash('projects')+'.md')
+  const disk=decodeTopic(await readFile(file,'utf8')).entries.find(item=>item.key===key);assert.deepEqual(disk.context,entry.context);assert.equal(disk.text,entry.text)
+  for(const evidence of entry.context.evidence)assert.equal(evidence.quoteSha256,hash(evidence.quote))
+  assert.equal(entry.context.evidence[2].sourceId,background.sourceId);assert.equal(entry.context.evidence[1].messageId,'project-announcement')
+  const binding={actorId:'operator'},inventory=await h.host.ctx.memory.inspectEvolution(binding),item=inventory.items.find(item=>item.name==='projects/'+key)
+  const detail=await h.host.ctx.memory.inspectEvolutionItem(binding,{id:item.id,revision:String(item.revision)});assert.equal(detail.current.text,entry.text)
+  const before=h.requests.length;await h.restart();await h.receive(original);await h.service.whenIdle();assert.equal(h.requests.length,before,'cold duplicate does not re-infer a consumed source')
+  await h.receive(channelMessage('project-recall',{conversationId:'another-room',senderId:'bob',text:'读取编辑器开发看板背景。'}));await h.service.whenIdle()
+  await h.receive(channelMessage('project-update',{text:'更正：这个编辑器迭代改看 '+nextUrl+'，旧看板只保留历史。'}));await h.service.whenIdle()
+  const updated=outcomes.get('project-update').entry;assert.equal(updated.id,entry.id);assert.equal(updated.revision,2);assert.equal(updated.context.hypothesis,undefined);assert.equal(updated.context.directPath,undefined)
+  assert.match(updated.text,/无额外假设/);assert.match(updated.text,/无额外行动建议/)
+  const changed=await h.host.ctx.memory.inspectEvolutionItem(binding,{id:item.id,revision:'2'});assert.equal(changed.previous.text,entry.text);assert.ok(changed.comparison.lines.some(line=>line.type==='added'&&line.text.includes(nextUrl)))
+  await h.restart();assert.equal((await h.host.ctx.memory.store.read(scope,{topic:'projects',key})).entries[0].text,updated.text)
+  await h.receive(channelMessage('project-delete',{text:'这条编辑器看板约定已过时，删除它。'}));await h.service.whenIdle();assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'projects',key})).entries,[])
+  assert.equal((await h.query('task.list')).length,0)
+  t.diagnostic(JSON.stringify({case:'router-contextual-memory',dimensions:4,contextResolved:true,historyIsEvidenceOnly:true,subject:'context-dependent',diskAndDetailVerified:true,coldRecall:true,duplicateNoReplay:true,updateAndDiff:true,optionalInferenceOmitted:true,deleted:true,realMessages:0}))
 })
