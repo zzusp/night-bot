@@ -181,7 +181,7 @@ test('执行上下文区分提交中和不可用，不展示空白成功状态',
     await page.getByRole('button', {name: '获取最新记录', exact: true}).click()
     expect((await (await response).json()).status).toBe(state)
     const context = page.locator('.task-dialogue')
-    await expect(context).toContainText(state === 'pending' ? /提交|写入/ : /不可用|无法|暂时不能/)
+    await expect(context).toContainText(state === 'pending' ? /提交|写入/ : /暂不可读/)
     expect(await context.locator('.message').count()).toBe(0)
     await expect(context).not.toContainText('TASK_DIALOGUE_NOT_EXECUTION')
   }

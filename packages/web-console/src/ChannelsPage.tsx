@@ -351,8 +351,9 @@ export default function ChannelsPage({ id }: { id?: string }) {
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}
     {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" /> : null}
     <div className="channel-cards">{channels.data?.items.map(item => <div className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId}>
-      <button type="button" className="channel-card-select" aria-label={[`查看渠道会话：${item.name || item.channelId}`, channelTypeLabel(item), channelCardState(item).label, channelHealthPresentation(item).label, channelRecoveryError(item.runningErrorCode ?? item.errorCode)].filter(Boolean).join(' ')} aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
-        <span className="channel-card-heading"><span className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={21} /></span>
+      <button type="button" className="channel-card-select" aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
+        <span className="sr-only">查看渠道会话：</span>
+        <span className="channel-card-heading"><span aria-hidden="true" className={`channel-symbol ${item.type === 'dingtalk-dws' ? 'dingtalk' : ''}`}><RiGlobalLine size={21} /></span>
           <span className="channel-card-identity"><strong>{item.name || item.channelId}</strong><span>{channelTypeLabel(item)}</span></span>
           <ChannelCardTag item={item} />
         </span>

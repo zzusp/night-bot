@@ -17,8 +17,10 @@ async function login(page: Page) {
   await page.getByLabel('访问令牌', { exact: true }).fill(FIXTURE_TOKEN);
   await page.getByRole('button', { name: '连接工作空间', exact: true }).click();
   await expect(page.getByLabel('消息内容', { exact: true })).toBeVisible();
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  // Freeze at a deterministic future instant, not a wall clock that can lag behind
+  // the simulated clock between commands on a slower runner.
+  await page.clock.install({time: new Date('2026-11-11T00:00:00Z')});
+  await page.clock.pauseAt(new Date('2026-11-11T01:00:00Z'));
 }
 async function responseAfter(page: Page, action: () => Promise<unknown>) {
   const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/evolution');

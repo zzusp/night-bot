@@ -55,7 +55,7 @@ test('登录、空态与欢迎按钮以标签和动作表达，移除说明后�
   await expect(page.getByLabel('访问令牌', {exact: true})).toBeFocused();
   await expect(card.getByRole('alert')).toContainText('请输入');
   await login(page, '/#/missing');
-  await expect(page.getByRole('heading', {name: '页面不存在'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: '页面不存在', level: 1})).toBeVisible();
   await expect(page.locator('.board-empty > p')).toHaveCount(0);
   await page.getByRole('link', {name: '返回对话', exact: true}).click();
   await expect(page.getByLabel('消息内容', {exact: true})).toBeVisible();
@@ -77,6 +77,12 @@ for (const width of [1440, 390]) test(`表单与弹窗保留安全边界、错�
   const id = dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true});
   await expect(id).toBeFocused();
   await expect(id).toHaveAttribute('aria-invalid', 'true');
+  // The invalid field and its label must both remain below the fixed dialog header.
+  await expect.poll(async () => {
+    const label = await dialog.locator('label').filter({hasText: /^渠道标识$/}).boundingBox();
+    const heading = await dialog.locator('.channel-create-heading').boundingBox();
+    return label!.y - heading!.y - heading!.height;
+  }).toBeGreaterThanOrEqual(0);
   expect(await dialog.locator('[aria-describedby]').evaluateAll(nodes => nodes.flatMap(node => (node.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && !document.getElementById(id))))).toEqual([]);
   await layout(page, dialog);
   expect((await new AxeBuilder({page}).include('dialog[open]').analyze()).violations).toEqual([]);

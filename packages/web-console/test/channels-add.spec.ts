@@ -134,8 +134,9 @@ test('旧版本冲突保留草稿并要求重读，新增不能覆盖同名停�
   const {form} = await custom(page, 'generic-conflict')
   const session = await page.request.get('/api/session').then(response => response.json())
   const latest = await page.request.get('/api/settings').then(response => response.json())
-  const headers = {origin: 'http://127.0.0.1:3081', 'x-csrf-token': session.csrfToken}
-  await page.request.put('/api/settings/appearance', {headers, data: {name: 'Night Bot', icon: latest.appearance.icon === 'moon' ? 'star' : 'moon', expectedVersion: latest.version}})
+  const headers = {origin: new URL(page.url()).origin, 'x-csrf-token': session.csrfToken}
+  const changed = await page.request.put('/api/settings/appearance', {headers, data: {name: 'Night Bot', icon: latest.appearance.icon === 'moon' ? 'star' : 'moon', expectedVersion: latest.version}})
+  expect(changed.status()).toBe(200)
   await form.getByRole('button', {name: '保存自定义渠道', exact: true}).click(); await confirm(page)
   await expect(form).toContainText('设置已被修改')
   await expect(form.getByLabel('渠道标识', {exact: true})).toHaveValue('generic-conflict')

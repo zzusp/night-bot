@@ -254,11 +254,12 @@ html, body, #root { width: 100%; min-width: 0; }
 @media (max-width: 520px) { .permission-dialog-heading { padding: 16px; }.permission-dialog-body { padding: 16px; }.permission-choices { grid-template-columns: 1fr; }.permission-request { padding: 14px; } }
 
 .channel-create-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); background: var(--board-surface); color: var(--board-text); }
+.channel-create-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 .channel-create-dialog::backdrop { background: rgb(0 0 0 / 35%); }
-.channel-create-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--board-gap); padding: 20px 24px; border-bottom: 1px solid var(--board-border); background: var(--board-surface); }
+.channel-create-heading { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--board-gap); padding: 20px 24px; border-bottom: 1px solid var(--board-border); background: var(--board-surface); }
 .channel-create-heading h2 { font-size: 18px; font-weight: 500; }
 .channel-create-heading p { margin-top: 4px; color: var(--board-muted); font-size: 11px; }
-.channel-create-body { padding: 24px; }
+.channel-create-body { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scroll-padding-block: 16px; padding: 24px; }
 .channel-create-feedback { margin-top: 16px; padding: 12px; border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); background: var(--board-panel); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
 .channel-create-body > .notice { margin: 16px 0; }
 .channel-create-body > .board-button { margin-top: 12px; }
@@ -270,6 +271,7 @@ html, body, #root { width: 100%; min-width: 0; }
 
 .channel-create-fields { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 16px; margin: 24px 0 0; padding: 0; border: 0; }
 .channel-create-field { min-width: 0; }
+.channel-create-field :is(input, select, textarea) { scroll-margin-block-start: 28px; }
 .channel-create-wide { grid-column: 1 / -1; }
 .channel-create-field label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 500; }
 .channel-create-field input, .channel-create-field select, .channel-create-field textarea { display: block; width: 100%; min-height: var(--board-control-height); padding: 8px 10px; border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); color: var(--board-text); background: var(--board-surface); font: inherit; font-size: 13px; }
