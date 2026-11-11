@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "naturalHumanMessageProcessed": true,
+  "cloudReceiptStatus": "confirmed",
+  "replyAssociation": "direct",
+  "replyText": "云端 K3S 实例已收到，连通确认。",
+  "receivedAt": "2026-11-11T00:03:15.646Z",
+  "confirmedReplyAt": "2026-11-11T00:03:25.611Z",
+  "durationMs": 9965,
+  "vendorReplyIdMatchesCloudReceipt": true,
+  "vendorQuoteMatchesOriginalMessageId": true,
+  "vendorQueryComplete": true,
+  "vendorQueryHasMore": false,
+  "vendorQueryFailures": 0,
+  "tasksCreated": 0,
+  "localBotModified": false,
+  "verificationReadOnly": true,
+  "verifiedAt": "2026-11-11T00:05:02.577Z"
+}
