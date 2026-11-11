@@ -75,6 +75,8 @@ export async function installProcessPrivacy(ctx,privacy){
       let env=spec.env
       if(['bash','pwsh'].includes(ctx.get('tools')?.currentPermissionExecution?.()?.name)){
         // 凭据仅在已绑定的 full shell 最后启动边界注入，不进入工具参数或 Job 描述。
+        const inherited=launchEnvironmentOf(ctx).entriesFrom(['process'])
+        env={...Object.fromEntries(Object.entries(inherited).filter(([name])=>/KEY|PASSWORD|SECRET|TOKEN/i.test(name)&&!/^(?:NIGHT_BOT_|DSH_)/i.test(name))),...spec.env}
         const token=ctx.get('credentials')?.resolveCurrent?.('GITHUB_TOKEN')?.value??launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])?.value
         if(token!==undefined&&(typeof token!=='string'||token.includes(String.fromCharCode(0))))throw failure('PROCESS_GITHUB_TOKEN_INVALID')
         if(token)env={...env,GITHUB_TOKEN:token}

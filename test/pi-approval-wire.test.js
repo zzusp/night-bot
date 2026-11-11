@@ -464,23 +464,24 @@ test('operator full default task preserves Host-owned materials while work tmp a
  assert.ok(native.entries.some(row=>row.type==='message'&&row.message.role==='toolResult'&&row.message.toolName==='task_result'&&!row.message.isError))
 })
 
-// 仅向可信Host环境注入假凭据；工具参数只有摘要，输出和耐久记录不得包含原值。
-test('operator full native task child receives only the trusted GitHub fixture token without durable disclosure',{skip:process.platform!=='win32'?'Windows native child baseline':false},async t=>{
+// 凭据仅进可信启动快照；真实子进程只输出匹配布尔值，不记录原值。
+test('operator full native task child inherits trusted business credentials without durable disclosure',async t=>{
  const {nativeTaskHost}=await import('./fixtures/routing-official-host.js'),{createHash}=await import('node:crypto')
- const root=await mkdtemp(join(tmpdir(),'night-full-task-env-')),token='fixture-github-'+Date.now()+'-not-a-real-credential',other='fixture-private-'+Date.now();let h,step=0
+ const root=await mkdtemp(join(tmpdir(),'night-full-task-env-')),values=Object.fromEntries(['GITHUB_TOKEN','OSS_ACCESS_KEY','OSS_SECRET_KEY','UNRELATED_FIXTURE_SECRET','NIGHT_BOT_FIXTURE_SECRET'].map((key,index)=>[key,'fixture-only-'+Date.now()+'-'+index]));let h,step=0
  t.after(async()=>{await h?.close();await rm(root,{recursive:true,force:true})})
- const hash=createHash('sha256').update(token).digest('hex')
- const command="$v=[Environment]::GetEnvironmentVariable('GITHUB_TOKEN'); $actual=if($null -eq $v){''}else{[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($v))).ToLowerInvariant()}; @{githubTokenMatches=($actual -eq '"+hash+"'); otherSecretAbsent=($null -eq [Environment]::GetEnvironmentVariable('UNRELATED_FIXTURE_SECRET'))}|ConvertTo-Json -Compress"
- h=await nativeTaskHost(root,request=>!request.tools.some(tool=>tool.name==='task_result')?[]:[step++===0?{name:'pwsh',args:{description:'Verify fixture-only child environment without printing credentials',command}}:{name:'task_result',args:{decision:{action:'complete',summary:'Checked isolated child environment',evidence:['boolean child output'],limitations:[]}}}],{permissionMode:'full',inheritedEnvironment:{GITHUB_TOKEN:token,UNRELATED_FIXTURE_SECRET:other},config:{dbPath:join(root,'data','state','tasks.sqlite')}})
+ const expected=Object.fromEntries(Object.entries(values).filter(([key])=>!key.startsWith('NIGHT_BOT_')).map(([key,value])=>[key,createHash('sha256').update(value).digest('hex')]))
+ const program=`const expected=${JSON.stringify(expected)},crypto=require("node:crypto"),matches=Object.fromEntries(Object.entries(expected).map(([key,hash])=>[key,crypto.createHash("sha256").update(process.env[key]??"").digest("hex")===hash]));process.stdout.write(JSON.stringify({matches,privateAbsent:process.env.NIGHT_BOT_FIXTURE_SECRET===undefined}))`
+ const tool=process.platform==='win32'?'pwsh':'bash',command=(process.platform==='win32'?'& ':'')+`'${process.execPath}' -e '${program}'`
+ h=await nativeTaskHost(root,request=>!request.tools.some(item=>item.name==='task_result')?[]:[step++===0?{name:tool,args:{description:'Verify fixture-only child environment without printing credentials',command}}:{name:'task_result',args:{decision:{action:'complete',summary:'Checked isolated child environment',evidence:['boolean child output'],limitations:[]}}}],{permissionMode:'full',inheritedEnvironment:values,config:{dbPath:join(root,'data','state','tasks.sqlite')}})
  const created=await h.service.createTask({requestId:'full-task-env-fixture',objective:'Verify only boolean environment facts in the isolated native child'})
  await h.service.whenIdle()
- const task=await h.query('task.get',{taskId:created.taskId}),result=h.toolResults.find(row=>row.sessionId===task.sessionId&&row.name==='pwsh')?.result
+ const task=await h.query('task.get',{taskId:created.taskId}),result=h.toolResults.find(row=>row.sessionId===task.sessionId&&row.name===tool)?.result
  assert.ok(result);assert.equal(result.isError,false,JSON.stringify(result))
  const observed=JSON.parse(result.value.stdout.text)
  t.diagnostic(JSON.stringify({case:'full-native-task-env',...observed,status:task.status,drained:task.drained}))
  const native=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true}),recorded=JSON.stringify({entries:native.entries,requests:h.requests,tools:h.toolResults,jobs:h.ctx.get('jobs').list(task.sessionId)})
- assert.equal(recorded.includes(token),false);assert.equal(recorded.includes(other),false)
- assert.equal(observed.otherSecretAbsent,true);assert.equal(observed.githubTokenMatches,true)
+ for(const value of Object.values(values))assert.equal(recorded.includes(value),false)
+ assert.deepEqual(observed.matches,Object.fromEntries(Object.keys(expected).map(key=>[key,true])));assert.equal(observed.privateAbsent,true)
  assert.equal(task.status,'completed');assert.equal(task.drained,true)
 })
 
