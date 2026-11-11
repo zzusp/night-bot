@@ -1,21 +1,39 @@
-case_id,case,round_1,round_2,evidence
-D01,latest source and isolated worktree,PASS,PASS,round-2.md
-D02,Docker engine and real image build,PASS,PASS,round-2/image.json
-D03,image private-data packaging boundary,PASS,PASS,round-2.md
-D04,only headless Chromium installed,NOT_RUN,PASS,round-2/runtime.json
-D05,headless API navigation JS DOM and PNG,NOT_RUN,PASS,round-2/runtime.json
-D06,headless screenshot CLI,NOT_RUN,PASS,round-2/browser.png
-D07,fresh volume zero-write preflight,PASS,PASS,round-2/runtime.json
-D08,default entrypoint and parent container security,PASS,PASS,round-2/runtime.json
-D09,authenticated Web Host settings,PASS,PASS,round-2/runtime.json
-D10,unauthenticated Origin and CSRF denials,PASS,PASS,round-2/runtime.json
-D11,real Pi local scripted model visible reply,PASS,PASS,round-2/runtime.json
-D12,graceful drain and released ownership,PASS,PASS,round-2/runtime.json
-D13,existing volume zero-write preflight,PASS,PASS,round-2/runtime.json
-D14,same-volume persistence and durable deduplication,PASS,PASS,round-2/runtime.json
-D15,final stop and own resource cleanup,PASS,PASS,round-2/runtime.json
-D16,cloud recipe shell syntax,NOT_RUN,PASS,round-2.md
-D17,registry push and cloud runtime,BLOCKED,BLOCKED,round-2.md
-D18,ask auto full task tools and archive restore,NOT_RUN,NOT_RUN,round-2.md
-D19,real models and DingTalk integration,NOT_RUN,NOT_RUN,round-2.md
-D20,product browser UI arm64 Windows bind mount,NOT_RUN,NOT_RUN,round-2.md
+case_id,case,round_1,round_2,round_3,round_4,round_5,round_6,evidence
+D01,latest source and isolated worktree,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D02,Docker engine and real image build,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D03,image private-data packaging boundary,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D04,only headless Chromium installed,NOT_RUN,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D05,headless API navigation JS DOM and PNG,NOT_RUN,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D06,headless screenshot CLI,NOT_RUN,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D07,fresh volume zero-write preflight,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D08,default entrypoint and parent container security,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D09,authenticated Web Host settings,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D10,unauthenticated Origin and CSRF denials,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D11,real Pi local scripted model visible reply,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D12,graceful drain and released ownership,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D13,existing volume zero-write preflight,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D14,same-volume persistence and durable deduplication,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D15,final stop and own resource cleanup,PASS,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D16,cloud recipe shell syntax,NOT_RUN,PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D17,registry push and cloud runtime,BLOCKED,BLOCKED,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D18,ask auto full task tools and archive restore,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D19,real models and DingTalk integration,NOT_RUN,NOT_RUN,BLOCKED,BLOCKED,NOT_RUN,PASS,round-4/model-runtime.json; round-6.md
+D20,product browser UI arm64 Windows bind mount,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D21,Kubernetes server dry-run and immutable image,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D22,fresh PVC setup and zero-write entrypoint,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D23,CSI remount permissions and RuntimeDefault OS boundary,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D24,cloud Web authentication and 401 403 denials,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D25,cloud headless API and screenshot CLI,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D26,same-PVC recreation identity config token and chat,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D27,explicit existing Secret references without printing values,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D28,real cloud model routing and visible reply,NOT_RUN,NOT_RUN,BLOCKED,PASS,NOT_RUN,NOT_RUN,round-3.md; round-4/model-runtime.json
+D29,cloud active-task drain and archive recovery,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,round-3.md
+D30,local non-secret model routing and production Secret credential,NOT_RUN,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,round-4/model-runtime.json
+D31,container GitHub environment-token authentication and current repository read,NOT_RUN,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,round-4/github-access.json
+D32,independent cloud DWS device authentication,NOT_RUN,NOT_RUN,NOT_RUN,BLOCKED,PASS,NOT_RUN,round-4/dws-authentication.json; round-5/dws-authentication.json
+D33,unique test group ingress reply receipt and vendor readback,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,PASS,round-5/group-smoke.json; round-6/natural-reply.json
+D34,final workload readiness and immutable deployed digest,NOT_RUN,NOT_RUN,NOT_RUN,PASS,NOT_RUN,NOT_RUN,round-4/workload-status.json
+D35,same-organization native profile and group binding,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,PASS,NOT_RUN,round-5/dws-authentication.json
+D36,private user prompt exact readback and native live channel activation,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,PASS,NOT_RUN,round-5/channel-runtime.json
+D37,single automated test send complete vendor readback and cloud processed ingress,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,PASS,NOT_RUN,round-5/group-smoke.json
+D38,natural human-message model response and vendor quoted reply,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,PASS,round-6/natural-reply.json

@@ -1,0 +1,11 @@
+{
+  "ready": true,
+  "desiredReplicas": 1,
+  "readyReplicas": 1,
+  "observedGenerationMatches": true,
+  "pvcBound": true,
+  "pvcCapacity": "20Gi",
+  "imageDigest": "sha256:9cc2ba4f6c26ff13674b9a5051e882c3be6818dde8062acd252d26cf0af9c4b5",
+  "restartCount": 0,
+  "verifiedAt": "2026-11-10T17:57:02.747Z"
+}

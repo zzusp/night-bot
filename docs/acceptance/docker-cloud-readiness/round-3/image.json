@@ -1,0 +1,13 @@
+{
+  "sourceRevision": "0e18f7704652e88b0fe315b0c14030b1bab06c15",
+  "sourceState": "merged-main",
+  "imageId": "sha256:4ef61c06f27fd666345ca9cf1887b2fc23ec95d8dba729e8d01b59b2bf0f9509",
+  "manifestDigest": "sha256:9cc2ba4f6c26ff13674b9a5051e882c3be6818dde8062acd252d26cf0af9c4b5",
+  "sizeBytes": 1307009396,
+  "compressedLayerBytes": 462065273,
+  "platform": "linux/amd64",
+  "rootfsMatchesPreviouslyVerifiedHeadless": true,
+  "dockerfileSha256": "119bd355f542f24143b87cac492c2809550f659c806fb051a589d82020618781",
+  "lockfileSha256": "ba269662dcca351301db4a1cb12e8d4900a149ffce1212420beb745cab601e91",
+  "productionSecretValuesIncluded": false
+}

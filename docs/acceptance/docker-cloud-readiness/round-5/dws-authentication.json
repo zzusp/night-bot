@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "deviceFlowExitCode": 0,
+  "authenticated": true,
+  "profileCount": 1,
+  "unambiguousCurrentAccount": true,
+  "accountAndGroupOrganizationMatched": true,
+  "localCredentialsCopied": false,
+  "verifiedAt": "2026-11-10T23:56:47.153Z"
+}

@@ -1,0 +1,151 @@
+{
+  "passed": true,
+  "finishedAt": "2026-11-10T17:15:00.291Z",
+  "sourceRevision": "0e18f7704652e88b0fe315b0c14030b1bab06c15",
+  "imageManifestDigest": "sha256:9cc2ba4f6c26ff13674b9a5051e882c3be6818dde8062acd252d26cf0af9c4b5",
+  "containerImageVerified": true,
+  "replicas": 1,
+  "strategy": "Recreate",
+  "storage": {
+    "capacity": "20Gi",
+    "access": [
+      "ReadWriteOnce"
+    ],
+    "privateDataDirectory": true,
+    "recursiveFsGroupOnBusinessPod": false
+  },
+  "before": {
+    "web": {
+      "settings": 200,
+      "mode": "full",
+      "negativeCases": {
+        "unauthenticated": 401,
+        "wrongOrigin": 403,
+        "missingCsrf": 403
+      },
+      "oldCookie": null
+    },
+    "tasks": 0,
+    "modelCredentialInjected": true,
+    "githubCredentialInjected": true,
+    "modelCredentialBoundToProvider": false,
+    "security": {
+      "uid": 1000,
+      "gid": 1000,
+      "platform": "linux",
+      "architecture": "x64",
+      "noNewPrivileges": true,
+      "effectiveCapabilities": "0",
+      "seccompFiltering": true,
+      "readOnlyRoot": true,
+      "modes": {
+        "/": "0700",
+        "/temp": "0700",
+        "/secrets": "0700"
+      },
+      "filesystem": "ext2/ext3"
+    },
+    "browser": {
+      "passed": true,
+      "version": "158.0.8127.18",
+      "apiDom": "42",
+      "api": {
+        "bytes": 8517,
+        "width": 1280,
+        "height": 720
+      },
+      "cli": {
+        "bytes": 8517,
+        "width": 1280,
+        "height": 720
+      }
+    }
+  },
+  "after": {
+    "web": {
+      "settings": 200,
+      "mode": "full",
+      "negativeCases": {
+        "unauthenticated": 401,
+        "wrongOrigin": 403,
+        "missingCsrf": 403
+      },
+      "oldCookie": 401
+    },
+    "tasks": 0,
+    "modelCredentialInjected": true,
+    "githubCredentialInjected": true,
+    "modelCredentialBoundToProvider": false,
+    "security": {
+      "uid": 1000,
+      "gid": 1000,
+      "platform": "linux",
+      "architecture": "x64",
+      "noNewPrivileges": true,
+      "effectiveCapabilities": "0",
+      "seccompFiltering": true,
+      "readOnlyRoot": true,
+      "modes": {
+        "/": "0700",
+        "/temp": "0700",
+        "/secrets": "0700"
+      },
+      "filesystem": "ext2/ext3"
+    },
+    "browser": {
+      "passed": true,
+      "version": "158.0.8127.18",
+      "apiDom": "42",
+      "api": {
+        "bytes": 8517,
+        "width": 1280,
+        "height": 720
+      },
+      "cli": {
+        "bytes": 8517,
+        "width": 1280,
+        "height": 720
+      }
+    }
+  },
+  "persistence": {
+    "newPod": true,
+    "identityPreserved": true,
+    "tokenPreserved": true,
+    "configurationPreserved": true,
+    "chatPreserved": true,
+    "oldCookieRejected": true,
+    "emptyTaskBoardPreserved": true
+  },
+  "realModelCalls": 0,
+  "realChannelSends": 0,
+  "modelConfigurationBlocked": true,
+  "activeTaskDrainNotTested": true,
+  "preflight": {
+    "passed": true,
+    "zeroWrite": true,
+    "uid": 1000,
+    "mode": "full",
+    "entrypoint": "v24.13.0\n11.25.0\nNIGHT_DOCKER_PREFLIGHT_OK",
+    "directories": [
+      {
+        "path": "temp",
+        "directory": true,
+        "uid": 1000,
+        "mode": 448,
+        "bytes": 4096
+      }
+    ],
+    "storage": {
+      "filesystem": "ext2/ext3",
+      "uid": 1000,
+      "dataMode": "0700",
+      "tempMode": "0700"
+    }
+  },
+  "cleanup": {
+    "ownTemporaryJobsDeleted": 5,
+    "pvcRetained": true,
+    "workloadReady": true
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "sendAttempts": 1,
+  "vendorSendAcknowledged": true,
+  "vendorReadbackComplete": true,
+  "vendorReadbackFailures": 0,
+  "textMatchedAfterWhitespaceNormalization": true,
+  "vendorAndCloudTextIdentical": true,
+  "realMessageIdMatchedCloudIngress": true,
+  "cloudMessageState": "processed",
+  "automatedTagRetained": true,
+  "cloudAssistantReplies": 0,
+  "cloudTasksCreated": 0,
+  "naturalHumanMessageReplyNotTested": true,
+  "quotedReplyNotTested": true,
+  "otherGroupsModified": false,
+  "localBotModified": false,
+  "verifiedAt": "2026-11-10T23:56:47.153Z"
+}

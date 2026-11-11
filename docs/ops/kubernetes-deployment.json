@@ -1,0 +1,288 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "night-bot",
+        "namespace": "REPLACE_WITH_NAMESPACE",
+        "labels": {
+          "app.kubernetes.io/name": "night-bot",
+          "app.kubernetes.io/managed-by": "night-bot-operator"
+        }
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "storageClassName": "REPLACE_WITH_APPROVED_STORAGE_CLASS",
+        "resources": {
+          "requests": {
+            "storage": "20Gi"
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "night-bot-runtime",
+        "namespace": "REPLACE_WITH_NAMESPACE",
+        "labels": {
+          "app.kubernetes.io/name": "night-bot",
+          "app.kubernetes.io/managed-by": "night-bot-operator"
+        }
+      },
+      "data": {
+        "NIGHT_BOT_ACTOR_ID": "night-bot-operator",
+        "NIGHT_BOT_PERMISSION_MODE": "full",
+        "NIGHT_BOT_WEB_ENABLED": "true",
+        "NIGHT_BOT_WEB_HOST": "0.0.0.0",
+        "NIGHT_BOT_WEB_PORT": "3080",
+        "NIGHT_BOT_WEB_PUBLIC_ORIGIN": "http://127.0.0.1:3080",
+        "NIGHT_BOT_WEB_CHANNEL_ID": "night-bot-web",
+        "NIGHT_BOT_WEB_SENDER_ID": "night-bot-operator"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "night-bot",
+        "namespace": "REPLACE_WITH_NAMESPACE",
+        "labels": {
+          "app.kubernetes.io/name": "night-bot",
+          "app.kubernetes.io/managed-by": "night-bot-operator"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "night-bot"
+        },
+        "ports": [
+          {
+            "name": "web",
+            "port": 3080,
+            "targetPort": "web"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "night-bot",
+        "namespace": "REPLACE_WITH_NAMESPACE",
+        "labels": {
+          "app.kubernetes.io/name": "night-bot",
+          "app.kubernetes.io/managed-by": "night-bot-operator"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "night-bot"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "night-bot"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "nodeSelector": {
+              "kubernetes.io/arch": "amd64"
+            },
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 1000,
+              "runAsGroup": 1000,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "REPLACE_WITH_IMAGE_PULL_SECRET"
+              }
+            ],
+            "terminationGracePeriodSeconds": 300,
+            "initContainers": [
+              {
+                "name": "prepare-data",
+                "image": "REPLACE_WITH_REGISTRY/night-bot@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                "imagePullPolicy": "IfNotPresent",
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "command": [
+                  "node",
+                  "--input-type=module",
+                  "-e",
+                  "import {mkdir,lstat,realpath,chmod,access} from 'node:fs/promises';import {execFileSync} from 'node:child_process';import {constants} from 'node:fs';\nconst fsType=execFileSync('stat',['-f','-c','%T','/persist'],{encoding:'utf8'}).trim();\nif(!['ext2/ext3','ext4','xfs','btrfs'].includes(fsType))throw Error('Unverified SQLite filesystem: '+fsType);\nfor(const path of ['/persist/runtime-data','/persist/runtime-data/temp']){try{await mkdir(path,{mode:0o700});await chmod(path,0o700)}catch(error){if(error.code!=='EEXIST')throw error}const s=await lstat(path);if(!s.isDirectory()||s.isSymbolicLink()||await realpath(path)!==path||s.uid!==process.getuid()||(s.mode&0o7777)!==0o700)throw Error('Unsafe existing runtime directory: '+path);await access(path,constants.R_OK|constants.W_OK|constants.X_OK)}console.log(JSON.stringify({filesystem:fsType,uid:process.getuid(),dataMode:'0700',tempMode:'0700'}));"
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "500m",
+                    "memory": "256Mi"
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "data",
+                    "mountPath": "/persist"
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ]
+              }
+            ],
+            "containers": [
+              {
+                "name": "night-bot",
+                "image": "REPLACE_WITH_REGISTRY/night-bot@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                "imagePullPolicy": "IfNotPresent",
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "night-bot-runtime"
+                    }
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "NIGHT_BOT_MODEL_API_KEY",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "REPLACE_WITH_MODEL_SECRET",
+                        "key": "REPLACE_WITH_MODEL_SECRET_KEY"
+                      }
+                    }
+                  }
+                ],
+                "ports": [
+                  {
+                    "name": "web",
+                    "containerPort": 3080
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "250m",
+                    "memory": "512Mi",
+                    "ephemeral-storage": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "2",
+                    "memory": "2Gi",
+                    "ephemeral-storage": "2Gi"
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "data",
+                    "mountPath": "/opt/night-bot/data",
+                    "subPath": "runtime-data"
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  },
+                  {
+                    "name": "shm",
+                    "mountPath": "/dev/shm"
+                  }
+                ],
+                "startupProbe": {
+                  "httpGet": {
+                    "path": "/",
+                    "port": "web",
+                    "httpHeaders": [
+                      {
+                        "name": "Host",
+                        "value": "127.0.0.1:3080"
+                      }
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 3,
+                  "failureThreshold": 60
+                },
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/",
+                    "port": "web",
+                    "httpHeaders": [
+                      {
+                        "name": "Host",
+                        "value": "127.0.0.1:3080"
+                      }
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 3,
+                  "failureThreshold": 3
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "data",
+                "persistentVolumeClaim": {
+                  "claimName": "night-bot"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "medium": "Memory",
+                  "sizeLimit": "64Mi"
+                }
+              },
+              {
+                "name": "shm",
+                "emptyDir": {
+                  "medium": "Memory",
+                  "sizeLimit": "256Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
