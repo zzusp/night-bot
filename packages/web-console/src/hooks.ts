@@ -2,24 +2,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 
 /** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待刷新或网络恢复。 */
-export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false }: { pauseWhenHidden?: boolean } = {}) {
+export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false, refreshPath }: { pauseWhenHidden?: boolean; refreshPath?: string } = {}) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [revision, setRevision] = useState(0);
   const activePath = useRef(path);
-  const refresh = useCallback(() => setRevision(value => value + 1), []);
+  const refreshRequested = useRef(false);
+  const reload = useCallback(() => setRevision(value => value + 1), []);
+  const refresh = useCallback(() => { refreshRequested.current = true; reload(); }, [reload]);
   useEffect(() => {
     if (activePath.current !== path) { setData(null); setUpdatedAt(null); activePath.current = path; }
     setError(null);
+    let requestPath = refreshRequested.current && refreshPath ? refreshPath : path;
+    refreshRequested.current = false;
     if (!path || pauseWhenHidden && document.visibilityState === 'hidden') { setLoading(false); return; }
     let disposed = false, failures = 0, timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     const read = async () => {
       setLoading(true);
       try {
-        const value = await api<T>(path, { signal: controller.signal });
+        const target = requestPath ?? path;
+        requestPath = path;
+        const value = await api<T>(target, { signal: controller.signal });
         if (disposed) return;
         setData(value); setError(null); setUpdatedAt(Date.now()); failures = 0;
       } catch (err) {
@@ -34,14 +40,14 @@ export function useResource<T>(path: string | null, interval = 0, { pauseWhenHid
     };
     void read();
     return () => { disposed = true; controller.abort(); clearTimeout(timer); };
-  }, [path, interval, revision, pauseWhenHidden]);
+  }, [path, interval, revision, pauseWhenHidden, refreshPath]);
   useEffect(() => {
-    const visible = () => { if (interval && (document.visibilityState === 'visible' || pauseWhenHidden)) refresh(); };
-    const online = () => { if (path) refresh(); };
+    const visible = () => { if (interval && (document.visibilityState === 'visible' || pauseWhenHidden)) reload(); };
+    const online = () => { if (path) reload(); };
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('online', online);
     return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', online); };
-  }, [path, interval, refresh, pauseWhenHidden]);
+  }, [path, interval, reload, pauseWhenHidden]);
   // 路由切换的清理间隙不展示上一资源的数据、错误或读取状态。
   const current = activePath.current === path;
   return { data: current ? data : null, error: current ? error : null, loading: !!path && (!current || loading), updatedAt: current ? updatedAt : null, refresh };

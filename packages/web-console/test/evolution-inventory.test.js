@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp, mkdir, writeFile, readFile, readdir, lstat, rm} from 'node:fs/promises'
+import {mkdtemp, mkdir, writeFile, readFile, readdir, lstat, rm, link} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
+import {setTimeout as delay} from 'node:timers/promises'
+import {writeFileSync} from 'node:fs'
+import {acquireLock} from '../../../src/runtime/files.js'
 import {readEvolutionInventory} from '../server/evolution-inventory.js'
 import {MarkdownMemoryStore} from '../../../src/memory/store.js'
 import {memoryScope} from '../../../src/memory/scope.js'
@@ -54,15 +57,99 @@ test('Web inventory refuses pending writes without recovering them or opening de
   assert.equal((await readEvolutionInventory(f)).memory.acceptedCount, 2)
   await writeFile(join(f.directory, 'pending.json'), '{"version":1,"writes":[]}')
   const before = await tree(f.root)
-  await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_UNAVAILABLE'})
+  await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_BUSY'})
   assert.deepEqual(await tree(f.root), before)
 })
 
-test('Web inventory refuses an active writer and does not create missing scope storage', async t => {
+test('Web inventory does not create missing scope storage', async t => {
   const f = await fixture(t)
-  await writeFile(join(f.directory, '.lock'), '')
-  await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_UNAVAILABLE'})
   const absent = {...f.memory, store: new MarkdownMemoryStore(join(f.root, 'missing'))}
   assert.equal((await readEvolutionInventory({...f, memory: absent})).memory.acceptedCount, 0)
   await assert.rejects(lstat(join(f.root, 'missing')), {code: 'ENOENT'})
+})
+
+test('first inventory reads concurrently with a real read-only memory transaction without joining its write path', async t => {
+  const f = await fixture(t), before = await tree(f.root)
+  const entered = Promise.withResolvers(), finish = Promise.withResolvers()
+  const transaction = f.store.transaction(f.scope, async () => {entered.resolve(); await finish.promise})
+  await entered.promise
+  try {
+    const locked = await tree(f.root)
+    const inventory = await readEvolutionInventory(f)
+    assert.equal(inventory.memory.acceptedCount, 2, 'an ordinary read lease must not delay or reject inventory')
+    assert.deepEqual(await tree(f.root), locked)
+  } finally {finish.resolve(); await transaction}
+  assert.deepEqual(await tree(f.root), before)
+})
+
+test('inventory waits for the actual writer to finish its pending journal and reads only the committed result', async t => {
+  const f = await fixture(t), entered = Promise.withResolvers(), finish = Promise.withResolvers()
+  f.store.beforeApply = async () => {entered.resolve(); await finish.promise}
+  const write = f.store.remember(f.scope, {topic: 'facts', key: 'two', text: 'New committed fact', source: {sessionId: 'task-two', messageId: 'three'}})
+  await entered.promise
+  const pending = await readFile(join(f.directory, 'pending.json'), 'utf8')
+  let settled = false
+  const read = readEvolutionInventory(f).finally(() => {settled = true})
+  try {
+    await delay(50)
+    assert.equal(settled, false)
+    assert.equal(await readFile(join(f.directory, 'pending.json'), 'utf8'), pending, 'reader must not recover the writer journal')
+  } finally {finish.resolve(); await write}
+  const inventory = await read
+  assert.equal(inventory.memory.acceptedCount, 3)
+  assert.equal(inventory.items.filter(item => item.name === 'facts/two').length, 1)
+  await assert.rejects(lstat(join(f.directory, 'pending.json')), {code: 'ENOENT'})
+})
+
+test('short reflection leases recover; persistent leases stay bounded and untouched', async t => {
+  const f = await fixture(t), before = await tree(f.root)
+  const release = await acquireLock(join(f.directory, 'evolution', '.lock'))
+  const read = readEvolutionInventory(f)
+  try {await delay(50)} finally {await release()}
+  assert.equal((await read).skills.activeCount, 1)
+  assert.deepEqual(await tree(f.root), before)
+  const releasePersistent = await acquireLock(join(f.directory, 'evolution', '.lock'))
+  try {
+    const locked = await tree(f.root)
+    await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_BUSY', status: 503})
+    assert.deepEqual(await tree(f.root), locked)
+  } finally {await releasePersistent()}
+})
+
+test('revision changes discard the whole snapshot rather than append mixed or duplicate rows', async t => {
+  const f = await fixture(t), path = join(f.directory, 'scope.json')
+  const meta = JSON.parse(await readFile(path, 'utf8'))
+  let changed = false
+  f.store.now = () => {
+    if (!changed) {changed = true; writeFileSync(path, JSON.stringify({...meta, revision: meta.revision + 1}))}
+    return Date.now()
+  }
+  // active() consults the clock only for entries with an expiry.
+  const topicPath = join(f.directory, 'topics', (await readdir(join(f.directory, 'topics')))[0])
+  const text = await readFile(topicPath, 'utf8')
+  // Use a future expiry on the real stored entry without weakening the decoder.
+  const {decodeTopic, encodeTopic} = await import('../../../src/memory/format.js')
+  const topic = decodeTopic(text)
+  topic.entries[0].expiresAt = new Date(Date.now() + 60_000).toISOString()
+  await writeFile(topicPath, encodeTopic(topic.topic, topic.revision, topic.entries, topic.scope))
+  const inventory = await readEvolutionInventory(f)
+  assert.equal(changed, true)
+  assert.equal(inventory.memory.acceptedCount, 2)
+  assert.equal(new Set(inventory.items.map(item => item.id)).size, inventory.items.length)
+})
+
+test('malformed records and unsafe paths remain fatal instead of transient busy responses', async t => {
+  const f = await fixture(t)
+  await writeFile(join(f.directory, 'scope.json'), 'invalid JSON')
+  await assert.rejects(readEvolutionInventory(f), SyntaxError)
+  await writeFile(join(f.directory, 'scope.json'), JSON.stringify({version: 9, revision: 0, forgotten: [], seen: []}))
+  await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_UNAVAILABLE'})
+  // A future topic revision with no active writer or changed fence is corruption.
+  await writeFile(join(f.directory, 'scope.json'), JSON.stringify({version: 1, revision: 0, forgotten: [], seen: []}))
+  await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_UNAVAILABLE'})
+  const external = join(f.root, 'external.json')
+  await writeFile(external, JSON.stringify({version: 1, revision: 2, forgotten: [], seen: []}))
+  await rm(join(f.directory, 'scope.json'))
+  await link(external, join(f.directory, 'scope.json'))
+  await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_BODY_FORBIDDEN'})
 })

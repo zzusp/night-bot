@@ -3,7 +3,7 @@ import EvolutionContent from './EvolutionContent';
 import EvolutionEntryList, { formatEvolutionCount as number } from './components/EvolutionEntryList';
 import { RiBookOpenLine, RiBrainLine, RiRefreshLine } from '@remixicon/react';
 import { ApiError, type Evolution, type EvolutionItem, type EvolutionReady } from './api';
-import { navigate, useResource } from './hooks';
+import { dateTime, navigate, useResource } from './hooks';
 import { Button, EmptyState } from './components/BoardPrimitives';
 import { Loading, Notice, Pagination } from './components/Shared';
 import './styles/evolution.css';
@@ -34,8 +34,10 @@ export default function EvolutionPage({ route }: { route: URL }) {
   const kind = route.searchParams.get('kind') === 'skill' ? 'skill' : 'memory';
   const requestedOffset = Number(route.searchParams.get('offset'));
   const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
-  const query = useResource<Evolution>(`/evolution?kind=${kind}&offset=${offset}&limit=20`);
+  const path = `/evolution?kind=${kind}&offset=${offset}&limit=20`;
+  const query = useResource<Evolution>(path, 300000, {pauseWhenHidden: true, refreshPath: path + '&refresh=1'});
   const forbidden = query.error instanceof ApiError && [401, 403].includes(query.error.status);
+  const busy = query.error instanceof ApiError && query.error.code === 'EVOLUTION_BUSY';
   const [revoked, setRevoked] = useState(false);
   useEffect(() => {
     if (forbidden) setRevoked(true);
@@ -71,8 +73,9 @@ export default function EvolutionPage({ route }: { route: URL }) {
       </div>
       <div ref={body} id="evolution-list-body" className="evolution-list-body" aria-busy={query.loading} style={!ready && query.loading ? {minHeight: bodyHeight.current} : undefined}>
         {query.error && <Notice error={query.error} stale={!!ready || !!summary} onRetry={query.refresh} />}
+        {ready?.cache && <p className="evolution-list-notice" role="status">{ready.cache.stale ? `当前显示上次成功获取的数据（${dateTime(ready.cache.updatedAt ?? undefined)}）。${ready.cache.refreshing ? '正在重新获取…' : '本轮更新未完成，将在下一轮更新时重试，也可刷新记录。'}` : `每 5 分钟更新 · 最近更新 ${dateTime(ready.cache.updatedAt ?? undefined)}`}</p>}
         {!data && query.loading ? <div className="evolution-pending"><Loading>正在读取自进化记录…</Loading></div>
-          : !ready ? <EmptyState title={forbidden || revoked ? '无权查看自进化记录' : '自进化记录暂不可读'} description="请确认服务和当前身份的访问权限后重新获取。" action={!query.error ? <Button variant="secondary" onClick={query.refresh}>重新获取</Button> : undefined} />
+          : !ready ? <EmptyState title={forbidden || revoked ? '无权查看自进化记录' : busy ? '自进化记录正在更新' : '自进化记录暂不可读'} description={busy ? '当前记录正在整理或更新，稍后可重新获取。' : '请确认服务和当前身份的访问权限后重新获取。'} action={!query.error ? <Button variant="secondary" onClick={query.refresh}>重新获取</Button> : undefined} />
           : <>
             {kind === 'skill' && ready.skills.inventoryComplete === false && <p className="evolution-list-notice" role="status">技能盘点不完整：{ready.skills.inventoryIssues?.join('；') || '部分资源不可读'}</p>}
             {!ready.items.length ? <EmptyState title={offset ? '这一页已没有记录' : '暂无自进化记录'} description={offset ? '记录可能已变化，请返回第一页。' : kind === 'skill' ? '公共库尚无技能记录。' : '公共库尚无记忆记录。'} action={offset ? <Button variant="secondary" onClick={() => changePage(0)}>返回第一页</Button> : undefined} />

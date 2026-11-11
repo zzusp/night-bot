@@ -1,3 +1,5 @@
+import {openEvolutionCache} from './evolution-cache.js'
+import {bindingSchema} from '../../../src/memory/scope.js'
 import {readEvolutionInventory} from './evolution-inventory.js'
 import {queryEvolutionUsage} from './evolution-usage.js'
 import {latestComparison} from '../../../src/memory/evolution-content.js'
@@ -104,6 +106,35 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const value = await application().tasks.boardTasks(options)
     return {...value, items: value.items.map(task => taskView(task, [credential.token]))}
   }
+  let evolutionCache, authorizedEvolutionReader
+  try {
+    const evolutionDirectory = await controlledDirectory(paths.cache, namespace)
+    const evolutionReader = () => bindingSchema.parse(channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'}).binding)
+    const initialEvolutionBinding = evolutionReader()
+    const evolutionIdentity = digest(JSON.stringify(['evolution-cache-v1', evolutionDirectory, paths.memory ?? getMemory()?.store?.root ?? null, channelId, senderId, digest(credential.token), initialEvolutionBinding]))
+    authorizedEvolutionReader = () => {
+      let binding
+      try {binding = evolutionReader()} catch {fail('EVOLUTION_FORBIDDEN', 403)}
+      if (JSON.stringify(binding) !== JSON.stringify(initialEvolutionBinding)) fail('EVOLUTION_FORBIDDEN', 403)
+      return binding
+    }
+    evolutionCache = await openEvolutionCache({directory: evolutionDirectory, identity: evolutionIdentity, collect: async () => {
+      const binding = authorizedEvolutionReader(), app = application(), memory = getMemory()
+      if (!memory?.store?.root) fail('BOT_NOT_READY', 503)
+      const inventory = await readEvolutionInventory({memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding})
+      const usage = await queryEvolutionUsage({application: app, sessionPersistence: getSessionPersistence(), channelSessions: [...(channels.contexts ?? [])].map(([sessionId, row]) => ({sessionId, type: row.type, channelId: row.channelId, conversationId: row.conversationId, senderId: row.type === 'chat' ? Object.values(row.participants ?? {})[0] : undefined})),
+        allowedScopeTokens: inventory.allowedScopeTokens, memoryResources: inventory.memoryResources, skillResources: inventory.skillResources})
+      const items = inventory.items.map(item => ({...item, ...usage.items[item.id]}))
+        .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id))
+      const memoryStats = {...inventory.memory, ...usage.memory, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
+      const skills = {...inventory.skills, ...usage.skills, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
+      const value = {status: 'ready', coverage: 'bot-shared-current-state', usageCoverage: usage.coverage, memory: memoryStats, skills,
+        items, revision: digest(JSON.stringify([items, memoryStats, skills, usage.coverage]))}
+      const origin = value => value && typeof value==='object' ? Object.fromEntries(['channelId','conversationId','conversationName','conversationType','conversationKey','taskId','taskTitle','messageId','resolvedFrom'].filter(key=>typeof value[key]==='string').map(key=>[key,visibleText(value[key],[credential.token],{maxLength:256}).text])) : null
+      authorizedEvolutionReader()
+      return {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))}
+    }})
+  } catch (error) {sessions.close(); ledger.close(); throw error}
   async function route(request, response) {
     headers(response)
     requireLocalRequest(request, origin, network)
@@ -263,30 +294,20 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, {status: 'connected', timestamp: new Date().toISOString(), ...values, sectionErrors})
     }
     if (request.method === 'GET' && path === '/api/evolution') {
-      if ([...url.searchParams.keys()].some(key => !['kind', 'offset', 'limit'].includes(key))) fail('PAGE_INVALID')
+      if ([...url.searchParams.keys()].some(key => !['kind', 'offset', 'limit', 'refresh'].includes(key))) fail('PAGE_INVALID')
       const kind = url.searchParams.get('kind') ?? 'all'
-      if (!['all', 'memory', 'skill'].includes(kind)) fail('PAGE_INVALID')
+      if (!['all', 'memory', 'skill'].includes(kind) || url.searchParams.has('refresh') && url.searchParams.get('refresh') !== '1') fail('PAGE_INVALID')
       const options = {kind, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 20, 50)}
-      const app = application()
-      const memory = getMemory()
-      if (!memory?.store?.root) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
-      const identity = channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'})
-      let value
-      try {
-        const inventory = await readEvolutionInventory({memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding: identity.binding})
-        const usage = await queryEvolutionUsage({application: app, sessionPersistence: getSessionPersistence(), channelSessions: [...(channels.contexts ?? [])].map(([sessionId, row]) => ({sessionId, type: row.type, channelId: row.channelId, conversationId: row.conversationId, senderId: row.type === 'chat' ? Object.values(row.participants ?? {})[0] : undefined})),
-          allowedScopeTokens: inventory.allowedScopeTokens, memoryResources: inventory.memoryResources, skillResources: inventory.skillResources})
-        const items = inventory.items.map(item => ({...item, ...usage.items[item.id]}))
-          .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id))
-        const filtered = items.filter(item => options.kind === 'all' || item.kind === options.kind), total = filtered.length
-        const memoryStats = {...inventory.memory, ...usage.memory, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
-        const skills = {...inventory.skills, ...usage.skills, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
-        value = {status: 'ready', coverage: 'bot-shared-current-state', usageCoverage: usage.coverage, memory: memoryStats, skills,
-          items: filtered.slice(options.offset, options.offset + options.limit), total, ...options, hasMore: options.offset + options.limit < total,
-          nextOffset: options.offset + options.limit < total ? options.offset + options.limit : null, revision: digest(JSON.stringify([items, memoryStats, skills, usage.coverage]))}
-      } catch {fail('EVOLUTION_UNAVAILABLE', 503)}
-      const origin = value => value && typeof value==='object' ? Object.fromEntries(['channelId','conversationId','conversationName','conversationType','conversationKey','taskId','taskTitle','messageId','resolvedFrom'].filter(key=>typeof value[key]==='string').map(key=>[key,visibleText(value[key],[credential.token],{maxLength:256}).text])) : null
-      return send(response, 200, {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))})
+      application()
+      authorizedEvolutionReader()
+      if (!getMemory()?.store?.root) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
+      let result
+      try {result = await evolutionCache.read({force: url.searchParams.get('refresh') === '1'})}
+      catch (error) {const forbidden = [401, 403].includes(error.status); fail(forbidden ? 'EVOLUTION_FORBIDDEN' : error.code === 'EVOLUTION_BUSY' ? 'EVOLUTION_BUSY' : 'EVOLUTION_UNAVAILABLE', forbidden ? 403 : 503)}
+      authorizedEvolutionReader()
+      const value = result.snapshot, filtered = value.items.filter(item => options.kind === 'all' || item.kind === options.kind), total = filtered.length
+      return send(response, 200, {...value, cache: result.cache, items: filtered.slice(options.offset, options.offset + options.limit), total, ...options,
+        hasMore: options.offset + options.limit < total, nextOffset: options.offset + options.limit < total ? options.offset + options.limit : null})
     }
     const evolutionItem = /^\/api\/evolution\/items\/([a-f0-9]{64})$/.exec(path)
     if (request.method === 'GET' && evolutionItem) {
@@ -498,6 +519,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     return startPromise ??= (async () => {
       await new Promise((resolve, reject) => {server.once('error', reject); server.listen(port, network.host, () => {server.off('error', reject); resolve()})})
       origin = network.publicOrigin ?? 'http://127.0.0.1:' + server.address().port
+      evolutionCache.start()
       return origin
     })()
   }
@@ -506,13 +528,14 @@ export async function createWebConsole({channels, paths, config, getApplication,
     unregisterPlugin = channels.registerPlugin(channelId, {get health() {return {healthy: !!origin && !stopped}}})
     if (listen) await start()
   } catch (error) {
-    unregisterPlugin?.(); unregisterTransport?.(); ledger.close(); sessions.close(); throw error
+    await evolutionCache.close(); unregisterPlugin?.(); unregisterTransport?.(); ledger.close(); sessions.close(); throw error
   }
   return {
     get origin() {return origin}, credentialPath: credential.path, start,
     close() {
       return closePromise ??= (async () => {
         stopped = true
+        await evolutionCache.close()
         await startPromise?.catch(() => {})
         if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
         await Promise.allSettled([...inflight])
