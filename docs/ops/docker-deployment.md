@@ -65,6 +65,8 @@ bind-remount 的可变位只为 `{1,4,8,1024,2048,2097152}`，保留 bwrap 从 m
 
 若默认源的网络路径不可用，可显式传入 Debian 官方镜像列表中的 HTTPS 地址，例如 `docker build --build-arg DEBIAN_ARCHIVE_URL=https://mirrors.tuna.tsinghua.edu.cn/debian --build-arg DEBIAN_SECURITY_URL=https://mirrors.tuna.tsinghua.edu.cn/debian-security --tag night-bot:sg12 .`。两个 stage 使用相同参数，保留原 suites、components、Signed-By、InRelease 与包摘要校验；不自动切换源，不接受带凭据、query 或 fragment 的地址。参数是公开构建配置，禁止放代理密钥。网络 HTTP 200 仅证明可达，实际 APT 验签与镜像构建仍须完成。
 
+若构建停在解析可变 `docker/dockerfile:1` 并报 registry EOF，应先区分前端解析与源码构建失败。可用 `--build-arg BUILDKIT_SYNTAX=docker/dockerfile:1@sha256:<已核实摘要>` 显式固定同一官方前端；摘要取自先前可信成功构建日志并核对缓存，不猜摘要、不换非官方镜像或关闭校验。本次发布实际使用 `sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e` 完成构建；构建结果仍需同镜像实跑、推送后独立回读远端摘要。
+
 ```powershell
 git branch --show-current
 git status --short

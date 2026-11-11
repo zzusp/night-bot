@@ -1,0 +1,248 @@
+{
+  "at": "2026-11-11T07:57:19.876Z",
+  "sourceRevision": "46a64f5a1c41448018c603552db52a4140b5b7a1",
+  "pr": {
+    "number": 58,
+    "state": "MERGED",
+    "url": "https://github.com/zzusp/night-bot/pull/58"
+  },
+  "image": {
+    "manifest": "sha256:3d7c79f07765ba57751f60ed3fd18643f52e15c7f1146b100b6e601930042573",
+    "config": "sha256:42169615f04dec06a9d3517655178c70a88d6c4d7c7542d4ef25989452ef9afe",
+    "architecture": "amd64",
+    "tag": "headless-46a64f5a1c41"
+  },
+  "localRuntime": {
+    "preflight": {
+      "passed": true,
+      "defaultMode": "full",
+      "volumeUnchanged": true,
+      "uid": 1000,
+      "tempMode": "0700"
+    },
+    "boundary": {
+      "passed": true,
+      "readOnlyRoot": true,
+      "capDropAll": true,
+      "noNewPrivileges": true,
+      "loopbackPublish": true,
+      "seccomp": true
+    },
+    "browser": {
+      "passed": true,
+      "version": "158.0.8127.18",
+      "installed": [
+        ".links",
+        "chromium_headless_shell-1254",
+        "ffmpeg-1013"
+      ],
+      "apiDom": "42",
+      "apiScreenshot": {
+        "bytes": 9460,
+        "width": 1280,
+        "height": 720
+      },
+      "cliScreenshot": {
+        "bytes": 9460,
+        "width": 1280,
+        "height": 720
+      }
+    },
+    "web": {
+      "passed": true,
+      "authenticatedSettings": true,
+      "defaultPermission": "full",
+      "unauthenticated": 401,
+      "wrongOrigin": 403,
+      "missingCsrf": 403
+    },
+    "conversation": {
+      "passed": true,
+      "requestStatus": 202,
+      "replyVisible": true,
+      "modelRequests": 1,
+      "messages": 2,
+      "realVendorCalls": 0
+    },
+    "drain": {
+      "passed": true,
+      "exitCode": 0,
+      "pid": 0,
+      "oomKilled": false,
+      "hostLockAbsent": true,
+      "existingVolumeCheckUnchanged": true
+    },
+    "persistence": {
+      "passed": true,
+      "instanceAndActorPreserved": true,
+      "tokenPreserved": true,
+      "oldCookieRejected": true,
+      "chatAndReplyPreserved": true,
+      "duplicateRequestModelCalls": 0
+    },
+    "finalStop": {
+      "passed": true,
+      "exitCode": 0,
+      "pid": 0
+    }
+  },
+  "offline": {
+    "ok": true,
+    "journalCount": 62,
+    "totalBytes": 8048760,
+    "tasks": 2,
+    "journalSetHash": "1a890c965a212e659acef835eb1d72262922fdddbb78c12254c8b5d6d34e2485",
+    "backupFiles": 158,
+    "backupBytes": 15915223,
+    "includesSecrets": false,
+    "excludedRoots": [
+      "secrets",
+      "cache",
+      "logs",
+      "temp",
+      "runtime"
+    ],
+    "backupReadback": true
+  },
+  "production": {
+    "memoryAbsent": true,
+    "skillAbsent": true,
+    "skillDirectoryAbsent": true,
+    "skillRevision": 3,
+    "unrelatedRecordsPreserved": true,
+    "newTasks": 0,
+    "allFinalRepliesDelivered": true,
+    "oldUnknownUnchanged": true,
+    "receiving": true,
+    "tokenPreserved": true,
+    "ready": true,
+    "restarts": 0,
+    "sourceHashes": {
+      "src/channels/service.js": "0e86e55c7482e4e5e9aac6d43803137cfddc0d84e97c01cab7b02d9d72919633",
+      "packages/web-console/server/evolution-inventory.js": "3302ce8e6c4854bf027b9709cc5bb869b2e6454587c493b0a20c539a8e6da76b"
+    },
+    "templateUnchanged": true,
+    "fullConfigPreserved": true,
+    "unauthenticated": 401,
+    "missingCsrf": 403
+  },
+  "crud": [
+    {
+      "stage": "memory-create",
+      "persisted": true,
+      "sourceAndQuoteBound": true,
+      "finalReplyDelivered": true,
+      "singleSend": true,
+      "noMentionOrQuote": true,
+      "httpFinalVisible": true,
+      "timing": "confirmed",
+      "memoryRevision": 1,
+      "skillRevision": 0,
+      "skillStatus": null,
+      "activeCount": 2,
+      "unrelatedPreserved": true,
+      "newTasks": 0,
+      "toolErrors": []
+    },
+    {
+      "stage": "memory-update",
+      "persisted": true,
+      "sourceAndQuoteBound": true,
+      "finalReplyDelivered": true,
+      "singleSend": true,
+      "noMentionOrQuote": true,
+      "httpFinalVisible": true,
+      "timing": "confirmed",
+      "memoryRevision": 2,
+      "skillRevision": 0,
+      "skillStatus": null,
+      "activeCount": 2,
+      "unrelatedPreserved": true,
+      "newTasks": 0,
+      "toolErrors": []
+    },
+    {
+      "stage": "memory-delete",
+      "persisted": true,
+      "sourceAndQuoteBound": true,
+      "finalReplyDelivered": true,
+      "singleSend": true,
+      "noMentionOrQuote": true,
+      "httpFinalVisible": true,
+      "timing": "confirmed",
+      "memoryRevision": null,
+      "skillRevision": 0,
+      "skillStatus": null,
+      "activeCount": 2,
+      "unrelatedPreserved": true,
+      "newTasks": 0,
+      "toolErrors": []
+    },
+    {
+      "stage": "skill-create",
+      "persisted": true,
+      "sourceAndQuoteBound": true,
+      "finalReplyDelivered": true,
+      "singleSend": true,
+      "noMentionOrQuote": true,
+      "httpFinalVisible": true,
+      "timing": "confirmed",
+      "memoryRevision": null,
+      "skillRevision": 1,
+      "skillStatus": "applied",
+      "activeCount": 3,
+      "unrelatedPreserved": true,
+      "newTasks": 0,
+      "toolErrors": []
+    },
+    {
+      "stage": "skill-update",
+      "persisted": true,
+      "sourceAndQuoteBound": true,
+      "finalReplyDelivered": true,
+      "singleSend": true,
+      "noMentionOrQuote": true,
+      "httpFinalVisible": true,
+      "timing": "confirmed",
+      "memoryRevision": null,
+      "skillRevision": 2,
+      "skillStatus": "applied",
+      "activeCount": 3,
+      "unrelatedPreserved": true,
+      "newTasks": 0,
+      "toolErrors": []
+    },
+    {
+      "stage": "skill-delete",
+      "persisted": true,
+      "sourceAndQuoteBound": true,
+      "finalReplyDelivered": true,
+      "singleSend": true,
+      "noMentionOrQuote": true,
+      "httpFinalVisible": true,
+      "timing": "confirmed",
+      "memoryRevision": null,
+      "skillRevision": 3,
+      "skillStatus": null,
+      "activeCount": 2,
+      "unrelatedPreserved": true,
+      "newTasks": 0,
+      "toolErrors": []
+    }
+  ],
+  "toolReceipts": 6,
+  "cleanup": {
+    "temporaryJobsAbsent": true,
+    "backupPvcPreserved": true,
+    "localRuntimeResourcesAbsent": true,
+    "privateIntermediatesRemoved": true
+  },
+  "boundaries": {
+    "realModel": true,
+    "realWeb": true,
+    "realVendorMessageSent": false,
+    "restoreTested": false,
+    "ciTriggered": false,
+    "oldUnknownResent": false
+  }
+}

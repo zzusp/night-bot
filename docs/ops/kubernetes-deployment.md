@@ -30,6 +30,8 @@ Secret 改值后，现有 Pod 的环境不会更新，需要安全重建 Pod；�
 
 以下为 PowerShell 7。先填写操作者自己的 kubeconfig、namespace、已发布镜像、获批 StorageClass 和现有拉取/模型 Secret；只改私有副本中的占位符，不改全局 kubectl context，不复制 Secret 值。
 
+若 `kubectl` 报本机代理端口拒绝连接，先确认失败在本机代理而非集群。已核实控制面可直连时，可仅在该 kubectl 子进程环境移除 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY（含小写形式），先用只读查询验证；不改系统代理、全局 kube context 或凭据，也不重复执行不确定是否已提交的写请求。
+
 ```powershell
 $kube = '<YOUR_KUBECONFIG>'
 $ns = '<YOUR_NAMESPACE>'
