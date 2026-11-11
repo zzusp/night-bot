@@ -42,10 +42,7 @@ export function RoleModelEditor({state,catalog,version,onSaved,onReload,reloadin
  };
  return <section className="settings-card" aria-labelledby={`${prefix}-title`}>
   <h2 id={`${prefix}-title`}>{label}</h2>
-  <p>当前运行：{describe(state.running)}</p>
-  <p>当前保存：{describe(state.saved)}{state.savedExplicit?'':'（沿用默认配置）'}</p>
   {!state.nextStart&&!state.environmentOverrides.length&&<p role="alert">无法核验下次启动模型，请检查路由与推理深度配置。</p>}
-  {!state.savedExplicit&&state.nextStart&&!state.environmentOverrides.length&&<p>下次启动：{describe(state.nextStart)}（沿用运行默认配置）</p>}
   {state.restartRequired&&<Badge tone="warning">待重启</Badge>}
   {state.environmentOverrides.length>0&&<div className="role-model-environment"><p>环境变量优先于保存配置，重启仍会覆盖对应字段。请修改或移除环境变量后再重启。</p>{state.nextStart?<p>按当前环境重启：{describe(state.nextStart)}</p>:<p role="alert">当前环境变量与保存配置不兼容，需修改或移除后才能正常启动。</p>}<ul>{state.environmentOverrides.map(item=><li key={item.name}>{item.name} · {sourceLabels[item.source]??'启动环境'}</li>)}</ul></div>}
   <form noValidate onKeyDown={event=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()}} onSubmit={event=>{event.preventDefault();if(disabled)return;if(invalid){setError('请选择此路由支持的模型与推理深度。');document.getElementById(`${prefix}-model`)?.focus();return}setConfirm(true)}}>

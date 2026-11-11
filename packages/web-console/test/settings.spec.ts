@@ -73,6 +73,33 @@ test('设置失败可恢复，字段错误不退出，未知保存不自动重�
  const secret=page.getByLabel('新的GitHub Token',{exact:true});await secret.fill('TEST_UNKNOWN_SECRET');await page.getByRole('button',{name:'替换GitHub Token',exact:true}).click();await confirm(page);await expect(secret).toHaveValue('');await expect(page.getByText(/密钥输入已清空，请先重新读取状态/)).toBeVisible();expect(secretWrites).toBe(1)
 })
 
+test('角色模型卡片移除描述摘要，字段紧接标题且浅深色窄屏可用',async({page})=>{
+ await page.route('**/api/settings',async route=>{
+  const response=await route.fetch(),data=await response.json()
+  for(const row of data.roleModels.roles){row.saved={provider:'fixture-model',model:'fixture'};row.running={...row.saved,reasoningEffort:'off'};row.savedExplicit=false;row.nextStart=row.running;row.restartRequired=false;row.environmentOverrides=[]}
+  await route.fulfill({response,json:data})
+ })
+ await login(page)
+ for(const theme of ['light','dark']){
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
+  for(const width of [1440,390]){
+   await page.setViewportSize({width,height:960})
+   for(const label of ['一级分诊','Router','任务执行']){
+    const card=page.getByRole('region',{name:label,exact:true})
+    await expect(card).not.toContainText(/当前运行：|当前保存：|下次启动：/)
+    await expect(card.locator(':scope > h2 + form')).toHaveCount(1)
+    await expect(card.getByLabel(label+'模型路由',{exact:true})).toBeEnabled()
+    await expect(card.getByLabel(label+'模型',{exact:true})).toBeEnabled()
+    await expect(card.getByLabel(label+'推理深度',{exact:true})).toBeEnabled()
+    await expect(card.getByRole('button',{name:'保存'+label+'配置',exact:true})).toBeEnabled()
+    const heading=await card.getByRole('heading').boundingBox(),field=await card.locator('label').first().boundingBox()
+    expect(field!.y-heading!.y-heading!.height).toBeLessThanOrEqual(24)
+   }
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+  }
+ }
+})
+
 test('角色模型独立保存、原生选项、取消焦点、确认重启与刷新持久化',async({page})=>{
  await login(page)
  for(const label of ['一级分诊','Router','任务执行']){
