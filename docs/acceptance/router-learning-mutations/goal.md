@@ -1,8 +1,8 @@
 # Router 记忆与 Skill 维护目标
 
-> 状态：上下文提炼式记忆已实现并完成本地验证，待独立 PR 交付
+> 状态：上下文提炼式记忆已交付独立 PR #59，本地相关验证通过；未合并、未部署
 > Goal ID：router-learning-mutations
-> 最近维护：2026-11-11T10:25:24.557Z
+> 最近维护：2026-11-11T10:29:02.059Z
 > 权威目标：goal.md
 
 ## 总目标
@@ -28,13 +28,14 @@ Router维护合同、对应本地回归与独立PR完成；已授权的上一轮
 | SG5 | 正式镜像发布与生产部署 | 已合并产物按 digest 部署并回读 | 完成 | [round-2.md](round-2.md) |
 | SG6 | 真实 Router 记忆与 Skill 增改删及测试数据清理 | 六项真实持久化、测试数据清理且缺口单列 | 6项持久化通过；Web送达/展示另有失败 | [round-2.md](round-2.md)、[matrix.csv](matrix.csv) |
 | SG7 | Web来源身份映射与Skill支持判定续修 | 两项 Web 修复、本地终态验证及独立 PR | 完成，PR #58 已进入本轮主线基线 | [round-3.md](round-3.md)、基线 46a64f5 |
-| SG8 | Router 上下文提炼式四维记忆 | 提炼内容、逐项证据、适用范围及隔离回归通过，独立 PR 交付 | 代码与相关验证完成，完整路由基线失败保留；待 PR | [round-4.md](round-4.md)、[matrix.csv](matrix.csv) |
+| SG8 | Router 上下文提炼式四维记忆 | 提炼内容、逐项证据、适用范围及隔离回归通过，独立 PR 交付 | 完成，PR #59 OPEN/MERGEABLE；完整路由基线失败保留 | [round-4.md](round-4.md)、[matrix.csv](matrix.csv)、[PR #59](https://github.com/zzusp/night-bot/pull/59) |
 
 ## 当前检查点
 
 - 2026-11-11 新授权：按四维方案修改 Router 记忆写入；基于 origin/main 46a64f5，新工作树 worktree-router-context-memory，起点干净。PR #58 已在当前主线合并。
 - SG8 实现与相关验证完成：记忆/复盘/迁移 61 PASS；完整路由 73 PASS/15 FAIL，15 项在同基线复现。提炼内容、证据、适用范围、冷启动与详情/差异回读通过。受验工作树与源码指纹集中于 round-4.md。
-- 唯一下一步：核对最终差异并提交独立 PR；不合并、不部署、不回填生产记录。
+- 交付：实现提交 c0714a8；PR #59 已独立回查为 OPEN/MERGEABLE，base main，head worktree-router-context-memory。验收后的文档收口不改变受验代码。
+- 本次范围已完成，无待执行的已授权步骤；合并、部署、真实模型语义验收和旧业务记忆回填均未执行，需另行授权。
 
 ## 上一轮检查点（保留当时状态）
 
