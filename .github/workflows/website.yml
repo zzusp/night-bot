@@ -1,0 +1,102 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'packages/web-console/src/styles/boardui.css'
+      - '.github/workflows/website.yml'
+  pull_request:
+    paths:
+      - 'website/**'
+      - 'packages/web-console/src/styles/boardui.css'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build and check docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.25.0
+      - name: Install website dependencies only
+        run: pnpm install --frozen-lockfile
+      - name: Test publication checks
+        run: pnpm test
+      - name: Build and validate public pages
+        run: pnpm build
+      - name: Use the runner's preinstalled Chrome
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium)"
+          test -n "$chrome"
+          "$chrome" --version
+          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
+      - name: Install a pinned CJK font for visual checks
+        run: |
+          mkdir -p "$HOME/.local/share/fonts"
+          font="$HOME/.local/share/fonts/NotoSansCJKsc-Regular.otf"
+          curl --fail --location --retry 2 --max-time 60 "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" --output "$font"
+          echo "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b  $font" | sha256sum --check
+          fc-cache -f
+      - name: Verify navigation, accessibility and responsive layout
+        run: pnpm test:browser
+      - name: Retain static-site screenshots for review
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: website-preview
+          path: website/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 5
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: website/.vitepress/dist
+
+  deploy:
+    name: Deploy GitHub Pages
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # One-time prerequisite: Settings → Pages → Source: GitHub Actions.
+      # GITHUB_TOKEN can deploy an enabled site, but cannot enable Pages itself.
+      - name: Verify Pages configuration
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Deploy static website
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
