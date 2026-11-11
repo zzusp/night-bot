@@ -61,13 +61,14 @@ export class MarkdownMemoryStore {
     const terms=query.toLocaleLowerCase().split(/\s+/).filter(Boolean)
     return this.transaction(scope,s=>({revision:s.meta.revision,mode:'literal-keyword',entries:[...s.topics].flatMap(([topic,value])=>value.entries.filter(e=>active(e,this.now())&&terms.every(term=>(topic+' '+e.key+' '+e.text+' '+memoryContextText(e.context)).toLocaleLowerCase().includes(term))).map(e=>({topic,...withoutPrevious(e)}))).slice(0,limit)}))
   }
-  async remember(scope,{topic,key,text,source,originSource,provenance,context,expectedRevision,expiresAt,candidate=false,scopeRevision}={}){
+  async remember(scope,{topic,key,text,source,originSource,provenance,context,expectedRevision,expiresAt,candidate=false,scopeRevision,validate}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
     text=checkedText(text)
     if(context!==undefined)context=checkedMemoryContext(context)
     checkedText(topic);checkedText(key)
     if(expiresAt!==undefined&&(!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=this.now()||!/(Z|[+-]\d\d:\d\d)$/.test(expiresAt)))throw failure('MEMORY_EXPIRY_INVALID')
-    return this.transaction(scope,s=>{
+    return this.transaction(scope,async s=>{
+      await validate?.()
       if(scopeRevision!==undefined&&s.meta.revision!==scopeRevision)throw failure('MEMORY_SCOPE_CHANGED')
       const seen=hash(source.sessionId+':'+source.messageId+':'+topic+':'+key+':'+candidate)
       if(s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
@@ -84,9 +85,10 @@ export class MarkdownMemoryStore {
       return ()=>({ok:true,entry:withoutPrevious(entry),revision:s.meta.revision,candidate})
     })
   }
-  async forget(scope,{topic,key,expectedRevision,source}={}){
+  async forget(scope,{topic,key,expectedRevision,source,validate}={}){
     if(!label(topic)||!label(key))throw failure('MEMORY_RECORD_INVALID')
-    return this.transaction(scope,s=>{
+    return this.transaction(scope,async s=>{
+      await validate?.()
       const seen=source?.messageId?hash(source.sessionId+':'+source.messageId+':forget:'+topic+':'+key):undefined
       if(seen&&s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
       const entries=s.topics.get(topic)?.entries??[],prior=entries.find(e=>e.key===key)

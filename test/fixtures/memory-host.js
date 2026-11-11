@@ -31,3 +31,13 @@ export async function memoryHost(t,decide=()=>undefined,{background=false,portab
     async say(agent,text){const message={id:randomUUID(),source:{kind:'user'},content:[{type:'text',text}]};await agent.input.enqueue(message);await agent.input.deliver(message.id,{deliverAs:'followUp'});await agent.whenIdle();await host.ctx.memory.whenIdle();return message},
   }
 }
+
+// 低层复盘夹具也须兑现 Host 的工作区创建事务，不能直接 claim pending 任务。
+export async function initializeMemoryTaskWorkspace(store,workspaceRoot,taskId){
+  const task=await store.query({kind:'task.get',taskId});if(!task.workspaceInitialization)return
+  const {initializeTaskDirectories}=await import('../../packages/dingtalk-core/session-workspaces.js')
+  const {creationCommandId,sessionId}=task.workspaceInitialization,binding={taskId,creationCommandId,sessionId}
+  const begin=await store.command({id:creationCommandId+':workspace-begin',kind:'task.workspace.begin',args:binding})
+  const observation=await initializeTaskDirectories(workspaceRoot,begin.result.task)
+  await store.command({id:creationCommandId+':workspace-finish',kind:'task.workspace.finish',args:{...binding,state:'ready',observation:observation.native}})
+}

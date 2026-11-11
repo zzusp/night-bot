@@ -171,34 +171,52 @@ export default class NativeMemory extends Service {
   }
   provenance({agent,message,task}={}){const channels=this.host.get('channels'),context=task?.groupId?channels?.groupContext(task.groupId):agent?channels?.groupContext(agent.id):undefined;return memoryProvenance({channel:context,task,message})??(agent?this.contexts.get(agent)?.provenance:null)??null}
   async status(agent){const binding=await this.binding(agent);return {bound:!!binding,backgroundPending:this.scheduled.has(agent),maintenanceCode:this.notices.get(this.actorId(agent))??null,reflectionCode:this.host.get('reflection')?.lastError??null}}
-  async rememberChannelSource(agent,original,args){
+  channelSourceContext(original){
     const channel=this.host.get('channels')?.groupContext(original.groupId),fact=channel?.messageFacts?.[original.messageId]
     if(!channel||!Object.hasOwn(channel.participants??{},original.actorId)||fact?.version!==original.version||!channel.memoryBinding)throw failure('MEMORY_CHANNEL_SOURCE_INVALID')
     const binding={...channel.memoryBinding,actorId:original.actorId}
     const message={id:original.sourceId,content:original.text,source:{kind:'user',principal:original.actorId,channelMessageKey:original.sourceId,channelMessageId:original.messageId,channelType:channel.type,channelId:channel.channelId,conversationId:channel.conversationId}}
-    const context={message,binding,quote:conversationQuote(original.quote),provenance:memoryProvenance({channel,message})}
-    const result=await this.mutate(agent,{...args,action:'remember',sourceMessageId:message.id},context)
+    return {message,binding,quote:conversationQuote(original.quote),provenance:memoryProvenance({channel,message})}
+  }
+  async mutateChannelSource(agent,original,args,validate){
+    const context=this.channelSourceContext(original),action=args.action??'remember'
+    if(!['remember','forget'].includes(action))throw failure('MEMORY_ACTION_INVALID')
+    context.validate=async()=>{await validate();this.channelSourceContext(original);await this.writeContext(agent,args,context)}
+    const result=await this.mutate(agent,{...args,action,sourceMessageId:context.message.id},context)
     if(!result.ok||result.persisted===false)return result
-    const scope=memoryScope(binding,args,true)
+    const scope=memoryScope(context.binding,{},true)
     let saved
     try{saved=await this.store.read(scope,args)}catch(cause){throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true,cause})}
     const entry=saved.entries.find(row=>row.key===args.key)
-    if(!entry||entry.text!==args.text||entry.source.messageId!==message.id||entry.source.actor!==scope.actor||result.entry&&!isDeepStrictEqual(entry.context,result.entry.context))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
-    return {...result,revision:saved.revision,entry,persisted:true,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}
+    if(action==='forget'?!!entry:!entry||entry.text!==args.text||entry.source.messageId!==context.message.id||entry.source.actor!==scope.actor||result.entry&&!isDeepStrictEqual(entry.context,result.entry.context))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
+    if(args.topic==='experience')try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}
+    return {...result,revision:saved.revision,...action==='remember'?{entry}:{},persisted:true,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}
   }
-  async mutate(agent,args,sourceContext){
+  async readSkills(agent,args){return this.host.get('reflection').readSkills(await this.scope(agent,{}),args)}
+  async mutateChannelSkill(agent,original,args,validate){
+    const context=this.channelSourceContext(original)
+    const {scope,source}=await this.writeContext(agent,args,context)
+    return this.host.get('reflection').mutateSkill(scope,{...args,source:{...source,actor:scope.actor},provenance:context.provenance,validate:async()=>{await validate();this.channelSourceContext(original);await this.writeContext(agent,args,context)}})
+  }
+  async writeContext(agent,args,sourceContext){
     if(!await this.binding(agent))throw failure('MEMORY_SESSION_UNBOUND')
     const official=this.officialActors.get(agent)
     if(await official.authorizeWrite?.(agent,args)!==true)throw failure('MEMORY_READ_ONLY')
     const state=this.contexts.get(agent),message=sourceContext?.message??state?.messages.find(m=>m.id===args.sourceMessageId)
-    if(!message||!authorizes(messageText(message),args.action??'remember'))throw failure('MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED')
+    // Router 已完成语义决策；此端口只验证来源及写入边界，不重做话术判断。
+    if(!message||!sourceContext&&!authorizes(messageText(message),args.action??'remember'))throw failure('MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED')
     if(!args.sourceQuote||!messageText(message).includes(args.sourceQuote))throw failure('MEMORY_SOURCE_QUOTE_REQUIRED')
-    if(durablePreferenceRequest(messageText(message))&&args.sourceQuote!==messageText(message).trim())throw failure('MEMORY_SOURCE_QUOTE_REQUIRED')
-    const scope=sourceContext?memoryScope(sourceContext.binding,args,true):await this.scope(agent,args,true);if(message.source?.principal&&message.source?.channelMessageKey)scope.actor=hash(message.source.principal);const source={sessionId:this.actorId(agent),messageId:message.id,quoteSha256:hash(args.sourceQuote),observedAt:new Date().toISOString()}
+    if((sourceContext||durablePreferenceRequest(messageText(message)))&&args.sourceQuote!==messageText(message).trim())throw failure('MEMORY_SOURCE_QUOTE_REQUIRED')
+    const scope=sourceContext?memoryScope(sourceContext.binding,{},true):await this.scope(agent,args,true)
+    if(message.source?.principal&&message.source?.channelMessageKey)scope.actor=hash(message.source.principal)
+    return {message,scope,source:{sessionId:this.actorId(agent),messageId:message.id,quoteSha256:hash(args.sourceQuote),observedAt:new Date().toISOString()}}
+  }
+  async mutate(agent,args,sourceContext){
+    const {message,scope,source}=await this.writeContext(agent,args,sourceContext)
     if(args.action==='forget'){
       const prior=await this.store.read(scope,args)
-      if(!messageText(message).includes(args.key)&&!prior.entries.some(e=>args.sourceQuote.length>=2&&e.text.includes(args.sourceQuote)))throw failure('MEMORY_TARGET_QUOTE_REQUIRED')
-      const result=await this.store.forget(scope,{...args,source});if(args.topic==='experience')try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}return result
+      if(!sourceContext&&!messageText(message).includes(args.key)&&!prior.entries.some(e=>args.sourceQuote.length>=2&&e.text.includes(args.sourceQuote)))throw failure('MEMORY_TARGET_QUOTE_REQUIRED')
+      const result=await this.store.forget(scope,{...args,source,validate:sourceContext?.validate});if(args.topic==='experience'&&!sourceContext)try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}return result
     }
     if(args.action==='promote'){
       if(!messageText(message).includes(args.key))throw failure('MEMORY_TARGET_QUOTE_REQUIRED')
@@ -208,12 +226,12 @@ export default class NativeMemory extends Service {
     }
     if(args.text!==args.sourceQuote)throw failure('MEMORY_LITERAL_FACT_REQUIRED')
     checkedText(args.text)
-    if(args.expiresAt&&!messageText(message).includes(args.expiresAt))throw failure('MEMORY_EXPIRY_SOURCE_REQUIRED')
-    if(temporary(args.text)&&!args.expiresAt)return {ok:true,persisted:false,code:'MEMORY_TEMPORARY_NOT_PERSISTED'}
-    if(durablePreferenceRequest(messageText(message))&&args.context===undefined)throw failure('MEMORY_CONTEXT_REQUIRED')
+    if(args.expiresAt&&!sourceContext&&!messageText(message).includes(args.expiresAt))throw failure('MEMORY_EXPIRY_SOURCE_REQUIRED')
+    if(!sourceContext&&temporary(args.text)&&!args.expiresAt)return {ok:true,persisted:false,code:'MEMORY_TEMPORARY_NOT_PERSISTED'}
+    if((sourceContext||durablePreferenceRequest(messageText(message)))&&args.context===undefined)throw failure('MEMORY_CONTEXT_REQUIRED')
     const context=args.context!==undefined||args.topic==='preferences'?buildMemoryContext(args.context,{actor:scope.actor,message:{...message,content:messageText(message)},quote:sourceContext?.quote??conversationQuote(message.source?.quotedMessage)}):undefined
     const provenance=sourceContext?.provenance??this.provenance({agent,message});
-    const result=await this.store.remember(scope,{...args,context,source,provenance});if(args.topic==='experience')await this.host.get('reflection')?.forget(scope,args.key);return result
+    const result=await this.store.remember(scope,{...args,context,source,provenance,validate:sourceContext?.validate});if(args.topic==='experience'&&!sourceContext)try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}return result
   }
   queueCandidates(agent){
     if(this.closed||this.config.background===false||this.scheduled.has(agent)||this.background.size>=4)return

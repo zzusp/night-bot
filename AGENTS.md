@@ -19,7 +19,13 @@ Each task has one execution session; no separate task Owner/coordinator or split
 execution team. First-tier triage only decides per-source handling and optional
 short replies; it never splits, creates or controls tasks. Each authenticated
 conversation has one durable Router identity for task arrangement and result
-assessment, separate from task execution and tool-free retrospectives. Keep both
+assessment, separate from task execution and tool-free retrospectives. Router is
+Bot's semantic decision-maker and directly maintains shared memory and managed
+learned Skills through short Host tools. Do not gate Router decisions by natural-
+language authorization prefixes or add a separate authorization model/task. Host
+still enforces current authenticated source/version/actor, live generation,
+permissions, secrets, controlled paths, revisions and durable no-replay. Generic
+task memory tools do not inherit this Router-only write authority. Keep both
 triage and Router user-message batches at most 15; overflow queues. Preserve
 same-session steer, direct source/version/actor links, durable delivery
 deduplication and unknown-send readback. Task dependencies are Host-enforced;

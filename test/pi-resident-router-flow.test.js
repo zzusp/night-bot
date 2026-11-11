@@ -108,21 +108,19 @@ test('explicit channel preference is accepted memory before acknowledgement and 
   t.diagnostic(JSON.stringify({case:'channel-preference-memory',accepted:true,candidate:false,memoryRevision:saved.revision,entryRevision:entry.revision,quoteSha256:entry.source.quoteSha256,diskHashVerified:true,originalActorAndMessageBound:true,groupRouterWriteGrantUnchanged:true,writeBeforeAcknowledgement:true,coldRestart:true,crossConversationRecall:true,contextVerified:true,scenarioSearch:true,subjectApplicability:recalls.map(row=>row.status),historicalResultRebound:historyRebound,currentDocumentRequestPreserved:true,replayWrites:0,realVendorMessages:0}))
 })
 
-test('channel memory rejects borrowed, stale, quoted, ordinary and shortened authorization while temporary preferences stay ephemeral',{timeout:nativeTestTimeout(150000)},async t=>{
+test('channel memory follows Router decisions while preserving current source and literal evidence boundaries',{timeout:nativeTestTimeout(150000)},async t=>{
   const cases=[
     {id:'valid-source',text:'以后请优先用简短回答。',ok:true},
     {id:'addressed-repository-request',text:'小小鹏，你要记住最好每个代码仓库维护一个固定的目录，每次分析排查某个代码仓库时，拉取最新的代码就行，这样不用每次都重新拉取整个代码仓库',ok:true},
     {id:'authorized-repository-request',text:'我授权你将以下习惯保存为长期记忆：每个代码仓库维护一个固定目录；每次分析排查时复用该目录并更新代码，避免重复克隆，保留已有本地改动。',ok:true},
+    {id:'background-before-request',text:'小助手，代码仓库、生产只读数据库、线上 K3S 其他 Pod 日志、Redis 和 OSS 的访问都已经可达了，请你记住访问方式或沉淀skill，在后续你的日常工作中，这些内容你会经常用到。对了漏了一个 playwright 无头浏览网页，这个也会很常用',ok:true},
+    {id:'router-selected-fact',text:'仓库检索使用已有固定目录，并保留本地改动。',ok:true},
+    {id:'durable-fact-with-temporary-word',text:'今天的复盘确认了长期约定：全部渠道共享Bot学习库。',ok:true},
     {id:'historical-source',text:'查一下当前状态。',borrow:true,code:'MEMORY_CURRENT_SOURCE_REQUIRED'},
     {id:'foreign-source',text:'请看另一会话的进度。',borrow:true,room:'foreign-room',code:'ROUTER_SOURCE_FORBIDDEN'},
     {id:'stale-version',text:'以后请直接说明结论。',version:2,code:'ROUTER_SOURCE_FORBIDDEN'},
-    {id:'quoted-source',text:'这是他人说过的话。',quote:'以后请不要附报告。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
-    {id:'ordinary-future',text:'以后有空再聊。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
-    {id:'hypothetical-future',text:'以后可能不用写报告了。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
-    {id:'third-person-future',text:'以后他不用写报告了。',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
-    {id:'future-question',text:'以后是不是不用附报告？',code:'MEMORY_EXPLICIT_AUTHORIZATION_REQUIRED'},
+    {id:'quoted-source',text:'这是他人说过的话。',quote:'以后请不要附报告。',code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
     {id:'shortened-condition',text:'以后没要求文档时，不用附报告。',short:'不用附报告。',code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
-    {id:'temporary-preference',text:'以后请在本次任务中简短回答。',temporary:true},
     {id:'context-required',text:'以后请默认先说结论。',noContext:true,code:'MEMORY_CONTEXT_REQUIRED'},
     {id:'context-forged-quote',text:'以后请直接用文字汇报。',context:{background:{source:'quote',quote:'伪造的背景片段'},scenario:'工作汇报',boundaries:['当前明确要求优先']},code:'MEMORY_CONTEXT_SOURCE_REQUIRED'},
     {id:'context-secret',text:'以后请优先用中文汇报。',context:{scenario:'password: never-store-in-context',boundaries:['当前要求优先']},code:'MEMORY_SECRET_REFUSED'},
@@ -145,8 +143,7 @@ test('channel memory rejects borrowed, stale, quoted, ordinary and shortened aut
   for(const item of cases){await h.receive(channelMessage(item.id,{text:item.text,...item.room?{conversationId:item.room}:{},...item.quote?{quotedMessage:{messageId:'quoted-prior',senderId:'bob',text:item.quote}}:{}}));await h.service.whenIdle()}
   for(const item of cases){const result=outcomes.get(item.id);assert.ok(result,item.id)
     if(item.ok){assert.equal(result.persisted,true,item.id);continue}
-    if(item.temporary){assert.equal(result.ok,true);assert.equal(result.persisted,false);assert.equal(result.code,'MEMORY_TEMPORARY_NOT_PERSISTED')}
-    else{assert.equal(result.ok,false,item.id);assert.equal(result.code,item.code,item.id)}
+    assert.equal(result.ok,false,item.id);assert.equal(result.code,item.code,item.id)
   }
   const saved=await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{topic:'preferences'})
   const originals=await h.query('source.list')
@@ -157,11 +154,11 @@ test('channel memory rejects borrowed, stale, quoted, ordinary and shortened aut
     assert.equal(entry.source.actor,hash(original.actorId));assert.equal(entry.source.quoteSha256,hash(item.text))
   }
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
-  t.diagnostic(JSON.stringify({case:'channel-memory-authority',checks:cases.length,onlyExplicitDirectSourceSaved:true,temporaryNotSaved:true,secretRefused:true}))
+  t.diagnostic(JSON.stringify({case:'channel-memory-authority',checks:cases.length,routerDecidesWithoutPhraseGate:true,currentSourceAndFullQuoteRequired:true,secretRefused:true}))
 })
 
-test('read-only Router reports the actual memory refusal without persisting a preference',{timeout:nativeTestTimeout(40000)},async t=>{
-  let h,step=0,outcome
+test('read-only Router reports actual memory and Skill refusals without persisting either',{timeout:nativeTestTimeout(40000)},async t=>{
+  let h,step=0,outcome,skillOutcome
   h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
@@ -171,14 +168,17 @@ test('read-only Router reports the actual memory refusal without persisting a pr
       if(step++===0){const row=await h.query('router.get',{conversationId:input.conversationId});const actor=h.host.ctx.agents.get(row.activeSessionId);await actor.ctx.get('permissionPresets').set(actor,'read-only')
         return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'preferences',key:'read-only-preference',text:source.text,sourceQuote:source.text}}}
       if(step===2){outcome=memoryToolResult(body);assert.equal(outcome.ok,false);assert.equal(outcome.code,'MEMORY_READ_ONLY')
-        return {tool:'resident_router_reply',args:{operationId:'readonly-memory-failure',sourceId:source.sourceId,messageVersion:source.version,text:'当前只读权限下没有保存这个长期偏好。'}}}
-      if(step===3)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'readonly-settle'}}
+        return {tool:'resident_skill_mutate',args:{operationId:'readonly-skill',sourceId:source.sourceId,messageVersion:source.version,sourceQuote:source.text,action:'upsert',key:'readonly-skill',steps:['先读证据'],reason:'复用方法',applicability:'日常检索'}}}
+      if(step===3){skillOutcome=memoryToolResult(body);assert.equal(skillOutcome.code,'MEMORY_READ_ONLY')
+        return {tool:'resident_router_reply',args:{operationId:'readonly-memory-failure',sourceId:source.sourceId,messageVersion:source.version,text:'当前只读权限下没有保存这个长期偏好或Skill。'}}}
+      if(step===4)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'readonly-settle'}}
       return {text:'No memory was saved.'}
     }
     return {text:'No other work'}
   })
   await h.receive(channelMessage('readonly-memory',{text:'以后请不要附报告文档。'}));await h.service.whenIdle()
-  assert.equal(outcome.code,'MEMORY_READ_ONLY')
+  assert.equal(outcome.code,'MEMORY_READ_ONLY');assert.equal(skillOutcome.code,'MEMORY_READ_ONLY')
+  assert.deepEqual((await h.host.ctx.reflection.readSkills({kind:'bot',id:hash('bot:shared')})).entries,[])
   assert.equal((await h.host.ctx.memory.store.read({kind:'bot',id:hash('bot:shared')},{topic:'preferences'})).entries.length,0)
   assert.equal(h.sent.length,1);assert.match(h.sent[0].text,/没有保存/)
 })
@@ -939,4 +939,83 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
   const calls=runs.length;await h.restart();await h.receive(channelMessage('answer',{senderId:audience==='operator'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
   assert.equal(runs.length,calls,'committed original source and task completion are not replayed after restart')
   assert.equal(writes,1)
+})
+
+test('Router directly maintains memory and learned skills with cold persistence, revocation and no empty tasks',{timeout:nativeTestTimeout(180000)},async t=>{
+  const {readFile,stat}=await import('node:fs/promises'),{join}=await import('node:path')
+  const {createPiProjectionRequest}=await import('../src/runtime/pi-request-context.js')
+  const key='repository-checkout',context={scenario:'代码排障的工作目录选择。',boundaries:['保留已有改动；这不是外部操作授权。']}
+  const skill={key,steps:['复用已存在的仓库目录','更新前检查并保留本地改动'],reason:'日常检索需要复用工作目录',applicability:'同一仓库的后续检索'}
+  const cases=[
+    {id:'memory-create',text:'仓库排障复用固定目录，并保留本地改动。',tool:'resident_memory_remember',args:{topic:'preferences',key,expectedRevision:0},revision:1},
+    {id:'memory-update',text:'更正一下：先检查未提交改动，再更新固定目录中的代码。',tool:'resident_memory_remember',args:{topic:'preferences',key,expectedRevision:1},revision:2},
+    {id:'memory-conflict',text:'按上次的版本直接覆盖这条习惯。',tool:'resident_memory_remember',args:{topic:'preferences',key,expectedRevision:1},code:'MEMORY_REVISION_CONFLICT'},
+    {id:'memory-delete',text:'刚才的目录习惯不再适用，清掉那条记录。',tool:'resident_memory_forget',args:{topic:'preferences',key,expectedRevision:2}},
+    {id:'skill-create',text:'把复用工作目录的方法整理成后续可用的操作步骤。',tool:'resident_skill_mutate',args:{...skill,action:'upsert',expectedRevision:0},revision:1},
+    {id:'skill-query',text:'看一下已经整理的方法。',tool:'resident_skill_query',args:{key},query:true,revision:1},
+    {id:'skill-update',text:'调整方法，读取仓库之前先检查现有改动。',tool:'resident_skill_mutate',args:{...skill,action:'upsert',steps:['首先检查现有改动','再读取仓库证据'],expectedRevision:1},revision:2},
+    {id:'skill-conflict',text:'还是用旧版本的方法修改。',tool:'resident_skill_mutate',args:{...skill,action:'upsert',expectedRevision:1},code:'REFLECTION_REVISION_CONFLICT'},
+    {id:'skill-short-quote',text:'背景信息：只在原授权范围内操作。更新方法时保留这个限制。',tool:'resident_skill_mutate',quote:'更新方法',args:{...skill,action:'upsert'},code:'MEMORY_SOURCE_QUOTE_REQUIRED'},
+    {id:'skill-secret',text:'不要把凭据放入方法正文。',tool:'resident_skill_mutate',args:{...skill,action:'upsert',steps:['password: never-store-this-value']},code:'MEMORY_SECRET_REFUSED'},
+    {id:'skill-path',text:'将方法写到安装模板位置。',tool:'resident_skill_mutate',args:{...skill,key:'../installed-template',action:'upsert'},code:'REFLECTION_SKILL_INVALID'},
+    {id:'skill-delete',text:'这个方法已经过时，移除它。',tool:'resident_skill_mutate',args:{action:'delete',key,expectedRevision:2},revision:3},
+    {id:'skill-stale-create',text:'沿用最初的空版本重新创建。',tool:'resident_skill_mutate',args:{...skill,action:'upsert',expectedRevision:0},code:'REFLECTION_REVISION_CONFLICT'},
+    {id:'skill-recreate',text:'依据目前需求重新整理同名方法。',tool:'resident_skill_mutate',args:{...skill,action:'upsert',expectedRevision:3},revision:4},
+    {id:'skill-final-delete',text:'不再保留这个学习方法。',tool:'resident_skill_mutate',args:{action:'delete',key,expectedRevision:4},revision:5},
+    {id:'skill-query-deleted',text:'确认删除后的版本。',tool:'resident_skill_query',args:{key},query:true,revision:5},
+  ],steps=new Map(),outcomes=new Map()
+  const h=await residentRouterHost(t,body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body),source=input.events.find(event=>event.source)?.source
+      if(!source)return settle(body,input)
+      const item=cases.find(row=>row.id===source.messageId),step=steps.get(item.id)??0;steps.set(item.id,step+1)
+      if(step===0){const args=item.query?item.args:{operationId:item.id,sourceId:source.sourceId,messageVersion:source.version,sourceQuote:item.quote??source.text,...item.args}
+        if(item.tool==='resident_memory_remember'){delete args.operationId;Object.assign(args,{text:source.text,context})}
+        if(item.tool==='resident_memory_forget')delete args.operationId
+        return {tool:item.tool,args}}
+      if(step===1){outcomes.set(item.id,memoryToolResult(body));return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'learning-settle:'+item.id}}}
+      return {text:'Learning result inspected.'}
+    }
+    return {text:'No task execution required.'}
+  })
+  const scope={kind:'bot',id:hash('bot:shared')};let viewer,loaded,historyId
+  for(const item of cases){
+    await h.receive(channelMessage(item.id,{text:item.text}));await h.service.whenIdle()
+    const result=outcomes.get(item.id);assert.ok(result,item.id)
+    if(item.code){assert.equal(result.ok,false,item.id);assert.equal(result.code,item.code,item.id)}
+    else if(item.query){assert.equal(result.revision,item.revision,item.id);assert.equal(result.entries.length,item.id==='skill-query'?1:0);if(result.entries.length)assert.deepEqual(result.entries[0].steps,skill.steps)}
+    else{assert.equal(result.ok,true,item.id);assert.equal(result.persisted,true,item.id);if(item.revision!==undefined)assert.equal(item.tool==='resident_memory_remember'?result.entry.revision:result.revision,item.revision,item.id)}
+    if(item.id==='memory-delete')assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'preferences',key})).entries,[])
+    if(item.id==='skill-create'){
+      assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,[],'Skill does not require artificial experience records')
+      viewer=await h.agent('learned-viewer',{actorId:'reader'})
+      loaded=await h.host.ctx.skills.get('learned-'+key,{scope:viewer.agent});assert.match(loaded.content,/复用已存在的仓库目录/)
+      historyId=viewer.session.sessionManager.appendCustomMessageEntry('night.tool-context',[{type:'text',text:loaded.content}],false)
+      const original=(await h.query('source.list')).find(row=>row.messageId===item.id)
+      const value=(await h.host.ctx.reflection.state(scope)).skills[key]
+      assert.equal(value.source.messageId,original.sourceId);assert.equal(value.source.actor,hash(original.actorId));assert.equal(value.source.quoteSha256,hash(item.text))
+    }
+    if(item.id==='skill-update'){
+      const projection=viewer.session.sessionManager.buildSessionProjection(),entry=projection.entries.find(row=>row.sourceEntry.id===historyId).messages[0]
+      const filtered=await h.host.ctx.memory.filterRequest(createPiProjectionRequest(projection),viewer.agent)
+      assert.match(filtered.messages[projection.messages.indexOf(entry)].content[0].text,/revoked/)
+      assert.equal(viewer.session.sessionManager.buildSessionProjection().entries.find(row=>row.sourceEntry.id===historyId).messages[0].content[0].text,loaded.content,'durable audit stays intact')
+      await viewer.dispose();await h.restart()
+      viewer=await h.agent('cold-learned-viewer',{actorId:'other-reader'})
+      const current=await h.host.ctx.skills.get('learned-'+key,{scope:viewer.agent});assert.match(current.content,/首先检查现有改动/)
+      assert.match(await readFile(join(h.host.ctx.reflection.directory(scope),'skills',key,'SKILL.md'),'utf8'),/首先检查现有改动/)
+    }
+    if(item.id==='skill-delete'||item.id==='skill-final-delete'){
+      assert.equal((await h.host.ctx.skills.list({scope:viewer.agent})).some(row=>row.name==='learned-'+key),false)
+      await assert.rejects(stat(join(h.host.ctx.reflection.directory(scope),'skills',key)),{code:'ENOENT'})
+    }
+  }
+  await viewer.dispose();await h.restart()
+  assert.equal((await h.host.ctx.reflection.readSkills(scope,{key})).revision,5)
+  assert.deepEqual((await h.host.ctx.reflection.readSkills(scope,{key})).entries,[])
+  assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'preferences',key})).entries,[])
+  assert.equal((await h.query('task.list')).length,0);assert.equal(h.sent.length,0)
+  t.diagnostic(JSON.stringify({case:'router-learning-crud',checks:cases.length,memoryCrud:true,skillCrud:true,coldRestart:true,sharedProvider:true,oldLoadedSkillRevoked:true,deletedDirectoryAbsent:true,versionsMonotonic:true,emptyTasks:0,realVendorMessages:0}))
 })

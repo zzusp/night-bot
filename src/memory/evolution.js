@@ -33,7 +33,9 @@ export async function recordUsage(store, scope, counter, {provenance,entries} = 
 }
 
 // Keep availability aligned with the memory read window used by the real catalog.
-export const learnedSkillSupported = (skill, entries) => (skill.supports ?? []).some(row => entries.slice(0, 50).some(entry => entry.key === row.memoryKey))
+export const learnedSkillSupported = (skill, entries) => skill.origin==='router'
+  ? typeof skill.source?.messageId==='string'&&typeof skill.source?.sessionId==='string'&&/^[a-f0-9]{64}$/.test(skill.source.actor)&&/^[a-f0-9]{64}$/.test(skill.source.quoteSha256)
+  : (skill.supports ?? []).some(row => entries.slice(0, 50).some(entry => entry.key === row.memoryKey))
 
 /** Host-only projection from authenticated reader scopes. No global scan and no
  * inference from catalogs, task completion, or the number of retained records. */
