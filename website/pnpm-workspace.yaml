@@ -1,0 +1,8 @@
+# The public docs site is independent of the Bot runtime dependency graph.
+packages: []
+allowBuilds:
+  esbuild: true
+# VitePress 1.x is the stable release; keep its development server on the
+# patched Vite 6 line instead of the vulnerable Vite 5 transitive default.
+overrides:
+  vite: 6.4.6

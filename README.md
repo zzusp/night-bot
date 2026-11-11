@@ -1,5 +1,7 @@
 # Night Bot
 
+[官网与文档](https://zzusp.github.io/night-bot/) · [快速开始](https://zzusp.github.io/night-bot/guide/getting-started.html) · [使用教程](https://zzusp.github.io/night-bot/guide/usage.html)
+
 基于 [Pi](https://github.com/earendil-works/pi) 的个人助理 Agent 初始化套件。
 
 把任务交给自己的 Bot，通过可选的 Web 控制台或消息渠道持续协作。Night Bot 将任务执行、长期记忆、技能学习和定时工作放在同一个运行环境中；渠道负责接入，核心可以独立、无界面运行。
@@ -169,6 +171,8 @@ pnpm --dir packages/web-console test:browser
 测试通常使用隔离目录、本地脚本模型和 fake 渠道，不代表真实厂商集成通过。隔离测试需要对应宿主内核能力，不能通过关闭应用沙箱使测试通过；Web 浏览器测试的本机浏览器要求见 [Web 运维](docs/ops/web-console-local.md#开发与隔离验收)。
 
 `pnpm audit:runtime` 将审计结果输出到 `docs/tmp/runtime-audit.json`，不覆盖历史检查点。提交时请区分通过、失败、跳过和未执行的验证，不将分组测试当作全量验收。
+
+官网与文档站独立位于 [`website/`](website)，本地构建和 GitHub Pages 发布说明见 [网站维护说明](website/README.md)。网站依赖不会进入 Bot 的运行时依赖图。
 
 ## 来源与许可
 
