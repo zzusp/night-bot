@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ApiError, type Message } from '../api';
 import { dateTime, useResource } from '../hooks';
-import { messageProcessDuration } from '../message-process-duration';
+import { messageProcessDuration, messageProcessMetric, type MessageProcessTiming } from '../message-process-duration';
 import { Badge } from './BoardPrimitives';
 import { Loading, Notice } from './Shared';
 
-interface TimingStep { kind?: string; label: string; at: string; shared?: boolean; durationMs?: number }
+interface TimingStep extends MessageProcessTiming { label: string; shared?: boolean }
 interface ReplyTiming {
   messageId: string; messageVersion?: number; preview: string; status: string;
   receivedAt: string | null; firstReplyAt: string | null; durationMs: number | null;
@@ -39,12 +39,11 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
     {row.reason && <p className="response-time-explanation">{row.reason}</p>}
     {!confirmed && !row.reason && <p className="response-time-explanation">{explanations[row.status] || '当前记录不足，无法确认首答。'}</p>}
     {row.steps.length ? <ol className="response-time-timeline">{row.steps.map((step, index) => {
-      const measured = typeof step.durationMs === 'number' && Number.isFinite(step.durationMs) && step.durationMs >= 0;
       return <li key={`${step.kind || step.label}:${step.at}:${index}`}>
         <span className="response-time-event" title={exactTime(step.at)}>{step.label.replace(/（批次共享）$/, '')}
           {step.shared && <small>批次共享</small>}
         </span>
-        <span className="response-time-elapsed"><span className="sr-only">{measured ? '节点耗时 ' : '此节点未单独计时'}</span><span aria-hidden={!measured}>{measured ? messageProcessDuration(step.durationMs!) : '未记录'}</span></span>
+        <span className="response-time-elapsed">{messageProcessMetric(step, row.receivedAt)}</span>
       </li>;
     })}</ol> : <p className="response-time-explanation">未记录可展示的中间过程。</p>}
   </article>;

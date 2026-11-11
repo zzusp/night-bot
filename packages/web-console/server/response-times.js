@@ -26,7 +26,7 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
  const duration=receivedAt&&firstReplyAt?Date.parse(firstReplyAt)-Date.parse(receivedAt):null
  const steps=[]
  let measuredTriage=false
- if(receivedAt)steps.push({kind:'received',label:'接收消息',at:receivedAt})
+ if(receivedAt)steps.push({kind:'received',label:'接收消息',at:receivedAt,timingType:'milestone'})
  for(const stage of source.stages??[]){
   if(!phaseNames[stage.stage]||stage.phase)continue
   const start=stamp(stage.startedAt),end=stamp(stage.completedAt),shared=stage.shared===true
@@ -38,21 +38,22 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
    const measured=end&&Date.parse(end)>=Date.parse(start)
    const clipped=measured&&firstReplyAt&&Date.parse(end)>Date.parse(firstReplyAt)
    const at=clipped?firstReplyAt:end??start
-   const label=stage.stage==='triage'?'消息分流':'消息处理'
-   steps.push({kind:`stage-${stage.stage}-completed`,label:label+(clipped?'（截至回复可见）':'')+(shared?'（批次共享）':''),at,shared,
+   const label=stage.stage==='triage'?'消息分流':'Router 处理'
+   if(stage.stage==='router')steps.push({kind:'stage-router-started',label:'Router 开始准备'+(shared?'（批次共享）':''),at:start,shared,timingType:'milestone'})
+   steps.push({kind:`stage-${stage.stage}-completed`,label:label+(clipped?'（截至回复可见）':'')+(shared?'（批次共享）':''),at,shared,timingType:'span',
     ...(measured?{durationMs:Date.parse(at)-Date.parse(start)}:{})})
    if(stage.stage==='triage'&&measured)measuredTriage=true
    continue
   }
-  if(stage.stage==='turn'&&start)steps.push({kind:'stage-turn-started',label:'开始处理'+(shared?'（批次共享）':''),at:start,shared})
-  if(end)steps.push({kind:`stage-${stage.stage}-completed`,label:phaseNames[stage.stage]+(shared?'（批次共享）':''),at:end,shared,
+  if(stage.stage==='turn'&&start)steps.push({kind:'stage-turn-started',label:'开始处理'+(shared?'（批次共享）':''),at:start,shared,timingType:'milestone'})
+  if(end)steps.push({kind:`stage-${stage.stage}-completed`,label:phaseNames[stage.stage]+(shared?'（批次共享）':''),at:end,shared,timingType:'span',
    ...(start&&Date.parse(end)>=Date.parse(start)?{durationMs:Date.parse(end)-Date.parse(start)}:{})})
  }
- if(!measuredTriage&&stamp(source.routedAt))steps.push({kind:'triage-completed',label:'消息分流完成',at:source.routedAt})
- if(stamp(routing?.event?.consumedAt))steps.push({kind:'routing-completed',label:'本条消息安排已提交',at:routing.event.consumedAt})
+ if(!measuredTriage&&stamp(source.routedAt))steps.push({kind:'triage-completed',label:'消息分流完成',at:source.routedAt,timingType:'milestone'})
+ if(stamp(routing?.event?.consumedAt))steps.push({kind:'routing-completed',label:'本条消息安排已提交',at:routing.event.consumedAt,timingType:'milestone'})
  const attempt=[...associated].filter(row=>stamp(row.createdAt)).sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0]
- if(attempt){steps.push({kind:'reply-prepared',label:'回复已准备',at:attempt.createdAt});if(stamp(attempt.sendStartedAt))steps.push({kind:'send-started',label:'开始发送',at:attempt.sendStartedAt})}
- if(first)steps.push({kind:'reply-visible',label:earlierUnknown?'一条后续回复已确认可见':'首条回复已确认可见',at:firstReplyAt})
+ if(attempt){steps.push({kind:'reply-prepared',label:'回复已准备',at:attempt.createdAt,timingType:'milestone'});if(stamp(attempt.sendStartedAt))steps.push({kind:'send-started',label:'开始发送',at:attempt.sendStartedAt,timingType:'milestone'})}
+ if(first)steps.push({kind:'reply-visible',label:earlierUnknown?'一条后续回复已确认可见':'首条回复已确认可见',at:firstReplyAt,timingType:'milestone'})
  steps.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at))
  const decision=routing?.triage?.state==='committed'?routing.triage.decision:null
  const missingDeliveryTime=associated.some(row=>row.state==='delivered'&&!stamp(row.deliveredAt))
