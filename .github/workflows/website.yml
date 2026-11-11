@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build:
     name: Build and check docs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -48,10 +48,22 @@ jobs:
         run: pnpm test
       - name: Build and validate public pages
         run: pnpm build
-      - name: Install test browser
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Use the runner's preinstalled Chrome
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium)"
+          test -n "$chrome"
+          "$chrome" --version
+          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
       - name: Verify navigation, accessibility and responsive layout
         run: pnpm test:browser
+      - name: Retain static-site screenshots for review
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: website-preview
+          path: website/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 5
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
@@ -62,7 +74,7 @@ jobs:
     name: Deploy GitHub Pages
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write

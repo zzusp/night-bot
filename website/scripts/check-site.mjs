@@ -9,6 +9,13 @@ export const expectedPages = [
 const base = '/night-bot/'
 const origin = 'https://zzusp.github.io'
 
+export async function checkPublicSource(directory) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  if (entries.length !== 1 || entries[0].name !== 'favicon.svg' || !entries[0].isFile()) {
+    throw new Error('Public source allows only the reviewed favicon.svg; add new assets explicitly')
+  }
+}
+
 export async function checkSite(directory, pages = expectedPages) {
   const root = resolve(directory)
   const files = []
@@ -59,5 +66,6 @@ export async function checkSite(directory, pages = expectedPages) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const directory = resolve(fileURLToPath(new URL('../.vitepress/dist', import.meta.url)))
+  await checkPublicSource(fileURLToPath(new URL('../public', import.meta.url)))
   console.log(JSON.stringify(await checkSite(directory), null, 2))
 }

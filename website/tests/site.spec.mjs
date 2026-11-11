@@ -6,13 +6,14 @@ const noOverflow = async page => {
   expect(sizes.content).toBeLessThanOrEqual(sizes.viewport + 1)
 }
 
-test('homepage is accessible, responsive and links to the real quick start', async ({ page }) => {
+test('homepage is accessible, responsive and links to the real quick start', async ({ page }, testInfo) => {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto('./')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('把事情交给 Bot')
   await expect(page.getByText('能力示意，不是实时对话或任务状态。')).toBeVisible()
   await noOverflow(page)
+  await page.screenshot({ path: testInfo.outputPath('homepage.png'), fullPage: true })
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([])
   await page.getByRole('link', { name: '开始搭建' }).click()
   await expect(page).toHaveURL(/\/night-bot\/guide\/getting-started\.html$/)

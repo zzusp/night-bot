@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkSite } from './check-site.mjs'
+import { checkSite, checkPublicSource } from './check-site.mjs'
 
 const page = body => `<html lang="zh-CN"><head><title>Night Bot</title></head><body>${body}</body></html>`
 async function fixture(t, files) {
@@ -44,3 +44,10 @@ for (const file of ['runtime.log', 'config.json', 'backup.zip', '.env.local', 'a
     await assert.rejects(checkSite(root, ['index.html']), /Unexpected public asset/)
   })
 }
+
+test('public source accepts only the explicitly reviewed favicon', async t => {
+  const root = await fixture(t, { 'favicon.svg': '<svg/>' })
+  await checkPublicSource(root)
+  await writeFile(join(root, 'private.ABCD1234.js'), 'private fixture')
+  await assert.rejects(checkPublicSource(root), /Public source allows only/)
+})
