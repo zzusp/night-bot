@@ -54,6 +54,6 @@ export default defineConfig({
     darkModeSwitchLabel: '外观', lightModeSwitchTitle: '切换为浅色', darkModeSwitchTitle: '切换为深色',
     sidebarMenuLabel: '文档目录', returnToTopLabel: '返回顶部', skipToContentLabel: '跳转到内容',
     notFound: { code: '404', title: '页面不存在', quote: '这个地址没有对应文档。你可以返回首页，或使用搜索查找。', linkLabel: '返回首页', linkText: '返回首页' },
-    footer: { message: '官网仅提供介绍和文档，不连接你的 Bot 或运行数据。', copyright: 'Night Bot · <a href="https://github.com/zzusp/night-bot/blob/main/THIRD_PARTY.md">来源与许可</a>' }
+    footer: { message: '官网仅提供介绍和文档，不连接你的 Bot 或运行数据。', copyright: 'Night Bot · <a href="/night-bot/third-party-notices.txt">网站依赖许可</a> · <a href="https://github.com/zzusp/night-bot/blob/main/THIRD_PARTY.md">来源与许可</a>' }
   }
 })

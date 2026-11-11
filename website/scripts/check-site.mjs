@@ -11,8 +11,8 @@ const origin = 'https://zzusp.github.io'
 
 export async function checkPublicSource(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
-  if (entries.length !== 1 || entries[0].name !== 'favicon.svg' || !entries[0].isFile()) {
-    throw new Error('Public source allows only the reviewed favicon.svg; add new assets explicitly')
+  if (entries.length !== 2 || entries.some(entry => !['favicon.svg', 'third-party-notices.txt'].includes(entry.name) || !entry.isFile())) {
+    throw new Error('Public source allows only the reviewed favicon.svg and third-party-notices.txt; add new assets explicitly')
   }
 }
 
@@ -34,7 +34,7 @@ export async function checkSite(directory, pages = expectedPages) {
   }
   const forbidden = files.find(file => /(^|\/)(data|backups|node_modules|\.git|\.env|secrets|acceptance|evidence)(\/|$)/i.test(file))
   if (forbidden) throw new Error(`Private or non-site path in publication output: ${forbidden}`)
-  const rootAssets = new Set(['favicon.svg', 'vp-icons.css', 'sitemap.xml', 'hashmap.json'])
+  const rootAssets = new Set(['favicon.svg', 'vp-icons.css', 'sitemap.xml', 'hashmap.json', 'third-party-notices.txt'])
   const unexpected = files.find(file => !pages.includes(file) && !rootAssets.has(file) &&
     !/^assets\/(?:chunks\/)?[^/]+\.[A-Za-z0-9_-]{8}(?:\.lean)?\.(?:js|css|woff2)$/.test(file))
   if (unexpected) throw new Error(`Unexpected public asset: ${unexpected}`)

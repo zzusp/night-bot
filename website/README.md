@@ -13,9 +13,9 @@ pnpm --dir website build
 pnpm --dir website preview
 ```
 
-预览 <http://localhost:4173/night-bot/>。开发模式使用 `pnpm --dir website dev`，只监听 loopback。网站固定使用稳定 VitePress 1.6.4；本目录 workspace override 将其 Vite 依赖固定到已修补的 6.4.6，Vue 固定为 3.5.45。升级时同时重跑构建、审计和浏览器测试，不撤销补丁覆盖。
+预览 <http://localhost:4173/night-bot/>。开发模式使用 `pnpm --dir website dev`，只监听 loopback。网站固定使用稳定 VitePress 1.6.4；本目录 workspace override 将其 Vite 依赖固定到已修补的 6.4.6，Vue 固定为 3.5.45。升级时同时重跑构建、审计和浏览器测试，不撤销补丁覆盖，并同步核对 `public/third-party-notices.txt` 中部署到浏览器的依赖许可。
 
-浏览器回归只访问本地静态网站，不启动真实 Bot、模型或渠道。CI 固定使用 Ubuntu 24.04 runner 预装的 Chrome，避免在每次构建中重新下载系统依赖；本地可安装 Playwright 浏览器：
+浏览器回归只访问本地静态网站，不启动真实 Bot、模型或渠道。CI 固定使用 Ubuntu 24.04 runner 预装的 Chrome，仅另行获取固定版本、SHA-256 校验的 Noto CJK 字体供截图使用（不打包到网站），避免重新安装系统浏览器依赖；本地可安装 Playwright 浏览器：
 
 ```sh
 pnpm --dir website exec playwright install chromium

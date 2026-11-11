@@ -45,8 +45,8 @@ for (const file of ['runtime.log', 'config.json', 'backup.zip', '.env.local', 'a
   })
 }
 
-test('public source accepts only the explicitly reviewed favicon', async t => {
-  const root = await fixture(t, { 'favicon.svg': '<svg/>' })
+test('public source accepts only the explicitly reviewed icon and notices', async t => {
+  const root = await fixture(t, { 'favicon.svg': '<svg/>', 'third-party-notices.txt': 'Reviewed notices' })
   await checkPublicSource(root)
   await writeFile(join(root, 'private.ABCD1234.js'), 'private fixture')
   await assert.rejects(checkPublicSource(root), /Public source allows only/)

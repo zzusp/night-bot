@@ -35,6 +35,11 @@ test('local search handles results, no results, and dismissal', async ({ page })
   await page.keyboard.press('Escape')
   await expect(search).not.toBeVisible()
   await expect(page.getByRole('button', { name: '搜索文档' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(search).toBeVisible()
+  await page.getByTitle('关闭搜索', { exact: true }).click()
+  await expect(search).not.toBeVisible()
+  await expect(page.getByRole('button', { name: '搜索文档' })).toBeFocused()
 })
 
 test('dark documents retain readable navigation and have a recovery page', async ({ page }) => {
