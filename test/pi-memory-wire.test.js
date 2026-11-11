@@ -5,6 +5,18 @@ import {join} from 'node:path'
 import {memoryHost} from './fixtures/memory-host.js'
 import {randomUUID} from 'node:crypto'
 import {hash} from '../src/memory/format.js'
+import {authorizes} from '../src/memory/commands.js'
+
+test('memory authorization recognizes direct addressed requests and explicit consent without borrowing other speech',()=>{
+  const original='小小鹏，你要记住最好每个代码仓库维护一个固定的目录，每次分析排查某个代码仓库时，拉取最新的代码就行，这样不用每次都重新拉取整个代码仓库'
+  const confirmation='我授权你将以下习惯保存为长期记忆：每个代码仓库维护一个固定目录；每次分析排查时复用该目录并更新代码，避免重复克隆，保留已有本地改动。'
+  const accepted=[original,confirmation,'你要记住：更新仓库时保留本地改动。','助手，请你记住：更新仓库时保留本地改动。']
+  const refused=['他说，你要记住这个习惯。','同事提到，你要记住这个习惯。','他回复，你要记住这个习惯。','原话是：'+confirmation,'“'+original+'”','我不授权你将以下习惯保存为长期记忆：复用仓库。','我授权你不要将以下习惯保存为长期记忆：复用仓库。','助手，你不要记住这个习惯。','助手，你要记住这个习惯吗？','如果我授权你将以下习惯保存为长期记忆，你会怎么做？','每个仓库维护一个固定目录挺方便。']
+  assert.deepEqual(accepted.map(text=>({text,authorized:authorizes(text,'remember')})),accepted.map(text=>({text,authorized:true})))
+  assert.deepEqual(refused.map(text=>({text,authorized:authorizes(text,'remember')})),refused.map(text=>({text,authorized:false})))
+  assert.equal(authorizes(confirmation,'forget'),false)
+  assert.equal(authorizes(confirmation,'promote'),false)
+})
 
 test('default portable Host immediately remembers, corrects and forgets while temporary preferences stay ephemeral',async t=>{
   const f=await memoryHost(t),h=await f.agent('alice',{actorId:'alice'})
