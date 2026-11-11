@@ -37,7 +37,7 @@ node --experimental-test-module-mocks --test --test-concurrency=1 --test-name-pa
 | 通用身份及 DWS 串行终验 | 2 PASS / 0 FAIL，exit 0；跨会话/未知 actor 拒绝、显式 null 拒绝、显式有效 actor 优先、无来源不猜身份、群聊不补引用/提及、输入 unknown 对象原样；DWS 未知身份保留冷恢复界用例通过 |
 | Web 账本关联回归 | 3 PASS / 0 FAIL，exit 0；同 deliveryKey 去重、冲突拒绝、重启回读、历史 unknown 不重放、跨 sender/channel 的发送及回读拒绝 |
 | 源码守卫 | pnpm check exit 0；424 runtime JS、externalSdkImports=0、legacyOrchestratorDefinitions=0，生产导入声明与来源/hash 校验通过 |
-| 交付检查 | git diff --check；唯一 goal 校验；暂存 diff 和技能路径检查在提交前执行，不纳入私有 Skill 或业务数据 |
+| 交付检查 | git diff --check；唯一 goal 校验；提交前暂存 diff 和技能路径检查通过，git ls-files 无 Skill 正文路径，不纳入私有 Skill 或业务数据 |
 
 实际命令：
 
@@ -60,4 +60,6 @@ node --experimental-test-module-mocks --test --test-concurrency=1 --test-name-pa
 
 同步现有 README、DESIGN 和 Web 运维说明，保留第1/2轮及 matrix 历史列；本轮只交付代码、本地验证和独立 PR。没有再次合并、部署、发送真实消息、触发 CI，或处置生产旧 unknown；不声称线上问题已经消失。正式上线与旧收据恢复须独立授权和验收。
 
-临时基线 loader、PR 草稿及本轮未退出测试残留在最终报告核对后统一清理；仅清理自己创建的资源，保留此前私有 release-pointer。最终文字证据即本报告，无另存的截图、日志或私有数据附件；未创建全绿 report.md。
+临时基线 loader、PR 草稿及两处未退出测试残留，已在最终报告和 PR 回查后先 --check 再统一清理，独立只读检查确认不存在；只清理自己创建的资源，保留此前私有 release-pointer。最终文字证据即本报告，无另存的截图、日志或私有数据附件；未创建全绿 report.md。
+
+修复提交 `1706e7d99e1c8d75bb1ae656fa4150587da04f1c` 已推送并独立核对远端头；[PR #58](https://github.com/zzusp/night-bot/pull/58) 回查为 OPEN / MERGEABLE，`main` ← `worktree-router-learning-web-fixes-20261111`，正文和本轮证据一致。此后的收口提交仅更新本报告与唯一目标，不改变已经实跑的源码或测试。

@@ -1,8 +1,8 @@
 # Router 记忆与 Skill 维护目标
 
-> 状态：ACTIVE
+> 状态：本轮完成（代码与 PR，未再次部署）
 > Goal ID：router-learning-mutations
-> 最近维护：2026-11-11T07:33:12+00:00
+> 最近维护：2026-11-11T07:37:10+00:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -27,16 +27,17 @@ Router维护合同、对应本地回归与独立PR完成；已授权的上一轮
 | SG4 | 同步合同、审阅差异、独立 PR | 合同同步且 PR 可审阅 | 完成，PR #57 已合并 | [PR #57](https://github.com/zzusp/night-bot/pull/57)，合同与运维说明已同步 |
 | SG5 | 正式镜像发布与生产部署 | 已合并产物按 digest 部署并回读 | 完成 | [round-2.md](round-2.md) |
 | SG6 | 真实 Router 记忆与 Skill 增改删及测试数据清理 | 六项真实持久化、测试数据清理且缺口单列 | 6项持久化通过；Web送达/展示另有失败 | [round-2.md](round-2.md)、[matrix.csv](matrix.csv) |
-| SG7 | Web来源身份映射与Skill支持判定续修 | 两项 Web 修复、本地终态验证及独立 PR | 代码与本地验证完成，待 PR | [round-3.md](round-3.md) |
+| SG7 | Web来源身份映射与Skill支持判定续修 | 两项 Web 修复、本地终态验证及独立 PR | 完成，PR #58 OPEN | [round-3.md](round-3.md)、[PR #58](https://github.com/zzusp/night-bot/pull/58) |
 
 ## 当前检查点
 
 - 当前子目标：SG7
-- 唯一下一步：核对暂存差异与隐私边界，提交、推送并创建独立修复 PR，随后回查真实状态。
-- 未闭环项：独立 PR 待创建；本次未部署生产、未处置旧 unknown。扩展 DWS Windows 文件竞争未收敛，保留第3轮失败和串行复验事实。
+- 唯一下一步：本轮授权范围已完成；等待用户是否另行授权合并和部署，本会话不自动执行生产步骤。
+- 未闭环项：PR #58 尚未合并、未部署生产、未处置旧 unknown；扩展 DWS Windows 文件竞争未收敛，保留第3轮失败和串行复验事实。
 
 - 2026-11-11：用户授权修复第2轮两项Web问题。当前分支worktree-router-learning-web-fixes-20261111，基于origin/main 8c90fc1及上一轮验收文档提交4889013；工作树起点干净。
 - 第2轮现场事实保留于round-2.md，不覆写旧结果；第1轮DWS基线失败保留。
 - 方案：仅chat缺显式actorId时从Host冻结sourceRef映射认证sender，仍查participants；Skill清单复用核心支持判定。冻结payload/digest及群聊受众不改，unknown不重发。
 - 两项修复前回归均复现故障；最终源码16项定向回归及守卫通过。扩展批次47 PASS/1 FAIL后进程未退出，基线和清理后的串行复验通过；不宣称完整扩展套件全绿。详细命令、源码hash和结论集中于round-3.md。
-- 权威goal.md为本文件；历史证据见同目录round-1/2与matrix.csv。
+- 修复提交1706e7d；PR #58独立回查为OPEN/MERGEABLE，base main，head worktree-router-learning-web-fixes-20261111。自己的临时驱动、PR草稿和两处未退出测试目录已统一清理，独立检查不存在；此前release-pointer保留。
+- 权威goal.md为本文件；详细证据见同目录round-1/2/3与matrix.csv。
