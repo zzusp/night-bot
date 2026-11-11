@@ -13,7 +13,8 @@ test('list and settings pages start with working content instead of duplicate he
 })
 
 test('refresh actions remain in their relevant list and configuration controls', () => {
-  assert.match(source('EvolutionPage.tsx'), /className="(?:list-toolbar|evolution-list-toolbar)"[\s\S]+onClick=\{refreshList\}>刷新记录/)
+  assert.match(source('EvolutionPage.tsx'), /className="evolution-list-toolbar"[\s\S]+<EvolutionListActions [^>]+onRefresh=\{refreshList\}/)
+  assert.match(source('EvolutionPage.tsx'), /className="evolution-list-actions"[\s\S]+onClick=\{onRefresh\}>刷新记录/)
   assert.match(source('SettingsPage.tsx'), /className="settings-card-heading"[^\n]+onClick=\{onReload\}[^\n]+重新读取设置/)
   assert.match(source('SettingsPage.tsx'), /const reload=\(\)=>\{if\(busyRoles\)return;/)
   assert.match(source('SettingsPage.tsx'), /onReload=\{reload\} reloading=\{query.loading\|\|busyRoles\}/)

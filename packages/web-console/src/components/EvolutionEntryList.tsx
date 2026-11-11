@@ -3,7 +3,8 @@ import type {EvolutionItem, MemoryProvenance} from '../api';
 import {dateTime} from '../hooks';
 import {Button} from './BoardPrimitives';
 
-export const formatEvolutionCount = (value: number | null | undefined) => value == null ? '未记录' : new Intl.NumberFormat('zh-CN').format(value);
+export const isEvolutionCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+export const formatEvolutionCount = (value: number | null | undefined) => isEvolutionCount(value) ? new Intl.NumberFormat('zh-CN').format(value) : '未记录';
 const scopeLabels = {bot: 'Bot 公共', personal: '个人', group: '群组', project: '项目'};
 const statuses: Record<EvolutionItem['status'], string> = {applied: '已应用', candidate: '', disabled: '禁止调用', invalid: '格式无效', shadowed: '同名被覆盖', undiscovered: '目录未接入运行时', unsupported: '支持记忆不可用'};
 
@@ -38,18 +39,17 @@ function usageCounts(item: EvolutionItem) {
 
 function Usage({item}: {item: EvolutionItem}) {
   const counts = usageCounts(item);
-  if (!counts || counts.every(([, value]) => value == null)) return <span className="evolution-usage-empty">未记录</span>;
-  return <dl className="evolution-use-counts">{counts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value == null ? <abbr title="未记录">—</abbr> : formatEvolutionCount(value)}</dd></div>)}</dl>;
+  if (!counts || counts.every(([, value]) => !isEvolutionCount(value))) return <span className="evolution-usage-empty">未记录</span>;
+  return <dl className="evolution-use-counts">{counts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{isEvolutionCount(value) ? formatEvolutionCount(value) : <abbr title="未记录">—</abbr>}</dd></div>)}</dl>;
 }
 
 /** Sum only the entry's observed events. Missing values never become zero. */
-function UsageTotal({item, partial}: {item: EvolutionItem; partial: boolean}) {
+function UsageTotal({item}: {item: EvolutionItem}) {
   const counts = usageCounts(item);
-  const known = counts?.map(([, value]) => value).filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) ?? [];
+  const known = counts?.map(([, value]) => value).filter(isEvolutionCount) ?? [];
   const total = known.reduce((sum, value) => sum + value, 0);
   const recorded = known.length > 0 && Number.isSafeInteger(total);
-  const incomplete = partial || known.length > 0 && known.length !== counts?.length;
-  return <><span>{recorded ? `${incomplete ? '至少 ' : ''}${formatEvolutionCount(total)}` : '未记录'}</span>{incomplete && <span className="evolution-count-status">记录不完整</span>}</>;
+  return <span>{recorded ? formatEvolutionCount(total) : '未记录'}</span>;
 }
 
 /** Source and audit metadata stay available without crowding the browsing list. */
@@ -66,9 +66,9 @@ export function EvolutionEntryMetadata({item}: {item: EvolutionItem}) {
 }
 
 /** Metadata only. The name is the explicit, version-bound content read action. */
-export default function EvolutionEntryList({items, partialUsage = false, onView}: {items: EvolutionItem[]; partialUsage?: boolean; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
+export default function EvolutionEntryList({items, onView}: {items: EvolutionItem[]; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
   return <div className="evolution-table-wrap"><table className="evolution-table">
-    <caption className="sr-only">Bot 公共记忆与技能，使用次数来自保留记录。</caption>
+    <caption className="sr-only">Bot 公共记忆与技能，使用次数仅统计已核查会话中的有效记录。</caption>
     <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-last-used"/><col className="evolution-col-updated"/></colgroup>
     <thead><tr><th scope="col">名称</th><th scope="col">使用次数</th><th scope="col">最近使用</th><th scope="col">最近更新</th></tr></thead>
     <tbody>{items.map(item => <tr key={`${item.kind}:${item.id}`}>
@@ -79,7 +79,7 @@ export default function EvolutionEntryList({items, partialUsage = false, onView}
           {item.updatedSinceUse && <span className="evolution-update-hint">载入版本与当前不同</span>}
         </span><RiArrowRightSLine className="evolution-item-arrow" size={17} aria-hidden="true"/>
       </Button></td>
-      <td className="evolution-usage-cell"><span className="evolution-time-label">使用次数</span><UsageTotal item={item} partial={partialUsage}/></td>
+      <td className="evolution-usage-cell"><span className="evolution-time-label">使用次数</span><UsageTotal item={item}/></td>
       <td className="evolution-last-used-cell"><span className="evolution-time-label">最近使用</span><LastUsedTime item={item}/></td>
       <td className="evolution-updated-cell"><span className="evolution-time-label">最近更新</span><time dateTime={item.updatedAt || undefined}>{dateTime(item.updatedAt || undefined)}</time></td>
     </tr>)}</tbody>

@@ -55,17 +55,18 @@ test('分类读取仅更新列表，工具栏与焦点稳定，迟到结果不�
   await expect(page.getByRole('button', {name: '查看内容：合成技能'})).toBeVisible();
 });
 
-test('使用次数只加真实事件，保留缺失、零和不完整语义，浅深色窄屏可读', async ({page}) => {
+test('使用次数只加真实事件，保留缺失与零且不显示不完整标签，浅深色窄屏可读', async ({page}) => {
   let partial = false;
   const rows = [memory, skill, {...memory, id: 'missing', name: '未记录', memoryUse: null}, {...skill, id: 'zero', name: '零次', modelUseCount: 0, userUseCount: 0, fileReadCount: 0}, {...skill, id: 'partial', name: '部分', modelUseCount: 2, userUseCount: null, fileReadCount: 3}, {...skill, id: 'invalid', name: '非法', modelUseCount: -1, userUseCount: '2', fileReadCount: null}, {...skill, id: 'unobserved', name: '无技能记录', modelUseCount: null, userUseCount: null, fileReadCount: null}];
   await page.route('**/api/evolution?*', route => route.fulfill({json: snapshot(rows, partial)}));
   await open(page);
   const cells = page.locator('.evolution-usage-cell');
-  await expect(cells).toHaveText(['使用次数5', '使用次数7', '使用次数未记录', '使用次数0', '使用次数至少 5记录不完整', '使用次数未记录', '使用次数未记录']);
+  await expect(cells).toHaveText(['使用次数5', '使用次数7', '使用次数未记录', '使用次数0', '使用次数5', '使用次数未记录', '使用次数未记录']);
   partial = true;
   await page.getByRole('button', {name: '刷新记录'}).click();
-  await expect(cells.nth(0)).toHaveText('使用次数至少 5记录不完整');
-  await expect(cells.nth(2)).toHaveText('使用次数未记录记录不完整');
+  await expect(cells.nth(0)).toHaveText('使用次数5');
+  await expect(cells.nth(2)).toHaveText('使用次数未记录');
+  await expect(page.getByText('记录不完整', {exact: true})).toHaveCount(0);
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.setViewportSize({width: 390, height: 844});
