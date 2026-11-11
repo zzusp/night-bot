@@ -210,7 +210,9 @@ export interface RoleModelState {
 export interface RoleModelCatalog {provider:string;name:string;models:{id:string;name:string;reasoningEfforts:string[]}[]}
 export interface RoleModelSaved {ok:true;changed:boolean;version:string;role:RoleModelState;restartRequired:boolean}
 export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;reasoningEfforts:string[];references:string[]}
-export interface ModelCatalog {version:string;providers:{provider:string;name:string;models:ModelCatalogEntry[]}[]}
+export interface SecretState {configured:boolean;writable:boolean;source:string;sharedWith?:string[]}
+export interface ModelProvider {provider:string;name:string;api:string;baseURL:string;baseURLConfigured:boolean;secret:SecretState;models:ModelCatalogEntry[]}
+export interface ModelCatalog {version:string;providers:ModelProvider[]}
 export interface ModelCatalogSaved {ok:true;changed:boolean;checkOnly:boolean;version:string;restartRequired:boolean;liveApplied:false}
 export interface WorkLogSelection {enabled:boolean;time:string;timezone:string}
 export interface WorkLogState {saved:WorkLogSelection;running:WorkLogSelection;nextStart:WorkLogSelection|null;environmentOverrides:{name:string;source:string}[];restartRequired:boolean}

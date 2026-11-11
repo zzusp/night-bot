@@ -195,3 +195,17 @@ test('settings capability preserves typed failures for an unsafe token path',asy
  await assert.rejects(createSettingsOperatorAuth(f.paths),{code:process.platform==='win32'?'SETTINGS_OPERATOR_SECRET_UNAVAILABLE':'SETTINGS_OPERATOR_SECRET_UNSAFE'})
  await assert.rejects(readSettingsOperatorToken(f.paths),{code:'SETTINGS_OPERATOR_SECRET_UNSAFE'})
 })
+
+test('provider CLI shares create, scoped update, check-only, secret targeting and live dispatcher',async t=>{
+ const f=await fixture(t),before=await readFile(f.file,'utf8')
+ await f.cli(['provider','--provider','fixture','--base-url','https://changed.invalid/v1','--check']);assert.equal(await readFile(f.file,'utf8'),before)
+ await f.cli(['provider','--action','create','--provider','second','--model','second-model','--api','openai-responses','--base-url','https://second.invalid/v1'])
+ const view=await f.cli(['model-list']);assert.equal(view.providers.length,2)
+ await f.cli(['secret','--kind','model','--provider','second','--action','replace','--confirm'],{interaction:{prompt:async()=>'SECOND_CLI_SECRET'}})
+ assert.equal((await f.cli(['model-list'])).providers.find(row=>row.provider==='second').secret.configured,true)
+ assert.equal((await f.cli(['model-list'])).providers.find(row=>row.provider==='fixture').secret.configured,false)
+ const dispatch=createSettingsCommands({settings:f.settings})
+ await dispatch({action:'provider',body:{provider:'second',baseURL:'https://updated.invalid/v1',expectedVersion:view.version}})
+ const saved=await loadConfig(f.file);assert.deepEqual(saved.model,f.config.model);assert.deepEqual(saved.providers.fixture,f.config.providers.fixture)
+ await assert.rejects(dispatch({action:'provider',body:{provider:'second',apiKeyEnv:'UNEXPECTED',expectedVersion:view.version}}),{code:'SETTINGS_COMMAND_INVALID'})
+})

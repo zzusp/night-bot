@@ -15,7 +15,8 @@ test('list and settings pages start with working content instead of duplicate he
 test('refresh actions remain in their relevant list and configuration controls', () => {
   assert.match(source('EvolutionPage.tsx'), /className="(?:list-toolbar|evolution-list-toolbar)"[\s\S]+onClick=\{refreshList\}>刷新记录/)
   assert.match(source('SettingsPage.tsx'), /className="settings-card-heading"[^\n]+onClick=\{onReload\}[^\n]+重新读取设置/)
-  assert.match(source('SettingsPage.tsx'), /onReload=\{reload\} reloading=\{query.loading\}/)
+  assert.match(source('SettingsPage.tsx'), /const reload=\(\)=>\{if\(busyRoles\)return;/)
+  assert.match(source('SettingsPage.tsx'), /onReload=\{reload\} reloading=\{query.loading\|\|busyRoles\}/)
   assert.match(source('TasksPage.tsx'), /<Pagination offset=\{offset\} total=\{query.data.total\}/)
 })
 
@@ -24,7 +25,7 @@ test('navigation and detail identity remain; first content sections follow the p
   assert.match(source('TasksPage.tsx'), /<h2(?:\s[^>]*)?>\{task.title \|\| '未命名任务'\}<\/h2>/)
   assert.match(source('EvolutionPage.tsx'), /<nav className="filter-tabs" aria-label="自进化记录类型"/)
   assert.match(source('SettingsPage.tsx'), /<h2>助手外观<\/h2>/)
-  assert.match(source('SettingsPage.tsx'), /新的\{label\}/)
+  assert.match(source('components/SecretEditor.tsx'), /新的\{label\}/)
 })
 
 

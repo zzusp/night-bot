@@ -18,12 +18,14 @@ import {readSettingsOperatorToken} from './auth.js'
 import {SETTINGS_OPERATOR_ROUTE,safeSettingsError} from './http.js'
 
 export const settingsCliUsage=`Usage: night-bot-settings CONFIG ACTION [options] [--live] [--check]
-Actions: show, plugins, appearance, model, model-list, model-entry, role, secret, web, work-log, channel-list,
+Actions: show, plugins, appearance, model, provider, model-list, model-entry, role, secret, web, work-log, channel-list,
   channel-save, channel-enable, channel-remove, channel-ingress, dingtalk-get, dingtalk-add,
   dingtalk-edit, permissions-show, permissions-set, permission-respond.
 Use --json-file FILE for non-secret payloads. Appearance: --name NAME --icon moon|star|robot|leaf.
 Work log: --enabled true|false --time HH:mm --timezone local|IANA (normal restart required).
 Secret: --kind model|github --action replace|clear --confirm (hidden prompt or one stdin line).
+Provider API: provider --provider ID --api PROTOCOL --base-url URL; add --action create --model ID for a new route.
+Secret --provider ID targets that model route; omitted retains the default route.
 Model entries: --action add|edit|remove --provider ID --id OLD_ID --model NEW_ID --name LABEL.
 Removal requires --confirm. Use model-list to inspect IDs and references; saved changes need restart.
 Resident model removal/ID changes require an explicit task role (role --role task) or task ENV override.
@@ -34,7 +36,8 @@ Resume starts recovery; use channel-list --live to inspect its actual completion
 No credential value, token, or password is accepted in arguments or printed. OAuth/ref management: night-bot-auth.`
 const optionsByAction={
  show:[],plugins:[],appearance:['name','icon','expected-version'],model:['provider','model','api','base-url','key-env','reasoning-effort','expected-version'],
- role:['role','provider','model','reasoning-effort','expected-version'],secret:['kind','action','expected-version'],
+ role:['role','provider','model','reasoning-effort','expected-version'],secret:['provider','kind','action','expected-version'],
+ provider:['action','provider','api','base-url','model','expected-version'],
  'model-list':[],'model-entry':['action','provider','id','model','name','expected-version'],
  'work-log':['enabled','time','timezone','expected-version'],
  web:['enabled','host','port','public-origin','channel-id','sender-id','operator-name','expected-version'],
@@ -125,7 +128,7 @@ export async function runSettingsCli(argv,{environment=process.env,write=value=>
   if(!live&&['channel-enable','channel-remove','channel-ingress','dingtalk-add','dingtalk-edit','permission-respond'].includes(action))throw failure('SETTINGS_RESIDENT_REQUIRED')
   if(!live)local=await localCommands(config,file,{checkOnly:input.checkOnly,writing:!readOnly.has(action),environment})
   const dispatch=value=>live?requestLiveSettings(config,file,value,{signal}):local.dispatch(value)
-  if(['appearance','model','model-entry','role','secret','web','work-log','channel-save'].includes(action)&&body.expectedVersion===undefined)body.expectedVersion=(await dispatch({action:action==='channel-save'?'plugins':action==='model-entry'?'model-list':'show'})).version
+  if(['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save'].includes(action)&&body.expectedVersion===undefined)body.expectedVersion=(await dispatch({action:action==='channel-save'?'plugins':action==='model-entry'?'model-list':'show'})).version
   if(action==='secret'){
    if(!['model','github'].includes(body.kind)||!['replace','clear'].includes(body.action)||body.confirm!==true)throw failure('SETTINGS_COMMAND_INVALID')
    if(body.action==='replace'){

@@ -6,10 +6,10 @@ async function confirm(page:Page){await page.getByRole('dialog').getByRole('butt
 async function reset(page:Page){const session=await page.request.get('/api/session').then(r=>r.json());const settings=await page.request.get('/api/settings').then(r=>r.json());if(!settings.version)return;await page.request.put('/api/settings/appearance',{headers:{origin:new URL(page.url()).origin,'x-csrf-token':session.csrfToken},data:{name:'Night Bot',icon:'moon',expectedVersion:settings.version}})}
 test('模型配置、密钥替换清除、拒绝回显和重新读取状态',async({page})=>{
  await login(page)
- await page.getByLabel('API 地址',{exact:true}).fill('https://model.example.invalid/v1');await page.getByLabel('模型名称',{exact:true}).fill('web-test-model')
- await page.getByRole('button',{name:'保存模型配置',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('https://model.example.invalid/v1');await confirm(page)
- await expect(page.getByText('模型配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
- await expect(page.getByText(/当前保存路由：web-model/)).toBeVisible()
+ await page.getByLabel('API 地址',{exact:true}).fill('https://model.example.invalid/v1')
+ await page.getByRole('button',{name:'保存 API 配置',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('https://model.example.invalid/v1');await confirm(page)
+ await expect(page.getByText('API 配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
+ await expect(page.getByLabel('模型路由',{exact:true})).toHaveValue('fixture-model')
  for(const [kind,label] of [['model','模型 API Key'],['github','GitHub Token']]){
   const input=page.getByLabel('新的'+label,{exact:true});await expect(input).toHaveAttribute('type','password')
   await input.fill('TEST_ONLY_'+kind+'_SECRET');await page.getByRole('button',{name:'替换'+label,exact:true}).click();await expect(page.getByRole('dialog').getByRole('button',{name:'取消',exact:true})).toBeFocused();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'替换'+label,exact:true})).toBeFocused();await page.getByRole('button',{name:'替换'+label,exact:true}).click();await expect(page.getByRole('dialog')).not.toContainText('TEST_ONLY_');await confirm(page)
@@ -40,8 +40,8 @@ test('设置显示外观、角色模型、工作日志和密钥，不展示或�
  await page.route('**/api/settings/channels',route=>{channelRequests++;return route.fulfill({status:503,json:{error:'SETTINGS_UNAVAILABLE'}})})
  await login(page)
  const settings=page.locator('.settings-page')
- for(const name of ['助手外观','模型 API','模型列表','每日工作日志','模型 API Key','GitHub Token'])await expect(settings.getByRole('heading',{name,exact:true})).toBeVisible()
- await expect(settings.locator('.settings-card')).toHaveCount(9)
+ for(const name of ['助手外观','模型与 API','模型 API','模型列表','每日工作日志','模型 API Key','GitHub Token'])await expect(settings.getByRole('heading',{name,exact:true})).toBeVisible()
+ await expect(settings.locator('.settings-card')).toHaveCount(7)
  await expect(settings.getByRole('heading',{name:'自定义渠道',exact:true})).toHaveCount(0)
  await expect(settings.getByRole('button',{name:'重新发现插件',exact:true})).toHaveCount(0)
  await expect(settings.getByLabel('渠道插件',{exact:true})).toHaveCount(0)
@@ -54,7 +54,7 @@ test('设置显示外观、角色模型、工作日志和密钥，不展示或�
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:960})
-   await expect(settings.locator('.settings-card')).toHaveCount(9)
+   await expect(settings.locator('.settings-card')).toHaveCount(7)
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
    await page.screenshot({path:test.info().outputPath(`${theme}-${width}-settings.png`),fullPage:true})
   }

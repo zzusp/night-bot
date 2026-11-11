@@ -132,6 +132,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       try {
         if(request.method==='GET'&&path==='/api/settings') return send(response,200,await settings.view())
         if(request.method==='GET'&&path==='/api/settings/model-catalog') return send(response,200,await settings.modelCatalog())
+        if(request.method==='PUT'&&path==='/api/settings/provider') return send(response,200,await settings.saveProvider(await jsonBody(request,['action','provider','api','baseURL','model','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/model-catalog') return send(response,200,await settings.saveModelEntry(await jsonBody(request,['action','provider','id','model','name','expectedVersion','confirm'],4096)))
         if(request.method==='GET'&&path==='/api/settings/channels') return send(response,200,await settings.plugins())
         if(request.method==='PUT'&&path==='/api/settings/appearance') return send(response,200,await settings.saveAppearance(await jsonBody(request,['name','icon','expectedVersion'],4096)))
@@ -139,7 +140,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(request.method==='PUT'&&path==='/api/settings/role-model') return send(response,200,await settings.saveRoleModel(await jsonBody(request,['role','provider','model','reasoningEffort','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/work-log') return send(response,200,await settings.saveWorkLog(await jsonBody(request,['enabled','time','timezone','expectedVersion'],4096)))
         const secret=/^\/api\/settings\/secrets\/(model|github)$/.exec(path)
-        if(request.method==='PUT'&&secret) return send(response,200,await settings.saveSecret(secret[1],await jsonBody(request,['action','value','confirm','expectedVersion'],16384)))
+        if(request.method==='PUT'&&secret) return send(response,200,await settings.saveSecret(secret[1],await jsonBody(request,['provider','action','value','confirm','expectedVersion'],16384)))
         if(request.method==='POST'&&path==='/api/settings/channels') return send(response,200,await settings.saveChannel(await jsonBody(request,['type','channelId','enabled','config','expectedVersion','createOnly'],16384)))
         fail('NOT_FOUND',404)
       } catch(error) {

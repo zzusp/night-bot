@@ -3,9 +3,10 @@ const plain=value=>value&&typeof value==='object'&&!Array.isArray(value)
 const spec={
  show:[],plugins:[],appearance:['name','icon','expectedVersion'],
  model:['provider','model','api','baseURL','apiKeyEnv','reasoningEffort','expectedVersion'],
+ provider:['action','provider','api','baseURL','model','expectedVersion'],
  'model-list':[],'model-entry':['action','provider','id','model','name','expectedVersion','confirm'],
  role:['role','provider','model','reasoningEffort','expectedVersion'],
- secret:['kind','action','value','confirm','expectedVersion'],
+ secret:['provider','kind','action','value','confirm','expectedVersion'],
  'work-log':['enabled','time','timezone','expectedVersion'],
  web:['enabled','host','port','publicOrigin','channelId','senderId','operatorName','expectedVersion'],
  'channel-list':[],'channel-save':['type','channelId','enabled','config','expectedVersion','createOnly'],
@@ -31,8 +32,9 @@ export function createSettingsCommands({settings,channels,permissions,configurat
  return async input=>{
   const {action,body,checkOnly}=validateSettingsCommand(input),options={checkOnly}
   const channel=()=>channels??unavailable(),permission=()=>permissions??unavailable()
-  if(checkOnly&&!['appearance','model','model-entry','role','secret','web','work-log','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
+  if(checkOnly&&!['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
   if(action==='show')return settings.view()
+  if(action==='provider'){version(body.expectedVersion);return settings.saveProvider(body,options)}
   if(action==='model-list')return settings.modelCatalog()
   if(action==='model-entry'){version(body.expectedVersion);return settings.saveModelEntry(body,options)}
   if(action==='plugins')return settings.plugins()

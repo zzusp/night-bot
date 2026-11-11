@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {getBuiltinModels} from '@earendil-works/pi-ai/providers/all'
 import {runtimePaths,prepareRuntimePaths} from '../src/runtime/paths.js'
-import {modelCatalogView,saveModelCatalogEntry,configVersion} from '../src/settings/model-configuration.js'
+import {modelCatalogView,saveProviderConfiguration,saveModelCatalogEntry,configVersion} from '../src/settings/model-configuration.js'
 import {createOperatorSettings} from '../src/settings/operator.js'
 import {createSettingsCommands} from '../src/settings/commands.js'
 import {resolvePiProfiles} from '../src/pi-provider-catalog.js'
@@ -25,7 +25,7 @@ async function fixture(t,patch={}){
 
 test('safe model catalog edits preserve API, credentials, metadata, and running snapshot',async t=>{
  const f=await fixture(t),original=structuredClone(f.config),view=modelCatalogView(original)
- assert.doesNotMatch(JSON.stringify(view),/FIXTURE_SECRET|FIXTURE_KEY|headers|baseURL/)
+ assert.doesNotMatch(JSON.stringify(view),/FIXTURE_SECRET|FIXTURE_KEY|headers/)
  assert.deepEqual(view.providers[0].models[0].references,['default'])
  assert.equal(view.providers[0].models[0].configuredName,null)
  assert.equal(view.providers[0].models[1].configuredName,'Second')
@@ -110,7 +110,7 @@ test('builtin catalogs retain all models and overrides when materialized as expl
 })
 
 test('shared dispatcher and operator facade use strict DTO, environment and CAS for catalog actions',async t=>{
- const f=await fixture(t),settings=createOperatorSettings({file:f.file,running:f.config,getCredentials:()=>undefined,getEnvironment:()=>({NIGHT_BOT_TASK_MODEL:'second'})})
+ const f=await fixture(t),settings=createOperatorSettings({file:f.file,running:f.config,getCredentials:()=>({describe:async()=>({configured:false}),describeRecord:async()=>({configured:false})}),getEnvironment:()=>({NIGHT_BOT_TASK_MODEL:'second'})})
  const dispatch=createSettingsCommands({settings}),view=await dispatch({action:'model-list'})
  assert.ok(view.providers[0].models[1].references.includes('environment:task'))
  await assert.rejects(dispatch({action:'model-entry',body:{action:'add',provider:'fixture',model:'new',apiKey:'forged',expectedVersion:view.version}}),{code:'SETTINGS_COMMAND_INVALID'})
@@ -122,7 +122,7 @@ test('shared dispatcher and operator facade use strict DTO, environment and CAS 
 test('effective persisted task fallback is protected; explicit task and field-wise ENV overrides supersede it',async t=>{
  const f=await fixture(t,{resident:{taskSessions:{model:'initial'}}})
  const fallback=()=>({task:{provider:'fixture',model:'second'}})
- const settings=createOperatorSettings({file:f.file,running:f.config,getCredentials:()=>undefined,getFallbackRoleModels:fallback})
+ const settings=createOperatorSettings({file:f.file,running:f.config,getCredentials:()=>({describe:async()=>({configured:false}),describeRecord:async()=>({configured:false})}),getFallbackRoleModels:fallback})
  let view=await settings.modelCatalog()
  assert.ok(view.providers[0].models[1].references.includes('runtime:task'))
  await assert.rejects(settings.saveModelEntry({action:'remove',provider:'fixture',id:'second',confirm:true,expectedVersion:view.version}),{code:'SETTINGS_MODEL_IN_USE'})
@@ -149,9 +149,43 @@ test('effective persisted task fallback is protected; explicit task and field-wi
  // selection as resolveRoleModels at startup, not the persisted task default.
  await writeFile(f.file,JSON.stringify(f.config))
  const environment={NIGHT_BOT_TASK_REASONING_EFFORT:'model-default'}
- const envSettings=createOperatorSettings({file:f.file,running:f.config,getCredentials:()=>undefined,getFallbackRoleModels:fallback,getEnvironment:()=>environment})
+ const envSettings=createOperatorSettings({file:f.file,running:f.config,getCredentials:()=>({describe:async()=>({configured:false}),describeRecord:async()=>({configured:false})}),getFallbackRoleModels:fallback,getEnvironment:()=>environment})
  const envView=await envSettings.modelCatalog()
  assert.ok(envView.providers[0].models[0].references.includes('environment:task'))
  assert.ok(!envView.providers[0].models[1].references.includes('runtime:task'))
  await f.save({action:'remove',id:'second',confirm:true},environment)
+})
+
+
+test('provider transport edits and creation preserve every selection and model metadata under CAS',async t=>{
+ const f=await fixture(t,{providers:{fixture:profile(),other:{...profile(),apiKeyEnv:'OTHER_KEY'}},roleModels:{task:{provider:'fixture',model:'second',reasoningEffort:'high'}}})
+ const before=await f.read(),save=body=>saveProviderConfiguration(f.file,{provider:'other',expectedVersion:configVersion(before),...body})
+ const check=await save({baseURL:'https://new.example.invalid/v1',checkOnly:true});assert.equal(check.changed,true);assert.deepEqual(await f.read(),before)
+ await save({baseURL:'https://new.example.invalid/v1'})
+ const after=await f.read();assert.deepEqual(after.model,before.model);assert.deepEqual(after.roleModels,before.roleModels);assert.deepEqual(after.providers.fixture,before.providers.fixture)
+ assert.deepEqual(after.providers.other,{...before.providers.other,baseURL:'https://new.example.invalid/v1'})
+ await assert.rejects(save({api:'openai-responses'}),{code:'SETTINGS_VERSION_CONFLICT'})
+ await assert.rejects(saveProviderConfiguration(f.file,{provider:'missing',baseURL:'https://valid.invalid',expectedVersion:configVersion(after)}),{code:'NIGHT_BOT_PROVIDER_PROFILE_REQUIRED'})
+ for(const baseURL of ['https://user:secret@host/v1','https://host/v1?key=secret','http://remote.invalid',''])await assert.rejects(saveProviderConfiguration(f.file,{provider:'other',baseURL,expectedVersion:configVersion(after)}))
+ await saveProviderConfiguration(f.file,{action:'create',provider:'new-route',model:'first',api:'openai-responses',baseURL:'https://new.invalid/v1',expectedVersion:configVersion(after)})
+ const created=await f.read();assert.deepEqual(created.model,before.model);assert.deepEqual(created.roleModels,before.roleModels);assert.deepEqual(created.providers['new-route'].models,[{id:'first'}]);assert.equal(created.providers['new-route'].apiKeyEnv,undefined)
+})
+
+test('builtin provider endpoint edits keep implicit catalog and override metadata, reset restores builtin defaults',async t=>{
+ const first=getBuiltinModels('openai')[0],f=await fixture(t,{model:{provider:'openai',model:first.id},providers:{openai:{modelOverrides:{[first.id]:{name:'Custom',maxTokens:512,baseURL:'https://preserved.invalid'}}}}})
+ const before=await f.read(),models=resolvePiProfiles(before.providers).get('openai').models
+ await saveProviderConfiguration(f.file,{provider:'openai',baseURL:'https://proxy.invalid/v1',expectedVersion:configVersion(before)})
+ let after=await f.read();assert.equal(after.providers.openai.models,undefined);assert.deepEqual(after.providers.openai.modelOverrides,before.providers.openai.modelOverrides)
+ assert.deepEqual(resolvePiProfiles(after.providers).get('openai').models.map(x=>x.id),models.map(x=>x.id))
+ await saveProviderConfiguration(f.file,{provider:'openai',api:'',baseURL:'',expectedVersion:configVersion(after)})
+ assert.deepEqual(await f.read(),before)
+ const unsafe=structuredClone(before);unsafe.providers.openai.baseURL='https://user:SECRET@host/v1?token=SECRET';assert.doesNotMatch(JSON.stringify(modelCatalogView(unsafe)),/SECRET/);assert.equal(modelCatalogView(unsafe).providers[0].baseURLConfigured,true)
+})
+
+test('native builtin protocol is retained when changing only provider endpoint',async t=>{
+ const first=getBuiltinModels('google')[0],f=await fixture(t,{model:{provider:'google',model:first.id},providers:{google:{}}})
+ assert.equal(modelCatalogView(f.config).providers[0].api,'')
+ await saveProviderConfiguration(f.file,{provider:'google',baseURL:'https://proxy.invalid',expectedVersion:configVersion(f.config)})
+ const saved=await f.read();assert.equal(saved.providers.google.api,undefined);assert.equal(saved.providers.google.models,undefined)
+ assert.equal(resolvePiProfiles(saved.providers).get('google').models[0].api,'google-generative-ai')
 })

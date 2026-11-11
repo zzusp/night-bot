@@ -35,10 +35,36 @@ function catalogState(config,environment,fallbacks){
 export function modelCatalogView(config,environment={},fallbacks){
   const {profiles,references}=catalogState(config,environment,fallbacks)
   return {version:configVersion(config),providers:[...profiles.values()].map(profile=>({provider:profile.provider,name:profile.displayName,
+    api:profile.api??'',baseURL:safeEndpoint(profile.baseURL),baseURLConfigured:profile.baseURL!==undefined,
     models:profile.models.map(model=>{
       const source=config.providers[profile.provider],entry=source.models?.length?source.models.find(row=>row.id===model.id):source.modelOverrides?.[model.id]
       return {id:model.id,name:model.name,configuredName:entry?.name??null,reasoningEfforts:roleReasoningLevels(model),references:references.get(JSON.stringify([profile.provider,model.id]))??[]}
     })}))}
+}
+
+const safeEndpoint=value=>{try{return validateModelEndpoint(value)}catch{return ''}}
+
+/** Provider transport edits deliberately leave catalog shape and selections intact. */
+export async function saveProviderConfiguration(file,{action,provider,api,baseURL,model,expectedVersion,checkOnly=false}={},environment={},getFallbackRoleModels=()=>undefined){
+  if(!nonempty(provider)||typeof expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(expectedVersion)||action!==undefined&&action!=='create')throw failure('SETTINGS_INPUT_INVALID')
+  if(action==='create'){
+    if(!/^[a-z][a-z0-9-]{0,63}$/.test(provider)||!nonempty(model)||!['openai-completions','openai-responses','anthropic-messages'].includes(api)||!baseURL)throw failure('SETTINGS_INPUT_INVALID')
+  }else if(model!==undefined)throw failure('SETTINGS_INPUT_INVALID')
+  if(api!==undefined&&!['','openai-completions','openai-responses','anthropic-messages'].includes(api))throw failure('SETTINGS_INPUT_INVALID')
+  return resultWithVersion(await updateConfig(file,config=>{
+    checkVersion(config,expectedVersion)
+    const exists=Object.hasOwn(config.providers,provider)
+    if(action==='create'&&exists)throw failure('SETTINGS_MODEL_EXISTS')
+    if(action!=='create'&&!exists)throw failure('NIGHT_BOT_PROVIDER_PROFILE_REQUIRED')
+    const fallbacks=getFallbackRoleModels(config)
+    catalogState(config,environment,fallbacks)
+    const profile=action==='create'?{models:[{id:model}]}:config.providers[provider]
+    if(api!==undefined){if(api==='')delete profile.api;else profile.api=api}
+    if(baseURL!==undefined){if(baseURL==='')delete profile.baseURL;else profile.baseURL=validateModelEndpoint(baseURL)}
+    config.providers[provider]=profile
+    catalogState(config,environment,fallbacks)
+    return config
+  },{checkOnly}))
 }
 
 /** Mutate one entry on an existing API route, without changing credentials or

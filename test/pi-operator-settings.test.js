@@ -185,3 +185,31 @@ test('模型默认深度在冷启后不虚报待重启，省略角色沿用实�
  for(const row of view.roleModels.roles){assert.equal(row.restartRequired,false);assert.deepEqual(row.running,row.nextStart)}
  assert.equal(view.restartRequired,false)
 })
+
+test('provider-scoped secrets target selected route only, preserve defaults, redact and reject stale writes',async t=>{
+ const f=await fixture(t),initial=await f.port.modelCatalog()
+ await f.port.saveProvider({action:'create',provider:'second',model:'second-model',api:'openai-completions',baseURL:'https://fixture.invalid/v1',expectedVersion:initial.version})
+ const view=await f.port.modelCatalog(),before=await readFile(f.file,'utf8'),auth=piAuthentication({getCredentials:()=>f.ctx.credentials})
+ await f.port.saveSecret('model',{provider:'fixture',expectedVersion:view.version,action:'replace',value:'FIRST_SECRET',confirm:true})
+ await f.port.saveSecret('model',{provider:'second',expectedVersion:view.version,action:'replace',value:'SECOND_SECRET',confirm:true})
+ const config=JSON.parse(before)
+ assert.equal(await auth.resolveApiKey(config.providers.fixture),'FIRST_SECRET')
+ assert.equal((await auth.credentials.read('second')).key,'SECOND_SECRET')
+ assert.equal(await readFile(f.file,'utf8'),before)
+ const states=await f.port.modelCatalog();assert.ok(states.providers.every(row=>row.secret.configured));assert.doesNotMatch(JSON.stringify(states),/FIRST_SECRET|SECOND_SECRET|FIXTURE_KEY/)
+ await assert.rejects(f.port.saveSecret('model',{provider:'missing',expectedVersion:view.version,action:'clear',confirm:true}),{code:'SETTINGS_INPUT_INVALID'})
+ await assert.rejects(f.port.saveSecret('model',{provider:'second',expectedVersion:initial.version,action:'clear',confirm:true}),{code:'SETTINGS_VERSION_CONFLICT'})
+ await f.port.saveSecret('model',{provider:'second',expectedVersion:view.version,action:'clear',confirm:true})
+ assert.equal(await auth.resolveApiKey(config.providers.fixture),'FIRST_SECRET');assert.equal((await f.port.modelCatalog()).providers.find(row=>row.provider==='second').secret.configured,false)
+ await f.port.saveSecret('model',{expectedVersion:view.version,action:'clear',confirm:true})
+ assert.equal((await f.port.modelCatalog()).providers.find(row=>row.provider==='fixture').secret.configured,false)
+})
+
+test('provider credential metadata reports shared references and read-only environment sources',async t=>{
+ const f=await fixture(t,[{source:'process',values:{FIXTURE_KEY:'ENV_SECRET'}}]),config=JSON.parse(await readFile(f.file,'utf8'))
+ config.providers.shared=structuredClone(config.providers.fixture);await writeFile(f.file,JSON.stringify(config))
+ const view=await f.port.modelCatalog()
+ assert.deepEqual(view.providers[0].secret,{configured:true,writable:false,source:'environment',sharedWith:['shared']})
+ assert.doesNotMatch(JSON.stringify(view),/ENV_SECRET|FIXTURE_KEY/)
+ await assert.rejects(f.port.saveSecret('model',{provider:'shared',expectedVersion:view.version,action:'replace',value:'NEW_SECRET',confirm:true}),{code:'SETTINGS_SECRET_READ_ONLY'})
+})
