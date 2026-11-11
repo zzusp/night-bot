@@ -174,8 +174,10 @@ export default class Channels extends Service {
     if(unknownRecipient!==undefined)throw failure('CHANNEL_RECIPIENT_NOT_IN_CONVERSATION')
     const replyToParticipantId=audience.replyToActorId===undefined?undefined:context.participants[audience.replyToActorId]
     if(audience.replyToActorId!==undefined&&replyToParticipantId===undefined)throw failure('CHANNEL_REPLY_ACTOR_NOT_IN_CONVERSATION')
-    const senderId=payload.actorId===undefined?undefined:context.participants[payload.actorId]
-    if(payload.actorId!==undefined&&senderId===undefined)throw failure('CHANNEL_ACTOR_NOT_IN_CONVERSATION')
+    // Host 冻结来源只用于单聊对端归属，不补引用或提及。
+    const actorId=payload.actorId===undefined&&context.type==='chat'?payload.sourceRef?.actorId:payload.actorId
+    const senderId=actorId===undefined?undefined:context.participants[actorId]
+    if(actorId!==undefined&&senderId===undefined)throw failure('CHANNEL_ACTOR_NOT_IN_CONVERSATION')
     return {type:context.type,channelId:context.channelId,conversationId:context.conversationId,deliveryKey:notification.id,text:payload.text,replyToMessageId:audience.replyToMessageId??payload.sourceMessageId,senderId,recipientIds:context.type==='chat'?[]:recipientActorIds.map(id=>context.participants[id]),...replyToParticipantId!==undefined?{replyToParticipantId}:{},...(audience.atAll?{atAll:true}:{})}
   }
   async readResource(method,groupId,messageId,resource){

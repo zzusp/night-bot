@@ -153,3 +153,19 @@ test('malformed records and unsafe paths remain fatal instead of transient busy 
   await link(external, join(f.directory, 'scope.json'))
   await assert.rejects(readEvolutionInventory(f), {code: 'EVOLUTION_BODY_FORBIDDEN'})
 })
+
+test('Router来源收据支持的Skill无须experience，坏来源和失去经验的复盘Skill仍不可用',async t=>{
+ const f=await fixture(t),path=join(f.directory,'evolution','state.json'),state=JSON.parse(await readFile(path,'utf8'))
+ const source={messageId:'authenticated-message',sessionId:'router-session',actor:'a'.repeat(64),quoteSha256:'b'.repeat(64)}
+ state.skills['router-valid']={active:true,origin:'router',source,supports:[],revision:1}
+ state.skills['router-invalid']={active:true,origin:'router',source:{...source,actor:'unbound'},supports:[{memoryKey:'support'}],revision:1}
+ state.skills['unsupported-task']={active:true,supports:[{memoryKey:'missing'}],revision:1}
+ await writeFile(path,JSON.stringify(state))
+ const before=await tree(f.root),inventory=await readEvolutionInventory(f)
+ assert.equal(inventory.items.find(r=>r.name==='learned-router-valid').status,'applied')
+ assert.equal(inventory.items.find(r=>r.name==='learned-router-invalid').status,'unsupported')
+ assert.equal(inventory.items.find(r=>r.name==='learned-unsupported-task').status,'unsupported')
+ assert.equal(inventory.items.find(r=>r.name==='learned-check-once').status,'applied')
+ assert.equal(inventory.skills.activeCount,2)
+ assert.deepEqual(await tree(f.root),before,'清单保持只读，不创建经验或修复收据')
+})

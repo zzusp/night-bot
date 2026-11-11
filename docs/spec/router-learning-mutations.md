@@ -23,3 +23,11 @@ Router 负责语义、价值、是否长期保存及维护方式；Host 负责�
 ## 验证
 
 使用真实 Host/Pi、假渠道和本地模型端点验证三次实际话术、非模板表达、记忆增改删、Skill 增改删/读取/冷启/撤销/重复，以及旧/跨会话来源、权限、摘录、秘密、路径、版本冲突拒绝。模型脚本只证明工具合同与效果，不声称真实模型总能作出正确语义判断。当前检查点与结果见 ../acceptance/router-learning-mutations/goal.md。
+
+## Web 缺口续修决策快照（2026-11-11）
+
+第2轮实际持久化通过，Web暴露两处合同未接齐的问题；用户现授权修复，本阶段只做实现、本地验证和PR，不再次部署或操作旧unknown。
+
+单聊身份比较三案：放松Web sender归属检查破坏认证隔离，拒绝；只给新冻结payload补actorId让既有Host来源收据仍无法回读，且混淆来源与引用作者，拒绝；选定在渠道交付封装层，仅对chat且缺显式actorId时，读取现有Host冻结sourceRef.actorId，经同一participants校验解析senderId。保持冻结payload/digest、群聊受众/引用和unknown只回读合同，不取最近成员、不从文本猜身份。
+
+Skill清单复用核心learnedSkillSupported：Router验证Host来源收据，任务复盘仍要求当前experience支持，不创建虚构经验；只读快照、版本/忙碌校验和同名覆盖不变。先复现两处失败，再以真实认证Web输入、官方Pi/SQLite和脚本模型验证Skill增改删、最终回复送达及清单计数/正文/删除；同时核对跨会话身份拒绝、坏来源Skill不可用和未知发送不重放。

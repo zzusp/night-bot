@@ -167,3 +167,11 @@ pnpm --dir packages/web-console test:browser
 可手动运行 `node packages/web-console/test/preview.mjs --port=3082`；此脚本打印**仅测试**令牌，Ctrl+C 退出。演示脚本仅用于开发，不参与插件生产入口。
 
 `pnpm --dir packages/web-console dev` 在 18999 提供 Vite 开发页，将 `/api` 代理到本机 3080 的可选插件。开发代理重写目标 Host/Origin，生产插件的同源规则保持不变。正式运行直接由插件托管构建产物。
+
+### Router 学习维护后的回复与清单核对
+
+Web 单聊最终回复即使显式 `recipientActorIds: []`，渠道封装也会在缺少显式 actor 时从 Host 冻结的 `sourceRef.actorId` 解析当前认证对端；来源必须属于同一 conversation 的 participants。该身份只用于单聊传输归属，不补引用、不提及，群聊路由不变，Web transport 的 sender/channel/conversation 校验不放松。
+
+升级不会改写旧冻结 payload、digest 或 unknown 收据，也不自动重发。若旧回复在 Web 账本中不存在，映射修复后的只读回看仍不能证明已送达；保留 unknown 并按独立恢复流程核对，不能把“底层已持久化”或分诊承接答复当作最终成功确认。
+
+学习 Skill 清单和核心 provider 共用支持判定：Router 来源有效的活动记录应为 applied；任务复盘记录仍依赖当前保留的 experience，坏来源仍 unsupported。手动刷新后核对状态、活动数与显式正文读取；删除后清单和派生目录都应消失。此检查不制造经验记录或增加使用次数，部署结果须另行验收。

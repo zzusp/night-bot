@@ -1,0 +1,174 @@
+{
+  "verifiedAt": "2026-11-11T06:56:32.066Z",
+  "sourceRevision": "8c90fc1913638101c2e0bd89462ff1de5280993c",
+  "manifestDigest": "sha256:5b3fc52dbf2688079e709d871d870a8997d9d0ea3148f987be8c19577692111a",
+  "imageId": "sha256:46a93dec9bc38c0d1de9a2491ea9b03d62b73300cc56df0267cc6d5ff7b076da",
+  "platform": {
+    "architecture": "amd64",
+    "os": "linux"
+  },
+  "localSmoke": {
+    "preflight": {
+      "passed": true
+    },
+    "boundary": {
+      "passed": true
+    },
+    "browser": {
+      "passed": true
+    },
+    "web": {
+      "passed": true
+    },
+    "conversation": {
+      "passed": true
+    },
+    "drain": {
+      "passed": true
+    },
+    "persistence": {
+      "passed": true
+    },
+    "finalStop": {
+      "passed": true
+    }
+  },
+  "offline": {
+    "ok": true,
+    "journalCount": 49,
+    "totalBytes": 7350598,
+    "tasks": 2,
+    "journalSetHash": "6fb0db376aec35003cde718e300c43f26e5f973372731cce113cc3e0ecb4c68a",
+    "backupFiles": 145,
+    "backupBytes": 14552149,
+    "includesSecrets": false,
+    "excludedRoots": [
+      "secrets",
+      "cache",
+      "logs",
+      "temp",
+      "runtime"
+    ],
+    "backupReadback": true
+  },
+  "crud": [
+    {
+      "stage": "memory-create",
+      "pass": true,
+      "persisted": true,
+      "sourceVersion": 1,
+      "fullQuoteAndActorBound": true,
+      "memoryRevision": 1,
+      "skillRevision": 0,
+      "unrelatedPreserved": true,
+      "taskCount": 2,
+      "tool": "resident_memory_remember",
+      "toolErrors": [],
+      "webSkillStatus": null
+    },
+    {
+      "stage": "memory-update",
+      "pass": true,
+      "persisted": true,
+      "sourceVersion": 1,
+      "fullQuoteAndActorBound": true,
+      "memoryRevision": 2,
+      "skillRevision": 0,
+      "unrelatedPreserved": true,
+      "taskCount": 2,
+      "tool": "resident_memory_remember",
+      "toolErrors": [],
+      "webSkillStatus": null
+    },
+    {
+      "stage": "memory-delete",
+      "pass": true,
+      "persisted": true,
+      "sourceVersion": 1,
+      "fullQuoteAndActorBound": true,
+      "memoryRevision": null,
+      "skillRevision": 0,
+      "unrelatedPreserved": true,
+      "taskCount": 2,
+      "tool": "resident_memory_forget",
+      "toolErrors": [],
+      "webSkillStatus": null
+    },
+    {
+      "stage": "skill-create",
+      "pass": true,
+      "persisted": true,
+      "sourceVersion": 1,
+      "fullQuoteAndActorBound": true,
+      "memoryRevision": null,
+      "skillRevision": 1,
+      "unrelatedPreserved": true,
+      "taskCount": 2,
+      "tool": "resident_skill_mutate",
+      "toolErrors": [],
+      "webSkillStatus": null
+    },
+    {
+      "stage": "skill-update",
+      "pass": true,
+      "persisted": true,
+      "sourceVersion": 1,
+      "fullQuoteAndActorBound": true,
+      "memoryRevision": null,
+      "skillRevision": 2,
+      "unrelatedPreserved": true,
+      "taskCount": 2,
+      "tool": "resident_skill_mutate",
+      "toolErrors": [],
+      "webSkillStatus": [
+        "unsupported"
+      ]
+    },
+    {
+      "stage": "skill-delete",
+      "pass": true,
+      "persisted": true,
+      "sourceVersion": 1,
+      "fullQuoteAndActorBound": true,
+      "memoryRevision": null,
+      "skillRevision": 3,
+      "unrelatedPreserved": true,
+      "taskCount": 2,
+      "tool": "resident_skill_mutate",
+      "toolErrors": [],
+      "webSkillStatus": []
+    }
+  ],
+  "final": {
+    "memoryAbsent": true,
+    "skillStateAbsent": true,
+    "skillDirectoryAbsent": true,
+    "skillRevision": 3,
+    "unrelatedRecordsPreserved": true,
+    "newTasks": 0,
+    "allTestRepliesDelivered": false,
+    "unconfirmedReplies": [
+      {
+        "state": "unknown"
+      }
+    ],
+    "receiving": true,
+    "tokenPreserved": true,
+    "ready": true,
+    "restarts": 0
+  },
+  "toolReceipts": 6,
+  "webDelivery": {
+    "status": "UNKNOWN",
+    "code": "WEB_DELIVERY_SCOPE_INVALID",
+    "sourceStage": "skill-update",
+    "sendAttempts": 1,
+    "replayed": false
+  },
+  "webSkillDisplay": {
+    "status": "FAIL",
+    "actual": "unsupported",
+    "expected": "applied",
+    "mutationPersisted": true
+  }
+}
