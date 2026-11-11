@@ -54,7 +54,6 @@ export function TaskDetail({ id }: { id: string }) {
         <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} controlsTarget={recordControls} /></div>}
     </ConversationFrame>
     <aside className="task-info-rail" aria-label="任务详情">
-      <a className="back-link task-back-link" href="#/tasks">全部任务</a>
       <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
       <div className="task-info-content" ref={infoContent}>
         <div className="task-record-controls" ref={setRecordControls} hidden={tab !== 'execution'} />

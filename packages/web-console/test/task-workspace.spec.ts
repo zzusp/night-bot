@@ -26,7 +26,8 @@ test('任务记录无顶部及底部卡片，四类侧栏保留标题、操作�
   await expect(page.locator('.task-dialogue .message-avatar')).toHaveCount(0)
   await expect(page.locator('.task-dialogue .message-source')).toHaveCount(0)
   await expect(page.locator('.task-info-rail svg:visible')).toHaveCount(0)
-  await expect(page.locator('.task-info-rail').getByRole('link', {name: '全部任务', exact: true})).toHaveAttribute('href', '#/tasks')
+  await expect(page.getByRole('link', {name: '全部任务', exact: true})).toHaveCount(0)
+  await expect(page.locator('.task-info-rail > :first-child')).toHaveAttribute('aria-label', '任务信息分类')
   const records = (await page.locator('.task-dialogue').boundingBox())!
   expect(Math.abs(records.y - left.y)).toBeLessThanOrEqual(1)
   expect(Math.abs(records.height - left.height)).toBeLessThanOrEqual(1)
@@ -50,6 +51,9 @@ test('任务记录无顶部及底部卡片，四类侧栏保留标题、操作�
       await page.setViewportSize({width, height: 960})
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await expect(page.locator('.task-info-title')).toBeVisible()
+      const rail = (await page.locator('.task-info-rail').boundingBox())!
+      const tabs = (await page.getByRole('navigation', {name: '任务信息分类'}).boundingBox())!
+      expect(Math.abs(tabs.y - rail.y)).toBeLessThanOrEqual(1)
       await section(page, '执行').click()
       await expect(page.getByRole('heading', {name: '执行动态', exact: true})).toBeVisible()
       await section(page, '任务').click()
@@ -61,6 +65,32 @@ test('任务记录无顶部及底部卡片，四类侧栏保留标题、操作�
     }
   }
 })
+
+for (const width of [1440, 390]) {
+  test(`任务详情不显示全部任务，${width}px 全局任务导航与历史往返保留`, async ({page}) => {
+    await page.setViewportSize({width, height: 960})
+    await login(page)
+    await expect(page.locator('.task-info-title')).toContainText('整理本周产品调研')
+    await expect(page.getByRole('link', {name: '全部任务', exact: true})).toHaveCount(0)
+    if (width < 1024) await page.getByRole('button', {name: '打开导航', exact: true}).click()
+    const navigation = page.locator(width < 1024 ? '.nav-dialog' : '.desktop-sidebar').getByRole('navigation', {name: '主导航'})
+    const tasks = navigation.locator('a[href="#/tasks"]')
+    await expect(tasks).toBeVisible()
+    await tasks.focus()
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(/#\/tasks$/)
+    await expect(page.getByRole('dialog', {name: '导航', exact: true})).not.toBeVisible()
+    await expect(page.locator('.task-table')).toBeVisible()
+    const taskLink = page.locator('.task-table').getByRole('link', {name: '整理本周产品调研', exact: true})
+    await taskLink.click()
+    await expect(page.locator('.task-info-title')).toContainText('整理本周产品调研')
+    await page.goBack()
+    await expect(taskLink).toBeVisible()
+    await page.goForward()
+    await expect(page.locator('.task-info-title')).toContainText('整理本周产品调研')
+    await expect(page.getByRole('link', {name: '全部任务', exact: true})).toHaveCount(0)
+  })
+}
 
 test('复盘与学习分别展示真实接口字段，授权正文按需读取，空与不可用不混淆', async ({page}) => {
   let mode = 'ready', bodyReads = 0
