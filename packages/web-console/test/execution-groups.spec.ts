@@ -44,7 +44,7 @@ test('执行正文流无图标信息条，组默认折叠，输入输出独立�
   await expect(group.locator('.message-source')).toHaveCount(0);
   await expect(group).not.toContainText('fixture-execution');
   mode = 'updated';
-  await page.locator('.task-record-controls').getByRole('button', { name: '获取最新记录', exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 2 次');
   await expect(input).toHaveAttribute('open');
   await expect(output).toHaveAttribute('open');
@@ -55,7 +55,7 @@ test('执行正文流无图标信息条，组默认折叠，输入输出独立�
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
   }
   mode = 'denied';
-  await page.locator('.task-record-controls').getByRole('button', { name: '获取最新记录', exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(history.locator('.message-tool')).toHaveCount(0);
 });
 
@@ -80,7 +80,7 @@ test('job_output 普通合组，安全首行摘要与独立正文，无内部来
   await expect(output.locator('.tool-content')).toHaveText(text);
   await expect(activity.locator('.message-source')).toHaveCount(0);
   await expect(activity).not.toContainText('信息已隐藏');
-  await page.locator('.task-record-controls').getByRole('button', { name: '获取最新记录', exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(output).toHaveAttribute('open');
   expect(await page.evaluate(() => 'jobOutputExecuted' in window)).toBe(false);
 });

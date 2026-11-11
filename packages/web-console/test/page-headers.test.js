@@ -30,7 +30,7 @@ test('navigation and detail identity remain; first content sections follow the p
 })
 
 
-test('task transcript omits duplicate top and bottom blocks while controls remain in the rail', () => {
+test('task transcript omits duplicate top and bottom blocks while compact execution facts remain in the rail', () => {
   assert.doesNotMatch(source('TasksPage.tsx'), /task-title-dock|task-records-heading/)
   assert.doesNotMatch(source('TasksPage.tsx'), /全部任务|task-back-link/)
   assert.doesNotMatch(source('styles/task-workspace.css'), /task-back-link/)
@@ -38,5 +38,5 @@ test('task transcript omits duplicate top and bottom blocks while controls remai
   assert.match(source('App.tsx'), /path: 'tasks', label: '任务'/)
   assert.match(source('TasksPage.tsx'), /className="task-info-title"/)
   assert.match(source('TasksPage.tsx'), /controlsTarget=\{recordControls\}/)
-  assert.match(source('TasksPage.tsx'), /className="task-record-controls"[^\n]+hidden=\{tab !== 'execution'\}/)
+  assert.match(source('TasksPage.tsx'), /className="task-execution-overview"[^\n]+hidden=\{tab !== 'execution'\}/)
 })

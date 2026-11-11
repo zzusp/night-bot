@@ -29,7 +29,7 @@ export function ExecutionHistory({ endpoint, router = false, status, controlsTar
   }, [query.updatedAt]);
   // The task workspace hosts these controls in its rail; other readers keep them inline.
   // The history component owns one stream regardless of where its controls render.
-  const controls = <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录' : '当前执行上下文'}</span>
+  const controls = controlsTarget !== undefined ? !blocked && query.data?.status === 'ready' && <dl className="task-record-facts"><div><dt>{query.error ? '上次上下文' : '当前上下文'}</dt><dd><span>{query.data.items.length}</span><span className="muted"> / {query.data.total} 条</span></dd></div></dl> : <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录' : '当前执行上下文'}</span>
       <div>{query.data?.status === 'ready' && <span>已载入 {query.data.items.length} / {query.data.total} 条记录</span>}{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
     </div>;
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>

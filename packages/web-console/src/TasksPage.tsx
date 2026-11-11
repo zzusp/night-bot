@@ -7,6 +7,7 @@ import { Loading, Markdown, Notice, Pagination, Search, Status } from './compone
 import { ConversationFrame } from './components/ConversationFrame';
 import { ExecutionHistory } from './components/ExecutionHistory';
 import { LearningChanges } from './components/LearningChanges';
+import { TaskExecutionDetails } from './components/TaskExecutionDetails';
 
 export function TaskList({ route }: { route: URL }) {
   const state = route.searchParams.get('state') || '';
@@ -43,9 +44,6 @@ export function TaskDetail({ id }: { id: string }) {
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const task = forbidden || denied ? undefined : query.data;
-  const raw = task?.timeline;
-  const timeline = [...(raw?.task?.events || []), ...(raw?.human?.segments || []), ...(raw?.executions || []).flatMap(track => track.milestones || [])].sort((a, b) => String(a.at || a.startedAt || '').localeCompare(String(b.at || b.startedAt || '')));
-  const eventLabels: Record<string, string> = { created: '任务已创建', completed: '任务已完成', reopened: '任务已重新打开', cancelled: '任务已取消' };
   const sections = [['task', '任务'], ['execution', '执行'], ['review', '复盘'], ['learning', '学习']];
   return <div className="task-workspace">
     <ConversationFrame label="任务执行记录">
@@ -56,18 +54,17 @@ export function TaskDetail({ id }: { id: string }) {
     <aside className="task-info-rail" aria-label="任务详情">
       <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
       <div className="task-info-content" ref={infoContent}>
-        <div className="task-record-controls" ref={setRecordControls} hidden={tab !== 'execution'} />
+        <section className="task-execution-overview" hidden={tab !== 'execution'} aria-label="执行状态">
+          {task && <dl className="task-execution-states"><div><dt>执行会话</dt><dd><Status value={task.session?.status} /></dd></div><div><dt>任务控制</dt><dd><Status value={task.controlState} /></dd></div></dl>}
+          <div className="task-record-controls" ref={setRecordControls} />
+        </section>
         <div key={tab}>
         {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : tab === 'review' || tab === 'learning' ? <LearningChanges key={id} taskId={id} section={tab === 'review' ? 'reviews' : 'changes'} /> : tab === 'task' ? <>
           <section className="detail-section"><h2 className="task-info-title">{task.title || '未命名任务'}</h2><dl className="task-facts"><div><dt>当前状态</dt><dd><Status value={task.state} /></dd></div><div><dt>最近更新</dt><dd><time dateTime={task.updatedAt}>{dateTime(task.updatedAt)}</time></dd></div><div><dt>创建时间</dt><dd><time dateTime={task.createdAt}>{dateTime(task.createdAt)}</time></dd></div></dl></section>
           <section className="detail-section"><h3>任务目标</h3>{task.objective ? <Markdown text={task.objective} /> : <p>未记录任务目标。</p>}</section>
           <section className="detail-section"><h3>处理结果</h3>{textOf(task.result) ? <Markdown text={textOf(task.result)} /> : <p>尚无已记录的处理结果。</p>}</section>
           <section className="detail-section blockers"><h3>等待处理</h3>{task.blockers?.length ? task.blockers.map(blocker => <p key={blocker.kind + ':' + blocker.id}>{blocker.title} {blocker.status && <Status value={blocker.status} />}</p>) : <p>暂无已记录的阻断项。</p>}</section>
-        </> : <>
-          <section className="detail-section"><h3>执行会话</h3><dl className="task-facts"><div><dt>当前状态</dt><dd><Status value={task.session?.status} /></dd></div><div><dt>控制状态</dt><dd><Status value={task.controlState} /></dd></div></dl></section>
-          <section className="detail-section"><h3>执行动态</h3>{timeline.length ? <ol className="timeline">{timeline.map((event, index) => <li key={String(event.id || index)}><div><strong>{event.summary || event.label || eventLabels[event.kind || ''] || event.description || event.kind || '状态更新'}</strong>{event.at || event.startedAt ? <time>{dateTime(event.at || event.startedAt)}</time> : <span className="muted">时间未记录</span>}{event.status && <Status value={event.status} />}</div></li>)}</ol> : <p>暂无已记录的执行动态。</p>}</section>
-          <section className="detail-section"><h3>交付记录</h3>{task.notifications?.length ? task.notifications.map((item, index) => <div className="delivery-row" key={String(item.id || index)}><span>{textOf(item) || '结果通知'}</span><Status value={String(item.state || item.status || 'unknown')} /></div>) : <p>暂无已记录的交付。</p>}</section>
-        </>}
+        </> : <TaskExecutionDetails task={task} />}
         </div>
       </div>
     </aside>
