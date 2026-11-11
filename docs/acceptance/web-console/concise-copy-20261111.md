@@ -24,7 +24,7 @@
 - `node --test packages/web-console/test/*.test.js`：192 通过，0 失败。
 - `scripts/check-coverage.mjs`、`scripts/check-production-imports.mjs`、`scripts/check-native-runtime.mjs` 通过。
 - 官方 frontend-design-premium `audit_project.py --mode strict` 配合仓库 premium-ui.json：0 findings。
-- Playwright `--list` 可解析全部 212 项测试。新增 6 项精简文案检查，覆盖 1440/390px 页面与弹窗边界、空段落、错误关联、焦点返回和必要安全文案；同步更新既有文案断言。
+- Playwright `--list` 可解析全部 214 项测试。新增 6 项精简文案检查，覆盖 1440/390px 页面与弹窗边界、空段落、错误关联、焦点返回和必要安全文案；同步更新既有文案断言。
 - `git diff --check` 通过。
 
 ## 运行验收进度
@@ -32,5 +32,7 @@
 浏览器测试被执行环境阻塞：Chromium 启动时 Unix socket 返回 `Operation not permitted`；获准提升执行后仍相同。CUA 浏览器访问隔离本地 fixture 返回 `ERR_CONNECTION_REFUSED`。这些是浏览器启动/连接失败，不是已执行的页面功能断言失败。
 
 后续在独立 Windows 合成 fixture 恢复了真实浏览器验收。首次新增用例 5/6 通过，发现了重复标题定位、渠道卡片可访问名称与窄屏错误聚焦标签遮挡；已修正并新增标签位置断言。渠道弹窗改为标题与正文分区，仅正文内部滚动。也修正旧文案断言、测试 Origin 的端口硬编码及模拟时钟暂停竞态。
+
+二次验收确认渠道可访问名称、窄屏标签遮挡、端口冲突及菜单短列表场景已通过；新增几何断言已限定可见标签。长对话与长渠道列表进一步复现了基线中的焦点缺陷：Markdown 内联组件身份导致链接节点替换，菜单收到开启动作之前的滚动通知而误关。已稳定 Markdown 组件身份，菜单仅在触发器位置实际变化时关闭，并追加长列表循环与长正文焦点回归。首次加载 30 秒断言触发既有 20 秒 API 超时已在 main 独立复现，由单独修复处理；本 PR 不放宽该断言或更改 API 超时。
 
 最终修复 head 的受影响浏览器回归与组合分支全套验证仍在进行，本记录尚不声明全部通过。需审阅最终截图和结果后再合并。未改服务端业务逻辑，未部署或合并。

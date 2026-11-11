@@ -1,6 +1,6 @@
 import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
@@ -47,11 +47,14 @@ export function Pagination({ offset, total, nextOffset, onPage, loading }: { off
     <Button variant="secondary" disabled={nextOffset == null || loading} onClick={() => nextOffset != null && onPage(nextOffset)}>下一页</Button>
   </div></nav>;
 }
+// Stable component identities preserve focused links when scrolling or polling
+// rerenders the transcript. Inline renderer functions remount their DOM nodes.
+const markdownComponents: Components = {
+  a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+  img: ({ src, alt }) => <a href={typeof src === 'string' ? src : undefined} target="_blank" rel="noopener noreferrer">查看图片：{alt || '附件'}</a>,
+};
 export function Markdown({ text }: { text: string }) {
-  return <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-    a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-    img: ({ src, alt }) => <a href={typeof src === 'string' ? src : undefined} target="_blank" rel="noopener noreferrer">查看图片：{alt || '附件'}</a>,
-  }}>{text}</ReactMarkdown></div>;
+  return <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{text}</ReactMarkdown></div>;
 }
 
 function MessageProvenance({ source }: { source?: MessageSource }) {

@@ -79,7 +79,7 @@ for (const width of [1440, 390]) test(`表单与弹窗保留安全边界、错�
   await expect(id).toHaveAttribute('aria-invalid', 'true');
   // The invalid field and its label must both remain below the fixed dialog header.
   await expect.poll(async () => {
-    const label = await dialog.locator('label').filter({hasText: /^渠道标识$/}).boundingBox();
+    const label = await dialog.locator('label').filter({hasText: /^渠道标识$/}).filter({visible: true}).boundingBox();
     const heading = await dialog.locator('.channel-create-heading').boundingBox();
     return label!.y - heading!.y - heading!.height;
   }).toBeGreaterThanOrEqual(0);
