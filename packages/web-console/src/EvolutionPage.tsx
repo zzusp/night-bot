@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import EvolutionContent from './EvolutionContent';
 import EvolutionEntryList, { formatEvolutionCount as number } from './components/EvolutionEntryList';
 import { RiBookOpenLine, RiBrainLine, RiRefreshLine } from '@remixicon/react';
-import { ApiError, type Evolution, type EvolutionItem, type EvolutionReady } from './api';
+import { ApiError, EVOLUTION_SNAPSHOT_TIMEOUT_MS, type Evolution, type EvolutionItem, type EvolutionReady } from './api';
 import { dateTime, navigate, useResource } from './hooks';
 import { Button, EmptyState } from './components/BoardPrimitives';
 import { Loading, Notice, Pagination } from './components/Shared';
@@ -35,7 +35,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
   const requestedOffset = Number(route.searchParams.get('offset'));
   const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
   const path = `/evolution?kind=${kind}&offset=${offset}&limit=20`;
-  const query = useResource<Evolution>(path, 300000, {pauseWhenHidden: true, refreshPath: path + '&refresh=1'});
+  const query = useResource<Evolution>(path, 300000, {pauseWhenHidden: true, refreshPath: path + '&refresh=1', timeoutMs: EVOLUTION_SNAPSHOT_TIMEOUT_MS});
   const forbidden = query.error instanceof ApiError && [401, 403].includes(query.error.status);
   const busy = query.error instanceof ApiError && query.error.code === 'EVOLUTION_BUSY';
   const [revoked, setRevoked] = useState(false);
