@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {messageProcessDuration,messageProcessMetric} from '../src/message-process-duration.ts';
+import {messageProcessDuration,messageProcessMetric,messageProcessMetricView} from '../src/message-process-duration.ts';
 
 test('sub-second receipts use milliseconds, including zero and the value just below one second', () => {
   for (const [value, expected] of [[0, '0 毫秒'], [1, '1 毫秒'], [700, '700 毫秒'], [999, '999 毫秒']]) {
@@ -36,4 +36,16 @@ test('missing or invalid clocks and reversed milestones never fabricate elapsed 
   for (const start of [null,'invalid']) assert.equal(messageProcessMetric({timingType:'milestone',at:at(900)}, start), '接收时间缺失');
   assert.equal(messageProcessMetric({timingType:'milestone',at:'invalid'}, receivedAt), '节点时间缺失');
   assert.equal(messageProcessMetric({timingType:'milestone',at:at(-1)}, receivedAt), '时间异常');
+});
+
+
+test('compact values distinguish receipt offsets from durations without losing accessible semantics', () => {
+  assert.deepEqual(messageProcessMetricView({timingType:'milestone',at:at(25579)},receivedAt),
+    {kind:'milestone',value:'+26 秒',label:'接收后 26 秒',state:'measured'});
+  assert.deepEqual(messageProcessMetricView({timingType:'span',at:at(29000),durationMs:3000},receivedAt),
+    {kind:'span',value:'3 秒',label:'耗时 3 秒',state:'measured'});
+  for(const [durationMs,value,state] of [[undefined,'未记录','missing'],[-1,'异常','invalid']]){
+    const result=messageProcessMetricView({timingType:'span',at:at(29000),durationMs},receivedAt);
+    assert.equal(result.value,value);assert.equal(result.state,state);assert.notEqual(result.value,'0 毫秒');
+  }
 });

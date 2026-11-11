@@ -40,7 +40,7 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
    const at=clipped?firstReplyAt:end??start
    const label=stage.stage==='triage'?'消息分流':'Router 处理'
    if(stage.stage==='router')steps.push({kind:'stage-router-started',label:'Router 开始准备'+(shared?'（批次共享）':''),at:start,shared,timingType:'milestone'})
-   steps.push({kind:`stage-${stage.stage}-completed`,label:label+(clipped?'（截至回复可见）':'')+(shared?'（批次共享）':''),at,shared,timingType:'span',
+   steps.push({kind:`stage-${stage.stage}-completed`,label:label+(clipped?'（截至回复可见）':'')+(shared?'（批次共享）':''),at,shared,clipped:Boolean(clipped),timingType:'span',
     ...(measured?{durationMs:Date.parse(at)-Date.parse(start)}:{})})
    if(stage.stage==='triage'&&measured)measuredTriage=true
    continue
