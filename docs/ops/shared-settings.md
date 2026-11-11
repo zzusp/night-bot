@@ -40,9 +40,23 @@ node bin/night-bot-settings.js CONFIG channel-remove --channel-id work-room --ex
 
 新 CLI 也提供 `model`（`--provider --model --api --base-url --key-env`）、`role`（`--role --provider --model --reasoning-effort`）、`web`（`--enabled --host --port --public-origin --channel-id --sender-id --operator-name`）、`permissions-show`、`permission-respond --id REQUEST --decision allow|reject|revoke`。`permission-respond` 只作用于仍有效、绑定原调用的审批；离线不能重放批准。
 
-## 同一路由的多个模型
+## 同一路由的 API、密钥和多个模型
 
-Web「模型列表」和 `night-bot-settings model-list/model-entry` 共用同一配置服务，不另建 provider、密钥或模型注册表。`model-list` 返回安全目录、引用和配置版本；`model-entry` 修改已有 provider 下一个模型，不改变全局默认选择。真实模型 ID 由操作者提供，命令不会自动访问服务商发现目录或验证调用。
+Web 在同一「模型与 API」卡片中按 provider 选择路由，配置 API 地址、协议、该路由密钥及模型列表。`model-list` 返回脱敏 API 配置与凭据状态，不返回密钥、头部或凭据引用名。环境提供的密钥只读；共享同一凭据引用的路由会列出 `secret.sharedWith`，更换或清除会影响这些路由。
+
+```sh
+node bin/night-bot-settings.js CONFIG provider --provider PROVIDER --api openai-responses --base-url https://api.example.invalid/v1 --live --check
+node bin/night-bot-settings.js CONFIG provider --provider PROVIDER --api openai-responses --base-url https://api.example.invalid/v1 --live
+node bin/night-bot-settings.js CONFIG secret --kind model --provider PROVIDER --action replace --confirm --live
+node bin/night-bot-settings.js CONFIG provider --action create --provider new-route --api openai-completions --base-url https://api.example.invalid/v1 --model MODEL_ID --live
+```
+
+`provider` 只修改指定路由的协议/地址，不改变默认模型或角色，也不把官方隐式目录变为白名单。新建路由必须提供唯一标识、协议、地址和首个模型；凭据使用现有 Pi provider 记录。省略 API/地址字段保留原值；空串撤销显式覆盖，仅在官方默认仍能解析完整目录时允许。官方内置协议可能不在可选自定义协议中，保持默认即可保留。每个模型的元数据保持原样，运行时仍按原 Pi 路由解析规则决定有效协议和地址。
+
+`secret --kind model --provider PROVIDER` 使用选中路由的凭据槽；省略 `--provider` 仍沿用全局默认路由，保留旧 CLI/API 行为。旧 `model` 命令仍设置全局默认；与只修改路由的 `provider` 操作不同。保存 API、目录后需正常重启，不热切换已有会话。
+
+
+Web「模型与 API」和 `night-bot-settings model-list/model-entry` 共用同一配置服务，不另建 provider、密钥或模型注册表。`model-list` 返回安全目录、引用和配置版本；`model-entry` 修改已有 provider 下一个模型，不改变全局默认选择。真实模型 ID 由操作者提供，命令不会自动访问服务商发现目录或验证调用。
 
 ```sh
 node bin/night-bot-settings.js CONFIG model-list --live
@@ -65,7 +79,8 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 | 配置 | Web | CLI | 共同实现和实际边界 |
 | --- | --- | --- | --- |
 | 外观 | `/api/settings/appearance` | `night-bot-settings appearance` | `operator.saveAppearance`，相同 CAS/校验 |
-| 全局模型 | `/api/settings/model` | `night-bot-config model` / `night-bot-settings model` | `saveModelConfiguration`；Web 便利表单固定 `web-model` provider，新 CLI 可选择 provider |
+| 全局模型（兼容接口，当前 Web 表单不使用） | `/api/settings/model` | `night-bot-config model` / `night-bot-settings model` | `saveModelConfiguration`；旧 Web 接口固定 `web-model` provider；CLI 仍可显式选择全局默认 |
+| 路由 API | `/api/settings/provider` PUT | `night-bot-settings provider` | `saveProviderConfiguration`；显式选择已有 provider，或 action:create 新建，保留全局默认、角色与所有模型字段 |
 | 路由内模型列表 | `/api/settings/model-catalog` GET/PUT | `night-bot-settings model-list/model-entry` | 共用安全目录投影和 `saveModelCatalogEntry`，ID/显示名增改删、引用保护、CAS，保存后正常重启 |
 | 分诊/Router/执行模型 | `/api/settings/role-model` | `night-bot-config role-model` / `night-bot-settings role` | `saveRoleModelConfiguration` 和相同 Pi 能力校验 |
 | 模型/GitHub Key | `/api/settings/secrets/*` | `night-bot-settings secret` | `operator.saveSecret`，确认、路由版本锁、环境只读、NativeCredentials |

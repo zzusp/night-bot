@@ -1,9 +1,11 @@
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogEntry, type ModelCatalogSaved} from '../api';
 import {useResource} from '../hooks';
 import {Button} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
 import {Loading, Notice} from './Shared';
+import {ProviderApiEditor} from './ProviderApiEditor';
+import {SecretEditor} from './SecretEditor';
 
 const pageSize=10;
 const referenceLabels:Record<string,string>={default:'默认模型','role:triage':'一级分诊','role:router':'Router','role:task':'任务执行','legacy:task':'任务默认配置','runtime:task':'当前任务默认配置','environment:triage':'分诊环境变量','environment:router':'Router 环境变量','environment:task':'执行环境变量'};
@@ -11,9 +13,12 @@ const referenceText=(values:string[])=>values.map(value=>referenceLabels[value]?
 type Draft={originalId?:string;model:string;name:string;version:string;references:string[]};
 type Mutation={action:'add'|'edit'|'remove';provider:string;id?:string;model?:string;name?:string;expectedVersion:string;confirm?:true};
 
-export function ModelCatalogEditor({settingsVersion,onSaved,onStateChange}:{settingsVersion:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean)=>void}) {
+export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onStateChange}:{settingsVersion:string;defaultProvider:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean)=>void}) {
  const query=useResource<ModelCatalog>('/settings/model-catalog');
- const [providerId,setProviderId]=useState(''),[filter,setFilter]=useState(''),[page,setPage]=useState(0),[draft,setDraft]=useState<Draft|null>(null),[remove,setRemove]=useState<{entry:ModelCatalogEntry;provider:string;version:string}|null>(null);
+ const [providerId,setProviderId]=useState(defaultProvider),[creating,setCreating]=useState(false),[connectionKey,setConnectionKey]=useState(0),[connectionStates,setConnectionStates]=useState<Record<string,{dirty:boolean;busy:boolean}>>({});
+ const onConnectionState=useCallback((key:string,dirty:boolean,busy:boolean)=>setConnectionStates(states=>({...states,[key]:{dirty,busy}})),[]);
+ const connectionDirty=Object.values(connectionStates).some(state=>state.dirty),connectionBusy=Object.values(connectionStates).some(state=>state.busy);
+ const [filter,setFilter]=useState(''),[page,setPage]=useState(0),[draft,setDraft]=useState<Draft|null>(null),[remove,setRemove]=useState<{entry:ModelCatalogEntry;provider:string;version:string}|null>(null);
  const [busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[fieldError,setFieldError]=useState(''),[pendingVersion,setPendingVersion]=useState<string|null>(null),[saveConfirmation,setSaveConfirmation]=useState<Mutation|null>(null);
  const mounted=useRef(true),inFlight=useRef(false),initialVersion=useRef(settingsVersion);
  const focusAdd=()=>document.getElementById('catalog-add-model')?.focus();
@@ -21,13 +26,14 @@ export function ModelCatalogEditor({settingsVersion,onSaved,onStateChange}:{sett
  useEffect(()=>{if(initialVersion.current!==settingsVersion){initialVersion.current=settingsVersion;query.refresh()}},[settingsVersion,query.refresh]);
  useEffect(()=>{if(!providerId&&query.data?.providers.length)setProviderId(query.data.providers[0].provider)},[providerId,query.data]);
  useEffect(()=>{if(pendingVersion&&query.data?.version===pendingVersion)setPendingVersion(null)},[query.data,pendingVersion]);
- useEffect(()=>{onStateChange('model-catalog',!!draft||locked,busy);return()=>onStateChange('model-catalog',false,false)},[draft,locked,busy,onStateChange]);
+ useEffect(()=>{onStateChange('model-catalog',!!draft||locked||connectionDirty,busy||connectionBusy);return()=>onStateChange('model-catalog',false,false)},[draft,locked,busy,connectionDirty,connectionBusy,onStateChange]);
  const provider=query.data?.providers.find(row=>row.provider===providerId),stale=!!draft&&draft.version!==query.data?.version;
  const unavailable=query.error instanceof ApiError&&[401,403,404].includes(query.error.status);
- const disabled=busy||locked||stale||query.loading||!!pendingVersion||!!query.error;
+ const disabled=busy||locked||stale||query.loading||!!pendingVersion||!!query.error||connectionDirty||connectionBusy;
+ const connectionDisabled=busy||locked||!!draft||query.loading||!!pendingVersion||!!query.error;
  const filtered=provider?.models.filter(row=>`${row.id} ${row.name}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase()))??[];
  const currentPage=Math.min(page,Math.max(0,Math.ceil(filtered.length/pageSize)-1)),visible=filtered.slice(currentPage*pageSize,(currentPage+1)*pageSize);
- const reset=()=>{setDraft(null);setLocked(false);setError('');setFieldError('');setFeedback('');setPendingVersion(null);query.refresh();onSaved()};
+ const reset=()=>{if(busy||connectionBusy)return;setCreating(false);setConnectionKey(value=>value+1);setConnectionStates({});setDraft(null);setLocked(false);setError('');setFieldError('');setFeedback('');setPendingVersion(null);query.refresh();onSaved()};
  const edit=(row?:ModelCatalogEntry)=>{
   if(disabled||!query.data)return;
   setDraft({...(row?{originalId:row.id}:{}),model:row?.id??'',name:row?.configuredName??'',version:query.data.version,references:row?.references??[]});setError('');setFieldError('');setFeedback('');
@@ -63,14 +69,17 @@ export function ModelCatalogEditor({settingsVersion,onSaved,onStateChange}:{sett
   if(draft.name.length>256||/[\x00-\x1f\x7f]/.test(draft.name)){setFieldError('显示名称不能超过 256 个字符或包含控制字符。');document.getElementById('catalog-model-name')?.focus();return}
   setSaveConfirmation({action:draft.originalId?'edit':'add',provider:providerId,...draft.originalId?{id:draft.originalId}:{},model:draft.model,name:draft.name.trim(),expectedVersion:draft.version});
  };
- return <section className="settings-card model-catalog" aria-labelledby="model-catalog-title">
-  <div className="settings-card-heading"><h2 id="model-catalog-title">模型列表</h2><Button onClick={reset} disabled={busy} busy={query.loading}>{draft||locked?'重新读取模型列表并替换草稿':'重新读取模型列表'}</Button></div>
-  <p className="field-help">同一路由的多个模型共用已有 API 地址和凭据。填写服务商实际支持的模型 ID，保存后可在下方为各角色选择；不会调用模型验证。</p>
+ return <section className="settings-card model-catalog" aria-labelledby="provider-settings-title">
+  <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><Button onClick={reset} disabled={busy||connectionBusy} busy={query.loading}>{draft||locked||connectionDirty?'重新读取路由配置并替换草稿':'重新读取路由配置'}</Button></div>
+  <p className="field-help">先选择路由，再配置其 API、密钥和模型。各角色从下方选择模型；保存后正常重启生效，不会调用模型验证。</p>
   {query.error&&<Notice error={query.error} onRetry={busy?undefined:query.refresh}/>}
   {query.loading&&!query.data?<Loading/>:!unavailable&&query.data?<>
-   {query.data.providers.length?<>
-    <label htmlFor="catalog-provider">管理模型的路由</label><select id="catalog-provider" value={providerId} disabled={disabled||!!draft} onChange={event=>{setProviderId(event.target.value);setFilter('');setPage(0);setError('');setFeedback('')}}>{query.data.providers.map(row=><option key={row.provider} value={row.provider}>{row.name===row.provider?row.provider:`${row.name} (${row.provider})`}</option>)}</select>
-    <div className="model-catalog-toolbar"><div><label htmlFor="catalog-filter">筛选模型</label><input id="catalog-filter" type="search" value={filter} onChange={event=>{setFilter(event.target.value);setPage(0)}} placeholder="按模型 ID 或显示名称筛选" disabled={busy}/></div><Button id="catalog-add-model" variant="primary" onClick={()=>edit()} disabled={disabled||!!draft}>添加模型</Button></div>
+   {!creating&&query.data.providers.length?<>
+    <label htmlFor="catalog-provider">模型路由</label><select id="catalog-provider" value={providerId} disabled={disabled||!!draft} onChange={event=>{setConnectionKey(value=>value+1);setConnectionStates({});setProviderId(event.target.value);setFilter('');setPage(0);setError('');setFeedback('')}}>{query.data.providers.map(row=><option key={row.provider} value={row.provider}>{row.name===row.provider?row.provider:`${row.name} (${row.provider})`}</option>)}</select>
+    <div className="provider-selector-actions"><Button disabled={disabled||!!draft} onClick={()=>{setCreating(true);setConnectionKey(value=>value+1);setConnectionStates({})}}>添加路由</Button><span className="field-help">{providerId===defaultProvider?'当前默认模型所在路由':'不改变当前默认模型或角色选择'}</span></div>
+    {provider&&<div className="provider-connection-grid"><ProviderApiEditor key={`api-${providerId}-${connectionKey}`} provider={provider} version={query.data.version} disabled={connectionDisabled||!!connectionStates['secret-model']?.dirty||!!connectionStates['secret-model']?.busy} onSaved={()=>{query.refresh();onSaved()}} onStateChange={onConnectionState}/><SecretEditor key={`secret-${providerId}-${connectionKey}`} embedded kind="model" provider={providerId} state={provider.secret} version={query.data.version} disabled={connectionDisabled||!!connectionStates['provider-api']?.dirty||!!connectionStates['provider-api']?.busy} onSaved={()=>{query.refresh();onSaved()}} onStateChange={onConnectionState}/></div>}
+    <h3 id="model-catalog-title" className="provider-models-heading">模型列表</h3>
+    <div className="model-catalog-toolbar"><div><label htmlFor="catalog-filter">筛选模型</label><input id="catalog-filter" type="search" value={filter} onChange={event=>{setFilter(event.target.value);setPage(0)}} placeholder="按模型 ID 或显示名称筛选" disabled={busy}/>{filter&&<Button disabled={busy} onClick={()=>{setFilter('');setPage(0);document.getElementById('catalog-filter')?.focus()}}>清除筛选</Button>}</div><Button id="catalog-add-model" variant="primary" onClick={()=>edit()} disabled={disabled||!!draft}>添加模型</Button></div>
     {draft&&<form noValidate className="model-catalog-form" onKeyDown={event=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()}} onSubmit={event=>{event.preventDefault();submit()}}>
      <h3>{draft.originalId?'编辑模型':'添加模型'}</h3>
      <label htmlFor="catalog-model-id">模型 ID</label><input id="catalog-model-id" value={draft.model} disabled={disabled} readOnly={draft.references.length>0} maxLength={256} aria-invalid={!!fieldError} aria-describedby="catalog-entry-help catalog-field-error" onChange={event=>{setDraft({...draft,model:event.target.value});setFieldError('')}}/>
@@ -83,7 +92,8 @@ export function ModelCatalogEditor({settingsVersion,onSaved,onStateChange}:{sett
     {!visible.length&&<p>{filter?'没有匹配的模型，请调整筛选条件。':'此路由没有可用模型，请检查配置。'}</p>}
     <div className="pagination"><span>{filtered.length?`${currentPage*pageSize+1}–${Math.min((currentPage+1)*pageSize,filtered.length)} / ${filtered.length} 个模型`:'0 个模型'}</span><div><Button disabled={currentPage===0||busy} onClick={()=>setPage(currentPage-1)}>上一页模型</Button><Button disabled={(currentPage+1)*pageSize>=filtered.length||busy} onClick={()=>setPage(currentPage+1)}>下一页模型</Button></div></div>
     <p className="field-help">使用中的模型及路由中最后一个模型不能删除。保存配置不改变当前运行模型，需正常重启。</p>
-   </>:<p>尚未配置模型路由，请先在模型 API 中保存路由。</p>}
+   </>:<ProviderApiEditor key={`create-${connectionKey}`} version={query.data.version} disabled={busy||query.loading||!!query.error} onStateChange={onConnectionState} onSaved={id=>{if(id)setProviderId(id);setCreating(false);setConnectionKey(value=>value+1);setConnectionStates({});query.refresh();onSaved()}} onCancel={query.data.providers.length?()=>{setCreating(false);setConnectionStates({})}:undefined}/>}
+
   </>:null}
   {stale&&!locked&&<p role="alert">设置已变化，草稿未被覆盖。请重新读取模型列表后再编辑。</p>}
   <p className="field-error" role={error?'alert':undefined}>{error}</p><p role="status">{feedback}</p>

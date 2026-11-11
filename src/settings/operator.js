@@ -2,7 +2,7 @@ import {savedWorkLogConfig,resolveWorkLogConfig,WORK_LOG_ENV_NAMES} from '../wor
 import {saveWorkLogConfiguration} from './work-log-configuration.js'
 import {updateConfig} from '../config.js'
 import {MODEL_ROLES, ROLE_MODEL_ENV_NAMES, resolveRoleModels, legacyRoleModelSelection, roleModelCatalog, materializeRoleModelSelection} from '../role-models.js'
-import {configVersion, modelCatalogView, saveModelCatalogEntry, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
+import {configVersion, saveProviderConfiguration, modelCatalogView, saveModelCatalogEntry, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
 import {saveWebConfiguration} from './web-configuration.js'
 import {savePermissionConfiguration} from './configuration.js'
 import {piAuthentication} from '../pi-provider-auth.js'
@@ -58,8 +58,9 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   return {saved,running:active,nextStart,environmentOverrides,restartRequired:JSON.stringify(active)!==JSON.stringify(nextStart)}
  }
  const credentials=()=>{const value=getCredentials();if(!value)throw failure('SETTINGS_UNAVAILABLE');return value}
- const modelSecret=async config=>{
-  const provider=config.model.provider,profile=config.providers[provider]
+ const modelSecret=async (config,provider=config.model.provider)=>{
+  if(typeof provider!=='string'||!Object.hasOwn(config.providers,provider))throw failure('SETTINGS_INPUT_INVALID')
+  const profile=config.providers[provider]
   return profile.apiKeyEnv?{kind:'ref',id:profile.apiKeyEnv}:{kind:'record',id:provider}
  }
  const secretState=async slot=>{
@@ -67,7 +68,14 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   return {configured:value.configured===true,writable:slot.kind==='record'||!value.configured||value.source==='file',source:value.source==='file'?'saved':value.source?'environment':value.configured?'saved':'none'}
  }
  return {
-  modelCatalog:()=>run(async()=>{const config=await read();return modelCatalogView(config,getEnvironment(),getFallbackRoleModels(config))}),
+  modelCatalog:()=>run(async()=>{const config=await read(),view=modelCatalogView(config,getEnvironment(),getFallbackRoleModels(config));
+   for(const row of view.providers){const slot=await modelSecret(config,row.provider);row.secret={...await secretState(slot),sharedWith:slot.kind==='ref'?Object.keys(config.providers).filter(id=>id!==row.provider&&config.providers[id].apiKeyEnv===slot.id):[]}}
+   return view
+  }),
+  saveProvider:(body,{checkOnly=false}={})=>run(async()=>{
+   const result=await saveProviderConfiguration(file,{...body,checkOnly},getEnvironment(),getFallbackRoleModels)
+   return {ok:true,changed:result.changed,checkOnly,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
+  }),
   saveModelEntry:(body,{checkOnly=false}={})=>run(async()=>{
    const result=await saveModelCatalogEntry(file,{...body,checkOnly},getEnvironment(),getFallbackRoleModels)
    return {ok:true,changed:result.changed,checkOnly,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
@@ -119,7 +127,8 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
    let state
    await updateConfig(file,async config=>{
     check(config,body.expectedVersion)
-    const slot=kind==='model'?await modelSecret(config):{kind:'ref',id:'GITHUB_TOKEN'}
+    if(kind!=='model'&&body.provider!==undefined)throw failure('SETTINGS_INPUT_INVALID')
+    const slot=kind==='model'?await modelSecret(config,body.provider):{kind:'ref',id:'GITHUB_TOKEN'}
     if(!(await secretState(slot)).writable)throw failure('SETTINGS_SECRET_READ_ONLY')
     if(body.action==='replace'&&(!text(body.value,8192)||!/^[\x21-\x7e]+$/.test(body.value)))throw failure('SETTINGS_INPUT_INVALID')
     if(!checkOnly){

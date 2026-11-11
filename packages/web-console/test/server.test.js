@@ -819,3 +819,18 @@ test('daily log settings require authenticated same-origin CSRF and reject extra
  assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,200);assert.deepEqual(calls,[body])
  const failed=await f.fetchApi(path,{method:'PUT',body:{...body,time:'bad'}});assert.equal(failed.status,400);assert.deepEqual(failed.body,{error:'SETTINGS_INPUT_INVALID'})
 })
+
+test('provider API and scoped secrets require authenticated CSRF, strict DTO and retain provider binding',async t=>{
+ const calls=[],settings={saveProvider:async body=>{calls.push(body);if(body.expectedVersion==='stale')throw Object.assign(Error('PRIVATE_DETAIL'),{code:'SETTINGS_VERSION_CONFLICT'});return {ok:true}},saveSecret:async(kind,body)=>{calls.push({kind,...body});return {ok:true}}}
+ const f=await fixture(t,{settings}),path='/api/settings/provider',body={provider:'second',api:'openai-responses',baseURL:'https://fixture.invalid/v1',expectedVersion:'version'}
+ assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,401)
+ await f.login()
+ assert.equal((await f.fetchApi(path,{method:'PUT',body,headers:{'x-csrf-token':'forged'}})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body,headers:{origin:'https://evil.invalid'}})).status,403)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body:{...body,apiKeyEnv:'UNEXPECTED'}})).status,400)
+ assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,200);assert.deepEqual(calls,[body])
+ const stale=await f.fetchApi(path,{method:'PUT',body:{...body,expectedVersion:'stale'}});assert.equal(stale.status,409);assert.deepEqual(stale.body,{error:'SETTINGS_VERSION_CONFLICT'})
+ const secret={provider:'second',action:'replace',value:'TEST_SECRET',confirm:true,expectedVersion:'version'}
+ assert.equal((await f.fetchApi('/api/settings/secrets/model',{method:'PUT',body:secret})).status,200)
+ assert.deepEqual(calls.at(-1),{kind:'model',...secret})
+})

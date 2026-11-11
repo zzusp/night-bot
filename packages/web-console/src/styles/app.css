@@ -469,3 +469,11 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-process-popover[data-side="top"]::before { bottom: -6px; left: calc(var(--process-arrow-offset) - 5px); }
 .message-process-popover[data-side="bottom"]::before { top: -6px; left: calc(var(--process-arrow-offset) - 5px); }
 .message-process-popover .message-process-body { border-radius: 0 0 var(--board-radius-card) var(--board-radius-card); }
+
+/* A provider owns its transport, credential and catalog in one settings surface. */
+.provider-selector-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.provider-connection-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px; margin-top: 24px; }
+.provider-api,.provider-secret { min-width: 0; }
+.provider-api h3,.provider-secret h3,.provider-models-heading { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.provider-models-heading { margin-top: 28px; }
+@media (max-width: 760px) { .provider-connection-grid { grid-template-columns: minmax(0,1fr); gap: 24px; } }
