@@ -11,7 +11,7 @@
 | 明确职责、复用与安全边界 | 完成 | ../../spec/router-learning-mutations.md |
 | 实现 Router 记忆与 Skill CRUD | 完成 | src/channels/resident-router-business.js；src/memory/service.js、reflection.js、evolution.js |
 | 完成真实 Host/Pi 回归与源码守卫 | 完成，完整套件既有失败保留 | [round-1.md](round-1.md)、[matrix.csv](matrix.csv) |
-| 同步合同、审阅差异、独立 PR | 合同已同步，PR 待验证完成 | AGENTS、README、MEMORY、SELF-EVOLUTION、CHANNELS 与 Windows 运维 |
+| 同步合同、审阅差异、独立 PR | 完成，PR OPEN | [PR #57](https://github.com/zzusp/night-bot/pull/57)，合同与运维说明已同步 |
 
 ## 当前检查点
 
@@ -21,5 +21,6 @@
 - 记忆来源 15 场景和记忆/Skill 生命周期 16 场景通过；共享 Skill 冷启、旧正文撤销、删除目录、单调版本及持久收据故障恢复均有证据。
 - 完整 Router 文件 27 PASS / 1 FAIL，唯一 DWS receipt flags 断言在干净 main 原样复现，未改无关实现或断言，不宣称全绿。关联批次中的 48 项已通过；复盘夹具修正真实工作区初始化与资源关闭顺序后，集中复验 13 PASS / 0 FAIL。详见本轮报告。
 - 整合后 pnpm check 与 git diff --check 通过；本轮无真实消息、CI 或部署。没有自动补写、重放历史漏存来源。
-- 本地实现与验证已完成，下一步为提交、push 与独立 PR 回查；PR 状态核实后在本目标回填交付事实。生产发布和历史补写仍需本次明确授权。
+- 交付已核实：[PR #57](https://github.com/zzusp/night-bot/pull/57)，标题 feat(router): 直接决策并维护记忆与学习 Skill [skip ci]；main ← worktree-router-learning-mutations-20261111，OPEN / MERGEABLE，实现提交 b2cd8c7ab3dc5afeb6dc1d714f25509abca2ec0d。后续仅回填交付事实，不改受验运行源码；最终文档提交 SHA 在交付回复提供。
+- 未合并、未部署，不自动补写历史消息。生产发布和历史补写仍需本次明确授权；完整套件中的 DWS 基线失败也未在本任务修复。
 - 不改主检出、此前已合并修复分支或其它会话资源；本会话唯一整合暂存已按确切 SHA 恢复并移除。
