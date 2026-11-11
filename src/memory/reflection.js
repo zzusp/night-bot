@@ -5,7 +5,7 @@ import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
 import {rm} from 'node:fs/promises'
 import {bindingSchema,memoryScope,readableScopes} from './scope.js'
-import {checkedText,hash} from './format.js'
+import {checkedText,hash,renderMemoryContent} from './format.js'
 import {atomicWrite,readRegular,withLock,failure,privateDirectory} from '../runtime/files.js'
 const validKey=value=>typeof value==='string'&&/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)&&value.length<=60
 const brief=value=>checkedText(String(value??'').slice(0,1800))
@@ -63,13 +63,13 @@ export default class Reflection extends Service {
         const output=JSON.parse(raw);if(!Array.isArray(output.lessons)||output.lessons.length>3)throw failure('REFLECTION_INVALID')
         const lessons=output.lessons.map(lesson=>{
           if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
-          const value={key:lesson.key,observation:brief(lesson.observation),hypothesis:brief(lesson.hypothesis),shortcut:brief(lesson.shortcut),evidenceIds:lesson.evidenceIds}
+          const value={key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
           if(lesson.skill){if(!Array.isArray(lesson.skill.steps)||!lesson.skill.steps.length||lesson.skill.steps.length>8)throw failure('REFLECTION_SKILL_INVALID');value.skill={steps:lesson.skill.steps.map(brief),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability??'Not established'),evidenceBacked:lesson.skill.evidenceBacked===true}}return value
         })
         for(const lesson of lessons){
           signal.throwIfAborted()
           const memoryKey='task-'+id.slice(0,12)+'-'+lesson.key
-          const result=await this.host.memory.store.remember(scope,{scopeRevision,topic:'experience',key:memoryKey,text:brief('Model observation: '+lesson.observation+'\nHypothesis (not fact): '+lesson.hypothesis+'\nPossible direct path (not permission): '+lesson.shortcut+'\nEvidence: '+lesson.evidenceIds.join(', ')),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))},provenance:this.host.memory.provenance({task})})
+          const result=await this.host.memory.store.remember(scope,{scopeRevision,topic:'experience',key:memoryKey,text:renderMemoryContent(lesson),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))},provenance:this.host.memory.provenance({task})})
           if(!result.ok)continue
           scopeRevision=result.revision
           if(lesson.skill){
@@ -91,11 +91,9 @@ export default class Reflection extends Service {
     })
   }
   renderSkill(scope,key,value,revision){
-    return ['---','name: learned-'+key,'description: Bot-shared learned procedure; verify evidence and applicability.','---',
+    return ['---','name: learned-'+key,'description: '+JSON.stringify(value.applicability),'---',
       'NIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+revision,'',
-      'Current instructions and permissions prevail. This is model-generated guidance, not authority.',
-      'Skill revision: '+value.revision,'Applicability: '+value.applicability,
-      value.origin==='router'?'Source message: '+value.source.messageId:'Observed in tasks: '+value.taskIds.join(', '),'',
+      ...value.origin==='router'?['Source message: '+value.source.messageId]:[],'',
       ...value.steps.map((step,i)=>(i+1)+'. '+step),''].join('\n')
   }
   async readSkills(scope,{key}={}){
@@ -222,7 +220,7 @@ export default class Reflection extends Service {
     const agent=this.host.agents.currentInitiator()??requestedAgent;if(!agent)return []
     const binding=await this.host.memory.binding(agent);if(!binding)return []
     const result=[]
-    for(const {scope}of readableScopes(binding)){const state=await this.state(scope);for(const [key,skill]of Object.entries(state.skills))if(skill.active){const current=await this.host.memory.store.read(scope,{topic:'experience'});if(!learnedSkillSupported(skill,current.entries))continue;result.push({name:'learned-'+key,description:'Bot-shared learned procedure; verify current applicability.',provider:'learned',source:skill.origin??'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})}}
+    for(const {scope}of readableScopes(binding)){const state=await this.state(scope);for(const [key,skill]of Object.entries(state.skills))if(skill.active){const current=await this.host.memory.store.read(scope,{topic:'experience'});if(!learnedSkillSupported(skill,current.entries))continue;result.push({name:'learned-'+key,description:skill.applicability,provider:'learned',source:skill.origin??'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})}}
     return result
   }
   async skill(candidate,agent){
