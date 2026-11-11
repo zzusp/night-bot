@@ -161,7 +161,7 @@ Docker daemon 管理者可读取容器环境，env 文件与 daemon 权限均属
 
 需要 `gh` 环境认证时，由操作者通过秘密管理器或受控宿主会话提供 `GITHUB_TOKEN`，按下方启动命令只传 `-e GITHUB_TOKEN`，不在命令中写 token 值；不使用 GitHub 时去掉该选项。环境认证无需 `gh auth login`。镜像没有 token build ARG/ENV，入口不将 token 保存到应用配置，也不把它放进工具参数或持久 Job 描述。
 
-Host 仅在已授权、绑定显式 `full` 的 bash/pwsh 最终 spawn 边界，从可信进程环境直接注入 `GITHUB_TOKEN`；这些 shell 启动的子孙进程仍按正常环境继承。`grep` 工具没有额外注入，不能据此推断其他后代绝不会包含 token；全局秘密清理规则不放宽。最终镜像 `e1a5708cb893` 的真实默认 task 已通过 bash/token、正式 task_result、Job `completed`/`producerReported` 与 task `completed/drained` 验证，独立冷读确认原执行及镜像七源一致。此结果来自独立默认 `--check` 后的 direct Host 夹具，不覆盖默认 `run` 全链；无真实 GitHub 或厂商调用，不宣称全部 `full` 通过，证据统一见[第45轮](../acceptance/resident-conversation-routing/round-45.md)。
+Host 仅在已授权、绑定 `full` 的 bash/pwsh 最终 spawn 边界继承可信启动进程快照的业务环境，包含实际部署的对象存储、数据库及其他业务凭据，不按厂商变量名特判。`NIGHT_BOT_*` / `DSH_*` 私有执行命名空间仍排除；显式调用环境覆盖及 GitHub 凭据服务既有优先级保持。普通进程、`grep` 等非 shell 工具及受限档沿用过滤/隐私策略，不全局放开秘密继承。凭据不进入工具参数或持久 Job 描述，shell 子孙按正常环境继承。不要用完整 env/printenv 验证；仅检查所需变量存在性、非空性或假凭据哈希，真实签名请求只输出脱敏状态。以下结果是旧 GitHub 专项的历史基线，不证明新传递行为已验收：最终镜像 `e1a5708cb893` 的真实默认 task 已通过 bash/token、正式 task_result、Job `completed`/`producerReported` 与 task `completed/drained` 验证，独立冷读确认原执行及镜像七源一致。此结果来自独立默认 `--check` 后的 direct Host 夹具，不覆盖默认 `run` 全链；无真实 GitHub 或厂商调用，不宣称全部 `full` 通过，证据统一见[第45轮](../acceptance/resident-conversation-routing/round-45.md)。
 
 Docker daemon 管理者可读取容器 env。Linux 私有单次 launch 文件会短暂承载 env，消费后删除，因此不能承诺 token 绝对不落盘。目标程序若主动打印 token，stdout/stderr 可进入工具结果、Pi 历史及 spill，没有通用自动脱敏保证；不要 echo token、打印完整环境或用 `gh auth token` 将真值输出到日志/验收材料。
 

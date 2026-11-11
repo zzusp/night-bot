@@ -11,6 +11,10 @@ test('environment lookup keeps provenance, explicit empty values and selected-so
  assert.deepEqual(snapshot.getFrom('A',['user-env','project-env']),{value:'project',source:'project-env',path:'/project'})
  assert.deepEqual(snapshot.get('EMPTY'),{value:'',source:'process'})
  assert.equal(snapshot.getFrom('A',[]),undefined)
+ assert.deepEqual(snapshot.entriesFrom(['process']),{A:'process',EMPTY:''})
+ assert.deepEqual(snapshot.entriesFrom(['user-env','project-env']),{A:'project',EMPTY:'fallback'})
+ const copy=snapshot.entriesFrom(['process']);copy.A='mutated';assert.equal(snapshot.get('A').value,'process')
+ assert.deepEqual(snapshot.entriesFrom([]),{})
 })
 async function files(t){const root=await mkdtemp(join(tmpdir(),'night-env-')),cwd=join(root,'project'),home=join(root,'home');await mkdir(cwd);await mkdir(home);t.after(()=>rm(root,{recursive:true,force:true}));return{root,cwd,home}}
 test('native dotenv layers preserve credential precedence without materializing secrets in embedding mode',async t=>{const {cwd,home}=await files(t);await writeFile(join(cwd,'.env'),'NIGHT_ENV_FIXTURE_SECRET=project\nPROJECT_ONLY=project\n');await writeFile(join(home,'.env'),'NIGHT_ENV_FIXTURE_SECRET=home\nUSER_ONLY=user\n');const env=await loadNativeEnvironment({cwd,home,inherited:{NIGHT_ENV_FIXTURE_SECRET:'inherited'}});assert.equal(env.get('NIGHT_ENV_FIXTURE_SECRET').value,'inherited');assert.equal(env.getFrom('NIGHT_ENV_FIXTURE_SECRET',['project-env','user-env']).value,'project');assert.equal(env.get('USER_ONLY').source,'user-env');assert.equal(process.env.NIGHT_ENV_FIXTURE_SECRET,undefined)})
