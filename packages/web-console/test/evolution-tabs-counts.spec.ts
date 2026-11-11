@@ -4,7 +4,7 @@ import {FIXTURE_TOKEN} from './preview.mjs';
 
 const memory = {id: 'memory-1', kind: 'memory', name: '合成记忆', scope: 'bot', status: 'applied', revision: 1, updatedAt: null, memoryUse: {readCount: 3, searchCount: 2}};
 const skill = {id: 'skill-1', kind: 'skill', name: '合成技能', scope: 'bot', status: 'applied', revision: 1, updatedAt: null, modelUseCount: 2, userUseCount: 1, fileReadCount: 4};
-const snapshot = (items: object[], partial = false) => ({status: 'ready', items, total: items.length, offset: 0, limit: 20, nextOffset: null, memory: {}, skills: {}, usageCoverage: {status: partial ? 'partial' : 'ready'}});
+const snapshot = (items: object[], partial = false) => ({status: 'ready', items, total: items.length, offset: 0, limit: 20, nextOffset: null, memory: {acceptedCount: 6, candidateCount: 0, readCount: null, searchCount: null}, skills: {installedCount: 11, modelUseCount: 1, userUseCount: null, fileReadCount: 5}, usageCoverage: {status: partial ? 'partial' : 'ready'}});
 async function open(page: Page) {
   await page.goto('/#/evolution');
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN);
@@ -25,6 +25,8 @@ test('分类读取仅更新列表，工具栏与焦点稳定，迟到结果不�
   await expect(page.getByRole('button', {name: '查看内容：合成记忆'})).toBeVisible();
   const toolbar = page.locator('.evolution-list-toolbar'), library = page.locator('.evolution-library');
   const toolbarNode = await toolbar.elementHandle(), libraryNode = await library.elementHandle();
+  const summary = page.locator('.evolution-summary'), summaryNode = await summary.elementHandle();
+  const summaryBounds = await summary.boundingBox();
   const bounds = await toolbar.boundingBox(), height = await page.locator('.evolution-list-body').evaluate(el => el.getBoundingClientRect().height);
   const tabs = page.getByRole('navigation', {name: '自进化记录类型'});
   const skillTab = tabs.getByRole('link', {name: 'Skills', exact: true});
@@ -34,6 +36,9 @@ test('分类读取仅更新列表，工具栏与焦点稳定，迟到结果不�
   await expect(skillTab).toHaveAttribute('aria-current', 'page');
   expect(await toolbarNode!.evaluate(el => el.isConnected)).toBe(true);
   expect(await libraryNode!.evaluate(el => el.isConnected)).toBe(true);
+  expect(await summaryNode!.evaluate(el => el.isConnected)).toBe(true);
+  expect(await summary.boundingBox()).toEqual(summaryBounds);
+  await expect(summary.locator('dd')).toHaveText(['6', '0', '未记录', '未记录', '11', '1', '未记录', '5']);
   expect(await toolbar.boundingBox()).toEqual(bounds);
   expect(await page.locator('.evolution-list-body').evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(height);
   await expect(page.getByRole('button', {name: '查看内容：合成记忆'})).toHaveCount(0);
@@ -87,9 +92,11 @@ test('分类失败和空态保留操作入口，撤权重试不恢复旧数据',
   status = 403;
   await page.getByRole('button', {name: '重新获取', exact: true}).click();
   await expect(page.getByRole('heading', {name: '无权查看自进化记录'})).toBeVisible();
+  await expect(page.locator('.evolution-card')).toHaveCount(0);
   status = 200; hold = true;
   await page.getByRole('button', {name: '重新获取', exact: true}).click();
   await expect.poll(() => started).toBe(true);
+  await expect(page.locator('.evolution-card')).toHaveCount(0);
   await expect(page.getByRole('button', {name: '查看内容：合成记忆'})).toHaveCount(0);
   await expect(page.getByRole('navigation', {name: '自进化记录类型'})).toBeVisible();
   release();
@@ -98,4 +105,27 @@ test('分类失败和空态保留操作入口，撤权重试不恢复旧数据',
   await page.getByRole('button', {name: '刷新记录'}).click();
   await expect(page.getByRole('heading', {name: '暂无自进化记录'})).toBeVisible();
   await expect(page.getByRole('navigation', {name: '自进化记录类型'})).toBeVisible();
+});
+
+test('明确不可读后切换分类不会恢复缓存摘要，直到新的读取成功', async ({page}) => {
+  let unavailable = false, hold = false, started = false;
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {release = resolve;});
+  await page.route('**/api/evolution?*', async route => {
+    if (hold) {started = true; await gate;}
+    await route.fulfill({json: unavailable ? {status: 'unavailable'} : snapshot([memory])});
+  });
+  await open(page);
+  await expect(page.locator('.evolution-card')).toHaveCount(2);
+  unavailable = true;
+  await page.getByRole('button', {name: '刷新记录'}).click();
+  await expect(page.getByRole('heading', {name: '自进化记录暂不可读'})).toBeVisible();
+  await expect(page.locator('.evolution-card')).toHaveCount(0);
+  unavailable = false; hold = true;
+  await page.getByRole('navigation', {name: '自进化记录类型'}).getByRole('link', {name: 'Skills', exact: true}).click();
+  await expect.poll(() => started).toBe(true);
+  await expect(page.locator('.evolution-card')).toHaveCount(0);
+  release();
+  await expect(page.locator('.evolution-card')).toHaveCount(2);
+  await expect(page.locator('.evolution-card dd').first()).toHaveText('6');
 });
