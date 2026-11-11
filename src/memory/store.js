@@ -64,9 +64,10 @@ export class MarkdownMemoryStore {
   async remember(scope,{topic,key,text,source,originSource,provenance,context,expectedRevision,expiresAt,candidate=false,scopeRevision,validate}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
     if(context!==undefined)context=checkedMemoryContext(context)
-    text=context?.version===2?checkedTextWithLimit(text,CONTENT_LIMIT):checkedText(text)
-    if(context?.version===2&&Buffer.byteLength(text)>CONTENT_LIMIT)throw failure('MEMORY_TEXT_INVALID')
-    if(context?.version===2&&text!==renderRouterMemory(context))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
+    const structured=context?.version===2||context?.version===3
+    text=structured?checkedTextWithLimit(text,CONTENT_LIMIT):checkedText(text)
+    if(structured&&Buffer.byteLength(text)>CONTENT_LIMIT)throw failure('MEMORY_TEXT_INVALID')
+    if(structured&&text!==renderRouterMemory(context))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
     checkedText(topic);checkedText(key)
     if(expiresAt!==undefined&&(!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=this.now()||!/(Z|[+-]\d\d:\d\d)$/.test(expiresAt)))throw failure('MEMORY_EXPIRY_INVALID')
     return this.transaction(scope,async s=>{

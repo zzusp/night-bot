@@ -15,7 +15,7 @@ read relevant accepted topics via `memory_read` or literal `memory_search`; only
 short index is injected automatically. This is on-demand retrieval, not semantic
 recall or proof that the model will always choose the right note.
 
-Router 是 Bot 的语义决策核心，依据当前认证消息判断记忆或学习 Skill 的增改删并直接执行短维护。Host 不用话术正则再次判断授权，也不增加授权模型、空任务或先写 experience 的门槛。普通对话候选与无工具任务复盘保持独立；它们不获得 Router 专用写权限。记忆从上下文提炼，复用 Model observation、Hypothesis (not fact)、Possible direct path (not permission)、Evidence 四维；假设和行动建议可省略，原话保留在证据中。个人偏好按原提出者判断适用性，项目背景按当前场景判断，不把来源作者等同于适用对象。来源、权限与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
+Router 是 Bot 的语义决策核心，依据当前认证消息判断记忆或学习 Skill 的增改删并直接执行短维护。Host 不用话术正则再次判断授权，也不增加授权模型、空任务或先写 experience 的门槛。普通对话候选与无工具任务复盘保持独立；它们不获得 Router 专用写权限。记忆从上下文提炼，正文固定为 Summary、Why、How to apply，三项必填且不写推测；原因必须有来源支持，原话留在证据元数据中。个人偏好按原提出者判断适用性，项目背景按当前场景判断，不把来源作者等同于适用对象。来源、权限与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
 
 The real task service attaches reflection to the durable SQLite `task.completed`
 event stream, requests a scan after a committed completion and on normal recovery,
@@ -27,14 +27,7 @@ other conversational integrations require explicit authenticated bindings. Route
 result assessment is separate from this tool-free retrospective: learning neither
 releases dependencies nor creates authority for a follow-up task.
 
-Each review receives bounded completion, execution and operation facts with stable
-IDs, not entire chats or raw command bodies. The configured model proposes at most
-three observations, possible pitfalls/detours and more direct approaches. Each must
-cite an ID from that task's supplied facts. Experience Markdown explicitly labels
-model observations, hypotheses and suggested paths; the original task evidence
-remains authoritative. Valid IDs do not prove that a model's interpretation follows
-from them. Semantic validity, relevance and whether a shortcut is safe remain model
-judgments requiring current facts and user instructions.
+每次复盘仅接收有稳定 ID 的完成、执行和操作证据，不传整段聊天或原始命令正文。模型最多提出三条有复用价值的经验，每条必须包含 summary、why、howToApply 和本任务有效 evidenceIds；没有合适经验时返回空列表。三段正文直接写结论、有依据的原因与具体用法，不保存假设或推测，不写任务流水。原因未说明时如实标明，不将用户陈述当作独立验证。证据 ID 留在既有 review 和来源元数据中，不重复铺入经验正文；合法 ID 不证明模型解释在语义上成立，当前事实和明确要求仍须重新核对。
 
 ## Managed skills and evidence
 
@@ -48,6 +41,8 @@ cannot inflate evidence or rewrite formal templates. Changed steps retain their
 review provenance. The task-review producer admits at most 20 active learned skills; this is its
 catalog admission limit, not a repetition threshold or a Router maintenance gate. No
 executable scripts are generated.
+
+学习 Skill 的 applicability 直接作为 frontmatter 和模型目录中的 description，写清触发情境及能够解决的问题，模型无需先加载正文才能判断相关性。正文只保留可复用步骤，不重复列出 Applicability、Observed in tasks、Skill revision 或通用权限声明。任务来源、Skill 版本和支持关系仍保留在 Host 元数据中；内容精简不删除审计或改变权限校验。
 
 Learned Markdown lives under `data/memory/v2/bot/evolution/skills/<name>/SKILL.md`.
 The common `learned` provider rechecks the live bound actor but selects the same Bot
