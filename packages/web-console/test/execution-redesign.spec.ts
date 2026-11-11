@@ -43,9 +43,11 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
   await expect(dialog).not.toContainText(confirmed.replyPreview)
   await expect(dialog).not.toContainText(confirmed.preview)
   await expect(dialog).toContainText('700 毫秒')
-  await expect(dialog).toContainText('接收后 0 毫秒')
-  await expect(dialog).toContainText('耗时 700 毫秒')
-  await expect(dialog).not.toContainText('+200 毫秒')
+  await expect(dialog).toContainText('+0 毫秒')
+  await expect(dialog).toContainText('700 毫秒')
+  await expect(dialog).toContainText('+200 毫秒')
+  await expect(dialog).not.toContainText(/接收后|耗时 700|此节点未单独计时/)
+  await expect(dialog.getByRole('img', {name:'接收后 200 毫秒',exact:true})).toBeVisible()
   await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
   await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
   await expect(dialog.getByRole('button')).toHaveCount(1)
@@ -102,15 +104,15 @@ test('未知、失败、多来源与空记录不伪装耗时；失败保留旧�
   await login(page)
   await openMessageProcess(page)
   const section = page.getByRole('region', { name: '消息首答与处理过程' })
-  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '各条分别计时']) await expect(section).toContainText(text)
+  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '6 个来源']) await expect(section).toContainText(text)
   await expect(section.locator('.response-time-summary strong')).toHaveCount(0)
   mode = 'error'
   await expect(section).toContainText('独立来源 0')
   await expect(section.locator('.notice')).toBeVisible({ timeout: 8000 })
   mode = 'empty'; await section.getByRole('button', { name: '重新获取', exact: true }).click()
-  await expect(section).toContainText('这条消息暂无可核实的入站来源')
+  await expect(section).toContainText('无来源记录')
   mode = 'unavailable'
-  await expect(section).toContainText('这条消息暂无可核验的来源记录')
+  await expect(section).toContainText('来源不可核验')
   mode = 'denied'
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.conversation-page .message')).toHaveCount(0)
@@ -128,7 +130,7 @@ test('初读等待、关闭取消及更换消息不串记录；长内容可滚�
   })
   await login(page)
   let dialog = await openMessageProcess(page)
-  await expect(dialog).toContainText('正在读取消息处理记录')
+  await expect(dialog).toContainText('读取中')
   await page.keyboard.press('Escape')
   await page.locator('.conversation-page .message-process-trigger').nth(1).focus()
   await page.keyboard.press('Enter')
@@ -221,8 +223,8 @@ test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读�
   await page.setViewportSize({width:1440,height:560})
   const dialog = await openMessageProcess(page)
   await expect(dialog).toContainText('700 毫秒')
-  await expect(dialog).toContainText('接收后 0 毫秒')
-  await expect(dialog).toContainText('耗时 700 毫秒')
+  await expect(dialog).toContainText('+0 毫秒')
+  await expect(dialog).toContainText('700 毫秒')
   const before=(await dialog.boundingBox())!
   const bubble=page.locator('.conversation-page .message-body').first()
   const sourceBefore=(await bubble.boundingBox())!
@@ -273,12 +275,12 @@ test('异步首读增高时浮层自行重新测量，不需要滚动或调整�
   await page.route(endpoint,async route=>{await ready;await route.fulfill({json:pageData()})})
   await login(page)
   const dialog=await openMessageProcess(page)
-  await expect(dialog).toContainText('正在读取消息处理记录')
+  await expect(dialog).toContainText('读取中')
   const loadingHeight=(await dialog.boundingBox())!.height
   release()
   await expect(dialog).toContainText('700 毫秒')
-  await expect(dialog).toContainText('接收后 0 毫秒')
-  await expect(dialog).toContainText('耗时 700 毫秒')
+  await expect(dialog).toContainText('+0 毫秒')
+  await expect(dialog).toContainText('700 毫秒')
   await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(loadingHeight+80)
 })
 
@@ -292,7 +294,7 @@ test('首答和节点共用时长格式，小于一秒显示毫秒，达到一�
   const dialog = await openMessageProcess(page)
   await expect(dialog.locator('.response-time-summary strong')).toHaveText('2 秒')
   const elapsed = dialog.locator('.response-time-elapsed')
-  await expect(elapsed).toHaveText(['耗时 0 毫秒', '耗时 999 毫秒', '耗时 1 秒', '耗时 1 秒', '耗时 2 秒', '耗时 3 秒'])
+  await expect(elapsed).toHaveText(['0 毫秒', '999 毫秒', '1 秒', '1 秒', '2 秒', '3 秒'])
   await expect(dialog).not.toContainText(/1\.499|1\.5|2\.5/)
 })
 
@@ -305,17 +307,26 @@ test('Router 开始准备使用真实起点；时间点显示接收后经过时�
     { kind: 'stage-router-started', timingType: 'milestone', label: 'Router 开始准备', at: at(26000) },
     { kind: 'send-started', timingType: 'milestone', label: '开始发送', at: at(26100) },
     { kind: 'stage-triage-completed', timingType: 'span', label: '消息分流（截至回复可见）', at: at(29000), durationMs: 28900 },
-    { kind: 'stage-router-completed', timingType: 'span', label: 'Router 处理（截至回复可见）', at: at(29000), durationMs: 3000 },
+    { kind: 'stage-router-completed', timingType: 'span', label: 'Router 处理（截至回复可见）', clipped: true, shared: true, at: at(29000), durationMs: 3000 },
     { kind: 'reply-visible', timingType: 'milestone', label: '首条回复已确认可见', at: at(29000) },
   ] }
   await page.route(endpoint, route => route.fulfill({ json: pageData([row]) }))
   await login(page)
   const dialog = await openMessageProcess(page)
   const start = dialog.locator('li').filter({ hasText: 'Router 开始准备' })
-  await expect(start).toContainText('接收后 26 秒')
-  await expect(dialog.locator('li').filter({ hasText: 'Router 处理' })).toContainText('耗时 3 秒')
-  await expect(dialog.locator('li').filter({ hasText: '首条回复已确认可见' })).toContainText('接收后 29 秒')
+  await expect(start).toContainText('+26 秒')
+  await expect(dialog.locator('li').filter({ hasText: 'Router 处理' })).toContainText('3 秒')
+  await expect(dialog.locator('li').filter({ hasText: '首条回复已确认可见' })).toContainText('+29 秒')
   await expect(dialog).not.toContainText('未记录')
+  await expect(dialog).not.toContainText(/截至回复可见|批次共享|接收后/)
+  await expect(dialog.locator('.response-time-explanation')).toHaveCount(0)
+  await expect(dialog.locator('.response-time-legend')).toHaveText('+距接收阶段耗时')
+  const router = dialog.locator('li').filter({hasText:'Router 处理'})
+  await expect(router).toHaveAttribute('data-timing-type', 'span')
+  await expect(router).toContainText('至首答')
+  await expect(router).toContainText('共享')
+  await expect(router.getByRole('img', {name:'耗时 3 秒',exact:true})).toBeVisible()
+  await expect(start).toHaveAttribute('data-timing-type', 'milestone')
   const labels = await dialog.locator('.response-time-event').allTextContents()
   expect(labels.indexOf('Router 开始准备')).toBeLessThan(labels.indexOf('开始发送'))
   await page.screenshot({ path: test.info().outputPath('router-timeline-metrics.png') })
@@ -323,4 +334,30 @@ test('Router 开始准备使用真实起点；时间点显示接收后经过时�
   await expect(start).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: test.info().outputPath('router-timeline-metrics-mobile.png') })
+})
+
+
+test('紧凑过程保留缺失和异常状态，不显示解释段落或将未知伪装为零', async ({page}) => {
+  const reason = '此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。'
+  const row = {...confirmed, reason, replyAssociation:'task', steps:[
+    {kind:'stage-router-started',timingType:'milestone',label:'Router 开始准备',at:confirmed.receivedAt},
+    {kind:'stage-router-completed',timingType:'span',label:'Router 处理',at:confirmed.receivedAt},
+    {kind:'stage-host-completed',timingType:'span',label:'安排已提交',at:confirmed.receivedAt,durationMs:-1},
+  ]}
+  await page.route(endpoint, route => route.fulfill({json:pageData([row])}))
+  await login(page)
+  const dialog = await openMessageProcess(page)
+  await expect(dialog).not.toContainText(reason)
+  await expect(dialog.locator('.response-time-explanation')).toHaveCount(0)
+  await expect(dialog).toContainText('共同回复')
+  await expect(dialog.getByRole('img', {name:'耗时未记录',exact:true})).toHaveText('未记录')
+  await expect(dialog.getByRole('img', {name:'耗时异常',exact:true})).toHaveText('异常')
+  await expect(dialog.locator('.response-time-elapsed--span')).toHaveText(['未记录', '异常'])
+  await page.setViewportSize({width:390,height:560})
+  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([])
+  for (const row of await dialog.locator('.response-time-timeline li').all()) {
+    const label = (await row.locator('.response-time-event').boundingBox())!
+    const value = (await row.locator('.response-time-elapsed').boundingBox())!
+    expect(label.x + label.width).toBeLessThanOrEqual(value.x)
+  }
 })
