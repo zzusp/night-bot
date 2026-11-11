@@ -61,13 +61,13 @@ export function ConversationRecords({ endpoint, query }: { endpoint: string; que
   </div>;
   return <div className="chat-execution" key={endpoint}>
       <section className="chat-task-history" aria-label="本会话关联任务">
-        <header className="execution-section-heading"><div><h2>后续任务</h2><p>查看处理结果、待补充信息和阻塞原因。含已归档任务。</p></div>{query.data?.taskHistoryStatus === 'ready' && !taskHistoryBlocked && <span className="execution-task-count">{query.data.taskIds?.length ?? 0} 项</span>}</header>
+        <header className="execution-section-heading"><div><h2>后续任务</h2></div>{query.data?.taskHistoryStatus === 'ready' && !taskHistoryBlocked && <span className="execution-task-count">{query.data.taskIds?.length ?? 0} 项</span>}</header>
         {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data && !taskHistoryBlocked} />}
         {query.loading && !query.data ? <Loading>正在读取关联任务…</Loading>
-          : taskHistoryBlocked || (!query.data && query.error) ? <EmptyState title="关联任务暂不可读" description="请重新获取会话；当前不会读取关联任务的执行记录。" />
-          : query.data?.taskHistoryStatus !== 'ready' || query.data.taskIds === null ? <EmptyState title="关联任务暂不可读" description="Bot 尚未提供可核验的任务关联，这不表示没有任务。" action={<Button variant="secondary" onClick={query.refresh}>重新获取</Button>} />
+          : taskHistoryBlocked || (!query.data && query.error) ? <EmptyState title="关联任务暂不可读" />
+          : query.data?.taskHistoryStatus !== 'ready' || query.data.taskIds === null ? <EmptyState title="关联任务暂不可读" action={<Button variant="secondary" onClick={query.refresh}>重新获取</Button>} />
           : query.data.taskIds.length ? query.data.taskIds.map(taskId => <ChatExecutionGroup key={taskId} endpoint={endpoint} taskId={taskId} metadata={query.data?.taskSummaries?.find(task => task.taskId === taskId)} />)
-          : <p className="execution-empty">本会话暂无关联任务。直接答复不一定需要建立任务。</p>}
+          : <p className="execution-empty">暂无关联任务</p>}
       </section>
       <ChatExecutionGroup endpoint={endpoint} />
     </div>;

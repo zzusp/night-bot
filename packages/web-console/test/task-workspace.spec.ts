@@ -85,7 +85,7 @@ test('复盘与学习分别展示真实接口字段，授权正文按需读取�
   mode = 'empty'; await page.getByRole('button', {name: '刷新复盘记录'}).click()
   await expect(page.locator('.task-info-rail')).toContainText('尚无已记录的学习变更')
   mode = 'unavailable'; await page.getByRole('button', {name: '刷新复盘记录'}).click()
-  await expect(page.locator('.task-info-rail')).toContainText('不能据此判定没有复盘或变更')
+  await expect(page.locator('.task-info-rail')).toContainText('复盘与学习记录暂不可读')
   mode = 'ready'; await page.getByRole('button', {name: '刷新复盘记录'}).click()
   await expect(page.locator('.task-info-rail')).toContainText('测试记忆条目')
   mode = 'denied'; await page.getByRole('button', {name: '刷新复盘记录'}).click()

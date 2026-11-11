@@ -95,6 +95,8 @@ for (const theme of ['light', 'dark']) {
       const response = await route.fetch()
       const data = await response.json()
       for (const message of data.messages) message.text += '\n\n> 引用内容仍需清晰可读。\n\n[参考链接](https://example.com) 与 `inline code`。\n\n```text\n代码块示例\n```'
+      // Ensure focusing the first link must scroll away from the latest message.
+      for (const message of data.messages) message.text += '\n\n' + '较长的合成对话段落用于验证滚动重渲染后的键盘焦点。\n\n'.repeat(30)
       await route.fulfill({response, json: data})
     })
     await login(page, '/chat/sample-plan')
@@ -107,8 +109,13 @@ for (const theme of ['light', 'dark']) {
         await expect(node).toBeVisible()
         expect(contrast(await node.evaluate(el => getComputedStyle(el).color), background)).toBeGreaterThanOrEqual(4.5)
       }
-      await body.locator('a').first().focus()
-      await expect(body.locator('a').first()).toBeFocused()
+      const link = body.locator('a').first()
+      const original = await link.elementHandle()
+      await link.focus()
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+      expect(await original!.evaluate(element => element.isConnected && document.activeElement === element)).toBe(true)
+      await expect(link).toBeFocused()
+      await original!.dispose()
     }
     expect((await new AxeBuilder({page}).include('.message-column').analyze()).violations).toEqual([])
     await page.emulateMedia({forcedColors: 'active'})

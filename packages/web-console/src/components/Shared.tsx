@@ -1,6 +1,6 @@
 import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
@@ -47,11 +47,14 @@ export function Pagination({ offset, total, nextOffset, onPage, loading }: { off
     <Button variant="secondary" disabled={nextOffset == null || loading} onClick={() => nextOffset != null && onPage(nextOffset)}>下一页</Button>
   </div></nav>;
 }
+// Stable component identities preserve focused links when scrolling or polling
+// rerenders the transcript. Inline renderer functions remount their DOM nodes.
+const markdownComponents: Components = {
+  a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+  img: ({ src, alt }) => <a href={typeof src === 'string' ? src : undefined} target="_blank" rel="noopener noreferrer">查看图片：{alt || '附件'}</a>,
+};
 export function Markdown({ text }: { text: string }) {
-  return <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-    a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-    img: ({ src, alt }) => <a href={typeof src === 'string' ? src : undefined} target="_blank" rel="noopener noreferrer">查看图片：{alt || '附件'}</a>,
-  }}>{text}</ReactMarkdown></div>;
+  return <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{text}</ReactMarkdown></div>;
 }
 
 function MessageProvenance({ source }: { source?: MessageSource }) {
@@ -264,7 +267,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
   }} role="region" aria-label="消息记录" tabIndex={0}>
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
-      {!messages.length ? empty ?? <EmptyState title="暂无消息" description="消息到达后会显示在这里。" /> : keyedItems.map(({item, key}) => {
+      {!messages.length ? empty ?? <EmptyState title="暂无消息" /> : keyedItems.map(({item, key}) => {
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} />;
         const message = item.message;

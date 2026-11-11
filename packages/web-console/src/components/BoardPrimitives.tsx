@@ -52,12 +52,12 @@ export function Spinner({ label, className }: { label?: string; className?: stri
   return <span className={classes('board-spinner', className)} role={label ? 'status' : undefined} aria-label={label} aria-hidden={label ? undefined : true} />
 }
 
-export function EmptyState({ title, description, action, icon }: { title: string; description: string; action?: ReactNode; icon?: ReactNode }) {
+export function EmptyState({ title, description, action, icon }: { title: string; description?: string; action?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="board-empty">
       <span className="board-empty-icon" aria-hidden="true">{icon ?? <RiChatAiLine />}</span>
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description && <p>{description}</p>}
       {action && <div className="board-empty-action">{action}</div>}
     </div>
   )

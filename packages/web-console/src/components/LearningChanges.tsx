@@ -24,7 +24,7 @@ function ChangeRecord({ change, endpoint, onRefresh }: { change: LearningChange;
     <LearningProvenance source={change.source} />
     <div className="learning-body-action"><Button variant="secondary" disabled={!change.canRead} aria-expanded={change.canRead ? open : undefined} onClick={() => setOpen(value => !value)}>
       {!change.canRead ? '正文未授权' : open ? '收起正文' : '读取授权正文'}
-    </Button>{!change.canRead && <span className="message-scope">当前身份无权读取该正文。</span>}</div>
+    </Button></div>
     {open && change.canRead && <div className="learning-body">
       {body.error ? <Notice error={body.error} onRetry={() => {
         if (body.error instanceof ApiError && [403, 409].includes(body.error.status)) { setOpen(false); onRefresh(); }
@@ -45,11 +45,11 @@ export function LearningChanges({ taskId, section = 'all' }: { taskId: string; s
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const data = forbidden || denied ? null : query.data;
   return <div className="learning-page">
-    <div className="learning-heading"><p className="muted">复盘完成与学习变更分别记录；候选不等于已经写入记忆或技能。</p><Button variant="secondary" disabled={query.loading} onClick={query.refresh}>刷新复盘记录</Button></div>
+    <div className="learning-heading"><Button variant="secondary" disabled={query.loading} onClick={query.refresh}>刷新复盘记录</Button></div>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
     {query.loading && !data ? <Loading>正在读取复盘与学习记录…</Loading>
-      : !data && query.error ? <EmptyState title="复盘记录暂不可读" description="请恢复连接后重新获取。" />
-      : !data || data.status !== 'ready' || data.reviews === null || data.changes === null ? <EmptyState title="复盘与学习记录暂不可读" description="Host 尚未提供可核验的记录，不能据此判定没有复盘或变更。" action={<Button variant="secondary" onClick={query.refresh}>重新获取</Button>} />
+      : !data && query.error ? <EmptyState title="复盘记录暂不可读" />
+      : !data || data.status !== 'ready' || data.reviews === null || data.changes === null ? <EmptyState title="复盘与学习记录暂不可读" action={<Button variant="secondary" onClick={query.refresh}>重新获取</Button>} />
       : <>{section !== 'changes' && <section className="detail-section"><h3>任务复盘</h3>
         {!data.reviews.length ? <p>尚无已记录的复盘。</p> : data.reviews.map(review => <article className="learning-review" key={review.reviewId}>
           <header><time dateTime={review.at}>{dateTime(review.at)}</time><Badge tone={review.status === 'failed' ? 'danger' : review.status === 'done' ? 'success' : 'neutral'}>{review.status === 'done' ? '复盘完成' : review.status === 'skipped' ? '复盘已跳过' : '复盘失败'}</Badge></header>

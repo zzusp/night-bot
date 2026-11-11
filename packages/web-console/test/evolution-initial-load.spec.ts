@@ -17,8 +17,10 @@ async function login(page: Page) {
   await page.getByLabel('访问令牌', { exact: true }).fill(FIXTURE_TOKEN);
   await page.getByRole('button', { name: '连接工作空间', exact: true }).click();
   await expect(page.getByLabel('消息内容', { exact: true })).toBeVisible();
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  // Freeze at a deterministic future instant, not a wall clock that can lag behind
+  // the simulated clock between commands on a slower runner.
+  await page.clock.install({time: new Date('2026-11-11T00:00:00Z')});
+  await page.clock.pauseAt(new Date('2026-11-11T01:00:00Z'));
 }
 async function responseAfter(page: Page, action: () => Promise<unknown>) {
   const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/evolution');
@@ -50,7 +52,7 @@ test('首次进入等待服务端快照，响应前持续加载且不重复查�
     expect(requests).toBe(1);
     await responseAfter(page, async () => { release(); });
     await expect(page.locator('.evolution-table')).toContainText('首次读取/最新记忆');
-    await expect(page.locator('.evolution-list-notice[role="status"]')).toContainText(/每\s*5\s*分钟更新/);
+    await expect(page.locator('.evolution-list-notice[role="status"]')).toContainText('最近更新');
   } finally { release(); }
 });
 
@@ -80,10 +82,10 @@ test('服务端更新失败后保留上次成功快照并明确显示时间和�
   await responseAfter(page, () => page.goto('/#/evolution'));
   await expect(page.locator('.evolution-table')).toContainText('首次读取/最新记忆');
   const notice = page.locator('.evolution-list-notice[role="status"]');
-  await expect(notice).toContainText('当前显示上次成功获取的数据');
+  await expect(notice).toContainText('旧快照');
   // Fixture is 08:00 in the configured Asia/Shanghai browser timezone.
   await expect(notice).toContainText('08:00');
-  await expect(notice).toContainText('本轮更新未完成');
+  await expect(notice).toContainText('更新未完成');
   await expect(page.getByRole('button', { name: '刷新记录', exact: true })).toBeEnabled();
 });
 

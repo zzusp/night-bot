@@ -51,3 +51,45 @@ test('加载中 Escape 保持弹窗，实际关闭后恢复焦点', async ({ pag
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
 });
+
+
+for (const width of [1440, 390]) test(`长渠道列表的滚动不误关刚打开的菜单：${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await page.route('**/api/channels', async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    const template = data.items.find((item: {channelId: string}) => item.channelId === 'dingtalk-work');
+    data.items.push(...Array.from({length: 15}, (_, index) => ({...template, channelId: `synthetic-menu-${index}`, name: `合成渠道 ${index}`})));
+    await route.fulfill({response, json: data});
+  });
+  await login(page);
+  const trigger = page.getByRole('button', {name: '渠道操作：dingtalk-work', exact: true});
+  const add = page.getByRole('button', {name: '添加渠道', exact: true});
+  const edit = page.getByRole('menuitem', {name: '编辑配置', exact: true});
+  const rendered = () => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  for (let turn = 0; turn < 3; turn++) {
+    await add.click();
+    await expect(page.getByRole('dialog', {name: '添加渠道', exact: true})).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(add).toBeFocused();
+    // Playwright scrolls this trigger from the top of the long list into view.
+    await trigger.click();
+    await rendered();
+    await expect(edit).toBeVisible();
+    await expect(edit).toBeFocused();
+    // A delayed scroll notification without a geometry change is harmless.
+    await page.locator('.main-panel').dispatchEvent('scroll');
+    await rendered();
+    await expect(edit).toBeVisible();
+    await edit.click();
+    const dialog = page.getByRole('dialog', {name: '编辑钉钉渠道', exact: true});
+    await expect(dialog.getByRole('button', {name: '关闭编辑钉钉渠道', exact: true})).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(trigger).toBeFocused();
+  }
+  await trigger.click();
+  await expect(edit).toBeVisible();
+  // Real movement still dismisses the portal rather than leaving it detached.
+  await page.locator('.main-panel').evaluate(element => { element.scrollTop += 120; });
+  await expect(edit).not.toBeVisible();
+});

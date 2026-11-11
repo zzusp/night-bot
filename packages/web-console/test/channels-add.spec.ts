@@ -27,7 +27,7 @@ test('添加渠道发现真实插件并保存非钉钉配置，保留侧栏设�
   const {dialog, form} = await custom(page, 'generic-entry-created')
   await expect(page.getByRole('link', {name: '自定义渠道设置', exact: true})).toHaveCount(0)
   await expect(page.locator('.desktop-sidebar').getByRole('link', {name: '设置', exact: true})).toHaveAttribute('href', '#/settings')
-  await expect(form.getByLabel('重启后启用', {exact: true})).toHaveValue('false')
+  await expect(form.getByLabel('启用渠道', {exact: true})).toHaveValue('false')
   await expect(form.getByLabel('监听（必填）', {exact: true})).toHaveValue('false')
   let dingtalkWrites = 0
   await page.route('**/api/channels/dingtalk', route => { dingtalkWrites++; return route.abort() })
@@ -71,10 +71,10 @@ test('发现慢、失败、空列表和无表单类型不假装支持；重试�
   await expect(dialog).toContainText('设置暂不可用')
   await expect(dialog.getByLabel('渠道类型', {exact: true})).toBeEnabled()
   mode = 'empty'; await dialog.getByRole('button', {name: '重新发现插件', exact: true}).click()
-  await expect(dialog).toContainText('尚无自定义插件')
+  await expect(dialog).toContainText('暂无自定义插件')
   mode = 'supported'; await dialog.getByRole('button', {name: '重新发现插件', exact: true}).click()
   await dialog.getByLabel('渠道类型', {exact: true}).selectOption('vendor-chat')
-  await expect(dialog).toContainText('此插件未提供网页表单')
+  await expect(dialog).toContainText('此插件不支持网页配置')
   await expect(dialog.getByRole('button', {name: /^保存/})).toHaveCount(0)
   await dialog.getByLabel('渠道类型', {exact: true}).selectOption('fixture-custom')
   await expect(dialog.getByRole('button', {name: '保存自定义渠道', exact: true})).toBeVisible()
@@ -109,7 +109,7 @@ test('类型切换与关闭保留草稿，中文IME和校验安全，窄屏深�
 
 test('自定义启用明确确认，保存中关闭被锁定，未知结果只读核对且不重发', async ({page}) => {
   const {dialog, form} = await custom(page, 'generic-unknown')
-  await form.getByLabel('重启后启用', {exact: true}).selectOption('true')
+  await form.getByLabel('启用渠道', {exact: true}).selectOption('true')
   let writes = 0, release!: () => void
   const gate = new Promise<void>(resolve => {release = resolve})
   await page.route(endpoint, async route => {
@@ -134,8 +134,9 @@ test('旧版本冲突保留草稿并要求重读，新增不能覆盖同名停�
   const {form} = await custom(page, 'generic-conflict')
   const session = await page.request.get('/api/session').then(response => response.json())
   const latest = await page.request.get('/api/settings').then(response => response.json())
-  const headers = {origin: 'http://127.0.0.1:3081', 'x-csrf-token': session.csrfToken}
-  await page.request.put('/api/settings/appearance', {headers, data: {name: 'Night Bot', icon: latest.appearance.icon === 'moon' ? 'star' : 'moon', expectedVersion: latest.version}})
+  const headers = {origin: new URL(page.url()).origin, 'x-csrf-token': session.csrfToken}
+  const changed = await page.request.put('/api/settings/appearance', {headers, data: {name: 'Night Bot', icon: latest.appearance.icon === 'moon' ? 'star' : 'moon', expectedVersion: latest.version}})
+  expect(changed.status()).toBe(200)
   await form.getByRole('button', {name: '保存自定义渠道', exact: true}).click(); await confirm(page)
   await expect(form).toContainText('设置已被修改')
   await expect(form.getByLabel('渠道标识', {exact: true})).toHaveValue('generic-conflict')
