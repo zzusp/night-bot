@@ -121,3 +121,32 @@ test('历史缺失、未关闭、负跨度与首答后开始的分诊/Router不�
  const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z'}],[notice()])
  assert.equal(historical.steps.find(row=>row.kind==='triage-completed').durationMs,undefined)
 })
+
+
+test('Router starts at its observed Host preparation boundary before the clipped reply checkpoint',()=>{
+ const time=ms=>new Date(Date.parse(source.receivedAt)+ms).toISOString()
+ const stages=[{stage:'triage',startedAt:time(100),completedAt:time(31000)},
+  {stage:'router',startedAt:time(26000),completedAt:time(93000),shared:true}]
+ const value=responseTiming(message,[{...source,stages}],[notice({createdAt:time(25900),sendStartedAt:time(26100),deliveredAt:time(29000)})])
+ const start=value.steps.find(row=>row.kind==='stage-router-started')
+ const end=value.steps.find(row=>row.kind==='stage-router-completed')
+ assert.equal(start.label,'Router 开始准备（批次共享）')
+ assert.equal(start.at,time(26000));assert.equal(start.timingType,'milestone');assert.equal(start.durationMs,undefined)
+ assert.equal(end.at,time(29000));assert.equal(end.durationMs,3000);assert.equal(end.timingType,'span')
+ assert.equal(value.steps.find(row=>row.kind==='stage-triage-completed').durationMs,28900)
+ assert.equal(value.durationMs,29000,'overlapping spans are not added or repartitioned')
+ assert.ok(value.steps.indexOf(start)<value.steps.indexOf(end))
+ assert.equal(stages[1].completedAt,time(93000),'the original completed span remains unchanged')
+ for(const row of value.steps.filter(row=>['received','reply-prepared','send-started','reply-visible'].includes(row.kind)))assert.equal(row.timingType,'milestone')
+})
+
+test('missing Router starts stay unknown; open spans expose only their real start without a guessed duration',()=>{
+ const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z'}],[notice()])
+ assert.equal(historical.steps.some(row=>row.kind==='stage-router-started'),false)
+ const value=responseTiming(message,[{...source,stages:[{stage:'router',startedAt:'2026-11-09T00:00:01Z'}]}],[notice()])
+ assert.equal(value.steps.find(row=>row.kind==='stage-router-started').at,'2026-11-09T00:00:01Z')
+ assert.equal(value.steps.find(row=>row.kind==='stage-router-completed').durationMs,undefined)
+ assert.equal(value.steps.find(row=>row.kind==='stage-router-completed').timingType,'span')
+ const invalid=responseTiming(message,[{...source,stages:[{stage:'router',completedAt:'2026-11-09T00:00:02Z'}]}],[notice()])
+ assert.equal(invalid.steps.some(row=>row.kind==='stage-router-started'),false)
+})

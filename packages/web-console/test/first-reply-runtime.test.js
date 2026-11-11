@@ -30,6 +30,10 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   }
   const routerStage=row('reply-direct').steps.find(step=>step.kind==='stage-router-completed')
   assert.ok(routerStage&&Number.isFinite(routerStage.durationMs)&&routerStage.durationMs>=0,JSON.stringify(row('reply-direct')))
+  const routerStart=row('reply-direct').steps.find(step=>step.kind==='stage-router-started')
+  assert.ok(routerStart&&routerStart.timingType==='milestone'&&Date.parse(routerStart.at)<=Date.parse(routerStage.at))
+  assert.match(routerStart.label,/Router 开始准备/)
+  assert.equal(row('reply-direct').steps.find(step=>step.kind==='reply-visible').timingType,'milestone')
   assert.match(row('reply-direct').replyPreview,/无需建立任务/);
   const direct=(await h.query('notification.list')).find(notice=>notice.payload?.sourceRef?.messageId==='reply-direct');assert.equal(direct.payload.replyPurpose,undefined,'真实 Router 未标用途的送达回执也必须进入 HTTP 首答结果');
   assert.equal(row('reply-unknown').durationMs,null);assert.equal(row('reply-unknown').status,'unconfirmed');assert.equal(row('reply-silent').status,'no-reply');assert.equal(row('reply-wait').status,'awaiting-reply');assert.equal((await h.query('task.list',{groupId:id})).length,0)

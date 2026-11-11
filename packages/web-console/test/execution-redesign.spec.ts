@@ -43,7 +43,8 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
   await expect(dialog).not.toContainText(confirmed.replyPreview)
   await expect(dialog).not.toContainText(confirmed.preview)
   await expect(dialog).toContainText('700 毫秒')
-  await expect(dialog).toContainText('未记录')
+  await expect(dialog).toContainText('接收后 0 毫秒')
+  await expect(dialog).toContainText('耗时 700 毫秒')
   await expect(dialog).not.toContainText('+200 毫秒')
   await expect(dialog).not.toContainText(/自动更新|自动刷新|立即刷新|共享节点不分摊/)
   await expect(dialog.locator('.execution-section-heading, .response-time-footnote')).toHaveCount(0)
@@ -220,7 +221,8 @@ test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读�
   await page.setViewportSize({width:1440,height:560})
   const dialog = await openMessageProcess(page)
   await expect(dialog).toContainText('700 毫秒')
-  await expect(dialog).toContainText('未记录')
+  await expect(dialog).toContainText('接收后 0 毫秒')
+  await expect(dialog).toContainText('耗时 700 毫秒')
   const before=(await dialog.boundingBox())!
   const bubble=page.locator('.conversation-page .message-body').first()
   const sourceBefore=(await bubble.boundingBox())!
@@ -275,7 +277,8 @@ test('异步首读增高时浮层自行重新测量，不需要滚动或调整�
   const loadingHeight=(await dialog.boundingBox())!.height
   release()
   await expect(dialog).toContainText('700 毫秒')
-  await expect(dialog).toContainText('未记录')
+  await expect(dialog).toContainText('接收后 0 毫秒')
+  await expect(dialog).toContainText('耗时 700 毫秒')
   await expect.poll(async()=>(await dialog.boundingBox())!.height).toBeGreaterThan(loadingHeight+80)
 })
 
@@ -288,7 +291,36 @@ test('首答和节点共用时长格式，小于一秒显示毫秒，达到一�
   await login(page)
   const dialog = await openMessageProcess(page)
   await expect(dialog.locator('.response-time-summary strong')).toHaveText('2 秒')
-  const elapsed = dialog.locator('.response-time-elapsed > span:last-child')
-  await expect(elapsed).toHaveText(['0 毫秒', '999 毫秒', '1 秒', '1 秒', '2 秒', '3 秒'])
+  const elapsed = dialog.locator('.response-time-elapsed')
+  await expect(elapsed).toHaveText(['耗时 0 毫秒', '耗时 999 毫秒', '耗时 1 秒', '耗时 1 秒', '耗时 2 秒', '耗时 3 秒'])
   await expect(dialog).not.toContainText(/1\.499|1\.5|2\.5/)
+})
+
+
+test('Router 开始准备使用真实起点；时间点显示接收后经过时间，不冒充阶段耗时', async ({ page }) => {
+  const at = (ms: number) => new Date(Date.parse(confirmed.receivedAt) + ms).toISOString()
+  const row = { ...confirmed, durationMs: 29000, firstReplyAt: at(29000), steps: [
+    { kind: 'received', timingType: 'milestone', label: '接收消息', at: at(0) },
+    { kind: 'reply-prepared', timingType: 'milestone', label: '回复已准备', at: at(25900) },
+    { kind: 'stage-router-started', timingType: 'milestone', label: 'Router 开始准备', at: at(26000) },
+    { kind: 'send-started', timingType: 'milestone', label: '开始发送', at: at(26100) },
+    { kind: 'stage-triage-completed', timingType: 'span', label: '消息分流（截至回复可见）', at: at(29000), durationMs: 28900 },
+    { kind: 'stage-router-completed', timingType: 'span', label: 'Router 处理（截至回复可见）', at: at(29000), durationMs: 3000 },
+    { kind: 'reply-visible', timingType: 'milestone', label: '首条回复已确认可见', at: at(29000) },
+  ] }
+  await page.route(endpoint, route => route.fulfill({ json: pageData([row]) }))
+  await login(page)
+  const dialog = await openMessageProcess(page)
+  const start = dialog.locator('li').filter({ hasText: 'Router 开始准备' })
+  await expect(start).toContainText('接收后 26 秒')
+  await expect(dialog.locator('li').filter({ hasText: 'Router 处理' })).toContainText('耗时 3 秒')
+  await expect(dialog.locator('li').filter({ hasText: '首条回复已确认可见' })).toContainText('接收后 29 秒')
+  await expect(dialog).not.toContainText('未记录')
+  const labels = await dialog.locator('.response-time-event').allTextContents()
+  expect(labels.indexOf('Router 开始准备')).toBeLessThan(labels.indexOf('开始发送'))
+  await page.screenshot({ path: test.info().outputPath('router-timeline-metrics.png') })
+  await page.setViewportSize({ width: 390, height: 560 })
+  await expect(start).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: test.info().outputPath('router-timeline-metrics-mobile.png') })
 })
