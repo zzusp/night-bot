@@ -34,7 +34,7 @@ Manifest digest：`sha256:d34dc09cbf097e39bffe1781c8419d69bdf87c88af655901986fdc
 
 Config digest/本地Image ID：`sha256:82f263fee8163b6b744b25c559ebd42bd70ff8fcfe59c393a23da0f3ac2b0862`。
 
-脱敏机器证据和最终截图见[runtime-evidence.json](round-2/runtime-evidence.json)、[browser.png](round-2/browser.png)。构建仅设置既有HTTPS Debian镜像源参数，未放宽TLS或包签名检查。
+当轮脱敏机器摘要和截图已在第3轮收尾按只保留最终轮附件的规范清理；本报告保留上述完整版本、digest、计数、结果与必要文字证据。第3轮附件仅证明其自身版本，不替代本轮实跑。构建仅设置既有HTTPS Debian镜像源参数，未放宽TLS或包签名检查。
 
 ## 云端发布
 

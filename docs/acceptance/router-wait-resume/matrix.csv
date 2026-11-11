@@ -1,23 +1,28 @@
-case,round-1,round-2,evidence
-old-operator-reproduction,FAIL,NOT-RERUN,round-1.md:修复前 active 而非 completed
-router-operator-original-session,PASS,NOT-RERUN,round-1.md:正式 Host 续接并实际 read 后完成
-router-requester-original-session,PASS,NOT-RERUN,round-1.md:业务成员信息由 Router 判断后续接
-resume-transaction-negative-cases,PASS,NOT-RERUN,round-1.md:19 项拒绝且 task 和 wake 不变
-restart-and-business-dedup,PASS,NOT-RERUN,round-1.md:冷启动及跨代重试不重放
-human-native-suite,PASS,NOT-RERUN,round-1.md:19 通过零失败零跳过
-source-import-native-guards,PASS,NOT-RERUN,round-1.md:pnpm check 通过
-single-session-and-live-supplement,PASS,NOT-RERUN,round-1.md:11 通过
-linux-live-preserve,SKIP,NOT-RERUN,round-1.md:Windows 无 Linux privacy namespace
-full-routing-suite,FAIL,NOT-RERUN,round-1.md:71 通过15既有失败且干净base逐项一致
-dynamic-task-store-suite,FAIL,NOT-RERUN,round-1.md:12通过151既有失败且干净base逐项一致
-merged-shared-regressions,NOT-RUN,PASS,round-2.md:合并源码6通过0失败0跳过及pnpm check
-memory-local-suite,NOT-RUN,PASS,round-2.md:PR55最终45项及Router3项通过
-windows-symlink-migration,NOT-RUN,BLOCKED,round-2.md:扩展批次2项EPERM未进入迁移断言
-formal-image-runtime,NOT-RUN,PASS,round-2.md:真实Web回复浏览器排空同卷重启
-registry-source-binding,NOT-RUN,PASS,round-2.md:manifest config digest及OCI revision匹配
-offline-strict-history,NOT-RUN,PASS,round-2.md:32份完整journal及2task身份历史不变
-cloud-version-and-boundaries,NOT-RUN,PASS,round-2.md:实际imageID及原卷环境配置安全保持
-cloud-ingress-restored,NOT-RUN,PASS,round-2.md:receiving/listening无错误
-cloud-router-original-session,NOT-RUN,PASS,round-2.md:两原问题answered且原会话实际工具及task_result
-cloud-memory-durable,NOT-RUN,PASS,round-2.md:正式工具成功及独立原话来源作者hash回读
-cloud-business-investigation,NOT-RUN,WAIT,round-2.md:节点级403和对象存储工具凭据入口仍待解决
+case,round-1,round-2,round-3,evidence
+old-operator-reproduction,FAIL,NOT-RERUN,NOT-RERUN,round-1.md:修复前 active 而非 completed
+router-operator-original-session,PASS,NOT-RERUN,NOT-RERUN,round-1.md:正式 Host 续接并实际 read 后完成
+router-requester-original-session,PASS,NOT-RERUN,NOT-RERUN,round-1.md:业务成员信息由 Router 判断后续接
+resume-transaction-negative-cases,PASS,NOT-RERUN,NOT-RERUN,round-1.md:19 项拒绝且 task 和 wake 不变
+restart-and-business-dedup,PASS,NOT-RERUN,NOT-RERUN,round-1.md:冷启动及跨代重试不重放
+human-native-suite,PASS,NOT-RERUN,NOT-RERUN,round-1.md:19 通过零失败零跳过
+source-import-native-guards,PASS,NOT-RERUN,PASS,round-3.md:修复源码pnpm check为424运行时JS/0外部SDK导入
+single-session-and-live-supplement,PASS,NOT-RERUN,NOT-RERUN,round-1.md:11 通过
+linux-live-preserve,SKIP,NOT-RERUN,NOT-RERUN,round-1.md:Windows 无 Linux privacy namespace
+full-routing-suite,FAIL,NOT-RERUN,NOT-RERUN,round-1.md:71 通过15既有失败且干净base逐项一致
+dynamic-task-store-suite,FAIL,NOT-RERUN,NOT-RERUN,round-1.md:12通过151既有失败且干净base逐项一致
+merged-shared-regressions,NOT-RUN,PASS,NOT-RERUN,round-2.md:合并源码6通过0失败0跳过及pnpm check
+memory-local-suite,NOT-RUN,PASS,NOT-RERUN,round-2.md:PR55最终45项及Router3项通过
+windows-symlink-migration,NOT-RUN,BLOCKED,NOT-RERUN,round-2.md:扩展批次2项EPERM未进入迁移断言
+formal-image-runtime,NOT-RUN,PASS,PASS,round-3.md:23a470b默认入口可见回复/浏览器/排空/同卷恢复
+registry-source-binding,NOT-RUN,PASS,PASS,round-3.md:新manifest config digest及OCI完整revision独立匹配
+offline-strict-history,NOT-RUN,PASS,PASS,round-3.md:44份完整journal与2task身份严格校验且历史不变
+cloud-version-and-boundaries,NOT-RUN,PASS,PASS,round-3.md:实际新digest与源码hash匹配且原卷ENV安全配置保持
+cloud-ingress-restored,NOT-RUN,PASS,PASS,round-3.md:receiving/listening无错误且最终未决计数全0
+cloud-router-original-session,NOT-RUN,PASS,PASS,round-3.md:Router结清旧问题并续原session，实际签名工具后completed/drained
+cloud-memory-durable,NOT-RUN,PASS,NOT-RERUN,round-2.md:正式工具成功及独立原话来源作者hash回读
+cloud-business-investigation,NOT-RUN,WAIT,PARTIAL,round-3.md:OSS原任务completed；另一节点任务仍因权限/历史缺口等待
+oss-before-fix-native-task,NOT-RUN,NOT-RUN,EXPECTED-FAIL,round-3.md:旧版真实任务只有GitHub匹配，另外3项false/1个断言失败
+oss-windows-final-regression,NOT-RUN,NOT-RUN,PASS,round-3.md:7通过0失败1Linux平台跳过，真实pwsh假凭据匹配且记录无原值
+oss-linux-image-regression,NOT-RUN,NOT-RUN,PASS,round-3.md:正式Linux镜像8通过0失败0跳过，真实bash与execve bootstrap
+oss-cloud-signed-object-reads,NOT-RUN,NOT-RUN,PASS,round-3.md:两桶签名HEAD/location/list均200，对象HEAD200及1字节Range206
+oss-cloud-delivery-terminal,NOT-RUN,NOT-RUN,PASS,round-3.md:原任务completed/drained且8/8，厂商消息与delivered收据ID一致

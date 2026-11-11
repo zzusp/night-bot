@@ -1,0 +1,207 @@
+{
+  "source": {
+    "sha": "23a470bd7c31b71c81e61aa0499f1c525e243a33",
+    "pr": 56,
+    "merged": true,
+    "buildTreeClean": true
+  },
+  "image": {
+    "tag": "headless-23a470b",
+    "manifestDigest": "sha256:8cd6ed07c876b165e22264dffe0182a9d7bcf90a4132b4e317541a99422a334c",
+    "configDigest": "sha256:4b9a80fa1b9b8e6aa95ae1f8bb0293758e47f617e46d1236b0f923e819f8cf9b",
+    "revision": "23a470bd7c31b71c81e61aa0499f1c525e243a33"
+  },
+  "regressions": {
+    "windows": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 1,
+      "durationMs": 8319.8518
+    },
+    "linux": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0,
+      "durationMs": 3650.771756,
+      "realDefaultTask": "completed/drained",
+      "credentialHashMatches": 4,
+      "privateNamespaceAbsent": true,
+      "recordsContainFixtureValues": false
+    }
+  },
+  "local": {
+    "image": "headless-23a470b",
+    "startedAt": "2026-11-11T04:57:20.224Z",
+    "checks": {
+      "preflight": {
+        "passed": true,
+        "defaultMode": "full",
+        "volumeUnchanged": true,
+        "uid": 1000,
+        "tempMode": "0700"
+      },
+      "boundary": {
+        "passed": true,
+        "readOnlyRoot": true,
+        "capDropAll": true,
+        "noNewPrivileges": true,
+        "loopbackPublish": true,
+        "seccomp": true
+      },
+      "browser": {
+        "passed": true,
+        "version": "158.0.8127.18",
+        "installed": [
+          ".links",
+          "chromium_headless_shell-1254",
+          "ffmpeg-1013"
+        ],
+        "apiDom": "42",
+        "apiScreenshot": {
+          "bytes": 9460,
+          "width": 1280,
+          "height": 720
+        },
+        "cliScreenshot": {
+          "bytes": 9460,
+          "width": 1280,
+          "height": 720
+        }
+      },
+      "web": {
+        "passed": true,
+        "authenticatedSettings": true,
+        "defaultPermission": "full",
+        "unauthenticated": 401,
+        "wrongOrigin": 403,
+        "missingCsrf": 403
+      },
+      "conversation": {
+        "passed": true,
+        "requestStatus": 202,
+        "replyVisible": true,
+        "modelRequests": 1,
+        "messages": 2,
+        "realVendorCalls": 0
+      },
+      "drain": {
+        "passed": true,
+        "exitCode": 0,
+        "pid": 0,
+        "oomKilled": false,
+        "hostLockAbsent": true,
+        "existingVolumeCheckUnchanged": true
+      },
+      "persistence": {
+        "passed": true,
+        "instanceAndActorPreserved": true,
+        "tokenPreserved": true,
+        "oldCookieRejected": true,
+        "chatAndReplyPreserved": true,
+        "duplicateRequestModelCalls": 0
+      },
+      "finalStop": {
+        "passed": true,
+        "exitCode": 0,
+        "pid": 0
+      }
+    },
+    "imageId": "sha256:4b9a80fa1b9b8e6aa95ae1f8bb0293758e47f617e46d1236b0f923e819f8cf9b",
+    "revision": "23a470bd7c31b71c81e61aa0499f1c525e243a33",
+    "seccompSha256": "9264f1689d786e212fcfc1dc63eed5d08a2be4c236a252d5676f43f40691201f",
+    "cleanup": {
+      "containerRemoved": true,
+      "volumeRemoved": true
+    },
+    "passed": true,
+    "finishedAt": "2026-11-11T04:57:40.519Z"
+  },
+  "offline": {
+    "strictJournals": 44,
+    "taskIdentities": 2,
+    "portablePathsDecoded": true,
+    "hostLockAbsent": true,
+    "quickCheck": "ok",
+    "persistentJournalChanges": 0
+  },
+  "cloud": {
+    "actualDigestMatches": true,
+    "sourceHashesMatch": true,
+    "onlyImagesChanged": true,
+    "originalPvcPreserved": true,
+    "identityAndConfigAndTokenPreservedAtUpgrade": true,
+    "permissionMode": "full",
+    "security": {
+      "uid": 1000,
+      "capEff": "0000000000000000",
+      "noNewPrivs": "1",
+      "seccomp": "2",
+      "tempMode": "700"
+    },
+    "ready": true,
+    "receiving": true,
+    "listening": true,
+    "finalDrainedCounts": {
+      "tasks": 0,
+      "executions": 0,
+      "groups": 0,
+      "operations": 0,
+      "notifications": 0,
+      "triage": 0,
+      "routerInbox": 0
+    },
+    "enumeratedJournals": 47
+  },
+  "business": {
+    "at": "2026-11-11T05:09:27.618Z",
+    "originalSessionPreserved": true,
+    "requirementRevisionPreserved": true,
+    "contextRevision": 8,
+    "claimContextRevision": 8,
+    "status": "completed",
+    "drained": true,
+    "routerAnsweredOriginalQuestion": true,
+    "credentialVariablesPresentNonempty": true,
+    "results": [
+      {
+        "configVariable": "OSS_BUCKET_ADMIN",
+        "headBucket": 200,
+        "bucketLocation": 200,
+        "list": 200,
+        "headObject": 200,
+        "rangeRead": 206,
+        "receivedObjectBytes": 1
+      },
+      {
+        "configVariable": "OSS_BUCKET_EDITOR",
+        "headBucket": 200,
+        "bucketLocation": 200,
+        "list": 200,
+        "headObject": 200,
+        "rangeRead": 206,
+        "receivedObjectBytes": 1
+      }
+    ],
+    "objectsPerBucket": 1,
+    "objectBodyDiscarded": true,
+    "writesTested": false,
+    "finalToolAccepted": true,
+    "vendorReadbackComplete": true,
+    "receiptMessageIdMatched": true,
+    "deliveredAt": "2026-11-11T05:07:36.093Z",
+    "otherNodeInvestigation": "waiting for node-level access/history"
+  },
+  "privateConfigurationUpdate": {
+    "onlineApplied": true,
+    "completeReadbackMatches": true,
+    "restartRequired": false,
+    "otherConfigurationUnchanged": true
+  },
+  "cleanup": {
+    "ownTemporaryFilesRemoved": true,
+    "ownContainersAndVolumesAbsent": true,
+    "preflightJobRemoved": true,
+    "onlyFinalRoundAttachmentsRetained": true,
+    "otherMaterialsAndProductionPreserved": true
+  }
+}
