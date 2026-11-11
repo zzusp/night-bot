@@ -35,7 +35,11 @@ export function ActionMenu({ label, actions }: { label: string; actions: Action[
     };
     const scroll = (event: Event) => {
       if (event.target instanceof Node && menu.current?.contains(event.target)) return;
-      close();
+      // Clicking a previously off-screen trigger can queue a scroll event before
+      // opening. Its geometry is already captured above; only a later movement
+      // invalidates the menu's placement, not that stale event.
+      const current = anchor.current?.getBoundingClientRect();
+      if (!current || current.top !== bounds.top || current.left !== bounds.left) close();
     };
     const resize = () => close();
     document.addEventListener('pointerdown', outside, true);
