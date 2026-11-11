@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "onlyAuthorizedTestGroup": true,
+  "nativeOnlineOperatorApi": true,
+  "promptSavedAndReadbackMatched": true,
+  "liveApplied": true,
+  "restartRequired": false,
+  "existingChannelsUnchanged": true,
+  "connectionState": "listening",
+  "connected": true,
+  "ingressState": "receiving",
+  "verifiedAt": "2026-11-10T23:56:47.153Z"
+}
