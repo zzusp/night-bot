@@ -10,7 +10,7 @@ test('单条消息首答时间、共同任务结果与无需回复、等待和�
   {...unanswered,messageId:'three',preview:'无需操作的旁白',status:'no-reply',reason:'一级分诊明确无需处理且无需回复。'},
   {...unanswered,messageId:'four',preview:'等待分诊的请求',status:'awaiting-handling'},
   {...unanswered,messageId:'five',preview:'已安排但还没回复的请求',status:'awaiting-reply'},
-  {...unanswered,messageId:'six',preview:'已绑定的附件',status:'confirmed',firstReplyAt:'2026-11-09T01:00:04.500Z',durationMs:2500,reason:'此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。',replyPreview:'四个附件均已核对。'},
+  {...unanswered,messageId:'six',preview:'已绑定的附件',status:'confirmed',replyAssociation:'task',firstReplyAt:'2026-11-09T01:00:04.500Z',durationMs:2500,reason:'此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。',replyPreview:'四个附件均已核对。'},
   {...unanswered,messageId:'seven',preview:'发送失败的请求',status:'failed'},
   {...unanswered,messageId:'eight',preview:'等待发送的请求',status:'pending'},
  ]
@@ -21,6 +21,6 @@ test('单条消息首答时间、共同任务结果与无需回复、等待和�
  for(const text of ['1 秒','3 秒','回复尚未确认可见','无需处理及回复','等待处理','等待回复','回复发送失败','等待发送'])await expect(section).toContainText(text)
  await expect(section).not.toContainText('尚无可核实的首答');await expect(section).not.toContainText('未记录本条消息的回复')
  await expect(section).toContainText('首条回复已确认可见')
- const shared=section.locator('.response-time-row').filter({hasText:'已绑定的附件'});await expect(shared).toContainText('共同任务回复');await expect(shared).not.toContainText('四个附件均已核对。')
+ const shared=section.locator('.response-time-row').filter({hasText:'已绑定的附件'});await expect(shared).toContainText('共同回复');await expect(shared).not.toContainText('此回复通过精确来源绑定');await expect(shared).not.toContainText('四个附件均已核对。')
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath(`first-reply-${width}.png`)})}
 })
