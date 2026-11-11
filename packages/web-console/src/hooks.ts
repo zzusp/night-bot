@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 
 /** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待刷新或网络恢复。 */
-export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false, refreshPath }: { pauseWhenHidden?: boolean; refreshPath?: string } = {}) {
+export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false, refreshPath, timeoutMs }: { pauseWhenHidden?: boolean; refreshPath?: string; timeoutMs?: number } = {}) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
@@ -25,7 +25,7 @@ export function useResource<T>(path: string | null, interval = 0, { pauseWhenHid
       try {
         const target = requestPath ?? path;
         requestPath = path;
-        const value = await api<T>(target, { signal: controller.signal });
+        const value = await api<T>(target, { signal: controller.signal, timeoutMs });
         if (disposed) return;
         setData(value); setError(null); setUpdatedAt(Date.now()); failures = 0;
       } catch (err) {
@@ -40,7 +40,7 @@ export function useResource<T>(path: string | null, interval = 0, { pauseWhenHid
     };
     void read();
     return () => { disposed = true; controller.abort(); clearTimeout(timer); };
-  }, [path, interval, revision, pauseWhenHidden, refreshPath]);
+  }, [path, interval, revision, pauseWhenHidden, refreshPath, timeoutMs]);
   useEffect(() => {
     const visible = () => { if (interval && (document.visibilityState === 'visible' || pauseWhenHidden)) reload(); };
     const online = () => { if (path) reload(); };

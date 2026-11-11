@@ -95,6 +95,9 @@ export interface EvolutionReady extends Page<EvolutionItem> {
   skills: { contentTrackingStatus?: 'ready' | 'degraded'; activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number|null;userUseCount?:number|null;fileReadCount?:number|null;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
 }
 export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
+// Cold and explicitly refreshed snapshots await a shared inventory/history scan.
+// Give that bounded browser wait room beyond the ordinary 20-second API budget.
+export const EVOLUTION_SNAPSHOT_TIMEOUT_MS = 120_000;
 
 export type PermissionMode = 'ask' | 'auto' | 'full';
 export interface PermissionRequest {
@@ -114,16 +117,16 @@ let csrfToken = '';
 let sessionVersion = 0;
 export function setSession(session: Session | null) { csrfToken = session?.csrfToken ?? ''; sessionVersion += 1; }
 
-export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<T> {
   const requestVersion = sessionVersion;
-  const signal = AbortSignal.any([AbortSignal.timeout(20000), ...(options.signal ? [options.signal] : [])]);
+  const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 20000), ...(options.signal ? [options.signal] : [])]);
   const response = await fetch('/api' + path, {
     method: options.method ?? 'GET', credentials: 'same-origin', cache: 'no-store', signal,
     headers: { Accept: 'application/json', ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(options.method && options.method !== 'GET' ? { 'x-csrf-token': csrfToken } : {}) },
     ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
   });
-  const data = await response.json().catch(() => null);
+  const data = await response.json().catch(() => { if (signal.aborted) throw signal.reason; return null; });
   if (!response.ok) {
     const current = () => requestVersion === sessionVersion && !signal.aborted;
     // A resource/proxy failure is not proof that the browser session ended.
