@@ -302,18 +302,30 @@ html, body, #root { width: 100%; min-width: 0; }
 .settings-card input:focus-visible,.settings-card select:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
 .settings-card label { margin-top: 6px; font-weight: 500; }
 .settings-card li { margin: 10px 0; overflow-wrap: anywhere; }
-.model-catalog-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-top: 16px; }
-.model-catalog-toolbar > div { flex: 1; min-width: 0; }
-.model-catalog-toolbar label,.model-catalog > label { display: block; margin-bottom: 8px; }
-.model-catalog-list { list-style: none; margin: 16px 0 0; padding: 0; }
-.model-catalog-list > li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--board-border); }
+/* Model settings keep the route, connection and catalog on one flat surface. */
+.model-catalog .settings-card-heading { margin-bottom: 20px; }
+.model-catalog-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.model-catalog-toolbar h3 { flex: 1; margin: 0; font-size: 14px; font-weight: 600; }
+.model-catalog-search { display: flex; gap: 8px; min-width: 0; flex: 0 1 340px; }
+.model-catalog-search input { flex: 1; }
+.model-catalog-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.model-catalog-list > li { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 16px 0; border-bottom: 1px solid var(--board-border); }
 .model-catalog-list > li > div:first-child { min-width: 0; flex: 1; }
 .model-catalog-id { display: block; margin-top: 4px; color: var(--board-muted); font-family: var(--board-mono); font-size: 12px; overflow-wrap: anywhere; }
-.model-catalog-form { margin-top: 18px; padding: 16px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); background: var(--board-panel); }
+.model-catalog-references { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.model-catalog-form { margin-top: 16px; padding: 16px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); background: var(--board-panel); }
 .model-catalog-form h3 { font-size: 14px; font-weight: 600; }
 .model-catalog-form input[readonly] { color: var(--board-muted); }
-.model-catalog .inline-actions { flex-wrap: wrap; }
-@media (max-width: 520px) { .model-catalog-toolbar,.model-catalog-list > li { align-items: stretch; flex-direction: column; }.model-catalog-form { padding: 12px; }.model-catalog .pagination { gap: 10px; } }
+.model-catalog .inline-actions,.secret-settings .inline-actions { flex-wrap: wrap; }
+.model-catalog .pagination { margin-top: 16px; }
+@media (max-width: 520px) {
+ .model-catalog-toolbar h3 { flex-basis: calc(100% - 110px); }
+ .model-catalog-search { flex-basis: 100%; order: 1; }
+ .model-catalog-list > li { align-items: flex-start; flex-direction: column; gap: 12px; }
+ .model-catalog-list .inline-actions { align-self: flex-end; }
+ .model-catalog-form { padding: 12px; }
+ .model-catalog .pagination { gap: 10px; }
+}
 .settings-secret { display: flex; align-items: center; gap: 8px; }
 .settings-secret input { flex: 1; }
 .settings-secret .board-icon-button { width: auto; padding: 0 8px; }
@@ -469,12 +481,29 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-process-popover .message-process-body { border-radius: 0 0 var(--board-radius-card) var(--board-radius-card); }
 
 /* A provider owns its transport, credential and catalog in one settings surface. */
-.provider-selector-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
-.provider-connection-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px; margin-top: 24px; }
+.provider-selector { display: grid; gap: 8px; }
+.provider-selector-label,.provider-selector-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.provider-selector-label { flex-wrap: wrap; }
+.provider-selector-label label { margin: 0; }
+.provider-selector-controls select { flex: 1; }
+.provider-selector-controls > .board-button { flex-shrink: 0; }
+.provider-connection-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; margin: 24px 0; padding: 24px 0; border-block: 1px solid var(--board-border); }
 .provider-api,.provider-secret { min-width: 0; }
-.provider-api h3,.provider-secret h3,.provider-models-heading { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
-.provider-models-heading { margin-top: 28px; }
-@media (max-width: 760px) { .provider-connection-grid { grid-template-columns: minmax(0,1fr); gap: 24px; } }
+.provider-secret { border-left: 1px solid var(--board-border); padding-left: 24px; }
+.provider-api h3,.provider-secret h3 { font-size: 14px; font-weight: 600; margin: 0 0 16px; }
+.provider-api-form,.secret-form { align-content: start; }
+.provider-api-form label,.secret-form label { margin-top: 0; }
+.provider-api-form :is(input,select) + label { margin-top: 4px; }
+.secret-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; font-size: 12px; color: var(--board-muted); }
+.provider-form-actions { margin-top: 6px; }
+.provider-api .field-error,.provider-secret .field-error,.secret-settings .field-error,.model-catalog-form .field-error { min-height: 0; }
+.model-catalog :is(.provider-api,.provider-secret) p,.secret-settings p,.model-catalog-form p { margin: 0; }
+.model-catalog .provider-secret > .secret-shared-warning,.secret-settings > .secret-shared-warning { margin: 0 0 16px; }
+.model-catalog > .provider-api { max-width: 640px; }
+@media (max-width: 760px) {
+ .provider-connection-grid { grid-template-columns: minmax(0,1fr); gap: 20px; margin: 20px 0; padding: 20px 0; }
+ .provider-secret { border-left: 0; border-top: 1px solid var(--board-border); padding: 20px 0 0; }
+}
 
 /* Shared message process: point offsets and measured spans use distinct shapes. */
 .response-time-legend { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; color: var(--board-muted); font-size: 10px; }
