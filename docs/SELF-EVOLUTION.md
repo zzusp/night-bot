@@ -15,7 +15,7 @@ read relevant accepted topics via `memory_read` or literal `memory_search`; only
 short index is injected automatically. This is on-demand retrieval, not semantic
 recall or proof that the model will always choose the right note.
 
-Router 是 Bot 的语义决策核心，依据当前认证消息判断记忆或学习 Skill 的增改删并直接执行短维护。Host 不用话术正则再次判断授权，也不增加授权模型、空任务或先写 experience 的门槛。普通对话候选与无工具任务复盘保持独立；它们不获得 Router 专用写权限。原话、背景证据与场景/边界推断分开保存，个人偏好按原提出者判断适用性。来源、权限与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
+Router 是 Bot 的语义决策核心，依据当前认证消息判断记忆或学习 Skill 的增改删并直接执行短维护。Host 不用话术正则再次判断授权，也不增加授权模型、空任务或先写 experience 的门槛。普通对话候选与无工具任务复盘保持独立；它们不获得 Router 专用写权限。记忆从上下文提炼，复用 Model observation、Hypothesis (not fact)、Possible direct path (not permission)、Evidence 四维；假设和行动建议可省略，原话保留在证据中。个人偏好按原提出者判断适用性，项目背景按当前场景判断，不把来源作者等同于适用对象。来源、权限与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
 
 The real task service attaches reflection to the durable SQLite `task.completed`
 event stream, requests a scan after a committed completion and on normal recovery,

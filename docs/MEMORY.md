@@ -113,13 +113,20 @@ No automatic external notification is sent on a background error.
 
 已认证渠道中，Router 依据完整语境判断哪些事实、偏好或方法值得保留、需要纠正或应当删除。一级分诊将这类需处理的消息交 Router；Host 不再通过固定句首、授权关键词或临时性词表重复判定 Router 的语义决定。背景之后才出现“请你记住”、没有特定请求句式的可复用事实，均可由 Router 决定保存。临时要求是否应保留、用户说法是否已验证、引用指令是否适用由 Router 判断；引用、任务结果和交接不能冒充当前认证人类来源。
 
-Router 用 `resident_memory_remember` 新增或更新，使用 `resident_memory_forget` 删除。两者都必须提供当前 sourceId/messageVersion、topic/key 及完整准确的 sourceQuote；删除原话不必包含内部 key。更新、删除前按需读回并传 expectedRevision，版本不匹配失败。新增/更新的 text 仍逐字等于完整原话，context.scenario 与 boundaries 必填并明确为 inference；背景可选，仅取 Host 与当前原文或引用逐字匹配的最小片段。来源包含某句不证明业务事实属实，也不产生业务执行权限。主体由 Host 绑定，所有正文和上下文继续拒绝已知秘密。
+Router 用 `resident_memory_remember` 新增或更新，使用 `resident_memory_forget` 删除。两者都必须提供当前 sourceId/messageVersion、topic/key 及完整准确的 sourceQuote；删除原话不必包含内部 key。更新、删除前按需读回并传 expectedRevision，版本不匹配失败。新增/更新提供结构化 `memory`，不再传入逐字原话作为 text。Router 结合当前消息、引用及必要的同会话背景消解指代，保留对象、条件、链接、限制及时间范围，围绕一个可复用主题直接写清结论、决定或偏好，以及有证据的原因、适用办法与边界；不把“让我记住”的会话过程、承诺或任务流水当记忆，也不补造原因。提炼后的内容应当脱离原会话也能理解。Host 将它渲染为四维正文：
+
+- **Model observation**：observations 逐项标明 user-request（用户要求）、user-statement（用户陈述）或 quoted-statement（引用说明），并用 evidenceIds 关联证据；这些仍是模型整理，不能当作逐字原话或验证事实。
+- **Hypothesis (not fact)**：可选 hypothesis，仅记录有价值且尚未确认的推断；没有时省略，不为形式编造。
+- **Possible direct path (not permission)**：可选 directPath，描述今后如何使用记忆，不创造执行权限；用户已经明确提出的要求记在 observation。
+- **Evidence**：evidence 提供 id、source（message/quote）、承载消息的 sourceId/messageVersion 与逐字 quote。Host 回查同会话来源，绑定原生消息 ID、可取得的作者和摘录哈希。必须有一项 message 证据保留当前完整原话；历史消息和引用只提供背景，不成为本批维护授权。引用自己的版本未知时不伪造，messageVersion 始终指承载来源的版本。
+
+新结构保存为 context.version=2，与四维正文共同校验。单字段继续受既有 2048 字符校验；包含证据的四维正文复用演进快照的 64 KiB 上限，超限明确拒绝，不截断原话；通用逐字记忆仍保持原有正文限制。所有正文、适用说明、推断与证据均拒绝已知秘密。来源包含某句不证明业务事实属实，当前 Router 证据入口不接受“工具已验证结果”类型。事实是否成立和摘要是否忠实仍需模型结合证据判断，Host 的来源核对不能代替语义判断。
 
 此权限只属于当前来源绑定的 Router 端口；普通 task/generic 记忆工具仍执行既有明确授权、临时内容和候选接受规则，不整体放开群组写权限。结构化命令保持不变。
 
-共享可读性与个人偏好的适用对象分开：context.subject 由 Host 绑定原提出者，不能由模型指定。召回返回 matching-subject 或 reference-only；Router 按当前接纳来源、原作者及版本生成适用的 sourceMessageIds，多人批次不能整批套用。同一 Router 后续换发送者，即使记忆版本没变，旧工具结果也重新投影。没有主体/场景的历史原话只作参考，不能默认为所有人的行为规则。当前明确交付要求优先；“未要求不额外附报告”不能扩成禁止成果文件、其他附件或内部验收证据。
+共享可读性、来源作者与适用对象分开：Router 在 memory.appliesTo 指明 actor（个人偏好）或 context（项目/业务场景）及 description。actor 的身份由 Host 绑定原提出者，不能由模型指定；召回返回 matching-subject 或 reference-only。context 不绑定为作者个人偏好，召回返回 context-dependent，由模型匹配当前任务与场景，不自动成为全 Bot 默认或项目权限。Router 按当前接纳来源、原作者及版本生成适用的 sourceMessageIds，多人批次不能整批套用。同一 Router 后续换发送者，即使记忆版本没变，旧工具结果也重新投影。没有主体/场景的历史原话只作参考，不能默认为所有人的行为规则。当前明确交付要求优先；“未要求不额外附报告”不能扩成禁止成果文件、其他附件或内部验收证据。
 
-Host 只允许当前已接纳且未结清批次中的原来源，回查当前版本、已认证参与者和渠道消息事实；写入归因于原发送者，不能自选 actor/scope/path，不整体放开群 Router 的 `groupWrite`。只读执行权限仍拒绝写入。事务提交后回读核对内容、作者及原消息，只有 `ok:true,persisted:true` 才能答复已经保存；失败不伪装成功。保存的 accepted 条目进入 Bot 共享记忆，其他已认证会话可按需读取，冷启动不依赖原 Router 摘要。
+Host 只允许当前已接纳且未结清批次中的原来源，回查当前版本、已认证参与者和渠道消息事实；写入归因于原发送者，不能自选 actor/scope/path，不整体放开群 Router 的 `groupWrite`。只读执行权限仍拒绝写入。事务提交后回读核对正文、结构化内容、作者及原消息；重复来源也必须确认当前结构与本次请求一致，不能把旧记录冒充已更新的适用范围。只有 `ok:true,persisted:true` 才能答复已经保存；失败不伪装成功。保存的 accepted 条目进入 Bot 共享记忆，其他已认证会话可按需读取，冷启动不依赖原 Router 摘要。
 
 这是 Router 决策驱动的短维护，不触发空任务，不强制同时创建记忆与 Skill，也不把整个 Router JSON 包转换为真人输入。Skill 由 `resident_skill_query` 读取目标/版本，经 `resident_skill_mutate` 新增、更新或删除，只操作受管共享 learned 命名空间；无需先写 experience 或等待任务复盘，详见 [SELF-EVOLUTION](SELF-EVOLUTION.md)。历史已消费消息不自动回填、回复不自动重放。升级须按安装运维流程排空并重启，不直接编辑 Markdown、SQLite 或 Pi journal。
 

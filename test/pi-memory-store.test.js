@@ -108,3 +108,33 @@ test('context content is checksummed, source excerpts are exact and every explan
   await writeFile(path,text.replace('Result reporting','Different scenario'))
   await assert.rejects(store.read(scope,{topic:'preferences'}),/CONTEXT_CONTENT_CHANGED/)
 })
+
+test('contextual Router memory keeps structured evidence and rendered text consistent before persistence',async t=>{
+  const {buildRouterMemory,checkedMemoryContext,encodeTopic,decodeTopic}=await import('../src/memory/format.js')
+  const {store}=await fixture(t),original={sourceId:'source-project',version:1,messageId:'native-project',actorId:'alice',text:'后续开发参考这个看板。',quote:{messageId:'announcement',actorId:'bob',text:'编辑器开发看板 https://example.test/projects/6'}}
+  const draft={observations:[{kind:'user-request',text:'后续编辑器开发参考 https://example.test/projects/6。',evidenceIds:['E1','E2']}],
+    appliesTo:{kind:'context',description:'编辑器开发，不扩大到其他项目。'},
+    evidence:[{id:'E1',source:'message',sourceId:original.sourceId,messageVersion:1,quote:original.text},
+      {id:'E2',source:'quote',sourceId:original.sourceId,messageVersion:1,quote:original.quote.text}]}
+  const options={actor:hash('alice'),message:{id:original.sourceId,content:original.text},sources:[original]},value=buildRouterMemory(draft,options)
+  assert.equal(value.context.subject.kind,'context');assert.equal(value.context.evidence[1].actorId,'bob')
+  assert.throws(()=>buildRouterMemory({...draft,observations:[{...draft.observations[0],kind:'verified-result'}]},options),/MEMORY_CONTEXT_INVALID/)
+  assert.throws(()=>buildRouterMemory({...draft,appliesTo:{...draft.appliesTo,actor:'somebody-else'}},options),/MEMORY_CONTEXT_INVALID/)
+  assert.throws(()=>buildRouterMemory({...draft,evidence:[]},options),/MEMORY_CONTEXT_INVALID/)
+  assert.throws(()=>buildRouterMemory({...draft,hypothesis:'password: never-store-this'},options),/MEMORY_SECRET_REFUSED/)
+  const tampered=structuredClone(value.context);tampered.evidence[1].quote='fabricated quotation'
+  assert.throws(()=>checkedMemoryContext(tampered),/MEMORY_CONTEXT_CONTENT_CHANGED/)
+  const args={topic:'projects',key:'editor-reference',...value,source:source('context-write')}
+  await assert.rejects(store.remember(scope,{...args,text:'only a transcript'}),/MEMORY_CONTEXT_CONTENT_CHANGED/)
+  assert.equal((await store.index(scope)).revision,0)
+  const longSource={...original,text:'原消息背景'.repeat(350)},longOptions={...options,message:{id:original.sourceId,content:longSource.text},sources:[longSource]}
+  const longDraft=structuredClone(draft);longDraft.evidence[0].quote=longSource.text
+  const longValue=buildRouterMemory(longDraft,longOptions);assert.ok(longValue.text.length>2048)
+  await store.remember(scope,{...args,...longValue,key:'long-evidence',source:source('long-context-write')})
+  assert.equal((await store.read(scope,{topic:'projects',key:'long-evidence'})).entries[0].context.evidence[0].quote,longSource.text,'evidence is not truncated to fit the old literal-body limit')
+  await assert.rejects(store.remember(scope,item('long-generic','generic','x'.repeat(2049))),/MEMORY_TEXT_INVALID/)
+  const result=await store.remember(scope,args)
+  assert.equal((await store.search(scope,{query:'example.test/projects/6'})).entries.find(entry=>entry.key==='editor-reference').text,value.text)
+  const invalid=encodeTopic('projects',1,[{...result.entry,text:'different body with its own valid hash'}],scope)
+  assert.throws(()=>decodeTopic(invalid),/MEMORY_CONTEXT_CONTENT_CHANGED/)
+})
