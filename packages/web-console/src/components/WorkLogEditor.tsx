@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {api, ApiError, errorText, type OperatorSettings, type WorkLogSelection, type WorkLogState} from '../api';
-import {Button} from './BoardPrimitives';
+import {Badge, Button} from './BoardPrimitives';
 
 const same=(a:WorkLogSelection,b:WorkLogSelection)=>a.enabled===b.enabled&&a.time===b.time&&a.timezone===b.timezone;
 const describe=(value:WorkLogSelection)=>`${value.enabled?'已开启':'已关闭'} · 每天 ${value.time} · ${value.timezone==='local'?'服务器本地时区':value.timezone}`;
@@ -31,15 +31,15 @@ export function WorkLogEditor({state,version,onSaved,onReload,reloading,onStateC
  };
  return <section className="settings-card" aria-labelledby="work-log-title"><h2 id="work-log-title">每日工作日志</h2>
   <p>当前运行：{describe(state.running)}</p><p>当前保存：{describe(state.saved)}</p>
-  {state.restartRequired&&<p className="field-help">下次启动配置与当前运行不同，需正常重启。</p>}
+  {state.restartRequired&&<Badge tone="warning">待重启</Badge>}
   {state.environmentOverrides.length>0&&<div className="role-model-environment"><p>环境变量优先于保存配置，重启仍会覆盖对应字段。</p>{state.nextStart?<p>按当前环境重启：{describe(state.nextStart)}</p>:<p role="alert">当前环境变量无效，请修改或移除后再重启。</p>}<ul>{state.environmentOverrides.map(item=><li key={item.name}>{item.name}</li>)}</ul></div>}
   <form noValidate onKeyDown={event=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()}} onSubmit={event=>{event.preventDefault();void save()}}>
    <label htmlFor="work-log-enabled">自动记录</label><select id="work-log-enabled" disabled={disabled} value={String(draft.enabled)} onChange={event=>change({enabled:event.target.value==='true'})}><option value="true">开启</option><option value="false">关闭</option></select>
-   <label htmlFor="work-log-time">每天执行时间（24 小时制）</label><input id="work-log-time" value={draft.time} maxLength={5} placeholder="23:59" disabled={disabled} onChange={event=>change({time:event.target.value})} aria-invalid={!!error&&invalidTime} aria-describedby="work-log-help work-log-error"/>
-   <label htmlFor="work-log-timezone">执行时区</label><input id="work-log-timezone" value={draft.timezone} maxLength={128} placeholder="local" disabled={disabled} onChange={event=>change({timezone:event.target.value})} aria-invalid={!!error&&invalidZone} aria-describedby="work-log-help work-log-error"/>
-   <p className="field-help" id="work-log-help">默认每天 23:59；local 跟随 Bot 服务器时区，不是浏览器时区。可填写 Asia/Shanghai 等 IANA 时区。有消息或工作才记录，以 Markdown 按年/月保存到安装数据目录的 work-logs。正常重启后生效，不中断当前执行。</p>
+   <label htmlFor="work-log-time">每天执行时间（24 小时制）</label><input id="work-log-time" value={draft.time} maxLength={5} placeholder="23:59" disabled={disabled} onChange={event=>change({time:event.target.value})} aria-invalid={!!error&&invalidTime} aria-describedby={error ? "work-log-error" : undefined}/>
+   <label htmlFor="work-log-timezone">执行时区（local = 服务器时区）</label><input id="work-log-timezone" value={draft.timezone} maxLength={128} placeholder="local / Asia/Shanghai" disabled={disabled} onChange={event=>change({timezone:event.target.value})} aria-invalid={!!error&&invalidZone} aria-describedby={error ? "work-log-error" : undefined}/>
+
    {stale&&!locked&&<p role="alert">设置已变化，草稿未被覆盖。请重新读取设置后再编辑。</p>}
-   <p className="field-error" id="work-log-error" role={error?'alert':undefined}>{error}</p><p role="status">{feedback}</p>
+   <p className="field-error" id="work-log-error" hidden={!error} role={error?'alert':undefined}>{error}</p><p role="status" hidden={!feedback}>{feedback}</p>
    <Button type="submit" busy={busy} disabled={disabled}>保存工作日志配置</Button>
    {(stale||locked)&&<Button disabled={busy||reloading} busy={reloading} onClick={onReload}>重新读取设置并替换草稿</Button>}
   </form>

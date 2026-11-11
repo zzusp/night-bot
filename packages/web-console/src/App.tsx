@@ -30,9 +30,9 @@ function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expi
   return <main className="login-page"><div className="login-brand"><Logo /><Badge tone="neutral">个人工作空间</Badge></div>
     <section className="login-card"><div className="login-symbol"><RiShieldCheckLine size={26} /></div><h1>{expired ? '重新连接你的助手' : `欢迎回到 ${brand.name}`}</h1>
       {expired && <p>浏览器会话已结束，请使用访问令牌重新连接。</p>}
-      <form noValidate onSubmit={event => void submit(event)}><label htmlFor="access-token">访问令牌</label><div className="token-input"><input ref={input} id="access-token" type={show ? 'text' : 'password'} autoComplete="current-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} aria-invalid={!!error} aria-describedby="login-help login-error" placeholder="输入访问令牌" /><IconButton label={show ? '隐藏访问令牌' : '显示访问令牌'} aria-pressed={show} onClick={() => setShow(value => !value)}>{show ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}</IconButton></div>
-        <p id="login-help" className="field-help">使用本机 Web 插件生成的令牌，由管理员提供。</p><div id="login-error" className="field-error" role={error ? 'alert' : undefined}>{error}</div><Button type="submit" busy={pending} disabled={pending} icon={<RiArrowRightLine size={17} />}>连接工作空间</Button>
-      </form><div className="login-security"><RiShieldCheckLine size={14} />令牌不会保存在浏览器中</div>
+      <form noValidate onSubmit={event => void submit(event)}><label htmlFor="access-token">访问令牌</label><div className="token-input"><input ref={input} id="access-token" type={show ? 'text' : 'password'} autoComplete="current-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined} placeholder="输入访问令牌" /><IconButton label={show ? '隐藏访问令牌' : '显示访问令牌'} aria-pressed={show} onClick={() => setShow(value => !value)}>{show ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}</IconButton></div>
+        <div id="login-error" className="field-error" hidden={!error} role={error ? 'alert' : undefined}>{error}</div><Button type="submit" busy={pending} disabled={pending} icon={<RiArrowRightLine size={17} />}>连接工作空间</Button>
+      </form>
     </section></main>;
 }
 
@@ -40,7 +40,7 @@ class PageBoundary extends Component<{ children: ReactNode; resetKey: string }, 
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidUpdate(previous: { resetKey: string }) { if (previous.resetKey !== this.props.resetKey && this.state.failed) this.setState({ failed: false }); }
-  render() { return this.state.failed ? <EmptyState title="这个页面暂时无法显示" description="请重新获取页面，或从侧栏进入其他页面。" action={<Button variant="secondary" onClick={() => this.setState({ failed: false })}>重新显示</Button>} /> : this.props.children; }
+  render() { return this.state.failed ? <EmptyState title="这个页面暂时无法显示" action={<Button variant="secondary" onClick={() => this.setState({ failed: false })}>重新显示</Button>} /> : this.props.children; }
 }
 
 function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: () => Promise<void>; drafts: Drafts }) {
@@ -90,7 +90,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
     <div className="sidebar-history"><div className="sidebar-label"><span>最近对话</span><span>{recent.data?.total ?? ''}</span></div>
       {currentChats.error && <button className="sidebar-retry" onClick={currentChats.refresh}>读取失败，点击刷新</button>}
-      {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/${chat.kind === 'channel' ? 'channels' : 'chat'}/${encodeURIComponent(chat.id)}`} key={chat.kind + ':' + chat.id} aria-current={section === (chat.kind === 'channel' ? 'channels' : 'chat') && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}>{chat.kind === 'channel' ? <RiGlobalLine size={16} /> : <RiChat3Line size={16} />}<span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">{currentChats.error && !currentChats.data ? '对话列表暂不可读' : '从第一段对话开始'}</p>}
+      {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/${chat.kind === 'channel' ? 'channels' : 'chat'}/${encodeURIComponent(chat.id)}`} key={chat.kind + ':' + chat.id} aria-current={section === (chat.kind === 'channel' ? 'channels' : 'chat') && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}>{chat.kind === 'channel' ? <RiGlobalLine size={16} /> : <RiChat3Line size={16} />}<span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">{currentChats.error && !currentChats.data ? '对话列表暂不可读' : '暂无对话'}</p>}
       {(historyOffset > 0 || currentChats.data?.nextOffset != null) && <div className="history-pagination">{historyOffset > 0 && <button onClick={() => setHistoryOffset(Math.max(0, historyOffset - 20))}>上一页</button>}{currentChats.data?.nextOffset != null && <button onClick={() => setHistoryOffset(currentChats.data!.nextOffset!)}>更早对话</button>}</div>}
     </div>
     <div className="sidebar-bottom">
@@ -105,7 +105,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
       <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" description="从侧栏选择页面继续。" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
       {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
@@ -113,12 +113,12 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
         {!overview.data && overview.loading ? <Loading /> : <>
           <div className="activity-counts"><a href="#/tasks?state=running"><span>执行中</span><strong>{overview.data?.running?.total ?? '—'}</strong><span className="count-dot info" /></a><a href="#/tasks?state=waiting"><span>等待中</span><strong>{overview.data?.waiting?.total ?? '—'}</strong><span className="count-dot warning" /></a></div>
           <section className="rail-section"><div className="rail-section-title"><h3>最近任务</h3><a href="#/tasks">查看全部<RiArrowRightLine size={14} /></a></div>
-            {overview.data?.tasks?.items.length ? overview.data.tasks.items.slice(0, 5).map(task => <a className="rail-task" key={task.taskId} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><div><Status value={task.state} /><time>{dateTime(task.updatedAt || task.createdAt)}</time></div><strong>{task.title || task.objective || '未命名任务'}</strong></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.tasks || (overview.error && !overview.data) ? '暂时无法读取任务，请刷新。' : '暂无任务，开始对话来安排第一项工作。'}</p>}
+            {overview.data?.tasks?.items.length ? overview.data.tasks.items.slice(0, 5).map(task => <a className="rail-task" key={task.taskId} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><div><Status value={task.state} /><time>{dateTime(task.updatedAt || task.createdAt)}</time></div><strong>{task.title || task.objective || '未命名任务'}</strong></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.tasks || (overview.error && !overview.data) ? '暂时无法读取任务，请刷新。' : '暂无任务'}</p>}
           </section>
           <section className="rail-section"><div className="rail-section-title"><h3>已配置渠道</h3><a href="#/channels">查看<RiArrowRightLine size={14} /></a></div>
             {overview.data?.channels?.length ? overview.data.channels.slice(0, 5).map(item => <a className="rail-channel" key={item.channelId} href="#/channels"><span><RiGlobalLine size={18} /></span><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.connectionState === 'pending-restart' ? 'warning' : item.enabled ? 'success' : 'neutral'}>{item.connectionState === 'pending-restart' ? '待重启' : item.enabled ? '已启用' : '未启用'}</Badge></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.channels || (overview.error && !overview.data) ? '暂时无法读取渠道，请刷新。' : '尚未配置渠道'}</p>}
           </section>
-        </>}<div className="rail-footer"><RiShieldCheckLine size={14} /><span>状态来自 Bot 的实际记录</span></div>
+        </>}
       </aside>}
       </div>
     </div>

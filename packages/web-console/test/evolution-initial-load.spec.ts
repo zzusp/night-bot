@@ -50,7 +50,7 @@ test('首次进入等待服务端快照，响应前持续加载且不重复查�
     expect(requests).toBe(1);
     await responseAfter(page, async () => { release(); });
     await expect(page.locator('.evolution-table')).toContainText('首次读取/最新记忆');
-    await expect(page.locator('.evolution-list-notice[role="status"]')).toContainText(/每\s*5\s*分钟更新/);
+    await expect(page.locator('.evolution-list-notice[role="status"]')).toContainText('最近更新');
   } finally { release(); }
 });
 
@@ -80,10 +80,10 @@ test('服务端更新失败后保留上次成功快照并明确显示时间和�
   await responseAfter(page, () => page.goto('/#/evolution'));
   await expect(page.locator('.evolution-table')).toContainText('首次读取/最新记忆');
   const notice = page.locator('.evolution-list-notice[role="status"]');
-  await expect(notice).toContainText('当前显示上次成功获取的数据');
+  await expect(notice).toContainText('旧快照');
   // Fixture is 08:00 in the configured Asia/Shanghai browser timezone.
   await expect(notice).toContainText('08:00');
-  await expect(notice).toContainText('本轮更新未完成');
+  await expect(notice).toContainText('更新未完成');
   await expect(page.getByRole('button', { name: '刷新记录', exact: true })).toBeEnabled();
 });
 

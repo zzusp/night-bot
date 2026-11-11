@@ -21,7 +21,7 @@ function LastUsedTime({item}: {item: EvolutionItem}) {
 export function EvolutionSource({value}: {value?: MemoryProvenance | null}) {
   if (!value) return <span className="muted">来源未知</span>;
   const type = value.conversationType === 'chat-room' ? '群聊' : value.conversationType === 'chat' ? '私聊' : '会话类型未知';
-  return <details className="evolution-source"><summary>{value.conversationName ? `${type} · ${value.conversationName}` : value.taskTitle || value.channelId || '来源详情'}</summary><dl><dt>渠道</dt><dd>{value.channelId || '未知'}</dd><dt>会话</dt><dd>{type} · {value.conversationName || '名称未知'}</dd><dt>会话 ID</dt><dd>{value.conversationId || '未知'}</dd><dt>关联任务</dt><dd>{value.taskId ? <a href={`#/tasks/${encodeURIComponent(value.taskId)}`}>{value.taskTitle || value.taskId}</a> : '未知'}</dd></dl>{value.resolvedFrom && <p className="muted">来源由保留记录恢复；名称是该记录中的名称。</p>}</details>;
+  return <details className="evolution-source"><summary>{value.conversationName ? `${type} · ${value.conversationName}` : value.taskTitle || value.channelId || '来源详情'}</summary><dl><dt>渠道</dt><dd>{value.channelId || '未知'}</dd><dt>会话</dt><dd>{type} · {value.conversationName || '名称未知'}</dd><dt>会话 ID</dt><dd>{value.conversationId || '未知'}</dd><dt>关联任务</dt><dd>{value.taskId ? <a href={`#/tasks/${encodeURIComponent(value.taskId)}`}>{value.taskTitle || value.taskId}</a> : '未知'}</dd></dl>{value.resolvedFrom && <p className="muted">历史来源</p>}</details>;
 }
 
 function EntrySource({item}: {item: EvolutionItem}) {
@@ -68,7 +68,7 @@ export function EvolutionEntryMetadata({item}: {item: EvolutionItem}) {
 /** Metadata only. The name is the explicit, version-bound content read action. */
 export default function EvolutionEntryList({items, partialUsage = false, onView}: {items: EvolutionItem[]; partialUsage?: boolean; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
   return <div className="evolution-table-wrap"><table className="evolution-table">
-    <caption className="sr-only">Bot 公共记忆与技能。使用次数为保留记录中读取返回与搜索命中，或模型调用、用户引用与文件读取的合计，不代表全生命周期累计。点击名称查看内容、来源与使用明细。</caption>
+    <caption className="sr-only">Bot 公共记忆与技能，使用次数来自保留记录。</caption>
     <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-last-used"/><col className="evolution-col-updated"/></colgroup>
     <thead><tr><th scope="col">名称</th><th scope="col">使用次数</th><th scope="col">最近使用</th><th scope="col">最近更新</th></tr></thead>
     <tbody>{items.map(item => <tr key={`${item.kind}:${item.id}`}>
