@@ -4,6 +4,7 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {bindingSchema, readableScopes, memoryDirectory} from '../../../src/memory/scope.js'
 import {decodeTopic, hash, label} from '../../../src/memory/format.js'
 import {boundedRead} from '../../../src/memory/previous.js'
+import {learnedSkillSupported} from '../../../src/memory/evolution.js'
 import {installedSkills, contentVersion, pathSafe} from '../../../src/memory/skill-usage.js'
 import {fail} from './security.js'
 
@@ -95,7 +96,7 @@ export async function readEvolutionInventory({memory, reflection, binding}) {
     }
     for (const [key, value] of Object.entries(snapshot.state.skills)) {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) || key.length > 60) fail('EVOLUTION_UNAVAILABLE', 503)
-      const supported = (value.supports ?? []).some(row => snapshot.entries.filter(entry => entry.topic === 'experience').slice(0, 50).some(entry => entry.key === row.memoryKey))
+      const supported = learnedSkillSupported(value, snapshot.entries.filter(entry => entry.topic === 'experience'))
       if (value.active && supported) activeCount++; else if (!value.active) skillCandidates++
       const name = 'learned-' + key, id = hash(JSON.stringify([scope.kind, scope.id, 'skill', key]))
       const version = reflection?.renderSkill ? contentVersion(reflection.renderSkill(scope, key, value, snapshot.revision), 'learned') : null

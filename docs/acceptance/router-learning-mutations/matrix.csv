@@ -1,22 +1,27 @@
-case_id,case,round_1,round_2,evidence
-source-authority,三次真实话术、无固定句式、完整原话与当前来源边界,PASS,NOT_RUN,15 场景；round-1.md 第 1 项
-memory-crud,Router 新增、更新、删除与冲突,PASS,NOT_RUN,16 场景生命周期；round-1.md 第 2 项
-skill-crud,Skill 查询、增改删、同名重建、冷启及目录回读,PASS,NOT_RUN,16 场景生命周期；round-1.md 第 2 项
-shared-revocation,共享 provider 与旧加载正文撤销，保留 Pi 历史,PASS,NOT_RUN,round-1.md 第 2 项
-read-only,只读 Router 不能写记忆或 Skill,PASS,NOT_RUN,完整 Router 只读用例；round-1.md 第 2 项
-skill-receipts,旧操作不重放、版本递增、派生失败诚实反馈与排队撤权,PASS,NOT_RUN,3 项持久化回归；round-1.md 第 5 项
-memory-regression,通用记忆、官方来源、提取、隐私、存储与演进,PASS,NOT_RUN,关联批次中 48 项通过，含 Skill 回归；round-1.md 第 3 项
-reflection-regression,真实档案初始化后的任务复盘与冷启/忘记,PASS,NOT_RUN,集中复验 13 PASS；round-1.md 第 4 项
-router-full,完整 Router 文件,BASELINE_FAIL,NOT_RUN,27 PASS / 1 FAIL；DWS receipt flags 在干净 main 同断言失败
-source-guards,来源/hash/import 守卫与 diff 检查,PASS,NOT_RUN,424 runtime JS、0 external SDK imports；round-1.md 第 6 项
-live-model,真实模型语义判断能力,NOT_RUN,PASS,第1轮为脚本端点；第2轮真实模型六个输入通过，不外推普遍判断能力
-production,生产部署、真实渠道与历史漏存补写,NOT_RUN,PARTIAL,第1轮未授权；第2轮正式部署通过，真实钉钉与历史补写未执行，Web两项失败分列
-release-image,已合并源码正式构建、镜像实跑、远端摘要回读,NOT_RUN,PASS,round-2.md；round-2-evidence.json
-offline-backup,正常停机、严格Pi历史、默认排除秘密备份逐文件回读,NOT_RUN,PASS,round-2.md；round-2-evidence.json
-live-security,生产imageID、源码hash、安全配置、401/403与receiving,NOT_RUN,PASS,round-2.md；round-2-evidence.json
-live-source-receipts,六次真实Pi持久工具收据、完整原话和作者绑定,NOT_RUN,PASS,round-2.md；round-2-evidence.json
-live-cleanup,验收记忆与Skill删除、无新增任务、其他记录保持,NOT_RUN,PASS,round-2.md；round-2-evidence.json
-web-final-reply,Web最终回复可靠送达,NOT_RUN,FAIL,round-2.md；round-2-evidence.json
-web-skill-display,Web学习Skill清单支持状态,NOT_RUN,FAIL,round-2.md；round-2-evidence.json
-live-memory-crud,真实模型记忆新增更新删除，来源与正文回读,NOT_RUN,PASS,round-2.md；round-2-evidence.json
-live-skill-crud,真实模型Skill新增更新删除，文件与版本回读,NOT_RUN,PASS,round-2.md；round-2-evidence.json
+case_id,case,round_1,round_2,round_3,evidence
+source-authority,三次真实话术、无固定句式、完整原话与当前来源边界,PASS,NOT_RUN,NOT_RUN,15 场景；round-1.md 第 1 项
+memory-crud,Router 新增、更新、删除与冲突,PASS,NOT_RUN,NOT_RUN,16 场景生命周期；round-1.md 第 2 项
+skill-crud,Skill 查询、增改删、同名重建、冷启及目录回读,PASS,NOT_RUN,NOT_RUN,16 场景生命周期；round-1.md 第 2 项
+shared-revocation,共享 provider 与旧加载正文撤销，保留 Pi 历史,PASS,NOT_RUN,NOT_RUN,round-1.md 第 2 项
+read-only,只读 Router 不能写记忆或 Skill,PASS,NOT_RUN,NOT_RUN,完整 Router 只读用例；round-1.md 第 2 项
+skill-receipts,旧操作不重放、版本递增、派生失败诚实反馈与排队撤权,PASS,NOT_RUN,NOT_RUN,3 项持久化回归；round-1.md 第 5 项
+memory-regression,通用记忆、官方来源、提取、隐私、存储与演进,PASS,NOT_RUN,NOT_RUN,关联批次中 48 项通过，含 Skill 回归；round-1.md 第 3 项
+reflection-regression,真实档案初始化后的任务复盘与冷启/忘记,PASS,NOT_RUN,NOT_RUN,集中复验 13 PASS；round-1.md 第 4 项
+router-full,完整 Router 文件,BASELINE_FAIL,NOT_RUN,NOT_RUN,27 PASS / 1 FAIL；DWS receipt flags 在干净 main 同断言失败
+source-guards,来源/hash/import 守卫与 diff 检查,PASS,NOT_RUN,PASS,424 runtime JS、0 external SDK imports；round-1.md 第 6 项；round-3.md 本地修复验证
+live-model,真实模型语义判断能力,NOT_RUN,PASS,NOT_RUN,第1轮为脚本端点；第2轮真实模型六个输入通过，不外推普遍判断能力
+production,生产部署、真实渠道与历史漏存补写,NOT_RUN,PARTIAL,NOT_RUN,第1轮未授权；第2轮正式部署通过，真实钉钉与历史补写未执行，Web两项失败分列
+release-image,已合并源码正式构建、镜像实跑、远端摘要回读,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+offline-backup,正常停机、严格Pi历史、默认排除秘密备份逐文件回读,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+live-security,生产imageID、源码hash、安全配置、401/403与receiving,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+live-source-receipts,六次真实Pi持久工具收据、完整原话和作者绑定,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+live-cleanup,验收记忆与Skill删除、无新增任务、其他记录保持,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+web-final-reply,Web最终回复可靠送达,NOT_RUN,FAIL,PASS_LOCAL,round-2.md；round-2-evidence.json；round-3.md 本地修复验证
+web-skill-display,Web学习Skill清单支持状态,NOT_RUN,FAIL,PASS_LOCAL,round-2.md；round-2-evidence.json；round-3.md 本地修复验证
+live-memory-crud,真实模型记忆新增更新删除，来源与正文回读,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+live-skill-crud,真实模型Skill新增更新删除，文件与版本回读,NOT_RUN,PASS,NOT_RUN,round-2.md；round-2-evidence.json
+web-skill-crud-local,真实本地Web/Pi Skill增改删及三条最终回复,NOT_RUN,NOT_RUN,PASS,round-3.md；版本1/2/3、活动数1/1/0、无任务或经验
+web-source-boundary,chat来源映射、群聊不变、跨会话和显式非法actor拒绝,NOT_RUN,NOT_RUN,PASS,round-3.md；最终源码定向用例通过
+web-ledger-ownership,Web去重、重启回读和sender/channel归属拒绝,NOT_RUN,NOT_RUN,PASS,round-3.md；3项账本回归
+web-inventory-read-only,Web只读快照、锁、版本、路径及坏来源拒绝,NOT_RUN,NOT_RUN,PASS,round-3.md；9项盘点回归
+channel-extended-windows,扩展渠道批次Windows游标替换及未退出风险,NOT_RUN,NOT_RUN,FLAKY,round-3.md；47 PASS/1 FAIL后进程清理；基线及最终串行复验通过，未重跑完整文件

@@ -150,6 +150,18 @@ test('generic message readers use neutral identities and enforce conversation sc
   const direct=await channels.registerConversation({...input,type:'chat',messageId:'direct-alice'}),other=await channels.registerConversation({...input,type:'chat',senderId:'bob',messageId:'direct-bob'})
   const notice={id:'direct-scope',payload:{conversationId:direct.sessionId,text:'Direct bounded response',recipientActorIds:[direct.principal]}}
   assert.deepEqual(channels.deliveryEnvelope(notice).recipientIds,[])
+  const frozen={id:'retained-direct-reply',state:'unknown',payload:{conversationId:direct.sessionId,text:'Frozen direct reply',recipientActorIds:[],sourceRef:{messageId:'direct-alice',messageVersion:1,actorId:direct.principal}}}
+  const before=structuredClone(frozen),mapped=channels.deliveryEnvelope(frozen)
+  assert.equal(mapped.senderId,'alice');assert.equal(mapped.replyToMessageId,undefined)
+  assert.equal(mapped.replyToParticipantId,undefined);assert.deepEqual(mapped.recipientIds,[])
+  assert.deepEqual(frozen,before,'未知收据及冻结payload保持原样，只构造读取视图')
+  const room=channels.deliveryEnvelope({...frozen,payload:{...frozen.payload,conversationId:identity.sessionId}})
+  assert.equal(room.senderId,undefined,'群聊不从来源推导发送身份、引用或提及')
+  assert.equal(room.replyToMessageId,undefined);assert.deepEqual(room.recipientIds,[])
+  for(const actorId of ['unknown-actor',other.principal])assert.throws(()=>channels.deliveryEnvelope({...frozen,payload:{...frozen.payload,sourceRef:{...frozen.payload.sourceRef,actorId}}}),{code:'CHANNEL_ACTOR_NOT_IN_CONVERSATION'})
+  assert.equal(channels.deliveryEnvelope({...frozen,payload:{...frozen.payload,sourceRef:undefined}}).senderId,undefined,'无来源不能猜最近成员')
+  assert.equal(channels.deliveryEnvelope({...frozen,payload:{...frozen.payload,actorId:direct.principal,sourceRef:{actorId:other.principal}}}).senderId,'alice','已有显式actor合同保持不变')
+  assert.throws(()=>channels.deliveryEnvelope({...frozen,payload:{...frozen.payload,actorId:null}}),{code:'CHANNEL_ACTOR_NOT_IN_CONVERSATION'},'显式非法actor不能回退成合法来源')
   for(const actorId of ['unknown-actor',other.principal])assert.throws(()=>channels.deliveryEnvelope({...notice,payload:{...notice.payload,recipientActorIds:[actorId]}}),{code:'CHANNEL_RECIPIENT_NOT_IN_CONVERSATION'})
 })
 

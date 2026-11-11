@@ -52,3 +52,61 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   t.diagnostic(JSON.stringify(result.body.items.map(({messageId,status,durationMs})=>({messageId,status,durationMs}))))
  }finally{await web?.close()}
 })
+
+test('Router Skill增改删的无提及最终回复经真实Web送达，清单与正文同步当前支持状态',async t=>{
+ const {memoryScope}=await import('../../../src/memory/scope.js')
+ const stages=new Map(),outcomes=new Map(),key='web-router-evidence'
+ const h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body),handoff=requestEnvelope(body,'Router 交接请求：')
+  if(handoff&&!tools.length)return {text:JSON.stringify({currentIntent:'以当前账本为准',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+  if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(row=>({sourceId:row.sourceId,messageVersion:row.version??row.messageVersion,needsHandling:true,reason:'直接维护学习Skill，无需承接或任务'}))}}}
+  if(tools.includes('resident_skill_mutate')){
+   const input=requestEnvelope(body,'Router 请求：'),source=input?.events.find(row=>row.source)?.source
+   if(!source)return {text:'等待输入'}
+   const step=stages.get(source.messageId)??0;stages.set(source.messageId,step+1)
+   const revision={CREATE:0,UPDATE:1,DELETE:2}[source.text],action=source.text==='DELETE'?'delete':'upsert'
+   if(step===0)return {tool:'resident_skill_mutate',args:{operationId:'mutate-'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,sourceQuote:source.text,action,key,expectedRevision:revision,...action==='upsert'?{steps:[source.text==='CREATE'?'读取当前来源':'同时核对来源与复验结果'],reason:'复用证据核对流程',applicability:'仅本地验证文字记录'}:{}}}
+   if(step===1){outcomes.set(source.text,JSON.parse(body.messages.at(-1).content));return {tool:'resident_router_reply',args:{operationId:'reply-'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,recipientActorIds:[],text:'已完成 '+source.text+' 并回读确认。'}}}
+   if(step===2)return {tool:'resident_router_settle',args:{operationId:'settle-'+source.messageId,eventIds:input.events.map(row=>row.id)}}
+  }
+  return {text:'本批已完成'}
+ })
+ let web
+ try{
+  web=await createWebConsole({channels:h.host.ctx.channels,paths:h.host.ctx.runtimePaths,config:{channelId:'web-router-learning',senderId:'operator',port:0},getApplication:()=>({config:{},tasks:h.service}),getMemory:()=>h.host.ctx.memory,getReflection:()=>h.host.ctx.reflection,getSessionPersistence:()=>h.host.ctx.sessionPersistence})
+  const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})})
+  assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0],csrf=(await login.json()).csrfToken
+  const api=async(path,body)=>{const r=await fetch(web.origin+path,{method:body?'POST':'GET',headers:{origin:web.origin,cookie,...body?{'x-csrf-token':csrf,'content-type':'application/json'}:{}},...body?{body:JSON.stringify(body)}:{}});assert.equal(r.status,body?202:200,await r.clone().text());return r.json()}
+  const current=(await api('/api/chat-current')).conversationId,scope=memoryScope({actorId:'reader'})
+  for(const [stage,revision]of [['CREATE',1],['UPDATE',2],['DELETE',3]]){
+   const requestId='router-skill-'+stage.toLowerCase()
+   await api('/api/chat',{conversationId:current,requestId,text:stage});await h.service.whenIdle()
+   assert.equal(outcomes.get(stage)?.persisted,true);assert.equal(outcomes.get(stage)?.revision,revision)
+   const source=(await h.query('source.list')).find(row=>row.messageId===requestId)
+   const notification=(await h.query('notification.list')).find(row=>row.kind==='router-reply'&&row.payload.sourceId===source.sourceId)
+   assert.ok(notification);assert.equal(notification.state,'delivered',JSON.stringify(notification))
+   assert.equal(notification.sendAttemptCount,1);assert.deepEqual(notification.payload.recipientActorIds,[])
+   assert.equal(notification.payload.actorId,undefined,'显式空受众不伪造引用作者')
+   assert.equal(notification.payload.sourceRef.actorId,source.actorId)
+   const envelope=h.host.ctx.channels.deliveryEnvelope(notification)
+   assert.equal(envelope.senderId,'operator');assert.deepEqual(envelope.recipientIds,[]);assert.equal(envelope.replyToMessageId,undefined)
+   const chat=await api('/api/chat/'+current)
+   assert.equal(chat.messages.filter(row=>row.role==='assistant').length,revision,'每次只发一次最终回复，无分诊承接')
+   assert.ok(chat.messages.some(row=>row.role==='assistant'&&row.text.includes('已完成 '+stage)))
+   const timing=await api('/api/chat/'+current+'/response-times?selectedMessageId='+requestId)
+   assert.equal(timing.items[0].status,'confirmed')
+   const view=await api('/api/evolution?kind=skill&limit=50&refresh=1'),item=view.items.find(row=>row.name==='learned-'+key)
+   assert.equal(view.skills.activeCount,stage==='DELETE'?0:1)
+   if(stage==='DELETE')assert.equal(item,undefined)
+   else{
+    assert.equal(item.status,'applied');assert.equal(item.revision,revision)
+    const body=await api('/api/evolution/items/'+item.id+'?revision='+revision)
+    assert.match(body.current.text,stage==='CREATE'?/读取当前来源/:/同时核对来源与复验结果/)
+   }
+   assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,[])
+   assert.deepEqual(await h.query('task.list'),[])
+  }
+  assert.equal((await h.host.ctx.reflection.state(scope)).skillRevisions[key],3)
+  t.diagnostic(JSON.stringify({webFinalReplies:3,singleSend:true,skillVersions:[1,2,3],activeCounts:[1,1,0],emptyTasks:0,manufacturedExperience:0,realVendorCalls:0}))
+ }finally{await web?.close()}
+})
