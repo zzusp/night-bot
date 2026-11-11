@@ -111,17 +111,17 @@ No automatic external notification is sent on a background error.
 
 ## 渠道长期偏好
 
-已认证渠道的直接原消息明确要求记住，或以“以后／今后／from now on”等表达长期行为要求时，一级分诊转交 Router，不只发送简短确认。Router 调用 `resident_memory_remember`，提供当前来源及版本、记忆 topic/key 和完整准确原话；长期行为条件不能截短或改写。普通将来陈述、疑问、引用、任务结果和交接摘要不授权写入。临时限定继续不持久化，普通对话提取的候选仍须另行接受。
+已认证渠道中，Router 依据完整语境判断哪些事实、偏好或方法值得保留、需要纠正或应当删除。一级分诊将这类需处理的消息交 Router；Host 不再通过固定句首、授权关键词或临时性词表重复判定 Router 的语义决定。背景之后才出现“请你记住”、没有特定请求句式的可复用事实，均可由 Router 决定保存。临时要求是否应保留、用户说法是否已验证、引用指令是否适用由 Router 判断；引用、任务结果和交接不能冒充当前认证人类来源。
 
-直接记忆请求也支持独立称呼后的“你要记住……”／“请你记住……”，以及“我授权你将以下习惯保存为长期记忆：……”等明确同意句式。识别仍从当前原话的直接请求开始，不能因转述、引用、否定、疑问或条件假设中出现关键词而获得授权；这些扩展只适用于 remember，不授权忘记或接受候选，结构化命令保持不变。
+Router 用 `resident_memory_remember` 新增或更新，使用 `resident_memory_forget` 删除。两者都必须提供当前 sourceId/messageVersion、topic/key 及完整准确的 sourceQuote；删除原话不必包含内部 key。更新、删除前按需读回并传 expectedRevision，版本不匹配失败。新增/更新的 text 仍逐字等于完整原话，context.scenario 与 boundaries 必填并明确为 inference；背景可选，仅取 Host 与当前原文或引用逐字匹配的最小片段。来源包含某句不证明业务事实属实，也不产生业务执行权限。主体由 Host 绑定，所有正文和上下文继续拒绝已知秘密。
 
-完整原话保留在 text。明确长期行为要求还必须提供 context.scenario 与 boundaries，二者标为 inference，不冒充用户逐字原话或新授权。背景可选，只保存 Host 与当前原文或引用逐字匹配的最小片段，记录 message/quote、来源消息和摘录哈希；这只证明来源包含该句，不证明引用所述业务事实属实。缺背景时明确 unavailable，旧条目不补造上下文；普通显式 preferences 写入未提供解释时标为 unspecified。所有上下文文本继续拒绝秘密，context 纳入内容哈希、版本纠正、字面检索和遗忘清理。
+此权限只属于当前来源绑定的 Router 端口；普通 task/generic 记忆工具仍执行既有明确授权、临时内容和候选接受规则，不整体放开群组写权限。结构化命令保持不变。
 
 共享可读性与个人偏好的适用对象分开：context.subject 由 Host 绑定原提出者，不能由模型指定。召回返回 matching-subject 或 reference-only；Router 按当前接纳来源、原作者及版本生成适用的 sourceMessageIds，多人批次不能整批套用。同一 Router 后续换发送者，即使记忆版本没变，旧工具结果也重新投影。没有主体/场景的历史原话只作参考，不能默认为所有人的行为规则。当前明确交付要求优先；“未要求不额外附报告”不能扩成禁止成果文件、其他附件或内部验收证据。
 
 Host 只允许当前已接纳且未结清批次中的原来源，回查当前版本、已认证参与者和渠道消息事实；写入归因于原发送者，不能自选 actor/scope/path，不整体放开群 Router 的 `groupWrite`。只读执行权限仍拒绝写入。事务提交后回读核对内容、作者及原消息，只有 `ok:true,persisted:true` 才能答复已经保存；失败不伪装成功。保存的 accepted 条目进入 Bot 共享记忆，其他已认证会话可按需读取，冷启动不依赖原 Router 摘要。
 
-这是明确请求驱动的记忆写入，不触发空任务，不强制生成 Skill，也不把整个 Router JSON 包转换为真人输入。此修复不自动回填已经消费的历史消息，不自动重放旧回复；既有漏存需按当前授权经受控入口另行保存。更新代码后须按安装运维流程正常排空与重启才作用于运行中的进程，不直接编辑 Markdown、SQLite 或 Pi journal。
+这是 Router 决策驱动的短维护，不触发空任务，不强制同时创建记忆与 Skill，也不把整个 Router JSON 包转换为真人输入。Skill 由 `resident_skill_query` 读取目标/版本，经 `resident_skill_mutate` 新增、更新或删除，只操作受管共享 learned 命名空间；无需先写 experience 或等待任务复盘，详见 [SELF-EVOLUTION](SELF-EVOLUTION.md)。历史已消费消息不自动回填、回复不自动重放。升级须按安装运维流程排空并重启，不直接编辑 Markdown、SQLite 或 Pi journal。
 
 ## Persistence, forgetting and failures
 

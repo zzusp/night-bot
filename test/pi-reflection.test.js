@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
 import {readFile,writeFile} from 'node:fs/promises'
-import {memoryHost} from './fixtures/memory-host.js'
+import {memoryHost,initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
@@ -10,7 +10,7 @@ import {memoryScope} from '../src/memory/scope.js'
 import {readUsage} from '../src/memory/evolution.js'
 import {createPiProjectionRequest} from '../src/runtime/pi-request-context.js'
 
-async function completed(store,id,groupId){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded local task',ownerActorId:'owner',...groupId?{groupId}:{}});const binding=(await command('task.claim',{taskId:id})).result.binding;return (await command('task.complete',{binding,summary:'Verified bounded task result'})).completionEvent}
+async function completed(store,workspaceRoot,id,groupId){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'bounded local task',ownerActorId:'owner',...groupId?{groupId}:{}});await initializeMemoryTaskWorkspace(store,workspaceRoot,id);const binding=(await command('task.claim',{taskId:id})).result.binding;return (await command('task.complete',{binding,summary:'Verified bounded task result'})).completionEvent}
 const lesson=input=>({text:JSON.stringify({lessons:[{key:'inspect-first',observation:'Read evidence before changing files',hypothesis:'Preflight may avoid detours for similar local tasks',shortcut:'Inspect current state before choosing a write',evidenceIds:[input.eventId],skill:{steps:['Inspect current state','Make the smallest authorized change','Read back the result'],reason:'Evidence from this bounded task is reusable',applicability:'Similar local evidence-first edits',evidenceBacked:true}}]})})
 test('real default Host learns completed SQLite task evidence, deduplicates, creates evidence-justified scoped skills without a fixed repetition threshold and cold reopens',async t=>{
   let store,service,fixtureHost
@@ -18,11 +18,11 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   let analyses=0
   const f=fixtureHost=await memoryHost(t,body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}})
   store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning',initialize:true});
-  await completed(store,'one');let detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle()
+  await completed(store,f.host.ctx.runtimePaths.workspaces,'one');let detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle()
   const a=await f.agent('owner-session',{actorId:'owner'}),other=await f.agent('other-session',{actorId:'other'})
   assert.equal((await f.host.ctx.memory.read(a.agent,{topic:'experience'})).entries.length,1)
   assert.equal((await f.host.ctx.skills.list({scope:a.agent})).filter(s=>s.provider==='learned').length,1)
-  await completed(store,'two');f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()
+  await completed(store,f.host.ctx.runtimePaths.workspaces,'two');f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()
   const available=await f.host.ctx.skills.list({scope:a.agent});assert.ok(available.some(s=>s.name==='learned-inspect-first'))
   const skill=await f.host.ctx.skills.get('learned-inspect-first',{scope:a.agent});assert.match(skill.content,/not authority/)
   const usageScope=await f.host.ctx.memory.scope(a.agent,{})
@@ -60,7 +60,7 @@ test('invalid reflection evidence cannot invent memory or block committed task d
   let store,service,fixtureHost
   t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
   const f=fixtureHost=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:JSON.stringify({lessons:[{key:'bad',observation:'invented',hypothesis:'unknown',shortcut:'unknown',evidenceIds:['forged']}]})}:undefined)
-  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning-fail',initialize:true});;await completed(store,'bad','group-a')
+  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning-fail',initialize:true});;await completed(store,f.host.ctx.runtimePaths.workspaces,'bad','group-a')
   const detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await f.host.ctx.reflection.whenIdle()
   assert.equal((await store.query({kind:'task.get',taskId:'bad'})).status,'completed')
   const scope=memoryScope({actorId:'owner',groupId:'group-a',groupWrite:true},{scope:'group'}),state=await f.host.ctx.reflection.state(scope)
@@ -72,7 +72,7 @@ test('actual task service attaches the default Host reflection consumer and reco
   let analyses=0
   const f=fixtureHost=await memoryHost(t,body=>{if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){analyses++;return lesson(JSON.parse(body.messages.findLast(m=>m.role==='user').content))}}),ctx=f.host.ctx
   const residentStore=await openResidentStore(ctx.storageDomain);store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'service-learning',initialize:true});
-  await completed(store,'already-delivered','group-a')
+  await completed(store,f.host.ctx.runtimePaths.workspaces,'already-delivered','group-a')
   const config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:store.info.dbPath,instanceId:'service-learning',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot'}
   service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no real notifications')},readback:async()=>{throw Error('no real notifications')}}});
   await ctx.reflection.whenIdle();assert.equal(analyses,1);assert.equal((await store.query({kind:'task.get',taskId:'already-delivered'})).status,'completed')
@@ -100,16 +100,16 @@ test('a real default Host task turn completes through the native submit tool and
 })
 
 test('automatic reviews replace only the prior learned body and forgetting removes that comparison',async t=>{
- let step=0,store,detach
- const f=await memoryHost(t,body=>{
+ let step=0,store,detach,f
+ t.after(async()=>{detach?.();await f?.close();await store?.close()})
+ f=await memoryHost(t,body=>{
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),value=JSON.parse(lesson(input).text)
   value.lessons[0].skill.steps=['Distinct revision '+(++step)];return {text:JSON.stringify(value)}
  })
  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'latest-review.sqlite'),instanceId:'latest-review',initialize:true})
- t.after(async()=>{detach?.();await f.close();await store.close()})
  detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model})
- for(const id of ['one','two','three']){await completed(store,id);f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()}
+ for(const id of ['one','two','three']){await completed(store,f.host.ctx.runtimePaths.workspaces,id);f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()}
  const list=await f.host.ctx.memory.inspectEvolution({actorId:'reader'},{kind:'skill'}),item=list.items.find(row=>row.name==='learned-inspect-first')
  const body=await f.host.ctx.memory.inspectEvolutionItem({actorId:'reader'},{id:item.id,revision:String(item.revision)})
  assert.match(body.current.text,/Distinct revision 3/);assert.match(body.previous.text,/Distinct revision 2/);assert.doesNotMatch(JSON.stringify(body),/Distinct revision 1/)

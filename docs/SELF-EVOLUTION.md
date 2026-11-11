@@ -15,7 +15,7 @@ read relevant accepted topics via `memory_read` or literal `memory_search`; only
 short index is injected automatically. This is on-demand retrieval, not semantic
 recall or proof that the model will always choose the right note.
 
-已认证渠道的明确长期偏好通过 Router 的来源绑定记忆动作即时保存并回读，普通对话候选与任务复盘保持独立；会话交接摘要不替代长期记忆，也不自动成为 Skill。原话、逐字背景证据和场景/边界推断分开保存；共享召回须按原提出者判断适用性，不把个人偏好推广为全 Bot 默认。来源、授权与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
+Router 是 Bot 的语义决策核心，依据当前认证消息判断记忆或学习 Skill 的增改删并直接执行短维护。Host 不用话术正则再次判断授权，也不增加授权模型、空任务或先写 experience 的门槛。普通对话候选与无工具任务复盘保持独立；它们不获得 Router 专用写权限。原话、背景证据与场景/边界推断分开保存，个人偏好按原提出者判断适用性。来源、权限与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
 
 The real task service attaches reflection to the durable SQLite `task.completed`
 event stream, requests a scan after a committed completion and on normal recovery,
@@ -45,8 +45,8 @@ qualify. There is no fixed repetition threshold. Program checks require valid
 same-task evidence references, authenticated ownership, bounded Markdown, deduplication
 and traceable revisions. They do not prove the model's assessment. Repeated events
 cannot inflate evidence or rewrite formal templates. Changed steps retain their
-review provenance. A Bot can have at most 20 active learned skills; this is a
-catalog size limit, not a requirement to manufacture more experiences. No
+review provenance. The task-review producer admits at most 20 active learned skills; this is its
+catalog admission limit, not a repetition threshold or a Router maintenance gate. No
 executable scripts are generated.
 
 Learned Markdown lives under `data/memory/v2/bot/evolution/skills/<name>/SKILL.md`.
@@ -66,6 +66,14 @@ skill files, reports, business artifacts and private skill packages are runtime 
 and are ignored; their `scripts`, `references` and `assets` stay beside the skill in
 the private installation directory.
 
+## Router 直接维护 Skill
+
+`resident_skill_query` 读取共享 learned Skill 的版本、来源和适用性；指定 key 时返回步骤和理由。`resident_skill_mutate` 通过 upsert/delete 执行短维护，必须绑定本批完整原话、作者和消息版本，使用稳定 operationId，更新或删除前应提供读回的 expectedRevision。步骤、理由和适用性继续拒绝已知秘密；key 只能是受管名称，不接受路径，也不覆盖用户安装模板。Router 记录的当前认证消息作为独立来源，不要求制造任务/experience；任务复盘产生的 Skill 仍必须有保留的任务经验支持。
+
+复用 evolution 共享锁、state.json、previous 快照、learned provider 和冷启重建。状态与幂等回执先原子提交，再发布并回读派生 SKILL.md；派生失败返回 `REFLECTION_WRITE_UNCONFIRMED, committed:true`，重试仍失败时不能声称保存。重试只重建当前版本的派生文件，不重放旧创建或删除操作。删除保留单调版本，重建同名 Skill 不重置为版本 1；查询已删除 key 可获得当前墓碑版本。operationId 重用不同输入或 expectedRevision 过期均明确拒绝。
+
+写入在等待共享锁后重新核对来源和权限。更新或删除推进共享记忆代次，后续模型请求撤销旧加载的学习正文，Pi 审计历史不改写。Skill 方法是模型指导和来源陈述，不是已验证业务事实、执行权限或放松沙箱的依据。
+
 ## Durability, failures and forgetting
 
 The Bot evolution lease serialize review updates. Memory uses its own atomic
@@ -82,7 +90,8 @@ not promise exactly one vendor request across an unrecorded hard crash.
 Correcting or forgetting an `experience` entry removes corresponding derived skill
 state and review lesson bodies. If derived cleanup fails after memory committed,
 the caller receives `MEMORY_DERIVED_CLEANUP_UNCERTAIN`; repeat the forget to finish
-cleanup. Native learned-skill lookup requires current retained supporting experience.
+cleanup. Task-derived learned-skill lookup requires current retained supporting experience;
+Router-derived skills instead require their Host-bound authenticated source receipt.
 Previously loaded memory/learned-skill bodies are revoked in subsequent model
 requests when scope or memory revision changes. Raw task receipts and Pi history
 are retained, as are separately created offline backups; forgetting is not secure
