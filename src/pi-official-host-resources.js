@@ -83,10 +83,30 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
    assertCurrent();if(prior===undefined)await atomicWrite(path,current.content)
    await safePath(path,{file:true});const published=await currentSkill(summary);if(published.content!==current.content)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED');assertCurrent();return path
   }
+  async function skillResources(current){
+   if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED')
+   // Retrospectives can publish a new shared skill/memory revision between the
+   // catalog and body reads, including during Pi's turn_end after a tool ran.
+   // Retry only this scoped resource transaction, never the model/tool turn.
+   // Each attempt starts from a fresh catalog and retains all authorization,
+   // content, filesystem and lifetime checks; revocations cannot reuse old data.
+   for(let attempt=0;;attempt++){
+    assertCurrent()
+    try{
+     const snapshot=await withActor(()=>skills.snapshot({scope:actor,cwd,signal}))
+     const resources=await officialSkillResources(snapshot,{resolveFilePath:skillFile})
+     assertCurrent();return resources
+    }catch(error){
+     assertCurrent()
+     if(error?.code!=='PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'||attempt>=2)throw error
+     skills.invalidateCache()
+    }
+   }
+  }
   const context={systemPrompt,
    currentDirectory:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return scopedService('workingDirectory').get(actor)},
    instructions:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();if(!isAbsolute(paths?.agentsHome??'')||!isAbsolute(paths?.harnessHome??''))fail('PI_OFFICIAL_INSTRUCTION_ROOTS_REQUIRED');const currentCwd=scopedService('workingDirectory').get(actor),discoveredPaths=scopedService('nativeAgentInstructions')?.officialDiscoveredPaths?.(actor)??[];const result=await withActor(()=>officialInstructionFiles({...instructionsConfig,discoveredPaths,maxBytes:instructionsConfig.maxBytes??65536,cwd:currentCwd,projectRoot:cwd,agentsHome:paths.agentsHome,instructionHome:paths.harnessHome,signal},fs));assertCurrent();return result},
-   skills:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');const snapshot=await withActor(()=>skills.snapshot({scope:actor,cwd,signal}));const resources=await officialSkillResources(snapshot,{resolveFilePath:skillFile});assertCurrent();return resources},
+   skills:skillResources,
    ...memory?{memory:memory.official({authorizeWrite:memoryWriteAuthorization(actorCtx),isLive:current=>current===actor&&isLive(actor),resolveExtractionModel:async(current,{signal:extractionSignal}={})=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return provider.resolve({...extraction,...extractionSignal?{signal:extractionSignal}:{}},{credentials})}})}:{},
   }
   return {resolved,settingsManager,agentDir,registry,maxParallelToolCalls,context}
