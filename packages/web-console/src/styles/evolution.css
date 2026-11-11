@@ -19,7 +19,6 @@
 .evolution-col-usage { width: 130px; }
 .evolution-col-last-used, .evolution-col-updated { width: 166px; }
 .evolution-usage-cell { overflow-wrap: anywhere; color: var(--board-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.evolution-count-status { display: block; font-size: 11px; color: var(--board-warning); }
 .evolution-list-notice { margin: 12px 16px; font-size: 12px; color: var(--board-warning); }
 .evolution-table th { color: var(--board-muted); font-size: 11px; font-weight: 400; height: 34px; padding: 4px 16px; border-bottom: 1px solid var(--board-border); }
 .evolution-table td { height: 56px; padding: 6px 16px; border-bottom: 1px solid var(--board-border); vertical-align: middle; }
@@ -84,7 +83,6 @@
   .evolution-use-counts dt { font-size: 10px; }
   .evolution-use-counts dd { font-size: 11px; }
   .evolution-table .evolution-usage-cell, .evolution-table .evolution-last-used-cell, .evolution-table .evolution-updated-cell { grid-column: 1 / -1; padding-left: 28px; margin-top: 2px; font-size: 11px; }
-  .evolution-count-status { display: inline; margin-left: 8px; }
   .evolution-time-label { display: inline; margin-right: 8px; }
   .evolution-list-body > .pagination { padding: 10px 12px; }
 }

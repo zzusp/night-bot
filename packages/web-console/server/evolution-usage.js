@@ -12,6 +12,16 @@ const pathKey = path => typeof path === 'string' && isAbsolute(path) ? normalize
 const version = (content, provider) => {let body = provider === 'learned' ? content.replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm, '') : content; try {body = parseFrontmatter(body).body} catch {} return hash(body.replaceAll('\r\n', '\n').trim())}
 const memoryKey = (scope, id) => JSON.stringify([scope, id])
 const defaults = Object.freeze({maxSessions: 128, maxEntriesPerSession: 20000, maxEntries: 100000, maxSessionBytes: 8 * 1024 * 1024, maxPendingCalls: 128})
+const emptyMemory = () => ({readCount: null, searchCount: null, lastUsedAt: null, lastAccess: null, trackingSince: null, entryTrackingSince: null})
+const emptySkills = () => ({modelUseCount: null, userUseCount: null, fileReadCount: null, lastUsedAt: null, lastInvocationAt: null, loadCount: null, trackingSince: null, callTrackingSince: null})
+function mergeStats(target, source) {
+  for (const [field, value] of Object.entries(source)) {
+    if (field.endsWith('Count') && value !== null) target[field] = (target[field] ?? 0) + value
+    else if (field.endsWith('Since')) target[field] = earliest(target[field], value)
+    else if (['lastUsedAt', 'lastInvocationAt'].includes(field)) target[field] = latest(target[field], value)
+  }
+  if (source.lastAccess?.at && (!target.lastAccess || source.lastAccess.at >= target.lastAccess.at)) target.lastAccess = source.lastAccess
+}
 
 /** Request-local, read-only query. Inputs contain only inventory resources the
  * authenticated evolution reader is allowed to inspect. No journal bodies or
@@ -29,12 +39,10 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
     if (path) {if (!skillsByPath.has(path)) skillsByPath.set(path, []); skillsByPath.get(path).push(resource)}
   }
   const items = Object.create(null), reasons = new Set(), seenEvents = new Set()
-  const memory = {readCount: null, searchCount: null, lastUsedAt: null, lastAccess: null, trackingSince: null, entryTrackingSince: null}
-  const skills = {modelUseCount: null, userUseCount: null, fileReadCount: null, lastUsedAt: null, lastInvocationAt: null, loadCount: null, trackingSince: null, callTrackingSince: null}
+  const memory = emptyMemory(), skills = emptySkills()
   const coverage = {status: 'unrecorded', source: 'retained-committed-pi-journals', sessionsDiscovered: 0, sessionsRead: 0, entriesRead: 0, oldestObservedAt: null, newestObservedAt: null, limits: budget, reasons: []}
   const problem = code => reasons.add(code)
   const count = (object, field) => {object[field] = (object[field] ?? 0) + 1}
-  function observed(at) {if (!at) {problem('INVALID_EVENT_TIME'); return} coverage.oldestObservedAt = !coverage.oldestObservedAt || at < coverage.oldestObservedAt ? at : coverage.oldestObservedAt; coverage.newestObservedAt = latest(coverage.newestObservedAt, at)}
   function skillMatch(value) {
     if (!value || typeof value.content !== 'string' || typeof value.name !== 'string' || !['filesystem', 'learned'].includes(value.provider)) return
     let candidates = skillsByName.get(JSON.stringify([value.provider, value.name])) ?? []
@@ -50,17 +58,22 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
     if (candidates.length !== 1 && typeof value.content === 'string') candidates = candidates.filter(r => r.contentVersion === version(value.content, value.provider))
     return candidates.length === 1 ? candidates[0] : undefined
   }
-  function useSkill(resource, mode, entry, eventId, content) {
-    if (!resource) {problem('UNRESOLVED_SKILL_RESOURCE'); return}
-    if (seenEvents.has(eventId)) return
-    seenEvents.add(eventId)
-    const field = {model: 'modelUseCount', user: 'userUseCount', file: 'fileReadCount'}[mode], at = stamp(entry)
-    const row = items[resource.itemId] ??= {modelUseCount: 0, userUseCount: 0, fileReadCount: 0, lastUsedAt: null, updatedSinceUse: false}
-    count(row, field); count(skills, field); skills.trackingSince = earliest(skills.trackingSince, at); skills.callTrackingSince = earliest(skills.callTrackingSince, at); row.lastUsedAt = latest(row.lastUsedAt, at); skills.lastUsedAt = latest(skills.lastUsedAt, at)
-    if (mode !== 'file') {skills.lastInvocationAt = latest(skills.lastInvocationAt, at); if (at && (!row.lastInvocationAt || at >= row.lastInvocationAt)) {row.lastInvocationAt = at; row.updatedSinceUse = typeof content === 'string' && !!resource.contentVersion && version(content, resource.provider) !== resource.contentVersion}}
-    observed(at)
-  }
   function scan(snapshot, target) {
+    // Publish one session's observations only after its whole scan succeeds.
+    // Failure reasons and read budgets remain global, even when these values are discarded.
+    const items = Object.create(null), memory = emptyMemory(), skills = emptySkills(), seenEvents = new Set()
+    let oldestObservedAt = null, newestObservedAt = null
+    function observed(at) {if (!at) {problem('INVALID_EVENT_TIME'); return} oldestObservedAt = earliest(oldestObservedAt, at); newestObservedAt = latest(newestObservedAt, at)}
+    function useSkill(resource, mode, entry, eventId, content) {
+      if (!resource) {problem('UNRESOLVED_SKILL_RESOURCE'); return}
+      if (seenEvents.has(eventId)) return
+      seenEvents.add(eventId)
+      const field = {model: 'modelUseCount', user: 'userUseCount', file: 'fileReadCount'}[mode], at = stamp(entry)
+      const row = items[resource.itemId] ??= {modelUseCount: 0, userUseCount: 0, fileReadCount: 0, lastUsedAt: null, updatedSinceUse: false}
+      count(row, field); count(skills, field); skills.trackingSince = earliest(skills.trackingSince, at); skills.callTrackingSince = earliest(skills.callTrackingSince, at); row.lastUsedAt = latest(row.lastUsedAt, at); skills.lastUsedAt = latest(skills.lastUsedAt, at)
+      if (mode !== 'file') {skills.lastInvocationAt = latest(skills.lastInvocationAt, at); if (at && (!row.lastInvocationAt || at >= row.lastInvocationAt)) {row.lastInvocationAt = at; row.updatedSinceUse = typeof content === 'string' && !!resource.contentVersion && version(content, resource.provider) !== resource.contentVersion}}
+      observed(at)
+    }
     const entries = snapshot.entries, byId = new Map(), states = new Map(), successes = new Map(), observations = new Map()
     for (const e of entries) if (e.type === 'custom' && e.customType === 'night.audit' && e.data?.domain === 'skill-observation' && e.data.kind === 'read') {const id = e.data.payload?.resultEntryId; if (!observations.has(id)) observations.set(id, []); observations.get(id).push(e)}
     // Each entry inherits its actual parent state, not the preceding physical
@@ -147,6 +160,22 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       const content = prefix && parsed.content.startsWith(prefix) ? parsed.content.slice(prefix.length) : parsed.content
       useSkill(resource, 'user', user, target.sessionId + ':' + user.id, content)
     }
+    return {items, memory, skills, seenEvents, oldestObservedAt, newestObservedAt}
+  }
+  function commitUsage(usage) {
+    mergeStats(memory, usage.memory); mergeStats(skills, usage.skills)
+    for (const [id, row] of Object.entries(usage.items)) {
+      const current = items[id]
+      if (!current) {items[id] = row; continue}
+      if (row.memoryUse) mergeStats(current.memoryUse, row.memoryUse)
+      else {
+        if (row.lastInvocationAt && (!current.lastInvocationAt || row.lastInvocationAt >= current.lastInvocationAt)) current.updatedSinceUse = row.updatedSinceUse
+        mergeStats(current, row)
+      }
+    }
+    for (const event of usage.seenEvents) seenEvents.add(event)
+    coverage.oldestObservedAt = earliest(coverage.oldestObservedAt, usage.oldestObservedAt)
+    coverage.newestObservedAt = latest(coverage.newestObservedAt, usage.newestObservedAt)
   }
   const targets = new Map()
   const add = value => {const old = targets.get(value.sessionId); if (old && JSON.stringify(old) !== JSON.stringify(value)) {problem('CONFLICTING_SESSION_IDENTITY'); targets.set(value.sessionId, {...old, invalid: true})} else if (!old) targets.set(value.sessionId, value)}
@@ -214,7 +243,9 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       if (!valid || !Array.isArray(snapshot.entries)) {problem('SESSION_IDENTITY_INVALID'); continue}
       if (snapshot.entries.length > budget.maxEntriesPerSession || snapshot.entries.length + coverage.entriesRead > budget.maxEntries) {problem('ENTRY_LIMIT'); continue}
       coverage.entriesRead += snapshot.entries.length
-      try {scan(snapshot, target); coverage.sessionsRead++} catch {problem('SESSION_EVIDENCE_INVALID')}
+      let usage
+      try {usage = scan(snapshot, target)} catch {problem('SESSION_EVIDENCE_INVALID'); continue}
+      commitUsage(usage); coverage.sessionsRead++
     }
   }
   coverage.status = reasons.size ? 'partial' : seenEvents.size ? 'ready' : 'unrecorded'; coverage.reasons = [...reasons].sort()

@@ -18,6 +18,65 @@ function options(j) {return {application: {tasks: {store: {query: async q => q.k
 const memoryValue = (ids = ['memory-one']) => ({kind: 'night-memory-result', scopeToken: scope, revision: 1, entries: ids.map(id => ({id}))})
 const skillValue = () => ({name: 'check', provider: 'filesystem', resourceBase: {kind: 'directory', path: '/install/skills/check'}, content: 'body'})
 
+function failedScan(sessionId = 'session-one', taskId = 'task-one') {
+ const j = journal(sessionId, taskId)
+ j.call('memory_read', {}); j.result('memory_read', memoryValue())
+ j.call('skill', {name: 'check'}); j.result('skill', skillValue())
+ j.receipt('admission', 'enqueued', {id: 'packet', content: '/skill:check'})
+ j.receipt('admission', 'command-started', {id: 'packet', name: 'check', beforeEntryIds: {}})
+ const user = j.add({type: 'message', message: {role: 'user', content: 'hello'}})
+ j.receipt('admission', 'command-admitted', {id: 'packet', entryId: user.id, bodyDigest: hash(JSON.stringify(user.message.content))})
+ return j
+}
+function multiple(journals) {
+ const o = options(journals[0])
+ o.application.tasks.store.query = async q => q.kind === 'observer.page' ? {items: journals.map(j => j.snapshot.audit[0].payload), total: journals.length, nextOffset: null, revision: '1'} : []
+ o.sessionPersistence.readNative = async id => journals.find(j => j.snapshot.header.id === id).snapshot
+ return o
+}
+
+test('failed scans discard all observations but retain the failure and consumed read budget', async () => {
+ const j = failedScan(), result = await queryEvolutionUsage(options(j))
+ const empty = await queryEvolutionUsage(options(journal()))
+ assert.equal(result.coverage.sessionsRead, 0)
+ assert.deepEqual(result.coverage.reasons, ['SESSION_EVIDENCE_INVALID'])
+ assert.equal(result.coverage.entriesRead, j.snapshot.entries.length)
+ assert.deepEqual(result.memory, empty.memory); assert.deepEqual(result.skills, empty.skills)
+ assert.deepEqual(Object.keys(result.items), [])
+ assert.equal(result.coverage.oldestObservedAt, null); assert.equal(result.coverage.newestObservedAt, null)
+})
+for (const failedId of ['session-a', 'session-z']) test(`failed ${failedId} cannot alter another session's valid observations`, async () => {
+ const valid = journal('session-m', 'task-m')
+ valid.call('memory_search', {}); valid.result('memory_search', memoryValue())
+ valid.call('skill', {name: 'check'}); valid.result('skill', {...skillValue(), content: 'old body'})
+ for (const entry of valid.snapshot.entries) entry.timestamp = '2026-11-01T00:00:00.000Z'
+ const bad = failedScan(failedId, 'task-bad'), expected = await queryEvolutionUsage(multiple([valid]))
+ const result = await queryEvolutionUsage(multiple([valid, bad]))
+ assert.equal(result.coverage.sessionsDiscovered, 2); assert.equal(result.coverage.sessionsRead, 1)
+ assert.deepEqual(result.coverage.reasons, ['SESSION_EVIDENCE_INVALID'])
+ assert.deepEqual(result.memory, expected.memory); assert.deepEqual(result.skills, expected.skills); assert.deepEqual(result.items, expected.items)
+ assert.equal(result.coverage.oldestObservedAt, expected.coverage.oldestObservedAt)
+ assert.equal(result.coverage.newestObservedAt, expected.coverage.newestObservedAt)
+ assert.equal(result.coverage.entriesRead, valid.snapshot.entries.length + bad.snapshot.entries.length)
+})
+test('successful sessions merge counts and chronology without replacing latest invocation metadata', async () => {
+ const newer = journal('session-a', 'task-a'), older = journal('session-z', 'task-z')
+ for (const j of [newer, older]) {
+  j.call('memory_read', {}); j.result('memory_read', memoryValue())
+  j.call('memory_search', {}); j.result('memory_search', memoryValue())
+  j.call('skill', {name: 'check'}); j.result('skill', {...skillValue(), content: j === newer ? 'new body' : 'body'})
+  for (const entry of j.snapshot.entries) entry.timestamp = j === newer ? '2026-11-02T00:00:00.000Z' : '2026-11-01T00:00:00.000Z'
+ }
+ const result = await queryEvolutionUsage(multiple([newer, older]))
+ assert.equal(result.coverage.sessionsRead, 2); assert.equal(result.coverage.status, 'ready')
+ assert.equal(result.memory.readCount, 2); assert.equal(result.memory.searchCount, 2); assert.equal(result.skills.modelUseCount, 2)
+ assert.equal(result.items['public-memory'].memoryUse.readCount, 2); assert.equal(result.items['public-memory'].memoryUse.searchCount, 2)
+ assert.equal(result.items['public-skill'].modelUseCount, 2); assert.equal(result.items['public-skill'].updatedSinceUse, true)
+ for (const stats of [result.memory, result.skills]) {assert.equal(stats.trackingSince, '2026-11-01T00:00:00.000Z'); assert.equal(stats.lastUsedAt, '2026-11-02T00:00:00.000Z')}
+ assert.equal(result.memory.lastAccess.at, '2026-11-02T00:00:00.000Z')
+ assert.equal(result.coverage.oldestObservedAt, '2026-11-01T00:00:00.000Z'); assert.equal(result.coverage.newestObservedAt, '2026-11-02T00:00:00.000Z')
+})
+
 test('memory uses committed returned IDs, deduplicates a hit, separates read/search, never mutates snapshots', async () => {
  const j = journal(); j.call('memory_read', {topic: 'facts'}); j.result('memory_read', memoryValue(['memory-one', 'memory-one']))
  j.call('memory_search', {query: 'fact'}); const last = j.result('memory_search', memoryValue())

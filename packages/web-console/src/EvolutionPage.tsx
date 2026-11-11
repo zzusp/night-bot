@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import EvolutionContent from './EvolutionContent';
-import EvolutionEntryList, { formatEvolutionCount as number } from './components/EvolutionEntryList';
+import EvolutionEntryList, { formatEvolutionCount as number, isEvolutionCount } from './components/EvolutionEntryList';
 import { RiBookOpenLine, RiBrainLine, RiRefreshLine } from '@remixicon/react';
 import { ApiError, EVOLUTION_SNAPSHOT_TIMEOUT_MS, type Evolution, type EvolutionItem, type EvolutionReady } from './api';
 import { dateTime, navigate, useResource } from './hooks';
@@ -8,11 +8,14 @@ import { Button, EmptyState } from './components/BoardPrimitives';
 import { Loading, Notice, Pagination } from './components/Shared';
 import './styles/evolution.css';
 
-type Summary = Pick<EvolutionReady, 'memory' | 'skills' | 'cache'>;
+type Summary = Pick<EvolutionReady, 'memory' | 'skills' | 'cache' | 'usageCoverage'>;
 
-export function EvolutionListActions({ cache, loading, onRefresh }: { cache: EvolutionReady['cache']; loading: boolean; onRefresh: () => void }) {
+export function EvolutionListActions({ cache, sessionsRead, loading, onRefresh }: { cache: EvolutionReady['cache']; sessionsRead?: number; loading: boolean; onRefresh: () => void }) {
+  const updated = cache ? cache.stale ? `旧快照 · ${dateTime(cache.updatedAt ?? undefined)} · ${cache.refreshing ? '更新中' : '更新未完成'}` : `最近更新 ${dateTime(cache.updatedAt ?? undefined)}` : null;
+  const coverage = isEvolutionCount(sessionsRead) ? `已统计 ${number(sessionsRead)} 个会话` : cache ? '统计会话数未记录' : null;
+  const status = [updated, coverage].filter(Boolean).join(' · ');
   return <div className="evolution-list-actions">
-    {cache && <p className="evolution-list-updated" data-stale={cache.stale || undefined} role="status">{cache.stale ? `旧快照 · ${dateTime(cache.updatedAt ?? undefined)} · ${cache.refreshing ? '更新中' : '更新未完成'}` : `最近更新 ${dateTime(cache.updatedAt ?? undefined)}`}</p>}
+    {status && <p className="evolution-list-updated" data-stale={cache?.stale || undefined} role="status">{status}</p>}
     <Button variant="ghost" icon={<RiRefreshLine size={16} />} busy={loading} disabled={loading} onClick={onRefresh}>刷新记录</Button>
   </div>;
 }
@@ -56,7 +59,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
   const [lastSummary, setLastSummary] = useState<Summary | null>(null);
   useEffect(() => {
     if (forbidden || revoked || query.data?.status === 'unavailable') setLastSummary(null);
-    else if (ready) setLastSummary({ memory: ready.memory, skills: ready.skills, cache: ready.cache });
+    else if (ready) setLastSummary({ memory: ready.memory, skills: ready.skills, cache: ready.cache, usageCoverage: ready.usageCoverage });
   }, [forbidden, revoked, query.data?.status, ready]);
   // Summaries are Bot-wide, so category/page reads must not remove their cards.
   // Permission loss and explicit unavailability still hide the cached values.
@@ -69,14 +72,13 @@ export default function EvolutionPage({ route }: { route: URL }) {
   useLayoutEffect(() => {
     if (ready && !query.loading && body.current) bodyHeight.current = body.current.getBoundingClientRect().height;
   }, [ready, query.loading]);
-  const partialUsage = ready?.usageCoverage?.status === 'partial' || ready?.[kind === 'skill' ? 'skills' : 'memory'].trackingStatus === 'degraded';
   return <div className="page-content evolution-page">
     {selected && <EvolutionContent key={`${selected.id}:${selected.revision}`} item={selected} onClose={closeContent} onRefreshList={refreshList} />}
     <div hidden={!!selected}>{summary && <UsageSummary data={summary} />}</div>
     <section className="evolution-library" aria-label="记忆与技能条目" hidden={!!selected}>
       <div className="evolution-list-toolbar">
         <nav className="filter-tabs" aria-label="自进化记录类型">{[['memory', '记忆'], ['skill', 'Skills']].map(([value, label]) => <a key={value} href={`#/evolution?kind=${value}`} aria-current={kind === value ? 'page' : undefined} aria-controls="evolution-list-body">{label}</a>)}</nav>
-        <EvolutionListActions cache={summary?.cache} loading={query.loading} onRefresh={refreshList} />
+        <EvolutionListActions cache={summary?.cache} sessionsRead={summary?.usageCoverage?.sessionsRead} loading={query.loading} onRefresh={refreshList} />
       </div>
       <div ref={body} id="evolution-list-body" className="evolution-list-body" aria-busy={query.loading} style={!ready && query.loading ? {minHeight: bodyHeight.current} : undefined}>
         {query.error && <Notice error={query.error} stale={!!ready || !!summary} onRetry={query.refresh} />}
@@ -85,7 +87,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
           : <>
             {kind === 'skill' && ready.skills.inventoryComplete === false && <p className="evolution-list-notice" role="status">技能盘点不完整：{ready.skills.inventoryIssues?.join('；') || '部分资源不可读'}</p>}
             {!ready.items.length ? <EmptyState title={offset ? '这一页已没有记录' : '暂无自进化记录'} action={offset ? <Button variant="secondary" onClick={() => changePage(0)}>返回第一页</Button> : undefined} />
-              : <EvolutionEntryList items={ready.items} partialUsage={partialUsage} onView={(item, button) => { opener.current = button; setSelection({item, route: route.search}); }} />}
+              : <EvolutionEntryList items={ready.items} onView={(item, button) => { opener.current = button; setSelection({item, route: route.search}); }} />}
             <Pagination offset={offset} total={ready.total} nextOffset={ready.nextOffset} onPage={changePage} loading={query.loading} />
           </>}
       </div>
