@@ -36,7 +36,7 @@ test('background review uses explicit configured resolution, refuses secrets and
  t.after(async()=>{await fixtureHost?.close();await store?.close()})
  const {memoryHost,initializeMemoryTaskWorkspace}=await import('./fixtures/memory-host.js'),{openDynamicTaskStore}=await import('../packages/dingtalk-core/dynamic-task-store.js'),{memoryScope}=await import('../src/memory/scope.js'),{join}=await import('node:path')
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
- const f=fixtureHost=await memoryHost(t,async body=>{if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return;entered.resolve();await release.promise;const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content);return{text:JSON.stringify({lessons:[{key:'bounded',observation:'Verified local result',hypothesis:'limited',shortcut:'Inspect first',evidenceIds:[input.eventId]}]})}})
+ const f=fixtureHost=await memoryHost(t,async body=>{if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return;entered.resolve();await release.promise;const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content);return{text:JSON.stringify({lessons:[{key:'bounded',summary:'Verified local result',why:'The current completion record contains the result',howToApply:'Inspect first',evidenceIds:[input.eventId]}]})}})
  const ctx=f.host.ctx,official=ctx.nativePiProvider.official,original=official.resolve.bind(official),resolved=[]
  official.resolve=async(config,scope)=>{resolved.push({config,scope});return original(config,scope)}
  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'reflection-contract.sqlite'),instanceId:'reflection-contract',initialize:true});

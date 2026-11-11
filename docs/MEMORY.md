@@ -113,14 +113,15 @@ No automatic external notification is sent on a background error.
 
 已认证渠道中，Router 依据完整语境判断哪些事实、偏好或方法值得保留、需要纠正或应当删除。一级分诊将这类需处理的消息交 Router；Host 不再通过固定句首、授权关键词或临时性词表重复判定 Router 的语义决定。背景之后才出现“请你记住”、没有特定请求句式的可复用事实，均可由 Router 决定保存。临时要求是否应保留、用户说法是否已验证、引用指令是否适用由 Router 判断；引用、任务结果和交接不能冒充当前认证人类来源。
 
-Router 用 `resident_memory_remember` 新增或更新，使用 `resident_memory_forget` 删除。两者都必须提供当前 sourceId/messageVersion、topic/key 及完整准确的 sourceQuote；删除原话不必包含内部 key。更新、删除前按需读回并传 expectedRevision，版本不匹配失败。新增/更新提供结构化 `memory`，不再传入逐字原话作为 text。Router 结合当前消息、引用及必要的同会话背景消解指代，保留对象、条件、链接、限制及时间范围，围绕一个可复用主题直接写清结论、决定或偏好，以及有证据的原因、适用办法与边界；不把“让我记住”的会话过程、承诺或任务流水当记忆，也不补造原因。提炼后的内容应当脱离原会话也能理解。Host 将它渲染为四维正文：
+Router 用 `resident_memory_remember` 新增或更新，使用 `resident_memory_forget` 删除。两者都必须提供当前 sourceId/messageVersion、topic/key 及完整准确的 sourceQuote；删除原话不必包含内部 key。更新、删除前按需读回并传 expectedRevision，版本不匹配失败。新增/更新提供结构化 `memory`，不再传入逐字原话作为 text。Router 结合当前消息、引用及必要的同会话背景消解指代，保留对象、条件、链接、限制及时间范围，围绕一个可复用主题直接写清结论、决定或偏好，以及有证据的原因、适用办法与边界；不把“让我记住”的会话过程、承诺或任务流水当记忆，也不补造原因。提炼后的内容应当脱离原会话也能理解。Host 将正文渲染为三段，三项都必须提供：
 
-- **Model observation**：observations 逐项标明 user-request（用户要求）、user-statement（用户陈述）或 quoted-statement（引用说明），并用 evidenceIds 关联证据；这些仍是模型整理，不能当作逐字原话或验证事实。
-- **Hypothesis (not fact)**：可选 hypothesis，仅记录有价值且尚未确认的推断；没有时省略，不为形式编造。
-- **Possible direct path (not permission)**：可选 directPath，描述今后如何使用记忆，不创造执行权限；用户已经明确提出的要求记在 observation。
-- **Evidence**：evidence 提供 id、source（message/quote）、承载消息的 sourceId/messageVersion 与逐字 quote。Host 回查同会话来源，绑定原生消息 ID、可取得的作者和摘录哈希。必须有一项 message 证据保留当前完整原话；历史消息和引用只提供背景，不成为本批维护授权。引用自己的版本未知时不伪造，messageVersion 始终指承载来源的版本。
+- **Summary**（summary）：直接说明具体结论、决定或偏好，消解指代，保留必要对象与链接。
+- **Why**（why）：仅写来源支持的原因；没有说明原因就如实写未说明，不编造解释或推测。
+- **How to apply**（howToApply）：写未来何时、如何使用，以及必要条件与范围，不堆通用免责声明。
 
-新结构保存为 context.version=2，与四维正文共同校验。单字段继续受既有 2048 字符校验；包含证据的四维正文复用演进快照的 64 KiB 上限，超限明确拒绝，不截断原话；通用逐字记忆仍保持原有正文限制。所有正文、适用说明、推断与证据均拒绝已知秘密。来源包含某句不证明业务事实属实，当前 Router 证据入口不接受“工具已验证结果”类型。事实是否成立和摘要是否忠实仍需模型结合证据判断，Host 的来源核对不能代替语义判断。
+不再展开 Model observation、Hypothesis、Possible direct path、Evidence 四个正文标题，也不保存新的推测字段。证据仍由 evidence 提供 id、source（message/quote）、承载消息 sourceId/messageVersion 与逐字 quote；Host 回查同会话来源，绑定原生消息 ID、可取得的作者和摘录哈希。必须有一项 message 证据保留当前完整原话；历史和引用仅作背景，不成为维护授权。证据保存在 context 元数据中，不在正文重复展示原话或内部 ID。
+
+新 Router 结构保存为 context.version=3，与三段正文共同校验。单字段继续受既有 2048 字符校验，结构化正文保留已有 64 KiB 存储边界；不截断证据来压缩正文，通用逐字记忆限制不变。正文、适用说明和证据均拒绝已知秘密。v1、v2 及无 context 的旧条目原样读取，不自动改写历史；旧四维中的推测只作为历史内容保留，不作为新写入格式。来源存在不能证明陈述属实或摘要正确。任务复盘的新经验也采用三段，证据 ID 保留在任务 review 中，见 [SELF-EVOLUTION](SELF-EVOLUTION.md)。
 
 此权限只属于当前来源绑定的 Router 端口；普通 task/generic 记忆工具仍执行既有明确授权、临时内容和候选接受规则，不整体放开群组写权限。结构化命令保持不变。
 
