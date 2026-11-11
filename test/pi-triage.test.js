@@ -1,7 +1,7 @@
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools,eventually} from './fixtures/resident-router-host.js'
 import {taskNotificationRecovery} from '../packages/dingtalk-core/notification-delivery.js'
 
 const triage=body=>requestEnvelope(body,'一级分诊请求：')
@@ -9,24 +9,34 @@ const handling=(input,reply)=>({tool:'channel_triage_submit',args:{dispositions:
 function settle(body){const input=requestEnvelope(body,'Router 请求：');return body.messages.at(-1)?.role==='tool'?{text:'本批必要处置已可靠入账'}:{tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}}
 function handoff(body){const input=requestEnvelope(body,'Router 交接请求：');if(input&&!requestTools(body).length)return {text:JSON.stringify({currentIntent:'保留原文引用，后续按真实账本继续',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff})}}
 
-test('first-tier reply is visible before Router handling ends and remains an exact per-source receipt',{timeout:nativeTestTimeout(40000)},async t=>{
+test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引用回复且不重复发送',{timeout:nativeTestTimeout(40000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+  const acknowledgement='收到，我会排查这个内存告警，核实后反馈。'
+  let triageRequest,routerInput
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit')){const input=triage(body);const value=handling(input,source=>'已收到：'+source.text);for(const row of value.args.dispositions)row.needsHandling=true;return value}
-    if(requestTools(body).includes('resident_router_settle')){entered.resolve();await release.promise;return settle(body)}
+    if(requestTools(body).includes('channel_triage_submit')){triageRequest=body;const value=handling(triage(body),()=>acknowledgement);for(const row of value.args.dispositions)row.needsHandling=true;return value}
+    if(requestTools(body).includes('resident_router_settle')){routerInput=requestEnvelope(body,'Router 请求：');entered.resolve();await release.promise;return settle(body)}
     return {text:'无其他工作'}
   })
-  const original=channelMessage('reply-before-router',{text:'核对甲事项原始范围'})
+  const original=channelMessage('reply-before-router',{text:'请排查这个测试节点的内存告警，仅调查，不修改配置。'})
   await h.receive(original);await entered.promise
+  const prompt=requestText({messages:triageRequest.messages.filter(message=>message.role==='system')}).join(String.fromCharCode(10))
+  assert.match(prompt,/首答用于及时反馈会处理对应事项/)
+  assert.match(prompt,/在本次分诊提交简短reply/)
+  assert.match(prompt,/不等待Router安排、工具查询或任务结果/)
+  assert.match(prompt,/reason须同时说明是否处理及回复或静默的依据/)
+  assert.doesNotMatch(prompt,/需处理也可省略reply/)
   await eventually(()=>h.sent.length===1&&h.readbacks.length===1,'preliminary reply reaches the fake channel before Router gate releases',t.signal)
   const source=(await h.query('source.list'))[0],envelope=h.sent[0],conversationId=source.groupId
-  assert.equal(envelope.replyToMessageId,original.messageId);assert.ok(envelope.text.includes(original.text))
+  assert.equal(envelope.replyToMessageId,original.messageId);assert.equal(envelope.text,acknowledgement)
+  assert.equal(routerInput.events.find(event=>event.sourceId===source.sourceId).triageReply.payload.text,acknowledgement)
   assert.equal((await h.query('router.get',{conversationId})).cursor,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
   release.resolve();await h.service.whenIdle()
   const [notice]=await h.query('notification.list');assert.equal(notice.kind,'triage-reply');assert.equal(notice.state,'delivered')
   assert.equal(notice.payload.sourceRef.messageId,original.messageId);assert.equal(notice.payload.sourceRef.actorId,source.actorId)
+  await h.receive(original);await h.service.whenIdle();assert.equal(h.sent.length,1)
   assert.deepEqual(await h.query('task.list'),[])
 })
 

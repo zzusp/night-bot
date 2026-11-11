@@ -33,7 +33,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
         beforeRequest:()=>{if(closed||submitted||entry.superseded)fail('TRIAGE_INACTIVE')},
         setup:async(agentCtx,agent)=>{
           await agentCtx.get('agentPresets').mount(agentCtx,legacy.getAgentConfig().agentPreset)
-          agentCtx.get('tools').register({name:'channel_triage_submit',description:'按原消息逐条提交是否需要Router处理及可选简短回复；完整覆盖本批，不拆事项、不创建或安排任务。',parameters:triageParameters,output,
+          agentCtx.get('tools').register({name:'channel_triage_submit',description:'按原消息逐条判断是否需要Router处理及当前是否回复；明确交办且需继续处理时提交简短承接回复，不等Router或任务结果。完整覆盖本批，不拆事项、不创建或安排任务。',parameters:triageParameters,output,
             execute:async(input,exec)=>{
               if(exec.agent!==agent||closed||entry.superseded)fail('TRIAGE_WRONG_SESSION')
               const decision=validateTriageDecision(snapshot,input)
@@ -43,7 +43,13 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
             }})
           agentCtx.get('tools').restrict({allow:[]})
           agentCtx.get('tools').guard(exec=>exec.name==='channel_triage_submit'?undefined:'TRIAGE_TOOL_FORBIDDEN')
-          agentCtx.get('systemPrompt').section({name:'channel-triage',order:150,text:'你是轻量一级分诊，只依据当前批次原消息、已附带引用/提及和可快速获得的信息判断needsHandling与可选reply。需要深入理解、查询、执行、补充、调整或取消的原消息交Router；不拆分事项，不匹配taskId，不决定任务控制，不承诺未执行的结果。无需处理且无需回复时needsHandling=false且省略reply，保持静默；简单问候可短答，不强制使用暂定前缀；需处理也可省略reply。调用channel_triage_submit完整覆盖本批≤15条来源版本。自然语言不会发送，缺少事实不等于无需处理。'})
+          agentCtx.get('systemPrompt').section({name:'channel-triage',order:150,text:[
+            '你是轻量一级分诊，只依据当前批次原消息、已附带引用/提及和可快速获得的信息，分别判断needsHandling与当前是否需要reply。需要深入理解、查询、执行、补充、调整或取消的原消息交Router。',
+            '首答用于及时反馈会处理对应事项。对职责范围内已明确交办且需要继续处理的请求，在本次分诊提交简短reply，表明已接纳并会继续处理；不要静默处理，不等待Router安排、工具查询或任务结果。是否回复在一级分诊完成时决定，短回复与Router转交独立推进。',
+            '结合本批上下文判断是否需要新的反馈。无需处理且无需回复时needsHandling=false且省略reply，保持静默；简单问候可短答，不强制使用暂定前缀。仅在无需回复时省略reply，reason须同时说明是否处理及回复或静默的依据。',
+            '不拆分事项，不匹配taskId，不决定任务控制。承接只说明接纳和后续处理意图，不声称已创建任务、已开始执行、已查明或已完成，也不扩大授权。',
+            '调用channel_triage_submit完整覆盖本批≤15条来源版本。自然语言不会发送，缺少事实不等于无需处理。',
+          ].join(String.fromCharCode(10))})
           agentCtx.get('systemPrompt').section({name:'channel-triage-memory',order:152,text:'用户明确要求记住、修改记忆或长期调整行为时，needsHandling=true，交由Router核实并保存；短回复不能代替记忆写入，不提前声称已经记住。'})
           agentCtx.get('systemPrompt').section({name:'channel-triage-scope',order:151,interpolate:false,officialText:()=> '当前会话配置职责：'+responsibilityFor(conversationId)+'。仅用于本会话一级分诊，不创造来源授权、任务控制或跨会话读取权限。'})
         }})
