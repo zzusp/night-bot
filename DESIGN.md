@@ -457,3 +457,9 @@ Web 盘点允许与普通记忆 read/index/search 事务并发，不因其作用
 任务、状态之后依次显示「总时长」「执行时长」，再显示最近更新和行末查看。沿用现有表格与次要文字色，数字等宽；窄屏保留两项时长，以表格横向滚动承载，不改成挤压文字。
 
 总时长从创建起算，执行中到当前，完成/取消到实际终点，等待到最近一次进入等待的节点，不以普通更新时间延长。执行时长只累计各次 claim 到 drained 的真实区间，包含执行内工具和模型等待，不包含两轮之间排队或等待。活动区间按服务端观测时间加浏览器单调时钟推进，列表每五秒更新；读取失败停止推进旧快照。缺失、冲突或无法证明完整的历史显示「—」，不将墙钟时间冒充执行时间。统计只读已有收据，不新增 Bot 持久化计数。
+
+### 2026-11-12 · Shared Chat and task TODO reference pass
+- Verified BoardUI public AgentChat and agent-log at ec5c5eb. Component comparison: retain shell/sidebar geometry; align message and composer content at 768px with 16px gutters; use 20px message rhythm, compact metadata, pill-shaped prompt suggestions, and unchanged accessible composer/IME/send behavior.
+- Preserve Night Bot-specific blue user / white assistant borderless bubbles, single Web chat, channel input restrictions, inspection popover, true execution history and tool disclosures. Do not import unsupported new-chat, rename, speech, attachment, or copy actions.
+- Screenshot TODO rows were full-width bordered cards with status marooned at the far edge. Shared ExecutionHistory now uses a 760px reading column, inline status + wrapping text, real completed/total count, optional timestamp and native collapse. It is a task checklist, not a fabricated completion/approval summary. Empty/redacted/revoked states remain meaningful.
+- BoardUI's Task List component is not public; this is an independent adaptation of public agent-log spacing, not a copy of its Pro implementation. No added icon rail or per-row cards. No background/status/color change to existing conversation bubbles.

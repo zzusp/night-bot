@@ -21,6 +21,15 @@ for (const source of [
       await page.setViewportSize({width, height: 960})
       await expect(page.getByLabel('消息内容', {exact: true})).toHaveCount(source.writable ? 1 : 0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      if (source.writable) {
+        const geometry = await frame.evaluate(el => {
+          const column = el.querySelector('.message-column')!, composer = el.querySelector('.composer-dock > div')!;
+          const box = column.getBoundingClientRect(), input = composer.getBoundingClientRect();
+          return {contentLeft: box.left + 16, contentRight: box.right - 16, inputLeft: input.left, inputRight: input.right};
+        });
+        expect(Math.abs(geometry.contentLeft - geometry.inputLeft)).toBeLessThanOrEqual(2);
+        expect(Math.abs(geometry.contentRight - geometry.inputRight)).toBeLessThanOrEqual(2);
+      }
       const rect = (await frame.boundingBox())!
       expect(rect.x + rect.width).toBeLessThanOrEqual(width)
       if (width > 1250) await expect(page.getByRole('complementary', {name: '任务与渠道概览'})).toBeVisible()
