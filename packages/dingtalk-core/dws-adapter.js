@@ -179,8 +179,8 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
   const withProfile = (args) => typeof profile === 'string' && profile.trim() !== '' ? [...args, '--profile', profile] : args
 
   return {
-    compileGroupListen(groupId) {
-      return withProfile(['event', '+listen-im', '--kind', 'group', '--events', 'message', '--chat-id', assertStableId(groupId, 'group_id'), '--format', 'ndjson'])
+    compileGroupListen(groupId, { recalls = false } = {}) {
+      return withProfile(['event', '+listen-im', '--kind', 'group', '--events', recalls ? 'message,recall' : 'message', '--chat-id', assertStableId(groupId, 'group_id'), '--format', 'ndjson'])
     },
     compileHumanReplyListen(peerId) {
       return withProfile(['event','consume','user_im_message_receive_o2o','--open-dingtalk-id',assertStableId(peerId,'private_peer_id'),'--flatten','--format','ndjson'])
@@ -595,18 +595,18 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       }
       return { images, mediaUnavailable }
     },
-    startGroupSubscription(groupId, onEvent) {
+    startGroupSubscription(groupId, onEvent, options) {
       requireEnabled()
       const lifecycle = new EventEmitter()
       let ready = false
       let resolveReady
       const readyPromise = new Promise((resolve) => { resolveReady = resolve })
-      const child = runner.spawn(this.compileGroupListen(groupId), {
+      const child = runner.spawn(this.compileGroupListen(groupId, options), {
         onStdoutLine(line) {
           try {
             const event = JSON.parse(line)
             if (!ready) throw new Error('dws_event_before_ready')
-            onEvent(event)
+            Promise.resolve(onEvent(event)).catch(error=>lifecycle.emit('line-error',error,line))
           } catch (error) {
             lifecycle.emit('line-error', error, line)
           }
@@ -634,18 +634,19 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       }}catch(error){stop();throw error}
       return {lifecycle,ready:Promise.all(streams.map(stream=>stream.ready)),done:Promise.race(streams.map(stream=>stream.done)).finally(stop),stop}
     },
-    startPrivateSubscription(peerId,onEvent) {
+    startPrivateSubscription(peerId,onEvent,{recalls=false}={}) {
       requireEnabled()
       const lifecycle = new EventEmitter()
       let ready = false
       let resolveReady
       const readyPromise = new Promise((resolve) => { resolveReady = resolve })
-      const child = runner.spawn(this.compileHumanReplyListen(peerId), {
+      const args=recalls?withProfile(['event','+listen-im','--kind','sender','--events','message,recall','--open-dingtalk-id',assertStableId(peerId,'private_peer_id'),'--format','ndjson']):this.compileHumanReplyListen(peerId)
+      const child = runner.spawn(args, {
         onStdoutLine(line) {
           try {
             const event = JSON.parse(line)
             if (!ready) throw new Error('dws_event_before_ready')
-            onEvent(event)
+            Promise.resolve(onEvent(event)).catch(error=>lifecycle.emit('line-error',error,line))
           } catch (error) {
             lifecycle.emit('line-error', error, line)
           }

@@ -490,6 +490,7 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
 
 async function defaultDwsEcho(t,statusMode='success'){
   const stages=new Map(),sent=[],triaged=[],historyReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
+  const currentMessages=new Map();let detailFailure=false
   let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[]
   t.signal.addEventListener('abort',()=>{statusGate.resolve();contentGate.resolve()},{once:true})
   t.after(()=>{statusGate.resolve();contentGate.resolve()})
@@ -504,6 +505,8 @@ async function defaultDwsEcho(t,statusMode='success'){
     if(step===(source?1:0))return {tool:'resident_router_settle',args:{operationId:'race-settle:'+key,eventIds:input.events.map(event=>event.id)}}
     return {text:'Settled'}
   })
+  const close=f.close,detail=error=>({message:error?.message,code:error?.code,stack:error?.stack,errors:error?.errors?.map(detail)})
+  f.close=async()=>{try{await close()}catch(error){t.diagnostic(JSON.stringify({shutdown:detail(error)}));throw error}}
   const flag=(args,name)=>{const index=args.indexOf(name);return index<0?undefined:args[index+1]}
   const page=messages=>({complete:true,hasMore:false,failedCount:0,failures:[],foundCount:messages.length,notFoundMessageIds:[],messages})
   const runner={async run(args){
@@ -519,7 +522,13 @@ async function defaultDwsEcho(t,statusMode='success'){
       if(!ready&&statusMode==='error')return {exitCode:1,stdout:'',stderr:'fixture status unavailable'}
       value={contractVersion:'im.message-send-status.v1',success:true,openTaskId:'fixture-send',result:{sendStatus:ready?'SUCCESS':'PROCESSING',...(ready?{openConversationId:'race-room',openMessageId:'race-visible'}:{})},...(ready?{messageRef:{openConversationId:'race-room',openMessageId:'race-visible'}}:{})}
     }else if(args.includes('+messages-mget')){
-      assert.equal(flag(args,'--msg-ids'),'race-visible');contentStarted=true;await contentGate.promise;value=page(sent)
+      const id=flag(args,'--msg-ids')
+      if(id==='race-visible'){contentStarted=true;await contentGate.promise;value=page(sent)}
+      else{
+        if(detailFailure)return {exitCode:1,stdout:'',stderr:'fixture detail unavailable'}
+        const message=currentMessages.get(id)??history.find(message=>message.messageId===id)
+        value=page(message?[{...message,conversationId:message.groupId,createTime:message.occurredAt}]:[])
+      }
     }else if(args.includes('+chat-messages')){
       const range={conversationId:flag(args,'--group'),start:flag(args,'--start'),end:flag(args,'--end')};historyReads.push(range)
       value=page(history.filter(message=>message.groupId===range.conversationId&&Date.parse(message.occurredAt)>=Date.parse(range.start)&&Date.parse(message.occurredAt)<=Date.parse(range.end)).map(message=>({...message,conversationId:message.groupId,createTime:message.occurredAt})))
@@ -552,9 +561,16 @@ async function defaultDwsEcho(t,statusMode='success'){
     get app(){return app},get plugin(){return plugin},get otherPlugin(){return otherPlugin},get channels(){return channels},
     get statusStarted(){return statusStarted},get contentStarted(){return contentStarted},
     receive:message=>plugin.acceptHistoryMessage(message),
+    current(...messages){for(const message of messages)currentMessages.set(message.messageId,message)},
+    failDetails(value){detailFailure=value},
+    recall(message,extra={}){streams.get(message.groupId).onStdoutLine(JSON.stringify({type:'user_im_message_recall_group',conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,recaller_open_dingtalk_id:message.senderOpenDingTalkId,event_time:Date.now(),...extra}))},
     emit(message){streams.get(message.groupId).onStdoutLine(JSON.stringify({conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,content:message.text,event_time:Date.parse(message.occurredAt)}))},
     release(){ready=true;statusGate.resolve();contentGate.resolve()},
-    async restart(messages){history=messages;await f.close();streams.clear();await f.boot();await mount({recovering:true})},
+    async restart(messages,{deferred=[]}={}){
+      history=messages;const paths=f.host.ctx.runtimePaths;await f.close();streams.clear()
+      if(deferred.length){const ingress=await openDingtalkIngress(paths,'dingtalk-dws');for(const message of deferred)await ingress.deferred(message);await ingress.drain()}
+      await f.boot();await mount({recovering:true})
+    },
   }
 }
 
@@ -1129,8 +1145,8 @@ test('真实 Host 冷恢复完成已处理文字附件和引用补拉，冲突�
   assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,sends)
   const hold=h.channels.holdChannelTarget('dingtalk-dws',{type:'chat-room',conversationId:'race-room'},{includeAllScopes:true})
   try{await assert.rejects(h.receive(history[0]),{code:'DINGTALK_CHANNEL_SWITCH_BLOCKED'})}finally{hold.release()}
-  await assert.rejects(h.receive({...history[0],text:'Actually changed'}),{code:'CHANNEL_MESSAGE_ID_CONFLICT'})
-  await h.restart([{...history[0],text:'Actually changed'},...history.slice(1)])
+  await assert.rejects(h.receive({...history[0],senderOpenDingTalkId:'forged-author'}),{code:'CHANNEL_MESSAGE_ID_CONFLICT'})
+  await h.restart([{...history[0],senderOpenDingTalkId:'forged-author'},...history.slice(1)])
   await eventually(()=>h.plugin.health.conversations?.[0]?.backfill.state==='failed','真实冲突使补拉失败',t.signal)
   assert.equal(h.plugin.health.conversations[0].backfill.lastError,'CHANNEL_MESSAGE_ID_CONFLICT')
   assert.equal(h.plugin.health.ingress.recovering,true);assert.equal(h.plugin.health.healthy,false)
@@ -1260,4 +1276,156 @@ test('DWS waiting-auth stores pause intent; disabled listening and closed plugin
  const off=await ingressControlFixture(t,{listen:false})
  assert.equal(off.plugin.ingressControl.available,false);assert.deepEqual(off.plugin.ingressControl.getStatus(),{state:'unavailable',errorCode:'CHANNEL_INGRESS_LISTEN_DISABLED'})
  await assert.rejects(off.plugin.ingressControl.setPaused(true),{code:'CHANNEL_INGRESS_CONTROL_UNAVAILABLE'});assert.equal(off.streams.length,0)
+})
+
+test('钉钉编辑按当前详情递增来源版本，重复、迟到事件及冷补拉不重放',{timeout:nativeTestTimeout(90000)},async t=>{
+ const h=await defaultDwsEcho(t)
+ try{
+  h.release()
+  const original={...h.raw,messageId:'editable',text:'Original @person request'},edited={...h.raw,messageId:'editable',text:'Updated request @person'}
+  await h.receive(original);await h.app.tasks.whenIdle()
+  const first=(await h.app.tasks.store.query({kind:'source.list'})).find(row=>row.messageId==='editable')
+  const before=JSON.parse(await readFile(h.ingressFile,'utf8'))
+  h.current(edited)
+  await Promise.all([h.receive(edited),h.receive(edited)])
+  await h.app.tasks.whenIdle()
+  await h.receive(original);await h.app.tasks.whenIdle()
+  const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='editable').sort((a,b)=>a.version-b.version)
+  assert.deepEqual(sources.map(row=>[row.version,row.text]),[[1,original.text],[2,edited.text]])
+  assert.equal(sources[0].sourceId,first.sourceId);assert.equal(sources[0].actorId,sources[1].actorId)
+  assert.equal(h.triaged.filter(id=>id==='editable').length,2)
+  assert.equal(h.channels.groupContext(h.identity.sessionId).messageFacts.editable.version,2)
+  const after=JSON.parse(await readFile(h.ingressFile,'utf8'))
+  assert.equal(after.firstStartedAt,before.firstStartedAt)
+  const requests=h.f.requests.length
+  await h.restart([edited],{deferred:[edited]})
+  await eventually(()=>h.plugin.health.healthy===true,'编辑后历史恢复完成',t.signal);await h.app.tasks.whenIdle()
+  assert.deepEqual((await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='editable').sort((a,b)=>a.version-b.version),sources)
+  assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,0)
+  assert.equal(JSON.parse(await readFile(h.ingressFile,'utf8')).deferredMessages,undefined)
+ }catch(error){t.diagnostic(JSON.stringify({error:error.message,stack:error.stack}));throw error}finally{h.release();await h.f.close()}
+})
+
+test('钉钉修订详情不可读时不改版本、不清暂缓记录或接收进度',{timeout:nativeTestTimeout(90000)},async t=>{
+ const h=await defaultDwsEcho(t)
+ try{
+  h.release();const original={...h.raw,messageId:'failed-edit',text:'Original'},edited={...original,text:'Changed'}
+  await h.receive(original);await h.app.tasks.whenIdle()
+  const before=await readFile(h.ingressFile,'utf8'),facts=structuredClone(h.channels.groupContext(h.identity.sessionId).messageFacts)
+  h.current(edited);h.failDetails(true)
+  await assert.rejects(h.receive(edited),/dws_read_failed/)
+  assert.equal(await readFile(h.ingressFile,'utf8'),before);assert.deepEqual(h.channels.groupContext(h.identity.sessionId).messageFacts,facts)
+  h.failDetails(false);h.current({...edited,senderOpenDingTalkId:'foreign-author'})
+  await assert.rejects(h.receive(edited),{code:'DINGTALK_MESSAGE_REVISION_IDENTITY_INVALID'})
+  h.current({...edited,groupId:'foreign-room'});await assert.rejects(h.receive(edited),/dws_message_identity_mismatch/)
+  assert.equal(await readFile(h.ingressFile,'utf8'),before);assert.deepEqual(h.channels.groupContext(h.identity.sessionId).messageFacts,facts)
+  h.current(edited);h.failDetails(true)
+  await h.restart([edited],{deferred:[original]});await eventually(()=>h.plugin.health.conversations?.[0]?.backfill.state==='failed','读取失败保留恢复态',t.signal)
+  const failed=JSON.parse(await readFile(h.ingressFile,'utf8'));assert.ok(failed.recoveryFromAt);assert.deepEqual(failed.deferredMessages,[{messageId:original.messageId,occurredAt:original.occurredAt}])
+  assert.equal((await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='failed-edit').length,1)
+ }finally{h.release();await h.f.close()}
+})
+
+test('钉钉原生撤回生成无分诊墓碑，撤权旧来源并阻止旧正文冷恢复复活',{timeout:nativeTestTimeout(90000)},async t=>{
+ const h=await defaultDwsEcho(t)
+ try{
+  h.release();const original={...h.raw,messageId:'recalled',text:'Original authorized request'}
+  await h.receive(original);await h.app.tasks.whenIdle()
+  const requests=h.f.requests.length
+  h.recall(original)
+  await eventually(async()=>h.channels.groupContext(h.identity.sessionId).messageFacts.recalled?.retracted&&(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='recalled').length===2,'撤回墓碑提交',t.signal)
+  await h.app.tasks.whenIdle()
+  const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='recalled').sort((a,b)=>a.version-b.version)
+  assert.deepEqual(sources.map(row=>[row.version,row.text,row.authorizationRevoked]),[[1,original.text,true],[2,'[消息已撤回]',true]])
+  assert.equal(sources[1].retracted,true);assert.equal(sources[1].routed,true)
+  assert.equal((await h.app.tasks.store.query({kind:'triage.pending',conversationId:h.identity.sessionId})).length,0)
+  assert.equal(h.f.requests.length,requests);assert.equal((await h.receive(original)).reason,'message-retracted')
+  h.recall(original)
+  await h.receive(original)
+  await h.restart([original]);await eventually(()=>h.plugin.health.healthy===true,'撤回后旧历史补拉完成',t.signal);await h.app.tasks.whenIdle()
+  assert.deepEqual((await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='recalled').sort((a,b)=>a.version-b.version),sources)
+  assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,0)
+  const unknown={...original,messageId:'recall-before-original'};h.recall(unknown)
+  await eventually(()=>h.channels.groupContext(h.identity.sessionId).messageFacts[unknown.messageId]?.retracted,'先到撤回墓碑',t.signal)
+  assert.equal((await h.receive(unknown)).reason,'message-retracted');await h.app.tasks.whenIdle();assert.equal(h.f.requests.length,requests)
+ }finally{h.release();await h.f.close()}
+})
+
+test('撤回在上下文提交后中断，原游标队列冷恢复补齐墓碑并解除已知缺项',{timeout:nativeTestTimeout(90000)},async t=>{
+ const h=await defaultDwsEcho(t)
+ try{
+  h.release();const original={...h.raw,messageId:'recall-crash',text:'Retain original evidence'}
+  await h.receive(original);await h.app.tasks.whenIdle();const requests=h.f.requests.length
+  const register=h.channels.registerConversation.bind(h.channels)
+  h.channels.registerConversation=async input=>{const result=await register(input);if(input.platformFlags?.retracted)throw Error('fixture crash after context commit');return result}
+  const retraction={senderId:'alice',at:new Date().toISOString()}
+  await assert.rejects(h.receive({...original,occurredAt:retraction.at,retraction}),/fixture crash after context commit/)
+  h.channels.registerConversation=register
+  assert.equal(h.channels.groupContext(h.identity.sessionId).messageFacts[original.messageId].retracted,true)
+  assert.equal((await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId===original.messageId).length,1)
+  const pending=JSON.parse(await readFile(h.ingressFile,'utf8'));assert.equal(pending.pendingRecalls[0].messageId,original.messageId)
+  await h.restart([],{deferred:[original]})
+  await eventually(()=>h.plugin.health.healthy===true,'从原游标恢复撤回并完成空页补拉',t.signal);await h.app.tasks.whenIdle()
+  const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId===original.messageId)
+  assert.equal(sources.length,2);assert.ok(sources.every(row=>row.authorizationRevoked));assert.ok(sources.some(row=>row.version===2&&row.retracted))
+  const restored=JSON.parse(await readFile(h.ingressFile,'utf8'));assert.equal(restored.pendingRecalls,undefined);assert.equal(restored.deferredMessages,undefined);assert.equal(restored.firstStartedAt,pending.firstStartedAt)
+  assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,0)
+ }finally{h.release();await h.f.close()}
+})
+
+test('待完成撤回固定原恢复界，旧桥接快照和完整空页不得推进水位',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'night-recall-ingress-')),paths={mode:'portable',installRoot:root,config:join(root,'data','config'),state:join(root,'data','state'),secrets:join(root,'data','secrets'),workspaces:join(root,'data','workspaces'),cache:join(root,'data','cache')}
+ t.after(()=>rm(root,{recursive:true,force:true}))
+ const ingress=await openDingtalkIngress(paths,'recall-fixture',{fromAt:'2026-10-01T00:00:00Z'})
+ await ingress.completedRange({end:'2026-10-03T00:00:00Z'});const stale=ingress.snapshot()
+ const recall={messageId:'recalled-early',senderId:'alice',recallerId:'moderator',occurredAt:'2026-10-02T00:00:00Z'}
+ await ingress.recall(recall);await ingress.saveBridgeState({...stale,recoveryFromAt:undefined});await ingress.completedRange({end:'2026-10-04T00:00:00Z'});await ingress.drain()
+ const file=dingtalkChannelPaths(paths,'recall-fixture').ingressFile,persisted=JSON.parse(await readFile(file,'utf8'))
+ assert.equal(persisted.backfillThroughAt,'2026-10-03T00:00:00Z');assert.equal(persisted.recoveryFromAt,'2026-10-01T23:59:30.000Z');assert.deepEqual(persisted.pendingRecalls,[recall])
+ const cold=await openDingtalkIngress(paths,'recall-fixture');assert.equal(cold.snapshot().recoveryFromAt,persisted.recoveryFromAt)
+ await cold.recall(recall);await cold.consumed(recall,{retracted:true});await cold.saveBridgeState({...stale,recoveryFromAt:undefined});await cold.completedRange({end:'2026-10-04T00:00:00Z'});await cold.drain()
+ const after=JSON.parse(await readFile(file,'utf8'));assert.equal(after.pendingRecalls,undefined);assert.equal(after.backfillThroughAt,'2026-10-04T00:00:00Z');assert.equal(after.firstStartedAt,stale.firstStartedAt)
+})
+
+test('群聊和单聊订阅明确消息加撤回，严格绑定会话、原作者与撤回事件',async()=>{
+ const {createDwsAdapter}=await import('../packages/dingtalk-core/dws-adapter.js')
+ for(const type of ['chat-room','chat']){
+  let hooks,args
+  const native=createDwsAdapter({enabled:true,profile:'corp:user',runner:{spawn(command,callbacks){args=command;hooks=callbacks;return {done:Promise.resolve(),terminate(){}}}}})
+  const binding={conversationId:'bound-room',peerId:'alice'},recalled=[],messages=[]
+  const adapter=dingtalkIngressAdapter(native,{conversationType:type,binding},{onRecall:message=>recalled.push(message)})
+  const subscription=adapter.startGroupSubscription(binding.conversationId,event=>messages.push(event)),errors=[]
+  subscription.lifecycle.on('line-error',error=>errors.push(error.message));hooks.onStderrLine('[event] ready')
+  assert.equal(args[args.indexOf('--events')+1],'message,recall');assert.equal(args[args.indexOf('--profile')+1],'corp:user')
+  assert.equal(args[args.indexOf(type==='chat'?'--open-dingtalk-id':'--chat-id')+1],type==='chat'?'alice':'bound-room')
+  const event={type:type==='chat'?'user_im_message_recall_o2o':'user_im_message_recall_group',conversation_id:'bound-room',message_id:'m1',sender_open_dingtalk_id:'alice',recaller_open_dingtalk_id:'moderator',event_time:Date.now()}
+  const emit=event=>hooks.onStdoutLine(JSON.stringify(event))
+  emit({...event,conversation_id:'foreign-room'});emit(event)
+  assert.equal(recalled.length,1);assert.equal(recalled[0].retraction.senderId,'moderator');assert.equal(recalled[0].senderOpenDingTalkId,'alice');assert.equal(messages.length,0)
+  emit({...event,recaller_open_dingtalk_id:''});emit({...event,type:type==='chat'?'user_im_message_recall_group':'user_im_message_recall_o2o'});emit({...event,event_time:'not-a-time'})
+  assert.equal(recalled.length,1);assert.equal(errors.length,3);assert.ok(errors.every(code=>code==='DINGTALK_RECALL_IDENTITY_INVALID'))
+  if(type==='chat'){emit({...event,sender_open_dingtalk_id:'foreign-peer'});assert.equal(recalled.length,1)}
+  subscription.stop()
+ }
+})
+
+test('撤回尚未提交时，消费旧正文不能清除原游标待完成撤回',{timeout:nativeTestTimeout(90000)},async t=>{
+ const h=await defaultDwsEcho(t)
+ try{
+  h.release();const original={...h.raw,messageId:'recall-before-context',text:'Original source remains auditable'}
+  await h.receive(original);await h.app.tasks.whenIdle();const requests=h.f.requests.length
+  const register=h.channels.registerConversation.bind(h.channels)
+  h.channels.registerConversation=input=>{if(input.platformFlags?.retracted)throw Error('fixture failure before context commit');return register(input)}
+  const retraction={senderId:'alice',at:new Date().toISOString()}
+  await assert.rejects(h.receive({...original,occurredAt:retraction.at,retraction}),/fixture failure before context commit/)
+  h.channels.registerConversation=register
+  await h.receive(original)
+  const pending=JSON.parse(await readFile(h.ingressFile,'utf8'));assert.equal(pending.pendingRecalls[0].messageId,original.messageId)
+  assert.equal((await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId===original.messageId).length,1)
+  await h.restart([])
+  await eventually(()=>h.plugin.health.healthy===true,'旧正文未清除的撤回在冷恢复提交',t.signal);await h.app.tasks.whenIdle()
+  const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId===original.messageId)
+  assert.equal(sources.length,2);assert.ok(sources.every(row=>row.authorizationRevoked));assert.equal(JSON.parse(await readFile(h.ingressFile,'utf8')).pendingRecalls,undefined)
+  assert.equal(h.f.requests.length,requests);assert.equal(h.sent.length,0)
+ }finally{h.release();await h.f.close()}
 })

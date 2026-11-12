@@ -1023,6 +1023,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (original && (original.actorId !== actorId || original.text !== (message.text ?? ''))) fail('DYNAMIC_SOURCE_CONFLICT')
     const rawSource = { sourceId, groupId: message.groupId, messageId: message.messageId,
       version: message.messageVersion ?? 1, actorId, senderName: message.senderName ?? '', text: message.text ?? '',
+      ...message.platformFlags?.retracted===true?{retracted:true}:{},
       quote: original&&hash(conversationQuote(original.quote??null))===hash(conversationQuote(message.quotedMessage??null))?original.quote:conversationQuote(message.quotedMessage??null), resources: message.resourceRefs ?? message.imageRefs ?? [], timestamp: actualTime ?? '' }
     if (!original && config.ingressEpoch && (!actualTime || Date.parse(actualTime) < Date.parse(config.ingressEpoch))) {
       const stored = await command('source.record', rawSource, `source:${sourceId}`)

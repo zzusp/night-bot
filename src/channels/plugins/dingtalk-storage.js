@@ -35,6 +35,7 @@ export async function readDingtalkIngress(file){
   const value=JSON.parse(await readRegular(file)??'{"paused":false}')
   if(!value||typeof value.paused!=='boolean'||['recoveryFromAt','pausedAt','firstStartedAt','backfillThroughAt','consumedAt'].some(key=>value[key]!==undefined&&(typeof value[key]!=='string'||!Number.isFinite(Date.parse(value[key])))))throw failure('DINGTALK_INGRESS_STATE_INVALID')
   if(value.deferredMessages!==undefined&&(!Array.isArray(value.deferredMessages)||value.deferredMessages.some(message=>!message||typeof message.messageId!=='string'||!message.messageId||message.messageId.length>256||typeof message.occurredAt!=='string'||!Number.isFinite(Date.parse(message.occurredAt)))))throw failure('DINGTALK_INGRESS_STATE_INVALID')
+  if(value.pendingRecalls!==undefined&&(!Array.isArray(value.pendingRecalls)||value.pendingRecalls.some(row=>!row||['messageId','senderId','recallerId'].some(key=>typeof row[key]!=='string'||!row[key]||row[key].length>256)||typeof row.occurredAt!=='string'||!Number.isFinite(Date.parse(row.occurredAt)))))throw failure('DINGTALK_INGRESS_STATE_INVALID')
   return value
 }
 export async function openDingtalkIngress(paths,channelId,{fromAt,checkOnly=false,storageKey}={}){
@@ -55,7 +56,7 @@ export async function openDingtalkIngress(paths,channelId,{fromAt,checkOnly=fals
   }
   const overlap=value=>new Date(Math.max(0,Date.parse(value)-30_000)).toISOString()
   const earlier=(...values)=>values.filter(value=>value!==undefined).sort((left,right)=>Date.parse(left)-Date.parse(right))[0]
-  const deferredFrom=current=>(current.deferredMessages??[]).reduce((from,message)=>earlier(from,overlap(message.occurredAt)),undefined)
+  const deferredFrom=current=>[...current.deferredMessages??[],...current.pendingRecalls??[]].reduce((from,message)=>earlier(from,overlap(message.occurredAt)),undefined)
   return {
     get changed(){return JSON.stringify(state)!==previous},
     snapshot(){const from=state.backfillThroughAt?overlap(state.backfillThroughAt):state.firstStartedAt;return {...state,recoveryFromAt:earlier(state.recoveryFromAt,from,deferredFrom(state))}},
@@ -71,13 +72,18 @@ export async function openDingtalkIngress(paths,channelId,{fromAt,checkOnly=fals
       if(prior&&Date.parse(prior.occurredAt)<=Date.parse(message.occurredAt))return current
       return {...current,deferredMessages:[...messages.filter(row=>row.messageId!==message.messageId),{messageId:message.messageId,occurredAt:message.occurredAt}],recoveryFromAt:earlier(current.recoveryFromAt,overlap(message.occurredAt))}
     }),
-    consumed:message=>save(current=>{
+    recall:message=>save(current=>{
+      if(current.pendingRecalls?.some(row=>row.messageId===message.messageId))return current
+      return {...current,pendingRecalls:[...current.pendingRecalls??[],message],recoveryFromAt:earlier(current.recoveryFromAt,overlap(message.occurredAt))}
+    }),
+    consumed:(message,{retracted=false}={})=>save(current=>{
       const value={...current}
       if(!current.consumedAt||Date.parse(message.occurredAt)>Date.parse(current.consumedAt))Object.assign(value,{consumedAt:message.occurredAt,consumedMessageId:message.messageId})
+      if(retracted&&current.pendingRecalls){value.pendingRecalls=current.pendingRecalls.filter(row=>row.messageId!==message.messageId);if(!value.pendingRecalls.length)delete value.pendingRecalls}
       if(current.deferredMessages){value.deferredMessages=current.deferredMessages.filter(row=>row.messageId!==message.messageId);if(!value.deferredMessages.length)delete value.deferredMessages}
       return value
     }),
-    completedRange:range=>save(current=>current.deferredMessages?.length?current:!current.backfillThroughAt||Date.parse(range.end)>Date.parse(current.backfillThroughAt)?{...current,backfillThroughAt:range.end}:current),
+    completedRange:range=>save(current=>current.deferredMessages?.length||current.pendingRecalls?.length?current:!current.backfillThroughAt||Date.parse(range.end)>Date.parse(current.backfillThroughAt)?{...current,backfillThroughAt:range.end}:current),
     async drain(){await tail;if(lastError)throw lastError},
   }
 }
@@ -93,6 +99,7 @@ export async function assertDingtalkTargetSwitch(paths,channelId,nextBinding){
     await assertDingtalkStoragePath(paths,files.bindingFile);await assertDingtalkStoragePath(paths,files.ingressFile)
     const binding=await readDingtalkBinding(files.bindingFile)
     if(binding&&dingtalkBindingKey(binding)===dingtalkBindingKey(nextBinding))continue
-    if((await readDingtalkIngress(files.ingressFile)).deferredMessages?.length)throw failure('DINGTALK_CHANNEL_SWITCH_BLOCKED')
+    const ingress=await readDingtalkIngress(files.ingressFile)
+    if(ingress.deferredMessages?.length||ingress.pendingRecalls?.length)throw failure('DINGTALK_CHANNEL_SWITCH_BLOCKED')
   }
 }

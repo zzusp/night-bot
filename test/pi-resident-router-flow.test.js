@@ -243,7 +243,7 @@ test('all four default dispositions keep original handling independent of an unk
 
 test('durable receipt echoes tolerate later DWS flags without replacing existing message facts',{timeout:nativeTestTimeout(40000)},async t=>{
   const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{hash}=await import('../src/memory/format.js'),{apply:applyDws,validateConfig:validateDws}=await import('../src/channels/plugins/dingtalk-dws.js')
-  const sent=[],readbacks=[],at=new Date().toISOString(),flag=(args,key)=>args[args.indexOf(key)+1]
+  const sent=[],readbacks=[],revisionReads=[],at=new Date().toISOString(),flag=(args,key)=>args[args.indexOf(key)+1]
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),source=>({needsHandling:false,...source.text==='Original request receipt-original'?{reply:'Bounded synthetic reply'}:{}}))
@@ -261,7 +261,10 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
     }else if(args.includes('+messages-query-send-status')){
       const message=sent.find(row=>row.openTaskId===flag(args,'--open-task-id'));value={result:{sendStatus:'SUCCESS',openConversationId:message.conversationId,openMessageId:message.messageId}}
     }else if(args.includes('+messages-mget')){
-      const message=sent.find(row=>row.messageId===flag(args,'--msg-ids'));readbacks.push(message);value={complete:true,hasMore:false,failedCount:0,failures:[],foundCount:1,notFoundMessageIds:[],messages:[message]}
+      const id=flag(args,'--msg-ids');let message=sent.find(row=>row.messageId===id)
+      if(message)readbacks.push(message)
+      else if(id===original.messageId){revisionReads.push(id);message={messageId:id,conversationId:original.conversationId,senderOpenDingTalkId:original.senderId,text:original.text,createTime:at}}
+      value={complete:true,hasMore:false,failedCount:0,failures:[],foundCount:message?1:0,notFoundMessageIds:message?[]:[id],messages:message?[message]:[]}
     }else throw Error('Unexpected synthetic DWS command: '+args.slice(0,3).join(' '))
     return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
   },spawn(){throw Error('No listener in the local receipt regression')}}
@@ -297,7 +300,15 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   assert.equal(h.requests.length,requests);assert.equal(sent.length,sends)
   assert.deepEqual(await h.query('source.list'),beforeSources)
   assert.deepEqual(JSON.parse(await readFile(file,'utf8'))[identity.sessionId].messageFacts,beforeFacts,'proven historical flag enrichment never replaces frozen facts')
-  for(const change of [{text:'Changed actual content'},{senderId:'foreign-actor'},{text:'Changed actual content',platformFlags:{messageAiSendFlag:'DWS',automated:true}},{senderId:'foreign-actor',platformFlags:{messageAiSendFlag:'DWS',automated:true}}])await assert.rejects(receive({...original,...change}),error=>error.code==='CHANNEL_MESSAGE_ID_CONFLICT')
+  for(const platformFlags of [undefined,{messageAiSendFlag:'DWS',automated:true}]){
+    await receive({...original,text:'Changed actual content',...platformFlags?{platformFlags}:{}})
+    await assert.rejects(receive({...original,senderId:'foreign-actor',...platformFlags?{platformFlags}:{}}),{code:'CHANNEL_MESSAGE_ID_CONFLICT'})
+  }
+  assert.deepEqual(revisionReads,[original.messageId,original.messageId],'迟到差异必须精确回读当前版本')
+  await h.service.whenIdle()
+  assert.deepEqual(await h.query('source.list'),beforeSources)
+  assert.deepEqual(JSON.parse(await readFile(file,'utf8'))[identity.sessionId].messageFacts,beforeFacts)
+  assert.equal(h.requests.length,requests);assert.equal(sent.length,sends)
   await assert.rejects(h.host.ctx.channels.registerConversation({...original,platformFlags:{messageAiSendFlag:'DWS',automated:true,unproven:true}}),{code:'CHANNEL_MESSAGE_ID_CONFLICT'},'core fingerprint stays strict; only the plugin may consume a proven routed duplicate')
   const fresh={...echo,messageId:'fresh-same-account',platformFlags:{messageAiSendFlag:'DWS',automated:true}}
   assert.notEqual((await receive(fresh)).reason,'own-notification')
@@ -309,7 +320,7 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   await h.service.whenIdle()
   assert.equal((await h.query('source.list')).length,4,'only exact conversation/message receipts are echoes; account, flags and text alone are insufficient')
   assert.equal(sent.length,sends);assert.equal((await h.query('task.list')).length,0)
-  t.diagnostic(JSON.stringify({case:'existing-fact-dws-echo',coldFactsUnchanged:true,preciseEchoIgnored:true,provenFlagEnrichmentConsumed:true,changedContentActorRejected:true,coreFingerprintStrict:true,crossChannelAndConversationKept:true,receiptlessSameAccountKept:true,realDwsExecuted:false}))
+  t.diagnostic(JSON.stringify({case:'existing-fact-dws-echo',coldFactsUnchanged:true,preciseEchoIgnored:true,provenFlagEnrichmentConsumed:true,lateDifferenceReadback:true,foreignActorRejected:true,coreFingerprintStrict:true,crossChannelAndConversationKept:true,receiptlessSameAccountKept:true,realDwsExecuted:false}))
 })
 
 test('in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued',{timeout:nativeTestTimeout(45000)},async t=>{

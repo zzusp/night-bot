@@ -145,7 +145,17 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(prior&&a.conversation?.conversationId===input.groupId&&['chat','chat-room'].includes(type)&&((prior.channel==='im'&&input.channel===type)||(input.channel==='im'&&prior.channel===type)))input.channel=prior.channel
       const result = reduce('source.record',input,commandId)
       const source = result.result.source
-      if (!source || source.routed) return result
+      if (!source) return result
+      if(source.retracted){
+        for(const previous of rows('sources').filter(row=>row.groupId===source.groupId&&row.messageId===source.messageId)){
+          if(previous.actorId!==source.actorId)fail('DYNAMIC_SOURCE_CONFLICT')
+          previous.authorizationRevoked=true
+          if(previous.sourceId===source.sourceId){previous.routed=true;previous.routedAt??=new Date().toISOString();previous.routeReceipt={kind:'message-retracted'}}
+          write('sources',previous)
+        }
+        return changed({source:read('sources',source.sourceId)})
+      }
+      if (source.routed) return result
       const conversationId = a.conversation?.conversationId ?? source.groupId
       if (conversationId !== source.groupId) fail('ROUTER_CONVERSATION_SCOPE')
       const id = `triage:${source.sourceId}`
@@ -267,7 +277,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     }
   }
   function query(q) {
-    if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
+    if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}
     if(q.kind==='router.source-status')return {triage:read('triage',`triage:${q.sourceId}`,true),event:rows('router_inbox').find(row=>row.sourceId===q.sourceId)??null}
     if(q.kind==='router.get')return read('conversations',q.conversationId,true)
