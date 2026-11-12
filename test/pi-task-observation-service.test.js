@@ -35,6 +35,7 @@ test('actual default Host TaskService records SDK model/tool progress privately 
  }
  assert.equal(f.requests.length,1,JSON.stringify(service.listAlerts()))
  assert.equal(performance.rows.length,1,JSON.stringify({alerts:service.listAlerts(),errors}))
+ assert.ok(performance.rows[0].phaseMs['session-store-open']?.count>0);assert.ok(performance.rows[0].phaseMs['request-prepare'].count>0);assert.ok(performance.rows[0].phaseMs.skills.count>0);
  assert.equal(performance.rows[0].modelCalls,1);assert.equal(performance.rows[0].toolCalls,1);assert.equal(performance.rows[0].toolResults,1)
  const activities=service.listActivities(task.taskId)
  assert.ok(activities.some(row=>row.type==='model-completed'));assert.ok(activities.some(row=>row.type==='tool-completed'))

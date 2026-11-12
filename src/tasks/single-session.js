@@ -1,3 +1,4 @@
+import {finishTaskBusinessInputs} from '../runtime/pi-business-notices.js'
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
 import {conversationReplyScopeInstructions,conversationSource} from '../channels/message-safety.js'
 import {preflightPiFileMutation,isPiFileObservationalTool,isPiFileMutationNotStarted} from '../pi-file-tool-registration.js'
@@ -161,7 +162,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           const jobs=ctx.get('jobs')
           if(typeof jobs?.list!=='function')throw fail('TASK_JOB_DRAIN_UNPROVEN')
           if(decision.action==='complete'&&(jobs.list(actor.id).some(job=>['running','stopping'].includes(job.status))||unresolvedNativeJobReceipts(await actor.receipts.read(),actor.id).length))throw fail('TASK_NOT_QUIESCENT')
-          const result=await submit(decision,binding);entry.submitted=true;exec.concludeTurn();return {received:true,...result}
+          const result=await submit(decision,binding);entry.submitted=true;exec.concludeTurn();await finishTaskBusinessInputs(actor);return {received:true,...result}
         }})
         // Capture business read capabilities before agent-created listeners
         // can replace a same-named registration. File tools are mounted by the

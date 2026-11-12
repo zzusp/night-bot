@@ -1,3 +1,4 @@
+import {bindBusinessNotices,enqueueBusinessNotice} from '../src/runtime/pi-business-notices.js'
 import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -40,8 +41,8 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
  async function build(options,resume){
   const id=options.sessionId??options.resumeSessionId,store=resume?await persistence.openNative(id,{auditKinds:{...admissionAuditKinds,...options.auditKinds}}):await persistence.createNative({...options.meta,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds:{...admissionAuditKinds,...options.auditKinds}})
   for(const receipt of options.initialReceipts??[])store.appendAudit(receipt)
-  let actor,scope,official,detach,unbindDirectory,running=Promise.resolve(),disposed=false
-  const admission=await createBusinessAdmission({store,authorize:packet=>options.authorizeInput(packet,actor)})
+  let actor,scope,official,detach,unbindDirectory,running=Promise.resolve(),disposed=false,unbindNotices,publishNotice
+  const admission=await createBusinessAdmission({store,authorize:packet=>options.authorizeInput(packet,actor),bindInternal:port=>{publishNotice=port}})
   const receipts={append:receipt=>store.appendAudit(receipt),read:()=>store.readAudit(),commit:()=>store.commit()}
   try{
    official=await createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxRetries:0}},settingsManager:SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}}),admission,
@@ -50,12 +51,12 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
     prepareActor:async value=>{actor=value;actor.metadata=Object.freeze({...store.header});actor.receipts=receipts;scope=createScope(ctx,actor);actor.ctx=scope.ctx;await options.setup(scope.ctx,actor)},
     beforeStoreClose:async()=>{admission.pause();await options.drainBusiness(actor)},
    })
-   actor.piSession=official.session;detach=ctx.agents.enter(actor,undefined);actors.push(actor)
+   actor.piSession=official.session;unbindNotices=bindBusinessNotices(actor,{enqueue:publishNotice,isLive:()=>!disposed,finishTaskRun:()=>admission.finishTaskRun(official.session)});detach=ctx.agents.enter(actor,undefined);actors.push(actor)
    unbindDirectory=bindWorkingDirectoryActor(actor,{initialDirectory:store.header.cwd,isLive:()=>!disposed&&ctx.agents.get(id)===actor,readDirectory:()=>store.header.cwd,appendChange:async()=>{throw Error('not used')},admitNotice:async()=>{throw Error('not used')}})
    actor.input={enqueue:packet=>admission.enqueue(packet),deliver:(id,options)=>{running=official.deliver(id,options);return running}}
    actor.whenIdle=async()=>{await Promise.allSettled([running]);await official.session.agent.waitForIdle()}
    actor.cancel=()=>official.session.abort()
-   const dispose=async()=>{if(disposed)return;await official.close();disposed=true;await admission.close();detach();unbindDirectory();await scope.dispose()}
+   const dispose=async()=>{if(disposed)return;await official.close();disposed=true;await admission.close();unbindNotices();detach();unbindDirectory();await scope.dispose()}
    return {agent:actor,dispose}
   }catch(error){official?.session.dispose();detach?.();unbindDirectory?.();await scope?.dispose();await store.close();throw error}
  }
@@ -88,13 +89,16 @@ test('single task uses official SDK directly, cold-resumes one session and never
 })
 test('ordinary tool error after an effect remains unknown and blocks retries, submission and cold replay',async t=>{
  let submissions=0
- const f=await fixture(t,()=>({calls:[{name:'write'},{name:'task_result',arguments:{decision}}]}),{effect:async()=>{throw Error('failed after external write')}})
+ const f=await fixture(t,(_context,n)=>({calls:n===1?[{name:'write'},{name:'task_result',arguments:{decision}}]:[{name:'task_result',arguments:{decision:{action:'wait',summary:'Prior effect remains unknown',evidence:[],limitations:['Reconciliation required before new effects']}}}]}),{effect:async()=>{throw Error('failed after external write')}})
  const held=await run(f,{submit:async()=>{submissions++;return{accepted:true}}})
  assert.equal(held.status,'no_submission');assert.equal(held.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY');assert.equal(held.effectDisposition,'held');assert.equal(held.failure.code,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
  assert.equal(f.effects,1);assert.equal(submissions,0);const count=f.requests.length;assert.equal(count,1)
  f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
- assert.deepEqual(await run(f),{status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'})
- assert.equal(f.requests.length,count);assert.equal(f.effects,1)
+ // A cold session is intentionally allowed to inspect receipts and report wait,
+ // but not replay the unknown write. An endless invalid complete/write script
+ // would test provider nontermination rather than the no-replay contract.
+ assert.deepEqual(await run(f),{status:'submitted'})
+ assert.equal(f.requests.length,count+1);assert.equal(f.effects,1)
  const stored=await f.persistence.readNative('single')
  assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1)
  assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,0)
@@ -159,4 +163,41 @@ test('supersession never converts a factory startup cleanup failure into a drain
  const sessions=createSingleTaskSessions({ctx:{sessionPersistence:{async readNative(id){throw Object.assign(new Error('new'),{name:'SessionPersistenceNotFoundError',sessionId:id})}},agents:{async create(){throw cause}}},isCurrent:async()=>false,getWorkspaceDir:async()=>'/authorized/task'})
  await assert.rejects(sessions.run({binding:{taskId:'task',sessionId:'startup',sessionBound:false},input:{},onSessionBound:async()=>{},submit:async()=>{}}),error=>error.code==='TASK_SESSION_DRAIN_FAILED'&&error.taskSessionDrained===false&&error.cause===cleanupFailure)
  await assert.rejects(sessions.close(),{code:'TASK_SESSION_DRAIN_FAILED',taskSessionDrained:false})
+})
+
+
+test('committed task result retires queued job notices without another SDK attempt and preserves late receipt idempotency',async t=>{
+ let f
+ f=await fixture(t,(_context,n)=>{
+  assert.equal(n,1,'no model request after result submission')
+  return {calls:[{name:'task_result',arguments:{decision}}]}
+ })
+ const notice=id=>({id,source:{kind:'job-completion',jobId:id,terminalReceiptId:'receipt-'+id},content:'Producer completed'})
+ await run(f,{submit:async()=>{
+  const actor=f.actors[0]
+  // All thirteen completed jobs were durably queued while the task was busy.
+  for(let i=0;i<13;i++){const packet=notice('job-'+i);await enqueueBusinessNotice(actor,packet);await actor.input.deliver(packet.id,{deliverAs:'followUp'})}
+  assert.equal(actor.piSession.agent.hasQueuedMessages(),true)
+  return {accepted:true}
+ }})
+ assert.equal(f.requests.length,1)
+ const stored=await f.persistence.readNative('single',{requireComplete:true})
+ assert.equal(stored.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled'&&row.payload.reason==='task-result-committed').length,13)
+ assert.equal(stored.entries.filter(row=>row.type==='message'&&row.message.role==='assistant').length,1)
+ const store=await f.persistence.openNative('single',{auditKinds:{...admissionAuditKinds,...(await import('../src/tasks/single-session.js')).singleTaskAuditKinds}})
+ // A cold admission restores cancellation; it must not reconstruct a follow-up.
+ const admission=await createBusinessAdmission({store,authorize:()=>true})
+ assert.deepEqual(admission.pending(),[])
+ await admission.close();await store.close()
+})
+
+
+test('wait result retires this run notices without preventing the same task from resuming on a new lease',async t=>{
+ let action='wait'
+ const f=await fixture(t,()=>({calls:[{name:'task_result',arguments:{decision:{...decision,action}}}]}))
+ assert.equal((await run(f)).status,'submitted')
+ f.binding={...f.binding,sessionBound:true,leaseEpoch:2};action='complete'
+ assert.equal((await run(f)).status,'submitted')
+ assert.equal(f.requests.length,2)
+ assert.equal(f.actors.length,2)
 })

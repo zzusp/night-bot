@@ -24,7 +24,7 @@ const fail=code=>Object.assign(new Error(code),{code})
 export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,onSkillCommand,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
- let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false
+ let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false,taskFinished=false
  const healthy=()=>{if(failure)throw failure;if(closed)throw fail('PI_BUSINESS_ADMISSION_CLOSED')}
  const append=(kind,payload)=>store.appendAudit({version:1,domain:'admission',kind,payload})
  function restore(receipt){
@@ -72,7 +72,10 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
     if(!internal&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
     const previous=packets.get(packet.id)
     if(previous){if(!isDeepStrictEqual(previous,packet))throw fail('PI_BUSINESS_ADMISSION_ID_CONFLICT');return {id:packet.id,duplicate:true,admitted:admitted.has(packet.id)||commands.status(packet.id)==='admitted'}}
-    append(internal?'enqueued-internal':'enqueued',packet);await commit();packets.set(packet.id,packet);if(internal)internalPackets.add(packet.id)
+    append(internal?'enqueued-internal':'enqueued',packet)
+    const retire=taskFinished&&internal&&packet.source.kind==='job-completion'
+    if(retire)append('cancelled',{id:packet.id,reason:'task-result-committed'})
+    await commit();packets.set(packet.id,packet);if(internal)internalPackets.add(packet.id);if(retire)cancelled.add(packet.id)
     return {id:packet.id,duplicate:false,admitted:false}
    })
  }
@@ -92,6 +95,21 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   resume(){healthy();paused=false;pauseReason=undefined},
   get paused(){return paused},
   beforeRequest:()=>serialize(async()=>{if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED');await acknowledge();await commands.beforeRequest()}),
+  // Host-only task result boundary. Pi's terminate ends a tool turn, but its
+  // AgentSession otherwise restarts queued follow-ups after agent_end. Clear
+  // that ephemeral queue before returning the result, retaining all business
+  // inputs and terminal job facts in the durable ledger. Only authenticated
+  // internal job notices are retired; user supplements remain pending.
+  finishTaskRun(session){
+   healthy();taskFinished=true;paused=true;session.clearQueue()
+   return serialize(async()=>{
+    await acknowledge()
+    const ids=[...internalPackets].filter(id=>packets.get(id).source.kind==='job-completion'&&!admitted.has(id)&&!cancelled.has(id))
+    for(const id of ids)append('cancelled',{id,reason:'task-result-committed'})
+    await commit();for(const id of ids)cancelled.add(id)
+    return ids
+   })
+  },
   cancelPending(reason='user'){
    return serialize(async()=>{
     if(typeof reason!=='string'||!reason)throw new TypeError('Cancellation reason required')
@@ -111,7 +129,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
    })
   },
   async deliver(session,id,{deliverAs='steer'}={}){
-   healthy();if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
+   healthy();if(taskFinished&&internalPackets.has(id)&&packets.get(id)?.source.kind==='job-completion')return {id,retired:true};if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(!['steer','followUp'].includes(deliverAs))throw fail('PI_BUSINESS_ADMISSION_MODE_INVALID')
    const packet=packets.get(id);if(!packet)throw fail('PI_BUSINESS_ADMISSION_MISSING')
    if(cancelled.has(id))throw fail('PI_BUSINESS_INPUT_CANCELLED')
@@ -120,7 +138,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
    await serialize(acknowledge)
    if(admitted.has(id)||inflight.has(id))return {id,duplicate:true}
    if(!internalPackets.has(id)&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
-   healthy();if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
+   healthy();if(taskFinished&&internalPackets.has(id)&&packets.get(id)?.source.kind==='job-completion')return {id,retired:true};if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(admitted.has(id)||inflight.has(id))return {id,duplicate:true}
    const command=!internalPackets.has(id)?skillCommand(packet):undefined
    if(command){

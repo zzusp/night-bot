@@ -532,7 +532,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 				},
 				timeoutMs: {
 					type: "number",
-					description: promote ? "Timeout in milliseconds. The executor applies its configured default and cap; on expiry the command moves to the background as a job instead of being killed." : "Timeout in milliseconds. The executor applies its configured default and cap, and kills the command on expiry."
+					description: promote ? "Timeout in milliseconds. The executor applies its configured default and cap; on expiry the command moves to the background as a job instead of being killed. For short checks, omit this option to use the configured default rather than forcing a 1000ms background handoff; reserve explicit background execution for genuinely long work." : "Timeout in milliseconds. The executor applies its configured default and cap, and kills the command on expiry."
 				},
 				workdir: {
 					type: "string",

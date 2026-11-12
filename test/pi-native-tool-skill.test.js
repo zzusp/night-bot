@@ -30,3 +30,27 @@ test('official skill resources require complete authorized paths and never carry
  await assert.rejects(native.officialSkillResources({complete:true,skills:[summary]},{resolveFilePath:async()=> 'relative/SKILL.md'}),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
  assert.deepEqual(await native.officialSkillResources({complete:true,skills:[]}),[])
 })
+
+test('official skill mapping overlaps bounded independent authorization reads and preserves catalog order',async()=>{
+ const skills=Array.from({length:9},(_,index)=>({...summary,name:'skill-'+index})),pending=[],started=[]
+ let active=0,peak=0
+ const mapped=native.officialSkillResources({complete:true,skills},{resolveFilePath:skill=>{started.push(skill.name);active++;peak=Math.max(peak,active);return new Promise(resolve=>pending.push(()=>{active--;resolve('/authorized/'+skill.name+'/SKILL.md')}))}})
+ assert.equal(started.length,4)
+ while(pending.length){const wave=pending.splice(0);for(const finish of wave.reverse())finish();await new Promise(resolve=>setImmediate(resolve))}
+ const resources=await mapped
+ assert.equal(peak,4);assert.equal(active,0)
+ assert.deepEqual(resources.map(item=>item.name),skills.map(item=>item.name))
+ for(const maxConcurrency of [0,-1,9,1.5,NaN])await assert.rejects(native.officialSkillResources({complete:true,skills:[]},{maxConcurrency}),/concurrency/)
+})
+
+test('failed parallel skill mapping drains outstanding reads and never schedules or publishes partial resources',async()=>{
+ const failure=Object.assign(new Error('revoked'),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'}),skills=Array.from({length:7},(_,index)=>({...summary,name:'skill-'+index})),pending=[]
+ let settled=false,started=0
+ const mapped=native.officialSkillResources({complete:true,skills},{resolveFilePath:skill=>{started++;return new Promise((resolve,reject)=>pending.push({resolve:()=>resolve('/authorized/'+skill.name+'/SKILL.md'),reject}))}})
+ const checked=assert.rejects(mapped,error=>error===failure).then(()=>{settled=true})
+ pending[0].reject(failure);await new Promise(resolve=>setImmediate(resolve))
+ assert.equal(started,4);assert.equal(settled,false,'caller cannot retry while scoped reads from the rejected snapshot are running')
+ for(const read of pending.slice(1))read.resolve()
+ await checked
+ assert.equal(settled,true);assert.equal(started,4)
+})

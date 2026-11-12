@@ -267,3 +267,7 @@ Exact existing request retries return their original receipts before the new-wri
 check, and pending/unknown receipts and already-authorized delayed deliveries
 remain recoverable without replay. External channels keep their own identities;
 the recent-conversation list still includes retained Web histories and external conversations.
+
+### Router 空闲交接与任务完成延迟
+
+Router inbox 暂时为空不代表会话已空闲。会话仍有未归档的 active/active 任务时，保留当前 Pi generation，优先接纳后续补充和任务完成事件，不在每次安排结束后立即启动无工具交接。任务结清后仍经原来的耐久摘要、候选提交和唯一 owner 发布流程轮换；长会话的上下文仍由 Pi 管理。已开始的交接不能旁路，期间到达的事件继续耐久排队。此优化避免可预见的完成事件等待不必要轮换，不表示已开始的交接耗时已被消除。

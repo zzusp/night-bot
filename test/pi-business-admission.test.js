@@ -71,3 +71,23 @@ test('private notice origin survives restart without granting authority to a for
  let calls=0;await restored.deliver({async sendCustomMessage(message){calls++;store.manager.appendCustomMessageEntry(message.customType,message.content,message.display,message.details)}},notice.id)
  assert.equal(calls,1);assert.deepEqual(restored.pending(),[])
 })
+
+
+test('task result drains only internal job notices, keeps user input and rejects replay across late settlement and restart',async t=>{
+ const f=await fixture(t);let publish,clears=0
+ const queue=await createBusinessAdmission({store:f.store,authorize:()=>true,bindInternal:port=>{publish=port}})
+ const job={id:'job-before',source:{kind:'job-completion'},content:'finished'},external={id:'user-job-string',source:{kind:'job-completion'},content:'not an internal notice'}
+ await publish(job);await queue.enqueue(packet);await queue.enqueue(external)
+ await queue.finishTaskRun({clearQueue(){clears++}})
+ assert.equal(clears,1);assert.equal(queue.status(job.id),'cancelled')
+ assert.deepEqual(queue.pending(),[packet.id,external.id])
+ const late={...job,id:'job-after'};await publish(late);await publish(late)
+ assert.equal(queue.status(late.id),'cancelled')
+ assert.deepEqual(await queue.deliver({sendCustomMessage(){throw Error('must never dispatch')}},late.id),{id:late.id,retired:true})
+ await queue.close();await f.store.close()
+ const store=await f.backend.openNative('admission',f.options),restored=await createBusinessAdmission({store,authorize:()=>true})
+ assert.equal(restored.status(job.id),'cancelled');assert.equal(restored.status(late.id),'cancelled')
+ assert.deepEqual(restored.pending(),[packet.id,external.id])
+ assert.equal((await store.readAudit()).filter(row=>row.kind==='cancelled'&&row.payload.id===late.id).length,1)
+ await restored.close();await store.close()
+})
