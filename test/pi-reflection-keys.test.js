@@ -246,3 +246,15 @@ test('new pre-effect failures retain the retry protocol and can infer again with
  assert.equal(f.analyses,2);assert.equal((await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)].status,'done')
  assert.deepEqual((await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries.map(row=>row.key),['retry'])
 })
+
+test('descriptor-only review key reservations still include expired occupied names',async t=>{
+ const f=await fixture(t,input=>[lesson(input,'expired-name')]),memory=f.ctx.memory.store
+ let now=Date.now();memory.now=()=>now
+ await memory.remember(f.scope,{topic:'experience',key:'expired-name',text:'Retained expired fact',expiresAt:new Date(now+1000).toISOString(),source:{sessionId:'prior',messageId:'prior'}})
+ now+=2000
+ await f.start()
+ const review=(await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)]
+ assert.equal(review.status,'done');assert.equal(review.lessons[0].memoryKey,'expired-name-2')
+ assert.deepEqual((await memory.index(f.scope,{topic:'experience'})).entries.map(entry=>entry.key),['expired-name-2'])
+ assert.equal((await memory.index(f.scope,{topic:'experience',includeExpired:true})).entries.length,2)
+})

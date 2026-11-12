@@ -1,6 +1,7 @@
 import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
 import {officialReflectionText} from './reflection-inference.js'
+import {reflectionInput} from './reflection-input.js'
 import {assignReflectionMemoryKeys,reflectionMemoryKey,reviewMemoryKeys,reviewLessonMemoryKey,reflectionRetrySupported} from './reflection-keys.js'
 import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
@@ -20,7 +21,7 @@ export default class Reflection extends Service {
   }
   async [Service.init](){
     await this.host.memory.bindingReady
-    const scope=memoryScope({actorId:'host'}),state=await this.state(scope),entries=(await this.host.memory.store.read(scope,{topic:'experience'})).entries,revision=(await this.host.memory.store.index(scope)).revision
+    const scope=memoryScope({actorId:'host'}),state=await this.state(scope),entries=await this.supportEntries(scope,state),revision=(await this.host.memory.store.index(scope)).revision
     for(const [key,value]of Object.entries(state.skills))if(value.active&&validKey(key)&&learnedSkillSupported(value,entries))await atomicWrite(join(this.directory(scope),'skills',key,'SKILL.md'),this.renderSkill(scope,key,value,revision))
   }
   attachStore(store,{ownerActorId,model,credentials,onReview,responsibilityFor}={}){
@@ -53,11 +54,12 @@ export default class Reflection extends Service {
       if(previous&&(previous.status==='done'||previous.status==='skipped'||!reflectionRetrySupported(previous))){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
       if(previous?.attempts>=3||previous?.retryAt>Date.now())return
       const attempts=(previous?.attempts??0)+1
+      let inputRecord=previous?.input
       try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
-        const facts=[{id:event.id,kind:'task.completed',summary:brief(event.result?.summary??event.result??task.completion?.result?.summary??'completed')},...executions.slice(-12).map(row=>({id:row.executionId,kind:'execution',status:row.status,summary:brief(row.result?.summary??row.error??row.stageProgress?.summary??'')})),...operations.slice(-24).map(row=>({id:row.operationId??row.id,kind:'operation',status:row.state,tool:row.toolName??row.name??''}))]
-        const known=new Set(facts.map(f=>f.id)),input={taskId:task.taskId,eventId:event.id,facts}
-        const snapshot=await this.host.memory.store.transaction(scope,state=>({revision:state.meta.revision,entries:state.topics.get('experience')?.entries??[]}))
+        const input=reflectionInput(task,event,executions,operations),known=new Set(input.facts.map(f=>f.id))
+        if(!previous?.lessons)inputRecord={sha256:hash(JSON.stringify(input)),coverage:input.coverage}
+        const snapshot=await this.host.memory.store.index(scope,{topic:'experience',includeExpired:true})
         let scopeRevision=snapshot.revision
         const timeout=AbortSignal.timeout(30000),signal=AbortSignal.any([this.abort.signal,timeout])
         let lessons=previous?.lessons
@@ -78,7 +80,7 @@ export default class Reflection extends Service {
         lessons=assignReflectionMemoryKeys(lessons,snapshot.entries,state.reviews)
         // Commit key reservations before any memory/skill effects so retries use
         // the same receipt identity even after a crash or an intervening forget.
-        state.reviews[id]={memoryKeyVersion:1,status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
+        state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
         await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
         for(const lesson of lessons){
           signal.throwIfAborted()
@@ -88,7 +90,7 @@ export default class Reflection extends Service {
           lesson.memoryWrite='uncertain'
           await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
           let result
-          try{result=await this.host.memory.store.remember(scope,{scopeRevision,expectedRevision:0,topic:'experience',key:memoryKey,text:renderMemoryContent(lesson),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))},provenance:this.host.memory.provenance({task})})}
+          try{result=await this.host.memory.store.remember(scope,{scopeRevision,expectedRevision:0,topic:'experience',key:memoryKey,text:renderMemoryContent(lesson),content:{summary:lesson.summary,why:lesson.why,howToApply:lesson.howToApply},source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(input.facts))},provenance:this.host.memory.provenance({task})})}
           catch(error){if(!['committed','uncertain'].includes(previousWrite)&&['MEMORY_SCOPE_CHANGED','MEMORY_REVISION_CONFLICT'].includes(error.code))lesson.memoryWrite='not-applied';throw error}
           if(!result.ok)continue
           lesson.memoryWrite='committed'
@@ -112,9 +114,9 @@ export default class Reflection extends Service {
           await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
           if(lesson.skill)await this.publishSkill(scope,lesson.key,state)
         }
-        state.reviews[id]={memoryKeyVersion:1,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
+        state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
-      }catch(error){state.reviews[id]={...state.reviews[id],memoryKeyVersion:1,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
+      }catch(error){state.reviews[id]={...state.reviews[id],memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
     })
   }
@@ -126,7 +128,7 @@ export default class Reflection extends Service {
   }
   async readSkills(scope,{key}={}){
     if(key!==undefined&&!validKey(key))throw failure('REFLECTION_SKILL_INVALID')
-    const state=await this.state(scope),entries=(await this.host.memory.store.read(scope,{topic:'experience'})).entries
+    const state=await this.state(scope),entries=await this.supportEntries(scope,state)
     return {...key!==undefined?{revision:state.skills[key]?.revision??state.skillRevisions?.[key]??0}:{},entries:Object.entries(state.skills).filter(([name])=>key===undefined||name===key).map(([name,value])=>({key:name,name:'learned-'+name,revision:value.revision,active:value.active&&learnedSkillSupported(value,entries),origin:value.origin??'task-reflection',source:value.source??null,applicability:value.applicability,...key!==undefined?{steps:value.steps,reason:value.reason}:{}}))}
   }
   async publishSkill(scope,key,state){
@@ -242,11 +244,18 @@ export default class Reflection extends Service {
     reviews.sort((a,b)=>(b.at??'').localeCompare(a.at??'')||a.reviewId.localeCompare(b.reviewId))
     return {status:'ready',reviews,changes,revision:hash(JSON.stringify([reviews,changes]))}
   }
+  async supportEntries(scope,state){
+    if(!Object.values(state.skills).some(skill=>skill.active&&skill.origin!=='router'))return []
+    return (await this.host.memory.store.index(scope,{topic:'experience'})).entries.slice(0,50)
+  }
   async catalog(requestedAgent){
     const agent=this.host.agents.currentInitiator()??requestedAgent;if(!agent)return []
     const binding=await this.host.memory.binding(agent);if(!binding)return []
     const result=[]
-    for(const {scope}of readableScopes(binding)){const state=await this.state(scope);for(const [key,skill]of Object.entries(state.skills))if(skill.active){const current=await this.host.memory.store.read(scope,{topic:'experience'});if(!learnedSkillSupported(skill,current.entries))continue;result.push({name:'learned-'+key,description:skill.applicability,provider:'learned',source:skill.origin??'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})}}
+    for(const {scope}of readableScopes(binding)){
+      const state=await this.state(scope),entries=await this.supportEntries(scope,state)
+      for(const [key,skill]of Object.entries(state.skills))if(skill.active&&learnedSkillSupported(skill,entries))result.push({name:'learned-'+key,description:skill.applicability,provider:'learned',source:skill.origin??'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})
+    }
     return result
   }
   async skill(candidate,agent){

@@ -309,7 +309,7 @@ test('configured channel responsibilities isolate all model roles through the de
     for(const role of required){
       const requests=observed.filter(row=>row.room===room.key&&row.role===role);assert.ok(requests.length,room.key+' '+role+' reached the actual model endpoint')
       for(const request of requests){assert.ok(request.system.includes(room.responsibility),room.key+' '+role+' preserves the complete literal responsibility');assert.ok(!request.system.includes(rooms.find(other=>other!==room).responsibility));assert.ok(!request.system.includes(spoof));assert.ok(!request.system.includes(old))}
-      if(role==='reflection')for(const request of requests){assert.deepEqual(request.tools,[]);assert.equal(request.body.messages.length,2);const input=JSON.parse(request.body.messages[1].content);assert.equal(input.taskId,task.taskId);assert.equal(input.eventId,event.id);assert.deepEqual(Object.keys(input).sort(),['eventId','facts','taskId'])}
+      if(role==='reflection')for(const request of requests){assert.deepEqual(request.tools,[]);assert.equal(request.body.messages.length,2);const input=JSON.parse(request.body.messages[1].content);assert.equal(input.taskId,task.taskId);assert.equal(input.eventId,event.id);assert.deepEqual(Object.keys(input).sort(),['coverage','eventId','facts','taskId']);assert.deepEqual(input.facts[0].evidence,['local-role-check']);assert.deepEqual(input.facts[0].limitations,[])}
     }
   }
   const notices=await app.tasks.store.query({kind:'notification.list'})

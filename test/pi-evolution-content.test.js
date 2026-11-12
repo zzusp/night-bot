@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm,mkdir,writeFile,readFile,symlink,link} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
+import {entryPath} from '../src/memory/layered-format.js'
 import {MarkdownMemoryStore} from '../src/memory/store.js'
 import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
@@ -31,7 +32,7 @@ test('memory keeps only immediately previous content, hides it from tools, survi
  await f.remember('THREE');view=await f.content(3);assert.equal(view.previous.text,'TWO');assert.equal(view.current.text,'THREE')
  assert.doesNotMatch(JSON.stringify(await f.store.read(f.scope,{topic:'facts'})),/previous|TWO|ONE/)
  assert.doesNotMatch(JSON.stringify(await f.store.search(f.scope,{query:'THREE'})),/previous|TWO|ONE/)
- const raw=await readFile(join(f.store.directory(f.scope),'topics',hash('facts')+'.md'),'utf8');assert.doesNotMatch(raw,/ONE/);assert.match(raw,/TWO/)
+ const raw=await readFile(join(f.store.directory(f.scope),entryPath('facts','choice')),'utf8');assert.doesNotMatch(raw,/ONE/);assert.match(raw,/TWO/)
  await assert.rejects(f.content(2),{code:'EVOLUTION_VERSION_STALE'})
  const cold=new MarkdownMemoryStore(f.store.root);assert.equal((await cold.transaction(f.scope,s=>s.topics.get('facts').entries[0])).previous.text,'TWO');await cold.close()
  await f.store.forget(f.scope,{topic:'facts',key:'choice'});await assert.rejects(f.content(3),{code:'EVOLUTION_ITEM_NOT_FOUND'})
@@ -110,4 +111,29 @@ test('one unsafe file does not discard a valid sibling, and watcher bursts coale
 test('installations without watchable skill roots initialize without waiting for a nonexistent watcher',async t=>{
  const f=await fixture(t),tracker=new InstalledSkillPrevious(f.store.directory(f.scope),{installRoot:f.root,skills:join(f.root,'..','outside')})
  await Promise.race([tracker.start(),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('empty watcher did not settle')),1000);timer.unref()})]);assert.equal(tracker.watcher,undefined);await tracker.close()
+})
+
+
+test('memory details resolve metadata and read only the requested entry, preserving previous content',async t=>{
+ const f=await fixture(t)
+ await f.remember('BEFORE');await f.remember('AFTER')
+ await f.store.remember(f.scope,{topic:'facts',key:'unrelated',text:'Unrelated body',source:{sessionId:'other',messageId:'other'}})
+ await writeFile(join(f.store.directory(f.scope),entryPath('facts','unrelated')),'BROKEN UNRELATED BODY')
+ f.store.transaction=()=>{throw Error('detail must not scan full inventory')}
+ const view=await f.content(2)
+ assert.equal(view.current.text,'AFTER');assert.equal(view.previous.text,'BEFORE')
+ await assert.rejects(f.content(1),{code:'EVOLUTION_VERSION_STALE'})
+})
+
+test('candidate detail lookup is not capped by the Bot read window or confused by same-key topics',async t=>{
+ const f=await fixture(t),{randomUUID}=await import('node:crypto')
+ await f.store.remember(f.scope,{topic:'facts',key:'choice',text:'Candidate target',candidate:true,source:{sessionId:'candidate',messageId:'target'}})
+ await f.store.transaction(f.scope,state=>{
+  const template=state.candidates[0]
+  state.candidates.unshift(...Array.from({length:55},(_,i)=>({...template,id:randomUUID(),topic:'other-'+i,text:'Other candidate'})))
+  state.mark()
+ })
+ const id=hash(JSON.stringify([f.scope.kind,f.scope.id,'memory','candidate','facts','choice']))
+ const result=await inspectEvolutionItem(f.memory,f.reflection,f.binding,{id,revision:'1'})
+ assert.equal(result.name,'facts/choice');assert.equal(result.current.text,'Candidate target')
 })
