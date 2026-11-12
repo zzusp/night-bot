@@ -163,3 +163,20 @@ for(const phase of ['resource-refresh','committed-claim'])test('official shutdow
  assert.equal(cold.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted').length,1);assert.equal(cold.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled').length,0)
  assert.equal(modelRequests,requests);assert.equal(f.effects,0)
 })
+
+test('only new triage may defer resource mapping; memory is bound before created listeners and first run rechecks authorization',async t=>{
+ const f=await fixture(t),original=f.factory.ports.resolveResources
+ let reads=0,bound=0,beforeRuns=0,revoked=false
+ f.factory.ports.resolveResources=async(...args)=>{const resources=await original(...args);resources.context={...resources.context,memory:{bindActor:()=>{bound++},beforeRun:()=>{beforeRuns++}},instructions:async()=>{reads++;if(revoked)throw Object.assign(new Error('revoked'),{code:'FIXTURE_REVOKED'});return []}};return resources}
+ for(const options of [{sessionId:'not-triage',meta:{cwd:f.root}},{sessionId:'router',meta:{cwd:f.root,runtimeOwner:'conversation-router'}}])await assert.rejects(f.ctx.agents.create({...options,resourceLoading:'before-run'}),{code:'PI_OFFICIAL_RESOURCE_LOADING_INVALID'})
+ await assert.rejects(f.ctx.agents.resume({sessionId:'missing-triage',resourceLoading:'before-run'}),{code:'PI_OFFICIAL_RESOURCE_LOADING_INVALID'})
+ f.ctx.on('agent/created',({agent})=>{if(agent.id==='lazy-triage'){assert.equal(bound,1);assert.equal(reads,0)}})
+ const h=await f.ctx.agents.create({sessionId:'lazy-triage',meta:{cwd:f.root,runtimeOwner:'channel-triage'},resourceLoading:'before-run'});f.setHandle(h)
+ assert.equal(reads,0);assert.equal(bound,1);revoked=true
+ await h.enqueue({id:'revoked',source:{kind:'test'},content:'custom triage input'})
+ await assert.rejects(h.deliver('revoked'),{code:'FIXTURE_REVOKED'})
+ assert.equal(beforeRuns,1);assert.ok(reads>=1);assert.equal(bound,reads+1);assert.equal(f.requests,0)
+ await h.dispose();f.setHandle(undefined);revoked=false
+ const beforeTask=reads,task=await f.ctx.agents.create({sessionId:'eager-task',meta:{cwd:f.root,runtimeOwner:'task'}});f.setHandle(task)
+ assert.equal(reads,beforeTask+1,'ordinary task retains its eager resource snapshot')
+})

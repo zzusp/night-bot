@@ -1,3 +1,4 @@
+import {TRACE_GLOBAL_LIMIT,traceEntryTime,evictTraceEntries,sourceTraceStageSchema,projectSourceTraceStage,listExecutionTrace} from '../../src/runtime/performance-trace.js'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import { ObserverMemoryPages } from './observer-memory-pages.js'
 import { stableTaskResourceIdentity, mergeTaskResources } from './task-message-projections.js'
@@ -436,6 +437,8 @@ function taskTiming(task, activities, now = Date.now()) {
   }
 }
 
+export const performanceDomainSpec=defineDomain({name:"night_performance",version:1,tables:{scheduler:domainTable(z.object({tasks:z.array(z.never()),performanceProjection:performanceProjectionSchema}))}})
+
 export async function openResidentStore(storageDomain) {
   const domain = await storageDomain.open(residentDomainSpec)
   const groupTable = domain.table('groups')
@@ -465,6 +468,14 @@ export async function openResidentStore(storageDomain) {
   }
   const topicPages = new ObserverMemoryPages(),topicPageScopes=new Map()
   const scheduler = domain.table('scheduler')
+  // Independent diagnostics, never a business authority. Legacy rows are readonly.
+  let performanceDomain,performanceTable,performanceFailure,performanceWriteFailure
+  try{performanceDomain=await storageDomain.open(performanceDomainSpec);performanceTable=performanceDomain.table('scheduler')}catch(error){performanceFailure=error}
+  const performanceRead=key=>{if(performanceFailure)return scheduler.get(key)?.performanceProjection;try{return performanceTable.get(key)?.performanceProjection??scheduler.get(key)?.performanceProjection}catch(error){performanceFailure=error;return scheduler.get(key)?.performanceProjection}}
+  const performanceProjectionEntries=()=>{const rows=new Map([...scheduler.entries()].filter(([key,value])=>key.startsWith('performance:')&&value.performanceProjection).map(([key,value])=>[key,value.performanceProjection]));if(!performanceFailure)try{for(const [key,value]of performanceTable.entries())if(key.startsWith('performance:')&&value.performanceProjection)rows.set(key,value.performanceProjection)}catch(error){performanceFailure=error};return [...rows.entries()]}
+  const performanceProjections=()=>performanceProjectionEntries().map(([,value])=>value)
+  const performanceAvailability=()=>({available:!(performanceFailure||performanceWriteFailure),...(performanceFailure||performanceWriteFailure)?{reason:'diagnostic-storage-unavailable',complete:false}:{}})
+
   const tasks = domain.table('tasks')
   let taskSessionReader
   const currentTask = id => taskSessionReader ? taskSessionReader.getTask(id) : tasks.get(id)
@@ -515,13 +526,20 @@ export async function openResidentStore(storageDomain) {
         const [partition, batch] = performanceBatches.entries().next().value
         performanceBatches.delete(partition)
         try {
-          let projection = scheduler.get(partition)?.performanceProjection
+          let projection = structuredClone(performanceRead(partition))
           const results = batch.map(item => {
-            const result = item.agentObservation === true ? projectAgentObservation(projection, item.input) : projectPerformanceEvent(projection, item.input)
+            const result = item.sourceTrace === true ? projectSourceTraceStage(projection,item.input,{owned:true}) : item.agentObservation === true ? projectAgentObservation(projection, item.input,{owned:true}) : projectPerformanceEvent(projection, item.input)
             projection = result.projection
             return { created: result.created }
           })
-          if (results.some(result => result.created)) await scheduler.put(partition, { tasks: [], ...scheduler.get(partition), performanceProjection: projection })
+          if(results.some(result=>result.created)){if(performanceFailure)throw performanceFailure;try{
+            const other=performanceProjectionEntries().filter(([key,value])=>key!==partition&&value.trace?.entries.length)
+            let total=(projection.trace?.entries.length??0)+other.reduce((sum,[,value])=>sum+value.trace.entries.length,0)
+            if(total>TRACE_GLOBAL_LIMIT)other.sort((a,b)=>Math.min(...a[1].trace.entries.map(traceEntryTime))-Math.min(...b[1].trace.entries.map(traceEntryTime)))
+            for(const [key,value]of other){if(total<=TRACE_GLOBAL_LIMIT)break;await performanceTable.put(key,{tasks:[],performanceProjection:{...value,trace:evictTraceEntries(value.trace)}});total-=value.trace.entries.length}
+            if(performanceFailure)throw performanceFailure
+            await performanceTable.put(partition,{tasks:[],performanceProjection:projection});performanceWriteFailure=undefined
+          }catch(error){performanceWriteFailure=error;throw error}}
           batch.forEach((item, index) => item.resolve(results[index]))
         } catch (error) {
           // 不发布失败投影；后续批次从持久状态重算，原事件可由调用方重试。
@@ -568,12 +586,19 @@ export async function openResidentStore(storageDomain) {
   return {
     onGroupCommitted(listener) { groupCommitted.add(listener); return () => groupCommitted.delete(listener) },
     listPerformance: (filter) => {
-      const projections = [...scheduler.entries()].map(([, value]) => value.performanceProjection).filter(Boolean)
+      const projections = performanceProjections()
       const base = listPerformance(undefined, filter)
       const rows = projections.flatMap(value => listPerformance(value, filter).rows)
-      return { ...base, observedSince: projections.map(value => value.observedSince).sort()[0] ?? null,
+      return { ...base, diagnostics:performanceAvailability(), observedSince: projections.map(value => value.observedSince).sort()[0] ?? null,
         rows, coordination: coordinationCosts(rows), workflow: workflowPerformance({ tasks: [...tasks.entries()].map(([, value]) => value), groups: [...groups.entries()].map(([, value]) => value) }, filter),
       }
+    },
+    listExecutionTrace: filter=>({...listExecutionTrace(performanceProjections(),filter),diagnostics:performanceAvailability()}),
+    recordSourceTraceStage: input=>{
+      if(closing)return Promise.reject(new Error('resident_store_closed'))
+      let stage;try{stage=sourceTraceStageSchema.parse(input)}catch(error){return Promise.reject(error)}
+      const partition=`performance:${stage.sessionId??'source-trace:'+stage.sourceId}`,batch=performanceBatches.get(partition)??[];performanceBatches.set(partition,batch)
+      const pending=new Promise((resolve,reject)=>batch.push({input:stage,sourceTrace:true,resolve,reject}));flushPerformanceBatches();return pending
     },
     recordAgentObservation: (input) => {
       if (closing) return Promise.reject(new Error('resident_store_closed'))
@@ -592,7 +617,7 @@ export async function openResidentStore(storageDomain) {
       if (!PERFORMANCE_EVENT_TYPES.has(input.event?.type) || input.event.seq <= (input.seedSeq ?? -1)) return Promise.resolve({ created: false })
       const partition = `performance:${input.sessionId}`
       const chunkKey = input.event.type === 'assistant/chunk' ? performanceChunkKey(input) : undefined
-      if (chunkKey && (pendingPerformanceChunks.has(chunkKey) || hasPerformanceFirstStream(scheduler.get(partition)?.performanceProjection, input))) return Promise.resolve({ created: false })
+      if (chunkKey && (pendingPerformanceChunks.has(chunkKey) || hasPerformanceFirstStream(performanceRead(partition), input))) return Promise.resolve({ created: false })
       if (chunkKey) pendingPerformanceChunks.add(chunkKey)
       const batch = performanceBatches.get(partition) ?? []
       performanceBatches.set(partition, batch)
@@ -1704,7 +1729,7 @@ export async function openResidentStore(storageDomain) {
       return closePromise ??= (async () => {
         while (performanceWriter) await performanceWriter
         await Promise.allSettled([...tails.values()])
-        await domain.close()
+        const closed=await Promise.allSettled([performanceDomain?.close(),domain.close()]);const failures=closed.filter(item=>item.status==='rejected').map(item=>item.reason);if(failures.length)throw new AggregateError(failures,'Resident store close failed')
       })()
     },
   }

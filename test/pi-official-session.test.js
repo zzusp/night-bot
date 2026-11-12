@@ -19,7 +19,7 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  const ctx=new Context();new NativeAgents(ctx);await ctx.plugin(Authority)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
  new NativeTools(ctx)
- let active,live=true,effects=0,policyFailure
+ let active,live=true,effects=0,policyFailure,resourceFailure,resourceReads=0
  t.after(async()=>{await active?.close();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')})
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
@@ -37,8 +37,8 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  let admission=await createBusinessAdmission({store,authorize:packet=>packet.source.kind==='coordinator'})
  ctx.on('tools/execute',async(exec,next)=>{const result=await next();store.appendAudit({version:1,domain:'effect',kind:'receipt',payload:{callId:exec.callId,state:'settled'}});await exec.agent.audit.flush();return result})
  const settings=()=>SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}})
- const create=()=>createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxTokens:31,maxRetries:0}},settingsManager:settings(),admission,beforeRequest:()=>admission.beforeRequest(),context:{systemPrompt:{officialSections(){if(policyFailure)throw policyFailure;return{}}}},createAudit:()=>({isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=> 'never',append(){throw Error('no approval expected')},flush:()=>store.commit()})})
- active=await create();assert.equal(active.actor.session,undefined)
+ const create=()=>createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxTokens:31,maxRetries:0}},settingsManager:settings(),admission,beforeRequest:()=>admission.beforeRequest(),context:{instructions:async()=>{resourceReads++;if(resourceFailure)throw resourceFailure;return []},systemPrompt:{officialSections(){if(policyFailure)throw policyFailure;return{}}}},createAudit:()=>({isLive:()=>live,isTurnOpen:()=>true,approvalPolicy:()=> 'never',append(){throw Error('no approval expected')},flush:()=>store.commit()})})
+ active=await create();assert.equal(active.actor.session,undefined);assert.equal(resourceReads,1)
  assert.throws(()=>ctx.agents.enter(active.actor,undefined),/metadata/)
  active.actor.metadata=Object.freeze({id:store.id})
  const detach=ctx.agents.enter(active.actor,undefined)
@@ -48,12 +48,20 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  await admission.enqueue({id:'one',source:{kind:'coordinator'},content:'run once'})
  await active.deliver('one');assert.deepEqual(admission.pending(),[])
  assert.equal(effects,1);assert.equal(dispatches,2)
+ assert.equal(resourceReads,4,'create + before-run + two turn boundaries, without duplicate custom-delivery read')
  const cold=await backend.readNative('official');assert.equal(cold.audit.length,3);assert.equal(cold.context.piMessages.filter(m=>m.role==='toolResult').length,1)
  await active.close();active=undefined
  store=await backend.openNative('official',options);admission=await createBusinessAdmission({store,authorize:()=>true});active=await create()
+ const beforeDuplicate=resourceReads
  assert.deepEqual(await active.deliver('one'),{id:'one',duplicate:true})
+ assert.equal(resourceReads,beforeDuplicate,'duplicate business input must not rescan resources')
  assert.equal(effects,1);assert.equal(dispatches,2,'reopening never replays a tool or dispatches the model')
  assert.ok(active.session.messages.some(m=>m.role==='toolResult'&&m.toolCallId==='effect-one'))
+ resourceFailure=Object.assign(new Error('Current instruction permission revoked'),{code:'FIXTURE_RESOURCE_REVOKED'})
+ await admission.enqueue({id:'revoked-resource',source:{kind:'coordinator'},content:'must not use stale authorized resources'})
+ await assert.rejects(active.deliver('revoked-resource'),error=>error===resourceFailure)
+ assert.equal(dispatches,2,'before-run revalidates resources and prevents a model request after revocation')
+ resourceFailure=undefined
  policyFailure=Object.assign(new Error('Signed content cannot be rewritten'),{code:'MEMORY_SIGNED_ASSISTANT_POLICY_CONFLICT'})
  await assert.rejects(active.prompt('clearly report refusal'),error=>error===policyFailure)
  assert.equal(dispatches,2);assert.equal(effects,1)

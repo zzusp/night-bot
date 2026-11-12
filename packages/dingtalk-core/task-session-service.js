@@ -346,7 +346,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(!record||record.ownerId!==actor?.id||actor.metadata?.id!==actor.id||!Object.isFrozen(actor.metadata)||ctx.get('agents')?.get(record.ownerId)!==actor)return
     try{
       // 在可信实时 actor 仍存在时捕获身份；排队写入不得依赖 dispose 后的查找。
-      let identity=['channel-triage','conversation-router'].includes(actor.metadata.runtimeOwner)?{runtimeOwner:actor.metadata.runtimeOwner,groupId:actor.metadata.conversationId}:undefined
+      let identity=['channel-triage','conversation-router'].includes(actor.metadata.runtimeOwner)?{runtimeOwner:actor.metadata.runtimeOwner,groupId:actor.metadata.conversationId,...Number.isInteger(actor.metadata.generation)&&actor.metadata.generation>0?{generation:actor.metadata.generation}:{}}:undefined
       // Startup precedes task.sessionBound. Capture only the current ledger
       // session plus its committed task identity; never infer from a path/name.
       if(!identity&&record.kind==='phase-completed'){
@@ -679,6 +679,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     pending.finally(() => { if (admissions.get(taskId) === pending) admissions.delete(taskId);admissionGroups.delete(pending) }).catch(() => {})
     return pending
   }
+  function persistSourceTraceStage(source,stage){
+    const at=value=>typeof value==='number'?value:Date.parse(value)
+    void residentStore.recordSourceTraceStage({sourceId:source.sourceId,sourceVersion:source.version,groupId:source.groupId,...stage.sessionId?{sessionId:stage.sessionId}:{},spanId:stage.spanId,requestId:stage.requestId,stage:stage.stage,...stage.phase?{phase:stage.phase}:{},startedAt:at(stage.startedAt),completedAt:stage.completedAt==null?null:at(stage.completedAt),shared:stage.shared===true}).catch(error=>ctx.logger?.warn?.(`trace timing: ${error.code??error.message}`))
+  }
   async function recordMessageStage(request, stage) {
     try {
       const group = residentStore.getGroup(request.groupId)
@@ -688,8 +692,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const sources = await query('source.list', { groupId: request.groupId })
       const matched = sources.filter(source => refs.some(ref => ref.messageId === source.messageId
         && (ref.messageVersion ?? ref.version) === source.version))
-      for (const source of matched) await command('source.stage', { sourceId: source.sourceId,
-        stage: { ...stage, shared: matched.length > 1 } })
+      for (const source of matched){const value={...stage,shared:matched.length>1};await command('source.stage',{sourceId:source.sourceId,stage:value});persistSourceTraceStage(source,value)}
     } catch (error) {
       failures.set(`timing:${stage.requestId}`, { id: `timing:${stage.requestId}`, code: error.code ?? error.message })
       ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
@@ -699,7 +702,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     try {
       const source = await query('source.get', { sourceId: ref.sourceId })
       if (!source || source.messageId !== ref.messageId || source.version !== ref.version || source.groupId !== ref.groupId) fail('DYNAMIC_SOURCE_REVISION_CONFLICT')
-      await command('source.stage', { sourceId: ref.sourceId, messageId: ref.messageId, messageVersion: ref.version, groupId: ref.groupId, stage })
+      await command('source.stage', { sourceId: ref.sourceId, messageId: ref.messageId, messageVersion: ref.version, groupId: ref.groupId, stage });persistSourceTraceStage(source,stage)
     } catch (error) {
       failures.set(`timing:${stage.requestId}`, { id: `timing:${stage.requestId}`, code: error.code ?? error.message })
       ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
@@ -1006,7 +1009,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const spans = [{ spanId: `ingress:${currentSourceId}`, stage: 'ingress', requestId: currentSourceId, attempt: 0, startedAt: receivedAt, completedAt, ...loopDelayMetadata },
         ...phases.map((phase, index) => ({ ...phase, spanId: `ingress:${currentSourceId}:${index}`, stage: 'ingress', requestId: currentSourceId, attempt: 0 }))]
       try {
-        for (const stage of spans) await command('source.stage', { sourceId: currentSourceId, stage })
+        for (const stage of spans){await command('source.stage',{sourceId:currentSourceId,stage});persistSourceTraceStage(args,stage)}
       } catch (error) {
         failures.set(`timing:${currentSourceId}`, { id: `timing:${currentSourceId}`, code: error.code ?? error.message })
         ctx.logger?.warn?.(`message timing: ${error.code ?? error.message}`)
@@ -1787,6 +1790,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return {groupId:args.groupId,sourceId:source.sourceId,phase:args.phase,status:'attempted'}
     },
 
+    async listExecutionTrace(filter){
+      if(filter.taskId&&!await query('task.get',{taskId:filter.taskId}))fail('TASK_NOT_FOUND')
+      if(filter.sourceId){const source=await query('source.get',{sourceId:filter.sourceId});if(!source||filter.groupId&&source.groupId!==filter.groupId)fail('SOURCE_NOT_FOUND');if(!Number.isInteger(filter.sourceVersion)||filter.sourceVersion<1||filter.sourceVersion>source.version)fail('SOURCE_VERSION_INVALID');filter={...filter,groupId:source.groupId}}
+      if(filter.groupId)ctx.get('channels').assertGroupTarget(filter.groupId)
+      if(filter.sessionId&&!observation.listPerformance({sessionId:filter.sessionId}).rows.some(row=>row.sessionId===filter.sessionId))fail('SESSION_NOT_FOUND')
+      return residentStore.listExecutionTrace(filter)
+    },
     listActivities: observation.listActivities, listTaskTimings: observation.listTaskTimings, listPerformance: observation.listPerformance, getActivityAuditStatus: observation.getActivityAuditStatus,
     listAlerts:observerAlerts.all, listAlertPage:observerAlerts.page,
     listTopics: groupId => residentStore.listTopics(groupId), getTopic: (groupId, topicId) => residentStore.getTopic(groupId, topicId),

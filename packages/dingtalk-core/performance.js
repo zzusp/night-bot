@@ -1,10 +1,11 @@
+import {performanceTraceSchema,appendObservationTrace} from '../../src/runtime/performance-trace.js'
 import { z } from 'zod'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 
 // 只投影计量元数据；正文、工具参数和结果不进入这个持久投影。
 export const PERFORMANCE_EVENT_TYPES = new Set(['dingtalk/coordination-dispatched', 'user/message', 'step/start', 'assistant/chunk', 'assistant/message', 'step/end', 'tool/call', 'tool/result'])
 const number = z.number().finite().nonnegative()
-const identitySchema = z.object({ runtimeOwner: z.enum(['channel-triage','conversation-router']).optional(), sessionId: z.string().min(1), groupId: z.string().optional(), taskId: z.string().optional(), requestId: z.string().optional(), submissionId: z.string().optional() })
+const identitySchema = z.object({ generation:z.number().int().positive().optional(), runtimeOwner: z.enum(['channel-triage','conversation-router']).optional(), sessionId: z.string().min(1), groupId: z.string().optional(), taskId: z.string().optional(), requestId: z.string().optional(), submissionId: z.string().optional() })
 const distributionSchema = z.object({ count: number, sum: number, max: number, frequencies: z.record(z.string(), number) })
 const intervalSchema = z.tuple([number, number])
 const bucketSchema = identitySchema.extend({
@@ -20,7 +21,7 @@ const bucketSchema = identitySchema.extend({
 })
 const nativeSessionSchema=z.object({seen:z.array(z.string()),models:z.record(z.string(),z.object({runId:z.string(),startedAt:number.optional(),firstStreamAt:number.optional(),completed:z.boolean().optional()})),tools:z.record(z.string(),identitySchema.extend({runId:z.string(),startedAt:number.optional(),completed:z.boolean().optional()}))})
 const stepSchema = z.object({ startedAt: number.optional(), firstStreamAt: number.optional(), completed: z.boolean().optional() })
-export const performanceProjectionSchema = z.object({
+export const performanceProjectionSchema = z.object({trace:performanceTraceSchema.optional(),
   nativeSessions:z.record(z.string(),nativeSessionSchema).optional(),
   observedSince: z.string(), buckets: z.record(z.string(), bucketSchema),
   sessions: z.record(z.string(), z.object({ seen: z.array(intervalSchema), steps: z.record(z.string(), stepSchema), completedSteps: z.record(z.string(), z.array(intervalSchema)).default({}),
@@ -145,7 +146,7 @@ export function projectPerformanceEvent(previous, input) {
 
 // Metadata-only SDK measurements share the existing resident performance
 // partitions. They never become Session events, turn/step sequences or messages.
-export function projectAgentObservation(previous,input){
+export function projectAgentObservation(previous,input,{owned=false}={}){
  const observation=agentObservationSchema.parse(input.observation)
  if(input.sessionId!==undefined&&input.sessionId!==observation.ownerId)throw new Error('agent_observation_owner_mismatch')
  const scope={...input,sessionId:observation.ownerId}
@@ -155,11 +156,12 @@ export function projectAgentObservation(previous,input){
  const identity=identitySchema.parse(scope),time=observation.timestamp
  const row=previous?.nativeSessions&&Object.hasOwn(previous.nativeSessions,identity.sessionId)?previous.nativeSessions[identity.sessionId]:undefined
  if(row?.seen.includes(observation.eventId))return{created:false,projection:previous}
- const projection=structuredClone(previous??{observedSince:new Date().toISOString(),buckets:{},sessions:{}})
+ const initial=previous??{observedSince:new Date().toISOString(),buckets:{},sessions:{}},projection=owned?initial:structuredClone(initial)
  projection.nativeSessions??={}
  if(!Object.hasOwn(projection.nativeSessions,identity.sessionId))Object.defineProperty(projection.nativeSessions,identity.sessionId,{value:{seen:[],models:{},tools:{}},enumerable:true,writable:true,configurable:true})
  const session=projection.nativeSessions[identity.sessionId],{kind,spanId,summary}=observation
  session.seen.push(observation.eventId)
+ appendObservationTrace(projection,identity,observation)
  const bucket=bucketFor(projection,identity,time)
  if(kind==='phase-completed'){
   bucket.phaseMs??={}

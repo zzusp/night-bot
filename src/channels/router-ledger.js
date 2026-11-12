@@ -277,7 +277,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       }else if(kind==='router.publish'){
         if(rotation.state!=='candidate-committed')fail('ROUTER_CANDIDATE_PROOF_REQUIRED')
         row.activeSessionId=rotation.candidateSessionId;row.generation++;row.phase='active';row.holderVersion++;row.lastHandoffCursor=rotation.cutoff;delete row.rotationId;rotation.state='published'
-      }else{if(a.safeToResume!==true)fail('ROUTER_RECOVERY_PROOF_REQUIRED');row.phase='active';delete row.rotationId;rotation.state='aborted';rotation.error=a.error}
+      }else{if(rotation.state!=='handoff')fail('ROUTER_ROTATION_STALE');if(a.safeToResume!==true)fail('ROUTER_RECOVERY_PROOF_REQUIRED');row.phase='active';delete row.rotationId;rotation.state='aborted';rotation.error=a.error}
       write('router_rotations',rotation);write('conversations',row);return changed({conversation:row,rotation})
     }
   }
@@ -289,6 +289,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.list')return rows('conversations')
     if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending').map(row=>row.conversationId),...rows('conversations').filter(row=>row.cursor>row.lastHandoffCursor||row.phase!=='active').map(row=>row.id)])]
     if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(row=>({...row,source:row.sourceId?read('sources',row.sourceId):undefined,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined}))
+    if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
     if(q.kind==='router.inbox-count')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').length
     if(q.kind==='router.dependencies')return rows('dependencies').filter(row=>(!q.conversationId||row.conversationId===q.conversationId)&&(!q.taskId||row.taskId===q.taskId||row.prerequisiteTaskId===q.taskId))
     if(q.kind==='router.rotations')return rows('router_rotations').filter(row=>!q.conversationId||row.conversationId===q.conversationId)

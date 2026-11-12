@@ -86,3 +86,13 @@ test('owned lifecycle preserves literal stdin input and pipe endpoint dispositio
   assert.equal(input,'literal\n$(argv)');stdout.end();direct.resolve({exitCode:0,signal:null});await handle.done;assert.equal(stdout.destroyed,false)
   range.resolve();await handle.waitForExit();control.destroy();stdout.destroy();stderr.destroy()
 })
+
+test('fatal compiler output is not exit proof or authority to kill the owned process',async()=>{
+ const f=fixture();let completed=false,drained=false
+ const done=f.handle.done.then(()=>{completed=true}),joined=f.handle.waitForExit().then(()=>{drained=true})
+ f.stderr.write('fatal error C1083: Cannot open compiler generated file\n');await tick()
+ assert.equal(completed,false);assert.equal(drained,false);assert.deepEqual(f.signals,[])
+ f.stdout.end();f.stderr.end();f.direct.resolve({exitCode:1,signal:null});await done
+ assert.equal(drained,false);assert.equal(f.cleanups,0);assert.deepEqual(f.signals,[])
+ f.range.resolve();await joined;await tick();assert.equal(f.cleanups,1);f.handle.control.destroy()
+})

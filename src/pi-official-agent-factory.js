@@ -83,6 +83,8 @@ export class OfficialAgentFactory {
   if(typeof id!=='string'||!id)throw fail('PI_OFFICIAL_FACTORY_ID_REQUIRED')
   const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,effectReconciliationAuditKinds,sessionNameAuditKinds,ports.auditKinds,options.auditKinds)
   const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
+  if(options.resourceLoading!==undefined&&options.resourceLoading!=='eager'&&options.resourceLoading!=='before-run')throw fail('PI_OFFICIAL_RESOURCE_LOADING_INVALID')
+  if(options.resourceLoading==='before-run'&&(mode==='resume'||metadata?.runtimeOwner!=='channel-triage'))throw fail('PI_OFFICIAL_RESOURCE_LOADING_INVALID')
   const store=await measurePhase('session-store-open',()=>mode==='resume'?backend.openNative(id,{auditKinds,signal:options.signal}):backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal}))
   let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,interruptPromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false,routerContinuing=false,routerResumeCheck
   const cancellationError=fail('PI_OFFICIAL_ACTOR_NOT_LIVE')
@@ -162,7 +164,10 @@ export class OfficialAgentFactory {
    options.signal.throwIfAborted();await measurePhase('session-publish',async()=>{await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true})
    await measurePhase('session-bind-names',()=>ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming}))
    skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))
-   await measurePhase('resources-create',async()=>{await bundle.bridge.refreshResources();await bundle.bridge.reloadResources()})
+   // One-shot triage has no interactive loader consumer before its custom input.
+   // Keep memory registration; defer only resource reads. Other owners stay eager.
+   if(options.resourceLoading==='before-run')await bundle.bridge.bindActor()
+   else await measurePhase('resources-create',async()=>{await bundle.bridge.refreshResources();await bundle.bridge.reloadResources()})
    observer=bindPiAgentObservation({actor,emit:(owner,record)=>owner.ctx.emit(scopeTarget(owner,owner),'night/agent-observation',owner,record),onError:()=>ownerCtx.logger.warn('Native agent observation could not be recorded')})
    let settled
    const unsubscribe=bundle.session.subscribe(event=>{if(event.type==='agent_start')settled??=Promise.withResolvers();if(event.type==='agent_settled'){settled?.resolve();settled=undefined;void ownerCtx.get('sessionNames')?.settled(actor).catch(()=>ownerCtx.logger.warn('Session name generation failed'))}})
@@ -266,28 +271,57 @@ export class OfficialAgentFactory {
      active();check();await store.commit();active();await recoveryHold.resume?.();active();routerFrozen=false
      return handle.routerCommitProof()
     },
-    async runToolFreeHandoff(packet,validate){
+    async runToolFreeHandoff(packet,validate,{signal,onPrepared}={}){
      active();if(routerContinuing||routerFrozen||maintenanceCount||admission.paused)throw fail('PI_ROUTER_HANDOFF_BUSY')
      routerFrozen=true
      await whenIdle();active();const handoffHold=await drain('maintenance');active();await handoffHold.resume?.();active()
      if(admission.pending().length||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.isStreaming||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_INPUT_PENDING')
      routerFrozen=true
      const tools=bundle.session.getActiveToolNames();bundle.session.setActiveToolsByName([])
+     const aborts=[],nativeAbortReasons=new Set()
+     const abortRun=()=>{
+      const nativeSignal=bundle.session.agent.signal
+      // AgentSession may have honoured our earlier preflight abort before
+      // our agent_start subscriber runs. Retain that exact run signal identity.
+      const collect=()=>{if(signal?.aborted&&nativeSignal?.aborted)nativeAbortReasons.add(nativeSignal.reason)}
+      const operation=Promise.resolve(bundle.session.abort()).finally(collect)
+      collect()
+      aborts.push(operation);void operation.catch(()=>{})
+     }
+     const unsubscribeAbort=bundle.session.agent.subscribe(event=>{if(event.type==='agent_start'&&signal?.aborted)abortRun()})
+     signal?.addEventListener('abort',abortRun,{once:true})
      try{
-      await publishInternal(packet);active()
+      signal?.throwIfAborted()
+      await publishInternal(packet);active();signal?.throwIfAborted()
       await bundle.deliver(packet.id)
-      await whenIdle();active()
+      await whenIdle();active();signal?.throwIfAborted()
       const last=bundle.session.messages.findLast(message=>message.role==='assistant')
       if(last?.stopReason!=='stop'||last.content?.some(item=>item.type==='toolCall'))throw fail('PI_ROUTER_HANDOFF_INCOMPLETE')
       const text=last.content.filter(item=>item.type==='text').map(item=>item.text).join('\n')
-      const handoff=await validate(text);active()
-      await store.commit();active()
-      return {handoff,commitProof:await handle.routerCommitProof()}
-     }catch(error){
-      // 存储或owner异常不恢复业务；普通模型/schema失败可安全回原代。
-      try{check();active();const hold=await drain('maintenance');active();await hold.resume?.();active();bundle.session.setActiveToolsByName(tools);routerFrozen=false;error.routerSafeToResume=true}catch{}
+      const handoff=await validate(text);active();signal?.throwIfAborted()
+      await store.commit();active();signal?.throwIfAborted()
+      const commitProof=await handle.routerCommitProof();signal?.throwIfAborted()
+      onPrepared?.()
+      return {handoff,commitProof}
+     }catch(cause){
+      // Only our exact SDK cancellation may request strict journal reopening.
+      // Never erase request/policy/storage fences, or infer cancellation by name.
+      const fences=()=>[bundle.durability.requestFailure,bundle.requestImageFailure,bundle.bridge.policyFailure].filter(Boolean)
+      const expected=value=>value===signal?.reason||nativeAbortReasons.has(value)
+      let error=cause
+      const joined=await Promise.allSettled(aborts)
+      const joinsSafe=joined.every(item=>item.status==='fulfilled'||expected(item.reason))
+      if(signal?.aborted&&expected(cause)&&joinsSafe&&!bundle.durability.failure&&fences().every(expected))error=signal.reason
+      try{
+       await whenIdle();check();active()
+       if(admission.pending().includes(packet.id))await admission.cancelInternal(packet.id,'router-handoff-preempted')
+       const hold=await drain('maintenance');active();await hold.resume?.();active()
+       bundle.session.setActiveToolsByName(tools);routerFrozen=false;error.routerSafeToResume=true
+      }catch(recoveryError){
+       if(signal?.aborted&&error===signal.reason&&expected(recoveryError)&&joinsSafe&&!bundle.durability.failure&&fences().every(expected))error.routerHandoffRecoveryRequired=true
+      }
       throw error
-     }
+     }finally{signal?.removeEventListener('abort',abortRun);unsubscribeAbort()}
     },
     routerResumeAfterHandoffFailure(){active();check();if(maintenanceFailed||admission.paused)throw fail('PI_ROUTER_RECOVERY_BLOCKED');routerFrozen=false},
     runMaintenance(action){

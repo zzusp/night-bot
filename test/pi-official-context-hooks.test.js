@@ -117,3 +117,26 @@ test('official authorized instruction resources preserve current files and rejec
  assert.deepEqual(await officialInstructionFiles(options),[{path:join(root,'AGENTS.md'),content:'AUTHORIZED_CURRENT_SOURCE'}])
  await assert.rejects(officialInstructionFiles({...options,maxBytes:50}),{code:'PI_OFFICIAL_INSTRUCTION_BUDGET_EXCEEDED'})
 })
+
+for(const phase of ['beforeRun','bind','instructions','systemPrompt','memoryPrompt'])test('owner revoked during '+phase+' stops the next context operation with the exact cancellation reason',async t=>{
+ const lifecycle=new AbortController(),reason=new Error('owner cancelled'),calls=[]
+ const step=name=>{calls.push(name);if(name===phase)lifecycle.abort(reason)}
+ const f=await fixture(t,{instructions:async()=>{step('instructions');return []},skills:async()=>[],systemPrompt:{officialSections:async()=>{step('systemPrompt');return {}}},memory:{bindActor:()=>step('bind'),beforeRun:async()=>step('beforeRun'),prompt:async()=>{step('memoryPrompt');return ''}}})
+ f.actor.lifecycle={signal:lifecycle.signal}
+ await f.session.prompt('cancel while preparing').catch(()=>{})
+ assert.equal(f.bridge.policyFailure,reason);assert.equal(f.requests.length,0)
+ const order=['beforeRun','bind','instructions','systemPrompt','memoryPrompt'];assert.deepEqual(calls,order.slice(0,order.indexOf(phase)+1))
+})
+test('real policy rejection already in flight is not rewritten to cancellation',async t=>{
+ const lifecycle=new AbortController(),reason=new Error('owner cancelled'),policy=new Error('authorization refused')
+ const f=await fixture(t,{memory:{beforeRun:async()=>{lifecycle.abort(reason);throw policy}}});f.actor.lifecycle={signal:lifecycle.signal}
+ await f.session.prompt('retain original refusal').catch(()=>{})
+ assert.equal(f.bridge.policyFailure,policy);assert.equal(f.requests.length,0)
+})
+test('turn-end cancellation does not reopen resource reads after memory completion',async t=>{
+ const lifecycle=new AbortController(),reason=new Error('owner cancelled');let reads=0
+ const f=await fixture(t,{instructions:async()=>{reads++;return []},memory:{turnEnd:async()=>lifecycle.abort(reason)}});f.actor.lifecycle={signal:lifecycle.signal}
+ await f.session.prompt('complete then close').catch(()=>{})
+ assert.equal(f.bridge.policyFailure,reason);assert.equal(f.requests.length,1);assert.equal(reads,1)
+ await assert.rejects(f.bridge.refreshResources(),error=>error===reason);assert.equal(reads,1)
+})

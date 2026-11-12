@@ -57,3 +57,13 @@ test('process privacy uses bound immutable official origin, masks private roots 
  assert.throws(()=>f.ctx.agents.withInitiator(f.foreign,()=>port.subprocess.spawn({cwd:join(f.root,'work'),argv:['node']})),{code:'PI_WORKING_DIRECTORY_ACTOR_UNBOUND'})
  assert.throws(()=>f.run(()=>port.subprocess.spawn({cwd:join(f.other,'work'),argv:['node']})),{code:'NIGHT_WORK_OUTSIDE_WORKSPACES'});assert.equal(seen.length,1)
 })
+
+test('authorized direct task process binds its own temp and fails before spawn if unavailable',async t=>{
+ const f=await fixture(t),{installProcessPrivacy}=await import('../src/memory/privacy.js'),seen=[]
+ const port={agents:f.ctx.agents,subprocess:{resolveExecutable:async()=>'/usr/bin/bwrap',spawn(spec){seen.push(spec);return{done:Promise.resolve(),collected:{}}}},spillStore:{saveText(){}},get:name=>name==='tools'?{resolveProcessAuthorization:({cwd})=>({kind:'direct',cwd})}:undefined,effect(){}}
+ await installProcessPrivacy(port,f.ctx.memoryPrivacy)
+ await f.run(()=>port.subprocess.spawn({cwd:join(f.root,'work'),argv:['node'],env:{Temp:'/host',KEEP:'value'}}).done)
+ assert.equal(seen.length,1);assert.equal(seen[0].env.TEMP,join(f.root,'tmp'));assert.equal(seen[0].env.TMP,join(f.root,'tmp'));assert.equal(seen[0].env.TMPDIR,join(f.root,'tmp'));assert.equal(seen[0].env.Temp,undefined);assert.equal(seen[0].env.KEEP,'value')
+ await (await import('node:fs/promises')).rm(join(f.root,'tmp'),{recursive:true})
+ assert.throws(()=>f.run(()=>port.subprocess.spawn({cwd:join(f.root,'work'),argv:['node']})),{code:'NIGHT_TASK_TEMP_UNAVAILABLE'});assert.equal(seen.length,1)
+})

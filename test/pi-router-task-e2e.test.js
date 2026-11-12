@@ -75,6 +75,12 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   const stored=await h.host.ctx.sessionPersistence.readNative(b.sessionId,{requireComplete:true})
   const packet=stored.audit.find(row=>row.domain==='admission'&&row.kind==='enqueued'&&row.payload.source.kind==='task-input')?.payload
   assert.ok(packet,'B evidence is retained in the real official admission packet')
+  const source=(await h.query('source.list')).find(row=>row.messageId==='ordered-work')
+  assert.ok(packet.source.traceSources?.some(ref=>ref.sourceId===source.sourceId&&ref.sourceVersion===source.version))
+  const trace=await h.service.listExecutionTrace({sourceId:source.sourceId,sourceVersion:source.version,groupId:source.groupId,limit:500})
+  assert.ok(trace.items.some(row=>row.taskId==='b-e2e'&&row.sourceLinks.some(link=>link.association==='admitted-input')))
+  const completion=await h.service.listExecutionTrace({taskId:'a-e2e',limit:500});assert.ok(completion.items.some(row=>row.runtimeOwner==='conversation-router'))
+  await assert.rejects(h.service.listExecutionTrace({sourceId:source.sourceId,sourceVersion:source.version,groupId:'foreign'}))
   const admitted=JSON.parse(packet.content.find(part=>part.type==='text').text)
   assert.deepEqual(admitted.task.dependencies,[bStarts[0].dependency])
   assert.equal(admitted.task.sessionId,b.sessionId)

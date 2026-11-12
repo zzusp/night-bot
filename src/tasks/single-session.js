@@ -1,3 +1,4 @@
+import {traceSourcesMetadata} from '../runtime/pi-agent-observation.js'
 import {finishTaskBusinessInputs,holdTaskBusinessInputs} from '../runtime/pi-business-notices.js'
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
 import {conversationReplyScopeInstructions,conversationSource} from '../channels/message-safety.js'
@@ -90,6 +91,9 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       const sources=Array.isArray(input.sources)?input.sources.map(({stages,...source})=>conversationSource(source)):input.sources
       const source={kind:'task-input',taskSession:structuredClone(binding)},content=[{type:'text',text:JSON.stringify({task:taskInputSnapshot(input.task),sources,materials:input.materials?.map(conversationSource),dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers})}]
       const packet={id:'task-input:'+fingerprint({taskId:binding.taskId,sessionId:binding.sessionId,requirementRevision:binding.requirementRevision,contextRevision:binding.contextRevision??0,controlRevision:binding.controlRevision,leaseEpoch:binding.leaseEpoch}),source,content}
+      const priorPacket=stored?.audit.find(receipt=>receipt.domain==='admission'&&['enqueued','enqueued-internal'].includes(receipt.kind)&&receipt.payload.id===packet.id)?.payload
+      if(priorPacket?.source.traceSources)source.traceSources=structuredClone(priorPacket.source.traceSources)
+      else if(!priorPacket){const refs=new Set((input.wakes??[]).flatMap(wake=>wake.kind==='task.created'?wake.payload?.sourceRefs??[]:wake.payload?.sourceIds??(wake.payload?.sourceId?[wake.payload.sourceId]:[])));Object.assign(source,traceSourcesMetadata((input.sources??[]).filter(item=>refs.has(item.sourceId))))}
       const packets=new Map([[packet.id,packet]])
       entry.packets=packets
       const syncAdmissions=actor=>{const operation=(entry.admissionTail??Promise.resolve()).then(async()=>{if(entry.admissionFailure)throw entry.admissionFailure;for(const [id,item]of entry.pending){
@@ -261,6 +265,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       const nextBinding={...structuredClone(entry.binding),contextRevision:row.contextRevision}
       const source={kind:'task-input',taskSession:structuredClone(nextBinding)}
       if(!Array.isArray(row.sourceSnapshots))throw fail('TASK_LIVE_SUPPLEMENT_SOURCE_REQUIRED')
+      const matched=row.sourceSnapshots.filter(item=>item.messageId===row.messageId);if(matched.length===1)Object.assign(source,traceSourcesMetadata(matched))
       const selected=row.sourceSnapshots.map(({stages,...item})=>conversationSource(item))
       const packet={id:'task-supplement:'+row.wakeId,source,content:[{type:'text',text:JSON.stringify({task:{...taskInputSnapshot(task),request:row.request,contextRevision:row.contextRevision,sourceRefs:row.sourceRefs},sources:selected,materials:materials.map(({resources,...item})=>({...conversationSource(item),resources:resources.map(({value,...resource})=>resource)})),supplement:{messageId:row.messageId,contextRevision:row.contextRevision}})}]}
       entry.packets.set(packet.id,packet);entry.pending.set(packet.id,{packet,binding:nextBinding,messageId:row.messageId})

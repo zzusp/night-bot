@@ -1,3 +1,4 @@
+import {skillCommand} from './pi-skill-command-input.js'
 import {bindBusinessTurnYield} from './pi-business-turn-yield.js'
 import {bindPiToolCallBatchGuard} from './pi-tool-call-batch.js'
 import {bindPiRequestImageBudget} from './pi-request-image-budget.js'
@@ -69,7 +70,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    async deliver(packetId,options){
     if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
     if(!session.isStreaming)tools.beginTurn()
-    await measurePhase('resources-deliver',async()=>{await bridge.refreshResources();await bridge.reloadResources()})
+    // Ordinary packets use sendCustomMessage: refresh at actual before_agent_start.
+    // Only slash skills need a current loader before Pi prompt expansion.
+    const packet=admission.lookupPacket?.(packetId)
+    if(!packet||skillCommand(packet))await measurePhase('resources-deliver',async()=>{await bridge.refreshResources();await bridge.reloadResources()})
     const result=await admission.deliver(session,packetId,options)
     if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure

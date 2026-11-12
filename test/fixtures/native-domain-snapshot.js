@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {openNativeDomains} from '../../src/native-domain.js'
-import {residentDomainSpec} from '../../packages/dingtalk-core/store.js'
+import {residentDomainSpec,performanceDomainSpec} from '../../packages/dingtalk-core/store.js'
 
 // An explicit offline snapshot fixture, not a storage implementation. All live
 // reads, writes, serialization, commit and rollback run in openNativeDomains.
@@ -13,11 +13,14 @@ export async function nativeResidentSnapshot(snapshot={tables:{},global:null},{b
  const root=await mkdtemp(join(tmpdir(),'night-domain-snapshot-'))
  const file=join(root,residentDomainSpec.name+'.json')
  await writeFile(file,JSON.stringify({unit:{name:residentDomainSpec.name,version:residentDomainSpec.version},...structuredClone(snapshot)}),{mode:0o600})
+ const diagnosticFile=join(root,performanceDomainSpec.name+'.json')
+ if(snapshot.diagnostics)await writeFile(diagnosticFile,JSON.stringify({unit:{name:performanceDomainSpec.name,version:performanceDomainSpec.version},...snapshot.diagnostics}),{mode:0o600})
  let pending=0,commits=0
- const domains=await openNativeDomains({root,async beforeCommit(event){await beforeCommit?.(event);pending++},onChange(){
+ const domains=await openNativeDomains({root,async beforeCommit(event){await beforeCommit?.(event);pending++},onChange(event){
   pending--;commits++
-  const saved=JSON.parse(readFileSync(file,'utf8'))
-  snapshot.tables=saved.tables;snapshot.global=saved.global
+  const saved=JSON.parse(readFileSync(event.domain===performanceDomainSpec.name?diagnosticFile:file,'utf8'))
+  if(event.domain===performanceDomainSpec.name)snapshot.diagnostics={tables:saved.tables,global:saved.global}
+  else{snapshot.tables=saved.tables;snapshot.global=saved.global}
  }})
  return {domains,snapshot,root,async settle(){
   const deadline=Date.now()+3000

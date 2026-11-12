@@ -8,10 +8,13 @@ const error=(code,message)=>Object.assign(new Error(message),{code})
 export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,instructions,skills,memory,currentDirectory,measurePhase=(_phase,run)=>run(),settingsManager=SettingsManager.inMemory({packages:[]})}){
  let resources={agentsFiles:[],skills:[]},lastOutcome,lastPolicyFailure,runPromptOptions
  const actor=()=>{const value=getActor();if(!value?.id||!value.piSession||value.session)throw error('PI_OFFICIAL_ACTOR_REQUIRED','An official AgentSession actor without a Session facade is required');return value}
+ const assertActive=current=>current.lifecycle?.signal?.throwIfAborted()
+ const bindActor=()=>{const current=actor();assertActive(current);return measurePhase('memory-bind',()=>memory?.bindActor?.(current))}
  async function refreshResources(){
-  const current=actor()
-  await measurePhase('memory-bind',()=>memory?.bindActor?.(current))
+  const current=actor();assertActive(current)
+  await bindActor();assertActive(current)
   const [agentsFiles,skillList]=await Promise.all([measurePhase('instructions',()=>instructions?.(current)??[]),measurePhase('skills',()=>skills?.(current)??[])])
+  assertActive(current)
   if(!Array.isArray(agentsFiles)||!Array.isArray(skillList))throw error('PI_OFFICIAL_RESOURCES_INVALID','Official resource arrays required')
   // Commit both snapshots together; a failed scoped read keeps neither half.
   resources={agentsFiles,skills:skillList}
@@ -22,13 +25,13 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
  const guarded=handler=>async(event,ctx)=>{try{return await handler(event,ctx)}catch(cause){lastPolicyFailure=cause;ctx.abort();throw cause}}
  const extensionFactory=pi=>{
   pi.on('before_agent_start',guarded((event,ctx)=>measurePhase('before-run',async()=>{
-   const current=actor();lastOutcome=undefined;lastPolicyFailure=undefined
-   await measurePhase('memory-before-run',()=>memory?.beforeRun?.(current,ctx))
-   await measurePhase('resources-before-run',()=>refreshResources())
-   const sections=await measurePhase('system-prompt',()=>systemPrompt?.officialSections(current)??{})
+   const current=actor();lastOutcome=undefined;lastPolicyFailure=undefined;assertActive(current)
+   await measurePhase('memory-before-run',()=>memory?.beforeRun?.(current,ctx));assertActive(current)
+   await measurePhase('resources-before-run',()=>refreshResources());assertActive(current)
+   const sections=await measurePhase('system-prompt',()=>systemPrompt?.officialSections(current)??{});assertActive(current)
    for(const key of Object.keys(event.systemPromptOptions.sections))if(key.startsWith('night_'))delete event.systemPromptOptions.sections[key]
    Object.assign(event.systemPromptOptions.sections,sections)
-   const policy=await measurePhase('memory-prompt',()=>memory?.prompt?.(current))
+   const policy=await measurePhase('memory-prompt',()=>memory?.prompt?.(current));assertActive(current)
    if(policy)event.systemPromptOptions.sections['night_memory_index']=policy
    runPromptOptions=event.systemPromptOptions
    event.systemPromptOptions.contextFiles=resources.agentsFiles
@@ -47,13 +50,13 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    // Cancellation drains the accepted SDK turn; it must not reopen scoped
    // resource reads after the actor's lifetime capability has been revoked.
    if(current.lifecycle?.signal.aborted)return
-   await memory?.turnEnd?.(current,event,ctx)
-   await measurePhase('resources-turn-end',async()=>{await refreshResources();await reloadResources()})
+   await memory?.turnEnd?.(current,event,ctx);assertActive(current)
+   await measurePhase('resources-turn-end',async()=>{await refreshResources();assertActive(current);await reloadResources();assertActive(current)})
    if(runPromptOptions){runPromptOptions.contextFiles=resources.agentsFiles;runPromptOptions.skills=resources.skills;if(currentDirectory)runPromptOptions.cwd=await currentDirectory(current)}
   }))
   pi.on('agent_settled',async(event,ctx)=>{await memory?.settled?.(actor(),{...event,outcome:lastOutcome},ctx)})
  }
  const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,extensionFactories:[{name:'night-business-context',factory:extensionFactory}],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:'',appendSystemPrompt:[],agentsFilesOverride:()=>({agentsFiles:resources.agentsFiles}),skillsOverride:()=>({skills:resources.skills,diagnostics:[]})})
  const reloadResources=()=>measurePhase('sdk-reload',()=>resourceLoader.reload())
- return {extensionFactory,resourceLoader,refreshResources,reloadResources,get policyFailure(){return lastPolicyFailure}}
+ return {extensionFactory,resourceLoader,bindActor,refreshResources,reloadResources,get policyFailure(){return lastPolicyFailure}}
 }
