@@ -3,7 +3,7 @@ import {tmpdir} from 'node:os'
 import { spawn } from 'node:child_process'
 const groups = {
   runtime: ['fixed-topics-native','task-session-follow-conflict-native','task-session-service-native','task-session-provider-native','task-session-model-native','task-session-persistence-native','task-session-skills-native','task-session-progress-native','task-session-human-native','task-session-execution-provider-recovery-native','task-session-job-recovery-native','task-session-live-supplement-native'],
-  routing: ['pi-source-stage-timing','pi-resident-triage','pi-triage','pi-resident-router','pi-resident-router-flow','pi-router-ledger','pi-router-task-e2e','pi-router-skill-refresh','pi-resident-router-upgrade','task-topic-routing-native','topic-routing-clarification-native','topic-routing-hold-native','task-notification-retry-native'],
+  routing: ['pi-router-memory-reconciliation','pi-source-stage-timing','pi-resident-triage','pi-triage','pi-resident-router','pi-resident-router-flow','pi-router-ledger','pi-router-task-e2e','pi-router-skill-refresh','pi-resident-router-upgrade','task-topic-routing-native','topic-routing-clarification-native','topic-routing-hold-native','task-notification-retry-native'],
   containment: ['task-single-artifact-kernel-native','native-tools-runtime','native-sandbox-runtime','native-shell-env-kernel-wire','native-shell-kernel-wire','native-memory-privacy-kernel'],
   domain: ['dws-adapter','dws-file-adapter','dws-bridge','group-notification','native-dws-send','task-final-delivery','task-artifact-files','task-artifact-write','coordination-schedule-revisions','task-notification-readback','topic-runtime','topic-facts','workflow-uat-build-authorization'],
 }
