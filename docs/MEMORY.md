@@ -42,6 +42,16 @@ The envelope and content hash are validated. Direct edits which invalidate hashe
 are refused, rather than silently imported as trusted memory. Use the guarded
 commands/tools to modify records. Directory names do not expose raw actor/group IDs.
 
+Task retrospectives use the lesson's semantic key, such as
+`experience/audit-unattributed-scaling`. A conflicting key receives a numeric
+suffix (`-2`, `-3`, ...); it never overwrites another memory. The selected key is
+saved in the review before writes, so interrupted retries keep the same identity.
+Task/event/session provenance remains in record metadata, review destinations and
+learned-skill support references, not a mandatory `task-<hash>-` name prefix.
+Task learning views and forgetting follow those explicit references. No legacy
+prefix reconstruction or automatic data migration is provided. These are logical
+entry names within topic Markdown files, not individual on-disk filenames.
+
 ## Identity is a Host responsibility
 
 Memory is mounted by the default Host but fails closed until a trusted adapter binds
