@@ -255,7 +255,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./pi-session-persistence.js', import.meta.url).href, config: { root: join(root, 'sessions'), compression: 'none' } },
       { name: new URL('./native-workspace.js', import.meta.url).href }, { name: new URL('./native-skills.js', import.meta.url).href }, { name: new URL(paths.mode==='portable'?'./memory/private-fs.js':'./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
       { name: new URL('./native-agent-presets.js', import.meta.url).href, config: { default: 'night-bot' } },
-      { name: new URL('./pi-official-runtime.js', import.meta.url).href, config: { model: config.model, memoryModel: config.memory?.model??config.model, skillDirs:config.skillDirs, fileTools:config.fileTools, maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
+      { name: new URL('./pi-official-runtime.js', import.meta.url).href, config: { model: config.model, memoryModel: config.memory?.model??config.model, roleModels, skillDirs:config.skillDirs, fileTools:config.fileTools, maxParallelToolCalls: config.maxParallelToolCalls ?? 4 } },
       { name: new URL('./native-session-controller.js', import.meta.url).href },
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
       { name: new URL('./memory/service.js', import.meta.url).href, config: {...config.memory,skillDirs:config.skillDirs??[]} },

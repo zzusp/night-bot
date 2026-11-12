@@ -11,23 +11,26 @@ export function createTaskSessionObservability({ store, listTasks, resolveSessio
   if (!Number.isSafeInteger(activityLimit) || activityLimit < 1 || activityLimit > 500) throw new Error('activity_limit_invalid')
   const activities = new Map()
   const currentIds = () => new Set(listTasks().map(task => task.taskId))
+  const visible = (identity,ids) => identity && (ids.has(identity.taskId) || identity.runtimeOwner==='channel-triage' && identity.taskId===undefined && typeof identity.groupId==='string' && identity.groupId.length>0)
   const performance = (filter = {}) => {
     const base = store.listPerformance?.(filter) ?? listPerformance(undefined, filter)
-    const ids = currentIds(), rows = base.rows.filter(row => ids.has(row.taskId))
+    const ids = currentIds(), rows = base.rows.filter(row => visible(row,ids))
     const { workflow: _retired, coordination: _oldCoordination, ...result } = base
     return { ...result, rows, coordination: coordinationCosts(rows),
-      completeness: 'incomplete', limitations: ['observed-native-events-only', 'business-wait-boundaries-unavailable', 'native-model-completion-observed-after-durable-commit', 'sdk-assistant-attempts-not-provider-dispatch-count'],
+      completeness: 'incomplete', limitations: ['observed-native-events-only', 'business-wait-boundaries-unavailable', 'native-model-completion-observed-after-durable-commit', 'sdk-assistant-attempts-not-provider-dispatch-count', 'nested-and-parallel-phases-not-additive'],
       ...(typeof store.recordAgentObservation !== 'function' || typeof store.listPerformance !== 'function' ? { status: 'unsupported' } : {}) }
   }
   return {
-    async observeNative(input) {
-      const event=agentObservationSchema.parse(input),identity=resolveSessionIdentity(event.ownerId)
-      if(!identity||!currentIds().has(identity.taskId))return{created:false}
+    // capturedIdentity 仅由 Host 在实时 actor 校验后或自身分流计时入口提供。
+    async observeNative(input,capturedIdentity) {
+      const event=agentObservationSchema.parse(input),identity=capturedIdentity??resolveSessionIdentity(event.ownerId)
+      if(!visible(identity,currentIds()))return{created:false}
       const eventKey=event.eventId
       if(!activities.has(eventKey)){
         const detail={}
         if(event.kind==='tool-completed')detail.isError=event.summary.isError===true
         activities.set(eventKey,{activityId:eventKey,eventKey,sessionId:event.ownerId,taskId:identity.taskId,
+          ...(identity.runtimeOwner?{runtimeOwner:identity.runtimeOwner}:{}),
           ...(identity.groupId?{groupId:identity.groupId}:{}),type:event.kind,runId:event.runId,entryId:event.entryId,
           occurredAt:new Date(event.timestamp).toISOString(),detail,observedSince,coverage:'bounded-process-window',completeness:'incomplete'})
         while(activities.size>activityLimit)activities.delete(activities.keys().next().value)
@@ -57,7 +60,7 @@ export function createTaskSessionObservability({ store, listTasks, resolveSessio
     },
     listActivities(taskId) {
       const ids = currentIds()
-      return structuredClone([...activities.values()].filter(item => ids.has(item.taskId) && (taskId === undefined || item.taskId === taskId)))
+      return structuredClone([...activities.values()].filter(item => visible(item,ids) && (taskId === undefined || item.taskId === taskId)))
     },
     listPerformance: performance,
     listTaskTimings() {

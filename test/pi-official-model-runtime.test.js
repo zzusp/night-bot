@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createServer} from 'node:http'
 import {OfficialPiModelRuntime} from '../src/pi-official-model-runtime.js'
-import {resolvePiProfiles} from '../src/pi-provider-catalog.js'
+import {registerHooks} from 'node:module'
+import {preloadPiProtocols,resolvePiProfiles} from '../src/pi-provider-catalog.js'
 import {piAuthentication} from '../src/pi-provider-auth.js'
 import {createAgentSession,SessionManager,SettingsManager,DefaultResourceLoader} from '@earendil-works/pi-coding-agent'
 import {mkdtemp,mkdir,rm} from 'node:fs/promises'
@@ -17,6 +18,18 @@ function fixture(raw,environment={FIXTURE_KEY:'private-fixture-key'}) {
 }
 async function serverFixture(t,handler) {const server=createServer(handler);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve))});return `http://127.0.0.1:${server.address().port}/v1`}
 function respond(res,text='OFFICIAL_DIRECT') {res.writeHead(200,{'content-type':'text/event-stream'});res.write('data: '+JSON.stringify({id:'native-stream',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({id:'native-stream',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:3,total_tokens:5}})+'\n\ndata: [DONE]\n\n');res.end()}
+test('selected official protocol is really imported once without requests or credential access',async t=>{
+ const loaded=[],hook=registerHooks({load(url,context,next){if(/\/api\/(anthropic-messages|openai-completions|openai-responses)\.js$/.test(url))loaded.push(url.split('/').at(-1));return next(url,context)}})
+ t.after(()=>hook.deregister())
+ const fetch=t.mock.method(globalThis,'fetch',async()=>{throw Error('Preloading must not request a model')})
+ const profiles=resolvePiProfiles({selected:{api:'anthropic-messages',baseURL:'http://127.0.0.1:1',models:[{id:'m'}]},unused:declaration('http://127.0.0.1:1').fixture,invalid:{models:[{id:'broken'}]}},{deferred:true})
+ Object.defineProperty(profiles.get('selected'),'apiKeyEnv',{get(){throw Error('Credential reference must not be read')}})
+ const selections=[{provider:'selected',model:'m'},{provider:'invalid',model:'broken'},{provider:'missing',model:'m'}]
+ assert.deepEqual(await preloadPiProtocols(profiles,selections),['anthropic-messages'])
+ assert.deepEqual(await preloadPiProtocols(profiles,selections),['anthropic-messages'])
+ assert.deepEqual(loaded,['anthropic-messages.js']);assert.equal(fetch.mock.callCount(),0)
+})
+
 test('official runtime serves only configured models with explicit controls and no home stores',async()=>{
  const f=fixture(declaration('http://127.0.0.1:1/v1')),resolved=await f.runtime.resolve({provider:'fixture',model:'m'})
  assert.equal(resolved.model.id,'m');assert.equal(resolved.model.compat.supportsDeveloperRole,false);assert.equal(resolved.requestOptions.maxTokens,64);assert.equal(resolved.thinkingLevel,undefined)
@@ -100,7 +113,11 @@ test('actual Host exposes only the official runtime plus metadata routes',async 
  const base=await serverFixture(t,async(req,res)=>{for await(const _ of req){}respond(res,'HOST_OFFICIAL_RUNTIME')})
  const root=await mkdtemp(join(tmpdir(),'night-official-host-'));let host
  t.after(async()=>{await host?.close();await rm(root,{recursive:true,force:true})})
- host=await createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:declaration(base)},{environmentOptions:{cwd:root,home:root,inherited:{FIXTURE_KEY:'host-scoped-fixture-key'}}})
+ const order=[],hook=registerHooks({resolve(specifier,context,next){if(specifier.startsWith('@earendil-works/pi-ai/api/'))order.push(specifier);return next(specifier,context)}})
+ t.after(()=>hook.deregister())
+ const source=`export const inject=['officialAgentFactory'];export function apply(ctx){ctx.provide('preloadGateChecked',true)}`
+ host=await createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:{...declaration(base),triage:{api:'anthropic-messages',baseURL:'http://127.0.0.1:1',models:[{id:'triage'}]}},roleModels:{triage:{provider:'triage',model:'triage'}}},{environmentOptions:{cwd:root,home:root,inherited:{FIXTURE_KEY:'host-scoped-fixture-key'}},extraPlugins:[{name:'data:text/javascript,'+encodeURIComponent(source)}]})
+ assert.equal(host.ctx.get('preloadGateChecked'),true);assert.ok(order.includes('@earendil-works/pi-ai/api/openai-completions'));assert.ok(order.includes('@earendil-works/pi-ai/api/anthropic-messages'))
  const api=host.ctx.nativePiProvider;assert.equal(host.ctx.get('llm'),undefined);assert.equal(host.ctx.get('llmRetry'),undefined);assert.equal(api.adapter,undefined);assert.equal(host.ctx.nativeModelRoutes.stream,undefined);assert.ok(api.profiles);assert.ok(api.official instanceof OfficialPiModelRuntime)
  const resolved=await api.official.resolve({provider:'fixture',model:'m'}),message=await resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'host-direct',timestamp:1}]}).result()
  assert.equal(message.content[0].text,'HOST_OFFICIAL_RUNTIME')

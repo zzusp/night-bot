@@ -8,14 +8,16 @@ const hash=z.string().regex(/^[a-f0-9]{64}$/)
 const number=z.number().finite().nonnegative()
 const timestamp=number.max(8640000000000000)
 const usage=z.strictObject({input:number.optional(),output:number.optional(),cacheRead:number.optional(),cacheWrite:number.optional(),totalTokens:number.optional()})
-export const AGENT_OBSERVATION_KINDS=Object.freeze(['input-admitted','model-started','model-first-token','model-completed','tool-started','tool-completed','run-settled'])
+export const AGENT_OBSERVATION_KINDS=Object.freeze(['input-admitted','model-started','model-first-token','model-completed','tool-started','tool-completed','run-settled','phase-completed'])
+export const AGENT_PHASES=Object.freeze(['triage-total','workspace','session-create','session-store-open','session-store-commit','session-admission-restore','session-state-restore','session-prepare-actor','session-resolve-resources','session-sdk-create','session-publish','session-bind-names','session-skills-bind','resources-create','resources-deliver','resources-before-run','before-run','memory-before-run','system-prompt','memory-prompt','context-projection','resources-turn-end','memory-bind','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','request-sdk-prepare','triage-commit','session-dispose'])
 export const agentObservationSchema=z.strictObject({
  version:z.literal(1),ownerId:id,runId:id,entryId:id.nullable(),spanId:hash,eventId:hash,
  kind:z.enum(AGENT_OBSERVATION_KINDS),timestamp,
- summary:z.strictObject({isError:z.boolean().optional(),stopReason:z.enum(['stop','length','toolUse','error','aborted']).optional(),usage:usage.optional(),inputBytes:z.number().int().nonnegative().optional(),sourceKind:z.enum(['coordinator','user','other']).optional(),outcome:z.enum(['completed','aborted','failed','unknown']).optional()}),
+ summary:z.strictObject({phase:z.enum(AGENT_PHASES).optional(),elapsedMs:number.optional(),isError:z.boolean().optional(),stopReason:z.enum(['stop','length','toolUse','error','aborted']).optional(),usage:usage.optional(),inputBytes:z.number().int().nonnegative().optional(),sourceKind:z.enum(['coordinator','user','other']).optional(),outcome:z.enum(['completed','aborted','failed','unknown']).optional()}),
 }).superRefine((value,ctx)=>{
  if(['input-admitted','model-completed'].includes(value.kind)&&value.entryId===null)ctx.addIssue({code:'custom',path:['entryId'],message:'Committed official entry required'})
- const allowed=value.kind==='input-admitted'?['inputBytes','sourceKind']:value.kind==='model-completed'?['stopReason','usage']:value.kind==='tool-completed'?['isError']:value.kind==='run-settled'?['outcome']:[]
+ if(value.kind==='phase-completed'&&(value.summary.phase===undefined||value.summary.elapsedMs===undefined||!['completed','failed'].includes(value.summary.outcome)))ctx.addIssue({code:'custom',path:['summary'],message:'Host phase, duration and outcome required'})
+ const allowed=value.kind==='phase-completed'?['phase','elapsedMs','outcome']:value.kind==='input-admitted'?['inputBytes','sourceKind']:value.kind==='model-completed'?['stopReason','usage']:value.kind==='tool-completed'?['isError']:value.kind==='run-settled'?['outcome']:[]
  for(const key of Object.keys(value.summary))if(!allowed.includes(key))ctx.addIssue({code:'custom',path:['summary',key],message:'Metadata does not belong to this observation kind'})
  if(value.eventId!==agentObservationEventId(value))ctx.addIssue({code:'custom',path:['eventId'],message:'Observation identity mismatch'})
 })
@@ -105,4 +107,20 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
  }
  const offAgent=session.agent.subscribe(agentEvent),offSession=session.subscribe(sessionEvent)
  return{async close(){if(!closed){closed=true;offAgent();offSession();spans.clear();sources.clear();model=undefined}await Promise.allSettled([...reports])}}
+}
+
+/** Host 计时只提交元数据；计量失败不能回滚业务或触发输入重放。 */
+export function createAgentPhaseTimer({ownerId,emit,onError=()=>{},clock=Date.now,elapsed=()=>performance.now()}){
+ const report=cause=>{try{const result=onError(cause);if(result?.then)void Promise.resolve(result).catch(()=>{})}catch{}}
+ return async(phase,operation)=>{
+  const started=elapsed();let outcome='failed'
+  try{const result=await operation();outcome='completed';return result}
+  finally{
+   try{
+    const record=makeAgentObservation({ownerId,runId:'host-lifecycle',entryId:null,spanId:createHash('sha256').update(randomUUID()).digest('hex'),kind:'phase-completed',timestamp:clock(),summary:{phase,elapsedMs:Math.max(0,elapsed()-started),outcome}})
+    const result=emit(record)
+    if(result?.then)void Promise.resolve(result).catch(report)
+   }catch(cause){report(cause)}
+  }
+ }
 }
