@@ -30,8 +30,10 @@ const hooks = registerHooks({
     return next(url, context);
   },
 });
-let TaskExecutionDetails, LearningChanges, ApiError;
+let TaskExecutionDetails, LearningChanges, ApiError, TaskList, taskDurationText;
 try {
+  ({TaskList} = await import('../src/TasksPage.tsx'));
+  ({taskDurationText} = await import('../src/task-duration.ts'));
   ({TaskExecutionDetails} = await import('../src/components/TaskExecutionDetails.tsx'));
   ({LearningChanges} = await import('../src/components/LearningChanges.tsx'));
   ({ApiError} = await import('../src/api.ts'));
@@ -89,4 +91,17 @@ test('empty, unavailable, loading, stale and revoked learning snapshots remain d
   assert.match(stale, /上次获取的数据/); assert.match(stale, /保留任务来源/); assert.match(stale, /重新获取/);
   const denied = renderLearning(ready, 'changes', {error: new ApiError(403, 'RESOURCE_FORBIDDEN')});
   assert.doesNotMatch(denied, /保留任务来源|已应用|暂无学习变更/); assert.match(denied, /记录暂不可读/);
+});
+
+
+test('task list displays both duration columns and unknown history without fabricated zero', () => {
+ resource = {...resource, data: {items: [{taskId: 't', title: '任务', state: 'waiting', durations: {observedAt: '2026-01-01T00:00:10Z', total: {milliseconds: 65000, activeSince: null}, execution: {milliseconds: null, activeSince: null}}}], total: 1, offset: 0, nextOffset: null}};
+ const html = renderToStaticMarkup(createElement(TaskList, {route: new URL('http://local/tasks')}));
+ assert.match(html, /总时长/); assert.match(html, /执行时长/); assert.match(html, /1 分 5 秒/); assert.match(html, /class="task-duration">—</);
+});
+test('duration formatting uses server clock plus monotonic elapsed and handles boundaries', () => {
+ const fixed = milliseconds => taskDurationText({milliseconds, activeSince: null}, undefined, 9000);
+ assert.equal(fixed(0), '0 毫秒'); assert.equal(fixed(999), '999 毫秒'); assert.equal(fixed(1000), '1 秒'); assert.equal(fixed(1999), '1 秒'); assert.equal(fixed(3600000), '1 小时 0 分'); assert.equal(fixed(86400000), '1 天 0 小时');
+ assert.equal(taskDurationText({milliseconds: 2000, activeSince: '2026-01-01T00:00:00Z'}, '2026-01-01T00:00:10Z', 3000), '15 秒');
+ assert.equal(taskDurationText({milliseconds: null, activeSince: null}, undefined, 0), '—');
 });

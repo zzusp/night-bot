@@ -72,11 +72,11 @@ test('snapshot time is rendered immediately before the canonical refresh button,
 
 test('stale snapshot retains real time, refresh status and warning semantics', () => {
   const pending = renderActions({...cache, stale: true, refreshing: true})
-  assert.match(pending, /data-stale="true" role="status">旧快照 · .* · 更新中 · 已统计 26 个会话<\/p>/)
+  assert.match(pending, /data-stale="true" role="status">旧快照 · .* · 统计更新中 · 已统计 26 个会话<\/p>/)
   assert.doesNotMatch(pending, /最近更新 /)
   const failed = renderActions({...cache, stale: true})
   assert.match(failed, /data-stale="true"/)
-  assert.match(failed, /更新未完成/)
+  assert.match(failed, /统计刷新失败/)
 })
 
 test('missing or invalid snapshot times are never replaced with the current time and refresh stays a native busy control', () => {

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {taskSessionView, taskSessionMessageView, routerSessionView} from '../server/session-view.js'
+import {visibleText, taskSessionView, taskSessionMessageView, routerSessionView} from '../server/session-view.js'
 
 const task = {taskId: 'task-one', session: {sessionId: 'pi-one', sessionBound: true}}
 const project = (id, message) => ({sourceEntry: {id, type: 'message', timestamp: '2026-11-07T02:00:00Z'}, messages: [message]})
@@ -11,23 +11,25 @@ function snapshot() {
       project('system', {role: 'system', content: 'PRIVATE_SYSTEM_PROMPT'}),
       project('input', {role: 'custom', customType: 'night.business-input', details: {source: {kind: 'task-input', taskSession: {taskId: 'task-one', sessionId: 'pi-one'}}},
         content: [{type: 'text', text: JSON.stringify({task: {request: '核对目标'}, sources: [{sourceId: 'source-one', version: 1, text: '用户原始来源'}], materials: [{path: 'D:\\private\\secret.txt'}], blockers: [{permissionToken: 'PRIVATE_PERMISSION'}]})}]}),
-      project('assistant', {role: 'assistant', content: [{type: 'thinking', thinking: 'PRIVATE_THINKING'}, {type: 'text', text: '正在核对实际执行结果'}, {type: 'toolCall', name: 'read', id: 'call-one', arguments: {apiKey: 'PRIVATE_ARGUMENT', path: 'D:\\private\\file'}}]}),
+      project('assistant', {role: 'assistant', content: [{type: 'thinking', thinking: '先核对任务材料，再比较实际结果', thinkingSignature: 'PRIVATE_SIGNATURE'}, {type: 'text', text: '正在核对实际执行结果'}, {type: 'toolCall', name: 'read', id: 'call-one', arguments: {apiKey: 'PRIVATE_ARGUMENT', path: 'D:\\private\\file'}}]}),
       project('result', {role: 'toolResult', toolName: 'read', toolCallId: 'call-one', isError: false, details: {secret: 'PRIVATE_DETAILS'}, content: [{type: 'text', text: JSON.stringify({summary: '已有结果', credentials: {value: 'PRIVATE_CREDENTIAL'}, path: 'D:\\private\\file', permissionToken: 'PRIVATE_TOKEN'})}]}),
     ]}},
   }
 }
 
-test('execution view uses task-bound strict Pi projection and excludes private system/thinking/parameters/materials', async () => {
+test('执行历史展示业务文字、路径和思考，排除系统、签名、秘密与私有元数据', async () => {
   const value = snapshot(), calls = []
   const persistence = {async readNative(id, options) {calls.push({id, options}); return value}}
   const result = await taskSessionView({task, persistence})
   assert.deepEqual(calls, [{id: 'pi-one', options: {requireComplete: true}}])
   assert.equal(result.status, 'ready'); assert.equal(result.scope, 'current-session-context')
-  assert.equal(result.items.length, 4)
+  assert.equal(result.items.length, 5)
   assert.equal(result.items[0].text, '用户原始来源')
   assert.equal(result.items.find(row => row.kind === 'tool-call').toolName, 'read')
   assert.match(result.items.find(row => row.kind === 'tool-result').text, /已有结果/)
-  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_|D:\\\\private|materials|blockers|arguments|thinking/)
+  assert.equal(result.items.find(row => row.kind === 'thinking').text, '先核对任务材料，再比较实际结果')
+  assert.equal(JSON.parse(result.items.find(row => row.kind === 'tool-call').text).path, 'D:' + String.fromCharCode(92) + 'private' + String.fromCharCode(92) + 'file')
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_|materials|blockers|arguments|Signature/)
   assert.equal(result.items.find(row => row.kind === 'tool-result').redacted, true)
   assert.deepEqual(value, snapshot(), 'reading does not mutate Pi projection or its journal snapshot')
 })
@@ -36,10 +38,10 @@ test('session pages keep revision identity and latest-first pages without claimi
   const value = snapshot(), persistence = {readNative: async () => value}
   const first = await taskSessionView({task, persistence, limit: 2})
   assert.equal(first.items.length, 2); assert.equal(first.nextOffset, 2)
-  const older = await taskSessionView({task, persistence, offset: 2, limit: 2, revision: first.revision})
+  const older = await taskSessionView({task, persistence, offset: 2, limit: 3, revision: first.revision})
   assert.equal(older.items[0].text, '用户原始来源'); assert.equal(older.nextOffset, null)
   value.entries.push({id: 'next-commit'})
-  await assert.rejects(taskSessionView({task, persistence, offset: 2, limit: 2, revision: first.revision}), {code: 'SESSION_PAGE_STALE'})
+  await assert.rejects(taskSessionView({task, persistence, offset: 2, limit: 3, revision: first.revision}), {code: 'SESSION_PAGE_STALE'})
   await assert.rejects(taskSessionView({task, persistence, limit: 51}), {code: 'PAGE_INVALID'})
 })
 
@@ -116,15 +118,15 @@ test('Router 执行记录绑定真实会话与 generation，异步读取中换�
   await assert.rejects(routerSessionView(options), {code: 'SESSION_SOURCE_IDENTITY_INVALID'})
 })
 
-test('工具公开字段逐项准入，未知工具、嵌套扩展与孤立结果不能通过任何分页泄漏',async()=>{
+test('全部工具名称可见，业务命令和结果公开，未知字段、秘密与孤立结果不泄漏',async()=>{
  const value=snapshot(),call=(id,name,args)=>project('call-'+id,{role:'assistant',content:[{type:'toolCall',id,name,arguments:args}]}),result=(id,name,text)=>project('result-'+id,{role:'toolResult',toolName:name,toolCallId:id,isError:false,content:[{type:'text',text}]})
- const denied=['orion-5820','marble-6148','spruce-8432','harbor-5638','saffron-2417','canopy-7309','ochre-8231','sienna-3758','ungated-9476']
+ const denied=['marble-6148','spruce-8432','harbor-5638','saffron-2417','canopy-7309','PRIVATE_ENV','QUOTED SECRET','ungated-9476']
  value.context.projection.entries=[
-  call('unknown',denied[0],{payload:'x'.repeat(17000)+denied[1],nested:{value:denied[2]}}),result('unknown',denied[0],denied[3]),
-  call('grep','grep',{pattern:'public-needle',include:'**/*.js',future:denied[4],nested:{value:denied[5]}}),result('grep','grep',JSON.stringify({ordinary:'GREP_RESULT_VALUE'})),
-  call('shell','bash',{description:'已授权业务核对',timeoutMs:1000,command:'printf '+denied[6],env:{VALUE:denied[7]},workdir:'/fixture/'+denied[7]}),result('shell','bash',denied[7]),
-  call('search','web_search',{queries:['公开检索主题'],future:{value:denied[5]}}),result('missing-call','read',denied[8]),
-  call('conflict','read',{offset:0}),result('conflict','task_result',JSON.stringify({received:true,future:denied[8]})),
+  call('unknown','plugin_business_tool',{payload:'x'.repeat(17000)+denied[0],nested:{value:denied[1]}}),result('unknown','plugin_business_tool',denied[2]),
+  call('grep','grep',{pattern:'public-needle',include:'**/*.js',future:denied[3],nested:{value:denied[4]}}),result('grep','grep',JSON.stringify({ordinary:'GREP_RESULT_VALUE'})),
+  call('shell','bash',{description:'已授权业务核对',timeoutMs:1000,command:'printf business-command; password="QUOTED SECRET"',env:{VALUE:denied[5]},workdir:'/fixture/business'}),result('shell','bash','BUSINESS_SHELL_RESULT'),
+  call('search','web_search',{queries:['公开检索主题'],future:{value:denied[4]}}),result('missing-call','read',denied[7]),
+  call('conflict','read',{offset:0}),result('conflict','task_result',JSON.stringify({received:true,future:denied[7]})),
  ]
  const options={task,persistence:{readNative:async()=>value}},parts=[],records=[]
  let offset=0,revision
@@ -143,7 +145,7 @@ test('工具公开字段逐项准入，未知工具、嵌套扩展与孤立结�
  const visible=parts.join('\n')
  for(const text of denied)assert.equal(visible.includes(text),false,text)
  const conflicted=records.find(row=>row.kind==='tool-call'&&row.toolName==='read');assert.ok(conflicted);assert.ok(records.filter(row=>row.kind==='tool-result').every(row=>row.callId!==conflicted.callId))
- for(const text of ['public-needle','公开检索主题','已授权业务核对','GREP_RESULT_VALUE'])assert.ok(visible.includes(text),text)
+ for(const text of ['public-needle','公开检索主题','已授权业务核对','GREP_RESULT_VALUE','plugin_business_tool','business-command','/fixture/business','BUSINESS_SHELL_RESULT'])assert.ok(visible.includes(text),text)
 })
 
 test('task_result长业务输入保真分页，正式回执只选Host标量且孤立结果不猜策略',async()=>{
@@ -179,13 +181,96 @@ test('安装操作者已获准任务read的JSON样式业务原文不改写，所
  let rebuilt=row.text,offset=row.textNextOffset
  while(offset!=null){const body=await taskSessionMessageView({...options,messageId:row.id,revision:page.revision,offset});rebuilt+=body.text;offset=body.nextOffset}
  assert.equal(rebuilt,text)
- assert.equal(page.items.find(row=>row.kind==='tool-call').text.includes('/fixture/body.json'),false)
+ assert.equal(page.items.find(row=>row.kind==='tool-call').text.includes('/fixture/body.json'),true)
+})
+
+test('模型思考按块顺序展示并可分页，厂商签名与不可读思考不透传', async () => {
+  const value = snapshot(), thought = '先核对 /fixture/report.txt，再核对差异。'.repeat(700) + ' password="SECRET WORDS" THINKING_END'
+  value.context.projection.entries = [project('reasoning', {role: 'assistant', content: [
+    {type: 'text', text: '准备核对'},
+    {type: 'thinking', thinking: thought, thinkingSignature: 'PRIVATE_SIGNATURE'},
+    {type: 'thinking', thinking: 'PRIVATE_REDACTED', redacted: true},
+    {type: 'text', text: '开始读取'},
+    {type: 'toolCall', id: 'read', name: 'read', arguments: {path: '/fixture/report.txt'}},
+  ]})]
+  const options = {task, persistence: {readNative: async () => value}}, page = await taskSessionView(options)
+  assert.deepEqual(page.items.map(row => row.kind), ['message', 'thinking', 'message', 'tool-call'])
+  const row = page.items[1]; let text = row.text, offset = row.textNextOffset
+  while (offset != null) {const next = await taskSessionMessageView({...options, messageId: row.id, revision: page.revision, offset}); text += next.text; offset = next.nextOffset}
+  assert.ok(text.includes('/fixture/report.txt')); assert.ok(text.endsWith('THINKING_END'))
+  assert.doesNotMatch(JSON.stringify(page) + text, /PRIVATE_|SECRET WORDS/)
+})
+
+test('待办只取同会话最新已提交回执，独立于历史页且不采纳待执行调用或猜测完成', async () => {
+  const value = snapshot(), entry = {id: 'todo-receipt', type: 'custom', customType: 'night.audit', timestamp: '2026-11-12T01:00:00Z',
+    data: {version: 1, domain: 'planning', kind: 'todos', payload: {todos: [
+      {content: '核对 /fixture/report.txt', status: 'completed'},
+      {content: '比较差异 apiKey=PRIVATE_TODO_KEY', status: 'in_progress'},
+      {content: '整理结果', status: 'pending'},
+    ]}}}
+  value.entries = [entry, {id: 'last-commit'}]
+  value.context.projection.entries.push(project('pending-todos', {role: 'assistant', content: [
+    {type: 'toolCall', id: 'pending-todos', name: 'todo_write', arguments: {todos: [{content: '尚未成功提交的清单', status: 'completed'}]}},
+  ]}))
+  const options = {task: {...task, state: 'completed'}, persistence: {readNative: async () => value}}
+  const latest = await taskSessionView({...options, limit: 1}), older = await taskSessionView({...options, offset: 1, limit: 1, revision: latest.revision})
+  assert.deepEqual(latest.todos, older.todos)
+  assert.deepEqual(latest.todos.items.map(row => row.status), ['completed', 'in_progress', 'pending'])
+  assert.equal(latest.todos.items[0].text, '核对 /fixture/report.txt')
+  assert.equal(latest.todos.source.sessionId, task.session.sessionId)
+  assert.equal(latest.todos.updatedAt, '2026-11-12T01:00:00.000Z')
+  assert.doesNotMatch(JSON.stringify(latest.todos), /PRIVATE_TODO_KEY|尚未成功/)
+  const stream = await taskSessionView({...options, stream: true})
+  const updatedEntry = {...entry, id: 'updated-todos', data: {...entry.data, payload: {todos: []}}}
+  value.entries.push(updatedEntry, {id: 'updated-commit'})
+  const update = await taskSessionView({...options, stream: true, checkpoint: stream.checkpoint})
+  assert.deepEqual(update.items, [])
+  assert.deepEqual(update.todos.items, [], '连续流没有新增消息时仍返回最新已提交清单')
+  value.entries.splice(-2)
+  value.context.projection.entries = []
+  assert.deepEqual((await taskSessionView(options)).todos, latest.todos, '压缩不丢失独立的业务待办回执')
+  entry.data.payload.todos = []
+  assert.deepEqual((await taskSessionView(options)).todos.items, [])
+  value.entries = [{id: 'last-commit'}]
+  assert.equal((await taskSessionView(options)).todos, null, '从未提交与已清空是不同状态')
+  value.entries = [entry, {id: 'last-commit'}]; entry.data.payload.todos = [{content: '不接受未知状态', status: 'guessed'}]
+  await assert.rejects(taskSessionView(options), {code: 'SESSION_TODOS_INVALID'})
+})
+
+test('命令错误正文、作业和网页结果可读，私有记忆与技能保持独立授权', async () => {
+  const value = snapshot(); value.context.projection.entries = []
+  for (const [index, name] of ['pwsh', 'job_output', 'web_fetch', 'memory_read', 'skill'].entries()) {
+    value.context.projection.entries.push(project('call-' + index, {role: 'assistant', content: [{type: 'toolCall', id: String(index), name, arguments: {}}]}),
+      project('result-' + index, {role: 'toolResult', toolName: name, toolCallId: String(index), isError: name === 'pwsh',
+        content: [{type: 'text', text: name.startsWith('memory') || name === 'skill' ? 'PRIVATE_SCOPE_BODY' : '结果 https://example.test/source /fixture/report.txt Bearer SECRET_AUTH'}], details: {private: 'PRIVATE_DETAILS'}}))
+  }
+  const page = await taskSessionView({task, persistence: {readNative: async () => value}})
+  for (const name of ['pwsh', 'job_output', 'web_fetch']) {
+    const row = page.items.find(row => row.kind === 'tool-result' && row.toolName === name)
+    assert.match(row.text, /https:\/\/example.test\/source \/fixture\/report.txt/)
+  }
+  assert.equal(page.items.find(row => row.kind === 'tool-result' && row.toolName === 'pwsh').isError, true)
+  assert.doesNotMatch(JSON.stringify(page), /PRIVATE_|SECRET_AUTH/)
+})
+
+test('路径公开只作用于显式获权视图，默认 Windows/UNC/Unix 隐藏及 JSON 秘密保护不退化', () => {
+  const slash = String.fromCharCode(92)
+  for (const path of [['C:', 'private', 'file.txt'].join(slash), slash + slash + ['host', 'private', 'file.txt'].join(slash), '/private/file.txt']) {
+    assert.equal(visibleText('文件 ' + path).text, '文件 [路径已隐藏]')
+    assert.equal(visibleText('文件 ' + path, [], {preservePaths: true}).text, '文件 ' + path)
+  }
+  const value = {path: '/fixture/report.txt', command: 'curl https://user:pass@example.test/file password="WITH SPACES"', credentials: {token: 'PRIVATE_TOKEN'}}
+  const visible = visibleText(JSON.stringify(value), [], {preservePaths: true})
+  const parsed = JSON.parse(visible.text)
+  assert.equal(parsed.path, value.path); assert.equal(parsed.credentials, '[已隐藏]')
+  assert.doesNotMatch(visible.text, /user:pass|WITH SPACES|PRIVATE_TOKEN/)
+  assert.doesNotMatch(visibleText(JSON.stringify({'known-access-value': 'public'}), ['known-access-value'], {preservePaths: true}).text, /known-access-value/)
 })
 
 test('job_output exposes paired task text with redaction and pagination, never hidden job metadata or unpaired output', async () => {
   const value = snapshot();
   const text = '作业业务输出\n'.repeat(3000) + 'REGISTERED_JOB_SECRET /private/work/file.txt\n结果终点';
-  const call = id => project(`call-${id}`, { role: 'assistant', content: [{ type: 'toolCall', id, name: 'job_output', arguments: { job_id: 'PRIVATE_JOB_ID', wait: true } }] });
+  const call = id => project(`call-${id}`, { role: 'assistant', content: [{ type: 'toolCall', id, name: 'job_output', arguments: { job_id: 'fixture-job-id', wait: true } }] });
   const result = (id, content = text) => project(`result-${id}`, { role: 'toolResult', toolName: 'job_output', toolCallId: id, details: { producerLog: 'PRIVATE_JOB_LOG' }, content: [{ type: 'text', text: content }] });
   value.context.projection.entries = [call('job'), result('job'), result('unpaired', 'PRIVATE_UNPAIRED_OUTPUT')];
   const options = { task, persistence: { readNative: async () => value }, secrets: ['REGISTERED_JOB_SECRET'] };
@@ -196,8 +281,9 @@ test('job_output exposes paired task text with redaction and pagination, never h
   assert.equal(output.textNextOffset, 16000);
   const tail = await taskSessionMessageView({ ...options, messageId: output.id, revision: page.revision, offset: output.textNextOffset });
   assert.match(tail.text, /结果终点/);
-  assert.doesNotMatch(JSON.stringify([page, tail]), /REGISTERED_JOB_SECRET|PRIVATE_JOB_ID|PRIVATE_JOB_LOG|PRIVATE_UNPAIRED_OUTPUT|\/private\/work/);
-  assert.equal(page.items.at(-1).toolName, '未公开工具');
+  assert.doesNotMatch(JSON.stringify([page, tail]), /REGISTERED_JOB_SECRET|PRIVATE_JOB_LOG|PRIVATE_UNPAIRED_OUTPUT/);
+  assert.match(tail.text, /\/private\/work\/file.txt/);
+  assert.equal(page.items.at(-1).toolName, 'job_output');
 });
 
 test('stream initial window, older prepends and burst catch-up are bounded, ordered and append-safe', async () => {
@@ -245,4 +331,100 @@ test('stream checkpoint rejects rewritten, compacted, revoked and foreign histor
   await assert.rejects(taskSessionView({...options, checkpoint: first.checkpoint, before: '0'.repeat(64)}), {code: 'SESSION_PAGE_STALE'})
   value.audit[0].payload.taskId = 'foreign'
   await assert.rejects(taskSessionView({...options, checkpoint: first.checkpoint}), {code: 'SESSION_IDENTITY_INVALID'})
+})
+
+test('shell credentials are scrubbed before paging inputs, errors and job output', async () => {
+  const value = snapshot(), secret = 'REGISTERED_OPAQUE_VALUE'; value.context.projection.entries = []
+  const cases = [
+    ['bash', 'gh auth login --with-token <<< UNREGISTERED_HERESTRING', 'AWS_SECRET_ACCESS_KEY=UNREGISTERED_AWS_SECRET\nAWS_ACCESS_KEY_ID=UNREGISTERED_AWS_ID'],
+    ['pwsh', 'Connect-Service -Password "UNREGISTERED_PS_PASSWORD"', 'CLIENT_PRIVATE_KEY="UNREGISTERED_PRIVATE_VALUE"'],
+    ['bash', 'login --api-key UNREGISTERED_FLAG_VALUE', 'GITHUB_TOKEN=UNREGISTERED_TOKEN'],
+    ['bash', "login --with-token <<'EOF'\nUNREGISTERED_HEREDOC\nEOF", 'public business output'],
+    ['job_output', undefined, 'public line\n'.repeat(1800) + 'AWS_SECRET_ACCESS_KEY=UNREGISTERED_LATE_SECRET\n' + secret + '\nEND_MARKER'],
+  ]
+  for (const [index, [name, command, output]] of cases.entries()) {
+    value.context.projection.entries.push(
+      project('call-secure-' + index, {role:'assistant',content:[{type:'toolCall',id:String(index),name,arguments:command ? {command} : {job_id:'example-job'}}]}),
+      project('result-secure-' + index, {role:'toolResult',toolName:name,toolCallId:String(index),isError:true,content:[{type:'text',text:output}]}),
+    )
+  }
+  const options = {task, persistence:{readNative:async()=>value}, secrets:[secret]}
+  const page = await taskSessionView(options), bodies = []
+  for (const row of page.items) {
+    bodies.push(row.text)
+    let offset = row.textNextOffset
+    while (offset != null) {
+      const next = await taskSessionMessageView({...options,messageId:row.id,revision:page.revision,offset})
+      bodies.push(next.text); offset=next.nextOffset
+    }
+  }
+  assert.doesNotMatch(JSON.stringify(page) + bodies.join('\n'), /UNREGISTERED_|REGISTERED_OPAQUE_VALUE/)
+  assert.match(bodies.join('\n'), /public business output/)
+  assert.match(bodies.join('\n'), /END_MARKER/)
+  assert.ok(page.items.filter(row=>row.kind==='tool-result' && row.toolName!=='bash').every(row=>row.redacted))
+})
+
+test('credential redaction preserves JSON and public paths but removes escaped secrets and key material', () => {
+  const fixtures = [
+    'AWS_SECRET_ACCESS_KEY="UNREGISTERED_ESCAPED\\"TAIL"',
+    '-----BEGIN OPENSSH PRIVATE KEY-----\nUNREGISTERED_PRIVATE_BODY\n-----END OPENSSH PRIVATE KEY-----',
+    '-----BEGIN RSA PRIVATE KEY-----\nUNREGISTERED_UNFINISHED_BODY',
+    'ghp_UNREGISTERED_GITHUB_SECRET0123456789',
+    'sk-UNREGISTERED_MODEL_SECRET0123456789',
+    'https://example.test?access_key=UNREGISTERED_QUERY_VALUE&ok=true',
+  ]
+  for (const content of fixtures) {
+    for (const source of [content, JSON.stringify({content,path:'/public/report.txt'})]) {
+      const result = visibleText(source, [], {preservePaths:true})
+      assert.doesNotMatch(result.text, /UNREGISTERED_|TAIL/)
+      assert.equal(result.redacted,true)
+      if (source.startsWith('{')) assert.equal(JSON.parse(result.text).path,'/public/report.txt')
+    }
+  }
+  const value = visibleText(JSON.stringify({AWS_ACCESS_KEY_ID:'UNREGISTERED_ID',AWS_SECRET_ACCESS_KEY:'UNREGISTERED_SECRET',public:'hello'}))
+  assert.doesNotMatch(value.text,/UNREGISTERED_/)
+  assert.equal(JSON.parse(value.text).public,'hello')
+})
+
+test('deeply nested JSON cannot bypass registered-secret redaction on scrub failure', () => {
+  const source = '['.repeat(10000) + JSON.stringify('REGISTERED_DEEP_SECRET') + ']'.repeat(10000)
+  const result = visibleText(source, ['REGISTERED_DEEP_SECRET'], {maxLength:Infinity})
+  assert.doesNotMatch(result.text,/REGISTERED_DEEP_SECRET/)
+  assert.equal(result.redacted,true)
+})
+
+test('ordinary token budgets and command paths remain readable', () => {
+  const command='model --max-tokens 4096 --token-count 20 /public/report.txt'
+  assert.equal(visibleText(command, [], {preservePaths:true}).text,command)
+})
+
+test('registered secrets straddling the first body window never leak fragments', async () => {
+  const value=snapshot(), secret='OPAQUE_CROSS_WINDOW_REGISTERED_SECRET'
+  value.context.projection.entries=[project('boundary',{role:'assistant',content:[{type:'text',text:'x'.repeat(15990)+secret+'y'.repeat(200)+'END'}]})]
+  const options={task,persistence:{readNative:async()=>value},secrets:[secret]}
+  const page=await taskSessionView(options), row=page.items[0]
+  const tail=await taskSessionMessageView({...options,messageId:row.id,revision:page.revision,offset:row.textNextOffset})
+  assert.doesNotMatch(JSON.stringify([page,tail]),/OPAQUE_CROSS|REGISTERED_SECRET/)
+  assert.equal(row.text+tail.text,'x'.repeat(15990)+'[已隐藏]'+'y'.repeat(200)+'END')
+})
+
+test('authorization and cookie headers hide their complete multi-part values', () => {
+  for (const text of [
+    'Authorization: Basic dXNlcjpwYXNz',
+    'Proxy-Authorization: Basic dXNlcjpwYXNz',
+    'Cookie: session=FIRST_VALUE; auth=SECOND_VALUE',
+    'Set-Cookie: session=FIRST_VALUE; extra=SECOND_VALUE; Path=/',
+    'curl -H "Authorization: Basic dXNlcjpwYXNz" https://example.test',
+    'curl -u user:SECOND_VALUE https://example.test',
+    'curl --user=user:SECOND_VALUE https://example.test',
+    'curl -uuser:SECOND_VALUE https://example.test',
+    "curl -u'user:SECOND_VALUE' https://example.test",
+  ]) {
+    for (const source of [text,JSON.stringify({command:text})]) {
+      const result=visibleText(source,[],{preservePaths:true})
+      assert.doesNotMatch(result.text,/dXNlcjpwYXNz|FIRST_VALUE|SECOND_VALUE/)
+      assert.equal(result.redacted,true)
+    }
+  }
+  assert.match(visibleText('Cookie: session=FIRST_VALUE\npublic response').text,/public response/)
 })

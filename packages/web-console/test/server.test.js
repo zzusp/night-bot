@@ -1,3 +1,4 @@
+import {createFeedbackService} from '../../../src/feedback/service.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp, mkdir, readFile, writeFile, rm, link, readdir} from 'node:fs/promises'
@@ -67,7 +68,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -86,7 +87,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -294,7 +295,7 @@ test('overview isolates throwing channel health and conversation reads from heal
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_/)
 })
 
-test('task details and dialogue whitelist nested facts and redact displayed credentials and paths', async t => {
+test('任务详情保留业务路径，同时按字段隔离私有元数据和凭据', async t => {
   const f = await fixture(t); await f.login()
   const token = (await readFile(f.web.credentialPath, 'utf8')).trim()
   const task = await f.app.tasks.taskDetail('task-one')
@@ -319,7 +320,7 @@ test('task details and dialogue whitelist nested facts and redact displayed cred
   assert.equal(detail.body.result.action, 'complete')
   assert.equal(detail.body.result.question, '需要确认吗？')
   assert.deepEqual(detail.body.result.limitations, ['尚未线上验收'])
-  assert.deepEqual(detail.body.result.evidence, ['已核对 [路径已隐藏]'])
+  assert.deepEqual(detail.body.result.evidence, ['已核对 /private/evidence.txt'])
   assert.deepEqual(detail.body.timeline.task.events, [{kind: 'created', sequence: 1, at: '2026-11-07T01:00:00Z'}])
   assert.equal(detail.body.timeline.executions[0].milestones[0].summary, '构建已完成')
   assert.match(detail.body.timeline.human.segments[0].description, /请确认下一步/)
@@ -327,7 +328,7 @@ test('task details and dialogue whitelist nested facts and redact displayed cred
   assert.deepEqual(dialogue.body.messages, [{id: 'd1', text: '确认继续', receivedAt: '2026-11-07T01:00:00Z', reply: '已收到'}])
   assert.equal(dialogue.body.error, 'TASK_DIALOGUE_UNAVAILABLE'); assert.equal(dialogue.body.writable, false)
   const serialized = JSON.stringify([detail.body, dialogue.body, (await f.fetchApi('/api/tasks')).body])
-  assert.doesNotMatch(serialized, /PRIVATE_|\/private\/|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
+  assert.doesNotMatch(serialized, /PRIVATE_|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
   assert.equal(serialized.includes(token), false)
   assert.equal(JSON.stringify(task), original, 'read projection never alters the authoritative task')
 })
@@ -973,4 +974,60 @@ test('evolution HTTP defaults to ten records and serves disjoint current pages f
   assert.doesNotMatch(JSON.stringify([first.body,second.body,last.body]),/PRIVATE_BODY/)
   const skills=await f.fetchApi('/api/evolution?kind=skill')
   assert.equal(skills.body.total,0); assert.deepEqual(skills.body.items,[])
+})
+
+test('feedback HTTP preserves consent, exact preview, owner and CSRF boundaries',async t=>{
+ let collected=0,sent=0
+ const feedback=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'fake',diagnose:async()=>{collected++;return '诊断摘要'},fetchImpl:async()=>{sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
+ t.after(()=>feedback.close());const f=await fixture(t,{feedback})
+ const input={title:'异常',description:'操作步骤',model:'test/model',revision:'default',consent:true}
+ assert.equal((await f.fetchApi('/api/feedback')).status,401);await f.login()
+ assert.equal((await f.fetchApi('/api/feedback')).status,200)
+ assert.equal((await f.fetchApi('/api/feedback/collect',{method:'POST',body:input,headers:{'x-csrf-token':'forged'}})).status,403)
+ assert.equal((await f.fetchApi('/api/feedback/collect',{method:'POST',body:{...input,consent:false}})).status,403)
+ assert.equal(collected,0)
+ const created=await f.fetchApi('/api/feedback/collect',{method:'POST',body:input});assert.equal(created.status,202)
+ const path='/api/feedback/'+created.body.id;let r
+ for(let i=0;i<20;i++){r=await f.fetchApi(path);if(r.body.state==='ready')break;await new Promise(r=>setTimeout(r,2))}
+ assert.equal(r.body.state,'ready');assert.equal(collected,1)
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:r.body.title,body:r.body.body}})).status,403)
+ const edited=await f.fetchApi(path,{method:'PATCH',body:{title:'修改标题',body:'用户调整'}});assert.equal(edited.status,200)
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{confirm:true,title:r.body.title,body:r.body.body}})).status,409)
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{confirm:true,title:edited.body.title,body:edited.body.body}})).status,200);assert.equal(sent,1)
+ await f.login();assert.equal((await f.fetchApi(path)).status,404)
+})
+test('feedback HTTP manual path needs no model or local data and still requires publish consent',async t=>{
+ let sent=0;const forbidden=()=>{assert.fail('manual HTTP accessed diagnostic dependency')}
+ const feedback=createFeedbackService({model:forbidden,modelConsent:forbidden,resolveModel:forbidden,getSecrets:forbidden,evidence:forbidden,diagnose:forbidden,getToken:async()=>'fake',fetchImpl:async()=>{sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
+ t.after(()=>feedback.close());const f=await fixture(t,{feedback});const input={title:'异常',description:'只提交填写的内容'}
+ assert.equal((await f.fetchApi('/api/feedback/draft',{method:'POST',body:input})).status,401);await f.login()
+ assert.equal((await f.fetchApi('/api/feedback')).body.model,null)
+ assert.equal((await f.fetchApi('/api/feedback/draft',{method:'POST',body:input,headers:{'x-csrf-token':'forged'}})).status,403)
+ const created=await f.fetchApi('/api/feedback/draft',{method:'POST',body:input});assert.equal(created.status,200);assert.equal(created.body.state,'ready');assert.equal(created.body.body,input.description)
+ const path='/api/feedback/'+created.body.id
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:created.body.title,body:created.body.body}})).status,403);assert.equal(sent,0)
+ const edited=await f.fetchApi(path,{method:'PATCH',body:{title:'修改标题',body:'修改正文'}});assert.equal(edited.status,200)
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:edited.body.title,body:edited.body.body,confirm:true}})).status,200);assert.equal(sent,1)
+})
+
+test('execution reads refresh Host secret values and fail closed when the provider fails', async t => {
+  let secret = 'opaque-vendor-value-one', unavailable = false, calls = 0
+  const snapshot = () => ({header:{id:'pi-one'}, entries:[{id:'commit-one'}],
+    audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'task-one',sessionId:'pi-one'}}],
+    context:{projection:{entries:[{sourceEntry:{id:'body',timestamp:'2026-11-12T00:00:00Z'},messages:[{role:'assistant',content:[{type:'text',text:('public text '.repeat(1600)) + secret}]}]}]}}})
+  const f = await fixture(t,{persistence:{readNative:async()=>snapshot()},redactionSecrets:async()=>{calls++;if(unavailable)throw new Error('PRIVATE_PROVIDER_ERROR');return [secret]}})
+  await f.login()
+  const page = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(page.status,200)
+  assert.equal(page.body.items[0].redacted,true)
+  let body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-one/)
+  secret='opaque-vendor-value-two'
+  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-two/)
+  assert.equal(calls,3)
+  unavailable=true
+  const denied = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(denied.status,503)
+  assert.doesNotMatch(JSON.stringify(denied.body),/opaque-vendor|PRIVATE_PROVIDER_ERROR/)
 })

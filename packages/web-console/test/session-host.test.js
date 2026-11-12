@@ -9,9 +9,14 @@ import {nativeTestTimeout} from '../../../test/fixtures/native-lifecycle.js'
 import {apply as applyApplication, inject} from '../../../src/application.js'
 import {createWebConsole} from '../server/plugin.js'
 
-test('task session API reads actual committed Pi source and tool records without changing history', {timeout: nativeTestTimeout(30000)}, async t => {
+test('task session API reads actual committed Pi source, todos and tool records without changing history', {timeout: nativeTestTimeout(30000)}, async t => {
+  let taskTurns = 0
   const f = await memoryHost(t, body => {
     if (JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')) return {text: '{"lessons":[]}'}
+    if (body.tools?.some(tool => tool.function.name === 'task_result') && taskTurns++ === 0) return {tool: 'todo_write', args: {todos: [
+      {content: '核对 /fixture/materials/report.txt', status: 'completed'},
+      {content: '保留模型实际提交状态', status: 'in_progress'},
+    ]}}
     if (body.tools?.some(tool => tool.function.name === 'task_result')) return {tool: 'task_result', args: {decision: {
       action: 'complete', summary: '已验证本次隔离任务的执行记录。', evidence: ['fixture-observation', '/private/fixture-tool-argument'], limitations: [],
     }}}
@@ -48,10 +53,10 @@ test('task session API reads actual committed Pi source and tool records without
     assert.equal(detailView.status, 200)
     assert.deepEqual(detailView.body.blockers, [], 'only the Web projection converts the contract to display rows')
     assert.equal(detailView.body.result.summary, '已验证本次隔离任务的执行记录。')
-    assert.deepEqual(detailView.body.result.evidence, ['fixture-observation', '[路径已隐藏]'])
+    assert.deepEqual(detailView.body.result.evidence, ['fixture-observation', '/private/fixture-tool-argument'])
     assert.ok(detailView.body.timeline.task.events.some(event => event.kind === 'completed'))
-    assert.doesNotMatch(JSON.stringify(detailView.body), /REDACT_ME|sensitive|private\.txt|fixture-tool-argument/)
-    assert.equal(task.result.evidence[1], '/private/fixture-tool-argument', 'Web redaction leaves the real completion receipt unchanged')
+    assert.doesNotMatch(JSON.stringify(detailView.body), /REDACT_ME/)
+    assert.equal(task.result.evidence[1], '/private/fixture-tool-argument', 'Web projection leaves the real completion receipt unchanged')
     const persistence = f.host.ctx.sessionPersistence, journal = persistence.path(task.session.sessionId)
     const before = await readFile(journal)
     const snapshot = await persistence.readNative(task.session.sessionId, {requireComplete: true})
@@ -67,7 +72,10 @@ test('task session API reads actual committed Pi source and tool records without
     assert.ok(result.body.items.some(row => row.kind === 'tool-call' && row.toolName === 'task_result'), 'actual Pi tool invocation must be visible')
     assert.ok(result.body.items.some(row => row.kind === 'tool-result' && row.toolName === 'task_result' && row.text.length > 0), 'actual Pi tool receipt must be visible')
     const visible = result.body.items.map(row => row.text).join('\n')
-    assert.doesNotMatch(visible, /REDACT_ME|sensitive|private\.txt|fixture-tool-argument|"materials"\s*:|"taskSession"\s*:/)
+    assert.doesNotMatch(visible, /REDACT_ME|"materials"\s*:|"taskSession"\s*:/)
+    assert.ok(visible.includes('/private/fixture-tool-argument'))
+    assert.deepEqual(result.body.todos.items.map(row => row.status), ['completed', 'in_progress'])
+    assert.equal(result.body.todos.items[0].text, '核对 /fixture/materials/report.txt')
     assert.equal(visible.includes(f.root), false)
     assert.ok(result.body.items.every(row => !Object.hasOwn(row, 'arguments') && !Object.hasOwn(row, 'details')))
     assert.ok(result.body.items.every(row => ['user', 'assistant', 'tool'].includes(row.role)))

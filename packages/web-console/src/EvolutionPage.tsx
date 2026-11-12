@@ -11,7 +11,7 @@ import './styles/evolution.css';
 type Summary = Pick<EvolutionReady, 'memory' | 'skills' | 'cache' | 'usageCoverage'>;
 
 export function EvolutionListActions({ cache, sessionsRead, loading, onRefresh }: { cache: EvolutionReady['cache']; sessionsRead?: number; loading: boolean; onRefresh: () => void }) {
-  const updated = cache ? cache.stale ? `旧快照 · ${dateTime(cache.updatedAt ?? undefined)} · ${cache.refreshing ? '更新中' : '更新未完成'}` : `最近更新 ${dateTime(cache.updatedAt ?? undefined)}` : null;
+  const updated = cache ? cache.stale ? `旧快照 · ${dateTime(cache.updatedAt ?? undefined)} · ${cache.refreshing ? '统计更新中' : '统计刷新失败'}` : `最近更新 ${dateTime(cache.updatedAt ?? undefined)}` : null;
   const coverage = isEvolutionCount(sessionsRead) ? `已统计 ${number(sessionsRead)} 个会话` : cache ? '统计会话数未记录' : null;
   const status = [updated, coverage].filter(Boolean).join(' · ');
   return <div className="evolution-list-actions">

@@ -1,3 +1,4 @@
+import {hostFeedback} from './feedback/service.js'
 import {createOperatorSettings} from './settings/operator.js'
 import {resolveRoleModels,roleModelSelection,legacyRoleModelSelection,materializeRoleModelSelection} from './role-models.js'
 import {taskModelSelection} from '../packages/dingtalk-core/task-model-config.js'
@@ -47,6 +48,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     const attempt=async action=>{try{await action()}catch(error){errors.push(error)}}
     // 已接纳的配置保存先排空，安装锁持续持有到原子提交结束。
     await Promise.allSettled([...configurationCalls])
+    await attempt(()=>ctx.get('errorFeedback')?.close())
     await attempt(()=>permissionService?.close())
     await attempt(()=>ctx.get('application')?.close?.())
     await attempt(()=>ctx.get('officialAgentFactory')?.close())
@@ -275,6 +277,9 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       roleModels[role]=Object.freeze(materializeRoleModelSelection(config,selection))
     }
     ctx.provide('roleModels',Object.freeze(roleModels))
+    const feedback=hostFeedback(ctx,config,paths)
+    ctx.provide('errorFeedback',feedback)
+    ctx.effect(()=>()=>feedback.close(),'feedback session drain')
     channelLifecycle=createChannelLifecycle({ctx,paths,running:config,dependencies:{...dingtalkPluginDependencies,...dingtalkProfileRunner?{runner:dingtalkProfileRunner}:{}}})
     ctx.provide('channelLifecycle',channelLifecycle)
     await channelLifecycle.initialize(config)

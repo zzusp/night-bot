@@ -40,7 +40,7 @@ async function openReadActivity(page: Page) {
   await expect(parts).toHaveCount(2)
   await expect(parts.nth(0).locator('h4')).toHaveText('输入')
   await expect(parts.nth(1).locator('h4')).toHaveText('输出')
-  expect(JSON.parse(await parts.nth(0).locator('.tool-content').innerText())).toEqual({})
+  expect(JSON.parse(await parts.nth(0).locator('.tool-content').innerText())).toEqual({path: '/fixture/materials/research.md'})
   await expect(parts.nth(1).locator('.tool-content')).toHaveText('已读取 3 份资料，发现 2 处待确认差异。')
   for (const [index, row] of tools.entries()) {
     expect(row.source.callId).toBe(call.callId)
@@ -51,7 +51,7 @@ async function openReadActivity(page: Page) {
   }
   await expect(activity).not.toContainText('仅展示获准公开的工具字段')
   await expect(activity).not.toContainText('Pi 会话')
-  await expect(activity).not.toContainText('/not/browser-safe')
+  await expect(activity).toContainText('/fixture/materials/research.md')
   await expect(activity).not.toContainText('SECRET_ARGUMENT_FIXTURE')
 }
 
@@ -167,7 +167,8 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await expect(page.locator('.message-assistant').filter({hasText: '已开始核对现有资料'})).toBeVisible()
   await expect(page.locator('.task-record-facts')).toContainText('当前上下文')
   await expect(page.locator('.task-dialogue')).not.toContainText('TASK_DIALOGUE_NOT_EXECUTION')
-  await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_THINKING_FIXTURE')
+  await expect(page.locator('.thinking-message')).toHaveCount(1)
+  await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_SIGNATURE_FIXTURE')
   await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_ARGUMENT_FIXTURE')
   expect(await page.getByLabel('消息内容', {exact: true}).count()).toBe(0)
   await screenshot(page, 'execution-context')

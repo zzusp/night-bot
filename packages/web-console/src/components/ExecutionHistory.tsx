@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ApiError } from '../api';
 import { dateTime } from '../hooks';
 import { useExecutionStream } from '../useExecutionStream';
-import { Button, EmptyState } from './BoardPrimitives';
+import { Badge, Button, EmptyState } from './BoardPrimitives';
 import { Loading, MessageList, Notice, Status } from './Shared';
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
@@ -35,6 +35,14 @@ export function ExecutionHistory({ endpoint, router = false, status, controlsTar
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
+    {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <section className="execution-todos" aria-label="任务待办" tabIndex={0}>
+      <div className="todo-heading"><h3>任务待办</h3>{query.data.todos.updatedAt && <time dateTime={query.data.todos.updatedAt}>更新于 {dateTime(query.data.todos.updatedAt)}</time>}</div>
+      {query.data.todos.items.length ? <ol className="todo-cards">{query.data.todos.items.map((todo, index) => <li className={`todo-card todo-${todo.status}`} key={index}>
+        <span>{todo.text}{todo.redacted && <small>敏感信息已隐藏</small>}</span><Badge tone={todo.status === 'completed' ? 'success' : todo.status === 'in_progress' ? 'info' : 'neutral'}>{todo.status === 'completed' ? '已完成' : todo.status === 'in_progress' ? '进行中' : '待处理'}</Badge>
+      </li>)}</ol> : <p className="message-scope">已提交的待办清单为空。</p>}
+      <p className="message-scope">模型最近提交的清单，非任务完成验收。</p>
+    </section>}
+
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" />
       : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '暂无已提交的会话安排' : '执行尚未开始' : '执行记录正在提交'} />

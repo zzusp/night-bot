@@ -174,7 +174,8 @@ export class MarkdownMemoryStore {
       return {revision:root.revision,mode:mode==='index'?'literal-index':'literal-fulltext',entries}
     })
   }
-  async remember(scope,{topic,key,text,source,originSource,provenance,context,content,expectedRevision,expiresAt,candidate=false,scopeRevision,validate}={}){
+  async reconciliationReceipt(scope,id){return this.locked(scope,async(_dir,meta)=>structuredClone(meta.reconciliations?.[id]))}
+  async remember(scope,{topic,key,text,source,originSource,provenance,context,content,expectedRevision,expiresAt,candidate=false,scopeRevision,validate,reconciliation}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
     if(context!==undefined)context=checkedMemoryContext(context)
     const structured=context?.version===2||context?.version===3||content!==undefined
@@ -186,6 +187,7 @@ export class MarkdownMemoryStore {
     if(expiresAt!==undefined&&(!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=this.now()||!/(Z|[+-]\d\d:\d\d)$/.test(expiresAt)))throw failure('MEMORY_EXPIRY_INVALID')
     return this.transaction(scope,async s=>{
       await validate?.()
+      if(reconciliation&&s.meta.reconciliations?.[reconciliation.id]&&s.meta.reconciliations[reconciliation.id].inputHash!==reconciliation.inputHash)throw failure('MEMORY_RECONCILIATION_CONFLICT')
       if(scopeRevision!==undefined&&s.meta.revision!==scopeRevision)throw failure('MEMORY_SCOPE_CHANGED')
       const seen=hash(source.sessionId+':'+source.messageId+':'+topic+':'+key+':'+candidate)
       if(s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
@@ -198,14 +200,16 @@ export class MarkdownMemoryStore {
       if(prior){entries.splice(entries.indexOf(prior),1);if(prior.text!==text)s.meta.forgotten.push(hash(prior.text))}
       entries.push(entry)
       if(!candidate){s.topics.set(topic,topicState);s.candidates=s.candidates.filter(e=>!(e.key===key&&e.topic===topic));s.meta.forgotten=s.meta.forgotten.filter(h=>h!==hash(text))}
+      if(reconciliation){s.meta.reconciliations??={};s.meta.reconciliations[reconciliation.id]={inputHash:reconciliation.inputHash,revision:entry.revision};}
       s.meta.seen.push(seen);s.mark()
       return ()=>({ok:true,entry:withoutPrevious(entry),revision:s.meta.revision,candidate})
     })
   }
-  async forget(scope,{topic,key,expectedRevision,source,validate}={}){
+  async forget(scope,{topic,key,expectedRevision,source,validate,reconciliation}={}){
     if(!label(topic)||!label(key))throw failure('MEMORY_RECORD_INVALID')
     return this.transaction(scope,async s=>{
       await validate?.()
+      if(reconciliation&&s.meta.reconciliations?.[reconciliation.id]&&s.meta.reconciliations[reconciliation.id].inputHash!==reconciliation.inputHash)throw failure('MEMORY_RECONCILIATION_CONFLICT')
       const seen=source?.messageId?hash(source.sessionId+':'+source.messageId+':forget:'+topic+':'+key):undefined
       if(seen&&s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
       const entries=s.topics.get(topic)?.entries??[],prior=entries.find(e=>e.key===key)
@@ -213,6 +217,7 @@ export class MarkdownMemoryStore {
       for(const entry of [...entries,...s.candidates])if(entry.key===key&&(!entry.topic||entry.topic===topic))s.meta.forgotten.push(hash(entry.text))
       if(prior)entries.splice(entries.indexOf(prior),1)
       s.candidates=s.candidates.filter(e=>e.topic!==topic||e.key!==key)
+      if(reconciliation){s.meta.reconciliations??={};s.meta.reconciliations[reconciliation.id]={inputHash:reconciliation.inputHash,revision:prior?.revision};}
       if(seen)s.meta.seen.push(seen)
       // Even a missing entry invalidates outstanding extraction generations.
       s.mark();return ()=>({ok:true,forgotten:!!prior,revision:s.meta.revision})
