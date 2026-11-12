@@ -139,3 +139,53 @@ test('长标题与规则在桌面和390px浅深色可读，无横向溢出且通
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', {name: '打开导航', exact: true})).toBeFocused();
 });
+
+for (const state of ['populated', 'empty', 'loading', 'unavailable'] as const) {
+  test(`定时任务 ${state} 保留与任务列表一致的外框`, async ({page}) => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    await page.route('**/api/schedules?*', async route => {
+      if (state === 'loading') await gate;
+      await route.fulfill({status: state === 'unavailable' ? 503 : 200,
+        json: state === 'unavailable' ? {error: 'SCHEDULES_UNAVAILABLE'} : snapshot(state === 'populated' ? [active] : []),
+      }).catch(() => {});
+    });
+    try {
+      await open(page, '/tasks');
+      const sibling = page.locator('.task-table-wrap');
+      await expect(sibling).toBeVisible();
+      const surfaces: Record<string, {border: string; radius: string; background: string}> = {};
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+        surfaces[theme] = await sibling.evaluate(element => {
+          const style = getComputedStyle(element);
+          return {border: style.borderTopColor, radius: style.borderTopLeftRadius, background: style.backgroundColor};
+        });
+      }
+      await page.getByRole('navigation', {name: '主导航'}).getByRole('link', {name: '定时任务', exact: true}).click();
+      const frame = page.getByRole('region', {name: '启用的定时任务', exact: true});
+      if (state === 'populated') await expect(frame.locator('.schedule-title')).toHaveText(active.title);
+      if (state === 'empty') await expect(frame.getByRole('heading', {name: '暂无启用的定时任务'})).toBeVisible();
+      if (state === 'loading') await expect(frame.getByText('正在读取定时任务…')).toBeVisible();
+      if (state === 'unavailable') await expect(frame.getByRole('heading', {name: '定时任务暂不可读'})).toBeVisible();
+      for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
+        await page.setViewportSize({width, height: 900});
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+        await expect(frame).toHaveCSS('border-top-style', 'solid');
+        await expect(frame).toHaveCSS('border-top-width', '1px');
+        await expect(frame).toHaveCSS('border-top-color', surfaces[theme].border);
+        await expect(frame).toHaveCSS('border-top-left-radius', surfaces[theme].radius);
+        await expect(frame).toHaveCSS('background-color', surfaces[theme].background);
+        await expect(frame).toHaveCSS('min-height', '168px');
+        if (state === 'loading') await expect(frame.getByText('正在读取定时任务…')).toBeVisible();
+        const box = await frame.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await expect(frame.locator('.list-toolbar, .pagination')).toHaveCount(0);
+        await page.screenshot({path: test.info().outputPath(`schedule-frame-${state}-${theme}-${width}.png`), fullPage: true});
+      }
+    } finally {release();}
+  });
+}

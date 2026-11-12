@@ -6,6 +6,9 @@ import {setTimeout as delay} from 'node:timers/promises'
 
 export const EVOLUTION_REFRESH_MS = 5 * 60 * 1000
 const MAX_BYTES = 32 * 1024 * 1024
+const MAX_HEADER_BYTES = 8 * 1024 * 1024
+const PREFIX_BYTES = 9
+const sha = value => createHash('sha256').update(value).digest('hex')
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const failure = (code, status = 503) => Object.assign(new Error(code), {code, status})
 const count = value => Number.isSafeInteger(value) && value >= 0
@@ -52,7 +55,7 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
   if (typeof directory !== 'string' || !directory || typeof identity !== 'string' || !identity || typeof collect !== 'function') throw failure('EVOLUTION_CACHE_OPTIONS_INVALID')
   directory = resolve(directory)
   const fingerprint = createHash('sha256').update(identity).digest('hex')
-  const path = join(directory, `evolution-${fingerprint}.json`)
+  const path = join(directory, `evolution-${fingerprint}.pages`)
   let snapshot = null, updatedAt = null, inFlight = null, timer = null, closed = false, lastAttempt = -Infinity, errorCode = null, lastFailure = null, revoked = null
   const shutdown = new AbortController()
   const privateStat = stat => process.platform === 'win32' || (stat.uid === process.getuid() && (stat.mode & 0o077) === 0)
@@ -73,39 +76,114 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
     const stat = await checkDirectory()
     if (stat.dev !== directoryStat.dev || stat.ino !== directoryStat.ino) throw failure('EVOLUTION_CACHE_PATH_UNSAFE')
   }
+  async function readBytes(handle, length, position) {
+    const buffer = Buffer.alloc(length)
+    let done = 0
+    while (done < length) {
+      const {bytesRead} = await handle.read(buffer, done, length - done, position + done)
+      if (!bytesRead) throw failure('EVOLUTION_CACHE_INVALID')
+      done += bytesRead
+    }
+    return buffer
+  }
+  function headerValid(value, size) {
+    if (value?.version !== 2 || value.identity !== fingerprint || !count(value.updatedAt)
+      || value.updatedAt > now() || !object(value.summary) || 'items' in value.summary
+      || !snapshotValid({...value.summary, items: []}) || !Array.isArray(value.rows)) return false
+    let end = 0
+    for (const row of value.rows) {
+      if (!object(row) || !['memory', 'skill'].includes(row.kind) || row.offset !== end
+        || !count(row.length) || row.length === 0 || !/^[a-f0-9]{64}$/.test(row.hash)) return false
+      end += row.length
+      if (!Number.isSafeInteger(end) || end > MAX_BYTES) return false
+    }
+    return end === size
+  }
+  function generation(handle, header, start, stat) {
+    // Only summary, offsets and hashes are resident. Item DTOs are read on demand.
+    const byKind = {all: header.rows, memory: [], skill: []}
+    for (const row of header.rows) byKind[row.kind].push(row)
+    return {handle, summary: header.summary, byKind, start, stat, readers: 0, retired: false}
+  }
+  async function retire(value) {
+    if (!value) return
+    value.retired = true
+    if (!value.readers) await value.handle.close()
+  }
   const existing = await targetStat()
-  if (existing && existing.size <= MAX_BYTES) {
+  if (existing && existing.size >= PREFIX_BYTES && existing.size <= MAX_BYTES) {
     const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    let retained = false
     try {
       const stat = await handle.stat(); checkFile(stat)
       if (stat.dev !== existing.dev || stat.ino !== existing.ino) throw failure('EVOLUTION_CACHE_PATH_UNSAFE')
-      // One bounded read also protects against concurrent file growth.
-      const buffer = Buffer.alloc(MAX_BYTES + 1)
-      const {bytesRead} = await handle.read(buffer, 0, buffer.length, 0)
-      if (bytesRead <= MAX_BYTES) {
-        let value
-        try {value = JSON.parse(buffer.subarray(0, bytesRead).toString('utf8'))} catch {}
-        if (value?.version === 1 && value.identity === fingerprint && Number.isSafeInteger(value.updatedAt)
-          && value.updatedAt >= 0 && value.updatedAt <= now() && snapshotValid(value.snapshot)) {
-          snapshot = value.snapshot; updatedAt = value.updatedAt
+      // Restart loads just the bounded index. It does not parse all item DTOs.
+      const prefix = (await readBytes(handle, PREFIX_BYTES, 0)).toString('ascii')
+      if (/^[0-9a-f]{8}\n$/.test(prefix)) {
+        const length = Number.parseInt(prefix, 16), start = PREFIX_BYTES + length
+        if (length > 0 && length <= MAX_HEADER_BYTES && start <= stat.size) {
+          let header
+          try {header = JSON.parse((await readBytes(handle, length, PREFIX_BYTES)).toString('utf8'))} catch {}
+          if (headerValid(header, stat.size - start)) {
+            snapshot = generation(handle, header, start, stat); updatedAt = header.updatedAt; retained = true
+          }
         }
       }
-    } finally {await handle.close()}
+    } finally {if (!retained) await handle.close()}
   }
   async function persist(next, stamp) {
-    const text = JSON.stringify({version: 1, identity: fingerprint, updatedAt: stamp, snapshot: next})
-    if (Buffer.byteLength(text) > MAX_BYTES) throw failure('EVOLUTION_CACHE_TOO_LARGE')
+    const {items, ...summary} = next
+    const buffers = [], rows = []
+    let offset = 0
+    for (const item of items) {
+      const buffer = Buffer.from(JSON.stringify(item) + '\n')
+      rows.push({kind: item.kind, offset, length: buffer.length, hash: sha(buffer)})
+      buffers.push(buffer); offset += buffer.length
+      if (offset > MAX_BYTES) throw failure('EVOLUTION_CACHE_TOO_LARGE')
+    }
+    const header = {version: 2, identity: fingerprint, updatedAt: stamp, summary, rows}
+    const encoded = Buffer.from(JSON.stringify(header)), start = PREFIX_BYTES + encoded.length
+    if (encoded.length > MAX_HEADER_BYTES || start + offset > MAX_BYTES) throw failure('EVOLUTION_CACHE_TOO_LARGE')
+    const prefix = Buffer.from(encoded.length.toString(16).padStart(8, '0') + '\n')
     await checkRoot(); await targetStat()
     const temporary = join(directory, `.evolution-${randomUUID()}.tmp`)
-    let handle
+    let handle, reader
     try {
       handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600)
-      await handle.writeFile(text); await handle.sync(); await handle.close(); handle = null
+      await handle.writeFile(Buffer.concat([prefix, encoded, ...buffers])); await handle.sync(); await handle.close(); handle = null
+      reader = await open(temporary, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+      const stat = await reader.stat(); checkFile(stat)
       await checkRoot(); await targetStat()
       await rename(temporary, path)
+      const value = generation(reader, header, start, stat); reader = null
+      return value
     } finally {
-      await handle?.close()
+      await handle?.close(); await reader?.close()
       await unlink(temporary).catch(error => {if (error.code !== 'ENOENT') throw error})
+    }
+  }
+  async function page(value, {kind, offset, limit}) {
+    value.readers++
+    try {
+      await checkRoot()
+      const stat = await value.handle.stat()
+      // An atomic replacement may unlink this generation during an in-flight GET.
+      if (!stat.isFile() || stat.nlink > 1 || !privateStat(stat) || stat.size !== value.stat.size
+        || stat.mtimeMs !== value.stat.mtimeMs) throw failure('EVOLUTION_CACHE_PATH_UNSAFE')
+      const index = value.byKind[kind], items = []
+      for (let i = offset; i < Math.min(offset + limit, index.length); i++) {
+        const row = index[i], bytes = await readBytes(value.handle, row.length, value.start + row.offset)
+        if (sha(bytes) !== row.hash) throw failure('EVOLUTION_CACHE_INVALID')
+        let item
+        try {item = JSON.parse(bytes.toString('utf8'))} catch {throw failure('EVOLUTION_CACHE_INVALID')}
+        if (!itemValid(item) || item.kind !== row.kind || !metadataOnly(item)) throw failure('EVOLUTION_CACHE_INVALID')
+        items.push(item)
+      }
+      return {...structuredClone(value.summary), items, kind, offset, limit, total: index.length,
+        hasMore: offset + limit < index.length, nextOffset: offset + limit < index.length ? offset + limit : null}
+    } finally {
+      value.readers--
+      if (value.retired && !value.readers) await value.handle.close()
     }
   }
   async function collectWithRetries() {
@@ -132,8 +210,9 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
         const next = JSON.parse(JSON.stringify(result))
         if (!snapshotValid(next)) throw failure('EVOLUTION_CACHE_SNAPSHOT_INVALID')
         const stamp = now()
-        await persist(next, stamp)
-        snapshot = next; updatedAt = stamp; errorCode = null; lastFailure = null; revoked = null
+        const stored = await persist(next, stamp), previous = snapshot
+        snapshot = stored; updatedAt = stamp; errorCode = null; lastFailure = null; revoked = null
+        await retire(previous)
       } catch (error) {
         errorCode = 'EVOLUTION_CACHE_REFRESH_FAILED'
         const status = error?.status ?? error?.statusCode
@@ -149,7 +228,8 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
   const expired = () => updatedAt === null || now() - updatedAt >= EVOLUTION_REFRESH_MS || now() < updatedAt
   const retryDue = () => now() - lastAttempt >= EVOLUTION_REFRESH_MS || now() < lastAttempt
   return {
-    async read({force = false} = {}) {
+    async read({force = false, kind = 'all', offset = 0, limit = 10} = {}) {
+      if (!['all', 'memory', 'skill'].includes(kind) || !count(offset) || !count(limit) || limit < 1 || limit > 50) throw failure('PAGE_INVALID', 400)
       if (closed) throw failure('EVOLUTION_CACHE_CLOSED')
       if (revoked && !force) throw failure(revoked.code, revoked.status)
       if (force || !snapshot) {
@@ -160,8 +240,11 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
         void refresh().catch(() => {})
       }
       if (revoked) throw failure(revoked.code, revoked.status)
-      return {snapshot: structuredClone(snapshot), cache: {updatedAt: new Date(updatedAt).toISOString(),
-        stale: expired() || Boolean(errorCode), refreshing: Boolean(inFlight), ...(errorCode ? {error: errorCode} : {})}}
+      const current = snapshot, cache = {updatedAt: new Date(updatedAt).toISOString(),
+        stale: expired() || Boolean(errorCode), refreshing: Boolean(inFlight), ...(errorCode ? {error: errorCode} : {})}
+      const result = await page(current, {kind, offset, limit})
+      if (revoked) throw failure(revoked.code, revoked.status)
+      return {snapshot: result, cache}
     },
     start() {
       if (closed || timer !== null) return
@@ -174,6 +257,7 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
       shutdown.abort()
       if (timer !== null) {cancel(timer); timer = null}
       await inFlight?.catch(() => {})
+      await retire(snapshot)
     },
   }
 }

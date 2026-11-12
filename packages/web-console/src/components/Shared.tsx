@@ -41,9 +41,9 @@ export function Search({ value, onChange, label = '筛选当前页' }: { value: 
     {value && <IconButton label="清除搜索" onClick={() => { onChange(''); ref.current?.focus(); }}><RiCloseLine size={16} /></IconButton>}
   </div>;
 }
-export function Pagination({ offset, total, nextOffset, onPage, loading }: { offset: number; total: number; nextOffset?: number | null; onPage: (offset: number) => void; loading?: boolean }) {
-  return <nav className="pagination" aria-label="分页"><span>共 {total} 条{total > 0 && ` · 第 ${Math.floor(offset / 20) + 1} 页`}</span><div>
-    <Button variant="secondary" disabled={!offset || loading} onClick={() => onPage(Math.max(0, offset - 20))}>上一页</Button>
+export function Pagination({ offset, total, nextOffset, onPage, loading, pageSize = 20 }: { offset: number; total: number; nextOffset?: number | null; onPage: (offset: number) => void; loading?: boolean; pageSize?: number }) {
+  return <nav className="pagination" aria-label="分页"><span>共 {total} 条{total > 0 && ` · 第 ${Math.floor(offset / pageSize) + 1} 页`}</span><div>
+    <Button variant="secondary" disabled={!offset || loading} onClick={() => onPage(Math.max(0, offset - pageSize))}>上一页</Button>
     <Button variant="secondary" disabled={nextOffset == null || loading} onClick={() => nextOffset != null && onPage(nextOffset)}>下一页</Button>
   </div></nav>;
 }

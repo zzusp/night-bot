@@ -309,17 +309,15 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if ([...url.searchParams.keys()].some(key => !['kind', 'offset', 'limit', 'refresh'].includes(key))) fail('PAGE_INVALID')
       const kind = url.searchParams.get('kind') ?? 'all'
       if (!['all', 'memory', 'skill'].includes(kind) || url.searchParams.has('refresh') && url.searchParams.get('refresh') !== '1') fail('PAGE_INVALID')
-      const options = {kind, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 20, 50)}
+      const options = {kind, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 10, 50)}
       application()
       authorizedEvolutionReader()
       if (!getMemory()?.store?.root) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})
       let result
-      try {result = await evolutionCache.read({force: url.searchParams.get('refresh') === '1'})}
+      try {result = await evolutionCache.read({...options, force: url.searchParams.get('refresh') === '1'})}
       catch (error) {const forbidden = [401, 403].includes(error.status); fail(forbidden ? 'EVOLUTION_FORBIDDEN' : error.code === 'EVOLUTION_BUSY' ? 'EVOLUTION_BUSY' : 'EVOLUTION_UNAVAILABLE', forbidden ? 403 : 503)}
       authorizedEvolutionReader()
-      const value = result.snapshot, filtered = value.items.filter(item => options.kind === 'all' || item.kind === options.kind), total = filtered.length
-      return send(response, 200, {...value, cache: result.cache, items: filtered.slice(options.offset, options.offset + options.limit), total, ...options,
-        hasMore: options.offset + options.limit < total, nextOffset: options.offset + options.limit < total ? options.offset + options.limit : null})
+      return send(response, 200, {...result.snapshot, cache: result.cache})
     }
     const evolutionItem = /^\/api\/evolution\/items\/([a-f0-9]{64})$/.exec(path)
     if (request.method === 'GET' && evolutionItem) {

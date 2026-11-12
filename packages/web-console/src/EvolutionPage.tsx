@@ -44,7 +44,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
   const kind = route.searchParams.get('kind') === 'skill' ? 'skill' : 'memory';
   const requestedOffset = Number(route.searchParams.get('offset'));
   const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
-  const path = `/evolution?kind=${kind}&offset=${offset}&limit=20`;
+  const path = `/evolution?kind=${kind}&offset=${offset}&limit=10`;
   const query = useResource<Evolution>(path, 300000, {pauseWhenHidden: true, refreshPath: path + '&refresh=1', timeoutMs: EVOLUTION_SNAPSHOT_TIMEOUT_MS});
   const forbidden = query.error instanceof ApiError && [401, 403].includes(query.error.status);
   const busy = query.error instanceof ApiError && query.error.code === 'EVOLUTION_BUSY';
@@ -65,6 +65,11 @@ export default function EvolutionPage({ route }: { route: URL }) {
   // Permission loss and explicit unavailability still hide the cached values.
   const summary = forbidden || revoked || query.data?.status === 'unavailable' ? null : ready ?? lastSummary;
   const changePage = (next: number) => navigate(`/evolution?kind=${kind}&offset=${next}`);
+  useEffect(() => {
+    if (ready && !query.loading && !query.error && offset > 0 && offset >= ready.total) {
+      navigate(`/evolution?kind=${kind}&offset=${Math.max(0, Math.floor((ready.total - 1) / 10) * 10)}`);
+    }
+  }, [ready, query.loading, query.error, offset, kind]);
   const selected = selection?.route === route.search && ready?.items.find(item => item.id === selection.item.id && item.kind === selection.item.kind);
   const refreshList = () => { closeContent(); query.refresh(); };
   const body = useRef<HTMLDivElement>(null);
@@ -88,7 +93,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
             {kind === 'skill' && ready.skills.inventoryComplete === false && <p className="evolution-list-notice" role="status">技能盘点不完整：{ready.skills.inventoryIssues?.join('；') || '部分资源不可读'}</p>}
             {!ready.items.length ? <EmptyState title={offset ? '这一页已没有记录' : '暂无自进化记录'} action={offset ? <Button variant="secondary" onClick={() => changePage(0)}>返回第一页</Button> : undefined} />
               : <EvolutionEntryList items={ready.items} onView={(item, button) => { opener.current = button; setSelection({item, route: route.search}); }} />}
-            <Pagination offset={offset} total={ready.total} nextOffset={ready.nextOffset} onPage={changePage} loading={query.loading} />
+            <Pagination pageSize={10} offset={offset} total={ready.total} nextOffset={ready.nextOffset} onPage={changePage} loading={query.loading} />
           </>}
       </div>
     </section>

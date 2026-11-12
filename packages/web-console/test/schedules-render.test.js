@@ -89,3 +89,20 @@ test('one-time schedules retain full year and local timezone with valid semantic
   assert.equal(dateTime('invalid', false, true), '未记录');
   assert.doesNotMatch(dateTime(record.scheduledAt), /2032/);
 });
+
+test('every schedule result state stays inside the shared task-list surface', () => {
+  const cases = [
+    [snapshot([record]), {}, 'schedule-list'],
+    [snapshot([]), {}, '暂无启用的定时任务'],
+    [null, {loading: true}, '正在读取定时任务'],
+    [null, {error: new ApiError(503, 'SCHEDULES_UNAVAILABLE')}, '定时任务暂不可读'],
+    [snapshot([record]), {error: new ApiError(503, 'SCHEDULES_READ_FAILED')}, 'schedule-list'],
+    [snapshot([record]), {error: new ApiError(403, 'RESOURCE_FORBIDDEN')}, '定时任务暂不可读'],
+  ];
+  for (const [data, overrides, content] of cases) {
+    const html = render(data, overrides);
+    const frame = html.match(/<section class="task-table-wrap schedule-results"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+    assert.ok(frame?.includes(content), `${content} must be inside the shared bordered surface`);
+    assert.doesNotMatch(frame, /list-toolbar|pagination/);
+  }
+});

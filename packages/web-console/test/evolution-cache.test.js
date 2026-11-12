@@ -7,7 +7,16 @@ import {createHash} from 'node:crypto'
 import {openEvolutionCache, EVOLUTION_REFRESH_MS} from '../server/evolution-cache.js'
 
 const dto = name => ({status:'ready', memory:{acceptedCount:1,candidateCount:0}, skills:{activeCount:0,candidateCount:0}, usageCoverage:{status:'ready'}, items:[{id:'a', kind:'memory', name, status:'applied'}]})
-const filename = identity => `evolution-${createHash('sha256').update(identity).digest('hex')}.json`
+const hash = value => createHash('sha256').update(value).digest('hex')
+const encode = (summary, items = [], overrides = {}) => {
+  let offset = 0
+  const blocks = items.map(item => Buffer.from(JSON.stringify(item) + '\n'))
+  const rows = blocks.map((block, i) => {const row = {kind: items[i].kind, offset, length: block.length, hash: hash(block)}; offset += block.length; return row})
+  const header = Buffer.from(JSON.stringify({version: 2, identity: hash('reader'), updatedAt: 1000, summary, rows, ...overrides}))
+  return Buffer.concat([Buffer.from(header.length.toString(16).padStart(8, '0') + '\n'), header, ...blocks])
+}
+const encodeDto = value => {const {items, ...summary} = value; return encode(summary, items)}
+const filename = identity => `evolution-${createHash('sha256').update(identity).digest('hex')}.pages`
 async function setup(t, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'web-evolution-cache-'))
   t.after(() => rm(directory, {recursive:true, force:true}))
@@ -18,7 +27,7 @@ async function setup(t, options = {}) {
   return {directory, cache, tick:()=>{clock += EVOLUTION_REFRESH_MS}, advance:ms=>{clock += ms}, calls:()=>calls, interval:()=>callback(), canceled:()=>canceled}
 }
 
-test('first load deduplicates, persists private JSON, and restart serves without collection', async t => {
+test('first load deduplicates, persists private indexed metadata, and restart serves without collection', async t => {
   const f = await setup(t)
   const [a,b] = await Promise.all([f.cache.read(), f.cache.read()])
   assert.deepEqual(a,b); assert.equal(f.calls(),1); assert.equal(a.cache.stale,false)
@@ -80,7 +89,7 @@ test('safe corrupt JSON, invalid schema and wrong identity are recollected', asy
   const f=await setup(t)
   await f.cache.read(); await f.cache.close()
   const path=join(f.directory,filename('reader'))
-  for(const contents of ['{', JSON.stringify({version:1,identity:createHash('sha256').update('reader').digest('hex'),updatedAt:1000,snapshot:{status:'ready'}}),JSON.stringify({version:1,identity:'other',updatedAt:1000,snapshot:dto('wrong')})]) {
+  for(const contents of ['{', encode({status:'ready'}), encode(dto('wrong'), [], {identity:'other'})]) {
     await writeFile(path,contents)
     const cache=await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1000,collect:()=>dto('recollected')})
     assert.equal((await cache.read()).snapshot.items[0].name,'recollected'); await cache.close()
@@ -232,23 +241,35 @@ test('401/403 revoke cached fallback until a successful authorized refresh', asy
   }
 })
 
-test('malformed UI metadata and private bodies on disk are recollected, not replayed', async t => {
-  const f=await setup(t); await f.cache.read(); await f.cache.close()
-  const path=join(f.directory,filename('reader')), valid=JSON.parse(await readFile(path,'utf8'))
+test('malformed summary metadata and private summary bodies on disk are recollected, not replayed', async t => {
+  const f=await setup(t); await f.cache.close()
+  const path=join(f.directory,filename('reader'))
   for(const mutate of [
     value=>{value.memory.acceptedCount='1'}, value=>{value.skills.candidateCount=-1},
     value=>{value.memory.readCount={private:1}}, value=>{value.skills.inventoryIssues='broken'},
-    value=>{value.items[0].origins='broken'}, value=>{value.items[0].taskIds={length:1}},
-    value=>{value.items[0].provenance={conversationName:{private:1}}},
-    value=>{value.items[0].memoryUse={lastAccess:{counter:'read',at:'now',provenance:3}}},
-    value=>{value.items[0].scope='__proto__'}, value=>{value.items[0].status='constructor'},
     value=>{value.usageCoverage.status='unknown'}, value=>{value.memoryResources=[]},
-    value=>{value.items[0].body='private'}, value=>{value.items[0].current={text:'private'}},
   ]) {
-    const stored=structuredClone(valid); mutate(stored.snapshot); await writeFile(path,JSON.stringify(stored))
+    const stored=dto('wrong'); mutate(stored); await writeFile(path,encodeDto(stored),{mode:0o600})
     let calls=0
     const cache=await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1000,collect:()=>{calls++; return dto('safe')}})
     assert.equal((await cache.read()).snapshot.items[0].name,'safe'); assert.equal(calls,1)
+    await cache.close()
+  }
+})
+
+test('invalid or private item metadata never leaves a requested page', async t => {
+  const f=await setup(t); await f.cache.close()
+  const path=join(f.directory,filename('reader'))
+  for(const mutate of [
+    item=>{item.origins='broken'}, item=>{item.taskIds={length:1}},
+    item=>{item.provenance={conversationName:{private:1}}},
+    item=>{item.memoryUse={lastAccess:{counter:'read',at:'now',provenance:3}}},
+    item=>{item.scope='__proto__'}, item=>{item.status='constructor'},
+    item=>{item.body='private'}, item=>{item.current={text:'private'}},
+  ]) {
+    const stored=dto('wrong'); mutate(stored.items[0]); await writeFile(path,encodeDto(stored),{mode:0o600})
+    const cache=await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1000,collect:()=>{throw Error('must not collect')}})
+    await assert.rejects(cache.read(),{code:'EVOLUTION_CACHE_INVALID'})
     await cache.close()
   }
 })
@@ -265,4 +286,71 @@ test('cold background startup readiness failure recovers on the first normal GET
   const result=await f.cache.read()
   assert.equal(calls,5); assert.equal(result.snapshot.items[0].name,'ready')
   assert.equal(result.cache.stale,false)
+})
+
+test('server pagination loads only requested indexed records after restart', async t => {
+  const items = Array.from({length: 205}, (_, i) => ({id:String(i), kind:i % 2 ? 'skill' : 'memory', name:`entry-${i}`, status:'applied'}))
+  const value={...dto('unused'), items, memory:{acceptedCount:103,candidateCount:0}}
+  const f=await setup(t,{collect:()=>value})
+  const first=await f.cache.read({kind:'memory'})
+  assert.equal(first.snapshot.items.length,10); assert.equal(first.snapshot.limit,10)
+  assert.equal(first.snapshot.total,103); assert.equal(first.snapshot.nextOffset,10)
+  assert.deepEqual(first.snapshot.items.map(row=>row.id),Array.from({length:10},(_,i)=>String(i*2)))
+  const second=await f.cache.read({kind:'memory',offset:10})
+  assert.deepEqual(second.snapshot.items.map(row=>row.id),Array.from({length:10},(_,i)=>String((i+10)*2)))
+  assert.equal(second.snapshot.memory.acceptedCount,103,'summary stays Bot-wide')
+  const skills=await f.cache.read({kind:'skill',offset:100})
+  assert.deepEqual(skills.snapshot.items.map(row=>row.id),['201','203']); assert.equal(skills.snapshot.nextOffset,null)
+  const beyond=await f.cache.read({kind:'memory',offset:1000})
+  assert.deepEqual(beyond.snapshot.items,[]); assert.equal(beyond.snapshot.total,103)
+  await f.cache.close()
+  const path=join(f.directory,filename('reader')), bytes=await readFile(path)
+  const length=Number.parseInt(bytes.subarray(0,9).toString('ascii'),16)
+  const header=JSON.parse(bytes.subarray(9,9+length).toString('utf8'))
+  assert.equal('items' in header.summary,false)
+  // Corrupt a record on a different page. Startup and first-page reads must not
+  // read or deserialize it; accessing the affected page detects the mismatch.
+  bytes[9+length+header.rows[200].offset]=0x21
+  await writeFile(path,bytes)
+  let collections=0
+  const restarted=await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1001,collect:()=>{collections++;return value}})
+  t.after(()=>restarted.close())
+  const page=await restarted.read({kind:'memory',offset:10})
+  assert.deepEqual(page.snapshot.items,second.snapshot.items); assert.equal(collections,0)
+  await assert.rejects(restarted.read({kind:'memory',offset:100}),{code:'EVOLUTION_CACHE_INVALID'})
+  assert.equal(collections,0)
+  const repaired=await restarted.read({kind:'memory',offset:100,force:true})
+  assert.equal(repaired.snapshot.items.length,3); assert.equal(collections,1)
+})
+
+test('page inputs are bounded before collection and cache reads', async t => {
+  const f=await setup(t)
+  for(const options of [{kind:'__proto__'}, {kind:'unknown'}, {offset:-1}, {offset:1.5}, {limit:0}, {limit:51}, {limit:Infinity}]) {
+    await assert.rejects(f.cache.read(options),{code:'PAGE_INVALID'})
+  }
+  assert.equal(f.calls(),0)
+})
+
+test('pages read during a refresh stay on a single immutable generation', async t => {
+  let round=0
+  const f=await setup(t,{collect:()=>({...dto('unused'),items:Array.from({length:40},(_,i)=>({id:String(i),kind:'memory',name:`${++round}-${i}`,status:'applied'}))})})
+  const initial=await f.cache.read({offset:10})
+  const [before,after]=await Promise.all([f.cache.read({offset:10}),f.cache.read({offset:10,force:true})])
+  assert.deepEqual(before.snapshot.items,initial.snapshot.items)
+  assert.notDeepEqual(after.snapshot.items,initial.snapshot.items)
+  assert.deepEqual((await f.cache.read({offset:10})).snapshot.items,after.snapshot.items)
+})
+
+test('authorization revoked during a page read prevents the in-flight response', async t => {
+  let authorized=true
+  const f=await setup(t,{collect:()=>{
+    if(!authorized) throw Object.assign(Error('private'),{status:403})
+    return {...dto('unused'),items:Array.from({length:50},(_,i)=>({id:String(i),kind:'memory',name:`entry-${i}`,status:'applied'}))}
+  }})
+  await f.cache.read()
+  authorized=false
+  const reading=f.cache.read({limit:50})
+  const refresh=f.cache.read({force:true})
+  await assert.rejects(refresh,{code:'EVOLUTION_FORBIDDEN',status:403})
+  await assert.rejects(reading,{code:'EVOLUTION_FORBIDDEN',status:403})
 })
