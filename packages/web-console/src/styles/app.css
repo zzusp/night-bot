@@ -537,10 +537,16 @@ html, body, #root { width: 100%; min-width: 0; }
 .response-time-elapsed[data-state="invalid"] { text-decoration: underline dotted; }
 .response-time-association { margin-bottom: 8px; }
 
-/* Task durations use the shared list surface; keep both metrics reachable on narrow screens. */
-.tasks-page .task-duration { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--board-muted); }
-.tasks-page .task-table td:first-child { width: 100%; min-width: 180px; }
+/* Metadata columns keep their own reading width; only the title consumes the remainder. */
+.tasks-page .task-table { table-layout: fixed; min-width: 800px; }
+.tasks-page .task-table th { white-space: nowrap; }
+.tasks-page .task-table .task-status { width: 104px; white-space: nowrap; }
+.tasks-page .task-status .board-badge { white-space: nowrap; }
+.tasks-page .task-table .task-duration { width: 132px; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--board-muted); }
+.tasks-page .task-table .task-updated { width: 144px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tasks-page .task-table .task-action { width: 48px; padding-left: 0; }
+.tasks-page .task-name > div { min-width: 0; }
 @media (max-width: 760px) {
-  .tasks-page .task-table th:nth-child(3), .tasks-page .task-table td:nth-child(3) { display: table-cell; }
-  .tasks-page .task-table .task-updated { display: none; }
+  .tasks-page .task-table th:nth-child(3), .tasks-page .task-table td:nth-child(3),
+  .tasks-page .task-table th:last-child, .tasks-page .task-table td:last-child { display: table-cell; }
 }
