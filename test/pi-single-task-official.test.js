@@ -47,11 +47,11 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
   try{
    official=await createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxRetries:0}},settingsManager:SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}}),admission,
     createAudit:()=>({isLive:()=>!disposed&&ctx.agents.get(id)===actor,isTurnOpen:()=>official?.session.isStreaming===true,approvalPolicy:()=> 'never',append(){throw Error('approval not expected')},flush:receipts.commit}),
-    context:{systemPrompt:ctx.systemPrompt},beforeRequest:async()=>{await admission.beforeRequest();await options.beforeRequest(actor)},
+    context:{systemPrompt:ctx.systemPrompt},onToolResult:options.onToolResult,beforeRequest:async()=>{await admission.beforeRequest();await options.beforeRequest(actor)},
     prepareActor:async value=>{actor=value;actor.metadata=Object.freeze({...store.header});actor.receipts=receipts;scope=createScope(ctx,actor);actor.ctx=scope.ctx;await options.setup(scope.ctx,actor)},
     beforeStoreClose:async()=>{admission.pause();await options.drainBusiness(actor)},
    })
-   actor.piSession=official.session;unbindNotices=bindBusinessNotices(actor,{enqueue:publishNotice,isLive:()=>!disposed,finishTaskRun:()=>admission.finishTaskRun(official.session)});detach=ctx.agents.enter(actor,undefined);actors.push(actor)
+   actor.piSession=official.session;unbindNotices=bindBusinessNotices(actor,{enqueue:publishNotice,isLive:()=>!disposed,finishTaskRun:()=>admission.finishTaskRun(official.session),holdTaskRun:()=>admission.holdTaskRun(official.session)});detach=ctx.agents.enter(actor,undefined);actors.push(actor)
    unbindDirectory=bindWorkingDirectoryActor(actor,{initialDirectory:store.header.cwd,isLive:()=>!disposed&&ctx.agents.get(id)===actor,readDirectory:()=>store.header.cwd,appendChange:async()=>{throw Error('not used')},admitNotice:async()=>{throw Error('not used')}})
    actor.input={enqueue:packet=>admission.enqueue(packet),deliver:(id,options)=>{running=official.deliver(id,options);return running}}
    actor.whenIdle=async()=>{await Promise.allSettled([running]);await official.session.agent.waitForIdle()}
@@ -200,4 +200,54 @@ test('wait result retires this run notices without preventing the same task from
  assert.equal((await run(f)).status,'submitted')
  assert.equal(f.requests.length,2)
  assert.equal(f.actors.length,2)
+})
+
+test('unknown write ends its turn and retires 96 queued job completions without replay or failed follow-up turns',async t=>{
+ let f
+ f=await fixture(t,(_context,n)=>n===1?{calls:[{name:'write'}]}:{calls:[{name:'task_result',arguments:{decision:{...decision,action:'wait'}}}]},
+  {effect:async({exec})=>{
+   for(let i=0;i<96;i++){
+    const packet={id:'job:held:'+i,source:{kind:'job-completion',jobId:'job-'+i,terminalReceiptId:'terminal-'+i},content:'Completed producer'}
+    await enqueueBusinessNotice(exec.agent,packet)
+    await exec.agent.input.deliver(packet.id,{deliverAs:'followUp'})
+   }
+   assert.equal(exec.agent.piSession.agent.hasQueuedMessages(),true)
+   throw Error('write result lost after possible effect')
+  }})
+ const result=await run(f)
+ assert.equal(result.status,'no_submission');assert.equal(result.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+ assert.equal(f.requests.length,1);assert.equal(f.effects,1)
+ const snapshot=await f.persistence.readNative('single',{requireComplete:true})
+ assert.equal(snapshot.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled'&&row.payload.reason==='task-effect-held').length,96)
+ assert.equal(snapshot.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted'&&row.payload.id.startsWith('job:')).length,0)
+ assert.equal(snapshot.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,1)
+ assert.equal(snapshot.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result').length,0)
+ assert.equal(snapshot.entries.filter(row=>row.type==='message'&&row.message.role==='assistant').length,1)
+ assert.equal(f.ctx.agents.list().length,0);assert.equal(f.persistence.writers.size,0)
+ f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
+ assert.equal((await run(f,{submit:async decision=>{
+  assert.ok(decision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))
+  assert.ok(decision.evidence.some(text=>text.includes('write; intentEntryId=')))
+  return {accepted:true}
+ }})).status,'submitted','explicit resumed readback may report wait, without replaying the unknown effect')
+ assert.equal(f.requests.length,2);assert.equal(f.effects,1)
+})
+
+test('effect hold racing a durable user supplement keeps it pending without failing admission or restarting the run',async t=>{
+ const entered=Promise.withResolvers(),failWrite=Promise.withResolvers(),queued=Promise.withResolvers(),continueEnqueue=Promise.withResolvers(),drain=Promise.withResolvers()
+ t.after(()=>{failWrite.resolve();continueEnqueue.resolve();drain.resolve()})
+ const f=await fixture(t,()=>({calls:[{name:'write'}]}),{effect:async()=>{entered.resolve();await failWrite.promise;throw Error('possible effect')}})
+ const running=run(f);await entered.promise
+ const actor=f.actors[0],enqueue=actor.input.enqueue,whenIdle=actor.whenIdle
+ actor.whenIdle=async()=>{await whenIdle();await drain.promise}
+ actor.input.enqueue=async packet=>{const result=await enqueue(packet);if(packet.id.startsWith('task-supplement:')){queued.resolve();await continueEnqueue.promise}return result}
+ const supplement=f.sessions.supplement({task:{taskId:'task',liveSupplements:[{wakeId:'later',messageId:'user-later',state:'pending',leaseEpoch:1,contextRevision:1,request:'Keep this new user input',sourceRefs:[],sourceSnapshots:[]}]},sources:[],materials:[]})
+ await queued.promise;failWrite.resolve()
+ for(let n=0;n<200&&f.sessions.liveBinding('task');n++)await delay(5)
+ assert.equal(f.sessions.liveBinding('task'),undefined)
+ continueEnqueue.resolve();assert.deepEqual(await supplement,{delivered:false})
+ drain.resolve();assert.equal((await running).reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+ const stored=await f.persistence.readNative('single',{requireComplete:true}),rows=stored.audit.filter(row=>row.domain==='admission'&&row.payload.id==='task-supplement:later')
+ assert.deepEqual(rows.map(row=>row.kind),['enqueued'])
+ assert.equal(f.requests.length,1);assert.equal(f.effects,1)
 })
