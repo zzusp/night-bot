@@ -85,7 +85,7 @@ test('服务端更新失败后保留上次成功快照并明确显示时间和�
   await expect(notice).toContainText('旧快照');
   // Fixture is 08:00 in the configured Asia/Shanghai browser timezone.
   await expect(notice).toContainText('08:00');
-  await expect(notice).toContainText('更新未完成');
+  await expect(notice).toContainText('统计刷新失败');
   await expect(page.getByRole('button', { name: '刷新记录', exact: true })).toBeEnabled();
 });
 
