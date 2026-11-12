@@ -24,3 +24,35 @@ test('单条消息首答时间、共同任务结果与无需回复、等待和�
  const shared=section.locator('.response-time-row').filter({hasText:'已绑定的附件'});await expect(shared).toContainText('共同回复');await expect(shared).not.toContainText('此回复通过精确来源绑定');await expect(shared).not.toContainText('四个附件均已核对。')
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath(`first-reply-${width}.png`)})}
 })
+
+test('任务待办卡片与模型思考展示真实记录，更新和撤权不沿用旧内容', async ({page}) => {
+ await page.goto('/#/tasks/task-research?view=execution'); await page.getByLabel('访问令牌', {exact:true}).fill(FIXTURE_TOKEN); await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ const todos=page.getByRole('region',{name:'任务待办'}), cards=todos.locator('.todo-card')
+ await expect(cards).toHaveCount(3)
+ for(const [index,status] of ['已完成','进行中','待处理'].entries()) await expect(cards.nth(index)).toContainText(status)
+ await expect(cards.nth(1)).toContainText('核对来源与结论')
+ const thought=page.locator('.thinking-message'); await expect(thought).not.toHaveAttribute('open')
+ await thought.locator(':scope > summary').click(); await expect(thought).toContainText('先比较任务材料中的来源，再检查结论是否有证据支持。')
+ const tool=page.locator('.message-tool'); await tool.locator('.execution-tool-input > summary').click(); await tool.locator('.execution-tool-output > summary').click()
+ await expect(tool).toContainText('/fixture/materials/research.md'); await expect(tool).toContainText('已读取 3 份资料')
+ const snapshot=await (await page.request.get('/api/tasks/task-research/session')).json()
+ expect(snapshot.items.some((row:{kind:string})=>row.kind==='thinking')).toBe(true)
+ expect(JSON.stringify(snapshot)).not.toMatch(/SECRET_ARGUMENT_FIXTURE|SECRET_SIGNATURE_FIXTURE/)
+ for(const [width,theme] of [[1440,'light'],[390,'light'],[1440,'dark'],[390,'dark']] as const){
+  await page.setViewportSize({width,height:960}); await page.evaluate(value=>document.documentElement.dataset.theme=value,theme)
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([])
+  await page.screenshot({path:test.info().outputPath(`execution-records-${width}-${theme}.png`),fullPage:true})
+ }
+ let denied=false
+ await page.route('**/api/tasks/task-research/session?*',async route=>{
+  if(denied){await route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}});return}
+  const response=await route.fetch(),data=await response.json()
+  await route.fulfill({json:{...data,todos:{...data.todos,items:data.todos.items.map((row:object)=>({...row,status:'completed'}))}}})
+ })
+ await page.evaluate(() => window.dispatchEvent(new Event('online')))
+ await expect(todos.locator('.todo-completed')).toHaveCount(3)
+ denied=true; await page.evaluate(() => window.dispatchEvent(new Event('online')))
+ await expect(page.getByText('执行记录暂不可读',{exact:true})).toBeVisible()
+ await expect(todos).toHaveCount(0); await expect(page.locator('.thinking-message')).toHaveCount(0); await expect(page.locator('.message-tool')).toHaveCount(0)
+})

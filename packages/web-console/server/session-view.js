@@ -1,29 +1,54 @@
 import {digest, fail} from './security.js'
 
-// 业务文字在既有授权范围内脱敏；工具另经固定字段投影。系统、思考和私有审计不进入浏览器。
+// Names cover environment variables, JSON fields and HTTP headers. A configured
+// installation token alone is not a registry of credentials used by task tools.
+const credentialName = /(?:token|password|passwd|secret|credential|cookie|authorization|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?key)/i
+const credentialAssignment = /(?<![\w.-])([\w.-]*(?:token|password|passwd|secret|credential|cookie|authorization|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?key)[\w.-]*["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:''|[^'])*'|[^\s"'&,}\]]+)/gi
+const credentialFlag = /(?:^|\s)--?(?:[\w-]*[-_])?(?:token|password|passwd|secret|credentials?|cookie|authorization|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?key)(?=[=:\s]|$)/i
+
+// 安装操作者可查看任务业务文字与已返回思考；系统指令、秘密和私有审计不透传。
 export function visibleText(value, secrets = [], {maxLength = 16000, preservePaths = false} = {}) {
   const original = String(value ?? '')
-  let text = original, redacted = false
-  // 已获准的业务文字也可能是 JSON；敏感键脱敏不能替代工具公开字段选择。
+  let text = original, redacted = false, structured = false
+  const redact = value => {
+    let result = value
+    for (const secret of secrets) if (secret) result = result.replaceAll(secret, '[已隐藏]')
+    // Shell flags can feed literals, here-strings, heredocs, pipelines or
+    // PowerShell expressions. Do not guess their boundaries and expose a tail.
+    if (credentialFlag.test(result) || /(?:^|\s)(?:--user(?:\s+|=)|-u\s*)\S+:\S+/.test(result)) return '[含凭据参数的内容已隐藏]'
+    result = result.split(/(\r?\n)/).map(line => /\b(?:proxy-authorization|authorization|set-cookie|cookie)\s*:/i.test(line) ? '[含认证标头的内容已隐藏]' : line).join('')
+    result = result.replace(/-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[私钥已隐藏]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{15,}|github_pat_[A-Za-z0-9_]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g, '[凭据已隐藏]')
+      .replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [已隐藏]')
+      .replace(credentialAssignment, (match, prefix) => {const value = match.slice(prefix.length), quote = value[0]; return prefix + (quote === '"' || quote === "'" ? quote + '[已隐藏]' + quote : '[已隐藏]')})
+      .replace(/\b(https?:\/\/)[^\s/@?#]+@/gi, '$1[凭据已隐藏]@')
+    if (!preservePaths) result = result.replace(/(^|[\s"'=(\[{])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s"'<>)}\]]+/g, '$1[路径已隐藏]')
+    return result
+  }
+  const scrubString = value => {const result = redact(value); if (result !== value) redacted = true; return result}
+  // 先选择获权字段；秘密也可能出现在业务命令、错误或思考的字符串中。
   const scrub = value => Array.isArray(value) ? value.map(scrub) : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value).map(([key, child]) => {
-      if (/^(?:.*(?:token|password|secret|credential|authorization|permission|capability|apiKey).*|arguments|env|cwd|path|directory|workspaceDir|logPath|taskSession|materials|sourceRefs)$/i.test(key)) {
-        redacted = true; return [key, '[已隐藏]']
+      const publicKey = scrubString(key)
+      if (credentialName.test(key) || /^(?:.*(?:permission|capability).*|arguments|env|taskSession|materials|sourceRefs)$/i.test(key)
+        || !preservePaths && /^(?:cwd|path|directory|workspaceDir|logPath)$/i.test(key)) {
+        redacted = true; return [publicKey, '[已隐藏]']
       }
-      return [key, scrub(child)]
-    })) : value
+      return [publicKey, scrub(child)]
+    })) : typeof value === 'string' ? scrubString(value) : value
   try {
     const parsed = JSON.parse(text)
     if (parsed && typeof parsed === 'object') {
+      structured = true
       const selected = scrub(parsed)
       if (redacted) text = JSON.stringify(selected, null, 2)
     }
-  } catch {}
+  } catch {
+    // A parsed but unprocessable object must never fall back to its raw bytes.
+    if (structured) return {text: '[无法安全处理的内容已隐藏]', redacted: true}
+  }
   const before = text
-  for (const secret of secrets) if (secret) text = text.replaceAll(secret, '[已隐藏]')
-  text = text.replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [已隐藏]')
-    .replace(/((?:access[_-]?token|refresh[_-]?token|api[_-]?key|authorization|password|secret|credentials?|permission[_-]?token|dispatch[_-]?token|token)["']?\s*[:=]\s*["']?)(?!\[已隐藏\])[^\s"'&,}\]]+/gi, '$1[已隐藏]')
-  if (!preservePaths) text = text.replace(/(^|[\s"'=(\[{])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s"'<>)}\]]+/g, '$1[路径已隐藏]')
+  if (!structured) text = redact(text)
   const truncated = text.length > maxLength
   return {text: text.slice(0, maxLength), redacted: redacted || text !== before, ...(truncated ? {truncated: true} : {})}
 }
@@ -70,13 +95,15 @@ const toolMemory = {scope: toolEnum(['personal', 'group', 'project'])}
 
 // 私有 memory topic/key/query 与 skill catalog 没有公开证明，不由任务历史读取权推导。
 const toolInputs = {
-  read: toolPage, read_window: toolPage, read_image: {}, write: {}, edit: {},
-  find: {pattern: toolString, limit: toolNumber}, grep: {pattern: toolString, include: toolString},
-  web_search: {queries: toolStrings}, web_fetch: {},
-  bash: {description: toolString, timeoutMs: toolNumber, run_in_background: toolBoolean},
-  pwsh: {description: toolString, timeoutMs: toolNumber, run_in_background: toolBoolean},
-  job_output: {wait: toolBoolean, timeout_ms: toolNumber}, job_kill: {reason: toolString}, job_list: {},
-  working_directory: {}, skill: {},
+  read: {path: toolString, ...toolPage}, read_window: {path: toolString, ...toolPage}, read_image: {path: toolString},
+  write: {path: toolString, content: toolString},
+  edit: {path: toolString, edits: toolArray(toolObject({oldText: toolString, newText: toolString}))},
+  find: {pattern: toolString, path: toolString, limit: toolNumber}, grep: {pattern: toolString, path: toolString, include: toolString},
+  web_search: {queries: toolStrings}, web_fetch: {url: toolString},
+  bash: {description: toolString, command: toolString, workdir: toolString, timeoutMs: toolNumber, run_in_background: toolBoolean},
+  pwsh: {description: toolString, command: toolString, workdir: toolString, timeoutMs: toolNumber, run_in_background: toolBoolean},
+  job_output: {job_id: toolString, wait: toolBoolean, timeout_ms: toolNumber}, job_kill: {job_id: toolString, reason: toolString}, job_list: {},
+  working_directory: {cd: toolString}, skill: {},
   todo_write: {todos: toolArray(toolObject({content: toolString, status: toolEnum(['pending', 'in_progress', 'completed'])}))},
   schedule_create: toolSchedule, schedule_update: toolSchedule, schedule_list: {}, schedule_delete: {},
   memory_status: {}, memory_candidates: {}, memory_read: toolMemory, memory_search: {...toolMemory, limit: toolNumber},
@@ -112,11 +139,9 @@ const toolOutputs = {
 }
 
 function toolInput(name, args) {
-  if (!Object.hasOwn(toolInputs, name)) return {toolName: '未公开工具', text: '工具输入未公开。', redacted: true}
+  if (!Object.hasOwn(toolInputs, name)) return {toolName: name, text: '此工具尚未声明可展示的输入字段；调用名称与状态保留。', redacted: true}
   const state = {hidden: false}, value = toolObject(toolInputs[name])(args ?? {}, state) ?? {}
   if (!args || typeof args !== 'object' || Array.isArray(args)) state.hidden = true
-  if (name === 'write' && typeof args?.content === 'string') value.contentCharacters = args.content.length
-  if (name === 'edit' && Array.isArray(args?.edits)) value.editCount = args.edits.length
   if (name === 'working_directory') value.action = typeof args?.cd === 'string' ? '切换工作目录' : '读取工作目录'
   if (name === 'skill') value.action = '加载技能'
   if (name === 'read_image') value.action = '读取图像'
@@ -124,24 +149,23 @@ function toolInput(name, args) {
   if (name === 'resident_router_reply' && Array.isArray(args?.taskDelivery?.artifactIds)) value.deliveryFileCount = args.taskDelivery.artifactIds.length
   return {toolName: name, text: JSON.stringify(value, null, 2), redacted: state.hidden}
 }
+const taskTextTools = new Set(['read', 'read_window', 'read_image', 'write', 'edit', 'find', 'grep', 'bash', 'pwsh',
+  'job_output', 'job_list', 'job_kill', 'working_directory', 'todo_write', 'web_search', 'web_fetch'])
+
 function toolOutput(call, message, identity) {
-  const hidden = {toolName: '未公开工具', text: '工具结果正文未公开。', redacted: true}
+  const hidden = {toolName: message.toolName, text: '此结果没有唯一配对的工具调用，正文未展示。', redacted: true}
   // 孤立、重复 ID 或名称冲突的结果保留事件，但不借 result.toolName 猜测公开权限。
-  if (!call || call.name !== message.toolName || !Object.hasOwn(toolInputs, call.name)) return hidden
+  if (!call || call.name !== message.toolName) return hidden
   const name = call.name, state = {hidden: false}
-  const summary = {toolName: name, text: '工具已返回；仅展示调用与状态，结果正文未公开。', redacted: true}
-  if (message.isError === true) return summary
+  const summary = {toolName: name, text: /^(?:memory_|skill$)/.test(name)
+    ? '此工具涉及独立的记忆或技能读取权限，请通过记忆与技能入口查看获权正文。'
+    : '此工具尚未声明可展示的结果字段；调用名称与状态保留。', redacted: true}
   const content = message.content
   if (Array.isArray(content) && content.some(block => block.type !== 'text' || Object.keys(block).some(key => key !== 'type' && key !== 'text'))) state.hidden = true
   const text = texts(content)
-  // 调用方已认证安装操作者的任务读取权；这些工具声明的是该任务业务文字。
-  // job_output 仅公开已配对任务调用的官方文本输出；不读取 job/details/日志或原始参数。
-  // JSON 文件仍是文字，不按外观改当工具 DTO；memory/skill 的独立 scope 不由此授予。
-  if (identity.taskId && ['read', 'read_window', 'grep', 'web_search', 'web_fetch', 'job_output'].includes(name)) {
-    if (!text) return summary
-    const publicText = ['web_search', 'web_fetch'].includes(name)
-      ? text.replace(/https?:\/\/[^\s<>"')]+/gi, '[网页地址已隐藏]') : text
-    return {toolName: name, text: publicText, redacted: state.hidden || publicText !== text}
+  // 同一任务已授权的执行工具正文可读；details、二进制和独立 memory/skill scope 不由此公开。
+  if (identity.taskId && taskTextTools.has(name)) {
+    return {toolName: name, text: text || '工具已返回，未包含文字正文。', redacted: state.hidden}
   }
   if (!Object.hasOwn(toolOutputs, name)) return summary
   let raw
@@ -162,7 +186,7 @@ function projectEntries(snapshot, identity, secrets) {
   const items = [], sources = new Set(), calls = new Map()
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
   const add = (entry, suffix, role, value, extra = {}, message) => {
-    const visible = visibleText(value, secrets, {maxLength: Infinity})
+    const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths: true})
     if (!visible.text && !extra.toolName) return
     items.push({id: opaque(entry.id, suffix), role, createdAt: stamp(message, entry), ...visible, ...extra,
       source: {sessionId, entryId: opaque(entry.id), ...(extra.callId ? {callId: extra.callId} : {})}})
@@ -179,8 +203,13 @@ function projectEntries(snapshot, identity, secrets) {
     if (!entry || typeof entry.id !== 'string') continue
     for (const [index, message] of projected.messages.entries()) {
       if (message.role === 'assistant') {
-        add(entry, 'assistant-' + index, 'assistant', texts(message.content), {kind: 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
-        for (const [blockIndex, block] of (Array.isArray(message.content) ? message.content : []).entries()) {
+        const blocks = typeof message.content === 'string' ? [{type: 'text', text: message.content}] : message.content
+        for (const [blockIndex, block] of (Array.isArray(blocks) ? blocks : []).entries()) {
+          if (block.type === 'text' && typeof block.text === 'string') {
+            add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', block.text, {kind: 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
+          } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.redacted !== true) {
+            add(entry, 'thinking-' + index + '-' + blockIndex, 'assistant', block.thinking, {kind: 'thinking'}, message)
+          }
           if (block.type !== 'toolCall' || typeof block.name !== 'string') continue
           const callId = opaque(entry.id, index, blockIndex)
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
@@ -237,6 +266,17 @@ function pageOptions({offset = 0, limit = 50, stream = false, checkpoint, before
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) fail('PAGE_INVALID')
   return {offset, limit}
 }
+function taskTodos(snapshot, identity, secrets) {
+  if (!identity.taskId) return {}
+  const entry = snapshot.entries.findLast(entry => entry.type === 'custom' && entry.customType === 'night.audit'
+    && entry.data?.domain === 'planning' && entry.data.kind === 'todos' && entry.data.version === 1)
+  if (!entry) return {todos: null}
+  const rows = entry.data.payload?.todos
+  if (!Array.isArray(rows) || rows.some(row => typeof row?.content !== 'string' || !['pending', 'in_progress', 'completed'].includes(row.status))) fail('SESSION_TODOS_INVALID', 503)
+  return {todos: {items: rows.map(row => ({...visibleText(row.content, secrets, {maxLength: Infinity, preservePaths: true}), status: row.status})),
+    updatedAt: stamp(null, entry), source: {sessionId: identity.sessionId, entryId: digest(JSON.stringify([identity.sessionId, entry.id]))}}}
+}
+
 async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = []}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
@@ -249,7 +289,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   if (snapshot.header?.id !== sessionId || !Array.isArray(snapshot.entries) || !Array.isArray(snapshot.context?.projection?.entries) || !validIdentity(snapshot)) fail('SESSION_IDENTITY_INVALID', 503)
   const currentRevision = digest(JSON.stringify([sessionId, snapshot.entries.at(-1)?.id]))
   if (revision && revision !== currentRevision) fail('SESSION_PAGE_STALE', 409)
-  return {...base, status: 'ready', revision: currentRevision, items: projectEntries(snapshot, identity, secrets)}
+  return {...base, status: 'ready', revision: currentRevision, ...taskTodos(snapshot, identity, secrets), items: projectEntries(snapshot, identity, secrets)}
 }
 function sessionPage(value, options) {
   const {offset, limit} = pageOptions(options)

@@ -4,7 +4,7 @@ import {channelIngressView} from '../../../src/channels/ingress-control.js'
 
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]))
 // 任务业务字段由原合同限制长度；这里仅脱敏，不沿用执行日志的单条截断策略。
-const displayText = (value, secrets) => visibleText(value, secrets, {maxLength: Infinity}).text
+const displayText = (value, secrets) => visibleText(value, secrets, {maxLength: Infinity, preservePaths: true}).text
 // 展示字段按现有结果/时间线合同逐层选取；新增领域字段不会自动穿透到浏览器。
 const displayFields = (value, keys, secrets) => Object.fromEntries(keys.flatMap(key => {
   const item = value?.[key]

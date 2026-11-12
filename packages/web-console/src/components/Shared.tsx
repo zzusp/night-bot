@@ -99,7 +99,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
           if (nextOffset != null && revision) setCursor(previous => ({ offsets: [...previous.offsets, nextOffset], revision }));
         }}>下一段</Button>
       </div></nav>}
-    {message.role !== 'tool' && (page?.redacted || message.redacted) && <p className="message-scope">路径及敏感凭据已隐藏。</p>}
+    {message.role !== 'tool' && (page?.redacted || message.redacted) && <p className="message-scope">敏感信息、未获权字段或非文字数据已省略。</p>}
     {message.truncated && (!history || message.textNextOffset == null) && <p className="message-scope">此条长记录的当前接口仅返回部分正文。</p>}
     {showSource && message.role !== 'tool' && <MessageProvenance source={page?.source || message.source} />}
   </>;
@@ -284,7 +284,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}<MessageBody message={message} history={history} showSource={!compact} /></div>
+          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary>模型思考</summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}

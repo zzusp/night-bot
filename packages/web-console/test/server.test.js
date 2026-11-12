@@ -68,7 +68,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -87,7 +87,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -295,7 +295,7 @@ test('overview isolates throwing channel health and conversation reads from heal
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_/)
 })
 
-test('task details and dialogue whitelist nested facts and redact displayed credentials and paths', async t => {
+test('任务详情保留业务路径，同时按字段隔离私有元数据和凭据', async t => {
   const f = await fixture(t); await f.login()
   const token = (await readFile(f.web.credentialPath, 'utf8')).trim()
   const task = await f.app.tasks.taskDetail('task-one')
@@ -320,7 +320,7 @@ test('task details and dialogue whitelist nested facts and redact displayed cred
   assert.equal(detail.body.result.action, 'complete')
   assert.equal(detail.body.result.question, '需要确认吗？')
   assert.deepEqual(detail.body.result.limitations, ['尚未线上验收'])
-  assert.deepEqual(detail.body.result.evidence, ['已核对 [路径已隐藏]'])
+  assert.deepEqual(detail.body.result.evidence, ['已核对 /private/evidence.txt'])
   assert.deepEqual(detail.body.timeline.task.events, [{kind: 'created', sequence: 1, at: '2026-11-07T01:00:00Z'}])
   assert.equal(detail.body.timeline.executions[0].milestones[0].summary, '构建已完成')
   assert.match(detail.body.timeline.human.segments[0].description, /请确认下一步/)
@@ -328,7 +328,7 @@ test('task details and dialogue whitelist nested facts and redact displayed cred
   assert.deepEqual(dialogue.body.messages, [{id: 'd1', text: '确认继续', receivedAt: '2026-11-07T01:00:00Z', reply: '已收到'}])
   assert.equal(dialogue.body.error, 'TASK_DIALOGUE_UNAVAILABLE'); assert.equal(dialogue.body.writable, false)
   const serialized = JSON.stringify([detail.body, dialogue.body, (await f.fetchApi('/api/tasks')).body])
-  assert.doesNotMatch(serialized, /PRIVATE_|\/private\/|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
+  assert.doesNotMatch(serialized, /PRIVATE_|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
   assert.equal(serialized.includes(token), false)
   assert.equal(JSON.stringify(task), original, 'read projection never alters the authoritative task')
 })
@@ -1008,4 +1008,26 @@ test('feedback HTTP manual path needs no model or local data and still requires 
  assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:created.body.title,body:created.body.body}})).status,403);assert.equal(sent,0)
  const edited=await f.fetchApi(path,{method:'PATCH',body:{title:'修改标题',body:'修改正文'}});assert.equal(edited.status,200)
  assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:edited.body.title,body:edited.body.body,confirm:true}})).status,200);assert.equal(sent,1)
+})
+
+test('execution reads refresh Host secret values and fail closed when the provider fails', async t => {
+  let secret = 'opaque-vendor-value-one', unavailable = false, calls = 0
+  const snapshot = () => ({header:{id:'pi-one'}, entries:[{id:'commit-one'}],
+    audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'task-one',sessionId:'pi-one'}}],
+    context:{projection:{entries:[{sourceEntry:{id:'body',timestamp:'2026-11-12T00:00:00Z'},messages:[{role:'assistant',content:[{type:'text',text:('public text '.repeat(1600)) + secret}]}]}]}}})
+  const f = await fixture(t,{persistence:{readNative:async()=>snapshot()},redactionSecrets:async()=>{calls++;if(unavailable)throw new Error('PRIVATE_PROVIDER_ERROR');return [secret]}})
+  await f.login()
+  const page = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(page.status,200)
+  assert.equal(page.body.items[0].redacted,true)
+  let body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-one/)
+  secret='opaque-vendor-value-two'
+  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-two/)
+  assert.equal(calls,3)
+  unavailable=true
+  const denied = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(denied.status,503)
+  assert.doesNotMatch(JSON.stringify(denied.body),/opaque-vendor|PRIVATE_PROVIDER_ERROR/)
 })
