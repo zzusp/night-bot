@@ -65,9 +65,9 @@ export function useRoute() {
 
 export function navigate(path: string) { window.location.hash = path; }
 
-export const dateTime = (value?: string | number, precise = false) => {
+export const dateTime = (value?: string | number, precise = false, fullDate = false) => {
   if (!value || !Number.isFinite(new Date(value).getTime())) return '未记录';
-  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', ...(precise ? { second: '2-digit' as const, fractionalSecondDigits: 3 as const } : {}), hour12: false }).format(new Date(value));
+  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', ...(fullDate ? { year: 'numeric' as const, timeZoneName: 'short' as const } : {}), ...(precise ? { second: '2-digit' as const, fractionalSecondDigits: 3 as const } : {}), hour12: false }).format(new Date(value));
 };
 
 export function textOf(value: unknown): string {
