@@ -1,6 +1,6 @@
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
-import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity} from '../../src/tasks/effect-reconciliation.js'
+import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, unarchiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
@@ -1915,21 +1915,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         // never eligible for channel triage or a task/model wake, even on crash.
         source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
       }
-      if(source.requestIdentity?.effectAuthorization){
-        const identity=taskEffectActionAuthorizationIdentity(source.requestIdentity.effectAuthorization),task=get('dynamic_tasks',identity.taskId)
-        const closures=task.effectReconciliations??[]
-        if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId))fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
-        const pause=readReceiptRow(db,'effect-action-pause:'+taskEffectDigest([task.taskId,identity.requestId]))
-        if(pause){
-          const args={taskId:task.taskId,control:'paused',expectedControlRevision:identity.expectedControlRevision,reason:'effect-action:'+taskEffectDigest([identity,source.text])}
-          if(pause.digest!==digest({kind:'task.control',args}))fail('DYNAMIC_COMMAND_ID_CONFLICT')
-          const held=JSON.parse(pause.body).result.task
-          if(held.requirementRevision!==identity.expectedRequirementRevision||held.control!=='paused'||held.controlRevision!==identity.expectedControlRevision+1)fail('TASK_EFFECT_AUTHORIZATION_STALE')
-        }
-        if(task.archivedAt||task.recovering||!task.drained||task.status!=='active'||task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==identity.expectedControlRevision+(pause?1:0))fail('TASK_EFFECT_AUTHORIZATION_STALE')
-        if(!closures.length||closures.some(row=>row.state!=='committed')||digest(closures.map(row=>row.intentEntryId).sort())!==digest(identity.closedIntentEntryIds))fail('TASK_EFFECT_RECONCILIATION_PENDING')
-        source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
-      }
+      if(source.requestIdentity?.effectAuthorization)fail('TASK_EFFECT_NEW_ACTION_RETIRED')
       put('dynamic_sources', source); return changed({ source })
     }
     if (kind === 'source.enrich') {

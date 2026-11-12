@@ -7,7 +7,7 @@ import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions} from '../../src/tasks/single-session.js'
-import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity,verifyTaskEffectClosures,taskEffectScopeDigest,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
+import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
 import {readTaskEffectScope} from '../../src/tasks/effect-scope.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
 import {createObserverGroupPages} from './observer-group-pages.js'
@@ -427,54 +427,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return {taskId,state:row.state,entryId:row.entryId,outcome:row.receipt.payload.outcome,noReplay:true}
     })
   }
-  async function authorizeTaskEffectAction({operatorText,...proposal}) {
-    if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
-  if(!ctx.get?.('officialAgentFactory'))fail('TASK_OFFICIAL_FACTORY_REQUIRED')
-  if(rejectedExecutionSessions!==undefined||rejectedClaudeExecutionSessions!==undefined)fail('TASK_SPLIT_EXECUTION_REMOVED')
-    if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
-    if(typeof operatorText!=='string'||!operatorText.trim()||operatorText.length>16000)fail('DYNAMIC_ARGUMENT_INVALID')
-    const identity=taskEffectActionAuthorizationIdentity(proposal),{taskId,requestId}=identity
-    return admitTask(taskId,async()=>{
-      let task=await requireTask(taskId)
-      const key=hash([taskId,requestId]),sourceId='effect-action:'+key,pauseId='effect-action-pause:'+key,reviseId='effect-action-revise:'+key,activateId='effect-action-activate:'+key
-      const source=await query('source.get',{sourceId})
-      if(source&&(source.actorId!==config.webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+taskId)||source.text!==operatorText||hash(source.requestIdentity?.effectAuthorization)!==hash(identity)))fail('DYNAMIC_COMMAND_ID_CONFLICT')
-      const activated=await query('receipt.get',{id:activateId})
-      if(activated){if(!source)fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED');return {taskId,sourceId,state:'authorized',requirementRevision:activated.result.task.requirementRevision,controlRevision:activated.result.task.controlRevision,noReplay:true}}
-      if(inflightTasks.has(taskId)||ctx.agents.get(task.sessionId))fail('TASK_EFFECT_OWNER_LIVE')
-      if(!task.drained||task.recovering||task.archivedAt||task.status!=='active'||!['active','paused'].includes(task.control))fail('TASK_EFFECT_TASK_NOT_QUIESCENT')
-      const pauseArgs={taskId,control:'paused',expectedControlRevision:identity.expectedControlRevision,reason:'effect-action:'+hash([identity,operatorText])}
-      const paused=await query('receipt.get',{id:pauseId})
-      // 暂停收据绑定完整提案和说明摘要；中断重试不能更换授权内容。
-      if(paused)await command('task.control',pauseArgs,pauseId)
-      let expectedControlRevision=identity.expectedControlRevision+(paused?1:0)
-      if(paused&&task.control!=='paused')fail('TASK_EFFECT_AUTHORIZATION_STALE')
-      const revised=await query('receipt.get',{id:reviseId})
-      if(revised){
-        if(!source||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==expectedControlRevision||task.objective!==identity.objective||!task.sourceRefs.includes(sourceId))fail('TASK_EFFECT_AUTHORIZATION_STALE')
-      }else if(task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
-      const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:effectReconciliationAuditKinds})
-      try {
-        const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
-        const closures=await verifyTaskEffectClosures({task,stored,closedIntentEntryIds:identity.closedIntentEntryIds})
-        const scopeDigest=taskEffectScopeDigest(await readTaskEffectScope(ctx,task,stored))
-        if(closures.some(row=>row.receipt.payload.scopeDigest!==scopeDigest))fail('TASK_EFFECT_SCOPE_MISMATCH')
-        if(closures.some(row=>identity.expectedRequirementRevision+1<=row.receipt.payload.currentBinding.requirementRevision))fail('TASK_EFFECT_AUTHORIZATION_STALE')
-        if(task.control==='active'){
-          const held=await command('task.control',pauseArgs,pauseId)
-          expectedControlRevision=held.result.task.controlRevision
-        }
-        if(!source)await command('source.record',{sourceId,groupId:task.groupId??'task:'+taskId,messageId:sourceId,actorId:config.webActorId,channel:'web',text:operatorText,timestamp:new Date().toISOString(),requestIdentity:{effectAuthorization:identity}},'source:'+sourceId)
-        if(!revised)await command('task.revise',{taskId,expectedRequirementRevision:identity.expectedRequirementRevision,expectedControlRevision,request:identity.objective,objective:identity.objective,sourceRefs:[...new Set([...task.sourceRefs,sourceId])]},reviseId)
-        task=await requireTask(taskId)
-        if(task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
-        await command('task.control',{taskId,control:'active',expectedControlRevision},activateId)
-      }finally{await writer.close()}
-      const activatedReceipt=await query('receipt.get',{id:activateId})
-      return {taskId,sourceId,state:'authorized',requirementRevision:activatedReceipt.result.task.requirementRevision,controlRevision:activatedReceipt.result.task.controlRevision,noReplay:true}
-    })
-  }
-
   const track = (map, id, action) => {
     if (map.has(id)) return map.get(id)
     const previousFailure = failures.get(id)
@@ -1916,7 +1868,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     },
     async inspectTaskEffect(args){if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED');if(!effectReconciliation)fail('TASK_SESSION_WEB_ACTOR_REQUIRED');return admitTask(args.taskId,()=>effectReconciliation.inspect(args))},
     reconcileTaskEffect,
-    authorizeTaskEffectAction,
     async sendTaskDialogue({ taskId, requestId, text }) {
       if (!config.webActorId) fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
       const receipt = await command('task.dialogue.add', { taskId, requestId, text, actorId: config.webActorId }, `dialogue:${taskId}:${requestId}`)

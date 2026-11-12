@@ -35,14 +35,13 @@ key and verified official input must identify exactly one call. Provider call-ID
 reuse across distinct inputs is supported when that proof is unique; genuinely
 ambiguous old records remain held. This is Night upgrade support, not DSH import.
 
-Unknown effects still hold execution until reconciliation. After closure, a new
-call ID, lease or bare unpause cannot authorize effects or declare the old partial
-outcome successful. A separately authenticated operator may authorize a new
-objective referencing the exact set of closed intents; this produces a new
-business source and requirement revision under unchanged permissions. Only calls
-following that actual admitted grant may perform the new work or complete it.
-The original closed invocation remains permanently blocked. See
-EFFECT-ACTION-AUTHORIZATION.md for the private HTTP/CLI entry and crash boundaries.
+Unknown effects still hold side effects until reconciliation; Router can wake the
+same session for evidence readback without requesting execution authorization.
+After closure, ordinary Router scheduling permits independent new calls and task
+completion. No separate operator grant, new objective or requirement revision is
+required. Closure never declares the old partial outcome successful, and the
+original invocation remains permanently blocked. The former new-action HTTP/CLI
+entry is retired. See EFFECT-RECONCILIATION.md for evidence closure boundaries.
 
 An owner spanning several admitted inputs emits one scope-limited drain proof
 covering exact original intent identities. It does not fabricate multiple owner

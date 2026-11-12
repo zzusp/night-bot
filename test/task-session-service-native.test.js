@@ -154,31 +154,31 @@ test('official service preserves one authenticated source identity across the SQ
  const saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),packets=saved.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued');assert.equal(packets.length,1);const packet=JSON.parse(packets[0].payload.content[0].text);assert.equal(packet.sources.find(value=>value.sourceId===source.sourceId).text,body);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,0);assert.deepEqual(await h.query('execution.list'),[])
 }))
 
-test('Router rejects another sender reopening completed work; the original author can reopen the same execution session',{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
+test('Router reopens completed work from an ordinary message without execution authorization',{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
  const f=await officialCase(t,'task-source-auth-',false);let h,original,turns=new Map()
  h=await f.host(request=>{
   const input=latestInput(request),names=request.tools.map(tool=>tool.name)
   const source=input.events?.find(event=>event.source?.messageId.startsWith('reopen-'))?.source
   if(names.includes('resident_router_settle')&&source){
    const step=turns.get(source.sourceId)??0;turns.set(source.sourceId,step+1)
-   if(step<(source.actorId==='colleague'?2:1))return[call('resident_task_action',{operationId:'reopen:'+source.sourceId,sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:original.taskId,expectedRequirementRevision:1,expectedControlRevision:1,objective:'沿原修复在既有授权范围复核',text:source.text})]
-   if(step===(source.actorId==='colleague'?2:1))return[call('resident_router_settle',{operationId:'settle:'+source.sourceId,eventIds:input.events.map(event=>event.id)})]
+   if(step===0)return[call('resident_task_action',{operationId:'reopen:'+source.sourceId,sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:original.taskId,expectedRequirementRevision:original.requirementRevision,expectedControlRevision:original.controlRevision,objective:'继续复核原任务',text:source.text})]
+   if(step===1)return[call('resident_router_settle',{operationId:'settle:'+source.sourceId,eventIds:input.events.map(event=>event.id)})]
    return[]
   }
   const calls=topicTaskCalls(request);if(calls)return calls
-  if(original){assert.equal(input.task.sessionId,original.sessionId);assert.ok(input.sources.some(source=>source.messageId==='reopen-author'))}
-  return[singleResult('complete',original?'原作者明确授权的续办已完成':'原目标已经完成')]
+  if(original){assert.equal(input.task.sessionId,original.sessionId);assert.ok(input.sources.some(source=>source.messageId==='reopen-colleague'))}
+  return[singleResult('complete',original?'Router 调度的续办已完成':'原目标已经完成')]
  })
  await t.beginBusiness();await h.service.ingest(message);await h.service.whenIdle();[original]=await h.query('task.list')
  await h.service.ingest({...message,messageId:'reopen-colleague',senderOpenDingTalkId:'colleague',text:'测试助手，重新打开原任务'});await h.service.whenIdle()
  const denied=h.toolResults.filter(row=>row.name==='resident_task_action'&&row.result.isError)
- assert.equal(denied.length,2);assert.ok(denied.every(row=>JSON.stringify(row.result).includes('FORBIDDEN')||JSON.stringify(row.result).includes('PERMISSION')))
- assert.equal((await h.query('task.get',{taskId:original.taskId})).requirementRevision,1)
- await h.service.ingest({...message,messageId:'reopen-author',text:'测试助手，在既有授权范围重开原任务复核'});await h.service.whenIdle()
+ assert.equal(denied.length,0)
+ original=await h.query('task.get',{taskId:original.taskId});assert.equal(original.requirementRevision,2);assert.equal(original.status,'completed')
+ await h.service.ingest({...message,messageId:'reopen-author',text:'测试助手，继续检查这个任务'});await h.service.whenIdle()
  const [current]=await h.query('task.list');assert.equal((await h.query('task.list')).length,1)
- assert.equal(current.taskId,original.taskId);assert.equal(current.sessionId,original.sessionId);assert.equal(current.ownerActorId,'native-user');assert.equal(current.requirementRevision,2);assert.equal(current.status,'completed')
- const count=h.requests.length;await h.service.ingest({...message,messageId:'reopen-author',text:'测试助手，在既有授权范围重开原任务复核'});await h.service.whenIdle()
- assert.equal(h.requests.length,count);assert.equal((await h.query('task.get',{taskId:original.taskId})).requirementRevision,2)
+ assert.equal(current.taskId,original.taskId);assert.equal(current.sessionId,original.sessionId);assert.equal(current.ownerActorId,'native-user');assert.equal(current.requirementRevision,3);assert.equal(current.status,'completed')
+ const count=h.requests.length;await h.service.ingest({...message,messageId:'reopen-author',text:'测试助手，继续检查这个任务'});await h.service.whenIdle()
+ assert.equal(h.requests.length,count);assert.equal((await h.query('task.get',{taskId:original.taskId})).requirementRevision,3)
 }))
 
 for(const [ownEcho,actor]of [[true,'native-user'],[true,'colleague'],[false,'native-user']])test(`Router supplements only the admitted source; historical context is not authority: echo=${ownEcho}, actor=${actor}`,{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{

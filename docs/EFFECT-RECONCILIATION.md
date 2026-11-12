@@ -47,8 +47,9 @@ proposal 只包含 inspect 的 `taskId`、`intentEntryId`、`intentDigest`、
 只有 prepare 而无原生回执时，保持挂起，须操作者重试同一提案。
 
 结清只表示可能存在部分效果的失败尝试，不表示任务完成。任务保持暂停；
-继续必须走另一次明确的可信 Host 控制操作。即使控制修订变化，原工具名和
-参数摘要也永久禁止重放。此入口不提供自动继续、补发或重新执行。
+Router 可根据普通用户消息恢复原任务，不要求额外执行授权或调用 new-action。
+旧具体调用按原生调用身份永久禁止重放；后续独立调用不因参数相同被禁止。
+此结清入口自身不启动执行，调度仍由 Router 决定。
 
 实际默认 Host 与本地 HTTP/CLI 测试见 pi-task-effect-reconciliation-e2e 和
 pi-effect-operator-http；来源、篡改、范围、分支、提交切点和链接反例见
