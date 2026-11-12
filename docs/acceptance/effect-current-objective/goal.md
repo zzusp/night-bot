@@ -2,7 +2,7 @@
 
 > 状态：ACTIVE
 > Goal ID：effect-current-objective
-> 最近维护：2026-11-12T14:47:02+08:00
+> 最近维护：2026-11-12T14:56:39+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -28,16 +28,16 @@
 | --- | --- | --- | --- | --- |
 | SG1 | 删除全任务额外授权 | 调用/完成门槛与回调删除，无替代 grant，旧调用不重放 | DONE | [第三轮](round-3.md)：66 条效果回归 |
 | SG2 | Router 原会话完整调度 | 跨作者停启、直接解除等待、取消/完成/归档重唤、冷重开及实际 drain | DONE | [第三轮](round-3.md)：26 条账本、完整停启链与两处结清续接 |
-| SG3 | 本地验证与新 PR | 保留首次路由组失败与补验，守卫通过并交付新 PR | IN_PROGRESS | [矩阵](matrix.csv)；验证完成，待提交/新 PR |
+| SG3 | 本地验证与新 PR | 保留首次路由组失败与补验，守卫通过并交付新 PR | DONE | [PR #81](https://github.com/zzusp/night-bot/pull/81) OPEN / MERGEABLE；[第三轮](round-3.md) |
 | SG4 | 合并与实际安装升级 | 明确授权后升级已合并发行，核实原任务可唤起 | WAITING_AUTHORIZATION | 本轮未合并/部署；旧 PR #79 已合并不等于本轮补丁部署 |
 | SG5 | 原业务与 Excel 验收 | 两类下载的行业/审核状态中英文实际导出读回正确 | NOT_RUN | 平台升级后由 Router 续原任务；未改业务仓库或发布业务系统 |
 
 ## 当前检查点
 
-- 当前子目标：SG3
-- 唯一下一步：提交已验证改动，在当前新分支 push 并创建/回查新 PR；不触发 CI，不合并或部署。
-- 未闭环项：新 PR 尚未交付；实际安装未升级，原业务及 Excel 验收未执行；首次完整路由组 94 PASS / 1 FAIL / 1 CANCEL，失败项与末次增量补验通过，未重复全组。
-- 当前分支 `worktree-router-scheduling-authority`，验证基线 `2e25d6657c1add403f544622866cf357f09d0a2e` 加第三轮所列未提交源码字节。旧 PR [#79](https://github.com/zzusp/night-bot/pull/79) 于 2026-11-12T05:48:20Z 合并，不能继续推其旧分支。
+- 当前子目标：SG4
+- 唯一下一步：获得本轮合并与本地升级的明确授权后，按现有 runbook 升级已合并发行，核对运行版本并让 Router 续原业务任务；此前不操作实际安装。
+- 未闭环项：实际安装未升级，原业务及 Excel 验收未执行；首次完整路由组 94 PASS / 1 FAIL / 1 CANCEL，失败项与末次增量补验通过，未重复全组。
+- 当前分支 `worktree-router-scheduling-authority`，代码提交 `2931499fca3b5d029bc3f4de2798bf9dfe02207e`，基于 `2e25d6657c1add403f544622866cf357f09d0a2e`；后续仅回填本目标的 PR 交付事实，不改已验证源码。旧 PR [#79](https://github.com/zzusp/night-bot/pull/79) 于 2026-11-12T05:48:20Z 合并，不能继续推其旧分支。
 
 ## 重大决策
 
