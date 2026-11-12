@@ -35,7 +35,7 @@ export default function SchedulesPage({ route }: { route: URL }) {
       <Button variant="secondary" icon={<RiRefreshLine size={16} />} busy={query.loading} disabled={query.loading} onClick={query.refresh}>刷新任务</Button>
     </div>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
-    <section className="schedule-results" aria-label={`${selected.label}的定时任务`} aria-busy={query.loading}>
+    <section className="task-table-wrap schedule-results" aria-label={`${selected.label}的定时任务`} aria-busy={query.loading}>
       {!data ? query.loading ? <Loading>正在读取定时任务…</Loading> : <EmptyState title="定时任务暂不可读" /> : !data.items.length ?
         <EmptyState title={selected.empty} /> :
         <ul className="schedule-list">{data.items.map(task => <li className="schedule-row" key={task.id}>

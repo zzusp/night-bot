@@ -29,10 +29,11 @@ const hooks = registerHooks({
     return next(url, context)
   },
 })
-let UsageSummary, EvolutionListActions, EvolutionEntryList, EvolutionEntryMetadata
+let UsageSummary, EvolutionListActions, EvolutionEntryList, EvolutionEntryMetadata, Pagination
 try {
   ({UsageSummary, EvolutionListActions} = await import('../src/EvolutionPage.tsx'))
   ;({default: EvolutionEntryList, EvolutionEntryMetadata} = await import('../src/components/EvolutionEntryList.tsx'))
+  ;({Pagination} = await import('../src/components/Shared.tsx'))
 } finally { hooks.deregister() }
 
 const data = {
@@ -121,4 +122,15 @@ test('timestamp styles reuse theme tokens while keeping the refresh button and w
   assert.match(css, /\.evolution-list-updated\[data-stale\] \{ color: var\(--board-warning\)/)
   assert.match(css, /\.evolution-list-actions > \.board-button \{ flex-shrink: 0; \}/)
   assert.match(css, /\.evolution-list-notice \{[^}]*color: var\(--board-warning\)/)
+})
+
+for (const kind of ['memory', 'skill']) test(`${kind} detail arrow belongs to the final cell, after all metadata`, () => {
+  const html = renderToStaticMarkup(createElement(EvolutionEntryList, {items: [{id:'x', name:'Example', kind, status:'applied', revision:1}], onView() {}}))
+  assert.match(html, /evolution-updated-cell[\s\S]*evolution-action-cell[\s\S]*查看详情：Example[\s\S]*<\/td><\/tr>/)
+  assert.equal((html.match(/evolution-item-arrow/g) || []).length, 1)
+})
+test('evolution ten-row pagination keeps shared twenty-row default unchanged', () => {
+  const props = {offset:10,total:23,nextOffset:20,onPage(){},pageSize:10}
+  assert.match(renderToStaticMarkup(createElement(Pagination, props)), /第 2 页/)
+  assert.match(renderToStaticMarkup(createElement(Pagination, {...props,offset:20,pageSize:undefined})), /第 2 页/)
 })

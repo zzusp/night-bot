@@ -1,4 +1,4 @@
-.schedule-results { min-height: 168px; }
+.schedule-results.task-table-wrap { min-height: 168px; }
 .schedule-list { list-style: none; margin: 0; padding: 0; }
 .schedule-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; min-height: 50px; border-radius: var(--board-radius-control); }
 .schedule-title { color: var(--board-text); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }

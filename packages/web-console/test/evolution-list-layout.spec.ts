@@ -32,7 +32,11 @@ for (const theme of ['light', 'dark']) for (const width of [1440, 2048, 390]) {
     await expect(page.locator('.evolution-table').getByRole('columnheader', {name:'使用记录',exact:true})).toHaveCount(0);
     await expect(page.locator('.evolution-table')).not.toContainText('候选，未应用');
     await expect(page.locator('.evolution-usage-cell')).toHaveCount(items.length);
-    await expect(page.locator('.evolution-table th')).toHaveText(['名称', '使用次数', '最近使用', '最近更新']);
+    await expect(page.locator('.evolution-table th')).toHaveText(['名称', '使用次数', '最近使用', '最近更新', '查看内容']);
+    const arrow = await first.locator('.evolution-entry-action').boundingBox();
+    const updatedCell = await first.locator('.evolution-updated-cell').boundingBox();
+    expect(arrow!.x).toBeGreaterThanOrEqual(updatedCell!.x + updatedCell!.width);
+    expect(arrow!.x + arrow!.width).toBeLessThanOrEqual((await first.boundingBox())!.x + (await first.boundingBox())!.width);
     const title = await first.locator('.evolution-item-title').boundingBox();
     const action = await first.getByRole('button', {name: '查看内容：review-code'}).boundingBox();
     expect(title!.x - action!.x).toBeGreaterThan(18);
@@ -57,7 +61,7 @@ test('名称显式读取，详情保留来源与版本，返回恢复焦点', as
   });
   await open(page);
   expect(reads).toBe(0);
-  const action = page.getByRole('button', {name: '查看内容：review-code', exact: true});
+  const action = page.getByRole('button', {name: '查看详情：review-code', exact: true});
   await action.focus(); await page.keyboard.press('Enter');
   const content = page.locator('.evolution-content');
   await expect(content.locator('.evolution-plain-text')).toContainText('合成内容');
