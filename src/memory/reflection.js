@@ -1,6 +1,7 @@
 import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
 import {officialReflectionText} from './reflection-inference.js'
+import {assignReflectionMemoryKeys,reflectionMemoryKey,reviewMemoryKeys,reviewLessonMemoryKey,reflectionRetrySupported} from './reflection-keys.js'
 import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
 import {rm} from 'node:fs/promises'
@@ -47,31 +48,54 @@ export default class Reflection extends Service {
     const scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'},true),directory=this.directory(scope),id=hash(event.id)
     await withLock(join(directory,'.lock'),async()=>{
       const state=await this.state(scope),previous=state.reviews[id]
-      if(previous?.status==='done'||previous?.status==='skipped'){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
+      // Old failures may already have effects without durable key/write receipts.
+      // Preserve them for audit, but never infer again or replay them under new names.
+      if(previous&&(previous.status==='done'||previous.status==='skipped'||!reflectionRetrySupported(previous))){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
       if(previous?.attempts>=3||previous?.retryAt>Date.now())return
       const attempts=(previous?.attempts??0)+1
       try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
         const facts=[{id:event.id,kind:'task.completed',summary:brief(event.result?.summary??event.result??task.completion?.result?.summary??'completed')},...executions.slice(-12).map(row=>({id:row.executionId,kind:'execution',status:row.status,summary:brief(row.result?.summary??row.error??row.stageProgress?.summary??'')})),...operations.slice(-24).map(row=>({id:row.operationId??row.id,kind:'operation',status:row.state,tool:row.toolName??row.name??''}))]
         const known=new Set(facts.map(f=>f.id)),input={taskId:task.taskId,eventId:event.id,facts}
-        let scopeRevision=(await this.host.memory.store.index(scope)).revision
+        const snapshot=await this.host.memory.store.transaction(scope,state=>({revision:state.meta.revision,entries:state.topics.get('experience')?.entries??[]}))
+        let scopeRevision=snapshot.revision
         const timeout=AbortSignal.timeout(30000),signal=AbortSignal.any([this.abort.signal,timeout])
-        const official=this.host.get('nativePiProvider')?.official
-        if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
-        const resolved=await official.resolve({...source.model,signal},source.credentials===undefined?undefined:{credentials:source.credentials})
-        const raw=await officialReflectionText(resolved,input,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??''})
-        const output=JSON.parse(raw);if(!Array.isArray(output.lessons)||output.lessons.length>3)throw failure('REFLECTION_INVALID')
-        const lessons=output.lessons.map(lesson=>{
-          if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
-          const value={key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
-          if(lesson.skill){if(!Array.isArray(lesson.skill.steps)||!lesson.skill.steps.length||lesson.skill.steps.length>8)throw failure('REFLECTION_SKILL_INVALID');value.skill={steps:lesson.skill.steps.map(brief),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability??'Not established'),evidenceBacked:lesson.skill.evidenceBacked===true}}return value
-        })
+        let lessons=previous?.lessons
+        if(!lessons){
+          const official=this.host.get('nativePiProvider')?.official
+          if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
+          const resolved=await official.resolve({...source.model,signal},source.credentials===undefined?undefined:{credentials:source.credentials})
+          const raw=await officialReflectionText(resolved,input,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??''})
+          const output=JSON.parse(raw);if(!Array.isArray(output.lessons)||output.lessons.length>3)throw failure('REFLECTION_INVALID')
+          const keys=new Set()
+          lessons=output.lessons.map(lesson=>{
+            if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
+            if(keys.has(lesson.key))throw failure('REFLECTION_DUPLICATE_KEY');keys.add(lesson.key)
+            const value={key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
+            if(lesson.skill){if(!Array.isArray(lesson.skill.steps)||!lesson.skill.steps.length||lesson.skill.steps.length>8)throw failure('REFLECTION_SKILL_INVALID');value.skill={steps:lesson.skill.steps.map(brief),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability??'Not established'),evidenceBacked:lesson.skill.evidenceBacked===true}}return value
+          })
+        }
+        lessons=assignReflectionMemoryKeys(lessons,snapshot.entries,state.reviews)
+        // Commit key reservations before any memory/skill effects so retries use
+        // the same receipt identity even after a crash or an intervening forget.
+        state.reviews[id]={memoryKeyVersion:1,status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
+        await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
         for(const lesson of lessons){
           signal.throwIfAborted()
-          const memoryKey='task-'+id.slice(0,12)+'-'+lesson.key
-          const result=await this.host.memory.store.remember(scope,{scopeRevision,topic:'experience',key:memoryKey,text:renderMemoryContent(lesson),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))},provenance:this.host.memory.provenance({task})})
+          if(lesson.applied){if(lesson.skill)await this.publishSkill(scope,lesson.key,state);continue}
+          const memoryKey=reflectionMemoryKey(lesson)
+          const previousWrite=lesson.memoryWrite
+          lesson.memoryWrite='uncertain'
+          await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
+          let result
+          try{result=await this.host.memory.store.remember(scope,{scopeRevision,expectedRevision:0,topic:'experience',key:memoryKey,text:renderMemoryContent(lesson),source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(facts))},provenance:this.host.memory.provenance({task})})}
+          catch(error){if(!['committed','uncertain'].includes(previousWrite)&&['MEMORY_SCOPE_CHANGED','MEMORY_REVISION_CONFLICT'].includes(error.code))lesson.memoryWrite='not-applied';throw error}
           if(!result.ok)continue
+          lesson.memoryWrite='committed'
           scopeRevision=result.revision
+          // A deduplicated receipt must not revive a forgotten or replaced skill.
+          const saved=(await this.host.memory.store.read(scope,{topic:'experience',key:memoryKey})).entries[0]
+          if(saved?.source?.messageId!==event.id||saved.source.sessionId!==(task.sessionId??task.taskId))continue
           if(lesson.skill){
             const signature=hash(JSON.stringify(lesson.skill.steps)),prior=state.skills[lesson.key]
             const observations=prior?.signature===signature?[...new Set([...prior.taskIds,task.taskId])]:[task.taskId]
@@ -81,13 +105,17 @@ export default class Reflection extends Service {
             const skill={signature,supports,taskIds:observations.slice(-20),memoryKeys:[...new Set([...(prior?.memoryKeys??[]),memoryKey])],active,steps:lesson.skill.steps,reason:lesson.skill.reason,applicability:lesson.skill.applicability,revision:Math.max(prior?.revision??0,state.skillRevisions?.[lesson.key]??0)+1,updatedAt:new Date().toISOString()}
             if(prior)skill.previous=contentSnapshot(this.renderSkill(scope,lesson.key,prior,scopeRevision).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
             state.skills[lesson.key]=skill;state.skillRevisions??={};state.skillRevisions[lesson.key]=skill.revision
-            if(active)await atomicWrite(join(directory,'skills',lesson.key,'SKILL.md'),this.renderSkill(scope,lesson.key,skill,(await this.host.memory.store.index(scope)).revision))
           }
+          // Commit authoritative skill state before publishing its derived file.
+          // Retries repair the current file, never replay over later Router edits.
+          lesson.applied=true
+          await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
+          if(lesson.skill)await this.publishSkill(scope,lesson.key,state)
         }
-        state.reviews[id]={status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
+        state.reviews[id]={memoryKeyVersion:1,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
-      }catch(error){state.reviews[id]={status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
-      const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:'task-'+id.slice(0,12)+'-'+lesson.key},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
+      }catch(error){state.reviews[id]={...state.reviews[id],memoryKeyVersion:1,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
+      const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
     })
   }
   renderSkill(scope,key,value,revision){
@@ -152,9 +180,11 @@ export default class Reflection extends Service {
       for(const [name,skill]of Object.entries(state.skills))if(skill.memoryKeys.includes(key)){
         state.skillRevisions??={};state.skillRevisions[name]=Math.max(skill.revision??0,state.skillRevisions[name]??0)+1;delete state.skills[name];await privateDirectory(join(directory,'skills'));await rm(join(directory,'skills',name),{recursive:true,force:true})
       }
-      for(const [id,review]of Object.entries(state.reviews))if(review.lessons){
-        const kept=review.lessons.filter(lesson=>'task-'+id.slice(0,12)+'-'+lesson.key!==key)
-        if(kept.length!==review.lessons.length){review.lessons=kept;review.forgotten=true;review.destinations=(review.destinations??[]).filter(destination=>destination.memory?.key!==key);changedReviews.push([id,review])}
+      for(const [id,review]of Object.entries(state.reviews)){
+        const lessons=Array.isArray(review.lessons)?review.lessons:[],destinations=Array.isArray(review.destinations)?review.destinations:[]
+        const kept=lessons.filter((lesson,index)=>reviewLessonMemoryKey(review,index)!==key)
+        const retained=kept.length!==lessons.length||!lessons.length?destinations.filter(destination=>destination?.memory?.key!==key||destination.memory.topic&&destination.memory.topic!=='experience'):destinations
+        if(kept.length!==lessons.length||retained.length!==destinations.length){if(kept.length!==lessons.length)review.lessons=kept;review.forgotten=true;if(retained.length!==destinations.length)review.destinations=retained;changedReviews.push([id,review])}
       }
       for(const [id,review]of changedReviews)await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n')
       // Commit forgetting before external archive callbacks.
@@ -185,14 +215,10 @@ export default class Reflection extends Service {
       if(report.taskId!==task.taskId)continue
       if(reviewId!==hash(report.eventId)||!['done','skipped','failed'].includes(report.status))throw failure('LEARNING_IDENTITY_INVALID')
       reviews.push({reviewId,taskId:task.taskId,eventId:report.eventId,status:report.status,summary:report.status==='failed'?'复盘失败，不能据此认定记忆或技能已更新':report.status==='skipped'?'复盘未产生新经验':'已记录 '+(report.lessons?.length??0)+' 条复盘；变更以当前落盘证据为准',at:report.recordedAt??null})
-      const prefix='task-'+reviewId.slice(0,12)+'-'
-      const current=await this.host.memory.store.search(scope,{query:prefix,limit:20})
-      const entries=current.entries.filter(row=>row.topic==='experience'&&row.key.startsWith(prefix)&&row.source?.messageId===report.eventId)
-      const memoryKeys=new Set([...(report.lessons??[]).map(lesson=>prefix+lesson.key),...entries.map(row=>row.key)])
+      const entries=[]
+      const memoryKeys=new Set(reviewMemoryKeys(report))
       for(const key of memoryKeys){
         const saved=(await this.host.memory.store.read(scope,{topic:'experience',key})).entries.find(row=>row.source?.messageId===report.eventId)
-        const prior=entries.findIndex(row=>row.key===key)
-        if(prior>=0)entries.splice(prior,1)
         if(saved)entries.push(saved)
         const entry=saved
         add(reviewId,report,'memory',key,{status:entry?'applied':'not-applied',revision:entry?.revision??null,source:entry?.source??null},entry?.text)

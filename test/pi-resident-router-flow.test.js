@@ -290,7 +290,15 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   assert.equal(h.requests.length,requests);assert.equal(sent.length,sends)
   assert.equal((await h.query('source.list')).length,1);assert.equal((await h.query('task.list')).length,0)
   assert.deepEqual(JSON.parse(await readFile(file,'utf8'))[identity.sessionId].messageFacts,beforeFacts,'cold replay and receipt echo preserve existing facts')
-  for(const change of [{text:'Changed actual content'},{senderId:'foreign-actor'},{platformFlags:{messageAiSendFlag:'DWS',automated:true}}])await assert.rejects(receive({...original,...change}),error=>error.code==='CHANNEL_MESSAGE_ID_CONFLICT')
+  const beforeSources=await h.query('source.list')
+  const enriched=await receive({...original,platformFlags:{messageAiSendFlag:'DWS',automated:true}})
+  assert.equal(enriched.accepted,false);assert.equal(enriched.duplicate,true);assert.equal(enriched.reason,'retained-source')
+  await h.service.whenIdle()
+  assert.equal(h.requests.length,requests);assert.equal(sent.length,sends)
+  assert.deepEqual(await h.query('source.list'),beforeSources)
+  assert.deepEqual(JSON.parse(await readFile(file,'utf8'))[identity.sessionId].messageFacts,beforeFacts,'proven historical flag enrichment never replaces frozen facts')
+  for(const change of [{text:'Changed actual content'},{senderId:'foreign-actor'},{text:'Changed actual content',platformFlags:{messageAiSendFlag:'DWS',automated:true}},{senderId:'foreign-actor',platformFlags:{messageAiSendFlag:'DWS',automated:true}}])await assert.rejects(receive({...original,...change}),error=>error.code==='CHANNEL_MESSAGE_ID_CONFLICT')
+  await assert.rejects(h.host.ctx.channels.registerConversation({...original,platformFlags:{messageAiSendFlag:'DWS',automated:true,unproven:true}}),{code:'CHANNEL_MESSAGE_ID_CONFLICT'},'core fingerprint stays strict; only the plugin may consume a proven routed duplicate')
   const fresh={...echo,messageId:'fresh-same-account',platformFlags:{messageAiSendFlag:'DWS',automated:true}}
   assert.notEqual((await receive(fresh)).reason,'own-notification')
   const otherRoom=await mount('other-room-dws','other-room')
@@ -301,7 +309,7 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   await h.service.whenIdle()
   assert.equal((await h.query('source.list')).length,4,'only exact conversation/message receipts are echoes; account, flags and text alone are insufficient')
   assert.equal(sent.length,sends);assert.equal((await h.query('task.list')).length,0)
-  t.diagnostic(JSON.stringify({case:'existing-fact-dws-echo',coldFactsUnchanged:true,preciseEchoIgnored:true,changedContentActorFlagsRejected:true,crossChannelAndConversationKept:true,receiptlessSameAccountKept:true,realDwsExecuted:false}))
+  t.diagnostic(JSON.stringify({case:'existing-fact-dws-echo',coldFactsUnchanged:true,preciseEchoIgnored:true,provenFlagEnrichmentConsumed:true,changedContentActorRejected:true,coreFingerprintStrict:true,crossChannelAndConversationKept:true,receiptlessSameAccountKept:true,realDwsExecuted:false}))
 })
 
 test('in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued',{timeout:nativeTestTimeout(45000)},async t=>{
