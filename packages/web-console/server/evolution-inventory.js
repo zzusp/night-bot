@@ -1,8 +1,9 @@
-import {readdir, lstat} from 'node:fs/promises'
+import {lstat} from 'node:fs/promises'
 import {join, dirname} from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
 import {bindingSchema, readableScopes, memoryDirectory} from '../../../src/memory/scope.js'
 import {decodeTopic, hash, label} from '../../../src/memory/format.js'
+import {decodeRootIndex, decodeCategoryIndex, categoryPath} from '../../../src/memory/layered-format.js'
 import {boundedRead} from '../../../src/memory/previous.js'
 import {learnedSkillSupported} from '../../../src/memory/evolution.js'
 import {installedSkills, contentVersion, pathSafe} from '../../../src/memory/skill-usage.js'
@@ -33,7 +34,7 @@ async function readScopeSnapshot(memory, scope) {
     // It is not a write marker: store.runTransaction publishes pending.json
     // before changing any topic, writes scope.json last, then removes pending.
     // The journal + revision fences protect this read without blocking on readers.
-    if (await exists(join(directory, 'pending.json')) || await exists(join(directory, 'evolution', '.lock'))) busy()
+    if (await exists(join(directory, 'pending.json')) || await exists(join(directory, 'layout-migration.pending.json')) || await exists(join(directory, 'evolution', '.lock'))) busy()
   }
   await pathSafe(directory, root, root)
   await checkIdle()
@@ -47,32 +48,36 @@ async function readScopeSnapshot(memory, scope) {
     await checkIdle()
     if (metaText !== await read(join(directory, 'scope.json'), root) || stateText !== await read(join(directory, 'evolution', 'state.json'), root)) busy()
   }
-  const topicsPath = join(directory, 'topics')
-  await pathSafe(topicsPath, root, root)
-  const names = await readdir(topicsPath).catch(error => {if (error.code === 'ENOENT') return []; throw error})
-  if (names.length > 10000) fail('EVOLUTION_UNAVAILABLE', 503)
   const entries = [], candidates = []; let bytes = 0
   const active = entry => !entry.expiresAt || Date.parse(entry.expiresAt) > (memory.store.now?.() ?? Date.now())
-  const load = async (path, candidate = false) => {
+  const loadIndex = async (path, decode, required = false, expectedHash) => {
     const text = await read(path, root)
-    if (text === null) {if (!candidate) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)} return}
+    if (text === null) {
+      if (required) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
+      return null
+    }
     bytes += Buffer.byteLength(text)
     if (bytes > 32 * 1024 * 1024) fail('EVOLUTION_UNAVAILABLE', 503)
-    const value = decodeTopic(text)
+    if (expectedHash && hash(text) !== expectedHash) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
+    const value = decode(text)
     if (value.scope?.kind !== scope.kind || value.scope?.id !== scope.id) fail('EVOLUTION_UNAVAILABLE', 503)
-    if (!candidate && path !== join(topicsPath, hash(value.topic) + '.md')) fail('EVOLUTION_UNAVAILABLE', 503)
-    if (value.revision > meta.revision) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
-    for (const entry of value.entries.filter(active)) {
-      if (candidate && !label(entry.topic)) fail('EVOLUTION_UNAVAILABLE', 503)
-      const records = candidate ? candidates : entries
-      records.push({...entry, topic: candidate ? entry.topic : value.topic})
-    }
+    if (value.revision !== meta.revision) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
+    return value
   }
-  for (const name of names.sort()) {
-    if (!/^[a-f0-9]{64}\.md$/.test(name)) fail('EVOLUTION_UNAVAILABLE', 503)
-    await load(join(topicsPath, name))
+  // Only the root and category descriptors are needed for inventory. Detail
+  // bodies, source context and retained prior content stay unopened until asked.
+  const index = await loadIndex(join(directory, 'index.md'), text => decodeRootIndex(text, scope))
+  if (!index && meta.revision > 0) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
+  for (const row of index?.topics ?? []) {
+    const category = await loadIndex(join(directory, categoryPath(row.topic)), text => decodeCategoryIndex(text, scope, row.topic), true, row.sha256)
+    if (category.topic !== row.topic) fail('EVOLUTION_UNAVAILABLE', 503)
+    entries.push(...category.entries.filter(active).map(entry => ({...entry, topic: row.topic})))
   }
-  await load(join(directory, 'candidates.md'), true)
+  const candidateIndex = await loadIndex(join(directory, 'candidates.md'), decodeTopic)
+  for (const entry of candidateIndex?.entries ?? []) {
+    if (!label(entry.topic)) fail('EVOLUTION_UNAVAILABLE', 503)
+    if (active(entry)) candidates.push(entry)
+  }
   await checkCurrent()
   return {revision: meta.revision, entries, candidates, state}
 }

@@ -152,3 +152,52 @@ test('task reflection refuses a missing reason instead of storing speculative fi
  assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,[]);assert.deepEqual(state.skills,{})
  assert.equal((await store.query({kind:'task.get',taskId:'one'})).status,'completed')
 })
+
+test('single-session completion evidence and limitations support sufficiently complete three-part lessons',async t=>{
+ let store,input
+ const fields={summary:'Bounded conclusion. '.repeat(48),why:'Observed reason. '.repeat(48),howToApply:'Check the stated limits before reuse. '.repeat(35)}
+ const f=await memoryHost(t,body=>{
+  if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
+  input=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
+  return {text:JSON.stringify({lessons:[{key:'bounded-complete-lesson',...fields,evidenceIds:[input.eventId]}]})}
+ })
+ store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'evidence.sqlite'),instanceId:'evidence',initialize:true})
+ t.after(async()=>{await f.close();await store.close()})
+ let seq=0;const command=(kind,args)=>store.command({id:'evidence-'+(++seq),kind,args})
+ await command('task.create',{taskId:'evidence-task',request:'Verify local behavior without live delivery',ownerActorId:'owner'})
+ await initializeMemoryTaskWorkspace(store,f.host.ctx.runtimePaths.workspaces,'evidence-task')
+ const binding=(await command('task.claim',{taskId:'evidence-task'})).result.binding
+ const event=(await command('task.complete',{binding,summary:'Local check complete',result:{summary:'Local check complete',evidence:['Local test passed'],limitations:['Live vendor delivery was not tested']}})).completionEvent
+ assert.deepEqual(await store.query({kind:'execution.list',taskId:'evidence-task'}),[])
+ const detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await f.host.ctx.reflection.whenIdle()
+ assert.equal(input.facts[0].id,event.id);assert.deepEqual(input.facts[0].evidence,['Local test passed']);assert.deepEqual(input.facts[0].limitations,['Live vendor delivery was not tested']);assert.equal(input.facts[0].request,'Verify local behavior without live delivery')
+ const scope=memoryScope({actorId:'owner'}),saved=(await f.host.ctx.memory.store.read(scope,{topic:'experience',key:'bounded-complete-lesson'})).entries[0]
+ assert.ok(saved?.text.length>2048);for(const value of Object.values(fields))assert.ok(saved.text.includes(value.trim()))
+ assert.equal(saved.source.messageId,event.id)
+})
+
+test('default Host skill catalog checks support descriptors once without reading memory bodies',async t=>{
+ let store
+ const f=await memoryHost(t,body=>{
+  if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
+  const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),output=lesson(input)
+  const parsed=JSON.parse(output.text);parsed.lessons[0].key=input.taskId;return {text:JSON.stringify(parsed)}
+ })
+ store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'catalog.sqlite'),instanceId:'catalog',initialize:true})
+ t.after(async()=>{await f.close();await store.close()})
+ await completed(store,f.host.ctx.runtimePaths.workspaces,'one');await completed(store,f.host.ctx.runtimePaths.workspaces,'two')
+ const detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await f.host.ctx.reflection.whenIdle()
+ const actor=await f.agent('catalog-reader',{actorId:'owner'}),reads=[];f.host.ctx.memory.store.onRead=name=>reads.push(name)
+ const catalog=await f.host.ctx.reflection.catalog(actor.agent)
+ assert.equal(catalog.length,2);assert.deepEqual(reads.filter(name=>name.startsWith('categories/')),['categories/experience/index.md']);assert.ok(!reads.some(name=>name.startsWith('sources/')||name==='candidates.md'))
+ reads.length=0;const scope=memoryScope({actorId:'owner'});await f.host.ctx.reflection.readSkills(scope,{})
+ assert.deepEqual(reads.filter(name=>name.startsWith('categories/')),['categories/experience/index.md'])
+ const state=await f.host.ctx.reflection.state(scope)
+ assert.ok(Object.values(state.reviews).every(review=>/^[a-f0-9]{64}$/.test(review.input.sha256)&&review.input.coverage.taskContext==='matching-completion-version'))
+ const original=f.host.ctx.reflection.state.bind(f.host.ctx.reflection)
+ f.host.ctx.reflection.state=async()=>({...state,skills:{}})
+ reads.length=0;assert.deepEqual(await f.host.ctx.reflection.catalog(actor.agent),[]);assert.deepEqual(reads,[])
+ f.host.ctx.reflection.state=async()=>({...state,skills:{router:{active:true,origin:'router',applicability:'Scoped router lesson',source:{messageId:'m',sessionId:'s',actor:scope.actor,quoteSha256:'a'.repeat(64)}}}})
+ assert.equal((await f.host.ctx.reflection.catalog(actor.agent)).length,1);assert.deepEqual(reads,[])
+ f.host.ctx.reflection.state=original
+})

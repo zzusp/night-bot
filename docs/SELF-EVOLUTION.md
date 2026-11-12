@@ -101,3 +101,20 @@ Each task also retains its own review report and Bot destination identifiers
 in task `reviews/`. Archive restore preserves those records without importing
 shared memory/skill collections or automatically re-running the old review.
 See [TASK-ARCHIVE](TASK-ARCHIVE.md).
+
+## Evidence completeness in task retrospectives
+
+Completed single-session tasks often have no historical `execution.list` records.
+Retrospectives therefore preserve the committed completion summary, evidence and
+limitations instead of treating a missing execution list as missing task evidence.
+Request/objective context is included only when the completion's requirement, context,
+control and run versions match; a later reopened objective cannot be borrowed for an
+older review. Input records retain their ledger IDs and are described as recorded
+results, not independent verification. Field/item budgets and omissions are explicit.
+
+Summary, Why and How to apply remain the three content sections. Include supported
+objects, outcomes, reasons, conditions, steps, commands and verification limits as
+needed for standalone reuse. Missing reasons remain unspecified. Each section keeps
+its 2048-character bound; validated structured lesson bodies can exceed 2048 characters
+in aggregate under the existing 64 KiB ceiling. Generic literal-memory limits remain
+unchanged. Historical records are migrated losslessly, never embellished by guesswork.

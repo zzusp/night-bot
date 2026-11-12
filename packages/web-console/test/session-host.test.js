@@ -92,8 +92,8 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
   const f = await memoryHost(t, body => {
     if (!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')) return {text: '不应执行其他推理'}
     const input = JSON.parse(body.messages.findLast(row => row.role === 'user').content)
-    return {text: JSON.stringify({lessons: [{key: 'check-evidence', observation: '核对真实结果并保留可验证来源',
-      hypothesis: '该任务的核查步骤可复用', shortcut: '读取当前证据', evidenceIds: [input.eventId],
+    return {text: JSON.stringify({lessons: [{key: 'check-evidence', summary: '核对真实结果并保留可验证来源',
+      why: '该任务的核查步骤可复用', howToApply: '读取当前证据', evidenceIds: [input.eventId],
       skill: {steps: ['读取当前证据', '核对实际终态'], reason: '本任务已有直接证据', applicability: '同类证据核对', evidenceBacked: true}}]})}
   })
   const channels = f.host.ctx.channels, channelId = 'web-learning', senderId = 'reader'
@@ -154,7 +154,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
       assert.equal(change.source.taskId, 'learn-one'); assert.equal(change.source.eventId, completion.id)
       const result = await api(endpoint + '/changes/' + change.id + '?version=' + change.version)
       assert.equal(result.status, 200); assert.equal(result.body.version, change.version)
-      assert.ok(result.body.text.includes(change.kind === 'memory' ? '核对真实结果并保留可验证来源' : 'not authority'))
+      assert.ok(result.body.text.includes(change.kind === 'memory' ? '核对真实结果并保留可验证来源' : '核对实际终态'))
       assert.equal((await api(endpoint + '/changes/' + change.id + '?version=' + '0'.repeat(64))).status, 409)
     }
     assert.equal((await api(endpoint + '/changes/' + '0'.repeat(64) + '?version=' + '0'.repeat(64))).status, 404)

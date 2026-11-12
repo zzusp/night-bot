@@ -1,7 +1,7 @@
 import {diffLines} from 'diff'
 import {join} from 'node:path'
 import {bindingSchema,readableScopes} from './scope.js'
-import {hash} from './format.js'
+import {hash,decodeTopic} from './format.js'
 import {failure,withLock} from '../runtime/files.js'
 import {contentSnapshot,priorSnapshot,boundedRead,CONTENT_LIMIT} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
@@ -20,24 +20,38 @@ export async function inspectEvolutionItem(memory,reflection,readerBinding,{id,r
   if(!/^[a-f0-9]{64}$/.test(id??'')||typeof revision!=='string'||!/^(?:[a-f0-9]{64}|\d{1,16})$/.test(revision))throw failure('EVOLUTION_ITEM_NOT_FOUND')
   const binding=bindingSchema.parse(readerBinding)
   for(const {scope}of readableScopes(binding)){
-    const found=await memory.store.transaction(scope,state=>{
-      const active=entry=>!entry.expiresAt||Date.parse(entry.expiresAt)>memory.store.now()
-      const entries=[...[...state.topics].flatMap(([topic,value])=>value.entries.map(entry=>({topic,entry,status:'applied'}))),...state.candidates.map(entry=>({topic:entry.topic,entry,status:'candidate'}))]
-      for(const {topic,entry,status}of entries){
-        if(!active(entry)||hash(JSON.stringify([scope.kind,scope.id,'memory',status,topic,entry.key]))!==id)continue
-        checkVersion(entry.revision,revision)
-        const current=checked(entry.text,entry.revision,entry.updatedAt),previous=priorSnapshot(entry.previous)
-        return {id,name:topic+'/'+entry.key,kind:'memory',revision:entry.revision,current,previous,comparison:latestComparison(current,previous,'saved',entry.previous===null?'unsafe_previous':entry.revision===1?'new_entry':'not_recorded'),redacted:false}
+    const index=await memory.store.index(scope)
+    let match
+    for(const {topic}of index.topics){
+      const category=await memory.store.index(scope,{topic})
+      const descriptor=category.entries.find(entry=>hash(JSON.stringify([scope.kind,scope.id,'memory','applied',topic,entry.key]))===id)
+      if(descriptor){match={topic,key:descriptor.key,status:'applied'};break}
+    }
+    if(!match&&index.candidateCount){
+      const saved=await boundedRead(join(memory.store.directory(scope),'candidates.md'),4*1024*1024,{root:memory.store.root})
+      if(saved){
+        const candidates=decodeTopic(saved.text)
+        if(candidates.scope?.kind!==scope.kind||candidates.scope?.id!==scope.id)throw failure('EVOLUTION_BODY_FORBIDDEN')
+        const descriptor=candidates.entries.find(entry=>hash(JSON.stringify([scope.kind,scope.id,'memory','candidate',entry.topic,entry.key]))===id)
+        if(descriptor)match={topic:descriptor.topic,key:descriptor.key,status:'candidate'}
       }
-      return null
-    })
-    if(found)return found
+    }
+    if(match){
+      // Resolve the opaque ID using metadata, then open just this detail. The
+      // Host-only previous flag retains the comparison without a full scan.
+      const result=await memory.store.read(scope,{topic:match.topic,key:match.key,candidates:match.status==='candidate',includePrevious:true,includeSources:false})
+      const entry=result.entries.find(entry=>entry.key===match.key&&(!entry.topic||entry.topic===match.topic))
+      if(!entry)throw failure('EVOLUTION_ITEM_NOT_FOUND')
+      checkVersion(entry.revision,revision)
+      const current=checked(entry.text,entry.revision,entry.updatedAt),previous=priorSnapshot(entry.previous)
+      return {id,name:match.topic+'/'+entry.key,kind:'memory',revision:entry.revision,current,previous,comparison:latestComparison(current,previous,'saved',entry.previous===null?'unsafe_previous':entry.revision===1?'new_entry':'not_recorded'),redacted:false}
+    }
     const learned=await withLock(join(reflection.directory(scope),'.lock'),async()=>{
       const state=await reflection.state(scope)
       for(const [key,value]of Object.entries(state.skills)){
         if(hash(JSON.stringify([scope.kind,scope.id,'skill',key]))!==id)continue
         checkVersion(value.revision,revision)
-        const entries=(await memory.store.read(scope,{topic:'experience'})).entries
+        const entries=(await memory.store.index(scope,{topic:'experience'})).entries
         if(value.active&&!learnedSkillSupported(value,entries))throw failure('EVOLUTION_BODY_FORBIDDEN')
         if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key)||key.length>60)throw failure('EVOLUTION_BODY_FORBIDDEN')
         let text=reflection.renderSkill(scope,key,value,0)

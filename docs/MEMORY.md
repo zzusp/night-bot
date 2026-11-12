@@ -4,7 +4,9 @@ Memory is application-owned reference data. Pi remains the authority for origina
 conversation history and inference; a remembered fact never grants permission or
 overrides a current instruction. No graph, embeddings, vector database or semantic
 recall is used. Search is case-insensitive literal substring matching, with all
-whitespace-separated terms required, and at most 20 results.
+whitespace-separated terms required, and at most 20 results. Default search reads
+only titles, one-line summaries and applicability descriptors. Explicit `mode:
+"fulltext"` scans bodies; it is a deliberate more expensive fallback, not semantic recall.
 
 ## Code and runtime boundaries
 
@@ -21,11 +23,15 @@ The portable default is `<install>/data/memory/`:
 memory/
   bindings.json                 # trusted session-to-principal grants, private
   v2/bot/                       # one common namespace for this Bot
-    index.md                    # short topic links/counts, no fact bodies
-    topics/<topic-sha256>.md     # current facts, with source metadata
+    index.md                    # category titles, relative links and summaries
+    categories/<topic>/
+      index.md                  # entry titles, relative links and summaries
+      entries/<key>.md          # one accepted memory per Markdown file
+    sources/<entry-id>.md        # saved evidence excerpts, opened on demand
     candidates.md               # unapproved; absent when empty
-    scope.json                  # revision, dedup/forget and migration receipts
+    scope.json                  # layoutVersion 3, revision, dedup/forget receipts
     pending.json                # redo transaction; normally absent
+    layout-migration.json       # explicit offline layout-upgrade receipt
     usage.json                  # observed memory read/search and entry returns
     skill-usage.sqlite          # verified skill tool/command/file-read events
     evolution/                  # shared task reviews and learned skills
@@ -35,7 +41,13 @@ memory/
 
 Markdown has a JSON-compatible YAML front matter envelope with format/scope/
 revision, entry identity, source message/session IDs, source hash and timestamps.
-Fact text lives only in its Markdown body. Corrections replace the old value;
+Fact text lives in its entry Markdown body; indices retain only a short summary.
+Each index line follows `- [Title](relative-file.md) — one-line summary`.
+Category/key path components are portably escaped, including case-insensitive
+filesystems and Windows reserved names. Long names use a bounded prefix plus a hash
+suffix; their original full labels remain in metadata. Standard Markdown links URL-escape
+those literal filenames. Source excerpts are separate
+Markdown files linked by identity and checksum; they are not loaded for ordinary recall. Corrections replace the old value;
 they preserve identity/creation time and increment the entry revision. Candidate
 promotion preserves its original source separately from the approval source.
 The envelope and content hash are validated. Direct edits which invalidate hashes
@@ -49,8 +61,8 @@ saved in the review before writes, so interrupted retries keep the same identity
 Task/event/session provenance remains in record metadata, review destinations and
 learned-skill support references, not a mandatory `task-<hash>-` name prefix.
 Task learning views and forgetting follow those explicit references. No legacy
-prefix reconstruction or automatic data migration is provided. These are logical
-entry names within topic Markdown files, not individual on-disk filenames.
+prefix reconstruction or automatic data migration is provided. Each logical topic/key maps to its own Markdown file, while task and source IDs
+remain provenance rather than mandatory filename prefixes.
 Retained reviews can still expose their saved explicit destination references;
 missing or unsupported historical associations do not block new retrospectives.
 Historical failed reviews without the semantic-key retry protocol are audit-only:
@@ -100,7 +112,7 @@ These unambiguous commands are executed before inference in the current turn:
 ```
 
 English `remember`, `update memory` and `forget` use the same `topic/key: value`
-shape. Flexible requests can use `memory_read`, `memory_search`, `memory_remember`,
+shape. Flexible requests can use `memory_index`, `memory_read`, `memory_search`, `memory_remember`,
 `memory_forget`, `memory_candidates`, `memory_promote` and `memory_status` in the
 same model turn. Mutations require the current human message ID, an exact source
 quote, and an authorized target; a source found in historical/tool/coordinator
@@ -150,25 +162,52 @@ Host 只允许当前已接纳且未结清批次中的原来源，回查当前版
 ## Persistence, forgetting and failures
 
 Writers acquire the Bot memory cross-process lease, reload current Markdown, and use
-private temporary files, fsync and atomic rename. A redo journal commits topics,
-candidates, index and revision as one logical operation. A failed post-journal write
+private temporary files, fsync and atomic rename. A redo journal commits changed records, sources, category/root indices,
+candidates and revision as one logical operation. Every normal reader holds the same
+lease and completes a committed redo before observing its selected files. A failed post-journal write
 reports `MEMORY_COMMIT_UNCERTAIN`; the next locked access finishes recovery. Read
 current state before retrying an uncertain mutation. A live lock is never stolen
-on a timeout. Dead Linux owners are checked with PID/start/boot identity; an uncertain
+on a timeout. Linux reads use anchored no-follow traversal for every ancestor;
+non-Linux reads use conservative before/after identity checks. Mutation paths reject
+unsafe ancestors before applying redo, but pathname-based writes are not a sandbox
+against a hostile concurrent OS-account filesystem mutator. The memory lease serializes
+cooperating Bot writers. Individual files and a pending transaction are bounded at
+64 MiB; an oversized transaction is rejected before its redo journal is committed. Dead Linux owners are checked with PID/start/boot identity; an uncertain
 owner remains blocked for operator review.
 
 Forget removes the current fact, matching candidates and derived index entries;
-empty topic files disappear. It leaves only bounded non-plaintext fingerprints and
+empty category indices and deleted entry/source files disappear. It leaves only bounded non-plaintext fingerprints and
 dedup metadata. Stale memory tool bodies are revoked in subsequent model requests,
 including inherited context lacking the necessary grants. The raw Pi conversation
 and its historical tool records are intentionally retained. Forgetting memory is
 not a claim to erase original chats, backups, vendor logs, or manually copied files.
 
-The index is bounded to 40 topics and carries no fact bodies. Reads are on demand;
-keyword search scans current scoped topics. This implementation is intended for
-modest personal/group/project notes, not a large document search engine. Real model
-extraction quality, all natural-language intent variations and channel-specific
-identity integration require their own acceptance.
+### Progressive recall and actual I/O
+
+1. At prompt preparation, read only the root index and revision, never every body or
+   candidates file. All categories remain discoverable; there is no silent 40-topic cutoff.
+2. `memory_index({topic})` or `memory_read({topic})` reads that category index only.
+   It returns titles, summaries, topic/key and applicability descriptors, not bodies.
+3. `memory_read({topic,key})` opens just the selected entry after validating the
+   root/category checksums. It retains conditions and current applicability, but
+   does not open the separate saved-source file.
+4. `memory_read({topic,key,includeSources:true})` also opens that entry's saved evidence.
+   These are recorded excerpts and source references, not access to another conversation's
+   original transcript. Pi remains the authority for original committed conversation history.
+
+`memory_search` defaults to index descriptors; use `mode:"fulltext"` explicitly
+when a detail missing from the summary matters. An optional topic narrows the scan.
+Search stops once its result limit is reached. Expired rows are filtered from
+indices, search and ordinary reads without opening their bodies. Unapproved candidates
+remain separate. Root/category reads do not increment per-entry body-read counters.
+Skill catalog support checks use index keys, not memory bodies. Host maintenance,
+write transactions and explicit full-text scans may read a broader snapshot; the
+on-demand guarantee applies to normal recall, not those deliberate operations.
+
+Old v2-context bodies already containing an Evidence section remain byte-for-byte
+historical content; the source opt-in does not rewrite or redact quotations already
+embedded in such an old body. New v3-context content stores evidence separately.
+This is intended for a modest Markdown library, not a large document search engine.
 
 Task experience and managed learned skills are documented in [SELF-EVOLUTION](SELF-EVOLUTION.md). Forgetting an experience removes its derived learned skill and review lesson; raw task facts and Pi history remain evidence.
 
@@ -204,3 +243,12 @@ an exact skill file are tracked separately. Resource preparation/catalog work is
 counted as invocation, nor does reading prove adoption or successful script execution.
 Tracking begins at the stated timestamp, is not a complete pre-upgrade call history,
 and cannot prove semantic use. Failed/revoked calls do not become successful counts.
+
+## Explicit layout upgrade
+
+Existing topic-aggregate Bot stores are never silently rewritten by startup. Stop all
+writers and use the read-only check followed by explicit apply in
+[the migration guide](MEMORY-MIGRATION.md). The script preserves old originals,
+source metadata and forgetting receipts, backs up before writing, validates interrupted
+work before resuming, and never infers missing content. No real installation is
+modified by the implementation or its isolated tests.

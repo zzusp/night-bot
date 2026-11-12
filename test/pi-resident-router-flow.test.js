@@ -32,7 +32,6 @@ function settle(body,input) {
 }
 
 test('explicit channel preference is accepted memory before acknowledgement and survives cold cross-conversation recall',{timeout:nativeTestTimeout(180000)},async t=>{
-  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{decodeTopic}=await import('../src/memory/format.js')
   const preference='以后没说要提供文档，就不用附报告文档',background='随附部署报告，包含验证证据、部署前版本、回滚路径和验证边界。'
   const context={background:{source:'quote',quote:background},scenario:'面向原提出者的工作结果汇报，原例为部署验证后的额外报告。',boundaries:['未明确要求时不额外附报告；明确要求的文档及成果文件照常交付。','不禁止其他附件，也不限制内部验收证据或必要代码文档；当前明确要求优先。']}
   const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
@@ -57,7 +56,7 @@ test('explicit channel preference is accepted memory before acknowledgement and 
           assert.match(JSON.stringify(body),/这次明确要求提供报告文档/)
           assert.match(JSON.stringify(body),/Current explicit deliverable requirements override prior preferences/)
         }
-        return {tool:'memory_search',args:{query:'工作结果汇报'}}
+        return {tool:'memory_search',args:{query:'工作结果汇报',topic:'preferences',mode:'fulltext',includeSources:true}}
       }
       if(step===1){
         const result=memoryToolResult(body)
@@ -81,8 +80,8 @@ test('explicit channel preference is accepted memory before acknowledgement and 
   const message=channelMessage('durable-report-preference',{text:preference,quotedMessage:{messageId:'deployment-summary',senderId:'assistant',text:'验证完成。'+background+'不相关的额外背景。'}})
   await h.receive(message);await h.service.whenIdle()
   const original=(await h.query('source.list')).find(source=>source.messageId===message.messageId)
-  const file=join(h.host.ctx.runtimePaths.memory,'v2','bot','topics',hash('preferences')+'.md')
-  const saved=decodeTopic(await readFile(file,'utf8')),entry=saved.entries.find(row=>row.key==='report-documents')
+  const scope={kind:'bot',id:hash('bot:shared')}
+  const saved=await h.host.ctx.memory.store.read(scope,{topic:'preferences',key:'report-documents',includeSources:true}),entry=saved.entries[0]
   assert.notEqual(entry.text,preference);assert.equal(entry.context.summary,preference);assert.equal(entry.source.messageId,original.sourceId)
   assert.equal(entry.context.subject.actor,hash(original.actorId));assert.equal(entry.context.evidence[1].quote,background)
   assert.equal(entry.context.evidence[1].messageId,'deployment-summary');assert.equal(entry.context.evidence[1].quoteSha256,hash(background))
@@ -99,7 +98,7 @@ test('explicit channel preference is accepted memory before acknowledgement and 
   await h.restart();await h.receive(message);await h.service.whenIdle()
   assert.equal(h.requests.length,priorRequests,'cold replay never re-infers or rewrites a consumed source')
   assert.equal(h.sent.length,priorSends,'acknowledgement is not resent')
-  assert.equal(decodeTopic(await readFile(file,'utf8')).entries[0].revision,1)
+  assert.equal((await h.host.ctx.memory.store.read(scope,{topic:'preferences',key:'report-documents'})).entries[0].revision,1)
   await h.receive(channelMessage('recall-after-cold-reopen',{conversationId:'different-room',text:'查一下之前的交付偏好。'}));await entered.promise
   const recallConversation=h.host.ctx.channels.identity(channelMessage('id',{conversationId:'different-room'})).sessionId
   recallSession=(await h.query('router.get',{conversationId:recallConversation})).activeSessionId
@@ -1057,7 +1056,6 @@ test('Router directly maintains memory and learned skills with cold persistence,
 })
 
 test('Router synthesizes project memory with linked evidence, cold recall and revision history',{timeout:nativeTestTimeout(180000)},async t=>{
-  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{decodeTopic}=await import('../src/memory/format.js')
   const url='https://github.com/orgs/example/projects/6',nextUrl='https://github.com/orgs/example/projects/7'
   const announcement='编辑器看板汇总截至公告时已提测未上线的需求和bug，用于开发进度与发版计划；进展同步issue和PR。后续迭代可以另建Project。 '+url
   const request='这个信息记录一下，后续开发任务要看这个Project的。',key='editor-project-reference',steps=new Map(),outcomes=new Map()
@@ -1071,7 +1069,7 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
     const id=source.messageId,step=steps.get(id)??0;steps.set(id,step+1)
     const write=memory=>({tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'projects',key,sourceQuote:source.text,memory,expectedRevision:id==='project-record'?0:1}})
     if(step===0){
-      if(id==='project-recall')return {tool:'memory_search',args:{query:url}}
+      if(id==='project-recall')return {tool:'memory_read',args:{topic:'projects',key,includeSources:true}}
       if(id==='project-delete')return {tool:'resident_memory_forget',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'projects',key,sourceQuote:source.text,expectedRevision:2}}
       if(id==='project-record'){
         draft={summary:'后续编辑器开发任务参考 GitHub Project：'+url,
@@ -1114,8 +1112,10 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
   assert.match(observationText,/后续编辑器开发任务参考 GitHub Project/);assert.ok(observationText.includes(url));assert.doesNotMatch(observationText,/这个信息|这个Project/)
   for(const title of ['Summary:','**Why:**','**How to apply:**'])assert.ok(entry.text.includes(title))
   assert.doesNotMatch(entry.text,/Model observation|Hypothesis|Possible direct path|Evidence:|E1|sourceId|无额外假设/)
-  const scope={kind:'bot',id:hash('bot:shared')},file=join(h.host.ctx.runtimePaths.memory,'v2','bot','topics',hash('projects')+'.md')
-  const disk=decodeTopic(await readFile(file,'utf8')).entries.find(item=>item.key===key);assert.deepEqual(disk.context,entry.context);assert.equal(disk.text,entry.text)
+  const scope={kind:'bot',id:hash('bot:shared')}
+  const disk=(await h.host.ctx.memory.store.read(scope,{topic:'projects',key,includeSources:true})).entries[0]
+  assert.equal(entry.context.evidence,undefined,'ordinary mutation recall does not automatically expand source excerpts')
+  const {evidence,...withoutEvidence}=disk.context;assert.deepEqual(withoutEvidence,entry.context);assert.equal(disk.text,entry.text);entry=disk
   for(const evidence of entry.context.evidence)assert.equal(evidence.quoteSha256,hash(evidence.quote))
   assert.equal(entry.context.evidence[2].sourceId,background.sourceId);assert.equal(entry.context.evidence[1].messageId,'project-announcement')
   const binding={actorId:'operator'},inventory=await h.host.ctx.memory.inspectEvolution(binding),item=inventory.items.find(item=>item.name==='projects/'+key)

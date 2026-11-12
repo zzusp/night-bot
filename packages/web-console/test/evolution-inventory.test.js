@@ -7,6 +7,8 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {writeFileSync} from 'node:fs'
 import {acquireLock} from '../../../src/runtime/files.js'
 import {readEvolutionInventory} from '../server/evolution-inventory.js'
+import {openEvolutionCache} from '../server/evolution-cache.js'
+import {entryPath} from '../../../src/memory/layered-format.js'
 import {MarkdownMemoryStore} from '../../../src/memory/store.js'
 import {memoryScope} from '../../../src/memory/scope.js'
 
@@ -118,24 +120,30 @@ test('short reflection leases recover; persistent leases stay bounded and untouc
 
 test('revision changes discard the whole snapshot rather than append mixed or duplicate rows', async t => {
   const f = await fixture(t), path = join(f.directory, 'scope.json')
+  await f.store.remember(f.scope, {topic: 'facts', key: 'one', text: 'Known fact', expiresAt: new Date(Date.now() + 60_000).toISOString(), source: {sessionId: 'expiry', messageId: 'expiry'}})
   const meta = JSON.parse(await readFile(path, 'utf8'))
+  const {buildLayeredWrites}=await import('../../../src/memory/layered-format.js')
+  const snapshot=await f.store.transaction(f.scope,state=>({meta:{...meta,revision:meta.revision+1},topics:state.topics,candidates:state.candidates}))
+  const next=buildLayeredWrites(f.scope,snapshot)
   let changed = false
   f.store.now = () => {
-    if (!changed) {changed = true; writeFileSync(path, JSON.stringify({...meta, revision: meta.revision + 1}))}
+    // A completed concurrent commit advances indices and metadata together.
+    if (!changed) {changed = true;for(const [name,text]of next)writeFileSync(join(f.directory,name),text)}
     return Date.now()
   }
-  // active() consults the clock only for entries with an expiry.
-  const topicPath = join(f.directory, 'topics', (await readdir(join(f.directory, 'topics')))[0])
-  const text = await readFile(topicPath, 'utf8')
-  // Use a future expiry on the real stored entry without weakening the decoder.
-  const {decodeTopic, encodeTopic} = await import('../../../src/memory/format.js')
-  const topic = decodeTopic(text)
-  topic.entries[0].expiresAt = new Date(Date.now() + 60_000).toISOString()
-  await writeFile(topicPath, encodeTopic(topic.topic, topic.revision, topic.entries, topic.scope))
   const inventory = await readEvolutionInventory(f)
   assert.equal(changed, true)
   assert.equal(inventory.memory.acceptedCount, 2)
   assert.equal(new Set(inventory.items.map(item => item.id)).size, inventory.items.length)
+})
+
+test('stable stale indices and interrupted layout migrations never publish an inventory',async t=>{
+  const f=await fixture(t),path=join(f.directory,'scope.json'),original=await readFile(path,'utf8'),meta=JSON.parse(original)
+  await writeFile(path,JSON.stringify({...meta,revision:meta.revision+1}))
+  await assert.rejects(readEvolutionInventory(f),{code:'EVOLUTION_UNAVAILABLE'})
+  await writeFile(path,original)
+  await writeFile(join(f.directory,'layout-migration.pending.json'),'{}')
+  await assert.rejects(readEvolutionInventory(f),{code:'EVOLUTION_BUSY'})
 })
 
 test('malformed records and unsafe paths remain fatal instead of transient busy responses', async t => {
@@ -168,4 +176,44 @@ test('Router来源收据支持的Skill无须experience，坏来源和失去经�
  assert.equal(inventory.items.find(r=>r.name==='learned-check-once').status,'applied')
  assert.equal(inventory.skills.activeCount,2)
  assert.deepEqual(await tree(f.root),before,'清单保持只读，不创建经验或修复收据')
+})
+
+
+test('layered inventory reads descriptors, never accepted detail or source bodies', async t => {
+  const f = await fixture(t)
+  // A broken detail must not poison an unrelated metadata-only listing. Detail
+  // validation belongs to the explicit body read, not the optional dashboard.
+  await writeFile(join(f.directory, entryPath('facts', 'one')), 'DETAIL MUST NOT BE OPENED')
+  await writeFile(join(f.directory, entryPath('experience', 'support')), 'DETAIL MUST NOT BE OPENED')
+  f.store.transaction = () => {throw Error('full inventory must not load')}
+  f.store.read = () => {throw Error('body read must not run')}
+  const before = await tree(f.root), inventory = await readEvolutionInventory(f)
+  assert.equal(inventory.memory.acceptedCount, 2)
+  assert.equal(inventory.skills.activeCount, 1)
+  assert.deepEqual(await tree(f.root), before)
+})
+
+test('layered inventory includes every category descriptor beyond the Bot read window', async t => {
+  const f = await fixture(t)
+  const {randomUUID} = await import('node:crypto')
+  await f.store.transaction(f.scope, state => {
+    const value = state.topics.get('facts'), template = value.entries[0]
+    for (let index = 0; index < 61; index++) value.entries.push({...template, id: randomUUID(), key: 'extra-' + index})
+    state.mark()
+  })
+  f.store.read = () => {throw Error('inventory must not use capped body reads')}
+  const inventory = await readEvolutionInventory(f)
+  assert.equal(inventory.memory.acceptedCount, 63)
+  assert.equal(inventory.memoryResources.length, 63)
+  assert.equal(inventory.items.filter(row => row.kind === 'memory').length, 63)
+  assert.equal(new Set(inventory.items.map(row => row.id)).size, inventory.items.length)
+  const directory = join(f.root, 'web-cache'); await mkdir(directory, {mode: 0o700})
+  const cache = await openEvolutionCache({directory, identity: 'reader', collect: async () => ({status: 'ready', items: inventory.items, memory: inventory.memory, skills: inventory.skills, usageCoverage: {status: 'unrecorded'}})})
+  t.after(() => cache.close())
+  const first = await cache.read({kind: 'memory', offset: 0, limit: 50})
+  const second = await cache.read({kind: 'memory', offset: 50, limit: 50})
+  assert.equal(first.snapshot.total, 63)
+  assert.equal(first.snapshot.items.length, 50)
+  assert.equal(second.snapshot.items.length, 13)
+  assert.equal(new Set([...first.snapshot.items, ...second.snapshot.items].map(row => row.id)).size, 63)
 })

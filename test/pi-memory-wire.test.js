@@ -35,7 +35,7 @@ test('default portable Host immediately remembers, corrects and forgets while te
 test('real model tools read on demand, honor source consent and revoke stale recalled facts after forget',async t=>{
   let stage=0,sourceMessage
   const f=await memoryHost(t,body=>{
-    if(stage===1){stage++;return {tool:'memory_read',args:{topic:'preferences'}}}
+    if(stage===1){stage++;return {tool:'memory_read',args:{topic:'preferences',key:'style'}}}
     if(stage===3){stage++;return {tool:'memory_remember',args:{topic:'preferences',key:'evil',text:'made up',sourceMessageId:sourceMessage,sourceQuote:'made up'}}}
   })
   const h=await f.agent('tools',{actorId:'alice'})
@@ -142,9 +142,33 @@ test('native memory tool accepts context with Host-bound subject and shares it a
   })
   const a=await f.agent('context-alice',{actorId:'alice'}),packet={id:'native-context-source',source:{kind:'user',quotedMessage:{messageId:'native-quoted-report',text:background}},content:[{type:'text',text}]}
   await a.agent.input.enqueue(packet);await a.agent.input.deliver(packet.id);await a.agent.whenIdle()
-  assert.equal(outcome.entry.text,text);assert.equal(outcome.entry.context.background.messageId,'native-quoted-report');assert.equal(outcome.entry.context.background.quote,background)
-  const b=await f.agent('context-bob',{actorId:'bob'}),read=await f.host.ctx.memory.search(b.agent,{query:'工作结果汇报'})
-  assert.equal(read.entries[0].applicability.status,'reference-only');assert.deepEqual(read.entries[0].context,outcome.entry.context)
+  assert.equal(outcome.entry.text,text);assert.equal(outcome.entry.context.background.messageId,'native-quoted-report');assert.equal(outcome.entry.context.background.quote,undefined)
+  const b=await f.agent('context-bob',{actorId:'bob'}),read=await f.host.ctx.memory.search(b.agent,{query:'工作结果汇报',mode:'fulltext',includeSources:true})
+  assert.equal(read.entries[0].applicability.status,'reference-only');assert.equal(read.entries[0].context.background.quote,background);assert.deepEqual({...read.entries[0].context,background:{...read.entries[0].context.background,quote:undefined}},{...outcome.entry.context,background:{...outcome.entry.context.background,quote:undefined}})
   const own=await f.host.ctx.memory.read(a.agent,{topic:'preferences'})
   assert.equal(own.entries[0].applicability.status,'matching-subject');assert.deepEqual(own.entries[0].applicability.sourceMessageIds,[packet.id])
+})
+
+test('required memory startup refuses old or interrupted layouts despite a completed shared migration receipt',async t=>{
+ const {readFile,writeFile,rm}=await import('node:fs/promises'),{join}=await import('node:path')
+ for(const variant of ['old','pending','unmarked'])await t.test(variant+' layout migration',async t=>{
+  const pending=variant==='pending'
+  const f=await memoryHost(t),directory=f.host.ctx.memory.store.directory(await f.host.ctx.memory.scope((await f.agent('layout-reader',{actorId:'alice'})).agent,{}))
+  await f.close()
+  const files={
+   'scope.json':JSON.stringify({version:1,revision:7,forgotten:[],seen:[]})+'\n',
+   'index.md':'# Memory index\n\nRetained old-layout index\n',
+   ...variant!=='unmarked'?{'migration.json':JSON.stringify({version:1,status:'completed',imported:0,conflicts:0})+'\n'}:{},
+   ...pending?{'layout-migration.pending.json':JSON.stringify({version:1,status:'interrupted'})+'\n'}:{},
+  }
+  if(variant==='unmarked')await rm(join(directory,'migration.json'),{force:true})
+  for(const [name,text]of Object.entries(files))await writeFile(join(directory,name),text)
+  const code=pending?'MEMORY_LAYOUT_MIGRATION_PENDING':'MEMORY_LAYOUT_MIGRATION_REQUIRED'
+  await assert.rejects(f.boot(),/NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:memory/)
+  const {MarkdownMemoryStore}=await import('../src/memory/store.js'),{memoryScope}=await import('../src/memory/scope.js')
+  const probe=new MarkdownMemoryStore(join(f.root,'data','memory'))
+  try{await assert.rejects(probe.index(memoryScope({actorId:'host'})),{code})}finally{await probe.close()}
+  for(const [name,text]of Object.entries(files))assert.equal(await readFile(join(directory,name),'utf8'),text,'startup must not rewrite '+name)
+  if(variant==='unmarked')await assert.rejects(readFile(join(directory,'migration.json')),/ENOENT/)
+ })
 })
