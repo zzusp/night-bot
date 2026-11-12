@@ -83,7 +83,7 @@ test('旧快照保留警告语义，刷新中按钮与时间稳定，失败及�
     await open(page);
     const timestamp = page.locator('.evolution-list-updated');
     const refresh = page.getByRole('button', {name: '刷新记录', exact: true});
-    await expect(timestamp).toHaveText('旧快照 · 11/11 23:05 · 更新中 · 已统计 26 个会话');
+    await expect(timestamp).toHaveText('旧快照 · 11/11 23:05 · 统计更新中 · 已统计 26 个会话');
     await expect(timestamp).toHaveAttribute('data-stale', 'true');
     for (const theme of ['light', 'dark']) {
       await page.evaluate(theme => {document.documentElement.dataset.theme = theme;}, theme);
@@ -93,13 +93,13 @@ test('旧快照保留警告语义，刷新中按钮与时间稳定，失败及�
     }
     refreshing = false;
     await refresh.click();
-    await expect(timestamp).toContainText('更新未完成');
+    await expect(timestamp).toContainText('统计刷新失败');
     const bounds = await refresh.boundingBox();
     hold = true;
     await refresh.focus(); await page.keyboard.press('Enter');
     await expect.poll(() => started).toBe(true);
     await expect(refresh).toBeDisabled();
-    await expect(timestamp).toContainText('更新未完成');
+    await expect(timestamp).toContainText('统计刷新失败');
     expect(await refresh.boundingBox()).toEqual(bounds);
     hold = false; stale = false; release();
     await expect(timestamp).toHaveText('最近更新 11/11 23:05 · 已统计 26 个会话');

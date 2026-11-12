@@ -86,3 +86,22 @@ test('Router skill reports committed uncertainty until derived readback succeeds
  await assert.rejects(pending,{code:'MEMORY_READ_ONLY'})
  assert.equal((await reflection.state(scope)).skills['denied-after-wait'],undefined)
 })
+
+test('slow review archives are serialized outside evolution commits and forgetting wins the final archive',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'night-archive-order-')),store=new MarkdownMemoryStore(root),scope=memoryScope({actorId:'actor'})
+ t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
+ const reflection=Object.create(Reflection.prototype),entered=Promise.withResolvers(),release=Promise.withResolvers(),published=[]
+ t.after(()=>release.resolve())
+ reflection.host={memory:{store},skills:{invalidateCache(){}}}
+ const report={status:'done',eventId:'event',taskId:'task',lessons:[{key:'lesson',memoryKey:'lesson',summary:'obsolete'}],destinations:[{memory:{key:'lesson'}}]}
+ const source={onReview:async(_id,value)=>{if(!published.length){entered.resolve();await release.promise}published.push(structuredClone(value))}}
+ reflection.sources=new Set([source]);const directory=reflection.directory(scope)
+ await atomicWrite(join(directory,'state.json'),JSON.stringify({version:1,skills:{},reviews:{[hash('event')]:report}}))
+ const archive=reflection.publishReviewArchive(source,'task',report,scope);await entered.promise
+ const forgetting=reflection.forget(scope,'lesson')
+ // Commit forgetting completes even while the older archive callback waits.
+ for(let i=0;i<100&&!((await reflection.state(scope)).reviews[hash('event')].forgotten);i++)await new Promise(resolve=>setTimeout(resolve,5))
+ assert.equal((await reflection.state(scope)).reviews[hash('event')].forgotten,true)
+ release.resolve();await Promise.all([archive,forgetting])
+ assert.equal(published.length,2);assert.deepEqual(published.at(-1).lessons,[]);assert.deepEqual(published.at(-1).destinations,[])
+})

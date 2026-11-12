@@ -1420,9 +1420,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for(const [id,error]of failures)if(id==='router:'+error.conversationId&&!residentRouter.errors.has(error.conversationId))failures.delete(id)
   }
   async function recover() {
-    ctx.get?.('reflection')?.scan()
     if (closed) return { failures: [] }
     if (recovering) return recovering
+    ctx.get?.('reflection')?.scan()
     return recovering = (async () => {
       await disableSingleProviderRetries()
       for(const task of await query('task.list'))for(const row of task.effectReconciliations??[])if(row.state==='prepared'){

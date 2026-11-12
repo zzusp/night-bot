@@ -26,7 +26,7 @@ export default class Reflection extends Service {
   }
   attachStore(store,{ownerActorId,model,credentials,onReview,responsibilityFor}={}){
     if(this.config.enabled===false)return
-    const source={store,ownerActorId,model,credentials,onReview,responsibilityFor};this.sources.add(source);void this.scanSource(source)
+    const source={store,ownerActorId,model,credentials,onReview,responsibilityFor,after:0,pending:new Map(),archivePending:new Map()};this.sources.add(source);void this.scanSource(source)
     return ()=>this.sources.delete(source)
   }
   scan(){for(const source of this.sources)void this.scanSource(source)}
@@ -34,8 +34,13 @@ export default class Reflection extends Service {
     if(this.closed)return source.scanning
     source.scanRequested=true;if(source.scanning)return source.scanning
     const job=this.host.agents.withoutInitiator(async()=>{
-      do{source.scanRequested=false;let after=0,page
-      do{page=await source.store.query({kind:'task.events',after,limit:100});for(const event of page.events){if(this.closed)return;if(event.kind==='task.completed')await this.review(source,event)}after=page.nextCursor}while(page.hasMore)
+      do{source.scanRequested=false;let page
+      for(const [id,{scope,report}]of source.archivePending??[]){if(this.closed)return;if(await this.archiveReview(source,report.taskId,report,scope))source.archivePending.delete(id)}
+      for(const [id,event]of source.pending){if(this.closed)return;if(await this.review(source,event))source.pending.delete(id)}
+      do{page=await source.store.query({kind:'task.events',after:source.after,limit:100});for(const event of page.events){
+        if(this.closed)return
+        if(event.kind==='task.completed'){source.pending.set(event.id,event);if(await this.review(source,event))source.pending.delete(event.id)}
+      }source.after=page.nextCursor}while(page.hasMore&&!this.closed)
       }while(source.scanRequested&&!this.closed)
     }).catch(error=>{this.lastError=error.code??'REFLECTION_SCAN_FAILED';this.host.logger.warn('reflection: '+this.lastError)}).finally(()=>{source.scanning=undefined;this.jobs.delete(job);if(source.scanRequested&&!this.closed&&this.sources.has(source))void this.scanSource(source)})
     source.scanning=job;this.jobs.add(job);return job
@@ -44,25 +49,26 @@ export default class Reflection extends Service {
   directory(scope){return join(this.host.memory.store.directory(scope),'evolution')}
   async review(source,event){
     const task=await source.store.query({kind:'task.get',taskId:event.taskId})
-    if(!task||task.archiveRestore?.reviewRequired||task.archiveRestore?.completionEventIds?.includes(event.id)||typeof source.ownerActorId!=='string')return
+    if(!task||task.archiveRestore?.reviewRequired||task.archiveRestore?.completionEventIds?.includes(event.id)||typeof source.ownerActorId!=='string')return true
     const binding={actorId:task.ownerActorId??source.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}}
     const scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'},true),directory=this.directory(scope),id=hash(event.id)
-    await withLock(join(directory,'.lock'),async()=>{
-      const state=await this.state(scope),previous=state.reviews[id]
+    // Serialize this event, not the whole memory scope, during tool-free inference.
+    // The shared evolution lock remains mandatory for every publication below.
+    return withLock(join(directory,'review-locks',id),async()=>{
+      const initial=await this.state(scope),previous=initial.reviews[id]
       // Old failures may already have effects without durable key/write receipts.
       // Preserve them for audit, but never infer again or replay them under new names.
-      if(previous&&(previous.status==='done'||previous.status==='skipped'||!reflectionRetrySupported(previous))){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
-      if(previous?.attempts>=3||previous?.retryAt>Date.now())return
+      if(previous&&(previous.status==='done'||previous.status==='skipped'||!reflectionRetrySupported(previous)))return this.archiveReview(source,task.taskId,previous,scope)
+      if(previous?.attempts>=3)return this.archiveReview(source,task.taskId,previous,scope)
+      if(previous?.retryAt>Date.now())return false
       const attempts=(previous?.attempts??0)+1
-      let inputRecord=previous?.input
+      let inputRecord=previous?.input,input,snapshot,lessons=previous?.lessons,preparationError
+      const timeout=AbortSignal.timeout(30000),signal=AbortSignal.any([this.abort.signal,timeout])
       try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
-        const input=reflectionInput(task,event,executions,operations),known=new Set(input.facts.map(f=>f.id))
+        input=reflectionInput(task,event,executions,operations);const known=new Set(input.facts.map(f=>f.id))
         if(!previous?.lessons)inputRecord={sha256:hash(JSON.stringify(input)),coverage:input.coverage}
-        const snapshot=await this.host.memory.store.index(scope,{topic:'experience',includeExpired:true})
-        let scopeRevision=snapshot.revision
-        const timeout=AbortSignal.timeout(30000),signal=AbortSignal.any([this.abort.signal,timeout])
-        let lessons=previous?.lessons
+        snapshot=await this.host.memory.store.index(scope,{topic:'experience',includeExpired:true})
         if(!lessons){
           const official=this.host.get('nativePiProvider')?.official
           if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
@@ -77,6 +83,22 @@ export default class Reflection extends Service {
             if(lesson.skill){if(!Array.isArray(lesson.skill.steps)||!lesson.skill.steps.length||lesson.skill.steps.length>8)throw failure('REFLECTION_SKILL_INVALID');value.skill={steps:lesson.skill.steps.map(brief),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability??'Not established'),evidenceBacked:lesson.skill.evidenceBacked===true}}return value
           })
         }
+      }catch(error){preparationError=error}
+      const report=await withLock(join(directory,'.lock'),async()=>{
+        const state=await this.state(scope)
+        // Forgetting or another committed review must not be overwritten by a
+        // result prepared against older review state. Retry from current state.
+        if(JSON.stringify(state.reviews[id])!==JSON.stringify(previous))return null
+        if((state.forgetGeneration??0)!==(initial.forgetGeneration??0)){
+          const revoked={memoryKeyVersion:1,input:inputRecord,status:'skipped',code:'REFLECTION_SCOPE_REVOKED',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons:[],destinations:[]}
+          state.reviews[id]=revoked
+          await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(revoked,null,2)+'\n')
+          await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return revoked
+        }
+        try{
+        if(preparationError)throw preparationError
+        signal.throwIfAborted()
+        let scopeRevision=snapshot.revision
         lessons=assignReflectionMemoryKeys(lessons,snapshot.entries,state.reviews)
         // Commit key reservations before any memory/skill effects so retries use
         // the same receipt identity even after a crash or an intervening forget.
@@ -117,8 +139,25 @@ export default class Reflection extends Service {
         state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
       }catch(error){state.reviews[id]={...state.reviews[id],memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
-      const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
+      const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return report
+      })
+      if(!report)return false
+      const archived=await this.archiveReview(source,task.taskId,report,scope)
+      return archived&&(report.status==='done'||report.status==='skipped'||report.attempts>=3)
     })
+  }
+  async publishReviewArchive(source,taskId,report,scope){
+    if(!source.onReview)return
+    // Archive callbacks may be slow. Serialize them separately and reread the
+    // authoritative report so a concurrent forget never publishes stale bodies.
+    await withLock(join(this.directory(scope),'archive-locks',hash(report.eventId)),async()=>{
+      const current=(await this.state(scope)).reviews[hash(report.eventId)]
+      if(current)await source.onReview(taskId,current)
+    })
+  }
+  async archiveReview(source,taskId,report,scope){
+    try{await this.publishReviewArchive(source,taskId,report,scope);return true}
+    catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError);return false}
   }
   renderSkill(scope,key,value,revision){
     return ['---','name: learned-'+key,'description: '+JSON.stringify(value.applicability),'---',
@@ -177,8 +216,10 @@ export default class Reflection extends Service {
   }
   async forget(scope,key){
     const directory=this.directory(scope)
-    await withLock(join(directory,'.lock'),async()=>{
+    const changedReviews=await withLock(join(directory,'.lock'),async()=>{
       const state=await this.state(scope),changedReviews=[]
+      // Fence even outstanding inference that has not reserved lesson keys yet.
+      state.forgetGeneration=(state.forgetGeneration??0)+1
       for(const [name,skill]of Object.entries(state.skills))if(skill.memoryKeys.includes(key)){
         state.skillRevisions??={};state.skillRevisions[name]=Math.max(skill.revision??0,state.skillRevisions[name]??0)+1;delete state.skills[name];await privateDirectory(join(directory,'skills'));await rm(join(directory,'skills',name),{recursive:true,force:true})
       }
@@ -192,8 +233,15 @@ export default class Reflection extends Service {
       // Commit forgetting before external archive callbacks.
       // A failed callback must never restore learned content on restart.
       await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');this.host.skills.invalidateCache()
-      for(const [,review]of changedReviews)for(const source of this.sources)await source.onReview?.(review.taskId,review)
+      return changedReviews
     })
+    // Incremental scanning no longer revisits finished events. Keep failed
+    // archive refreshes pending so forgetting is repaired without a restart.
+    for(const [,review]of changedReviews)for(const source of this.sources)source.archivePending?.set(review.eventId,{scope,report:review})
+    for(const [,review]of changedReviews)for(const source of this.sources){
+      try{await this.publishReviewArchive(source,review.taskId,review,scope);source.archivePending?.delete(review.eventId)}
+      catch(error){source.archivePending?.set(review.eventId,{scope,report:review});throw error}
+    }
   }
   // Host 检视只接受已认证渠道 binding；模型工具仍走官方 live actor 权限。
   async inspectTask(task,readerBinding,{store,changeId,version}={}){
