@@ -12,12 +12,21 @@ const target='zzusp/night-bot'
 export function createFeedbackService({model,modelConsent=()=>({revision:'default',endpoint:'配置的模型服务'}),resolveModel,getSecrets=async()=>[],evidence,diagnose=diagnoseWithPi,paths,getToken,fetchImpl=fetch,now=Date.now}){
  const reports=new Map(),operations=new Set();let closed=false
  const track=fn=>{const promise=fn();operations.add(promise);promise.finally(()=>operations.delete(promise)).catch(()=>{});return promise}
- const metadata=()=>({target,model:model().provider+'/'+model().model,...modelConsent()})
+ const metadata=()=>{try{return {target,model:model().provider+'/'+model().model,...modelConsent()}}catch{return {target,model:null,revision:null,endpoint:null}}}
  const clean=()=>{for(const[id,r]of reports)if(r.expires<=now()){r.controller.abort();clearTimeout(r.timer);reports.delete(id)}}
  const get=(owner,id)=>{if(closed)fail('FEEDBACK_CLOSED',503);clean();const r=reports.get(id);if(!r||r.owner!==owner)fail('FEEDBACK_NOT_FOUND',404);return r}
  const view=r=>({id:r.id,state:r.state,title:r.title,body:r.body??'',target,error:r.error??null,...r.url?{url:r.url}:{}})
  return {
   metadata,
+  draft(owner,input,{secrets:additionalSecrets=[]}={}){
+   if(closed)fail('FEEDBACK_CLOSED',503)
+   if(!validText(input?.title,160)||!validText(input?.description,6000))fail('FEEDBACK_INPUT_INVALID')
+   clean();if(reports.size>=16)fail('FEEDBACK_LIMIT',429)
+   // Manual feedback never resolves a model, reads local evidence or enumerates credentials.
+   const r={id:randomUUID(),owner,manual:true,title:redactFeedback(input.title.trim(),additionalSecrets),body:redactFeedback(input.description.trim(),additionalSecrets),state:'ready',expires:now()+30*60*1000,controller:new AbortController(),additionalSecrets}
+   reports.set(r.id,r);r.timer=setTimeout(()=>{r.controller.abort();reports.delete(r.id)},30*60*1000);r.timer.unref?.()
+   return view(r)
+  },
   collect(owner,input,{secrets:additionalSecrets=[]}={}){
    if(closed)fail('FEEDBACK_CLOSED',503)
    if(input?.consent!==true)fail('FEEDBACK_CONSENT_REQUIRED',403)
@@ -28,7 +37,7 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
    const controller=new AbortController(),r={id:randomUUID(),owner,title:'',state:'collecting',expires:now()+30*60*1000,controller,additionalSecrets};reports.set(r.id,r)
    r.timer=setTimeout(()=>{r.controller.abort();reports.delete(r.id)},30*60*1000);r.timer.unref?.()
    r.done=(async()=>{try{
-    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]),secrets=[...await getSecrets(),...r.additionalSecrets]
+    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]),secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets]
     signal.throwIfAborted();r.title=redactFeedback(input.title.trim(),secrets)
     const description=redactFeedback(input.description.trim(),secrets)
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
@@ -42,7 +51,7 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
    const r=get(owner,id);if(r.state!=='ready')fail('FEEDBACK_NOT_READY',409)
    if(!validText(input?.title,160)||!validText(input?.body,48000))fail('FEEDBACK_INPUT_INVALID')
    r.state='editing'
-   try{const secrets=[...await getSecrets(),...r.additionalSecrets];if(r.controller.signal.aborted)fail('FEEDBACK_CANCELLED',409);r.title=redactFeedback(input.title.trim(),secrets);r.body=redactFeedback(input.body.trim(),secrets);return view({...r,state:'ready'})}
+   try{const secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets];if(r.controller.signal.aborted)fail('FEEDBACK_CANCELLED',409);r.title=redactFeedback(input.title.trim(),secrets);r.body=redactFeedback(input.body.trim(),secrets);return view({...r,state:'ready'})}
    finally{if(r.state==='editing')r.state='ready'}
   })},
   async cancel(owner,id){const r=get(owner,id);if(['submitting','unknown','submitted'].includes(r.state))fail('FEEDBACK_ALREADY_SENT',409);r.state='cancelled';r.controller.abort();await r.done;clearTimeout(r.timer);reports.delete(id);return {ok:true}},
@@ -55,9 +64,10 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
    // Claim before any await. No concurrent or automatic duplicate issue creates.
    r.state='submitting'
    try{
-    const secrets=[...await getSecrets(),...r.additionalSecrets],title=redactFeedback(r.title,secrets),body=redactFeedback(r.body,secrets)
+    const secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets],title=redactFeedback(r.title,secrets),body=redactFeedback(r.body,secrets)
     if(title!==r.title||body!==r.body){r.title=title;r.body=body;r.state='ready';fail('FEEDBACK_PREVIEW_CHANGED',409)}
     const token=await getToken();if(typeof token!=='string'||!token.trim()){r.state='ready';fail('FEEDBACK_GITHUB_TOKEN_REQUIRED',503)}
+    if(r.manual){const safeTitle=redactFeedback(r.title,[token]),safeBody=redactFeedback(r.body,[token]);if(safeTitle!==r.title||safeBody!==r.body){r.title=safeTitle;r.body=safeBody;r.state='ready';fail('FEEDBACK_PREVIEW_CHANGED',409)}}
     r.controller.signal.throwIfAborted();if(closed)fail('FEEDBACK_CLOSED',503)
     const response=await fetchImpl(`https://api.github.com/repos/${target}/issues`,{method:'POST',redirect:'error',signal:AbortSignal.any([r.controller.signal,AbortSignal.timeout(20000)]),headers:{authorization:`Bearer ${token}`,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28'},body:JSON.stringify({title,body})})
     if(!response.ok){if([401,403,404,422].includes(response.status)){r.state='ready';fail('FEEDBACK_GITHUB_REJECTED',502)}fail('FEEDBACK_SUBMISSION_UNKNOWN',502)}

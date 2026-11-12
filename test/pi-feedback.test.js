@@ -87,3 +87,21 @@ test('editing and publishing cannot race past an unchanged preview',async()=>{
  await assert.rejects(f.service.submit('owner',r.id,{confirm:true,title:r.title,body:r.body}),{code:'FEEDBACK_NOT_READY'})
  wait.resolve();await editing;assert.equal(f.sent,0)
 })
+test('manual feedback never reads evidence or credentials, starts Pi or requires a model',async()=>{
+ const unexpected=()=>{assert.fail('manual path accessed diagnostic dependency')};let tokenReads=0
+ const f=fixture({model:unexpected,modelConsent:unexpected,resolveModel:unexpected,getSecrets:unexpected,evidence:unexpected,diagnose:unexpected,getToken:async()=>{tokenReads++;return 'fake-submit-token'}})
+ assert.equal(f.service.metadata().model,null)
+ const r=f.service.draft('owner',{title:'页面问题',description:'复现步骤 alice@example.com'})
+ assert.equal(r.state,'ready');assert.ok(!r.body.includes('alice@example.com'));assert.ok(!r.body.includes('Pi 诊断'));assert.equal(tokenReads,0);assert.equal(f.sent,0)
+ assert.throws(()=>f.service.read('other',r.id),{code:'FEEDBACK_NOT_FOUND'})
+ await assert.rejects(f.service.submit('owner',r.id,{title:r.title,body:r.body}),{code:'FEEDBACK_PUBLISH_CONSENT_REQUIRED'});assert.equal(tokenReads,0)
+ const edited=await f.service.edit('owner',r.id,{title:'修改标题',body:'修改正文'});assert.equal(tokenReads,0)
+ await f.service.submit('owner',r.id,{title:edited.title,body:edited.body,confirm:true})
+ assert.equal(tokenReads,1);assert.equal(f.sent,1);assert.deepEqual(f.body,{title:edited.title,body:edited.body});await f.service.close()
+})
+test('manual draft cancellation, validation and capacity remain bounded',async()=>{
+ const f=fixture();assert.throws(()=>f.service.draft('owner',{title:'',description:'x'}),{code:'FEEDBACK_INPUT_INVALID'})
+ const r=f.service.draft('owner',input);await f.service.cancel('owner',r.id);assert.throws(()=>f.service.read('owner',r.id),{code:'FEEDBACK_NOT_FOUND'})
+ for(let i=0;i<16;i++)f.service.draft('owner',input)
+ assert.throws(()=>f.service.draft('owner',input),{code:'FEEDBACK_LIMIT'});await f.service.close();assert.throws(()=>f.service.draft('owner',input),{code:'FEEDBACK_CLOSED'})
+})

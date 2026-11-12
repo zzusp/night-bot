@@ -996,3 +996,16 @@ test('feedback HTTP preserves consent, exact preview, owner and CSRF boundaries'
  assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{confirm:true,title:edited.body.title,body:edited.body.body}})).status,200);assert.equal(sent,1)
  await f.login();assert.equal((await f.fetchApi(path)).status,404)
 })
+test('feedback HTTP manual path needs no model or local data and still requires publish consent',async t=>{
+ let sent=0;const forbidden=()=>{assert.fail('manual HTTP accessed diagnostic dependency')}
+ const feedback=createFeedbackService({model:forbidden,modelConsent:forbidden,resolveModel:forbidden,getSecrets:forbidden,evidence:forbidden,diagnose:forbidden,getToken:async()=>'fake',fetchImpl:async()=>{sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
+ t.after(()=>feedback.close());const f=await fixture(t,{feedback});const input={title:'异常',description:'只提交填写的内容'}
+ assert.equal((await f.fetchApi('/api/feedback/draft',{method:'POST',body:input})).status,401);await f.login()
+ assert.equal((await f.fetchApi('/api/feedback')).body.model,null)
+ assert.equal((await f.fetchApi('/api/feedback/draft',{method:'POST',body:input,headers:{'x-csrf-token':'forged'}})).status,403)
+ const created=await f.fetchApi('/api/feedback/draft',{method:'POST',body:input});assert.equal(created.status,200);assert.equal(created.body.state,'ready');assert.equal(created.body.body,input.description)
+ const path='/api/feedback/'+created.body.id
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:created.body.title,body:created.body.body}})).status,403);assert.equal(sent,0)
+ const edited=await f.fetchApi(path,{method:'PATCH',body:{title:'修改标题',body:'修改正文'}});assert.equal(edited.status,200)
+ assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:edited.body.title,body:edited.body.body,confirm:true}})).status,200);assert.equal(sent,1)
+})

@@ -162,6 +162,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const feedback=getFeedback();if(!feedback)fail('FEEDBACK_UNAVAILABLE',503)
       if(request.method==='GET'&&path==='/api/feedback')return send(response,200,feedback.metadata())
       if(request.method==='POST'&&path==='/api/feedback/collect')return send(response,202,feedback.collect(session.key,await jsonBody(request,['title','description','consent','model','revision'],32768),{secrets:[credential.token]}))
+      if(request.method==='POST'&&path==='/api/feedback/draft')return send(response,200,feedback.draft(session.key,await jsonBody(request,['title','description'],32768),{secrets:[credential.token]}))
       const match=/^\/api\/feedback\/([a-f0-9-]{36})(\/submit)?$/.exec(path)
       if(match){
         if(request.method==='GET'&&!match[2])return send(response,200,feedback.read(session.key,match[1]))
