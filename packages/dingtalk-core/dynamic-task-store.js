@@ -1907,7 +1907,14 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         const identity=taskEffectActionAuthorizationIdentity(source.requestIdentity.effectAuthorization),task=get('dynamic_tasks',identity.taskId)
         const closures=task.effectReconciliations??[]
         if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId))fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
-        if(task.archivedAt||task.recovering||!task.drained||task.status!=='active'||task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==identity.expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        const pause=readReceiptRow(db,'effect-action-pause:'+taskEffectDigest([task.taskId,identity.requestId]))
+        if(pause){
+          const args={taskId:task.taskId,control:'paused',expectedControlRevision:identity.expectedControlRevision,reason:'effect-action:'+taskEffectDigest([identity,source.text])}
+          if(pause.digest!==digest({kind:'task.control',args}))fail('DYNAMIC_COMMAND_ID_CONFLICT')
+          const held=JSON.parse(pause.body).result.task
+          if(held.requirementRevision!==identity.expectedRequirementRevision||held.control!=='paused'||held.controlRevision!==identity.expectedControlRevision+1)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        }
+        if(task.archivedAt||task.recovering||!task.drained||task.status!=='active'||task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==identity.expectedControlRevision+(pause?1:0))fail('TASK_EFFECT_AUTHORIZATION_STALE')
         if(!closures.length||closures.some(row=>row.state!=='committed')||digest(closures.map(row=>row.intentEntryId).sort())!==digest(identity.closedIntentEntryIds))fail('TASK_EFFECT_RECONCILIATION_PENDING')
         source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
       }

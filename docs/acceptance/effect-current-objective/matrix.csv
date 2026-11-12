@@ -1,0 +1,14 @@
+case,round-1,round-2
+paused-normal,PASS,PASS
+paused-after-source,PASS,PASS
+paused-after-revise,PASS,PASS
+paused-before-activate,PASS,PASS
+paused-after-activate,PASS,PASS
+active-normal,FAIL,PASS
+active-after-pause,FAIL,PASS
+active-after-source,FAIL,PASS
+active-after-revise,FAIL,PASS
+closure-and-completion-guards-52,PASS,UNCHANGED-NOT-RERUN
+source-hash-import-native-guard,PASS,PASS
+real-installation-new-objective,NOT-RUN,NOT-RUN
+business-language-and-excel,NOT-RUN,NOT-RUN
