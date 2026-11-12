@@ -66,17 +66,19 @@ test('发现不执行插件，只对声明表单配置自定义渠道，引用�
  next=await f.port.plugins();await assert.rejects(f.port.saveChannel({type:'fixture-custom',channelId:'custom-room',enabled:false,config:{room:'other'},expectedVersion:next.version}),{code:'CHANNEL_EDIT_REQUIRES_STOP'})
 })
 
-test('已保存GitHub凭据仅在获准full shell启动边界使用，不进入参数或执行历史',{skip:process.platform!=='linux'},async t=>{
+test('已保存GitHub及可信业务凭据仅在获准full shell启动边界使用，私有命名空间和执行历史不泄露',{skip:process.platform!=='linux'},async t=>{
  const {nativeTaskHost}=await import('./fixtures/routing-official-host.js'),{createHash}=await import('node:crypto')
  const root=await mkdtemp(join(tmpdir(),'night-settings-full-shell-')),token='TEST_SAVED_GITHUB_'+Date.now(),hash=createHash('sha256').update(token).digest('hex');let h,step=0
+ const inherited={UNRELATED_FIXTURE_SECRET:'TEST_OTHER_SECRET',NIGHT_BOT_FIXTURE_SECRET:'TEST_PRIVATE_NIGHT_SECRET',DSH_FIXTURE_TOKEN:'TEST_PRIVATE_DSH_TOKEN'},businessHash=createHash('sha256').update(inherited.UNRELATED_FIXTURE_SECRET).digest('hex')
  t.after(async()=>{await h?.close();await rm(root,{recursive:true,force:true})})
- const script=`const c=require('node:crypto'); console.log(JSON.stringify({matches:c.createHash('sha256').update(process.env.GITHUB_TOKEN||'').digest('hex')==='${hash}',unrelated:process.env.UNRELATED_FIXTURE_SECRET===undefined}))`
- h=await nativeTaskHost(root,request=>!request.tools.some(tool=>tool.name==='task_result')?[]:[step++===0?{name:'bash',args:{description:'Check fixture environment using booleans only',command:`node -e '${script.replaceAll("'","'\\''")}'`}}:{name:'task_result',args:{decision:{action:'complete',summary:'Checked fixture credentials',evidence:['boolean output'],limitations:[]}}}],{permissionMode:'full',inheritedEnvironment:{UNRELATED_FIXTURE_SECRET:'TEST_OTHER_SECRET'}})
+ const script=`const c=require('node:crypto'); console.log(JSON.stringify({matches:c.createHash('sha256').update(process.env.GITHUB_TOKEN||'').digest('hex')==='${hash}',businessMatches:c.createHash('sha256').update(process.env.UNRELATED_FIXTURE_SECRET||'').digest('hex')==='${businessHash}',privateAbsent:process.env.NIGHT_BOT_FIXTURE_SECRET===undefined&&process.env.DSH_FIXTURE_TOKEN===undefined}))`
+ h=await nativeTaskHost(root,request=>!request.tools.some(tool=>tool.name==='task_result')?[]:[step++===0?{name:'bash',args:{description:'Check fixture environment using booleans only',command:`node -e '${script.replaceAll("'","'\\''")}'`}}:{name:'task_result',args:{decision:{action:'complete',summary:'Checked fixture credentials',evidence:['boolean output'],limitations:[]}}}],{permissionMode:'full',inheritedEnvironment:inherited})
  await h.ctx.credentials.set('GITHUB_TOKEN',token)
  const created=await h.service.createTask({requestId:'settings-credential-full',objective:'Check fixture credential without disclosure'});await h.service.whenIdle()
  const task=await h.query('task.get',{taskId:created.taskId}),result=h.toolResults.find(row=>row.sessionId===task.sessionId&&row.name==='bash')?.result
- assert.ok(result);assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.value.stdout.text),{matches:true,unrelated:true})
- const native=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true});assert.equal(JSON.stringify({entries:native.entries,requests:h.requests,tools:h.toolResults}).includes(token),false)
+ assert.ok(result);assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.value.stdout.text),{matches:true,businessMatches:true,privateAbsent:true})
+ const native=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true}),recorded=JSON.stringify({entries:native.entries,requests:h.requests,tools:h.toolResults,jobs:h.ctx.get('jobs').list(task.sessionId)})
+ for(const value of [token,...Object.values(inherited)])assert.equal(recorded.includes(value),false)
 })
 
 test('网页保存自定义配置后真实Host发现并启动插件，渠道身份、名称和fake外发沿统一协议',async t=>{
