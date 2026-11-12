@@ -106,3 +106,10 @@ test('every schedule result state stays inside the shared task-list surface', ()
     assert.doesNotMatch(frame, /list-toolbar|pagination/);
   }
 });
+
+test('schedule rows retain readable spacing and separators in the shipped stylesheet', () => {
+  const css = readFileSync(new URL('../src/styles/schedules.css', import.meta.url), 'utf8');
+  assert.match(css, /\.schedule-row\s*\{[^}]*gap:\s*6px;[^}]*padding:\s*16px 18px;/);
+  assert.match(css, /\.schedule-row \+ \.schedule-row\s*\{[^}]*border-top:\s*1px solid var\(--board-border\)/);
+  assert.match(css, /@media\s*\(max-width:\s*520px\)[\s\S]*padding-inline:\s*14px/);
+});

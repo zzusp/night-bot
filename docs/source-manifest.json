@@ -689,7 +689,7 @@
       "source": "observer-pagination.js",
       "sourceSha256": "65b696a47abb79c156a0be102c1ed67ef40378b426bfe36bd60ba6af7a7d439f",
       "status": "adapted",
-      "sha256": "1de950bb9d5b73408b1536ac8241f4344163900e486a2d340da04afc4ee76f2e",
+      "sha256": "a108034d4f3ddc62062c9bdcc708a00dae64b2fe3e0fa65a0a61ff74e5c2d5be",
       "adaptation": "Bound message-context notification lookup to the exact source reference, including explicit recipient replies. 首答上下文按精确来源版本读取同会话任务通知，并用准备前提交的事件及命令快照核实共同回复覆盖，保留归档且不回写历史。"
     },
     {

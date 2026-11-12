@@ -522,3 +522,11 @@ html, body, #root { width: 100%; min-width: 0; }
 .response-time-elapsed svg { flex-shrink: 0; }
 .response-time-elapsed[data-state="invalid"] { text-decoration: underline dotted; }
 .response-time-association { margin-bottom: 8px; }
+
+/* Task durations use the shared list surface; keep both metrics reachable on narrow screens. */
+.tasks-page .task-duration { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--board-muted); }
+.tasks-page .task-table td:first-child { width: 100%; min-width: 180px; }
+@media (max-width: 760px) {
+  .tasks-page .task-table th:nth-child(3), .tasks-page .task-table td:nth-child(3) { display: table-cell; }
+  .tasks-page .task-table .task-updated { display: none; }
+}
