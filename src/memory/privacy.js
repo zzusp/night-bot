@@ -1,3 +1,4 @@
+import {taskProcessEnvironment} from '../process/task-temp.js'
 import {bindWindowsLaunchPolicy,retainProcessPolicy,processFileRequest,currentProcessResourceRecorder,bindProcessResourceRecorder} from '../process/contracts.js'
 import {officialWorkingDirectoryOrigin} from '../native-working-directory.js'
 import {existsSync,realpathSync} from 'node:fs'
@@ -81,6 +82,7 @@ export async function installProcessPrivacy(ctx,privacy){
         if(token!==undefined&&(typeof token!=='string'||token.includes(String.fromCharCode(0))))throw failure('PROCESS_GITHUB_TOKEN_INVALID')
         if(token)env={...env,GITHUB_TOKEN:token}
       }
+      if(task)env=taskProcessEnvironment(task,env)
       return retainProcessPolicy(spec,{...spec,cwd:authorization.cwd,argv:authorization.argv,...env===undefined?{}:{env}})
     }
     if(!privacy.installRoot){if(authorization?.kind==='scoped')throw failure('PROCESS_SCOPED_AUTHORIZATION_UNAVAILABLE');return spec}

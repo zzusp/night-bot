@@ -49,3 +49,18 @@
 - `/test/outbox/ack`
 - `/test/subscriptions`
 - `/test/supervisor/probe`
+
+### 执行 trace（诊断只读）
+
+`GET /state/execution-trace` 读取独立 native 诊断域性能分区的限量元数据。
+必须指定 `sessionId`、`taskId`、`groupId` 或 `sourceId`；按来源查询须提供
+`sourceVersion`。支持 `runId`、`offset`、`limit`（默认 100，最多 500）和
+毫秒窗口 `startedAt`、`endedAt`。当前任务、渠道、来源范围沿 TaskService 校验。
+模型、工具、阶段按并集扣重；未知耗时不等于空转，不返回正文、工具参数或凭据。
+每分区保留最多 2048 条，成功新写批次施加全局 4096 条预算；淘汰最旧 trace
+窗口时保留所有聚合指标、去重状态和淘汰范围。旧快照在下一次新写前可能超限，
+只读或重复事件不触发迁移。`globalRetained`、`globalBudgetExceeded` 返回实际
+保留量与超限状态，`globalBudgetPolicy` 为 `enforced-on-successful-write`。
+旧 resident 性能分区只读回退，新同键分区整体覆盖，不双计数。诊断损坏或写入
+失败时 `diagnostics.available` 为 false，不阻止业务恢复；关闭等待已接纳写入。
+历史不补造、缺边界与被淘汰记录均不宣称完整，诊断不能用于业务重放或授权。

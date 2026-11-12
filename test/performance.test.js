@@ -160,11 +160,11 @@ test('关闭step清理已配对状态且缺失工具结果明确计数，替换�
 test('按会话分区持久化，一个会话增加指标不重写其它会话历史', async () => {
   const memory = await facility(), store = await openResidentStore(memory.storage)
   await store.recordPerformanceEvent(input(1, 'assistant/message', 1))
-  const first = structuredClone(memory.snapshot.tables.scheduler['performance:s1'])
+  const first = structuredClone(memory.snapshot.diagnostics.tables.scheduler['performance:s1'])
   memory.writtenKeys.length = 0
   await store.recordPerformanceEvent(input(1, 'assistant/message', 1, {}, { sessionId: 's2' }))
   assert.deepEqual(memory.writtenKeys, ['scheduler:performance:s2'])
-  assert.deepEqual(memory.snapshot.tables.scheduler['performance:s1'], first)
+  assert.deepEqual(memory.snapshot.diagnostics.tables.scheduler['performance:s1'], first)
   assert.equal(store.listPerformance().rows.length, 2)
   assert.equal(store.listPerformance().retention.writePartition, 'session')
   await store.close()
@@ -175,7 +175,7 @@ test('原生Domain首次写入性能分区并在重启后续写', async () => {
   const storage=native.storage
   let store = await openResidentStore(storage)
   await store.recordPerformanceEvent(input(1, 'step/start', 0))
-  assert.ok(snapshot.tables.scheduler['performance:s1'])
+  assert.ok(snapshot.diagnostics.tables.scheduler['performance:s1'])
   await store.close()
   store = await openResidentStore(storage)
   await store.recordPerformanceEvent(input(2, 'assistant/message', 100, { usage: { inputTokens: 10, outputTokens: 2 } }))
@@ -220,7 +220,7 @@ test('原生Domain只排一个计量写，业务写越过其余会话且同会�
   const business = h.store.subscribe({ groupId: 'g', responsibility: '测试' })
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(settled, false)
-  assert.deepEqual(h.writes.slice(1), ['scheduler:performance:s1'])
+  assert.deepEqual(h.writes.slice(1), ['scheduler:performance:s1','groups:g'])
   release.resolve()
   await Promise.all([first, ...batch, other, business])
   assert.deepEqual(h.writes.slice(1), ['scheduler:performance:s1', 'groups:g', 'scheduler:performance:s2', 'scheduler:performance:s3'])
@@ -246,7 +246,7 @@ test('批次写失败不发布或丢失重试机会，后续session继续且关�
   await assert.rejects(h.store.recordPerformanceEvent(input(2, 'step/start', 2)), /resident_store_closed/)
   await Promise.all([queued, closed])
   assert.equal(h.isClosed(), true)
-  assert.ok(h.snapshot.tables.scheduler['performance:s2'])
+  assert.ok(h.snapshot.diagnostics.tables.scheduler['performance:s2'])
 })
 
 test('无新写的去重批次完成回调可立即追加事件，不留下悬空写入', async () => {

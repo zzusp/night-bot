@@ -505,6 +505,11 @@ export async function handleRequest(request, response, store, { testApiEnabled =
     catch (error) { return send(response, residentErrorStatus(error), { error: error.message }) }
   }
   if (request.method === 'GET' && url.pathname === '/state/task-timings') return send(response, 200, store.listTaskTimings())
+  if(request.method==='GET'&&url.pathname==='/state/execution-trace'){
+    const filter=Object.fromEntries(['sessionId','taskId','groupId','sourceId','runId'].filter(key=>url.searchParams.has(key)).map(key=>[key,url.searchParams.get(key)]))
+    for(const key of ['sourceVersion','limit','offset','startedAt','endedAt'])if(url.searchParams.has(key)){const raw=url.searchParams.get(key),value=Number(raw);if(!raw||!Number.isSafeInteger(value)||value<0||['sourceVersion','limit'].includes(key)&&value<1||key==='limit'&&value>500)return send(response,400,{error:'trace_filter_invalid'});filter[key]=value}
+    try{return send(response,200,await store.listExecutionTrace(filter))}catch(error){return send(response,400,{error:error.code??error.message})}
+  }
   if (request.method === 'GET' && url.pathname === '/state/performance') return send(response, 200, store.listPerformance(Object.fromEntries(['day', 'sessionId', 'groupId', 'taskId', 'requestId', 'submissionId'].filter(key => url.searchParams.has(key)).map(key => [key, url.searchParams.get(key)]))))
   const authorizationDetail=request.method==='GET'&&/^\/state\/authorizations\/([^/]+)$/u.exec(url.pathname)
   if(authorizationDetail){try{const taskId=url.searchParams.get('taskId');if(!taskId)throw new Error('OBSERVER_PAGE_INVALID');const page=await store.listAuthorizationRequests({offset:0,limit:1,taskId,requestId:decodeURIComponent(authorizationDetail[1])});return send(response,page.items.length?200:404,page.items[0]??{error:'authorization_not_found'})}catch(error){return send(response,error.code==='OBSERVER_PAGINATION_MIGRATION_REQUIRED'?503:400,{error:error.message})}}

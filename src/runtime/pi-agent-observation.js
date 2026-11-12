@@ -11,11 +11,16 @@ const timestamp=number.max(8640000000000000)
 const usage=z.strictObject({input:number.optional(),output:number.optional(),cacheRead:number.optional(),cacheWrite:number.optional(),totalTokens:number.optional()})
 export const AGENT_OBSERVATION_KINDS=Object.freeze(['input-admitted','model-started','model-first-token','model-completed','tool-started','tool-completed','run-settled','phase-completed'])
 export const AGENT_PHASES=Object.freeze(['triage-total','workspace','session-create','session-store-open','session-store-commit','session-admission-restore','session-state-restore','session-prepare-actor','session-resolve-resources','session-sdk-create','session-publish','session-bind-names','session-skills-bind','resources-create','resources-deliver','resources-before-run','before-run','memory-before-run','system-prompt','memory-prompt','context-projection','resources-turn-end','memory-bind','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','request-sdk-prepare','triage-commit','session-dispose'])
+export const traceSourcesSchema=z.array(z.strictObject({sourceId:id,sourceVersion:z.number().int().positive(),groupId:id})).max(100)
+export const traceTaskEventsSchema=z.array(z.strictObject({taskId:id,eventId:id})).max(100)
+export function traceSourcesMetadata(sources){const parsed=traceSourcesSchema.safeParse(sources.map(source=>({sourceId:source.sourceId,sourceVersion:source.version,groupId:source.groupId})));return parsed.success&&parsed.data.length?{traceSources:parsed.data}:{}}
+export function traceTaskEventsMetadata(events){const parsed=traceTaskEventsSchema.safeParse(events.filter(event=>event.taskEvent?.taskId).map(event=>({taskId:event.taskEvent.taskId,eventId:event.taskEventId??event.id})));return parsed.success&&parsed.data.length?{traceTaskEvents:parsed.data}:{}}
 export const agentObservationSchema=z.strictObject({
  version:z.literal(1),ownerId:id,runId:id,entryId:id.nullable(),spanId:hash,parentSpanId:hash.optional(),eventId:hash,
- kind:z.enum(AGENT_OBSERVATION_KINDS),timestamp,
+ kind:z.enum(AGENT_OBSERVATION_KINDS),timestamp,traceSources:traceSourcesSchema.optional(),traceTaskEvents:traceTaskEventsSchema.optional(),
  summary:z.strictObject({phase:z.enum(AGENT_PHASES).optional(),elapsedMs:number.optional(),isError:z.boolean().optional(),stopReason:z.enum(['stop','length','toolUse','error','aborted']).optional(),usage:usage.optional(),providerAttempted:z.boolean().optional(),inputBytes:z.number().int().nonnegative().optional(),sourceKind:z.enum(['coordinator','user','other']).optional(),outcome:z.enum(['completed','aborted','failed','unknown']).optional()}),
 }).superRefine((value,ctx)=>{
+ if(value.kind!=='input-admitted'&&(value.traceSources||value.traceTaskEvents))ctx.addIssue({code:'custom',message:'Trace links require committed input'})
  if(['input-admitted','model-completed'].includes(value.kind)&&value.entryId===null)ctx.addIssue({code:'custom',path:['entryId'],message:'Committed official entry required'})
  if(value.kind==='phase-completed'&&(value.summary.phase===undefined||value.summary.elapsedMs===undefined||!['completed','failed'].includes(value.summary.outcome)))ctx.addIssue({code:'custom',path:['summary'],message:'Host phase, duration and outcome required'})
  const allowed=value.kind==='phase-completed'?['phase','elapsedMs','outcome']:value.kind==='input-admitted'?['inputBytes','sourceKind']:value.kind==='model-completed'?['stopReason','usage','providerAttempted']:value.kind==='tool-completed'?['isError']:value.kind==='run-settled'?['outcome']:[]
@@ -46,9 +51,9 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
  const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
  const live=()=>!closed&&actor.metadata.id===actor.id&&session.sessionId===actor.id&&actor.ctx.get('agents')?.get(actor.id)===actor
  const report=cause=>{try{const result=onError(cause);if(result?.then){const pending=Promise.resolve(result);reports.add(pending);void pending.finally(()=>reports.delete(pending)).catch(()=>{})}}catch{}}
- const send=(kind,entryId,spanId,summary={})=>{
+ const send=(kind,entryId,spanId,summary={},links={})=>{
   if(!runId||!live())return
-  const record=makeAgentObservation({ownerId:actor.id,runId,entryId,spanId,kind,timestamp:clock(),summary})
+  const record=makeAgentObservation({ownerId:actor.id,runId,entryId,spanId,kind,timestamp:clock(),summary,...links})
   const result=emit(actor,record)
   if(result?.then){
    const pending=Promise.resolve(result).catch(report);reports.add(pending);void pending.finally(()=>reports.delete(pending)).catch(()=>{})
@@ -87,7 +92,7 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
      model=undefined
     }else if(entry.type==='custom_message'&&entry.customType==='night.business-input'){
      const packet=actor.admission?.lookupPacket(entry.details?.packetId)
-     if(packet&&isDeepStrictEqual(packet.source,entry.details.source)&&isDeepStrictEqual(packet.content,entry.content))send('input-admitted',entry.id,hash([actor.id,runId,entry.id]),{sourceKind:['coordinator','user'].includes(packet.source.kind)?packet.source.kind:'other',inputBytes:Buffer.byteLength(JSON.stringify(entry.content))})
+     if(packet&&isDeepStrictEqual(packet.source,entry.details.source)&&isDeepStrictEqual(packet.content,entry.content))send('input-admitted',entry.id,hash([actor.id,runId,entry.id]),{sourceKind:['coordinator','user'].includes(packet.source.kind)?packet.source.kind:'other',inputBytes:Buffer.byteLength(JSON.stringify(entry.content))},{...packet.source.traceSources?{traceSources:packet.source.traceSources}:{},...packet.source.traceTaskEvents?{traceTaskEvents:packet.source.traceTaskEvents}:{}})
     }
    }
    if(event.type==='tool_execution_start'||event.type==='tool_execution_end'){

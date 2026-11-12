@@ -201,3 +201,23 @@ test('wait result retires this run notices without preventing the same task from
  assert.equal(f.requests.length,2)
  assert.equal(f.actors.length,2)
 })
+
+
+test('cold new task lease retains old pending supplement without trace fields and never replays it',async t=>{
+ const first=Promise.withResolvers(),cold=Promise.withResolvers()
+ const f=await fixture(t,(_context,n)=>n===1?{calls:[{name:'write',arguments:{a:1,b:2}}]}:n===2?first.promise:n===3?cold.promise:{calls:[{name:'task_result',arguments:{decision}}]})
+ const source={sourceId:'s',version:1,groupId:'room',messageId:'m',actorId:'user',text:'UNIQUE_SUPPLEMENT_BODY',resources:[]}
+ const row={wakeId:'old',leaseEpoch:1,contextRevision:1,state:'pending',messageId:'m',request:'update',sourceRefs:['s'],sourceSnapshots:[source]},task={taskId:'task',objective:'Create proof',liveSupplements:[row]}
+ const running=run(f);while(f.requests.length<2)await delay(5)
+ const actor=f.actors[0],enqueue=actor.input.enqueue;actor.input.enqueue=packet=>{if(packet.id==='task-supplement:old')delete packet.source.traceSources;return enqueue(packet)}
+ const deliver=actor.input.deliver;actor.input.deliver=(id,options)=>id==='task-supplement:old'?Promise.resolve():deliver(id,options)
+ await f.sessions.supplement({task,sources:[source],materials:[]});first.resolve({text:'interrupted'});await assert.rejects(running,{code:'TASK_SESSION_NO_SUBMISSION'})
+ const stored=await f.persistence.readNative('single',{requireComplete:true}),old=stored.audit.find(r=>r.domain==='admission'&&r.kind==='enqueued'&&r.payload.id==='task-supplement:old').payload
+ assert.equal(old.source.traceSources,undefined);assert.equal(f.effects,1)
+ f.binding={...f.binding,sessionBound:true,leaseEpoch:2,contextRevision:1};f.input={...f.input,task,sources:[source],wakes:[{kind:'task.created',payload:{sourceRefs:['s']}}]}
+ const resumed=run(f);while(f.requests.length<3)await delay(5)
+ await f.sessions.supplement({task,sources:[source],materials:[]});assert.equal(f.requests.length,3)
+ const current=f.requests[2].messages.at(-1);assert.equal(JSON.stringify(current).split('UNIQUE_SUPPLEMENT_BODY').length-1,1)
+ cold.resolve({calls:[{name:'task_result',arguments:{decision}}]});assert.equal((await resumed).status,'submitted');assert.equal(f.effects,1)
+ const final=await f.persistence.readNative('single',{requireComplete:true});assert.deepEqual(final.audit.find(r=>r.domain==='admission'&&r.kind==='enqueued'&&r.payload.id===old.id).payload,old);assert.equal(final.audit.filter(r=>r.domain==='admission'&&r.kind==='admitted'&&r.payload.id===old.id).length,0);assert.equal(final.entries.filter(r=>r.type==='custom_message'&&r.details?.packetId===old.id).length,0)
+})

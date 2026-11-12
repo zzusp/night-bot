@@ -1,5 +1,7 @@
 # Issue 82: latency fixes and evidence boundaries
 
+> The first batch below was merged in PR #85. See [the follow-up](followup.md) for changes and fresh verification against merged main.
+
 Base: `569a6dc` (2026-11-12). Scope: local scripted models, isolated stores and
 channels; no real provider requests, live channel messages, production data or
 Windows deployment were used by this change.

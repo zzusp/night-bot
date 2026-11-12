@@ -404,3 +404,17 @@ test('Router stop of an archived task retains new source audit and subsequent ac
  assert.ok(original.every(row=>snapshot.tables.receipts.some(next=>next.id===row.id&&next.digest===row.digest&&JSON.stringify(next.body)===JSON.stringify(row.body))))
  await f.complete();await f.command('task.archive',{taskId:'a',actorId:'operator'});validateTaskLedger(await f.store.exportTaskArchive('a'))
 })
+
+test('completion probe is conversation-scoped and summarized handoff cannot abort',async t=>{
+  const f=await fixture(t);await f.plan();await f.complete()
+  assert.equal(await f.query('router.pending-completion',{conversationId:f.conversationId}),true)
+  assert.equal(await f.query('router.pending-completion',{conversationId:'other'}),false)
+  const pending=await f.query('router.inbox',{conversationId:f.conversationId})
+  await f.command('router.settle',{conversationId:f.conversationId,generation:f.generation,eventIds:pending.map(row=>row.id),operationId:'settled'})
+  assert.equal(await f.query('router.pending-completion',{conversationId:f.conversationId}),false)
+  const args={conversationId:f.conversationId,generation:f.generation,handoffId:'guard-summary'}
+  await f.command('router.handoff.begin',args)
+  await f.command('router.handoff.ready',{...args,handoff:{currentIntent:'Test'},commitProof:{sessionId:'router-generation-one',commitId:'proof'}})
+  await assert.rejects(f.command('router.handoff.abort',{...args,safeToResume:true}),/ROUTER_ROTATION_STALE/)
+  assert.equal((await f.query('router.rotations',{conversationId:f.conversationId}))[0].state,'summarized')
+})

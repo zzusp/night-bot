@@ -550,6 +550,7 @@ test('cold Router resumes an exact legacy pending packet before a later event wi
           for(const event of input.events)if(event.source)event.source=await h.query('source.get',{sourceId:event.source.sourceId})
           // 模拟旧Host编码，在正式enqueue提交后、SDK接纳前中断；不改journal或SQLite。
           packet.content[0].text='Router 请求：'+JSON.stringify(input)
+          delete packet.source.traceSources;delete packet.source.traceTaskEvents
           legacyPacket=structuredClone(packet)
           await enqueue(packet);injected=true
           throw Object.assign(Error('TEST_ROUTER_ENQUEUE_INTERRUPTED'),{code:'TEST_ROUTER_ENQUEUE_INTERRUPTED'})
@@ -566,7 +567,7 @@ test('cold Router resumes an exact legacy pending packet before a later event wi
   await h.service.whenIdle().catch(error=>assert.match(error.message,/TEST_ROUTER_ENQUEUE_INTERRUPTED/))
   const before=await h.query('router.get',{conversationId}),stored=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
   const original=stored.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued')
-  assert.equal(original.length,1);assert.deepEqual(original[0].payload,legacyPacket)
+  assert.equal(original.length,1);assert.deepEqual(original[0].payload,legacyPacket);assert.equal(original[0].payload.source.traceSources,undefined);assert.equal(original[0].payload.source.traceTaskEvents,undefined)
   assert.equal(stored.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted').length,0)
   assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').length,0);assert.equal(batches.length,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
@@ -1147,9 +1148,12 @@ test('taskless triage persists preparation phases and native metrics through dis
  assert.equal(row.taskId,undefined);assert.equal(row.groupId,h.host.ctx.channels.identity(message).sessionId)
  assert.ok(row.sessionId.startsWith('session-triage-'));assert.equal(h.host.ctx.agents.get(row.sessionId),undefined)
  assert.equal(row.modelCalls,1);assert.equal(row.toolCalls,1);assert.equal(row.toolResults,1)
- for(const phase of ['triage-total','session-create','workspace','session-store-open','session-prepare-actor','session-resolve-resources','session-sdk-create','resources-create','resources-deliver','resources-before-run','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','triage-commit','session-dispose']){
+ for(const phase of ['triage-total','session-create','workspace','session-store-open','session-prepare-actor','session-resolve-resources','session-sdk-create','resources-before-run','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','triage-commit','session-dispose']){
   assert.ok(row.phaseMs[phase]?.count>0,phase);assert.equal(row.phaseMs[phase].failures,0,phase)
  }
+ assert.equal(row.phaseMs['resources-deliver'],undefined,'custom delivery must not duplicate before-run reads')
+ assert.equal(row.phaseMs['resources-create'],undefined,'triage defers initial mapping until before-run')
+ assert.equal(row.phaseMs.skills.count,2,'cold one-turn triage maps resources at before-run and turn-end only')
  assert.ok(row.phaseMs['triage-total'].sum>=row.phaseMs['session-create'].sum)
  assert.equal(JSON.stringify(rows).includes(message.text),false)
  assert.equal((await h.query('task.list')).length,0);assert.equal(h.sent.length,0)

@@ -1,3 +1,4 @@
+import {traceSourcesMetadata} from '../runtime/pi-agent-observation.js'
 import {routerMemoryReconciliation} from './router-memory-reconciliation.js'
 import {createAgentPhaseTimer} from '../runtime/pi-agent-observation.js'
 import {sourceStageTiming} from './source-stage-timing.js'
@@ -26,11 +27,11 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
     const measurePhase=observe?createAgentPhaseTimer({ownerId:sessionId,emit:record=>observe(conversationId,record),onError:()=>ctx.logger?.warn?.('Triage phase observation failed')}):(_phase,run)=>run()
     entry.measurePhase=measurePhase
     entries.set(conversationId,entry)
-    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
+    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId,...traceSourcesMetadata(snapshot)},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
     entry.packet=packet
     let submitted=false,handle
     return measurePhase('triage-total',async()=>{try{
-      handle=await measurePhase('session-create',async()=>ctx.get('agents').create({sessionId,measurePhase,agentOptions:typeof models==='function'?models():models,
+      handle=await measurePhase('session-create',async()=>ctx.get('agents').create({sessionId,measurePhase,resourceLoading:'before-run',agentOptions:typeof models==='function'?models():models,
         meta:{cwd:await measurePhase('workspace',()=>sessionWorkspace(root,'route')),runtimeOwner:'channel-triage',conversationId,agentPreset:legacy.getAgentConfig().agentPreset},
         authorizeInput:(candidate,actor)=>actor.id===sessionId&&!closed&&!entry.superseded&&isDeepStrictEqual(candidate,entry.packets.get(candidate.id)),
         beforeRequest:()=>{if(closed||submitted||entry.superseded)fail('TRIAGE_INACTIVE')},

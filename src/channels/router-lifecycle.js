@@ -1,3 +1,4 @@
+import {traceSourcesMetadata,traceTaskEventsMetadata} from '../runtime/pi-agent-observation.js'
 import {sourceStageTiming} from './source-stage-timing.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
@@ -14,6 +15,7 @@ const withoutTiming=source=>{if(!source)return source;const {stages,...value}=so
 function comparableRouterPacket(packet){
   if(packet?.source?.kind!=='conversation-router')return packet
   const copy=structuredClone(packet)
+  delete copy.source.traceSources;delete copy.source.traceTaskEvents
   for(const block of copy.content??[]){
     if(block.type!=='text'||!block.text.startsWith('Router 请求：'))continue
     try{const body=JSON.parse(block.text.slice('Router 请求：'.length));if(!Array.isArray(body.events))continue;body.events=body.events.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}));block.text='Router 请求：'+JSON.stringify(body)}catch{}
@@ -29,7 +31,7 @@ export const routerHandoffSchema=z.object({currentIntent:nonemptyText(routerHand
 
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
 export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPreset='night-bot',recordStage}){
-  const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set()
+  const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set(),handoffs=new Map()
   const closeError=Object.assign(new Error('ROUTER_CLOSED'),{code:'ROUTER_CLOSED'})
   let closed=false,closing
   const assertOpen=()=>{if(closed)throw closeError}
@@ -143,19 +145,32 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     const begun=await command('router.handoff.begin',{conversationId:row.id,generation:row.generation,handoffId});assertOpen()
     const requiredSourceIds=begun.result.rotation.requiredSourceIds
     const packet={id:handoffId,source:{kind:'router-handoff',conversationId:row.id,generation:row.generation,handoffId},content:[{type:'text',text:'Router 交接请求：'+JSON.stringify({conversationId:row.id,generation:row.generation,handoffId,cutoff:row.cursor,requiredSourceIds,limits:routerHandoffLimits})+'\n仅输出JSON {currentIntent,unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:[{sourceId或taskId}],cutoff}。unresolvedQuestions、referents、assumptions 必须是字符串数组，每个元素须为非空字符串（例如 ["A 指前置核验事项"]），没有内容时用 []，不得用对象作元素。覆盖本代最后一批与前代交接中仍有效的意图、未决问题、指代和假设；引用必须存在，推测只进assumptions。不要工具、不要复制日志/附件/Skill/长期记忆全文。'}]}
+    const candidate={controller:new AbortController()}
+    handoffs.set(row.id,candidate)
     let summarized=false
     try{
-      const result=await handle.runToolFreeHandoff(packet,text=>validateHandoff(text,row,requiredSourceIds));assertOpen()
+      await preemptCompletion(row.id,candidate)
+      const result=await handle.runToolFreeHandoff(packet,text=>validateHandoff(text,row,requiredSourceIds),{signal:candidate.controller.signal,onPrepared:()=>{if(handoffs.get(row.id)===candidate)handoffs.delete(row.id)}});assertOpen()
       const receipt=await command('router.handoff.ready',{conversationId:row.id,generation:row.generation,handoffId,handoff:result.handoff,commitProof:result.commitProof})
       summarized=true;assertOpen()
       await handle.runMaintenance(()=>publishCandidate(row,receipt.result.rotation,handle,false))
       await handle.dispose();handles.delete(handle.agent.id)
     }catch(error){
-      if(!closed&&!summarized&&error.routerSafeToResume===true)await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId,safeToResume:true,error:error.code??error.message})
+      if(!closed&&!summarized&&error.routerSafeToResume===true){
+        await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId,safeToResume:true,error:error.code??error.message})
+        if(error===candidate.controller.signal.reason)return
+      }
+      if(!closed&&!summarized&&error===candidate.controller.signal.reason&&error.routerHandoffRecoveryRequired===true){await recoverConversation(await query('router.get',{conversationId:row.id}),error.code);return}
       throw error
+    }finally{if(handoffs.get(row.id)===candidate)handoffs.delete(row.id)}
+  }
+  async function preemptCompletion(conversationId,candidate=handoffs.get(conversationId)){
+    if(!candidate||closed)return
+    if(await query('router.pending-completion',{conversationId})){
+      if(!closed&&handoffs.get(conversationId)===candidate&&!candidate.controller.signal.aborted)candidate.controller.abort(Object.assign(new Error('ROUTER_HANDOFF_PREEMPTED'),{code:'ROUTER_HANDOFF_PREEMPTED'}))
     }
   }
-  async function recoverConversation(row){
+  async function recoverConversation(row,recoveryReason='interrupted-handoff'){
     assertOpen()
     if(row.phase==='active')return
     const rotation=(await query('router.rotations',{conversationId:row.id})).find(item=>item.id===row.rotationId);assertOpen()
@@ -173,13 +188,13 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       await persistence.readNative(row.activeSessionId,{requireComplete:true})
       old=await open(row)
       await old.routerRecoveryProof(rotation.id);assertOpen()
-      await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId:rotation.id,safeToResume:true,error:'interrupted-handoff'})
+      await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId:rotation.id,safeToResume:true,error:recoveryReason})
     }else fail('ROUTER_RECOVERY_BLOCKED')
   }
   function packetViews(row,batch){
     const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
     const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}))}
-    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
+    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
     return [packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
   }
   async function drain(conversationId){
@@ -248,7 +263,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     if(closed)return Promise.reject(closeError)
     try{ctx.get('channels').assertGroupTarget(conversationId)}catch(error){return Promise.reject(error)}
     const previous=tails.get(conversationId)??Promise.resolve()
-    const work=previous.catch(()=>{}).then(()=>drain(conversationId))
+    const preemption=preemptCompletion(conversationId)
+    const work=Promise.all([previous.catch(()=>{}),preemption]).then(()=>drain(conversationId))
     return trackTail(conversationId,work)
   }
   function trackTail(conversationId,work){
