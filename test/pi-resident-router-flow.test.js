@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {hash} from '../src/memory/format.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools,eventually} from './fixtures/resident-router-host.js'
 
 const triage=body=>requestEnvelope(body,'一级分诊请求：')
 const router=body=>requestEnvelope(body,'Router 请求：')
@@ -936,12 +936,9 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
     ['requirement',{action:{...base.action,expectedRequirementRevision:99}},/REVISION_STALE/],
     ['control',{action:{...base.action,expectedControlRevision:99}},/REVISION_STALE/],
     ['context',{action:{...base.action,expectedContextRevision:partial.contextRevision-1}},/CONTEXT_STALE/],
-    ['old-source',{sourceId:owner.sourceId},/HUMAN_RESPONSE_SOURCE_INVALID/],
     ['internal',{sourceId:'negative:internal'},/HUMAN_RESPONSE_SOURCE_INVALID/],
     ['foreign',{sourceId:'negative:foreign'},/CONVERSATION_SCOPE/],
-    ['edited',{sourceId:'negative:edited'},/SOURCE_STALE/],
     ['reason',{action:{...base.action,reason:' '}},/ARGUMENT_INVALID/]]
-  if(audience==='operator')negatives.push(['actor',{sourceId:other.sourceId},/PERMISSION_DENIED/])
   const beforeWakes=await h.query('wake.list',{taskId})
   for(const [name,change,error] of negatives){
     await assert.rejects(h.store.command({id:'negative:'+name,kind:'router.task-action',args:{...base,...change,operationId:'negative:'+name}}),error)
@@ -1160,4 +1157,126 @@ test('taskless triage persists preparation phases and native metrics through dis
  await h.restart();await h.receive(message);await h.service.whenIdle()
  const restored=h.service.listPerformance({sessionId:row.sessionId}).rows[0]
  assert.deepEqual(restored,row);assert.equal(h.requests.length,requests)
+})
+
+test('Router schedules the same execution session across wait, stop, cancellation, completion and restart without operator grants',{timeout:nativeTestTimeout(100000)},async t=>{
+  const actions=new Set(),settled=new Set(),turns=new Map(),owners=[],gate=Promise.withResolvers(),entered=Promise.withResolvers()
+  let phase='initial',proofWrites=0,h
+  t.after(()=>gate.resolve())
+  h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      assert.match(JSON.stringify(body.messages),/你对所属conversation的执行会话拥有完整调度权/)
+      assert.doesNotMatch(JSON.stringify(body.messages),/技术等待仅原作者或配置操作者可续接/)
+      const input=router(body),source=input.events.find(event=>event.source)?.source
+      if(!source)return settle(body,input)
+      if(!actions.has(source.messageId)){
+        actions.add(source.messageId)
+        if(source.messageId==='schedule-create')return {tool:'resident_task_plan',args:{operationId:'create',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'schedule-authority',title:'Preserve the execution proof',objective:'Verify retained proof under Router scheduling',requirements:['Use one session; do not repeat the first write']}],dependencies:[]}}
+        const task=await h.query('task.get',{taskId:'schedule-authority'})
+        const action={operationId:source.messageId,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
+        // 唤醒不要求新的人类授权来源；停止则以另一作者来源验证无作者白名单。
+        if(['schedule-pause','schedule-cancel'].includes(source.messageId))Object.assign(action,{sourceId:source.sourceId,messageVersion:source.version,kind:'control',control:source.messageId==='schedule-pause'?'paused':'cancelled'})
+        else if(source.messageId==='schedule-reopen')Object.assign(action,{kind:'reopen',sameGoal:true})
+        else Object.assign(action,{kind:'resume',reason:'Router independently schedules the original session'})
+        return {tool:'resident_task_action',args:action}
+      }
+      if(!settled.has(source.messageId)){settled.add(source.messageId);return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+source.messageId}}}
+      return settle(body,input)
+    }
+    if(requestTools(body).includes('task_result')){
+      const input=requestText(body).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
+      assert.ok(input)
+      owners.push(input.task.sessionId)
+      const lease=input.task.leaseEpoch,step=turns.get(lease)??0;turns.set(lease,step+1)
+      if(phase==='initial'){
+        if(step===0){proofWrites++;return {tool:'write',args:{path:'work/router-proof.txt',content:'retained scheduling proof'}}}
+        return {tool:'task_result',args:{decision:{action:'wait',audience:'operator',question:'Await a Router decision',summary:'Original session is waiting',evidence:['Original proof written'],limitations:['Waiting']}}}
+      }
+      if(step===0)return {tool:'read',args:{path:'work/router-proof.txt'}}
+      assert.match(JSON.stringify(body),/retained scheduling proof/)
+      if(phase==='inflight'){entered.resolve();await gate.promise}
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'The current Router-scheduled run verified retained proof',evidence:['work/router-proof.txt'],limitations:[]}}}
+    }
+    return {text:'No other work'}
+  })
+  await h.receive(channelMessage('schedule-create'));await h.service.whenIdle()
+  const initial=await h.query('task.get',{taskId:'schedule-authority'}),sessionId=initial.sessionId
+  assert.equal(initial.lastDecision.action,'wait');assert.equal(initial.humanRequests.at(-1).status,'waiting-reply')
+  await h.receive(channelMessage('schedule-pause',{senderId:'bob'}));await h.service.whenIdle()
+  let task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.control,'paused');assert.equal(task.drained,true)
+  phase='inflight'
+  const waking=h.receive(channelMessage('schedule-wake',{senderId:'carol'}))
+  await entered.promise;await waking
+  task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.drained,false);assert.equal(task.sessionId,sessionId)
+  assert.ok(task.humanRequests.every(row=>row.status!=='waiting-reply'),'Router wake does not require or fabricate a human answer')
+  await h.receive(channelMessage('schedule-cancel',{senderId:'bob'}));await h.service.whenIdle()
+  task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.status,'cancelled');assert.equal(task.drained,true);assert.equal(h.host.ctx.agents.get(sessionId),undefined,'Stop joins the actual original owner')
+  gate.resolve();phase='complete'
+  await h.receive(channelMessage('schedule-restart',{senderId:'dave'}));await h.service.whenIdle()
+  task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.status,'completed');assert.equal(task.sessionId,sessionId)
+  await h.restart()
+  await h.receive(channelMessage('schedule-reopen',{senderId:'eve'}));await h.service.whenIdle()
+  task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.status,'completed');assert.equal(task.sessionId,sessionId);assert.equal(task.drained,true)
+  const priorCompletionEvents=(await h.query('task.events')).events.filter(row=>row.taskId===initial.taskId&&row.kind==='task.completed').map(row=>row.id)
+  await h.store.command({id:'archive-for-rescheduling',kind:'task.archive',args:{taskId:initial.taskId,actorId:'owner'}})
+  assert.ok((await h.query('task.get',{taskId:initial.taskId})).archivedAt)
+  await h.receive(channelMessage('schedule-unarchive',{senderId:'frank'}));await h.service.whenIdle()
+  task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.status,'completed');assert.equal(task.archivedAt,undefined);assert.equal(task.sessionId,sessionId)
+  const allEvents=(await h.query('task.events')).events
+  assert.ok(priorCompletionEvents.every(id=>allEvents.some(row=>row.id===id)),'Unarchive preserves the original task events and receipt identities')
+  assert.equal(proofWrites,1);assert.deepEqual([...new Set(owners)],[sessionId]);assert.equal((await h.query('task.list')).length,1)
+  assert.ok(!h.results.some(row=>JSON.stringify(row.result).includes('TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED')))
+  assert.ok(!(await h.query('source.list')).some(row=>row.requestIdentity?.effectAuthorization))
+  assert.deepEqual(h.sent,[],'Scheduling requires no external messages')
+})
+
+for(const cut of ['prepared-only','journal-committed'])test(`Router resumes through an interrupted effect closure without a new operator grant: ${cut}`,{timeout:nativeTestTimeout(60000)},async t=>{
+  const {mkdir,writeFile,readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{createHash}=await import('node:crypto')
+  const steps=new Map();let phase='unknown',effects=0,trip=true,h
+  h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      const input=router(body),source=input.events.find(event=>event.source)?.source
+      if(!source)return settle(body,input)
+      const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
+      if(step===0){
+        if(source.messageId==='closure-create')return {tool:'resident_task_plan',args:{operationId:'create',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'closure-router',title:'Continue independent work',objective:'Read old evidence and complete independent work',requirements:['Do not replay an old invocation']}],dependencies:[]}}
+        const task=await h.query('task.get',{taskId:'closure-router'})
+        return {tool:'resident_task_action',args:{operationId:'resume',kind:'resume',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}
+      }
+      if(step===1)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+source.messageId}}
+      return {text:'Committed'}
+    }
+    if(requestTools(body).includes('partial_router_write')){
+      if(phase==='unknown')return {tool:'partial_router_write',args:{}}
+      if(phase==='write'){phase='finish';return {tool:'write',args:{path:'work/independent.txt',content:'new independent work'}}}
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Independent work complete; the old invocation remains closed with possible partial effects.',evidence:['work/independent.txt'],limitations:['Old partial effects retained']}}}
+    }
+    return {text:'No other work'}
+  },{wrapStore:store=>({...store,command:async command=>{
+    const interrupted=trip&&command.kind===(cut==='prepared-only'?'task.effect-reconciliation.prepare':'task.effect-reconciliation.commit')
+    if(interrupted&&cut==='journal-committed'){trip=false;throw Object.assign(Error('Projection interrupted'),{code:'FIXTURE_CLOSURE_CUT'})}
+    const result=await store.command(command)
+    if(interrupted){trip=false;throw Object.assign(Error('Prepare response interrupted'),{code:'FIXTURE_CLOSURE_CUT'})}
+    return result
+  }})})
+  h.host.ctx.get('tools').register({name:'partial_router_write',description:'Actual local write with a lost response',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'retained original effect');throw Error('response lost')}})
+  await h.receive(channelMessage('closure-create'));await h.service.whenIdle()
+  const before=await h.query('task.get',{taskId:'closure-router'}),native=await h.host.ctx.sessionPersistence.readNative(before.sessionId,{requireComplete:true}),intent=native.auditEntries.find(row=>row.data.kind==='effect-intent')
+  const inspection=await h.service.inspectTaskEffect({taskId:before.taskId,intentEntryId:intent.entryId})
+  const fields=['taskId','sessionId','intentEntryId','intentDigest','callEntryId','argumentsDigest','originBinding','currentBinding','scopeDigest']
+  const evidence={version:1,kind:'task-effect-readback',...Object.fromEntries(fields.map(key=>[key,inspection[key]])),observedAt:new Date().toISOString(),summary:'The original output exists and may have partial effects.',outcome:'partial-or-unknown',noReplay:true}
+  const bytes=Buffer.from(JSON.stringify(evidence)),sha256=createHash('sha256').update(bytes).digest('hex'),path='materials/runtime-evidence/effects/'+sha256+'.json'
+  await mkdir(join(inspection.scope.taskRoot,'materials/runtime-evidence/effects'),{recursive:true});await writeFile(join(inspection.scope.taskRoot,path),bytes)
+  await assert.rejects(h.service.reconcileTaskEffect({...Object.fromEntries(['taskId','intentEntryId','intentDigest','currentBinding','journalRevision','scopeDigest'].map(key=>[key,inspection[key]])),requestId:'original-close',evidenceRefs:[{path,sha256}],outcome:'closed-with-possible-partial-effects',noReplay:true,operatorText:'I close only the original attempt with possible partial effects; do not replay it.'}),{code:'FIXTURE_CLOSURE_CUT'})
+  assert.equal((await h.query('task.get',{taskId:before.taskId})).effectReconciliations[0].state,'prepared')
+  phase='write';await h.receive(channelMessage('closure-resume',{senderId:'bob'}));await h.service.whenIdle()
+  const task=await h.query('task.get',{taskId:before.taskId})
+  assert.equal(task.status,'completed',JSON.stringify({task,alerts:h.service.listAlerts(),results:h.results}));assert.equal(task.sessionId,before.sessionId);assert.equal(task.drained,true);assert.equal(effects,1)
+  assert.equal(task.effectReconciliations[0].state,'committed');assert.equal(task.effectReconciliations[0].receipt.payload.noReplay,true)
+  assert.equal(await readFile(join(inspection.scope.taskRoot,'work/independent.txt'),'utf8'),'new independent work')
+  assert.ok(!(await h.query('source.list')).some(row=>row.requestIdentity?.effectAuthorization))
 })

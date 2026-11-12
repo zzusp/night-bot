@@ -22,8 +22,14 @@ conversation has one durable Router identity for task arrangement and result
 assessment, separate from task execution and tool-free retrospectives. Router is
 Bot's semantic decision-maker and directly maintains shared memory and managed
 learned Skills through short Host tools. Do not gate Router decisions by natural-
-language authorization prefixes or add a separate authorization model/task. Host
-still enforces current authenticated source/version/actor, live generation,
+language authorization prefixes or add a separate authorization model/task. The
+trusted Router has complete execution-session scheduling authority: create, start,
+stop, resume and reopen, including waiting, cancelled, completed and locally
+archived tasks. Do not gate scheduling on source authors or fresh human replies.
+Sources remain provenance; an omitted action source reuses the original task
+source. Closing a prior unknown effect must not impose any new-action grant on
+later independent calls or completion. Preserve exact old-call no-replay. Host
+still enforces authenticated conversation/Router identity, live generation,
 permissions, secrets, controlled paths, revisions and durable no-replay. Generic
 task memory tools do not inherit this Router-only write authority. Keep both
 triage and Router user-message batches at most 15; overflow queues. Preserve

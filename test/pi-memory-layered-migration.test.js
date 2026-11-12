@@ -1,7 +1,7 @@
 import {symlink} from './fixtures/filesystem-link.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,mkdir,writeFile,readFile,readdir,rm,lstat,realpath,link} from 'node:fs/promises'
+import {mkdtemp,mkdir,writeFile,readFile,readdir,rm,lstat,realpath,link,readlink} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {spawnSync} from 'node:child_process'
@@ -9,11 +9,12 @@ import {checkMemoryMigration,applyMemoryMigration} from '../src/memory/layered-m
 import {hash,encodeTopic} from '../src/memory/format.js'
 import {MarkdownMemoryStore} from '../src/memory/store.js'
 import {acquireLock} from '../src/runtime/files.js'
+import {InstalledSkillPrevious} from '../src/memory/installed-previous.js'
 const scope={kind:'bot',id:hash('bot:shared'),actor:hash('fixture-user')}
 const entry={id:'12345678-1234-1234-1234-123456789012',key:'style',text:'Use concise explanations.',revision:7,scope:'bot',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-02-01T00:00:00.000Z',expiresAt:'2036-01-01T00:00:00.000Z',source:{messageId:'fixture-message',sessionId:'fixture-session',actor:scope.actor},originSource:{messageId:'candidate-source',sessionId:'candidate-session',actor:scope.actor},provenance:{channelId:'fixture',conversationId:'conversation',conversationType:'chat',taskId:'task',taskTitle:'Fixture task'},origins:[{channelId:'fixture',conversationId:'original'}],previous:{text:'Use explanations.',revision:6,updatedAt:'2026-01-01T00:00:00.000Z'},context:{version:1,subject:{kind:'actor',actor:scope.actor},background:{status:'source-excerpt',source:'message',messageId:'fixture-message',quote:'I prefer concise explanations.',quoteSha256:hash('I prefer concise explanations.')},interpretation:{status:'inference',scenario:'Answering questions',boundaries:['Personal preference']}}}
 const meta={version:1,revision:18,seen:[hash('seen-fixture')],forgotten:[hash('forgotten-fixture')],migration:{version:1,receipts:['original-import']}}
 async function fixture(t){const root=await mkdtemp(join(await realpath(tmpdir()),'night-memory-migration-')),dir=join(root,'data/memory/v2/bot');t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(dir,'topics'),{recursive:true});await writeFile(join(dir,'scope.json'),JSON.stringify(meta));await writeFile(join(dir,'index.md'),'# Legacy index\n');await writeFile(join(dir,'topics',hash('preferences')+'.md'),encodeTopic('preferences',18,[entry],scope));await writeFile(join(dir,'candidates.md'),encodeTopic('candidates',18,[{...entry,id:'22345678-1234-1234-1234-123456789012',topic:'preferences',key:'candidate'}],scope));return {root,dir}}
-async function snapshot(root,prefix=''){const out={};for(const name of (await readdir(root)).sort()){const path=join(root,name),s=await lstat(path);out[prefix+name]={mode:s.mode,mtime:s.mtimeMs};if(s.isDirectory())Object.assign(out,await snapshot(path,prefix+name+'/'));else out[prefix+name].text=await readFile(path,'utf8')}return out}
+async function snapshot(root,prefix=''){const out={};for(const name of (await readdir(root)).sort()){const path=join(root,name),s=await lstat(path);out[prefix+name]={mode:s.mode,mtime:s.mtimeMs};if(s.isSymbolicLink())out[prefix+name].link=await readlink(path);else if(s.isDirectory())Object.assign(out,await snapshot(path,prefix+name+'/'));else out[prefix+name].text=await readFile(path,'utf8')}return out}
 test('check and default CLI are read-only, apply retains every record field and backups',async t=>{
  const {root,dir}=await fixture(t),before=await snapshot(root)
  assert.equal((await checkMemoryMigration(root)).entries,1)
@@ -41,7 +42,7 @@ for(const kind of ['unknown','malformed','hash','collision','symlink','hardlink'
  if(kind==='malformed')await writeFile(topic,'broken envelope')
  if(kind==='hash')await writeFile(topic,(await readFile(topic,'utf8')).replace('Use concise explanations.','Changed fact.'))
  if(kind==='collision')await writeFile(join(dir,'topics',hash('other')+'.md'),encodeTopic('other',18,[entry],scope))
- if(kind==='symlink'){await rm(topic);await symlink(join(dir,'index.md'),topic)}
+ if(kind==='symlink'){await rm(topic);await symlink(process.platform==='win32'?dir:join(dir,'index.md'),topic)}
  if(kind==='hardlink'){await rm(topic);await link(join(dir,'index.md'),topic)}
  if(kind==='destination'){await mkdir(join(dir,'categories'));await writeFile(join(dir,'categories/owned.md'),'do not overwrite')}
  if(kind==='pending')await writeFile(join(dir,'pending.json'),'{}')
@@ -91,4 +92,21 @@ test('legacy maximum-length Unicode labels migrate with full identities and vali
  const actual=await store.transaction(scope,state=>state.topics.get(topic).entries[0]);assert.deepEqual(actual,longEntry)
  assert.equal((await store.read(scope,{topic,key})).entries[0].key,key)
  assert.equal((await applyMemoryMigration(root)).status,'already-layered')
+})
+
+test('migration preserves runtime-created installed Skill previous snapshots byte for byte',async t=>{
+ const {root,dir}=await fixture(t),skills=join(root,'data/skills'),skill=join(skills,'fixture')
+ await mkdir(skill,{recursive:true})
+ const body=text=>['---','name: fixture','description: Migration fixture','---',text,''].join(String.fromCharCode(10))
+ await writeFile(join(skill,'SKILL.md'),body('Original generic procedure.'))
+ const history=new InstalledSkillPrevious(dir,{installRoot:root,skills});t.after(()=>history.close())
+ await history.scan();await writeFile(join(skill,'SKILL.md'),body('Updated generic procedure.'));await history.scan()
+ const state=await history.readState(),before=await readFile(join(dir,'installed-previous.json'))
+ assert.equal(Object.keys(state.items).length,1);assert.ok(Object.values(state.items)[0].previous)
+ assert.equal((await checkMemoryMigration(root)).status,'ready')
+ assert.equal((await applyMemoryMigration(root)).status,'completed')
+ assert.deepEqual(await readFile(join(dir,'installed-previous.json')),before)
+ assert.deepEqual(await history.readState(),state)
+ assert.equal((await applyMemoryMigration(root)).status,'already-layered')
+ assert.deepEqual(await readFile(join(dir,'installed-previous.json')),before)
 })

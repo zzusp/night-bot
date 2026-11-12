@@ -23,8 +23,8 @@ test('a verified new source may intentionally repeat identical arguments while d
 })
 
 test('an explicit verified source requesting identical unknown effects cannot authorize replay before reconciliation',{timeout:nativeTestTimeout(20000)},async t=>{
- let effects=0
- const h=await providerHost(t,{decide:()=>[{name:'identity_unknown_effect',args:{value:'exact-original'}}]})
+ let effects=0,turn=0
+ const h=await providerHost(t,{decide:()=>{if(turn++<2)return [{name:'identity_unknown_effect',args:{value:'exact-original'}}];const waiting=result('wait','Readback remains blocked on the old unknown effect');waiting.args.decision.limitations=['TASK_EFFECT_UNCERTAIN_NO_REPLAY'];return [waiting]}})
  h.ctx.get('tools').register({name:'identity_unknown_effect',description:'Fixture effect followed by a genuinely uncertain ordinary error',parameters:{type:'object',properties:{value:{type:'string'}},required:['value'],additionalProperties:false},output:{schema:{type:'object'},render:()=>[{type:'text',text:'Unexpected success'}]},async execute({value},exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/identity-unknown-effect.txt'),value);throw new Error('The effect happened before its ordinary error; outcome must be reconciled')}})
  const id=await h.create('unknown-explicit-repeat');await h.service.whenIdle();assert.equal(effects,1)
  const before=await h.stored(id),requests=h.taskRequests().length;assert.ok(before.task.lastDecision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'));assert.equal(before.task.drained,true)
@@ -32,9 +32,9 @@ test('an explicit verified source requesting identical unknown effects cannot au
  await h.service.appendTaskContext({taskId:id,requestId:'unknown-explicit-second-action',progressImpact:'preserve',context:text,expectedRequirementRevision:1,expectedControlRevision:1});await h.service.whenIdle()
  const after=await h.stored(id),sources=await Promise.all(after.task.sourceRefs.map(sourceId=>h.query('source.get',{sourceId}))),source=sources.find(item=>item.text===text)
  assert.ok(source);assert.equal(source.channel,'web');assert.equal(source.actorId,'native-user');assert.equal(source.version,1)
- assert.equal(after.task.contextRevision,1);assert.equal(after.task.requirementRevision,1);assert.equal(effects,1,'new source does not prove the previous unknown effect absent or reconciled');assert.equal(h.taskRequests().length,requests,'unknown effects fence the model before it can repeat its tool call')
- assert.ok(after.task.lastDecision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'));assert.equal(after.task.lastDecision.action,'blocked');assert.equal(after.task.status,'active');assert.equal(after.task.drained,true)
+ assert.equal(after.task.contextRevision,1);assert.equal(after.task.requirementRevision,1);assert.equal(effects,1,'new source does not prove the previous unknown effect absent or reconciled');assert.equal(h.taskRequests().length,requests+2,'The session wakes; the attempted write is rejected before the actual tool and the model reports retained uncertainty')
+ assert.ok(after.task.lastDecision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'));assert.equal(after.task.lastDecision.action,'wait');assert.equal(after.task.status,'active');assert.equal(after.task.drained,true)
  assert.equal(after.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,1);assert.equal(after.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result').length,0);assert.equal(after.audit.filter(row=>row.domain==='task'&&row.kind==='effect-reconciled').length,0)
- const calls=after.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').flatMap(entry=>entry.message.content.filter(part=>part.type==='toolCall'&&part.name==='identity_unknown_effect'));assert.equal(calls.length,1)
- await h.service.recover();await h.service.whenIdle();assert.equal(effects,1);assert.equal(h.taskRequests().length,requests)
+ const calls=after.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').flatMap(entry=>entry.message.content.filter(part=>part.type==='toolCall'&&part.name==='identity_unknown_effect'));assert.equal(calls.length,2,'The second proposal is visible but has no effect-intent or execution')
+ await h.service.recover();await h.service.whenIdle();assert.equal(effects,1);assert.equal(h.taskRequests().length,requests+2)
 })

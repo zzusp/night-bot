@@ -39,8 +39,8 @@ for(const {failure,active=false} of [...[undefined,'after-source','after-revise'
  const original=await h.store.query({kind:'task.get',taskId:created.taskId}),stored=await f.host.ctx.sessionPersistence.readNative(original.sessionId,{requireComplete:true}),intent=stored.auditEntries.find(row=>row.data.kind==='effect-intent'),inspection=await h.service.inspectTaskEffect({taskId:created.taskId,intentEntryId:intent.entryId})
  await h.service.reconcileTaskEffect(await proposal(h.service,inspection));let closed=await h.store.query({kind:'task.get',taskId:created.taskId})
  if(!failure||active){
-  phase='new';await h.store.command({id:'bare-unpause',kind:'task.control',args:{taskId:created.taskId,control:'active'}});await h.service.recover();await h.service.whenIdle()
-  assert.equal(effects,1,'A distinct official call after bare unpause is not new operator authorization');assert.match(JSON.stringify(f.requests),/TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED/)
+  phase='wait';await h.store.command({id:'bare-unpause',kind:'task.control',args:{taskId:created.taskId,control:'active'}});await h.service.recover();await h.service.whenIdle()
+  assert.equal(effects,1,'Read-only wait does not invoke another effect');assert.doesNotMatch(JSON.stringify(f.requests),/TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED/)
   if(!active)await h.store.command({id:'pause-after-no-grant',kind:'task.control',args:{taskId:created.taskId,control:'paused'}});closed=await h.store.query({kind:'task.get',taskId:created.taskId});newCalls=0
  }
  const authorization={taskId:created.taskId,requestId:'new-explicit-action',closedIntentEntryIds:[intent.entryId],objective:'Operator explicitly requests a new bounded action, accepting possible earlier partial effects.',expectedRequirementRevision:closed.requirementRevision,expectedControlRevision:closed.controlRevision,operatorText:'I accept the retained prior partial-effect uncertainty and separately authorize one new invocation within the unchanged scope.'}

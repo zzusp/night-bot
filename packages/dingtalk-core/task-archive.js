@@ -87,3 +87,18 @@ export function archiveTaskRows(db, taskId) {
   if(Number(db.prepare('PRAGMA user_version').get().user_version)<4)db.exec('PRAGMA user_version=3')
   return true
 }
+
+// 仅恢复同库中的真实行；不导入或重放 task.json、旧输入及通知。
+export function unarchiveTaskRows(db, taskId) {
+  for (const name of ['tasks','executions','operations','wakes','notifications','task_events']) {
+    const condition=name==='tasks'?'id=?':"json_extract(body,'$.taskId')=?"
+    const rows=db.prepare(`SELECT id,body FROM dynamic_archived_${name} WHERE ${condition} ORDER BY sequence`).all(taskId)
+    for(const row of rows)db.prepare(`INSERT INTO dynamic_${name}(id,body) VALUES (?,?)`).run(row.id,row.body)
+    db.prepare(`DELETE FROM dynamic_archived_${name} WHERE ${condition}`).run(taskId)
+  }
+  const receipts=db.prepare(`SELECT id,body FROM dynamic_archived_receipts WHERE ${receiptOwnerSql}=?`).all(taskId)
+  for(const row of receipts){
+    db.prepare('UPDATE dynamic_receipts SET body=? WHERE id=?').run(row.body,row.id)
+    db.prepare('DELETE FROM dynamic_archived_receipts WHERE id=?').run(row.id)
+  }
+}

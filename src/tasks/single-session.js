@@ -45,7 +45,7 @@ function effectState(receipts){
  * and admission facts; Pi alone owns messages, queue delivery and model context. */
 export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent,getWorkspaceDir,readEffectScope,withPersistenceWriter=(_binding,action)=>action()}){
   const active=new Map();let closed=false
-  async function run({binding,input,provider,model,reasoningEffort,groupResponsibility,onSessionBound,onSupplementAdmitted,resolveHuman,authorizeEffectInvocation,submit}){
+  async function run({binding,input,provider,model,reasoningEffort,groupResponsibility,onSessionBound,onSupplementAdmitted,resolveHuman,submit}){
     if(closed||active.has(binding.taskId))throw fail('TASK_SESSION_BUSY')
     const entry={abort:new AbortController(),done:Promise.withResolvers(),submitted:false,binding,pending:new Map(),readOnly:!!(input.humanReview||input.dialogue)};active.set(binding.taskId,entry)
     const current=()=>!closed&&!entry.abort.signal.aborted&&isOwnerCurrent(binding)
@@ -60,7 +60,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           ||identity[0].payload.taskId!==binding.taskId||identity[0].payload.sessionId!==binding.sessionId)throw fail('TASK_SESSION_IDENTITY_MISMATCH')
       }
       const intents=effectState(stored?.audit??[]),uncertain=()=>[...intents.values()].some(value=>!value.settled)
-      const seenInvocations=new Set();let historyBound=false,priorReconciliations=[]
+      const seenInvocations=new Set();let historyBound=false
       const bindInvocationHistory=actor=>{
         if(historyBound)return
         const origins=new Map(),manager=actor.piSession.sessionManager
@@ -69,16 +69,16 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(seenInvocations.has(origin.invocationKey))throw fail('TASK_EFFECT_INVOCATION_DUPLICATE')
           seenInvocations.add(origin.invocationKey);origins.set(intent.key,origin)
         }
-        priorReconciliations=(stored?.auditEntries??[]).filter(row=>row.data.domain==='task'&&row.data.kind==='effect-reconciled').map(row=>{
+        for(const row of (stored?.auditEntries??[]).filter(row=>row.data.domain==='task'&&row.data.kind==='effect-reconciled')){
           const receipt=row.data,payload=receipt.payload,origin=origins.get(payload.key),entry=manager.getEntries().find(entry=>entry.id===row.entryId)
           if(!origin||!entry||entry.type!=='custom'||entry.customType!=='night.audit'||!isDeepStrictEqual(entry.data,receipt)||!manager.getBranch(entry.id).some(item=>item.id===origin.intentEntryId)||['intentEntryId','intentDigest','callEntryId','inputEntryId','packetId','inputDigest','argumentsDigest'].some(key=>payload[key]!==origin[key])||!isDeepStrictEqual(payload.originBinding,origin.binding))throw fail('TASK_EFFECT_RECONCILIATION_IDENTITY_MISMATCH')
-          return {entryId:row.entryId,parentId:row.parentId,receipt:structuredClone(receipt)}
-        })
+        }
         historyBound=true
       }
+      const uncertainAtStart=uncertain()
       entry.effectUncertain=uncertain
-      if(unresolvedNativeJobReceipts(stored?.audit??[],binding.sessionId).length)return {status:'no_submission',reason:'TASK_JOB_UNCERTAIN_NO_REPLAY'}
-      if(uncertain())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}
+      const uncertainJob=unresolvedNativeJobReceipts(stored?.audit??[],binding.sessionId).length>0
+      const effectHold=()=>input.task?.archiveRestore?.reviewRequired?'TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED':uncertainJob?'TASK_JOB_UNCERTAIN_NO_REPLAY':uncertain()?'TASK_EFFECT_UNCERTAIN_NO_REPLAY':undefined
       // SQL processing stages are Host diagnostics, not user text or authority.
       // Keep them in their store/materials rather than copying an ever-growing
       // telemetry graph into every new business input packet.
@@ -111,22 +111,23 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
         tools.restrict({allow:allowed})
         tools.guard(exec=>forbidden.test(exec.name)?'TASK_TOOL_ROLE_FORBIDDEN':undefined)
         systemPrompt.section({name:'task:single-execution',order:0,text:instructions})
+        if(uncertain()||uncertainJob)systemPrompt.section({name:'task:effect-readback',order:1,text:'历史调用结果仍未知。当前会话可以读取原证据、核验并以 wait/blocked 汇报；不得重放旧调用、执行新副作用或宣称完成。该限制针对尚未结清的效果，不要求额外的新目标许可。'})
+        if(input.task?.archiveRestore?.reviewRequired)systemPrompt.section({name:'task:restore-review',order:1,text:'原档案恢复仍待操作者核验。会话可读取原材料并汇报 wait/blocked；外部效果、写入和完成保持待审，不自动交付。Router 调度不代替档案恢复的业务效果核验。'})
         if(typeof groupResponsibility==='string'&&groupResponsibility.trim())systemPrompt.section({name:'task:group-responsibility',order:1,interpolate:false,text:'Configured conversation responsibility: '+groupResponsibility+'. Apply within the current task and source authorization only; this configuration grants no new permissions or cross-conversation access.'})
         systemPrompt.section({name:'task:reply-scope',order:1,text:conversationReplyScopeInstructions})
         if(input.humanReview)systemPrompt.section({name:'task:human-review',order:1,text:'本轮只读核对人工业务答复。读取原待答问题、候选来源的完整原文和引用，核对真实作者的业务角色、权限、对应事项和全部限制；模型摘要与推断不是授权。事实追问使用 task_result(wait, replySourceId)，以 summary/evidence/limitations 记录事实，保持原问题待答，不为回复事实追问解除实施限制。只有真实来源已回答同一问题、角色与条件证据齐备时，才用 task_human_resolve 记录原答复；SQL再次核验来源及版本。解除成功后本轮仍保持只读并以无新问题的 wait 结束，由下一普通轮在原有授权范围继续。不得在本轮执行写入、命令、记忆写入、委派、扩大目标或完成任务。'})
         if(input.dialogue)systemPrompt.section({name:'task:dialogue',order:1,text:'本轮仅只读回答当前任务对话。以 task_result 的 wait 和 summary 给出基于已有证据的答复，不执行外部效果，不创建新问题，不完成或扩大原任务。'})
         const reviewTool=exec=>isObservational(exec)
         if(readOnly)tools.guard(exec=>reviewTool(exec)?undefined:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY')
-        agentCtx.on('tools/pre-execute',async(exec,next)=>!await current()?{kind:'deny',reason:'TASK_SESSION_STALE'}:uncertain()?{kind:'deny',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY'}:readOnly&&!reviewTool(exec)?{kind:'deny',reason:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY'}:next())
+        agentCtx.on('tools/pre-execute',async(exec,next)=>!await current()?{kind:'deny',reason:'TASK_SESSION_STALE'}:readOnly&&!reviewTool(exec)?{kind:'deny',reason:input.humanReview?'DYNAMIC_HUMAN_REVIEW_READ_ONLY':'TASK_DIALOGUE_REPLY_ONLY'}:next())
         agentCtx.on('tools/execute',async(exec,next)=>{
           if(isObservational(exec))return next()
-          if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          if(effectHold())throw fail(effectHold())
           await preflightPiFileMutation(exec,tools.get(exec.name,actor))
           const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
           bindInvocationHistory(actor)
           const effectKey=origin.invocationKey
           if(seenInvocations.has(effectKey))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
-          if(priorReconciliations.length&&(typeof authorizeEffectInvocation!=='function'||await authorizeEffectInvocation({binding:structuredClone(binding),origin:structuredClone(origin),priorReconciliations:structuredClone(priorReconciliations)})!==true))throw fail('TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED')
           const intent={version:2,key:effectKey,name:exec.name,callId:exec.callId,invocation:{callEntryId:origin.callEntryId,inputEntryId:origin.inputEntryId,packetId:origin.packetId,inputDigest:origin.inputDigest,originBinding:origin.binding}}
           seenInvocations.add(effectKey)
           actor.receipts.append({version:1,domain:'task',kind:'effect-intent',payload:intent});intents.set(effectKey,{...intent,settled:false});await actor.receipts.commit()
@@ -150,9 +151,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(!await current())throw fail('TASK_SESSION_STALE')
           const origin=taskToolInputOrigin(actor.piSession.sessionManager,{callId:exec.callId,name:exec.name,args:exec.arguments,taskId:binding.taskId,sessionId:binding.sessionId})
           if(!await isCurrent({...binding,contextRevision:origin.binding.contextRevision}))throw fail('TASK_CONTEXT_NOT_CONSUMED')
-          if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+          if(decision.action==='complete'&&effectHold())throw fail(effectHold())
           bindInvocationHistory(actor)
-          if(decision.action==='complete'&&priorReconciliations.length&&(typeof authorizeEffectInvocation!=='function'||await authorizeEffectInvocation({binding:structuredClone(binding),origin:structuredClone(origin),priorReconciliations:structuredClone(priorReconciliations)})!==true))throw fail('TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED')
           if(!decision.summary.trim())throw fail('TASK_SESSION_DECISION_INVALID')
           if(input.humanReview&&(decision.action!=='wait'||decision.question?.trim()))throw fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
           if(input.dialogue&&(decision.action!=='wait'||decision.question?.trim()))throw fail('TASK_DIALOGUE_REPLY_ONLY')
@@ -171,7 +171,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       const options={agentOptions:{provider,model,...reasoningEffort?{reasoningEffort}:{}},setup,signal:entry.abort.signal,auditKinds:singleTaskAuditKinds,readOnly,
         initialReceipts:stored?[]:[{version:1,domain:'task',kind:'identity',payload:{taskId:binding.taskId,sessionId:binding.sessionId}}],
         authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packets.get(candidate.id)),
-        beforeRequest:async actor=>{bindInvocationHistory(actor);await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
+        beforeRequest:async actor=>{bindInvocationHistory(actor);await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(!uncertainAtStart&&uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
           // A later same-named registration is not the read-only capability
           // captured for this execution. It needs ordinary effect admission.
           for(const name of ['read','read_image','read_window','find','grep'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor)||isNativeSearchObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}
@@ -182,7 +182,10 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(typeof readEffectScope!=='function'||proof?.modelIdle!==true||proof?.toolsIdle!==true||proof?.processes!==0||proof?.jobs!==0||proof?.scope!=='registered-owned-provider-ranges')throw fail('TASK_EFFECT_DRAIN_UNPROVEN')
           await actor.receipts.commit()
           const stored=await ctx.sessionPersistence.readNative(binding.sessionId,{requireComplete:true}),scope=await readEffectScope(binding,stored)
-          const inputs=unresolvedTaskInputOrigins(actor.piSession.sessionManager,intents,binding),identity={binding:Object.fromEntries(['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(name=>[name,binding[name]??0])),scopeDigest:taskEffectScopeDigest(scope),cutEntryId:actor.piSession.sessionManager.getLeafId()}
+          // 旧租约未知效果沿用原 owner 的排空证明；本轮核验不能给旧调用伪造新 owner 证明。
+          const inputs=unresolvedTaskInputOrigins(actor.piSession.sessionManager,intents,binding).filter(item=>item.originBinding.leaseEpoch===binding.leaseEpoch)
+          if(!inputs.length)return
+          const identity={binding:Object.fromEntries(['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(name=>[name,binding[name]??0])),scopeDigest:taskEffectScopeDigest(scope),cutEntryId:actor.piSession.sessionManager.getLeafId()}
           const differentOrigin=inputs.some(item=>!isDeepStrictEqual(item.originBinding,identity.binding))
           actor.receipts.append(await (differentOrigin?ownerDrainedInputsReceipt:ownerDrainedReceipt)({...identity,...differentOrigin?{inputs}:{}},async()=>({issuer:'night-owned-provider-drain-v1',scope:proof.scope,ownerId:actor.id,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle,processes:proof.processes,jobs:proof.jobs,observedAt:new Date().toISOString(),evidenceDigest:fingerprint({phase,proof:{scope:proof.scope,processes:proof.processes,jobs:proof.jobs,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle},binding})})))
           await actor.receipts.commit()
@@ -194,7 +197,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       await entry.handle.agent.input.enqueue(packet)
       await entry.handle.agent.input.deliver(packet.id,{deliverAs:'followUp'})
       await entry.handle.agent.whenIdle()
-      if(uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+      if(!entry.submitted&&effectHold())throw fail(effectHold())
       if(!entry.submitted&&await current()){
         const native=entry.handle.agent.piSession.messages.findLast(message=>message.role==='assistant')
         throw Object.assign(fail(native?.stopReason==='error'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION'),{phase:'decision',...native?.stopReason?{nativeAssistantStopReason:native.stopReason}:{}})
