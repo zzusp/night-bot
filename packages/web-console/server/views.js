@@ -66,6 +66,7 @@ export function taskSummaryView(task, secrets = []) {
 
 export function taskView(task, secrets = []) {
   return {
+    ...(task.durations ? {durations: task.durations} : {}),
     ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'waitingReason'], secrets),
     ...(task.result ? {result: resultView(task.result, secrets)} : {}),
     ...(task.session ? {session: pick(task.session, ['role', 'sessionId', 'sessionBound', 'status'])} : {}),

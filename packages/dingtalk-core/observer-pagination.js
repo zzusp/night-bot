@@ -1,5 +1,6 @@
 // Observer-only indexes. Historical payloads are fetched only after selecting a page.
 // Existing installations must opt into the offline index migration; GET never runs DDL.
+import { pageTaskDurations } from '../../src/tasks/observer-durations.js'
 import { projectTaskElapsed } from './task-execution-timeline.js'
 
 function pageTaskElapsed(tasks) {
@@ -192,7 +193,7 @@ export function observerPage(db, q, instance) {
  const rows = db.prepare(`${prefix}SELECT ${body} AS body${q.collection === 'tasks' && !q.summary ? ',i.state AS board_state' : ''}${executionCounts} FROM ${pageFrom} ${suffix}`).all(...args,limit,offset)
  if(rows.some(row=>row.body==null))throw error('OBSERVER_PAGE_DATA_MISSING')
  const items = rows.map(row => ({...JSON.parse(row.body), ...(q.summary && q.collection === 'executions' ? {drained:!!JSON.parse(row.body).drained,recovering:!!JSON.parse(row.body).recovering} : row.board_state ? {state:row.board_state,...(row.execution_count == null ? {} : {executionCount:row.execution_count,completedExecutionCount:row.completed_count})} : {})}))
- return { items: q.collection === 'tasks' && !q.summary ? pageTaskElapsed(items) : items, total,offset,limit,revision:currentRevision,nextOffset:offset+rows.length<total?offset+rows.length:null }
+ return { items: q.collection === 'tasks' && !q.summary ? pageTaskDurations(db, pageTaskElapsed(items)) : items, total,offset,limit,revision:currentRevision,nextOffset:offset+rows.length<total?offset+rows.length:null }
 }
 
 export function observerGroupQuery(db,q) {

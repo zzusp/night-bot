@@ -1,3 +1,4 @@
+import {reconcileCompletion} from './reconciliation.js'
 import {InstalledSkillPrevious} from './installed-previous.js'
 import {inspectEvolutionItem} from './evolution-content.js'
 import {openSkillUsage,botSkillRoots,installedSkills,contentVersion,skillIdentity,commonSkillPath} from './skill-usage.js'
@@ -201,6 +202,7 @@ export default class NativeMemory extends Service {
     if(args.topic==='experience')try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}
     return {...result,revision:saved.revision,...action==='remember'?{entry}:{},persisted:true,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}
   }
+  async reconcileCompletion(agent,proof,args,validate){return reconcileCompletion(this,agent,proof,args,validate)}
   async readSkills(agent,args){return this.host.get('reflection').readSkills(await this.scope(agent,{}),args)}
   async mutateChannelSkill(agent,original,args,validate){
     const context=this.channelSourceContext(original)

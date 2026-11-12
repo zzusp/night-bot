@@ -189,3 +189,25 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable'] as const) {
     } finally {release();}
   });
 }
+
+
+test('停用记录保留清晰行间分隔与内边距，不堆叠为裸文字', async ({page}) => {
+  await page.route('**/api/schedules?*', route => route.fulfill({json: snapshot([
+    {...inactive, id: 'one', title: '定时提醒验收 c35cefbe'},
+    {...inactive, id: 'two', title: '汇报11月11日工作内容'},
+  ])}));
+  await open(page, '/schedules?state=inactive');
+  const rows = page.locator('.schedule-row');
+  await expect(rows).toHaveCount(2);
+  for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
+    await page.setViewportSize({width, height: 900});
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    await expect(rows.first()).toHaveCSS('padding-top', '16px');
+    await expect(rows.first()).toHaveCSS('row-gap', '6px');
+    await expect(rows.nth(1)).toHaveCSS('border-top-width', '1px');
+    await expect(rows.nth(1)).toHaveCSS('border-top-style', 'solid');
+    await expect(rows.first()).toHaveCSS('padding-left', width === 390 ? '14px' : '18px');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({path: test.info().outputPath(`schedule-rows-${theme}-${width}.png`), fullPage: true});
+  }
+});

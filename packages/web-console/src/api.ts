@@ -12,9 +12,11 @@ export interface ScheduledTask {
 export interface TimelineEvent { id?: string; at?: string; createdAt?: string; startedAt?: string; kind?: string; type?: string; state?: string; status?: string; summary?: string; label?: string; description?: string }
 export interface TimelineTrack { events?: TimelineEvent[]; segments?: TimelineEvent[]; milestones?: TimelineEvent[] }
 export interface TaskBlocker { kind: 'execution' | 'operation' | 'legacy'; id: string; title: string; status: string | null; toolName?: string; drained?: boolean; recovering?: boolean }
+export interface TaskDuration { milliseconds: number | null; activeSince: string | null }
 export interface Task {
   taskId: string; title?: string; objective?: string; state: string; controlState?: string;
   createdAt?: string; updatedAt?: string; result?: unknown;
+  durations?: { total: TaskDuration; execution: TaskDuration; observedAt: string };
   session?: { sessionId?: string; role?: string; status?: string };
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];
   notifications?: Record<string, unknown>[];
