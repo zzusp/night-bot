@@ -1,5 +1,11 @@
 import {digest, fail} from './security.js'
 
+// Names cover environment variables, JSON fields and HTTP headers. A configured
+// installation token alone is not a registry of credentials used by task tools.
+const credentialName = /(?:token|password|passwd|secret|credential|cookie|authorization|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?key)/i
+const credentialAssignment = /(?<![\w.-])([\w.-]*(?:token|password|passwd|secret|credential|cookie|authorization|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?key)[\w.-]*["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:''|[^'])*'|[^\s"'&,}\]]+)/gi
+const credentialFlag = /(?:^|\s)--?(?:[\w-]*[-_])?(?:token|password|passwd|secret|credentials?|cookie|authorization|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?key)(?=[=:\s]|$)/i
+
 // 安装操作者可查看任务业务文字与已返回思考；系统指令、秘密和私有审计不透传。
 export function visibleText(value, secrets = [], {maxLength = 16000, preservePaths = false} = {}) {
   const original = String(value ?? '')
@@ -7,8 +13,14 @@ export function visibleText(value, secrets = [], {maxLength = 16000, preservePat
   const redact = value => {
     let result = value
     for (const secret of secrets) if (secret) result = result.replaceAll(secret, '[已隐藏]')
-    result = result.replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [已隐藏]')
-      .replace(/((?:access[_-]?token|refresh[_-]?token|api[_-]?key|authorization|password|secret|credentials?|permission[_-]?token|dispatch[_-]?token|token)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s"'&,}\]]+)/gi, (match, prefix) => {const value = match.slice(prefix.length), quote = value[0]; return prefix + (quote === '"' || quote === "'" ? quote + '[已隐藏]' + quote : '[已隐藏]')})
+    // Shell flags can feed literals, here-strings, heredocs, pipelines or
+    // PowerShell expressions. Do not guess their boundaries and expose a tail.
+    if (credentialFlag.test(result) || /(?:^|\s)(?:--user(?:\s+|=)|-u\s*)\S+:\S+/.test(result)) return '[含凭据参数的内容已隐藏]'
+    result = result.split(/(\r?\n)/).map(line => /\b(?:proxy-authorization|authorization|set-cookie|cookie)\s*:/i.test(line) ? '[含认证标头的内容已隐藏]' : line).join('')
+    result = result.replace(/-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[私钥已隐藏]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{15,}|github_pat_[A-Za-z0-9_]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g, '[凭据已隐藏]')
+      .replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [已隐藏]')
+      .replace(credentialAssignment, (match, prefix) => {const value = match.slice(prefix.length), quote = value[0]; return prefix + (quote === '"' || quote === "'" ? quote + '[已隐藏]' + quote : '[已隐藏]')})
       .replace(/\b(https?:\/\/)[^\s/@?#]+@/gi, '$1[凭据已隐藏]@')
     if (!preservePaths) result = result.replace(/(^|[\s"'=(\[{])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s"'<>)}\]]+/g, '$1[路径已隐藏]')
     return result
@@ -18,7 +30,7 @@ export function visibleText(value, secrets = [], {maxLength = 16000, preservePat
   const scrub = value => Array.isArray(value) ? value.map(scrub) : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value).map(([key, child]) => {
       const publicKey = scrubString(key)
-      if (/^(?:.*(?:token|password|secret|credential|authorization|permission|capability|apiKey).*|arguments|env|taskSession|materials|sourceRefs)$/i.test(key)
+      if (credentialName.test(key) || /^(?:.*(?:permission|capability).*|arguments|env|taskSession|materials|sourceRefs)$/i.test(key)
         || !preservePaths && /^(?:cwd|path|directory|workspaceDir|logPath)$/i.test(key)) {
         redacted = true; return [publicKey, '[已隐藏]']
       }
@@ -31,7 +43,10 @@ export function visibleText(value, secrets = [], {maxLength = 16000, preservePat
       const selected = scrub(parsed)
       if (redacted) text = JSON.stringify(selected, null, 2)
     }
-  } catch {}
+  } catch {
+    // A parsed but unprocessable object must never fall back to its raw bytes.
+    if (structured) return {text: '[无法安全处理的内容已隐藏]', redacted: true}
+  }
   const before = text
   if (!structured) text = redact(text)
   const truncated = text.length > maxLength

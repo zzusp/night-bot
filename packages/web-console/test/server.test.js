@@ -67,7 +67,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -86,7 +86,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -973,4 +973,26 @@ test('evolution HTTP defaults to ten records and serves disjoint current pages f
   assert.doesNotMatch(JSON.stringify([first.body,second.body,last.body]),/PRIVATE_BODY/)
   const skills=await f.fetchApi('/api/evolution?kind=skill')
   assert.equal(skills.body.total,0); assert.deepEqual(skills.body.items,[])
+})
+
+test('execution reads refresh Host secret values and fail closed when the provider fails', async t => {
+  let secret = 'opaque-vendor-value-one', unavailable = false, calls = 0
+  const snapshot = () => ({header:{id:'pi-one'}, entries:[{id:'commit-one'}],
+    audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'task-one',sessionId:'pi-one'}}],
+    context:{projection:{entries:[{sourceEntry:{id:'body',timestamp:'2026-11-12T00:00:00Z'},messages:[{role:'assistant',content:[{type:'text',text:('public text '.repeat(1600)) + secret}]}]}]}}})
+  const f = await fixture(t,{persistence:{readNative:async()=>snapshot()},redactionSecrets:async()=>{calls++;if(unavailable)throw new Error('PRIVATE_PROVIDER_ERROR');return [secret]}})
+  await f.login()
+  const page = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(page.status,200)
+  assert.equal(page.body.items[0].redacted,true)
+  let body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-one/)
+  secret='opaque-vendor-value-two'
+  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-two/)
+  assert.equal(calls,3)
+  unavailable=true
+  const denied = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(denied.status,503)
+  assert.doesNotMatch(JSON.stringify(denied.body),/opaque-vendor|PRIVATE_PROVIDER_ERROR/)
 })

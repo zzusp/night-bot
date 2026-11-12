@@ -332,3 +332,99 @@ test('stream checkpoint rejects rewritten, compacted, revoked and foreign histor
   value.audit[0].payload.taskId = 'foreign'
   await assert.rejects(taskSessionView({...options, checkpoint: first.checkpoint}), {code: 'SESSION_IDENTITY_INVALID'})
 })
+
+test('shell credentials are scrubbed before paging inputs, errors and job output', async () => {
+  const value = snapshot(), secret = 'REGISTERED_OPAQUE_VALUE'; value.context.projection.entries = []
+  const cases = [
+    ['bash', 'gh auth login --with-token <<< UNREGISTERED_HERESTRING', 'AWS_SECRET_ACCESS_KEY=UNREGISTERED_AWS_SECRET\nAWS_ACCESS_KEY_ID=UNREGISTERED_AWS_ID'],
+    ['pwsh', 'Connect-Service -Password "UNREGISTERED_PS_PASSWORD"', 'CLIENT_PRIVATE_KEY="UNREGISTERED_PRIVATE_VALUE"'],
+    ['bash', 'login --api-key UNREGISTERED_FLAG_VALUE', 'GITHUB_TOKEN=UNREGISTERED_TOKEN'],
+    ['bash', "login --with-token <<'EOF'\nUNREGISTERED_HEREDOC\nEOF", 'public business output'],
+    ['job_output', undefined, 'public line\n'.repeat(1800) + 'AWS_SECRET_ACCESS_KEY=UNREGISTERED_LATE_SECRET\n' + secret + '\nEND_MARKER'],
+  ]
+  for (const [index, [name, command, output]] of cases.entries()) {
+    value.context.projection.entries.push(
+      project('call-secure-' + index, {role:'assistant',content:[{type:'toolCall',id:String(index),name,arguments:command ? {command} : {job_id:'example-job'}}]}),
+      project('result-secure-' + index, {role:'toolResult',toolName:name,toolCallId:String(index),isError:true,content:[{type:'text',text:output}]}),
+    )
+  }
+  const options = {task, persistence:{readNative:async()=>value}, secrets:[secret]}
+  const page = await taskSessionView(options), bodies = []
+  for (const row of page.items) {
+    bodies.push(row.text)
+    let offset = row.textNextOffset
+    while (offset != null) {
+      const next = await taskSessionMessageView({...options,messageId:row.id,revision:page.revision,offset})
+      bodies.push(next.text); offset=next.nextOffset
+    }
+  }
+  assert.doesNotMatch(JSON.stringify(page) + bodies.join('\n'), /UNREGISTERED_|REGISTERED_OPAQUE_VALUE/)
+  assert.match(bodies.join('\n'), /public business output/)
+  assert.match(bodies.join('\n'), /END_MARKER/)
+  assert.ok(page.items.filter(row=>row.kind==='tool-result' && row.toolName!=='bash').every(row=>row.redacted))
+})
+
+test('credential redaction preserves JSON and public paths but removes escaped secrets and key material', () => {
+  const fixtures = [
+    'AWS_SECRET_ACCESS_KEY="UNREGISTERED_ESCAPED\\"TAIL"',
+    '-----BEGIN OPENSSH PRIVATE KEY-----\nUNREGISTERED_PRIVATE_BODY\n-----END OPENSSH PRIVATE KEY-----',
+    '-----BEGIN RSA PRIVATE KEY-----\nUNREGISTERED_UNFINISHED_BODY',
+    'ghp_UNREGISTERED_GITHUB_SECRET0123456789',
+    'sk-UNREGISTERED_MODEL_SECRET0123456789',
+    'https://example.test?access_key=UNREGISTERED_QUERY_VALUE&ok=true',
+  ]
+  for (const content of fixtures) {
+    for (const source of [content, JSON.stringify({content,path:'/public/report.txt'})]) {
+      const result = visibleText(source, [], {preservePaths:true})
+      assert.doesNotMatch(result.text, /UNREGISTERED_|TAIL/)
+      assert.equal(result.redacted,true)
+      if (source.startsWith('{')) assert.equal(JSON.parse(result.text).path,'/public/report.txt')
+    }
+  }
+  const value = visibleText(JSON.stringify({AWS_ACCESS_KEY_ID:'UNREGISTERED_ID',AWS_SECRET_ACCESS_KEY:'UNREGISTERED_SECRET',public:'hello'}))
+  assert.doesNotMatch(value.text,/UNREGISTERED_/)
+  assert.equal(JSON.parse(value.text).public,'hello')
+})
+
+test('deeply nested JSON cannot bypass registered-secret redaction on scrub failure', () => {
+  const source = '['.repeat(10000) + JSON.stringify('REGISTERED_DEEP_SECRET') + ']'.repeat(10000)
+  const result = visibleText(source, ['REGISTERED_DEEP_SECRET'], {maxLength:Infinity})
+  assert.doesNotMatch(result.text,/REGISTERED_DEEP_SECRET/)
+  assert.equal(result.redacted,true)
+})
+
+test('ordinary token budgets and command paths remain readable', () => {
+  const command='model --max-tokens 4096 --token-count 20 /public/report.txt'
+  assert.equal(visibleText(command, [], {preservePaths:true}).text,command)
+})
+
+test('registered secrets straddling the first body window never leak fragments', async () => {
+  const value=snapshot(), secret='OPAQUE_CROSS_WINDOW_REGISTERED_SECRET'
+  value.context.projection.entries=[project('boundary',{role:'assistant',content:[{type:'text',text:'x'.repeat(15990)+secret+'y'.repeat(200)+'END'}]})]
+  const options={task,persistence:{readNative:async()=>value},secrets:[secret]}
+  const page=await taskSessionView(options), row=page.items[0]
+  const tail=await taskSessionMessageView({...options,messageId:row.id,revision:page.revision,offset:row.textNextOffset})
+  assert.doesNotMatch(JSON.stringify([page,tail]),/OPAQUE_CROSS|REGISTERED_SECRET/)
+  assert.equal(row.text+tail.text,'x'.repeat(15990)+'[已隐藏]'+'y'.repeat(200)+'END')
+})
+
+test('authorization and cookie headers hide their complete multi-part values', () => {
+  for (const text of [
+    'Authorization: Basic dXNlcjpwYXNz',
+    'Proxy-Authorization: Basic dXNlcjpwYXNz',
+    'Cookie: session=FIRST_VALUE; auth=SECOND_VALUE',
+    'Set-Cookie: session=FIRST_VALUE; extra=SECOND_VALUE; Path=/',
+    'curl -H "Authorization: Basic dXNlcjpwYXNz" https://example.test',
+    'curl -u user:SECOND_VALUE https://example.test',
+    'curl --user=user:SECOND_VALUE https://example.test',
+    'curl -uuser:SECOND_VALUE https://example.test',
+    "curl -u'user:SECOND_VALUE' https://example.test",
+  ]) {
+    for (const source of [text,JSON.stringify({command:text})]) {
+      const result=visibleText(source,[],{preservePaths:true})
+      assert.doesNotMatch(result.text,/dXNlcjpwYXNz|FIRST_VALUE|SECOND_VALUE/)
+      assert.equal(result.redacted,true)
+    }
+  }
+  assert.match(visibleText('Cookie: session=FIRST_VALUE\npublic response').text,/public response/)
+})
