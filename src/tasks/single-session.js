@@ -1,4 +1,4 @@
-import {finishTaskBusinessInputs} from '../runtime/pi-business-notices.js'
+import {finishTaskBusinessInputs,holdTaskBusinessInputs} from '../runtime/pi-business-notices.js'
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
 import {conversationReplyScopeInstructions,conversationSource} from '../channels/message-safety.js'
 import {preflightPiFileMutation,isPiFileObservationalTool,isPiFileMutationNotStarted} from '../pi-file-tool-registration.js'
@@ -77,6 +77,10 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
         historyBound=true
       }
       const uncertainAtStart=uncertain()
+      let effectHeld=false
+      const holdEffects=async actor=>{effectHeld=true;entry.effectHeld=true;await holdTaskBusinessInputs(actor)}
+      const effectReferences=actor=>actor?.piSession.sessionManager.getEntries().filter(row=>row.type==='custom'&&row.customType==='night.audit'&&row.data?.domain==='task'&&row.data.kind==='effect-intent'&&intents.get(row.data.payload.key)?.settled===false).map(row=>({intentEntryId:row.id,toolName:row.data.payload.name}))??[]
+      entry.effectReferences=effectReferences
       entry.effectUncertain=uncertain
       const uncertainJob=unresolvedNativeJobReceipts(stored?.audit??[],binding.sessionId).length>0
       const effectHold=()=>input.task?.archiveRestore?.reviewRequired?'TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED':uncertainJob?'TASK_JOB_UNCERTAIN_NO_REPLAY':uncertain()?'TASK_EFFECT_UNCERTAIN_NO_REPLAY':undefined
@@ -131,6 +135,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(seenInvocations.has(effectKey))return {isError:true,content:[{type:'text',text:'TASK_EFFECT_ALREADY_ATTEMPTED: inspect original evidence; do not replay.'}],error:{message:'TASK_EFFECT_ALREADY_ATTEMPTED'}}
           const intent={version:2,key:effectKey,name:exec.name,callId:exec.callId,invocation:{callEntryId:origin.callEntryId,inputEntryId:origin.inputEntryId,packetId:origin.packetId,inputDigest:origin.inputDigest,originBinding:origin.binding}}
           seenInvocations.add(effectKey)
+          try{
           actor.receipts.append({version:1,domain:'task',kind:'effect-intent',payload:intent});intents.set(effectKey,{...intent,settled:false});await actor.receipts.commit()
           const result=await next()
           if(exec.signal.aborted||isJobOutcomeUncertain(result)||['ABORTED','TOOL_OUTCOME_UNKNOWN'].includes(result.error?.info?.code))throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
@@ -139,6 +144,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(result.isError&&!notStarted)throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')
           actor.receipts.append({version:1,domain:'task',kind:'effect-result',payload:{key:effectKey,isError:!!result.isError,...notStarted?{effect:'not-started'}:{}}});await actor.receipts.commit();intents.get(effectKey).settled=true
           return result
+          }catch(cause){await holdEffects(actor);throw cause}
         })
         if(input.humanReview)tools.register({name:'task_human_resolve',description:'Record that this review’s real candidate source has answered the pending business question. Read the original question, complete reply, author role and all conditions first. This changes only the reviewed business record; the current run remains read-only and must end with task_result(wait).',parameters:{type:'object',properties:{requestId:{type:'string',minLength:1},sourceId:{type:'string',minLength:1},reason:{type:'string',minLength:1},evidence:{type:'array',minItems:1,items:{type:'string',minLength:1}}},required:['requestId','sourceId','reason','evidence'],additionalProperties:false},output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(args){
           if(!await current())throw fail('TASK_SESSION_STALE')
@@ -162,6 +168,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           const jobs=ctx.get('jobs')
           if(typeof jobs?.list!=='function')throw fail('TASK_JOB_DRAIN_UNPROVEN')
           if(decision.action==='complete'&&(jobs.list(actor.id).some(job=>['running','stopping'].includes(job.status))||unresolvedNativeJobReceipts(await actor.receipts.read(),actor.id).length))throw fail('TASK_NOT_QUIESCENT')
+          // A read-only resumed report cannot erase the Host's unresolved-effect diagnostic.
+          if(effectHold())decision={...decision,limitations:[...new Set([...decision.limitations,effectHold()])],evidence:[...decision.evidence,...effectReferences(actor).map(row=>`Unresolved effect: ${row.toolName}; intentEntryId=${row.intentEntryId}`)]}
           const result=await submit(decision,binding);entry.submitted=true;exec.concludeTurn();await finishTaskBusinessInputs(actor);return {received:true,...result}
         }})
         // Capture business read capabilities before agent-created listeners
@@ -170,9 +178,10 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
         observationalDefinitions=new Map([...observational,...input.humanReview?['task_human_resolve']:[]].filter(name=>!['read','read_image','read_window'].includes(name)).map(name=>[name,tools.get(name,actor)]).filter(([,definition])=>definition!==undefined))
       }
       const options={agentOptions:{provider,model,...reasoningEffort?{reasoningEffort}:{}},setup,signal:entry.abort.signal,auditKinds:singleTaskAuditKinds,readOnly,
+        onToolResult:()=>effectHeld,
         initialReceipts:stored?[]:[{version:1,domain:'task',kind:'identity',payload:{taskId:binding.taskId,sessionId:binding.sessionId}}],
         authorizeInput:async(candidate,actor)=>actor.id===binding.sessionId&&await current()&&isDeepStrictEqual(candidate,packets.get(candidate.id)),
-        beforeRequest:async actor=>{bindInvocationHistory(actor);await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(!uncertainAtStart&&uncertain())throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY');
+        beforeRequest:async actor=>{bindInvocationHistory(actor);await syncAdmissions(actor);if(entry.submitted)throw fail('TASK_RESULT_ALREADY_COMMITTED');if(!await current())throw fail('TASK_SESSION_STALE');if(!uncertainAtStart&&uncertain()){await holdEffects(actor);throw fail('TASK_EFFECT_UNCERTAIN_NO_REPLAY')};
           // A later same-named registration is not the read-only capability
           // captured for this execution. It needs ordinary effect admission.
           for(const name of ['read','read_image','read_window','find','grep'])if(!observationalDefinitions.has(name)){const definition=executionRegistry.get(name,actor);if(isPiFileObservationalTool(definition,actor)||isNativeSearchObservationalTool(definition,actor))observationalDefinitions.set(name,definition)}
@@ -206,7 +215,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       return {status:entry.submitted?'submitted':'cancelled'}
     }catch(cause){
       entry.outcomeError=cause
-      if(entry.effectUncertain?.())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY',effectDisposition:'held',failure:{code:cause.code??'TASK_EFFECT_UNCERTAIN_NO_REPLAY',message:cause.message}}
+      if(entry.effectUncertain?.())return {status:'no_submission',reason:'TASK_EFFECT_UNCERTAIN_NO_REPLAY',effectDisposition:'held',unresolvedEffects:entry.effectReferences?.(entry.handle?.agent)??[],failure:{code:cause.code??'TASK_EFFECT_UNCERTAIN_NO_REPLAY',message:cause.message}}
       // Supersession is a business outcome, independent of which official SDK
       // cancellation point observed it. Finally must still prove real disposal.
       if(!await current())return {status:'cancelled',reason:'TASK_BINDING_SUPERSEDED',failure:{code:typeof cause.code==='string'?cause.code:cause.name}}
@@ -243,7 +252,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
     if(entry.drainError)throw entry.drainError
     if(error)throw error
   }
-  function liveBinding(taskId){const entry=active.get(taskId);return entry?.handle&&!entry.readOnly&&!entry.submitted&&!entry.finishing&&!entry.abort.signal.aborted?structuredClone(entry.binding):undefined}
+  function liveBinding(taskId){const entry=active.get(taskId);return entry?.handle&&!entry.readOnly&&!entry.effectHeld&&!entry.submitted&&!entry.finishing&&!entry.abort.signal.aborted?structuredClone(entry.binding):undefined}
   async function supplement({task,sources,materials}){
     const entry=active.get(task.taskId);if(!liveBinding(task.taskId))return {delivered:false}
     if(!await isOwnerCurrent(entry.binding))throw fail('TASK_LIVE_SUPPLEMENT_STALE')
@@ -256,7 +265,9 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       const packet={id:'task-supplement:'+row.wakeId,source,content:[{type:'text',text:JSON.stringify({task:{...taskInputSnapshot(task),request:row.request,contextRevision:row.contextRevision,sourceRefs:row.sourceRefs},sources:selected,materials:materials.map(({resources,...item})=>({...conversationSource(item),resources:resources.map(({value,...resource})=>resource)})),supplement:{messageId:row.messageId,contextRevision:row.contextRevision}})}]}
       entry.packets.set(packet.id,packet);entry.pending.set(packet.id,{packet,binding:nextBinding,messageId:row.messageId})
       await entry.handle.agent.input.enqueue(packet)
-      await entry.handle.agent.input.deliver(packet.id,{deliverAs:'steer'})
+      if(entry.effectHeld)return {delivered:false}
+      try{await entry.handle.agent.input.deliver(packet.id,{deliverAs:'steer'})}
+      catch(cause){if(entry.effectHeld&&cause.code==='PI_BUSINESS_ADMISSION_PAUSED')return {delivered:false};throw cause}
       await entry.syncAdmissions(entry.handle.agent)
     }
     return {delivered:true}

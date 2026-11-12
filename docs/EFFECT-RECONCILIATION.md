@@ -53,3 +53,20 @@ proposal 只包含 inspect 的 `taskId`、`intentEntryId`、`intentDigest`、
 实际默认 Host 与本地 HTTP/CLI 测试见 pi-task-effect-reconciliation-e2e 和
 pi-effect-operator-http；来源、篡改、范围、分支、提交切点和链接反例见
 pi-task-effect-reconciliation。平台内核隔离和真实厂商读回须分别验收。
+
+## 新增未知效果后的回合停止（#91）
+
+本轮工具提交 intent 后发生未知效果时，Host 保留 intent、停止当前 Pi 工具轮，
+关闭本轮自动输入投递并清理 SDK 的瞬时队列。已提交及迟到的内部 job-completion
+通知保留 enqueue/cancelled 回执（`task-effect-held`），不继续触发相同失败条件下的
+模型续轮；真实用户的待处理输入不被取消。关闭推理不等于排空成功，服务仍等待
+实际工具/进程排空和持久化完成，才发布 blocked/waiting 技术状态。
+
+技术阻断的 evidence 包含未结清工具名、`intentEntryId` 及现有
+`bin/night-bot-effects.js` 检查入口，不包含调用参数或私密路径。显式恢复后的只读
+核验和 `task_result(wait)` 仍可使用，但 Host 会保留未结清效果代码及引用。
+原调用不会自动重放，重新启动或读取文件存在均不能证明效果已结清；必须沿本页
+受控核验/结清流程处理。升级代码不会自动结清已有现场的效果。
+
+此修复处理无效续轮和诊断，不声称已确定现场最初 write 失败的底层原因；实际
+Windows 现场的效果及任务恢复仍须单独核验。

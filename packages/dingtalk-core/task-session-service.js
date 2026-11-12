@@ -1204,6 +1204,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           failures.set(taskId, { id: taskId, code: runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION' })
           const uncertainEffect=['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(runResult.reason)
           await command('task.wait', { binding, action: 'blocked', summary: uncertainEffect?'任务有尚未核实的外部效果，自动执行已停止，等待人工核验。':'任务会话本轮未能提交有效决定，原任务和执行结果已保留。',
+            evidence: uncertainEffect?(runResult.unresolvedEffects??[]).map(row=>`Unresolved effect: ${row.toolName}; intentEntryId=${row.intentEntryId}; inspect with bin/night-bot-effects.js (docs/EFFECT-RECONCILIATION.md)`):[],
             limitations: [runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION'], ...(humanReview ? { reviewFailureCode: runResult.reason } : {}) }, `task-technical-block:${taskId}:${binding.leaseEpoch}`)
           submitted = !humanReview
         }

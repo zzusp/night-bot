@@ -158,7 +158,7 @@ export class OfficialAgentFactory {
    Object.defineProperty(actor,'status',{enumerable:true,get:()=>bundle.session.isStreaming?'running':'idle'})
    admission.bindSession(bundle.session,{signal:actor.lifecycle.signal})
    unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,pending:admission.pending,isLive:live})
-   unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live,finishTaskRun:()=>admission.finishTaskRun(bundle.session)})
+   unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live,finishTaskRun:()=>admission.finishTaskRun(bundle.session),holdTaskRun:()=>admission.holdTaskRun(bundle.session)})
    options.signal.throwIfAborted();await measurePhase('session-publish',async()=>{await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true})
    await measurePhase('session-bind-names',()=>ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming}))
    skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))

@@ -1,3 +1,4 @@
+import {enqueueBusinessNotice} from '../src/runtime/pi-business-notices.js'
 import * as application from '../src/application.js'
 import {getCurrentSystemPrompt} from '@earendil-works/pi-ai'
 import {createNativeDwsObserver,nativeDwsCommands,nativeDwsObservation} from '../packages/dingtalk-core/native-dws-send.js'
@@ -514,10 +515,15 @@ test('official service board reports the one live execution session as running u
 test('official service unknown post-write effects remain held and release only the physically drained writer',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
  const f=await officialCase(t,'single-service-unknown-');let writes=0
  const h=await f.host(()=>[call('uncertain_native_write',{})])
- h.ctx.tools.register({name:'uncertain_native_write',description:'Local write then response loss',parameters:{type:'object',properties:{}},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){writes++;await writeFile(join(exec.agent.metadata.cwd,'work','uncertain.txt'),'once');throw Error('response lost after write')}})
+ h.ctx.tools.register({name:'uncertain_native_write',description:'Local write then response loss',parameters:{type:'object',properties:{}},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){writes++;await writeFile(join(exec.agent.metadata.cwd,'work','uncertain.txt'),'once');
+ for(let i=0;i<8;i++){const notice={id:'job:service-held:'+i,source:{kind:'job-completion'},content:'producer finished'};await enqueueBusinessNotice(exec.agent,notice);await exec.agent.input.deliver(notice.id,{deliverAs:'followUp'})}
+ throw Error('response lost after write')}})
  await t.beginBusiness();const task=await h.service.createTask({requestId:'unknown',objective:'Perform the one authorized local write'})
  await h.service.whenIdle();const row=await h.query('task.get',{taskId:task.taskId}),saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true})
  assert.equal(writes,1);assert.equal(await readFile(join(saved.header.cwd,'work/uncertain.txt'),'utf8'),'once');assert.equal(row.status,'active');assert.equal(row.drained,true);assert.equal(row.lastDecision.action,'blocked')
+ assert.equal(h.requests.length,1);assert.equal((await h.service.taskDetail(task.taskId)).state,'waiting')
+ assert.ok(row.lastDecision.evidence.some(text=>text.includes('uncertain_native_write')&&text.includes('intentEntryId=')&&text.includes('night-bot-effects.js')))
+ assert.equal(saved.audit.filter(r=>r.domain==='admission'&&r.kind==='cancelled'&&r.payload.reason==='task-effect-held').length,8)
  assert.match(JSON.stringify(row.lastDecision),/TASK_EFFECT_UNCERTAIN_NO_REPLAY/);assert.equal(h.ctx.agents.get(row.sessionId),undefined);assert.equal(h.ctx.piAuthority.describe(row.sessionId),undefined)
  assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1);assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,0)
  const requests=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(writes,1);assert.equal(h.requests.length,requests);assert.equal((await h.query('task.events')).events.length,0);assert.deepEqual(await h.query('execution.list'),[])

@@ -24,7 +24,7 @@ const fail=code=>Object.assign(new Error(code),{code})
 export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,onSkillCommand,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
- let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false,taskFinished=false
+ let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false,taskFinished=false,taskStopReason
  const healthy=()=>{if(failure)throw failure;if(closed)throw fail('PI_BUSINESS_ADMISSION_CLOSED')}
  const append=(kind,payload)=>store.appendAudit({version:1,domain:'admission',kind,payload})
  function restore(receipt){
@@ -74,7 +74,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
     if(previous){if(!isDeepStrictEqual(previous,packet))throw fail('PI_BUSINESS_ADMISSION_ID_CONFLICT');return {id:packet.id,duplicate:true,admitted:admitted.has(packet.id)||commands.status(packet.id)==='admitted'}}
     append(internal?'enqueued-internal':'enqueued',packet)
     const retire=taskFinished&&internal&&packet.source.kind==='job-completion'
-    if(retire)append('cancelled',{id:packet.id,reason:'task-result-committed'})
+    if(retire)append('cancelled',{id:packet.id,reason:taskStopReason})
     await commit();packets.set(packet.id,packet);if(internal)internalPackets.add(packet.id);if(retire)cancelled.add(packet.id)
     return {id:packet.id,duplicate:false,admitted:false}
    })
@@ -82,6 +82,16 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
  // This constructor callback receives the producer capability. It is never
  // exposed on the actor's public outbox, nor selected by self-reported source.
  if(bindInternal!==undefined){if(typeof bindInternal!=='function')throw new TypeError('Internal publisher receiver required');bindInternal(input=>enqueue(input,true))}
+ const stopTaskRun=(session,reason)=>{
+   healthy();taskFinished=true;taskStopReason??=reason;paused=true;session.clearQueue()
+   return serialize(async()=>{
+    await acknowledge()
+    const ids=[...internalPackets].filter(id=>packets.get(id).source.kind==='job-completion'&&!admitted.has(id)&&!cancelled.has(id))
+    for(const id of ids)append('cancelled',{id,reason:taskStopReason})
+    await commit();for(const id of ids)cancelled.add(id)
+    return ids
+   })
+ }
  return {
   enqueue:input=>enqueue(input),
   has:id=>packets.has(id),
@@ -100,16 +110,8 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   // that ephemeral queue before returning the result, retaining all business
   // inputs and terminal job facts in the durable ledger. Only authenticated
   // internal job notices are retired; user supplements remain pending.
-  finishTaskRun(session){
-   healthy();taskFinished=true;paused=true;session.clearQueue()
-   return serialize(async()=>{
-    await acknowledge()
-    const ids=[...internalPackets].filter(id=>packets.get(id).source.kind==='job-completion'&&!admitted.has(id)&&!cancelled.has(id))
-    for(const id of ids)append('cancelled',{id,reason:'task-result-committed'})
-    await commit();for(const id of ids)cancelled.add(id)
-    return ids
-   })
-  },
+  finishTaskRun:session=>stopTaskRun(session,'task-result-committed'),
+  holdTaskRun:session=>stopTaskRun(session,'task-effect-held'),
   cancelPending(reason='user'){
    return serialize(async()=>{
     if(typeof reason!=='string'||!reason)throw new TypeError('Cancellation reason required')
