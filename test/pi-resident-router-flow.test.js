@@ -1115,3 +1115,30 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
   assert.equal((await h.query('task.list')).length,0)
   t.diagnostic(JSON.stringify({case:'router-contextual-memory',sections:3,contextResolved:true,historyIsEvidenceOnly:true,subject:'context-dependent',diskAndDetailVerified:true,coldRecall:true,duplicateNoReplay:true,updateAndDiff:true,noSpeculation:true,deleted:true,realMessages:0}))
 })
+
+test('taskless triage persists preparation phases and native metrics through disposal and restart',{timeout:nativeTestTimeout(60000)},async t=>{
+ const h=await residentRouterHost(t,body=>{
+  if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:false}))
+  return {text:'No further work'}
+ })
+ const message=channelMessage('triage-phase-metrics',{text:'PRIVATE_TRIAGE_BODY'})
+ await h.receive(message);await h.service.whenIdle()
+ const rows=await eventually(()=>{
+  const rows=h.service.listPerformance({runtimeOwner:'channel-triage'}).rows
+  return rows.some(row=>row.phaseMs['triage-total'])&&rows
+ },'durable triage tail')
+ assert.equal(rows.length,1);const row=rows[0]
+ assert.equal(row.taskId,undefined);assert.equal(row.groupId,h.host.ctx.channels.identity(message).sessionId)
+ assert.ok(row.sessionId.startsWith('session-triage-'));assert.equal(h.host.ctx.agents.get(row.sessionId),undefined)
+ assert.equal(row.modelCalls,1);assert.equal(row.toolCalls,1);assert.equal(row.toolResults,1)
+ for(const phase of ['triage-total','session-create','workspace','session-store-open','session-prepare-actor','session-resolve-resources','session-sdk-create','resources-create','resources-deliver','resources-before-run','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','triage-commit','session-dispose']){
+  assert.ok(row.phaseMs[phase]?.count>0,phase);assert.equal(row.phaseMs[phase].failures,0,phase)
+ }
+ assert.ok(row.phaseMs['triage-total'].sum>=row.phaseMs['session-create'].sum)
+ assert.equal(JSON.stringify(rows).includes(message.text),false)
+ assert.equal((await h.query('task.list')).length,0);assert.equal(h.sent.length,0)
+ const requests=h.requests.length
+ await h.restart();await h.receive(message);await h.service.whenIdle()
+ const restored=h.service.listPerformance({sessionId:row.sessionId}).rows[0]
+ assert.deepEqual(restored,row);assert.equal(h.requests.length,requests)
+})

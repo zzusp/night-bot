@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {mkdtemp,readFile,rm} from 'node:fs/promises'
 import {join} from 'node:path'
-import {makeAgentObservation,agentObservationSchema,bindPiAgentObservation} from '../src/runtime/pi-agent-observation.js'
+import {makeAgentObservation,agentObservationSchema,bindPiAgentObservation,createAgentPhaseTimer} from '../src/runtime/pi-agent-observation.js'
 import {openNativeDomains} from '../src/native-domain.js'
 import NativeAgents from '../src/native-agents.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
@@ -113,4 +113,36 @@ test('a read-only prior Night metrics source is never used as a fallback legacy 
  assert.equal(observation.listPerformance().status,'unsupported')
  assert.deepEqual(await observation.observeNative(record('model-completed',10)),{created:false,status:'unsupported'})
  assert.equal(oldWrites,0)
+})
+
+
+test('Host phase timing preserves success/failure when the metadata sink fails and rejects private payloads',async()=>{
+ const records=[],errors=[],cause=Error('PRIVATE_BUSINESS_FAILURE');let now=0
+ const measure=createAgentPhaseTimer({ownerId:'triage',emit:event=>{records.push(event);throw Error('sink failed')},onError:error=>errors.push(error),clock:()=>base,elapsed:()=>++now})
+ assert.equal(await measure('session-create',async()=>42),42)
+ await assert.rejects(measure('request-commit',async()=>{throw cause}),error=>error===cause)
+ assert.deepEqual(records.map(event=>event.summary.outcome),['completed','failed'])
+ assert.equal(records[0].summary.elapsedMs,1);assert.equal(errors.length,2)
+ assert.equal(JSON.stringify(records).includes('PRIVATE_BUSINESS_FAILURE'),false)
+ for(const summary of [{phase:'PRIVATE_PHASE',elapsedMs:1,outcome:'completed'},{phase:'skills',elapsedMs:-1,outcome:'completed'},{phase:'skills',elapsedMs:1,outcome:'unknown'},{phase:'skills',elapsedMs:1,outcome:'completed',body:'SECRET'}])assert.throws(()=>makeAgentObservation({...records[0],summary}))
+})
+
+test('taskless triage metrics, failed phases and SDK completions survive queued disposal and cold restart',async t=>{
+ const f=await storage(t);let store=await f.open()
+ const observe=()=>createTaskSessionObservability({store,listTasks:()=>[],resolveSessionIdentity:()=>null})
+ let observation=observe();const identity=Object.freeze({groupId:'group',runtimeOwner:'channel-triage'})
+ const completed=record('model-completed',40,{usage:{input:3,output:2}})
+ const phase=record('phase-completed',50,{phase:'session-dispose',elapsedMs:12,outcome:'failed'})
+ const errors=[],queue=createTaskObservationQueue({observe:(event,scope)=>observation.observeNative(event,scope),onError:error=>errors.push(error)})
+ for(const event of [completed,phase,completed,phase])queue.enqueue(event,identity)
+ await queue.close();assert.deepEqual(errors,[])
+ let row=observation.listPerformance({sessionId:'owner',runtimeOwner:'channel-triage'}).rows[0]
+ assert.equal(row.taskId,undefined);assert.equal(row.groupId,'group');assert.equal(row.modelCalls,1)
+ assert.deepEqual(row.phaseMs['session-dispose'],{count:1,sum:12,max:12,failures:1,p50:12,p95:12})
+ assert.equal(observation.listPerformance({taskId:'foreign'}).rows.length,0)
+ assert.equal((await observation.observeNative(completed)).created,false)
+ await store.close();store=await f.open();observation=observe()
+ row=observation.listPerformance({groupId:'group'}).rows[0]
+ assert.equal(row.modelCalls,1);assert.equal(row.phaseMs['session-dispose'].failures,1)
+ assert.deepEqual(await observation.observeNative(phase,identity),{created:false})
 })

@@ -100,6 +100,14 @@ Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport
 
 不要清理仍被进程使用的数据、SQLite WAL、会话或临时文件。
 
+### 分流准备耗时
+
+启动时先本地导入当前所选模型（含分诊/Router/任务角色覆盖）对应的 Pi 协议，再发布官方会话工厂；这可能延长启动等待，但不发送模型探测请求。预加载导入失败会阻止工厂就绪；缺失/无效模型声明沿用原配置诊断，不以无效配置触发额外模块加载。更换到启动时未选中的协议后，其首次请求仍可能加载新模块。
+
+既有只读 `/state/performance?sessionId=<分流会话ID>`（或 `groupId`）返回 `runtimeOwner: channel-triage`、原生模型/工具指标和 `phaseMs`。重点查看 `session-create` 及其存储/挂载/模型解析子项、`resources-create` / `resources-deliver` / `resources-before-run`、`instructions` / `skills` / `sdk-reload`、`input-enqueue` / `input-acknowledge`、`request-prepare` / `request-guards` / `request-commit`、`triage-commit` / `session-dispose`。每项有 `count/sum/max/p50/p95/failures`，单位为毫秒。总分流用 `triage-total`；父子项、并行读取和发送可能重叠，不相加。该投影异步落盘，分流结束不等于查询尾部已写完；正常关停沿用观测队列排空，冷恢复不重放消息。历史数据不会凭空补出分项。
+
+这仅提供定位依据，不证明真实渠道提速；应在另行授权部署后，用同口径消息测量首答可见时间。
+
 若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。继续处理须由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的显式续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
 
 ## 文件工具纠错与未知效果

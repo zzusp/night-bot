@@ -1,3 +1,4 @@
+import {createAgentPhaseTimer} from '../runtime/pi-agent-observation.js'
 import {sourceStageTiming} from './source-stage-timing.js'
 import {routerMemoryParameters,hash as memoryHash} from '../memory/format.js'
 import {conversationSource} from './message-safety.js'
@@ -12,7 +13,7 @@ const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JS
 export const residentOperationId=(conversationId,key)=>'router-operation:'+createHash('sha256').update(JSON.stringify([conversationId,key])).digest('hex')
 
 /** A short official Pi turn, with no task tools or long-history reads. */
-export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage}){
+export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage,observe}){
   const handles=new Set(),entries=new Map()
   let closed=false
   async function run(conversationId,messages){
@@ -21,13 +22,15 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
     const sessionId='session-triage-'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),sealed:false,superseded:false}
     entry.timing=sourceStageTiming({recordStage,stage:'triage',sessionId,requestId:sessionId,groupId:conversationId,onError:error=>ctx.logger?.warn?.(`message timing: ${error.code??error.message}`)})
     entry.timing.start(snapshot)
+    const measurePhase=observe?createAgentPhaseTimer({ownerId:sessionId,emit:record=>observe(conversationId,record),onError:()=>ctx.logger?.warn?.('Triage phase observation failed')}):(_phase,run)=>run()
+    entry.measurePhase=measurePhase
     entries.set(conversationId,entry)
     const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
     entry.packet=packet
     let submitted=false,handle
-    try{
-      handle=await ctx.get('agents').create({sessionId,agentOptions:typeof models==='function'?models():models,
-        meta:{cwd:await sessionWorkspace(root,'route'),runtimeOwner:'channel-triage',agentPreset:legacy.getAgentConfig().agentPreset},
+    return measurePhase('triage-total',async()=>{try{
+      handle=await measurePhase('session-create',async()=>ctx.get('agents').create({sessionId,measurePhase,agentOptions:typeof models==='function'?models():models,
+        meta:{cwd:await measurePhase('workspace',()=>sessionWorkspace(root,'route')),runtimeOwner:'channel-triage',conversationId,agentPreset:legacy.getAgentConfig().agentPreset},
         authorizeInput:(candidate,actor)=>actor.id===sessionId&&!closed&&!entry.superseded&&isDeepStrictEqual(candidate,entry.packets.get(candidate.id)),
         beforeRequest:()=>{if(closed||submitted||entry.superseded)fail('TRIAGE_INACTIVE')},
         setup:async(agentCtx,agent)=>{
@@ -37,7 +40,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
               if(exec.agent!==agent||closed||entry.superseded)fail('TRIAGE_WRONG_SESSION')
               const decision=validateTriageDecision(snapshot,input)
               entry.sealed=true
-              try{const result=await commit(conversationId,decision,snapshot);submitted=true;exec.concludeTurn();return result}
+              try{const result=await measurePhase('triage-commit',()=>commit(conversationId,decision,snapshot));submitted=true;exec.concludeTurn();return result}
               catch(error){entry.sealed=false;throw error}
             }})
           agentCtx.get('tools').restrict({allow:[]})
@@ -51,16 +54,16 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
           ].join(String.fromCharCode(10))})
           agentCtx.get('systemPrompt').section({name:'channel-triage-memory',order:152,text:'涉及可复用事实/偏好、纠正遗忘或Skill维护的交办消息应交Router，needsHandling=true；由Router依据语境判断是否增改删记忆或Skill，不在分诊层限制固定授权句首、替Router做学习决策或提前声称保存成功。'})
           agentCtx.get('systemPrompt').section({name:'channel-triage-scope',order:151,interpolate:false,officialText:()=> '当前会话配置职责：'+responsibilityFor(conversationId)+'。仅用于本会话一级分诊，不创造来源授权、任务控制或跨会话读取权限。'})
-        }})
+        }}))
       handles.add(handle);entry.handle=handle;entry.stopObserving=entry.timing.observe(handle.session)
       if(entry.superseded)return
       const initial=packet()
-      try{await handle.enqueue(initial);await handle.deliver(initial.id);await handle.whenIdle()}
+      try{await measurePhase('input-enqueue',()=>handle.enqueue(initial));await handle.deliver(initial.id);await handle.whenIdle()}
       catch(error){if(!entry.superseded)throw error}
       if(!submitted&&!entry.superseded)fail('TRIAGE_NO_DISPOSITION')
     }finally{
-      try{await entry.cancellation}finally{try{if(handle){await handle.dispose();handles.delete(handle)}await entry.timing.finish()}catch(error){await entry.timing.finishIfSettled();throw error}finally{entry.stopObserving?.();if(entries.get(conversationId)===entry)entries.delete(conversationId)}}
-    }
+      try{await entry.cancellation}finally{try{if(handle){await measurePhase('session-dispose',()=>handle.dispose());handles.delete(handle)}await entry.timing.finish()}catch(error){await entry.timing.finishIfSettled();throw error}finally{entry.stopObserving?.();if(entries.get(conversationId)===entry)entries.delete(conversationId)}}
+    }})
   }
   async function append(conversationId,messages){
     const entry=entries.get(conversationId)
@@ -76,7 +79,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
     if(!added.length)return false
     entry.messages.push(...structuredClone(added))
     entry.timing.start(added)
-    if(entry.handle){const packet=entry.packet();await entry.handle.enqueue(packet);await entry.handle.deliver(packet.id,{deliverAs:'steer'})}
+    if(entry.handle){const packet=entry.packet();await entry.measurePhase('input-enqueue',()=>entry.handle.enqueue(packet));await entry.handle.deliver(packet.id,{deliverAs:'steer'})}
     return true
   }
   return {run,append,async close(){closed=true;const results=await Promise.allSettled([...handles].map(handle=>handle.dispose()));const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Triage drain failed')}}

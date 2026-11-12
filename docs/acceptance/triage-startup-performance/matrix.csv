@@ -1,0 +1,13 @@
+case_id,case,round-1,evidence
+P1,只加载选中官方协议且无请求和凭据读取,PASS,test/pi-official-model-runtime.test.js:21
+P2,实际Host发布官方工厂前等待预加载,PASS,test/pi-official-model-runtime.test.js中的actual Host用例
+O1,无taskId分流保存原生模型及工具指标,PASS,test/pi-resident-router-flow.test.js:789
+O2,准备及资源和请求与收尾分项全部可查询,PASS,test/pi-resident-router-flow.test.js:789
+O3,释放actor及服务重启后保留指标且不重放,PASS,test/pi-resident-router-flow.test.js:789
+O4,失败阶段及元数据白名单和计量异常不回滚业务,PASS,test/pi-agent-observation.test.js:119
+C1,既有性能投影及队列兼容用例23项,PASS,test/performance.test.js与test/task-session-observability.test.js；组合命令因另一个退休测试失败退出1
+G1,源码来源哈希及生产导入和原生守卫,PASS,pnpm check独立执行exit0
+F1,当前工作树完整默认回归,FAIL,1370总计；1306通过；37失败；27跳过；exit1
+B1,修改前模块的8项代表失败对照,FAIL,8项均与当前用例同因失败；12个实际基线模块输出哈希；未回退磁盘文件
+L1,额外退休性能运行时测试,FAIL,test/performance-runtime.test.js导入不存在的openResidentRuntime；原HEAD亦无该导出
+V1,真实模型及渠道首答延迟验收,SKIP,未授权真实模型请求或部署与消息发送
