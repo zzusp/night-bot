@@ -11,7 +11,7 @@ node bin/night-bot-effects.js CONFIG new-action AUTHORIZATION.json --operator-te
 ```
 
 The strict authorization JSON contains `taskId`, a unique `requestId`, the exact
-complete `closedIntentEntryIds` array, a nonempty new `objective`, and the paused
+complete `closedIntentEntryIds` array, a nonempty new `objective`, and the current
 task's `expectedRequirementRevision` and `expectedControlRevision`. The separate
 note is the real operator's explanation. It is recorded as an authenticated web
 source under the configured web actor; a model cannot supply an actor or grant.
@@ -20,10 +20,14 @@ The credential never becomes source text, a model message, or task state.
 The Host holds task admission and the real native writer while verifying the
 committed SQL closures against their exact official journal entries, digests,
 original calls, inputs and admissions. The standing scope must still match every
-closure. It records the operator source, revises the task while paused, then
-activates it. These steps have deterministic command identities. An interruption
-after source or revision remains paused; resubmitting the identical authorization
-completes the remaining steps without adding another revision. A changed replay
+closure. The task must be drained with no live owner. If ordinary routing has
+left it active, the Host first pauses it after all these checks, using a durable
+command whose identity also binds the complete proposal and operator note digest.
+It then records the operator source, revises the task while paused, and activates it. These steps have deterministic command identities. An interruption
+after pause, source or revision remains paused; resubmitting the identical authorization
+completes the remaining steps without adding another revision. The proposal keeps
+the pre-pause control revision; retries read the exact pause receipt rather than
+pausing twice or guessing the revision. A changed replay
 body is rejected. Activation acknowledges an explicitly requested continuation;
 this is not a distributed transaction across arbitrary external effects.
 
@@ -38,7 +42,8 @@ approval capabilities, and it does not claim earlier partial effects were undone
 
 `test/pi-task-effect-action-e2e.test.js` exercises actual Host tool effects,
 private HTTP/CLI authentication, same-argument distinct invocation, rejected
-model-initiated authorization, source/revision/activation-response crash cuts, cold service recovery,
+model-initiated authorization, paused and drained-active entry,
+pause/source/revision/activation-response crash cuts, cold service recovery,
 and idempotent replay of the operator request. Kernel isolation and real vendor
 delivery are validated separately.
 

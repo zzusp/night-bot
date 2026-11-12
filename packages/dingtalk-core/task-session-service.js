@@ -425,17 +425,23 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const identity=taskEffectActionAuthorizationIdentity(proposal),{taskId,requestId}=identity
     return admitTask(taskId,async()=>{
       let task=await requireTask(taskId)
-      const key=hash([taskId,requestId]),sourceId='effect-action:'+key,reviseId='effect-action-revise:'+key,activateId='effect-action-activate:'+key
+      const key=hash([taskId,requestId]),sourceId='effect-action:'+key,pauseId='effect-action-pause:'+key,reviseId='effect-action-revise:'+key,activateId='effect-action-activate:'+key
       const source=await query('source.get',{sourceId})
       if(source&&(source.actorId!==config.webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+taskId)||source.text!==operatorText||hash(source.requestIdentity?.effectAuthorization)!==hash(identity)))fail('DYNAMIC_COMMAND_ID_CONFLICT')
       const activated=await query('receipt.get',{id:activateId})
       if(activated){if(!source)fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED');return {taskId,sourceId,state:'authorized',requirementRevision:activated.result.task.requirementRevision,controlRevision:activated.result.task.controlRevision,noReplay:true}}
       if(inflightTasks.has(taskId)||ctx.agents.get(task.sessionId))fail('TASK_EFFECT_OWNER_LIVE')
-      if(!task.drained||task.recovering||task.archivedAt||task.status!=='active'||task.control!=='paused')fail('TASK_EFFECT_TASK_NOT_QUIESCENT')
+      if(!task.drained||task.recovering||task.archivedAt||task.status!=='active'||!['active','paused'].includes(task.control))fail('TASK_EFFECT_TASK_NOT_QUIESCENT')
+      const pauseArgs={taskId,control:'paused',expectedControlRevision:identity.expectedControlRevision,reason:'effect-action:'+hash([identity,operatorText])}
+      const paused=await query('receipt.get',{id:pauseId})
+      // 暂停收据绑定完整提案和说明摘要；中断重试不能更换授权内容。
+      if(paused)await command('task.control',pauseArgs,pauseId)
+      let expectedControlRevision=identity.expectedControlRevision+(paused?1:0)
+      if(paused&&task.control!=='paused')fail('TASK_EFFECT_AUTHORIZATION_STALE')
       const revised=await query('receipt.get',{id:reviseId})
       if(revised){
-        if(!source||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==identity.expectedControlRevision||task.objective!==identity.objective||!task.sourceRefs.includes(sourceId))fail('TASK_EFFECT_AUTHORIZATION_STALE')
-      }else if(task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==identity.expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        if(!source||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==expectedControlRevision||task.objective!==identity.objective||!task.sourceRefs.includes(sourceId))fail('TASK_EFFECT_AUTHORIZATION_STALE')
+      }else if(task.requirementRevision!==identity.expectedRequirementRevision||task.controlRevision!==expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
       const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:effectReconciliationAuditKinds})
       try {
         const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
@@ -443,11 +449,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const scopeDigest=taskEffectScopeDigest(await readTaskEffectScope(ctx,task,stored))
         if(closures.some(row=>row.receipt.payload.scopeDigest!==scopeDigest))fail('TASK_EFFECT_SCOPE_MISMATCH')
         if(closures.some(row=>identity.expectedRequirementRevision+1<=row.receipt.payload.currentBinding.requirementRevision))fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        if(task.control==='active'){
+          const held=await command('task.control',pauseArgs,pauseId)
+          expectedControlRevision=held.result.task.controlRevision
+        }
         if(!source)await command('source.record',{sourceId,groupId:task.groupId??'task:'+taskId,messageId:sourceId,actorId:config.webActorId,channel:'web',text:operatorText,timestamp:new Date().toISOString(),requestIdentity:{effectAuthorization:identity}},'source:'+sourceId)
-        if(!revised)await command('task.revise',{taskId,expectedRequirementRevision:identity.expectedRequirementRevision,expectedControlRevision:identity.expectedControlRevision,request:identity.objective,objective:identity.objective,sourceRefs:[...new Set([...task.sourceRefs,sourceId])]},reviseId)
+        if(!revised)await command('task.revise',{taskId,expectedRequirementRevision:identity.expectedRequirementRevision,expectedControlRevision,request:identity.objective,objective:identity.objective,sourceRefs:[...new Set([...task.sourceRefs,sourceId])]},reviseId)
         task=await requireTask(taskId)
-        if(task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==identity.expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
-        await command('task.control',{taskId,control:'active',expectedControlRevision:identity.expectedControlRevision},activateId)
+        if(task.control!=='paused'||task.requirementRevision!==identity.expectedRequirementRevision+1||task.controlRevision!==expectedControlRevision)fail('TASK_EFFECT_AUTHORIZATION_STALE')
+        await command('task.control',{taskId,control:'active',expectedControlRevision},activateId)
       }finally{await writer.close()}
       const activatedReceipt=await query('receipt.get',{id:activateId})
       return {taskId,sourceId,state:'authorized',requirementRevision:activatedReceipt.result.task.requirementRevision,controlRevision:activatedReceipt.result.task.controlRevision,noReplay:true}

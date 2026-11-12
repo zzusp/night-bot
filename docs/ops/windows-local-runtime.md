@@ -80,6 +80,18 @@ node bin/night-bot-auth.js data/config/config.json login openai-codex
 
 API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `night-bot-auth ... set-ref NAME` 的隐藏输入配置；不把密钥写入命令行、日志、源码或验收报告。配置文件只含变量名不代表已经具备可用密钥，必须分别记录配置可解析与真实 API 调用结果。不要为补齐引用搜索其他秘密文件。
 
+## 未知效果结清后的新目标续办
+
+出现 `TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED` 时，普通恢复、重开、修改目标或切换 `full` 都不能替代独立授权。先只读核对原任务当前版本、已排空状态和全部 committed 结清 intent，按[新目标授权合同](../EFFECT-ACTION-AUTHORIZATION.md)准备精确提案与操作者说明；不得改 SQLite、Pi 日志或旧收据清警。
+
+```powershell
+node bin/night-bot-effects.js data/config/config.json new-action AUTHORIZATION.json --operator-text-file NOTE.txt
+```
+
+提案和说明属于安装私有运维材料，保存在 `data/workspaces/`，不提交 Git。该命令连接运行实例，持私密操作者能力；不会启动第二个 Host。当前任务必须已排空且没有在线执行者；若控制态仍 active，服务在完整验证旧结清和范围后先持久暂停，再独立修订、激活。暂停后的中断重试须使用完全相同的提案和说明，版本仍填写首次提交时的值；不得自行递增或删旧收据。旧调用的 noReplay 永久保留。
+
+命令回执 `authorized` 只证明新目标被接纳，须继续核对原 session 的业务终态和实际输出。它不授权历史操作重放、业务发布或扩大原权限范围；运行中的旧发行也不会因本地源码变化而自动升级。
+
 ## 启动与停止
 
 ```powershell
