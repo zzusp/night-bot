@@ -7,7 +7,7 @@ import {atomicWrite,readRegular,acquireLock,failure} from '../runtime/files.js'
 
 const scope={kind:'bot',id:hash('bot:shared')}
 const journalName='layout-migration.pending.json',receiptName='layout-migration.json'
-const known=new Set(['topics','scope.json','index.md','candidates.md','usage.json','skill-usage.sqlite','skill-usage.sqlite-wal','skill-usage.sqlite-shm','evolution','migration.json','.lock',journalName,receiptName,'categories','sources'])
+const known=new Set(['topics','scope.json','index.md','candidates.md','usage.json','skill-usage.sqlite','skill-usage.sqlite-wal','skill-usage.sqlite-shm','evolution','installed-previous.json','migration.json','.lock',journalName,receiptName,'categories','sources'])
 const stat=path=>lstat(path).catch(error=>{if(error.code!=='ENOENT')throw error})
 const fail=code=>{throw failure('MEMORY_MIGRATION_'+code)}
 async function safePath(path){
