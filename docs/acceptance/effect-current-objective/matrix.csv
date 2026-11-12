@@ -20,3 +20,4 @@ router-ledger-identity-cas-and-dependencies,NOT-RUN,NOT-RUN,PASS
 router-local-archive-audit-and-reactivation,NOT-RUN,NOT-RUN,PASS
 historical-frozen-notification,NOT-RUN,NOT-RUN,PASS
 routing-full-cohort,NOT-RUN,NOT-RUN,FAIL-94P-1F-1C-FAILED-CASES-RETEST-PASS
+router-model-visible-scheduling-contract,NOT-RUN,NOT-RUN,PASS

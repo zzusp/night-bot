@@ -12,15 +12,15 @@
 | --- | --- |
 | src/tasks/single-session.js | 52410191bfbb464b579f719e6bc6c918f45451bc55ead37b832d543a9e44b08e |
 | src/channels/router-ledger.js | ff86235f24168d3325f4212136447ebfaff94c98ac2f2aa293a75dd6e5de67a8 |
-| src/channels/resident-router-business.js | 097483f2cb59c36d3448a48e6804c0c6ed307eb27cff6131dd8f71f8ff8f23da |
+| src/channels/resident-router-business.js | 83603fa2b91042aa464cfd5a820127b776178799bccc0feefe57a853de17a8ea |
 | packages/dingtalk-core/task-session-service.js | c134984a8640804ba531d21dd40f9432aefad5bfecb5c50776aa4f6be48f1e03 |
 | packages/dingtalk-core/dynamic-task-store.js | 77f4e245576cda2301ba410d1e748e09ddf3c5d0f8ec536ff7742b5597179d74 |
 | packages/dingtalk-core/task-archive.js | 19b60f03536410acaf8d5e9f41c1b65b607491b637f32dbdd9646b4da37ce77c |
-| test/pi-resident-router-flow.test.js | c253ce7ae672c3ac8a3a4f3e75ec0750b7c9f25c1558bc0f4015ee9aa12531b2 |
+| test/pi-resident-router-flow.test.js | f278f263d9782b77dc916c0fe574047cce94c3922839c601dab623111b110a1b |
 | test/pi-router-ledger.test.js | 01bbb62a329808050fe72205cd1889f07f96282780d96be4f665f17f7a452b50 |
 | test/task-notification-retry-native.test.js | 56bc70a4e7be32a34907100df68dce694dfb54599886a4a507224161330a0242 |
 
-各组按实际受验范围绑定：66 条效果和 12 条 Single/对账验证完成后，状态机仅追加 Router 专属终态重激活/归档审计修复；相关分支再由末次账本和原会话调度覆盖。最后仅修正结清结果中的旧“继续须另行明确请求”提示，随后两条原结清中断场景在最终源码上再通过。不声称所有组在以上最终字节上同时全量重跑。
+各组按实际受验范围绑定：66 条效果和 12 条 Single/对账验证完成后，状态机仅追加 Router 专属终态重激活/归档审计修复；相关分支再由末次账本和原会话调度覆盖。最后仅修正结清结果中的旧“继续须另行明确请求”提示，随后两条原结清中断场景在最终源码上再通过。不声称所有组在以上最终字节上同时全量重跑。交付前另同步真实 Router 系统提示中的旧作者/强制答复限制；完整停启用例在实际模型请求中断言收到完整调度权且没有旧作者限制，再沿全链到终态。
 
 ## 实跑结果
 
@@ -32,6 +32,7 @@
 | 最终 Router 账本 | 26 PASS / 0 FAIL / 0 CANCEL / 0 SKIP；28038.3275ms | 跨作者调度、历史来源追溯、CAS/代际/跨会话/环反例；来源更新使旧依赖 pending；终态重启提升要求版本且旧验收失效；归档停止保留新来源审计、激活及再次归档不丢原收据 |
 | 路由组失败项串行补验 | 2 PASS / 0 FAIL / 0 CANCEL / 0 SKIP；108831.874ms | 真实 Router→Host→原 Pi session 完整停启链，以及历史冻结通知终态；未延长原超时 |
 | 最后结清提示调整后复验 | 2 PASS / 0 FAIL / 0 CANCEL / 0 SKIP；91277.5691ms | prepared-only 与 journal-committed 原结清事务由 Router 准入自动收齐，保控制版本和原 session，独立实际写入后完成，无额外新目标来源 |
+| 实际 Router 系统提示与完整停启补验 | 1 PASS / 0 FAIL / 0 CANCEL / 0 SKIP；109757.0085ms | 实际模型请求确认完整调度权、无旧作者限制；再沿原 session 停启、冷重开、归档再激活至完成 |
 | 来源/哈希/导入/原生运行时 | `pnpm check` PASS；`git diff --check` PASS | 190 retained / 10 retired / 3 excluded UI / 59 adapted；relativeImports closed；425 production/runtime JS，externalSdkImports 0，legacyOrchestratorDefinitions 0 |
 
 真实停启链：首次写 proof → operator 问题等待 → 另一作者触发 Router 暂停 → 无问题 ID/无新授权来源直接唤起并读原 proof → 模型在途时取消且 join 原 owner → 从取消态原 session 再启动并完成 → 关闭 Host 并冷重开后同目标 reopen → 本地归档后再唤起完成。原 proof 只写一次，唯一 task/session，旧 completion event ID 保留，未发外部消息。等待被 superseded，不伪造人已回答。
@@ -57,7 +58,8 @@ git diff --check
 2. 旧未知效果夹具永远重复提议写工具，在新“允许会话起来核验”合同下不结束，导致效果组 65 PASS / 1 CANCEL。修正脚本：第二次提议仍被实际执行前拒绝，随后报告 wait；原效果/intent 仍 1，无伪造成功或结清。完整 66 条随后通过。
 3. 全路由组中新长链在并行运行时超过原 200 秒而被取消；同一断言和超时串行补验，业务用例 85918.7676ms 通过。未证明并行超时的唯一根因，未延长超时来盖过问题。
 4. 历史冻结通知用例稳定复现 `TASK_WORKSPACE_NOT_READY`，模型请求数 0：夹具直接创建原始账本任务，未兑现 Windows 原生目录初始化事务。复用 `initializeMemoryTaskWorkspace`，真实执行 begin/目录创建/finish；保留原通知及任务完成断言，补验通过。生产工作区检查未放宽。
-5. 自查终态激活路径发现可能复用旧依赖验收；修复为要求版本递增并经 same-goal reopen 的依赖重绑定，补反例通过。归档停止来源纳入任务 sourceRefs，真实导出验证及再次归档通过。均不新增调度授权。
+5. 交付前核对实际 Router 系统提示，发现其仍有旧作者与必须绑定人工问题的指令；已与工具合同同步。完整调度用例新增实际 provider 请求断言后，沿同一会话全链再通过，未仅检查静态字符串。
+6. 自查终态激活路径发现可能复用旧依赖验收；修复为要求版本递增并经 same-goal reopen 的依赖重绑定，补反例通过。归档停止来源纳入任务 sourceRefs，真实导出验证及再次归档通过。均不新增调度授权。
 
 ## 边界与实际安装
 
