@@ -337,13 +337,17 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return null
   } })
   const observationQueue = createTaskObservationQueue({
-    observe: record => observation.observeNative(record),
+    observe: (record,identity) => observation.observeNative(record,identity),
     onError: error => failures.set('observability', { id: 'observability', code: error.code ?? 'AGENT_OBSERVATION_FAILED' }),
     ...(closeTrace ? { onProgress: queued => closeTrace.sample('service.observation-progress', () => ({ queued })) } : {}),
   })
   const stopObservation = ctx.on?.('night/agent-observation', (actor, record) => {
     if(!record||record.ownerId!==actor?.id||actor.metadata?.id!==actor.id||!Object.isFrozen(actor.metadata)||ctx.get('agents')?.get(record.ownerId)!==actor)return
-    try{observationQueue.enqueue(agentObservationSchema.parse(record))}
+    try{
+      // 在可信实时 actor 仍存在时捕获身份；排队写入不得依赖 dispose 后的查找。
+      const identity=actor.metadata.runtimeOwner==='channel-triage'?{runtimeOwner:'channel-triage',groupId:actor.metadata.conversationId}:undefined
+      observationQueue.enqueue(agentObservationSchema.parse(record),identity)
+    }
     catch(error){failures.set('observability',{id:'observability',code:error.code??'AGENT_OBSERVATION_INVALID'})}
   })
   residentStore?.setTaskSessionReader?.({ getTask: id => taskCache.get(id), listTasks: () => [...taskCache.values()],
@@ -941,7 +945,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,commit:async(groupId,decision)=>{
+  const triage=createChannelTriage({ctx,root,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,
+    observe:(groupId,record)=>observationQueue.enqueue(record,{runtimeOwner:'channel-triage',groupId}),
+    commit:async(groupId,decision)=>{
     const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))
     for(const notification of receipt.result?.notifications??[])notificationCache.set(notification.id,notification)
     void deliverNotifications()

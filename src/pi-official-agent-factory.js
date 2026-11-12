@@ -67,6 +67,7 @@ export class OfficialAgentFactory {
  }
  async openOwned(ownerCtx,options={},mode){
   options.signal.throwIfAborted()
+  const measurePhase=options.measurePhase??((_phase,run)=>run())
   const ports=this.ports,backend=ports.store??ownerCtx.get('sessionPersistence')
   const authorize=options.authorizeInput??ports.authorizeInput,drainBusiness=ports.drainBusiness
   if(typeof authorize!=='function'||typeof drainBusiness!=='function'||typeof ports.resolveResources!=='function')throw fail('PI_OFFICIAL_FACTORY_CAPABILITIES_REQUIRED')
@@ -76,7 +77,7 @@ export class OfficialAgentFactory {
   if(typeof id!=='string'||!id)throw fail('PI_OFFICIAL_FACTORY_ID_REQUIRED')
   const auditKinds=mergeKinds(nativeBusinessAuditKinds,admissionAuditKinds,jobReceiptKinds,todoAuditKinds,skillObservationAuditKinds,effectReconciliationAuditKinds,sessionNameAuditKinds,ports.auditKinds,options.auditKinds)
   const metadata=mode==='resume'?undefined:(await ports.createMetadata?.(options.meta??{},options)??options.meta)
-  const store=mode==='resume'?await backend.openNative(id,{auditKinds,signal:options.signal}):await backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal})
+  const store=await measurePhase('session-store-open',()=>mode==='resume'?backend.openNative(id,{auditKinds,signal:options.signal}):backend.createNative({...metadata,version:4,id,createdAt:Date.now(),isSeeded:false},{auditKinds,signal:options.signal}))
   let actor,bundle,scope,unbind,unbindInputs,unbindNotices,observer,skillRefresh,detach,published=false,disposed=false,closing=false,cancelled=false,closePromise,interruptPromise,maintenance=Promise.resolve(),maintenanceCount=0,maintenanceRestore=false,maintenanceFailed=false,maintenanceReleases=[],routerFrozen=false,routerContinuing=false,routerResumeCheck
   const cancellationError=fail('PI_OFFICIAL_ACTOR_NOT_LIVE')
   const lifecycle=new AbortController(),deliveryContext=new AsyncLocalStorage(),pending=new Set()
@@ -101,16 +102,16 @@ export class OfficialAgentFactory {
     if(mode!=='create'||options.routerHandoff.conversationId!==options.meta?.conversationId)throw fail('PI_ROUTER_HANDOFF_SCOPE')
     store.manager.appendCustomMessageEntry('night.router-handoff',JSON.stringify(options.routerHandoff),false,{handoffId:options.routerHandoff.handoffId,conversationId:options.routerHandoff.conversationId})
    }
-   await store.commit()
+   await measurePhase('session-store-commit',()=>store.commit())
    let publishInternal
-   const admission=await createBusinessAdmission({store,onSkillCommand:value=>ownerCtx.get('memory')?.recordUserSkill?.(actor,value),authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
+   const admission=await measurePhase('session-admission-restore',()=>createBusinessAdmission({store,measurePhase,onSkillCommand:value=>ownerCtx.get('memory')?.recordUserSkill?.(actor,value),authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
     const authorizeCommand=options.authorizeSkillCommand??ports.authorizeSkillCommand
     if(typeof authorizeCommand!=='function')return false
-    await bundle.bridge.refreshResources();await bundle.bridge.resourceLoader.reload()
+    await bundle.bridge.refreshResources();await bundle.bridge.reloadResources()
     return await authorizeCommand(packet,name,actor)===true
-   },bindInternal:publish=>{publishInternal=(...args)=>{if(bundle?.durability.failure)throw bundle.durability.failure;return publish(...args)}}})
-   const state=await createNativeBusinessState(store,{readOnly:options.readOnly===true})
-   bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,
+   },bindInternal:publish=>{publishInternal=(...args)=>{if(bundle?.durability.failure)throw bundle.durability.failure;return publish(...args)}}}))
+   const state=await measurePhase('session-state-restore',()=>createNativeBusinessState(store,{readOnly:options.readOnly===true}))
+   bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,measurePhase,
     prepareActor:async value=>{
      actor=value;scope=createScope(ownerCtx,actor,{parent:options.parentAgent});actor.ctx=scope.ctx
      Object.defineProperty(actor,'metadata',{value:deepFreeze(structuredClone(store.header)),enumerable:true});actor.options=deepFreeze(Object.fromEntries(['provider','model','reasoningEffort','maxTokens','temperature'].filter(key=>options.agentOptions?.[key]!==undefined).map(key=>[key,options.agentOptions[key]])))
@@ -152,10 +153,10 @@ export class OfficialAgentFactory {
    admission.bindSession(bundle.session,{signal:actor.lifecycle.signal})
    unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,pending:admission.pending,isLive:live})
    unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live})
-   options.signal.throwIfAborted();await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true
-   await ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming})
-   skillRefresh=await installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal})
-   await bundle.bridge.refreshResources();await bundle.bridge.resourceLoader.reload()
+   options.signal.throwIfAborted();await measurePhase('session-publish',async()=>{await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true})
+   await measurePhase('session-bind-names',()=>ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming}))
+   skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))
+   await measurePhase('resources-create',async()=>{await bundle.bridge.refreshResources();await bundle.bridge.reloadResources()})
    observer=bindPiAgentObservation({actor,emit:(owner,record)=>owner.ctx.emit(scopeTarget(owner,owner),'night/agent-observation',owner,record),onError:()=>ownerCtx.logger.warn('Native agent observation could not be recorded')})
    let settled
    const unsubscribe=bundle.session.subscribe(event=>{if(event.type==='agent_start')settled??=Promise.withResolvers();if(event.type==='agent_settled'){settled?.resolve();settled=undefined;void ownerCtx.get('sessionNames')?.settled(actor).catch(()=>ownerCtx.logger.warn('Session name generation failed'))}})

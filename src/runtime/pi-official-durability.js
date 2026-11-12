@@ -2,17 +2,17 @@
  * SessionManager owns every message. This adapter neither projects nor replays
  * history. A failed commit permanently fences this instance until reconciliation.
  */
-export function bindOfficialDurability({session,store,tools,beforeRequest,beforeStoreClose}) {
+export function bindOfficialDurability({session,store,tools,beforeRequest,beforeStoreClose,measurePhase=(_phase,run)=>run()}) {
  if(!session?.agent||store?.kind!=='pi-native'||session.sessionManager!==store.manager)throw new TypeError('Exact official session and native store required')
  let failure,requestFailure,closed=false,closing
  const previousPrepare=session.agent.prepareRequest,previousFinish=session.agent.finishTurn
  const fence=cause=>{failure??=cause;tools?.fence(failure);return failure}
  const assertOpen=()=>{if(failure)throw failure;if(closed)throw Object.assign(new Error('Official durability closed'),{code:'PI_OFFICIAL_DURABILITY_CLOSED'})}
  const commit=async()=>{assertOpen();try{await store.commit()}catch(cause){throw fence(cause)}}
- const prepare=async(...args)=>{
-  try{assertOpen();await beforeRequest?.(...args);assertOpen();await commit();return await previousPrepare?.(...args)}
+ const prepare=(...args)=>measurePhase('request-prepare',async()=>{
+  try{assertOpen();await measurePhase('request-guards',()=>beforeRequest?.(...args));assertOpen();await measurePhase('request-commit',()=>commit());return await measurePhase('request-sdk-prepare',()=>previousPrepare?.(...args))}
   catch(cause){requestFailure=cause;throw cause}
- }
+ })
  const finish=async(...args)=>tools?.finishTurn(...args)??await previousFinish?.(...args)
  session.agent.prepareRequest=prepare
  session.agent.finishTurn=finish

@@ -21,7 +21,7 @@ const fail=code=>Object.assign(new Error(code),{code})
  * Pi's public sendCustomMessage/steer/followUp own all model scheduling. Recovery
  * restores delivery facts only and never invokes a model or repeats an effect.
  */
-export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,onSkillCommand}) {
+export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,onSkillCommand,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
  let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false
@@ -57,7 +57,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   return entry
  }
  for(const [id,entryId]of admitted){if(findEntry(packets.get(id))?.id!==entryId)throw fail('PI_BUSINESS_ADMISSION_ACK_INVALID')}
- async function acknowledge(){
+ const acknowledge=()=>measurePhase('input-acknowledge',async()=>{
   healthy();const acknowledgements=[]
   for(const packet of packets.values())if(!admitted.has(packet.id)&&!cancelled.has(packet.id)){
    const entry=findEntry(packet)
@@ -65,7 +65,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   }
   await commit()
   for(const ack of acknowledgements)admitted.set(ack.id,ack.entryId)
- }
+ })
  async function enqueue(input,internal=false){
    const packet=deepFreeze(packetSchema.parse(snapshotJsonValue(input)))
    return serialize(async()=>{

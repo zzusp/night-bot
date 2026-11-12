@@ -4,10 +4,11 @@ import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 // 只投影计量元数据；正文、工具参数和结果不进入这个持久投影。
 export const PERFORMANCE_EVENT_TYPES = new Set(['dingtalk/coordination-dispatched', 'user/message', 'step/start', 'assistant/chunk', 'assistant/message', 'step/end', 'tool/call', 'tool/result'])
 const number = z.number().finite().nonnegative()
-const identitySchema = z.object({ sessionId: z.string().min(1), groupId: z.string().optional(), taskId: z.string().optional(), requestId: z.string().optional(), submissionId: z.string().optional() })
+const identitySchema = z.object({ runtimeOwner: z.literal('channel-triage').optional(), sessionId: z.string().min(1), groupId: z.string().optional(), taskId: z.string().optional(), requestId: z.string().optional(), submissionId: z.string().optional() })
 const distributionSchema = z.object({ count: number, sum: number, max: number, frequencies: z.record(z.string(), number) })
 const intervalSchema = z.tuple([number, number])
 const bucketSchema = identitySchema.extend({
+  phaseMs: z.record(z.string(), distributionSchema.extend({ failures: number })).optional(),
   day: z.string(), modelCalls: number, missingUsage: number, interrupted: number, toolCalls: number, toolResults: number, toolErrors: number,
   missingStepStart: number, missingToolCall: number, missingFirstStream: number, missingModelResult: number.default(0),
   missingToolResult: number.default(0), coordinationMessages: number.default(0), coordinationInputBytes: number.default(0),
@@ -160,6 +161,12 @@ export function projectAgentObservation(previous,input){
  const session=projection.nativeSessions[identity.sessionId],{kind,spanId,summary}=observation
  session.seen.push(observation.eventId)
  const bucket=bucketFor(projection,identity,time)
+ if(kind==='phase-completed'){
+  bucket.phaseMs??={}
+  const phase=bucket.phaseMs[summary.phase]??={...distribution(),failures:0}
+  addSample(phase,summary.elapsedMs)
+  if(summary.outcome==='failed')phase.failures++
+ }
  if(kind==='input-admitted'&&summary.sourceKind==='coordinator'){bucket.coordinationMessages++;bucket.coordinationInputBytes+=summary.inputBytes??0}
  if(kind.startsWith('model-')){
   const model=session.models[spanId]??={runId:observation.runId}
@@ -214,8 +221,8 @@ export function listPerformance(projection, filter = {}) {
   }
   return { observedSince: projection?.observedSince ?? null, coverage: 'observed-events-only', timezone: 'Asia/Shanghai',
     retention: { policy: 'full-observed-metadata', writePartition: 'session', closedStepDetails: 'compacted-to-step-ranges', limitation: 'Exact frequencies, deduplication ranges and daily interval unions grow with retained history; no arbitrary truncation.' },
-    rows: Object.values(projection?.buckets ?? {}).filter(row => ['day', 'sessionId', 'groupId', 'taskId', 'requestId', 'submissionId'].every(field => filter[field] === undefined || row[field] === filter[field]))
-      .map(({ modelIntervals, toolIntervals, ...row }) => ({ ...structuredClone(row), ...Object.fromEntries(['contextTokens', 'firstStreamMs', 'modelResponseMs', 'toolMs', 'coordinationQueueMs'].map(field => [field, summarize(row[field] ?? distribution())])), modelActiveMs: unionMs(modelIntervals), toolActiveMs: unionMs(toolIntervals),
+    rows: Object.values(projection?.buckets ?? {}).filter(row => ['day', 'sessionId', 'groupId', 'taskId', 'requestId', 'submissionId', 'runtimeOwner'].every(field => filter[field] === undefined || row[field] === filter[field]))
+      .map(({ modelIntervals, toolIntervals, phaseMs, ...row }) => ({ ...structuredClone(row), phaseMs: Object.fromEntries(Object.entries(phaseMs??{}).map(([phase,value])=>[phase,summarize(value)])), ...Object.fromEntries(['contextTokens', 'firstStreamMs', 'modelResponseMs', 'toolMs', 'coordinationQueueMs'].map(field => [field, summarize(row[field] ?? distribution())])), modelActiveMs: unionMs(modelIntervals), toolActiveMs: unionMs(toolIntervals),
         combinedActiveMs: unionMs(toolIntervals.reduce((all, [start, end]) => mergeIntervals(all, start, end), modelIntervals)) })) }
 }
 

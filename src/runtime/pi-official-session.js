@@ -11,7 +11,7 @@ import {bindApprovalAudit} from '../native-approval.js'
  * No global/home resources, alternate message model or model loop is installed.
  * The application must durably admit work before calling session.prompt/steer.
  */
-export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false,onToolResult}) {
+export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false,onToolResult,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||!admission||typeof createAudit!=='function')throw new TypeError('Explicit native store and business admission required')
  let resumedInput
  const actorAdmission=Object.fromEntries(['enqueue','has','status','lookupPacket','pending','current'].filter(key=>typeof admission[key]==='function').map(key=>[key,admission[key].bind(admission)]))
@@ -35,17 +35,19 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
-  await prepareActor?.(actor)
+  await measurePhase('session-prepare-actor',()=>prepareActor?.(actor))
   if(resolveResources){
-   const resources=await resolveResources(actor)
+   const resources=await measurePhase('session-resolve-resources',()=>resolveResources(actor))
    if(!resources||typeof resources!=='object')throw new TypeError('Explicit official resources required')
    ;({resolved,agentDir,registry,maxParallelToolCalls,settingsManager,context={}}=resources)
   }
   if(!resolved?.modelRuntime||!agentDir||!registry||!settingsManager)throw new TypeError('Explicit model, settings, resources and registry required')
   tools=createPiOfficialTools({registry,owner:actor,businessAudit:audit,maxParallelToolCalls})
-  const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager})
-  await bridge.resourceLoader.reload()
-  ;({session}=await createAgentSession({cwd:store.header.cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager,resourceLoader:bridge.resourceLoader,sessionManager:store.manager,noTools:'builtin',tools:tools.customTools.map(tool=>tool.name),customTools:tools.customTools}))
+  const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager,measurePhase})
+  await bridge.reloadResources()
+  await measurePhase('session-sdk-create',async()=>{
+   ;({session}=await createAgentSession({cwd:store.header.cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager,resourceLoader:bridge.resourceLoader,sessionManager:store.manager,noTools:'builtin',tools:tools.customTools.map(tool=>tool.name),customTools:tools.customTools}))
+  })
   actor.piSession=session
   session.agent.toolExecution='parallel'
   toolBatchGuard=bindPiToolCallBatchGuard(session)
@@ -59,15 +61,15 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    return stream(model,request,{...options,...configured,...maxTokens===undefined?{}:{maxTokens}})
   }
   if(onToolResult!==undefined)businessYield=bindBusinessTurnYield({session,actor,onToolResult,fence})
-  durability=bindOfficialDurability({session,store,tools,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(imageBudget?.failure)throw imageBudget.failure
+  durability=bindOfficialDurability({session,store,tools,measurePhase,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure}})
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
-  if(!deferResources){await bridge.refreshResources();await bridge.resourceLoader.reload()}
+  if(!deferResources){await bridge.refreshResources();await bridge.reloadResources()}
   return {actor,session,tools,bridge,durability,get requestImageFailure(){return imageBudget?.failure},
    async deliver(packetId,options){
     if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
     if(!session.isStreaming)tools.beginTurn()
-    await bridge.refreshResources();await bridge.resourceLoader.reload()
+    await measurePhase('resources-deliver',async()=>{await bridge.refreshResources();await bridge.reloadResources()})
     const result=await admission.deliver(session,packetId,options)
     if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure
@@ -78,7 +80,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    },
    async resumeRouterBatch(packet,beforeStart,afterClaim){
     tools.beginTurn()
-    await bridge.refreshResources();await bridge.resourceLoader.reload()
+    await bridge.refreshResources();await bridge.reloadResources()
     const proof=await beforeStart()
     // 在官方入口可能触发压缩前，先持久消费原失败 checkpoint；它不是业务输入或授权。
     actor.lifecycle.signal.throwIfAborted()
@@ -99,7 +101,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    },
    async prompt(...args){
     tools.beginTurn()
-    await bridge.refreshResources();await bridge.resourceLoader.reload()
+    await bridge.refreshResources();await bridge.reloadResources()
     await session.prompt(...args)
     // The official extension runner reports and absorbs handler exceptions.
     // Aborting protects dispatch; returning the typed reason protects the UI.

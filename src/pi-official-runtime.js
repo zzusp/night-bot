@@ -1,3 +1,4 @@
+import {preloadPiProtocols} from './pi-provider-catalog.js'
 import {registerPiFileTools} from './pi-file-tool-registration.js'
 import {createPiFileToolBudgets} from './runtime/pi-file-tool-budgets.js'
 import PiSessionNames from './pi-session-names.js'
@@ -9,7 +10,9 @@ import {createOfficialBusinessDrain} from './runtime/pi-business-drain.js'
 
 export const name='night-pi-official-runtime'
 export const inject=['agents','sessionPersistence','nativePiProvider','runtimePaths','agentPresets','permissionPresets','systemPrompt','tools','jobs','subprocess','agentDefaultModel']
-export function apply(ctx,config={}){
+export async function apply(ctx,config={}){
+ // 工厂发布是入站执行门禁，先支付选中协议的首次模块加载成本。
+ await preloadPiProtocols(ctx.nativePiProvider.profiles(),[ctx.agentDefaultModel.currentSelection(),config.model,config.memoryModel,...Object.values(config.roleModels??{})])
  const paths=ctx.get('runtimePaths')
  // Absolute-root installs get explicit application-owned global directories;
  // resource discovery never falls back to the process user's home.

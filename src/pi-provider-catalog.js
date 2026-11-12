@@ -131,3 +131,15 @@ export function configuredPiModels(profiles,options) {
   for(const profile of profiles.values())if(!profile.catalogError)collection.setProvider(configuredPiProvider(profile))
   return collection
 }
+
+/** 只导入选中模型的官方协议；不创建客户端、读取凭据或发送请求。 */
+export async function preloadPiProtocols(profiles,selections){
+ const apis=new Set()
+ for(const selection of selections){
+  const profile=profiles.get(selection?.provider)
+  const model=profile?.models.find(model=>model.id===selection?.model)
+  if(model&&!profile.catalogError&&!profile.modelErrors.has(model.id))apis.add(model.api)
+ }
+ for(const api of apis)await import(`@earendil-works/pi-ai/api/${api}`)
+ return [...apis]
+}
