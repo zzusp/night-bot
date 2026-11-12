@@ -33,7 +33,7 @@ export async function apply(ctx,config={},dependencies={}){
   for(const directory of [...accountPolicy.mode==='private'?[privateHome,join(privateHome,'config'),join(privateHome,'keychain')]:[],workspace,cache])await privateDirectory(directory)
   const runnerFor=cwd=>dependencies.runner?{...dependencies.runner,cwd}:createNodeDwsRunner({executable:config.executable??'dws',cwd,env:environment}),runner=runnerFor(workspace)
   let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,lastRange,targetValidated=false
-  let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve(),settingsTail=Promise.resolve()
+  let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve(),settingsTail=Promise.resolve(),ingressTail=Promise.resolve()
   const ingressCalls=new Set()
   const readSavedBinding=async()=>{
     const saved=await readDingtalkBinding(bindingFile)
@@ -101,43 +101,77 @@ export async function apply(ctx,config={},dependencies={}){
     readMessage:async({conversationId,messageId})=>{assertTarget(conversationId);return normalize(await adapter.readMessage(conversationId,messageId),conversationId)},
     readResource:({conversationId,messageId,resource})=>{assertTarget(conversationId);return adapter.readMessageResource(conversationId,messageId,resource)},
     readMentioned:({conversationId,messageId,resource})=>{assertTarget(conversationId);return adapter.isMessageMentioned(conversationId,messageId,resource?.occurredAt)}})
+  const channelInputFor=(message,retraction)=>({type:config.conversationType,channelId,
+    ...config.conversationName?{conversationName:config.conversationName}:{},
+    ...message.senderName&&message.senderName.trim()!==message.senderOpenDingTalkId?{senderName:message.senderName}:{},
+    conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:retraction?'[消息已撤回]':message.text||'[attachment]',
+    ...message.occurredAt?{sentAt:message.occurredAt}:{},
+    ...retraction?{platformFlags:retraction}:{
+      ...typeof message.mentionedAgent==='boolean'?{mentionedAgent:message.mentionedAgent}:{},...message.mentions?{mentions:message.mentions}:{},
+      ...message.messageAiSendFlag?{platformFlags:{messageAiSendFlag:message.messageAiSendFlag,automated:message.messageAiSendFlag==='DWS'}}:{},
+      ...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},
+      ...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}
+    }})
   const receiveHistoryMessage=async(raw,{type=config.conversationType}={})=>{
     const message=normalize(raw,raw.groupId??raw.conversationId)
     if(type!==config.conversationType||type==='chat'&&message.senderOpenDingTalkId!==config.binding.peerId)throw failure('DWS_CHAT_NOT_AUTHORIZED')
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
-    const channelInput={type,channelId,...config.conversationName?{conversationName:config.conversationName}:{},...message.senderName&&message.senderName.trim()!==message.senderOpenDingTalkId?{senderName:message.senderName}:{},conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text||'[attachment]',...message.occurredAt?{sentAt:message.occurredAt}:{},...typeof message.mentionedAgent==='boolean'?{mentionedAgent:message.mentionedAgent}:{},...message.mentions?{mentions:message.mentions}:{},...message.messageAiSendFlag?{platformFlags:{messageAiSendFlag:message.messageAiSendFlag,automated:message.messageAiSendFlag==='DWS'}}:{},...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}}
-    const identity=ctx.channels.identity(channelInput)
+    if(raw.retraction){
+      if(typeof raw.retraction.senderId!=='string'||!raw.retraction.senderId||typeof raw.retraction.at!=='string'||!Number.isFinite(Date.parse(raw.retraction.at)))throw failure('DINGTALK_RECALL_IDENTITY_INVALID')
+    }
+    const retraction=raw.retraction?{retracted:true,retractedBy:ctx.channels.identity({...channelInputFor(message),senderId:raw.retraction.senderId}).principal,retractedAt:raw.retraction.at}:undefined
+    let channelInput=channelInputFor(message,retraction),identity=ctx.channels.identity(channelInput)
+    if(retraction)await ingressStore.recall({messageId:message.messageId,senderId:message.senderOpenDingTalkId,recallerId:raw.retraction.senderId,occurredAt:raw.retraction.at})
     return ctx.channels.withInputTarget(identity.envelope,async()=>{
-    if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId})){
-      await ingressStore.consumed(message)
-      return {accepted:false,processing:'ignored',reason:'own-notification',channelType:type,conversationId:message.groupId}
-    }
-    const context=ctx.channels.groupContext(identity.sessionId),prior=context?.messageFacts?.[message.messageId]
-    if(prior&&prior.payloadHash!==dingtalkInputFingerprint(identity)){
-      const sourceId='im:'+hash(JSON.stringify([identity.sessionId,message.messageId,identity.envelope.messageVersion??1]))
-      const source=await app.tasks.store.query({kind:'source.get',sourceId})
-      ctx.channels.assertInputTarget(identity.envelope)
-      if(retainedDingtalkDuplicate(identity,prior,source,{quoteSenderIds:[config.binding.actorId,...Object.values(context.participants??{})]})){
-        await ingressStore.consumed(message)
-        return {accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId}
+      const consumed=(result,{retracted=channelInput.platformFlags?.retracted===true}={})=>ingressStore.consumed(message,{retracted}).then(()=>result)
+      if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId}))return consumed({accepted:false,processing:'ignored',reason:'own-notification',channelType:type,conversationId:message.groupId})
+      const context=ctx.channels.groupContext(identity.sessionId),prior=context?.messageFacts?.[message.messageId]
+      if(prior){
+        channelInput.messageVersion=prior.version??1
+        identity=ctx.channels.identity(channelInput)
+        const sourceId='im:'+hash(JSON.stringify([identity.sessionId,message.messageId,channelInput.messageVersion]))
+        const source=await app.tasks.store?.query({kind:'source.get',sourceId})
+        ctx.channels.assertInputTarget(identity.envelope)
+        if(prior.retracted){
+          if(source?.retracted)return consumed({accepted:false,duplicate:true,processing:'ignored',reason:'message-retracted',channelType:type,conversationId:message.groupId},{retracted:true})
+          // 上下文先于业务账本提交；冷恢复只补完原墓碑，不复活旧正文。
+          const sender=context.participants[prior.actorId]
+          if(!sender||!prior.retraction)throw failure('DINGTALK_RETRACTION_UNSETTLED')
+          channelInput={...channelInputFor({...message,senderOpenDingTalkId:sender,occurredAt:prior.occurredAt},prior.retraction),messageVersion:prior.version}
+        }else if(prior.payloadHash!==dingtalkInputFingerprint(identity)){
+          if(!source&&!retraction)throw failure('DINGTALK_MESSAGE_REVISION_UNSETTLED')
+          const actorId=source?.actorId??prior.actorId
+          if(actorId!==undefined&&actorId!==identity.principal)throw failure('CHANNEL_MESSAGE_ID_CONFLICT')
+          const options={quoteSenderIds:[config.binding.actorId,...Object.values(context.participants??{})]}
+          if(retainedDingtalkDuplicate(identity,prior,source,options))return consumed({accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId})
+          if(!retraction){
+            // 差异事件可能迟到；只以同账号精确回读的当前版本接纳修订。
+            const latest=normalize(await adapter.readMessage(config.binding.conversationId,message.messageId),config.binding.conversationId)
+            if(latest.groupId!==message.groupId||latest.messageId!==message.messageId||latest.senderOpenDingTalkId!==message.senderOpenDingTalkId)throw failure('DINGTALK_MESSAGE_REVISION_IDENTITY_INVALID')
+            channelInput={...channelInputFor(latest),messageVersion:prior.version??1}
+            identity=ctx.channels.identity(channelInput)
+            if(retainedDingtalkDuplicate(identity,prior,source,options))return consumed({accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId})
+          }
+          if(prior.payloadHash!==dingtalkInputFingerprint(ctx.channels.identity(channelInput)))channelInput.messageVersion=(prior.version??1)+1
+        }
       }
-    }
-    try{
-      const accepted=await ctx.channels.receive(channelInput)
-      await ingressStore.consumed(message)
-      return accepted
-    }catch(error){
-      if(error.code==='CHANNEL_NOTIFICATION_IDENTITY_PENDING')await ingressStore.deferred(message)
-      throw error
-    }
+      try{return await consumed(await ctx.channels.receive(channelInput))}
+      catch(error){if(error.code==='CHANNEL_NOTIFICATION_IDENTITY_PENDING')await ingressStore.deferred(message);throw error}
     })
   }
-  const acceptHistoryMessage=async(raw,options)=>{
-    if(closed||!app||!readyBound||!config.enabled)throw failure('CHANNEL_PLUGIN_NOT_READY')
-    if(config.receivePaused||health.ingress?.paused)throw failure('CHANNEL_INGRESS_PAUSED')
-    const operation=receiveHistoryMessage(raw,options)
+  const enqueueIngress=async(raw,options)=>{
+    const operation=ingressTail.then(()=>receiveHistoryMessage(raw,options))
+    ingressTail=operation.catch(()=>{})
     ingressCalls.add(operation)
     try{return await operation}finally{ingressCalls.delete(operation)}
+  }
+  const acceptHistoryMessage=(raw,options)=>{
+    if(closed||!app||!readyBound||!config.enabled)return Promise.reject(failure('CHANNEL_PLUGIN_NOT_READY'))
+    if(config.receivePaused||health.ingress?.paused)return Promise.reject(failure('CHANNEL_INGRESS_PAUSED'))
+    return enqueueIngress(raw,options)
+  }
+  const recoverRecalls=async()=>{
+    for(const row of ingressStore.snapshot().pendingRecalls??[])await enqueueIngress({groupId:config.binding.conversationId,messageId:row.messageId,senderOpenDingTalkId:row.senderId,text:'[消息已撤回]',occurredAt:row.occurredAt,retraction:{senderId:row.recallerId,at:row.occurredAt}})
   }
   const serialize=work=>{const operation=settingsTail.then(work);settingsTail=operation.catch(()=>{});return operation}
   const persistPaused=async()=>{
@@ -216,6 +250,12 @@ export async function apply(ctx,config={},dependencies={}){
   plugin.stopAndDrain=stop
   const startBridge=async()=>{
     if(closed)return
+    await recoverRecalls()
+    const contextId=ctx.channels.identity({type:config.conversationType,channelId,conversationId:config.binding.conversationId,senderId:config.binding.peerId??'namespace-only',messageId:'namespace-only',text:'namespace-only'}).sessionId
+    const retained=ctx.channels.groupContext(contextId)
+    for(const [messageId,fact]of Object.entries(retained?.messageFacts??{}))if(fact.retracted){
+      await receiveHistoryMessage({groupId:config.binding.conversationId,messageId,senderOpenDingTalkId:retained.participants[fact.actorId],text:'[消息已撤回]',occurredAt:fact.occurredAt})
+    }
     if(config.listen===false){health={healthy:false,configured:true,state:'ready',listening:false};return}
     if(config.receivePaused||!config.enabled)await persistPaused()
     const groups=[config.binding.conversationId],keyOf=groupId=>ctx.channels.identity({type:config.conversationType,channelId,conversationId:groupId,senderId:config.conversationType==='chat'?config.binding.peerId:'namespace-only',messageId:'namespace-only',text:'namespace-only'}).sessionId
@@ -235,7 +275,7 @@ export async function apply(ctx,config={},dependencies={}){
       const state=ingressStore.snapshot()
       return [state.firstStartedAt,state.recoveryFromAt,health.groups?.[0]?.backfill?.recoveryFromAt].filter(value=>value!==undefined).sort((left,right)=>Date.parse(left)-Date.parse(right))[0]
     }
-    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,getDeferredMessages:()=>ingressStore.snapshot().deferredMessages??[],onRangeRead:range=>{lastRange=range}}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}};if(lastRange&&value.groups?.[0]?.backfill?.state==='ok'&&!value.groups[0].backfill.inProgress){const range=lastRange;ingressStore.completedRange(range).catch(()=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}})}}})
+    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,getDeferredMessages:()=>ingressStore.snapshot().deferredMessages??[],onRangeRead:range=>{lastRange=range},onRecall:acceptHistoryMessage,beforeRangeRead:recoverRecalls}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}};if(lastRange&&value.groups?.[0]?.backfill?.state==='ok'&&!value.groups[0].backfill.inProgress){const range=lastRange;ingressStore.completedRange(range).catch(()=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}})}}})
     // Shutdown also writes a paused checkpoint. Only the Host-selected user
     // preference keeps a new process paused; ordinary restarts resume recovery.
     // Explicit operator-approval subscriptions remain a separate control path.

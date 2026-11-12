@@ -55,7 +55,7 @@ function historyMessages(value,config){
   return config.conversationType==='chat'?value.messages.filter(message=>(message.senderOpenDingTalkId??message.senderId)===binding.peerId):value.messages
 }
 /** 复用 bridge 已有的暂停、恢复、补拉和 drain；原生 ID 留在插件内部。 */
-export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>undefined,getDeferredMessages=()=>[],onRangeRead=()=>{}}){
+export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>undefined,getDeferredMessages=()=>[],onRangeRead=()=>{},onRecall,beforeRangeRead=async()=>{}}={}){
   return {...adapter,
     startGroupSubscription(conversationId,onEvent){
       if(conversationId!==config.binding.conversationId)throw failure('DINGTALK_INGRESS_TARGET_MISMATCH')
@@ -63,12 +63,20 @@ export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>unde
         if(event.conversation_id!==conversationId)return
         const sender=event.sender_open_dingtalk_id??event.sender_id
         if(config.conversationType==='chat'&&sender!==config.binding.peerId)return
+        if(['user_im_message_recall_group','user_im_message_recall_o2o'].includes(event.type)){
+          const expected=config.conversationType==='chat'?'user_im_message_recall_o2o':'user_im_message_recall_group'
+          const at=messageTimestamp(event.recall_time??event.event_time??event.timestamp)
+          if(event.type!==expected||!present(event.message_id)||!present(sender)||!present(event.recaller_open_dingtalk_id)||!Number.isFinite(at))throw failure('DINGTALK_RECALL_IDENTITY_INVALID')
+          if(typeof onRecall!=='function')throw failure('DINGTALK_RECALL_UNSUPPORTED')
+          return onRecall({groupId:conversationId,messageId:event.message_id,senderOpenDingTalkId:sender,text:'[消息已撤回]',occurredAt:new Date(at).toISOString(),retraction:{senderId:event.recaller_open_dingtalk_id,at:new Date(at).toISOString()}})
+        }
         return onEvent(event)
       }
-      return config.conversationType==='chat'?adapter.startPrivateSubscription(config.binding.peerId,accept):adapter.startGroupSubscription(conversationId,accept)
+      return config.conversationType==='chat'?adapter.startPrivateSubscription(config.binding.peerId,accept,{recalls:true}):adapter.startGroupSubscription(conversationId,accept,{recalls:true})
     },
     async readGroupRange(conversationId,range){
       if(conversationId!==config.binding.conversationId)throw failure('DINGTALK_INGRESS_TARGET_MISMATCH')
+      await beforeRangeRead()
       const fromAt=getFromAt()
       if(Date.parse(range.start)<Date.parse(fromAt))range={...range,start:fromAt}
       const deferredStart=getDeferredMessages().reduce((start,message)=>Math.min(start,Math.max(0,messageTimestamp(message.occurredAt)-30_000)),Date.parse(range.start))

@@ -1881,6 +1881,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         version: a.version ?? 1, actorId: text(a.actorId, 'actorId'), senderName: a.senderName ?? null, channel, text: a.text ?? '', quote: a.quote ?? null, resources: a.resources ?? [],
         timestamp: eventTimestamp, ...(a.receivedAt !== undefined ? { receivedAt: text(a.receivedAt, 'receivedAt') } : {}), initialRouteDecision: a.routeDecision === undefined ? null : clone(record(a.routeDecision)) }
       if (a.receivedAt !== undefined && !ingressTimestamp(a.receivedAt)) fail('DYNAMIC_SOURCE_TIMESTAMP_REQUIRED')
+      if (a.retracted === true) source.retracted = true
       if (revisionBasis) source.admissionSourceId = revisionBasis.sourceId
       if (a.requestIdentity !== undefined) source.requestIdentity = clone(record(a.requestIdentity))
       integer(source.version, 'version'); array(source.resources)

@@ -3,7 +3,7 @@ import {symlink} from './fixtures/filesystem-link.js'
 import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,mkdir,readFile,writeFile,readdir,stat} from 'node:fs/promises'
+import {mkdtemp,rm,mkdir,readFile,writeFile,readdir,stat,rename} from 'node:fs/promises'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
@@ -231,4 +231,25 @@ test('credential values and environment files are confined to the separate priva
   const environment=await loadNativeEnvironment({...environmentPaths(c),inherited:{},materialize:false});assert.equal(environment.get('MODEL_LOCAL_KEY').value,'fixture-only-key');assert.equal(environment.get('UNEXPECTED_CONFIG_KEY'),undefined)
   if(process.platform!=='win32'){assert.equal((await stat(p.secrets)).mode&0o777,0o700);assert.equal((await stat(join(p.secrets,'.env'))).mode&0o777,0o600)}
   const outside=join(root,'external.env');if(process.platform==='win32')await mkdir(outside);else await writeFile(outside,'not an app secret');await symlink(outside,join(p.secrets,'linked.env'));await assert.rejects(prepareSecrets(p),/SECRET_PATH_UNSAFE/)
+})
+
+
+test('Windows 原子替换等待短暂共享占用，持续占用仍失败并保留原文件',{skip:process.platform!=='win32',timeout:nativeTestTimeout(15000)},async t=>{
+ for(const transient of [true,false]){
+  const root=await fixture(t),file=join(root,'ingress.json'),probe=join(root,'probe.json')
+  await atomicWrite(file,'original');await writeFile(probe,'probe')
+  const code='param($path) $file=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite); try { [Console]::WriteLine("LOCKED"); [Console]::ReadLine() | Out-Null } finally { $file.Dispose() }'
+  const child=spawn('pwsh',['-NoProfile','-NonInteractive','-CommandWithArgs',code,file],{stdio:['pipe','pipe','pipe']})
+  const closed=once(child,'close');let error='',output='',timer
+  child.stderr.on('data',chunk=>error+=chunk)
+  const ready=new Promise((resolve,reject)=>{child.stdout.on('data',chunk=>{output+=chunk;if(output.includes('LOCKED'))resolve()});child.on('error',reject);closed.then(([exit])=>{if(!output.includes('LOCKED'))reject(Error('File holder exited '+exit+': '+error))})})
+  try{
+   await ready
+   await assert.rejects(rename(probe,file),error=>['EPERM','EACCES','EBUSY'].includes(error.code))
+   assert.equal(await readFile(file,'utf8'),'original')
+   if(transient){timer=setTimeout(()=>child.stdin.end(String.fromCharCode(10)),200);await atomicWrite(file,'updated');assert.equal(await readFile(file,'utf8'),'updated')}
+   else{await assert.rejects(atomicWrite(file,'must-not-replace'),error=>['EPERM','EACCES','EBUSY'].includes(error.code));assert.equal(await readFile(file,'utf8'),'original')}
+   assert.deepEqual((await readdir(root)).sort(),['ingress.json','probe.json'])
+  }finally{clearTimeout(timer);if(!child.stdin.destroyed)child.stdin.end(String.fromCharCode(10));await closed}
+ }
 })

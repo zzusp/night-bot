@@ -1,5 +1,6 @@
 import {nativeLifecycle,nativeLifecycleTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
+import {DatabaseSync} from 'node:sqlite'
 import assert from 'node:assert/strict'
 import {readFile,stat} from 'node:fs/promises'
 import {join} from 'node:path'
@@ -15,7 +16,7 @@ const remember=()=>call('memory_remember',{topic:'preferences',key:'review-bypas
 const shell=process.platform==='win32'?'pwsh':'bash'
 const forbiddenShell=path=>call(shell,{command:shell==='pwsh'?`Set-Content -LiteralPath '${path}' -Value 'forbidden'`:`touch '${path}'`,description:'Must not run in dialogue or review'})
 
-test('actual Host human review and dialogue stay read-only, record real SQL source evidence, then resume standing authorization',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
+test('actual Host legacy non-Router human review and dialogue stay read-only, record real SQL source evidence, then resume standing authorization',{timeout:nativeLifecycleTimeout(20000)},nativeLifecycle(20000,async t=>{
  const cleanups=[],bodyCalls={write:0,[shell]:0,memory_remember:0},scopes=[],observations=[]
  let stage='initial',step=0,requestId='business-question',candidate='fact-source',review,taskId='review-task',binding,sessions,store
  t.after(async()=>{await sessions?.close();await store?.close();for(const cleanup of cleanups.reverse())await cleanup()})
@@ -59,6 +60,13 @@ test('actual Host human review and dialogue stay read-only, record real SQL sour
   store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'review-tasks.sqlite'),workspaceDir:ctx.runtimePaths.workspaces,instanceId:'review-test',ownerActorId:'owner',webActorId:'owner',initialize:true})
   const original='After business-person confirms the existing UAT2-only conditions, create the original local proof under work/. No other environment or objective is authorized.'
   await command('task.create',{taskId,groupId:'review-group',ownerActorId:'owner',objective:original,request:original})
+  // Restore a pre-Router persisted task: these rows had groupId but no conversationId.
+  // New conversation tasks must use Router resume, never this execution-side review.
+  await store.close()
+  const historical=new DatabaseSync(join(ctx.runtimePaths.state,'review-tasks.sqlite'))
+  try{historical.prepare("UPDATE dynamic_tasks SET body=json_remove(body,'$.conversationId') WHERE id=?").run(taskId)}finally{historical.close()}
+  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'review-tasks.sqlite'),workspaceDir:ctx.runtimePaths.workspaces,instanceId:'review-test',ownerActorId:'owner',webActorId:'owner'})
+  assert.equal((await row()).conversationId,undefined)
   sessions=createSingleTaskSessions({ctx,isCurrent:async expected=>{const task=await row();return task.status==='active'&&task.control==='active'&&!task.drained&&task.leaseEpoch===expected.leaseEpoch&&task.requirementRevision===expected.requirementRevision&&task.controlRevision===expected.controlRevision&&(task.contextRevision??0)===(expected.contextRevision??0)},getWorkspaceDir:async()=>{const task=await row();await taskWorkspace(ctx.runtimePaths.workspaces,taskId);await registerTaskSession(ctx.runtimePaths,ctx.get('taskSessionRoutes'),task);return taskWorkspace(ctx.runtimePaths.workspaces,taskId)}})
   await t.beginBusiness()
   await execute(await command('task.claim',{taskId}))

@@ -169,11 +169,19 @@ export function validateConfig(config){appendFileSync(${JSON.stringify(marker)},
     {type:'fixture-sync',enabled:true,channelId:'second',config:{id:'second'}},
   ]}
   const rows=await channelPluginRows(config,{installRoot:root})
-  assert.deepEqual(rows,[{name:entry,config:{normalized:'first',enabled:true,channelId:'first'}},
-    {name:entry,config:{normalized:'second',enabled:true,channelId:'second'}}])
+  assert.deepEqual(rows,[{name:entry,config:{normalized:'first',enabled:true,channelId:'first',receivePaused:false}},
+    {name:entry,config:{normalized:'second',enabled:true,channelId:'second',receivePaused:false}}])
   assert.equal(await readFile(marker,'utf8'),'loaded;validate:first;validate:second;')
   await assert.rejects(lstat(disabledMarker),{code:'ENOENT'})
   await assert.rejects(channelPluginRows({channelPluginDirs:['plugins'],channelPlugins:[
     {type:'fixture-async',enabled:true,channelId:'async',config:{}},
   ]},{installRoot:root}),/NIGHT_CHANNEL_PLUGIN_CONFIG_INVALID/)
+  await assert.rejects(channelPluginRows({channelPluginDirs:['plugins'],channelPlugins:[
+    {type:'fixture-sync',enabled:true,channelId:'unsupported-pause',receivePaused:true,config:{id:'unsupported-pause'}},
+  ]},{installRoot:root}),/NIGHT_CHANNEL_PLUGIN_INGRESS_CONTROL_UNSUPPORTED/)
+  const pausedEntry=await plugin('fixture-pausable','export const channelIngressControl=1; export const validateConfig=config=>config')
+  const pausedRows=await channelPluginRows({channelPluginDirs:['plugins'],channelPlugins:[
+    {type:'fixture-pausable',enabled:true,channelId:'paused',receivePaused:true,config:{receivePaused:false}},
+  ]},{installRoot:root})
+  assert.deepEqual(pausedRows,[{name:pausedEntry,config:{enabled:true,channelId:'paused',receivePaused:true}}])
 })

@@ -76,3 +76,23 @@ test('startup first-tier admits the latest full original batch when arrivals pre
   assert.deepEqual(new Set(h.sent.map(envelope=>envelope.replyToMessageId)),new Set(['startup-a','startup-b']))
   assert.ok((await h.query('source.list')).every(source=>source.routed));assert.deepEqual(await h.query('router.list'),[])
 })
+
+test('原生撤回在旧分诊在途时排空旧批，不提交旧回复或把墓碑交给模型',{timeout:nativeTestTimeout(45000)},async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ const observed=[]
+ const h=await residentRouterHost(t,async body=>{
+  if(requestTools(body).includes('channel_triage_submit')){
+   const input=triage(body);observed.push(input);entered.resolve();await release.promise
+   return handling(input,()=> '不应发送的旧确认')
+  }
+  return handoff(body)??{text:'没有当前授权'}
+ })
+ const original=channelMessage('recall-during-triage')
+ await h.receive(original);await entered.promise
+ await h.receive({...original,messageVersion:2,text:'[消息已撤回]',platformFlags:{retracted:true,retractedBy:'moderator',retractedAt:new Date().toISOString()}})
+ release.resolve();await h.service.whenIdle()
+ assert.equal(observed.length,1);assert.equal(observed[0].messages[0].version,1)
+ const sources=await h.query('source.list');assert.equal(sources.length,2);assert.ok(sources.every(row=>row.authorizationRevoked))
+ assert.deepEqual(await h.query('triage.pending'),[]);assert.deepEqual(await h.query('notification.list'),[]);assert.deepEqual(await h.query('task.list'),[]);assert.deepEqual(h.sent,[])
+ await h.close()
+})

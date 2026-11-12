@@ -1,6 +1,7 @@
 import {mkdir,lstat,open,rename,unlink,readFile,rm,chmod} from 'node:fs/promises'
 import {join,dirname,resolve,parse} from 'node:path'
 import {randomUUID} from 'node:crypto'
+import {setTimeout as delay} from 'node:timers/promises'
 
 export const failure=code=>Object.assign(new Error(code),{code})
 export async function privateDirectory(path){
@@ -30,7 +31,15 @@ export async function atomicWrite(path,text){
   const temporary=join(dirname(path),'.write-'+randomUUID());let file,renamed=false
   try{
     file=await open(temporary,'wx',0o600);await file.writeFile(text);await file.sync();await file.close();file=undefined
-    await rename(temporary,path);renamed=true
+    // Windows 共享占用可能短暂拒绝替换；始终保留旧文件，只重试同一原子提交。
+    for(let attempt=0;;attempt++){
+      try{await rename(temporary,path);break}
+      catch(error){
+        if(process.platform!=='win32'||!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt>=5)throw error
+        await delay(100*(attempt+1))
+      }
+    }
+    renamed=true
     if(process.platform!=='win32'){const directory=await open(dirname(path),'r');try{await directory.sync()}finally{await directory.close()}}
   }catch(error){if(renamed)throw Object.assign(failure('NIGHT_WRITE_COMMIT_UNCERTAIN'),{cause:error,committed:true});throw error}
   finally{await file?.close();await unlink(temporary).catch(error=>{if(error.code!=='ENOENT')throw error})}

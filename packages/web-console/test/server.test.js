@@ -67,7 +67,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -86,7 +86,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -902,4 +902,53 @@ test('provider API and scoped secrets require authenticated CSRF, strict DTO and
  const secret={provider:'second',action:'replace',value:'TEST_SECRET',confirm:true,expectedVersion:'version'}
  assert.equal((await f.fetchApi('/api/settings/secrets/model',{method:'PUT',body:secret})).status,200)
  assert.deepEqual(calls.at(-1),{kind:'model',...secret})
+})
+
+test('schedule listing authenticates, projects native data, paginates and never mutates', async t => {
+  let reads = 0
+  const records = [
+    {id: 'schedule-b', title: '每日报告', kind: 'daily', time: '09:00:00.000', timeZone: 'Asia/Shanghai', scheduledAt: '2030-01-02T01:00:00.000Z', status: 'active'},
+    {id: 'schedule-a', title: '一次提醒', kind: 'at', scheduledAt: '2030-01-02T01:00:00.000Z', status: 'active'},
+    {id: 'schedule-ended', title: '已到期提醒', kind: 'after', afterSeconds: 60, scheduledAt: '2020-01-02T01:00:00.000Z', status: 'inactive'},
+  ].map(row => ({...row, prompt: 'PRIVATE_PROMPT', sessionId: 'PRIVATE_SESSION', credentials: 'PRIVATE_CREDENTIALS', lastDelivery: {messageId: 'PRIVATE_MESSAGE'}}))
+  const schedule = {async catalog() {reads++; return records}, create() {assert.fail('read must not create')}, update() {assert.fail('read must not update')}}
+  const f = await fixture(t, {schedule})
+  assert.equal((await f.fetchApi('/api/schedules')).status, 401)
+  assert.equal(reads, 0)
+  await f.login()
+  const first = await f.fetchApi('/api/schedules?state=active&offset=0&limit=1')
+  assert.equal(first.status, 200)
+  assert.deepEqual(first.body, {items: [{id: 'schedule-a', title: '一次提醒', state: 'active', kind: 'at', scheduledAt: records[1].scheduledAt, scheduleSummary: '单次'}], total: 2, offset: 0, limit: 1, nextOffset: 1})
+  const second = await f.fetchApi('/api/schedules?state=active&offset=1&limit=1')
+  assert.equal(second.body.items[0].id, 'schedule-b')
+  assert.equal(second.body.nextOffset, null)
+  assert.match(second.body.items[0].scheduleSummary, /Asia\/Shanghai/)
+  assert.doesNotMatch(JSON.stringify([first.body, second.body]), /PRIVATE_|prompt|sessionId|credentials|lastDelivery/)
+  const ended = (await f.fetchApi('/api/schedules?state=inactive')).body
+  assert.equal(ended.items[0].id, 'schedule-ended')
+  assert.equal(ended.items[0].state, 'inactive')
+  const clamped = (await f.fetchApi('/api/schedules?offset=999&limit=1')).body
+  assert.equal(clamped.offset, 1)
+  assert.equal(clamped.items[0].id, 'schedule-b')
+  assert.equal(clamped.nextOffset, null)
+  const before = reads
+  for (const query of ['state=paused', 'state=running', 'state=ended', 'state=unknown', 'state=', 'offset=-1', 'offset=1.5', 'limit=0', 'limit=101', 'limit=2&limit=3', 'sessionId=private']) {
+    assert.equal((await f.fetchApi('/api/schedules?' + query)).status, 400, query)
+  }
+  assert.equal(reads, before)
+  assert.equal((await f.fetchApi('/api/schedules', {method: 'POST', body: {}})).status, 404)
+  assert.equal(reads, before)
+})
+
+test('schedule unavailability and native errors never look like an empty successful catalog', async t => {
+  const absent = await fixture(t)
+  await absent.login()
+  const unavailable = await absent.fetchApi('/api/schedules')
+  assert.equal(unavailable.status, 503)
+  assert.deepEqual(unavailable.body, {error: 'SCHEDULES_UNAVAILABLE'})
+  const broken = await fixture(t, {schedule: {catalog() {throw Object.assign(new Error('PRIVATE_SCHEDULE_FAILURE'), {status: 418, code: 'PRIVATE_ERROR_CODE'})}}})
+  await broken.login()
+  const failure = await broken.fetchApi('/api/schedules')
+  assert.equal(failure.status, 503)
+  assert.deepEqual(failure.body, {error: 'SCHEDULES_READ_FAILED'})
 })

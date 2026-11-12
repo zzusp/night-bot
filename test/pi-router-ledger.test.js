@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 import {validateTaskLedger,ledgerDigest} from '../src/tasks/ledger-archive.js'
+import {initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 
 async function fixture(t) {
   const root=await mkdtemp(join(tmpdir(),'night-router-ledger-'))
@@ -18,10 +19,16 @@ async function fixture(t) {
     text:'First verify A; only after the evidence is accepted, produce B'},conversation:{conversationId}})
   await command('router.ensure',{conversationId,sessionId:'router-generation-one'})
   const state=await query('router.get',{conversationId}),generation=state.generation
-  const plan=(extra={})=>command('router.plan',{conversationId,generation,sourceId,messageVersion:1,operationId:'original-plan',
-    tasks:[{taskId:'a',request:'Verify A',ownerActorId:'alice',groupId:conversationId},
-      {taskId:'b',request:'Produce B after verification',ownerActorId:'alice',groupId:conversationId}],
-    dependencies:[{taskId:'b',prerequisiteTaskId:'a',condition:'Verification evidence is complete and accepted'}],...extra})
+  const plan=async(extra={})=>{
+    const result=await command('router.plan',{conversationId,generation,sourceId,messageVersion:1,operationId:'original-plan',
+      tasks:[{taskId:'a',request:'Verify A',ownerActorId:'alice',groupId:conversationId},
+        {taskId:'b',request:'Produce B after verification',ownerActorId:'alice',groupId:conversationId}],
+      dependencies:[{taskId:'b',prerequisiteTaskId:'a',condition:'Verification evidence is complete and accepted'}],...extra})
+    for(const task of await query('task.list')){
+      if(task.workspaceInitialization?.state==='pending')await initializeMemoryTaskWorkspace(store,join(root,'workspaces'),task.taskId)
+    }
+    return result
+  }
   async function complete(taskId='a',extra={},drain=true) {
     const claimed=(await command('task.claim',{taskId})).result
     await command('task.complete',{binding:claimed.binding,summary:'Verification finished',
@@ -338,4 +345,28 @@ test('dependency arrangement replaces the complete set atomically with version, 
   assert.ok(snapshot.tables.task_events.some(row=>row.body.kind==='task.arranged'),'removed arrangements remain a task-only audit trail')
   await f.command('task.claim',{taskId:'b'})
   await assert.rejects(f.command('router.task-action',{...args,operationId:'active-arrangement',action:{...args.action,expectedArrangementRevision:3,dependencies:[]}}),/QUIESCENT/)
+})
+
+test('撤回墓碑原子撤权全部来源版本，拒绝旧分诊和Router授权，冷恢复与重复接纳不复活',async t=>{
+ const f=await fixture(t)
+ const tombstone={sourceId:'retracted-v2',groupId:f.conversationId,messageId:'user-order',actorId:'alice',version:2,text:'[消息已撤回]',retracted:true}
+ await f.command('source.record-direct',{source:tombstone})
+ const sources=await f.query('source.list')
+ assert.equal(sources.length,2);assert.ok(sources.every(source=>source.authorizationRevoked))
+ assert.equal(sources.find(source=>source.sourceId===f.sourceId).text,'First verify A; only after the evidence is accepted, produce B')
+ assert.equal(sources.find(source=>source.retracted).routed,true)
+ assert.deepEqual(await f.query('triage.pending',{conversationId:f.conversationId}),[])
+ await assert.rejects(f.plan(),/ROUTER_SOURCE_STALE/)
+ await assert.rejects(f.plan({sourceId:tombstone.sourceId,messageVersion:2}),/ROUTER_SOURCE_STALE/)
+ await assert.rejects(f.command('triage.commit',{dispositions:[{sourceId:f.sourceId,messageVersion:1,needsHandling:true,reply:'Too late',reason:'Old decision'}]}),/ROUTER_SOURCE_STALE/)
+ await f.reopen();await f.command('source.record-direct',{source:tombstone})
+ assert.deepEqual(await f.query('source.list'),sources)
+ assert.deepEqual(await f.query('task.list'),[]);assert.deepEqual(await f.query('notification.list'),[])
+})
+
+test('同ID跨作者的撤回整笔回滚，不能撤销原作者来源',async t=>{
+ const f=await fixture(t),before=await f.query('source.list')
+ await assert.rejects(f.command('source.record-direct',{source:{sourceId:'forged-retraction',groupId:f.conversationId,messageId:'user-order',actorId:'mallory',version:2,text:'[消息已撤回]',retracted:true}}),/DYNAMIC_SOURCE_CONFLICT/)
+ assert.deepEqual(await f.query('source.list'),before)
+ assert.equal((await f.query('triage.pending',{conversationId:f.conversationId})).length,1)
 })
