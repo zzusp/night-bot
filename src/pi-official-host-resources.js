@@ -92,14 +92,20 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
    // content, filesystem and lifetime checks; revocations cannot reuse old data.
    for(let attempt=0;;attempt++){
     assertCurrent()
+    let revision=skills.revision
     try{
-     const snapshot=await withActor(()=>skills.snapshot({scope:actor,cwd,signal}))
+     const snapshot=await withActor(()=>skills.snapshot({scope:actor,cwd,signal}));revision=skills.revision
      const resources=await officialSkillResources(snapshot,{resolveFilePath:skillFile})
+     // Another parallel mapping may still be reading when a provider is
+     // revoked. Do not publish the already mapped part of that old catalog.
+     if(revision!==skills.revision)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
      assertCurrent();return resources
     }catch(error){
      assertCurrent()
      if(error?.code!=='PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'||attempt>=2)throw error
-     skills.invalidateCache()
+     // A concurrent owner may already have invalidated this revision. Repeating
+     // that mutation makes two refreshing actors invalidate each other's retries.
+     if(revision===skills.revision)skills.invalidateCache()
     }
    }
   }

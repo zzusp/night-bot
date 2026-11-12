@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks'
 import {createHash,randomUUID} from 'node:crypto'
 import {z} from 'zod'
 import {AgentSession} from '@earendil-works/pi-coding-agent'
@@ -11,13 +12,13 @@ const usage=z.strictObject({input:number.optional(),output:number.optional(),cac
 export const AGENT_OBSERVATION_KINDS=Object.freeze(['input-admitted','model-started','model-first-token','model-completed','tool-started','tool-completed','run-settled','phase-completed'])
 export const AGENT_PHASES=Object.freeze(['triage-total','workspace','session-create','session-store-open','session-store-commit','session-admission-restore','session-state-restore','session-prepare-actor','session-resolve-resources','session-sdk-create','session-publish','session-bind-names','session-skills-bind','resources-create','resources-deliver','resources-before-run','before-run','memory-before-run','system-prompt','memory-prompt','context-projection','resources-turn-end','memory-bind','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','request-sdk-prepare','triage-commit','session-dispose'])
 export const agentObservationSchema=z.strictObject({
- version:z.literal(1),ownerId:id,runId:id,entryId:id.nullable(),spanId:hash,eventId:hash,
+ version:z.literal(1),ownerId:id,runId:id,entryId:id.nullable(),spanId:hash,parentSpanId:hash.optional(),eventId:hash,
  kind:z.enum(AGENT_OBSERVATION_KINDS),timestamp,
- summary:z.strictObject({phase:z.enum(AGENT_PHASES).optional(),elapsedMs:number.optional(),isError:z.boolean().optional(),stopReason:z.enum(['stop','length','toolUse','error','aborted']).optional(),usage:usage.optional(),inputBytes:z.number().int().nonnegative().optional(),sourceKind:z.enum(['coordinator','user','other']).optional(),outcome:z.enum(['completed','aborted','failed','unknown']).optional()}),
+ summary:z.strictObject({phase:z.enum(AGENT_PHASES).optional(),elapsedMs:number.optional(),isError:z.boolean().optional(),stopReason:z.enum(['stop','length','toolUse','error','aborted']).optional(),usage:usage.optional(),providerAttempted:z.boolean().optional(),inputBytes:z.number().int().nonnegative().optional(),sourceKind:z.enum(['coordinator','user','other']).optional(),outcome:z.enum(['completed','aborted','failed','unknown']).optional()}),
 }).superRefine((value,ctx)=>{
  if(['input-admitted','model-completed'].includes(value.kind)&&value.entryId===null)ctx.addIssue({code:'custom',path:['entryId'],message:'Committed official entry required'})
  if(value.kind==='phase-completed'&&(value.summary.phase===undefined||value.summary.elapsedMs===undefined||!['completed','failed'].includes(value.summary.outcome)))ctx.addIssue({code:'custom',path:['summary'],message:'Host phase, duration and outcome required'})
- const allowed=value.kind==='phase-completed'?['phase','elapsedMs','outcome']:value.kind==='input-admitted'?['inputBytes','sourceKind']:value.kind==='model-completed'?['stopReason','usage']:value.kind==='tool-completed'?['isError']:value.kind==='run-settled'?['outcome']:[]
+ const allowed=value.kind==='phase-completed'?['phase','elapsedMs','outcome']:value.kind==='input-admitted'?['inputBytes','sourceKind']:value.kind==='model-completed'?['stopReason','usage','providerAttempted']:value.kind==='tool-completed'?['isError']:value.kind==='run-settled'?['outcome']:[]
  for(const key of Object.keys(value.summary))if(!allowed.includes(key))ctx.addIssue({code:'custom',path:['summary',key],message:'Metadata does not belong to this observation kind'})
  if(value.eventId!==agentObservationEventId(value))ctx.addIssue({code:'custom',path:['eventId'],message:'Observation identity mismatch'})
 })
@@ -67,7 +68,9 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
    if(event.type==='agent_start')start()
    if(!runId)return
    if(event.type==='message_start'&&event.message.role==='assistant'){
-    model={spanId:hash([actor.id,runId,randomUUID()]),first:false};send('model-started',null,model.spanId)
+    // Provider start is later than invocation of the official stream port.
+    // Keep that earlier boundary; errors rejected before dispatch have no start.
+    if(!model)model={spanId:hash([actor.id,runId,randomUUID()]),first:false,providerAttempted:false}
    }
    if(event.type==='message_update'&&event.message.role==='assistant'&&model&&!model.first&&['text_delta','thinking_delta','toolcall_delta'].includes(event.assistantMessageEvent?.type)){
     model.first=true;send('model-first-token',null,model.spanId)
@@ -76,7 +79,7 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
     const entry=persisted(event.message)
     if(!entry)return
     if(event.message.role==='assistant'){
-     const spanId=model?.spanId??hash([actor.id,runId,entry.id,'missing-start']),summary={}
+     const spanId=model?.spanId??hash([actor.id,runId,entry.id,'missing-start']),summary={providerAttempted:model?.providerAttempted===true}
      if(['stop','length','toolUse','error','aborted'].includes(event.message.stopReason))summary.stopReason=event.message.stopReason
      if(event.message.usage){summary.usage={};for(const key of ['input','output','cacheRead','cacheWrite','totalTokens']){const value=event.message.usage[key];if(Number.isFinite(value)&&value>=0)summary.usage[key]=value}}
      send('model-completed',entry.id,spanId,summary)
@@ -105,19 +108,29 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
   }catch(cause){report(cause)}
   finally{runId=undefined;model=undefined;spans.clear();sources.clear()}
  }
+ // Public SDK stream port invocation includes provider setup and time to its
+ // first event. It is not an HTTP dispatch counter (providers may retry).
+ const originalStream=session.agent.streamFunction
+ const observedStream=function(...args){
+  try{start();if(runId&&live()){model={spanId:hash([actor.id,runId,randomUUID()]),first:false,providerAttempted:true};send('model-started',null,model.spanId)}}catch(cause){report(cause)}
+  return Reflect.apply(originalStream,this,args)
+ }
+ session.agent.streamFunction=observedStream
  const offAgent=session.agent.subscribe(agentEvent),offSession=session.subscribe(sessionEvent)
- return{async close(){if(!closed){closed=true;offAgent();offSession();spans.clear();sources.clear();model=undefined}await Promise.allSettled([...reports])}}
+ return{async close(){if(!closed){closed=true;if(session.agent.streamFunction===observedStream)session.agent.streamFunction=originalStream;offAgent();offSession();spans.clear();sources.clear();model=undefined}await Promise.allSettled([...reports])}}
 }
 
 /** Host 计时只提交元数据；计量失败不能回滚业务或触发输入重放。 */
-export function createAgentPhaseTimer({ownerId,emit,onError=()=>{},clock=Date.now,elapsed=()=>performance.now()}){
+export function createAgentPhaseTimer({ownerId,emit,onError=()=>{},clock=Date.now,elapsed=()=>performance.now(),runId=()=>'host-lifecycle'}){
+ const nesting=new AsyncLocalStorage()
  const report=cause=>{try{const result=onError(cause);if(result?.then)void Promise.resolve(result).catch(()=>{})}catch{}}
  return async(phase,operation)=>{
-  const started=elapsed();let outcome='failed'
-  try{const result=await operation();outcome='completed';return result}
+  const started=elapsed(),parentSpanId=nesting.getStore(),spanId=createHash('sha256').update(randomUUID()).digest('hex');let outcome='failed',phaseRunId='host-lifecycle'
+  try{phaseRunId=runId()}catch(cause){report(cause)}
+  try{const result=await nesting.run(spanId,operation);outcome='completed';return result}
   finally{
    try{
-    const record=makeAgentObservation({ownerId,runId:'host-lifecycle',entryId:null,spanId:createHash('sha256').update(randomUUID()).digest('hex'),kind:'phase-completed',timestamp:clock(),summary:{phase,elapsedMs:Math.max(0,elapsed()-started),outcome}})
+    const record=makeAgentObservation({ownerId,runId:phaseRunId,entryId:null,spanId,...parentSpanId?{parentSpanId}:{},kind:'phase-completed',timestamp:clock(),summary:{phase,elapsedMs:Math.max(0,elapsed()-started),outcome}})
     const result=emit(record)
     if(result?.then)void Promise.resolve(result).catch(report)
    }catch(cause){report(cause)}

@@ -285,7 +285,7 @@ function apply(ctx, config) {
 	ctx.systemPrompt.section({
 		name: "tool:jobs",
 		order: ctx.systemPrompt.getSectionOrder("TOOL_JOBS"),
-		text: "Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job's work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering."
+		text: "Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job's work. A successful terminal job_output already collects that result: do not poll it again without a concrete need for unread output. Failure text alone is not a producer exit or a drained process tree; use the job status and cancellation/drain receipts rather than inferring completion from stderr. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering."
 	});
 	const killedByModel = /* @__PURE__ */ new Set();
     ctx.on('agent/created',async({agent})=>{if(!agent.piSession)return;const result=await reconcileJobCompletionNotices(ctx,agent);if(result.unknown)ctx.logger.warn('NIGHT_JOB_COMPLETION_NOTICE_UNKNOWN')})

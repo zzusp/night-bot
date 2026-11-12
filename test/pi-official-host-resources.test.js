@@ -241,3 +241,16 @@ test('skill refresh does not treat an incomplete catalog as a transient authoriz
  await assert.rejects(resources.context.skills(f.a.actor),{code:'PI_OFFICIAL_SKILL_SNAPSHOT_REQUIRED'})
  assert.equal(lists,1);assert.equal(reads,0)
 })
+
+test('parallel skill mapping rechecks catalog revision after all scoped reads before publication',async t=>{
+ const f=await fixture(t);let changed=false,lists=0
+ const values=['fast','slow','added'].map(name=>({...runtimeSkill,name,provider:'parallel',rank:100}))
+ f.ctx.skills.registerProvider(()=>({name:'parallel',list:async()=>{lists++;return values.slice(0,changed?3:2)},get:async candidate=>{
+  if(candidate.name==='slow'&&!changed){await new Promise(resolve=>setImmediate(resolve));changed=true;f.ctx.skills.invalidateCache()}
+  return values.find(skill=>skill.name===candidate.name)
+ }}))
+ const resources=await f.resolve(f.a),before=f.ctx.skills.revision,published=await resources.context.skills(f.a.actor)
+ assert.equal(f.ctx.skills.revision,before+1,'retry must not invalidate the fresh catalog again and race another actor')
+ assert.deepEqual(published.map(skill=>skill.name),['added','fast','slow'])
+ assert.ok(lists>=2,'catalog invalidation during a sibling mapping must force a new complete snapshot')
+})

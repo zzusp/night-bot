@@ -232,7 +232,17 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       if(batch.some(event=>pending.some(item=>item.id===event.id)))fail('ROUTER_BATCH_UNSETTLED')
       row=await query('router.get',{conversationId})
     }
-    if(row.cursor>row.lastHandoffCursor){handle??=await open(row);await rotate(row,handle)}
+    if(row.cursor>row.lastHandoffCursor){
+      // An empty Router inbox is not conversation quiescence. A running task
+      // can publish its completion next; rotating after each arrangement made
+      // that result wait behind a wholly avoidable model handoff. Keep the
+      // current official Pi owner while active work can still produce events.
+      // Pi's ordinary context/compaction remains responsible for long sessions.
+      const tasks=await query('task.list',{groupId:conversationId});assertOpen()
+      if(tasks.some(task=>task.status==='active'&&task.control==='active'&&!task.archivedAt))return
+      if((await query('router.inbox',{conversationId,limit:1})).length)return
+      assertOpen();handle??=await open(row);await rotate(row,handle)
+    }
   }
   function schedule(conversationId){
     if(closed)return Promise.reject(closeError)

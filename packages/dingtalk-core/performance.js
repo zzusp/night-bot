@@ -4,12 +4,12 @@ import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 // 只投影计量元数据；正文、工具参数和结果不进入这个持久投影。
 export const PERFORMANCE_EVENT_TYPES = new Set(['dingtalk/coordination-dispatched', 'user/message', 'step/start', 'assistant/chunk', 'assistant/message', 'step/end', 'tool/call', 'tool/result'])
 const number = z.number().finite().nonnegative()
-const identitySchema = z.object({ runtimeOwner: z.literal('channel-triage').optional(), sessionId: z.string().min(1), groupId: z.string().optional(), taskId: z.string().optional(), requestId: z.string().optional(), submissionId: z.string().optional() })
+const identitySchema = z.object({ runtimeOwner: z.enum(['channel-triage','conversation-router']).optional(), sessionId: z.string().min(1), groupId: z.string().optional(), taskId: z.string().optional(), requestId: z.string().optional(), submissionId: z.string().optional() })
 const distributionSchema = z.object({ count: number, sum: number, max: number, frequencies: z.record(z.string(), number) })
 const intervalSchema = z.tuple([number, number])
 const bucketSchema = identitySchema.extend({
   phaseMs: z.record(z.string(), distributionSchema.extend({ failures: number })).optional(),
-  day: z.string(), modelCalls: number, missingUsage: number, interrupted: number, toolCalls: number, toolResults: number, toolErrors: number,
+  day: z.string(), providerAttempts: number.default(0), preProviderErrors: number.default(0), modelCalls: number, missingUsage: number, interrupted: number, toolCalls: number, toolResults: number, toolErrors: number,
   missingStepStart: number, missingToolCall: number, missingFirstStream: number, missingModelResult: number.default(0),
   missingToolResult: number.default(0), coordinationMessages: number.default(0), coordinationInputBytes: number.default(0),
   missingCoordinationQueue: number.default(0), coordinationQueueMs: distributionSchema.default(() => ({ count: 0, sum: 0, max: 0, frequencies: {} })),
@@ -50,7 +50,7 @@ const addSample = (target, value) => { target.count++; target.sum += value; targ
 const fields = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens']
 function bucketFor(projection, identity, time) {
   const day = dayAt(time), key = JSON.stringify([day, identity.sessionId, identity.groupId, identity.taskId, identity.requestId, identity.submissionId])
-  return projection.buckets[key] ??= { ...identity, day, modelCalls: 0, missingUsage: 0, interrupted: 0, toolCalls: 0, toolResults: 0, toolErrors: 0,
+  return projection.buckets[key] ??= { ...identity, day, providerAttempts: 0, preProviderErrors: 0, modelCalls: 0, missingUsage: 0, interrupted: 0, toolCalls: 0, toolResults: 0, toolErrors: 0,
     missingStepStart: 0, missingToolCall: 0, missingFirstStream: 0, missingModelResult: 0, missingToolResult: 0, coordinationMessages: 0, coordinationInputBytes: 0,
     missingCoordinationQueue: 0, coordinationQueueMs: distribution(),
     usage: { ...Object.fromEntries(fields.map(field => [field, 0])), totalInputTokens: 0, missingFields: {} },
@@ -175,6 +175,8 @@ export function projectAgentObservation(previous,input){
    if(kind==='model-first-token'&&model.firstStreamAt===undefined){model.firstStreamAt=time;if(model.startedAt!==undefined&&time>=model.startedAt)addSample(bucket.firstStreamMs,time-model.startedAt)}
    if(kind==='model-completed'){
     model.completed=true;bucket.modelCalls++
+    if(summary.providerAttempted===true)bucket.providerAttempts=(bucket.providerAttempts??0)+1
+    if(summary.providerAttempted===false&&summary.stopReason==='error')bucket.preProviderErrors=(bucket.preProviderErrors??0)+1
     if(summary.stopReason==='aborted')bucket.interrupted++
     if(!summary.usage)bucket.missingUsage++
     const mapping={inputTokens:'input',outputTokens:'output',cacheReadTokens:'cacheRead',cacheWriteTokens:'cacheWrite'}

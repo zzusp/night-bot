@@ -11,13 +11,13 @@ export function createTaskSessionObservability({ store, listTasks, resolveSessio
   if (!Number.isSafeInteger(activityLimit) || activityLimit < 1 || activityLimit > 500) throw new Error('activity_limit_invalid')
   const activities = new Map()
   const currentIds = () => new Set(listTasks().map(task => task.taskId))
-  const visible = (identity,ids) => identity && (ids.has(identity.taskId) || identity.runtimeOwner==='channel-triage' && identity.taskId===undefined && typeof identity.groupId==='string' && identity.groupId.length>0)
+  const visible = (identity,ids) => identity && (ids.has(identity.taskId) || ['channel-triage','conversation-router'].includes(identity.runtimeOwner) && identity.taskId===undefined && typeof identity.groupId==='string' && identity.groupId.length>0)
   const performance = (filter = {}) => {
     const base = store.listPerformance?.(filter) ?? listPerformance(undefined, filter)
     const ids = currentIds(), rows = base.rows.filter(row => visible(row,ids))
     const { workflow: _retired, coordination: _oldCoordination, ...result } = base
     return { ...result, rows, coordination: coordinationCosts(rows),
-      completeness: 'incomplete', limitations: ['observed-native-events-only', 'business-wait-boundaries-unavailable', 'native-model-completion-observed-after-durable-commit', 'sdk-assistant-attempts-not-provider-dispatch-count', 'nested-and-parallel-phases-not-additive'],
+      completeness: 'incomplete', limitations: ['observed-native-events-only', 'business-wait-boundaries-unavailable', 'native-model-completion-observed-after-durable-commit', 'sdk-assistant-attempts-not-provider-dispatch-count', 'model-duration-from-sdk-stream-port-not-http-dispatch', 'pre-provider-errors-include-guards-and-preparation-failures', 'nested-and-parallel-phases-not-additive'],
       ...(typeof store.recordAgentObservation !== 'function' || typeof store.listPerformance !== 'function' ? { status: 'unsupported' } : {}) }
   }
   return {
@@ -29,6 +29,7 @@ export function createTaskSessionObservability({ store, listTasks, resolveSessio
       if(!activities.has(eventKey)){
         const detail={}
         if(event.kind==='tool-completed')detail.isError=event.summary.isError===true
+        if(event.kind==='phase-completed')Object.assign(detail,{phase:event.summary.phase,elapsedMs:event.summary.elapsedMs,outcome:event.summary.outcome,spanId:event.spanId,...event.parentSpanId?{parentSpanId:event.parentSpanId}:{}})
         activities.set(eventKey,{activityId:eventKey,eventKey,sessionId:event.ownerId,taskId:identity.taskId,
           ...(identity.runtimeOwner?{runtimeOwner:identity.runtimeOwner}:{}),
           ...(identity.groupId?{groupId:identity.groupId}:{}),type:event.kind,runId:event.runId,entryId:event.entryId,

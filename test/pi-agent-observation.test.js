@@ -146,3 +146,39 @@ test('taskless triage metrics, failed phases and SDK completions survive queued 
  assert.equal(row.modelCalls,1);assert.equal(row.phaseMs['session-dispose'].failures,1)
  assert.deepEqual(await observation.observeNative(phase,identity),{created:false})
 })
+
+test('SDK stream-port timing includes provider startup before its first event, not only streaming',async t=>{
+ const {createAssistantMessageEventStream}=await import('@earendil-works/pi-ai'),f=await sdk(t,()=>{}),model=f.session.agent.state.model
+ let now=base
+ f.session.agent.streamFunction=()=>{
+  const stream=createAssistantMessageEventStream()
+  const message={role:'assistant',content:[{type:'text',text:'private body'}],api:model.api,provider:model.provider,model:model.id,timestamp:base,stopReason:'stop',usage:{input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
+  queueMicrotask(()=>{now=base+800;stream.push({type:'start',partial:message});stream.push({type:'text_delta',contentIndex:0,delta:'private body',partial:message});stream.push({type:'done',reason:'stop',message});stream.end(message)})
+  return stream
+ }
+ const records=[],observer=bindPiAgentObservation({actor:f.actor,clock:()=>now,emit:(_actor,event)=>records.push(event)});t.after(()=>observer.close())
+ await f.run([])
+ const start=records.find(event=>event.kind==='model-started'),done=records.find(event=>event.kind==='model-completed')
+ assert.equal(start.timestamp,base);assert.equal(done.timestamp-start.timestamp,800)
+ assert.equal(done.summary.providerAttempted,true);assert.equal(records.filter(event=>event.kind==='model-started').length,1)
+ assert.equal(JSON.stringify(records).includes('private body'),false)
+})
+
+test('Router phase rows survive cold projection and attempts distinguish pre-provider rejection',async t=>{
+ const f=await storage(t),store=await f.open(),identity={runtimeOwner:'conversation-router',groupId:'room'}
+ const observation=createTaskSessionObservability({store,listTasks:()=>[],resolveSessionIdentity:()=>identity})
+ await observation.observeNative(record('model-completed',10,{stopReason:'error',providerAttempted:false}))
+ await observation.observeNative(record('model-completed',30,{stopReason:'stop',providerAttempted:true},{entryId:'second',spanId:hash('second')}))
+ await observation.observeNative(record('phase-completed',50,{phase:'skills',elapsedMs:12,outcome:'completed'}))
+ const row=observation.listPerformance({runtimeOwner:'conversation-router'}).rows[0]
+ assert.equal(row.modelCalls,2);assert.equal(row.providerAttempts,1);assert.equal(row.preProviderErrors,1);assert.equal(row.phaseMs.skills.sum,12)
+})
+
+test('nested phase spans preserve parent links and request identity without adding private payloads',async()=>{
+ const records=[],measure=createAgentPhaseTimer({ownerId:'owner',runId:()=> 'input-run',emit:event=>records.push(event)})
+ await measure('request-prepare',()=>Promise.all([measure('request-guards',async()=>{}),measure('request-commit',async()=>{})]))
+ const parent=records.find(event=>event.summary.phase==='request-prepare')
+ assert.ok(records.every(event=>event.runId==='input-run'))
+ assert.ok(records.filter(event=>event!==parent).every(event=>event.parentSpanId===parent.spanId))
+ assert.equal(parent.parentSpanId,undefined)
+})

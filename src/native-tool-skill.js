@@ -787,15 +787,26 @@ export {Config,apply,inject,name};
  * authorize a real host file path; sandbox display paths and runtime providers
  * must never become implicit filesystem authority. Pi owns skill presentation
  * and invocation; this does not inspect prior skill messages/publications. */
-export async function officialSkillResources(snapshot,{resolveFilePath}={}){
+export async function officialSkillResources(snapshot,{resolveFilePath,maxConcurrency=4}={}){
  if(!snapshot?.complete)throw Object.assign(new Error('Complete scoped skill snapshot required'),{code:'PI_OFFICIAL_SKILL_SNAPSHOT_REQUIRED'})
- const resources=[]
- for(const skill of snapshot.skills){
-  if(!isModelInvocable(skill)&&!isUserInvocable(skill))continue
-  const filePath=await resolveFilePath?.(skill)
-  if(typeof filePath!=='string'||!isAbsolute(filePath))throw Object.assign(new Error('Authorized host skill file mapping required: '+skill.name),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
-  const baseDir=dirname(filePath)
-  resources.push({name:skill.name,description:skill.description??'',filePath,baseDir,sourceInfo:{path:filePath,source:'night-authorized',scope:'temporary',origin:'top-level',baseDir},disableModelInvocation:!isModelInvocable(skill)})
+ if(!Number.isSafeInteger(maxConcurrency)||maxConcurrency<1||maxConcurrency>8)throw new TypeError('Skill mapping concurrency must be between 1 and 8')
+ const skills=snapshot.skills.filter(skill=>isModelInvocable(skill)||isUserInvocable(skill)),resources=new Array(skills.length)
+ let cursor=0,failure
+ // Each mapper retains its own scoped authorization and filesystem checks. Only
+ // independent mappings overlap; publish in catalog order and never return a
+ // partial snapshot. Drain in-flight reads before retrying a changed catalog.
+ async function worker(){
+  while(!failure&&cursor<skills.length){
+   const index=cursor++,skill=skills[index]
+   try{
+    const filePath=await resolveFilePath?.(skill)
+    if(typeof filePath!=='string'||!isAbsolute(filePath))throw Object.assign(new Error('Authorized host skill file mapping required: '+skill.name),{code:'PI_OFFICIAL_SKILL_FILE_REQUIRED'})
+    const baseDir=dirname(filePath)
+    resources[index]={name:skill.name,description:skill.description??'',filePath,baseDir,sourceInfo:{path:filePath,source:'night-authorized',scope:'temporary',origin:'top-level',baseDir},disableModelInvocation:!isModelInvocable(skill)}
+   }catch(error){failure??={error}}
+  }
  }
+ await Promise.all(Array.from({length:Math.min(maxConcurrency,skills.length)},()=>worker()))
+ if(failure)throw failure.error
  return resources
 }

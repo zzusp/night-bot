@@ -13,7 +13,7 @@ import {todoAuditKinds} from './native-tool-todo.js'
 import {bindBusinessInputAuthority} from './runtime/pi-business-inputs.js'
 import {bindBusinessNotices} from './runtime/pi-business-notices.js'
 import {assertPlatformScheduleSource} from './runtime/pi-platform-source.js'
-import {bindPiAgentObservation} from './runtime/pi-agent-observation.js'
+import {bindPiAgentObservation,createAgentPhaseTimer} from './runtime/pi-agent-observation.js'
 import {officialRetrySettings} from './runtime/pi-official-settings.js'
 
 const fail=code=>Object.assign(new Error(code),{code})
@@ -67,7 +67,13 @@ export class OfficialAgentFactory {
  }
  async openOwned(ownerCtx,options={},mode){
   options.signal.throwIfAborted()
-  const measurePhase=options.measurePhase??((_phase,run)=>run())
+  const phaseBuffer=[]
+  let phaseActor
+  const emitPhase=record=>{
+   if(!phaseActor||ownerCtx.agents.get(phaseActor.id)!==phaseActor){phaseBuffer.push(record);return}
+   return Promise.all([...phaseBuffer.splice(0),record].map(event=>phaseActor.ctx.emit(scopeTarget(phaseActor,phaseActor),'night/agent-observation',phaseActor,event)))
+  }
+  const measurePhase=options.measurePhase??createAgentPhaseTimer({ownerId:options.resumeSessionId??options.sessionId,emit:emitPhase,runId:()=>phaseActor?.admission?.current()?.id??'host-lifecycle',onError:()=>ownerCtx.logger.warn('Native phase observation could not be recorded')})
   const ports=this.ports,backend=ports.store??ownerCtx.get('sessionPersistence')
   const authorize=options.authorizeInput??ports.authorizeInput,drainBusiness=ports.drainBusiness
   if(typeof authorize!=='function'||typeof drainBusiness!=='function'||typeof ports.resolveResources!=='function')throw fail('PI_OFFICIAL_FACTORY_CAPABILITIES_REQUIRED')
@@ -113,7 +119,7 @@ export class OfficialAgentFactory {
    const state=await measurePhase('session-state-restore',()=>createNativeBusinessState(store,{readOnly:options.readOnly===true}))
    bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,measurePhase,
     prepareActor:async value=>{
-     actor=value;scope=createScope(ownerCtx,actor,{parent:options.parentAgent});actor.ctx=scope.ctx
+     actor=value;phaseActor=actor;scope=createScope(ownerCtx,actor,{parent:options.parentAgent});actor.ctx=scope.ctx
      Object.defineProperty(actor,'metadata',{value:deepFreeze(structuredClone(store.header)),enumerable:true});actor.options=deepFreeze(Object.fromEntries(['provider','model','reasoningEffort','maxTokens','temperature'].filter(key=>options.agentOptions?.[key]!==undefined).map(key=>[key,options.agentOptions[key]])))
      actor.lifecycle=Object.freeze({signal:AbortSignal.any([lifecycle.signal,options.signal]),isLive:live})
      actor.requestPolicy=Object.freeze({addBeforeRequest(guard){if(typeof guard!=='function')throw new TypeError('Business request guard required');requestGuards.add(guard);return()=>requestGuards.delete(guard)}})
@@ -152,7 +158,7 @@ export class OfficialAgentFactory {
    Object.defineProperty(actor,'status',{enumerable:true,get:()=>bundle.session.isStreaming?'running':'idle'})
    admission.bindSession(bundle.session,{signal:actor.lifecycle.signal})
    unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,pending:admission.pending,isLive:live})
-   unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live})
+   unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live,finishTaskRun:()=>admission.finishTaskRun(bundle.session)})
    options.signal.throwIfAborted();await measurePhase('session-publish',async()=>{await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true})
    await measurePhase('session-bind-names',()=>ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming}))
    skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))

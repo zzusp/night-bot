@@ -341,11 +341,22 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     onError: error => failures.set('observability', { id: 'observability', code: error.code ?? 'AGENT_OBSERVATION_FAILED' }),
     ...(closeTrace ? { onProgress: queued => closeTrace.sample('service.observation-progress', () => ({ queued })) } : {}),
   })
-  const stopObservation = ctx.on?.('night/agent-observation', (actor, record) => {
+  const phaseIdentityReads=new WeakMap()
+  const stopObservation = ctx.on?.('night/agent-observation', async (actor, record) => {
     if(!record||record.ownerId!==actor?.id||actor.metadata?.id!==actor.id||!Object.isFrozen(actor.metadata)||ctx.get('agents')?.get(record.ownerId)!==actor)return
     try{
       // 在可信实时 actor 仍存在时捕获身份；排队写入不得依赖 dispose 后的查找。
-      const identity=actor.metadata.runtimeOwner==='channel-triage'?{runtimeOwner:'channel-triage',groupId:actor.metadata.conversationId}:undefined
+      let identity=['channel-triage','conversation-router'].includes(actor.metadata.runtimeOwner)?{runtimeOwner:actor.metadata.runtimeOwner,groupId:actor.metadata.conversationId}:undefined
+      // Startup precedes task.sessionBound. Capture only the current ledger
+      // session plus its committed task identity; never infer from a path/name.
+      if(!identity&&record.kind==='phase-completed'){
+        const task=[...taskCache.values()].find(item=>item.sessionId===actor.id)
+        if(task){
+          let proof=phaseIdentityReads.get(actor)
+          if(!proof){proof=Promise.resolve(actor.receipts?.read()).then(rows=>rows?.some(row=>row.domain==='task'&&row.kind==='identity'&&row.payload?.taskId===task.taskId&&row.payload?.sessionId===actor.id));phaseIdentityReads.set(actor,proof)}
+          if(await proof)identity={taskId:task.taskId,groupId:task.groupId,role:'execution'}
+        }
+      }
       observationQueue.enqueue(agentObservationSchema.parse(record),identity)
     }
     catch(error){failures.set('observability',{id:'observability',code:error.code??'AGENT_OBSERVATION_INVALID'})}
