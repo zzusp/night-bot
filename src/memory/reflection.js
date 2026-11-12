@@ -1,7 +1,7 @@
 import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
 import {officialReflectionText} from './reflection-inference.js'
-import {assignReflectionMemoryKeys,reflectionMemoryKey} from './reflection-keys.js'
+import {assignReflectionMemoryKeys,reflectionMemoryKey,reviewMemoryKeys,reviewLessonMemoryKey,reflectionRetrySupported} from './reflection-keys.js'
 import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
 import {rm} from 'node:fs/promises'
@@ -48,7 +48,9 @@ export default class Reflection extends Service {
     const scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'},true),directory=this.directory(scope),id=hash(event.id)
     await withLock(join(directory,'.lock'),async()=>{
       const state=await this.state(scope),previous=state.reviews[id]
-      if(previous?.status==='done'||previous?.status==='skipped'){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
+      // Old failures may already have effects without durable key/write receipts.
+      // Preserve them for audit, but never infer again or replay them under new names.
+      if(previous&&(previous.status==='done'||previous.status==='skipped'||!reflectionRetrySupported(previous))){try{await source.onReview?.(task.taskId,previous)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}return}
       if(previous?.attempts>=3||previous?.retryAt>Date.now())return
       const attempts=(previous?.attempts??0)+1
       try{
@@ -76,7 +78,7 @@ export default class Reflection extends Service {
         lessons=assignReflectionMemoryKeys(lessons,snapshot.entries,state.reviews)
         // Commit key reservations before any memory/skill effects so retries use
         // the same receipt identity even after a crash or an intervening forget.
-        state.reviews[id]={status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
+        state.reviews[id]={memoryKeyVersion:1,status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
         await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
         for(const lesson of lessons){
           signal.throwIfAborted()
@@ -110,9 +112,9 @@ export default class Reflection extends Service {
           await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
           if(lesson.skill)await this.publishSkill(scope,lesson.key,state)
         }
-        state.reviews[id]={status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
+        state.reviews[id]={memoryKeyVersion:1,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
-      }catch(error){state.reviews[id]={...state.reviews[id],status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
+      }catch(error){state.reviews[id]={...state.reviews[id],memoryKeyVersion:1,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');try{await source.onReview?.(task.taskId,report)}catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError)}
     })
   }
@@ -178,9 +180,11 @@ export default class Reflection extends Service {
       for(const [name,skill]of Object.entries(state.skills))if(skill.memoryKeys.includes(key)){
         state.skillRevisions??={};state.skillRevisions[name]=Math.max(skill.revision??0,state.skillRevisions[name]??0)+1;delete state.skills[name];await privateDirectory(join(directory,'skills'));await rm(join(directory,'skills',name),{recursive:true,force:true})
       }
-      for(const [id,review]of Object.entries(state.reviews))if(review.lessons){
-        const kept=review.lessons.filter(lesson=>reflectionMemoryKey(lesson)!==key)
-        if(kept.length!==review.lessons.length){review.lessons=kept;review.forgotten=true;review.destinations=(review.destinations??[]).filter(destination=>destination.memory?.key!==key);changedReviews.push([id,review])}
+      for(const [id,review]of Object.entries(state.reviews)){
+        const lessons=Array.isArray(review.lessons)?review.lessons:[],destinations=Array.isArray(review.destinations)?review.destinations:[]
+        const kept=lessons.filter((lesson,index)=>reviewLessonMemoryKey(review,index)!==key)
+        const retained=kept.length!==lessons.length||!lessons.length?destinations.filter(destination=>destination?.memory?.key!==key||destination.memory.topic&&destination.memory.topic!=='experience'):destinations
+        if(kept.length!==lessons.length||retained.length!==destinations.length){if(kept.length!==lessons.length)review.lessons=kept;review.forgotten=true;if(retained.length!==destinations.length)review.destinations=retained;changedReviews.push([id,review])}
       }
       for(const [id,review]of changedReviews)await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n')
       // Commit forgetting before external archive callbacks.
@@ -212,7 +216,7 @@ export default class Reflection extends Service {
       if(reviewId!==hash(report.eventId)||!['done','skipped','failed'].includes(report.status))throw failure('LEARNING_IDENTITY_INVALID')
       reviews.push({reviewId,taskId:task.taskId,eventId:report.eventId,status:report.status,summary:report.status==='failed'?'复盘失败，不能据此认定记忆或技能已更新':report.status==='skipped'?'复盘未产生新经验':'已记录 '+(report.lessons?.length??0)+' 条复盘；变更以当前落盘证据为准',at:report.recordedAt??null})
       const entries=[]
-      const memoryKeys=new Set([...(report.lessons??[]).map(lesson=>reflectionMemoryKey(lesson)),...(report.destinations??[]).filter(row=>row.memory?.topic==='experience').map(row=>row.memory.key)])
+      const memoryKeys=new Set(reviewMemoryKeys(report))
       for(const key of memoryKeys){
         const saved=(await this.host.memory.store.read(scope,{topic:'experience',key})).entries.find(row=>row.source?.messageId===report.eventId)
         if(saved)entries.push(saved)

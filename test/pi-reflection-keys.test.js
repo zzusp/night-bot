@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
 import {readFile,mkdir,rm} from 'node:fs/promises'
-import {assignReflectionMemoryKeys,reflectionMemoryKey} from '../src/memory/reflection-keys.js'
+import {assignReflectionMemoryKeys,reflectionMemoryKey,reviewMemoryKeys,reviewLessonMemoryKey,reflectionRetrySupported} from '../src/memory/reflection-keys.js'
 import {hash} from '../src/memory/format.js'
 import {memoryScope} from '../src/memory/scope.js'
 import {atomicWrite} from '../src/runtime/files.js'
@@ -20,6 +20,19 @@ test('semantic keys reserve every existing record and review and disambiguate wi
  for(const memoryWrite of ['committed','uncertain'])assert.equal(assignReflectionMemoryKeys([{key:'lesson',memoryKey:'lesson',memoryWrite}],entries,{})[0].memoryKey,'lesson')
 })
 
+test('historical keys come only from explicit references and unsupported lessons cannot poison reservations',()=>{
+ const historical={lessons:[{key:'legacy'}],destinations:[{memory:{topic:'experience',key:'reserved'}}]}
+ const unsupported={lessons:[{key:'legacy'},{key:'unpaired'}],destinations:[{memory:{topic:'experience',key:'other'}}]}
+ assert.deepEqual(reviewMemoryKeys(historical),['reserved'])
+ assert.equal(reviewLessonMemoryKey(historical,0),'reserved')
+ assert.equal(reviewLessonMemoryKey(unsupported,0),undefined)
+ assert.deepEqual(reviewMemoryKeys({lessons:[{key:'missing'}],destinations:[{memory:{topic:'facts',key:'foreign'}},{memory:{topic:'experience',key:'../invalid'}}]}),[])
+ assert.deepEqual(assignReflectionMemoryKeys([{key:'reserved'},{key:'legacy'}],[],{historical,unsupported,missing:{lessons:[{key:'missing'}]}}).map(row=>row.memoryKey),['reserved-2','legacy'])
+ assert.equal(reflectionRetrySupported({status:'failed'}),false)
+ assert.equal(reflectionRetrySupported({memoryKeyVersion:1,status:'failed'}),true)
+ assert.equal(reflectionRetrySupported({...historical,memoryKeyVersion:1}),false)
+})
+
 async function fixture(t,makeLessons){
  let analyses=0,detach
  const f=await memoryHost(t,async body=>{
@@ -35,7 +48,7 @@ async function fixture(t,makeLessons){
  await initializeMemoryTaskWorkspace(store,ctx.runtimePaths.workspaces,'task-one')
  const binding=(await command('task.claim',{taskId:'task-one'})).result.binding
  const event=(await command('task.complete',{binding,summary:'Verified local evidence'})).completionEvent
- return {ctx,scope,store,event,get analyses(){return analyses},start:async()=>{detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await ctx.reflection.whenIdle()},retry:async()=>{
+ return {ctx,scope,store,event,command,get analyses(){return analyses},start:async()=>{detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await ctx.reflection.whenIdle()},retry:async()=>{
   const state=await ctx.reflection.state(scope);state.reviews[hash(event.id)].retryAt=0
   await atomicWrite(join(ctx.reflection.directory(scope),'state.json'),JSON.stringify(state))
   ctx.reflection.scan();await ctx.reflection.whenIdle()
@@ -166,4 +179,70 @@ test('persisted key associations inspect and forget without rewriting current da
  assert.equal(detail.changes[0].name,key);assert.equal(detail.changes[0].status,'applied')
  await f.ctx.memory.store.forget(f.scope,{topic:'experience',key});await f.ctx.reflection.forget(f.scope,key)
  assert.deepEqual((await f.ctx.reflection.state(f.scope)).reviews[id].lessons,[])
+})
+
+test('retained main-format reviews do not block new lessons, inspect explicit destinations and forget only the selected association',async t=>{
+ const f=await fixture(t,input=>[lesson(input,'reserved')]),memory=f.ctx.memory.store,directory=f.ctx.reflection.directory(f.scope)
+ const eventId='historical-completion',id=hash(eventId),missingId=hash('missing-completion'),unpairedId=hash('unpaired-completion')
+ const historical={status:'done',attempts:1,eventId,taskId:'task-one',recordedAt:'2026-01-01T00:00:00Z',lessons:[{key:'old-first',summary:'Retained original fields'},{key:'old-second',summary:'Unrelated retained lesson'}],destinations:['reserved','second-retained'].map(key=>({memory:{scope:f.scope,topic:'experience',key}}))}
+ const missing={status:'done',eventId:'missing-completion',taskId:'task-one',lessons:[{key:'unknown-legacy-name',summary:'No explicit destination'}]}
+ const unpaired={status:'done',eventId:'unpaired-completion',taskId:'task-one',lessons:[{key:'unknown-one'},{key:'unknown-two'}],destinations:[{memory:{scope:f.scope,topic:'experience',key:'reserved'}}]}
+ const state={version:1,skills:{},reviews:{[id]:historical,[missingId]:missing,[unpairedId]:unpaired}}
+ await atomicWrite(join(directory,'state.json'),JSON.stringify(state))
+ await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(historical))
+ const oldArchive=await readFile(join(directory,'reviews',id+'.json'))
+ for(const key of ['reserved','second-retained'])await memory.remember(f.scope,{topic:'experience',key,text:'Original memory '+key,source:{sessionId:'old-session',messageId:eventId},provenance:{taskId:'task-one'}})
+ const original=(await memory.read(f.scope,{topic:'experience'})).entries
+ await f.start()
+ const saved=await f.ctx.reflection.state(f.scope)
+ assert.equal(f.analyses,1);assert.equal(saved.reviews[hash(f.event.id)].status,'done')
+ assert.equal(saved.reviews[hash(f.event.id)].lessons[0].memoryKey,'reserved-2')
+ assert.deepEqual(saved.reviews[id],historical);assert.deepEqual(saved.reviews[missingId],missing);assert.deepEqual(saved.reviews[unpairedId],unpaired)
+ assert.deepEqual(await readFile(join(directory,'reviews',id+'.json')),oldArchive)
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries.slice(0,2),original)
+ const task=await f.store.query({kind:'task.get',taskId:'task-one'}),detail=await f.ctx.reflection.inspectTask(task,{actorId:'owner'},{store:f.store})
+ assert.deepEqual(detail.changes.filter(row=>row.reviewId===id).map(row=>[row.name,row.status]),[['reserved','applied'],['second-retained','applied']])
+ assert.equal(detail.changes.some(row=>row.reviewId===missingId),false)
+ assert.equal(f.analyses,1)
+ await memory.forget(f.scope,{topic:'experience',key:'reserved'})
+ await f.ctx.reflection.forget(f.scope,'reserved')
+ const forgotten=await f.ctx.reflection.state(f.scope)
+ assert.deepEqual(forgotten.reviews[id].lessons,[historical.lessons[1]])
+ assert.deepEqual(forgotten.reviews[id].destinations,[historical.destinations[1]])
+ assert.deepEqual(forgotten.reviews[missingId],missing);assert.deepEqual(forgotten.reviews[unpairedId],unpaired)
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries.map(row=>row.key),['second-retained','reserved-2'])
+ assert.deepEqual(JSON.parse(await readFile(join(directory,'reviews',id+'.json'),'utf8')),forgotten.reviews[id])
+})
+
+test('historical failed reviews stay unchanged and never replay, while later completions still learn',async t=>{
+ for(const savedLessons of [undefined,[],[{key:'old-name',summary:'Possibly committed before the historical failure'}]])await t.test(savedLessons===undefined?'unknown effects':savedLessons.length?'unversioned lessons':'unversioned empty lessons',async t=>{
+  const f=await fixture(t,input=>[lesson(input,'new-only')]),directory=f.ctx.reflection.directory(f.scope),id=hash(f.event.id)
+  const historical={status:'failed',attempts:1,retryAt:0,eventId:f.event.id,taskId:'task-one',code:'MEMORY_COMMIT_UNCERTAIN',...savedLessons?{lessons:savedLessons}: {},destinations:[{memory:{scope:f.scope,topic:'experience',key:'historical-destination'}}]}
+  const initial=JSON.stringify({version:1,skills:{},reviews:{[id]:historical}})
+  await atomicWrite(join(directory,'state.json'),initial)
+  await f.start()
+  assert.equal(f.analyses,0);assert.equal(await readFile(join(directory,'state.json'),'utf8'),initial)
+  assert.deepEqual((await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries,[])
+  await f.command('task.create',{taskId:'task-two',request:'New evidence after retained failure',ownerActorId:'owner'})
+  await initializeMemoryTaskWorkspace(f.store,f.ctx.runtimePaths.workspaces,'task-two')
+  const binding=(await f.command('task.claim',{taskId:'task-two'})).result.binding
+  const event=(await f.command('task.complete',{binding,summary:'Verified new evidence'})).completionEvent
+  f.ctx.reflection.scan();await f.ctx.reflection.whenIdle()
+  const state=await f.ctx.reflection.state(f.scope)
+  assert.equal(f.analyses,1);assert.deepEqual(state.reviews[id],historical)
+  assert.equal(state.reviews[hash(event.id)].status,'done')
+  assert.equal(state.reviews[hash(event.id)].memoryKeyVersion,1)
+  assert.deepEqual((await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries.map(row=>row.key),['new-only'])
+ })
+})
+
+test('new pre-effect failures retain the retry protocol and can infer again without a reserved key',async t=>{
+ let attempt=0
+ const f=await fixture(t,input=>[++attempt===1?{...lesson(input,'retry'),summary:undefined}:lesson(input,'retry')])
+ await f.start()
+ const failed=(await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)]
+ assert.equal(failed.code,'MEMORY_TEXT_INVALID');assert.equal(failed.memoryKeyVersion,1);assert.equal(failed.lessons,undefined)
+ await f.retry()
+ assert.equal(f.analyses,2);assert.equal((await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)].status,'done')
+ assert.deepEqual((await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries.map(row=>row.key),['retry'])
 })

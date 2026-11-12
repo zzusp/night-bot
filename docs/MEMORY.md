@@ -51,6 +51,12 @@ learned-skill support references, not a mandatory `task-<hash>-` name prefix.
 Task learning views and forgetting follow those explicit references. No legacy
 prefix reconstruction or automatic data migration is provided. These are logical
 entry names within topic Markdown files, not individual on-disk filenames.
+Retained reviews can still expose their saved explicit destination references;
+missing or unsupported historical associations do not block new retrospectives.
+Historical failed reviews without the semantic-key retry protocol are audit-only:
+they are not inferred or replayed again, even after memory is cleared. New reviews
+persist `memoryKeyVersion: 1` before effects (and on pre-effect failure) so retries
+can distinguish their durable key/write receipts from historical unknown effects.
 
 ## Identity is a Host responsibility
 
