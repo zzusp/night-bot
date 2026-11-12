@@ -217,22 +217,23 @@ test('same-goal rework follows the drained original task version and releases B 
   assert.equal((await f.query('wake.list',{taskId:'b'})).filter(wake=>wake.kind==='dependency.satisfied').length,1)
 })
 
-test('a shared conversation does not allow another sender to cancel the original author task',async t=>{
+test('the authenticated Router can cancel a task using another sender as provenance',async t=>{
   const f=await fixture(t);await f.plan()
   await f.command('source.record-direct',{source:{sourceId:'bob-cancel',groupId:f.conversationId,messageId:'cancel',actorId:'bob',version:1,text:'Cancel the work'},conversation:{conversationId:f.conversationId}})
-  await assert.rejects(f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,
-    sourceId:'bob-cancel',messageVersion:1,operationId:'unauthorized-cancel',kind:'task.control',
-    action:{taskId:'a',expectedRequirementRevision:1,expectedControlRevision:1,control:'cancelled'}}),{code:'ROUTER_TASK_PERMISSION_DENIED'})
-  assert.equal((await f.query('task.get',{taskId:'a'})).control,'active')
+  await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,
+    sourceId:'bob-cancel',messageVersion:1,operationId:'router-cancel',kind:'task.control',
+    action:{taskId:'a',expectedRequirementRevision:1,expectedControlRevision:1,control:'cancelled'}})
+  assert.equal((await f.query('task.get',{taskId:'a'})).control,'cancelled')
 })
 
-test('a newer authorization source invalidates both a prepared assessment and a previously satisfied dependency',async t=>{
+test('a changed source requests reassessment but cannot veto the current Router decision',async t=>{
   const f=await fixture(t);await f.plan();await f.complete()
   const accepted=await f.evaluation();await f.command('router.evaluate',accepted)
   await f.command('source.record-direct',{source:{sourceId:'source-a-v2',groupId:f.conversationId,messageId:'user-order',actorId:'alice',version:2,
     text:'Do not produce B until I review it'},conversation:{conversationId:f.conversationId}})
-  await assert.rejects(f.command('router.evaluate',{...accepted,operationId:'stale-authorization'}),/SOURCE_STALE/)
   await assert.rejects(f.command('task.claim',{taskId:'b'}),/DEPENDENC/)
+  await f.command('router.evaluate',{...accepted,operationId:'router-reassessed'})
+  assert.equal((await f.command('task.claim',{taskId:'b'})).result.task.taskId,'b')
 })
 
 test('all prerequisite assessments are required; accepting A cannot bypass an independent prerequisite C',async t=>{
@@ -330,7 +331,7 @@ test('stable task action retries ignore physical generation and live binding wit
   await assert.rejects(f.command('router.task-action',{...args,action:{...args.action,text:'Changed action under the same stable ID'}}),/OPERATION_CONFLICT/)
 })
 
-test('dependency arrangement replaces the complete set atomically with version, quiescence and cycle guards',async t=>{
+test('Router can atomically replace dependencies even during a live lease, preserving version and cycle guards',async t=>{
   const f=await fixture(t);await f.plan({tasks:[{taskId:'a',request:'Verify A'},{taskId:'b',request:'Produce B'},{taskId:'c',request:'Verify C'}]})
   const args={conversationId:f.conversationId,generation:f.generation,sourceId:f.sourceId,messageVersion:1,operationId:'arrange-b',kind:'task.arrange',action:{taskId:'b',expectedRequirementRevision:1,expectedControlRevision:1,expectedArrangementRevision:1,dependencies:[{prerequisiteTaskId:'c',condition:'Use C instead of A'}]}}
   await f.command('router.task-action',args)
@@ -344,10 +345,11 @@ test('dependency arrangement replaces the complete set atomically with version, 
   const snapshot=await f.store.exportTaskArchive('b')
   assert.ok(snapshot.tables.task_events.some(row=>row.body.kind==='task.arranged'),'removed arrangements remain a task-only audit trail')
   await f.command('task.claim',{taskId:'b'})
-  await assert.rejects(f.command('router.task-action',{...args,operationId:'active-arrangement',action:{...args.action,expectedArrangementRevision:3,dependencies:[]}}),/QUIESCENT/)
+  await f.command('router.task-action',{...args,operationId:'active-arrangement',action:{...args.action,expectedArrangementRevision:3,dependencies:[]}})
+  assert.equal((await f.query('task.get',{taskId:'b'})).arrangementRevision,4)
 })
 
-test('撤回墓碑原子撤权全部来源版本，拒绝旧分诊和Router授权，冷恢复与重复接纳不复活',async t=>{
+test('撤回墓碑保留全部来源版本且不复活分诊，真实 Router 仍能自主调度',async t=>{
  const f=await fixture(t)
  const tombstone={sourceId:'retracted-v2',groupId:f.conversationId,messageId:'user-order',actorId:'alice',version:2,text:'[消息已撤回]',retracted:true}
  await f.command('source.record-direct',{source:tombstone})
@@ -356,12 +358,15 @@ test('撤回墓碑原子撤权全部来源版本，拒绝旧分诊和Router授�
  assert.equal(sources.find(source=>source.sourceId===f.sourceId).text,'First verify A; only after the evidence is accepted, produce B')
  assert.equal(sources.find(source=>source.retracted).routed,true)
  assert.deepEqual(await f.query('triage.pending',{conversationId:f.conversationId}),[])
- await assert.rejects(f.plan(),/ROUTER_SOURCE_STALE/)
- await assert.rejects(f.plan({sourceId:tombstone.sourceId,messageVersion:2}),/ROUTER_SOURCE_STALE/)
  await assert.rejects(f.command('triage.commit',{dispositions:[{sourceId:f.sourceId,messageVersion:1,needsHandling:true,reply:'Too late',reason:'Old decision'}]}),/ROUTER_SOURCE_STALE/)
  await f.reopen();await f.command('source.record-direct',{source:tombstone})
  assert.deepEqual(await f.query('source.list'),sources)
  assert.deepEqual(await f.query('task.list'),[]);assert.deepEqual(await f.query('notification.list'),[])
+ await f.plan()
+ assert.equal((await f.query('task.list')).length,2,'原来源只作审计，创建权限来自真实 Router')
+ const task=await f.query('task.get',{taskId:'a'})
+ await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,sourceId:tombstone.sourceId,messageVersion:2,operationId:'router-stop',kind:'task.control',action:{taskId:'a',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,control:'cancelled'}})
+ assert.equal((await f.query('task.get',{taskId:'a'})).control,'cancelled')
 })
 
 test('同ID跨作者的撤回整笔回滚，不能撤销原作者来源',async t=>{
@@ -369,4 +374,33 @@ test('同ID跨作者的撤回整笔回滚，不能撤销原作者来源',async t
  await assert.rejects(f.command('source.record-direct',{source:{sourceId:'forged-retraction',groupId:f.conversationId,messageId:'user-order',actorId:'mallory',version:2,text:'[消息已撤回]',retracted:true}}),/DYNAMIC_SOURCE_CONFLICT/)
  assert.deepEqual(await f.query('source.list'),before)
  assert.equal((await f.query('triage.pending',{conversationId:f.conversationId})).length,1)
+})
+
+test('Router activation of completed A requires a fresh current completion assessment before B can run',async t=>{
+ const f=await fixture(t);await f.plan();await f.complete();const old=await f.evaluation();await f.command('router.evaluate',old)
+ const before=await f.query('task.get',{taskId:'a'})
+ await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,operationId:'restart-completed',kind:'task.control',action:{taskId:'a',expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision,control:'active'}})
+ const task=await f.query('task.get',{taskId:'a'}),dependency=(await f.query('router.dependencies',{taskId:'b'}))[0]
+ assert.equal(task.requirementRevision,before.requirementRevision+1);assert.equal(dependency.prerequisiteRequirementRevision,task.requirementRevision);assert.equal(dependency.state,'pending')
+ await f.complete()
+ await assert.rejects(f.command('task.claim',{taskId:'b'}),/DEPENDENC/)
+ await assert.rejects(f.command('router.evaluate',{...old,operationId:'old-assessment'}),/STALE/)
+ await f.command('router.evaluate',await f.evaluation({operationId:'current-assessment'}))
+ assert.equal((await f.command('task.claim',{taskId:'b'})).result.task.taskId,'b')
+})
+
+test('Router stop of an archived task retains new source audit and subsequent activation preserves original receipts',async t=>{
+ const f=await fixture(t);await f.plan({tasks:[{taskId:'a',request:'Keep original proof'}],dependencies:[]});await f.complete()
+ const before=await f.query('task.get',{taskId:'a'}),original=(await f.store.exportTaskArchive('a')).tables.receipts
+ await f.command('task.archive',{taskId:'a',actorId:'operator'})
+ await f.command('source.record-direct',{source:{sourceId:'archived-stop',groupId:f.conversationId,messageId:'stop',actorId:'bob',version:1,text:'Router decides to stop'},conversation:{conversationId:f.conversationId}})
+ const base={conversationId:f.conversationId,generation:f.generation,kind:'task.control',action:{taskId:'a',expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision}}
+ await f.command('router.task-action',{...base,operationId:'stop-archived',sourceId:'archived-stop',messageVersion:1,action:{...base.action,control:'paused'}})
+ const stopped=await f.query('task.get',{taskId:'a'});assert.ok(stopped.archivedAt);assert.ok(stopped.sourceRefs.includes('archived-stop'))
+ validateTaskLedger(await f.store.exportTaskArchive('a'))
+ await f.command('router.task-action',{...base,operationId:'start-archived',action:{...base.action,control:'active'}})
+ const current=await f.query('task.get',{taskId:'a'}),snapshot=await f.store.exportTaskArchive('a')
+ assert.equal(current.archivedAt,undefined);assert.equal(current.status,'active');assert.equal(current.sessionId,before.sessionId)
+ assert.ok(original.every(row=>snapshot.tables.receipts.some(next=>next.id===row.id&&next.digest===row.digest&&JSON.stringify(next.body)===JSON.stringify(row.body))))
+ await f.complete();await f.command('task.archive',{taskId:'a',actorId:'operator'});validateTaskLedger(await f.store.exportTaskArchive('a'))
 })

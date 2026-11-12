@@ -1,7 +1,7 @@
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
 import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity,taskEffectActionAuthorizationIdentity} from '../../src/tasks/effect-reconciliation.js'
-import {installTaskArchive, archiveTable, archiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
+import {installTaskArchive, archiveTable, archiveTaskRows, unarchiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
 import { installObserverPagination, installObserverArchivePagination, observerPage, observerGroupQuery } from './observer-pagination.js'
@@ -514,7 +514,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     return { events, nextCursor: events.at(-1)?.sequence ?? after, hasMore: rows.length > limit }
   }
   const topicFacts = topicFactLedger({ db, get: (table, id) => get(table, id, true), put })
-  const routerLedger = createRouterLedger({db,get,put,all,reduce,wake,saveTask,blockers,taskHumanWait,digest,operatorActorIds:[ownerActorId,webActorId].filter(Boolean)})
+  const routerLedger = createRouterLedger({db,get,put,all,reduce,wake,saveTask,blockers,taskHumanWait,digest})
   function assertTaskDelivery(notification,{allowArchived=true}={}) {
     const p=record(notification.payload),selection=record(p.taskDelivery),task=get('dynamic_tasks',notification.taskId)
     if(notification.kind!=='status'||selection.taskId!==task.taskId||digest(p.taskIds??[])!==digest([task.taskId]))fail('DYNAMIC_TASK_DELIVERY_INVALID')
@@ -550,7 +550,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         ||notification.id!==parent.id+':file:'+file.artifact.artifactId||p.afterNotificationId!==expectedAfter)fail('DYNAMIC_TASK_DELIVERY_INVALID')
     } else if(p.deliveryId!==notification.id||p.afterNotificationId!==undefined||digest(p.artifactFiles??[])!==digest(selected))fail('DYNAMIC_TASK_DELIVERY_INVALID')
   }
-  function reduce(kind, a, commandId) {
+  function reduce(kind, a, commandId, {routerScheduling=false}={}) {
     const routerResult = routerLedger.command(kind,a,commandId)
     if(routerResult !== undefined)return routerResult
     const heldTaskId=a.taskId??a.binding?.taskId
@@ -764,8 +764,18 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if (kind === 'task.revise' || kind === 'task.reopen' || kind === 'task.control') {
       const task = get('dynamic_tasks', a.taskId)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
-      if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
+      if(task.archivedAt){
+        if(!routerScheduling)fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
+        if(kind==='task.control'&&['paused','cancelled'].includes(a.control)){
+          task.sourceRefs=clone(a.sourceRefs??task.sourceRefs)
+          task.appliedOperations=[...new Set([...(task.appliedOperations??[]),a.operationId])]
+          saveTask(task);return changed({task})
+        }
+        unarchiveTaskRows(db,task.taskId);delete task.archivedAt;delete task.archivedBy
+      }
+      if(routerScheduling){task.providerRecovery=null;task.technicalFailure=null}
       const previousRequirementRevision=task.requirementRevision
+      let reactivated=false
       if(a.sameGoal===true&&(kind!=='task.reopen'||['objective','title','requirements'].some(key=>a[key]!==undefined&&digest(a[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
       if(kind!=='task.control'||a.control==='active')clearDisabledTaskRetry(task)
       if (kind === 'task.revise' || kind === 'task.reopen') {
@@ -775,9 +785,10 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           const unresolved = blockers(task.taskId).operations
           if (restartReopenEligible(task)) {
             task.restartRecoveryOperations = unresolved.map(operation => operation.operationId)
-          } else if (task.status !== 'completed' || !task.drained || unresolved.length) fail('DYNAMIC_TASK_NOT_QUIESCENT')
+          } else if (!routerScheduling && (task.status !== 'completed' || !task.drained || unresolved.length)) fail('DYNAMIC_TASK_NOT_QUIESCENT')
           task.status = 'active'; task.control = 'active'; task.controlRevision++; task.runSequence = (task.runSequence ?? 1) + 1; task.completion = null
-        } else if (task.status === 'completed' || task.control === 'cancelled') fail('DYNAMIC_TASK_TERMINAL')
+        } else if (!routerScheduling && (task.status === 'completed' || task.control === 'cancelled')) fail('DYNAMIC_TASK_TERMINAL')
+        if(routerScheduling&&(task.status!=='active'||task.control==='cancelled')){task.status='active';task.control='active';task.controlRevision++;task.runSequence=(task.runSequence??1)+1;task.completion=null}
         task.requirementRevision++
         for (const field of ['request','objective','title','requirements','topicRefs']) if (a[field] !== undefined) task[field] = clone(a[field])
         if (a.replyBindings !== undefined) task.replyBindings = topicFacts.bindings(task, a.replyBindings)
@@ -785,7 +796,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       } else {
         if (a.expectedControlRevision !== undefined && a.expectedControlRevision !== task.controlRevision) fail('DYNAMIC_TASK_REVISION_STALE')
         if (!['active','paused','cancelled'].includes(a.control)) fail('DYNAMIC_ARGUMENT_INVALID', 'control')
-        if (task.status === 'completed' || task.control === 'cancelled' && a.control !== 'cancelled') fail('DYNAMIC_TASK_TERMINAL')
+        if (!routerScheduling && (task.status === 'completed' || task.control === 'cancelled' && a.control !== 'cancelled')) fail('DYNAMIC_TASK_TERMINAL')
+        if(routerScheduling&&a.control==='active'&&(task.status!=='active'||task.control==='cancelled')){reactivated=true;task.status='active';task.requirementRevision++;task.runSequence=(task.runSequence??1)+1;task.completion=null}
         task.controlRevision++; task.control = a.control
         if (a.control === 'cancelled') { task.status = 'cancelled'; task.cancelledAt ??= stamp }
       }
@@ -801,7 +813,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       for (const operation of ops(task.taskId)) if (operation.state === 'prepared') {
         operation.state = 'cancelled'; put('dynamic_operations', operation); releaseOperation(operation)
       }
-      saveTask(task);routerLedger.taskMutation(kind,task,{sameGoal:a.sameGoal,previousRequirementRevision})
+      saveTask(task);routerLedger.taskMutation(reactivated?'task.reopen':kind,task,{sameGoal:reactivated||a.sameGoal,previousRequirementRevision})
       wake(task.taskId, kind, { requirementRevision: task.requirementRevision, controlRevision: task.controlRevision }, `wake:${commandId}`)
       return changed({ task })
     }
@@ -826,13 +838,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       reconciliation.state='committed';reconciliation.entryId=text(a.entryId,'entryId');reconciliation.committedAt=stamp
       // Closing the uncertain attempt never authorizes continuation or success.
       // An explicit later Host resume is required for the original objective.
-      if(task.control!=='cancelled'){task.control='paused';task.controlRevision++}
-      task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；禁止重放。任务保持暂停，继续须另行明确请求。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
+      if(!a.preserveControl&&task.control!=='cancelled'){task.control='paused';task.controlRevision++}
+      task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；原调用禁止重放，后续会话由 Router 按当前任务状态调度。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
       saveTask(task);return changed({task,reconciliation})
     }
     if (kind === 'task.claim') {
       if(!routerLedger.dependenciesReady(get('dynamic_tasks',a.taskId)))fail('ROUTER_DEPENDENCY_PENDING')
-      if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
+      if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired&&a.restoreReview!==true)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
       assertTaskWorkspaceReady(task)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')

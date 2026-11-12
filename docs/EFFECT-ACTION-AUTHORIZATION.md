@@ -1,52 +1,25 @@
-# A new action after effect reconciliation
+# 结清后的普通续办与可选人工入口
 
-Closing an uncertain attempt records possible partial effects and leaves the task
-paused. It never grants permission to replay that official tool invocation.
+已结清的未知效果不再触发任务级“所有后续非只读工具都须专门操作者新目标授权”策略。`TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED` 的调用与完成门槛、对应验证回调均已删除，不替换为 Router 授权来源、来源前缀或另一种新目标许可。
 
-The private operator credential protects a separate Host-only endpoint:
-`POST /tasks/:taskId/effects/new-action`. The equivalent CLI is:
+- 后续独立调用按现有权限模式、当前目标和实际工具边界执行；独立 native invocation 可以有相同参数。
+- 原具体调用仍依据官方 call/input/intent 身份永久禁止重放；旧结清仍记录可能存在部分效果，不能改写为旧操作成功。
+- Router 可创建、启动、停止、解除等待、重开或再次唤起原唯一 session，不要求原消息作者或安装操作者补调度批准。动作来源可省略并沿用原任务来源；历史消息只用于追溯。
+- 尚未结清的效果/作业或恢复档案仍待业务核验时，原会话可被唤起读证据和汇报 wait/blocked，实际副作用和完成仍受对应效果边界约束。这不是新目标授权策略。
+- 原结清事务若已 prepare 或 journal 已提交而 SQL 尚未投影，Router 调度先在原准入/原生 writer 边界完成已经核验的原结清，保持原控制版本供同一调度命令消费；不重放业务操作、不索要新授权。
 
-```
+## 可选人工运维
+
+私密 HTTP `POST /tasks/:taskId/effects/new-action` 和 CLI 仍可供安装操作者主动记录说明、修订目标并激活，不是普通续办的必经步骤：
+
+```powershell
 node bin/night-bot-effects.js CONFIG new-action AUTHORIZATION.json --operator-text-file NOTE.txt
 ```
 
-The strict authorization JSON contains `taskId`, a unique `requestId`, the exact
-complete `closedIntentEntryIds` array, a nonempty new `objective`, and the current
-task's `expectedRequirementRevision` and `expectedControlRevision`. The separate
-note is the real operator's explanation. It is recorded as an authenticated web
-source under the configured web actor; a model cannot supply an actor or grant.
-The credential never becomes source text, a model message, or task state.
+此入口的严格 JSON 仍包含 `taskId`、唯一 `requestId`、完整 `closedIntentEntryIds`、非空 `objective` 及当前 `expectedRequirementRevision` / `expectedControlRevision`。NOTE 是真实操作者说明。独立私密能力保护该运维入口，不进入模型文本或任务状态；模型不能伪造操作者身份调用它。
 
-The Host holds task admission and the real native writer while verifying the
-committed SQL closures against their exact official journal entries, digests,
-original calls, inputs and admissions. The standing scope must still match every
-closure. The task must be drained with no live owner. If ordinary routing has
-left it active, the Host first pauses it after all these checks, using a durable
-command whose identity also binds the complete proposal and operator note digest.
-It then records the operator source, revises the task while paused, and activates it. These steps have deterministic command identities. An interruption
-after pause, source or revision remains paused; resubmitting the identical authorization
-completes the remaining steps without adding another revision. The proposal keeps
-the pre-pause control revision; retries read the exact pause receipt rather than
-pausing twice or guessing the revision. A changed replay
-body is rejected. Activation acknowledges an explicitly requested continuation;
-this is not a distributed transaction across arbitrary external effects.
+入口持任务准入与真实原生 writer，校 committed SQL closure、官方日志、原调用/输入/接纳、当前范围和实际排空。活动态先以完整提案/说明摘要绑定的确定性命令暂停，再保存操作者来源、修订、激活；暂停/来源/修订/激活各中断点仍按原稳定请求幂等重试。同 ID 换内容拒绝，已激活后重试不重复效果。这个可选入口自身的参数校验不会成为其他执行路径的许可条件。
 
-A later effect call is admitted only when its actual official input is after all
-closure receipts, its requirement revision is newer than each closure's revision,
-and its real admitted source matches the authenticated SQL operator source and
-the committed revision/activation receipts. Bare unpause, a new lease, a new call
-ID, or model-supplied text is insufficient. A distinct authorized invocation may
-use the same arguments; the old closed invocation remains permanently blocked.
-This authorization does not expand filesystem, channel, memory, process or
-approval capabilities, and it does not claim earlier partial effects were undone.
+## 验证入口
 
-`test/pi-task-effect-action-e2e.test.js` exercises actual Host tool effects,
-private HTTP/CLI authentication, same-argument distinct invocation, rejected
-model-initiated authorization, paused and drained-active entry,
-pause/source/revision/activation-response crash cuts, cold service recovery,
-and idempotent replay of the operator request. Kernel isolation and real vendor
-delivery are validated separately.
-
-Validation: the new five actual-Host action cases, five private operator/HTTP/application cases and three reconciliation crash cases passed together (13/13, no skips or cancellations), recorded in `/tmp/night-effect-action-joint-activate-final.tap`. This is targeted validation; full application/runtime and platform isolation regression is coordinated separately.
-
-If activation commits but its response is lost, the task is already explicitly authorized and active. Task admission cleanup immediately scans the durable SQLite queue, so the action does not depend on a periodic recovery timer or a fresh wake. Identical same-process operator retries return the original authorization receipt and cannot repeat an acknowledged action.
+`test/pi-task-effect-completion-authority.test.js` 实跑普通恢复后的真实文件写入、独立同参调用、无需改要求版本的完成、冷服务恢复和未结效果核验；`test/pi-task-effect-call-identity.test.js` 保留精确调用与无重放反例；`test/pi-resident-router-flow.test.js` 贯通真实 Router/Host/SQLite/原 Pi session 的停启、取消排空、冷重开及结清事务中断恢复。可选 CLI/HTTP 认证和幂等场景仍在 `test/pi-task-effect-action-e2e.test.js`。本轮结果见[唯一目标](acceptance/effect-current-objective/goal.md)，不拿历史通过数替代当前版本。

@@ -14,7 +14,7 @@ const required = value => typeof value === 'string' && value.length ? value : fa
 const bounded = (value, max = 15) => Number.isSafeInteger(value ?? max) && (value ?? max) > 0 && (value ?? max) <= max ? value ?? max : fail('ROUTER_ARGUMENT_INVALID')
 
 // 仅由任务账本事务调用；不持有第二个数据库或模型历史。
-export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, blockers, taskHumanWait, digest, operatorActorIds=[]}) {
+export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, blockers, taskHumanWait, digest}) {
   const rows = name => all(`dynamic_${name}`)
   const read = (name, id, optional = false) => get(`dynamic_${name}`, id, optional)
   const write = (name, row) => put(`dynamic_${name}`, row)
@@ -25,9 +25,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return found.length?JSON.parse(found[0].body):null
   }
   const latest = source => !rows('sources').some(row => row.groupId === source.groupId && row.messageId === source.messageId && row.version > source.version)
-  function sourceOf(a) {
+  function sourceOf(a, scheduling = false) {
     const source = read('sources', required(a.sourceId))
-    if (source.version !== a.messageVersion || !latest(source) || source.authorizationRevoked || source.triageHold || source.archiveRestoreHold) fail('ROUTER_SOURCE_STALE')
+    if (source.version !== a.messageVersion || !scheduling && (!latest(source) || source.authorizationRevoked || source.triageHold || source.archiveRestoreHold)) fail('ROUTER_SOURCE_STALE')
     if (a.conversationId !== undefined && source.groupId !== a.conversationId) fail('ROUTER_CONVERSATION_SCOPE')
     return source
   }
@@ -51,7 +51,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         && row.controlRevision === task.controlRevision && row.arrangementRevision === (task.arrangementRevision ?? 1)
         && prior?.status === 'completed' && prior.drained && prior.control === 'active' && prior.requirementRevision === row.prerequisiteRequirementRevision
         && !taskHumanWait(prior) && !blockers(prior.taskId).operations.length
-        && authorization?.version === row.authorizationSourceVersion && !authorization.authorizationRevoked && latest(authorization)
+        && authorization?.version === row.authorizationSourceVersion
     })
   }
   function link(task, source, relation, anchor) {
@@ -61,7 +61,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   }
   function dependency(task,input,source,graph) {
     const prior=read('tasks',required(input.prerequisiteTaskId))
-    if(task.taskId===prior.taskId||task.conversationId!==source.groupId||prior.conversationId!==source.groupId||prior.control==='cancelled'||![task.ownerActorId,...operatorActorIds].includes(source.actorId)||![prior.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_DEPENDENCY_INVALID')
+    if(task.taskId===prior.taskId||task.conversationId!==source.groupId||prior.conversationId!==source.groupId||prior.control==='cancelled')fail('ROUTER_DEPENDENCY_INVALID')
     required(input.condition)
     const seen=new Set()
     const visit=id=>{if(id===task.taskId)fail('ROUTER_DEPENDENCY_CYCLE');if(seen.has(id))return;seen.add(id);for(const row of graph.filter(row=>row.taskId===id))visit(row.prerequisiteTaskId)}
@@ -73,8 +73,6 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   function arrange(task,action,source,operationId,commandId) {
     if(action.expectedArrangementRevision!==(task.arrangementRevision??1))fail('ROUTER_ARRANGEMENT_STALE')
     if(!Array.isArray(action.dependencies)||action.dependencies.length>30)fail('ROUTER_DEPENDENCIES_REQUIRED')
-    const pending=blockers(task.taskId)
-    if(task.archivedAt||task.status!=='active'||task.control==='cancelled'||!task.drained||task.recovering||task.archiveRestore?.reviewRequired||taskHumanWait(task)||pending.executions.length||pending.operations.length||task.effectReconciliations?.some(row=>row.state==='prepared'))fail('ROUTER_ARRANGEMENT_NOT_QUIESCENT')
     const previousDependencies=rows('dependencies').filter(row=>row.taskId===task.taskId)
     const previousEvaluations=rows('completion_evaluations').filter(row=>row.taskId===task.taskId)
     const previousArrangementRevision=task.arrangementRevision??1
@@ -124,9 +122,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(!request||request.status!=='waiting-reply'||request.requirementRevision!==task.requirementRevision||request.controlRevision!==task.controlRevision)fail('DYNAMIC_HUMAN_REQUEST_STALE')
     if(task.archivedAt||task.status!=='active'||task.control!=='active'||!task.drained||task.recovering||task.archiveRestore?.reviewRequired)fail('ROUTER_TASK_RESUME_NOT_QUIESCENT')
     if(request.executionBindings?.length)fail('ROUTER_HUMAN_REQUEST_SCOPE')
-    if(!['requester','topic'].includes(request.audience)&&![task.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_TASK_PERMISSION_DENIED')
-    const stamp=new Date().toISOString(),timestamp=Date.parse(source.timestamp)
-    if(!['im','chat','chat-room','web'].includes(source.channel)||!Number.isFinite(timestamp)||timestamp<Date.parse(request.createdAt)||timestamp>Date.parse(stamp))fail('ROUTER_HUMAN_RESPONSE_SOURCE_INVALID')
+    const stamp=new Date().toISOString()
+    if(!['im','chat','chat-room','web'].includes(source.channel))fail('ROUTER_HUMAN_RESPONSE_SOURCE_INVALID')
     const reason=required(action.reason).trim()
     if(!reason)fail('ROUTER_ARGUMENT_INVALID')
     // 补充、原等待的结清和可靠 wake 共用当前 SQLite 事务；不另开执行角色。
@@ -146,6 +143,11 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const result = reduce('source.record',input,commandId)
       const source = result.result.source
       if (!source) return result
+      // 新消息版本要求 Router 重新判断既有安排，不把原作者变成 Router 的调度许可人。
+      if(!prior)for(const row of rows('dependencies')){
+        const original=read('sources',row.authorizationSourceId)
+        if(original.groupId===source.groupId&&original.messageId===source.messageId&&original.version<source.version){row.state='pending';delete row.evaluationId;write('dependencies',row)}
+      }
       if(source.retracted){
         for(const previous of rows('sources').filter(row=>row.groupId===source.groupId&&row.messageId===source.messageId)){
           if(previous.actorId!==source.actorId)fail('DYNAMIC_SOURCE_CONFLICT')
@@ -191,7 +193,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       write('conversations',row); return changed({conversation:row})
     }
     if (kind === 'router.plan') return operation(a,()=>{
-      conversationOf(a);const source=sourceOf(a)
+      conversationOf(a);const source=sourceOf(a,true)
       if (!Array.isArray(a.tasks) || !a.tasks.length || !Array.isArray(a.dependencies ?? [])) fail('ROUTER_PLAN_INVALID')
       const created=[]
       for (const input of a.tasks) {
@@ -207,8 +209,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       return changed({tasks:created,dependencies})
     })
     if (kind === 'router.task-action') return operation(a,()=>{
-      conversationOf(a);const source=sourceOf(a),task=read('tasks',a.action?.taskId)
-      if(task.conversationId!==source.groupId || !['task.supplement','task.resume'].includes(a.kind)&&![task.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_TASK_PERMISSION_DENIED')
+      conversationOf(a);const task=read('tasks',a.action?.taskId)
+      const source=sourceOf({...a,sourceId:a.sourceId??task.sourceRefs[0],messageVersion:a.messageVersion??read('sources',a.sourceId??task.sourceRefs[0]).version},true)
+      if(task.conversationId!==source.groupId)fail('ROUTER_CONVERSATION_SCOPE')
       if(!['task.supplement','task.resume','task.revise','task.reopen','task.control','task.arrange'].includes(a.kind))fail('ROUTER_TASK_ACTION_INVALID')
       if(a.action.expectedRequirementRevision!==task.requirementRevision || a.action.expectedControlRevision!==task.controlRevision)fail('DYNAMIC_TASK_REVISION_STALE')
       if(a.sameGoal===true&&(a.kind!=='task.reopen'||['objective','title','requirements'].some(key=>a.action[key]!==undefined&&digest(a.action[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
@@ -220,18 +223,20 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         action.request=[task.request,['task.supplement','task.resume'].includes(a.kind)?'[原消息补充]':'[原消息调整]',message].join(String.fromCharCode(10,10))
         if(['task.supplement','task.resume'].includes(a.kind)) {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
       }
-      const result=a.kind==='task.resume'?resume(task,action,source,a,commandId):reduce(a.kind,action,commandId)
+      const result=a.kind==='task.resume'
+        ?a.action.humanRequestId!==undefined?resume(task,action,source,a,commandId):reduce('task.control',{...action,control:'active'},commandId,{routerScheduling:true})
+        :reduce(a.kind,action,commandId,{routerScheduling:true})
       link(result.result.task,source,a.kind,a.quote)
-      taskEvent({id:`task-changed:${commandId}`,kind:'task.changed',taskId:task.taskId})
+      taskEvent({id:`task-changed:${commandId}`,kind:'task.changed',taskId:task.taskId,operationId:a.operationId,sourceId:source.sourceId,messageVersion:source.version})
       return result
     })
     if (kind === 'router.evaluate') return operation(a,()=>{
       conversationOf(a)
-      const row=read('dependencies',a.dependencyId),task=read('tasks',row.taskId),prior=read('tasks',row.prerequisiteTaskId),source=sourceOf({sourceId:row.authorizationSourceId,messageVersion:row.authorizationSourceVersion,conversationId:a.conversationId})
+      const row=read('dependencies',a.dependencyId),task=read('tasks',row.taskId),prior=read('tasks',row.prerequisiteTaskId),source=sourceOf({sourceId:row.authorizationSourceId,messageVersion:row.authorizationSourceVersion,conversationId:a.conversationId},true)
       const event=readEvent(a.completionEventId)
       if(row.conversationId!==a.conversationId || !event || event.taskId!==prior.taskId || event.kind!=='task.completed' || event.requirementRevision!==prior.requirementRevision || prior.requirementRevision!==a.prerequisiteRequirementRevision || row.prerequisiteRequirementRevision!==prior.requirementRevision
         || task.requirementRevision!==a.requirementRevision || row.requirementRevision!==task.requirementRevision || task.controlRevision!==a.controlRevision || row.controlRevision!==task.controlRevision || row.arrangementRevision!==a.arrangementRevision || (task.arrangementRevision ?? 1)!==a.arrangementRevision)fail('ROUTER_EVALUATION_STALE')
-      if(prior.status!=='completed' || prior.control!=='active' || !prior.drained || task.status!=='active' || task.control!=='active' || taskHumanWait(prior) || taskHumanWait(task) || blockers(prior.taskId).operations.length || blockers(task.taskId).operations.length || ![task.ownerActorId,...operatorActorIds].includes(source.actorId) || ![prior.ownerActorId,...operatorActorIds].includes(source.actorId))fail('ROUTER_DEPENDENCY_BLOCKED')
+      if(prior.status!=='completed' || prior.control!=='active' || !prior.drained || task.status!=='active' || task.control!=='active' || taskHumanWait(prior) || taskHumanWait(task) || blockers(prior.taskId).operations.length || blockers(task.taskId).operations.length)fail('ROUTER_DEPENDENCY_BLOCKED')
       if(!['satisfied','continue','wait'].includes(a.decision) || !Array.isArray(a.evidence) || a.decision==='satisfied'&&!a.evidence.length)fail('ROUTER_EVIDENCE_REQUIRED')
       if(a.decision==='satisfied'){const evidence=prior.completion?.result?.evidence??[];const refs=evidence.map(item=>typeof item==='string'?item:item?.ref??item?.path??item?.id);if(a.evidence.some(ref=>typeof ref!=='string'||!refs.includes(ref)))fail('ROUTER_EVIDENCE_REFERENCE_INVALID')}
       if(row.state==='satisfied')return changed({dependency:row,evaluation:read('completion_evaluations',row.evaluationId)})

@@ -41,7 +41,7 @@ import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceI
 import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, taskWorkspaceReady, assertTaskWorkspaceReady, initializeTaskDirectories } from './session-workspaces.js'
 import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
 import {formatTaskConversationReply} from './group-reply-format.js'
-import {assertConversationReply,replyInternalTaskId,conversationQuote,conversationSource} from '../../src/channels/message-safety.js'
+import {assertConversationReply,replyInternalTaskId,conversationQuote} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
 import { projectTaskTimeline, readTaskLifecycle } from './task-execution-timeline.js'
@@ -365,17 +365,17 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     readEffectScope:async(binding,stored)=>readTaskEffectScope(ctx,await query('task.get',{taskId:binding.taskId}),stored),
     getWorkspaceDir: async ({ binding }) => {const task=await requireTask(binding.taskId);assertTaskWorkspaceReady(task);if(archives)await archives.register(task);return taskWorkspace(root,binding.taskId,task)} })
   const effectReconciliation=config.webActorId?createTaskEffectReconciliation({persistence:ctx.sessionPersistence,readTask:taskId=>query('task.get',{taskId}),readScope:(task,stored)=>readTaskEffectScope(ctx,task,stored),isSessionLive:async sessionId=>!!ctx.agents.get(sessionId),readOperatorSource:sourceId=>query('source.get',{sourceId}),operatorActorId:config.webActorId}):undefined
-  async function projectEffectReconciliation(task,row,writerHeld=false){
+  async function projectEffectReconciliation(task,row,writerHeld=false,preserveControl=false){
     if(!writerHeld){
       if(ctx.agents.get(task.sessionId)||inflightTasks.has(task.taskId))fail('TASK_EFFECT_OWNER_LIVE')
       const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:effectReconciliationAuditKinds})
-      try{return await projectEffectReconciliation(task,row,true)}finally{await writer.close()}
+      try{return await projectEffectReconciliation(task,row,true,preserveControl)}finally{await writer.close()}
     }
     const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
     const matches=stored.auditEntries.filter(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled'&&entry.data.payload.requestId===row.requestId)
     if(!matches.length)return false
     if(matches.length!==1||taskEffectDigest(matches[0].data)!==row.receiptDigest)fail('TASK_EFFECT_RECONCILIATION_JOURNAL_CONFLICT')
-    await command('task.effect-reconciliation.commit',{taskId:task.taskId,requestId:row.requestId,receiptDigest:row.receiptDigest,entryId:matches[0].entryId},'effect-reconciliation-commit:'+hash([task.taskId,row.requestId]))
+    await command('task.effect-reconciliation.commit',{taskId:task.taskId,requestId:row.requestId,receiptDigest:row.receiptDigest,entryId:matches[0].entryId,...preserveControl?{preserveControl:true}:{}},'effect-reconciliation-commit:'+hash([task.taskId,row.requestId]))
     failures.delete(task.taskId);return true
   }
   async function reconcileTaskEffect({operatorText,...proposal}){
@@ -462,35 +462,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const activatedReceipt=await query('receipt.get',{id:activateId})
       return {taskId,sourceId,state:'authorized',requirementRevision:activatedReceipt.result.task.requirementRevision,controlRevision:activatedReceipt.result.task.controlRevision,noReplay:true}
     })
-  }
-  async function authorizeEffectInvocation({binding,origin,priorReconciliations}) {
-    if(!config.webActorId||!await currentTask(binding))return false
-    const task=await requireTask(binding.taskId),stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
-    const closedIntentEntryIds=priorReconciliations.map(row=>row.receipt.payload.intentEntryId).sort()
-    const closures=await verifyTaskEffectClosures({task,stored,closedIntentEntryIds})
-    const scopeDigest=taskEffectScopeDigest(await readTaskEffectScope(ctx,task,stored))
-    if(closures.some(row=>row.receipt.payload.scopeDigest!==scopeDigest))return false
-    const manager=SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries)),branch=manager.getBranch(origin.callEntryId)
-    const inputIndex=branch.findIndex(entry=>entry.id===origin.inputEntryId),callIndex=branch.findIndex(entry=>entry.id===origin.callEntryId)
-    if(inputIndex<0||callIndex<=inputIndex||closures.some(row=>{const index=branch.findIndex(entry=>entry.id===row.entryId);return index<0||index>=inputIndex||origin.binding.requirementRevision<=row.receipt.payload.currentBinding.requirementRevision}))return false
-    let body;try{body=JSON.parse(origin.packet.content[0].text)}catch{return false}
-    if(!Array.isArray(body.sources))return false
-    for(const snapshot of body.sources){
-      if(!snapshot.requestIdentity?.effectAuthorization)continue
-      let identity;try{identity=taskEffectActionAuthorizationIdentity(snapshot.requestIdentity.effectAuthorization)}catch{continue}
-      if(identity.taskId!==task.taskId||identity.objective!==task.objective||identity.expectedRequirementRevision+1!==origin.binding.requirementRevision||hash(identity.closedIntentEntryIds)!==hash(closedIntentEntryIds))continue
-      const sourceId='effect-action:'+hash([task.taskId,identity.requestId]),source=await query('source.get',{sourceId})
-      if(!source||snapshot.sourceId!==sourceId||!task.sourceRefs.includes(sourceId)||source.actorId!==config.webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId)||!source.text?.trim())continue
-      const stable=value=>{
-        const projected=conversationSource(value)
-        return Object.fromEntries(['sourceId','conversationId','messageId','version','actorId','channel','text','quote','resources','timestamp','requestIdentity'].map(key=>[key,projected[key]]))
-      }
-      if(hash(stable(snapshot))!==hash(stable(source))||hash(source.requestIdentity.effectAuthorization)!==hash(identity))continue
-      const key=hash([task.taskId,identity.requestId]),revision=await query('receipt.get',{id:'effect-action-revise:'+key}),activated=await query('receipt.get',{id:'effect-action-activate:'+key})
-      if(revision?.result.task.requirementRevision!==origin.binding.requirementRevision||activated?.result.task.requirementRevision!==origin.binding.requirementRevision||activated.result.task.controlRevision!==origin.binding.controlRevision)continue
-      return true
-    }
-    return false
   }
 
   const track = (map, id, action) => {
@@ -842,15 +813,30 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (fingerprint(candidates) !== draft.reviewFingerprint) fail('routing_clarification_stale')
     return message
   }
+  async function settlePreparedEffectsForRouter(task){
+    for(const row of task.effectReconciliations??[])if(row.state==='prepared'){
+      // 完成已通过操作者证据核验的原结清事务，不授权或重放任何业务调用。
+      if(await projectEffectReconciliation(task,row,false,true))continue
+      const source=await query('source.get',{sourceId:row.receipt.payload.operatorSourceId})
+      const writer=await ctx.sessionPersistence.openNative(task.sessionId,{auditKinds:effectReconciliationAuditKinds})
+      try{
+        const receipt=await effectReconciliation.prepare({...source.requestIdentity.effectReconciliation,operatorSourceId:source.sourceId})
+        if(taskEffectDigest(receipt)!==row.receiptDigest)fail('TASK_EFFECT_RECONCILIATION_JOURNAL_CONFLICT')
+        writer.appendAudit(receipt);await writer.commit()
+        await projectEffectReconciliation(task,row,true,true)
+      }finally{await writer.close()}
+    }
+    return requireTask(task.taskId)
+  }
   async function applyDirectTaskAction(args){
     if(args.kind==='materialize'){
       for(const entry of args.tasks){const task=await requireTask(entry.taskId);taskCache.set(task.taskId,topicTaskView(task));await materializeSource(task.taskId,args.source)}
       void hostScheduler(()=>schedulePending());return
     }
     return admitTask(args.taskId,async(oldTask,oldExecutions)=>{
-      const task=await requireTask(args.taskId),source=args.source
+      let task=await requireTask(args.taskId);const source=args.source
+      if(task.effectReconciliations?.some(row=>row.state==='prepared')){if(oldTask)await oldTask;task=await settlePreparedEffectsForRouter(task)}
       if(task.groupId!==source.groupId||task.groupId!==args.conversationId)fail('TASK_SESSION_SOURCE_FORBIDDEN')
-      if(!['supplement','resume'].includes(args.kind)&&![task.ownerActorId,config.ownerActorId,config.webActorId].filter(Boolean).includes(source.actorId))fail('TASK_SESSION_CONTROL_FORBIDDEN')
       if(['supplement','resume'].includes(args.kind)&&[args.objective,args.title,args.requirements,args.control].some(value=>value!==undefined))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
       const action={taskId:task.taskId,expectedRequirementRevision:args.expectedRequirementRevision,expectedControlRevision:args.expectedControlRevision,operationId:args.operationId,
         ...(['supplement','resume'].includes(args.kind)?{messageId:args.operationId,text:args.text??source.text}:{}),
@@ -862,7 +848,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const receipt=await command('router.task-action',{conversationId:args.conversationId,generation:args.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:args.operationId,kind:'task.'+args.kind,action,...(hostLiveBinding?{hostLiveBinding}:{}),...(args.sameGoal!==undefined?{sameGoal:args.sameGoal}:{})},'router-action:'+args.operationId)
       // 重放只补排空尚未退出的原租约，不能取消后续已经合法启动的新轮次。
       const originalLease=!task.drained&&task.leaseEpoch===receipt.result.task.leaseEpoch&&task.requirementRevision===receipt.result.task.requirementRevision&&task.controlRevision===receipt.result.task.controlRevision
-      if(!['supplement','resume','arrange'].includes(args.kind)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
+      if(!(args.kind==='supplement'||args.kind==='resume'&&args.humanRequestId!==undefined)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
+      if(!receipt.replayed)failures.delete(task.taskId)
       await materializeSource(task.taskId,source)
       const current=await requireTask(task.taskId)
       if(args.kind==='supplement'&&taskSessions.liveBinding?.(task.taskId)){
@@ -1109,7 +1096,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const reviewPending = pendingTaskHumanReview(task, pending)
       if (!pendingDialogue(task) && !reviewPending && taskHumanWait(task)) { taskSlots.delete(taskId); return }
       if (!pending.some(item => item.state !== 'acked') || admissionHolds.has(taskId)) return
-      const claimed = await command('task.claim', { taskId, ...(pendingDialogue(task) ? { dialogue: true } : reviewPending ? { humanReview: true } : {}) })
+      const claimed = await command('task.claim', { taskId, ...task.archiveRestore?.reviewRequired?{restoreReview:true}:{}, ...(pendingDialogue(task) ? { dialogue: true } : reviewPending ? { humanReview: true } : {}) })
       const { binding, wakeIds, wakes, humanReview } = claimed.result
       task = claimed.result.task
       const dialogueMessage = wakes.find(item => item.kind === 'task.dialogue')?.payload.messageId
@@ -1128,7 +1115,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
           blockers: await query('task.blockers', { taskId }) }, ...roleModels('task'), agentPreset: legacy.getAgentConfig().agentPreset,
           groupResponsibility: responsibilityFor(task.groupId),
-          authorizeEffectInvocation,
           readDecisions: (args, current) => query('task.decisions', { ...args, taskId: current.taskId }),
           onSupplementAdmitted:async({messageId,entryId,packetId,binding:nextBinding})=>{
             await command('task.supplement.admitted',{binding:nextBinding,messageId,entryId,packetId},`task-supplement-admitted:${taskId}:${messageId}`)

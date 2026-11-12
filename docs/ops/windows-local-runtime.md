@@ -82,7 +82,9 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 ## 未知效果结清后的新目标续办
 
-出现 `TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED` 时，普通恢复、重开、修改目标或切换 `full` 都不能替代独立授权。先只读核对原任务当前版本、已排空状态和全部 committed 结清 intent，按[新目标授权合同](../EFFECT-ACTION-AUTHORIZATION.md)准备精确提案与操作者说明；不得改 SQLite、Pi 日志或旧收据清警。
+任务级 `TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED` 规则已删除：已结清效果不再让后续全部非只读调用或完成结果等待独立操作者授权。Router 可直接调度原执行会话，普通恢复/修订不需要 `new-action`。旧具体调用的 noReplay、当前工具权限及真实结果核验继续保留；不得改 SQLite、Pi 日志或旧收据清警。运行旧发行仍报该错误时，须按本 runbook 的已合并发行升级流程处理，不对账本打补丁。
+
+以下 CLI 只在安装操作者主动选择“一并记录说明、修订目标并激活”的私密运维方式时使用，不是 Router 的调度前置；提案字段和重试语义见[可选人工入口](../EFFECT-ACTION-AUTHORIZATION.md)：
 
 ```powershell
 node bin/night-bot-effects.js data/config/config.json new-action AUTHORIZATION.json --operator-text-file NOTE.txt
