@@ -10,6 +10,6 @@
 
 - PR #77 MERGED，实际运行 a691993dd1d34ddb91c7ffbef185c0cc4c286163，包含性能 #76；核心和插件均指独立新发行。
 - 原渠道 listening/receiving、无错误。原 v1 正文保留、v2 合法接纳；原 deferred 正常结清、水位推进，不是手工清进度。
-- 原 7 任务 completed+drained，33 通知 delivered，数据库与 Web 实际产物核对通过；data、记忆和凭据留存。
+- 12:24 部署阶段原 7 任务 completed+drained、33 通知 delivered，数据库/Web 核对通过。随后接纳业务，12:33 当前 9 任务（6 completed/3 active），一项旧任务需新效果授权，health degraded/1；渠道仍 receiving，无额外授权或账本清警。data、记忆和凭据留存。
 - 不额外发真实测试消息；未收到真实 recall 探针的边界保留。未宣称无关全量测试或 Windows 受限执行全部通过。
 - 后续仅归档验收文档、清理本会话临时脚本并回填已合并 PR，不再改运行代码、重启或新增验收门槛。

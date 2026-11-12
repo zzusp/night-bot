@@ -4,6 +4,14 @@
 
 2026-11-12 12:24（UTC+08:00）真实安装恢复成功。原失败渠道与另一启用钉钉渠道均为 listening/receiving、connected=true、error=null，原暂缓记录由正常补拉消费结清。原 v1 正文保留，编辑后的 v2 已独立入账并 routed；没有手工清游标、注入原消息或重放旧任务。
 
+## 最后只读状态（12:33 UTC+08:00）
+
+本节优先于后面的 12:24 部署快照。随后恢复接收又接纳了业务消息：当前任务总数为 9（6 completed、3 active），一项既有任务在新来源续办后触发任务级 `TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED`，health=degraded、recoveryIssueCount=1。该任务来源不含原冲突消息；这里不据此推断业务授权已经满足，也不自动补授权、重放效果或修改账本消警。
+
+两个钉钉渠道在同一次最新认证只读检查中仍 listening/connected=true/receiving，ingress/error 均为 null；实际代码仍为 a691993。渠道恢复验收继续成立，当前不能把整台服务描述为无告警。任务级待授权属于真实遗留，交由当前业务的授权/对账流程处理，不扩大本次渠道修复范围。
+
+新增私有当前状态证据为 data/logs/dingtalk-message-revisions-current.json；部署前与 12:24 验收证据仍保留以说明状态变化，不将较早健康/任务快照覆盖当前事实。
+
 ## 实际版本与发行
 
 - PR [#77](https://github.com/zzusp/night-bot/pull/77) 独立 gh 回查：MERGED，mergedAt=2026-11-12T04:12:28Z，merge commit `a691993dd1d34ddb91c7ffbef185c0cc4c286163`；包含性能 PR #76 的 `485f100`。
@@ -20,7 +28,7 @@
 - 新监督器 --check：源码 SHA/干净检出/依赖/构建、空闲端口、loopback、既有模型引用、显式 full 均通过，effects=0，才启动。full 使用原显式配置，未提升管理员权限，不宣称保留 OS 沙箱。
 - 不创建备份，不删除旧备份，不复制凭据，不覆盖/回滚记忆维护结果，不改 SQLite、Pi journal 或 ingress 水位文件。
 
-## 真实终态证据
+## 12:24 部署验收证据
 
 | 验收 | 实际观察 |
 | --- | --- |
