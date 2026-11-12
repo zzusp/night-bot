@@ -13,7 +13,7 @@ const doc=(name,body,extra='')=>`---\nname: ${name}\ndescription: Real local sha
 test('真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真实调用/用户引用/文件读取与更新分别核实',{timeout:45000},async t=>{
  let mode='none',issued=false,file
  const f=await memoryHost(t,body=>{
-  if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){const input=JSON.parse(body.messages.findLast(row=>row.role==='user').content);return {text:JSON.stringify({lessons:[{key:'shared-evidence',observation:'复盘来源与真实任务对应',hypothesis:'证据核对步骤可复用',shortcut:'先读取来源',evidenceIds:[input.eventId],skill:{steps:['读取真实来源','核对返回结果'],reason:'任务中有直接证据',applicability:'来源核对',evidenceBacked:true}}]})}}
+  if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){const input=JSON.parse(body.messages.findLast(row=>row.role==='user').content);return {text:JSON.stringify({lessons:[{key:'shared-evidence',summary:'复盘来源与真实任务对应',why:'证据核对步骤可复用',howToApply:'先读取来源',evidenceIds:[input.eventId],skill:{steps:['读取真实来源','核对返回结果'],reason:'任务中有直接证据',applicability:'来源核对',evidenceBacked:true}}]})}}
   if((mode==='skill'||mode==='learned')&&!issued){issued=true;return {tool:'skill',args:{name:mode==='learned'?'learned-shared-evidence':'common-check'}}}
   if(mode==='file'&&!issued){issued=true;return {tool:'read',args:{path:file}}}
   if(mode==='memory'&&!issued){issued=true;return {tool:'memory_read',args:{topic:'facts'}}}
