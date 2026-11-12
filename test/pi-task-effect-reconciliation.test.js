@@ -12,7 +12,7 @@ import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {singleTaskAuditKinds} from '../src/tasks/single-session.js'
 import {admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
-import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity,taskEffectInvocationKey,taskEffectActionAuthorizationIdentity,verifyTaskEffectClosures} from '../src/tasks/effect-reconciliation.js'
+import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity,taskEffectInvocationKey,verifyTaskEffectClosures} from '../src/tasks/effect-reconciliation.js'
 
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 // The records below are deliberately injected Host attestations. These tests
@@ -201,9 +201,4 @@ test('v2 invocation proof reconciles only the exact committed official call',asy
 for(const [field,value]of [['callEntryId','foreign-call'],['inputEntryId','foreign-input'],['packetId','foreign-packet'],['inputDigest','0'.repeat(64)],['originBinding',{taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:1,leaseEpoch:1}]])test('offline v2 invocation rejects reassigned '+field,async t=>{
  const f=await fixture(t,{intentVersion:2,alterIntent:intent=>{intent.invocation[field]=value}})
  await assert.rejects(f.inspect())
-})
-test('new-action authorization identity is explicit, bounded and canonical',()=>{
- const identity={taskId:'task',requestId:'new-action',closedIntentEntryIds:['b','a'],objective:' A distinct newly requested action ',expectedRequirementRevision:1,expectedControlRevision:2}
- assert.deepEqual(taskEffectActionAuthorizationIdentity(identity),{...identity,objective:'A distinct newly requested action',closedIntentEntryIds:['a','b']})
- for(const change of [{closedIntentEntryIds:[]},{closedIntentEntryIds:['a','a']},{objective:' '},{expectedControlRevision:0},{replayOf:'a'}])assert.throws(()=>taskEffectActionAuthorizationIdentity({...identity,...change}))
 })

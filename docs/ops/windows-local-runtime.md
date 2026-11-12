@@ -84,15 +84,7 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 任务级 `TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED` 规则已删除：已结清效果不再让后续全部非只读调用或完成结果等待独立操作者授权。Router 可直接调度原执行会话，普通恢复/修订不需要 `new-action`。旧具体调用的 noReplay、当前工具权限及真实结果核验继续保留；不得改 SQLite、Pi 日志或旧收据清警。运行旧发行仍报该错误时，须按本 runbook 的已合并发行升级流程处理，不对账本打补丁。
 
-以下 CLI 只在安装操作者主动选择“一并记录说明、修订目标并激活”的私密运维方式时使用，不是 Router 的调度前置；提案字段和重试语义见[可选人工入口](../EFFECT-ACTION-AUTHORIZATION.md)：
-
-```powershell
-node bin/night-bot-effects.js data/config/config.json new-action AUTHORIZATION.json --operator-text-file NOTE.txt
-```
-
-提案和说明属于安装私有运维材料，保存在 `data/workspaces/`，不提交 Git。该命令连接运行实例，持私密操作者能力；不会启动第二个 Host。当前任务必须已排空且没有在线执行者；若控制态仍 active，服务在完整验证旧结清和范围后先持久暂停，再独立修订、激活。暂停后的中断重试须使用完全相同的提案和说明，版本仍填写首次提交时的值；不得自行递增或删旧收据。旧调用的 noReplay 永久保留。
-
-命令回执 `authorized` 只证明新目标被接纳，须继续核对原 session 的业务终态和实际输出。它不授权历史操作重放、业务发布或扩大原权限范围；运行中的旧发行也不会因本地源码变化而自动升级。
+旧 `new-action` CLI/HTTP 授权入口已退役。未知效果使用 inspect/close 核验结清，随后普通用户消息由 Router 决定恢复原执行会话。不要修改 SQLite、Pi 日志或旧收据以绕过核验。
 
 ## 启动与停止
 

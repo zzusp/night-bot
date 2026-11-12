@@ -33,8 +33,6 @@ const legacyIntentSchema=z.strictObject({key:hex,name:text,callId:text})
 export const taskEffectIntentPayloadSchema=z.union([legacyIntentSchema,legacyIntentSchema.extend({version:z.literal(2),invocation:invocationSchema})])
 const intentSchema=taskEffectIntentPayloadSchema
 export const validateTaskEffectIntent=value=>intentSchema.safeParse(value).success
-const actionAuthorizationSchema=z.strictObject({taskId:text,requestId:text,closedIntentEntryIds:z.array(text).min(1).max(128).refine(ids=>new Set(ids).size===ids.length).transform(ids=>[...ids].sort()),objective:z.string().trim().min(1).max(16000),expectedRequirementRevision:positive,expectedControlRevision:positive})
-export const taskEffectActionAuthorizationIdentity=value=>actionAuthorizationSchema.parse(value)
 const resultSchema=z.union([z.strictObject({key:hex,isError:z.boolean()}),z.strictObject({key:hex,isError:z.literal(true),effect:z.literal('not-started')})])
 export const validateTaskEffectResult=value=>resultSchema.safeParse(value).success
 export const effectReconciliationAuditKinds=Object.freeze({

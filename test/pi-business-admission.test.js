@@ -91,3 +91,23 @@ test('task result drains only internal job notices, keeps user input and rejects
  assert.equal((await store.readAudit()).filter(row=>row.kind==='cancelled'&&row.payload.id===late.id).length,1)
  await restored.close();await store.close()
 })
+
+test('effect hold preserves pending external inputs, retires late internal notices and is durable across restart',async t=>{
+ const f=await fixture(t);let publish
+ const queue=await createBusinessAdmission({store:f.store,authorize:()=>true,bindInternal:port=>{publish=port}})
+ const internal={id:'job:held',source:{kind:'job-completion'},content:'terminal fact'},external={id:'external-job-kind',source:{kind:'job-completion'},content:'user input is not a trusted job notification'}
+ await queue.enqueue(packet);await queue.enqueue(external);await publish(internal)
+ await queue.holdTaskRun({clearQueue(){}})
+ const late={...internal,id:'job:late'};await publish(late);await publish(late)
+ for(const notice of [internal,late])assert.deepEqual(await queue.deliver({sendCustomMessage(){assert.fail('held notices must not restart inference')}},notice.id),{id:notice.id,retired:true})
+ assert.deepEqual(queue.pending(),[packet.id,external.id])
+ assert.equal(queue.paused,true)
+ await assert.rejects(queue.deliver({sendCustomMessage(){assert.fail('user input stays pending')}},packet.id),{code:'PI_BUSINESS_ADMISSION_PAUSED'})
+ await queue.close();await f.store.close()
+ const store=await f.backend.openNative('admission',f.options),restored=await createBusinessAdmission({store,authorize:()=>true})
+ assert.deepEqual(restored.pending(),[packet.id,external.id])
+ assert.equal(restored.status(internal.id),'cancelled');assert.equal(restored.status(late.id),'cancelled')
+ const cancelled=(await store.readAudit()).filter(row=>row.kind==='cancelled')
+ assert.equal(cancelled.length,2);assert.ok(cancelled.every(row=>row.payload.reason==='task-effect-held'))
+ await restored.close();await store.close()
+})

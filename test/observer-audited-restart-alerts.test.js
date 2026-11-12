@@ -63,3 +63,14 @@ test('audit transition refreshes pagination without suppressing independent unkn
  assert.equal(page.total, 2)
  assert.deepEqual(pages.all().map(x => x.alertId).sort(), ['notification:notice', 'operation:other'])
 })
+
+test('a read-only wait report keeps unresolved native effects visible after transient failures clear',async()=>{
+ const task={taskId:'held-task',status:'active',updatedAt:'2026-11-12T00:00:00Z',lastDecision:{action:'wait',summary:'Read-only inspection finished',limitations:['TASK_EFFECT_UNCERTAIN_NO_REPLAY'],evidence:['Unresolved effect: write; intentEntryId=original-intent']}}
+ const pages=createObserverAlertPages({failures:new Map(),tasks:new Map([[task.taskId,task]]),operations:new Map(),notifications:new Map()})
+ const alert=pages.all().find(row=>row.taskId===task.taskId)
+ assert.ok(alert);assert.match(alert.detail,/TASK_EFFECT_UNCERTAIN_NO_REPLAY/)
+ assert.equal((await pages.page()).items.length,1)
+ // A controlled reconciliation replaces the old held decision; it is not inferred from a read.
+ task.lastDecision={action:'wait',summary:'Original effect was reconciled',limitations:[]};task.updatedAt='2026-11-12T00:01:00Z'
+ assert.deepEqual(pages.all(),[])
+})
