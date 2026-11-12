@@ -5,6 +5,10 @@ export interface Session {
   channelId: string;
 }
 export interface Page<T> { items: T[]; total: number; nextOffset?: number | null; revision?: string }
+export type ScheduleState = 'active' | 'inactive';
+export interface ScheduledTask {
+  id: string; title: string; state: ScheduleState; kind: string; scheduledAt: string; scheduleSummary: string;
+}
 export interface TimelineEvent { id?: string; at?: string; createdAt?: string; startedAt?: string; kind?: string; type?: string; state?: string; status?: string; summary?: string; label?: string; description?: string }
 export interface TimelineTrack { events?: TimelineEvent[]; segments?: TimelineEvent[]; milestones?: TimelineEvent[] }
 export interface TaskBlocker { kind: 'execution' | 'operation' | 'legacy'; id: string; title: string; status: string | null; toolName?: string; drained?: boolean; recovering?: boolean }

@@ -1,5 +1,5 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
-import { RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine } from '@remixicon/react';
+import { RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine, RiCalendarScheduleLine } from '@remixicon/react';
 import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session, type OperatorSettings } from './api';
 import { dateTime, navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
@@ -10,6 +10,7 @@ import ChannelsPage from './ChannelsPage';
 import PermissionsPanel from './components/PermissionsPanel';
 import EvolutionPage from './EvolutionPage';
 import SettingsPage from './SettingsPage';
+import SchedulesPage from './SchedulesPage';
 import {AssistantBrandContext, defaultBrand, useAssistantBrand} from './components/AssistantBrand';
 
 function Login({ onLogin, expired }: { onLogin: (session: Session) => void; expired: boolean }) {
@@ -70,7 +71,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const drawer = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const currentChats = historyOffset ? olderChats : recent;
-  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'settings' && !id ? '设置' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
+  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'schedules' && !id ? '定时任务' : section === 'settings' && !id ? '设置' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
   useEffect(() => { document.title = `${title} — ${brand.name}`; }, [title,brand.name]);
   useEffect(() => { if (section !== 'chat') titleRef.current?.focus(); drawer.current?.close(); }, [route.pathname, section]);
   const toggleTheme = () => {
@@ -84,7 +85,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     finally { setLogoutBusy(false); }
   };
   const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); olderChats.refresh(); };
-  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'settings',label:'设置',icon:RiSettings3Line}];
+  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'schedules', label: '定时任务', icon: RiCalendarScheduleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'settings',label:'设置',icon:RiSettings3Line}];
   const sidebar = (mobile = false) => <>
     <div className="sidebar-brand"><Logo />{mobile && <IconButton label="关闭导航" onClick={() => drawer.current?.close()}><RiCloseLine size={19} /></IconButton>}</div>
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
@@ -105,7 +106,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       </div></header>
       {!!logoutError && <Notice error={logoutError} />}
       <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></main>
       {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}

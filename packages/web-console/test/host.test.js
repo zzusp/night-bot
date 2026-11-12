@@ -59,6 +59,17 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
   }
   try {
     await boot(); await login()
+    assert.equal((await api('/api/schedules')).body.total, 0)
+    const scheduleSession = 'web-schedule-read'
+    await host.ctx.agents.create({sessionId: scheduleSession, meta: {cwd: host.ctx.runtimePaths.workspaces, agentPreset: 'night-bot'}, agentOptions: config.model})
+    const reminder = await host.ctx.schedule.create(scheduleSession, {title: '原生定时任务', prompt: 'PRIVATE_SCHEDULE_PROMPT', at: '2099-01-01T00:00:00.000Z'})
+    const scheduleReadsBefore = f.requests.length
+    const scheduleListing = await api('/api/schedules?state=active')
+    assert.equal(scheduleListing.response.status, 200)
+    assert.equal(scheduleListing.body.items[0].id, reminder.id)
+    assert.equal(scheduleListing.body.items[0].title, reminder.title)
+    assert.doesNotMatch(JSON.stringify(scheduleListing.body), /PRIVATE_SCHEDULE_PROMPT|sessionId/)
+    assert.equal(f.requests.length, scheduleReadsBefore, 'schedule reads must not activate an inference turn')
     assert.ok(host.ctx.channels.transports.has(channelId), 'real plugin discovery must register its channel transport')
     assert.equal(host.ctx.get('dingtalkChannel'), undefined)
     const input = {conversationId: 'web-chat', requestId: 'web-greeting', text: '你好，请确认收到。'}
@@ -91,6 +102,9 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
     cookie = undefined; csrfToken = undefined
     config.resident.taskSessions.initialize = false
     await boot(); await login()
+    assert.equal((await api('/api/schedules?state=active')).body.items[0].id, reminder.id, 'native schedules remain readable after restart')
+    await host.ctx.schedule.delete({sessionId: scheduleSession, id: reminder.id})
+    assert.equal((await api('/api/schedules?state=active')).body.total, 0, 'deleted reminders must not be fabricated as ended rows')
     const duplicate = await api('/api/chat', input)
     assert.equal(duplicate.response.status, 202); assert.equal(duplicate.body.duplicate, true)
     await app.tasks.whenIdle()

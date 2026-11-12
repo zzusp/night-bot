@@ -1,3 +1,4 @@
+import {schedulePage} from './schedule-view.js'
 import {openEvolutionCache} from './evolution-cache.js'
 import {bindingSchema} from '../../../src/memory/scope.js'
 import {readEvolutionInventory} from './evolution-inventory.js'
@@ -63,7 +64,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -278,6 +279,17 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, {ok: true, changed: result.changed, restartRequired: channel.restartRequired, liveApplied: channel.liveApplied, channel})
     }
     if (request.method === 'GET' && path === '/api/conversations') return send(response, 200, conversations(application(), channels))
+    if (request.method === 'GET' && path === '/api/schedules') {
+      if ([...url.searchParams.keys()].some(key => !['state', 'offset', 'limit'].includes(key) || url.searchParams.getAll(key).length !== 1)) fail('PAGE_INVALID')
+      const state = url.searchParams.get('state') ?? 'active'
+      if (!['active', 'inactive'].includes(state)) fail('SCHEDULE_FILTER_INVALID')
+      const options = {...page(url.searchParams), state}
+      const schedule = getSchedule()
+      if (typeof schedule?.catalog !== 'function') fail('SCHEDULES_UNAVAILABLE', 503)
+      let catalog
+      try {catalog = await schedule.catalog()} catch {fail('SCHEDULES_READ_FAILED', 503)}
+      return send(response, 200, schedulePage(catalog, options, [credential.token]))
+    }
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))
     if (request.method === 'GET' && path === '/api/overview') {
       const app = application()
@@ -549,7 +561,7 @@ export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
   const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
-    getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), listen: false})
+    getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)
