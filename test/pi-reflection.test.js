@@ -154,15 +154,15 @@ test('task reflection refuses a missing reason instead of storing speculative fi
 })
 
 test('single-session completion evidence and limitations support sufficiently complete three-part lessons',async t=>{
- let store,input
+ let store,input,f
  const fields={summary:'Bounded conclusion. '.repeat(48),why:'Observed reason. '.repeat(48),howToApply:'Check the stated limits before reuse. '.repeat(35)}
- const f=await memoryHost(t,body=>{
+ t.after(async()=>{await f?.close();await store?.close()})
+ f=await memoryHost(t,body=>{
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   input=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
   return {text:JSON.stringify({lessons:[{key:'bounded-complete-lesson',...fields,evidenceIds:[input.eventId]}]})}
  })
  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'evidence.sqlite'),instanceId:'evidence',initialize:true})
- t.after(async()=>{await f.close();await store.close()})
  let seq=0;const command=(kind,args)=>store.command({id:'evidence-'+(++seq),kind,args})
  await command('task.create',{taskId:'evidence-task',request:'Verify local behavior without live delivery',ownerActorId:'owner'})
  await initializeMemoryTaskWorkspace(store,f.host.ctx.runtimePaths.workspaces,'evidence-task')
@@ -177,14 +177,14 @@ test('single-session completion evidence and limitations support sufficiently co
 })
 
 test('default Host skill catalog checks support descriptors once without reading memory bodies',async t=>{
- let store
- const f=await memoryHost(t,body=>{
+ let store,f
+ t.after(async()=>{await f?.close();await store?.close()})
+ f=await memoryHost(t,body=>{
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),output=lesson(input)
   const parsed=JSON.parse(output.text);parsed.lessons[0].key=input.taskId;return {text:JSON.stringify(parsed)}
  })
  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'catalog.sqlite'),instanceId:'catalog',initialize:true})
- t.after(async()=>{await f.close();await store.close()})
  await completed(store,f.host.ctx.runtimePaths.workspaces,'one');await completed(store,f.host.ctx.runtimePaths.workspaces,'two')
  const detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await f.host.ctx.reflection.whenIdle()
  const actor=await f.agent('catalog-reader',{actorId:'owner'}),reads=[];f.host.ctx.memory.store.onRead=name=>reads.push(name)

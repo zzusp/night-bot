@@ -72,11 +72,17 @@ test('watcher captures new files and edits without opening dashboard; deletion p
 
 test('unsafe file paths, hardlinks, oversize, forged identifiers and secrets fail closed',async t=>{
  const f=await fixture(t),outside=join(f.root,'outside.md');await writeFile(outside,skill('OUTSIDE'))
- await symlink(outside,join(f.paths.skills,'linked.md'));await link(outside,join(f.paths.skills,'hard.md'));await writeFile(join(f.paths.skills,'large.md'),'a'.repeat(CONTENT_LIMIT+1))
+ await link(outside,join(f.paths.skills,'hard.md'));await writeFile(join(f.paths.skills,'large.md'),'a'.repeat(CONTENT_LIMIT+1))
  assert.equal((await installedSkills(f.paths)).complete,false);assert.equal(Object.keys((await f.tracker.scan()).state.items).length,0)
  await assert.rejects(boundedRead(join(f.paths.skills,'large.md')),{code:'EVOLUTION_CONTENT_TOO_LARGE'})
  await assert.rejects(inspectEvolutionItem(f.memory,f.reflection,f.binding,{id:'../outside.md',revision:'1'}),{code:'EVOLUTION_ITEM_NOT_FOUND'})
  await assert.rejects(f.remember('password=do-not-save'),{code:'MEMORY_SECRET_REFUSED'})
+})
+
+test('symbolic skill files cannot expose external content',async t=>{
+ const f=await fixture(t),outside=join(f.root,'outside.md');await writeFile(outside,skill('OUTSIDE'))
+ try{await symlink(outside,join(f.paths.skills,'linked.md'))}catch(error){if(process.platform==='win32'&&error.code==='EPERM'){t.skip('当前 Windows 账号无文件 symlink 权限；此边界另在 Linux 实跑');return}throw error}
+ assert.equal((await installedSkills(f.paths)).complete,false);assert.equal(Object.keys((await f.tracker.scan()).state.items).length,0)
 })
 
 test('learned current and previous are scoped, and unsupported/forgotten skills do not disclose old text',async t=>{

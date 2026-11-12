@@ -57,6 +57,7 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
   const fingerprint = createHash('sha256').update(identity).digest('hex')
   const path = join(directory, `evolution-${fingerprint}.pages`)
   let snapshot = null, updatedAt = null, inFlight = null, timer = null, closed = false, lastAttempt = -Infinity, errorCode = null, lastFailure = null, revoked = null
+  let publication = null, resumePages = null
   const shutdown = new AbortController()
   const privateStat = stat => process.platform === 'win32' || (stat.uid === process.getuid() && (stat.mode & 0o077) === 0)
   async function checkDirectory() {
@@ -103,12 +104,24 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
     // Only summary, offsets and hashes are resident. Item DTOs are read on demand.
     const byKind = {all: header.rows, memory: [], skill: []}
     for (const row of header.rows) byKind[row.kind].push(row)
-    return {handle, summary: header.summary, byKind, start, stat, readers: 0, retired: false}
+    return {handle, summary: header.summary, byKind, start, stat, readers: 0, retired: false, idle: null}
   }
   async function retire(value) {
     if (!value) return
     value.retired = true
     if (!value.readers) await value.handle.close()
+  }
+  async function reopen(value) {
+    await checkRoot()
+    const expected = await targetStat()
+    const matches = stat => stat && ['dev', 'ino', 'size', 'mtimeMs'].every(key => stat[key] === value.stat[key])
+    if (!matches(expected)) throw failure('EVOLUTION_CACHE_PATH_UNSAFE')
+    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    try {
+      const stat = await handle.stat(); checkFile(stat)
+      if (!matches(stat)) throw failure('EVOLUTION_CACHE_PATH_UNSAFE')
+      return handle
+    } catch (error) {await handle.close(); throw error}
   }
   const existing = await targetStat()
   if (existing && existing.size >= PREFIX_BYTES && existing.size <= MAX_BYTES) {
@@ -153,8 +166,21 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
       await handle.writeFile(Buffer.concat([prefix, encoded, ...buffers])); await handle.sync(); await handle.close(); handle = null
       reader = await open(temporary, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
       const stat = await reader.stat(); checkFile(stat)
+      // Windows cannot replace an open target. Pause new pages only for publication;
+      // existing pages finish on their pinned generation before its handle closes.
+      publication = new Promise(resolve => {resumePages = resolve})
+      const previous = snapshot
+      if (previous?.readers) await new Promise(resolve => {previous.idle = resolve})
       await checkRoot(); await targetStat()
-      await rename(temporary, path)
+      if (previous) await previous.handle.close()
+      try {await rename(temporary, path)}
+      catch (error) {
+        if (previous) {
+          try {previous.handle = await reopen(previous)}
+          catch {snapshot = null}
+        }
+        throw error
+      }
       const value = generation(reader, header, start, stat); reader = null
       return value
     } finally {
@@ -183,6 +209,7 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
         hasMore: offset + limit < index.length, nextOffset: offset + limit < index.length ? offset + limit : null}
     } finally {
       value.readers--
+      if (!value.readers) {value.idle?.(); value.idle = null}
       if (value.retired && !value.readers) await value.handle.close()
     }
   }
@@ -221,7 +248,12 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
         // Keep only safe, actionable cold-load codes; never expose source errors.
         lastFailure = ['EVOLUTION_BUSY', 'BOT_NOT_READY'].includes(error?.code) ? error.code : errorCode
         throw failure(lastFailure)
-      } finally {inFlight = null}
+      } finally {
+        // Publish or restore the handle before admitting waiting page reads.
+        const resume = resumePages
+        publication = null; resumePages = null; inFlight = null
+        resume?.()
+      }
     })()
     return inFlight
   }
@@ -239,7 +271,9 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
       } else if (expired() && retryDue()) {
         void refresh().catch(() => {})
       }
+      if (publication) await publication
       if (revoked) throw failure(revoked.code, revoked.status)
+      if (!snapshot) throw failure(lastFailure ?? 'EVOLUTION_CACHE_REFRESH_FAILED')
       const current = snapshot, cache = {updatedAt: new Date(updatedAt).toISOString(),
         stale: expired() || Boolean(errorCode), refreshing: Boolean(inFlight), ...(errorCode ? {error: errorCode} : {})}
       const result = await page(current, {kind, offset, limit})

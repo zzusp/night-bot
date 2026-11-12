@@ -34,14 +34,16 @@ test('historical keys come only from explicit references and unsupported lessons
 })
 
 async function fixture(t,makeLessons){
- let analyses=0,detach
- const f=await memoryHost(t,async body=>{
+ let analyses=0,detach,f,store
+ const cleanups=[]
+ t.after(async()=>{detach?.();try{await f?.close()}finally{try{await store?.close()}finally{for(const cleanup of cleanups.reverse())await cleanup()}}})
+ f=await memoryHost({after:cleanup=>cleanups.push(cleanup)},async body=>{
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   analyses++;const input=JSON.parse(body.messages.findLast(row=>row.role==='user').content)
   return {text:JSON.stringify({lessons:await makeLessons(input)})}
  })
- const ctx=f.host.ctx,scope=memoryScope({actorId:'owner'}),store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'keys.sqlite'),instanceId:'keys',initialize:true})
- t.after(async()=>{detach?.();await f.close();await store.close()})
+ const ctx=f.host.ctx,scope=memoryScope({actorId:'owner'})
+ store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'keys.sqlite'),instanceId:'keys',initialize:true})
  let seq=0
  const command=(kind,args)=>store.command({id:'key-'+(++seq),kind,args})
  await command('task.create',{taskId:'task-one',request:'Bounded local evidence',ownerActorId:'owner'})
