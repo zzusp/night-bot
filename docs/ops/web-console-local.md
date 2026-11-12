@@ -128,15 +128,17 @@ Web「权限与审批」使用 `GET /api/permissions` 读取当前 Host `mode`�
 
 同浏览器多标签重新登录导致 `CSRF_INVALID` 时，页面只读查询当前会话并同步 CSRF，保留草稿让操作者决定重试，不自动重放写请求。退出和重新登录按顺序完成，避免旧退出响应清除新 cookie。聊天最新接纳状态按 SQLite 写入顺序判定，不依赖随机请求 ID 或系统时钟先后；没有新增核心字段或 Web 数据库迁移。
 
-概览五个区块独立返回结果，局部错误在 `sectionErrors` 标出；单一渠道 health 或会话读取异常不会使其他区块不可见。任务结果、时间线及补充留言采用显式展示字段投影，并隐藏标注的凭据与私密路径；Bot 原始记录保持不变。
+概览五个区块独立返回结果，局部错误在 `sectionErrors` 标出；单一渠道 health 或会话读取异常不会使其他区块不可见。任务结果、时间线及补充留言采用显式展示字段投影，保留已获权的业务路径并隐藏标注的凭据；Bot 原始记录保持不变。
 
 ## 正式执行历史与正文
 
 聊天「对话」保留原接纳/回复账本；「执行过程」分为当前 Router 与关联任务组，分别只读官方 Pi 已提交上下文。关联任务来自认证 conversation 的 SQLite 持久记录，包含已完成/归档任务，Router 换代不清除关联；前端不从模型文字、消息链接或任意任务 ID 推断关联。任务组默认折叠，仅展开时读取，收起即卸载读组件。任务详情「执行记录」保持读取本任务执行会话。换代、压缩或分支后，不承诺每组当前投影包含原始全部历史，不把渠道账本拼成完整工具历史。
 
-`GET /api/chat/:id` 返回权威 `taskIds` 与 `taskHistoryStatus`；`ready` 配 `[]` 才表示没有关联任务，`null/unavailable` 或读取失败不转为空列表。Router 使用 `/api/chat/:id/session`，Chat 内任务组使用 `/api/chat/:id/tasks/:taskId/session`，Host 校验任务属于该 Chat 的认证 conversation；未关联统一返回 404 `CHAT_TASK_NOT_FOUND`，不接受任意 session ID。任务详情仍用 `/api/tasks/:id/session`。各历史每页最多 50 项；更早页绑定 `revision`，版本冲突后回到最新，不跨版本拼接。工具结果必须与同一 session 内准确的调用及工具名配对，再按服务端稳定身份合并；孤立、重复 ID 或名称冲突的结果保留事件与状态，不猜测正文。只有调用而没有已提交结果时显示「等待结果」，不宣称正在执行。Host 对工具输入和结构化工具结果以固定工具、字段和类型构造展示投影，未知输入/DTO 字段（含嵌套字段）默认隐藏；未知工具用固定「未公开工具」名称，保留状态和 opaque callId，不公开原名称及任意正文。字段准入不替代秘密脱敏；隐藏推理、系统指令、原始参数对象、权限/环境、凭据、私密路径与审计均不透传。
+`GET /api/chat/:id` 返回权威 `taskIds` 与 `taskHistoryStatus`；`ready` 配 `[]` 才表示没有关联任务，`null/unavailable` 或读取失败不转为空列表。Router 使用 `/api/chat/:id/session`，Chat 内任务组使用 `/api/chat/:id/tasks/:taskId/session`，Host 校验任务属于该 Chat 的认证 conversation；未关联统一返回 404 `CHAT_TASK_NOT_FOUND`，不接受任意 session ID。任务详情仍用 `/api/tasks/:id/session`。执行界面沿既有 `stream=1` 连续流默认载入最近 200 条，通过 `checkpoint` 校验已授权前缀并增量追加或向前补读；分支、压缩或内容改写时拒绝拼接并要求重新获取。原 offset API 仍每页最多 50 项并绑定 `revision`，不跨版本拼接。工具结果必须与同一 session 内准确的调用及工具名配对，再按服务端稳定身份合并；孤立、重复 ID 或名称冲突的结果保留事件与状态，不猜测正文。只有调用而没有已提交结果时显示「等待结果」，不宣称正在执行。Host 对工具输入和结构化回执按工具、字段和类型投影；所有调用名称保留，未知工具及字段明确提示缺少展示契约，不透传其任意正文。系统指令、原始参数对象、权限/环境、凭据和私有元数据不公开；模型实际返回的可读 thinking 独立展示且默认折叠，签名和不可读推理不透传。
 
-Web 受众是安装 token 认证后的单操作者，安装级任务/session API 提供任务检视权；Chat 专属任务入口另校验 conversation 关联，不是将结果向群成员发布。业务文件属于安装私有数据本身不构成该操作者无权访问的依据，不另加文件公开证明字段或账本。对同一 task 的严格已提交 journal，`read/read_window/grep/web_search/web_fetch` 结果经 exact call/name 配对后，保留工具声明的业务 text（包括 JSON 业务文件）；JSON 文件不是工具 DTO，无需脱敏时不改写原空白，分页保真。秘密及私密路径继续脱敏，网页结果 URL 隐藏；未知工具、未知输入/DTO 字段和孤立/冲突结果的拒绝边界不变。命令、作业、memory/learned-skill 的历史工具正文不泛透传，任务检视权不扩大独立 learning 的 reader binding、scope、version 和 403/409 授权链；私有记忆与学习技能的当前正文仍须走其显式读取入口。正式 `task_result` 与 Router 的获准业务字段继续保留。首段与续页使用同一投影，不通过续读返回已隐藏的字段；实现恢复不替代本轮真实 Chat 与安全反例的实跑结果。
+Web 受众是安装 token 认证后的单操作者，安装级任务/session API 提供任务检视权；Chat 专属入口另校验 conversation 关联，不向群成员发布。对同一任务严格已提交 journal，文件、命令、作业、工作目录、待办与网页工具经 exact call/name 配对后展示业务 text，包括错误正文，保留业务路径及网页地址；JSON 业务文件无需脱敏时不改写原空白。秘密继续脱敏，details、二进制和未知字段不透传。memory/skill 历史正文保持独立权限，不扩大 learning reader binding、scope、version 和 403/409 授权链。首段及续页使用同一投影，不通过续读恢复隐藏字段。
+
+任务 session 响应新增 todos 展示投影：只选同一会话最新已提交 planning/todos 回执的事项文字、状态、时间和 opaque 来源，不新增核心状态或数据库表。未提交调用不影响清单，分页及压缩不丢失回执，任务终态不覆盖模型待办状态。前端共用 ExecutionHistory 卡片，撤权时一并隐藏。升级需同时更新服务端与 Web 构建，按正常运维规程应用；只刷新旧服务端页面不能获得新投影。
 
 长正文使用同一授权入口下的 `/session/messages/:messageId`，按该条投影的 opaque ID、`revision` 和脱敏后 UTF-16 offset 分段读取，每段最多 16000；不接受任意路径、URL 或 session ID。页面显示记录来源及当前段范围，复制按钮只复制已展示段。网络恢复只重读服务端历史，不重放接纳或外部效果。
 

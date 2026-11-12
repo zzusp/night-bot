@@ -294,7 +294,7 @@ test('overview isolates throwing channel health and conversation reads from heal
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_/)
 })
 
-test('task details and dialogue whitelist nested facts and redact displayed credentials and paths', async t => {
+test('任务详情保留业务路径，同时按字段隔离私有元数据和凭据', async t => {
   const f = await fixture(t); await f.login()
   const token = (await readFile(f.web.credentialPath, 'utf8')).trim()
   const task = await f.app.tasks.taskDetail('task-one')
@@ -319,7 +319,7 @@ test('task details and dialogue whitelist nested facts and redact displayed cred
   assert.equal(detail.body.result.action, 'complete')
   assert.equal(detail.body.result.question, '需要确认吗？')
   assert.deepEqual(detail.body.result.limitations, ['尚未线上验收'])
-  assert.deepEqual(detail.body.result.evidence, ['已核对 [路径已隐藏]'])
+  assert.deepEqual(detail.body.result.evidence, ['已核对 /private/evidence.txt'])
   assert.deepEqual(detail.body.timeline.task.events, [{kind: 'created', sequence: 1, at: '2026-11-07T01:00:00Z'}])
   assert.equal(detail.body.timeline.executions[0].milestones[0].summary, '构建已完成')
   assert.match(detail.body.timeline.human.segments[0].description, /请确认下一步/)
@@ -327,7 +327,7 @@ test('task details and dialogue whitelist nested facts and redact displayed cred
   assert.deepEqual(dialogue.body.messages, [{id: 'd1', text: '确认继续', receivedAt: '2026-11-07T01:00:00Z', reply: '已收到'}])
   assert.equal(dialogue.body.error, 'TASK_DIALOGUE_UNAVAILABLE'); assert.equal(dialogue.body.writable, false)
   const serialized = JSON.stringify([detail.body, dialogue.body, (await f.fetchApi('/api/tasks')).body])
-  assert.doesNotMatch(serialized, /PRIVATE_|\/private\/|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
+  assert.doesNotMatch(serialized, /PRIVATE_|artifactFiles|arguments|credential|unknownFutureField|actorId|replyError/)
   assert.equal(serialized.includes(token), false)
   assert.equal(JSON.stringify(task), original, 'read projection never alters the authoritative task')
 })

@@ -59,8 +59,8 @@ function sampleSession(task, historyRounds = 0) {
     {sourceEntry: {id: 'fixture-assistant', type: 'message', timestamp: at(43)}, messages: [
       {role: 'assistant', content: [
         {type: 'text', text: '已开始核对现有资料。先读取材料，再逐项比对来源与结论。'},
-        {type: 'thinking', thinking: 'SECRET_THINKING_FIXTURE'},
-        {type: 'toolCall', id: 'fixture-read-call', name: 'read', arguments: {path: '/not/browser-safe', token: 'SECRET_ARGUMENT_FIXTURE'}},
+        {type: 'thinking', thinking: '先比较任务材料中的来源，再检查结论是否有证据支持。', thinkingSignature: 'SECRET_SIGNATURE_FIXTURE'},
+        {type: 'toolCall', id: 'fixture-read-call', name: 'read', arguments: {path: '/fixture/materials/research.md', token: 'SECRET_ARGUMENT_FIXTURE'}},
       ], stopReason: 'toolUse'},
     ]},
     {sourceEntry: {id: 'fixture-tool-result', type: 'message', timestamp: at(42)}, messages: [
@@ -86,7 +86,13 @@ function sampleSession(task, historyRounds = 0) {
   return {
     header: {id: sessionId},
     audit: [{domain: 'task', kind: 'identity', version: 1, payload: {taskId: task.taskId, sessionId}}],
-    entries: [{id: 'fixture-commit-last'}],
+    entries: [{id: 'fixture-todo-receipt', type: 'custom', customType: 'night.audit', timestamp: at(42), data: {
+      version: 1, domain: 'planning', kind: 'todos', payload: {todos: [
+        {content: '读取现有材料', status: 'completed'},
+        {content: '核对来源与结论', status: 'in_progress'},
+        {content: '整理待确认问题', status: 'pending'},
+      ]},
+    }}, {id: 'fixture-commit-last'}],
     context: {projection: {entries: projected}},
   }
 }

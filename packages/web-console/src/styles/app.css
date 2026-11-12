@@ -12,6 +12,20 @@ svg { flex-shrink: 0; }
 .chat-receipt { font-size: 12px; }
 .execution-scope { padding: 12px 18px; border-bottom: 1px solid var(--board-border); font-size: 11px; color: var(--board-muted); }
 .execution-pagination { display: flex; justify-content: center; gap: 8px; padding: 10px; }
+.execution-todos { flex-shrink: 0; max-height: min(28dvh,230px); overflow: auto; padding: 12px 18px; border-bottom: 1px solid var(--board-border); }
+.todo-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; margin-bottom: 9px; }
+.todo-heading h3 { font-size: 12px; font-weight: 500; margin: 0; }
+.todo-heading time { font-size: 10px; color: var(--board-muted); }
+.todo-cards { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.todo-card { display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--board-border); border-radius: 10px; padding: 9px 12px; background: var(--board-panel); font-size: 12px; line-height: 1.6; }
+.todo-card > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.todo-card > .board-badge { flex-shrink: 0; }
+.todo-card small { display: block; color: var(--board-muted); }
+.todo-in_progress { border-left: 3px solid var(--board-primary); }
+.thinking-message { font-size: 12px; line-height: 1.8; }
+.thinking-message > summary { color: var(--board-muted); }
+.thinking-message[open] > summary { margin-bottom: 10px; }
+
 .message-scope { font-size: 10px; color: var(--board-muted); margin-top: 7px !important; }
 .tool-message { padding: 10px 13px; border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); background: var(--board-surface); }
 .tool-message > summary { font-size: 12px; color: var(--board-muted); overflow-wrap: anywhere; }
