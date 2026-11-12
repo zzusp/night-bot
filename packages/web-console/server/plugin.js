@@ -64,7 +64,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getFeedback = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -158,6 +158,20 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const session = sessions.require(request, !['GET', 'HEAD'].includes(request.method))
     if (request.method === 'GET' && path === '/api/session') return send(response, 200, sessionView(session))
     if (request.method === 'POST' && path === '/api/logout') {await jsonBody(request, []); sessions.logout(session, response); return send(response, 200, {ok: true})}
+    if (path === '/api/feedback' || path.startsWith('/api/feedback/')) {
+      const feedback=getFeedback();if(!feedback)fail('FEEDBACK_UNAVAILABLE',503)
+      if(request.method==='GET'&&path==='/api/feedback')return send(response,200,feedback.metadata())
+      if(request.method==='POST'&&path==='/api/feedback/collect')return send(response,202,feedback.collect(session.key,await jsonBody(request,['title','description','consent','model','revision'],32768),{secrets:[credential.token]}))
+      if(request.method==='POST'&&path==='/api/feedback/draft')return send(response,200,feedback.draft(session.key,await jsonBody(request,['title','description'],32768),{secrets:[credential.token]}))
+      const match=/^\/api\/feedback\/([a-f0-9-]{36})(\/submit)?$/.exec(path)
+      if(match){
+        if(request.method==='GET'&&!match[2])return send(response,200,feedback.read(session.key,match[1]))
+        if(request.method==='PATCH'&&!match[2])return send(response,200,await feedback.edit(session.key,match[1],await jsonBody(request,['title','body'],200000)))
+        if(request.method==='DELETE'&&!match[2])return send(response,200,await feedback.cancel(session.key,match[1]))
+        if(request.method==='POST'&&match[2])return send(response,200,await feedback.submit(session.key,match[1],await jsonBody(request,['title','body','confirm'],200000)))
+      }
+      fail('NOT_FOUND',404)
+    }
     if (path === '/api/settings' || path.startsWith('/api/settings/')) {
       const settings=getOperatorSettings()
       if(!settings) fail('SETTINGS_UNAVAILABLE',503)
@@ -559,7 +573,7 @@ export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
   const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
-    getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), listen: false})
+    getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)
