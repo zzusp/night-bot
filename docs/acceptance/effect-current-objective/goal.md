@@ -2,7 +2,7 @@
 
 > 状态：ACTIVE
 > Goal ID：effect-current-objective
-> 最近维护：2026-11-12T15:12:52+08:00
+> 最近维护：2026-11-12T16:12:40+08:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -28,17 +28,18 @@
 | --- | --- | --- | --- | --- |
 | SG1 | 删除全任务额外授权 | 调用/完成门槛与回调删除，无替代 grant，旧调用不重放 | DONE | [第三轮](round-3.md)：66 条效果回归 |
 | SG2 | Router 原会话完整调度 | 跨作者停启、直接解除等待、取消/完成/归档重唤、冷重开及实际 drain | DONE | [第三轮](round-3.md)：26 条账本、完整停启链与两处结清续接 |
-| SG3 | 本地验证与新 PR | 保留首次路由组失败与补验，守卫通过并交付新 PR | DONE | [PR #81](https://github.com/zzusp/night-bot/pull/81) OPEN / MERGEABLE；[第三轮](round-3.md) |
-| SG4 | 合并与实际安装升级 | 本地任务终态或等待且排空后，正常停机并升级已合并最新发行 | IN_PROGRESS | 已获授权；PR #80 分层记忆已整合并通过 Router 全链；两项在线任务仍执行，未停机 |
-| SG5 | 原业务与 Excel 验收 | 两类下载的行业/审核状态中英文实际导出读回正确 | NOT_RUN | 平台升级后由 Router 续原任务；未改业务仓库或发布业务系统 |
-| SG6 | 同安装记忆迁移 | 官方 check/apply/check 完成，原条目/历史/去重保留，正常读取确认 | IN_PROGRESS | 在线预检正确拒绝活 Host；准备修复迁移器遗漏的运行时标准 installed-previous.json，原文件不移动/删除 |
+| SG3 | 本地验证与新 PR | 保留首次路由组失败与补验，守卫通过并交付新 PR | DONE | [PR #81](https://github.com/zzusp/night-bot/pull/81) MERGED，569a6dc；[第三轮](round-3.md) |
+| SG4 | 合并与实际安装升级 | 本地任务终态或等待且排空后，正常停机并升级已合并最新发行 | DONE | [第四轮](round-4.md)：9 项终态/等待且排空后正常 IPC 停机，新发行 569a6dc 的核心、Web 与两个渠道实际恢复；Web 记忆缓存刷新另有失败项 |
+| SG5 | 原业务与 Excel 验收 | 两类下载的行业/审核状态中英文实际导出读回正确 | NOT_RUN | 实际安装已升级，原任务仍 waiting/drained=true 且原 session/noReplay 保留；未改业务仓库、续跑 Excel 或发布业务系统 |
+| SG6 | 同安装记忆迁移 | 官方 check/apply/check 完成，原条目/历史/去重保留，正常读取确认 | DONE | [第四轮](round-4.md)：正式 ready/completed/already-layered；21 条、2 分类、0 候选，逐条语义及技能历史字节核对一致，实际目录盘点成功 |
 
 ## 当前检查点
 
-- 当前子目标：SG4
-- 唯一下一步：完成最新组合和迁移入口修复验证，合并 PR #81，准备独立发行、依赖和 Web 构建；通过现有任务监控等待全部任务终态/已排空等待后，再正常停机、离线迁移、替换插件目录并重启验收。
-- 未闭环项：合并/实际升级/记忆迁移尚未完成；在线有两项 running/drained=false，禁止提前停机。已准备独立发行仓库，未修改现有配置/记忆。整合记忆迁移测试中 Windows 文件 symlink 夹具 EPERM，正在保留真实重解析点覆盖修正；原业务与 Excel 未验收。
-- 当前分支 `worktree-router-scheduling-authority`，代码提交 `2931499fca3b5d029bc3f4de2798bf9dfe02207e`，基于 `2e25d6657c1add403f544622866cf357f09d0a2e`；后续整合 main 303e048 的分层记忆升级，组合 Router 全链与 pnpm check 已通过；部署阶段的新组合和实际证据另记下一轮，不改第三轮历史结论。旧 PR [#79](https://github.com/zzusp/night-bot/pull/79) 于 2026-11-12T05:48:20Z 合并，不能继续推其旧分支。
+- 当前子目标：SG5
+- 唯一下一步：原业务须通过所属 conversation 的 Router 在原 session 续办，并核对两类中英文 Excel 的真实终态；保留原调用 noReplay。本轮明确要求的 PR 合并、本地安全部署与记忆迁移已完成，不将本轮授权扩展为业务仓库发布。
+- 未闭环项：原业务未续跑/验收。另有已隔离复现的 Windows Web 记忆缓存替换 EPERM，强制刷新仍 stale；不计为通过，本轮未扩大实施缓存协议修复。
+- 当前发行：PR #81 的已合并版本 569a6dc5da63cb0438d0aa193e5e019a337b36f0。9 项原 task/session 保留，旧结清 committed/noReplay=true；两渠道 receiving，原接收偏好和耐久进度保留，未发测试消息。
+- 本阶段结果、验证失败与边界集中见第四轮；第三轮仍保持原受验范围。当前只读等待监控均已结束或停止，新 Bot 的受管监督器作为交付运行态保留，不再 push 已合并 PR 的原分支。
 
 ## 重大决策
 
@@ -46,7 +47,7 @@
 
 ## 证据入口
 
-[第三轮](round-3.md)集中维护源码哈希、命令、失败/复验和边界；[矩阵](matrix.csv)保留跨轮历史。[第一轮](round-1.md)、[第二轮](round-2.md)仅按需追溯。
+[第四轮](round-4.md)为最新合并/部署/迁移结果及 Web 缓存失败证据；[第三轮](round-3.md)维护原平台源码哈希、命令、失败/复验和边界；[矩阵](matrix.csv)保留跨轮历史。[第一轮](round-1.md)、[第二轮](round-2.md)仅按需追溯。
 
 ## 本地升级等待与记忆约束
 
