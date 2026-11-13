@@ -13,20 +13,36 @@ svg { flex-shrink: 0; }
 .execution-scope { padding: 12px 18px; border-bottom: 1px solid var(--board-border); font-size: 11px; color: var(--board-muted); }
 .execution-pagination { display: flex; justify-content: center; gap: 8px; padding: 10px; }
 /* BoardUI agent-log row rhythm; shared by chat and task execution. */
-.execution-todos { flex-shrink: 0; max-height: min(28dvh,230px); overflow: auto; padding: 12px max(16px, calc((100% - 760px) / 2)); background: var(--board-panel); }
-.todo-disclosure { min-width: 0; }
-.todo-heading { cursor: pointer; padding: 6px 0; color: var(--board-muted); font-size: 12px; line-height: 20px; }
-.todo-heading strong { font-weight: 500; color: var(--board-text); margin-right: 8px; }
-.todo-count { font-size: 11px; font-variant-numeric: tabular-nums; }
-.todo-heading time { float: right; margin-left: 12px; font-size: 10px; }
-.todo-heading:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; border-radius: 4px; }
-.todo-cards { list-style: none; margin: 4px 0 0; padding: 0; }
-.todo-card { display: grid; grid-template-columns: 3em minmax(0,1fr); align-items: baseline; gap: 12px; padding: 5px 0; font-size: 12px; line-height: 1.7; }
-.todo-state { color: var(--board-muted); font-size: 11px; white-space: nowrap; }
-.todo-text { min-width: 0; overflow-wrap: anywhere; }
-.todo-card small { display: block; color: var(--board-muted); }
-.todo-completed .todo-text { color: var(--board-muted); }
-.todo-in_progress .todo-state { color: var(--board-primary); font-weight: 500; }
+/* BoardUI Agent Progress reference: compact card, not a full-width status table. */
+.execution-todos { flex-shrink: 0; padding: 12px max(16px, calc((100% - 760px) / 2)); background: var(--board-panel); }
+.agent-progress { width: 340px; max-width: 100%; border: 1px solid var(--board-border); border-radius: 16px; background: var(--board-surface); box-shadow: 0 1px 1px rgb(0 0 0 / 3%); color: var(--board-muted); }
+.agent-progress[open] { width: 300px; }
+.agent-progress-heading { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 10px 12px; list-style: none; cursor: pointer; font-size: 13px; line-height: 20px; border-radius: inherit; }
+.agent-progress-heading::-webkit-details-marker { display: none; }
+.agent-progress-heading:hover { background: var(--board-hover); }
+.agent-progress-heading:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; }
+.agent-progress-label { flex-shrink: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+.agent-progress-current { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--board-text); }
+.agent-progress-current > svg { flex-shrink: 0; }
+.agent-progress-current > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-progress[open] .agent-progress-current { display: none; }
+.agent-progress-collapse { display: none; margin-left: auto; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; background: var(--board-hover); }
+.agent-progress[open] .agent-progress-collapse { display: flex; }
+.agent-progress-steps { list-style: none; margin: 0; padding: 0 8px 8px; max-height: min(28dvh, 240px); overflow: auto; }
+.agent-progress-step { position: relative; display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 6px 8px; margin: 2px 0; border: 1px solid transparent; border-radius: 999px; font-size: 12px; line-height: 18px; }
+.agent-progress-step.todo-in_progress { border-color: var(--board-border); color: var(--board-text); }
+.agent-progress-text { min-width: 0; overflow-wrap: anywhere; }
+.agent-progress-text small { display: block; color: var(--board-muted); font-size: 11px; }
+.agent-progress-marker { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 12px; width: 12px; height: 12px; border: 1px solid var(--board-border); border-radius: 50%; }
+.agent-progress-step > .agent-progress-marker { margin-top: 3px; }
+.agent-progress-heading > .agent-progress-marker { flex-basis: 14px; width: 14px; height: 14px; }
+.agent-progress-marker.is-completed { background: var(--board-hover); border-color: var(--board-hover); color: var(--board-muted); }
+.agent-progress-marker.is-pending { border-style: dotted; }
+.agent-progress-marker.is-active { border-width: 2px; border-top-color: var(--board-muted); animation: agent-progress-spin 1.4s linear infinite; }
+@keyframes agent-progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .agent-progress-marker.is-active { animation: none; } }
+@media (forced-colors: active) { .agent-progress, .agent-progress-step.todo-in_progress { border-color: CanvasText; } .agent-progress-marker { border-color: CanvasText; } }
+
 
 .thinking-message { font-size: 12px; line-height: 1.8; }
 .thinking-message > summary { color: var(--board-muted); }

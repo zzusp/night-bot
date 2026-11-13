@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ApiError } from '../api';
 import { dateTime } from '../hooks';
 import { useExecutionStream } from '../useExecutionStream';
+import { AgentProgress } from './AgentProgress';
 import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, MessageList, Notice, Status } from './Shared';
 
@@ -35,13 +36,7 @@ export function ExecutionHistory({ endpoint, router = false, status, controlsTar
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
-    {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <section className="execution-todos" aria-label="任务待办" tabIndex={0}>
-      <details className="todo-disclosure" open><summary className="todo-heading"><strong>任务待办</strong><span className="todo-count">{query.data.todos.items.filter(item => item.status === 'completed').length} / {query.data.todos.items.length}</span>{query.data.todos.updatedAt && <time dateTime={query.data.todos.updatedAt}>更新于 {dateTime(query.data.todos.updatedAt)}</time>}</summary>
-      {query.data.todos.items.length ? <ol className="todo-cards">{query.data.todos.items.map((todo, index) => <li className={`todo-card todo-${todo.status}`} key={index}>
-        <span className="todo-state">{todo.status === 'completed' ? '已完成' : todo.status === 'in_progress' ? '进行中' : '待处理'}</span><span className="todo-text">{todo.text}{todo.redacted && <small>敏感信息已隐藏</small>}</span>
-      </li>)}</ol> : <p className="message-scope">已提交的待办清单为空。</p>}
-      </details>
-    </section>}
+    {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} />}
 
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" />
