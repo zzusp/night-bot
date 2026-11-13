@@ -386,8 +386,10 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
-  let proofs = liveProofs.get(persistence)
-  if (!proofs) {proofs = new Map(); liveProofs.set(persistence, proofs)}
+  // Cordis 服务门面每次查询都会改变；proof 绑定底层持久化身份。
+  const authority = persistence.identity ?? persistence
+  let proofs = liveProofs.get(authority)
+  if (!proofs) {proofs = new Map(); liveProofs.set(authority, proofs)}
   for (const [key, value] of proofs) if (value.expires <= Date.now()) proofs.delete(key)
   if (liveProof) {
     const saved = proofs.get(liveProof)
