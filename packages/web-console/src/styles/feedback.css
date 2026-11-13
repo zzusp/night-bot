@@ -1,6 +1,4 @@
 .feedback-page { max-width: 1000px; margin-inline: auto; width: 100%; }
-.feedback-disclosure { margin-bottom: 20px; padding: 16px 20px; border-left: 3px solid var(--board-warning); color: var(--board-text); background: var(--board-surface); border-radius: var(--board-radius-control); }
-.feedback-disclosure p { margin: 0; line-height: 1.7; }
 .feedback-page dl { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 16px; margin-block: 12px 0; }
 .feedback-page dt { color: var(--board-muted); }
 .feedback-page dd { margin: 0; overflow-wrap: anywhere; }
@@ -9,15 +7,24 @@
 .feedback-page .feedback-consent { display: flex; align-items: flex-start; gap: 10px; margin-block: 12px; font-weight: 400; cursor: pointer; line-height: 1.6; }
 .feedback-page .feedback-consent input { width: 18px; min-height: 18px; height: 18px; margin-top: 3px; flex: 0 0 18px; }
 .feedback-preview pre { margin-block: 16px; max-height: 55vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border-radius: var(--board-radius-control); background: var(--board-panel); color: var(--board-text); font: 12px/1.7 var(--board-mono); }
-@media (max-width: 520px) { .feedback-page dl { grid-template-columns: 1fr; gap: 4px; } .feedback-page dd { margin-bottom: 8px; } .feedback-disclosure { padding: 12px; } }
+@media (max-width: 520px) { .feedback-page dl { grid-template-columns: 1fr; gap: 4px; } .feedback-page dd { margin-bottom: 8px; } }
 .feedback-preview-fields { display: grid; gap: 10px; margin-top: 16px; min-width: 0; }
 .feedback-preview-fields textarea { font: 12px/1.7 var(--board-mono); }
 
 .feedback-mode { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
 .feedback-mode legend { font-weight: 500; }
 
-.feedback-disclosure p + p { margin-top: 10px; }
 .feedback-github-handoff { border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); padding: 16px; min-width: 0; }
 .feedback-github-handoff ol { padding-left: 20px; margin: 0 0 16px; line-height: 1.8; }
 .feedback-handoff-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .feedback-github-handoff p { color: var(--board-muted); line-height: 1.6; margin: 12px 0 0; }
+
+.feedback-privacy { margin-block: 0 16px; min-width: 0; }
+.feedback-privacy-summary { margin: 0; color: var(--board-muted); font-size: 12px; line-height: 1.65; }
+.feedback-privacy-details { margin-top: 4px; font-size: 12px; line-height: 1.65; }
+.feedback-privacy-details summary { width: fit-content; color: var(--board-muted); cursor: pointer; border-radius: 4px; }
+.feedback-privacy-details summary:hover { color: var(--board-text); }
+.feedback-privacy-details summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 3px; }
+.feedback-privacy-body { margin-top: 8px; color: var(--board-muted); max-width: 72ch; overflow-wrap: anywhere; }
+.feedback-privacy-body p { margin: 0 0 8px; }
+.feedback-image-notice { color: var(--board-muted); font-size: 12px; line-height: 1.65; }

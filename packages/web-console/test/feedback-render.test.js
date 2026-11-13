@@ -73,3 +73,18 @@ test('native image handoff keeps explicit privacy disclosure and never carries d
  assert.match(source,/navigator.clipboard.writeText\(record\[field\]\)/);
  assert.match(source,/setNativeOpened\(true\)/);
 });
+
+test('privacy notice is inline with choices, full details collapsed and important consent boundary always visible',()=>{
+ destination={target:'zzusp/night-bot',model:'provider/model',revision:'r1',endpoint:'https://models.example'};
+ const html=render();
+ assert.doesNotMatch(html,/class="feedback-disclosure"/);
+ assert.ok(html.indexOf('feedback-title') < html.indexOf('feedback-privacy-summary'));
+ assert.match(html,/<p id="feedback-privacy-summary"[^>]*>收集可选，需您同意；本地数据脱敏后用于模型诊断，可能遗漏敏感信息。内容可审核修改，确认后才提交 GitHub。<\/p>/);
+ assert.match(html,/<details class="feedback-privacy-details"><summary>了解详情<\/summary>/);
+ globalThis.__feedbackCollect=true;
+ try {
+  const selected=render();
+  assert.match(selected,/<label class="feedback-consent"><input type="checkbox"\/>我同意[^<]*provider\/model[^<]*https:\/\/models.example/);
+  assert.match(selected,/<button[^>]*disabled=""[^>]*><span[^>]*>开始诊断/);
+ } finally {delete globalThis.__feedbackCollect;}
+});
