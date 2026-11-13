@@ -38,7 +38,10 @@ test('three rendered lines, accessible disclosure, resize, polling, canvas gutte
       await page.evaluate(theme => document.documentElement.dataset.theme=theme,theme);
       const pane=page.locator('.task-workspace > .conversation-page');
       const paneBox=(await pane.boundingBox())!;
-      if(width>760) expect(paneBox.y).toBeLessThan(16);
+      const headerBox=(await page.locator('.main-frame > .workspace-topbar').boundingBox())!;
+      expect(headerBox.height).toBe(width <= 520 ? 48 : 52);
+      expect(paneBox.y).toBe(headerBox.y + headerBox.height);
+      await expect(pane.locator('.header-location')).toHaveCount(0);
       const body=(await message.locator('.message-body').boundingBox())!;
       expect(paneBox.x+paneBox.width-body.x-body.width).toBeGreaterThanOrEqual(16);
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -56,5 +59,37 @@ test('three rendered lines, accessible disclosure, resize, polling, canvas gutte
       await page.locator('.agent-progress-heading').click();
       await page.screenshot({path:test.info().outputPath(`task-compact-${width}-${theme}.png`)});
     }
+  }
+});
+
+test('task and chat share responsive message reading width and side insets', async ({page}) => {
+  await page.goto('/#/chat');
+  await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN);
+  await page.getByRole('button', {name: '连接工作空间', exact: true}).click();
+  for (const width of [1920,1440,390]) {
+    await page.setViewportSize({width,height:960});
+    await page.goto('/#/chat');
+    const chatColumn=page.locator('.chat-panel .message-column').first();
+    await expect(chatColumn).toBeVisible();
+    const chat=await chatColumn.evaluate(el=>{
+      const css=getComputedStyle(el);
+      return {maxWidth:css.maxWidth,left:css.paddingLeft,right:css.paddingRight};
+    });
+    await page.goto('/#/tasks/task-research');
+    const taskColumn=page.locator('.task-dialogue .message-column').first();
+    await expect(taskColumn).toBeVisible();
+    const task=await taskColumn.evaluate(el=>{
+      const css=getComputedStyle(el);
+      const parent=el.parentElement!;
+      const box=el.getBoundingClientRect(), viewport=parent.getBoundingClientRect();
+      return {maxWidth:css.maxWidth,left:css.paddingLeft,right:css.paddingRight,
+        width:box.width, parentWidth:parent.clientWidth, x:box.left-viewport.left};
+    });
+    expect(task.maxWidth).toBe(chat.maxWidth);
+    expect(task.left).toBe(chat.left);
+    expect(task.right).toBe(chat.right);
+    expect(task.width).toBeLessThanOrEqual(800);
+    expect(task.width).toBeLessThanOrEqual(task.parentWidth+1);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   }
 });
