@@ -1,5 +1,6 @@
 import {Service} from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import {isNativeSkillFilesystem} from './native-skill-filesystem.js'
 import {scopeOf,scopeChainOf} from './native-scope.js'
 const namePattern=/^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const layer=()=>({providers:new Map(),runtime:new Map()})
@@ -26,6 +27,17 @@ export default class NativeSkills extends Service {
  async snapshot(options={}){const result=await this.collect(options);return{skills:[...result.entries.values()].map(e=>summary(e.candidate)).sort((a,b)=>cmp(a.name,b.name)),complete:result.cacheable}}
  async list(options={}){return(await this.snapshot(options)).skills}
  async get(name,options={}){if(typeof name!=='string'||!namePattern.test(name))return undefined;const result=await this.collect(options),signal=this.control(options),entry=result.entries.get(name);aborted(signal);if(!entry)return;const skill=await wait(entry.provider.get(entry.candidate,options),signal);if(skill===undefined)return;if(entry.provider===runtimeProvider?entry.layer.runtime.get(entry.candidate.name)!==entry.candidate.locator:entry.layer.providers.get(entry.registrationName)?.provider!==entry.provider)return;definition(skill);if(skill.name!==entry.candidate.name){if(entry.layer.providers.get(entry.registrationName)?.provider===entry.provider)this.invalidateCache();return}return skill}
+ // This port is only for Host resource mapping. Unrecognized/dynamic providers
+ // retain get semantics; they cannot opt themselves into the filesystem fast path.
+ async officialResource(name,options,read){
+  const result=await this.collect(options),signal=this.control(options),entry=result.entries.get(name);aborted(signal)
+  if(!entry)return
+  if(!isNativeSkillFilesystem(entry.provider))return {skill:await this.get(name,{...options,resourceOnly:true}),fileValidated:false}
+  const revision=this.revision,skill=await wait(entry.provider.resource(entry.candidate,options,read),signal);aborted(signal)
+  if(revision!==this.revision||entry.layer.providers.get(entry.registrationName)?.provider!==entry.provider)return
+  if(!skill)return;definition(skill)
+  return {skill,fileValidated:true}
+ }
  key(options,revision){return JSON.stringify({cwd:options.cwd,scopes:scopeChainOf(options.scope).map(key=>{let id=this.scopeIds.get(key);if(id===undefined){id=this.nextScopeId++;this.scopeIds.set(key,id)}return id}),revision})}
  async collect(options){const signal=this.control(options);for(let attempt=0;;attempt++){aborted(signal);const revision=this.revision,key=this.key(options,revision),cached=this.cache.get(key);if(cached)return{entries:cached,cacheable:true};const result=await this.fresh(options,signal);aborted(signal);if(revision!==this.revision){if(attempt===0)continue;return{entries:result.entries,cacheable:false}}if(result.cacheable){this.cache.set(key,result.entries);if(this.cache.size>this.maxEntries)this.cache.delete(this.cache.keys().next().value)}return result}}
  async fresh(options,signal){const layers=[this.global,...scopeChainOf(options.scope).reverse().map(key=>this.scoped.get(key)).filter(Boolean)],entries=new Map();let cacheable=true;for(const current of layers){aborted(signal);const candidates=[];let local=0;for(const skill of [...current.runtime.values()].sort((a,b)=>cmp(a.name,b.name)))candidates.push({candidate:{...summary(skill),...skill.metadata===undefined?{}:{metadata:skill.metadata},rank:250,locator:skill},provider:runtimeProvider,order:-1,local:local++,layer:current});for(const {provider,order,name:providerName}of [...current.providers.values()]){let output;try{output=await wait(provider.list(options),signal)}catch(e){aborted(signal);cacheable=false;this.warn('Skill provider skipped: '+provider.name+': '+text(e));continue}if(output===undefined)continue;const observation=Array.isArray(output)?{candidates:output,complete:true}:output;if(!observation||!Array.isArray(observation.candidates)||typeof observation.complete!=='boolean')throw new TypeError('Skill provider must return an array or complete observation');if(!observation.complete)cacheable=false;let local=0;for(const candidate of observation.candidates){definition(candidate,{candidate:true,provider:providerName});candidates.push({candidate,provider,order,registrationName:providerName,local:local++,layer:current})}}candidates.sort((a,b)=>a.candidate.rank-b.candidate.rank||a.order-b.order||a.local-b.local);const seen=new Set();for(const entry of candidates){if(seen.has(entry.candidate.name)){this.warn('Lower-priority duplicate skill ignored: '+entry.candidate.name);continue}seen.add(entry.candidate.name);entries.set(entry.candidate.name,entry)}}return{entries,cacheable}}

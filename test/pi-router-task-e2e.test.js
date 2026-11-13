@@ -44,7 +44,7 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
       const event=input.events.find(event=>event.taskEvent?.taskId==='a-e2e'&&event.taskEvent.kind==='task.completed')
       if(event){
         const revision=event.taskEvent.requirementRevision,key=event.id
-        if(!queries.includes(key)){queries.push(key);return call('resident_task_query',{taskId:'a-e2e'})}
+        if(!queries.includes(key)){queries.push(key);return call('resident_task_query',{taskId:'a-e2e',detail:'full'})}
         if(revision===a.requirementRevision){
           const dependency=(await h.query('router.dependencies',{taskId:'b-e2e'}))[0]
           const previous=await h.query('router.evaluations',{taskId:'b-e2e'})
@@ -67,6 +67,11 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   await h.service.whenIdle()
   const a=await h.query('task.get',{taskId:'a-e2e'}),b=await h.query('task.get',{taskId:'b-e2e'})
   t.diagnostic(JSON.stringify({taskTurns,evaluations,errors:h.errors.map(error=>error?.message),toolErrors:h.results.filter(row=>row.result.isError),a:{status:a.status,revision:a.requirementRevision,drained:a.drained},b:{status:b.status,drained:b.drained}}))
+  const planned=h.results.find(row=>row.name==='resident_task_plan'&&!row.result.isError).result.value
+  assert.ok(planned.result.tasks.every(task=>task.projection==='summary'&&task.request===undefined),'plan returns compact receipts, not accumulated full input')
+  const revised=h.results.find(row=>row.name==='resident_task_action'&&!row.result.isError).result.value
+  assert.equal(revised.result.task.projection,'summary');assert.equal(revised.result.task.request,undefined)
+  assert.match(a.request,/First verify synthetic A/,'authoritative original request is not removed by the model projection')
   assert.equal(a.requirementRevision,2);assert.equal(a.status,'completed');assert.equal(a.sessionId,originalSession)
   assert.equal(b.status,'completed');assert.equal(b.requirementRevision,1)
   assert.deepEqual(evaluations,[{revision:1,decision:'continue'},{revision:2,decision:'satisfied'}])
@@ -86,5 +91,5 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   assert.equal(admitted.task.sessionId,b.sessionId)
   assert.deepEqual(await h.query('execution.list'),[],'one task keeps one direct execution session, not a split team')
   assert.equal((await h.query('wake.list',{taskId:'b-e2e'})).filter(wake=>wake.kind==='dependency.satisfied').length,1)
-  assert.ok(h.results.some(row=>row.name==='resident_task_query'&&!row.result.isError),'Router reads current execution evidence through the actual tool')
+  assert.ok(h.results.some(row=>row.name==='resident_task_query'&&!row.result.isError&&row.result.value?.task?.completion?.result?.evidence?.includes('proof:verified')),'Router reads complete current execution evidence through the actual full-detail tool')
 })

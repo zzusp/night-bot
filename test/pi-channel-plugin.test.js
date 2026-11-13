@@ -368,7 +368,7 @@ for(const replyToSource of [undefined,true])test('default application neutral Ro
       return {text:'Original source disposition committed'}
     }
     if(input.events.some(event=>event.taskEvent?.kind==='task.completed'&&event.taskEvent.taskId===taskId)){
-      if(step===0)return {tool:'resident_task_query',args:{taskId}}
+      if(step===0)return {tool:'resident_task_query',args:{taskId,detail:'full'}}
       if(step>0){
         const task=modelToolValues(body).toReversed().find(value=>value.task?.taskId===taskId)?.task
         assert.ok(task?.completion?.result?.artifactFiles?.length)

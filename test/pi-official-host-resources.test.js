@@ -99,7 +99,9 @@ test('real Reflection learned skills use the Bot-shared scope and revision; revo
  const a=await f.resolve(f.a),b=await f.resolve(f.b),loadsBefore=(await readUsage(store,scope))?.loadCount??0
  const resources=await a.context.skills(f.a.actor)
  assert.equal(resources.length,1);assert.equal(resources[0].name,'learned-verify')
- assert.ok((await readUsage(store,scope)).loadCount>loadsBefore,'automatic resource materialization loads bodies without model execution; provider retries may load more than once')
+ assert.equal((await readUsage(store,scope))?.loadCount??0,loadsBefore,'resource discovery is not a model skill read and must not write usage counters')
+ await f.ctx.skills.get('learned-verify',{scope:f.a.actor,cwd:f.paths.workspaces})
+ assert.equal((await readUsage(store,scope)).loadCount,loadsBefore+1,'an explicit skill read remains counted')
  const content=await readFile(resources[0].filePath,'utf8')
  assert.match(content,/Read current evidence/);assert.match(content,/NIGHT_LEARNED_SCOPE=bot\//);assert.ok(!content.includes('STALE DISK BODY'))
  const shared=await b.context.skills(f.b.actor)
@@ -119,8 +121,32 @@ test('real NativeSkillFilesystem catalog maps an authorized physical SKILL.md th
  f.ctx.skills.registerProvider(control=>new NativeSkillFilesystem(f.ctx,control,{includeDefaultRoots:false,customSkillDirs:[f.paths.skills],watch:false,agentsHome:f.paths.agentsHome}))
  const snapshot=await f.a.actor.ctx.skills.snapshot({scope:f.a.actor,cwd:f.paths.workspaces})
  assert.equal(snapshot.skills[0].path,path)
+ let reads=0;const original=f.fs.readText;f.fs.readText=async(...args)=>{reads++;return original(...args)}
  const resources=await f.resolve(f.a),skills=await resources.context.skills(f.a.actor)
  assert.equal(skills[0].filePath,path);assert.equal(await readFile(path,'utf8'),raw)
+ assert.equal(reads,1,'warm native catalog needs one current authorized body read, not get/read/get')
+ await writeFile(path,raw.replace('ORIGINAL FILE BODY','CHANGED BODY'))
+ await resources.context.skills(f.a.actor)
+ assert.equal(reads,2,'next round re-reads content even without watcher notification')
+ await writeFile(path,raw.replace('Real filesystem procedure','Changed metadata'))
+ const changed=await resources.context.skills(f.a.actor)
+ assert.equal(changed[0].description,'Changed metadata','catalog mismatch retries fresh rather than publishing stale metadata')
+ f.fs.readText=async()=>{throw new Error('permission revoked')}
+ await assert.rejects(resources.context.skills(f.a.actor),/permission revoked/)
+
+})
+test('native filesystem mapping cannot publish after provider revocation during its current scoped read',async t=>{
+ const {NativeSkillFilesystem}=await import('../src/native-skill-filesystem.js'),f=await fixture(t),directory=join(f.paths.skills,'revoked-file')
+ await mkdir(directory);await writeFile(join(directory,'SKILL.md'),'---\nname: revoked-file\ndescription: Revocable file\n---\nBODY\n')
+ const unregister=f.ctx.skills.registerProvider(control=>new NativeSkillFilesystem(f.ctx,control,{includeDefaultRoots:false,customSkillDirs:[f.paths.skills],watch:false,agentsHome:f.paths.agentsHome}))
+ await f.ctx.skills.snapshot({scope:f.a.actor,cwd:f.paths.workspaces})
+ const resources=await f.resolve(f.a),original=f.fs.readText
+ let entered,release;const reading=new Promise(resolve=>entered=resolve),gate=new Promise(resolve=>release=resolve)
+ f.fs.readText=async(...args)=>{entered();await gate;return original(...args)}
+ const pending=resources.context.skills(f.a.actor)
+ const rejected=assert.rejects(pending,/disposed|abort/i)
+ await reading;await unregister();release();await rejected
+ assert.deepEqual(await resources.context.skills(f.a.actor),[])
 })
 test('factory lifecycle signal protects resource resolution without an options permission flag',async t=>{
  const f=await fixture(t),lifetime=new AbortController();f.a.actor.lifecycle=Object.freeze({signal:lifetime.signal,isLive:()=>!lifetime.signal.aborted})
