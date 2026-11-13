@@ -66,6 +66,10 @@ Windows `full` 已分阶段实跑外部文件写入、配置持久化与冷启�
 
 Pi 的 Project Trust 仅控制项目配置、扩展、技能等项目资源的加载信任，不限制代码执行后的 OS 访问；它不是 OS 沙箱，也不表示 Night Bot 已新增该信任入口。
 
+## 内置技能
+
+源码更新并正常重启后，`skill-creator` 与 `work-log-writing` 默认可发现，无需修改 `skillDirs`，也不覆盖 `data/config/skills` 中的同名技能。使用 `/skill:skill-creator` 创建或改进技能；其草稿和评估产物留在授权工作区，不改写内置代码目录。离线校验/打包需本机 Python 3 与 PyYAML；静态查看器仅需 Python 3。Claude CLI 不是默认依赖，不启动嵌套执行会话。日报技能不改变定时日报的独立生成提示。
+
 ## 认证
 
 只读列出官方认证状态，不读取凭据正文：

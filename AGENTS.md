@@ -95,7 +95,9 @@ and ephemeral OS mechanisms are dependencies, not external business workspaces.
 Runtime data, memories, credentials, backups and business artifacts must never be
 committed to Git. Version code, tests, rules, generic skill loading/isolation
 mechanisms and no-body configuration contracts only, except the explicitly
-versioned generic `skills/work-log-writing/` and its sanitized example. This
+versioned generic `skills/work-log-writing/` and its sanitized example, plus
+`skills/skill-creator/` imported from the explicitly authorized official plugin
+with its original license and Night Bot adaptation. This
 exception does not include installed/learned skills or real business logs. Private skill bodies, scripts,
 references and assets stay in ignored installation data and are never staged,
 committed or pushed. When migrating them, use an existing installation pointer within this task's

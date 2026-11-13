@@ -1,6 +1,6 @@
 import {officialWorkingDirectoryOrigin} from '../native-working-directory.js'
 import NativeSandboxedFileSystem from '../native-fs-sandbox.js'
-import {inside} from '../runtime/paths.js'
+import {inside,bundledSkillDir} from '../runtime/paths.js'
 import {join} from 'node:path'
 import {FsError} from '../native-fs-protocol.js'
 const origin=(agent,fallback)=>agent?.piSession?officialWorkingDirectoryOrigin(agent):agent?.session.header.cwd??fallback
@@ -27,7 +27,8 @@ export default class PrivateFileSystem extends NativeSandboxedFileSystem {
     const info=await super.stat(target,control);check();return info
   }
   async stat(target,...args){return super.stat(await this.admit(target),...args)}
-  outside(target,writing=false){const agent=this.ctx.get('agents')?.currentInitiator();if(!agent||!this.ctx.memoryPrivacy.installRoot)return false;const path=String(target.targetKey),workspace=origin(agent,this.ctx.memoryPrivacy.workspaces);return !inside(writing?workspace:this.ctx.memoryPrivacy.installRoot,path)||inside(this.ctx.memoryPrivacy.workspaces,path)&&!inside(workspace,path)&&!inside(path,workspace)}
+  // 内置技能是随代码发布的公共只读资源；数据根可与代码根分离。
+  outside(target,writing=false){const agent=this.ctx.get('agents')?.currentInitiator();if(!agent||!this.ctx.memoryPrivacy.installRoot)return false;const path=String(target.targetKey),workspace=origin(agent,this.ctx.memoryPrivacy.workspaces);if(!writing&&inside(bundledSkillDir,path))return false;return !inside(writing?workspace:this.ctx.memoryPrivacy.installRoot,path)||inside(this.ctx.memoryPrivacy.workspaces,path)&&!inside(workspace,path)&&!inside(path,workspace)}
   boundary(target,writing=false){const agent=this.ctx.get('agents')?.currentInitiator(),path=String(target.targetKey);const task=this.ctx.memoryPrivacy.taskRoot(path),grant=this.permission(target,writing);if(agent&&writing&&task&&!['work','tmp'].some(name=>inside(join(task,name),path)))throw new FsError('Task archive areas are Host-owned; write process files under work/ or tmp/.','FS_SANDBOX_DENIED');if(grant?.full)return target;if(agent&&this.ctx.memoryPrivacy.installRoot&&inside(this.ctx.memoryPrivacy.workspaces,path)&&!inside(origin(agent,this.ctx.memoryPrivacy.workspaces),path))throw new FsError('Another conversation/task workspace is private.','FS_SANDBOX_DENIED');if(this.outside(target,writing)&&!grant)throw new FsError('Business files belong under the installation workspace.','FS_SANDBOX_DENIED');return this.check(target)}
   /** Non-mutating admission checks. The write never reuses a checked target:
    * execution resolves and checks the current boundary and CAS again. */

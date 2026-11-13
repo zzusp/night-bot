@@ -3,6 +3,7 @@ import {registerPiFileTools} from './pi-file-tool-registration.js'
 import {createPiFileToolBudgets} from './runtime/pi-file-tool-budgets.js'
 import PiSessionNames from './pi-session-names.js'
 import {join,resolve} from 'node:path'
+import {bundledSkillDir} from './runtime/paths.js'
 import OfficialAgentFactory from './pi-official-agent-factory.js'
 import {createOfficialHostResourceResolver} from './pi-official-host-resources.js'
 import {installOfficialProcessOwnership} from './runtime/pi-process-ownership.js'
@@ -17,7 +18,7 @@ export async function apply(ctx,config={}){
  // Absolute-root installs get explicit application-owned global directories;
  // resource discovery never falls back to the process user's home.
  const resourcesPaths={...paths,agentsHome:paths.agentsHome??join(paths.runtime,'configured-agents'),harnessHome:paths.harnessHome??join(paths.runtime,'configured-harness')}
- const resolveResources=createOfficialHostResourceResolver(ctx,{paths:resourcesPaths,model:config.model??ctx.agentDefaultModel.currentSelection(),memoryModel:config.memoryModel??config.model??ctx.agentDefaultModel.currentSelection(),maxParallelToolCalls:config.maxParallelToolCalls??4,skillRoots:(config.skillDirs??[]).map(path=>resolve(paths.installRoot,path))})
+ const resolveResources=createOfficialHostResourceResolver(ctx,{paths:resourcesPaths,model:config.model??ctx.agentDefaultModel.currentSelection(),memoryModel:config.memoryModel??config.model??ctx.agentDefaultModel.currentSelection(),maxParallelToolCalls:config.maxParallelToolCalls??4,skillRoots:[bundledSkillDir,...(config.skillDirs??[]).map(path=>resolve(paths.installRoot,path))]})
  const names=new PiSessionNames({readCommitted:actor=>ctx.get('sessionPersistence').readNative(actor.id,{requireComplete:true})})
  ctx.provide('sessionNames',names)
  ctx.effect(()=>()=>names.close(),'official Pi session names ownership')

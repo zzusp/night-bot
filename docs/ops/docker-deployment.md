@@ -279,6 +279,8 @@ docker exec night-bot tail -n 80 /opt/night-bot/data/logs/service.log
 
 `.dockerignore` 为源码白名单；Dockerfile 不 `COPY . .`。私有 Skill 正文、脚本、参考和素材按既有装载合同放安装 data，不进入镜像/Git。不要复制宿主账号、整个旧安装、worktree 或 node_modules；升级镜像不覆盖卷内技能。
 
+镜像另行白名单发布代码内置的 `skills/work-log-writing/` 与 `skills/skill-creator/`，默认发现，无需追加 `skillDirs`；同名私有/自定义技能仍优先。内置资源随镜像更新，不复制进 data，也不纳入私有技能学习快照。skill-creator 离线校验/打包使用镜像内的 Python 3 与 PyYAML；查看结果使用 `--static`，不启动上游会清理端口占用进程的服务器。Claude CLI 及其认证不随镜像安装，触发率测量不是默认能力；任务仍只有一个执行会话。
+
 正常停机等待应用排空。Router 先中断当前官方 Pi 推理，再等待全部在途 work、真实资源排空和提交后释放 owner；待投递输入及 unknown 保留，推理中断不表示任务自动完成。不要让 Docker 超时强杀代替 drain：
 
 ```powershell

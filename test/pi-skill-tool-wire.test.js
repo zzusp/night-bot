@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {AgentSession} from '@earendil-works/pi-coding-agent'
+import {mkdir,writeFile} from 'node:fs/promises'
+import {join} from 'node:path'
+import {bundledSkillDir} from '../src/runtime/paths.js'
+import {memoryHost} from './fixtures/memory-host.js'
 import {visibleBusinessInputs} from '../src/runtime/pi-business-inputs.js'
 import {subagentFixture,eventually} from './fixtures/pi-subagent-fixture.js'
 async function actorFixture(t,respond=()=>({text:'skill catalog verified'})){
@@ -61,4 +65,64 @@ test('official cancellation releases a queued unacknowledged command without rep
  assert.equal(f.host.ctx.agents.get(handle.agent.id),undefined);assert.equal(f.requests.length,1)
  const saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id)
  assert.equal(saved.audit.some(r=>r.kind==='command-admitted'),false)
+})
+
+for(const portable of [true,false])for(const preset of ['night-bot','night-bot-task'])test(`default ${portable?'portable':'absolute-root'} ${preset} loads bundled skill and reference through official Pi`,{timeout:40000},async t=>{
+ let index=0
+ const f=await memoryHost(t,body=>{
+  index++
+  if(index===1){
+   const request=JSON.stringify(body)
+   assert.match(request,/skill-creator/);assert.match(request,/work-log-writing/)
+   assert.doesNotMatch(request,/Night Bot 适配（本仓修改）/)
+   return {tool:'skill',args:{name:'skill-creator'}}
+  }
+  if(index===2){assert.match(JSON.stringify(body),/Night Bot 适配（本仓修改）/);return {tool:'read',args:{path:join(bundledSkillDir,'skill-creator','references','schemas.md'),offset:1,limit:5}}}
+  assert.match(JSON.stringify(body),/# JSON Schemas/)
+  return {text:'bundled skill and reference verified'}
+ },{portable})
+ const handle=await f.host.ctx.agents.create({sessionId:'bundled-default',agentOptions:f.config.model,meta:{cwd:f.host.ctx.runtimePaths.workspaces,agentPreset:preset},authorizeInput:packet=>packet.source.kind==='user',setup:async ctx=>{await f.host.ctx.agentPresets.mount(ctx,preset)}})
+ t.after(()=>handle.dispose())
+ if(portable)await f.host.ctx.agents.withInitiator(handle.agent,async()=>{
+  const fs=f.host.ctx.agentPresets.serviceFor(handle.agent,'fs'),target=await fs.resolve(join(bundledSkillDir,'skill-creator','SKILL.md'))
+  assert.equal(fs.outside(target),false);assert.equal(fs.outside(target,true),true)
+  assert.throws(()=>fs.boundary(target,true),{code:'FS_SANDBOX_DENIED'})
+  const neighbor=await fs.resolve(join(bundledSkillDir,'..','README.md'))
+  assert.equal(fs.outside(neighbor),true);assert.throws(()=>fs.boundary(neighbor),{code:'FS_SANDBOX_DENIED'})
+ })
+ await handle.enqueue({id:'bundled-input',source:{kind:'user'},content:'Load skill-creator and inspect its schema reference without making business changes.'});await handle.deliver('bundled-input');await handle.whenIdle()
+ assert.ok(handle.session instanceof AgentSession)
+ const catalog=handle.session.resourceLoader.getSkills().skills
+ for(const name of ['skill-creator','work-log-writing']){
+  assert.equal(catalog.filter(row=>row.name===name).length,1)
+  assert.equal(catalog.find(row=>row.name===name).filePath,join(bundledSkillDir,name,'SKILL.md'))
+ }
+ assert.equal(f.requests.length,3);assert.deepEqual(f.errors,[])
+ const saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true})
+ const messages=saved.entries.filter(entry=>entry.type==='message').map(entry=>entry.message)
+ const results=messages.filter(message=>message.role==='toolResult')
+ assert.deepEqual(results.map(message=>[message.toolName,message.isError??false]),[['skill',false],['read',false]])
+ assert.ok(messages.some(message=>message.role==='assistant'&&message.content.some(part=>part.type==='text'&&part.text==='bundled skill and reference verified')))
+})
+
+for(const source of ['private','configured'])test(`${source} same-name skill overrides the bundled default in official Pi`,{timeout:40000},async t=>{
+ let index=0
+ const f=await memoryHost(t,body=>{
+  if(++index===1)return {tool:'skill',args:{name:'skill-creator'}}
+  assert.match(JSON.stringify(body),/LOCAL_SKILL_OVERRIDE_BODY/)
+  assert.doesNotMatch(JSON.stringify(body),/Night Bot 适配（本仓修改）/)
+  return {text:'local override verified'}
+ },{hostConfig:config=>source==='configured'?{skillDirs:[join(config.installRoot,'custom-skills')]}:{}})
+ const directory=join(source==='private'?f.host.ctx.runtimePaths.skills:f.config.skillDirs[0],'skill-creator')
+ await mkdir(directory,{recursive:true});await writeFile(join(directory,'SKILL.md'),`---
+name: skill-creator
+description: Local override
+---
+LOCAL_SKILL_OVERRIDE_BODY
+`)
+ const handle=await f.agent('bundled-override');t.after(()=>handle.dispose())
+ await handle.enqueue({id:'override-input',source:{kind:'user'},content:'Load the current skill-creator.'});await handle.deliver('override-input');await handle.whenIdle()
+ const catalog=handle.session.resourceLoader.getSkills().skills.filter(row=>row.name==='skill-creator')
+ assert.equal(catalog.length,1);assert.equal(catalog[0].filePath,join(directory,'SKILL.md'))
+ assert.equal(f.requests.length,2);assert.deepEqual(f.errors,[])
 })

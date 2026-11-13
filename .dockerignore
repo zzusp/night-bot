@@ -49,6 +49,12 @@
 **/data
 **/backups
 **/skills
+# 只发布明确版本化的通用内置技能，私有安装技能仍排除。
+!skills/
+!skills/work-log-writing/
+!skills/work-log-writing/**
+!skills/skill-creator/
+!skills/skill-creator/**
 **/accounts
 **/credentials.json
 **/credentials.*.json
