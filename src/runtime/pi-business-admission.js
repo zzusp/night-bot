@@ -21,7 +21,7 @@ const fail=code=>Object.assign(new Error(code),{code})
  * Pi's public sendCustomMessage/steer/followUp own all model scheduling. Recovery
  * restores delivery facts only and never invokes a model or repeats an effect.
  */
-export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,onSkillCommand,measurePhase=(_phase,run)=>run()}) {
+export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
  let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false,taskFinished=false,taskStopReason
@@ -45,7 +45,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   }
  }
  for(const receipt of await store.readAudit())restore(receipt)
- const commands=await createSkillCommandInput({store,onAdmitted:onSkillCommand,lookupPacket:id=>packets.get(id),authorize:async(packet,name)=>!internalPackets.has(packet.id)&&await authorize(packet)===true&&typeof authorizeSkillCommand==='function'&&await authorizeSkillCommand(packet,name)===true})
+ const commands=await createSkillCommandInput({store,lookupPacket:id=>packets.get(id),authorize:async(packet,name)=>!internalPackets.has(packet.id)&&await authorize(packet)===true&&typeof authorizeSkillCommand==='function'&&await authorizeSkillCommand(packet,name)===true})
  for(const id of packets.keys())if(commands.has(id)&&(admitted.has(id)||cancelled.has(id)))throw fail('PI_BUSINESS_ADMISSION_ACK_INVALID')
  const serialize=action=>{const operation=tail.then(()=>{healthy();return action()});tail=operation.catch(()=>{});return operation}
  const commit=async()=>{try{await store.commit()}catch(cause){failure??=cause;throw failure}}

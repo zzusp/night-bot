@@ -1,4 +1,4 @@
-import {installedSkills,contentVersion,skillIdentity} from './skill-usage.js'
+import {installedSkills,contentVersion,skillIdentity} from './skill-inventory.js'
 import {join} from 'node:path'
 import {atomicWrite, readRegular, withLock, failure} from '../runtime/files.js'
 import {bindingSchema, readableScopes} from './scope.js'
@@ -67,15 +67,10 @@ export async function inspectEvolution(memory, reflection, readerBinding, {kind 
   const inventory=captured??(memory.host?.runtimePaths?await installedSkills(memory.host.runtimePaths,memory.config?.skillDirs??[]):{items:[],issues:['安装目录技能盘点不可用'],complete:false})
   const selectedFiles=new Set(inventory.items.filter(row=>['applied','disabled'].includes(row.status)).map(row=>row.name));for(const item of items)if(item.origin==='learned'&&item.status==='applied'&&selectedFiles.has(item.name)){item.status='shadowed';activeCount--}
   items.push(...inventory.items)
-  const observed=memory.skillUsage?.inspect?.()??{trackingSince:null,items:[]},byResource=new Map(observed.items.map(row=>[row.resource,row]))
-  for(const item of items)if(item.kind==='skill'){
-    const used=byResource.get(item.resource??item.id)
-    Object.assign(item,{modelUseCount:used?.modelCount??0,userUseCount:used?.userCount??0,fileReadCount:used?.fileReadCount??0,lastUsedAt:used?.lastUsedAt??null,updatedSinceUse:!!used?.lastVersion&&!!item.contentVersion&&used.lastVersion!==item.contentVersion})
-  }
   const recorded = usage.filter(Boolean)
   const sum = key => recorded.length ? recorded.reduce((count, value) => count + value[key], 0) : null
   const memoryStats = {trackingStatus:memory.memoryTrackingError?'degraded':'ready',acceptedCount, candidateCount: memoryCandidates, readCount: sum('readCount'), searchCount: sum('searchCount'), lastUsedAt: latest(recorded.map(value => timestamp(value.memoryLastUsedAt))), trackingSince: earliest(recorded.map(value => value.trackingSince)),entryTrackingSince:earliest(recorded.map(value=>value.entryTrackingSince)),lastAccess:recorded.map(value=>value.lastMemoryAccess).filter(Boolean).sort((a,b)=>b.at.localeCompare(a.at))[0]??null}
-  const skillStats = {activeCount, candidateCount: skillCandidates, loadCount: sum('loadCount'), lastUsedAt: latest(recorded.map(value => timestamp(value.skillLastUsedAt))), trackingSince: earliest(recorded.map(value => value.trackingSince)), contentTrackingStatus:memory.installedPrevious?.error?'degraded':'ready',coverage: 'bot-installed-and-learned',installedCount:inventory.items.length,installedAvailableCount:inventory.items.filter(row=>row.status==='applied').length,inventoryComplete:inventory.complete,inventoryIssues:inventory.issues,modelUseCount:observed.items.reduce((sum,row)=>sum+row.modelCount,0),userUseCount:observed.items.reduce((sum,row)=>sum+row.userCount,0),fileReadCount:observed.items.reduce((sum,row)=>sum+row.fileReadCount,0),callTrackingSince:observed.trackingSince,trackingStatus:memory.skillTrackingError?'degraded':'ready',lastInvocationAt:latest(observed.items.map(row=>row.lastInvocationAt))}
+  const skillStats = {activeCount, candidateCount: skillCandidates, loadCount: sum('loadCount'), lastUsedAt: latest(recorded.map(value => timestamp(value.skillLastUsedAt))), trackingSince: earliest(recorded.map(value => value.trackingSince)), contentTrackingStatus:memory.installedPrevious?.error?'degraded':'ready',coverage: 'bot-installed-and-learned',installedCount:inventory.items.length,installedAvailableCount:inventory.items.filter(row=>row.status==='applied').length,inventoryComplete:inventory.complete,inventoryIssues:inventory.issues}
   items.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id))
   const filtered = items.filter(item => kind === 'all' || item.kind === kind), total = filtered.length
   return {status: 'ready', coverage: 'bot-shared-current-state', memory: memoryStats, skills: skillStats, items: filtered.slice(offset, offset + limit), total, offset, limit, hasMore: offset + limit < total, nextOffset: offset + limit < total ? offset + limit : null, revision: hash(JSON.stringify([items, memoryStats, skillStats]))}

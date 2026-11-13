@@ -32,7 +32,6 @@ memory/
     pending.json                # redo transaction; normally absent
     layout-migration.json       # explicit offline layout-upgrade receipt
     usage.json                  # observed memory read/search and entry returns
-    skill-usage.sqlite          # verified skill tool/command/file-read events
     evolution/                  # shared task reviews and learned skills
     migration.json              # copy/import result and conflict count
   v1/                           # retained legacy originals; not active stores
@@ -267,3 +266,7 @@ writers and use the read-only check followed by explicit apply in
 source metadata and forgetting receipts, backs up before writing, validates interrupted
 work before resuming, and never infers missing content. No real installation is
 modified by the implementation or its isolated tests.
+
+### 技能统计存储
+
+技能使用统计由 Web 解析保留的 Pi 会话记录派生，不再创建、维护或读取 `skill-usage.sqlite`。升级保留旧数据库及其 `-wal`、`-shm`、`-journal` 文件原位，不打开、迁移或自动删除；旧文件不参与统计，也不阻塞记忆结构迁移。实际技能加载与版本变化检测不依赖该数据库。

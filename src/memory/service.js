@@ -2,9 +2,6 @@ import {renderMemoryIndex} from './tools.js'
 import {reconcileCompletion} from './reconciliation.js'
 import {InstalledSkillPrevious} from './installed-previous.js'
 import {inspectEvolutionItem} from './evolution-content.js'
-import {openSkillUsage,botSkillRoots,installedSkills,contentVersion,skillIdentity,commonSkillPath} from './skill-usage.js'
-import {inside} from '../runtime/paths.js'
-import {parseSkillBlock} from '@earendil-works/pi-coding-agent'
 import {migrateSharedMemory} from './shared-migration.js'
 import {conversationQuote} from '../channels/message-safety.js'
 import {memoryProvenance} from './provenance.js'
@@ -14,9 +11,7 @@ import {officialCandidateText} from './extraction.js'
 import {LlmError} from '../native-llm-errors.js'
 import {piRequestContext,piRequestSource,bindPiPolicyMessage} from '../runtime/pi-request-context.js'
 import {Service} from '@deepseek-ai/cordis'
-import {join,dirname,basename} from 'node:path'
-import {lstat} from 'node:fs/promises'
-import {parseSkillFrontmatter} from '../native-skill-filesystem.js'
+import {join} from 'node:path'
 import {MarkdownMemoryStore} from './store.js'
 import {bindingSchema,memoryScope,readableScopes} from './scope.js'
 import {messageText,parseCommand,authorizes,durablePreferenceRequest} from './commands.js'
@@ -29,11 +24,11 @@ export default class NativeMemory extends Service {
   static inject=['agents','systemPrompt','runtimePaths']
   constructor(ctx,config={}){
     super(ctx,'memory');if(!config||typeof config!=='object'||Array.isArray(config)||config.background!==undefined&&typeof config.background!=='boolean'||config.bindings!==undefined&&(!config.bindings||typeof config.bindings!=='object'||Array.isArray(config.bindings)))throw failure('MEMORY_CONFIG_INVALID');this.host=ctx;this.root=ctx.runtimePaths.memory;this.store=new MarkdownMemoryStore(this.root);this.config=config;this.notices=new Map()
-    this.recallSources=new WeakMap();this.officialActors=new WeakMap();this.contexts=new WeakMap();this.bindings=new Map();this.bindingReady=this.loadBindings().then(()=>this.store.index(memoryScope({actorId:'host'}))).then(()=>migrateSharedMemory(this.store)).then(()=>this.store.index(memoryScope({actorId:'host'}))).then(()=>openSkillUsage(this.store.directory(memoryScope({actorId:'host'})))).then(usage=>{this.skillUsage=usage});this.skillInputs=new WeakMap();this.skillJobs=new Set();this.background=new Set();this.scheduled=new WeakSet();this.closed=false;this.abort=new AbortController()
+    this.recallSources=new WeakMap();this.officialActors=new WeakMap();this.contexts=new WeakMap();this.bindings=new Map();this.bindingReady=this.loadBindings().then(()=>this.store.index(memoryScope({actorId:'host'}))).then(()=>migrateSharedMemory(this.store)).then(()=>this.store.index(memoryScope({actorId:'host'})));this.background=new Set();this.scheduled=new WeakSet();this.closed=false;this.abort=new AbortController()
     ctx.systemPrompt.context({name:'memory:index',order:135,required:true,officialText:({actor})=>this.contexts.get(actor)?.prompt??POLICY})
     // Raw Pi history remains intact. Only stale/revoked memory result bodies are
     // replaced for new model requests, including inherited child context.
-    ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.installedPrevious?.close();await Promise.allSettled([...this.background]);await this.whenIdle();this.skillUsage?.close();await this.store.close()})
+    ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.installedPrevious?.close();await Promise.allSettled([...this.background]);await this.whenIdle();await this.store.close()})
   }
   actorId(agent){if(!this.officialActors.has(agent))throw failure('MEMORY_OFFICIAL_ACTOR_REQUIRED');return agent.id}
   /** Explicit official actor port. Admission supplies authenticated business
@@ -168,29 +163,6 @@ export default class NativeMemory extends Service {
   async recordUsage(scope,counter,provenance,entries){try{await recordUsage(this.store,scope,counter,{provenance,entries})}catch{this.memoryTrackingError='EVOLUTION_USAGE_RECORD_FAILED';this.host.logger.warn('EVOLUTION_USAGE_RECORD_FAILED')}}
   async inspectEvolution(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');await this.bindingReady;const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolution(this,reflection,binding,options)}
   async inspectEvolutionItem(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');await this.bindingReady;const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolutionItem(this,reflection,binding,options)}
-  prepareSkillUse(exec,skill){if(exec?.agent&&typeof skill?.content==='string')this.skillInputs.set(exec,{name:skill.name,provider:skill.provider,path:skill.path,version:contentVersion(skill.content,skill.provider)})}
-  async saveSkillUse(actor,value,eventId,mode){
-   const official=this.officialActors.get(actor);if(!official||!official.isLive(actor))return
-   await this.bindingReady
-   if(value.provider!=='learned'&&!(value.provider==='filesystem'&&typeof value.path==='string'&&commonSkillPath(this.host.runtimePaths,value.path)&&inside(this.host.runtimePaths.installRoot,value.path)&&botSkillRoots(this.host.runtimePaths,this.config.skillDirs??[]).some(root=>inside(root,value.path))))return
-   this.skillUsage.record({...value,eventId:hash(actor.id+'\0'+eventId),resource:skillIdentity({...value,installRoot:this.host.runtimePaths.installRoot}),mode})
-  }
-  async prepareSkillFileUse(exec,observation){
-   const roots=botSkillRoots(this.host.runtimePaths,this.config.skillDirs??[]),path=observation?.path
-   if(typeof path!=='string'||!commonSkillPath(this.host.runtimePaths,path)||!inside(this.host.runtimePaths.installRoot,path)||!roots.some(root=>inside(root,path)&&(basename(path)==='SKILL.md'||dirname(path)===root&&path.endsWith('.md'))))return false
-   try{const info=await lstat(path,{bigint:true});if(info.isSymbolicLink()||!info.isFile()||info.nlink!==1n||[info.dev,info.ino,info.size,info.mtimeNs,info.ctimeNs].join(':')!==observation.version)return false
-    const parsed=parseSkillFrontmatter(await readRegular(path));if(!parsed)return false
-    this.skillInputs.set(exec,{name:parsed.name,provider:'filesystem',path,version:hash(observation.version),mode:'file-read'});return true
-   }catch{return false}
-  }
-  commitSkillUse(exec,{entryId,callId}){const value=this.skillInputs.get(exec);this.skillInputs.delete(exec);if(!value)return Promise.resolve();const job=this.saveSkillUse(exec.agent,value,entryId+'\0'+callId,value.mode??'model').catch(()=>{this.skillTrackingError='SKILL_USAGE_RECORD_FAILED'}).finally(()=>this.skillJobs.delete(job));this.skillJobs.add(job);return job}
-  async recordUserSkill(actor,{name,entryId,content}){
-   try{const text=typeof content==='string'?content:(content??[]).filter(row=>row.type==='text').map(row=>row.text).join('\n'),parsed=parseSkillBlock(text),resource=actor.piSession.resourceLoader.getSkills().skills.find(row=>row.name===name&&row.filePath===parsed?.location);if(!parsed||parsed.name!==name||!resource)return
-    const prefix='References are relative to '+resource.baseDir+'.\n\n';if(!parsed.content.startsWith(prefix))return
-    const metadata=(await actor.ctx.get('skills').list({scope:actor,cwd:actor.metadata.cwd})).find(row=>row.name===name);if(!metadata)return
-    await this.saveSkillUse(actor,{name,provider:metadata.provider,path:metadata.path,version:contentVersion(parsed.content.slice(prefix.length),metadata.provider)},entryId,'user')
-   }catch{this.skillTrackingError='SKILL_USAGE_RECORD_FAILED'}
-  }
   provenance({agent,message,task}={}){const channels=this.host.get('channels'),context=task?.groupId?channels?.groupContext(task.groupId):agent?channels?.groupContext(agent.id):undefined;return memoryProvenance({channel:context,task,message})??(agent?this.contexts.get(agent)?.provenance:null)??null}
   async status(agent){const binding=await this.binding(agent);return {bound:!!binding,backgroundPending:this.scheduled.has(agent),maintenanceCode:this.notices.get(this.actorId(agent))??null,reflectionCode:this.host.get('reflection')?.lastError??null}}
   channelSourceContext(original){
@@ -301,5 +273,5 @@ export default class NativeMemory extends Service {
       if(result.ok&&!result.duplicate)revision++
     }
   }
-  async whenIdle(){while(this.background.size||this.skillJobs.size)await Promise.allSettled([...this.background,...this.skillJobs])}
+  async whenIdle(){while(this.background.size)await Promise.allSettled([...this.background])}
 }
