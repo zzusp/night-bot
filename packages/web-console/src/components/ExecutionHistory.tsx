@@ -8,7 +8,7 @@ import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, MessageList, Notice, Status } from './Shared';
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, status, controlsTarget }: { endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, status, controlsTarget, progressTarget }: { endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null; progressTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -33,10 +33,11 @@ export function ExecutionHistory({ endpoint, router = false, status, controlsTar
   const controls = controlsTarget !== undefined ? !blocked && query.data?.status === 'ready' && <dl className="task-record-facts"><div><dt>{query.error ? '上次上下文' : '当前上下文'}</dt><dd><span>{query.data.items.length}</span><span className="muted"> / {query.data.total} 条</span></dd></div></dl> : <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录' : '当前执行上下文'}</span>
       <div>{query.data?.status === 'ready' && <span>已载入 {query.data.items.length} / {query.data.total} 条记录</span>}{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
     </div>;
+  const progress = !router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} />;
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
-    {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} />}
+    {progressTarget === undefined ? progress : progressTarget ? createPortal(progress, progressTarget) : null}
 
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" />

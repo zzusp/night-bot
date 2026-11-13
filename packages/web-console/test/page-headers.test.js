@@ -34,7 +34,7 @@ test('task transcript omits duplicate top and bottom blocks while compact execut
   assert.doesNotMatch(source('TasksPage.tsx'), /task-title-dock|task-records-heading/)
   assert.doesNotMatch(source('TasksPage.tsx'), /全部任务|task-back-link/)
   assert.doesNotMatch(source('styles/task-workspace.css'), /task-back-link/)
-  assert.match(source('TasksPage.tsx'), /<aside className="task-info-rail"[^>]*>\s*<nav className="filter-tabs task-info-nav"/)
+  assert.match(source('TasksPage.tsx'), /<aside className="task-info-rail"[^>]*>\s*<div className="task-progress-slot" ref=\{setProgressTarget\} \/>\s*<nav className="filter-tabs task-info-nav"/)
   assert.match(source('App.tsx'), /path: 'tasks', label: '任务'/)
   assert.match(source('TasksPage.tsx'), /className="task-info-title"/)
   assert.match(source('TasksPage.tsx'), /controlsTarget=\{recordControls\}/)
