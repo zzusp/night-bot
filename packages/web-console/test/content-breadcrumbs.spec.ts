@@ -25,6 +25,15 @@ for (const width of [1440, 390]) test(`所有页面导航在内容区内 ${width
     expect(box!.x).toBeGreaterThanOrEqual(panel!.x)
     expect(box!.x + box!.width).toBeLessThanOrEqual(panel!.x + panel!.width + 1)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    if (route === 'tasks' && width === 390) {
+      const tableRegion = page.getByRole('region', {name: '任务列表，可横向滚动'})
+      await tableRegion.focus()
+      await page.keyboard.press('ArrowRight')
+      await expect.poll(() => tableRegion.evaluate(el => el.scrollLeft)).toBeGreaterThan(0)
+      await tableRegion.evaluate(el => { el.scrollLeft = el.scrollWidth })
+      await expect(tableRegion.locator('.row-link').first()).toBeInViewport()
+      await tableRegion.evaluate(el => { el.scrollLeft = 0 })
+    }
     await page.locator('.main-frame > .topbar').getByRole('button', {name: '切换深色外观'}).click()
     await expect(header).toBeVisible()
     await page.screenshot({path: test.info().outputPath(`breadcrumb-${route}-${width}-dark.png`)})
