@@ -142,12 +142,20 @@ function toolSummary(item: ToolItem): string {
 function toolInputPresentation(name: string, text: string): ReactNode {
   try {
     const args = JSON.parse(text);
-    const allowed = name === 'read' ? ['path', 'offset', 'limit'] : ['command', 'timeout'];
-    if (!args || typeof args !== 'object' || Object.keys(args).some(key => !allowed.includes(key))) throw new Error('generic');
+    const allowed = ['path', 'offset', 'limit'];
+    if (!args || typeof args !== 'object' || Array.isArray(args) || (name === 'read' && Object.keys(args).some(key => !allowed.includes(key)))) throw new Error('generic');
     if (name === 'read' && typeof args.path === 'string') return <div className="pi-read-path"><code>{args.path}</code>{Number.isInteger(args.offset) && <small>从第 {args.offset} 行</small>}{Number.isInteger(args.limit) && <small>{args.limit} 行</small>}</div>;
-    if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') return <div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof args.timeout === 'number' && <small>timeout: {args.timeout}s</small>}</div>;
+    if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') {
+      const timeout = typeof args.timeoutMs === 'number' ? args.timeoutMs / 1000 : args.timeout;
+      const extra = Object.fromEntries(Object.entries(args).filter(([key]) => !['command', 'timeout', 'timeoutMs'].includes(key)));
+      return <><div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof timeout === 'number' && <small>timeout: {timeout}s</small>}</div>{Object.keys(extra).length > 0 && <details className="pi-shell-parameters"><summary>参数</summary><pre className="tool-content"><code>{JSON.stringify(extra, null, 2)}</code></pre></details>}</>;
+    }
   } catch { /* Unknown/public custom tools retain complete input. */ }
   return <pre className="tool-content"><code>{text}</code></pre>;
+}
+function plainOutputPresentation(text: string): ReactNode {
+  const lines = text.split('\n');
+  return <pre className="tool-content pi-plain-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}><span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
 }
 function readOutputPresentation(text: string, offset: number, input?: string): ReactNode {
   let start = 1;
@@ -196,7 +204,7 @@ function ToolActivity({ item, history, compact = false, disclosures }: { item: T
       </summary>
       {opened && <div className={`pi-tool-body${['read', 'bash', 'pwsh'].includes(message.toolName || '') ? ' pi-specialized-tool' : ''}`}>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain formatText={['read', 'bash', 'pwsh'].includes(message.toolName || '') ? text => toolInputPresentation(message.toolName!, text) : undefined} onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : undefined} onUnavailable={() => setSummaryHidden(true)} /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
       </div>}
     </details>
@@ -216,7 +224,7 @@ function ToolActivity({ item, history, compact = false, disclosures }: { item: T
       {opened && <>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
           : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : undefined} onUnavailable={() => setSummaryHidden(true)} /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><p className="message-scope">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</p></section>}
       </>}
     </details></div>

@@ -66,3 +66,24 @@ test('Prism read output highlights multiline syntax without changing copied sour
  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(source);
  expect(await page.evaluate(()=>Object.hasOwn(window,'bad'))).toBe(false);
 });
+
+test('native shell arguments remain compact and real output copies its final newline exactly',async({page,context})=>{
+ await context.grantPermissions(['clipboard-read','clipboard-write']);
+ const output='first actual output\n\n'+'line '.repeat(144)+'\nlast actual output\n';
+ const args={command:'node example.js',description:'Controlled process',timeoutMs:7000,workdir:'/fixture',run_in_background:false};
+ const items=[{id:'native-shell',role:'tool',kind:'tool-call',callId:'native-shell',toolName:'bash',text:JSON.stringify(args),status:'pending'},{id:'native-shell-out',role:'tool',kind:'tool-result',callId:'native-shell',toolName:'bash',text:output,status:'completed'}];
+ await page.route('**/api/tasks/task-research/session?*',r=>r.fulfill({json:{status:'ready',scope:'current-context',items,total:2,revision:'native-shell'}}));
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ await page.locator('.pi-tool-step > summary').click();
+ await expect(page.locator('.pi-shell-command code')).toHaveText(args.command);
+ await expect(page.locator('.pi-shell-command small')).toHaveText('timeout: 7s');
+ await page.locator('.pi-shell-parameters > summary').click();
+ await expect(page.locator('.pi-shell-parameters')).toContainText(args.description);
+ const code=page.locator('.pi-plain-output > code');
+ expect(await code.textContent()).toBe(output);
+ await code.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const s=window.getSelection()!;s.removeAllRanges();s.addRange(range);});
+ await page.keyboard.press('Control+c');
+ expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(output);
+});
