@@ -12,6 +12,7 @@ export function diagnosticQueryFailure(error){
  const corrections={
   FEEDBACK_QUERY_INVALID:'query 必须是问题标题或描述中的非空原文片段，最多 500 字符。',
   FEEDBACK_ALIAS_INVALID:'仅使用本次 discover/message/task/trace 返回的对应类型匿名别名；先 discover 定位，不猜测标识。',
+  FEEDBACK_CATALOG_BUDGET_EXCEEDED:'候选快照达到本次调查的总条数或字节预算；缩小原文查询，仍受限时报告未完成并重新发起调查，不能当作没有记录。',
   FEEDBACK_CURSOR_INVALID:'使用本次调查返回的完整 continuation，不改写游标、查询或分页参数；新查询请从 offset 0 开始。',
   FEEDBACK_OFFSET_INVALID:'使用上一页返回的 continuation 或 nextOffset；offset 须为非负安全整数。',
   FEEDBACK_EVIDENCE_SCOPE:'仅使用工具已返回的关联对象和支持的 section。',

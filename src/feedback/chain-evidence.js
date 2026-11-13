@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto'
 import {diagnosticQueryFailure} from './diagnostic-contract.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
 import {buildTraceLedger} from '../runtime/performance-trace.js'
@@ -14,7 +15,7 @@ const fail=(code='FEEDBACK_EVIDENCE_SCOPE')=>{throw Object.assign(new Error(code
 /** Consent is enforced by the caller. No filesystem, command, network or mutation
  * capability is exposed. Private bodies are used for local matching only. */
 export function createChainEvidence({application,title='',description,secrets=[],getSessionPersistence,getSchedule}) {
- const sources=new Map(),tasks=new Map(),schedules=new Map(),conversations=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map(),catalogCache=new Map(),continuationQueries=new Map();let calls=0,groupsCache
+ const sources=new Map(),tasks=new Map(),schedules=new Map(),conversations=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map(),catalogCache=new Map(),continuationQueries=new Map();let calls=0,groupsCache,catalogRows=0,catalogBytes=0
  const identity=(kind,id)=>{if(!id)return null;const key=kind+':'+id;if(!identities.has(key))identities.set(key,kind+'-'+(identities.size+1));return identities.get(key)}
  const conversation=id=>{const alias=identity('conversation',id);if(alias)conversations.set(alias,id);return alias}
  const registerSession=(id,scope)=>{if(!id)return null;const alias=identity('session',id);const previous=sessions.get(alias);sessions.set(alias,{...previous,sessionId:id,...scope,windows:[...(previous?.windows??[]),...(scope.windows??(scope.window?[scope.window]:[]))]});return alias}
@@ -44,7 +45,17 @@ export function createChainEvidence({application,title='',description,secrets=[]
    // candidate order stable within each query; selected detail reads stay live.
    const catalogFor=async(target,load,project)=>{
     const key=JSON.stringify([target,selectedTerms]);let snapshot=catalogCache.get(key)
-    if(!snapshot){const catalog=await load();snapshot={inspected:catalog.length,rows:catalog.filter(row=>[row.title,target==='tasks'?row.request:row.prompt].some(matches)).map(project)};catalogCache.set(key,snapshot)}
+    if(!snapshot){
+     const catalog=await load(),rows=[];let bytes=0
+     for(const row of catalog){
+      signal?.throwIfAborted()
+      if(![row.title,target==='tasks'?row.request:row.prompt].some(matches))continue
+      const value=project(row);bytes+=Buffer.byteLength(JSON.stringify(value),'utf8')
+      if(catalogRows+rows.length+1>10000||catalogBytes+bytes>2*1024*1024)fail('FEEDBACK_CATALOG_BUDGET_EXCEEDED')
+      rows.push(value)
+     }
+     snapshot={inspected:catalog.length,rows};catalogCache.set(key,snapshot);catalogRows+=rows.length;catalogBytes+=bytes
+    }
     return snapshot
    }
    const start=args.offset??0
@@ -106,7 +117,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
      }
     }catch(error){failed('messages',error)}
    }
-   for(const next of continuations){const cursor='cursor-'+(continuationQueries.size+1);continuationQueries.set(cursor,{args:{...next},terms:[...selectedTerms]});next.cursor=cursor}
+   for(const next of continuations){const cursor='cursor-'+randomUUID();continuationQueries.set(cursor,{args:{...next},terms:[...selectedTerms]});next.cursor=cursor}
    result={candidates,taskCandidates,scheduleCandidates,ambiguous:candidates.length+taskCandidates.length+scheduleCandidates.length>1,complete:false,coverage:'indexed-messages-and-task-schedule-catalogs',inspected,groupsScanned,inspectedTasks,inspectedSchedules,truncated:continuations.length>0,continuations,failures,unavailableGroups:failures.filter(row=>row.target==='messages').length,limitations:['no-match-does-not-prove-absence','candidates-are-not-automatic-selection','message-content-not-returned','deleted-schedules-not-in-catalog']}
   }else if(action==='message'){
    const ref=sourceFor(args.alias)

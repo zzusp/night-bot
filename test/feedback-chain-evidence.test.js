@@ -163,5 +163,20 @@ test('message continuation retains its original narrowed query after another dis
  const last=await collect('discover',undefined,first.continuations[0])
  assert.equal(last.candidates.length,10);assert.deepEqual(last.continuations,[])
  const other=createChainEvidence({application:{tasks},description:'发布检查'})
+ const otherPage=await other('discover',undefined,{target:'messages',query:'发布'})
+ assert.notEqual(otherPage.continuations[0].cursor,first.continuations[0].cursor)
  await assert.rejects(other('discover',undefined,first.continuations[0]),/FEEDBACK_CURSOR_INVALID/)
+})
+
+
+test('catalog snapshot row and serialized byte budgets reject broad queries without caching partial results',async()=>{
+ const rows=Array.from({length:10001},(_,i)=>({taskId:'task-'+i,groupId:'private-room',title:i===10000?'发布目标':'发布',status:'active'}))
+ const collect=createChainEvidence({title:'发布目标',application:{tasks:{store:{query:async()=>rows}}}})
+ const broad=await collect('discover',undefined,{target:'tasks',query:'发布'})
+ assert.deepEqual(broad.taskCandidates,[]);assert.equal(broad.failures[0].reason,'FEEDBACK_CATALOG_BUDGET_EXCEEDED');assert.equal(broad.complete,false)
+ const narrow=await collect('discover',undefined,{target:'tasks',query:'目标'})
+ assert.equal(narrow.taskCandidates.length,1);assert.deepEqual(narrow.failures,[])
+ const large=[{id:'x'.repeat(2*1024*1024),sessionId:'private',title:'目标'}]
+ const bytes=createChainEvidence({title:'目标',getSchedule:()=>({catalog:async()=>large})})
+ assert.equal((await bytes('discover',undefined,{target:'schedules'})).failures[0].reason,'FEEDBACK_CATALOG_BUDGET_EXCEEDED')
 })
