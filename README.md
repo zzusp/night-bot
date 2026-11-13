@@ -90,7 +90,7 @@ node bin/night-bot-settings.js data/config/config.json model-list --live
 ```
 
 - **模型与凭据**：配置 API 协议、地址、模型目录和角色模型，使用环境引用或凭据服务管理密钥。见 [统一配置命令](docs/ops/shared-settings.md)。
-- **技能**：通过 `skillDirs` 或安装内的私有技能目录加载可复用 Skill。私有技能正文、脚本和素材属于运行数据，不提交到代码仓库。
+- **技能**：通过 `skillDirs` 或安装内的私有技能目录加载可复用 Skill。仓库提供通用的[工作日志写作技能](skills/work-log-writing/SKILL.md)及脱敏示例；源码检出安装可将 `skills` 加入 `skillDirs` 后正常重启，再通过 `/skill:work-log-writing` 使用。这不会改变独立定时日报的生成提示。私有技能正文、脚本和素材仍属于运行数据，不提交到代码仓库。
 - **渠道插件**：通过 `channelPluginDirs` 与 `channelPlugins` 接入其他消息渠道。插件须遵循认证身份、生命周期和能力合同。见 [插件接口](docs/CHANNEL-PLUGINS.md)。
 - **工具插件**：可信部署配置可挂载额外浏览器、搜索、数据库等能力。插件与 Host 同进程运行，不是沙箱；不会从普通群消息自动加载代码。
 
