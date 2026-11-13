@@ -82,7 +82,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(failure)throw failure
     return result
    },
-   async resumeRouterBatch(packet,beforeStart,afterClaim){
+   async resumeRouterBatch(packet,beforeStart,afterClaim,supplements=[]){
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()
     const proof=await beforeStart()
@@ -91,11 +91,17 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     await session.sendCustomMessage({customType:'night.router-resume-claim',content:'Host 已领取原 Router 失败回合的显式续办；本控制记录不提供新来源或授权。',display:false,details:proof},{triggerTurn:false})
     await durability.commit()
     await afterClaim(proof)
-    // 仅在领取证明持久化并复核后，为完整官方续轮绑定原业务输入；不修改原 admission。
-    resumedInput={id:packet.id,messages:[structuredClone(packet)]}
+    // 较新真实输入先耐久接纳但不启动推理，取消/延期必须早于恢复动作可见。
+    for(const input of supplements){
+     actor.lifecycle.signal.throwIfAborted()
+     await admission.enqueue(input)
+     await session.sendCustomMessage({customType:'night.business-input',content:input.content,display:false,details:{packetId:input.id,source:input.source}},{triggerTurn:false})
+    }
+    await admission.beforeRequest()
+    resumedInput={id:packet.id,messages:structuredClone([packet,...supplements])}
     try{
      actor.lifecycle.signal.throwIfAborted()
-     await session.sendCustomMessage({customType:'night.router-resume-turn',content:'Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件，不重放已完成动作、不重跑任务；必要动作有持久收据后才结清事件。本控制消息不是用户来源或新授权。',display:false,details:proof},{triggerTurn:true})
+     await session.sendCustomMessage({customType:'night.router-resume-turn',content:'Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件；先统筹后续真实输入中的取消、延期和变更，再决定动作。不执行中断回复中未派发的旧生成调用，不重放已完成动作、不重跑任务；必要动作有持久收据后才结清事件。本控制消息不是用户来源或新授权。',display:false,details:proof},{triggerTurn:true})
      if(imageBudget?.failure)throw imageBudget.failure
      if(bridge.policyFailure)throw bridge.policyFailure
      if(durability.failure)throw durability.failure

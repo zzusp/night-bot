@@ -1,13 +1,13 @@
 # 本地合并批次复查与刷新修复
 
-> 状态：BLOCKED
+> 状态：ACTIVE
 > Goal ID：local-merged-pr-review
-> 最近维护：2026-11-13T02:16:54.121386+00:00
+> 最近维护：2026-11-13T02:39:39.862405+00:00
 > 权威目标：goal.md
 
 ## 总目标
 
-修复记忆页面强制刷新失败；复查 b030ada 至 39dde8f 的已合并 PR，修复确认问题，再部署本地完成真实界面/API 验证。保护主仓已有改动及安装数据。追加处理本地 degraded 的两项恢复告警和钉钉接入状态。
+修复记忆页面强制刷新失败；复查 b030ada 至 39dde8f 的已合并 PR，修复确认问题，再部署本地完成真实界面/API 验证。保护主仓已有改动及安装数据。追加处理本地 degraded 的恢复告警和钉钉接入状态；当前明确修复停机中断导致群内首答后无后续，验证后合并并部署本地。
 
 ## 完成条件
 
@@ -34,12 +34,12 @@
 | SG4 | Git交付 | 本地验证后提交并回读PR | 已合并 | PR #96 MERGED；aaa6d97dcf6e318f2c815b39b31ab1e6d7c6d3fa |
 | SG5 | 本地最新部署和真实验收 | 最新发行启动且实际记忆页fresh | 已部署，附遗留问题 | 实际进程457585e；两次真实强刷31/0且无stale/error；round-2.md |
 
-| SG6 | 本地恢复告警与接入状态 | 修复确认缺陷并独立核实真实恢复终态；受阻项保留证据 | 部分修复已验证，恢复处置受阻 | round-3.md：误报回归先红后绿；6/6和项目守卫通过；原任务排空证明过期及Router aborted/action+新输入仍阻断 |
+| SG6 | 本地恢复告警与接入状态 | 修复确认缺陷并独立核实真实恢复终态；受阻项保留证据 | Router 安全恢复实施中，已获合并及本地部署授权 | round-3.md：误报回归先红后绿；6/6和项目守卫通过；原任务排空证明过期及Router aborted/action+新输入仍阻断 |
 
 ## 当前检查点
 
 - 当前子目标：SG6
-- 唯一下一步：取得原未结效果与旧 owner 后续增量的可信核验及明确处置，并经可覆盖该现场的正式 Host 维护能力恢复；现有 close/resume 前置条件不满足，不改守卫消警。接入状态修复 PR #100 已回读为 OPEN / MERGEABLE（main ← worktree-local-recovery-status）；待该新 PR 的明确合并授权后才可部署。
+- 唯一下一步：基于官方 Pi 1.5.0 的 aborted 未派发语义，实现原会话安全续轮，并在推理前合法接纳全部可容纳的较新输入；未知效果、分页溢出和身份变化仍拒绝。专项通过后更新并合并 PR #100，按 runbook 部署最新已合并代码，核对原群真实处理终态。用户已明确授权“修复这个问题，验证后合并部署本地”；旧任务未知效果单列，不为健康计数处置。
 - 未闭环项：两个最新界面回归、usageCoverage=partial、钉钉ingress recovering、resident degraded的原任务阻塞与新增ROUTER_BATCH_UNSETTLED；不宣称全系统健康或全绿。
 
 生产修复原提交210b521，最后来源测试blob e7f5d2d909bb18dd768548240216e5d9f39da750；修复与验收增量4297f39已随PR96合并。第1轮历史保留，不用最终提交替代原整批加载版本。
@@ -53,3 +53,5 @@
 第3轮确认真实回填游标推进且两路多次 receiving；普通增量拉取的 inProgress 引起周期误报，已修复并通过6项相关回归和 pnpm check。原任务正式 inspect 返回 TASK_EFFECT_DRAIN_CUT_CHANGED；原 Router 为 aborted 检查点、未配对 action 且有3项较新输入。未执行 close/resume、未重放或清警，实际 degraded 仍为2项。已整合主线77acd68，修复提交3164123与实跑源码blob一致且项目守卫复跑通过；安装保持457585e。完整证据和处置比较仅见 round-3.md；SG6未完成。
 
 修复交付：[PR #100](https://github.com/zzusp/night-bot/pull/100)，标题“fix(channels): 修复普通增量拉取误报恢复中”。已核实 OPEN、base=main、head=worktree-local-recovery-status、MERGEABLE；未合并、未部署，SG6仍为BLOCKED。
+
+当前决策入口：[Router 中止批次恢复](../../spec/router-aborted-batch-recovery.md)。第3轮历史结论保留；新修复与部署证据集中进入第4轮。已整合最新 main 281b4d0（反馈诊断增量），工作树干净后开始本次实施。
